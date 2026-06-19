@@ -60,7 +60,7 @@ function erectStage() {
     colorShaderGF.setFloat('saturation', 0);
     getHaxeActor('gf').shader = colorShaderGF;
     if (StringTools.startsWith(getHaxeActor('gf').curCharacter, 'nene'))
-	getHaxeActor('gf').children[0].shader = colorShaderGF;
+	getHaxeActor('gf').children[3].shader = colorShaderGF;
 
     colorShaderDAD = new FlxRuntimeShader('adjustColor');
     colorShaderDAD.setFloat('brightness', -33);

@@ -20,7 +20,7 @@ function start(song) {
 	var daGF = getHaxeActor("gf");
 	makeRimShader(daGF, 'gf');
 	if (daGF.curCharacter == 'nene-pixel')
-	    makeAbotShaders(daGF.children[0]);
+	    makeAbotShaders(daGF);
 	makeRimShader(getHaxeActor("dad"), 'dad');
     }
 
@@ -155,9 +155,9 @@ function makeAbotShaders(char) {
     noRimShader.setFloat('brightness', -66);
     noRimShader.setFloat('contrast', 24);
 
-    char.shader = noRimShader;
     char.children[0].shader = noRimShader;
     char.children[2].shader = noRimShader;
+    char.children[3].shader = noRimShader;
 }
 
 function beatHit(beat) {

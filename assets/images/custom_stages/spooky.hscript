@@ -8,6 +8,8 @@ var darkbf;
 var darkgf;
 var darkdad;
 var lightningSound;
+var rainShader;
+var rainShaderTarget;
 function start(song) {
     statichscriptPath = hscriptPath;
 
@@ -52,6 +54,15 @@ function erectStage() {
     bgtrees.antialiasing = true;
     addSprite(bgtrees, BEHIND_ALL);
     stage.addElement('bgtrees', bgtrees);
+
+    /*rainShader = new RuntimeRainShader();
+    rainShader.scale = FlxG.height / 200 * 2;
+    rainShader.intensity = 0.4;
+    rainShader.spriteMode = true;*/
+
+    /*rainShaderTarget = bgtrees;
+    rainShaderTarget.shader = rainShader;
+    rainShaderTarget.animation.callback = onBranchFrame;*/
 
     var darkbg = new FlxSprite(-360, -220).loadGraphic(hscriptPath + 'bgDark.png');
     addSprite(darkbg, BEHIND_ALL);
@@ -111,6 +122,10 @@ function erectStage() {
     getHaxeActor("gf").alpha = 0;
     getHaxeActor("boyfriend").alpha = 0;
     getHaxeActor("dad").alpha = 0;
+}
+
+function onBranchFrame(name, frameNum, frameIndex) {
+    rainShader.updateFrameInfo(rainShaderTarget.frame);
 }
 
 var lightningBeat = 0;
@@ -173,9 +188,11 @@ function beatHit(beat) {
 }*/
 
 function update(elapsed) {
+    /*if (rainShader != null)
+	rainShader.update(elasped);*/
     darkbf.playAnim(getHaxeActor("boyfriend").animation.curAnim.name, true, false, getHaxeActor("boyfriend").animation.curAnim.curFrame);
     darkgf.playAnim(getHaxeActor("gf").animation.curAnim.name, true, false, getHaxeActor("gf").animation.curAnim.curFrame);
     if (StringTools.startsWith(darkgf.curCharacter, 'nene'))
-	darkgf.children[0].playAnim(getHaxeActor("gf").children[0].animation.curAnim.name, true, false, getHaxeActor("gf").children[0].animation.curAnim.curFrame);
+	darkgf.children[3].playAnim(getHaxeActor("gf").children[3].animation.curAnim.name, true, false, getHaxeActor("gf").children[3].animation.curAnim.curFrame);
     darkdad.playAnim(getHaxeActor("dad").animation.curAnim.name, true, false, getHaxeActor("dad").animation.curAnim.curFrame);
 }
