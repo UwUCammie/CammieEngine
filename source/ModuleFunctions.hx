@@ -138,6 +138,7 @@ class ModuleFunctions {
 				coolSongListFile.push({"name": songData.category, "songs": [{"name": songData.name, "character": songData.char, "week": songData.week, "display": songData.display}]});
 		}
 		File.saveContent('assets/data/freeplaySongJson.jsonc', CoolUtil.stringifyJson(coolSongListFile));
+		DifficultyManager.addSongSupport(songData.name);
 	}
 
 	static public function exportSong(daSong:String) {

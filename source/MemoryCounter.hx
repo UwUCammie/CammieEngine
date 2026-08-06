@@ -34,7 +34,10 @@ class MemoryCounter extends TextField {
 			memPeak = mem;
 
 		if (visible) {
-			text = "\nMEM: " + mem + " MB\nMEM peak: " + memPeak + " MB";
+			if (Main.fpsCounter.visible)
+				text = "\nMEM: " + mem + " MB\nMEM peak: " + memPeak + " MB";
+			else
+				text = "MEM: " + mem + " MB\nMEM peak: " + memPeak + " MB";
 		}
 	}
 }

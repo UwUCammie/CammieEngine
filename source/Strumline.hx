@@ -13,6 +13,7 @@ import sys.FileSystem;
 
 class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	public var type:String = 'normal';
+	public var noAnims:Bool = false;
 	public var currentKey:NoteKeys;
 	public var noteSplashes:FlxTypedGroup<NoteSplash>;
 	public function new(x:Float, y:Float, type:String = 'normal', ?transition:Bool = false) {
@@ -37,6 +38,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 
 		for (i in 0...Note.NOTE_AMOUNT) {
 			var babyArrow:StrumNote = new StrumNote(Note.swagWidth * i, 0, i, type, currentKey);
+			babyArrow.parentLine = this;
 			add(babyArrow);
 		}
 
@@ -77,6 +79,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 }
 
 class StrumNote extends FlxSprite {
+	public var parentLine:Null<Strumline>;
 	public var type:String = 'normal';
 	public var isPixel:Bool = false;
 	public var normalSize:Float = 0.7;
@@ -145,6 +148,9 @@ class StrumNote extends FlxSprite {
 	}
 
 	public function playAnim(anim:String, force:Bool = false, reversed:Bool = false, frame:Int = 0) {
+		if (parentLine != null && parentLine.noAnims)
+			return;
+
 		animation.play(anim, force, reversed, frame);
 
 		if (animation.curAnim != null && animation.curAnim.name == 'confirm' && !isPixel) {

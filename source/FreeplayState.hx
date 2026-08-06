@@ -39,7 +39,7 @@ class FreeplayState extends MusicBeatState {
 
 	var selector:FlxText;
 	static var curSelected:Int = 0;
-	var curDifficulty:Int = 1;
+	static var curDifficulty:Int = 1;
 	public static var curCategory = '';
 	private static var prevCategory = '';
 	var soundTestSong:Song.SwagSong;
@@ -419,6 +419,8 @@ class FreeplayState extends MusicBeatState {
 				PlayState.SONG = Song.loadFromJson(poop, songs[daSelection].songName.toLowerCase());
 
 				PlayState.isStoryMode = false;
+				PlayState.balls = 0;
+				PlayState.watchedCutscene = false;
 				ModifierState.isStoryMode = false;
 				PlayState.storyDifficulty = curDifficulty;
 				if (!OptionsHandler.options.skipModifierMenu)

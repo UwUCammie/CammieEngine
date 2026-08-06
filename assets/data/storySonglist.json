@@ -81,6 +81,22 @@
       "animation": "Week 6",
       "desc": "hating simulator ft. moawling",
       "dad": "senpai"
+    },
+    {
+      "name": "week7",
+      "songs": ["Ugh", "Guns", "Stress"],
+      "animation": "week7",
+      "desc": "TANKMAN FT. JOHNNYUTAH",
+      "dad": "tankman"
+    },
+    {
+      "name": "weekend1",
+      "songs": ["Darnell", "Lit-Up", "2hot"],
+      "animation": "weekend1",
+      "desc": "DUE DEBTS",
+      "bf": "pico-player",
+      "gf": "nene",
+      "dad": "darnell"
     }
   ]
 }

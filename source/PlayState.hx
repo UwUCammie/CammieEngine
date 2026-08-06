@@ -100,6 +100,7 @@ class PlayState extends MusicBeatState {
 	public static var storyWeekNum:Int = 0;
 	public static var storyPlaylist:Array<String> = [];
 	public static var storyDifficulty:Int = 1;
+	public static var storyDifficultyText:String = "";
 	public static var defaultPlaylistLength = 0;
 	public static var campaignScoreDef = 0;
 	public static var ss:Bool = true;
@@ -132,6 +133,7 @@ class PlayState extends MusicBeatState {
 	public static var bads:Int = 0;
 	public static var goods:Int = 0;
 	public static var sicks:Int = 0;
+	public static var balls:Int = 0;
 
 	private var accuracy:Float = 0.00;
 	private var accuracyDefault:Float = 0.00;
@@ -178,7 +180,6 @@ class PlayState extends MusicBeatState {
 	private var pixelUI:Bool = false;
 	#if (windows && cpp)
 	// Discord RPC variables
-	var storyDifficultyText:String = "";
 	var iconRPC:String = "";
 	var customPresence = '';
 	var detailsText:String = "";
@@ -228,6 +229,7 @@ class PlayState extends MusicBeatState {
 	var bfcam = [0, 0];
 	var skipCountdown:Bool = false;
 	var inCutscene:Bool = false;
+	public static var watchedCutscene = false;
 	var alwaysDoCutscenes = false;
 	var fullComboMode:Bool = false;
 	var perfectMode:Bool = false;
@@ -728,6 +730,7 @@ class PlayState extends MusicBeatState {
 		FlxG.cameras.reset(camGame);
 		FlxG.cameras.add(camHUD, false);
 
+		//dynamicMouse = true;
 		persistentUpdate = true;
 		persistentDraw = true;
 		alwaysDoCutscenes = OptionsHandler.options.alwaysDoCutscenes;
@@ -1115,7 +1118,7 @@ class PlayState extends MusicBeatState {
 
 		trace('ui done');
 
-		if (alwaysDoCutscenes || isStoryMode) {
+		if ((alwaysDoCutscenes || isStoryMode) && !watchedCutscene) {
 			inCutscene = true;
 			switch (SONG.cutsceneType) {
 				case 'senpai':
@@ -1250,6 +1253,7 @@ class PlayState extends MusicBeatState {
 		if (inCutscene) {
 			hscriptStates.remove('cutscene');
 			inCutscene = false;
+			if (SONG.cutsceneType != 'none') watchedCutscene = true;
 		}
 
 		enemyStrums.transIn();
@@ -2644,7 +2648,7 @@ class PlayState extends MusicBeatState {
 		// better streaming of shit
 
 		// RESET = Quick Game Over Screen
-		if (controls.RESET && !duoMode) {
+		if (controls.RESET && !duoMode && !inCutscene) {
 			if (opponentPlayer)
 				health = 2;
 			else
@@ -2661,6 +2665,7 @@ class PlayState extends MusicBeatState {
 		if ((health <= 0 && !opponentPlayer) || (health >= 2 && opponentPlayer)) {
 			if (!practiceMode && !duoMode) {
 				boyfriend.stunned = true;
+				balls += 1;
 
 				persistentUpdate = false;
 				persistentDraw = false;
@@ -3175,6 +3180,7 @@ class PlayState extends MusicBeatState {
 				else
 					PlayState.SONG = Song.loadFromJson(PlayState.storyPlaylist[0].toLowerCase(), PlayState.storyPlaylist[0]);
 				FlxG.sound.music.stop();
+				watchedCutscene = false;
 
 				LoadingState.loadAndSwitchState(new PlayState());
 			}

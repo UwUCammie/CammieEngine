@@ -148,6 +148,7 @@ class TitleState extends MusicBeatState {
 			transIn = FlxTransitionableState.defaultTransIn;
 			transOut = FlxTransitionableState.defaultTransOut;
 
+			Main.fpsCounter.visible = OptionsHandler.options.showFPS;
 			Main.memoryCounter.visible = OptionsHandler.options.showMemory;
 
 			// HAD TO MODIFY SOME BACKEND SHIT

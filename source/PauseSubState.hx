@@ -3,6 +3,7 @@ package;
 import Controls.Control;
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.text.FlxText;
 import flixel.FlxSubState;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.group.FlxGroup.FlxTypedGroup;
@@ -13,6 +14,10 @@ import flixel.FlxCamera;
 
 class PauseSubState extends MusicBeatSubstate {
 	var grpMenuShit:FlxTypedGroup<Alphabet>;
+
+	var songNameTxt:FlxText;
+	var curDiffTxt:FlxText;
+	var deathsTxt:FlxText;
 
 	var menuItems:Array<String> = ['Resume', 'Restart Song', 'Change Difficulty', 'Change Modifiers', 'Change Options', 'Charting', 'Exit to menu'];
 	var curSelected:Int = 0;
@@ -39,7 +44,25 @@ class PauseSubState extends MusicBeatSubstate {
 		grpMenuShit = new FlxTypedGroup<Alphabet>();
 		add(grpMenuShit);
 
+		if (PlayState.SONG.cutsceneType != 'none')
+			menuItems.insert(2, "Replay Cutscene");
+
 		makeMenuItems(menuItems);
+
+		songNameTxt = new FlxText(0, 20, FlxG.width - 10, PlayState.SONG.song, 32);
+		songNameTxt.font = "assets/fonts/vcr.ttf";
+		songNameTxt.alignment = RIGHT;
+		add(songNameTxt);
+
+		curDiffTxt = new FlxText(0, 55, FlxG.width - 10, "Difficulty: " + PlayState.storyDifficultyText, 32);
+		curDiffTxt.font = "assets/fonts/vcr.ttf";
+		curDiffTxt.alignment = RIGHT;
+		add(curDiffTxt);
+
+		deathsTxt = new FlxText(0, 90, FlxG.width - 10, PlayState.balls + " Blue Balls", 32);
+		deathsTxt.font = "assets/fonts/vcr.ttf";
+		deathsTxt.alignment = RIGHT;
+		add(deathsTxt);
 
 		changeSelection();
 
@@ -80,6 +103,9 @@ class PauseSubState extends MusicBeatSubstate {
 					case "Resume":
 						close();
 					case "Restart Song":
+						FlxG.resetState();
+					case "Replay Cutscene":
+						PlayState.watchedCutscene = false;
 						FlxG.resetState();
 					case "Charting":
 						LoadingState.loadAndSwitchState(new ChartingState());

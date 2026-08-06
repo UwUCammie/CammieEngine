@@ -25,16 +25,14 @@ typedef TMenuCharAnimation = {
 	var ?offset:Array<Int>;
 	var ?flipX:Bool;
 }
-class MenuCharacter extends FlxSprite
-{
+class MenuCharacter extends FlxSprite {
 	public var character:String;
 	public var like:String;
 	public var jsonScale:Float = 1.0;
 	public var offsetX:Float = 0.0;
 	public var offsetY:Float = 0.0; 
 	public var jsonFlipX:Bool = false;
-	public function new(x:Float, character:String = 'bf')
-	{
+	public function new(x:Float, character:String = 'bf') {
 		super(x);
 
 		this.character = character;

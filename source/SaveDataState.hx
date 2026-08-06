@@ -68,6 +68,7 @@ class SaveDataState extends MusicBeatState {
 			optionList = [
 							{name: "Controls...", value: false, intName:'controls', desc:"Edit bindings!", ignore: true,},
 							{name: "Fps Cap", value: false, intName: "fpsCap", desc: "Changes the max fps (also changes update rate)", amount: 60, defAmount: 60, max: 240, min: 10, precision: 10},
+							{name: "Show FPS Counter", value: false, intName: "showFPS", desc: "Shows the FPS counter in the top left"}, 
 							{name: "Show Memory Counter", value: false, intName: "showMemory", desc: "Shows the memory counter in the top left"}, 
 							{name: "Scroll Speed", value: false, intName: "scrollSpeed", desc: "Sets the scroll speed (1 uses the song's scroll speed)", amount: 1.0, defAmount: 1.0, max: 10.0, min: 1.0, precision: 0.1},
 							{name: "Downscroll", value: false, intName: "downscroll", desc: "Put da arrows on the bottom and have em scroll down"},
@@ -489,6 +490,7 @@ class SaveDataState extends MusicBeatState {
 			}
 		}
 		OptionsHandler.options = noneditableoptions;
+		Main.fpsCounter.visible = OptionsHandler.options.showFPS;
 		Main.memoryCounter.visible = OptionsHandler.options.showMemory;
 		FlxG.updateFramerate = OptionsHandler.options.fpsCap;
 		FlxG.drawFramerate = OptionsHandler.options.fpsCap;

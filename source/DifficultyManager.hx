@@ -18,13 +18,7 @@ class DifficultyManager {
         var fpJson:Array<CoolCategory> = CoolUtil.parseJson(FNFAssets.getJson("assets/data/freeplaySongJson"));
         for (cat in fpJson) {
             for (song in cat.songs) {
-                supportedDiff.set(song.name.toLowerCase(), []);
-                for (diff in 0...diffJson.difficulties.length) {
-                    if (FNFAssets.exists('assets/data/${song.name.toLowerCase()}/${song.name.toLowerCase()+getDiffEnding(diff)}.json')) {
-                        // : )
-                        supportedDiff.get(song.name.toLowerCase()).push(diff);
-                    }
-                }
+                addSongSupport(song.name);
             }
         }
         var weekJson:StorySongsJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json'));
@@ -40,11 +34,10 @@ class DifficultyManager {
 			for (diff in 0...diffJson.difficulties.length) {
 				var count = 0;
 				for (thing in thingsInWeek) {
-					if (diff == thing) {
+					if (diff == thing)
 						count++;
-					}
 				}
-				if (count < weekSongs.length - 1) {
+				if (count < weekSongs.length) {
 					// do nothing, it isn't supported
 				} else {
 					supThingies.push(diff);
@@ -52,6 +45,16 @@ class DifficultyManager {
 			}
 			// postfix means we get the value before it is incremented!
 			weeksSupported.set(week++, supThingies);
+        }
+    }
+
+    public static function addSongSupport(song:String) {
+        supportedDiff.set(song.toLowerCase(), []);
+        for (diff in 0...diffJson.difficulties.length) {
+            if (FNFAssets.exists('assets/data/${song.toLowerCase()}/${song.toLowerCase()+getDiffEnding(diff)}.json')) {
+                // : )
+                supportedDiff.get(song.toLowerCase()).push(diff);
+            }
         }
     }
 

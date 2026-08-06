@@ -12,6 +12,7 @@ class Main extends Sprite {
 	public static var cwd:String;
 	#end
 	public static var distray:DisSoundTray;
+	public static var fpsCounter:FPS;
 	public static var memoryCounter:MemoryCounter;
 	public function new() {
 		#if typebuild
@@ -28,7 +29,10 @@ class Main extends Sprite {
 		distray = new DisSoundTray();
 		addChild(distray);
 		#if !mobile
-		addChild(new FPS(10, 3, 0xFFFFFF));
+		fpsCounter = new FPS(10, 3, 0xFFFFFF);
+		fpsCounter.visible = false;
+		addChild(fpsCounter);
+
 		memoryCounter = new MemoryCounter(10, 3, 0xFFFFFF);
 		memoryCounter.visible = false;
 		addChild(memoryCounter);

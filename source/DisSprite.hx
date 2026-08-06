@@ -82,6 +82,10 @@ class DisSprite extends FlxAnimate {
         return frames.addAtlas(addedFrames);
     }*/
 
+    /*public function addAtlasAnimation(animname:String, startFrame:Int = 0, duration:Int = 1, framerate:Int = 24, looped:Bool = false):Void {
+        animation.addByTimelineIndices(animname, library.timeline, CoolUtil.numberArray(startFrame + duration, startFrame), framerate, looped);
+    }*/
+
     // children stuff
 
     public function addChild(child:FlxSprite, ?attached:Bool = true) {

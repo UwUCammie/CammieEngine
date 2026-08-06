@@ -272,46 +272,7 @@ class StoryMenuState extends MusicBeatState {
 				weekCharacterThing.x += weekCharacterThing.offsetX;
 				weekCharacterThing.y += weekCharacterThing.offsetY;
 				weekCharacterThing.flipX = weekCharacterThing.jsonFlipX;
-				/*
-				switch (weekCharacterThing.like)
-				{
-					case 'dad':
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.5));
-						weekCharacterThing.updateHitbox();
-						trace("like dad?");
-					case 'bf':
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.9));
-						weekCharacterThing.updateHitbox();
-						weekCharacterThing.x -= 80;
-						trace("like bf?");
-					case 'gf':
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.5));
-						weekCharacterThing.updateHitbox();
-						trace("like gf?");
-					case 'pico':
-						weekCharacterThing.y += 40;
-						weekCharacterThing.flipX = true;
-						weekCharacterThing.x -= 40;
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.6));
-						weekCharacterThing.updateHitbox();
-						trace("like pico?");
-					case 'parents-christmas':
-						weekCharacterThing.x -= 150;
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.4));
-						weekCharacterThing.updateHitbox();
-						trace("like parents?");
-					case 'mom':
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.45));
-						weekCharacterThing.updateHitbox();
-						trace("like mom?");
-					case 'spooky':
-						weekCharacterThing.y += 30;
-						weekCharacterThing.x -= 30;
-						weekCharacterThing.setGraphicSize(Std.int(weekCharacterThing.width * 0.5));
-						weekCharacterThing.updateHitbox();
-						trace("like spooky kids?");
-				}
-				*/
+
 				weekCharactersArray.members[i].add(weekCharacterThing);
 			}
 			if (i != curWeek) {
@@ -362,7 +323,6 @@ class StoryMenuState extends MusicBeatState {
 	}
 
 	override function update(elapsed:Float) {
-		// scoreText.setFormat('VCR OSD Mono', 32);
 		lerpScore = Math.floor(FlxMath.lerp(lerpScore, intendedScore, 0.5));
 
 		scoreText.text = "WEEK SCORE:" + lerpScore;
@@ -370,7 +330,6 @@ class StoryMenuState extends MusicBeatState {
 		txtWeekTitle.text = weekTitles[curWeek].toUpperCase();
 		txtWeekTitle.x = FlxG.width - (txtWeekTitle.width + 10);
 
-		// FlxG.watch.addQuick('font', scoreText.font);
 		difficultySelectors.visible = weekUnlocked[curWeek];
 		grpLocks.members[curWeek].visible = !weekUnlocked[curWeek];
 		grpLocks.forEach(function(lock:FlxSprite) {
@@ -419,51 +378,51 @@ class StoryMenuState extends MusicBeatState {
 	var stopspamming:Bool = false;
 
 	function selectWeek() {
-			if (!weekUnlocked[curWeek])
-				return;
-			if (stopspamming == false) {
-				FlxG.sound.play('assets/sounds/confirmMenu' + TitleState.soundExt);
+		if (!weekUnlocked[curWeek])
+			return;
+		if (!stopspamming) {
+			FlxG.sound.play('assets/sounds/confirmMenu' + TitleState.soundExt);
 
-				weekCharactersArray.members[curWeek].members[0].animation.play('dadConfirm');
-				weekCharactersArray.members[curWeek].members[1].animation.play('bfConfirm');
-				weekCharactersArray.members[curWeek].members[2].animation.play('gfConfirm');
-				stopspamming = true;
+			weekCharactersArray.members[curWeek].members[0].animation.play('dadConfirm');
+			weekCharactersArray.members[curWeek].members[1].animation.play('bfConfirm');
+			weekCharactersArray.members[curWeek].members[2].animation.play('gfConfirm');
+			stopspamming = true;
+		}
+		StoryMenuState.storySongPlaylist = weekData[curWeek];
+		PlayState.storyPlaylist = StoryMenuState.storySongPlaylist;
+		PlayState.defaultPlaylistLength = weekData[curWeek].length;
+		PlayState.isStoryMode = true;
+		PlayState.balls = 0;
+		PlayState.watchedCutscene = false;
+		ModifierState.isStoryMode = true;
+		selectedWeek = true;
+
+		var diffic = grpDifficulty.getDiffEnding();
+
+		PlayState.storyDifficulty = curDifficulty;
+		for (peckUpAblePath in PlayState.storyPlaylist) {
+			if (!FNFAssets.exists('assets/data/' + peckUpAblePath.toLowerCase() + '/' + peckUpAblePath.toLowerCase() + diffic + '.json')) {
+				// probably messed up difficulty
+				trace("UH OH DIFFICULTY DOESN'T EXIST FOR A SONG");
+				trace("CHANGING TO DEFAULT DIFFICULTY");
+				diffic = "";
+				PlayState.storyDifficulty = DifficultyIcons.getDefaultDiffFP();
 			}
-			StoryMenuState.storySongPlaylist = weekData[curWeek];
-			PlayState.storyPlaylist = StoryMenuState.storySongPlaylist;
-			PlayState.defaultPlaylistLength = weekData[curWeek].length;
-			PlayState.isStoryMode = true;
-			ModifierState.isStoryMode = true;
-			selectedWeek = true;
-
-			var diffic = "";
-
-			diffic = grpDifficulty.getDiffEnding();
-
-			PlayState.storyDifficulty = curDifficulty;
-			for (peckUpAblePath in PlayState.storyPlaylist) {
-				if (!FNFAssets.exists('assets/data/' + peckUpAblePath.toLowerCase() + '/' + peckUpAblePath.toLowerCase() + diffic + '.json')) {
-					// probably messed up difficulty
-					trace("UH OH DIFFICULTY DOESN'T EXIST FOR A SONG");
-					trace("CHANGING TO DEFAULT DIFFICULTY");
-					diffic = "";
-					PlayState.storyDifficulty = DifficultyIcons.getDefaultDiffFP();
-				}
+		}
+		PlayState.SONG = Song.loadFromJson(PlayState.storyPlaylist[0].toLowerCase() + diffic, PlayState.storyPlaylist[0].toLowerCase());
+		PlayState.storyWeek = weekNames[curWeek];
+		PlayState.storyWeekNum = curWeek;
+		PlayState.campaignScore = 0;
+		PlayState.campaignAccuracy = 0;
+		new FlxTimer().start(1, function(tmr:FlxTimer) {
+			if (!OptionsHandler.options.skipModifierMenu)
+				 LoadingState.loadAndSwitchState(new ModifierState());
+			else {
+				if (FlxG.sound.music != null)
+					FlxG.sound.music.stop();
+				LoadingState.loadAndSwitchState(new PlayState());
 			}
-			PlayState.SONG = Song.loadFromJson(PlayState.storyPlaylist[0].toLowerCase() + diffic, PlayState.storyPlaylist[0].toLowerCase());
-			PlayState.storyWeek = weekNames[curWeek];
-			PlayState.storyWeekNum = curWeek;
-			PlayState.campaignScore = 0;
-			PlayState.campaignAccuracy = 0;
-			new FlxTimer().start(1, function(tmr:FlxTimer) {
-				if (!OptionsHandler.options.skipModifierMenu)
-				 	LoadingState.loadAndSwitchState(new ModifierState());
-				else {
-					if (FlxG.sound.music != null)
-						FlxG.sound.music.stop();
-					LoadingState.loadAndSwitchState(new PlayState());
-				}
-			});
+		});
 	}
 
 	function changeDifficulty(change:Int = 0):Void {
@@ -495,6 +454,7 @@ class StoryMenuState extends MusicBeatState {
 			bullShit++;
 		}
 
+		changeDifficulty();
 		FlxG.sound.play('assets/sounds/scrollMenu' + TitleState.soundExt);
 		updateText();
 	}

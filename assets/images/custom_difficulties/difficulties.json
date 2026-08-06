@@ -35,7 +35,7 @@
     },
     {
       "offset": 20,
-      "anim": "HARD",
+      "anim": "pico",
       "name": "pico",
       "defaults": "pico"
     },

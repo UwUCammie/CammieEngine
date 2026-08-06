@@ -34,5 +34,14 @@
   "tankman": {
     "like":"tankman",
     "defaultGraphics": true
+  },
+  "pico-player": {
+    "like":"pico-player"
+  },
+  "darnell": {
+    "like":"darnell"
+  },
+  "nene": {
+    "like":"nene"
   }
 }

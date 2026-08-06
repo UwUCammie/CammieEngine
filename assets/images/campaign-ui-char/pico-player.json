@@ -1,0 +1,7 @@
+{
+  "animation": {
+    "bfConfirm": "confirm",
+    "idle": "idle"
+  },
+  "offset": [-80, 0]
+}
