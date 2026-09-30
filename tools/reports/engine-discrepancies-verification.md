@@ -11295,3 +11295,13 @@ cached runtime build. A 20-second offscreen, audio-disabled
 Wine startup stayed alive through its timeout (`tmp/wine-smoke-1188611.log`).
 The first sandboxed Wine attempt could not bind its local wineserver socket;
 the isolated retry succeeded. The updated ZIP has not been uploaded.
+
+### Windows tag rebuild removed — 2026-09-30
+
+The `windows-alpha.yml` workflow was removed after its tag trigger started a
+second Windows build while the locally built ZIP was being published. Release
+packaging remains available through `build-windows-release.sh`; GitHub Actions
+will no longer build on alpha tag pushes once this removal is pushed. The
+already-running workflow was cancelled by the maintainer. The test contract
+now checks that the old workflows are absent. The full Python suite passed
+**1,687 tests across 508 modules, 65 skipped, zero failed** after the removal.

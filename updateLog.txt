@@ -2,11 +2,11 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 0.0.1 alpha — CammieEngine
+	- Remove the GitHub Actions Windows rebuild triggered by release tags; publish locally built ZIPs directly
 	- Add owner-scoped Nightmare Vision mod/difficulty context, live timing/window helpers and source-defined missing-sound fallback diagnostics
 	- Refresh release credits, notices and player guide; unify visible CammieEngine branding and application-version reporting
 	- Prepare the first CammieEngine alpha with concise setup and compatibility documentation
 	- Show CammieEngine v0.0.1 on the main menu
-	- Add Windows x64 ZIP comparison builds through GitHub Actions; verified local ZIPs and checksums are uploaded to alpha prereleases manually
 	- Add an opt-in Windows updater that verifies release downloads and preserves settings and imported content
 	- Hide character-picker entries without their own installed visual in clean release builds, and refresh the picker after imports
 	- Fix Windows build bootstrap parsing and the Flixel fallback patch script
@@ -14,13 +14,11 @@ Earlier Disappointing Plus development history is retained below.
 	- Rebuild Codename song metadata from retained source fields when an older derived cache is stale, restoring shared script access
 	- Reduce repeated native imported-asset path and manifest probes without caching missing files
 	- Cache parsed note preset templates per song and import while keeping each note's mutable key data independent
-	- Cache the portable Windows toolchain and pinned Haxe libraries across matching GitHub Actions builds
 	- Verify the existing Linux-to-Windows cross-build and packaging path with an isolated offscreen Wine gameplay check
 	- Bundle the V-Slice-style results screen in clean Windows releases while keeping user-selected imported results packs separate
 	- Accept Windows absolute script paths when resolving Psych global-pack settings and media
 	- Build and package Windows x64 locally with one build-windows-release.sh command
 	- Prevent Windows import scans from crashing when an engine probe encounters a missing directory
-	- Keep CI Windows builds as comparison artifacts; publish verified local cross-builds to prereleases explicitly
 	- Apply the shared HScript compatibility patches on Windows and correct pinned Flixel sound asset types
 	- Show complete Windows build errors when the Haxe compiler fails
 	- Exclude local imports, generated audio mirrors, build output and machine caches from source uploads

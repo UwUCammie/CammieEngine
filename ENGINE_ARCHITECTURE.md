@@ -3587,13 +3587,9 @@ See the verification report for the built/native status of this integration.
 
 ### Windows alpha distribution
 
-`.github/workflows/windows-alpha.yml` builds Windows x64 on Windows 2022 through
-`run.bat build`. Manual and tagged runs upload a ZIP and SHA-256 checksum as
-Actions artifacts for comparison. Prereleases are populated from the verified
-local cross-build, so a later CI run cannot replace that release asset. The
-workflow needs repository read permission only. Its exact dependency cache
-keys cover the portable toolchain, pinned libraries, setup patches, and current
-Git-backed library revisions; generated C++ output is still rebuilt.
+Windows alpha packages are built locally and uploaded to GitHub Releases. No
+GitHub Actions workflow runs on release tags; pushing a tag does not start a
+second Windows build.
 
 On Linux, `build-windows-release.sh <tag>` runs toolchain setup, `build.sh
 windows`, and `tools/package_windows_release.py` as one command. It uses the

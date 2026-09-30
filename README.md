@@ -18,10 +18,8 @@ before downloading. The verified package installs after the game closes. Local
 settings and imports remain in place; an existing asset file is kept, so a
 clean extraction is needed when a release changes bundled static assets.
 
-Development ZIPs are also available from successful **Windows x64 alpha** runs
-under GitHub Actions. That workflow provides comparison artifacts; maintainers
-upload the locally cross-built ZIP and checksum to prereleases. Playback on
-native Windows hardware still needs verification.
+Maintainers build the Windows release locally and upload its ZIP and checksum
+to GitHub Releases. Playback on native Windows hardware still needs verification.
 
 ## Build from source
 

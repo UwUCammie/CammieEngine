@@ -190,41 +190,11 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         project = (ROOT / "Project.xml").read_text(encoding="utf-8")
         self.assertIn('assets/imported_mods/bundled-vslice-results', project)
 
-    def test_workflow_builds_comparison_artifacts_without_replacing_local_release(self):
-        workflow_path = ROOT / ".github/workflows/windows-alpha.yml"
-        workflow = workflow_path.read_text(encoding="utf-8")
-        self.assertNotIn("\t", workflow)
-        for required in (
-            "windows-2022",
-            "call run.bat build",
-            "actions/upload-artifact@v4",
-            "contents: read",
-            "tools/package_windows_release.py",
-            "retention-days: 30",
-        ):
-            self.assertIn(required, workflow)
-        self.assertNotIn("krdlab/setup-haxe", workflow)
-        self.assertNotIn("gh release upload", workflow)
-        self.assertNotIn("publish-alpha:", workflow)
+    def test_no_github_actions_windows_rebuild(self):
+        self.assertFalse((ROOT / ".github/workflows/windows-alpha.yml").exists())
         self.assertFalse((ROOT / ".github/workflows/build.yml").exists())
         self.assertFalse((ROOT / ".github/workflows/FunkyMainMenu.yml").exists())
         self.assertFalse((ROOT / ".github/workflows/win64.yml").exists())
-
-        try:
-            import yaml
-        except ImportError:
-            return
-        parsed = yaml.safe_load(workflow)
-        self.assertEqual(list(parsed["jobs"]), ["build"])
-        build = parsed["jobs"]["build"]
-        cache = next(step for step in build["steps"] if step.get("uses") == "actions/cache@v4")
-        self.assertEqual(cache["with"]["path"].splitlines(), [".tools", ".haxelib"])
-        cache_key = cache["with"]["key"]
-        self.assertIn("hashFiles('run.bat'", cache_key)
-        self.assertIn("tools/patch_*.py", cache_key)
-        self.assertIn("steps.haxelib-revisions.outputs.hscript_ex", cache_key)
-        self.assertIn("steps.haxelib-revisions.outputs.discord_rpc", cache_key)
-        self.assertNotIn("export", cache["with"]["path"])
 
 
 if __name__ == "__main__":
