@@ -219,7 +219,7 @@ if errorlevel 1 (
 	exit /b 1
 )
 if not exist "!NEKOPATH!\neko.exe" (
-	echo ^>^> downloading portable Neko 2.3.0 (one time)...
+	echo ^>^> downloading portable Neko 2.3.0 ^(one time^)...
 	call :download_tool neko "https://github.com/HaxeFoundation/neko/releases/download/v2-3-0/neko-2.3.0-win64.zip" "!NEKOPATH!" neko.exe
 	if errorlevel 1 exit /b 1
 )
