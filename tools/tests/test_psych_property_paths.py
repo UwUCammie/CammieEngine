@@ -263,6 +263,10 @@ class ColorCompat {{
   static function main() {{
     if (compatParseColor("FFFFFF") != 0xFFFFFFFF) throw "bare RGB was not parsed";
     if (compatParseColor("AABBCCDD") != 0xAABBCCDD) throw "bare RGBA was not parsed";
+    if (compatParseColor("#AABBCCDD") != 0xAABBCCDD) throw "prefixed ARGB changed";
+    if (compatParseColor("0xFFFFFFFF") != 0xFFFFFFFF) throw "full-alpha hex was clamped";
+    if (compatParseColor(0xFEC85C) != 0xFFFEC85C) throw "numeric RGB tint was not opaque";
+    if (compatParseColor(0x80112233) != 0x80112233) throw "explicit numeric alpha changed";
     if (compatParseColor("#112233") != 0xFF112233) throw "prefixed RGB changed";
     if (compatParseColor("white") != 0xFFFFFFFF) throw "named colour changed";
     if (compatParseColor("not-a-colour") != null) throw "invalid colour should be ignored";
@@ -305,7 +309,8 @@ class ColorCompat {{
         self.assertIn("function compatPathTokens", play_state)
         self.assertIn("function compatPropertySeparator", play_state)
         self.assertIn("function compatParseColor", play_state)
-        self.assertIn("var digits = text.length == 6 ? 'FF' + text : text", play_state)
+        self.assertIn("var high = Std.parseInt('0x' + digits.substr(0, 4))", play_state)
+        self.assertIn("var low = Std.parseInt('0x' + digits.substr(4, 4))", play_state)
         self.assertIn("?color:Dynamic", play_state)
         self.assertIn("color == null ? 0xFFFFFFFF : compatParseColor(color)", play_state)
         self.assertIn("field.toLowerCase() == 'color'", play_state)

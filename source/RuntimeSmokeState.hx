@@ -33,10 +33,12 @@ class RuntimeSmokeState extends FlxState {
 
 			// These are the same one-time setup calls made by TitleState.  They do
 			// not modify OptionsHandler.options or any saved settings.
-			PluginManager.init();
-			DifficultyManager.init();
-			ModifierState.init();
-			PlayerSettings.init();
+			if (!RuntimeImportSmokeHarness.consumePreparedRuntimeForPlay()) {
+				PluginManager.init();
+				DifficultyManager.init();
+				ModifierState.init();
+				PlayerSettings.init();
+			}
 
 			PlayState.isStoryMode = request.storyMode;
 			PlayState.storyPlaylist = request.storyMode ? [selection.songFolder] : [];

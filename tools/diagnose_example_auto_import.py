@@ -1439,6 +1439,9 @@ def main() -> int:
         temp = Path(folder)
         (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
         (temp / "ImportRootScanner.hx").write_text((ROOT / "source/ImportRootScanner.hx").read_text())
+        (temp / "ImportDirectoryListing.hx").write_text(
+            (ROOT / "source/ImportDirectoryListing.hx").read_text()
+        )
         # The scan path can recover compiled legacy/Kade/FPS characters from
         # Sparrow atlases without touching the donor.  Keep the isolated
         # diagnostic fixture's source graph in sync with ImportWorkflow.

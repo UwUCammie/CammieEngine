@@ -97,6 +97,9 @@ class ImportTypeFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportTypeFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "ImportTypeFixture", "--interp"],
                 cwd=ROOT,
@@ -158,6 +161,9 @@ class DetailWrapFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "DetailWrapFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "DetailWrapFixture", "--interp"],
                 cwd=ROOT,
@@ -205,6 +211,9 @@ class CustomCharacterRegistryFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "CustomCharacterRegistryFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "CustomCharacterRegistryFixture", "--interp"],
                 cwd=folder,
@@ -233,6 +242,9 @@ class ParseJsonFixture {
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ParseJsonFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "ParseJsonFixture", "--interp"],
                 cwd=ROOT,
@@ -285,6 +297,9 @@ class Song {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "Song.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Song", "--interp"],
                 cwd=ROOT,
@@ -313,6 +328,9 @@ class ImportInfoTest {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportInfoTest.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "ImportInfoTest", "--interp"],
                 cwd=ROOT,
@@ -432,6 +450,9 @@ class ImportGateFixture {{
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "ImportGateFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
                  "-main", "ImportGateFixture", "--interp"],
@@ -499,6 +520,9 @@ class ImportSummaryFixture {{
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "ImportSummaryFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
                  "-main", "ImportSummaryFixture", "--interp"],
@@ -575,6 +599,9 @@ class RequiredCopyFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "RequiredCopyFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "RequiredCopyFixture"],
                 cwd=folder,
@@ -677,6 +704,9 @@ class RecursiveImportFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "RecursiveImportFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             assets = Path(folder) / "assets-root" / "assets"
             (assets / "data" / "fixture-song").mkdir(parents=True)
             (assets / "songs" / "fixture-song").mkdir(parents=True)
@@ -760,6 +790,9 @@ class PackageDiscoveryFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "PackageDiscoveryFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             root = Path(folder) / "root"
             root.mkdir()
             for index in range(4):
@@ -822,6 +855,9 @@ class RecursiveMergeFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "RecursiveMergeFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             source_root = Path(folder) / "source"
             destination_root = Path(folder) / "destination"
             source_root.mkdir()
@@ -889,6 +925,9 @@ class ArbitraryAssetFixture {{
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ArbitraryAssetFixture.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             source_root = Path(folder) / "source-assets"
             destination_root = Path(folder) / "destination-assets"
             (source_root / "images").mkdir(parents=True)

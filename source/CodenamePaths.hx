@@ -78,7 +78,7 @@ class CodenamePaths {
 			var next:Array<{absolute:String, relative:Array<String>}> = [];
 			for (candidate in frontier) {
 				var entries:Array<String> = [];
-				try entries = FileSystem.readDirectory(candidate.absolute) catch (_:Dynamic) continue;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(candidate.absolute)) catch (_:Dynamic) continue;
 				for (entry in entries) {
 					if (!CodenameScriptDiscovery.safeName(entry)
 						|| entry.toLowerCase() != parts[index].toLowerCase()) continue;
@@ -222,7 +222,7 @@ class CodenamePaths {
 		if (!FileSystem.exists(folder)) return [];
 		if (!CodenameScriptDiscovery.withinRoot(root, folder) || !FileSystem.isDirectory(folder))
 			throw '[codename-asset] Invalid scoped folder: ' + key;
-		var names = FileSystem.readDirectory(folder);
+		var names = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder));
 		names.sort(Reflect.compare);
 		var result:Array<String> = [];
 		for (name in names) {

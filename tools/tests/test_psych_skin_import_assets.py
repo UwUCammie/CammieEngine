@@ -57,6 +57,11 @@ class SkinImportFixture {
     for (diagnostic in second.diagnostics)
       if (diagnostic.indexOf('noteSkins/NOTE_assets') >= 0) missingDefault = true;
     if (!missingDefault) throw 'missing default diagnostic';
+    put('assets/images/custom_ui/ui_packs/normal/NOTE_assets.png', 'host-default-png');
+    put('assets/images/custom_ui/ui_packs/normal/NOTE_assets.xml', 'host-default-xml');
+    var hostDefault = PsychSkinImportAssets.copy('donor-b', 'assets/imported_mods/c', [{song:{arrowSkin:''}}]);
+    for (diagnostic in hostDefault.diagnostics)
+      if (diagnostic.indexOf('noteSkins/NOTE_assets') >= 0) throw 'false host default diagnostic';
     put(a + '/images/custom/RED.png', 'user-override');
     var repair = PsychSkinImportAssets.copy('donor-a', a, [chart]);
     if (repair.copied != 0 || File.getContent(a + '/images/custom/RED.png') != 'user-override') throw 'overwrite';

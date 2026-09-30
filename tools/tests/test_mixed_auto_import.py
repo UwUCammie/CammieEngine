@@ -440,6 +440,9 @@ class Main {{
             )
             (temp_path / "ImportEngine.hx").write_text(self.engine)
             (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            (temp_path / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc)
             (temp_path / "VSliceImporter.hx").write_text(self.vslice)
             # VSliceImporter bounds Codename character definitions through this

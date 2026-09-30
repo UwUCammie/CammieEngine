@@ -100,6 +100,9 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp", prefix="psych-source-import-") as folder:
             work = Path(folder)
             (work / "Main.hx").write_text(fixture)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             donor = work / "psych-donor"
             source_root = donor / "source"
             (source_root / "states/stages").mkdir(parents=True)

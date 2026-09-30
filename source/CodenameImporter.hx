@@ -1274,7 +1274,7 @@ class CodenameImporter {
 		var matches:Array<String> = [];
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(iconsFolder);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(iconsFolder));
 		} catch (_:Dynamic) {
 			return '';
 		}

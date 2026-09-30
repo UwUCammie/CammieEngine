@@ -49,6 +49,9 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             work = Path(temp)
             (work / "ImportEngine.hx").write_text(self.engine)
             (work / "ImportRootScanner.hx").write_text(self.scanner)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             (work / "Main.hx").write_text(main)
             result = subprocess.run(
                 [str(HAXE), "-cp", temp, "--run", "Main", *(str(path) for path in paths)],

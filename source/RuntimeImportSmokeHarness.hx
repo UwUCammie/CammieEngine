@@ -21,6 +21,9 @@ import sys.io.File;
 typedef RuntimeImportSmokeOptions = {
 	var source:String;
 	var importType:String;
+	var scanOnly:Bool;
+	/** Continue in this process to one direct chart smoke after the import. */
+	var playAfterImport:Bool;
 	var packageName:String;
 	var packageNameProvided:Bool;
 	var timeoutMs:Int;
@@ -33,6 +36,8 @@ class RuntimeImportSmokeHarness {
 	static var finished:Bool = false;
 	static var startedAt:Float = 0;
 	static var timeoutReported:Bool = false;
+	/** RuntimeImportSmokeState already initialized the shared game services. */
+	static var preparedRuntimeForPlay:Bool = false;
 
 	public static function enabled():Bool {
 		return config() != null && argumentsSeen;
@@ -44,6 +49,8 @@ class RuntimeImportSmokeHarness {
 		var result:RuntimeImportSmokeOptions = {
 			source: '',
 			importType: 'Auto',
+			scanOnly: false,
+			playAfterImport: false,
 			packageName: '',
 			packageNameProvided: false,
 			timeoutMs: 900000,
@@ -70,6 +77,12 @@ class RuntimeImportSmokeHarness {
 				case '--smoke-import-type':
 					argumentsSeen = true;
 					result.importType = value == null ? 'Auto' : StringTools.trim(value);
+				case '--smoke-import-scan-only':
+					argumentsSeen = true;
+					result.scanOnly = true;
+				case '--smoke-import-play-after-complete':
+					argumentsSeen = true;
+					result.playAfterImport = true;
 				case '--smoke-import-package-name':
 					argumentsSeen = true;
 					result.packageNameProvided = true;
@@ -134,35 +147,50 @@ class RuntimeImportSmokeHarness {
 		});
 	}
 
+	/** A scan probe stops before the importer writes any selected content. */
+	public static function finishScan(result:Dynamic):Void {
+		if (!enabled() || finished)
+			return;
+		finished = true;
+		emit('success', {
+			phase: 'scan',
+			songsFound: fieldInt(result, 'songsFound'),
+			songsToImport: fieldInt(result, 'songsToImport'),
+			errors: arrayLength(result == null ? null : Reflect.field(result, 'errors'))
+		});
+		#if sys
+		Sys.exit(0);
+		#end
+	}
+
 	public static function markImportStart():Void {
 		if (!enabled() || finished)
 			return;
 		emit('import_start', {importType: config().importType});
 	}
 
-	public static function finish(result:Dynamic, error:Dynamic):Void {
+	public static function finish(result:Dynamic, error:Dynamic):Bool {
 		if (!enabled() || finished)
-			return;
+			return false;
 		if (error != null) {
 			fail('import', Std.string(error));
-			return;
+			return false;
 		}
 		if (result == null) {
 			fail('import', 'ImportWorkflow returned no result');
-			return;
+			return false;
 		}
 		var failed = fieldInt(result, 'failed');
 		var found = fieldInt(result, 'found');
 		if (failed > 0) {
 			fail('import', 'writer reported failed=' + failed);
-			return;
+			return false;
 		}
 		if (found <= 0) {
 			fail('import', 'writer found no songs');
-			return;
+			return false;
 		}
-		finished = true;
-		emit('success', {
+		var summary = {
 			found: found,
 			imported: fieldInt(result, 'imported'),
 			skipped: fieldInt(result, 'skipped'),
@@ -172,10 +200,30 @@ class RuntimeImportSmokeHarness {
 			missingDependencies: fieldInt(result, 'missingDependencies'),
 			errors: arrayLength(Reflect.field(result, 'errors')),
 			errorDetails: boundedErrors(Reflect.field(result, 'errors'))
-		});
+		};
+		finished = true;
+		if (config().playAfterImport) {
+			// RuntimeImportSmokeState has already polled ImportImportJob to
+			// completion, which performs completeImportOnMainThread before the
+			// progress snapshot is returned. Keep this runtime alive and let the
+			// caller enter the normal direct-chart smoke state.
+			preparedRuntimeForPlay = true;
+			emit('import_complete', summary);
+			return true;
+		}
+		emit('success', summary);
 		#if sys
 		Sys.exit(0);
 		#end
+		return false;
+	}
+
+	/** Consume the setup performed before import so follow-up play does not
+	 * reinitialize process-global plugin and difficulty registries. */
+	public static function consumePreparedRuntimeForPlay():Bool {
+		var prepared = preparedRuntimeForPlay;
+		preparedRuntimeForPlay = false;
+		return prepared;
 	}
 
 	public static function fail(kind:String, detail:String):Void {

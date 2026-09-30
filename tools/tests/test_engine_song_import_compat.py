@@ -10,12 +10,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def directory_listing_source() -> str:
+    return (ROOT / "source/ImportDirectoryListing.hx").read_text().replace("package;", "")
+
+
 def with_kade_parser(fixture: str) -> str:
     """Embed the KadeStageSource parser into a generated fixture: its import
     lines merge at the top of the file, its class lands at the end."""
     parser = (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "")
     cut = parser.index("\nclass ")
-    return parser[:cut] + fixture + parser[cut:]
+    return parser[:cut] + fixture + "\n" + directory_listing_source() + parser[cut:]
 
 
 def extract_method(source: str, marker: str) -> str:
@@ -860,7 +864,7 @@ class ImportCompat {{
             )
             (temp_path / "ImportCompat.hx").write_text(fixture + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "")
             .replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "")
-            .replace("import sys.io.File;", ""))
+            .replace("import sys.io.File;", "") + "\n" + directory_listing_source())
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
             )

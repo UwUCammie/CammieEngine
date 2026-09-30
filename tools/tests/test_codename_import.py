@@ -933,6 +933,7 @@ class Main {{
     # Full stub set copied from the mixed-Auto fixture so the real
     # VSliceImporter/ImportRootScanner sources type-check without flixel.
     SCANNER_STUBS = {
+        "ImportDirectoryListing.hx": (ROOT / "source/ImportDirectoryListing.hx").read_text(),
         "CoolUtil.hx": '''class CoolUtil {
   public static function parseJson(raw:String):Dynamic return haxe.Json.parse(raw);
   public static function stringifyJson(value:Dynamic):String return haxe.Json.stringify(value);

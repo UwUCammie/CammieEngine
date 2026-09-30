@@ -9,6 +9,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def install_directory_listing_helper(folder: str | Path) -> None:
+    helper = ROOT / "source/ImportDirectoryListing.hx"
+    (Path(folder) / helper.name).write_text(helper.read_text())
+
+
 def extract_method(source: str, marker: str) -> str:
     start = source.index(marker)
     brace = source.index("{", start)
@@ -142,6 +147,7 @@ class CopyFixture {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "CompatScriptManifest.hx").write_text(manifest)
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameStrumlineLayout"):
@@ -250,6 +256,7 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "RepairFixture.hx").write_text(fixture)
             (temp / "assets/songs/Repair-Key").mkdir(parents=True)
             (temp / "assets/songs/Repair-Key/Inst.ogg").write_bytes(b"existing-audio")
@@ -361,6 +368,7 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "CompatScriptManifest.hx").write_text(manifest)
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameModCatalog", "CodenameStrumlineLayout"):
@@ -430,6 +438,7 @@ class LookupFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "LookupFixture.hx").write_text(fixture)
             donor = temp / "donor"
             (donor / "IMAGES/Stage/TB").mkdir(parents=True)
@@ -534,6 +543,7 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "CompatScriptManifest.hx").write_text(manifest)
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameModCatalog", "CodenameStrumlineLayout"):
@@ -841,6 +851,7 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
+            install_directory_listing_helper(temp)
             (temp / "CompatScriptManifest.hx").write_text(manifest)
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
             for helper in (

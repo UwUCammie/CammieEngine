@@ -39,7 +39,7 @@ class CodenameCharacterAtlas {
 			var visit = function visit(directory:String, relative:String, depth:Int):Void {
 				if (depth > 12 || !CodenameScriptDiscovery.withinRoot(root, directory)) return;
 				var entries:Array<String>;
-				try entries = FileSystem.readDirectory(directory) catch (_:Dynamic) return;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(directory)) catch (_:Dynamic) return;
 				entries.sort(Reflect.compare);
 				for (entry in entries) {
 					if (entry == '' || entry == '.' || entry == '..') continue;
@@ -91,7 +91,7 @@ class CodenameCharacterAtlas {
 		var find = function find(directory:String, depth:Int):Void {
 			if (depth > 12 || !CodenameScriptDiscovery.withinRoot(root, directory)) return;
 			var entries:Array<String>;
-			try entries = FileSystem.readDirectory(directory) catch (_:Dynamic) return;
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(directory)) catch (_:Dynamic) return;
 			entries.sort(Reflect.compare);
 			for (entry in entries) {
 				var path = Path.join([directory, entry]);

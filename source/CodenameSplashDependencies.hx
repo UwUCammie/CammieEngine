@@ -36,7 +36,7 @@ class CodenameSplashDependencies {
 		if (folderRelative == null) return result;
 		var folder = Path.join([ownerRoot, folderRelative]);
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(folder) catch (_:Dynamic) {
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)) catch (_:Dynamic) {
 			result.diagnostics.push('[codename-splash-dependency] Could not enumerate data/splashes');
 			return result;
 		}
@@ -111,7 +111,7 @@ class CodenameSplashDependencies {
 			if (FileSystem.exists(exact)) selected = part;
 			else {
 				var matches:Array<String> = [];
-				try for (entry in FileSystem.readDirectory(current))
+				try for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(current)))
 					if (CodenameScriptDiscovery.safeName(entry) && entry.toLowerCase() == part.toLowerCase())
 						matches.push(entry)
 				catch (_:Dynamic) return null;

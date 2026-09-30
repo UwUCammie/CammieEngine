@@ -32,6 +32,17 @@ class RuntimeImportSmokeState extends FlxState {
 		try {
 			if (StringTools.trim(request.source) == '')
 				throw 'missing --smoke-import-source';
+			if (request.playAfterImport) {
+				var playRequest = RuntimeSmokeHarness.config();
+				if (request.scanOnly)
+					throw '--smoke-import-play-after-complete cannot be combined with --smoke-import-scan-only';
+				if (playRequest == null || RuntimeSmokeHarness.getConfigurationError() != '')
+					throw 'play-after-import requires a valid RuntimeSmokeHarness chart request';
+				if (playRequest.songFolder == '' || playRequest.chart == '')
+					throw 'play-after-import requires --smoke-song and --smoke-chart';
+				if (playRequest.chartEditor || playRequest.freeplay)
+					throw 'play-after-import requires a direct PlayState request';
+			}
 			// Match TitleState's one-time setup before the worker reads registries
 			// and initializes native compatibility services.
 			PluginManager.init();
@@ -69,6 +80,10 @@ class RuntimeImportSmokeState extends FlxState {
 				return;
 			}
 			RuntimeImportSmokeHarness.markScanReady(result);
+			if (RuntimeImportSmokeHarness.config().scanOnly) {
+				RuntimeImportSmokeHarness.finishScan(result);
+				return;
+			}
 			var packageNames:Map<String, String> = null;
 			var packageName = RuntimeImportSmokeHarness.config().packageName;
 			if (RuntimeImportSmokeHarness.config().packageNameProvided) {
@@ -100,7 +115,8 @@ class RuntimeImportSmokeState extends FlxState {
 				RuntimeImportSmokeHarness.fail('timeout', 'import cancellation completed');
 				return;
 			}
-			RuntimeImportSmokeHarness.finish(result, error);
+			if (RuntimeImportSmokeHarness.finish(result, error))
+				FlxG.switchState(new RuntimeSmokeState());
 		}
 	}
 }

@@ -223,6 +223,9 @@ class ModPlusCharacterOwnerScopeTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="mplus-char-owner-", dir=ROOT / "tmp") as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             alternate = work / "alternate-donor"
             alternate_chars = alternate / "images/custom_chars"
             (alternate_chars / "bf-dark").mkdir(parents=True)

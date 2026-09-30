@@ -71,6 +71,9 @@ class Main {{
             temp = Path(folder)
             fixture_path = temp / "Main.hx"
             fixture_path.write_text(fixture)
+            (temp / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             root = temp / "donor"
             animate = root / "IMAGES/Characters/Girlfriend/GF_WEEK2"
             animate.mkdir(parents=True)

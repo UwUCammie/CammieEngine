@@ -35,7 +35,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.1-alpha.4
+./build-windows-release.sh v0.0.1-alpha.5
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set

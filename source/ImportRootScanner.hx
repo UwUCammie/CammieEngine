@@ -649,7 +649,7 @@ class ImportRootScanner {
 
 	static function hasHaxeSourceFile(directory:String):Bool {
 		try {
-			for (entry in FileSystem.readDirectory(directory))
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(directory)))
 				if (StringTools.endsWith(entry.toLowerCase(), '.hx'))
 					return true;
 		} catch (_:Dynamic) {}
@@ -1335,7 +1335,7 @@ class ImportRootScanner {
 		try {
 			if (path == null || path == '' || !FileSystem.exists(path) || !FileSystem.isDirectory(path))
 				return [];
-			return sortDirectoryEntries(FileSystem.readDirectory(path));
+			return sortDirectoryEntries(ImportDirectoryListing.normalize(FileSystem.readDirectory(path)));
 		} catch (_:Dynamic) {
 			return [];
 		}
@@ -1345,8 +1345,7 @@ class ImportRootScanner {
 		inaccessible directory instead of throwing. Normalize that result before
 		calling Array.sort, whose hxcpp implementation dereferences its receiver. */
 	static function sortDirectoryEntries(entries:Array<String>):Array<String> {
-		if (entries == null)
-			return [];
+		entries = ImportDirectoryListing.normalize(entries);
 		entries.sort(function(a:String, b:String):Int {
 			var aLower = a.toLowerCase();
 			var bLower = b.toLowerCase();

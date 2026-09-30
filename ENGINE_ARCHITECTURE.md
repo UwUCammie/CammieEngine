@@ -3632,3 +3632,19 @@ not establish that a missing donor asset is present or that the package is verif
 `EngineBranding` separates the host application version from foreign compatibility
 API versions and Flixel's version. Release names do not change executable, save,
 or package identifiers.
+
+### Windows import and Psych visual compatibility
+
+Import scans run on a worker and publish immutable snapshots to the Flixel thread.
+The completed import hands cache invalidation and difficulty registration back to
+that thread before newly imported charts can launch. `ImportDirectoryListing` and
+the Kade source scanner treat a null native directory listing as an empty optional
+folder; Windows/Wine can return null where Linux throws or returns an array.
+The opt-in import-then-play smoke path exercises that handoff in one process.
+
+`PsychOwnerPaths` checks the selected import owner first, then engine shared
+assets for stock Psych stage images. The engine's native stage asset folder
+contains the common backdrop, front, curtains, and light. Psych's default note
+skin resolves to the engine's normal UI atlas when a mod does not package it.
+`PlayState.compatParseColor` combines two 16-bit halves for eight-digit ARGB
+values because Windows hxcpp can clamp a single 32-bit `Std.parseInt` call.

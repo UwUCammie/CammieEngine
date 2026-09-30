@@ -155,6 +155,9 @@ class MetaFixture {{
 '''
     path = folder / "MetaFixture.hx"
     path.write_text(source + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "").replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "").replace("import sys.io.File;", ""))
+    (folder / "ImportDirectoryListing.hx").write_text(
+        (ROOT / "source/ImportDirectoryListing.hx").read_text()
+    )
     return path
 
 

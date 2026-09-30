@@ -87,6 +87,9 @@ class Main {{
             (donor / "sounds" / "shared.ogg").write_text("root-shared")
             (donor / "shared" / "sounds" / "shared.ogg").write_text("fallback-shared")
             (work / "Main.hx").write_text(fixture)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Main",
                  str(donor), str(target)],

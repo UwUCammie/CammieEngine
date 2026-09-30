@@ -124,7 +124,9 @@ class PsychSkinImportAssets {
 			if (copyPair(location.root, ownerRoot, key, pixel,
 				[pixel + '.png', pixel + 'ENDS.png'], result)) found = true;
 		}
-		if (!found)
+		// The host's normal UI atlas is Psych's unmodified default skin.
+		// Do not report a missing donor sheet when runtime resolution can use it.
+		if (!found && (key != DEFAULT_SKIN || PsychSkinResolver.resolve(key, ownerRoot, false) == null))
 			result.diagnostics.push('Psych skin sheet not found for ' + key + ' in ' + sourceRoot);
 	}
 

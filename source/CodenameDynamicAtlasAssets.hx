@@ -123,7 +123,7 @@ class CodenameDynamicAtlasAssets {
 		}
 		var absolute = Path.join([root, resolved.relative]);
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(absolute) catch (error:Dynamic) {
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(absolute)) catch (error:Dynamic) {
 			report('could not list dynamic atlas directory ' + relativeDirectory
 				+ ': ' + Std.string(error));
 			return 0;

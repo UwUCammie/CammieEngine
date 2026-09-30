@@ -126,6 +126,9 @@ class Probe {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             owner = work / "assets/imported_mods/psych-owner/images/custom_chars"
             scoped_actor = owner / "whitbonkers"
             scoped_actor.mkdir(parents=True)
@@ -293,6 +296,9 @@ class Probe {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             donor = work / "donor"
             (donor / "images/characters").mkdir(parents=True)
             (donor / "images/icons").mkdir(parents=True)
@@ -399,6 +405,9 @@ class Probe {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             (work / "PsychCharacterPosition.hx").write_text(position)
             (work / "FNFAssets.hx").write_text('''
 class FNFAssets {
@@ -575,6 +584,9 @@ class Song {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             (work / "Song.hx").write_text(fixture)
             for module in ("ImportedStageRegistry", "CompatScriptManifest", "ImportSongOwnership", "ImportEngine"):
                 (work / (module + ".hx")).write_text((ROOT / "source" / (module + ".hx")).read_text())

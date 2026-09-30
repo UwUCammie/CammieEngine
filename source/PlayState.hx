@@ -3253,7 +3253,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			: compatWritePath(compatPropertyRoot(root), suffix, value);
 		if (traceSprite)
 			markPsychGlobalProviderSpritePhase(psychGlobalProviderFirstSprite, 'property-complete',
-				'field=' + (suffix == '' ? root : suffix) + ' wrote=' + wrote);
+				'field=' + (suffix == '' ? root : suffix) + ' wrote=' + wrote
+				+ ' alpha=' + psychGlobalProviderFirstSprite.alpha
+				+ ' cameraAlpha=' + (camOther == null ? 'null' : Std.string(camOther.alpha))
+				+ ' pixel=' + (psychGlobalProviderFirstSprite.pixels == null ? 'null'
+					: StringTools.hex(psychGlobalProviderFirstSprite.pixels.getPixel32(0, 0), 8)));
 	}
 
 	/**
@@ -4313,19 +4317,33 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 	function compatParseColor(value:Dynamic):Dynamic {
 		if (value == null)
 			return null;
-		if (Std.isOfType(value, Int))
-			return value;
-		if (Std.isOfType(value, Float))
-			return Std.int(value);
+		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
+			var numericColor:Int = Std.int(value);
+			// Psych Lua commonly supplies an RGB number (0xRRGGBB) for a
+			// sprite tint. Its alpha is controlled separately; preserve explicit
+			// ARGB values while making these RGB tints opaque on every renderer.
+			return numericColor >= 0 && numericColor <= 0xFFFFFF
+				? numericColor | 0xFF000000 : numericColor;
+		}
 		var text = StringTools.trim(Std.string(value));
 		if (text == '')
 			return null;
-		var bareHex = new EReg('^[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$', '');
-		if (bareHex.match(text)) {
-			var digits = text.length == 6 ? 'FF' + text : text;
-			var parsed = Std.parseInt('0x' + digits);
-			if (parsed != null)
-				return parsed;
+		var digits = text;
+		if (StringTools.startsWith(digits, '#'))
+			digits = digits.substr(1);
+		else if (StringTools.startsWith(digits.toLowerCase(), '0x'))
+			digits = digits.substr(2);
+		var hexColor = new EReg('^[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$', '');
+		if (hexColor.match(digits)) {
+			if (digits.length == 6)
+				digits = 'FF' + digits;
+			// hxcpp's Std.parseInt uses a 32-bit long on Windows: parsing
+			// FFFFFFFF as one integer clamps it to 7FFFFFFF (half alpha).
+			// Combine two 16-bit halves to keep ARGB identical on every target.
+			var high = Std.parseInt('0x' + digits.substr(0, 4));
+			var low = Std.parseInt('0x' + digits.substr(4, 4));
+			if (high != null && low != null)
+				return (high << 16) | low;
 		}
 		var prefixed = FlxColor.fromString(text);
 		if (prefixed != null)

@@ -44,7 +44,12 @@ class KadeStageSource {
 	static function playStateFiles(directory:String):Array<String> {
 		var results:Array<String> = [];
 		try {
-			for (entry in FileSystem.readDirectory(directory)) {
+			var entries = FileSystem.readDirectory(directory);
+			// Some Windows/Wine directory providers return null instead of
+			// throwing when an optional source folder cannot be enumerated.
+			if (entries == null)
+				return results;
+			for (entry in entries) {
 				var lower = entry.toLowerCase();
 				if (!StringTools.endsWith(lower, '.hx'))
 					continue;
@@ -233,6 +238,8 @@ class KadeStageSource {
 				if (!FileSystem.isDirectory(directory))
 					continue;
 				entries = FileSystem.readDirectory(directory);
+				if (entries == null)
+					continue;
 			} catch (_:Dynamic) {
 				continue;
 			}

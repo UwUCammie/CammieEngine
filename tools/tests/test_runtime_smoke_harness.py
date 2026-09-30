@@ -689,9 +689,12 @@ class Main {
         self.assertIn("initialState = RuntimeImportSmokeState", self.main)
         self.assertIn("--smoke-import-source", self.import_harness)
         self.assertIn("--smoke-import-type", self.import_harness)
+        self.assertIn("--smoke-import-scan-only", self.import_harness)
         self.assertIn("--smoke-import-package-name", self.import_harness)
         self.assertIn("ImportWorkflow.beginScan", self.import_state)
         self.assertIn("ImportWorkflow.beginImport", self.import_state)
+        self.assertLess(self.import_state.index("RuntimeImportSmokeHarness.finishScan(result)"),
+                        self.import_state.index("ImportWorkflow.beginImport"))
         self.assertIn("ImportPackageNamePrompt.createOverrides", self.import_state)
         self.assertIn("scanJob.snapshot()", self.import_state)
         self.assertIn("importJob.snapshot()", self.import_state)
@@ -744,7 +747,10 @@ class Main {
     def test_import_state_compiles_against_workflow_job_contract(self):
         files = {
             "flixel/FlxG.hx": """package flixel;
-class FlxG { public static var autoPause:Bool = true; }
+class FlxG {
+  public static var autoPause:Bool = true;
+  public static function switchState(value:Dynamic):Void {}
+}
 """,
             "flixel/FlxState.hx": """package flixel;
 class FlxState {
@@ -779,6 +785,12 @@ class ImportWorkflow {
             "DifficultyManager.hx": "class DifficultyManager { public static function init():Void {} }\n",
             "ModifierState.hx": "class ModifierState { public static function init():Void {} }\n",
             "PlayerSettings.hx": "class PlayerSettings { public static function init():Void {} }\n",
+            "RuntimeSmokeHarness.hx": """class RuntimeSmokeHarness {
+  public static function config():Dynamic return {songFolder:'',chart:'',chartEditor:false,freeplay:false};
+  public static function getConfigurationError():String return '';
+}
+""",
+            "RuntimeSmokeState.hx": "class RuntimeSmokeState extends flixel.FlxState {}\n",
             "ImportPackageNamePrompt.hx": """class ImportPackageNamePrompt {
   public static function collectUnnamedRoots(songs:Array<Dynamic>):Array<Dynamic> return [];
   public static function validName(name:String):Bool return true;

@@ -199,8 +199,22 @@ class PsychOwnerPaths {
 		if (clean == null) throw '[psych-assets] Refused unsafe Psych image key: ' + Std.string(key);
 		var path = ownerAsset(owner, 'images/' + clean + '.png', library, currentLevel);
 		if (path == null) {
-			path = Paths.file('images/' + clean + '.png', IMAGE, 'shared');
-			if (!FNFAssets.exists(path))
+			// Psych stages commonly reuse the engine's stock stageback/front assets.
+			// This fork keeps those files under custom_stages/stage instead of the
+			// flat Psych shared path. Prefer a real shared-library file when present,
+			// then the host preload image and its native stage folder.
+			var candidates = [
+				Paths.file('images/' + clean + '.png', IMAGE, 'shared'),
+				Paths.file('images/' + clean + '.png', IMAGE, 'preload'),
+				Paths.file('images/custom_stages/stage/' + clean + '.png', IMAGE, 'preload')
+			];
+			path = null;
+			for (candidate in candidates)
+				if (FNFAssets.exists(candidate)) {
+					path = candidate;
+					break;
+				}
+			if (path == null)
 				throw '[psych-assets] Image is unavailable in selected owner and base shared assets: ' + clean;
 		}
 		return graphic(path);

@@ -11305,3 +11305,44 @@ will no longer build on alpha tag pushes once this removal is pushed. The
 already-running workflow was cancelled by the maintainer. The test contract
 now checks that the old workflows are absent. The full Python suite passed
 **1,687 tests across 508 modules, 65 skipped, zero failed** after the removal.
+
+### Windows alpha.5 import and visual checks — 2026-09-30
+
+The prior Wine HL17 scan crashed at `0x00000001412D7292` while
+`KadeStageSource.playStateFiles` read the length of a null result from
+`FileSystem.readDirectory`. The same offscreen scan on the rebuilt Windows
+executable now finishes with three songs, zero scan errors, and no crash
+(`tmp/wine-alpha5-hl17-scan-process.log`). The shared importer and Kade source
+enumerators now handle null native listings. A Haxe fixture forces null
+listings, and the focused compatibility tests pass (68 tests, two skips).
+
+The Psych Weiner package does not contain its referenced stock stage images.
+Owner-first image lookup now falls back to the engine's stock stage folder,
+which includes the previously absent matching light. An offscreen Wine frame
+from the imported chart shows its backdrop, front, and curtains
+(`tmp/wine-alpha5-weiner-frames/frame-12.png`). The default Psych note skin
+is supplied by the engine's normal UI atlas, so import no longer reports its
+absence as a donor error.
+
+Windows hxcpp parsed a full eight-digit Psych color as `7FFFFFFF`, making
+the V-Slice results backdrop translucent despite sprite and camera alpha of
+one. The shared color conversion now preserves the 32-bit ARGB value; an
+offscreen Wine capture of the bundled results screen showed `FFFFFFFF` and
+no gameplay scene beneath it (`tmp/wine-alpha5-results-frames/frame-18.png`).
+
+A clean `v0.0.1-alpha.5` ZIP was extracted into a disposable runtime. In one
+Wine process it imported Weiner with zero errors, immediately entered its
+Hard chart, and reached song end at 50× demo speed. A second process used the
+same disposable installation to import HL17 with zero errors (three songs,
+242 copied assets) and immediately entered Linkinteen Parks for a 15-second
+offscreen smoke. These checks cover the reported first-play sequence for two
+imports, but the friend's unspecified crashing chart and native Windows
+machine have not been reproduced, so that anecdote remains a follow-up case.
+
+The locally built ZIP contains the bundled results pack and common stage light,
+no personal imported owners, and `RELEASE_TAG=v0.0.1-alpha.5`. Its checksum
+passes `sha256sum -c`. No GitHub Actions Windows build was used.
+The final `./run.sh build` succeeded. The complete parallel suite passed
+**1,691 tests across 509 modules, 65 skipped, zero failed**. The final ZIP
+is 1,185,459,082 bytes with SHA-256
+`96335c897480ab20c252194c33a0064fc75a1804a843e4862f6819561c0b3d86`.

@@ -1648,7 +1648,7 @@ class CodenameScriptClassLoader {
 			if (!FileSystem.exists(full) || !FileSystem.isDirectory(full)
 				|| !CodenameScriptDiscovery.withinRoot(ownerRoot, full)) return null;
 			var names:Array<String> = [];
-			for (entry in FileSystem.readDirectory(full)) {
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(full))) {
 				if (!entry.endsWith('.hx')) continue;
 				var name = entry.substr(0, entry.length - 3);
 				if (!safeModuleName(name)) continue;

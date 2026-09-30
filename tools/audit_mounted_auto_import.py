@@ -1226,6 +1226,7 @@ def main() -> int:
         for name, fixture_source in {
             "ImportEngine.hx": engine_source,
             "ImportRootScanner.hx": scanner_source,
+            "ImportDirectoryListing.hx": (ROOT / "source/ImportDirectoryListing.hx").read_text(),
             "VSliceImporter.hx": vslice_source,
             "VSliceAstcAdapter.hx": astc_source,
             "CodenameImporter.hx": (

@@ -67,6 +67,9 @@ class VSliceFreeplayIconTest(unittest.TestCase):
         ))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             temp = Path(scratch)
+            (temp / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             selected = temp / "selected"
             outer = temp / "outer"
             selected_icon = selected / "images/freeplay/icons/no-gfpixel.png"

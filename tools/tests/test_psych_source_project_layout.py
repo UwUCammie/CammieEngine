@@ -106,6 +106,9 @@ class Main {
             work = Path(folder)
             (work / "ImportEngine.hx").write_text(engine)
             (work / "ImportRootScanner.hx").write_text(scanner)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             (work / "ImportSettings.hx").write_text(r'''import haxe.io.Path;
 using StringTools;
 class ImportSettings {

@@ -221,7 +221,7 @@ class CodenameBaseCharacterDependency {
 			var relatives = [animate];
 			var atlasDirectory = Path.join([root, stem]);
 			var entries:Array<String>;
-			try entries = FileSystem.readDirectory(atlasDirectory) catch (_:Dynamic)
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(atlasDirectory)) catch (_:Dynamic)
 				return {relatives:[], diagnostic:'installation Animate atlas directory is unreadable: ' + sprite};
 			var pages:Map<Int, {png:Null<String>, json:Null<String>}> = new Map();
 			var pagePattern = new EReg('^spritemap([0-9]+)\\.(png|json)$', 'i');

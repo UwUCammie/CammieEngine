@@ -37,7 +37,7 @@ class CodenameOptionsXmlDependencies {
 			if (resolvedFolder == null) continue;
 			var absoluteFolder = Path.join([ownerRoot, resolvedFolder]);
 			var entries:Array<String>;
-			try entries = FileSystem.readDirectory(absoluteFolder) catch (_:Dynamic) {
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(absoluteFolder)) catch (_:Dynamic) {
 				result.diagnostics.push('[codename-options-dependency] Could not enumerate ' + folder);
 				continue;
 			}
@@ -72,7 +72,7 @@ class CodenameOptionsXmlDependencies {
 			if (FileSystem.exists(exact)) selected = part;
 			else {
 				var matches:Array<String> = [];
-				try for (entry in FileSystem.readDirectory(current))
+				try for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(current)))
 					if (CodenameScriptDiscovery.safeName(entry) && entry.toLowerCase() == part.toLowerCase())
 						matches.push(entry)
 				catch (_:Dynamic) return null;

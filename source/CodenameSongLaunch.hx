@@ -25,7 +25,7 @@ class CodenameSongLaunch {
 		var matches:Array<String> = [];
 		var canonicalHasOwnerMetadata = false;
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(root) catch (error:Dynamic)
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(root)) catch (error:Dynamic)
 			throw '[codename-load-song] Could not inspect imported chart folders: ' + Std.string(error);
 		entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 		for (entry in entries) {

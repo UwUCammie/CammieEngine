@@ -339,6 +339,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "NightmareVisionScriptDiscovery.hx",
                 "NightmareVisionDifficultyCompat.hx",
                 "NightmareVisionAssetCollector.hx",
+                "ImportDirectoryListing.hx",
             ):
                 (temp / name).write_text((ROOT / "source" / name).read_text())
             codename_importer = (ROOT / "source/CodenameImporter.hx").read_text()

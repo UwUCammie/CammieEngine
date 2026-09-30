@@ -49,6 +49,12 @@ class ImportEngineRegistryTest(unittest.TestCase):
         cls.scanner = (ROOT / "source/ImportRootScanner.hx").read_text()
         cls.settings = (ROOT / "source/ImportSettings.hx").read_text()
 
+    def write_scanner(self, folder: Path) -> None:
+        (folder / "ImportRootScanner.hx").write_text(self.scanner)
+        (folder / "ImportDirectoryListing.hx").write_text(
+            (ROOT / "source/ImportDirectoryListing.hx").read_text()
+        )
+
     def test_labels_are_stable_and_do_not_claim_unsupported_kate_engine(self):
         for label in (
             "Auto",
@@ -153,7 +159,11 @@ class ImportRootScanner {
         method = extract_method(self.scanner, "static function sortDirectoryEntries")
         read_directory = extract_method(self.scanner, "static function readDirectory")
         self.assertIn("!FileSystem.isDirectory(path)", read_directory)
-        self.assertIn("sortDirectoryEntries(FileSystem.readDirectory(path))", read_directory)
+        self.assertIn("sortDirectoryEntries(ImportDirectoryListing.normalize(FileSystem.readDirectory(path)))", read_directory)
+        module = (ROOT / "source/ModuleFunctions.hx").read_text()
+        codename_scan = extract_method(module, "static function discoverCodenameSongsFromBase")
+        self.assertIn("ImportDirectoryListing.normalize(FileSystem.readDirectory(songsRoot))", codename_scan)
+        self.assertIn("ImportDirectoryListing.normalize(FileSystem.readDirectory(audioFolder))", codename_scan)
         fixture = """import sys.FileSystem;
 class ImportRootScanner {
 """ + read_directory + "\n" + method + r'''
@@ -161,6 +171,12 @@ class ImportRootScanner {
     var missingPath:Array<String> = ImportRootScanner.readDirectory('missing-directory');
     if (missingPath == null || missingPath.length != 0)
       throw 'missing directory was not normalized to an empty array';
+    var nullable:Array<String> = ImportDirectoryListing.normalize(null);
+    if (nullable == null || nullable.length != 0)
+      throw 'null native directory listing was not normalized before iteration';
+    var enumerated = 0;
+    for (_ in nullable) enumerated++;
+    if (enumerated != 0) throw 'null listing unexpectedly produced entries';
     var missing:Array<String> = ImportRootScanner.sortDirectoryEntries(null);
     if (missing == null || missing.length != 0)
       throw 'null directory listing was not normalized to an empty array';
@@ -173,6 +189,9 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportRootScanner.hx"
             fixture_path.write_text(fixture)
+            (Path(folder) / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             result = subprocess.run(
                 [str(HAXE), "-cp", folder, "--run", "ImportRootScanner"],
                 cwd=folder,
@@ -194,7 +213,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             parent = temp_path / "source"
 
@@ -306,7 +325,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             root = temp_path / "root"
             (root / "one").mkdir(parents=True)
@@ -342,7 +361,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             root = temp_path / "root"
             root.mkdir()
@@ -374,7 +393,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             root = temp_path / "root"
             root.mkdir()
@@ -401,7 +420,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
 
             # Keep the real pair after both old probe limits: the chart folder
@@ -462,7 +481,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
 
             parent = temp_path / "source"
@@ -529,7 +548,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             result = subprocess.run(
                 [str(HAXE), "-cp", temp, "--run", "Main", str(fixture)],
@@ -570,7 +589,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             result = subprocess.run(
                 [str(HAXE), "-cp", temp, "--run", "Main", *(str(path) for path in paths)],
@@ -620,7 +639,7 @@ class ImportRootScanner {
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
             (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            self.write_scanner(temp_path)
             (temp_path / "Main.hx").write_text(main)
             result = subprocess.run(
                 [str(HAXE), "-cp", temp, "--run", "Main", str(EXAMPLE_ROOT)],

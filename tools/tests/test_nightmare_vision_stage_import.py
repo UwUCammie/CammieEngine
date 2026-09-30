@@ -144,6 +144,9 @@ class StageImportFixture {{
 
 
 def run_fixture(temp: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    (temp / "ImportDirectoryListing.hx").write_text(
+        (ROOT / "source/ImportDirectoryListing.hx").read_text()
+    )
     (temp / "StageImportFixture.hx").write_text(fixture_source())
     (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
     (temp / "NightmareVisionAssetCollector.hx").write_text(

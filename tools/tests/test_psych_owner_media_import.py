@@ -43,6 +43,9 @@ class PsychOwnerMediaImportTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
+            (work / "ImportDirectoryListing.hx").write_text(
+                (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            )
             donor_a = work / "donor-a/assets/base_game"
             donor_b = work / "donor-b/assets/base_game"
             shared_a = work / "donor-a/assets/shared"

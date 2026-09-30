@@ -254,6 +254,43 @@ class KadeStageSourceTest(unittest.TestCase):
                                      "--run", "KadeProbe"])
         return result
 
+    def test_null_directory_enumeration_is_safe_for_source_discovery(self):
+        """Windows/Wine may return null for a directory listing instead of throwing."""
+        parser = (ROOT / "source/KadeStageSource.hx").read_text()
+        parser = "\n".join(line for line in parser.splitlines()
+                           if line not in ("package;", "import sys.FileSystem;", "import sys.io.File;"))
+        filesystem = '''
+class FileSystem {
+  public static function isDirectory(path:String):Bool return true;
+  public static function exists(path:String):Bool return false;
+  public static function readDirectory(path:String):Array<String> return null;
+}
+'''
+        file_stub = '''
+class File {
+  public static function getContent(path:String):String return null;
+}
+'''
+        fixture = '''
+class KadeNullDirectoryProbe {
+  static function main() {
+    var sourceRoot = KadeStageSource.findSourceRoot("fixture");
+    var character = KadeStageSource.extractCharacter("fixture", "missing");
+    Sys.println("SOURCE_SAFE=" + (sourceRoot == null));
+    Sys.println("CHARACTER_SAFE=" + (character == null));
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(prefix="kade-null-listing-", dir=ROOT / "tmp") as folder:
+            temp = Path(folder)
+            (temp / "KadeStageSource.hx").write_text(parser)
+            (temp / "FileSystem.hx").write_text(filesystem)
+            (temp / "File.hx").write_text(file_stub)
+            (temp / "KadeNullDirectoryProbe.hx").write_text(fixture)
+            output = subprocess_run([str(HAXE), "-cp", folder, "--run", "KadeNullDirectoryProbe"])
+        self.assertIn("SOURCE_SAFE=true", output)
+        self.assertIn("CHARACTER_SAFE=true", output)
+
     def test_extracts_expurgation_shaped_stage_from_source(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

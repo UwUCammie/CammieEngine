@@ -97,7 +97,7 @@ class CodenameScriptDiscovery {
 			var selected = part;
 			if (!FileSystem.exists(exact)) {
 				var matches:Array<String> = [];
-				try for (entry in FileSystem.readDirectory(current))
+				try for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(current)))
 					if (safeName(entry) && entry.toLowerCase() == part.toLowerCase()) matches.push(entry)
 				catch (_:Dynamic) return {relative:null, status:'missing'};
 				if (matches.length != 1)
@@ -143,7 +143,7 @@ class CodenameScriptDiscovery {
 		}
 		var absolute = Path.join([root, folder.relative]);
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(absolute) catch (_:Dynamic) {
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(absolute)) catch (_:Dynamic) {
 			result.diagnostics.push('Character directory unreadable');
 			return result;
 		}
@@ -201,7 +201,7 @@ class CodenameScriptDiscovery {
 		var folder = Path.join([root, relative]);
 		if (!FileSystem.isDirectory(folder)) return;
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(folder) catch (_:Dynamic) return;
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)) catch (_:Dynamic) return;
 		entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 		for (entry in entries) {
 			if (maxFiles > 0 && output.length >= maxFiles) break;
@@ -234,7 +234,7 @@ class CodenameScriptDiscovery {
 		if (resolution.relative == null) return;
 		var folder = Path.join([root, resolution.relative]);
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(folder) catch (_:Dynamic) return;
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)) catch (_:Dynamic) return;
 		entries.sort(function(a:String, b:String):Int {
 			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 			return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -493,7 +493,7 @@ class CodenameScriptDiscovery {
 				if (FileSystem.isDirectory(folder)) {
 					var matches:Array<String> = [];
 					try {
-						for (entry in FileSystem.readDirectory(folder))
+						for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)))
 							if (safeName(entry) && entry.toLowerCase() == (stage + '.hx').toLowerCase())
 								matches.push(entry);
 					} catch (_:Dynamic) {}

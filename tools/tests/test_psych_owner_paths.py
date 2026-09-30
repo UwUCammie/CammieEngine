@@ -68,6 +68,9 @@ class PsychOwnerPathsTest(unittest.TestCase):
             native_atlas = work / "assets/images/missing/Animation.json"
             native_atlas.parent.mkdir(parents=True)
             native_atlas.write_text("native animation metadata", encoding="utf-8")
+            native_stage_back = work / "assets/images/custom_stages/stage/stageback.png"
+            native_stage_back.parent.mkdir(parents=True)
+            native_stage_back.write_bytes(b"native stage background")
             (work / "FNFAssets.hx").write_text(
                 r'''package;
 import haxe.io.Bytes;
@@ -122,6 +125,9 @@ class PsychOwnerPathsProbe {
    throw "Psych Paths.image did not return the loaded owner FlxGraphic with dimensions";
   if (FNFAssets.lastBitmapPath != expectedAtlas.substr(0, expectedAtlas.indexOf("abot/")) + "phillyStreets/phillySkybox.png")
    throw "Psych Paths.image loaded pixels outside the selected owner: " + FNFAssets.lastBitmapPath;
+  var stageBack:Dynamic = Reflect.callMethod(paths, Reflect.field(paths, "image"), ["stageback"]);
+  if (stageBack == null || FNFAssets.lastBitmapPath != "assets/images/custom_stages/stage/stageback.png")
+   throw "Psych stock stageback did not resolve to the native stage asset: " + FNFAssets.lastBitmapPath;
   var resultSound = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["tickleFight"]);
   if (resultSound != owner + "/sounds/tickleFight.ogg")
    throw "Paths.sound did not resolve results audio from the selected owner: " + resultSound;

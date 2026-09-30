@@ -53,7 +53,7 @@ class CodenameFrameAtlasAssets {
 			var visit = function visit(directory:String, targetRelative:String, depth:Int):Void {
 				if (overflow || depth > MAX_ATLAS_DEPTH || !withinRoot(root, directory)) return;
 				var entries:Array<String>;
-				try entries = FileSystem.readDirectory(directory) catch (_:Dynamic) return;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(directory)) catch (_:Dynamic) return;
 				entries.sort(Reflect.compare);
 				for (entry in entries) {
 					if (overflow || entry == '' || entry == '.' || entry == '..') continue;
@@ -174,7 +174,7 @@ class CodenameFrameAtlasAssets {
 			var candidate = Path.join([current, part]);
 			if (!FileSystem.exists(candidate)) {
 				var matches:Array<String> = [];
-				try for (entry in FileSystem.readDirectory(current))
+				try for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(current)))
 					if (entry.toLowerCase() == part.toLowerCase()) matches.push(entry)
 				catch (_:Dynamic) return null;
 				if (matches.length != 1) return null;

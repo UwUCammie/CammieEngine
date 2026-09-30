@@ -867,7 +867,7 @@ class ModuleFunctions {
 
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(current);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(current));
 			} catch (error:Dynamic) {
 				continue;
 			}
@@ -983,7 +983,7 @@ class ModuleFunctions {
 			return null;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(basePath);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(basePath));
 		} catch (error:Dynamic) {
 			return null;
 		}
@@ -1022,7 +1022,7 @@ class ModuleFunctions {
 		}
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(basePath);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(basePath));
 		} catch (error:Dynamic) {
 			return null;
 		}
@@ -1059,7 +1059,7 @@ class ModuleFunctions {
 			return stems;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(basePath);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(basePath));
 		} catch (_:Dynamic) {
 			return stems;
 		}
@@ -1263,7 +1263,7 @@ class ModuleFunctions {
 			return charts;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(dataPath);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(dataPath));
 		} catch (_:Dynamic) {
 			return charts;
 		}
@@ -1306,7 +1306,7 @@ class ModuleFunctions {
 		if (nestedSongs != null) {
 			var hasNestedChartFolder = false;
 			try {
-				for (entry in FileSystem.readDirectory(nestedSongs)) {
+				for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(nestedSongs))) {
 					var candidate = Path.join([nestedSongs, entry]);
 					if (FileSystem.isDirectory(candidate)) {
 						hasNestedChartFolder = true;
@@ -1340,7 +1340,7 @@ class ModuleFunctions {
 			var rootSongs = findNamedDirectory(sourceRoot, 'songs');
 			if (rootSongs != null && FileSystem.isDirectory(rootSongs)) {
 				var checkedSongs = 0;
-				for (entry in FileSystem.readDirectory(rootSongs)) {
+				for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(rootSongs))) {
 					if (checkedSongs++ >= MAX_IMPORT_DISCOVERY_DIRECTORIES)
 						break;
 					var candidateSong = findNamedDirectory(rootSongs, entry);
@@ -1354,7 +1354,7 @@ class ModuleFunctions {
 			var contentRoot = findNamedDirectory(sourceRoot, 'content');
 			if (contentRoot != null && FileSystem.isDirectory(contentRoot)) {
 				var packageNames:Array<String>;
-				try packageNames = FileSystem.readDirectory(contentRoot) catch (_:Dynamic) packageNames = [];
+				try packageNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(contentRoot)) catch (_:Dynamic) packageNames = [];
 				packageNames.sort(function(a:String, b:String):Int {
 					var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 					return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -1376,7 +1376,7 @@ class ModuleFunctions {
 		for (chartsRoot in dataRoots) {
 			var songFolderNames:Array<String>;
 			try {
-				songFolderNames = FileSystem.readDirectory(chartsRoot);
+				songFolderNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(chartsRoot));
 			} catch (_:Dynamic) {
 				continue;
 			}
@@ -1709,7 +1709,7 @@ class ModuleFunctions {
 			return null;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(folder);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder));
 		} catch (_:Dynamic) {
 			return null;
 		}
@@ -1747,7 +1747,7 @@ class ModuleFunctions {
 		for (base in bases) {
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(base);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(base));
 			} catch (_:Dynamic) {
 				continue;
 			}
@@ -1894,7 +1894,7 @@ class ModuleFunctions {
 			return;
 		var paths:Array<String> = [];
 		try {
-			for (entry in FileSystem.readDirectory(folder)) {
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(folder))) {
 				var path = Path.join([folder, entry]);
 				if (isImportFile(path))
 					paths.push(path);
@@ -1932,7 +1932,7 @@ class ModuleFunctions {
 			return;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(path);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(path));
 		} catch (_:Dynamic) {
 			return;
 		}
@@ -2378,7 +2378,7 @@ class ModuleFunctions {
 			return result;
 		var folders:Array<String>;
 		try {
-			folders = FileSystem.readDirectory(songsData);
+			folders = ImportDirectoryListing.normalize(FileSystem.readDirectory(songsData));
 		} catch (_:Dynamic) {
 			return result;
 		}
@@ -2713,7 +2713,7 @@ class ModuleFunctions {
 			if (audioFolder != null && FileSystem.isDirectory(audioFolder)) {
 				var audioEntries:Array<String> = [];
 				try {
-					for (entry in FileSystem.readDirectory(audioFolder))
+					for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(audioFolder)))
 						audioEntries.push(entry);
 				} catch (_:Dynamic) {}
 				audioEntries.sort(function(a, b) {
@@ -2931,7 +2931,7 @@ class ModuleFunctions {
 		if (budget[0] <= 0 || depth > 2 || folder == '' || !FileSystem.isDirectory(folder))
 			return;
 		try {
-			for (entry in FileSystem.readDirectory(folder)) {
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(folder))) {
 				if (budget[0] <= 0)
 					return;
 				var child = Path.join([folder, entry]);
@@ -2961,7 +2961,7 @@ class ModuleFunctions {
 		var rootScriptDiagnosticsAdded = false;
 		var folders:Array<String>;
 		try {
-			folders = FileSystem.readDirectory(songsRoot);
+			folders = ImportDirectoryListing.normalize(FileSystem.readDirectory(songsRoot));
 		} catch (_:Dynamic) {
 			return result;
 		}
@@ -3203,7 +3203,7 @@ class ModuleFunctions {
 			if (audioFolder != null && FileSystem.isDirectory(audioFolder)) {
 				var audioEntries:Array<String> = [];
 				try {
-					for (entry in FileSystem.readDirectory(audioFolder))
+					for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(audioFolder)))
 						audioEntries.push(entry);
 				} catch (_:Dynamic) {}
 				audioEntries.sort(function(a, b) {
@@ -3795,7 +3795,7 @@ class ModuleFunctions {
 	static function safeSortedDirectoryListing(folder:String):Array<String> {
 		var entries:Array<String> = [];
 		try {
-			for (entry in FileSystem.readDirectory(folder))
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)))
 				entries.push(entry);
 		} catch (_:Dynamic) {}
 		entries.sort(function(a, b) {
@@ -4122,7 +4122,7 @@ class ModuleFunctions {
 				continue;
 			visitedDirectories++;
 			var entries:Array<String>;
-			try entries = FileSystem.readDirectory(current.path) catch (_:Dynamic) continue;
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(current.path)) catch (_:Dynamic) continue;
 			entries.sort(function(left:String, right:String):Int {
 				var l = left.toLowerCase();
 				var r = right.toLowerCase();
@@ -4451,7 +4451,7 @@ class ModuleFunctions {
 				if (!FileSystem.isDirectory(folder))
 					continue;
 				var entries:Array<String>;
-				try entries = FileSystem.readDirectory(folder) catch (_:Dynamic) continue;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)) catch (_:Dynamic) continue;
 				for (entry in entries) {
 					if (!entry.toLowerCase().endsWith('.hxc'))
 						continue;
@@ -5351,7 +5351,7 @@ class ModuleFunctions {
 		if (FileSystem.isDirectory(exact))
 			return exact;
 		try {
-			var entries = FileSystem.readDirectory(parent);
+			var entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(parent));
 			entries.sort(function(a:String, b:String):Int {
 				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 				return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -5690,7 +5690,7 @@ class ModuleFunctions {
 				continue;
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(current);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(current));
 			} catch (error:Dynamic) {
 				continue;
 			}
@@ -6340,7 +6340,7 @@ class ModuleFunctions {
 			return null;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(parent);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(parent));
 		} catch (error:Dynamic) {
 			return null;
 		}
@@ -6365,7 +6365,7 @@ class ModuleFunctions {
 		if (parent == null || !FileSystem.isDirectory(parent))
 			return exact;
 		try {
-			var entries = FileSystem.readDirectory(parent);
+			var entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(parent));
 			entries.sort(function(a:String, b:String):Int {
 				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 				return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -6825,7 +6825,7 @@ class ModuleFunctions {
 						if (songData.diagnostics.indexOf(diagnostic) < 0) songData.diagnostics.push(diagnostic);
 					} else {
 						var selected:Array<String> = [];
-						var entries = FileSystem.readDirectory(folder);
+						var entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder));
 						entries.sort(Reflect.compare);
 						if (entries.length > 256) {
 							var diagnostic = prefix + 'folder exceeds 256 entry scan limit: ' + key;
@@ -6838,7 +6838,7 @@ class ModuleFunctions {
 								if (!CodenameScriptDiscovery.withinRoot(sourceRoot, child)) continue;
 								if (!FileSystem.isDirectory(child)) selected.push(key + '/' + entry);
 								else if (kind == 'Directories') {
-									var descendants = FileSystem.readDirectory(child);
+									var descendants = ImportDirectoryListing.normalize(FileSystem.readDirectory(child));
 									descendants.sort(Reflect.compare);
 									if (descendants.length > 256) {
 										var diagnostic = prefix + 'child folder exceeds 256 entry scan limit: ' + key + '/' + entry;
@@ -6905,7 +6905,7 @@ class ModuleFunctions {
 						if (songData.diagnostics.indexOf(diagnostic) < 0) songData.diagnostics.push(diagnostic);
 					} else {
 						var entries:Array<String> = [];
-						try entries = FileSystem.readDirectory(folder) catch (_:Dynamic) {}
+						try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder)) catch (_:Dynamic) {}
 						entries.sort(Reflect.compare);
 						if (entries.length > 128) {
 							var diagnostic = prefix + 'image folder exceeds 128 entry scan limit: ' + relativeFolder;
@@ -7046,7 +7046,7 @@ class ModuleFunctions {
 				if (currentKey == '' || visited.exists(currentKey)) continue;
 				visited.set(currentKey, true);
 				var entries:Array<String> = [];
-				try entries = FileSystem.readDirectory(current) catch (_:Dynamic) continue;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(current)) catch (_:Dynamic) continue;
 				entries.sort(Reflect.compare);
 				for (entry in entries) {
 					var path = Path.join([current, entry]);
@@ -7216,7 +7216,7 @@ class ModuleFunctions {
 			var songDataFolder = Path.join([sourceRoot, 'songs', songFolder]);
 			if (FileSystem.exists(songDataFolder) && FileSystem.isDirectory(songDataFolder)
 				&& CodenameScriptDiscovery.withinRoot(sourceRoot, songDataFolder)) {
-				var entries = FileSystem.readDirectory(songDataFolder);
+				var entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(songDataFolder));
 				entries.sort(Reflect.compare);
 				if (entries.length > 128) {
 					if (songData.diagnostics == null) songData.diagnostics = [];
@@ -7245,7 +7245,7 @@ class ModuleFunctions {
 				if (songData.diagnostics.indexOf(message) < 0) songData.diagnostics.push(message);
 			} else {
 				var scoreEntries:Array<String> = [];
-				try scoreEntries = FileSystem.readDirectory(scoreDirectory) catch (_:Dynamic) {}
+				try scoreEntries = ImportDirectoryListing.normalize(FileSystem.readDirectory(scoreDirectory)) catch (_:Dynamic) {}
 				scoreEntries.sort(Reflect.compare);
 				if (scoreEntries.length > 128) {
 					if (songData.diagnostics == null) songData.diagnostics = [];
@@ -7277,7 +7277,7 @@ class ModuleFunctions {
 		if (FileSystem.exists(stickerDirectory) && FileSystem.isDirectory(stickerDirectory)
 			&& CodenameScriptDiscovery.withinRoot(sourceRoot, stickerDirectory)) {
 			var stickerEntries:Array<String> = [];
-			try stickerEntries = FileSystem.readDirectory(stickerDirectory) catch (_:Dynamic) {}
+			try stickerEntries = ImportDirectoryListing.normalize(FileSystem.readDirectory(stickerDirectory)) catch (_:Dynamic) {}
 			stickerEntries.sort(Reflect.compare);
 			if (stickerEntries.length > 128) {
 				if (songData.diagnostics == null) songData.diagnostics = [];
@@ -7797,7 +7797,7 @@ class ModuleFunctions {
 			return false;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(path);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(path));
 		} catch (_:Dynamic) {
 			return false;
 		}
@@ -7831,7 +7831,7 @@ class ModuleFunctions {
 			return;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(source);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source));
 		} catch (_:Dynamic) {
 			return;
 		}
@@ -7896,7 +7896,7 @@ class ModuleFunctions {
 			if (!importPathIsWithin(currentSource, sourceRoot))
 				return false;
 			var entries:Array<String>;
-			try entries = FileSystem.readDirectory(currentSource) catch (_:Dynamic) return false;
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(currentSource)) catch (_:Dynamic) return false;
 			entries.sort(function(a:String, b:String):Int {
 				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 				return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -7940,7 +7940,7 @@ class ModuleFunctions {
 		if (output == null || sourceRoot == null || !importPathIsWithin(source, sourceRoot))
 			return false;
 		var entries:Array<String>;
-		try entries = FileSystem.readDirectory(source) catch (_:Dynamic) return false;
+		try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source)) catch (_:Dynamic) return false;
 		entries.sort(function(a:String, b:String):Int {
 			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 			return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -7975,7 +7975,7 @@ class ModuleFunctions {
 		if (output == null || sourceRoot == null || !importPathIsWithin(songsRoot, sourceRoot))
 			return false;
 		var songs:Array<String>;
-		try songs = FileSystem.readDirectory(songsRoot) catch (_:Dynamic) return false;
+		try songs = ImportDirectoryListing.normalize(FileSystem.readDirectory(songsRoot)) catch (_:Dynamic) return false;
 		songs.sort(function(a:String, b:String):Int {
 			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 			return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -8058,7 +8058,7 @@ class ModuleFunctions {
 				if (!importPathIsWithin(currentSource, root))
 					return false;
 				var entries:Array<String>;
-				try entries = FileSystem.readDirectory(currentSource) catch (_:Dynamic) return false;
+				try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(currentSource)) catch (_:Dynamic) return false;
 				entries.sort(function(a:String, b:String):Int {
 					var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 					return lower == 0 ? Reflect.compare(a, b) : lower;
@@ -8493,7 +8493,7 @@ class ModuleFunctions {
 		}
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(source);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source));
 		} catch (error:Dynamic) {
 			result.failed++;
 			reportImportProgress('assets', source, 0, 0, 0, 0, 1, 1);
@@ -8557,7 +8557,7 @@ class ModuleFunctions {
 			return;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(source);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source));
 		} catch (_:Dynamic) {
 			result.failed++;
 			return;
@@ -9160,7 +9160,7 @@ class ModuleFunctions {
 			'.git', '.tools', '.haxelib', 'node_modules', 'bin', 'cache'])
 			excluded.set(name, true);
 		try {
-			for (entry in FileSystem.readDirectory(sourceRoot)) {
+			for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(sourceRoot))) {
 				if (!validImportEntryName(entry) || excluded.exists(entry.toLowerCase()))
 					continue;
 				var child = Path.join([sourceRoot, entry]);
@@ -9200,7 +9200,7 @@ class ModuleFunctions {
 			scriptTrees.set(name.toLowerCase(), true);
 		var entries:Array<String> = [];
 		try {
-			entries = FileSystem.readDirectory(sourceRoot);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(sourceRoot));
 			entries.sort(Reflect.compare);
 		} catch (error:Dynamic) {
 			result.failed++;
@@ -9253,7 +9253,7 @@ class ModuleFunctions {
 				continue;
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(charactersRoot);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(charactersRoot));
 			} catch (_:Dynamic) {
 				continue;
 			}
@@ -9350,7 +9350,7 @@ class ModuleFunctions {
 			if (!FileSystem.isDirectory(destination))
 				return;
 			var entries:Array<String> = null;
-			try entries = FileSystem.readDirectory(destination) catch (_:Dynamic) {}
+			try entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(destination)) catch (_:Dynamic) {}
 			// Empty leftovers are safe to retry. Preserve every non-empty partial
 			// import so a later owner never overwrites user or donor files.
 			if (entries == null || entries.length > 0)
@@ -9794,7 +9794,7 @@ class ModuleFunctions {
 			return;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(charactersRoot);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(charactersRoot));
 		} catch (_:Dynamic)
 			return;
 		entries.sort(function(a:String, b:String):Int {
@@ -10033,7 +10033,7 @@ class ModuleFunctions {
 			return;
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(stagesRoot);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(stagesRoot));
 		} catch (_:Dynamic)
 			return;
 		entries.sort(function(a:String, b:String):Int {
@@ -10346,7 +10346,7 @@ class ModuleFunctions {
 				continue;
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(sourceInfo.data);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(sourceInfo.data));
 			} catch (_:Dynamic) {
 				continue;
 			}
@@ -10566,7 +10566,7 @@ class ModuleFunctions {
 			// directories are copied separately after their import succeeds.
 			if (dataRoot != null) {
 				var dataEntries:Array<String> = [];
-				try dataEntries = FileSystem.readDirectory(dataRoot) catch (_:Dynamic) {
+				try dataEntries = ImportDirectoryListing.normalize(FileSystem.readDirectory(dataRoot)) catch (_:Dynamic) {
 					result.failed++;
 				}
 				if (dataEntries.length > 2048) {
@@ -10970,7 +10970,7 @@ class ModuleFunctions {
 			if (parent == null || name == null || !FileSystem.isDirectory(parent))
 				return false;
 			try {
-				for (entry in FileSystem.readDirectory(parent))
+				for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(parent)))
 					if (entry.toLowerCase() == name.toLowerCase())
 						return true;
 			} catch (_:Dynamic) {}
@@ -11006,7 +11006,7 @@ class ModuleFunctions {
 			}
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(directory);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(directory));
 			} catch (error:Dynamic) {
 				reject(directory, 'could not read source directory: ' + Std.string(error), false);
 				return;
@@ -11249,7 +11249,7 @@ class ModuleFunctions {
 			}
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(directory);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(directory));
 				entries.sort(Reflect.compare);
 			} catch (error:Dynamic) {
 				result.failed++;
@@ -11314,7 +11314,7 @@ class ModuleFunctions {
 		}
 		var entries:Array<String>;
 		try {
-			entries = FileSystem.readDirectory(source);
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source));
 			entries.sort(Reflect.compare);
 		} catch (error:Dynamic) {
 			result.failed++;
@@ -11481,7 +11481,7 @@ class ModuleFunctions {
 		if (FileSystem.isDirectory(source)) {
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(source);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(source));
 			} catch (error:Dynamic) {
 				result.failed++;
 				result.errors.push('[vslice-song-sidecar-read] Could not list ' + source + ': ' + Std.string(error));
@@ -11575,7 +11575,7 @@ class ModuleFunctions {
 		for (events in eventDirectories) {
 			var entries:Array<String>;
 			try {
-				entries = FileSystem.readDirectory(events);
+				entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(events));
 			} catch (_:Dynamic) {
 				continue;
 			}
@@ -13094,7 +13094,7 @@ class ModuleFunctions {
 			FileSystem.createDirectory(exportPath + 'assets');
 		}
 
-		for (asset in FileSystem.readDirectory(stagePath + daStage)) {
+		for (asset in ImportDirectoryListing.normalize(FileSystem.readDirectory(stagePath + daStage))) {
 			File.copy(stagePath + daStage + '/' + asset, exportPath + 'assets/' + asset);
 		}
 
