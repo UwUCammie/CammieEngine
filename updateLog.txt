@@ -7,6 +7,7 @@ Earlier Disappointing Plus development history is retained below.
 	- Prepare the first CammieEngine alpha with concise setup and compatibility documentation
 	- Show CammieEngine v0.0.1 on the main menu
 	- Add Windows x64 ZIP builds through GitHub Actions, with checksums and automatic tagged alpha prerelease attachments
+	- Fix Windows build bootstrap parsing and the Flixel fallback patch script
 	- Exclude local imports, generated audio mirrors, build output and machine caches from source uploads
 
 1.5.4 (inherited development history)

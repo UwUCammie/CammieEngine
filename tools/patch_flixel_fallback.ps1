@@ -53,7 +53,7 @@ $replacementLines = @(
     ($loadIndent + "// local patch (DisappointingPlus): generated 1x1 last resort")
     ($loadIndent + "// keeps native draw() from dereferencing a null _frame")
     ($loadIndent + "if (_frame == null)")
-    ($loadIndent + "    makeGraphic(1, 1, 0, true, \"dpui-fallback-frame\");")
+    ($loadIndent + '    makeGraphic(1, 1, 0, true, "dpui-fallback-frame");')
     ($indent + "}")
 )
 
