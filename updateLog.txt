@@ -8,6 +8,8 @@ Earlier Disappointing Plus development history is retained below.
 	- Show CammieEngine v0.0.1 on the main menu
 	- Add Windows x64 ZIP builds through GitHub Actions, with checksums and automatic tagged alpha prerelease attachments
 	- Fix Windows build bootstrap parsing and the Flixel fallback patch script
+	- Apply the shared HScript compatibility patches on Windows and correct pinned Flixel sound asset types
+	- Show complete Windows build errors when the Haxe compiler fails
 	- Exclude local imports, generated audio mirrors, build output and machine caches from source uploads
 
 1.5.4 (inherited development history)

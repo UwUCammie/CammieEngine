@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 HSCRIPT = ROOT / ".haxelib/hscript/2,5,0"
 RUN_SH = ROOT / "run.sh"
+RUN_BAT = ROOT / "run.bat"
+PATCHER = ROOT / "tools/patch_hscript_compat.py"
 
 
 def hx_string(value: str) -> str:
@@ -62,13 +64,17 @@ class NullAccessContextProbe {
         self.assertEqual(result.stdout.count('[hscript-null-access]'), 6,
                          result.stdout + result.stderr)
 
-    def test_run_script_upgrades_existing_null_access_patch_idempotently(self):
+    def test_build_scripts_use_the_shared_null_context_patcher(self):
         run_script = RUN_SH.read_text()
-        self.assertIn("hscript-null-access-context", run_script)
-        self.assertIn('variables.get("__compatDiagnosticSource")', run_script)
-        self.assertIn('variables.get("__compatDiagnosticCallback")', run_script)
-        self.assertLess(run_script.index("hscript-null-access-context"),
-                        run_script.index("hscript-null-iterator-context"))
+        windows_script = RUN_BAT.read_text()
+        patcher = PATCHER.read_text()
+        self.assertIn("python3 tools/patch_hscript_compat.py", run_script)
+        self.assertIn("tools\\patch_hscript_compat.py", windows_script)
+        self.assertIn('"name": \'null-access diagnostic context\'', patcher)
+        self.assertIn('variables.get("__compatDiagnosticSource")', patcher)
+        self.assertIn('variables.get("__compatDiagnosticCallback")', patcher)
+        self.assertLess(patcher.index('"name": \'null-access diagnostic context\''),
+                        patcher.index('"name": \'null-operand guards\''))
 
     def test_operand_warnings_are_scoped_without_changing_null_result(self):
         fixture = '''import hscript.Parser;

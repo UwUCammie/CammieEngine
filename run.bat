@@ -20,7 +20,7 @@ set "ROOT=%~dp0"
 if "!ROOT:~-1!"=="\" set "ROOT=!ROOT:~0,-1!"
 cd /d "!ROOT!"
 if errorlevel 1 (
-	echo !! Could not change to the project directory: !ROOT! 1>&2
+	echo ERROR: Could not change to the project directory: !ROOT! 1>&2
 	exit /b 1
 )
 
@@ -86,7 +86,7 @@ if /I "!ARG!"=="rebuild32" (
 if /I "!ARG!"=="help" goto usage
 if /I "!ARG!"=="-h" goto usage
 if /I "!ARG!"=="--help" goto usage
-echo !! Unknown argument: !ARG! 1>&2
+echo ERROR: Unknown argument: !ARG! 1>&2
 goto usage_error
 
 :args_done
@@ -143,7 +143,7 @@ if defined OPTS_BAK (
 	del /Q "!OPTS_BAK!" >nul 2>&1
 )
 if not "!BUILD_RESULT!"=="0" (
-	echo !! Lime failed with exit code !BUILD_RESULT!. 1>&2
+	echo ERROR: Lime failed with exit code !BUILD_RESULT!. 1>&2
 	exit /b !BUILD_RESULT!
 )
 call :sync_astc_decoder
@@ -158,7 +158,7 @@ if exist "!BIN!" (
 	echo ^>^> built !BIN!
 	exit /b 0
 )
-echo !! Lime completed but no Windows executable was found at !BIN! 1>&2
+echo ERROR: Lime completed but no Windows executable was found at !BIN! 1>&2
 exit /b 1
 
 :start_server
@@ -169,7 +169,7 @@ if not errorlevel 1 (
 )
 start "CammieEngine Haxe server" /B haxe --wait 6000
 if errorlevel 1 (
-	echo !! Could not start the Haxe compilation server on port 6000. 1>&2
+	echo ERROR: Could not start the Haxe compilation server on port 6000. 1>&2
 	exit /b 1
 )
 echo ^>^> compilation server started on port 6000
@@ -177,12 +177,12 @@ exit /b 0
 
 :launch
 if not exist "!BIN!" (
-	echo !! No Windows executable at !BIN!; run run.bat build first. 1>&2
+	echo ERROR: No Windows executable at !BIN!; run run.bat build first. 1>&2
 	exit /b 1
 )
 pushd "!ROOT!\!BUILD_ROOT!\windows\bin"
 if errorlevel 1 (
-	echo !! Could not change to the Windows runtime directory. 1>&2
+	echo ERROR: Could not change to the Windows runtime directory. 1>&2
 	exit /b 1
 )
 echo ^>^> running !BIN!
@@ -199,7 +199,7 @@ set "HAXELIB_PATH=!ROOT!\.haxelib"
 set "PATH=!HAXEPATH!;!NEKOPATH!;!PATH!"
 where powershell.exe >nul 2>&1
 if errorlevel 1 (
-	echo !! PowerShell is required to bootstrap the portable Windows Haxe/Neko archives. 1>&2
+	echo ERROR: PowerShell is required to bootstrap the portable Windows Haxe/Neko archives. 1>&2
 	exit /b 1
 )
 
@@ -215,7 +215,7 @@ if errorlevel 1 exit /b 1
 :haxe_ready
 where haxelib >nul 2>&1
 if errorlevel 1 (
-	echo !! Portable Haxe archive did not provide haxelib. 1>&2
+	echo ERROR: Portable Haxe archive did not provide haxelib. 1>&2
 	exit /b 1
 )
 if not exist "!NEKOPATH!\neko.exe" (
@@ -237,12 +237,12 @@ where cl.exe >nul 2>&1
 if not errorlevel 1 exit /b 0
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "!VSWHERE!" (
-	echo !! MSVC was not found. Install the Visual Studio C++ workload and Windows SDK, then rerun. 1>&2
+	echo ERROR: MSVC was not found. Install the Visual Studio C++ workload and Windows SDK, then rerun. 1>&2
 	exit /b 1
 )
 "!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | findstr /R /C:"." >nul
 if errorlevel 1 (
-	echo !! Visual Studio is installed, but its C++ x86/x64 tools are missing. 1>&2
+	echo ERROR: Visual Studio is installed, but its C++ x86/x64 tools are missing. 1>&2
 	exit /b 1
 )
 exit /b 0
@@ -263,11 +263,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreferen
 set "TOOL_RESULT=!ERRORLEVEL!"
 rmdir /S /Q "!TOOL_TEMP!" >nul 2>&1
 if not "!TOOL_RESULT!"=="0" (
-	echo !! Could not download or unpack !TOOL_NAME!. Check network access and the URL in run.bat. 1>&2
+	echo ERROR: Could not download or unpack !TOOL_NAME!. Check network access and the URL in run.bat. 1>&2
 	exit /b !TOOL_RESULT!
 )
 if not exist "!TOOL_DEST!\!TOOL_REQUIRED!" (
-	echo !! !TOOL_NAME! archive unpacked without !TOOL_REQUIRED!. 1>&2
+	echo ERROR: !TOOL_NAME! archive unpacked without !TOOL_REQUIRED!. 1>&2
 	exit /b 1
 )
 exit /b 0
@@ -288,19 +288,19 @@ exit /b !ERRORLEVEL!
 
 :sync_astc_decoder
 if not exist "!ASTCENC_SOURCE!" (
-	echo !! Portable astcenc decoder is missing: !ASTCENC_SOURCE! 1>&2
+	echo ERROR: Portable astcenc decoder is missing: !ASTCENC_SOURCE! 1>&2
 	exit /b 1
 )
 set "ASTCENC_RUNTIME=!ROOT!\!BUILD_ROOT!\windows\bin\tools"
 if not exist "!ASTCENC_RUNTIME!" mkdir "!ASTCENC_RUNTIME!"
 copy /Y "!ASTCENC_SOURCE!" "!ASTCENC_RUNTIME!\astcenc.exe" >nul
 if errorlevel 1 (
-	echo !! Could not copy astcenc into the Windows runtime. 1>&2
+	echo ERROR: Could not copy astcenc into the Windows runtime. 1>&2
 	exit /b 1
 )
 copy /Y "!ROOT!\tools\licenses\astcenc-LICENSE.txt" "!ASTCENC_RUNTIME!\astcenc-LICENSE.txt" >nul
 if errorlevel 1 (
-	echo !! Could not copy the astcenc license into the Windows runtime. 1>&2
+	echo ERROR: Could not copy the astcenc license into the Windows runtime. 1>&2
 	exit /b 1
 )
 exit /b 0
@@ -349,6 +349,8 @@ call :run_python_script tools\patch_openfl_context3d_readback.py
 if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_openfl_shader_version.py
 if errorlevel 1 exit /b 1
+call :run_python_script tools\patch_hscript_compat.py
+if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_hscript_ex_owner_scope.py
 if errorlevel 1 exit /b 1
 exit /b 0
@@ -364,13 +366,13 @@ if not errorlevel 1 (
 	set "PYTHON_COMMAND=python"
 	exit /b 0
 )
-echo !! Python 3 is required to apply the pinned shared library patches. 1>&2
+echo ERROR: Python 3 is required to apply the pinned shared library patches. 1>&2
 exit /b 1
 
 :run_python_script
 call !PYTHON_COMMAND! "!ROOT!\%~1"
 if errorlevel 1 (
-	echo !! Shared library setup failed: %~1 1>&2
+	echo ERROR: Shared library setup failed: %~1 1>&2
 	exit /b 1
 )
 exit /b 0
@@ -403,7 +405,7 @@ haxelib list 2>nul | findstr /R /B /C:"!LIB_NAME!:" >nul
 if not errorlevel 1 exit /b 0
 where git.exe >nul 2>&1
 if errorlevel 1 (
-	echo !! Git is required to install !LIB_NAME!. Install Git for Windows and rerun. 1>&2
+	echo ERROR: Git is required to install !LIB_NAME!. Install Git for Windows and rerun. 1>&2
 	exit /b 1
 )
 echo ^>^> installing !LIB_NAME! from !LIB_URL!...
@@ -417,22 +419,22 @@ rem rapidjson workaround is Linux/gcc-specific and is intentionally omitted
 rem from the MSVC build path.
 set "FLIXEL_SOURCE=!HAXELIB_PATH!\flixel\6,1,2\flixel\FlxSprite.hx"
 if not exist "!FLIXEL_SOURCE!" (
-	echo !! Pinned flixel 6.1.2 source was not found at !FLIXEL_SOURCE!. 1>&2
+	echo ERROR: Pinned flixel 6.1.2 source was not found at !FLIXEL_SOURCE!. 1>&2
 	exit /b 1
 )
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "!ROOT!\tools\patch_flixel_fallback.ps1" -Path "!FLIXEL_SOURCE!"
 if errorlevel 1 (
-	echo !! Could not apply the flixel empty-frame fallback patch. 1>&2
+	echo ERROR: Could not apply the flixel empty-frame fallback patch. 1>&2
 	exit /b 1
 )
 set "MODCHART_UTIL=!HAXELIB_PATH!\funkin-modchart\1,2,5\modchart\backend\util\ModchartUtil.hx"
 if not exist "!MODCHART_UTIL!" (
-	echo !! Pinned funkin-modchart 1.2.5 source was not found at !MODCHART_UTIL!. 1>&2
+	echo ERROR: Pinned funkin-modchart 1.2.5 source was not found at !MODCHART_UTIL!. 1>&2
 	exit /b 1
 )
 call !PYTHON_COMMAND! "!ROOT!\tools\patch_funkin_modchart_uv.py" "!MODCHART_UTIL!"
 if errorlevel 1 (
-	echo !! Could not apply the funkin-modchart hold-UV and camera patch. 1>&2
+	echo ERROR: Could not apply the funkin-modchart hold-UV and camera patch. 1>&2
 	exit /b 1
 )
 exit /b 0

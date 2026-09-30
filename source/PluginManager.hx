@@ -456,7 +456,8 @@ class HscriptSoundFrontEndWrapper {
     }
     public function load(?EmbeddedSound:FlxSoundAsset, Volume = 1.0, Looped = false, ?Group, AutoDestroy = false, AutoPlay = false, ?URL, ?OnComplete) {
         if ((EmbeddedSound is String)) {
-            var sound = FNFAssets.getSound(EmbeddedSound);
+            var soundPath:String = cast EmbeddedSound;
+            var sound = FNFAssets.getSound(soundPath);
             return wrapping.load(sound, Volume, Looped, Group, AutoDestroy, AutoPlay, URL, OnComplete);
         }
         return wrapping.load(EmbeddedSound, Volume, Looped, Group, AutoDestroy, AutoPlay, URL, OnComplete);
@@ -466,7 +467,8 @@ class HscriptSoundFrontEndWrapper {
     }
     public function play(EmbeddedSound:FlxSoundAsset, Volume = 1.0, Looped = false, ?Group, AutoDestroy = true, ?OnComplete) {
         if ((EmbeddedSound is String)) {
-            var sound = FNFAssets.getSound(EmbeddedSound);
+            var soundPath:String = cast EmbeddedSound;
+            var sound = FNFAssets.getSound(soundPath);
             return wrapping.play(sound, Volume, Looped, Group, AutoDestroy, OnComplete);
         }
         return wrapping.play(EmbeddedSound, Volume, Looped, Group, AutoDestroy, OnComplete);
@@ -474,7 +476,8 @@ class HscriptSoundFrontEndWrapper {
 
     public function playMusic(Music:FlxSoundAsset,Volume= 1.0, Looped = true, ?Group ) {
         if ((Music is String)) {
-            var sound = FNFAssets.getSound(Music);
+            var soundPath:String = cast Music;
+            var sound = FNFAssets.getSound(soundPath);
             wrapping.playMusic(sound, Volume, Looped, Group);
             return;
         }

@@ -10,12 +10,13 @@ a null Dynamic - which on hxcpp dereferences the null object and SIGSEGVs
 before any Haxe exception can surface.
 
 The pins exercise the real vendored Interp source (`.haxelib/hscript/2,5,0`,
-already carrying the null-access/operand patches plus the null-iterator and
-null-fcall guards applied by run.sh) under the portable interpreter, the same
-extract-and-interpret style as the other engine suites.
+patched by the shared setup tool) under the portable interpreter, the same
+extract-and-interpret style as the other engine suites. Migration coverage
+uses the clean pinned-source fixture and invokes that tool through its CLI.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,9 @@ HAXE = ROOT / ".tools/haxe/haxe"
 HSCRIPT_LIB = ROOT / ".haxelib/hscript/2,5,0"
 INTERP_SOURCE = HSCRIPT_LIB / "hscript/Interp.hx"
 RUN_SH = ROOT / "run.sh"
+RUN_BAT = ROOT / "run.bat"
+PATCHER = ROOT / "tools/patch_hscript_compat.py"
+UPSTREAM_INTERP = ROOT / "tools/tests/fixtures/hscript-2.5.0-Interp.hx"
 PLUGIN_MANAGER = ROOT / "source/PluginManager.hx"
 IMPORTED_RUNTIME = ROOT / "source/HxcImportedRuntime.hx"
 SMOKE_HARNESS = ROOT / "source/RuntimeSmokeHarness.hx"
@@ -218,29 +222,31 @@ class Main {{
         self.assertNotIn("catch( err : Stop )", source)
         self.assertNotIn("catch( e : Stop )", source)
 
-    def test_run_sh_reapplies_the_guards_idempotently(self):
+    def test_build_scripts_run_the_shared_guard_patcher(self):
         run_sh = RUN_SH.read_text()
+        run_bat = RUN_BAT.read_text()
+        patcher = PATCHER.read_text()
+        self.assertIn("python3 tools/patch_hscript_compat.py", run_sh)
+        self.assertIn("tools\\patch_hscript_compat.py", run_bat)
         for marker in ("hscript-null-iterator", "hscript-null-fcall",
-                       "hscript-null-ecall"):
-            self.assertIn(f'grep -q "{marker}"', run_sh,
-                          f"run.sh lost the idempotent guard for {marker}")
-        self.assertIn('grep -q "hscript-null-iterator-context"', run_sh,
-                      "run.sh must upgrade an already patched iterator diagnostic")
-        self.assertIn('grep -q "hscript-stop-safe-enum"', run_sh,
-                      "run.sh must migrate hscript copies with the unsafe older Stop matcher")
+                       "hscript-null-ecall", "hscript-null-iterator-context",
+                       "hscript-stop-safe-enum"):
+            self.assertIn(marker, patcher,
+                          f"shared patcher lost the idempotent guard for {marker}")
 
-    def test_run_sh_upgrades_an_existing_iterator_patch_idempotently(self):
-        run_sh = RUN_SH.read_text()
-        begin = "python3 - \"$HS\" <<'PYNULLITERCONTEXT'\n"
-        end = "\nPYNULLITERCONTEXT\nfi"
-        start = run_sh.index(begin) + len(begin)
-        finish = run_sh.index(end, start)
-        patch_script = run_sh[start:finish]
+    def test_shared_patcher_upgrades_existing_iterator_context_idempotently(self):
+        with tempfile.TemporaryDirectory(prefix="hscript-iterator-context-") as folder:
+            target = Path(folder) / "Interp.hx"
+            shutil.copyfile(UPSTREAM_INTERP, target)
+            command = [sys.executable, str(PATCHER), "--path", str(target)]
+            initial = subprocess.run(command, cwd=ROOT, capture_output=True,
+                                     text=True, timeout=30)
+            self.assertEqual(initial.returncode, 0, initial.stdout + initial.stderr)
 
-        source = INTERP_SOURCE.read_text()
-        current_start = source.index("\tfunction nullIteratorDiagnose() : Void {")
-        current_end = source.index("\n\tfunction forLoop(", current_start)
-        legacy = '''\tfunction nullIteratorDiagnose() : Void {
+            source = target.read_text(encoding="utf-8")
+            current_start = source.index("\tfunction nullIteratorDiagnose() : Void {")
+            current_end = source.index("\n\t}", current_start) + len("\n\t}")
+            legacy = '''\tfunction nullIteratorDiagnose() : Void {
 \t\t#if sys
 \t\tvar key = "iterator:null";
 \t\tvar seen = _dpNullAccessSeen;
@@ -254,22 +260,25 @@ class Main {{
 \t\t}
 \t\t#end
 \t}'''
-        old_style = source[:current_start] + legacy + source[current_end:]
-        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            target = Path(folder) / "Interp.hx"
-            target.write_text(old_style, encoding="utf-8")
-            command = [sys.executable, "-c", patch_script, str(target)]
+            target.write_text(source[:current_start] + legacy + source[current_end:],
+                              encoding="utf-8")
+
             first = subprocess.run(command, cwd=ROOT, capture_output=True,
                                    text=True, timeout=30)
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
             upgraded = target.read_text(encoding="utf-8")
             self.assertIn("hscript-null-iterator-context", upgraded)
-            self.assertIn("variables.get(\"__compatDiagnosticSource\")", upgraded)
+            self.assertIn('var key = "iterator:null:" + context;', upgraded)
+            self.assertIn('variables.get("__compatDiagnosticSource")', upgraded)
+            self.assertIn('variables.get("__compatDiagnosticCallback")', upgraded)
+            self.assertIn("if( v == null ) {\n\t\t\tnullIteratorDiagnose();", upgraded)
+            self.assertIn("return emptyIterator;", upgraded)
+
             second = subprocess.run(command, cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual(target.read_text(encoding="utf-8"), upgraded,
-                             "reapplying the run.sh migration must be stable")
+                             "reapplying the shared iterator-context upgrade must be stable")
 
     def test_imported_host_materializes_touch_frontend_and_close(self):
         plugin_manager = PLUGIN_MANAGER.read_text()
