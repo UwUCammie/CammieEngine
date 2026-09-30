@@ -67,16 +67,23 @@ class SaveDataState extends MusicBeatState {
 		var menuBG:FlxSprite = new FlxSprite().loadGraphic('assets/images/menuDesat.png');
 			optionList = [
 							{name: "Controls...", value: false, intName:'controls', desc:"Edit bindings!", ignore: true,},
-							{name: "Fps Cap", value: false, intName: "fpsCap", desc: "Changes the max fps (also changes update rate)", amount: 60, defAmount: 60, max: 240, min: 10, precision: 10},
+							{name: "Fps Cap", value: false, intName: "fpsCap", desc: "Changes the max fps (also changes update rate)", amount: 60, defAmount: 60, max: OptionsHandler.MAX_FPS_CAP, min: 10, precision: 10},
 							{name: "Show FPS Counter", value: false, intName: "showFPS", desc: "Shows the FPS counter in the top left"}, 
 							{name: "Show Memory Counter", value: false, intName: "showMemory", desc: "Shows the memory counter in the top left"}, 
 							{name: "Scroll Speed", value: false, intName: "scrollSpeed", desc: "Sets the scroll speed (1 uses the song's scroll speed)", amount: 1.0, defAmount: 1.0, max: 10.0, min: 1.0, precision: 0.1},
+							{name: "Static Scroll Speed", value: false, intName: "dynamicScrollSpeed", desc: "0 = off. Nonzero fixes scroll speed across all charts and overrides Scroll Speed, including chart speed changes.", amount: OptionsHandler.DYNAMIC_SCROLL_SPEED_DEFAULT, defAmount: OptionsHandler.DYNAMIC_SCROLL_SPEED_DEFAULT, max: OptionsHandler.DYNAMIC_SCROLL_SPEED_MAX, min: OptionsHandler.DYNAMIC_SCROLL_SPEED_MIN, precision: OptionsHandler.DYNAMIC_SCROLL_SPEED_STEP},
 							{name: "Downscroll", value: false, intName: "downscroll", desc: "Put da arrows on the bottom and have em scroll down"},
 							{name: "Middlescroll", value: false, intName: "midscroll", desc: "Become the main attraction. Your story will be told"},
+							{name: "Highway Dim", value: false, intName: "highwayDim", desc: "Puts a black veil behind your arrows so notes pop. 0 = off, 0.9 = 90% black.", amount: 0, defAmount: 0, max: 0.9, min: 0, precision: 0.1},
+							{name: "Camera Zoom Events", value: false, intName: "zoomCamera", desc: "Allow imported charts to add gameplay/HUD camera zoom."},
+							{name: "Flashing Lights", value: false, intName: "flashingLights", desc: "Allow imported charts to flash the gameplay or HUD camera."},
+							{name: "Vignette Effects", value: false, intName: "vignetteEffects", desc: "Allow imported charts to render vignette overlays."},
+							{name: "Song Lyrics", value: false, intName: "lyricsEnabled", desc: "Show lyrics and captions authored by imported songs."},
 							{name: "Always Show Cutscenes", intName: "alwaysDoCutscenes", value: false, desc: "Force show cutscenes, even in freeplay"}, 
 							{name: "Skip Modifier Menu", value: false, intName: "skipModifierMenu", desc: "Skip the modifier menu"}, 
 							{name: "Skip Victory Screen", value: false, intName : "skipVictoryScreen", desc: "Skip the victory screen at the end of songs."},
 							{name: "Don't mute on miss", intName: "dontMuteMiss", value: false, desc: "When missing notes, don't mute vocals"},
+							{name: "Normalize Song Audio", value: false, intName: "normalizeSongAudio", desc: "Balance vocal and instrumental loudness. Takes effect when a song loads."},
 							{name: "Judge", value: false, intName: "judge", desc: "The Judge to use.", amount: cast Judge.Jury.Classic, defAmount: cast Judge.Jury.Classic, max: 10},
 							{name: "Ghost Tapping", value: false, intName: "useCustomInput", desc: "Whether to allow spamming"},
 							{name: "Sing Whenever", value: false, intName: "singYourHeartOut", desc: "Lets you do the sing animation whenever you want (Requires ghost tapping)"},
@@ -109,6 +116,7 @@ class SaveDataState extends MusicBeatState {
 							{name: "Use Miss Stun", value: false, intName: "useMissStun", desc: "Prevent hitting notes for a short time after missing."},
 							{name: "Don't Use Vile Rating", value: false, intName: "ignoreVile", desc: "Don't use the \"Vile\" rating"},
 							{name: "Offset", value: false, intName: "offset", desc: "How much to offset notes when playing. Can fix some latency issues! Hold Control to scroll faster.", amount: 0, defAmount: 0, max: 1000, min: -1000, precision: 0.1,},
+							{name: "Calibrate Offset...", value: false, intName: 'calibrate', desc: "Tap SPACE with the metronome to measure your audio latency (Bluetooth etc.) and set the offset for you.", ignore: true,},
 							{name: "Accuracy Mode", value: false, intName: "accuracyMode", desc: "How accuracy is calculated. Complex = uses ms timing, Simple = uses rating only", amount: 0, defAmount: 0, min: -1, max: 2,},
 							{name: "Credits", value: false, intName:'credits', desc: "Show the credits!", ignore: true},
 							{name: "Sound Test...", value: false, intName: 'soundtest', desc: "Listen to the soundtrack", ignore: true,},
@@ -121,6 +129,7 @@ class SaveDataState extends MusicBeatState {
 							//{name: "UI Layout...", value: false, intName:'newui', desc: "Change the layout of the UI in-game!", ignore: true,},
 							{name:"Module...", value:false, intName:'module', desc: "Make new stuff!", ignore: true,},
 							{name:"newModule...", value:false, intName:'newmodule', desc: "Make newnew stuff!", ignore: true,},
+							{name:"Import Settings...", value:false, intName:'importSettings', desc: "Choose the song importer.", ignore: true,},
 							//{name:"New Character...", value: false, intName:'newchar', desc: "Make a new character!", ignore: true,},
 							//{name:"New Stage...", value:false, intName:'newstage', desc: "Make a new stage!", ignore: true,},
 							//{name: "New Song...", value: false, intName:'newsong', desc: "Make a new song!", ignore: true,},
@@ -336,6 +345,10 @@ class SaveDataState extends MusicBeatState {
 						saveOptions();
 
 						LoadingState.loadAndSwitchState(new NewModule());
+					case "Import Settings...":
+						saveOptions();
+
+						LoadingState.loadAndSwitchState(new ImportSettingsState());
 					case "New Week...":
 						saveOptions();
 						NewWeekState.sorted = false;
@@ -353,9 +366,12 @@ class SaveDataState extends MusicBeatState {
 						FreeplayState.soundTest = true;
 						CategoryState.choosingFor = "freeplay";
 						LoadingState.loadAndSwitchState(new CategoryState());
-					case "Controls...": 
+					case "Controls...":
 						saveOptions();
 						LoadingState.loadAndSwitchState(new ControlsState());
+					case "Calibrate Offset...":
+						saveOptions();
+						LoadingState.loadAndSwitchState(new CalibrationState());
 					case "Credits": 
 						saveOptions();
 						LoadingState.loadAndSwitchState(new CreditsState());
@@ -481,7 +497,9 @@ class SaveDataState extends MusicBeatState {
 		var noneditableoptions:Dynamic = {
 			"allowEditOptions": OptionsHandler.options.allowEditOptions,
 			"preferredSave": preferredSave,
-			"useSaveDataMenu": true
+			"useSaveDataMenu": true,
+			"importType": ImportSettings.getSelectedType(),
+			"importPath": ImportSettings.getSourcePath()
 		};
 		for (field in Reflect.fields(mappedOptions)) {
 			Reflect.setField(noneditableoptions, field, Reflect.field(mappedOptions, field).value);
@@ -530,6 +548,9 @@ class SaveDataState extends MusicBeatState {
 			case "Credits":
 				saveOptions();
 				LoadingState.loadAndSwitchState(new CreditsState());
+			case "Import Settings...":
+				saveOptions();
+				LoadingState.loadAndSwitchState(new ImportSettingsState());
 			default:
 				if (OptionsHandler.options.allowEditOptions) {
 					checkmarks.members[optionsSelected].visible = !checkmarks.members[optionsSelected].visible;

@@ -24,6 +24,12 @@ import haxe.Json;
 import tjson.TJSON;
 using StringTools;
 class VictoryLoopState extends MusicBeatSubstate {
+	function makeSongCharacter(role:String, x:Float, y:Float, name:String, isPlayer:Bool = false):Character {
+		var game = PlayState.instance;
+		return game == null ? new Character(x, y, name, isPlayer)
+			: game.makePostSongCharacter(role, x, y, name, isPlayer);
+	}
+
 	var bf:Character;
 	var camFollow:FlxObject;
 	var gf:Character;
@@ -44,7 +50,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 		//add(background);
 		this.accuracy = accuracy;
 		var p1 = PlayState.SONG.player1;
-		gf = new Character(gfX,gfY,PlayState.SONG.gf);
+		gf = makeSongCharacter('gf', gfX, gfY, PlayState.SONG.gf);
 		var daBf:String = 'bf';
 		trace(p1);
 		if (p1 == "bf-pixel") {
@@ -67,19 +73,19 @@ class VictoryLoopState extends MusicBeatSubstate {
 		rating.addText();
 		accuracyTxt = new FlxText(10, rating.y + rating.height,0 , "ACCURACY: "+accuracy + "%");
 		accuracyTxt.setFormat("assets/fonts/vcr.ttf", 26, FlxColor.WHITE, RIGHT);
-		var interp = Character.getAnimInterp(p1);
-		if (interp.variables.exists("isPixel") && interp.variables.get("isPixel")) {
-			stageSuffix = '-pixel';
-		}
 		super();
 
 		Conductor.songPosition = 0;
 		
 		if (PlayState.opponentPlayer)
-			bf = new Character(dadX, dadY, PlayState.SONG.player2);
+			bf = makeSongCharacter('opponent', dadX, dadY, PlayState.SONG.player2);
 		else
-			bf = new Character(x, y, PlayState.SONG.player1, true);
-		dad = new Character(dadX, dadY, PlayState.SONG.player2);
+			bf = makeSongCharacter('player', x, y, PlayState.SONG.player1, true);
+		// Use the resolved character, including gameplay's missing-asset fallback.
+		// Re-parsing SONG.player1 here crashed after songs with absent characters.
+		if (bf.usesPixelAssets())
+			stageSuffix = '-pixel';
+		dad = makeSongCharacter('opponent', dadX, dadY, PlayState.SONG.player2);
 		if (!PlayState.duoMode) {
 			dad.visible = false;
 		}
@@ -135,6 +141,10 @@ class VictoryLoopState extends MusicBeatSubstate {
 
 	override function update(elapsed:Float) {
 		super.update(elapsed);
+		// The smoke gate's clock lives in PlayState.update; once the song ends
+		// and this overlay takes over, keep the deadline running so an
+		// unattended full-song run terminates cleanly instead of idling here.
+		RuntimeSmokeHarness.tick(elapsed);
 
 		if (controls.ACCEPT) {
 			if (selectingRetry && !PlayState.isStoryMode) {
@@ -175,19 +185,20 @@ class VictoryLoopState extends MusicBeatSubstate {
 				retryTxt.visible = true;
 				continueTxt.visible = true;
 		}
-		if (accuracy >= 0.65) {
+		if (accuracy >= 65) {
 			gf.dance();
 		} else {
 			gf.playAnim('sad');
-			if (gf.animation.curAnim.name != 'sad') {
+			if (gf.animation.curAnim == null || gf.animation.curAnim.name != 'sad') {
 				// boogie if no sad anim, looks kinda silly
 				gf.dance();
 			}
 		}
 
 		FlxG.log.add('beat');
+		var bfAnim = bf.animation.curAnim;
 		if (curBeat % 2 == 0 && accuracy >= 65) {
-			switch(bf.animation.curAnim.name) {
+			switch(bfAnim == null ? '' : bfAnim.name) {
 				case "idle":
 					bf.sing(2);
 				case "singLEFT":
@@ -201,7 +212,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 			}
 		} else if (curBeat % 2 == 0){
 			// funny look he misses now
-			switch(bf.animation.curAnim.name) {
+			switch(bfAnim == null ? '' : bfAnim.name) {
 				case "idle":
 					bf.sing(2, true);
 				case "singLEFTmiss":

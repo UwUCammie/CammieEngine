@@ -139,7 +139,7 @@ class SortState extends MusicBeatState
 				
 				switch (sorting) {
 					case "songs":
-						var coolCategoryJson:Array<SelectSongsState.TCategory> = CoolUtil.parseJson(Assets.getText('assets/data/freeplaySongJson.jsonc'));
+						var coolCategoryJson:Array<SelectSongsState.TCategory> = cast FreeplayRegistry.getJson();
 						for (i in referenceArray)
 						{
 							sortedSongs.push(songs[i]);
@@ -152,15 +152,15 @@ class SortState extends MusicBeatState
 							}
 						}
 						trace(sortedSongs);
-						FNFAssets.saveContent('assets/data/freeplaySongJson.jsonc',CoolUtil.stringifyJson(coolCategoryJson));
+						FreeplayRegistry.saveJson(coolCategoryJson);
 						LoadingState.loadAndSwitchState(new SaveDataState());
 					case "categories": 
-						var coolCategoryJson:Array<SelectSongsState.TCategory> = CoolUtil.parseJson(Assets.getText('assets/data/freeplaySongJson.jsonc'));
+						var coolCategoryJson:Array<SelectSongsState.TCategory> = cast FreeplayRegistry.getJson();
 						var coolReplacementJson:Array<SelectSongsState.TCategory> = [];
 						for (i in referenceArray) {
 							coolReplacementJson.push(coolCategoryJson[i]);
 						}
-						FNFAssets.saveContent('assets/data/freeplaySongJson.jsonc', CoolUtil.stringifyJson(coolReplacementJson));
+						FreeplayRegistry.saveJson(coolReplacementJson);
 						LoadingState.loadAndSwitchState(new SaveDataState());
 					case "weeks":
 						// ha ha weeeeeee
@@ -168,7 +168,7 @@ class SortState extends MusicBeatState
 						// we don't really need to do much to prepare the numbers, reference array handles it
 						// lets read the files first
 						var coolFiles:Array<{var png:Bytes; var xml:String;}> = [];
-						var coolStoryJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(Assets.getText('assets/data/storySonglist.json'));
+						var coolStoryJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json'));
 						var replacementJson:StoryMenuState.StorySongsJson = {songs: [], weekNames: [], characters: [], weeks: []};
 						for (i in referenceArray) {
 							// get files

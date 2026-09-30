@@ -17,6 +17,12 @@
     ,"fpsCap" : 120
     ,"allowFreeplay" : true
     ,"scrollSpeed" : 1
+    ,"dynamicScrollSpeed" : 0
+    ,"highwayDim" : 0
+    ,"zoomCamera" : true
+    ,"flashingLights" : true
+    ,"vignetteEffects" : true
+    ,"lyricsEnabled" : true
     ,"useKadeHealth" : false
     ,"showTimings" : false
     ,"accuracyMode" : 0

@@ -1,51 +1,7 @@
-
 function start(song)
 {
-   setDefaultZoom(1.0);
-}
-
-
-function beatHit(beat)
-{
-}
-
-function update(elapsed)
-{
-}
-
-function stepHit(step)
-{
-        if (curStep == 124){
-            boyfriend.playAnim('hey');
-            dad.playAnim('cheer');
-        } 
-        if (curStep == 188){
-            boyfriend.playAnim('hey');
-            dad.playAnim('cheer');
-    }
-}
-
-function playerTwoTurn()
-{
-    tweenCamIn();
-}
-
-function playerTwoMiss()
-{
-}
-
-function playerTwoSing()
-{
-}
-
-function playerOneTurn()
-{
-}
-
-function playerOneMiss()
-{
-}
-
-function playerOneSing()
-{
+   // The zoom override that used to live here hand-tuned the tutorial around
+   // the vendored hscript truncating float arithmetic (stage props with
+   // authored 1.1 scales rendered unscaled). With that fixed, the stage's own
+   // authored 0.9 zoom is correct again, matching classic week 1.
 }

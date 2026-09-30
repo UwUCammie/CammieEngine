@@ -1,0 +1,110 @@
+{
+	"bf": [
+		0,
+		350
+	],
+	"bf-car": [
+		0,
+		350
+	],
+	"bf-christmas": [
+		0,
+		350
+	],
+	"bf-dead": [
+		0,
+		350
+	],
+	"bf-holding-gf": [
+		0,
+		350
+	],
+	"bf-holding-gf-dead": [
+		0,
+		350
+	],
+	"bf-pixel": [
+		0,
+		350
+	],
+	"bf-pixel-dead": [
+		0,
+		350
+	],
+	"bf-pixel-opponent": [
+		80,
+		480
+	],
+	"darnell": [
+		0,
+		200
+	],
+	"darnell-blazin": [
+		400,
+		650
+	],
+	"monster": [
+		0,
+		100
+	],
+	"monster-christmas": [
+		0,
+		130
+	],
+	"nene": [
+		0,
+		200
+	],
+	"parents-christmas": [
+		-500,
+		0
+	],
+	"pico": [
+		0,
+		300
+	],
+	"pico-blazin": [
+		-290,
+		680
+	],
+	"pico-dead": [
+		15,
+		335
+	],
+	"pico-explosion-dead": [
+		575,
+		620
+	],
+	"pico-playable": [
+		0,
+		300
+	],
+	"pico-speaker": [
+		120,
+		-125
+	],
+	"senpai": [
+		150,
+		360
+	],
+	"senpai-angry": [
+		150,
+		360
+	],
+	"spirit": [
+		-150,
+		100
+	],
+	"spooky": [
+		0,
+		200
+	],
+	"tankman": [
+		0,
+		240
+	],
+	"tankman-playable": [
+		0,
+		240
+	]
+}

@@ -5,6 +5,41 @@ typedef TUI = {
 	var isPixel:Bool;
 	var builtInJudgement:Bool;
 	var uses:String;
+	/** Optional engine-neutral V-Slice note-style asset descriptors. */
+	@:optional var vSliceAlias:String;
+	@:optional var noteAsset:String;
+	@:optional var strumlineAsset:String;
+	@:optional var holdAsset:String;
+	@:optional var holdAssetXml:Bool;
+	@:optional var noteSplashAsset:String;
+	@:optional var noteSplashAssetXml:Bool;
+	@:optional var noteScale:Float;
+	@:optional var strumlineScale:Float;
+	@:optional var holdScale:Float;
+	/** Number of horizontal hold-sheet cells per lane (V-Slice uses body/end pairs). */
+	@:optional var holdFramesPerLane:Int;
+	/** V-Slice's optional per-lane hold-cover effect. */
+	@:optional var holdCoverEnabled:Bool;
+	@:optional var holdCoverAssets:Array<String>;
+	@:optional var holdCoverAssetXml:Array<Bool>;
+	@:optional var holdCoverStartPrefixes:Array<String>;
+	@:optional var holdCoverHoldPrefixes:Array<String>;
+	@:optional var holdCoverEndPrefixes:Array<String>;
+	@:optional var holdCoverScale:Float;
+	@:optional var holdCoverOffsetX:Float;
+	@:optional var holdCoverOffsetY:Float;
+	@:optional var splashScale:Float;
+	@:optional var judgementScale:Float;
+	@:optional var comboScale:Float;
+	@:optional var splashAlpha:Float;
+	@:optional var strumlineOffsetX:Float;
+	@:optional var strumlineOffsetY:Float;
+	@:optional var noteOffsetX:Float;
+	@:optional var noteOffsetY:Float;
+	@:optional var holdOffsetX:Float;
+	@:optional var holdOffsetY:Float;
+	@:optional var splashOffsetX:Float;
+	@:optional var splashOffsetY:Float;
 };
 class Judgement extends FlxSprite {
 	public static var uiJson:Dynamic;

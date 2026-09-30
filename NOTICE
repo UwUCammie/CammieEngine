@@ -1,3 +1,38 @@
-Hey! Thanks for reading this. If you didn't get this from https://github.com/TheDrawingCoder-Gamer/Funkin
-, gamebanana https://gamebanana.com/mods/44208 or azure pipelines, 
-you've likely been scammed/got a virus. putting this here because of recent events :wink:
+CammieEngine
+https://github.com/UwUCammie/CammieEngine
+
+Maintained by UwUCammie. Built on Disappointing Plus by
+AFunkinDisappointment, Modding Plus, and Friday Night Funkin'.
+
+Upstream projects and contributors:
+- Disappointing Plus: https://github.com/AFunkinDisappointment/DisappointingPlus
+- Modding Plus: https://github.com/TheDrawingCoder-Gamer/Funkin
+  See assets/data/credits.txt for the retained contributor list.
+- Friday Night Funkin': ninjamuffin99, PhantomArcade, Kawai Sprite,
+  evilsk8r, and the Funkin' team and contributors.
+  https://github.com/FunkinCrew/Funkin
+
+The inherited Mozilla Public License 2.0 is retained in LICENSE.
+Individual libraries, artwork, music, fonts and other third-party material
+retain their respective authorship and licence terms. A supported import
+format does not imply affiliation with its engine or mod authors. Imported
+mods are supplied by the user and are not included in clean alpha releases.
+
+Libraries and tools used by the engine include Haxe, Neko, hxcpp, Lime,
+OpenFL, HaxeFlixel and its addons, flixel-animate, funkin-modchart, HScript,
+hscript-ex, HScript Iris, TJSON, Away3D, hxvlc/libVLC, discord-rpc, and astcenc.
+Their distributions retain their own licences. The portable ASTC decoder's
+Apache 2.0 licence accompanies the decoder in tools/astcenc-LICENSE.txt.
+
+The Flx3D compatibility code is derived from Codename Engine-Dev and retains
+its source attribution. Its Apache 2.0 licence is at
+ tools/licenses/CodenameEngine-Dev-LICENSE.txt in the source checkout, or
+ licenses/CodenameEngine-Dev-LICENSE.txt in the Windows release.
+
+Compatibility work uses Codename Engine, Psych Engine, Nightmare Vision,
+Modding Plus/Poop and FNF V-Slice behavior as references. Those projects and
+all mod authors retain credit for their original code and content.
+
+Project source and official alpha releases:
+https://github.com/UwUCammie/CammieEngine
+https://github.com/UwUCammie/CammieEngine/releases

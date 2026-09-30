@@ -1,0 +1,1470 @@
+[
+  {
+    "character": "Furnace",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/prey/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "HellsetTricky",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/hellset/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "Jonah",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/driving-to-madness/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "N",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/driving-to-madness/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "P2Sonic_Assets",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/hill-of-the-void/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "TrophyForm",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/blinked/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "ace",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/spades/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "altsadmouse",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/smile/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "bf-grimware",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/gorefest/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-retro",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/hellhole/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-running-sonic",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/prey/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-scared",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/really-happy/events.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/smile/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-senpai",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/wilter/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-shinobi",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/katana/katana.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/kunai/kunai.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/shuriken/shuriken.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-spirit",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/uproar/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-starlight",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/echoes/echoes-crazy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/echoes/echoes-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/echoes/echoes-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/echoes/echoes.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/inverted-ascension/inverted-ascension.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf-trlled",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/big mouth/big mouth.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/gay amateur/gay amateur.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/hard way/hard way.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/miracle whip/miracle whip-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/miracle whip/miracle whip-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/miracle whip/miracle whip.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/right path/right path.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bf.exepixel",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/burning/burning-expert.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bfhelp",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/fazbars/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bfhex",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/winter-horrorland-miku/winter-horrorland-miku-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/winter-horrorland-miku/winter-horrorland-miku-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/winter-horrorland-miku/winter-horrorland-miku.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bfthreed",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/omnipresent/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bftricky",
+    "problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/beatstreets improbable outset/beatstreets improbable outset-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/beatstreets improbable outset/beatstreets improbable outset-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/beatstreets improbable outset/beatstreets improbable outset.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/beatstreets madness/beatstreets madness-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/beatstreets madness/beatstreets madness-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/beatstreets madness/beatstreets madness.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/omfg/omfg-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside improbable outset/upside improbable outset-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside improbable outset/upside improbable outset-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside improbable outset/upside improbable outset.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside madness/upside madness-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside madness/upside madness-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/upside madness/upside madness.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "blue-sport",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/sporty-ski/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "bop-opponent",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/restraining-order/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "bwfaker",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/unknown-faker/unknown-faker-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "crewmate",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/sussus-toogus/sussus-toogus-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/sussus-toogus/sussus-toogus-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "curious-crunch",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/crunch/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "curse",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/malediction/malediction-hard.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/malediction/malediction.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "finn-alt",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/quiet-f/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "finn-new",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/roasted/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "freddy",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/fazbars/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "frisk",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/once upon a time/once upon a time-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/once upon a time/once upon a time-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "garfield",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/lasagna/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "gf-night",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/jump-in-ex/effects-ex.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/split/effects-ex.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/split/split-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/split/split-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/split-ex/effects-ex.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/swing/effects-ex.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/swing-ex/effects-ex.json",
+        "role": "gf"
+      }
+    ]
+  },
+  {
+    "character": "gf-scared",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/evacuate/evacuate-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/flippin-out/flippin-out-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/flippin-out/flippin-out-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/really-happy/really-happy-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/smile/smile-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/smile/smile-hard.json",
+        "role": "gf"
+      }
+    ]
+  },
+  {
+    "character": "gfEmpty",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/babble/babble-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/chimp-out/chimp-out-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/untrue-love/untrue-love-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/untrue-love/untrue-love-hard.json",
+        "role": "gf"
+      }
+    ]
+  },
+  {
+    "character": "grime",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/gorefest/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "gzpbf",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "gzpgf",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/jazzcup-remix/jazzcup-remix.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/lost-remix/lost-remix.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix-easy.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix-hard.json",
+        "role": "gf"
+      },
+      {
+        "chart": "data/neon-remix/neon-remix.json",
+        "role": "gf"
+      }
+    ]
+  },
+  {
+    "character": "hank",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/battered/battered-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/battered/battered-hard.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/gunfight/gunfight-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/overdrive/overdrive-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/overdrive/overdrive-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "ice-cube",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/monochromatic/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "ink",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/inkingmistake/inkingmistake-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/inkingmistake/inkingmistake-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "madtabi",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/genocide/genocide-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/genocide/genocide-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "meri-player",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/restraining-order/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "miku",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/aishite/aishite-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/aishite/aishite-hard.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/popipo/popipo-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/popipo/popipo-hard.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/suck-it-up/suck-it-up-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/suck-it-up/suck-it-up-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "miku-mad",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/disappearance/disappearance-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/disappearance/disappearance-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "mono-bf",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/monochromatic/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "mouse-smile",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/hellhole/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "nik",
+    "problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/norsans/norsans-hard.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "peach",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/pink-forest/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "pikafriend",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/mario-sing-and-game-rythm-9/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "pipecleaner",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/last-straw/last-straw.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "playableex",
+    "problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/milf-g/milf-g-hard.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "s",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/shop/shop-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/shop/shop-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "sans",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/nyeh/nyeh-easy.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/nyeh/nyeh-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/sans/sans-easy.json",
+        "role": "player2"
+      },
+      {
+        "chart": "data/sans/sans-hard.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "ski-sport",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/sporty-ski/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "somari",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/mario-sing-and-game-rythm-9/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "sonic.exep",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/heartache/heartache-hard.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "sonic_exe",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/slaybells/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "spooky-s2",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/despair/despair-alt.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/despair/despair-hard-alpha.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/despair/despair-hard.json",
+        "role": "player1"
+      },
+      {
+        "chart": "data/despair/despair.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "steven-new",
+    "problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/roasted/events.json",
+        "role": "player1"
+      }
+    ]
+  },
+  {
+    "character": "tailsdoll",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/omnipresent/events.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "trickyhell",
+    "problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing character folder",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/hellset/hellset.json",
+        "role": "player2"
+      }
+    ]
+  },
+  {
+    "character": "whitty",
+    "problems": [
+      "missing character folder"
+    ],
+    "donor_problems": [
+      "missing character folder"
+    ],
+    "references": [
+      {
+        "chart": "data/ballistic-new/ballistic-new-easy.json",
+        "role": "gf"
+      }
+    ]
+  },
+  {
+    "character": "xchara",
+    "problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "donor_problems": [
+      "missing registry entry",
+      "missing animation implementation"
+    ],
+    "references": [
+      {
+        "chart": "data/overwrite/overwrite-easy.json",
+        "role": "player2"
+      }
+    ]
+  }
+]

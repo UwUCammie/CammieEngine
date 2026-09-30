@@ -1,4 +1,37 @@
-export/
-.vscode/
-.idea/
-.vs/
+# Build output, portable toolchain and local worktrees
+/export/
+/dist/
+/.tools/
+/.haxelib/
+/.worktrees/
+/tmp/
+
+# Local imports (all engine formats). Bundled, already-tracked assets remain
+# versioned. Deliberate additions to these engine asset folders need git add -f.
+/assets/*
+!/assets/data/
+/assets/data/*/
+/mods/
+
+# Editor, assistant and machine-local configuration
+/.vscode/
+/.idea/
+/.vs/
+/.agents/
+/.codex/
+/.crush/
+/.kilo/
+/.kilocode/
+/.pi/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+
+# Generated diagnostics and language caches
+/dump/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log

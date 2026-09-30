@@ -6,6 +6,23 @@ import js.lib.intl.RelativeTimeFormat.RelativeTimeUnit;
 import openfl.Lib;
 import flixel.util.typeLimit.OneOfTwo;
 import Character.EpicLevel;
+import CodenameCameraModulo.CodenameCameraModuloConfig;
+import CodenameCameraModulo.CodenameCameraModuloChange;
+import CompatScriptManifest.CompatScriptManifestData;
+import CodenameScriptPlan.CodenameScriptPlanData;
+import CodenameScriptDiscovery.CodenameScriptFile;
+import CodenameStagePlacement.CodenameStagePlacementData;
+import HxcCutsceneTimeline.HxcCutsceneAction;
+import HxcCutsceneTimeline.HxcCutsceneAsset;
+import HxcCutsceneTimeline.HxcCutsceneTime;
+import HxcCutsceneTimeline.HxcCutsceneTimelineData;
+import HxcCutsceneTimelineRuntime;
+import HxcCompat.HxcCompatResult;
+import HxcCharacterLifecycleQueue.HxcCharacterLifecycleCall;
+import ExtraStrumlineAdapter.CompatSongNoteData;
+import ExtraStrumlineAdapter.CompatSongDifficultyView;
+import PsychSourceStageCompat.PsychCompiledStageSource;
+import animate.FlxAnimate;
 import flixel.ui.FlxButton.FlxTypedButton;
 import Section.SwagSection;
 import Song.SwagSong;
@@ -20,9 +37,11 @@ import sys.FileSystem;
 #end
 #if cpp
 import Discord.DiscordClient;
+import hxvlc.flixel.FlxVideoSprite;
 #end
 import DifficultyIcons;
 import flixel.FlxSprite;
+import flixel.addons.display.FlxBackdrop;
 import flixel.FlxBasic;
 import flixel.input.keyboard.FlxKey;
 import flixel.FlxState;
@@ -42,18 +61,24 @@ import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
 import flixel.sound.FlxSound;
 import flixel.text.FlxText;
+import flixel.text.FlxText.FlxTextAlign;
+import flixel.text.FlxText.FlxTextBorderStyle;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.ui.FlxBar;
 import flixel.util.FlxCollision;
 import flixel.util.FlxColor;
+import flixel.util.FlxAxes;
 import flixel.util.FlxSort;
 import flixel.util.FlxStringUtil;
 import flixel.util.FlxTimer;
 import flixel.math.FlxAngle;
 import haxe.Json;
+import haxe.io.Path;
+import ChartNoteOwnership.ChartNoteAddress;
 import lime.utils.Assets;
 import openfl.display.BlendMode;
+import openfl.display.DisplayObject;
 import openfl.display.StageQuality;
 import openfl.filters.ShaderFilter;
 import lime.system.System;
@@ -67,7 +92,6 @@ import hscript.ClassDeclEx;
 #if sys
 import sys.io.File;
 import sys.FileSystem;
-import haxe.io.Path;
 import openfl.utils.ByteArray;
 import lime.media.AudioBuffer;
 
@@ -84,17 +108,342 @@ using CoolUtil.FlxTools;
 	@:optional var loop : Bool;
 }*/
 enum abstract DisplayLayer(Int) from Int to Int {
+	var BEHIND_NONE = 0;
 	var BEHIND_GF = 1;
 	var BEHIND_BF = 1 << 1;
 	var BEHIND_DAD = 1 << 2;
 	var BEHIND_ALL = BEHIND_GF | BEHIND_BF | BEHIND_DAD;
 }
-class PlayState extends MusicBeatState {
+class PlayState extends MusicBeatState implements CodenameGameplayAccess {
+	var nightmareVisionScripts:NightmareVisionGameplayScripts;
+	var nightmareVisionPaths:NightmareVisionPaths;
+	static var nightmareVisionActivePrefs:NightmareVisionClientPrefs;
+	var nightmareVisionPrefs:NightmareVisionClientPrefs;
+	var nightmareVisionPlugins:NightmareVisionPluginRuntime;
+	@:keep public var modManager:NightmareVisionModManager;
+	@:keep public var playHUD:NightmareVisionHUDAdapter;
+	@:keep public var curDecStep:Float = 0;
+	@:keep public var curDecBeat:Float = 0;
+	var nightmareVisionAddActors:Bool = true;
+	static var nightmareVisionActiveMods:NightmareVisionModsContext;
+	static var nightmareVisionActiveDifficulty:NightmareVisionDifficultyAdapter;
+	static final nightmareVisionConductor = new NightmareVisionConductor();
+
+	function nightmareVisionSelectedRoot():String {
+		#if sys
+		var manifest = getCompatScriptManifest();
+		var selected = CompatScriptManifest.selectedRoot(manifest);
+		if (selected != null && selected != '' && FileSystem.isDirectory(selected))
+			for (entry in manifest.roots)
+				if (entry.engine == ImportEngine.NIGHTMARE_VISION
+					&& CompatScriptManifest.destinationKey(entry.path) == CompatScriptManifest.destinationKey(selected))
+					return selected;
+		#end
+		return '';
+	}
+
+	function callNightmareVision(event:String, ?args:Array<Dynamic>):Dynamic {
+		return nightmareVisionScripts == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
+			: nightmareVisionScripts.call(event, args);
+	}
+
+	static function seedNightmareVisionCommon(interp:NightmareVisionScriptInterp,
+		paths:NightmareVisionPaths, prefs:NightmareVisionClientPrefs, plugins:NightmareVisionPluginRuntime):Void {
+		// Only matching native APIs are exposed. Missing engine classes remain
+		// attributable import/runtime errors rather than unrelated aliases.
+		var preset:Map<String, Dynamic> = [
+			'Std' => Std, 'Math' => Math, 'StringTools' => StringTools, 'Type' => Type,
+			'Reflect' => Reflect, 'FlxG' => new NightmareVisionFlxGView(FlxG, interp.bindOwnerSave(paths.root, new CodenameOwnerSaveData(paths.root))), 'FlxSprite' => FlxSprite,
+			'StringMap' => haxe.ds.StringMap, 'IntMap' => haxe.ds.IntMap, 'ObjectMap' => haxe.ds.ObjectMap,
+			'FlxMath' => FlxMath, 'FlxTimer' => FlxTimer, 'FlxTween' => FlxTween,
+			'FlxEase' => FlxEase, 'FlxSound' => FlxSound, 'FlxText' => FlxText,
+			'FlxColor' => NightmareVisionColor,
+			'FlxTextAlign' => {LEFT:FlxTextAlign.LEFT, CENTER:FlxTextAlign.CENTER,
+				RIGHT:FlxTextAlign.RIGHT, JUSTIFY:FlxTextAlign.JUSTIFY},
+			'FlxTextBorderStyle' => CodenameImportBindings.textBorderStyleConstants(),
+			'FlxCameraFollowStyle' => flixel.FlxCamera.FlxCameraFollowStyle,
+			'BlendMode' => CodenameImportBindings.blendModeConstants(),
+			'FlxPoint' => flixel.math.FlxPoint.FlxBasePoint,
+			'FlxTypedGroup' => FlxGroup, 'FlxSpriteGroup' => flixel.group.FlxSpriteGroup,
+			'CoolUtil' => CoolUtil, 'PlayState' => PlayState, 'Paths' => paths,
+			'ClientPrefs' => prefs.view,
+			'Function_Continue' => NightmareVisionScriptGroup.CONTINUE_FUNC,
+			'Function_Stop' => NightmareVisionScriptGroup.STOP_FUNC,
+			'Function_Halt' => NightmareVisionScriptGroup.HALT_FUNC,
+			'curBpm' => Conductor.bpm, 'crotchet' => Conductor.crochet,
+			'stepCrotchet' => Conductor.stepCrochet
+		];
+		for (name => value in preset) interp.variables.set(name, value);
+		interp.bindImport('flixel.FlxG', preset.get('FlxG'));
+		interp.bindImport('flixel.text.FlxTextAlign', preset.get('FlxTextAlign'));
+		interp.bindImport('flixel.text.FlxTextBorderStyle', preset.get('FlxTextBorderStyle'));
+		interp.bindImport('flixel.FlxCameraFollowStyle', preset.get('FlxCameraFollowStyle'));
+		var constants = new NightmareVisionScriptConstants(function():Dynamic {
+			var current = FlxG.state;
+			if (Std.isOfType(current, PlayState)) {
+				var play:PlayState = cast current;
+				if (play.psychGameOverTransitionPending) return GameOverSubstate.instance;
+			}
+			return current;
+		});
+		interp.variables.set('ScriptConstants', constants);
+		interp.bindImport('funkin.scripting.ScriptConstants', constants);
+		interp.bindImport('funkin.Paths', paths);
+		interp.bindImport('funkin.data.ClientPrefs', prefs.view);
+		interp.variables.set('Mods', nightmareVisionActiveMods);
+		interp.bindImport('funkin.Mods', nightmareVisionActiveMods);
+		interp.variables.set('Difficulty', nightmareVisionActiveDifficulty);
+		interp.bindImport('funkin.backend.Difficulty', nightmareVisionActiveDifficulty);
+		var ownerAssets = new NightmareVisionFunkinAssets(paths);
+		interp.variables.set('FunkinAssets', ownerAssets);
+		interp.bindImport('funkin.FunkinAssets', ownerAssets);
+		interp.variables.set('Conductor', nightmareVisionConductor);
+		interp.bindImport('funkin.backend.Conductor', nightmareVisionConductor);
+		var cameraUtil = new NightmareVisionCameraUtil(function() return cast FlxG.cameras.list);
+		interp.variables.set('CameraUtil', cameraUtil);
+		interp.bindImport('funkin.utils.CameraUtil', cameraUtil);
+		var windowUtil = new NightmareVisionWindowUtil(function() return FlxG.stage.window,
+			function() return lime.app.Application.current.meta.get('name'),
+			function(x, y) return FlxPoint.weak(x, y));
+		interp.variables.set('WindowUtil', windowUtil);
+		interp.bindImport('funkin.utils.WindowUtil', windowUtil);
+		interp.bindImport('funkin.scripts.ScriptClasses.ScriptedFlxColor', NightmareVisionColor);
+		interp.bindImport('openfl.display.BlendMode', preset.get('BlendMode'));
+		interp.variables.set('newShader', function(?fragFile:String, ?vertFile:String):Dynamic {
+			return NightmareVisionShaderFactory.fromPath(paths.root, fragFile, vertFile);
+		});
+		interp.bindImport('funkin.states.PlayState', PlayState);
+		interp.bindImport('funkin.utils.CoolUtil', CoolUtil);
+		interp.variables.set('PluginsManager', plugins);
+		interp.bindImport('funkin.scripting.PluginsManager', plugins);
+		interp.bindImport('funkin.backend.plugins.ModPlugin', {instance:plugins.scripts.parent});
+	}
+
+	function seedNightmareVision(interp:NightmareVisionScriptInterp,
+		entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry, actor:Dynamic):Void {
+		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins);
+		interp.variables.set('stage', curStage);
+		interp.variables.set('isStoryMode', isStoryMode);
+		interp.variables.set('CallbackEvent', NightmareVisionModManager.callbackEventClass());
+	}
+
+	function initializeNightmareVisionScripts():Void {
+		#if sys
+		var root = nightmareVisionSelectedRoot();
+		NightmareVisionPluginHost.releaseOtherOwner(root);
+		if (nightmareVisionActiveMods != null && !nightmareVisionActiveMods.canReuseFor(root)) {
+			nightmareVisionActiveMods.release();
+			nightmareVisionActiveMods = null;
+		}
+		if (nightmareVisionActiveDifficulty != null && !nightmareVisionActiveDifficulty.canReuseFor(root)) {
+			nightmareVisionActiveDifficulty.release();
+			nightmareVisionActiveDifficulty = null;
+		}
+		if (nightmareVisionActivePrefs != null && !nightmareVisionActivePrefs.canReuseFor(root)) {
+			nightmareVisionActivePrefs.release();
+			nightmareVisionActivePrefs = null;
+		}
+		if (root == '') return;
+		NightmareVisionConductor.initializeMap(SONG.bpm);
+		if (nightmareVisionActiveMods == null) {
+			var sourceDirectory:String = null;
+			try sourceDirectory = NightmareVisionSourceContext.modDirectory(root, Song.storageFolder(SONG))
+			catch (error:Dynamic) trace(Std.string(error));
+			nightmareVisionActiveMods = new NightmareVisionModsContext(root, sourceDirectory);
+			var configPath = root + '/meta.json';
+			if (FNFAssets.exists(configPath)) nightmareVisionActiveMods.currentModConfig = CoolUtil.parseJson(FNFAssets.getText(configPath));
+		}
+		if (nightmareVisionActiveDifficulty == null) {
+			var declaration = NightmareVisionDifficultyCompat.fromSourceRoot(root);
+			var sourceNames = declaration.sourceNames;
+			nightmareVisionActiveDifficulty = new NightmareVisionDifficultyAdapter(root, sourceNames);
+		}
+		var sourceIndex = -1;
+		var wanted = DifficultyManager.getDiffName(storyDifficulty).toLowerCase();
+		for (index in 0...nightmareVisionActiveDifficulty.difficulties.length)
+			if (nightmareVisionActiveDifficulty.difficulties[index].toLowerCase() == wanted) sourceIndex = index;
+		nightmareVisionActiveDifficulty.selectDifficulty(sourceIndex);
+		if (nightmareVisionActivePrefs == null) {
+			nightmareVisionActivePrefs = new NightmareVisionClientPrefs(root, new CodenameOwnerSaveData(root), OptionsHandler.options);
+			nightmareVisionActivePrefs.load();
+			nightmareVisionActivePrefs.view.loadDefaultKeys();
+		}
+		nightmareVisionPrefs = nightmareVisionActivePrefs;
+		nightmareVisionPaths = new NightmareVisionPaths(root);
+		modManager = new NightmareVisionModManager();
+		// Persistent plugin bindings capture only this owner's paths/preferences,
+		// never a PlayState that will be destroyed when another song loads.
+		var ownerPaths = nightmareVisionPaths;
+		var ownerPrefs = nightmareVisionPrefs;
+		nightmareVisionPlugins = NightmareVisionPluginHost.mount(root, function(interp, entry, plugins) {
+			seedNightmareVisionCommon(interp, ownerPaths, ownerPrefs, plugins);
+		});
+		var plan = NightmareVisionScriptDiscovery.discover(root, SONG.song, SONG, null, CoolUtil.parseJson);
+		curStage = new StageHelper(SONG.stage);
+		curStage.stageData = NightmareVisionStageData.load(root, SONG.stage);
+		if (curStage.stageData == null) curStage.stageData = NightmareVisionStageData.getTemplateStageFile();
+		var data:Dynamic = curStage.stageData;
+		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
+		setGameCameraZoom(defaultCamZoom);
+		psychCameraCompatibilityActive = true;
+		psychStageCharacterRoot = root;
+		applyPsychStageCameraOffsets(data);
+		for (slot in [{role:'bf', field:'boyfriend'}, {role:'dad', field:'opponent'}, {role:'gf', field:'girlfriend'}]) {
+			var point:Array<Dynamic> = Reflect.field(data, slot.field);
+			var info = curStage.getInfo(slot.role);
+			info.x = point[0]; info.y = point[1];
+		}
+		nightmareVisionScripts = new NightmareVisionGameplayScripts(this, plan,
+			File.getContent, seedNightmareVision, function(name, phase, error) {
+				trace('[nightmare-vision-script-error] ' + root + '/' + name + '#' + phase + ': ' + Std.string(error));
+			}, function(interp, entry) {
+				if (entry.scope == 'stage') interp.variables.set('add', curStage.add);
+			});
+		if (data.stageObjects != null && (cast data.stageObjects:Array<Dynamic>).length > 0)
+			trace('[nightmare-vision-unsupported-stage-objects] ' + root + ': ' + SONG.stage);
+		nightmareVisionScripts.loadScope('stage');
+		nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups', []) != NightmareVisionScriptGroup.STOP_FUNC;
+		if (nightmareVisionAddActors) add(curStage);
+		nightmareVisionScripts.loadScope('global');
+		for (entry in plan.scripts)
+			if (entry.scope == 'event' || entry.scope == 'notetype' || entry.scope == 'character_event')
+				trace('[nightmare-vision-unsupported-script] scope=' + entry.scope + ' path=' + entry.relative);
+		#end
+	}
+
+	function loadNightmareVisionCharacter(actor:Character):Void {
+		if (nightmareVisionScripts != null && actor != null)
+			nightmareVisionScripts.loadScope('character', actor.requestedCharacter, actor);
+	}
+
+	function initializeNightmareVisionHUD():Void {
+		if (nightmareVisionScripts == null) return;
+		var prefs = nightmareVisionPrefs.view;
+		var showTime = prefs.timeBarType != 'Disabled';
+		for (object in [cast songPosBG, cast songPosBar, cast songName])
+			if (members.indexOf(object) < 0) add(object);
+		playHUD = new NightmareVisionHUDAdapter({
+			parent:this, healthFill:healthBar, healthBackground:healthBarBG,
+			iconP1:iconP1, iconP2:iconP2, scoreText:scoreTxt,
+			songFill:songPosBar, songBackground:songPosBG, timeText:songName,
+			healthValue:function() return health, healthMin:0, healthMax:2,
+			songProgress:function() return songPositionBar,
+			songTitle:SONG.song, timeBarType:prefs.timeBarType, showTime:showTime,
+			setHealthDirection:function(forward) healthBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
+			setSongDirection:function(forward) songPosBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
+			tweenAlpha:function(target, duration) FlxTween.tween(target, {alpha:1}, duration, {ease:FlxEase.circOut}),
+			addDisplay:function(object) return add(cast object),
+			removeDisplay:function(object, splice) return remove(cast object, splice),
+			insertDisplay:function(index, object) return insert(index, cast object)
+		});
+		if (prefs.hideHud) playHUD.visible = false;
+		modManager.keys = Note.NOTE_AMOUNT;
+		modManager.receptors = [cast playerStrums.members, cast enemyStrums.members];
+		modManager.lanes = modManager.receptors.length;
+	}
+
+	@:keep public var boyfriendCameraOffset(get, set):Array<Float>;
+	function get_boyfriendCameraOffset():Array<Float> return psychStageCameraBoyfriend;
+	function set_boyfriendCameraOffset(value:Array<Float>):Array<Float> return psychStageCameraBoyfriend = value;
+	@:keep public var opponentCameraOffset(get, set):Array<Float>;
+	function get_opponentCameraOffset():Array<Float> return psychStageCameraOpponent;
+	function set_opponentCameraOffset(value:Array<Float>):Array<Float> return psychStageCameraOpponent = value;
+	@:keep public var girlfriendCameraOffset(get, set):Array<Float>;
+	function get_girlfriendCameraOffset():Array<Float> return psychStageCameraGirlfriend;
+	function set_girlfriendCameraOffset(value:Array<Float>):Array<Float> return psychStageCameraGirlfriend = value;
+
+	/** NMV's explicit camera helper uses the actor's player flag, including
+	 * when a script requests a position for a character outside the active turn. */
+	@:keep public function getCharacterCameraPos(actor:Character):FlxPoint {
+		if (actor == null) return FlxPoint.weak();
+		var desired = actor.getMidpoint();
+		var offsets = actor.isPlayer ? boyfriendCameraOffset : opponentCameraOffset;
+		desired.y += -100 + actor.cameraPosition[1] + offsets[1];
+		if (actor.isPlayer) desired.x -= 100 + actor.cameraPosition[0];
+		else desired.x += 100 + actor.cameraPosition[0];
+		desired.x += offsets[0];
+		return desired;
+	}
+
+	@:keep public function snapCamToPos(x:Float = 0, y:Float = 0, lockPosition:Bool = false):Void {
+		camFollow.setPosition(x, y);
+		FlxG.camera.snapToTarget();
+		if (lockPosition) isCameraOnForcedPos = true;
+	}
 	#if windows
 	public static var customPrecence = FNFAssets.getText("assets/discord/presence/play.txt");
 	#end
 	public var curStage:StageHelper;
+	/** Owner-scoped Psych Haxe stage currently attached to this PlayState. */
+	private var psychCompiledStageRuntime:PsychCompiledStageRuntime;
+	private var psychCompiledStageDiagnosticsReported:Int = 0;
+	private var psychCompiledStageRuntimeError:String = '';
+	// V-Slice/HXC calls this currentStage. Keep the donor spelling as a live
+	// alias while the native engine continues to use curStage internally.
+	public var currentStage(get, never):StageHelper;
+	function get_currentStage():StageHelper
+		return curStage;
+	/** V-Slice's unmodified stage camera zoom, distinct from the current
+	 * camera zoom after song events and tweens. */
+	@:keep public var stageZoom(get, never):Float;
+	function get_stageZoom():Float
+		return curStage == null ? defaultCamZoom : curStage.defaultZoom;
+	public var currentStageId(get, never):String;
+	function get_currentStageId():String
+		return curStage != null
+			? (curStage.authoredName == null || StringTools.trim(curStage.authoredName) == ''
+				? curStage.name : curStage.authoredName)
+			: (SONG == null || SONG.stage == null ? '' : SONG.stage);
 	public static var SONG:SwagSong;
+	// V-Slice/HXC modules call the active chart `currentSong` on their game
+	// object. Keep that read-only view tied to the live chart rather than
+	// copying a donor-side song wrapper into HScript.
+	public var currentSong(get, never):SwagSong;
+	function get_currentSong():SwagSong
+		return SONG;
+	/** Current V-Slice chart notes are a copy of the selected native chart.
+	 * Source scripts can partition or mutate descriptors without rewriting the
+	 * chart used by the engine and editor. */
+	@:keep public function hxcCurrentChartNotes():Array<CompatSongNoteData>
+		return new CompatSongDifficultyView(SONG).notes;
+	// V-Slice modules use both `song` and `currentSong` for the active chart.
+	// Keep a read-only alias to the same chart object; no donor song wrapper is
+	// created and no mutable chart copy can drift from SONG.
+	public var song(get, never):SwagSong;
+	function get_song():SwagSong
+		return SONG;
+	// The native HUD text/camera are the closest owned equivalents for the
+	// donor scoreText/camCutscene reads. These aliases are intentionally
+	// read-only so imported modules cannot replace core HUD objects.
+	public var scoreText(get, never):FlxText;
+	function get_scoreText():FlxText
+		return scoreTxt;
+	public var camCutscene(get, never):FlxCamera;
+	function get_camCutscene():FlxCamera
+		return camHUD;
+	// This fork has no variable-rate transport. Expose the native fixed rate so
+	// donor easing code remains deterministic without inventing a second clock.
+	public var playbackRate(get, never):Float;
+	function get_playbackRate():Float
+		return 1.0;
+	// This fork has no reduced/minimal gameplay mode. Expose the donor flag as
+	// a stable false read so modules can keep their normal gameplay path.
+	public var isMinimalMode(get, never):Bool;
+	function get_isMinimalMode():Bool
+		return false;
+	/**
+		V-Slice's combo popup handler exposes a mutable `offsets` pair that
+		stage scripts reposition (concert's `game.comboPopUps.offsets = [...]`).
+		This fork renders judgement popups natively, so keep a small compat
+		holder the donor graph can read/write; native popups are unaffected.
+	*/
+	public var comboPopUps(get, never):Dynamic;
+	var _comboPopUpsCompat:Dynamic;
+	function get_comboPopUps():Dynamic {
+		if (_comboPopUpsCompat == null)
+			_comboPopUpsCompat = {offsets: [0, 0]};
+		return _comboPopUpsCompat;
+	}
 	public static var isStoryMode:Bool = false;
 	public static var storyWeek:String = 'Tutorial';
 	public static var storyWeekNum:Int = 0;
@@ -104,8 +453,79 @@ class PlayState extends MusicBeatState {
 	public static var defaultPlaylistLength = 0;
 	public static var campaignScoreDef = 0;
 	public static var ss:Bool = true;
+	/** Legacy Codename song-completion scripts clear story selection before
+		switching to an imported state. Leave SONG alive through PlayState.destroy;
+		the next chart selection replaces it. */
+	@:keep public static function resetSongInfos():Void {
+		isStoryMode = false;
+		storyPlaylist = [];
+		campaignScore = 0;
+		campaignScoreDef = 0;
+		campaignAccuracy = 0;
+		defaultPlaylistLength = 0;
+	}
+	/** Codename's menu API loads its selected native chart before switching to
+	 * PlayState. Keep the static owner and difficulty arguments intact; the
+	 * imported state remains responsible for choosing when to switch. */
+	@:keep public static function __loadSong(songName:String, ?difficulty:String):Void {
+		// A failed re-selection must never leave a previous chart available to
+		// the caller's subsequent state switch.
+		SONG = null;
+		var cleanSong = songName == null ? '' : StringTools.trim(songName);
+		if (!CodenameScriptDiscovery.safeName(cleanSong))
+			throw '[codename-load-song] Unsafe or missing song name';
+		var names = DifficultyManager.getDifficultyNames();
+		if (names == null || names.length == 0)
+			throw '[codename-load-song] Difficulty definitions are unavailable';
+		var difficultyText = difficulty == null ? '' : StringTools.trim(difficulty);
+		var difficultyIndex = -1;
+		if (difficultyText == '') {
+			difficultyIndex = storyDifficulty >= 0 && storyDifficulty < names.length ? storyDifficulty : 0;
+			difficultyText = names[difficultyIndex];
+		} else {
+			for (index in 0...names.length)
+				if (names[index] != null && names[index].toLowerCase() == difficultyText.toLowerCase()) {
+					difficultyIndex = index;
+					break;
+				}
+		}
+		if (difficultyIndex < 0)
+			throw '[codename-load-song] Unknown difficulty ' + difficultyText;
+		var folder = CodenameSongLaunch.resolveStorageFolder(cleanSong, CodenameModRuntime.activeRoot());
+		var chartName = cleanSong.toLowerCase() + DifficultyManager.getDiffEnding(difficultyIndex).toLowerCase();
+		try {
+			var loaded = Song.loadFromJson(chartName, folder);
+			if (loaded == null)
+				throw 'Chart loader returned no chart';
+			SONG = loaded;
+			storyDifficulty = difficultyIndex;
+			// Preserve the caller's source spelling for scripts that inspect this
+			// value before create() applies the native display label.
+			storyDifficultyText = difficultyText;
+		} catch (error:Dynamic) {
+			SONG = null;
+			throw '[codename-load-song] Could not load ' + cleanSong + ' (' + difficultyText + '): '
+				+ Std.string(error);
+		}
+	}
+
+	static function guardMissingSongBeforeCreate():Bool {
+		if (SONG != null)
+			return false;
+		var detail = 'PlayState was entered without a loaded chart; call PlayState.__loadSong(song, difficulty) first.';
+		trace('[playstate-missing-song] ' + detail);
+		if (RuntimeSmokeHarness.enabled())
+			RuntimeSmokeHarness.fail('missing-song', detail);
+		else
+			LoadingState.loadAndSwitchState(new MainMenuState());
+		return true;
+	}
 	private var inst:Dynamic;
 	private var vocals:FlxSound;
+	// The first entry remains the legacy script-facing `vocals` sound. V-Slice
+	// imports add the other split stems to this group so every transport and
+	// volume operation reaches them together.
+	private var vocalTracks:VocalTracks;
 	// use old bf
 	private var oldMode:Bool = false;
 	public var dad:Character;
@@ -124,11 +544,115 @@ class PlayState extends MusicBeatState {
 	var totalPlayed:Int = 0;
 	var totalNotesHitDefault:Float = 0;
 	public var camFollow:FlxObject;
+	// V-Slice camera aliases. The setters/getters intentionally point at the
+	// live gameplay camera and follow target, so reads and writes affect the
+	// same objects used by native camera events.
+	// Donor semantics: FlxG.camera.zoom renders currentCameraZoom * bop every
+	// frame, and the beat decay targets currentCameraZoom itself, so script
+	// tweens of currentCameraZoom change the resting zoom (FocusCamera's
+	// 0.6/0.7 section zooms). Native charts keep defaultCamZoom as the base.
+	public var currentCameraZoom(get, set):Float;
+	var baseCameraZoom:Null<Float> = null;
+	function gameplayZoomBase():Float
+		return baseCameraZoom != null ? baseCameraZoom : defaultCamZoom;
+	function get_currentCameraZoom():Float
+		return gameplayZoomBase();
+	function set_currentCameraZoom(value:Float):Float {
+		baseCameraZoom = value;
+		setGameCameraZoom(value);
+		return value;
+	}
+	public var cameraFollowPoint(get, never):FlxObject;
+	function get_cameraFollowPoint():FlxObject
+		return camFollow;
+	var zoomDebugTimer:Float = 0;
+	// old-format chart events collected from [time, -1, name, v1, v2] notes
+	public var songEvents:Array<Dynamic> = [];
+	// lazy HUD lyric bar / fullscreen jumpscare image for the Lyrics and
+	// Image Flash / Image Appearance built-in event handlers
+	public var lyricTxt:FlxText;
+	// Funkadelix keeps one primary and one secondary lyric line, with the
+	// singing actor in value2.  Retain the actor owners so Clear Lyrics can
+	// clear only the line authored for that character.
+	private var lyricSecondTxt:FlxText;
+	private var lyricPrimaryActor:String = '';
+	private var lyricSecondActor:String = '';
+	public var eventImageSprite:FlxSprite;
+	// whether the current Image Flash overlay is a flat colour (so update can
+	// re-fit it against the camera zoom without reloading)
+	var eventImageIsSolid:Bool = false;
+	// Native HXC event adapters own their temporary visual state here. These
+	// objects are deliberately scoped to the active PlayState and detached on
+	// state teardown so a foreign shader/filter cannot leak into another song.
+	private var hxcVignetteShader:ShaderHandler.CoolRuntimeShader;
+	private var hxcVignetteFilter:ShaderFilter;
+	private var hxcVignetteTween:FlxTween;
+	private var hxcVignetteIntensity:Float = 0;
+	// HXC runtime-shader adapters use opaque string handles so imported HScript
+	// never receives a FlxRuntimeShader, ShaderFilter, camera, or donor object.
+	// Each binding owns only the exact filters it appended and restores camera
+	// filter-enable state when the song ends.
+	private var hxcRuntimeShaderBindings:Map<String, Dynamic> = new Map<String, Dynamic>();
+	private var hxcRuntimeShaderBindingId:Int = 0;
+	// Native owner for the bounded TAKEOVER/V-Slice song-credit banner.  HXC
+	// receives only lifecycle calls and literal metadata; these display objects
+	// never cross the interpreter boundary.
+	private var hxcSongCreditsName:FlxText;
+	private var hxcSongCreditsIcon:FlxSprite;
+	private var hxcSongCreditsArtist:FlxText;
+	private var hxcSongCreditsNameTween:FlxTween;
+	private var hxcSongCreditsIconTween:FlxTween;
+	private var hxcSongCreditsArtistTween:FlxTween;
+	private var hxcSongCreditsTimer:FlxTimer;
+	// One opaque handle per accepted imported note-text module. PlayState owns
+	// its display objects so a failed script callback cannot leak them on retry.
+	private var hxcNoteTextCues:Array<Dynamic> = [];
+	// Objects an intro cutscene created - removed when the cutscene hands off to
+	// the countdown unless the script explicitly uses the handoff API below.
+	// Stage objects are kept in a separate list because a cutscene can inherit
+	// and temporarily re-add one (Chaos's chamber is one example).
+	var stageSprites:Array<FlxBasic> = [];
+	var cutsceneSprites:Array<FlxBasic> = [];
+	// Cutscene overlays can intentionally outlive the intro hand-off. Keep
+	// those separate from disposable cutscene sprites so a script can leave a
+	// letterbox (or another cinematic overlay) up until the first gameplay
+	// event that dismisses it.
+	var cutsceneHandoffSprites:Array<FlxBasic> = [];
+	var cutsceneHandoffReleaseOnOpponentSing:Array<FlxBasic> = [];
+	var cutsceneHandoffReleaseDelays:Array<Float> = [];
+	var cutsceneHandoffOpponentSing:Dynamic = null;
+	var cutsceneHandoffOpponentSingTriggered:Bool = false;
+	// Accepted FPS Plus constructor-only cutscenes run through a data-only native
+	// clock.  These handles stay private to this PlayState and never cross into
+	// an HScript interpreter or donor object graph.
+	var hxcCutsceneTimelineRuntime:HxcCutsceneTimelineRuntime = null;
+	var hxcCutsceneTimelineRoot:String = '';
+	var hxcCutsceneTimelineSprites:Map<String, FlxSprite> = new Map<String, FlxSprite>();
+	var hxcCutsceneTimelineTracks:Map<String, FlxSound> = new Map<String, FlxSound>();
+	var hxcCutsceneTimelineSoundIndex:Int = 0;
+	var hxcCutsceneTimelineDialogue:DialogueBox = null;
+	var hxcCutsceneTimelineOriginalZoom:Null<Float> = null;
+	var hxcCutsceneTimelineForceCamera:Bool = false;
+	// Values present before a stage program executes are engine-owned seeds,
+	// not stage exports. Keep their identities so the post-start scan can pick
+	// up only new variables (or a genuinely replaced value).
+	var stageSeededVariables:Map<String, Dynamic> = [];
+	// A cutscene can call startCountdown() from inside start() and still add
+	// sprites in later statements. Defer the hand-off until that hook returns.
+	var cutsceneStartInProgress:Bool = false;
+	var pendingCutsceneHandoff:Bool = false;
+	public var songEventIndex:Int = 0;
+	// last section that dispatched playerOneTurn/playerTwoTurn - the hooks are
+	// one-shot per turn, not per frame (see update)
+	var lastTurnSection:Int = -1;
 	private var player1Icon:String;
 	private var player2Icon:String;
 	public static var prevCamFollow:FlxObject;
 
 	public static var misses:Int = 0;
+	@:keep public var codenameMisses(get, set):Int;
+	function get_codenameMisses():Int return misses;
+	function set_codenameMisses(value:Int):Int return misses = value;
 	public static var shits:Int = 0;
 	public static var bads:Int = 0;
 	public static var goods:Int = 0;
@@ -142,6 +666,47 @@ class PlayState extends MusicBeatState {
 	public var songPosBG:FlxSprite;
 	public var songPositionBar:Float = 0;
 	public var showRatings:Bool = true;
+	// donor-engine (old ModdingPlus) hscript compat: stage scripts written for
+	// the old engine read/write these on currentPlayState
+	public var judOffsetX:Float = 0;
+	// donor-field compat family (lurking/faznews shift popups; fight-or-flight
+	// and guy/homelesschrome carry their own engine flags through the state)
+	public var judOffsetY:Float = 0;
+	public var iconsVertical:Bool = false;
+	public var isMonochrome:Bool = false;
+	// when a modchart sets this it owns camFollow outright (guy's guyCam):
+	// the automatic per-section follow targeting is suspended
+	public var forceCamera:Bool = false;
+	/** Psych source stages hold an authored camera position during cutscenes. */
+	@:keep public var isCameraOnForcedPos:Bool = false;
+	// old-engine names for the song bar (milk 2.0 moves them); the hscript
+	// variables of the same name map these, this keeps currentPlayState.x working
+	public var timeBarBG:FlxSprite;
+	public var timeBar:FlxText;
+	// V-Slice modules use Psych's `timeTxt` spelling for the same HUD label.
+	// Keep it tied to the native object so visibility/style changes affect the
+	// actual time text rather than a detached compatibility placeholder.
+	public var timeTxt(get, never):FlxText;
+	function get_timeTxt():FlxText
+		return timeBar;
+	// V-Slice checks this while a PlayState is being reconstructed. This engine
+	// never reuses a live PlayState for that transition, so any callback running
+	// on the active instance is necessarily outside a reset window.
+	public var needsReset(get, never):Bool;
+	function get_needsReset():Bool
+		return false;
+	public var iconP1auto:Bool = true;
+	public var iconP2auto:Bool = true;
+	var compatIconP1OffsetX:Float = 0;
+	var compatIconP1OffsetY:Float = 0;
+	var compatIconP2OffsetX:Float = 0;
+	var compatIconP2OffsetY:Float = 0;
+	var compatIconP1AppliedOffsetY:Float = 0;
+	var compatIconP2AppliedOffsetY:Float = 0;
+	// read-only on purpose - scripts only ever read the current crochet
+	public var stepCrochet(get, never):Float;
+	function get_stepCrochet():Float
+		return Conductor.stepCrochet;
 	var songLength:Float = 0.0;
 	var songScoreDef:Int = 0;
 	var nps:Int = 0;
@@ -150,16 +715,227 @@ class PlayState extends MusicBeatState {
 	private var strumLineNotes:FlxTypedGroup<FlxSprite>;
 	private var playerStrums:Strumline;
 	private var enemyStrums:Strumline;
+	var hxcStrumlineNoteSurface:HxcStrumlineNoteSurface;
+	public function hxcStrumlineMembers(line:Strumline, holds:Bool):Array<Dynamic> {
+		if (hxcStrumlineNoteSurface == null || line == null) return [];
+		var player = line == playerStrums;
+		if (!player && line != enemyStrums) return [];
+		return holds ? hxcStrumlineNoteSurface.holdMembers(player)
+			: hxcStrumlineNoteSurface.noteMembers(player, notes == null ? null : notes.members);
+	}
+	/** Swap only the unresolved notes owned by one V-Slice scored line.  A
+	 * source script may choose a variation while music and the other line keep
+	 * running, so rebuilding the whole song would reset unrelated state. */
+	public function hxcApplyStrumlineNoteData(line:Strumline, values:Array<Dynamic>):Void {
+		if (hxcStrumlineNoteSurface == null || notes == null || line == null
+			|| (line != playerStrums && line != enemyStrums)) return;
+		var player = line == playerStrums;
+		var now = Conductor.songPosition;
+		var replacement:Array<Note> = [];
+		if (values != null)
+			for (value in values) {
+				var data = CompatSongNoteData.fromDynamic(value, true, Note.NOTE_AMOUNT);
+				// Source scripts may deliberately pass the opposite chart lane to
+				// this line. The receiver, not the descriptor's old owner, scores it.
+				if (data == null) continue;
+				var strumTime = data.strumTime + OptionsHandler.options.offset;
+				var duration = Math.isFinite(data.length) ? Math.max(0, data.length) : 0;
+				if (strumTime + duration < now - Judge.wayoffJudge) continue;
+				var row:Array<Dynamic> = [data.strumTime, data.data, duration, data.kind];
+				var runtimeData = NoteTypeCompat.nativeNoteData(row, Note.NOTE_AMOUNT, Note.specialNoteJson);
+				var head = new Note(strumTime, runtimeData, null, false, null, null, player);
+				head.mustPress = player;
+				// Imported V-Slice charts encode many kinds in the native note
+				// definition block, without repeating kind in each section row.
+				// Note.new recovers that identity; an empty descriptor must not erase it.
+				if (data.kind != '') head.sourceKind = data.kind;
+				head.sustainLength = duration;
+				head.duoMode = duoMode;
+				head.oppMode = opponentPlayer;
+				head.funnyMode = demoMode;
+				head.scrollFactor.set();
+				if (player) head.x += FlxG.width / 2;
+				head.codenameGeneratedX = head.x;
+				replacement.push(head);
+				var previous = head;
+				var step = Conductor.stepCrochet;
+				var pieces = duration > 0 && Math.isFinite(step) && step > 0
+					? Std.int(Math.ceil((duration - 0.0001) / step)) : 0;
+				for (piece in 0...pieces) {
+					var sustainTime = strumTime + step * (piece + 1);
+					if (sustainTime < now - Judge.wayoffJudge) continue;
+					var sustain = new Note(sustainTime, runtimeData, previous, true, null, null, player);
+					sustain.mustPress = player;
+					if (head.sourceKind != null) sustain.sourceKind = head.sourceKind;
+					sustain.sustainLength = Math.max(0, duration - step * (piece + 1));
+					sustain.duoMode = duoMode;
+					sustain.oppMode = opponentPlayer;
+					sustain.funnyMode = demoMode;
+					sustain.scrollFactor.set();
+					if (player) sustain.x += FlxG.width / 2;
+					sustain.codenameGeneratedX = sustain.x;
+					replacement.push(sustain);
+					previous = sustain;
+				}
+			}
+		for (note in unspawnNotes.copy())
+			if (note != null && note.mustPress == player) {
+				unspawnNotes.remove(note);
+				note.destroy();
+			}
+		for (note in notes.members.copy())
+			if (note != null && note.mustPress == player) {
+				notes.remove(note, false);
+				note.destroy();
+			}
+		if (line.noteHoldCovers != null)
+			for (cover in line.noteHoldCovers.members.copy())
+				if (cover != null) {
+					line.noteHoldCovers.remove(cover, false);
+					cover.destroy();
+				}
+		hxcStrumlineNoteSurface.replaceSide(player, replacement);
+		for (note in replacement) unspawnNotes.push(note);
+		unspawnNotes.sort(sortByShit);
+		RuntimeSmokeHarness.markHxcNoteDataSwap(player, replacement);
+	}
+	/** V-Slice/HXC aliases for the native player/opponent strumline groups. */
+	public var playerStrumline(get, never):Strumline;
+	function get_playerStrumline():Strumline return playerStrums;
+	public var opponentStrumline(get, never):Strumline;
+	function get_opponentStrumline():Strumline return enemyStrums;
+	/**
+		V-Slice exposes the active note style through PlayState. Keep this a small
+		read-only descriptor tied to the live native player receptors; HXC callers
+		can pass it to the isolated ExtraStrumlineAdapter without receiving a donor
+		NoteStyle object.
+	*/
+	public var noteStyle(get, never):Dynamic;
+	function get_noteStyle():Dynamic {
+		if (playerStrums != null && playerStrums.noteStyle != null)
+			return playerStrums.noteStyle;
+		return {id: SONG == null || SONG.uiType == null ? 'normal' : SONG.uiType};
+	}
+
+	/**
+		Bounded native route for HXC's assignable player/opponent strumline views.
+		The imported `new Strumline(...)` is an ExtraStrumlineAdapter constructor,
+		so it must never replace these groups: doing that would detach native note
+		ownership and score processing. Rebuild only the existing receptor graphics.
+	*/
+	public function hxcConfigureNativeStrumline(side:String, style:Dynamic,
+		botplay:Bool, foreignScrollSpeed:Dynamic):Bool {
+		var normalized = side == null ? '' : side.toLowerCase();
+		var line = normalized == 'player' ? playerStrums : normalized == 'opponent' ? enemyStrums : null;
+		if (line == null)
+			return false;
+		var styleId = '';
+		if (style != null) {
+			if (Std.isOfType(style, String))
+				styleId = Std.string(style);
+			else {
+				var id = Reflect.field(style, 'id');
+				if (id != null)
+					styleId = Std.string(id);
+			}
+		}
+		if (styleId == null || StringTools.trim(styleId) == '')
+			styleId = line.type == null || line.type == '' ? 'normal' : line.type;
+		styleId = StringTools.trim(styleId);
+		try {
+			line.revive();
+			line.exists = true;
+			line.active = true;
+			line.visible = true;
+			var styleData:Dynamic = Reflect.field(Judgement.uiJson, styleId);
+			if (styleData != null)
+				line.changeType(styleId, false);
+		} catch (_:Dynamic) {
+			return false;
+		}
+		return true;
+	}
+
+	/** Restore native group liveness after HXC's replacement sequence. */
+	public function hxcRefreshNativeStrumlines():Bool {
+		if (playerStrums == null || enemyStrums == null)
+			return false;
+		for (line in [playerStrums, enemyStrums]) {
+			if (line == null)
+				continue;
+			line.revive();
+			line.exists = true;
+			line.active = true;
+			line.visible = true;
+		}
+		return true;
+	}
+	// black veil behind the player's arrows (Highway Dim setting)
+	private var highwayDimSprite:FlxSprite;
 	private var playerComboBreak:FlxTypedGroup<FlxSprite>;
 	private var enemyComboBreak:FlxTypedGroup<FlxSprite>;
+	// Recycled character afterimages used by Modding Plus/Denpa crossfade
+	// sections. They live immediately behind their owning character so normal
+	// stage/modchart layering remains intact.
+	private var gfCrossFades:FlxTypedGroup<CrossFade>;
+	private var dadCrossFades:FlxTypedGroup<CrossFade>;
+	private var boyfriendCrossFades:FlxTypedGroup<CrossFade>;
 	public var shitBreakColor:FlxColor = 0xFF175DB3;
 	public var wayoffBreakColor:FlxColor = 0xFFAF0000;
 	public var missBreakColor:FlxColor = 0xFFDD0A93;
 	
 	public var camZoomRate:Int = 4;
+	public var cameraZoomRate(get, set):Int;
+	function get_cameraZoomRate():Int
+		return camZoomRate;
+	function set_cameraZoomRate(value:Int):Int {
+		camZoomRate = value;
+		return value;
+	}
 	public var camZoomIntensity:Float = 1;
+	// TAKEOVER's AddCamZoomPsych event uses this donor spelling for the same
+	// multiplier that native beat camera bops call camZoomIntensity. Expose a
+	// live property alias so routed HXC/Psych code changes the real multiplier
+	// instead of creating a detached script variable.
+	public var cameraBopMultiplier(get, set):Float;
+	function get_cameraBopMultiplier():Float
+		return camZoomIntensity;
+	function set_cameraBopMultiplier(value:Float):Float {
+		camZoomIntensity = value;
+		return value;
+	}
+	// psych 'Set Property: camZoomingDecay' - 1 = stock 0.95 lerp speed
+	public var camZoomDecay:Float = 1;
 	private var camZooming:Bool = false;
+	// PERFEXION's Cam Boom Speed custom event changes the beat cadence and
+	// intensity of the ordinary Add Camera Zoom pulse. Zero is its authored
+	// disabled form (the donor Lua modulo would otherwise divide by zero).
+	private var camBoomSpeed:Int = 0;
+	private var camBoomIntensity:Float = 1;
+	// A few imported charts use paired, large Add Camera Zoom values as
+	// authored camera targets during a note-less intro (Locked's 0.5..0.9
+	// sequence).  The normal Psych event remains additive; this flag is only
+	// enabled after the chart proves it has that legacy intro shape.
+	private var cameraZoomIntroTargets:Bool = false;
+	// A target event is sustained until the next camera event/script takes
+	// ownership. Keep both components because the world camera and HUD camera
+	// can be rebound independently by imported scripts.
+	private var cameraZoomIntroGameTarget:Null<Float> = null;
+	private var cameraZoomIntroHudTarget:Null<Float> = null;
+	// Runtime-smoke camera probes are one-shot so accelerated songs produce a
+	// small, deterministic log instead of one camera row per section/event.
+	private var smokeFirstBfFocusCaptured:Bool = false;
+	private var smokeFirstZoomEventCaptured:Bool = false;
+	private var smokeFirstZoomEventTime:Float = -1;
 	private var scriptableCamera:String = 'false';
+	/** True while the V-Slice FocusCamera adapter owns the follow point, so the
+	 * follow glide uses the donor's DEFAULT_CAMERA_FOLLOW_RATE (0.04) instead
+	 * of the classic section-follow rate. */
+	var focusCameraDrivesFollow:Bool = false;
+	// V-Slice starts on the opponent's final stage camera point and keeps the
+	// follow point until a song event or script moves it. Chart section ownership
+	// controls notes, not this donor camera.
+	var vSliceCameraHoldsFocus:Bool = false;
 	// scriptCamPos[0] for bf, scriptCamPos[1] for dad
 	var scriptCamPos:Array<Array<Float>> = [[0, 0], [0, 0]];
 	private var curSong:String = "";
@@ -168,14 +944,217 @@ class PlayState extends MusicBeatState {
 
 	public static var universalVar:Map<String, Dynamic>;
 
+	// cross-state sprite registry for hscripts (getGlobalSprite/setGlobalSprite)
+	public static var globalSprites:Map<String, FlxSprite> = [];
+	// decoded-Sound cache for hscript soundPlaySafe: the fork's FlxG.sound
+	// play path decodes via Sound.fromFile with NO cache, and ported modcharts
+	// like faker's call it ~60x/sec in their burst windows - hundreds of
+	// native ogg decodes mid-song ended in a SIGSEGV. The old engine used
+	// openfl's manifest Assets.getSound which caches by path, so decode once
+	// per path and hand out the Sound object.
+	public static var hscriptSoundCache:Map<String, Sound> = [];
+	// last start time per path, for the repeat throttle below
+	public static var hscriptSoundLastPlay:Map<String, Float> = [];
+	// ONE persistent FlxSound per path - play() semantics create an autoDestroy
+	// FlxSound per call and the accumulating corpses (each pinning native audio
+	// until GC) segfaulted the mixer after a few bursts (faker's static storm)
+	public static var hscriptFlxSounds:Map<String, FlxSound> = [];
+	public static var hscriptFlxSoundLooped:Map<String, Bool> = [];
+	/** Native endpoints for the unqualified Stage/HXC role accessors. */
+	public function getDad():Character {
+		return dad;
+	}
+
+	public function getBoyfriend():Character {
+		return boyfriend;
+	}
+
+	public function getGirlfriend():Character {
+		return gf;
+	}
+
+	public function getOpponent():Character {
+		return dad;
+	}
+
+	public function getNamedProp(name:String):Dynamic {
+		return curStage == null ? null : curStage.getNamedProp(name);
+	}
+
+	/**
+	 * Convert a legacy per-frame script amount into a per-second amount.
+	 * HScript update hooks run once per rendered frame, so values such as
+	 * `alpha += 0.007` otherwise change with the user's FPS cap.  Ported
+	 * scripts can multiply their old 60 FPS increment by this helper.
+	 */
+	public static function frameRateScale(elapsed:Float):Float {
+		return Math.max(0, elapsed * 60);
+	}
+	public static function characterAnimationName(character:Character):String {
+		return Character.animationName(character);
+	}
+
+	public static function hscriptSoundNeedsRebuild(flxsnd:FlxSound, wasLooped:Bool, looped:Bool):Bool {
+		// FlxG.sound.destroy()/state cleanup can destroy a cached FlxSound
+		// without removing our static reference. Its SoundTransform is then
+		// null, so the next volume write segfaults in native OpenFL.
+		return flxsnd == null || !flxsnd.exists || wasLooped != looped;
+	}
+
+	public static function resolveHscriptSoundPath(path:String):String {
+		if (path == null)
+			return null;
+		var candidates = path.indexOf('.') > path.lastIndexOf('/')
+			? [path] : [path + '.ogg', path + '.wav', path + '.mp3', path];
+		for (candidate in candidates)
+			if (FNFAssets.exists(candidate))
+				return candidate;
+		return null;
+	}
+	/** Decode an HScript sound before a timed cue needs it. */
+	public static function preloadHscriptSound(path:Dynamic):Bool {
+		if (!(path is String))
+			return false;
+		var resolved = resolveHscriptSoundPath(cast path);
+		if (resolved == null) {
+			trace('preloadSound: missing ' + path + ' (skipped)');
+			return false;
+		}
+		if (hscriptSoundCache.get(resolved) == null) {
+			try {
+				hscriptSoundCache.set(resolved, Sound.fromFile(resolved));
+			} catch (e:Dynamic) {
+				trace('preloadSound: failed ' + resolved + ': ' + e);
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Release per-song HScript audio after its callbacks can no longer run. */
+	public static function clearHscriptSoundCache():Void {
+		for (sound in hscriptFlxSounds)
+			if (sound != null && sound.exists)
+				sound.destroy();
+		hscriptFlxSounds.clear();
+		hscriptFlxSoundLooped.clear();
+		hscriptSoundCache.clear();
+		hscriptSoundLastPlay.clear();
+	}
+
+	public static function hscriptSafePlay(path:Dynamic, ?volume:Float = 1, ?looped:Bool = false):FlxSound {
+		if ((path is String)) {
+			var p:String = path;
+			var resolved:String = resolveHscriptSoundPath(p);
+			if (resolved == null) {
+				trace('soundPlaySafe: missing ' + p + ' (skipped)');
+				return null;
+			}
+			// some ported modcharts play the same sound from update() every
+			// frame (faker's static burst) - collapse repeats inside 50ms;
+			// genuine fast SFX (>=15/sec note ticks) pass.
+			var now = Sys.time();
+			var last = hscriptSoundLastPlay.get(resolved);
+			if (last != null && now - last < 0.05)
+				return null;
+			hscriptSoundLastPlay.set(resolved, now);
+			// decode once, then reuse ONE FlxSound per path for the song: restart it
+			// on repeat instead of piling up new channels/corpses
+			var flxsnd = hscriptFlxSounds.get(resolved);
+			var wasLooped = hscriptFlxSoundLooped.get(resolved) == true;
+			if (hscriptSoundNeedsRebuild(flxsnd, wasLooped, looped)) {
+				var snd = hscriptSoundCache.get(resolved);
+				if (snd == null && !preloadHscriptSound(resolved))
+					return null;
+				snd = hscriptSoundCache.get(resolved);
+				flxsnd = new FlxSound().loadEmbedded(snd, looped, false);
+				FlxG.sound.list.add(flxsnd);
+				hscriptFlxSounds.set(resolved, flxsnd);
+				hscriptFlxSoundLooped.set(resolved, looped);
+			}
+			flxsnd.volume = volume;
+			flxsnd.play(true);
+			return flxsnd;
+		}
+		return FlxG.sound.play(path, volume, looped);
+	}
+
 	public var gfSpeed:Int = 1;
 	public var health(default, set):Float = 1;
 	private var combo:Int = 0;
 	public static var daScrollSpeed:Float = 1;
+	/** Codename's live per-song speed field; native gameplay stores it here. */
+	public var scrollSpeed(get, set):Float;
+	function get_scrollSpeed():Float return daScrollSpeed;
+	function set_scrollSpeed(value:Float):Float {
+		daScrollSpeed = value;
+		return value;
+	}
+	// Chart converters often subtract two beat-aligned timestamps and leave a
+	// tiny IEEE-754 remainder where the source chart meant a tap (the imported
+	// library contains values around 1e-13ms). Some older chart formats also
+	// write exactly one step for a tap. Modding Plus treats that one-piece
+	// sentinel as a tap, so normalize it at the chart boundary too; otherwise
+	// the head keeps a hold duration even when no sustain piece is generated.
+	public static inline var SUSTAIN_LENGTH_EPSILON:Float = 0.000001;
+	public static inline var SUSTAIN_STEP_EPSILON:Float = 0.000001;
+	public static function normalizeSustainLength(value:Dynamic, stepCrochet:Float = 0):Float {
+		if (value == null)
+			return 0;
+		var length:Float;
+		if (Std.isOfType(value, String))
+			length = Std.parseFloat(StringTools.trim(cast value));
+		else if (Std.isOfType(value, Float) || Std.isOfType(value, Int))
+			length = cast value;
+		else
+			return 0;
+		if (!Math.isFinite(length) || length <= SUSTAIN_LENGTH_EPSILON)
+			return 0;
+		// A single sustain piece is a legacy tap sentinel in the donor engine.
+		// Use a step-relative epsilon so a harmless serialized rounding tail does
+		// not turn the sentinel back into a tiny visual hold.
+		if (Math.isFinite(stepCrochet) && stepCrochet > 0
+			&& length / stepCrochet <= 1 + SUSTAIN_STEP_EPSILON)
+			return 0;
+		return length;
+	}
+	/**
+	 * Convert a hold duration into rendered sustain pieces using the donor
+	 * engine's compatibility rule.  Its historical `floor(steps) + 2` loop,
+	 * guarded by `steps > index`, emits ceil(steps) pieces for every positive
+	 * non-integer hold.  The old port changed that to `floor(steps)`, leaving a
+	 * 1.25-step hold with only its unscaled end cap instead of a visible stem.
+	 * Near-integer values are rounded first so a one-ULP chart remainder cannot
+	 * create a hold or lose a final piece.  The tolerance is expressed in
+	 * steps, so it remains stable across BPMs. A value up to one step is the
+	 * donor's legacy tap sentinel and therefore produces no sustain pieces.
+	 */
+	public static function sustainStepCount(value:Dynamic, stepCrochet:Float):Int {
+		var length = normalizeSustainLength(value, stepCrochet);
+		if (length == 0 || !Math.isFinite(stepCrochet) || stepCrochet <= 0)
+			return 0;
+		var steps = length / stepCrochet;
+		var nearest = Math.round(steps);
+		if (Math.abs(steps - nearest) <= SUSTAIN_STEP_EPSILON)
+			return Std.int(nearest);
+		return Std.int(Math.ceil(steps));
+	}
+	// Keep chart/tween speed intact; only note rendering uses the fixed target.
+	public static var dynamicScrollTarget(default, null):Float = 0;
+	public static var effectiveScrollSpeed(get, never):Float;
+	static function get_effectiveScrollSpeed():Float {
+		return dynamicScrollTarget > 0 ? dynamicScrollTarget : daScrollSpeed;
+	}
+	var noteSpawnLookahead:Float = 1500;
+	static function scrollSpawnLookahead(target:Float):Float {
+		return target > 0 ? 1500 / Math.min(1, target) : 1500;
+	}
 	public static var duoMode:Bool = false;
 	public static var soloMode:Bool = false;
 	public var healthBarBG:FlxSprite;
 	public var healthBar:FlxBar;
+	private var compatHealthBarLeft:Null<Int> = null;
+	private var compatHealthBarRight:Null<Int> = null;
 	private var barShowingPoison:Bool = false;
 	private var pixelUI:Bool = false;
 	#if (windows && cpp)
@@ -187,19 +1166,72 @@ class PlayState extends MusicBeatState {
 	#end
 	private var generatedMusic:Bool = false;
 	private var startingSong:Bool = false;
+	/** V-Slice's requested playtest/start offset, in milliseconds. This stays
+	 * fixed for this PlayState even after the one-shot launch value is consumed. */
+	@:keep public var startTimestamp:Float = 0.0;
 	public static var startingPosition:Float = 0;
 	public static var startPosSong = 'none';
+	static function consumeStartingPosition():Float {
+		var requested = startingPosition;
+		startingPosition = 0;
+		return Math.isFinite(requested) ? requested : 0;
+	}
 	public var iconP1:HealthIcon;
 	public var iconP2:HealthIcon;
+	public var iconArray:Array<HealthIcon> = [];
+	public var comboBreaks:Bool = true;
 	public var camHUD:FlxCamera;
-	private var camGame:FlxCamera;
+	/** Psych's camOther is a distinct transparent overlay camera above camHUD. */
+	public var camOther:FlxCamera;
+	// Keep the gameplay camera as a stable state-owned reference.  Flixel's
+	// global camera can be rebound by imported UI/modchart scripts (and some
+	// old scripts call FlxG.cameras.add() without the modern default-target
+	// flag).  World sprites must still use this camera when that happens.
+	public var camGame:CompatCamera;
 
 	public var doof:DialogueBox;
 
 	var talking:Bool = true;
 	var songScore:Int = 0;
 	var trueScore:Int = 0;
+	/** Donor accuracy bookkeeping for selected Codename note lines. */
+	public var accuracyPressedNotes:Float = 0;
+	public var totalAccuracyAmount:Float = 0;
+	@:keep public var codenameAccuracy(get, set):Float;
+	function get_codenameAccuracy():Float {
+		if (accuracyPressedNotes <= 0) return -1;
+		return totalAccuracyAmount / accuracyPressedNotes;
+	}
+	function set_codenameAccuracy(value:Float):Float {
+		if (accuracyPressedNotes <= 0) accuracyPressedNotes = 1;
+		totalAccuracyAmount = value * accuracyPressedNotes;
+		syncCodenameAccuracyHud();
+		return totalAccuracyAmount;
+	}
+	public var comboRatings:Array<CodenameComboRating> = [
+		new CodenameComboRating(0, 'F', 0xFFFF4444),
+		new CodenameComboRating(0.5, 'E', 0xFFFF8844),
+		new CodenameComboRating(0.7, 'D', 0xFFFFAA44),
+		new CodenameComboRating(0.8, 'C', 0xFFFFFF44),
+		new CodenameComboRating(0.85, 'B', 0xFFAAFF44),
+		new CodenameComboRating(0.9, 'A', 0xFF88FF44),
+		new CodenameComboRating(0.95, 'S', 0xFF44FFFF),
+		new CodenameComboRating(1, 'S++', 0xFF44FFFF)
+	];
+	public var curRating:CodenameComboRating = null;
+	/** Per-song Codename timing and rating rules, replaceable by imported scripts. */
+	@:keep public var ratingManager:CodenameRatingManager = new CodenameRatingManager();
+	var codenameRatingEnabled:Bool = false;
+	var codenameRatingFormat:flixel.text.FlxTextFormat = null;
+	var codenameRatingFormatColor:Null<Int> = null;
+	public var ratingNum:Int = 0;
+	public var defaultDisplayRating:Bool = true;
+	public var defaultDisplayCombo:Bool = false;
+	public var minDigitDisplay:Int = 10;
+	public var muteVocalsOnMiss:Bool = true;
+	public var comboGroup:CodenameNotePresentation = null;
 	var scoreTxt:FlxText;
+	var missesTxt:FlxText;
 	var healthTxt:FlxText;
 	var accuracyTxt:FlxText;
 	var difficTxt:FlxText;
@@ -211,8 +1243,195 @@ class PlayState extends MusicBeatState {
 	public static var campaignAccuracy:Float = 0;
 
 	public var defaultCamZoom:Float = 1.05;
-	public var camSpeed:Float = 0.08;
+	/** Codename has a separate resting zoom for the HUD camera. */
+	public var defaultHudZoom:Float = 1;
+	/** V-Slice's name for the same mutable resting HUD zoom. */
+	@:keep public var defaultHUDCameraZoom(get, set):Float;
+	function get_defaultHUDCameraZoom():Float return defaultHudZoom;
+	function set_defaultHUDCameraZoom(value:Float):Float return defaultHudZoom = value;
+	// Script-facing camera speed. Ported content writes this as a multiplier
+	// where 1 means "normal": officeourple's stage uses 1000 to cut the camera
+	// to place during the countdown and then puts 1 back, and psych "Set
+	// Property: cameraSpeed" events use 0.75-4. Flixel's follow lerp treats 1
+	// as NO easing at all, so feeding the value straight in cut Golden's
+	// camera to every sing offset. Scale it off the engine's own smoothing
+	// instead.
+	public var camSpeed:Float = 1;
+	/** Psych source stages write cameraSpeed directly during cutscenes. */
+	@:keep public var cameraSpeed(get, set):Float;
+	function get_cameraSpeed():Float return camSpeed;
+	function set_cameraSpeed(value:Float):Float return camSpeed = value;
+	static inline var CAMERA_LERP_NORMAL:Float = 0.08;
+	// Donor (v0.8.2) Constants.DEFAULT_CAMERA_FOLLOW_RATE: the glide rate the
+	// FocusCamera adapter must reproduce for imported charts.
+	static inline var DONOR_CAMERA_FOLLOW_RATE:Float = 0.04;
+
+	// camSpeed -> flixel follow lerp: 1 = the engine's normal lag, big values
+	// converge on "no easing" (the countdown snap officeourple asks for),
+	// fractions ease slower than normal, 0 locks the camera in place.
+	function camFollowLerp():Float
+	{
+		if (camSpeed <= 0)
+			return 0;
+		// Donor's FocusCamera path glides at Constants.DEFAULT_CAMERA_FOLLOW_RATE
+		// (0.04); the classic section-follow keeps the fork's 0.08 feel.
+		var base = focusCameraDrivesFollow ? DONOR_CAMERA_FOLLOW_RATE : CAMERA_LERP_NORMAL;
+		return 1 - Math.pow(1 - base, camSpeed);
+	}
+
+	public static function cameraNoteOffset(defaultZoom:Float):Float
+	{
+		// Note-camera offsets are world coordinates, so zooms above 1 enlarge
+		// them on screen. Keep the stock 25px apparent movement at high zoom.
+		return 25 / Math.max(1, defaultZoom);
+	}
+
+	public static function legacyStageZoom(stageZoom:Float, multiplier:Float):Float
+	{
+		return stageZoom * multiplier;
+	}
+
+	/**
+	 * A tweened legacy zoom owns the live camera until it completes.  Keep the
+	 * prior resting zoom during that transition so Psych's per-frame camera
+	 * decay does not race the tween toward its destination.
+	 */
+	public static function legacyCameraZoomDefaultOnStart(currentDefault:Float, targetZoom:Float,
+		durationSeconds:Float):Float
+	{
+		return durationSeconds > 0 ? currentDefault : targetZoom;
+	}
+
+	/**
+	 * Resolve a script camera zoom without losing the stage's base zoom.
+	 *
+	 * Newer FNF camera events treat a stage zoom as the baseline and their
+	 * zoom value as a multiplier.  Older imported cutscenes instead wrote an
+	 * absolute value directly to FlxG.camera (Chaos asks for 1.5 while its
+	 * chamber baseline is 0.7), which makes the same cinematic much stronger
+	 * on a zoomed-out stage.  Keep direct events intact and make the relative
+	 * form explicit for scripts that came from the newer event format.
+	 */
+	public static function cameraZoomTarget(stageZoom:Float, zoom:Float, mode:String = 'direct'):Float
+	{
+		var normalizedMode = mode == null ? 'direct' : StringTools.trim(mode).toLowerCase();
+		return switch (normalizedMode) {
+			case 'stage' | 'relative' | 'stage-relative':
+				legacyStageZoom(stageZoom, zoom);
+			default:
+				zoom;
+		};
+	}
+
+	/**
+	 * Camera chart events historically express duration in steps, while
+	 * cinematic HScript tweens use seconds (the FlxTween convention).  Keep
+	 * both units explicit so a cutscene can opt into seconds without silently
+	 * turning a three-second zoom into three steps at a fast BPM.
+	 */
+	public static function cameraZoomDuration(durationSeconds:Null<Float>, durationMilliseconds:Float):Float
+	{
+		return durationSeconds != null ? durationSeconds : durationMilliseconds / 1000;
+	}
+
+	/**
+	 * Returns whether a script already supplied the camera zoom for this beat.
+	 * A number of imported Modding Plus charts implement their own beat bump
+	 * (`camGame.zoom += ...`) while the base PlayState also applies its normal
+	 * bump.  Let the script win that beat instead of applying the same bump a
+	 * second time.  The epsilon avoids treating harmless float roundoff as an
+	 * explicit script zoom.
+	 */
+	public static function cameraZoomChanged(gameBefore:Float, hudBefore:Float, gameAfter:Float, hudAfter:Float):Bool
+	{
+		return Math.abs(gameAfter - gameBefore) > 0.000001 || Math.abs(hudAfter - hudBefore) > 0.000001;
+	}
+
+	/**
+	 * Paired large values are the legacy absolute-target spelling.  Normal
+	 * Psych Add Camera Zoom pulses are small and/or use the documented camera
+	 * and HUD split (0.015/0.03, 0.06/0.03, ...), so they stay additive.
+	 */
+	public static function cameraZoomEventIsAbsolute(cameraZoom:Float, hudZoom:Float):Bool
+	{
+		return cameraZoom >= 0.3 && cameraZoom <= 2 && Math.abs(cameraZoom - hudZoom) < 0.000001;
+	}
+
+	/**
+	 * Opt into absolute Add Camera Zoom values only for a genuine intro
+	 * sequence: it starts at time zero, has more than one target before the
+	 * first note, and its first target is the stage baseline.  This avoids
+	 * reinterpreting isolated .5/.5 additive pulses (for example cold-flow).
+	 */
+	public static function cameraZoomIntroUsesTargets(firstAddTime:Float, firstNoteTime:Float,
+		firstCameraZoom:Float, firstHudZoom:Float, introTargetCount:Int, stageZoom:Float):Bool
+	{
+		return introTargetCount >= 2 && firstAddTime >= -0.000001 && firstAddTime <= 0.000001
+			&& firstAddTime < firstNoteTime - 0.000001
+			&& cameraZoomEventIsAbsolute(firstCameraZoom, firstHudZoom)
+			&& Math.abs(firstCameraZoom - stageZoom) < 0.000001;
+	}
+
+	/** Resolve one Add Camera Zoom component without changing stock additive pulses. */
+	public static function cameraZoomEventValue(currentZoom:Float, authoredZoom:Float,
+		pairedZoom:Float, useAbsoluteTarget:Bool):Float
+	{
+		return useAbsoluteTarget && cameraZoomEventIsAbsolute(authoredZoom, pairedZoom)
+			? authoredZoom
+			: currentZoom + authoredZoom;
+	}
+
+	/**
+	 * Resolve the game and HUD components together.
+	 *
+	 * The old Modding Plus export used paired large values (for example
+	 * `0.5,0.5`, `0.6,0.6`) as absolute gameplay-camera targets.  The second
+	 * value is a copied camera target, not a request to zoom the HUD.  Keeping
+	 * the HUD's current zoom in that compatibility form is important: pause
+	 * menus and every HUD sprite are drawn through camHUD, so applying Locked's
+	 * `0.5` there makes the whole interface render inside a shrunken central
+	 * viewport.  Ordinary small Psych pulses still add their separate HUD
+	 * amount as before.
+	 */
+	public static function cameraZoomEventTargets(gameZoom:Float, hudZoom:Float,
+		authoredGameZoom:Float, authoredHudZoom:Float, useAbsoluteTarget:Bool):Array<Float>
+	{
+		return [
+			cameraZoomEventValue(gameZoom, authoredGameZoom, authoredHudZoom, useAbsoluteTarget),
+			useAbsoluteTarget && cameraZoomEventIsAbsolute(authoredGameZoom, authoredHudZoom)
+				? hudZoom
+				: cameraZoomEventValue(hudZoom, authoredHudZoom, authoredGameZoom, useAbsoluteTarget)
+		];
+	}
+
+	/** Reapply a held target after Flixel's per-frame camera work runs. */
+	public static function cameraZoomHoldValue(currentZoom:Float, heldTarget:Null<Float>):Float
+	{
+		return heldTarget == null ? currentZoom : heldTarget;
+	}
+
+	/** Select the initial Psych section's focus actor using the same priority as
+	 * the live section-follow path. Camera targets are independent of zoom. */
+	public static function psychInitialCameraTarget(mustHitSection:Bool, gfSection:Bool, gfSinging:Bool,
+		boyfriendTarget:Array<Float>, dadTarget:Array<Float>, girlfriendTarget:Array<Float>):Array<Float>
+	{
+		if (mustHitSection && boyfriendTarget != null)
+			return boyfriendTarget;
+		if ((gfSinging || gfSection) && girlfriendTarget != null)
+			return girlfriendTarget;
+		return dadTarget;
+	}
+
+	/** A disabled flashing-lights setting suppresses only the visual callback
+	 * owned by Psych's generic Flash custom event. */
+	public static function psychFlashCallbackSuppressed(flashingLights:Bool,
+		isFlashEventScript:Bool, eventName:String):Bool
+	{
+		return !flashingLights && isFlashEventScript && eventName != null
+			&& StringTools.trim(eventName).toLowerCase() == 'flash';
+	}
 	public var disableScoreChange:Bool = false;
+	@:keep public var iconOverride:Bool = false;
 	var grpNoteSplashes:FlxTypedGroup<NoteSplash>;
 
 	public static var daPixelZoom:Float = 6;
@@ -223,19 +1442,92 @@ class PlayState extends MusicBeatState {
 	var gfoffset = [0.0, 0.0];
 	var dadoffset = [0.0, 0.0];
 	var swapOffsets = [770.0, 450.0, 400.0, 130.0, 100.0, 100.0];
+	/** Active Psych stage owner for character.position composition. */
+	var psychStageCharacterRoot:String = null;
+	var psychStageLibrary:String = null;
+	var psychStageStartCallback:Dynamic = null;
+	var psychStageEndCallback:Dynamic = null;
+	var psychStageCutsceneEnding:Bool = false;
+	#if cpp
+	/** Active stage-owned Psych video, exposed for source finish/skip callbacks. */
+	@:keep public var videoCutscene:VideoCutscene = null;
+	#end
+	/** Selected Psych namespace owns the camera convention for this PlayState,
+	 * even when the song has no Psych stage JSON to load. */
+	var psychCameraCompatibilityActive:Bool = false;
+	var swapOffsetsBeforePsychStage:Array<Float> = null;
+	/** Psych stage camera offsets are kept separate from Character.followCam so
+	 * stage swaps and repeated imports cannot accumulate authored offsets. */
+	var psychStageCameraBoyfriend:Array<Float> = [0, 0];
+	var psychStageCameraOpponent:Array<Float> = [0, 0];
+	var psychStageCameraGirlfriend:Array<Float> = [0, 0];
 	public var dadCamOffset = [0, 0];
 	public var bfCamOffset = [-100, -100];
-	var dadcam = [0, 0];
-	var bfcam = [0, 0];
+	var dadcam:Array<Float> = [0, 0];
+	var bfcam:Array<Float> = [0, 0];
 	var skipCountdown:Bool = false;
 	var inCutscene:Bool = false;
+	// V-Slice stage scripts access PlayState.instance.isInCountdown during the
+	// countdown lifecycle. Keep that donor name on the native song-start state,
+	// which stays true until startSong() hands off to gameplay.
+	public var isInCountdown(get, set):Bool;
+	function get_isInCountdown():Bool
+		return startingSong;
+	function set_isInCountdown(value:Bool):Bool {
+		startingSong = value;
+		return value;
+	}
+	// V-Slice exposes the cutscene gate to donor scripts under this spelling;
+	// imported song scripts write it before their intro cutscene and clear it
+	// when they hand the countdown back. The flag is
+	// script-owned storage, kept separate from the native cutscene hand-off
+	// flag: the native countdown consumes and clears `inCutscene` on entry,
+	// which would otherwise wipe the script's gate before its own re-entry
+	// check and replay the cutscene forever. Reads union both so a donor gate
+	// sees a cutscene during native ones too.
+	var hxcScriptInCutscene:Bool = false;
+	public var isInCutscene(get, set):Bool;
+	function get_isInCutscene():Bool
+		return inCutscene || hxcScriptInCutscene;
+	function set_isInCutscene(value:Bool):Bool {
+		hxcScriptInCutscene = value == true;
+		return value;
+	}
+	// Event-owned videos are distinct from intro cutscenes: the chart keeps
+	// running, while optional HUD/control gates are restored when playback ends.
+	var compatEventVideoControlsDisabled:Bool = false;
+	var compatEventVideoHudFaded:Bool = false;
+	var compatEventVideoHudAlpha:Float = 1;
+	var compatEventVideoHudFadeDuration:Float = 0;
+	var compatEventVideoResync:Bool = false;
+	var compatEventVideoEventTime:Float = 0;
+	#if cpp
+	var compatEventVideo:VideoCutscene;
+	#end
+	/** Generic native owners created by structurally recognized HXC video modules. */
+	var hxcVideoModuleHosts:Array<HxcVideoModuleHost> = [];
+	public var hxcVideoControlsDisabled(get, never):Bool;
+	function get_hxcVideoControlsDisabled():Bool {
+		for (host in hxcVideoModuleHosts)
+			if (host != null && host.blocksControls())
+				return true;
+		return false;
+	}
 	public static var watchedCutscene = false;
 	var alwaysDoCutscenes = false;
 	var fullComboMode:Bool = false;
 	var perfectMode:Bool = false;
-	var practiceMode:Bool = false;
+	/** Whether the current play session is in practice mode.
+		This is read by native compatibility overlays (for example the pause
+		adapter), so expose the state through the engine-owned PlayState rather
+		than making overlays reach into a private implementation detail. */
+	public var practiceMode:Bool = false;
 	public static var healthLossMultiplier:Float = 1;
 	public static var healthGainMultiplier:Float = 1;
+	static function resetSongHealthMultipliers() {
+		healthLossMultiplier = 1;
+		healthGainMultiplier = 1;
+	}
 	var poisonExr:Bool = false;
 	var poisonPlus:Bool = false;
 	var beingPoisioned:Bool = false;
@@ -260,6 +1552,9 @@ class PlayState extends MusicBeatState {
 	var inALoop:Bool = false;
 	var useVictoryScreen:Bool = true;
 	var demoMode:Bool = false;
+	var demoPlaybackRate:Float = 1;
+	var demoSongFinished:Bool = false;
+	var demoSpeedTxt:FlxText;
 	var downscroll:Bool = false;
 	var midscroll:Bool = false;
 	var modernSustain:Bool = false;
@@ -274,36 +1569,759 @@ class PlayState extends MusicBeatState {
 
 	public static var opponentPlayer:Bool = false;
 
-	//Auto update note x pos to be under their correct strumline pos. 
+	//Auto update note x pos to be under their correct strumline pos.
 	public var snapToStrumline:Bool = true;
 	// this is just so i can collapse it lol
 	#if true
 	var hscriptStates:Map<String, Interp> = [];
+	// HXC lifecycle callbacks receive mutable ScriptEvent-like payload objects.
+	// Keep this marker separate from the interpreter itself so ordinary HScript
+	// and Psych callbacks retain their historical primitive ABI.
+	var hxcPayloadStates:Map<String, Bool> = [];
+	/** Literal NoteKind id owned by each imported note interpreter. */
+	var hxcNoteKindScopes:Map<String, String> = [];
+	// One foreign file gets one interpreter. Keep path identity separately from
+	// the interpreter key so Psych's multi-script layout can coexist with the
+	// native stage/modchart slots without running the selected modchart twice.
+	var loadedCompatScriptPaths:Map<String, Bool> = [];
+	// A Lua path can have multiple live scopes when addLuaScript explicitly
+	// permits a duplicate. Keep their identities for Psych's removeLuaScript.
+	var compatScriptScopes:Map<String, Array<{scope:String, interp:Interp, path:String}>> = [];
+	var loadingPsychLuaScriptPaths:Map<String, Bool> = [];
+	var defaultPsychGlobalScriptsLoaded:Bool = false;
+	var defaultPsychGlobalScopes:Array<String> = [];
+	var psychGlobalProviderSpriteMarked:Bool = false;
+	/** First sprite created by the configured global Psych provider, retained only
+	 * as a smoke diagnostic identity for tracing its native lifecycle. */
+	var psychGlobalProviderFirstSprite:FlxSprite = null;
+	var psychGlobalProviderFirstSpriteTag:String = null;
+	var selectedCompatEndingClaimed:Bool = false;
+	// Track the Psych custom-event scope for the generic Flash module. This lets
+	// the flashing-lights preference mute its visual callback without dropping
+	// unrelated event callbacks from other interpreters.
+	var psychFlashEventScopes:Map<String, Bool> = [];
+	// HXC ModuleHandler calls resolve to generated interpreter scopes. The map
+	// contains only imported module callbacks; donor classes are never
+	// instantiated by the compatibility layer.
+	var hxcModuleScopes:Map<String, String> = [];
+	var hxcModulePaths:Map<String, String> = [];
+	// A converted V-Slice stage keeps its native registry/HScript interpreter as
+	// the canonical `stage` slot.  Companion HXC stage programs get isolated
+	// scopes so their authored build/onCreate and lifecycle callbacks can run
+	// without replacing the native stage or creating a second StageHelper.
+	var hxcStageScopes:Array<String> = [];
+	var hxcStageScopeIndex:Int = 0;
+	// Donor engines anchor their HUD at the top, so imported stages letterbox
+	// camHUD with opaque cinema bars along the screen edges (the Miku concert
+	// stage's bar1/bar2).  Those bars are harmless in the donor but sit straight
+	// over this engine's bottom-anchored health bar/score text and over the
+	// strumline receptors.  Props registered by an imported HXC stage scope are
+	// checked once after the stage loads and clamped/hidden when they overlap
+	// the native HUD members (see layerNativeStageHudOverProps).
+	var importedStageHudProps:Array<FlxSprite> = [];
+	// Character HXC programs are also isolated scopes, but unlike stages they
+	// must be routed to the matching live actor.  Keeping the character id and
+	// role beside the interpreter prevents a costume/character script loaded for
+	// one slot from receiving another slot's note/update callbacks.  The maps
+	// are PlayState-local so a new song cannot inherit a donor's character code.
+	var hxcCharacterScopeNames:Map<String, String> = [];
+	var hxcCharacterScopeRoles:Map<String, Array<String>> = [];
+	var hxcCharacterDispatchDepth:Int = 0;
+	// Character actors are built before the selected chart stage. Defer their
+	// HXC onAdd hooks until that stage and its companion scopes are ready, since
+	// imported characters may add stage-owned sprites from those hooks.
+	var pendingHxcCharacterAdds:HxcCharacterLifecycleQueue = new HxcCharacterLifecycleQueue();
+	// HXC helper closures resolve the live role slot. CharacterInfo's onAdd can
+	// run before a stage-created actor is installed there, so expose that pending
+	// actor only while its own callback is executing.
+	var hxcCharacterCallbackActor:Character = null;
+	var hxcCharacterCallbackRole:String = '';
+	/** Temporary boyfriend binding while GameOverSubstate owns a replacement actor. */
+	var hxcGameOverCharacter:Character = null;
+	var psychCompatScriptsLoaded:Bool = false;
+	/** Psych's GameOverSubstate character and sound overrides belong to this song. */
+	var psychGameOverOverrides:Map<String, String> = new Map();
+	var psychGameOverDeathDelaySeconds:Float = 0;
+	var psychGameOverTransitionPending:Bool = false;
+	var psychFlxGGameTicksProbeEmitted:Bool = false;
+	/** Psych playSound tags identify this song's fade/stop targets. */
+	var psychTaggedSounds:Map<String, FlxSound> = new Map();
+	var hxcCompatScriptsLoaded:Bool = false;
+	var hxcSongLoadedDispatched:Bool = false;
+	var hxcCountdownEndDispatched:Bool = false;
+	var hxcCountdownStopRequested:Bool = false;
+	// Some donor engines expose the native startCountdown() helper in the same
+	// namespace as their onStartCountdown hook.  During the hook broadcast a
+	// bare startCountdown() therefore resolves to this PlayState method again
+	// when the script did not actually define a countdown callback.  Keep the
+	// broadcast re-entrant safe: a callback may request a later countdown from a
+	// timer, but the synchronous nested call must not rebuild scripts and recurse
+	// until the native stack overflows.
+	var hxcCountdownHookDispatching:Bool = false;
+	// A legacy Kade `0.offset` file has no generic timing ABI here.  Report a
+	// non-empty file once, but keep the authored chart/audio timing authoritative
+	// until a mounted corpus establishes a safe data-only meaning.
+	var legacyOffsetDiagnosticEmitted:Bool = false;
+	var psychCompatScriptIndex:Int = 0;
+	var cachedHxcScriptPlan:HxcScriptDiscovery.HxcScriptDiscoveryResult = null;
+	// Character.new runs before its selected HXC companion's onAdd adapter.  Keep
+	// a per-song answer for the narrow case where that companion contains a
+	// complete, atlas-backed CharacterInfo definition; Character can then avoid
+	// reporting a transient registry miss without hiding a genuinely incomplete
+	// dependency.
+	var pendingHxcCharacterVisuals:Map<String, Bool> = new Map<String, Bool>();
+	var cachedCompatScriptManifest:CompatScriptManifestData = null;
+	var codenameScriptScopes:Array<{file:CodenameScriptFile, interp:CodenameScriptInterp,
+		owned:Array<FlxBasic>, postCreated:Bool, failedCallbacks:Map<String, Bool>}> = [];
+	// Codename public module vars and scripts.set exports are shared only by the
+	// active PlayState's selected-owner state/song/stage scopes. Ordinary locals
+	// remain isolated.
+	var codenamePublicScriptGlobals:CodenamePublicScriptGlobals = new CodenamePublicScriptGlobals();
+	var codenameSceneMembership:CodenameSceneMembership<FlxBasic> = null;
+	var codenameStateScriptLoaded:Bool = false;
+	var codenameSongScriptsLoaded:Bool = false;
+	var codenameSelectedNoteTypes:Array<Dynamic> = [];
+	var codenameNoteSpritePaths:Map<String, String> = [];
+	var codenameDefaultNoteAtlasResolved:Map<String, Bool> = new Map<String, Bool>();
+	var codenameDefaultNoteAtlases:Map<String, flixel.graphics.frames.FlxFramesCollection>
+		= new Map<String, flixel.graphics.frames.FlxFramesCollection>();
+	var codenameEventScriptsLoaded:Bool = false;
+	var codenameCountdownPreparationInProgress:Bool = false;
+	var codenameSongStartDispatched:Bool = false;
+	var codenameCreationStrumsPrepared:Bool = false;
+	var pendingCodenameNoteGeneration:Void->Void = null;
+	var psychNoteSkinConfigureCount:Int = 0;
+	var psychNoteSkinDiagnosticsChecked:Bool = false;
+	var psychNoteSkinDiagnosticsEnabled:Bool = false;
+	var codenameCreationVisualSmokeMarks:Map<String, Bool> = null;
+	var codenameCreationNoteCount:Int = 0;
+	var codenameCreationNoteAtlasCount:Int = 0;
+	var codenameCreationStrumCount:Int = 0;
+	var codenameCreationStrumAtlasCount:Int = 0;
+	var codenameCreationSummaryMarked:Bool = false;
+	var codenameNoteSplashHandler:CodenameNoteSplashHandler = null;
+	/** Codename exposes the live splash group to song scripts. Its kill()
+	 * state also gates the native fallback splash path below. */
+	public var splashHandler(get, never):CodenameNoteSplashHandler;
+	function get_splashHandler():CodenameNoteSplashHandler return codenameNoteSplashHandler;
+	var codenameInstFacade:CodenameInstrumentalFacade = null;
+	var cachedCodenameScriptPlan:CodenameScriptPlanData = null;
+	var codenamePlanChecked:Bool = false;
+	var codenameActorPlanChecked:Bool = false;
+	var cachedCodenameActorPlan:CodenameActorPlan = null;
+	var codenameActors:CodenameActorRuntime<Character> = null;
+	var codenameInputLines:Array<CodenameInputLine<Character>> = [];
+	var codenameLineNoteIndex:CodenameLineNoteIndex = new CodenameLineNoteIndex();
+	/** One stable native receptor group for every non-null authored Codename
+	 * line. Null entries remain null so source indices never shift. */
+	var codenameStrumlines:Array<Null<Strumline>> = [];
+	var codenameActorBaselines = new haxe.ds.ObjectMap<Character, Dynamic>();
+	var nextCodenamePublicScopeToken:Int = 1;
+	static var nextRuntimeSmokeActorToken:Int = 1;
+	var runtimeSmokeOwnedDestroyCalls:Int = 0;
+	var cachedCodenameSongView:CodenameSongView = null;
+	var cachedHxcEventSpriteCatalogs:Map<String, Array<Dynamic>> = new Map<String, Array<Dynamic>>();
+	/** Animation finish callbacks fire before Flixel dispatches onFinish. Keep
+	 * finished event sprites intact until the group update has returned. */
+	var finishedHxcEventSprites:Array<FlxSprite> = [];
 	var exInterp:InterpEx = new InterpEx();
 	var haxeSprites:Map<String, FlxSprite> = [];
-	function callHscript(func_name:String, args:Array<Dynamic>, usehaxe:String) {
-		// if function doesn't exist
-		if (!hscriptStates.get(usehaxe).variables.exists(func_name)) {
-			trace("Function doesn't exist, silently skipping...");
+	// Keep Sparrow names parsed from the source XML alongside each imported
+	// animated sprite. FlxAtlasFrames can reuse a native bitmap cache entry and
+	// expose a frame collection whose runtime names are unavailable on hxcpp;
+	// the authored XML remains the stable engine-level source of frame order.
+	var haxeSpriteAtlasNames:Map<String, Array<String>> = [];
+	// Keep the same metadata attached to the live sprite as well as its donor
+	// tag.  A translated Lua/HScript callback can pass a tag through a dynamic
+	// value (or a later helper can resolve the object through another property
+	// root), so a string-only lookup can lose the atlas even though the exact
+	// FlxSprite is still in haxeSprites.  Object identity is the stable bridge
+	// between makeAnimatedLuaSprite() and addAnimationByIndices().
+	var haxeSpriteAtlasNamesByObject:Map<FlxSprite, Array<String>> = [];
+	var compatTimers:Map<String, FlxTimer> = [];
+	var compatTweens:Map<String, FlxTween> = [];
+	// Kade's defaultStrum0X..defaultStrum7Y globals are immutable baselines,
+	// captured before any converted callback can move a receptor.  The dynamic
+	// Lua adapter reads these arrays instead of exposing the interpreter's
+	// environment table.
+	var luaDefaultStrumX:Array<Float> = [];
+	var luaDefaultStrumY:Array<Float> = [];
+	// Psych also exposes side-specific defaultPlayerStrumX/Y and
+	// defaultOpponentStrumX/Y globals.  Keep separate baselines because the
+	// combined strumLineNotes group is an implementation detail whose ordering
+	// is not part of either donor engine's ABI.
+	var luaDefaultOpponentStrumX:Array<Float> = [];
+	var luaDefaultOpponentStrumY:Array<Float> = [];
+	var luaDefaultPlayerStrumX:Array<Float> = [];
+	var luaDefaultPlayerStrumY:Array<Float> = [];
+	var luaDefaultStrumsCaptured:Bool = false;
+		var compatCustomSubstateName:String = '';
+		var compatCustomSubstateOpen:Bool = false;
+		var compatCustomSubstate:PsychCustomSubstate = null;
+		var compatCustomSubstatePausesGame:Bool = false;
+		var compatCustomPausedTimers:Array<FlxTimer> = [];
+		var compatCustomPausedTweens:Array<FlxTween> = [];
+		var compatCustomPausedSnapshot:Bool = false;
+		// Reverse Glitch's Psych shader workaround installs one resize callback;
+		// keep the native callback identity so it can be removed safely even when
+		// the converted Lua closure is gone.
+		var compatShaderCoordFixHandler:Null<Int->Int->Void> = null;
+	function callHscript(func_name:String, args:Array<Dynamic>, usehaxe:String, optional:Bool = false,
+		?returnValues:Array<Dynamic>):Bool {
+		var interp = hscriptStates.get(usehaxe);
+		// Psych removes a Lua script from its callback list after close(). Keep
+		// the interpreter alive until song teardown, but stop invoking its hooks.
+		if (interp != null && interp.variables.get('__compatClosed') == true)
+			return false;
+		if (func_name == 'onEvent' && psychFlashEventScopes.exists(usehaxe)
+			&& psychFlashCallbackSuppressed(OptionsHandler.options.flashingLights, true,
+				args == null || args.length == 0 ? null : Std.string(args[0])))
+			return false;
+		// Character companions are retained while a song can swap costumes, but
+		// their lifecycle is actor-local.  A dormant costume must not continue to
+		// receive update/beat/event callbacks merely because its interpreter is
+		// still cached for a later swap back.
+		// Teardown is broadcast to every loaded companion, including a costume
+		// which is currently dormant.  Its destroy hook is the last chance to
+		// release timers, callbacks, and script-owned objects before this song's
+		// interpreter table is discarded; normal gameplay hooks remain actor-local.
+		if (hxcCharacterScopeNames.exists(usehaxe) && func_name != 'destroy'
+			&& !hxcCharacterScopeIsActive(usehaxe))
+			return false;
+		// Resolve donor-engine spellings centrally.  This is deliberately done at
+		// invocation time so a script can keep its native callback name without a
+		// chart/import rewrite (Psych onUpdate, Kade onStepHit, etc.).
+		var selectedName:String = null;
+		if (interp != null)
+			for (candidate in EngineCompat.callbackNames(func_name))
+				if (interp.variables.exists(candidate)) {
+					selectedName = candidate;
+					break;
+				}
+		// Broadcast hooks are optional; explicitly requested callbacks are not.
+		if (interp == null || selectedName == null) {
+			if (!optional) trace('Missing hscript callback: $usehaxe.$func_name');
+			return false;
+		}
+		var method = interp.variables.get(selectedName);
+		var callArgs = EngineCompat.callbackArguments(func_name, selectedName, args,
+			hxcPayloadStates.get(usehaxe) == true,
+			Std.isOfType(interp, LuaCompatInterp) && notes != null ? cast notes.members : null);
+		// HXC's Highscore.tallies is a mutable plain-field view. Refresh its
+		// active-PlayState backing before every callback and commit only the
+		// supported native fields afterward; ordinary HScript callbacks see a
+		// no-op when no HXC tally view has been created.
+		HxcCompatRuntime.prepareTallyCallback();
+		var previousDiagnosticCallback = interp.variables.get('__compatDiagnosticCallback');
+		interp.variables.set('__compatDiagnosticCallback', selectedName);
+		try {
+			var returned:Dynamic = null;
+			switch(callArgs.length) {
+				case 0:
+					returned = method();
+				case 1:
+					returned = method(callArgs[0]);
+				case 2:
+					returned = method(callArgs[0], callArgs[1]);
+				case 3:
+					returned = method(callArgs[0], callArgs[1], callArgs[2]);
+				case 4:
+					returned = method(callArgs[0], callArgs[1], callArgs[2], callArgs[3]);
+			}
+			// HXC lifecycle methods are Void in their donor ABI. HScript can
+			// expose an incidental last-expression value (for example a native
+			// tween helper returning true); only legacy/Psych callbacks use a
+			// Function_Stop return to cancel a native gate.
+			if (returnValues != null && hxcPayloadStates.get(usehaxe) != true)
+				returnValues.push(returned);
+			HxcCompatRuntime.commitTallyCallback();
+			interp.variables.set('__compatDiagnosticCallback', previousDiagnosticCallback);
+			return true;
+		} catch (e:Dynamic) {
+			HxcCompatRuntime.commitTallyCallback();
+			interp.variables.set('__compatDiagnosticCallback', previousDiagnosticCallback);
+			// a broken modchart/stage hook degrades instead of taking the
+			// song down - trace it so it's diagnosable from the console
+			var diagnosticSource:Dynamic = interp.variables.get('__compatDiagnosticSource');
+			var sourceLabel = diagnosticSource == null || StringTools.trim(Std.string(diagnosticSource)) == ''
+				? '' : ' [source=' + Std.string(diagnosticSource) + ']';
+			trace('hscript error in $usehaxe.$func_name$sourceLabel: $e');
+			return false;
+		}
+	}
+	function callAllHScript(func_name:String, args:Array<Dynamic>, ?skipHxc:Bool = false,
+		?returnValues:Array<Dynamic>, ?hxcArgs:Array<Dynamic>) {
+		// A character callback can synchronously swap actors, which may load a new
+		// companion interpreter. Iterate a stable key list so that adding/removing
+		// scopes during the broadcast cannot invalidate the map iterator.
+		var keys:Array<String> = [];
+		for (key in hscriptStates.keys())
+			keys.push(key);
+		for (key in keys) {
+			if (!hscriptStates.exists(key))
+				continue;
+			// An installed global results provider observes ordinary lifecycle
+			// hooks, but its end callback runs only after the selected mod has had
+			// the opportunity to claim the ending.
+			if (func_name == 'songEnd' && defaultPsychGlobalScopes.indexOf(key) >= 0)
+				continue;
+			if (skipHxc && hxcPayloadStates.get(key) == true)
+				continue;
+			callHscript(func_name, hxcArgs != null && hxcPayloadStates.get(key) == true ? hxcArgs : args,
+				key, true, returnValues);
+		}
+	}
+	/** Dispatch a note lifecycle hook only to HXC interpreters.  Note hit/miss
+	 * cancellation must run before native scoring, while ordinary HScript/Psych
+	 * callbacks retain their historical post-judgement timing below. */
+	function callHxcNoteHScript(func_name:String, args:Array<Dynamic>):Void {
+		var keys:Array<String> = [];
+		for (key in hscriptStates.keys())
+			keys.push(key);
+		for (key in keys) {
+			if (!hscriptStates.exists(key))
+				continue;
+			if (hxcPayloadStates.get(key) == true
+				&& (!hxcCharacterScopeNames.exists(key) || hxcCharacterScopeOwnsNote(key, args))
+				&& (!hxcNoteKindScopes.exists(key) || hxcNoteKindScopeOwnsNote(key, args)))
+				callHscript(func_name, args, key, true);
+		}
+	}
+
+	/** A NoteKind interpreter may only mutate notes carrying its authored kind.
+	 * The native note stores that identity separately from its custom index, so
+	 * ordinary notes and other imported kinds cannot receive its hit/miss code. */
+	function hxcNoteKindScopeOwnsNote(scope:String, args:Array<Dynamic>):Bool {
+		var expected = hxcNoteKindScopes.get(scope);
+		if (expected == null || expected == '' || args == null)
+			return false;
+		var note:Note = null;
+		for (value in args)
+			if (Std.isOfType(value, Note)) {
+				note = cast value;
+				break;
+			}
+		if (note == null)
+			return false;
+		var sourceKind = HxcScriptDiscovery.normalizeToken(note.sourceKind);
+		if (sourceKind != '')
+			return sourceKind == expected;
+		if (note.classes != null)
+			for (marker in note.classes) {
+				var prefix = 'vslice-kind:';
+				if (marker != null && marker.toLowerCase().startsWith(prefix)
+					&& HxcScriptDiscovery.normalizeToken(marker.substr(prefix.length)) == expected)
+					return true;
+			}
+		if (note.coolId != null) {
+			var parts = note.coolId.split(':');
+			if (parts.length >= 2 && (parts[0].toLowerCase() == 'vslice' || parts[0].toLowerCase() == 'hxc')
+				&& HxcScriptDiscovery.normalizeToken(parts[1]) == expected)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+		Incoming-note callback owned by the native extra-strumline adapter.
+
+		The adapter calls this through its bounded signal, so a foreign extra
+		stream gets the same cancellation/diagnostic path as a native note without
+		entering PlayState.unspawnNotes or the score counters.
+	*/
+	public function onStrumlineNoteIncoming(note:Dynamic):Void {
+		var nativeNote = NoteHoldCoverCompat.unwrap(note);
+		if (nativeNote == null)
 			return;
+		var incomingEvent = EngineCompat.hxcNoteIncomingPayload(nativeNote);
+		callAllHScript('noteIncoming', [nativeNote, incomingEvent], true);
+		callHxcNoteHScript('noteIncoming', [nativeNote, incomingEvent]);
+		EngineCompat.hxcApplyNoteCallbackPayload(incomingEvent);
+	}
+
+	/**
+		Resolve one timeline asset only inside the manifest root which owns the
+		cutscene source.  The extracted key is already normalized, but repeat the
+		boundary check here because this is the native filesystem edge.
+	*/
+	function hxcTimelineAssetPath(asset:HxcCutsceneAsset, metadata:Bool = false):String {
+		if (asset == null || asset.key == null)
+			return null;
+		var key = StringTools.replace(StringTools.trim(asset.key), '\\', '/');
+		if (key == '' || key.startsWith('/') || key.indexOf(':') >= 0)
+			return null;
+		for (part in key.split('/'))
+			if (part == '' || part == '..')
+				return null;
+		var extension = '';
+		switch (asset.kind == null ? '' : asset.kind) {
+			case 'sparrow': extension = metadata ? '.xml' : '.png';
+			case 'sound' | 'music': extension = TitleState.soundExt;
+			default: extension = '';
 		}
-		var method = hscriptStates.get(usehaxe).variables.get(func_name);
-		switch(args.length) {
-			case 0:
-				method();
-			case 1:
-				method(args[0]);
-			case 2:
-				method(args[0], args[1]);
-			case 3:
-				method(args[0], args[1], args[2]);
+		var relative = key;
+		if (extension != '' && !StringTools.endsWith(relative.toLowerCase(), extension.toLowerCase()))
+			relative += extension;
+		var root = hxcCutsceneTimelineRoot == '' ? 'assets' : hxcCutsceneTimelineRoot;
+		var candidate = Path.normalize(Path.join([root, relative]));
+		var normalizedRoot = Path.normalize(root);
+		if (candidate != normalizedRoot && !candidate.startsWith(normalizedRoot + '/'))
+			return null;
+		return FNFAssets.exists(candidate) ? candidate : null;
+	}
+
+	function hxcTimelineDialoguePath(relative:String):String {
+		if (relative == null || StringTools.trim(relative) == '')
+			return null;
+		var clean = StringTools.replace(StringTools.trim(relative), '\\', '/');
+		if (SONG != null)
+			clean = StringTools.replace(clean, '{song}', SONG.song.toLowerCase());
+		if (clean.startsWith('/') || clean.indexOf(':') >= 0)
+			return null;
+		for (part in clean.split('/'))
+			if (part == '' || part == '..')
+				return null;
+		var root = hxcCutsceneTimelineRoot == '' ? 'assets' : hxcCutsceneTimelineRoot;
+		var candidate = Path.normalize(Path.join([root, clean]));
+		var normalizedRoot = Path.normalize(root);
+		if (candidate != normalizedRoot && !candidate.startsWith(normalizedRoot + '/'))
+			return null;
+		return FNFAssets.exists(candidate) ? candidate : null;
+	}
+
+	/** Resolve data/audio sidecars by the selected chart storage key. A chart's
+	 * authored `song` value remains its compatibility identity and may differ
+	 * from the owner-qualified folder selected by Freeplay or the editor. */
+	function currentSongStorageFolder():String {
+		if (SONG == null)
+			return '';
+		var folder = Song.storageFolder(SONG);
+		folder = folder == null ? '' : StringTools.trim(folder);
+		if (folder == '' || folder == '.' || folder == '..'
+			|| folder.indexOf('/') >= 0 || folder.indexOf('\\') >= 0 || folder.indexOf(':') >= 0)
+			return SONG.song == null ? '' : SONG.song.toLowerCase();
+		return folder;
+	}
+
+	function currentSongDataPath(file:String):String {
+		return Path.join([currentSongDataFolder(), file]);
+	}
+
+	function currentSongDataFolder():String {
+		return Path.join(['assets', 'data', currentSongStorageFolder()]);
+	}
+
+	function currentSongAudioFolder():String {
+		return Path.join(['assets', 'songs', currentSongStorageFolder()]);
+	}
+
+	function hxcTimelineTime(time:HxcCutsceneTime):Float {
+		if (time == null)
+			return 0;
+		var value:Float = switch (time.kind == null ? '' : time.kind) {
+			case 'seconds': time.value;
+			case 'crochet-multiplier': Conductor.crochet * time.value / 1000;
+			default: 0;
+		};
+		return Math.isNaN(value) || value < 0 ? 0 : value;
+	}
+
+	function hxcTimelineSprite(name:String):FlxSprite {
+		return name == null ? null : hxcCutsceneTimelineSprites.get(StringTools.trim(name));
+	}
+
+	function hxcTimelineActor(name:String):Dynamic {
+		return switch (name == null ? '' : StringTools.trim(name)) {
+			case 'dad': dad;
+			case 'boyfriend' | 'bf': boyfriend;
+			case 'gf' | 'girlfriend': gf;
+			case 'camHUD': camHUD;
+			case 'camGame': camGame;
+			default: hxcTimelineSprite(name);
+		};
+	}
+
+	function hxcTimelineApplyAction(action:HxcCutsceneAction):Bool {
+		if (action == null)
+			return false;
+		switch (action.kind) {
+			case 'captureDefaultZoom':
+				hxcCutsceneTimelineOriginalZoom = defaultCamZoom;
+				return true;
+			case 'dialogueConfig':
+				return hxcTimelineConfigureDialogue(action);
+			case 'spriteDefine':
+				var sprite = new FlxSprite(action.x == null ? 0 : action.x, action.y == null ? 0 : action.y);
+				if (action.asset != null) {
+					var asset:HxcCutsceneAsset = {kind:'sparrow', key:action.asset};
+					var imagePath = hxcTimelineAssetPath(asset);
+					var xmlPath = hxcTimelineAssetPath(asset, true);
+					if (imagePath == null || xmlPath == null)
+						return false;
+					try sprite.frames = FlxAtlasFrames.fromSparrow(FNFAssets.getBitmapData(imagePath),
+						FNFAssets.getText(xmlPath)) catch (_:Dynamic) return false;
+				}
+				if (action.animations != null)
+					for (definition in action.animations) {
+						if (definition == null)
+							continue;
+						var animationName = Reflect.field(definition, 'name');
+						var prefix = Reflect.field(definition, 'prefix');
+						var fpsValue = Reflect.field(definition, 'fps');
+						if (animationName == null || prefix == null || fpsValue == null)
+							continue;
+						var fps = Std.parseFloat(Std.string(fpsValue));
+						if (Math.isNaN(fps) || fps <= 0)
+							continue;
+						var loopValue = Reflect.field(definition, 'loop');
+						sprite.animation.addByPrefix(Std.string(animationName), Std.string(prefix), fps,
+							loopValue == true);
+					}
+				if (action.visible != null)
+					sprite.visible = action.visible;
+				if (action.antialiasing != null)
+					sprite.antialiasing = action.antialiasing;
+				hxcCutsceneTimelineSprites.set(action.sprite, sprite);
+				trackHscriptSprite(sprite, 'cutscene');
+				return true;
+			case 'spriteAdd':
+				var added = hxcTimelineSprite(action.sprite);
+				if (added == null)
+					return false;
+				var layer = action.layer == 'background' ? BEHIND_ALL : BEHIND_BF;
+				addHscriptSprite(added, layer);
+				return true;
+			case 'spriteRemove':
+				var removed = hxcTimelineSprite(action.sprite);
+				if (removed == null)
+					return false;
+				remove(removed, true);
+				return true;
+			case 'spriteAnimation':
+				var animated = hxcTimelineSprite(action.sprite);
+				if (animated == null || action.animation == null)
+					return false;
+				animated.animation.play(action.animation, action.looping == true);
+				return true;
+			case 'visibility':
+				var visibleTarget:Dynamic = hxcTimelineActor(action.actor);
+				if (visibleTarget == null)
+					return false;
+				try Reflect.setField(visibleTarget, 'visible', action.value == null || action.value != 0) catch (_:Dynamic) return false;
+				return true;
+			case 'cameraMove':
+				if (camFollow == null)
+					return false;
+				hxcCutsceneTimelineForceCamera = true;
+				forceCamera = true;
+				scriptableCamera = 'static';
+				var moveX = action.x == null ? camFollow.x : action.x;
+				var moveY = action.y == null ? camFollow.y : action.y;
+				scriptCamPos[0] = [moveX, moveY];
+				tweenCameraToPosition(moveX, moveY, hxcTimelineTime(action.duration));
+				return true;
+			case 'cameraZoom':
+				if (camGame == null)
+					return false;
+				var zoom = action.value == null ? camGame.zoom : action.value;
+				if (action.target == 'originalZoom' && hxcCutsceneTimelineOriginalZoom != null)
+					zoom = hxcCutsceneTimelineOriginalZoom;
+				var zoomDuration = hxcTimelineTime(action.duration);
+				var zoomEase:Dynamic = action.ease == null ? null : Reflect.field(FlxEase, action.ease);
+				if (zoomDuration <= 0) {
+					setGameCameraZoom(zoom);
+				} else if (zoomEase != null)
+					FlxTween.tween(camGame, {zoom:zoom}, zoomDuration, {ease:zoomEase});
+				else
+					FlxTween.tween(camGame, {zoom:zoom}, zoomDuration);
+				return true;
+			case 'cameraShake':
+				if (camGame == null)
+					return false;
+				camGame.shake(action.intensity == null ? 0 : action.intensity, hxcTimelineTime(action.duration));
+				return true;
+			case 'cameraFade':
+				if (camGame == null)
+					return false;
+				camGame.fade(action.color == null ? FlxColor.WHITE : action.color,
+					action.value == null ? 0 : action.value, action.fadeIn == true);
+				return true;
+			case 'soundPlay' | 'musicPlay':
+				var soundAsset:HxcCutsceneAsset = {kind:action.kind == 'musicPlay' ? 'music' : 'sound', key:action.asset};
+				var soundPath = hxcTimelineAssetPath(soundAsset);
+				if (soundPath == null)
+					return false;
+				var sound:FlxSound = null;
+				try {
+					var callback:Void->Void = null;
+					if (action.onComplete != null && hxcCutsceneTimelineRuntime != null)
+						callback = function() {
+							if (hxcCutsceneTimelineRuntime != null)
+								hxcCutsceneTimelineRuntime.completeAction(action);
+						};
+					sound = FlxG.sound.play(FNFAssets.getSound(soundPath), action.volume == null ? 1 : action.volume,
+						action.loop == true, null, true, callback);
+				} catch (_:Dynamic) {
+					return false;
+				}
+				if (sound == null)
+					return false;
+				if (action.kind == 'musicPlay')
+					hxcCutsceneTimelineTracks.set('bgm', sound);
+				else {
+					hxcCutsceneTimelineSoundIndex++;
+					hxcCutsceneTimelineTracks.set('sound-' + hxcCutsceneTimelineSoundIndex, sound);
+				}
+				return true;
+			case 'musicFadeIn' | 'musicFadeOut':
+				var track = action.track == null ? null : hxcCutsceneTimelineTracks.get(action.track);
+				if (track == null)
+					track = hxcCutsceneTimelineTracks.get('bgm');
+				if (track == null)
+					return false;
+				var fadeDuration = hxcTimelineTime(action.duration);
+				var targetVolume = action.kind == 'musicFadeIn' ? action.volume : action.volume;
+				if (targetVolume == null)
+					targetVolume = 0;
+				if (action.kind == 'musicFadeIn' && action.fromVolume != null)
+					track.volume = action.fromVolume;
+				if (fadeDuration <= 0)
+					track.volume = targetVolume;
+				else
+					FlxTween.tween(track, {volume:targetVolume}, fadeDuration);
+				return true;
+			case 'musicFadeOutSkipped':
+				// The extractor retained a diagnosed null receiver as an explicit
+				// no-op. Never invent a donor sound object for it.
+				return true;
+			case 'actorAnimation':
+				var actor:Dynamic = hxcTimelineActor(action.actor);
+				if (actor == null || action.animation == null)
+					return false;
+				try actor.playAnim(action.animation, true) catch (_:Dynamic) return false;
+				return true;
+			case 'dialogueStart':
+				if (hxcCutsceneTimelineDialogue == null) {
+					if (hxcCutsceneTimelineRuntime != null)
+						hxcCutsceneTimelineRuntime.notifyDialogueEnd();
+					return true;
+				}
+				if (members.indexOf(hxcCutsceneTimelineDialogue) < 0) {
+					add(hxcCutsceneTimelineDialogue);
+					trackHscriptSprite(hxcCutsceneTimelineDialogue, 'cutscene');
+				}
+				return true;
+			case 'focusFirstSection':
+				if (SONG == null || SONG.notes == null || SONG.notes.length == 0)
+					return false;
+				var focusSection:Int = Std.int(Math.max(0, Math.min(curSection, SONG.notes.length - 1)));
+				var focusDad = !SONG.notes[focusSection].mustHitSection;
+				var focusActor:Character = focusDad ? dad : boyfriend;
+				if (focusActor == null)
+					return false;
+				tweenCameraToPosition(focusActor.getMidpoint().x + (focusDad ? dadCamOffset[0] : bfCamOffset[0]),
+					focusActor.getMidpoint().y + (focusDad ? dadCamOffset[1] : bfCamOffset[1]), 0);
+				return true;
+			case 'removeOwnedFilter':
+				// No donor filter reference is exposed. The extractor marks this only
+				// when the action names the engine-owned fade filter, so the native
+				// route is an idempotent cleanup acknowledgement.
+				return action.engineOwned == true;
+			case 'handoff':
+				return true;
+			default:
+				return false;
 		}
 	}
-	function callAllHScript(func_name:String, args:Array<Dynamic>) {
-		for (key in hscriptStates.keys()) {
-			callHscript(func_name, args, key);
+
+	function hxcTimelineConfigureDialogue(action:HxcCutsceneAction):Bool {
+		var text:String = null;
+		var dialoguePath = hxcTimelineDialoguePath(action.dialoguePath);
+		if (dialoguePath != null) {
+			try {
+				var json = CoolUtil.parseJson(FNFAssets.getText(dialoguePath));
+				text = EngineCompat.legacyDialogueText(json, SONG.player1, SONG.player2);
+			} catch (error:Dynamic) {
+				trace('[hxc-cutscene-dialogue-error] ' + dialoguePath + ': ' + Std.string(error));
+			}
 		}
+		if (text == null || StringTools.trim(text) == '') {
+			// Imports normally materialize dialogueText as the native dialog.txt;
+			// retaining that fallback keeps a missing JSON sidecar non-fatal.
+			if (doof == null)
+				return false;
+			hxcCutsceneTimelineDialogue = doof;
+		} else {
+			try hxcCutsceneTimelineDialogue = new DialogueBox(false, text) catch (_:Dynamic) return false;
+		}
+		hxcCutsceneTimelineDialogue.cameras = [camHUD];
+		hxcCutsceneTimelineDialogue.scrollFactor.set();
+		hxcCutsceneTimelineDialogue.finishThing = function() {
+			if (hxcCutsceneTimelineRuntime != null)
+				hxcCutsceneTimelineRuntime.notifyDialogueEnd();
+		};
+		return true;
 	}
+
+	function clearHxcCutsceneTimelineNativeObjects():Void {
+		forceCamera = false;
+		hxcCutsceneTimelineForceCamera = false;
+		if (camFollow != null)
+			FlxTween.cancelTweensOf(camFollow);
+		if (camGame != null)
+			FlxTween.cancelTweensOf(camGame);
+		for (sprite in hxcCutsceneTimelineSprites)
+			if (sprite != null) {
+				remove(sprite, true);
+				forgetCutsceneSprite(sprite);
+				try sprite.destroy() catch (_:Dynamic) {}
+			}
+		hxcCutsceneTimelineSprites.clear();
+		for (sound in hxcCutsceneTimelineTracks)
+			if (sound != null) {
+				try sound.stop() catch (_:Dynamic) {}
+				try FlxG.sound.list.remove(sound) catch (_:Dynamic) {}
+				try sound.destroy() catch (_:Dynamic) {}
+			}
+		hxcCutsceneTimelineTracks.clear();
+		hxcCutsceneTimelineSoundIndex = 0;
+		if (hxcCutsceneTimelineDialogue != null) {
+			var dialogue = hxcCutsceneTimelineDialogue;
+			remove(dialogue, true);
+			forgetCutsceneSprite(dialogue);
+			try dialogue.destroy() catch (_:Dynamic) {}
+			hxcCutsceneTimelineDialogue = null;
+		}
+		hxcCutsceneTimelineRoot = '';
+		hxcCutsceneTimelineOriginalZoom = null;
+	}
+
+	/** Start an accepted HXC timeline without constructing its donor class. */
+	function startHxcCutsceneTimeline(data:HxcCutsceneTimelineData, scriptPath:String):Void {
+		if (data == null)
+			return;
+		if (hxcCutsceneTimelineRuntime != null)
+			hxcCutsceneTimelineRuntime.cancel(false);
+		clearHxcCutsceneTimelineNativeObjects();
+		hxcCutsceneTimelineRoot = hxcAssetRootForScript(scriptPath);
+		var runtime = new HxcCutsceneTimelineRuntime(data, Conductor.crochet);
+		hxcCutsceneTimelineRuntime = runtime;
+		runtime.assetAvailable = function(asset:HxcCutsceneAsset):Bool {
+			if (asset == null)
+				return false;
+			if (asset.kind == 'sparrow')
+				return hxcTimelineAssetPath(asset) != null && hxcTimelineAssetPath(asset, true) != null;
+			return hxcTimelineAssetPath(asset) != null;
+		};
+		runtime.onAction = function(action:HxcCutsceneAction):Bool return hxcTimelineApplyAction(action);
+		runtime.onCleanup = function() clearHxcCutsceneTimelineNativeObjects();
+		runtime.onHandoff = function() {
+			hxcCutsceneTimelineRuntime = null;
+			startCountdown();
+		};
+		runtime.start();
+	}
+
 	function setHaxeVar(name:String, value:Dynamic, usehaxe:String) {
 		hscriptStates.get(usehaxe).variables.set(name,value);
 	}
@@ -314,8 +2332,509 @@ class PlayState extends MusicBeatState {
 		for (key in hscriptStates.keys())
 			setHaxeVar(name, value, key);
 	}
-	function getHaxeActor(name:String):Dynamic {
-		switch (name) {
+	function clearScriptOwnership():Void {
+		psychStageStartCallback = null;
+		psychStageEndCallback = null;
+		psychStageCutsceneEnding = false;
+		#if cpp
+		if (videoCutscene != null) {
+			remove(videoCutscene);
+			videoCutscene.destroy();
+			videoCutscene = null;
+		}
+		#end
+		if (hxcCutsceneTimelineRuntime != null) {
+			hxcCutsceneTimelineRuntime.cancel(false);
+			hxcCutsceneTimelineRuntime = null;
+		}
+		clearHxcCutsceneTimelineNativeObjects();
+		stageSprites.resize(0);
+		cutsceneSprites.resize(0);
+		cutsceneHandoffSprites.resize(0);
+		cutsceneHandoffReleaseOnOpponentSing.resize(0);
+		cutsceneHandoffReleaseDelays.resize(0);
+		cutsceneHandoffOpponentSing = null;
+		cutsceneHandoffOpponentSingTriggered = false;
+		stageSeededVariables = [];
+		hxcPayloadStates.clear();
+		hxcNoteKindScopes.clear();
+		hxcModuleScopes.clear();
+		hxcModulePaths.clear();
+		hxcStageScopes.resize(0);
+		hxcStageScopeIndex = 0;
+		hxcCharacterScopeNames.clear();
+		hxcCharacterScopeRoles.clear();
+		hxcCharacterDispatchDepth = 0;
+		hxcCharacterCallbackActor = null;
+		hxcCharacterCallbackRole = '';
+		hxcGameOverCharacter = null;
+		hxcSongLoadedDispatched = false;
+		hxcCountdownEndDispatched = false;
+		hxcCountdownStopRequested = false;
+		hxcScriptInCutscene = false;
+		loadedCompatScriptPaths.clear();
+		compatScriptScopes.clear();
+		loadingPsychLuaScriptPaths.clear();
+		psychFlashEventScopes.clear();
+		psychCompatScriptsLoaded = false;
+		hxcCompatScriptsLoaded = false;
+		psychCompatScriptIndex = 0;
+		cachedHxcScriptPlan = null;
+		pendingHxcCharacterVisuals.clear();
+		cachedCompatScriptManifest = null;
+		vSliceCameraHoldsFocus = false;
+		cachedHxcEventSpriteCatalogs.clear();
+		cutsceneStartInProgress = false;
+		pendingCutsceneHandoff = false;
+		compatCustomSubstateOpen = false;
+		compatCustomSubstateName = '';
+		compatCustomSubstate = null;
+		compatCustomSubstatePausesGame = false;
+		// globalSprites is a song-local compatibility registry. Keeping a
+		// destroyed sprite here pins it across the next PlayState.
+		PlayState.globalSprites.clear();
+	}
+	function isScriptObject(value:Dynamic):Bool {
+		return value != null && Std.isOfType(value, FlxBasic);
+	}
+	function clearEngineCompatObjects():Void {
+		for (timer in compatTimers)
+			if (timer != null)
+				timer.cancel();
+		compatTimers.clear();
+		for (tween in compatTweens)
+			if (tween != null)
+				tween.cancel();
+		compatTweens.clear();
+		haxeSprites.clear();
+		haxeSpriteAtlasNames.clear();
+		haxeSpriteAtlasNamesByObject.clear();
+		psychGlobalProviderFirstSprite = null;
+		psychGlobalProviderFirstSpriteTag = null;
+		psychGlobalProviderSpriteMarked = false;
+	}
+	function registerStageSprite(sprite:Dynamic):Void {
+		if (!isScriptObject(sprite))
+			return;
+		var stageSprite:FlxBasic = cast sprite;
+		if (stageSprites.indexOf(stageSprite) == -1)
+			stageSprites.push(stageSprite);
+		// If a stage value was inherited after a cutscene first touched it,
+		// make the ownership correction immediately so cleanup cannot remove it.
+		cutsceneSprites.remove(stageSprite);
+	}
+
+	/** StageHelper is not mounted as a display group. Its `add` path owns
+	 * sprites in the live state directly, while a sprite already placed by
+	 * addSprite remains at its authored actor-relative layer. */
+	public function attachStageMember(sprite:FlxSprite):Void {
+		if (sprite == null || protectedStageObject(sprite))
+			return;
+		registerStageSprite(sprite);
+		if (!hasExplicitCameras(sprite))
+			sprite.cameras = [camGame];
+		if (members.indexOf(sprite) < 0)
+			add(sprite);
+	}
+
+	public function detachStageMember(sprite:FlxSprite):Void {
+		if (sprite == null || !isStageOwnedSprite(sprite))
+			return;
+		stageSprites.remove(sprite);
+		if (members.indexOf(sprite) >= 0)
+			remove(sprite);
+	}
+	function isStageOwnedSprite(sprite:Dynamic):Bool {
+		return isScriptObject(sprite) && stageSprites.indexOf(cast sprite) != -1;
+	}
+	/** True for the native stage slot and isolated imported HXC stage scopes. */
+	function isStageScriptScope(scope:String):Bool {
+		return scope == 'stage' || (scope != null && scope.indexOf('stage-hxc-') == 0);
+	}
+	/** Normalize authored HXC variable/prop names for native binding lookup. */
+	function hxcStageNameKey(value:String):String {
+		if (value == null)
+			return '';
+		var output = new StringBuf();
+		for (index in 0...value.length) {
+			var character = value.charAt(index).toLowerCase();
+			var code = character.charCodeAt(0);
+			if ((code >= 97 && code <= 122) || (code >= 48 && code <= 57))
+				output.add(character);
+		}
+		return output.toString();
+	}
+
+	/**
+		Expose converted V-Slice prop objects to a companion HXC stage.  The native
+		converter owns props with a real JSON asset; the HXC source may still call
+		`add(back)` for the same prop in its donor `onCreate`. Binding that variable
+		to the native object and removing only its construction/add lines keeps the
+		later HXC callbacks live without drawing the prop twice.
+	*/
+	function nativeStagePropBindings():Map<String, Dynamic> {
+		var result:Map<String, Dynamic> = new Map<String, Dynamic>();
+		var nativeInterp = hscriptStates.get('stage');
+		if (nativeInterp == null)
+			return result;
+		for (name in nativeInterp.variables.keys()) {
+			var lower = name == null ? '' : name.toLowerCase();
+			if (lower.indexOf('vsliceprop_') != 0)
+				continue;
+			var rest = name.substr('vSliceProp_'.length);
+			var separator = rest.lastIndexOf('_');
+			if (separator <= 0)
+				continue;
+			var propName = rest.substr(0, separator);
+			var value = nativeInterp.variables.get(name);
+			if (value != null)
+				result.set(hxcStageNameKey(propName), value);
+		}
+		return result;
+	}
+
+	/** Remove only duplicate construction/add statements from a generated HXC
+		stage start body. The native converter owns props with a real JSON asset;
+		property mutations and all later callbacks are retained. */
+	function filterHxcStageDuplicateProps(source:String, bindings:Map<String, Dynamic>):String {
+		if (source == null || bindings == null || !bindings.iterator().hasNext())
+			return source;
+		var lines:Array<String> = source.split('\n');
+		var result:Array<String> = [];
+		for (line in lines) {
+			var skip = false;
+			for (name in bindings.keys()) {
+				if (name == '')
+					continue;
+				var identifier = '[A-Za-z_][A-Za-z0-9_]*';
+				// Capture the actual authored identifier instead of searching for the
+				// normalized binding as a literal. This also handles names such as
+				// `back_base` or `back-base`, whose normalized key is `backbase`.
+				var assignment = new EReg('^[ \\t]*(?:(?:var|final)\\s+)?(' + identifier
+					+ ')\\s*=\\s*new\\s+FlxSprite\\s*\\(', '');
+				var addCall = new EReg('^[ \\t]*(?:(?:game|currentPlayState|PlayState\\.instance)\\s*\\.)?'
+					+ '(?:add|addSprite)\\s*\\(\\s*(' + identifier + ')\\s*(?:,|\\))', '');
+				var stageAdd = new EReg('^[ \\t]*(?:(?:game|currentPlayState|PlayState\\.instance)\\s*\\.)?'
+					+ 'addElement\\s*\\(\\s*["\\\']([^"\\\']+)["\\\']\\s*,\\s*(' + identifier + ')', '');
+				var authoredIdentifier:String = null;
+				var assignmentMatch = assignment.match(line);
+				var addMatch = addCall.match(line);
+				if (assignmentMatch)
+					authoredIdentifier = assignment.matched(1);
+				else if (addMatch)
+					authoredIdentifier = addCall.matched(1);
+				else if (stageAdd.match(line))
+					authoredIdentifier = stageAdd.matched(2);
+				if (authoredIdentifier != null && hxcStageNameKey(authoredIdentifier) == hxcStageNameKey(name)) {
+					skip = true;
+					break;
+				}
+			}
+			if (!skip)
+				result.push(line);
+		}
+		return result.join('\n');
+	}
+	function trackHscriptSprite(sprite:Dynamic, script:String):Void {
+		if (!isScriptObject(sprite))
+			return;
+		if (isStageScriptScope(script)) {
+			registerStageSprite(sprite);
+			return;
+		}
+		if (script != 'cutscene' || isStageOwnedSprite(sprite))
+			return;
+		var cutsceneSprite:FlxBasic = cast sprite;
+		if (cutsceneSprites.indexOf(cutsceneSprite) == -1)
+			cutsceneSprites.push(cutsceneSprite);
+	}
+	function registerStageSprites(interp:Interp):Void {
+		// A stage script may construct a sprite for a later cutscene without
+		// adding it to the state yet (thechamber does exactly that). Register
+		// only exported values that were not seeded by PlayState, or that
+		// replaced a seeded value with a new object. Explicit addSprite and
+		// setGlobalSprite calls are tracked at the point of use as well.
+		for (name in interp.variables.keys()) {
+			var value = interp.variables.get(name);
+			if (!stageSeededVariables.exists(name) || value != stageSeededVariables.get(name))
+				registerStageSprite(value);
+		}
+	}
+	function snapshotStageVariables(interp:Interp):Void {
+		stageSeededVariables = [];
+		for (name in interp.variables.keys())
+			stageSeededVariables.set(name, interp.variables.get(name));
+	}
+	function inheritHscriptVariables(source:String, target:Interp) {
+		var sourceInterps:Array<Interp> = [];
+		var sourceInterp = hscriptStates.get(source);
+		if (sourceInterp != null)
+			sourceInterps.push(sourceInterp);
+		// Native V-Slice stage conversion and its HXC companion intentionally
+		// retain separate interpreters.  Inherit both namespaces for cutscenes so
+		// a donor overlay can access a prop constructed by the companion stage.
+		if (source == 'stage')
+			for (scope in hxcStageScopes) {
+				var companion = hscriptStates.get(scope);
+				if (companion != null && sourceInterps.indexOf(companion) < 0)
+					sourceInterps.push(companion);
+			}
+		if (sourceInterps.length == 0)
+			return;
+		// The donor engine kept stage fields and song-intro code in one
+		// PlayState namespace. Our port gives each script its own interpreter,
+		// so expose stage-created globals to the cutscene without replacing the
+		// cutscene's own helpers or callbacks. Object references stay live: a
+		// cutscene can play or hide the exact sprite the stage added.
+		for (sourceInterp in sourceInterps)
+			for (name in sourceInterp.variables.keys())
+				if (!target.variables.exists(name)) {
+					var value = sourceInterp.variables.get(name);
+					target.variables.set(name, value);
+					// Stage exports were registered after stage.start(). Reaffirm an
+					// existing stage-owned reference when the cutscene inherits it,
+					// but never claim seeded actors/cameras/groups as stage objects.
+					if (isStageOwnedSprite(value))
+						registerStageSprite(value);
+				}
+	}
+	/**
+	 * Add an HScript sprite at a stable actor-relative layer.
+	 *
+	 * The old helper removed all requested actors, called add(), then added the
+	 * actors back.  FlxGroup.add() fills the first null slot, so repeated
+	 * BEHIND_ALL calls could put the newest background in an actor's old slot
+	 * and later backgrounds after the actors.  That made imported stage assets
+	 * appear in front of (or disappear behind) the wrong character.  Remove the
+	 * sprite itself and insert it immediately before the first requested actor;
+	 * this preserves both the script order of background sprites and the
+	 * requested actor layer without disturbing unrelated group members.
+	 */
+	/**
+		V-Slice donor idiom: `add(sprite); PlayState.instance.refresh();` expects
+		one call to re-apply zIndex draw ordering to the display list.
+		StageHelper.refresh() owns stage-object ordering; this state-level sort
+		covers HUD/gameplay members through the same compat zIndex source
+		(HxcCompatRuntime.getZIndex), stably, so equal-z sprites keep add order.
+	*/
+	public function refresh():Void {
+		var keys:Array<Float> = [];
+		for (member in members)
+			keys.push(Std.parseFloat(Std.string(HxcCompatRuntime.getZIndex(member))));
+		var i = 1;
+		while (i < members.length) {
+			var member = members[i];
+			var key = keys[i];
+			var j = i - 1;
+			while (j >= 0 && keys[j] > key) {
+				members[j + 1] = members[j];
+				keys[j + 1] = keys[j];
+				j--;
+			}
+			members[j + 1] = member;
+			keys[j + 1] = key;
+			i++;
+		}
+	}
+	/** True for the isolated imported HXC scopes donor stages load into. */
+	function isImportedStageScope(scope:String):Bool {
+		return scope != null && scope.indexOf('stage-hxc-') == 0;
+	}
+	/** Remember an imported stage prop so the native HUD collision clamp can
+		audit it once the stage script finished building. */
+	function trackImportedStageHudProp(sprite:Dynamic, scope:String):Void {
+		if (!isImportedStageScope(scope) || !Std.isOfType(sprite, FlxSprite))
+			return;
+		var hudProp:FlxSprite = cast sprite;
+		if (importedStageHudProps.indexOf(hudProp) == -1)
+			importedStageHudProps.push(hudProp);
+	}
+
+	/** Demote imported camHUD props below the native HUD's lowest z so donor
+		cinema bars stay visible but render behind the gameplay UI. */
+	/**
+		Imported v-slice stages letterbox camHUD with cinema bars and other props
+		carrying authored zIndexes.  Follow the mod's z-order: the props keep
+		their authored z relative to each other, and the native HUD layers above
+		the imported prop layer (v-slice draws its UI over stage props the same
+		way), so the bars stay visible while the strumlines, health bar and
+		score text draw on top.
+	*/
+	function layerNativeStageHudOverProps():Void {
+		if (camHUD == null || importedStageHudProps.length == 0)
+			return;
+		var maxPropZ:Null<Float> = null;
+		for (sprite in importedStageHudProps) {
+			if (sprite == null || !sprite.exists || sprite.cameras == null || sprite.cameras.indexOf(camHUD) == -1)
+				continue;
+			var z:Float = HxcCompatRuntime.getZIndex(sprite);
+			if (Math.isNaN(z))
+				continue;
+			if (maxPropZ == null || z > maxPropZ)
+				maxPropZ = z;
+		}
+		if (maxPropZ == null)
+			return;
+		var nextZ = Std.int(maxPropZ) + 1;
+		var raised = 0;
+		for (member in nativeStageHudMembers()) {
+			if (member == null)
+				continue;
+			var current:Float = HxcCompatRuntime.getZIndex(member);
+			if (!Math.isNaN(current) && current >= nextZ) {
+				nextZ = Std.int(current) + 1;
+				continue;
+			}
+			HxcCompatRuntime.setZIndex(member, nextZ);
+			nextZ++;
+			raised++;
+		}
+		if (raised > 0) {
+			refresh();
+			trace('[stage-hud-layer] native HUD raised above imported stage props (max prop z ' + maxPropZ + ')');
+		}
+		importedStageHudProps.resize(0);
+	}
+
+	function nativeStageHudMembers():Array<FlxBasic> {
+		// Keep the note layer above the receptor layer when an imported stage's
+		// authored zIndexes force a full PlayState.refresh() sort. Both layers
+		// otherwise inherit the same camera but only the receptors were raised.
+		var result:Array<FlxBasic> = [songPosBG, songName, playerStrums, enemyStrums, notes,
+			enemyStrums == null ? null : enemyStrums.noteHoldCovers,
+			playerStrums == null ? null : playerStrums.noteHoldCovers, grpNoteSplashes,
+			healthBarBG, healthBar, iconP1, iconP2, scoreTxt, missesTxt, healthTxt, accuracyTxt, difficTxt];
+		for (line in codenameStrumlines) if (line != null
+			&& line != playerStrums && line != enemyStrums) {
+			result.push(line);
+			if (line.noteHoldCovers != null) result.push(line.noteHoldCovers);
+		}
+		return result;
+	}
+
+	function addHscriptSprite(sprite:Dynamic, position:Null<Int>):Void {
+		if (!isScriptObject(sprite))
+			return;
+		var basic:FlxBasic = cast sprite;
+		if (!hasExplicitCameras(basic))
+			basic.cameras = [camGame];
+		var pos:Int = position == null ? 0 : position;
+		if (members.indexOf(basic) >= 0)
+			remove(basic, true);
+		if (pos == 0) {
+			add(basic);
+			return;
+		}
+
+		var insertAt:Int = members.length;
+		if (pos & BEHIND_GF != 0 && gf != null) {
+			var actorIndex = members.indexOf(gf);
+			if (actorIndex >= 0 && actorIndex < insertAt)
+				insertAt = actorIndex;
+		}
+		if (pos & BEHIND_DAD != 0 && dad != null) {
+			var actorIndex = members.indexOf(dad);
+			if (actorIndex >= 0 && actorIndex < insertAt)
+				insertAt = actorIndex;
+		}
+		if (pos & BEHIND_BF != 0 && boyfriend != null) {
+			var actorIndex = members.indexOf(boyfriend);
+			if (actorIndex >= 0 && actorIndex < insertAt)
+				insertAt = actorIndex;
+		}
+		if (insertAt < members.length)
+			insert(insertAt, basic);
+		else
+			add(basic);
+	}
+	function forgetCutsceneSprite(sprite:Dynamic):Void {
+		if (!isScriptObject(sprite))
+			return;
+		var cutsceneSprite:FlxBasic = cast sprite;
+		cutsceneSprites.remove(cutsceneSprite);
+		var handoffIndex = cutsceneHandoffSprites.indexOf(cutsceneSprite);
+		if (handoffIndex != -1)
+			cutsceneHandoffSprites.remove(cutsceneSprite);
+		var releaseIndex = cutsceneHandoffReleaseOnOpponentSing.indexOf(cutsceneSprite);
+		if (releaseIndex != -1) {
+			cutsceneHandoffReleaseOnOpponentSing.remove(cutsceneSprite);
+			cutsceneHandoffReleaseDelays.splice(releaseIndex, 1);
+		}
+	}
+	/**
+	 * Keep a cutscene sprite across startCountdown(). This is deliberately an
+	 * engine-level hand-off API: imported cutscenes can choose which overlays
+	 * survive, instead of PlayState making a chart-specific exception.
+	 *
+	 * When releaseOnOpponentSing is true, the cutscene's playerTwoSing hook is
+	 * called once after the hand-off and the sprite is removed after the given
+	 * delay. The delay lets a hook play a short fade/tween before cleanup.
+	 */
+	function handoffCutsceneSprite(sprite:Dynamic, releaseOnOpponentSing:Bool = false,
+			releaseDelaySeconds:Float = 0):Void {
+		if (!isScriptObject(sprite))
+			return;
+		var handoffSprite:FlxBasic = cast sprite;
+		// Stage-owned objects already survive the cutscene hand-off. Do not add
+		// them to a second ownership list or let release cleanup remove them.
+		if (isStageOwnedSprite(handoffSprite))
+			return;
+		cutsceneSprites.remove(handoffSprite);
+		if (cutsceneHandoffSprites.indexOf(handoffSprite) == -1)
+			cutsceneHandoffSprites.push(handoffSprite);
+		var releaseIndex = cutsceneHandoffReleaseOnOpponentSing.indexOf(handoffSprite);
+		if (releaseOnOpponentSing) {
+			if (releaseIndex == -1) {
+				cutsceneHandoffReleaseOnOpponentSing.push(handoffSprite);
+				cutsceneHandoffReleaseDelays.push(Math.max(0, releaseDelaySeconds));
+			} else {
+				cutsceneHandoffReleaseDelays[releaseIndex] = Math.max(0, releaseDelaySeconds);
+			}
+		} else if (releaseIndex != -1) {
+			cutsceneHandoffReleaseOnOpponentSing.remove(handoffSprite);
+			cutsceneHandoffReleaseDelays.splice(releaseIndex, 1);
+		}
+	}
+	function releaseCutsceneSprite(sprite:Dynamic):Void {
+		if (!isScriptObject(sprite))
+			return;
+		remove(sprite);
+		removeGlobalSpriteReferences(cast sprite);
+		forgetCutsceneSprite(sprite);
+	}
+	function releaseCutsceneHandoffSprites():Void {
+		var releaseList = cutsceneHandoffSprites.copy();
+		for (sprite in releaseList)
+			releaseCutsceneSprite(sprite);
+	}
+	function callCutsceneOpponentSing():Void {
+		if (cutsceneHandoffOpponentSingTriggered || cutsceneHandoffReleaseOnOpponentSing.length == 0)
+			return;
+		cutsceneHandoffOpponentSingTriggered = true;
+		if (cutsceneHandoffOpponentSing != null) {
+			try {
+				cutsceneHandoffOpponentSing();
+			} catch (e:Dynamic) {
+				trace('hscript error in cutscene.playerTwoSing: $e');
+			}
+		}
+		// Copy the parallel arrays before scheduling timers: the hook itself is
+		// allowed to call releaseCutsceneSprite().
+		var releaseList = cutsceneHandoffReleaseOnOpponentSing.copy();
+		var delayList = cutsceneHandoffReleaseDelays.copy();
+		for (i in 0...releaseList.length) {
+			var sprite = releaseList[i];
+			var delay = i < delayList.length ? delayList[i] : 0;
+			if (delay <= 0)
+				releaseCutsceneSprite(sprite);
+			else {
+				var releaseSprite:FlxBasic = sprite;
+				new FlxTimer().start(delay, function(tmr:FlxTimer) releaseCutsceneSprite(releaseSprite));
+			}
+		}
+	}
+	function getHaxeActor(who:Dynamic):Dynamic {
+		switch (Std.string(who)) {
 			case "boyfriend" | "bf":
 				return boyfriend;
 			case "girlfriend" | "gf":
@@ -323,18 +2842,7276 @@ class PlayState extends MusicBeatState {
 			case "dad":
 				return dad;
 			default:
-				var num = Std.parseInt(name);
-				if (num > Note.NOTE_AMOUNT)
-					return playerStrums.members[num];
+				// the old engine indexed ONE combined strum array:
+				// enemy lanes 0-3, player lanes 4-7 (purgatory scatters
+				// getHaxeActor(0..7) at its finale)
+				var num = Std.parseInt(Std.string(who));
+				if (num >= Note.NOTE_AMOUNT)
+					return playerStrums.members[num - Note.NOTE_AMOUNT];
 				else
 					return enemyStrums.members[num];
 		}
 	}
-	function makeHaxeState(usehaxe:String, path:String, filename:String) {
+
+	/**
+		Resolve a Psych/Kade property root to the live PlayState object.  The
+		property bridge deliberately uses reflection at the boundary; scripts can
+		then keep paths such as camGame.zoom, iconP1.x, and unspawnNotes.length
+		without every imported chart needing a bespoke conversion.
+	*/
+	function compatPropertyRoot(name:String):Dynamic {
+		var root = EngineCompat.propertyRoot(name);
+		switch (root.toLowerCase()) {
+			case 'game' | 'currentplaystate':
+				return this;
+			case 'playstate':
+				return PlayState;
+			case 'camgame':
+				return camGame;
+			case 'camhud':
+				return camHUD;
+			case 'camother' | 'other':
+				return camOther;
+			case 'camfollow':
+				return camFollow;
+			case 'opponentstrums' | 'enemystrums':
+				return enemyStrums;
+			case 'playerstrums':
+				return playerStrums;
+			case 'strumlinenotes':
+				return strumLineNotes;
+			case 'notes':
+				return notes;
+			case 'unspawnnotes':
+				return unspawnNotes;
+			case 'songposition':
+				return Conductor;
+			case 'conductor':
+				return Conductor;
+			case 'flxg' | 'flixel.flxg':
+				return FlxG;
+			case 'song' | 'songdata':
+				return SONG;
+			default:
+				var value:Dynamic = null;
+				try value = Reflect.field(this, root) catch (_:Dynamic) {}
+				if (value == null && PlayState.globalSprites.exists(root))
+					value = PlayState.globalSprites.get(root);
+				if (value == null && haxeSprites.exists(root))
+					value = haxeSprites.get(root);
+				return value;
+		}
+	}
+
+	/**
+		Tokenize a Psych/Kade property path while retaining array/group indices.
+
+		Reflect.getProperty only understands a single field name.  Donor Lua
+		frequently asks for values such as `healthColorArray[1]` or
+		`touches.list[0].screenX`, so treating the whole bracketed suffix as a
+		field silently returns null on the native bridge.  Keep bracket tokens
+		separate so reads and writes share exactly the same traversal rules.
+	*/
+	function compatPathTokens(path:String):Array<String> {
+		var tokens:Array<String> = [];
+		if (path == null || StringTools.trim(path) == '')
+			return tokens;
+		var clean = StringTools.replace(path, '\\', '.');
+		var current = '';
+		var i = 0;
+		while (i < clean.length) {
+			var character = clean.charAt(i);
+			if (character == '.') {
+				if (StringTools.trim(current) != '') {
+					tokens.push(StringTools.trim(current));
+					current = '';
+				}
+				i++;
+				continue;
+			}
+			if (character == '[') {
+				if (StringTools.trim(current) != '') {
+					tokens.push(StringTools.trim(current));
+					current = '';
+				}
+				var close = clean.indexOf(']', i + 1);
+				if (close < 0) {
+					current += clean.substr(i);
+					i = clean.length;
+					continue;
+				}
+				var index = StringTools.trim(clean.substr(i + 1, close - i - 1));
+				if (index.length >= 2) {
+					var first = index.charAt(0);
+					var last = index.charAt(index.length - 1);
+					if ((first == '"' && last == '"') || (first == "'" && last == "'"))
+						index = index.substr(1, index.length - 2);
+				}
+				if (index != '')
+					tokens.push('[' + index + ']');
+				i = close + 1;
+				continue;
+			}
+			current += character;
+			i++;
+		}
+		if (StringTools.trim(current) != '')
+			tokens.push(StringTools.trim(current));
+		return tokens;
+	}
+
+	function compatPathIndex(token:String):String {
+		var value = StringTools.trim(token);
+		if (value.length >= 2 && value.charAt(0) == '[' && value.charAt(value.length - 1) == ']') {
+			value = StringTools.trim(value.substr(1, value.length - 2));
+			if (value.length >= 2) {
+				var first = value.charAt(0);
+				var last = value.charAt(value.length - 1);
+				if ((first == '"' && last == '"') || (first == "'" && last == "'"))
+					value = value.substr(1, value.length - 2);
+			}
+		}
+		return value;
+	}
+
+	function compatReadPathPart(target:Dynamic, part:String):Dynamic {
+		if (target == null)
+			return null;
+		var token = StringTools.trim(part);
+		if (token == '')
+			return target;
+		// Psych Character exposes RGB healthColorArray components, while this
+		// fork keeps authored colours on the matching HealthIcon/role fields.
+		// Resolve that virtual array before ordinary reflection so imported
+		// silhouette scripts keep their donor property paths.
+		if (token.toLowerCase() == 'healthcolorarray')
+			return EngineCompat.psychHealthColorArray(target, boyfriend, dad, gf, iconP1, iconP2);
+		if (token.charAt(0) == '[' && token.charAt(token.length - 1) == ']') {
+			var key = compatPathIndex(token);
+			var index = Std.parseInt(key);
+			if (index != null && Std.isOfType(target, Array)) {
+				var array:Array<Dynamic> = cast target;
+				return index >= 0 && index < array.length ? array[index] : null;
+			}
+			if (index != null) {
+				var members:Dynamic = null;
+				try members = Reflect.getProperty(target, 'members') catch (_:Dynamic) {}
+				if (members != null && Std.isOfType(members, Array)) {
+					var list:Array<Dynamic> = cast members;
+					return index >= 0 && index < list.length ? list[index] : null;
+				}
+			}
+			try return Reflect.getProperty(target, key) catch (_:Dynamic) {
+				try return Reflect.field(target, key) catch (_:Dynamic) return null;
+			}
+		}
+		try return Reflect.getProperty(target, token) catch (_:Dynamic) {
+			try return Reflect.field(target, token) catch (_:Dynamic) return null;
+		}
+	}
+
+	/**
+		Psych event values arrive through Lua as strings, while the native
+		property being written is usually a typed Float, Int, or Bool.  Coerce
+		those values at the shared property boundary so every imported event and
+		modchart gets the same ABI instead of relying on Reflect's target-specific
+		conversion behaviour.
+	*/
+	function compatCoercePropertyValue(target:Dynamic, field:String, value:Dynamic):Dynamic {
+		if (value == null)
+			return value;
+		var normalizedField = StringTools.trim(field == null ? '' : field).toLowerCase();
+		// Psych's generic colour properties use bare RGB(A) strings in a few
+		// events.  Parse them before numeric coercion turns "000000" into 0.
+		if (normalizedField == 'color' || normalizedField == 'bordercolor') {
+			var parsedColor = compatParseColor(value);
+			if (parsedColor != null)
+				return parsedColor;
+		}
+		if (Std.isOfType(target, PsychRGBShaderReference)
+			&& (normalizedField == 'r' || normalizedField == 'g' || normalizedField == 'b')) {
+			var parsedRGB = compatParseColor(value);
+			if (parsedRGB != null)
+				return parsedRGB;
+		}
+		if (Std.isOfType(target, Note)
+			&& (normalizedField == 'hithealth' || normalizedField == 'misshealth')
+			&& Std.isOfType(value, String)) {
+			var noteHealth = Std.parseFloat(StringTools.trim(Std.string(value)));
+			if (!Math.isNaN(noteHealth))
+				return noteHealth;
+		}
+		var current:Dynamic = compatReadPathPart(target, field);
+		if (Std.isOfType(current, Bool) && Std.isOfType(value, String)) {
+			var boolText = StringTools.trim(Std.string(value)).toLowerCase();
+			if (boolText == 'true' || boolText == '1')
+				return true;
+			if (boolText == 'false' || boolText == '0')
+				return false;
+		}
+		if ((Std.isOfType(current, Int) || Std.isOfType(current, Float))
+			&& Std.isOfType(value, String)) {
+			var numberText = StringTools.trim(Std.string(value));
+			var parsedNumber = Std.parseFloat(numberText);
+			if (!Math.isNaN(parsedNumber))
+				return Std.isOfType(current, Int) ? Std.int(parsedNumber) : parsedNumber;
+		}
+		return value;
+	}
+
+	function compatWritePathPart(target:Dynamic, part:String, value:Dynamic):Bool {
+		if (target == null)
+			return false;
+		var token = StringTools.trim(part);
+		if (token == '')
+			return false;
+		var writeValue = compatCoercePropertyValue(target, token, value);
+		if (token.charAt(0) == '[' && token.charAt(token.length - 1) == ']') {
+			var key = compatPathIndex(token);
+			var index = Std.parseInt(key);
+			if (index != null && Std.isOfType(target, Array)) {
+				var array:Array<Dynamic> = cast target;
+				if (index < 0 || index >= array.length)
+					return false;
+				array[index] = writeValue;
+				return true;
+			}
+			if (index != null) {
+				var members:Dynamic = null;
+				try members = Reflect.getProperty(target, 'members') catch (_:Dynamic) {}
+				if (members != null && Std.isOfType(members, Array)) {
+					var list:Array<Dynamic> = cast members;
+					if (index < 0 || index >= list.length)
+						return false;
+					list[index] = writeValue;
+					return true;
+				}
+			}
+			try {
+				Reflect.setProperty(target, key, writeValue);
+				return true;
+			} catch (_:Dynamic) {
+				try {
+					Reflect.setField(target, key, writeValue);
+					return true;
+				} catch (_:Dynamic) return false;
+			}
+		}
+		try {
+			Reflect.setProperty(target, token, writeValue);
+			return true;
+		} catch (_:Dynamic) {
+			try {
+				Reflect.setField(target, token, writeValue);
+				return true;
+			} catch (_:Dynamic) return false;
+		}
+	}
+
+	function compatReadPath(target:Dynamic, path:String):Dynamic {
+		if (target == null)
+			return null;
+		if (path == null || StringTools.trim(path) == '')
+			return target;
+		var value:Dynamic = target;
+		for (part in compatPathTokens(path)) {
+			value = compatReadPathPart(value, part);
+			if (value == null)
+				return null;
+		}
+		return value;
+	}
+
+	function compatPropertySeparator(path:String):Int {
+		var dot = path.indexOf('.');
+		var bracket = path.indexOf('[');
+		return bracket >= 0 && (dot < 0 || bracket < dot) ? bracket : dot;
+	}
+
+	function compatGetProperty(path:Dynamic):Dynamic {
+		var normalized = EngineCompat.propertyPath(path);
+		if (normalized == '')
+			return null;
+		var dot = compatPropertySeparator(normalized);
+		var root = dot < 0 ? normalized : normalized.substr(0, dot);
+		var suffix = dot < 0 ? '' : normalized.charAt(dot) == '[' ? normalized.substr(dot) : normalized.substr(dot + 1);
+		var counterName = EngineCompat.legacyCounterName(root);
+		if (suffix == '' && counterName != '') {
+			switch (counterName) {
+				case 'misses': return PlayState.misses;
+				case 'shits': return PlayState.shits;
+				case 'bads': return PlayState.bads;
+				case 'goods': return PlayState.goods;
+				case 'sicks': return PlayState.sicks;
+			}
+		}
+		if (root.toLowerCase() == 'songposition')
+			return Conductor.songPosition;
+		// Psych's score-facing globals are script-readable state fields. Keep
+		// their units and full-combo labels aligned with Psych's source contract.
+		if (suffix == '') switch (root.toLowerCase()) {
+			case 'songmisses': return PlayState.misses;
+			case 'ratingpercent': return FlxMath.bound(accuracy / 100, 0, 1);
+			case 'ratingfc':
+				if (PlayState.misses > 0)
+					return PlayState.misses < 10 ? 'SDCB' : 'Clear';
+				if (PlayState.bads > 0 || PlayState.shits > 0) return 'FC';
+				if (PlayState.goods > 0) return 'GFC';
+				return PlayState.sicks > 0 ? 'SFC' : '';
+			default:
+		}
+		if (root.toLowerCase() == 'songspeed')
+			return SONG == null ? daScrollSpeed : SONG.speed;
+		if (root.toLowerCase() == 'cpucontrolled' || root.toLowerCase() == 'cpusize')
+			return FlxG.save != null && FlxG.save.data != null ? FlxG.save.data.botplay : false;
+		if (root.toLowerCase() == 'shownotesplashes')
+			return useNoteSplashes;
+		if (root.toLowerCase() == 'notesplashes' && suffix.toLowerCase() == 'length')
+			return compatNoteSplashCount();
+		return compatReadPath(compatPropertyRoot(root), suffix);
+	}
+
+	function compatWritePath(target:Dynamic, path:String, value:Dynamic):Bool {
+		if (target == null || path == null || StringTools.trim(path) == '')
+			return false;
+		var parts = compatPathTokens(path);
+		if (parts.length == 0)
+			return false;
+		var field:String = parts.pop();
+		var owner = target;
+		for (part in parts) {
+			owner = compatReadPathPart(owner, part);
+			if (owner == null)
+				return false;
+		}
+		return compatWritePathPart(owner, field, value);
+	}
+
+	/** A fallback results pack observes the selected engine's scoring. Its
+	 * presentation helpers may not replace that engine's combo/score rules
+	 * while counting callbacks (for example by breaking a source-valid combo).
+	 * Selected mod scripts still receive the ordinary writable Psych API. */
+	function compatSetResultsProperty(path:Dynamic, value:Dynamic):Void {
+		var normalized = EngineCompat.propertyPath(path).toLowerCase();
+		if (compatPropertySeparator(normalized) < 0) {
+			if (EngineCompat.legacyCounterName(normalized) != '') return;
+			switch (normalized) {
+				case 'combo' | 'songscore' | 'songscoredef' | 'songmisses' | 'accuracy' | 'ratingpercent': return;
+				default:
+			}
+		}
+		compatSetProperty(path, value);
+	}
+
+	function compatSetProperty(path:Dynamic, value:Dynamic):Void {
+		var normalized = EngineCompat.propertyPath(path);
+		if (normalized == '')
+			return;
+		var dot = compatPropertySeparator(normalized);
+		var root = dot < 0 ? normalized : normalized.substr(0, dot);
+		var suffix = dot < 0 ? '' : normalized.charAt(dot) == '[' ? normalized.substr(dot) : normalized.substr(dot + 1);
+		var counterName = EngineCompat.legacyCounterName(root);
+		if (suffix == '' && counterName != '') {
+			var counterValue = Std.int(Std.parseFloat(Std.string(value)));
+			switch (counterName) {
+				case 'misses': PlayState.misses = counterValue;
+				case 'shits': PlayState.shits = counterValue;
+				case 'bads': PlayState.bads = counterValue;
+				case 'goods': PlayState.goods = counterValue;
+				case 'sicks': PlayState.sicks = counterValue;
+			}
+			return;
+		}
+		switch (root.toLowerCase()) {
+			case 'songposition':
+				Conductor.songPosition = Std.parseFloat(Std.string(value));
+				return;
+			case 'songspeed':
+				var speed:Float = Std.parseFloat(Std.string(value));
+				daScrollSpeed = speed;
+				if (SONG != null)
+					SONG.speed = speed;
+				return;
+			case 'cpucontrolled' | 'cpusize':
+				if (FlxG.save != null && FlxG.save.data != null)
+					FlxG.save.data.botplay = value;
+				return;
+			case 'shownotesplashes':
+				useNoteSplashes = value == true;
+				return;
+		}
+		// A root-only path (health, defaultCamZoom, forceCamera...) is a field on
+		// PlayState, not a property of the current scalar value.  Nested paths
+		// still resolve their live object root (camGame.zoom, iconP1.alpha...).
+		var traceSprite = RuntimeSmokeHarness.enabled() && psychGlobalProviderFirstSprite != null
+			&& compatPropertyRoot(root) == psychGlobalProviderFirstSprite;
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(psychGlobalProviderFirstSprite, 'property-begin',
+				'field=' + (suffix == '' ? root : suffix));
+		var wrote = dot < 0
+			? compatWritePath(this, root, value)
+			: compatWritePath(compatPropertyRoot(root), suffix, value);
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(psychGlobalProviderFirstSprite, 'property-complete',
+				'field=' + (suffix == '' ? root : suffix) + ' wrote=' + wrote);
+	}
+
+	/**
+		Psych exposes one `grpNoteSplashes` group, while this fork owns one
+		NoteSplash group per strumline. Present a deterministic combined view for
+		legacy property/group calls without allocating a proxy group every frame.
+	*/
+	function compatNoteSplashCount():Int {
+		var count = 0;
+		if (enemyStrums != null && enemyStrums.noteSplashes != null)
+			count += enemyStrums.noteSplashes.members.length;
+		if (playerStrums != null && playerStrums.noteSplashes != null)
+			count += playerStrums.noteSplashes.members.length;
+		return count;
+	}
+
+	function compatNoteSplashAt(index:Int):Dynamic {
+		if (index < 0)
+			return null;
+		if (enemyStrums != null && enemyStrums.noteSplashes != null) {
+			var enemyCount = enemyStrums.noteSplashes.members.length;
+			if (index < enemyCount)
+				return enemyStrums.noteSplashes.members[index];
+			index -= enemyCount;
+		}
+		if (playerStrums != null && playerStrums.noteSplashes != null
+			&& index < playerStrums.noteSplashes.members.length)
+			return playerStrums.noteSplashes.members[index];
+		return null;
+	}
+
+	function compatGroupMember(groupName:Dynamic, index:Dynamic):Dynamic {
+		var requested = groupName == null ? '' : StringTools.trim(Std.string(groupName)).toLowerCase();
+		if (requested == 'grpnotesplashes' || requested == 'notesplashes')
+			return compatNoteSplashAt(Std.int(Std.parseFloat(Std.string(index))));
+		// Psych's strumLineNotes is one combined group, ordered opponent first
+		// and player second. This fork keeps the two live receptor groups separate
+		// and its legacy combined group is intentionally not added to the state;
+		// present the donor ordering here so group reads and writes stay live.
+		if (requested == 'strumlinenotes') {
+			var i = Std.int(Std.parseFloat(Std.string(index)));
+			if (i < 0)
+				return null;
+			if (enemyStrums != null && enemyStrums.members != null) {
+				if (i < enemyStrums.members.length)
+					return enemyStrums.members[i];
+				i -= enemyStrums.members.length;
+			}
+			if (playerStrums != null && playerStrums.members != null
+				&& i < playerStrums.members.length)
+				return playerStrums.members[i];
+			return null;
+		}
+		var group = compatGetProperty(groupName);
+		if (group == null)
+			return null;
+		var i = Std.int(Std.parseFloat(Std.string(index)));
+		if (Std.isOfType(group, Array)) {
+			var array:Array<Dynamic> = cast group;
+			return i >= 0 && i < array.length ? array[i] : null;
+		}
+		var members:Dynamic = null;
+		try members = Reflect.getProperty(group, 'members') catch (_:Dynamic) {}
+		if (members == null || !Std.isOfType(members, Array))
+			return null;
+		var list:Array<Dynamic> = cast members;
+		return i >= 0 && i < list.length ? list[i] : null;
+	}
+
+	function compatGetPropertyFromGroup(group:Dynamic, index:Dynamic, property:Dynamic):Dynamic {
+		return compatReadPath(compatGroupMember(group, index), Std.string(property));
+	}
+
+	function compatSetPropertyFromGroup(group:Dynamic, index:Dynamic, property:Dynamic, value:Dynamic):Void {
+		compatWritePath(compatGroupMember(group, index), Std.string(property), value);
+	}
+
+	function compatResolveClass(name:Dynamic):Dynamic {
+		if (name == null)
+			return null;
+		var value = StringTools.trim(Std.string(name));
+		switch (value.toLowerCase()) {
+			case 'flixel.flxg':
+				return FlxG;
+			case 'backend.conductor' | 'conductor':
+				return Conductor;
+			case 'backend.coolutil' | 'coolutil':
+				return CoolUtil;
+			case 'backend.highscore' | 'highscore':
+				return Highscore;
+			case 'states.playstate' | 'playstate':
+				return PlayState;
+			default:
+				try return Type.resolveClass(value) catch (_:Dynamic) return null;
+		}
+	}
+
+	/** Native reflection does not consistently expose FlxG's static property
+	 * values through its Class object. Psych's class-property API addresses
+	 * them as path roots, including live input, audio and camera objects. */
+	function compatFlxGStaticRoot(root:String):Dynamic {
+		if (root == null) return null;
+		return switch (root.toLowerCase()) {
+			case 'game': FlxG.game;
+			case 'state': FlxG.state;
+			#if FLX_KEYBOARD
+			case 'keys': FlxG.keys;
+			#end
+			#if FLX_MOUSE
+			case 'mouse': FlxG.mouse;
+			#end
+			#if FLX_TOUCH
+			case 'touches': FlxG.touches;
+			#end
+			#if FLX_GAMEPAD
+			case 'gamepads': FlxG.gamepads;
+			#end
+			#if FLX_SOUND_SYSTEM
+			case 'sound': FlxG.sound;
+			#end
+			case 'camera': FlxG.camera;
+			case 'cameras': FlxG.cameras;
+			case 'scalemode': FlxG.scaleMode;
+			case 'width': FlxG.width;
+			case 'height': FlxG.height;
+			case 'elapsed': FlxG.elapsed;
+			case 'timescale': FlxG.timeScale;
+			default: null;
+		}
+	}
+
+	function compatGetPropertyFromClass(className:Dynamic, path:Dynamic):Dynamic {
+		var gameOverKey = psychGameOverClassPropertyKey(className, path);
+		if (gameOverKey == 'deathdelay')
+			return psychGameOverDeathDelaySeconds;
+		if (gameOverKey != null && psychGameOverOverrides.exists(gameOverKey))
+			return psychGameOverOverrides.get(gameOverKey);
+		var legacy = EngineCompat.legacyClassProperty(Std.string(className), Std.string(path));
+		switch (legacy) {
+			case 'ratingOffset':
+				// Native chart strum times already include the selected timing
+				// offset. A second Psych rating offset would count it twice.
+				return 0.0;
+			case 'sickWindow':
+				// Psych's ClientPrefs sickWindow is the judgement window in
+				// milliseconds. Judge.sickJudge is the native equivalent and tracks
+				// the selected judge option at runtime.
+				return Judge.sickJudge;
+			case 'goodWindow': return Judge.goodJudge;
+			case 'badWindow': return Judge.badJudge;
+			case 'shitWindow': return Judge.shitJudge;
+			case 'splashAlpha':
+				// The native fork has a visibility gate rather than Psych's separate
+				// alpha preference. Preserve the old effective value for scripts that
+				// scale note-splash alpha themselves.
+				return OptionsHandler.options.showNoteSplashes ? 1.0 : 0.0;
+			case 'isPixelStage':
+				return pixelUI;
+			case 'chartingMode':
+				// Imported gameplay scripts are never executed by ChartingState. Keep
+				// the donor read deterministic instead of exposing a missing static
+				// field through Type.resolveClass().
+				return false;
+		}
+		var probePath = '';
+		var probeFlxGGameTicks = false;
+		if (RuntimeSmokeHarness.enabled() && !psychFlxGGameTicksProbeEmitted
+			&& className != null && path != null
+			&& StringTools.trim(Std.string(className)).toLowerCase() == 'flixel.flxg') {
+			probePath = StringTools.replace(StringTools.trim(Std.string(path)), '\\', '.');
+			probeFlxGGameTicks = probePath.toLowerCase() == 'game.ticks';
+		}
+		if (probeFlxGGameTicks)
+			psychFlxGGameTicksProbeEmitted = true;
+		var classValue = compatResolveClass(className);
+		var normalized = compatClassPropertyPath(classValue, path);
+		if (classValue == PlayState && normalized.toLowerCase() == 'instance')
+			return this;
+		var rootValue:Dynamic = null;
+		if (classValue == (cast FlxG:Dynamic) && normalized != '') {
+			var separator = compatPropertySeparator(normalized);
+			var root = separator < 0 ? normalized : normalized.substr(0, separator);
+			rootValue = compatFlxGStaticRoot(root);
+			if (rootValue != null) {
+				var suffix = separator < 0 ? '' : normalized.charAt(separator) == '['
+					? normalized.substr(separator) : normalized.substr(separator + 1);
+				var result = compatReadPath(rootValue, suffix);
+				if (probeFlxGGameTicks)
+					tracePsychFlxGGameTicksProbe(className, probePath, normalized, classValue, rootValue, result);
+				return result;
+			}
+		}
+		var result = compatReadPath(classValue, normalized);
+		if (probeFlxGGameTicks)
+			tracePsychFlxGGameTicksProbe(className, probePath, normalized, classValue, rootValue, result);
+		return result;
+	}
+
+	/** Emit one bounded smoke-only trace for the Psych FlxG class-property route. */
+	function tracePsychFlxGGameTicksProbe(className:Dynamic, path:String, normalized:String,
+		classValue:Dynamic, rootValue:Dynamic, result:Dynamic):Void {
+		var game:Dynamic = FlxG.game;
+		var reflectedTicks:Dynamic = null;
+		var reflectedTicksField:Dynamic = null;
+		if (game != null) {
+			try reflectedTicks = Reflect.getProperty(game, 'ticks') catch (_:Dynamic) {}
+			try reflectedTicksField = Reflect.field(game, 'ticks') catch (_:Dynamic) {}
+		}
+		trace('[psych-class-property-probe] class=' + Std.string(className)
+			+ ' path=' + path + ' normalized=' + normalized
+			+ ' flxgIdentity=' + (classValue == (cast FlxG:Dynamic))
+			+ ' gameNull=' + (game == null)
+			+ ' gameType=' + (game == null ? 'null' : Std.string(Type.typeof(game)))
+			+ ' rootNull=' + (rootValue == null)
+			+ ' rootType=' + (rootValue == null ? 'null' : Std.string(Type.typeof(rootValue)))
+			+ ' ticksReflect=' + psychClassPropertyProbeValue(reflectedTicks)
+			+ ' ticksReflectType=' + psychClassPropertyProbeType(reflectedTicks)
+			+ ' ticksField=' + psychClassPropertyProbeValue(reflectedTicksField)
+			+ ' ticksFieldType=' + psychClassPropertyProbeType(reflectedTicksField)
+			+ ' result=' + psychClassPropertyProbeValue(result)
+			+ ' resultType=' + psychClassPropertyProbeType(result));
+	}
+
+	static function psychClassPropertyProbeValue(value:Dynamic):String {
+		if (value == null)
+			return 'nil';
+		return switch (Type.typeof(value)) {
+			case TInt | TFloat | TBool | TClass(String): Std.string(value);
+			default: Std.string(Type.typeof(value));
+		};
+	}
+
+	static function psychClassPropertyProbeType(value:Dynamic):String {
+		return value == null ? 'null' : Std.string(Type.typeof(value));
+	}
+
+	/**
+		`game.` is a PlayState-relative alias for ordinary Psych properties, but
+		it is also a real root when a script queries `FlxG.game.*` through the
+		class-property API. Keep that root for FlxG and use the usual aliases for
+		PlayState and other classes.
+	*/
+	static function compatClassPropertyPath(classValue:Dynamic, path:Dynamic):String {
+		if (path == null)
+			return '';
+		var value = StringTools.replace(StringTools.trim(Std.string(path)), '\\', '.');
+		if (classValue == (cast FlxG:Dynamic) && StringTools.startsWith(value.toLowerCase(), 'game.'))
+			return value;
+		return EngineCompat.propertyPath(path);
+	}
+
+	function compatSetPropertyFromClass(className:Dynamic, path:Dynamic, value:Dynamic):Void {
+		var gameOverKey = psychGameOverClassPropertyKey(className, path);
+		if (gameOverKey != null) {
+			if (gameOverKey == 'deathdelay') {
+				var delay = value == null ? 0 : Std.parseFloat(StringTools.trim(Std.string(value)));
+				if (Math.isNaN(delay) || !Math.isFinite(delay) || delay < 0)
+					throw '[psych-gameover] deathDelay must be a finite nonnegative number';
+				psychGameOverDeathDelaySeconds = delay;
+				return;
+			}
+			var name = value == null ? '' : StringTools.trim(Std.string(value));
+			if (name == '') psychGameOverOverrides.remove(gameOverKey);
+			else psychGameOverOverrides.set(gameOverKey, name);
+			return;
+		}
+		var classValue = compatResolveClass(className);
+		var normalized = compatClassPropertyPath(classValue, path);
+		if (classValue == (cast FlxG:Dynamic) && normalized != '') {
+			var separator = compatPropertySeparator(normalized);
+			var root = separator < 0 ? normalized : normalized.substr(0, separator);
+			var rootValue = compatFlxGStaticRoot(root);
+			if (rootValue != null && separator >= 0) {
+				var suffix = normalized.charAt(separator) == '['
+					? normalized.substr(separator) : normalized.substr(separator + 1);
+				compatWritePath(rootValue, suffix, value);
+				return;
+			}
+		}
+		compatWritePath(classValue, normalized, value);
+	}
+
+	function psychGameOverClassPropertyKey(className:Dynamic, path:Dynamic):Null<String> {
+		if (className == null || path == null) return null;
+		var classKey = StringTools.trim(Std.string(className)).toLowerCase();
+		if (classKey != 'gameoversubstate' && !StringTools.endsWith(classKey, '.gameoversubstate'))
+			return null;
+		var key = EngineCompat.propertyPath(path).toLowerCase();
+		return ['charactername', 'deathsoundname', 'loopsoundname', 'endsoundname', 'deathdelay'].indexOf(key) < 0 ? null : key;
+	}
+
+	/** The static Psych stage translator uses this same per-song class property
+	 * path as a live Lua script. */
+	public function setPsychClassProperty(className:String, path:String, value:Dynamic):Void {
+		compatSetPropertyFromClass(className, path, value);
+	}
+
+	public function psychGameOverCharacterName():Null<String> {
+		var name = psychGameOverOverrides.get('charactername');
+		if (name == null || name == '' || name == '.' || name == '..'
+			|| name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0)
+			return null;
+		return name;
+	}
+
+	public function psychGameOverDeathDelay():Float {
+		return psychGameOverDeathDelaySeconds;
+	}
+
+	function runPsychGameOverTransition():Void {
+		stopVocals();
+		if (FlxG.sound.music != null)
+			FlxG.sound.music.stop();
+		if (inALoop) {
+			FlxG.resetState();
+		} else if (FlxG.random.bool(0.1)) {
+			// gitaroo man easter egg
+			LoadingState.loadAndSwitchState(new GitarooPause());
+		} else {
+			if (camGame != null)
+				camGame.stopFlash();
+			if (camHUD != null)
+				camHUD.stopFlash();
+			if (camOther != null)
+				camOther.stopFlash();
+			callAllHScript('gameOver', [EngineCompat.hxcLifecyclePayload('gameOver', {targetState: this})]);
+			#if cpp
+			stopCompatEventVideo();
+			#end
+			callCodenameEvent('onGameOver', new CodenameGameEvent());
+			openSubState(new GameOverSubstate(getHaxeActor("bf")));
+			#if windows
+			// Game Over doesn't get his own variable because it's only used here
+			DiscordClient.changePresence("GAME OVER -- "
+				+ SONG.song
+				+ " ("
+				+ storyDifficultyText
+				+ ") "
+				+ Ratings.GenerateLetterRank(accuracy),
+				"\nAcc: "
+				+ HelperFunctions.truncateFloat(accuracy, 2)
+				+ "% | Score: "
+				+ songScore
+				+ " | Misses: "
+				+ misses, iconRPC, null, null,
+				playingAsRpc);
+			#end
+		}
+	}
+
+	public function psychGameOverSoundPath(property:String, preferSounds:Bool):Null<String> {
+		var key = psychGameOverClassPropertyKey('GameOverSubstate', property);
+		if (key == null || key == 'charactername' || !psychGameOverOverrides.exists(key)) return null;
+		var name = psychGameOverOverrides.get(key);
+		var sound = compatSoundPath(name, preferSounds);
+		if (sound == null) trace('[psych-gameover-missing-sound] ' + property + '=' + name);
+		return sound;
+	}
+
+	function compatFindObject(name:Dynamic):Dynamic {
+		return compatPropertyRoot(Std.string(name));
+	}
+
+	/** Drop the source-atlas metadata associated with one live sprite. */
+	function compatForgetSpriteAtlas(sprite:Dynamic):Void {
+		if (sprite != null && Std.isOfType(sprite, FlxSprite))
+			haxeSpriteAtlasNamesByObject.remove(cast sprite);
+	}
+
+	/**
+		Keep a source atlas binding on both sides of the compatibility registry.
+		The tag is the normal Psych API key, while the object binding survives
+		callbacks which reach the same sprite through a property alias or a
+		dynamically coerced tag.
+	*/
+	function compatRememberSpriteAtlas(tag:String, sprite:FlxSprite, names:Array<String>):Void {
+		if (sprite == null)
+			return;
+		if (names != null && names.length > 0) {
+			if (tag != null)
+				haxeSpriteAtlasNames.set(tag, names);
+			haxeSpriteAtlasNamesByObject.set(sprite, names);
+		} else {
+			if (tag != null)
+				haxeSpriteAtlasNames.remove(tag);
+			compatForgetSpriteAtlas(sprite);
+		}
+	}
+
+	/** Resolve authored atlas names after the tag has become a live object. */
+	function compatSpriteAtlasNames(name:Dynamic, object:Dynamic):Array<String> {
+		var names:Array<String> = name == null ? null : haxeSpriteAtlasNames.get(Std.string(name));
+		if (names == null && object != null && Std.isOfType(object, FlxSprite))
+			names = haxeSpriteAtlasNamesByObject.get(cast object);
+		return names;
+	}
+
+	/** Return the native layer for Psych's game, HUD, and overlay camera names. */
+	public static function psychCameraLayerName(cameraName:Dynamic):String {
+		var camera = StringTools.trim(cameraName == null ? '' : Std.string(cameraName)).toLowerCase();
+		return switch (camera) {
+			case 'hud' | 'camhud' | 'camgamehud': 'hud';
+			case 'other' | 'camother': 'other';
+			default: 'game';
+		};
+	}
+
+	function compatCameraForName(cameraName:Dynamic):FlxCamera {
+		return switch (psychCameraLayerName(cameraName)) {
+			case 'hud': camHUD;
+			case 'other': camOther;
+			default: camGame;
+		};
+	}
+
+	function compatSetObjectCamera(name:Dynamic, cameraName:Dynamic):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null)
+			return;
+		var traceSprite = RuntimeSmokeHarness.enabled() && object == psychGlobalProviderFirstSprite;
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(object, 'camera-begin',
+				'layer=' + psychCameraLayerName(cameraName));
+		try {
+			var cameras = [compatCameraForName(cameraName)];
+			if (Std.isOfType(object, FlxBasic))
+				(cast object : FlxBasic).cameras = cameras;
+			else
+				Reflect.setProperty(object, 'cameras', cameras);
+			if (traceSprite)
+				markPsychGlobalProviderSpritePhase(object, 'camera-complete',
+					'count=' + cameras.length + ' null=' + (cameras[0] == null));
+		} catch (error:Dynamic) {
+			if (traceSprite)
+				markPsychGlobalProviderSpritePhase(object, 'camera-error', Std.string(error));
+		}
+	}
+
+	function compatSetScrollFactor(name:Dynamic, x:Float, ?y:Null<Float>):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null)
+			return;
+		var yy = y == null ? x : y;
+		try object.scrollFactor.set(x, yy) catch (_:Dynamic) {}
+	}
+
+	function compatScaleObject(name:Dynamic, x:Float, ?y:Null<Float>):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null)
+			return;
+		var yy = y == null ? x : y;
+		try {
+			object.scale.x = x;
+			object.scale.y = yy;
+			if (Std.isOfType(object, FlxSprite))
+				(cast object : FlxSprite).updateHitbox();
+		} catch (_:Dynamic) {}
+	}
+
+	function compatScreenCenter(name:Dynamic, ?axis:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null)
+			return;
+		try {
+			if (Std.isOfType(object, FlxSprite)) {
+				var sprite:FlxSprite = cast object;
+				switch (axis == null ? '' : axis.toUpperCase()) {
+					case 'X': sprite.screenCenter(X);
+					case 'Y': sprite.screenCenter(Y);
+					default: sprite.screenCenter();
+				}
+			}
+		} catch (_:Dynamic) {}
+	}
+
+	function compatMakeLuaSprite(tag:String, image:String, x:Float = 0, y:Float = 0):FlxSprite {
+		var sprite = new FlxSprite(x, y);
+		if (image != null && StringTools.trim(image) != '') {
+			var candidates = [image, image + '.png', 'assets/images/' + image, 'assets/images/' + image + '.png',
+				'assets/' + image, 'assets/' + image + '.png'];
+			for (candidate in candidates)
+				if (FNFAssets.exists(candidate)) {
+					try sprite.loadGraphic(FNFAssets.getBitmapData(candidate)) catch (_:Dynamic) {}
+					break;
+				}
+		}
+		if (tag != null) {
+			compatForgetSpriteAtlas(haxeSprites.get(tag));
+			haxeSprites.set(tag, sprite);
+			haxeSpriteAtlasNames.remove(tag);
+		}
+		return sprite;
+	}
+
+	/** Resolve a Psych Paths proxy method only against this interpreter's
+	 * validated import owner. PsychOwnerPaths retains base shared-asset fallback. */
+	function compatPsychPathCall(ownerRoot:String, method:String, args:Array<Dynamic>):Dynamic {
+		if (ownerRoot == null || method == null) return null;
+		try {
+			var paths = PsychOwnerPaths.create(ownerRoot);
+			var callback = Reflect.field(paths, method);
+			return Reflect.isFunction(callback) ? Reflect.callMethod(paths, callback, args) : null;
+		} catch (_:Dynamic) {
+			return null;
+		}
+	}
+
+	function compatPsychOwnerFallbackAllowed(ownerRoot:String, reference:String):Bool {
+		// Psych permits an empty image key when a script immediately calls
+		// makeGraphic or loadGraphic on the new tagged sprite.
+		if (reference == null || StringTools.trim(reference) == '') return true;
+		return ownerRoot == null || PsychOwnerAssetPath.ownerReferenceAllowed(ownerRoot, reference);
+	}
+
+	function compatPsychAssetKey(value:String, extension:String):String {
+		if (value == null) return null;
+		var clean = StringTools.trim(StringTools.replace(value, '\\', '/'));
+		return StringTools.endsWith(clean.toLowerCase(), extension) ? clean.substr(0, clean.length - extension.length) : clean;
+	}
+
+	/** Emit bounded native-smoke phases only for the first sprite created by the
+	 * selected global Psych provider. Object identity avoids logging unrelated
+	 * Lua sprites that happen to reuse its tag later. */
+	function markPsychGlobalProviderSpritePhase(sprite:Dynamic, phase:String, ?detail:String):Void {
+		if (!RuntimeSmokeHarness.enabled() || sprite == null || sprite != psychGlobalProviderFirstSprite)
+			return;
+		RuntimeSmokeHarness.markStep('psych-global-provider:sprite-' + phase
+			+ ' tag=' + Std.string(psychGlobalProviderFirstSpriteTag)
+			+ (detail == null || detail == '' ? '' : ' ' + detail));
+	}
+
+	function compatMakeLuaSpriteForOwner(ownerRoot:String, tag:String, image:String,
+		x:Float = 0, y:Float = 0):FlxSprite {
+		// A global Psych results provider creates its first visible sprite from
+		// onEndSong. Keep one smoke marker so an end hold can be distinguished
+		// from a callback which returned before creating its screen.
+		if (!psychGlobalProviderSpriteMarked && RuntimeSmokeHarness.enabled()
+			&& ownerRoot != null && ownerRoot == PsychGlobalPackImporter.defaultProvider()) {
+			psychGlobalProviderSpriteMarked = true;
+			psychGlobalProviderFirstSpriteTag = tag;
+			RuntimeSmokeHarness.markStep('psych-global-provider:first-sprite tag=' + Std.string(tag)
+				+ ' endingSong=' + endingSong + ' canPause=' + canPause);
+		}
+		if (ownerRoot == null) return compatMakeLuaSprite(tag, image, x, y);
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, image)) {
+			trace('[psych-assets] Refused Lua sprite reference outside calling owner: ' + Std.string(image));
+			return compatMakeLuaSprite(tag, '', x, y);
+		}
+		if (image != null && StringTools.trim(image) != '') {
+			var graphic = compatPsychPathCall(ownerRoot, 'image', [compatPsychAssetKey(image, '.png')]);
+			if (graphic == null)
+				return compatMakeLuaSprite(tag, image, x, y);
+			var traceFirstGlobalSprite = RuntimeSmokeHarness.enabled()
+				&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
+			if (traceFirstGlobalSprite)
+				RuntimeSmokeHarness.markStep('psych-global-provider:sprite-constructor-begin tag=' + Std.string(tag));
+			var sprite = new FlxSprite(x, y);
+			if (traceFirstGlobalSprite) {
+				psychGlobalProviderFirstSprite = sprite;
+				markPsychGlobalProviderSpritePhase(sprite, 'constructor-complete');
+			}
+			try sprite.loadGraphic(cast graphic) catch (_:Dynamic) {}
+			if (tag != null) {
+				compatForgetSpriteAtlas(haxeSprites.get(tag));
+				haxeSprites.set(tag, sprite);
+				haxeSpriteAtlasNames.remove(tag);
+				markPsychGlobalProviderSpritePhase(sprite, 'registry-complete');
+			}
+			return sprite;
+		}
+		var traceEmptyImageGlobalSprite = RuntimeSmokeHarness.enabled()
+			&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
+		if (traceEmptyImageGlobalSprite)
+			RuntimeSmokeHarness.markStep('psych-global-provider:sprite-constructor-begin tag=' + Std.string(tag));
+		var sprite = new FlxSprite(x, y);
+		if (traceEmptyImageGlobalSprite) {
+			psychGlobalProviderFirstSprite = sprite;
+			markPsychGlobalProviderSpritePhase(sprite, 'constructor-complete');
+		}
+		if (tag != null) {
+			compatForgetSpriteAtlas(haxeSprites.get(tag));
+			haxeSprites.set(tag, sprite);
+			haxeSpriteAtlasNames.remove(tag);
+			markPsychGlobalProviderSpritePhase(sprite, 'registry-complete');
+		}
+		return sprite;
+	}
+
+	/** Read Sparrow frame names in authored order without depending on Flixel's
+		bitmap/frame cache representation. */
+	function compatReadSparrowFrameNames(xmlText:String):Array<String> {
+		var names:Array<String> = [];
+		if (xmlText == null || StringTools.trim(xmlText) == '')
+			return names;
+		try {
+			var root = Xml.parse(xmlText).firstElement();
+			if (root == null)
+				return names;
+			for (node in root.elements()) {
+				if (node.nodeType != Xml.Element || node.nodeName != 'SubTexture')
+					continue;
+				var frameName = node.get('name');
+				if (frameName == null)
+					frameName = node.get('n');
+				names.push(frameName == null ? '' : frameName);
+			}
+		} catch (_:Dynamic) {}
+		return names;
+	}
+
+	/**
+		Psych keeps animated Lua sprites on Sparrow atlases.  Loading only the PNG
+		(as the generic makeLuaSprite route does) leaves addAnimationByPrefix with
+		an empty frame set, so every imported animated sprite silently stays blank.
+		Resolve the atlas at the runtime boundary and retain the static-image
+		fallback for donors which use the animated API for a single PNG.
+	*/
+	function compatMakeAnimatedLuaSprite(tag:String, image:String, x:Float = 0, y:Float = 0):FlxSprite {
+		var sprite = new FlxSprite(x, y);
+		var atlasNames:Array<String> = [];
+		if (image != null && StringTools.trim(image) != '') {
+			var clean = StringTools.replace(StringTools.trim(image), '\\', '/');
+			var pngCandidates = [clean, clean + '.png', 'assets/images/' + clean, 'assets/images/' + clean + '.png',
+				'assets/' + clean, 'assets/' + clean + '.png'];
+			var png:String = null;
+			for (candidate in pngCandidates)
+				if (FNFAssets.exists(candidate)) {
+					png = candidate;
+					break;
+				}
+			if (png == null && !StringTools.endsWith(clean.toLowerCase(), '.png'))
+				png = 'assets/images/' + clean + '.png';
+			var xmlCandidates = [
+				StringTools.endsWith(clean.toLowerCase(), '.xml') ? clean : clean + '.xml',
+				'assets/images/' + clean + '.xml',
+				'assets/' + clean + '.xml'
+			];
+			var xml:String = null;
+			for (candidate in xmlCandidates)
+				if (FNFAssets.exists(candidate)) {
+					xml = candidate;
+					break;
+				}
+			try {
+				var xmlText:String = xml == null ? null : FNFAssets.getText(xml);
+				if (xmlText != null)
+					atlasNames = compatReadSparrowFrameNames(xmlText);
+				if (png != null && xmlText != null)
+					sprite.frames = FlxAtlasFrames.fromSparrow(FNFAssets.getBitmapData(png), xmlText);
+				else if (png != null && FNFAssets.exists(png))
+					sprite.loadGraphic(FNFAssets.getBitmapData(png));
+			} catch (error:Dynamic) {
+				trace('makeAnimatedLuaSprite atlas skipped for ' + clean + ': ' + Std.string(error));
+				if (png != null)
+					try sprite.loadGraphic(FNFAssets.getBitmapData(png)) catch (_:Dynamic) {}
+			}
+		}
+		if (tag != null) {
+			compatForgetSpriteAtlas(haxeSprites.get(tag));
+			haxeSprites.set(tag, sprite);
+			compatRememberSpriteAtlas(tag, sprite, atlasNames);
+		}
+		return sprite;
+	}
+
+	/** Owner-scoped Psych `Paths.getAtlas` equivalent for translated Lua. */
+	function compatMakeAnimatedLuaSpriteForOwner(ownerRoot:String, tag:String, image:String,
+		x:Float = 0, y:Float = 0, ?spriteType:String = 'auto'):FlxSprite {
+		if (ownerRoot == null) return compatMakeAnimatedLuaSprite(tag, image, x, y);
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, image)) {
+			trace('[psych-assets] Refused animated Lua sprite reference outside calling owner: ' + Std.string(image));
+			return compatMakeAnimatedLuaSprite(tag, '', x, y);
+		}
+		var sprite = new FlxSprite(x, y);
+		var atlasNames:Array<String> = [];
+		if (image != null && StringTools.trim(image) != '') {
+			var key = compatPsychAssetKey(image, '.png');
+			var atlasMethod = switch (spriteType == null ? 'auto' : StringTools.trim(spriteType).toLowerCase()) {
+				case 'aseprite', 'ase', 'json', 'jsoni8': 'getAsepriteAtlas';
+				case 'packer', 'packeratlas', 'pac': 'getPackerAtlas';
+				case 'sparrow', 'sparrowatlas', 'sparrowv2': 'getSparrowAtlas';
+				default: 'getAtlas';
+			};
+			try {
+				var atlas:Dynamic = compatPsychPathCall(ownerRoot, atlasMethod, [key]);
+				if (atlas != null)
+					sprite.frames = cast atlas;
+			} catch (error:Dynamic) {
+				trace('[psych-assets] Animated Lua atlas skipped for ' + key + ': ' + Std.string(error));
+			}
+			if (sprite.frames == null) {
+				var graphic = compatPsychPathCall(ownerRoot, 'image', [key]);
+				if (graphic != null)
+					try sprite.loadGraphic(cast graphic) catch (_:Dynamic) {}
+			}
+			if (sprite.frames == null && sprite.graphic == null) {
+				sprite.destroy();
+				return compatMakeAnimatedLuaSprite(tag, image, x, y);
+			}
+			if (atlasMethod == 'getAtlas' || atlasMethod == 'getSparrowAtlas') {
+				var xmlPath:Dynamic = compatPsychPathCall(ownerRoot, 'file', ['images/' + key + '.xml']);
+				if (xmlPath != null && FNFAssets.exists(Std.string(xmlPath)))
+					atlasNames = compatReadSparrowFrameNames(FNFAssets.getText(Std.string(xmlPath)));
+			}
+		}
+		if (tag != null) {
+			compatForgetSpriteAtlas(haxeSprites.get(tag));
+			haxeSprites.set(tag, sprite);
+			compatRememberSpriteAtlas(tag, sprite, atlasNames);
+		}
+		return sprite;
+	}
+
+	/** Psych's tagged FlxAnimate constructor, backed by the pinned FlxAnimate
+		class and the same owner-only sprite registry as other Lua objects. */
+	function compatMakeFlxAnimateSprite(ownerRoot:Null<String>, tag:String, x:Float = 0, y:Float = 0,
+		?loadFolder:String):PsychModchartAnimateSprite {
+		if (tag == null || StringTools.trim(tag) == '') return null;
+		compatRemoveLuaSprite(tag);
+		var sprite = new PsychModchartAnimateSprite(x, y);
+		haxeSprites.set(tag, sprite);
+		if (loadFolder != null && StringTools.trim(loadFolder) != '')
+			compatLoadAnimateAtlas(ownerRoot, tag, loadFolder);
+		return sprite;
+	}
+
+	/** Load one Animate atlas only from the calling Psych script's import owner. */
+	function compatLoadAnimateAtlas(ownerRoot:Null<String>, tag:Dynamic, folderOrImage:Dynamic,
+		?spriteJson:Dynamic, ?animationJson:Dynamic):Bool {
+		var object = compatFindObject(tag);
+		if (!Std.isOfType(object, FlxAnimate)) return false;
+		if (ownerRoot == null) {
+			trace('[psych-flxanimate-owner-missing] loadAnimateAtlas requires a validated calling Psych owner');
+			return false;
+		}
+		try {
+			var paths = PsychOwnerPaths.create(ownerRoot);
+			var load = Reflect.field(paths, 'loadAnimateAtlas');
+			if (!Reflect.isFunction(load)) return false;
+			Reflect.callMethod(paths, load, [object, folderOrImage, spriteJson, animationJson]);
+			return (cast object : FlxAnimate).frames != null;
+		} catch (error:Dynamic) {
+			trace('[psych-flxanimate-load-failed] ' + Std.string(tag) + ': ' + Std.string(error));
+			return false;
+		}
+	}
+
+	/** Psych's atlas-symbol animation helper. The installed FlxAnimate version
+		has no `matX`/`matY` equivalent, so non-zero matrix offsets are diagnosed. */
+	function compatAddAnimationBySymbolIndices(tag:Dynamic, name:String, symbol:String,
+		indices:Dynamic = null, framerate:Float = 24, looped:Bool = false,
+		matrixX:Float = 0, matrixY:Float = 0):Bool {
+		var object = compatFindObject(tag);
+		if (!Std.isOfType(object, FlxAnimate)) return false;
+		var animationIndices = compatNormalizeAnimationIndices(indices);
+		if (indices == null) animationIndices = [0];
+		if (animationIndices.length == 0) return false;
+		if (matrixX != 0 || matrixY != 0)
+			trace('[psych-flxanimate-matrix-offset-unsupported] addAnimationBySymbolIndices: '
+				+ matrixX + ',' + matrixY);
+		var sprite:FlxAnimate = cast object;
+		try {
+			sprite.anim.addBySymbolIndices(name, symbol, animationIndices, framerate, looped);
+			if (sprite.anim.curAnim == null) {
+				if (Std.isOfType(sprite, PsychModchartAnimateSprite))
+					(cast sprite : PsychModchartAnimateSprite).playAnim(name, true);
+				else
+					sprite.anim.play(name, true);
+			}
+			return sprite.anim.exists(name);
+		} catch (error:Dynamic) {
+			trace('[psych-flxanimate-animation-failed] ' + Std.string(name) + ': ' + Std.string(error));
+			return false;
+		}
+	}
+
+	function compatMakeLuaText(tag:String, text:String, width:Float = 0, x:Float = 0,
+		y:Float = 0):FlxText {
+		var label = new FlxText(x, y, width, text == null ? '' : text, 16);
+		// Psych Lua text starts on the HUD and stays fixed when the game
+		// camera scrolls. setObjectCamera can still override this afterward.
+		label.cameras = [camHUD];
+		label.scrollFactor.set();
+		compatForgetSpriteAtlas(haxeSprites.get(tag));
+		haxeSprites.set(tag, cast label);
+		haxeSpriteAtlasNames.remove(tag);
+		return label;
+	}
+
+	function compatAddAnimationByPrefix(name:Dynamic, animation:String, prefix:String,
+		fps:Int = 24, looped:Bool = true):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || object.animation == null)
+			return;
+		try {
+			object.animation.addByPrefix(animation, prefix, fps, looped);
+			compatStartFirstAnimation(object, animation);
+		} catch (_:Dynamic) {}
+	}
+
+	/** Psych starts the first animation registered on a Lua sprite. Without
+	 * this, a new atlas keeps displaying its first raw frame, which may belong
+	 * to a completely different animation (such as BF's death frames). */
+	public static function compatStartFirstAnimation(object:Dynamic, animation:String):Void {
+		if (object == null || object.animation == null || object.animation.curAnim != null
+			|| !object.animation.exists(animation))
+			return;
+		if (Std.isOfType(object, Character))
+			(cast object : Character).playAnim(animation, true);
+		else
+			object.animation.play(animation, true);
+	}
+
+	/**
+		Return atlas frame indices for Psych's numeric animation helper without
+		calling FlxAnimationController.addByIndices().  Flixel 6.1.2 assumes every
+		frame in the collection has a non-null name while it searches that helper.
+		Imported Lua sprites can legitimately contain an unnamed image/empty frame
+		alongside their atlas frames, and the native dereference happens before a
+		Haxe try/catch can intercept it.  Keep the defensive lookup at the engine
+		compatibility boundary and pass only validated indices to the safe add().
+	*/
+	public static function compatAnimationFrameIndices(frames:Array<Dynamic>, prefix:String,
+		indices:Array<Int>, postfix:String = ''):Array<Int> {
+		var result:Array<Int> = [];
+		if (frames == null || indices == null)
+			return result;
+		var cleanPrefix = prefix == null ? '' : prefix;
+		var cleanPostfix = postfix == null ? '' : postfix;
+		// Some foreign loaders expose a sprite-sheet as a collection of numeric
+		// frames without retaining atlas names. Keep track of whether this is
+		// genuinely an unnamed collection so a name mismatch cannot accidentally
+		// reinterpret an unrelated named atlas by position.
+		var hasNamedFrame = false;
+		for (wanted in indices) {
+			for (frameIndex in 0...frames.length) {
+				var frame:Dynamic = frames[frameIndex];
+				if (frame == null)
+					continue;
+				// Native FlxFrame exposes `name` as a public field. Direct access is
+				// important on hxcpp builds where Reflect.field() can miss a field on
+				// a dynamically typed native object, while the reflective read keeps
+				// this helper usable by imported/test frame wrappers.
+				var frameNameValue:Dynamic = null;
+				try frameNameValue = frame.name catch (_:Dynamic) {}
+				if (frameNameValue == null)
+					try frameNameValue = Reflect.field(frame, 'name') catch (_:Dynamic) {}
+				if (frameNameValue == null)
+					continue;
+				var frameName = Std.string(frameNameValue);
+				if (StringTools.trim(frameName) != '')
+					hasNamedFrame = true;
+				if (frameName.length < cleanPrefix.length + cleanPostfix.length
+					|| !StringTools.startsWith(frameName, cleanPrefix)
+					|| !StringTools.endsWith(frameName, cleanPostfix))
+					continue;
+				var numberEnd = frameName.length - cleanPostfix.length;
+				var parsed:Null<Int> = Std.parseInt(frameName.substring(cleanPrefix.length, numberEnd));
+				if (parsed != null && parsed == wanted) {
+					result.push(frameIndex);
+					break;
+				}
+			}
+		}
+		// A few Psych-compatible loaders discard Sparrow names and retain only
+		// the ordered image frames. In that specific case Psych's numeric indices
+		// are already the collection indices. Do not apply this to a named
+		// collection with a wrong prefix: that would hide a real asset/API
+		// mismatch and could animate an unrelated atlas.
+		if (result.length == 0 && !hasNamedFrame && frames.length > 0) {
+			for (wanted in indices)
+				if (wanted >= 0 && wanted < frames.length)
+					result.push(wanted);
+		}
+		return result;
+	}
+
+	/** Resolve Psych numeric atlas indices from names retained by the source
+		Sparrow XML. This is independent of Flixel's native frame cache. */
+	public static function compatAnimationNameIndices(frameNames:Array<String>, prefix:String,
+		indices:Array<Int>, postfix:String = ''):Array<Int> {
+		var result:Array<Int> = [];
+		if (frameNames == null || indices == null)
+			return result;
+		var cleanPrefix = prefix == null ? '' : prefix;
+		var cleanPostfix = postfix == null ? '' : postfix;
+		for (wanted in indices) {
+			for (frameIndex in 0...frameNames.length) {
+				var frameName = frameNames[frameIndex];
+				if (frameName == null || frameName.length < cleanPrefix.length + cleanPostfix.length
+					|| !StringTools.startsWith(frameName, cleanPrefix)
+					|| !StringTools.endsWith(frameName, cleanPostfix))
+					continue;
+				var numberEnd = frameName.length - cleanPostfix.length;
+				var parsed:Null<Int> = Std.parseInt(frameName.substring(cleanPrefix.length, numberEnd));
+				if (parsed != null && parsed == wanted) {
+					result.push(frameIndex);
+					break;
+				}
+			}
+		}
+		return result;
+	}
+
+	/**
+		Psych's Lua API accepts the numeric frame list as a comma-separated
+		string, while static HScript adapters generally emit an Array<Int>. Keep
+		that donor representation conversion at the engine boundary so the same
+		addAnimationByIndices implementation handles both call paths.
+	*/
+	public static function compatNormalizeAnimationIndices(value:Dynamic):Array<Int> {
+		var result:Array<Int> = [];
+		if (value == null)
+			return result;
+		if (Std.isOfType(value, Array)) {
+			for (entry in (cast value : Array<Dynamic>)) {
+				var parsed = Std.parseInt(StringTools.trim(Std.string(entry)));
+				if (parsed != null)
+					result.push(parsed);
+			}
+			return result;
+		}
+		var text = StringTools.trim(Std.string(value));
+		if (text == '')
+			return result;
+		if (text.charAt(0) == '[' && text.charAt(text.length - 1) == ']')
+			text = StringTools.trim(text.substr(1, text.length - 2));
+		if (text == '')
+			return result;
+		for (part in text.split(',')) {
+			var parsed = Std.parseInt(StringTools.trim(part));
+			if (parsed != null)
+				result.push(parsed);
+		}
+		return result;
+	}
+
+	function compatAddAnimationByIndices(name:Dynamic, animation:String, prefix:String,
+		indices:Dynamic, fps:Int = 24, looped:Bool = false):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || object.animation == null)
+			return;
+		var normalizedIndices = compatNormalizeAnimationIndices(indices);
+		// Read the typed properties first. On hxcpp a Reflect.field() lookup on
+		// the dynamically held FlxSprite/FlxFramesCollection can return null even
+		// though the public field is populated; that was enough to make a valid
+		// Sparrow atlas look like an empty collection here.
+		var frameCollection:Dynamic = null;
+		try frameCollection = object.frames catch (_:Dynamic) {}
+		if (frameCollection == null)
+			try frameCollection = Reflect.field(object, 'frames') catch (_:Dynamic) {}
+		var frameList:Array<Dynamic> = null;
+		if (frameCollection != null) {
+			try frameList = cast frameCollection.frames catch (_:Dynamic) {}
+			if (frameList == null)
+				try frameList = cast Reflect.field(frameCollection, 'frames') catch (_:Dynamic) {}
+		}
+		// Prefer the tag for the ordinary path, then fall back to the live object.
+		// The latter is important for translated Lua callbacks where the name has
+		// passed through a dynamic property/root alias before reaching this helper.
+		var authoredNames = compatSpriteAtlasNames(name, object);
+		var frameIndices = authoredNames == null
+			? [] : compatAnimationNameIndices(authoredNames, prefix, normalizedIndices, '');
+		// XML-derived indices are authoritative when available because they retain
+		// the authored Sparrow order even if Flixel reused a native frame cache
+		// without exposing its names. Fall back to the live collection for atlases
+		// created by non-Sparrow loaders.
+		if (frameIndices.length == 0)
+			frameIndices = compatAnimationFrameIndices(frameList, prefix, normalizedIndices, '');
+		if (frameIndices.length == 0) {
+			trace('[psych-animation-missing] addAnimationByIndices skipped "' + animation
+				+ '"; no named atlas frames matched prefix "' + prefix + '"');
+			return;
+		}
+		if (frameList != null && frameList.length > 0) {
+			var hasNamedFrame = false;
+			for (frame in frameList) {
+				if (frame == null)
+					continue;
+				var frameName:Dynamic = null;
+				try frameName = frame.name catch (_:Dynamic) {}
+				if (frameName == null)
+					try frameName = Reflect.field(frame, 'name') catch (_:Dynamic) {}
+				if (frameName != null && StringTools.trim(Std.string(frameName)) != '') {
+					hasNamedFrame = true;
+					break;
+				}
+			}
+			if (!hasNamedFrame)
+				trace('[psych-animation-positional] addAnimationByIndices used ordered atlas frames for "'
+					+ animation + '"');
+		}
+		// add() consumes already-resolved numeric indices and does not dereference
+		// frame.name, unlike addByIndices() in the pinned Flixel version.
+		try {
+			object.animation.add(animation, frameIndices, fps, looped);
+			compatStartFirstAnimation(object, animation);
+		} catch (_:Dynamic) {}
+	}
+
+	/** Psych's legacy character-only animation callback, including its BF default. */
+	function compatCharacterPlayAnim(role:String, name:String, force:Bool = false):Void {
+		var actor:Character = switch (role == null ? '' : role.toLowerCase()) {
+			case 'dad': dad;
+			case 'gf' | 'girlfriend': gf;
+			default: boyfriend;
+		};
+		if (actor != null && actor.hasAnimation(name))
+			actor.playAnim(name, force);
+	}
+
+	function compatObjectPlayAnimation(name:Dynamic, animation:String, force:Bool = false):Void {
+		compatPlayAnim(name, animation, force);
+	}
+
+	/** Psych's generic tag animation helper preserves the sprite's native
+		controller type and optional reverse/start-frame arguments. */
+	function compatPlayAnim(name:Dynamic, animation:String, forced:Bool = false,
+		reversed:Bool = false, startFrame:Int = 0):Bool {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || animation == null) return false;
+		try {
+			if (Std.isOfType(object, Character))
+				(cast object : Character).playAnim(animation, forced, reversed, startFrame);
+			else if (Std.isOfType(object, PsychModchartAnimateSprite))
+				(cast object : PsychModchartAnimateSprite).playAnim(animation, forced, reversed, startFrame);
+			else if (Std.isOfType(object, FlxAnimate))
+				(cast object : FlxAnimate).anim.play(animation, forced, reversed, startFrame);
+			else if (Std.isOfType(object, FlxSprite) && object.animation != null)
+				object.animation.play(animation, forced, reversed, startFrame);
+			else return false;
+			return true;
+		} catch (error:Dynamic) {
+			trace('[psych-play-anim-failed] ' + Std.string(name) + '/' + animation + ': ' + Std.string(error));
+			return false;
+		}
+	}
+
+	function compatSetTextString(name:Dynamic, text:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (Std.isOfType(object, FlxText))
+			try (cast object : FlxText).text = text == null ? '' : text catch (_:Dynamic) {}
+	}
+
+	function compatSetTextSize(name:Dynamic, size:Float):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (Std.isOfType(object, FlxText))
+			try (cast object : FlxText).size = Std.int(size) catch (_:Dynamic) {}
+	}
+
+	/**
+		Psych's text helpers accept bare RGB(A) hex strings (`FFFFFF` and
+		`AARRGGBB`), while FlxColor.fromString intentionally requires a `#` or
+		`0x` prefix.  Normalize both forms at the engine boundary so imported
+		menus/modcharts do not silently lose their text colours.
+	*/
+	function compatParseColor(value:Dynamic):Dynamic {
+		if (value == null)
+			return null;
+		if (Std.isOfType(value, Int))
+			return value;
+		if (Std.isOfType(value, Float))
+			return Std.int(value);
+		var text = StringTools.trim(Std.string(value));
+		if (text == '')
+			return null;
+		var bareHex = new EReg('^[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$', '');
+		if (bareHex.match(text)) {
+			var digits = text.length == 6 ? 'FF' + text : text;
+			var parsed = Std.parseInt('0x' + digits);
+			if (parsed != null)
+				return parsed;
+		}
+		var prefixed = FlxColor.fromString(text);
+		if (prefixed != null)
+			return prefixed;
+		var decimal = Std.parseInt(text);
+		return decimal == null ? null : decimal;
+	}
+
+	function compatSetTextColor(name:Dynamic, color:Dynamic):Void {
+		var object:Dynamic = compatFindObject(name);
+		var parsed = compatParseColor(color);
+		if (Std.isOfType(object, FlxText) && parsed != null)
+			try (cast object : FlxText).color = cast parsed catch (_:Dynamic) {}
+	}
+
+	function compatSetHealthBarColors(left:Dynamic, right:Dynamic):Void {
+		var parsedLeft:Dynamic = compatParseColor(left);
+		var parsedRight:Dynamic = compatParseColor(right);
+		compatHealthBarLeft = parsedLeft == null ? null : cast parsedLeft;
+		compatHealthBarRight = parsedRight == null ? null : cast parsedRight;
+		if (healthBar != null)
+			updateHealthColors(barShowingPoison);
+	}
+
+	function compatSetTextBorder(name:Dynamic, size:Float, color:Dynamic):Void {
+		var object:Dynamic = compatFindObject(name);
+		var parsed = compatParseColor(color);
+		if (Std.isOfType(object, FlxText))
+			try {
+				var label:FlxText = cast object;
+				label.borderSize = size;
+				if (parsed != null)
+					label.borderColor = cast parsed;
+			} catch (_:Dynamic) {}
+	}
+
+	function compatSetTextFont(name:Dynamic, font:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (Std.isOfType(object, FlxText))
+			try {
+				var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+				var path = PsychFontPath.resolve(font, selectedRoot);
+				if (path != null)
+					(cast object : FlxText).font = path;
+			} catch (_:Dynamic) {}
+	}
+
+	function compatSetGraphicSize(name:Dynamic, width:Int, ?height:Int):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object != null)
+			try {
+				if (Std.isOfType(object, FlxSprite))
+					(cast object : FlxSprite).setGraphicSize(width, height);
+			} catch (_:Dynamic) {}
+	}
+
+	function compatUpdateHitbox(name:Dynamic):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object != null)
+			try {
+				if (Std.isOfType(object, FlxSprite))
+					(cast object : FlxSprite).updateHitbox();
+			} catch (_:Dynamic) {}
+	}
+
+	function compatLoadGraphic(name:Dynamic, path:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || path == null)
+			return;
+		try {
+			if (Std.isOfType(object, FlxSprite)) {
+				var clean = StringTools.replace(StringTools.trim(path), '\\', '/');
+				var candidates = [clean, clean + '.png', 'assets/images/' + clean,
+					'assets/images/' + clean + '.png', 'assets/' + clean,
+					'assets/' + clean + '.png'];
+					for (candidate in candidates)
+						if (FNFAssets.exists(candidate)) {
+							(cast object : FlxSprite).loadGraphic(FNFAssets.getBitmapData(candidate));
+							haxeSpriteAtlasNames.remove(Std.string(name));
+							compatForgetSpriteAtlas(object);
+							break;
+						}
+			}
+		} catch (_:Dynamic) {}
+	}
+
+	function compatMakeGraphic(name:Dynamic, width:Int, height:Int, ?color:Dynamic):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null)
+			return;
+		var traceSprite = RuntimeSmokeHarness.enabled() && object == psychGlobalProviderFirstSprite;
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(object, 'makeGraphic-begin',
+				'size=' + width + 'x' + height + ' colorType=' + Std.string(Type.typeof(color)));
+		// Psych defaults omitted makeGraphic colours to opaque white.  Keep the
+		// optional fourth argument optional at the HScript boundary as well; a
+		// number of donor shader-image scripts rely on that default.
+		var parsedColor:Null<Int> = color == null ? 0xFFFFFFFF : compatParseColor(color);
+		if (parsedColor == null) {
+			if (traceSprite)
+				markPsychGlobalProviderSpritePhase(object, 'makeGraphic-skipped', 'reason=invalid-color');
+			return;
+		}
+		try {
+			if (Std.isOfType(object, FlxSprite)) {
+				if (traceSprite)
+					markPsychGlobalProviderSpritePhase(object, 'makeGraphic-call');
+				(cast object : FlxSprite).makeGraphic(width, height, parsedColor);
+				if (traceSprite)
+					markPsychGlobalProviderSpritePhase(object, 'makeGraphic-complete');
+				haxeSpriteAtlasNames.remove(Std.string(name));
+				compatForgetSpriteAtlas(object);
+			}
+		} catch (error:Dynamic) {
+			if (traceSprite)
+				markPsychGlobalProviderSpritePhase(object, 'makeGraphic-error', Std.string(error));
+		}
+	}
+
+	function compatAddLuaSprite(tag:String, ?front:Bool = false):Void {
+		var sprite = haxeSprites.get(tag);
+		var traceSprite = RuntimeSmokeHarness.enabled() && sprite != null
+			&& sprite == psychGlobalProviderFirstSprite;
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(sprite, 'add-begin',
+				'front=' + front + ' memberIndex=' + members.indexOf(sprite));
+		if (sprite != null && members.indexOf(sprite) < 0)
+			// Psych's `front` flag is relative to the actor stack: false is
+			// behind GF/BF/Dad, while true is the front-most game-layer slot.
+			addHscriptSprite(sprite, front ? BEHIND_NONE : BEHIND_ALL);
+		if (traceSprite)
+			markPsychGlobalProviderSpritePhase(sprite, 'add-complete',
+				'memberIndex=' + members.indexOf(sprite));
+	}
+
+	function compatAddLuaText(tag:String, ?front:Bool = true):Void {
+		// Psych adds Lua text at the top of the scene by default. Keep the
+		// optional donor argument harmless; texts retain their assigned camera.
+		compatAddLuaSprite(tag, true);
+	}
+
+	function compatRemoveLuaSprite(tag:String, ?destroy:Bool = true):Void {
+		var sprite = haxeSprites.get(tag);
+		if (sprite == null)
+			return;
+		remove(sprite, true);
+		// Psych's destroy flag controls registry lifetime as well as disposal:
+		// removeLuaSprite(tag, false) detaches the object but keeps the tag
+		// reusable for a later addLuaSprite() call.  Only a destructive removal
+		// drops the centralized haxeSprites handle.
+		if (destroy) {
+			sprite.destroy();
+			haxeSprites.remove(tag);
+			haxeSpriteAtlasNames.remove(tag);
+			compatForgetSpriteAtlas(sprite);
+		}
+	}
+
+	function compatRunTimer(tag:String, seconds:Float, loops:Int = 1):Void {
+		if (tag == null)
+			return;
+		compatCancelTimer(tag);
+		var timer = new FlxTimer();
+		compatTimers.set(tag, timer);
+		// FlxTimer uses zero as the documented infinite-loop sentinel, matching
+		// Psych's runTimer(tag, time, 0).  The old adapter coerced zero to one,
+		// which stopped animation/trail scripts after their first callback.
+		var nativeLoops = loops < 0 ? -loops : loops;
+		timer.start(Math.max(0, seconds), function(tmr:FlxTimer) {
+			// Psych's timer callback exposes the configured loop count and the
+			// remaining count.  Keep those values at the central bridge boundary
+			// so donor onTimerCompleted(tag, loops, loopsLeft) hooks need no chart
+			// edits; ordinary one-argument hooks still receive their tag only.
+			callAllHScript('timerCompleted', [tag, tmr.loops, tmr.loopsLeft]);
+			if (tmr.loops > 0 && tmr.loopsLeft <= 0)
+				compatTimers.remove(tag);
+		}, nativeLoops);
+	}
+
+	function compatCancelTimer(tag:String):Void {
+		var timer = compatTimers.get(tag);
+		if (timer != null)
+			timer.cancel();
+		compatTimers.remove(tag);
+	}
+
+	function compatCancelTween(tag:String):Void {
+		if (tag == null)
+			return;
+		var tween = compatTweens.get(tag);
+		if (tween != null)
+			tween.cancel();
+		compatTweens.remove(tag);
+	}
+
+	function compatTweenObject(tag:String, target:Dynamic, property:String, value:Dynamic,
+		duration:Float, ?ease:String):Void {
+		if (target == null || property == null || StringTools.trim(property) == '')
+			return;
+		compatCancelTween(tag);
+		var dot = property.lastIndexOf('.');
+		var owner:Dynamic = target;
+		var field = property;
+		if (dot >= 0) {
+			owner = compatReadPath(target, property.substr(0, dot));
+			field = property.substr(dot + 1);
+		}
+		if (owner == null || field == null || StringTools.trim(field) == '')
+			return;
+		var tweenValue:Dynamic = value;
+		// Psych's doTweenColor/makeGraphic APIs take a bare RGB(A) hex string,
+		// but FlxTween interpolates the live numeric FlxColor field. Normalize at
+		// this shared tween boundary so camera, sprite, text, and character color
+		// tweens all use the same engine-level conversion.
+		if (field.toLowerCase() == 'color') {
+			var parsedColor = compatParseColor(value);
+			if (parsedColor != null)
+				tweenValue = parsedColor;
+		}
+		var props:Dynamic = {};
+		Reflect.setField(props, field, tweenValue);
+		var created:FlxTween = null;
+		var complete = function(_) {
+			if (tag != null && compatTweens.get(tag) == created)
+				compatTweens.remove(tag);
+			if (tag != null)
+				callAllHScript('tweenCompleted', [tag]);
+		};
+		var easeFunction:Dynamic = null;
+		if (ease != null && StringTools.trim(ease) != '')
+			easeFunction = Reflect.field(FlxEase, ease);
+		if (field.toLowerCase() == 'color' && Std.isOfType(owner, FlxSprite)) {
+			// Packed RGB integers cannot be interpolated as a scalar: channel
+			// carries produce unrelated colours and flashes between endpoints.
+			// Psych uses Flixel's channel-wise ColorTween with the current alpha.
+			var sprite:FlxSprite = cast owner;
+			var fromColor:FlxColor = sprite.color;
+			fromColor.alphaFloat = sprite.alpha;
+			created = FlxTween.color(sprite, Math.max(0, duration), fromColor,
+				cast tweenValue, {ease: easeFunction, onComplete: complete});
+		} else if (field.toLowerCase() == 'color' && Std.isOfType(owner, FlxCamera)) {
+			// Psych passes the camera as Dynamic to FlxTween.color's FlxSprite
+			// argument. hxcpp turns that incompatible cast into a null sprite:
+			// the tween still completes, but does not tint the camera canvas.
+			var camera:FlxCamera = cast owner;
+			var fromColor:FlxColor = camera.color;
+			fromColor.alphaFloat = camera.alpha;
+			created = FlxTween.color(null, Math.max(0, duration), fromColor,
+				cast tweenValue, {ease: easeFunction, onComplete: complete});
+		} else if (easeFunction != null)
+			created = FlxTween.tween(owner, props, Math.max(0, duration), {ease: easeFunction, onComplete: complete});
+		else
+			created = FlxTween.tween(owner, props, Math.max(0, duration), {onComplete: complete});
+		if (tag != null)
+			compatTweens.set(tag, created);
+	}
+
+	function compatDoTween(tag:String, objectName:Dynamic, property:String, value:Dynamic,
+		duration:Float, ?ease:String):Void {
+		var target = compatFindObject(objectName);
+		// Psych accepts a property path as the tween owner (for example a
+		// sprite's FlxPoint scale), as well as a direct Lua object tag. Reuse
+		// the existing property bridge only when no exact tag matched.
+		if (target == null)
+			target = compatGetProperty(objectName);
+		compatTweenObject(tag, target, property, value, duration, ease);
+	}
+
+	function compatNoteTarget(note:Dynamic):Dynamic {
+		var index = Std.int(Std.parseFloat(Std.string(note)));
+		if (index < 0)
+			return null;
+		if (strumLineNotes != null && index < strumLineNotes.members.length
+			&& strumLineNotes.members[index] != null)
+			return strumLineNotes.members[index];
+		if (index < Note.NOTE_AMOUNT)
+			return enemyStrums == null || index >= enemyStrums.members.length ? null : enemyStrums.members[index];
+		var playerIndex = index - Note.NOTE_AMOUNT;
+		return playerStrums == null || playerIndex >= playerStrums.members.length ? null : playerStrums.members[playerIndex];
+	}
+
+	function compatNoteTween(tag:String, note:Dynamic, property:String, value:Float,
+		duration:Float, ?ease:String):Void {
+		compatTweenObject(tag, compatNoteTarget(note), property, value, duration, ease);
+	}
+
+	function compatSetObjectOrder(name:Dynamic, order:Dynamic, ?front:Bool = false):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || !Std.isOfType(object, FlxBasic))
+			return;
+		var current = members.indexOf(cast object);
+		var target = Std.int(Std.parseFloat(Std.string(order)));
+		if (target < 0)
+			target = 0;
+		if (current >= 0) {
+			remove(cast object, true);
+		}
+		if (target > members.length)
+			target = members.length;
+		insert(target, cast object);
+	}
+
+	function compatGetObjectOrder(name:Dynamic):Int {
+		var object:Dynamic = compatFindObject(name);
+		return object == null || !Std.isOfType(object, FlxBasic) ? -1 : members.indexOf(cast object);
+	}
+
+	function compatRandomInt(min:Int = 0, max:Int = FlxMath.MAX_VALUE_INT, ?exclude:Array<Int>):Int {
+		return FlxG.random.int(min, max, exclude);
+	}
+
+	function compatRandomFloat(min:Float = 0, max:Float = 1, ?exclude:Array<Float>):Float {
+		return FlxG.random.float(min, max, exclude);
+	}
+
+	function compatLuaRandom(?first:Null<Int>, ?second:Null<Int>):Int {
+		if (first == null)
+			return FlxG.random.int(0, FlxMath.MAX_VALUE_INT);
+		if (second == null)
+			return FlxG.random.int(1, first);
+		return FlxG.random.int(first, second);
+	}
+
+	function compatKeyboardJustPressed(key:String):Bool {
+		if (key == null)
+			return false;
+		var token = StringTools.trim(key).toUpperCase();
+		var keyCode = FlxKey.fromString(token);
+		if (keyCode == FlxKey.NONE)
+			return false;
+		try return Reflect.getProperty(FlxG.keys.justPressed, token) == true catch (_:Dynamic) return false;
+	}
+
+	function compatKeyJustPressed(key:String):Bool {
+		if (key == null)
+			return false;
+		var token = StringTools.trim(key).toLowerCase();
+		switch (token) {
+			case 'back': return controls.BACK;
+			case 'pause': return controls.PAUSE;
+			case 'accept' | 'confirm': return controls.ACCEPT;
+			case 'up': return controls.UP_P;
+			case 'down': return controls.DOWN_P;
+			case 'left': return controls.LEFT_P;
+			case 'right': return controls.RIGHT_P;
+			default: return compatKeyboardJustPressed(key);
+		}
+	}
+
+	function compatGetColorFromHex(value:Dynamic):Int {
+		if (value == null)
+			return 0xFFFFFFFF;
+		var text = StringTools.trim(Std.string(value));
+		if (text.charAt(0) == '#')
+			text = text.substr(1);
+		if (StringTools.startsWith(text.toLowerCase(), '0x'))
+			text = text.substr(2);
+		var parsed = Std.parseInt('0x' + text);
+		if (parsed == null)
+			return 0xFFFFFFFF;
+		return text.length <= 6 ? (parsed | 0xFF000000) : parsed;
+	}
+
+	function compatSetBlendMode(name:Dynamic, mode:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || mode == null)
+			return;
+		try object.blend = CoolUtil.getBlendMode(mode) catch (_:Dynamic) {}
+	}
+
+	function compatPrecacheImage(path:String):Void {
+		if (path == null)
+			return;
+		var clean = StringTools.replace(StringTools.trim(path), '\\', '/');
+		var candidates = [clean];
+		if (!StringTools.startsWith(clean.toLowerCase(), 'assets/')) {
+			var imageName = clean.toLowerCase().endsWith('.png') ? clean : clean + '.png';
+			candidates.push('assets/images/' + imageName);
+			candidates.push(Paths.image(StringTools.endsWith(clean.toLowerCase(), '.png') ? clean.substr(0, clean.length - 4) : clean));
+		}
+		for (candidate in candidates)
+			if (FNFAssets.exists(candidate)) {
+				try FNFAssets.getBitmapData(candidate) catch (_:Dynamic) {}
+				return;
+			}
+	}
+
+	function compatPrecacheSound(path:String):Void {
+		var resolved = compatSoundPath(path, true);
+		if (resolved != null)
+			try FNFAssets.getSound(resolved) catch (_:Dynamic) {}
+	}
+
+	function compatPrecacheMusic(path:String):Void {
+		var resolved = compatSoundPath(path, false);
+		if (resolved != null)
+			try FNFAssets.getSound(resolved) catch (_:Dynamic) {}
+	}
+
+	function compatTriggerEvent(name:String, v1:Dynamic, v2:Dynamic, ?v3:Dynamic):Void {
+		triggerEventNote(name, v1, v2, v3);
+	}
+
+	function compatCameraShake(cameraName:String, intensity:Float, duration:Float):Void {
+		var target = compatCameraForName(cameraName);
+		if (target != null)
+			target.shake(intensity, duration);
+	}
+
+	function compatCameraFlash(cameraName:String, color:Dynamic, duration:Float, ?forced:Bool = false):Void {
+		var target = compatCameraForName(cameraName);
+		if (target != null)
+			target.flash(compatGetColorFromHex(color), Math.max(0, duration), null, forced);
+	}
+
+	function compatCameraFade(cameraName:String, color:Dynamic, duration:Float, ?forced:Bool = false):Void {
+		var target = compatCameraForName(cameraName);
+		if (target != null)
+			target.fade(compatGetColorFromHex(color), Math.max(0, duration), false, null, forced);
+	}
+
+	/** Psych dialogue begins after a Lua timer and returns to the same countdown
+	 * gate when the last line closes. The native dialogue was prepared at create. */
+	function compatStartDialogue(?file:String, ?music:String):Void {
+		if (doof == null) {
+			trace('[psych-dialogue-missing] ' + file + '; resuming countdown');
+			startCountdown();
+			return;
+		}
+		if (doof.exists && members.indexOf(doof) >= 0)
+			return;
+		inCutscene = true;
+		doof.cameras = [camHUD];
+		add(doof);
+	}
+
+	function compatSetSpriteShader(name:Dynamic, shaderName:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || shaderName == null)
+			return;
+		var frag = resolveCompatShader(shaderName);
+		if (frag == null)
+			return;
+		try object.shader = new ShaderHandler.CoolRuntimeShader(frag) catch (_:Dynamic) {}
+	}
+
+	function compatSetShaderFloat(name:Dynamic, variable:String, value:Float):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || variable == null)
+			return;
+		try {
+			var shader:Dynamic = object.shader;
+			if (shader != null)
+				shader.setFloat(variable, value);
+		} catch (_:Dynamic) {}
+	}
+
+	function compatShaderCamera(name:String):FlxCamera {
+		return compatCameraForName(name);
+	}
+
+	function compatSetCameraShaderFilters(cameraName:String, tags:Dynamic,
+		?runtimeShaderName:String, ?runtimeValues:Dynamic):Void {
+		var camera = compatShaderCamera(cameraName);
+		if (camera == null || tags == null || !Std.isOfType(tags, Array))
+			return;
+		var filters:Array<openfl.filters.BitmapFilter> = [];
+		for (tag in (cast tags:Array<Dynamic>)) {
+			var object:Dynamic = compatFindObject(tag);
+			if (object == null)
+				continue;
+			try {
+				if (object.shader != null)
+					filters.push(new ShaderFilter(cast object.shader));
+			} catch (_:Dynamic) {}
+		}
+		// The optional runtime shader form is deliberately data-only: the
+		// translator accepts a literal shader name and numeric setFloat values,
+		// then this single native route resolves the registered asset.
+		if (runtimeShaderName != null && StringTools.trim(runtimeShaderName) != '') {
+			var shader = createRuntimeShader(runtimeShaderName);
+			if (shader != null) {
+				if (runtimeValues != null) {
+					try {
+						if (Std.isOfType(runtimeValues, Array)) {
+							var values:Array<Dynamic> = cast runtimeValues;
+							var index = 0;
+							while (index + 1 < values.length) {
+								var value = Std.parseFloat(Std.string(values[index + 1]));
+								if (!Math.isNaN(value))
+									shader.setFloat(Std.string(values[index]), value);
+								index += 2;
+							}
+						} else {
+							for (field in Reflect.fields(runtimeValues)) {
+								var value = Std.parseFloat(Std.string(Reflect.field(runtimeValues, field)));
+								if (!Math.isNaN(value))
+									shader.setFloat(field, value);
+							}
+						}
+					} catch (_:Dynamic) {}
+				}
+				filters.push(new ShaderFilter(cast shader));
+			}
+		}
+		camera.filters = filters;
+	}
+
+	/**
+		Safe native equivalent of Psych's `game.createRuntimeShader()` storage
+		pattern.  The Lua adapter passes the owning interpreter explicitly because
+		`game.variables` is that interpreter's variable table, not PlayState's
+		universal-value map.
+	*/
+	function compatCreateRuntimeShaderAndStore(interp:Interp, spriteName:String,
+		shaderName:String, variableName:String):Void {
+		if (interp == null || shaderName == null || StringTools.trim(shaderName) == '')
+			return;
+		if (!initLuaShader(shaderName))
+			return;
+		var shader = createRuntimeShader(shaderName);
+		if (shader == null)
+			return;
+		var object:Dynamic = compatFindObject(spriteName);
+		if (object == null) {
+			trace('createRuntimeShaderAndStore: missing Lua object ' + spriteName);
+		} else {
+			try object.shader = shader catch (error:Dynamic) trace('createRuntimeShaderAndStore: unable to attach shader: ' + error);
+		}
+		if (variableName != null && StringTools.trim(variableName) != '')
+			interp.variables.set(variableName, shader);
+	}
+
+	/** Apply a camera filter using a shader already stored in one interpreter. */
+	function compatSetCameraShaderFiltersFromStored(interp:Interp, cameraName:String,
+		variableName:String):Void {
+		if (interp == null || variableName == null || StringTools.trim(variableName) == '')
+			return;
+		var shader:Dynamic = null;
+		try shader = interp.variables.get(variableName) catch (error:Dynamic) {
+			trace('setCameraShaderFiltersFromStored: unable to read ' + variableName + ': ' + error);
+			return;
+		}
+		if (shader == null) {
+			trace('setCameraShaderFiltersFromStored: missing stored shader ' + variableName);
+			return;
+		}
+		var camera = compatShaderCamera(cameraName);
+		if (camera == null)
+			return;
+		try camera.filters = [new ShaderFilter(cast shader)] catch (error:Dynamic)
+			trace('setCameraShaderFiltersFromStored: unable to apply filter: ' + error);
+	}
+
+	/** Clear the OpenFL filter caches used by a camera's flashSprite. */
+	function compatResetShaderCache(sprite:DisplayObject):Void {
+		if (sprite == null)
+			return;
+		try {
+			if (sprite.filters == null)
+				return;
+			@:privateAccess {
+				sprite.__cacheBitmap = null;
+				sprite.__cacheBitmapData = null;
+			}
+		} catch (error:Dynamic) {
+			trace('resetShaderCoordFix: unable to clear filter cache: ' + error);
+		}
+	}
+
+	function compatPrecacheImageForOwner(ownerRoot:String, path:String, ?allowGPU:Dynamic = true):Void {
+		if (ownerRoot == null) return compatPrecacheImage(path);
+		if (path == null || StringTools.trim(path) == '') return;
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, path)) {
+			trace('[psych-assets] Refused precacheImage reference outside calling owner: ' + path);
+			return;
+		}
+		var graphic:Dynamic = compatPsychPathCall(ownerRoot, 'image', [compatPsychAssetKey(path, '.png')]);
+		// Paths.image performs the decode/cache work; `allowGPU` is retained in
+		// the bridge signature for Psych call compatibility.
+		if (graphic == null) compatPrecacheImage(path);
+		else try {
+			Reflect.setProperty(graphic, 'persist', true);
+			Reflect.setProperty(graphic, 'destroyOnNoUse', false);
+		} catch (_:Dynamic) {}
+	}
+
+	function compatPrecacheSoundForOwner(ownerRoot:String, path:String):Void {
+		if (ownerRoot == null) return compatPrecacheSound(path);
+		if (path == null || StringTools.trim(path) == '') return;
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, path)) {
+			trace('[psych-assets] Refused precacheSound reference outside calling owner: ' + path);
+			return;
+		}
+		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'sound', [compatPsychAssetKey(path, '.ogg')]);
+		var nativePath = resolved != null && FNFAssets.exists(Std.string(resolved))
+			? Std.string(resolved) : compatPsychNativeSoundPath(path, true);
+		if (nativePath != null) try FNFAssets.getSound(nativePath) catch (_:Dynamic) {}
+	}
+
+	function compatPrecacheMusicForOwner(ownerRoot:String, path:String):Void {
+		if (ownerRoot == null) return compatPrecacheMusic(path);
+		if (path == null || StringTools.trim(path) == '') return;
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, path)) {
+			trace('[psych-assets] Refused precacheMusic reference outside calling owner: ' + path);
+			return;
+		}
+		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'music', [compatPsychAssetKey(path, '.ogg')]);
+		var nativePath = resolved != null && FNFAssets.exists(Std.string(resolved))
+			? Std.string(resolved) : compatPsychNativeSoundPath(path, false);
+		if (nativePath != null) try FNFAssets.getSound(nativePath) catch (_:Dynamic) {}
+	}
+
+	/** Reset the caches used by all three Psych-compatible gameplay cameras. */
+	function compatResetShaderCoordCaches():Void {
+		if (camGame != null)
+			compatResetShaderCache(camGame.flashSprite);
+		if (camHUD != null)
+			compatResetShaderCache(camHUD.flashSprite);
+		if (camOther != null)
+			compatResetShaderCache(camOther.flashSprite);
+	}
+
+	/** Install the native resize callback and perform the initial cache reset. */
+	function compatInstallShaderCoordFix():Void {
+		compatRemoveShaderCoordFix();
+		compatShaderCoordFixHandler = function(_width:Int, _height:Int) compatResetShaderCoordCaches();
+		FlxG.signals.gameResized.add(compatShaderCoordFixHandler);
+		compatResetShaderCoordCaches();
+	}
+
+	/** Remove the native resize callback installed by compatInstallShaderCoordFix(). */
+	function compatRemoveShaderCoordFix():Void {
+		if (compatShaderCoordFixHandler == null)
+			return;
+		FlxG.signals.gameResized.remove(compatShaderCoordFixHandler);
+		compatShaderCoordFixHandler = null;
+	}
+
+	function compatClearCameraShaderFilters(cameraName:String):Void {
+		var camera = compatShaderCamera(cameraName);
+		if (camera != null)
+			camera.filters = [];
+	}
+
+	function compatTweenCharacterColorRGB(name:String, red:Dynamic, green:Dynamic, blue:Dynamic,
+		duration:Float, reset:Bool = false):Void {
+		var actor:Dynamic = getHaxeActor(name);
+		if (actor == null)
+			return;
+		var transform:Dynamic = null;
+		try transform = actor.colorTransform catch (_:Dynamic) {}
+		if (transform == null)
+			return;
+		var props:Dynamic = {
+			redMultiplier: reset ? 1 : 0,
+			greenMultiplier: reset ? 1 : 0,
+			blueMultiplier: reset ? 1 : 0,
+			redOffset: Std.parseFloat(Std.string(red)),
+			greenOffset: Std.parseFloat(Std.string(green)),
+			blueOffset: Std.parseFloat(Std.string(blue))
+		};
+		var tag = '__lua_color_' + (name == null ? 'actor' : name);
+		compatCancelTween(tag);
+		var created:FlxTween = null;
+		var complete = function(_) {
+			if (compatTweens.get(tag) == created)
+				compatTweens.remove(tag);
+		};
+		created = FlxTween.tween(transform, props, Math.max(0, duration), {
+			ease: FlxEase.linear,
+			onComplete: complete
+		});
+		compatTweens.set(tag, created);
+	}
+
+	function compatTweenCharacterColorHex(name:String, hexColor:Dynamic, duration:Float):Void {
+		var value = compatGetColorFromHex(hexColor);
+		var red = (value >> 16) & 0xFF;
+		var green = (value >> 8) & 0xFF;
+		var blue = value & 0xFF;
+		compatTweenCharacterColorRGB(name, red, green, blue, duration, false);
+		var actor:Dynamic = getHaxeActor(name);
+		if (actor != null) {
+			try {
+				actor.visible = true;
+				actor.alpha = 1;
+			} catch (_:Dynamic) {}
+		}
+	}
+
+	function compatResetCharacterColor(name:String, duration:Float):Void {
+		compatTweenCharacterColorRGB(name, 0, 0, 0, duration, true);
+	}
+
+	function compatSetStrumLineRGBShader(enabled:Bool):Void {
+		// Match the live opponent/player view exposed by compatGroupMember.
+		// The legacy combined group is not populated by Strumline construction.
+		for (line in [enemyStrums, playerStrums]) {
+			if (line == null) continue;
+			for (sprite in line.members) {
+				if (sprite == null)
+					continue;
+				// Psych-configured receptors consume this live flag in their shader
+				// adapter; other receptor implementations retain their own behavior.
+				try {
+					// Native class properties are readable even when hxcpp hasField
+					// reports false. Preserve false so a disabled shader can re-enable.
+					if (Reflect.getProperty(sprite, 'useRGBShader') != null)
+						Reflect.setProperty(sprite, 'useRGBShader', enabled);
+				} catch (_:Dynamic) {}
+			}
+		}
+	}
+
+	function compatUpdateCameraAngle(elapsed:Float, offset:Float, speed:Float = 1):Void {
+		if (camGame == null)
+			return;
+		var angleLerp = FlxMath.bound(FlxMath.bound(elapsed * 2.4 / 0.4, 0, 1)
+			* speed * camSpeed, 0, 1);
+		camGame.angle = FlxMath.lerp(camGame.angle, offset / 30, angleLerp);
+	}
+
+	/** Kade's actor helpers address the eight strum receptors by lane index. */
+	function compatActorTarget(index:Dynamic):Dynamic {
+		return compatNoteTarget(index);
+	}
+
+	function compatSetActorX(value:Float, index:Dynamic):Void {
+		var target = compatActorTarget(index);
+		if (target != null)
+			try target.x = value catch (_:Dynamic) {}
+	}
+
+	function compatSetActorY(value:Float, index:Dynamic):Void {
+		var target = compatActorTarget(index);
+		if (target != null)
+			try target.y = value catch (_:Dynamic) {}
+	}
+
+	function compatGetActorX(index:Dynamic):Float {
+		var target = compatActorTarget(index);
+		if (target == null)
+			return 0;
+		try return target.x catch (_:Dynamic) return 0;
+	}
+
+	function compatGetActorY(index:Dynamic):Float {
+		var target = compatActorTarget(index);
+		if (target == null)
+			return 0;
+		try return target.y catch (_:Dynamic) return 0;
+	}
+
+	function compatTweenCameraZoom(value:Float, duration:Float):Void {
+		compatTweenObject('__kade_camera_zoom', camGame, 'zoom', value, duration);
+	}
+
+	function compatSetTextAlignment(name:Dynamic, alignment:String):Void {
+		var object:Dynamic = compatFindObject(name);
+		if (!Std.isOfType(object, FlxText) || alignment == null)
+			return;
+		try (cast object : FlxText).alignment = StringTools.trim(alignment).toLowerCase() catch (_:Dynamic) {}
+	}
+
+	function compatCharacterDance(name:String):Void {
+		var actor = getHaxeActor(name);
+		if (actor != null)
+			try actor.dance() catch (_:Dynamic) {}
+	}
+
+	function compatGetTextFont(name:Dynamic):String {
+		var object:Dynamic = compatFindObject(name);
+		if (!Std.isOfType(object, FlxText))
+			return '';
+		try return (cast object : FlxText).font catch (_:Dynamic) return '';
+	}
+
+	function compatScaleLuaSprite(name:Dynamic, x:Float, ?y:Null<Float>):Void {
+		compatScaleObject(name, x, y);
+	}
+
+	function compatRandomBool(chance:Float = 50):Bool {
+		return FlxG.random.bool(chance);
+	}
+
+	function compatMouseX(?cameraName:String):Float {
+		// Psych uses screen/view coordinates in the requested camera, without
+		// the gameplay camera's world scroll. Return the pooled point promptly.
+		var point = FlxG.mouse.getScreenPosition(compatCameraForName(cameraName));
+		var value = point.x;
+		point.put();
+		return value;
+	}
+
+	function compatMouseY(?cameraName:String):Float {
+		var point = FlxG.mouse.getScreenPosition(compatCameraForName(cameraName));
+		var value = point.y;
+		point.put();
+		return value;
+	}
+
+	function compatMouseClicked(button:String = 'left'):Bool {
+		var token = button == null ? 'left' : StringTools.trim(button).toLowerCase();
+		switch (token) {
+			case 'right': return FlxG.mouse.justPressedRight;
+			case 'middle': return FlxG.mouse.justPressedMiddle;
+			default: return FlxG.mouse.justPressed;
+		}
+	}
+
+	function compatSoundPath(path:String, preferSounds:Bool = false):String {
+		if (path == null)
+			return null;
+		var clean = StringTools.replace(StringTools.trim(path), '\\', '/');
+		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0)
+			return null;
+		for (part in clean.split('/'))
+			if (part == '' || part == '.' || part == '..')
+				return null;
+		var candidates:Array<String> = [];
+		if (clean.startsWith('assets/'))
+			candidates.push(clean);
+		else {
+			var soundName = Path.extension(clean) == '' ? clean + TitleState.soundExt : clean;
+			var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+			if (selectedRoot != null && selectedRoot != '') {
+				candidates.push(Path.join([selectedRoot, preferSounds ? 'sounds' : 'music', soundName]));
+				candidates.push(Path.join([selectedRoot, 'assets', preferSounds ? 'sounds' : 'music', soundName]));
+				candidates.push(Path.join([selectedRoot, preferSounds ? 'music' : 'sounds', soundName]));
+				candidates.push(Path.join([selectedRoot, 'assets', preferSounds ? 'music' : 'sounds', soundName]));
+			}
+			candidates.push('assets/' + (preferSounds ? 'sounds/' : 'music/') + soundName);
+			candidates.push('assets/' + (preferSounds ? 'music/' : 'sounds/') + soundName);
+			candidates.push(clean);
+		}
+		for (candidate in candidates)
+			if (FNFAssets.isInScope(candidate) && FNFAssets.exists(candidate))
+				return candidate;
+		return null;
+	}
+
+	/** Native fallback for one imported Psych script. This deliberately omits
+	 * the active song's imported root; Psych falls back to engine shared media,
+	 * not a sibling import selected by the current chart. */
+	function compatPsychNativeSoundPath(path:String, preferSounds:Bool):String {
+		if (path == null) return null;
+		var clean = StringTools.replace(StringTools.trim(path), '\\', '/');
+		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0) return null;
+		for (part in clean.split('/'))
+			if (part == '' || part == '.' || part == '..') return null;
+		if (clean.startsWith('assets/'))
+			return FNFAssets.exists(clean) ? clean : null;
+		var filename = Path.extension(clean) == '' ? clean + TitleState.soundExt : clean;
+		var candidates = [
+			'assets/' + (preferSounds ? 'sounds/' : 'music/') + filename,
+			'assets/' + (preferSounds ? 'music/' : 'sounds/') + filename,
+			clean
+		];
+		for (candidate in candidates)
+			if (FNFAssets.isInScope(candidate) && FNFAssets.exists(candidate)) return candidate;
+		return null;
+	}
+
+	function compatPlayMusic(path:String, volume:Float = 1, looped:Bool = false):Void {
+		var resolved = compatSoundPath(path);
+		if (resolved == null)
+			return;
+		try FlxG.sound.playMusic(FNFAssets.getSound(resolved), volume, looped) catch (_:Dynamic) {}
+	}
+
+	function compatPlaySound(path:Dynamic, volume:Float = 1, ?tagOrLoop:Dynamic,
+		?loopArgument:Bool = false):FlxSound {
+		var resolved = path == null ? null : compatSoundPath(Std.string(path), true);
+		if (resolved == null) return null;
+		var looped = loopArgument || (Std.isOfType(tagOrLoop, Bool) && tagOrLoop == true);
+		var sound = hscriptSafePlay(resolved, volume, looped);
+		if (sound != null && Std.isOfType(tagOrLoop, String)) {
+			var tag = StringTools.trim(cast tagOrLoop);
+			if (tag != '') psychTaggedSounds.set(tag, sound);
+		}
+		return sound;
+	}
+
+	function compatPlaySoundForOwner(ownerRoot:String, path:Dynamic, volume:Float = 1,
+		?tag:Dynamic, ?looped:Bool = false):FlxSound {
+		if (ownerRoot == null) return compatPlaySound(path, volume, tag, looped);
+		if (path == null) return null;
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, Std.string(path))) {
+			trace('[psych-assets] Refused playSound reference outside calling owner: ' + Std.string(path));
+			return null;
+		}
+		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'sound',
+			[compatPsychAssetKey(Std.string(path), '.ogg')]);
+		var playable = resolved != null && FNFAssets.exists(Std.string(resolved))
+			? Std.string(resolved) : compatPsychNativeSoundPath(Std.string(path), true);
+		return playable == null ? null : compatPlaySound(playable, volume, tag, looped);
+	}
+
+	function compatPlayMusicForOwner(ownerRoot:String, path:String, volume:Float = 1,
+		looped:Bool = false):Void {
+		if (ownerRoot == null) return compatPlayMusic(path, volume, looped);
+		if (path == null) return;
+		if (!compatPsychOwnerFallbackAllowed(ownerRoot, path)) {
+			trace('[psych-assets] Refused playMusic reference outside calling owner: ' + path);
+			return;
+		}
+		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'music', [compatPsychAssetKey(path, '.ogg')]);
+		var playable = resolved != null && FNFAssets.exists(Std.string(resolved))
+			? Std.string(resolved) : compatPsychNativeSoundPath(path, false);
+		if (playable != null) compatPlayMusic(playable, volume, looped);
+	}
+
+	function compatTaggedSound(tag:Dynamic):FlxSound {
+		if (tag == null) return null;
+		var key = StringTools.trim(Std.string(tag));
+		var sound = psychTaggedSounds.get(key);
+		if (sound != null && !sound.exists) {
+			psychTaggedSounds.remove(key);
+			return null;
+		}
+		return sound;
+	}
+
+	function compatSoundFadeOut(tag:Dynamic, duration:Float, toVolume:Float = 0):Void {
+		var sound = compatTaggedSound(tag);
+		if (sound != null) sound.fadeOut(Math.max(0, duration), toVolume);
+	}
+
+	function compatSoundFadeIn(tag:Dynamic, duration:Float, fromVolume:Float = 0,
+		toVolume:Float = 1):Void {
+		var sound = compatTaggedSound(tag);
+		if (sound != null) sound.fadeIn(Math.max(0, duration), fromVolume, toVolume);
+	}
+
+	function compatStopSound(tag:Dynamic):Void {
+		var sound = compatTaggedSound(tag);
+		if (sound != null) sound.stop();
+		if (tag != null) psychTaggedSounds.remove(StringTools.trim(Std.string(tag)));
+	}
+
+	function compatCallMethodFromClass(className:String, methodName:String,
+		?arguments:Array<Dynamic>):Dynamic {
+		var classValue = compatResolveClass(className);
+		if (classValue == null || methodName == null)
+			return null;
+		try {
+			var method = Reflect.field(classValue, methodName);
+			if (method == null)
+				return null;
+			return Reflect.callMethod(classValue, method, arguments == null ? [] : arguments);
+		} catch (error:Dynamic) {
+			trace('compat callMethodFromClass failed for ' + className + '.' + methodName + ': ' + error);
+			return null;
+		}
+	}
+
+	/** Freeze only tasks that were already running when Psych pauses gameplay.
+	 * Substate callbacks may create their own timer/tweens after this snapshot. */
+	function pausePsychCustomTimeline():Void {
+		// A replacement substate may have acquired new tasks since the first
+		// pause. Already suspended tasks are inactive and will not be duplicated.
+		compatCustomPausedSnapshot = true;
+		if (FlxTimer.globalManager != null) FlxTimer.globalManager.forEach(function(timer:FlxTimer) {
+			if (timer != null && timer.active && !timer.finished) {
+				compatCustomPausedTimers.push(timer);
+				timer.active = false;
+			}
+		});
+		if (FlxTween.globalManager != null) FlxTween.globalManager.forEach(function(tween:FlxTween) {
+			if (tween != null && tween.active && !tween.finished) {
+				compatCustomPausedTweens.push(tween);
+				tween.active = false;
+			}
+		});
+	}
+
+	function resumePsychCustomTimeline():Void {
+		for (timer in compatCustomPausedTimers)
+			if (timer != null && !timer.finished) timer.active = true;
+		for (tween in compatCustomPausedTweens)
+			if (tween != null && !tween.finished) tween.active = true;
+		compatCustomPausedTimers.resize(0);
+		compatCustomPausedTweens.resize(0);
+		compatCustomPausedSnapshot = false;
+	}
+
+	/** Psych's callbacks are emitted by the real FlxSubState, including while
+	 * PlayState.persistentUpdate is false. Script objects remain in their existing
+	 * PlayState registry unless explicitly inserted into the substate. */
+	function compatOpenCustomSubstate(name:String, pauseGame:Bool = false):Void {
+		if (name == null) name = '';
+		var previous = compatCustomSubstate;
+		if (previous != null && !previous.lifecycleCreated)
+			previous.cancelBeforeCreate();
+		// A new open replaces the old substate at Flixel's next state reset.
+		// The old instance dispatches destroy there, exactly once.
+		if (pauseGame)
+			pausePsychCustomTimeline();
+		else if (!pauseGame && compatCustomSubstatePausesGame)
+			resumePsychCustomTimeline();
+		compatCustomSubstateName = name;
+		compatCustomSubstateOpen = true;
+		compatCustomSubstatePausesGame = pauseGame;
+		if (pauseGame) {
+			persistentUpdate = false;
+			persistentDraw = true;
+			paused = true;
+			setAllHaxeVar('paused', true);
+			if (FlxG.sound.music != null) FlxG.sound.music.pause();
+			pauseVocals();
+		} else {
+			paused = false;
+			persistentUpdate = true;
+			persistentDraw = true;
+			setAllHaxeVar('paused', false);
+			if (previous != null && previous.pausesGame
+				&& FlxG.sound.music != null && !startingSong) resyncVocals();
+		}
+		compatCustomSubstate = new PsychCustomSubstate(this, name, pauseGame);
+		openSubState(compatCustomSubstate);
+	}
+
+	function compatCloseCustomSubstate():Bool {
+		var current = compatCustomSubstate;
+		if (current == null) return false;
+		if (subState == current) {
+			closeSubState();
+		} else if (!current.lifecycleCreated) {
+			// openSubState is deferred in Flixel 6. Replace the queued target with
+			// null; an uncreated substate has no donor callbacks to destroy.
+			super.openSubState(null);
+			current.cancelBeforeCreate();
+			if (current.pausesGame) {
+				resumePsychCustomTimeline();
+				paused = false;
+				persistentUpdate = true;
+				setAllHaxeVar('paused', false);
+				if (FlxG.sound.music != null && !startingSong) resyncVocals();
+			}
+			compatCustomSubstate = null;
+			compatCustomSubstateOpen = false;
+			compatCustomSubstateName = '';
+			compatCustomSubstatePausesGame = false;
+			setAllHaxeVar('customSubstate', null);
+			setAllHaxeVar('customSubstateName', 'unnamed');
+		}
+		return true;
+	}
+
+	public function psychCustomSubstateCreate(state:PsychCustomSubstate):Void {
+		if (compatCustomSubstate != state) return;
+		setAllHaxeVar('customSubstate', state);
+		setAllHaxeVar('customSubstateName', state.customName);
+		callAllHScript('customSubstateCreate', [state.customName]);
+	}
+
+	public function psychCustomSubstateCreatePost(state:PsychCustomSubstate):Void {
+		if (compatCustomSubstate == state)
+			callAllHScript('customSubstateCreatePost', [state.customName]);
+	}
+
+	public function psychCustomSubstateUpdate(state:PsychCustomSubstate, elapsed:Float):Void {
+		if (compatCustomSubstate == state)
+			callAllHScript('customSubstateUpdate', [state.customName, elapsed]);
+	}
+
+	public function psychCustomSubstateUpdatePost(state:PsychCustomSubstate, elapsed:Float):Void {
+		if (compatCustomSubstate == state)
+			callAllHScript('customSubstateUpdatePost', [state.customName, elapsed]);
+	}
+
+	public function psychCustomSubstateDestroy(state:PsychCustomSubstate):Void {
+		callAllHScript('customSubstateDestroy', [state.customName]);
+		if (compatCustomSubstate != state) return;
+		compatCustomSubstate = null;
+		compatCustomSubstateOpen = false;
+		compatCustomSubstateName = '';
+		compatCustomSubstatePausesGame = false;
+		setAllHaxeVar('customSubstate', null);
+		setAllHaxeVar('customSubstateName', 'unnamed');
+	}
+
+	function compatRestartSong(?skipTransition:Bool = false):Void {
+		// V-Slice modules receive a final retry hook before the old state is
+		// replaced. EngineCompat adapts this to a mutable HXC lifecycle payload
+		// while ordinary HScript keeps its empty-argument callback ABI.
+		callAllHScript('songRetry', []);
+		#if cpp
+		stopCompatEventVideo();
+		#end
+		hxcClearAllNoteTextCues();
+		if (camGame != null)
+			camGame.stopFlash();
+		if (camHUD != null)
+			camHUD.stopFlash();
+		if (camOther != null)
+			camOther.stopFlash();
+		clearHxcVignette();
+		hxcClearRuntimeShaderBindings();
+		paused = false;
+		compatCustomSubstateOpen = false;
+		LoadingState.loadAndSwitchState(new PlayState());
+	}
+
+	function compatExitSong(?skipTransition:Bool = false):Void {
+		paused = false;
+		compatCustomSubstateOpen = false;
+		LoadingState.loadAndSwitchState(new FreeplayState());
+	}
+
+	function compatLoadSong(songName:String, ?difficulty:String = ''):Void {
+		if (songName == null || StringTools.trim(songName) == '')
+			return;
+		var clean = StringTools.trim(songName);
+		var chart = StringTools.trim(difficulty == null ? '' : difficulty);
+		if (chart == '')
+			chart = clean.toLowerCase();
+		try {
+			PlayState.SONG = Song.loadFromJson(chart.toLowerCase(), clean);
+			LoadingState.loadAndSwitchState(new PlayState());
+		} catch (error:Dynamic) {
+			trace('compat loadSong failed for ' + clean + ': ' + error);
+		}
+	}
+
+	function compatStartTween(tag:String, targetName:Dynamic, value:Dynamic, duration:Float,
+		?options:Dynamic):Void {
+		var ease:String = null;
+		if (options != null)
+			try ease = Std.string(Reflect.field(options, 'ease')) catch (_:Dynamic) {}
+		var targetText = targetName == null ? '' : Std.string(targetName);
+		// Psych allows tweening a bare PlayState field (defaultCamZoom is the
+		// common example).  Do not pass its current scalar value as a tween
+		// owner: route the field through the canonical PlayState object.
+		if (targetText.indexOf('.') < 0) {
+			try {
+				if (Reflect.hasField(this, targetText)) {
+					compatTweenObject(tag, this, targetText, value, duration, ease);
+					return;
+				}
+			} catch (_:Dynamic) {}
+		}
+		var object = compatFindObject(targetText);
+		if (object == null)
+			return;
+		// The object-form Psych API (startTween(tag, object, {x: ...}, ...))
+		// maps directly onto FlxTween and preserves all supplied fields.
+		if (value != null && Reflect.isObject(value) && !Std.isOfType(value, String)) {
+			compatCancelTween(tag);
+			var created:FlxTween = null;
+			var complete = function(_) {
+				if (tag != null && compatTweens.get(tag) == created)
+					compatTweens.remove(tag);
+				if (tag != null)
+					callAllHScript('tweenCompleted', [tag]);
+			};
+			var params:Dynamic = {onComplete: complete};
+			if (ease != null && StringTools.trim(ease) != '')
+				Reflect.setField(params, 'ease', Reflect.field(FlxEase, ease));
+			created = FlxTween.tween(object, value, Math.max(0, duration), params);
+			if (tag != null)
+				compatTweens.set(tag, created);
+		}
+	}
+
+	function captureLuaDefaultStrums():Void {
+		if (luaDefaultStrumsCaptured)
+			return;
+		var count = Note.NOTE_AMOUNT * 2;
+		for (i in 0...count) {
+			var target:Dynamic = null;
+			if (strumLineNotes != null && i >= 0 && i < strumLineNotes.members.length)
+				target = strumLineNotes.members[i];
+			luaDefaultStrumX.push(target == null ? 0 : target.x);
+			luaDefaultStrumY.push(target == null ? 0 : target.y);
+		}
+		if (enemyStrums != null) {
+			for (strum in enemyStrums.members) {
+				luaDefaultOpponentStrumX.push(strum == null ? 0 : strum.x);
+				luaDefaultOpponentStrumY.push(strum == null ? 0 : strum.y);
+			}
+		}
+		if (playerStrums != null) {
+			for (strum in playerStrums.members) {
+				luaDefaultPlayerStrumX.push(strum == null ? 0 : strum.x);
+				luaDefaultPlayerStrumY.push(strum == null ? 0 : strum.y);
+			}
+		}
+		luaDefaultStrumsCaptured = true;
+	}
+
+	/**
+		Seed the narrow dynamic-global adapter used by converted Lua.  The map is
+		per interpreter; only the explicit `objects` export and the legacy
+		defaultPlayerStrumX/Y and defaultOpponentStrumX/Y slots can be written,
+		while defaultStrum reads use
+		the immutable baseline captured above.
+	*/
+	function seedLuaDynamicGlobals(interp:Interp):Void {
+		captureLuaDefaultStrums();
+		var scriptGlobals:Map<String, Dynamic> = [];
+		// getfenv() is lowered to this per-interpreter object.  It is intentionally
+		// not the full HScript variable map; translated Lua can keep a private
+		// cache here without gaining access to arbitrary engine bindings.
+		var luaEnvironment:Dynamic = {};
+		interp.variables.set('luaGetEnvironment', function() return luaEnvironment);
+		// Lua resolves an undeclared global read to nil. LuaCompat uses this
+		// helper only for a bare addLuaSprite layer identifier; evaluating through
+		// a closure preserves local variables and existing interpreter bindings,
+		// while an unknown HScript name becomes nil instead of aborting stage.start.
+		interp.variables.set('luaReadOptional', function(reader:Dynamic):Dynamic {
+			try {
+				return Reflect.callMethod(null, reader, []);
+			} catch (_:Dynamic) {
+				return null;
+			}
+		});
+		if (playerStrums != null) {
+			for (i in 0...playerStrums.members.length) {
+				var strum = playerStrums.members[i];
+				if (strum == null)
+					continue;
+				scriptGlobals.set('defaultPlayerStrumX' + i, strum.x);
+				scriptGlobals.set('defaultPlayerStrumY' + i, strum.y);
+			}
+		}
+		if (enemyStrums != null) {
+			for (i in 0...enemyStrums.members.length) {
+				var strum = enemyStrums.members[i];
+				if (strum == null)
+					continue;
+				scriptGlobals.set('defaultOpponentStrumX' + i, strum.x);
+				scriptGlobals.set('defaultOpponentStrumY' + i, strum.y);
+			}
+		}
+		// A bare `objects` reference in the donor's later callbacks resolves to
+		// this interpreter binding after `_G.objects = objects` is routed.  It is
+		// seeded null rather than exposing a general environment proxy.
+		interp.variables.set('objects', null);
+		interp.variables.set('luaGetScriptGlobal', function(name:Dynamic)
+			return EngineCompat.luaGetScriptGlobal(scriptGlobals, name));
+		interp.variables.set('luaSetScriptGlobal', function(name:Dynamic, value:Dynamic) {
+			var key = EngineCompat.luaDynamicGlobalName(name);
+			if (!EngineCompat.luaSetScriptGlobal(scriptGlobals, key, value))
+				return false;
+			// Only this identifier is intentionally bridged into ordinary HScript
+			// name lookup; computed strum slots are always read through the helper.
+			if (key == 'objects')
+				interp.variables.set('objects', value);
+			return true;
+		});
+		interp.variables.set('luaGetDefaultStrum', function(index:Dynamic, axis:Dynamic)
+			return EngineCompat.luaGetDefaultStrum(luaDefaultStrumX, luaDefaultStrumY, index, axis));
+		interp.variables.set('luaGetSideDefaultStrum', function(side:Dynamic, index:Dynamic, axis:Dynamic)
+			return EngineCompat.luaGetSideDefaultStrum(luaDefaultOpponentStrumX, luaDefaultOpponentStrumY,
+				luaDefaultPlayerStrumX, luaDefaultPlayerStrumY, side, index, axis));
+	}
+
+	function seedEngineCompat(interp:Interp, ?extraPsychOwnerRoot:String):Void {
+		var originValue:Dynamic = interp.variables.get('__compatDiagnosticSource');
+		var origin = originValue == null ? null : Std.string(originValue);
+		var psychScriptOwner = compatPsychOwnerForScript(origin);
+		var resultsObserver = false;
+		// Global Psych providers can be loaded from a separately configured root
+		// that is intentionally absent from the active song's manifest. Accept
+		// only a root that canonically contains this interpreter's source file.
+		if (extraPsychOwnerRoot != null) {
+			var validatedExtraOwner = PsychModSettingCompat.ownerForScript(origin, extraPsychOwnerRoot);
+			if (validatedExtraOwner != null) {
+				psychScriptOwner = validatedExtraOwner;
+				resultsObserver = true;
+			}
+		}
+		if (Std.isOfType(interp, LuaCompatInterp)) {
+			(cast interp : LuaCompatInterp).smokeDiagnosticsEnabled = RuntimeSmokeHarness.enabled();
+			// Psych exposes the authored song id as a string global. The native
+			// HUD also has a `songName` FlxText; Lua must not receive that object.
+			interp.variables.set('songName', SONG == null ? '' : SONG.song);
+			interp.variables.set('difficultyName', storyDifficultyText);
+			interp.variables.set('__compatClosed', false);
+			// Psych's local close callback accepts no arguments; Lua ignores the
+			// optional boolean passed by some donor scripts.
+			interp.variables.set('close', function(?_destroy:Dynamic):Bool {
+				interp.variables.set('__compatClosed', true);
+				return true;
+			});
+			interp.variables.set('getModSetting', PsychModSettingCompat.create(origin,
+				psychScriptOwner, function(message:String) trace('[psych-mod-settings] ' + message)));
+		}
+		// Psych exposes these globals in every Lua state.  Keep them in the
+		// shared seed so converted scripts can use the same spelling without
+		// chart-side declarations; section/BPM values are refreshed from stepHit.
+		interp.variables.set('screenWidth', FlxG.width);
+		interp.variables.set('screenHeight', FlxG.height);
+		interp.variables.set('crochet', Conductor.crochet);
+		// Psych exposes this engine-owned countdown gate to onStartCountdown.
+		// The native startCountdown() call is the gate here, so imported scripts
+		// should observe the same permissive value before returning their own
+		// Function_Stop/Function_Continue result.
+		interp.variables.set('allowCountdown', true);
+		interp.variables.set('seenCutscene', watchedCutscene);
+		interp.variables.set('isStoryMode', EngineCompat.importedScriptStoryMode(isStoryMode,
+			alwaysDoCutscenes, Std.isOfType(interp, LuaCompatInterp)));
+		interp.variables.set('shadersEnabled', true);
+		// Psych exposes the effective HUD preference as a Lua global. This fork
+		// has no matching persisted option, so its ordinary visible HUD is false.
+		interp.variables.set('hideHud', camHUD != null && !camHUD.visible);
+		interp.variables.set('hxcSetWindowTitle', HxcWindowCompat.setTitle);
+		interp.variables.set('hxcSetWindowIcon', HxcWindowCompat.setIcon);
+		interp.variables.set('startCountdown', startCountdown);
+		interp.variables.set('startDialogue', compatStartDialogue);
+		interp.variables.set('customSubstate', compatCustomSubstate);
+		interp.variables.set('customSubstateName', compatCustomSubstate == null ? 'unnamed' : compatCustomSubstate.customName);
+		interp.variables.set('exitMenu', compatExitSong);
+		interp.variables.set('setProperty', resultsObserver ? compatSetResultsProperty : compatSetProperty);
+		if (resultsObserver) {
+			var resultsCharacters = new ResultsCharacterCompat(psychScriptOwner);
+			interp.variables.set('getProperty', function(path:Dynamic):Dynamic {
+				if (EngineCompat.propertyPath(path) == 'boyfriend.curCharacter') {
+					var actor = codenameInputLines.length > 0 ? codenameScriptCharacterAtLine(1) : boyfriend;
+					return resultsCharacters.resolve(actor == null ? null : actor.requestedCharacter);
+				}
+				return compatGetProperty(path);
+			});
+		} else interp.variables.set('getProperty', compatGetProperty);
+		interp.variables.set('setPropertyFromGroup', compatSetPropertyFromGroup);
+		interp.variables.set('getPropertyFromGroup', compatGetPropertyFromGroup);
+		interp.variables.set('setPropertyFromClass', compatSetPropertyFromClass);
+		interp.variables.set('getPropertyFromClass', compatGetPropertyFromClass);
+		interp.variables.set('setObjectCamera', compatSetObjectCamera);
+		interp.variables.set('setObjectOrder', compatSetObjectOrder);
+		interp.variables.set('getObjectOrder', compatGetObjectOrder);
+		interp.variables.set('setScrollFactor', compatSetScrollFactor);
+		interp.variables.set('setLuaSpriteScrollFactor', compatSetScrollFactor);
+		interp.variables.set('scaleObject', compatScaleObject);
+		interp.variables.set('screenCenter', compatScreenCenter);
+		interp.variables.set('makeLuaSprite', function(tag:String, ?image:String = null,
+			x:Float = 0, y:Float = 0)
+			return compatMakeLuaSpriteForOwner(psychScriptOwner, tag, image, x, y));
+		interp.variables.set('makeAnimatedLuaSprite', function(tag:String, ?image:String = null,
+			x:Float = 0, y:Float = 0, ?spriteType:String = 'auto')
+			return compatMakeAnimatedLuaSpriteForOwner(psychScriptOwner, tag, image, x, y, spriteType));
+		interp.variables.set('makeFlxAnimateSprite', function(tag:String, x:Float = 0, y:Float = 0,
+			?loadFolder:String) return compatMakeFlxAnimateSprite(psychScriptOwner, tag, x, y, loadFolder));
+		interp.variables.set('loadAnimateAtlas', function(tag:Dynamic, folderOrImage:Dynamic,
+			?spriteJson:Dynamic, ?animationJson:Dynamic)
+			return compatLoadAnimateAtlas(psychScriptOwner, tag, folderOrImage, spriteJson, animationJson));
+		interp.variables.set('makeLuaText', compatMakeLuaText);
+		interp.variables.set('addLuaSprite', compatAddLuaSprite);
+		interp.variables.set('addLuaText', compatAddLuaText);
+		interp.variables.set('removeLuaSprite', compatRemoveLuaSprite);
+		interp.variables.set('removeLuaText', compatRemoveLuaSprite);
+		// A few old Psych packs use removeObject() as a generic spelling for
+		// their tagged Lua sprite/text registry. Keep it on the same guarded
+		// bridge rather than exposing a raw PlayState.remove() function.
+		interp.variables.set('removeObject', compatRemoveLuaSprite);
+		interp.variables.set('getLuaObject', compatFindObject);
+		interp.variables.set('addAnimationByPrefix', compatAddAnimationByPrefix);
+		interp.variables.set('addAnimationByIndices', compatAddAnimationByIndices);
+		interp.variables.set('addAnimationBySymbolIndices', compatAddAnimationBySymbolIndices);
+		interp.variables.set('objectPlayAnimation', compatObjectPlayAnimation);
+		interp.variables.set('playAnim', compatPlayAnim);
+		interp.variables.set('characterPlayAnim', compatCharacterPlayAnim);
+		interp.variables.set('setTextString', compatSetTextString);
+		interp.variables.set('setTextSize', compatSetTextSize);
+		interp.variables.set('setTextColor', compatSetTextColor);
+		interp.variables.set('setHealthBarColors', compatSetHealthBarColors);
+		interp.variables.set('setTextBorder', compatSetTextBorder);
+		interp.variables.set('setTextFont', compatSetTextFont);
+		interp.variables.set('setGraphicSize', compatSetGraphicSize);
+		interp.variables.set('updateHitbox', compatUpdateHitbox);
+		interp.variables.set('loadGraphic', compatLoadGraphic);
+		interp.variables.set('makeGraphic', compatMakeGraphic);
+		interp.variables.set('doTweenX', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'x', value, duration, ease));
+		interp.variables.set('doTweenY', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'y', value, duration, ease));
+		interp.variables.set('doTweenAlpha', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'alpha', value, duration, ease));
+		interp.variables.set('doTweenAngle', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'angle', value, duration, ease));
+		interp.variables.set('doTweenZoom', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'zoom', value, duration, ease));
+		interp.variables.set('doTweenColor', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'color', value, duration, ease));
+		interp.variables.set('noteTweenX', function(tag, note, value, duration, ?ease:String) compatNoteTween(tag, note, 'x', value, duration, ease));
+		interp.variables.set('noteTweenY', function(tag, note, value, duration, ?ease:String) compatNoteTween(tag, note, 'y', value, duration, ease));
+		interp.variables.set('noteTweenAlpha', function(tag, note, value, duration, ?ease:String) compatNoteTween(tag, note, 'alpha', value, duration, ease));
+		interp.variables.set('noteTweenAngle', function(tag, note, value, duration, ?ease:String) compatNoteTween(tag, note, 'angle', value, duration, ease));
+		interp.variables.set('setActorX', compatSetActorX);
+		interp.variables.set('setActorY', compatSetActorY);
+		interp.variables.set('getActorX', compatGetActorX);
+		interp.variables.set('getActorY', compatGetActorY);
+		interp.variables.set('tweenCameraZoom', compatTweenCameraZoom);
+		interp.variables.set('startTween', compatStartTween);
+		interp.variables.set('scaleLuaSprite', compatScaleLuaSprite);
+		interp.variables.set('setTextAlignment', compatSetTextAlignment);
+		interp.variables.set('getTextFont', compatGetTextFont);
+		interp.variables.set('characterDance', compatCharacterDance);
+		interp.variables.set('runTimer', compatRunTimer);
+		interp.variables.set('cancelTimer', compatCancelTimer);
+		interp.variables.set('cancelTween', compatCancelTween);
+		interp.variables.set('getRandomInt', compatRandomInt);
+		interp.variables.set('getRandomFloat', compatRandomFloat);
+		interp.variables.set('getRandomBool', compatRandomBool);
+		interp.variables.set('luaMathRandom', compatLuaRandom);
+		interp.variables.set('keyboardJustPressed', compatKeyboardJustPressed);
+		interp.variables.set('keyJustPressed', compatKeyJustPressed);
+		interp.variables.set('getMouseX', compatMouseX);
+		interp.variables.set('getMouseY', compatMouseY);
+		interp.variables.set('getMouseClicked', compatMouseClicked);
+		interp.variables.set('mouseClicked', compatMouseClicked);
+		interp.variables.set('getColorFromHex', compatGetColorFromHex);
+		interp.variables.set('setBlendMode', compatSetBlendMode);
+		interp.variables.set('precacheImage', function(path:String, ?allowGPU:Bool = true)
+			compatPrecacheImageForOwner(psychScriptOwner, path, allowGPU));
+		interp.variables.set('precacheSound', function(path:String)
+			compatPrecacheSoundForOwner(psychScriptOwner, path));
+		interp.variables.set('precacheMusic', function(path:String)
+			compatPrecacheMusicForOwner(psychScriptOwner, path));
+		interp.variables.set('addCharacterToList', compatAddCharacterToList);
+		interp.variables.set('triggerEvent', compatTriggerEvent);
+		interp.variables.set('cameraShake', compatCameraShake);
+		interp.variables.set('cameraFlash', compatCameraFlash);
+		interp.variables.set('cameraFade', compatCameraFade);
+		interp.variables.set('initLuaShader', initLuaShader);
+		interp.variables.set('createRuntimeShader', createRuntimeShader);
+		interp.variables.set('createRuntimeShaderAndStore', function(spriteName:String, shaderName:String, variableName:String)
+			compatCreateRuntimeShaderAndStore(interp, spriteName, shaderName, variableName));
+		interp.variables.set('setSpriteShader', compatSetSpriteShader);
+		interp.variables.set('setShaderFloat', compatSetShaderFloat);
+		interp.variables.set('setCameraShaderFilters', compatSetCameraShaderFilters);
+		interp.variables.set('setCameraShaderFiltersFromStored', function(cameraName:String, variableName:String)
+			compatSetCameraShaderFiltersFromStored(interp, cameraName, variableName));
+		interp.variables.set('clearCameraShaderFilters', compatClearCameraShaderFilters);
+		interp.variables.set('installShaderCoordFix', compatInstallShaderCoordFix);
+		interp.variables.set('removeShaderCoordFix', compatRemoveShaderCoordFix);
+		interp.variables.set('tweenCharacterColorRGB', compatTweenCharacterColorRGB);
+		interp.variables.set('tweenCharacterColorHex', compatTweenCharacterColorHex);
+		interp.variables.set('resetCharacterColor', compatResetCharacterColor);
+		interp.variables.set('setStrumLineRGBShader', compatSetStrumLineRGBShader);
+		interp.variables.set('updateCameraAngle', compatUpdateCameraAngle);
+		interp.variables.set('playSound', function(path:Dynamic, volume:Float = 1,
+			?tag:Dynamic, ?looped:Bool = false)
+			return compatPlaySoundForOwner(psychScriptOwner, path, volume, tag, looped));
+		interp.variables.set('soundFadeOut', compatSoundFadeOut);
+		interp.variables.set('soundFadeIn', compatSoundFadeIn);
+		interp.variables.set('stopSound', compatStopSound);
+		interp.variables.set('playMusic', function(path:String, volume:Float = 1,
+			looped:Bool = false) compatPlayMusicForOwner(psychScriptOwner, path, volume, looped));
+		interp.variables.set('Function_Stop', true);
+		interp.variables.set('Function_Continue', false);
+		interp.variables.set('loadSong', compatLoadSong);
+		interp.variables.set('restartSong', compatRestartSong);
+		interp.variables.set('exitSong', compatExitSong);
+		interp.variables.set('openCustomSubstate', compatOpenCustomSubstate);
+		interp.variables.set('closeCustomSubstate', compatCloseCustomSubstate);
+		interp.variables.set('callMethodFromClass', compatCallMethodFromClass);
+		interp.variables.set('luaNumber', EngineCompat.luaNumber);
+		interp.variables.set('luaString', EngineCompat.luaString);
+		interp.variables.set('luaStringSub', EngineCompat.luaStringSub);
+		interp.variables.set('luaStringLen', EngineCompat.luaStringLen);
+		interp.variables.set('luaStringFind', EngineCompat.luaStringFind);
+		interp.variables.set('luaStringLower', EngineCompat.luaStringLower);
+		interp.variables.set('luaStringUpper', EngineCompat.luaStringUpper);
+		interp.variables.set('luaStringGsub', EngineCompat.luaStringGsub);
+		interp.variables.set('luaStringFormat', EngineCompat.luaStringFormat);
+		interp.variables.set('luaStringGmatch', EngineCompat.luaStringGmatch);
+		interp.variables.set('luaMathRad', EngineCompat.luaMathRad);
+		interp.variables.set('luaMathClamp', EngineCompat.luaMathClamp);
+		interp.variables.set('luaMathRandomSeed', EngineCompat.luaMathRandomSeed);
+		interp.variables.set('luaOsClock', EngineCompat.luaOsClock);
+		interp.variables.set('luaOsTime', EngineCompat.luaOsTime);
+		interp.variables.set('luaType', EngineCompat.luaType);
+		interp.variables.set('luaTableFind', EngineCompat.luaTableFind);
+		interp.variables.set('luaTableClear', EngineCompat.luaTableClear);
+		interp.variables.set('luaTableLength', EngineCompat.luaTableLength);
+		interp.variables.set('luaTableKey', EngineCompat.luaTableKey);
+		interp.variables.set('luaTableValue', EngineCompat.luaTableValue);
+		// Mixed native stage wrappers retain their ordinary interpreter. Keep
+		// translated helper names available there without changing native arrays.
+		interp.variables.set('luaPairsLength', EngineCompat.luaTableLength);
+		interp.variables.set('luaPairsKey', EngineCompat.luaTableKey);
+		interp.variables.set('luaPairsValue', EngineCompat.luaTableValue);
+		interp.variables.set('luaIpairsLength', EngineCompat.luaTableLength);
+		interp.variables.set('luaIpairsKey', EngineCompat.luaTableKey);
+		interp.variables.set('luaIpairsValue', EngineCompat.luaTableValue);
+		interp.variables.set('luaSequenceLength', EngineCompat.luaTableLength);
+		interp.variables.set('luaSetMetatable', EngineCompat.luaSetMetatable);
+		interp.variables.set('luaGetMetatable', EngineCompat.luaGetMetatable);
+		interp.variables.set('luaTableCopy', EngineCompat.luaTableCopy);
+		if (Std.isOfType(interp, LuaCompatInterp))
+			(cast interp : LuaCompatInterp).installTableHelpers();
+		seedLuaDynamicGlobals(interp);
+		interp.variables.set('getSongPosition', function():Float return Conductor.songPosition);
+		// Psych accepts an optional second value (typically a color) for
+		// debugPrint. Keep the variadic-looking boundary typed explicitly so
+		// two-argument donor calls do not throw before the trace is emitted.
+		interp.variables.set('debugPrint', function(value:Dynamic, ?color:Dynamic) {
+			var text = '[script] ' + (value == null ? 'null' : Std.string(value));
+			if (color != null)
+				text += ' (' + Std.string(color) + ')';
+			trace(text);
+		});
+		// V-Slice/HXC Stage and Character aliases.  Keep these in the shared
+		// interpreter seed so translated callbacks can use the donor's unqualified
+		// accessors without chart-side declarations or source edits.
+		interp.variables.set('getDad', function() return EngineCompat.hxcGetDad(curStage == null ? this : curStage));
+		interp.variables.set('getBoyfriend', function() return EngineCompat.hxcGetBoyfriend(curStage == null ? this : curStage));
+		interp.variables.set('getGirlfriend', function() return EngineCompat.hxcGetGirlfriend(curStage == null ? this : curStage));
+		interp.variables.set('getOpponent', function() return EngineCompat.hxcGetOpponent(curStage == null ? this : curStage));
+		interp.variables.set('getNamedProp', function(name:String) return EngineCompat.hxcGetNamedProp(this, name));
+		// HXC's ModuleHandler is lowered to this scoped proxy by HxcCompat. Only
+		// generated HScript variables are callable through it; native donor classes
+		// and arbitrary reflection never enter the interpreter.
+		interp.variables.set('hxcGetModule', function(name:Dynamic) return hxcModuleProxy(name));
+		interp.variables.set('hxcGetCharacterData', hxcGetCharacterData);
+		interp.variables.set('hxcPrepareCharacter', hxcPrepareCharacter);
+			interp.variables.set('hxcChangeCharacter', hxcChangeCharacter);
+			interp.variables.set('hxcOptionalField', hxcOptionalField);
+			interp.variables.set('hxcOptionalCall', hxcOptionalCall);
+			interp.variables.set('hxcOptionalSet', hxcOptionalSet);
+			interp.variables.set('hxcCoalesce', hxcCoalesce);
+			interp.variables.set('hxcMap', hxcMap);
+			interp.variables.set('hxcCharacterCache', {h: []});
+		interp.variables.set('hxcCacheTexture', function(_asset:Dynamic) return null);
+		// FunkinMemory.cacheSound preloads through the scoped donor-sound loader
+		// so the first play is warm, matching the donor's cache-then-play flow.
+		interp.variables.set('hxcCacheSound', function(_asset:Dynamic) {
+			try HxcCompatRuntime.loadFunkinSound(Std.string(interp.variables.get('hxcAssetRoot')), _asset)
+			catch (_:Dynamic) {}
+			return null;
+		});
+		// V-Slice's ScriptedFlxRuntimeShader exposes pause/resume helpers through
+		// a utility singleton. Keep those calls on native tween objects only.
+		interp.variables.set('FlxTweenUtil', {
+			pauseTween: function(tween:Dynamic) if (tween != null) CoolUtil.pauseTween(cast tween),
+			resumeTween: function(tween:Dynamic) if (tween != null) CoolUtil.resumeTween(cast tween),
+			pauseTweensOf: function(target:Dynamic) if (target != null) CoolUtil.pauseTweensOf(target),
+			resumeTweensOf: function(target:Dynamic) if (target != null) CoolUtil.resumeTweensOf(target)
+		});
+	}
+
+	function hxcModuleNameKeys(scriptPath:String):Array<String> {
+		var names:Array<String> = [];
+		if (scriptPath == null || StringTools.trim(scriptPath) == '')
+			return names;
+		appendUniqueString(names, HxcScriptDiscovery.stem(scriptPath));
+		#if sys
+		try {
+			if (FNFAssets.exists(scriptPath)) {
+				var result = HxcCompat.analyze(FNFAssets.getText(scriptPath), scriptPath);
+				appendUniqueString(names, result.identifier);
+				appendUniqueString(names, result.className);
+			}
+		} catch (_:Dynamic) {}
+		#end
+		return names;
+	}
+
+	function appendUniqueString(values:Array<String>, value:String):Void {
+		if (values == null || value == null || StringTools.trim(value) == '')
+			return;
+		if (values.indexOf(value) < 0)
+			values.push(value);
+	}
+
+	function registerHxcModule(scriptPath:String, scope:String):Void {
+		if (scriptPath == null || scope == null || StringTools.trim(scope) == '')
+			return;
+		for (name in hxcModuleNameKeys(scriptPath)) {
+			var normalized = HxcScriptDiscovery.normalizeToken(name);
+			if (normalized != '')
+				hxcModuleScopes.set(normalized, scope);
+		}
+	}
+
+	/** Register Module names colocated with a Song/Event HXC file. */
+	function registerHxcCompanionModules(scriptPath:String, scope:String, analysis:HxcCompatResult):Void {
+		if (scriptPath == null || scope == null || StringTools.trim(scope) == '' || analysis == null)
+			return;
+		#if sys
+		if (analysis.companionClassNames == null)
+			return;
+		for (name in analysis.companionClassNames) {
+			var normalized = HxcScriptDiscovery.normalizeToken(name);
+			if (normalized != '')
+				hxcModuleScopes.set(normalized, scope);
+		}
+		#end
+	}
+
+	function hxcModuleProxy(name:Dynamic):Dynamic {
+		if (name == null)
+			return null;
+		var normalized = HxcScriptDiscovery.normalizeToken(Std.string(name));
+		var scope = hxcModuleScopes.get(normalized);
+		var proxy:Dynamic = {};
+		if (scope == null) {
+			// V-Slice treats an unavailable optional module as an inert registry
+			// object. Returning null here makes a donor `scriptCall(...)` become an
+			// HScript Null Function Pointer and aborts the whole lifecycle callback.
+			// Keep the same bounded no-op contract as hxcModuleScriptCall so a chart
+			// can still use the rest of its callback without chart-specific edits.
+			Reflect.setField(proxy, 'scriptCall', function(_methodName:String, ?_args:Array<Dynamic>):Dynamic
+				return null);
+			Reflect.setField(proxy, 'scriptGet', function(_fieldName:String, ?_args:Array<Dynamic>):Dynamic
+				return null);
+			Reflect.setField(proxy, 'scope', '');
+			return proxy;
+		}
+		Reflect.setField(proxy, 'scriptCall', function(methodName:String, ?args:Array<Dynamic>):Dynamic
+			return hxcModuleScriptCall(scope, methodName, args));
+		Reflect.setField(proxy, 'scriptGet', function(fieldName:String, ?_args:Array<Dynamic>):Dynamic
+			return hxcModuleScriptGet(scope, fieldName));
+		Reflect.setField(proxy, 'scope', scope);
+		return proxy;
+	}
+
+	function hxcModuleScriptGet(scope:String, fieldName:String):Dynamic {
+		var interp = hscriptStates.get(scope);
+		if (interp == null || fieldName == null || !interp.variables.exists(fieldName))
+			return null;
+		return interp.variables.get(fieldName);
+	}
+
+	function hxcModuleScriptCall(scope:String, methodName:String, args:Array<Dynamic>):Dynamic {
+		var method = hxcModuleScriptGet(scope, methodName);
+		if (method == null)
+			return null;
+		try {
+			return Reflect.callMethod(null, method, args == null ? [] : args);
+		} catch (error:Dynamic) {
+			trace('[hxc-module-call-error] ' + methodName + ': ' + Std.string(error));
+			return null;
+		}
+	}
+
+	/** Match a copied HXC character script to the active chart role. */
+	function hxcCharacterRoleForPath(scriptPath:String):String {
+		var roles = hxcCharacterRolesForPath(scriptPath);
+		return roles.length == 0 ? '' : roles[0];
+	}
+
+	/** Return every active chart role which uses one HXC character id. */
+	function hxcCharacterRolesForPath(scriptPath:String):Array<String> {
+		var result:Array<String> = [];
+		if (scriptPath == null || SONG == null)
+			return result;
+		var stem = HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(scriptPath));
+		if (stem == '')
+			return result;
+		if (HxcScriptDiscovery.normalizeToken(SONG.player1) == stem)
+			result.push('boyfriend');
+		if (HxcScriptDiscovery.normalizeToken(SONG.player2) == stem)
+			result.push('dad');
+		if (HxcScriptDiscovery.normalizeToken(SONG.gf) == stem)
+			result.push('gf');
+		return result;
+	}
+
+	/** Register the provenance needed to route one HXC character interpreter. */
+	function registerHxcCharacterScope(scope:String, scriptPath:String, ?role:String):Void {
+		if (scope == null || StringTools.trim(scope) == '' || scriptPath == null)
+			return;
+		var name = HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(scriptPath));
+		if (name == '')
+			return;
+		var roles = hxcCharacterRolesForPath(scriptPath);
+		if (role != null && StringTools.trim(role) != '') {
+			var canonicalRole = switch (StringTools.trim(role).toLowerCase()) {
+				case 'bf' | 'player1' | 'boyfriend': 'boyfriend';
+				case 'gf' | 'girlfriend' | 'player3': 'gf';
+				default: 'dad';
+			};
+			if (roles.indexOf(canonicalRole) < 0)
+				roles.push(canonicalRole);
+		}
+		if (roles.length == 0)
+			return;
+		hxcCharacterScopeNames.set(scope, name);
+		hxcCharacterScopeRoles.set(scope, roles);
+	}
+
+	/** Resolve one character scope against the live role slots, optionally
+	 * substituting the actor which is still being constructed.  addCharacter()
+	 * invokes the HXC onAdd hook before assigning the new actor to gf/dad/bf;
+	 * keeping this override at the routing boundary prevents that first hook
+	 * from seeing the previous slot (or null) and silently leaving the native
+	 * fallback visual in place. */
+	function hxcCharacterForScope(scope:String, ?actorOverride:Character,
+		?overrideRole:String):Array<Character> {
+		var result:Array<Character> = [];
+		var roles = hxcCharacterScopeRoles.get(scope);
+		if (roles == null)
+			return result;
+		for (role in roles) {
+			var actor = hxcCharacterForRole(role, actorOverride, overrideRole);
+			if (actor != null && result.indexOf(actor) < 0)
+				result.push(actor);
+		}
+		return result;
+	}
+
+	/** True only while one of the chart's roles actually uses this script's id. */
+	function hxcCharacterScopeIsActive(scope:String, ?actorOverride:Character,
+		?overrideRole:String):Bool {
+		if (!hxcCharacterScopeNames.exists(scope))
+			return true;
+		var expected = hxcCharacterScopeNames.get(scope);
+		if (expected == null || expected == '')
+			return false;
+		for (actor in hxcCharacterForScope(scope, actorOverride, overrideRole))
+			if (actor != null && HxcScriptDiscovery.normalizeToken(actor.curCharacter) == expected)
+				return true;
+		return false;
+	}
+
+	/** Limit note callbacks to the character which actually performed the note. */
+	function hxcCharacterScopeOwnsNote(scope:String, args:Array<Dynamic>):Bool {
+		if (!hxcCharacterScopeNames.exists(scope))
+			return true;
+		var playerOne = true;
+		var sawPlayerOne = false;
+		var note:Dynamic = null;
+		if (args != null)
+			for (value in args) {
+				if (Std.isOfType(value, Bool) && !sawPlayerOne) {
+					playerOne = cast value;
+					sawPlayerOne = true;
+				}
+				// Native Note fields are readable even when hxcpp hasField is false.
+				// A note at time zero still carries its authored ownership.
+				else if (value != null && Reflect.getProperty(value, 'strumTime') != null)
+					note = value;
+			}
+		// Incoming-note callbacks carry only the live Note and the shared HXC
+		// payload, not the later hit/miss `playerOne` positional argument. Infer
+		// the owner from Note.mustPress at that boundary, while preserving the
+		// explicit bool for hit/miss and Psych-compatible calls.
+		if (!sawPlayerOne && note != null) {
+			var sourceOwner = Reflect.getProperty(note, 'sourcePlayfieldPlayerControlled');
+			if (sourceOwner != null)
+				playerOne = sourceOwner == true;
+			else {
+				var mustPress = Reflect.getProperty(note, 'mustPress');
+				if (mustPress != null)
+					playerOne = mustPress == true;
+			}
+		}
+		var target:Character = null;
+		if (!playerOne && note != null && Reflect.getProperty(note, 'forceGfSing') == true && gf != null)
+			target = gf;
+		else
+			target = playerOne ? hxcCharacterForRole('boyfriend') : getOpponentSinger();
+		if (target == null)
+			return false;
+		for (actor in hxcCharacterForScope(scope))
+			if (actor == target)
+				return true;
+		return false;
+	}
+
+	/** Execute one generated character method only in the actor's active scopes. */
+	public function dispatchHxcCharacterMethod(actor:Character, methodName:String, args:Array<Dynamic>):Void {
+		if (actor == null || methodName == null)
+			return;
+		if (hxcCharacterDispatchDepth > 0)
+			return;
+		hxcCharacterDispatchDepth++;
+		var scopes:Array<String> = [];
+		for (scope in hxcCharacterScopeNames.keys())
+			scopes.push(scope);
+		for (scope in scopes) {
+			if (!hxcCharacterScopeNames.exists(scope))
+				continue;
+			if (!hxcCharacterScopeIsActive(scope))
+				continue;
+			var owns = false;
+			for (candidate in hxcCharacterForScope(scope))
+				if (candidate == actor) {
+					owns = true;
+					break;
+				}
+			if (owns)
+				callHscript(methodName, args, scope, true);
+		}
+		hxcCharacterDispatchDepth--;
+	}
+
+	/** Route a character's screen position through its active HXC companion. */
+	public function dispatchHxcCharacterScreenPosition(actor:Character, result:FlxPoint,
+		camera:FlxCamera):FlxPoint {
+		if (actor == null || result == null || hxcCharacterDispatchDepth > 0)
+			return result;
+		var output = result;
+		hxcCharacterDispatchDepth++;
+		try {
+			var scopes:Array<String> = [];
+			for (scope in hxcCharacterScopeNames.keys())
+				scopes.push(scope);
+			for (scope in scopes) {
+				if (!hxcCharacterScopeNames.exists(scope)
+					|| !hxcCharacterScopeIsActive(scope))
+					continue;
+				var owns = false;
+				for (candidate in hxcCharacterForScope(scope))
+					if (candidate == actor) {
+						owns = true;
+						break;
+					}
+				if (!owns)
+					continue;
+				var returned:Array<Dynamic> = [];
+				callHscript('getScreenPosition', [output, camera], scope, true, returned);
+				if (returned.length > 0) {
+					var candidate:Dynamic = returned[returned.length - 1];
+					// FlxPoint class members need property reads on native targets.
+					if (candidate != null && Reflect.getProperty(candidate, 'x') != null
+						&& Reflect.getProperty(candidate, 'y') != null)
+						output = cast candidate;
+				}
+			}
+		} catch (_:Dynamic) {
+			// A visual compatibility hook must never take down native positioning.
+		}
+		hxcCharacterDispatchDepth--;
+		return output;
+	}
+
+	/** Notify character companions about V-Slice's onAdd lifecycle. */
+	function callHxcCharacterAdded(actor:Character, role:String, ?actorOverride:Character):Void {
+		if (actor == null)
+			return;
+		if (curStage == null) {
+			pendingHxcCharacterAdds.enqueue(actor, hxcCharacterRole(role), actorOverride);
+			return;
+		}
+		dispatchHxcCharacterAdded(actor, role, actorOverride);
+	}
+
+	/** Run queued character callbacks after the chart stage is available. */
+	function flushPendingHxcCharacterAdded():Void {
+		pendingHxcCharacterAdds.drain(function(entry:HxcCharacterLifecycleCall) {
+			try {
+				dispatchHxcCharacterAdded(cast entry.actor, entry.role,
+					cast entry.actorOverride);
+			} catch (error:Dynamic) {
+				var characterName = Reflect.field(entry.actor, 'curCharacter');
+				trace('[hxc-character-runtime-error] deferred onAdd for '
+					+ (characterName == null ? entry.role : Std.string(characterName))
+					+ ': ' + Std.string(error));
+			}
+		});
+	}
+
+	function dispatchHxcCharacterAdded(actor:Character, role:String,
+		?actorOverride:Character):Void {
+		if (actor == null)
+			return;
+		var payload = EngineCompat.hxcLifecyclePayload('characterAdded', {
+			character: actor,
+			characterType: role
+		});
+		var scopes:Array<String> = [];
+		for (scope in hxcCharacterScopeNames.keys())
+			scopes.push(scope);
+		for (scope in scopes) {
+			if (!hxcCharacterScopeNames.exists(scope))
+				continue;
+			if (!hxcCharacterScopeIsActive(scope, actorOverride, role))
+				continue;
+			var owns = false;
+			for (candidate in hxcCharacterForScope(scope, actorOverride, role))
+				if (candidate == actor) {
+					owns = true;
+					break;
+				}
+			if (owns) {
+				var previousActor = hxcCharacterCallbackActor;
+				var previousRole = hxcCharacterCallbackRole;
+				hxcCharacterCallbackActor = actorOverride == null ? actor : actorOverride;
+				hxcCharacterCallbackRole = hxcCharacterRole(role);
+				try {
+					callHscript('onAdd', [payload], scope, true);
+				} catch (error:Dynamic) {
+					hxcCharacterCallbackActor = previousActor;
+					hxcCharacterCallbackRole = previousRole;
+					throw error;
+				}
+				hxcCharacterCallbackActor = previousActor;
+				hxcCharacterCallbackRole = previousRole;
+			}
+		}
+	}
+
+	function hxcCharacterRole(role:String):String {
+		return switch (role == null ? '' : role.toLowerCase()) {
+			case 'bf' | 'player1' | 'boyfriend': 'boyfriend';
+			case 'gf' | 'girlfriend' | 'player3': 'gf';
+			default: 'dad';
+		};
+	}
+
+	function hxcCharacterForRole(role:String, ?actorOverride:Character,
+		?overrideRole:String):Character {
+		var canonical = hxcCharacterRole(role);
+		// Normal script closures must follow the live role slot after a character
+		// swap. A scoped lifecycle callback is the one exception: onAdd can run
+		// before switchToChar installs its actor, and receives a temporary binding
+		// from callHxcCharacterAdded.
+		if (hxcCharacterCallbackActor != null
+			&& hxcCharacterRole(hxcCharacterCallbackRole) == canonical)
+			return hxcCharacterCallbackActor;
+		var slotActor:Character = switch (canonical) {
+			case 'boyfriend': boyfriend;
+			case 'gf': gf;
+			default: dad;
+		};
+		if (actorOverride != null && hxcCharacterRole(overrideRole) == canonical
+			&& (slotActor == null || actorOverride == slotActor
+				|| actorOverride == hxcGameOverCharacter || actorOverride.frames != null))
+			return actorOverride;
+		return switch (canonical) {
+			case 'boyfriend': hxcGameOverCharacter != null ? hxcGameOverCharacter : boyfriend;
+			case 'gf': gf;
+			default: dad;
+		};
+	}
+
+	/** Bind the active boyfriend HXC scope to a GameOverSubstate replacement. */
+	public function hxcBindGameOverCharacter(character:Character):Void {
+		hxcGameOverCharacter = character;
+	}
+
+	/** Release the temporary game-over actor without disturbing normal boyfriend state. */
+	public function hxcClearGameOverCharacter(?character:Character):Void {
+		if (character == null || character == hxcGameOverCharacter)
+			hxcGameOverCharacter = null;
+	}
+
+	/** Read imported V-Slice character metadata without exposing donor paths. */
+	function hxcGetCharacterData(character:Dynamic):Dynamic {
+		return Character.hxcCharacterData(character == null ? '' : Std.string(character));
+	}
+
+	/** Warm a native character asset for V-Slice's pre-cache callback. */
+	function hxcPrepareCharacter(character:Dynamic):Dynamic {
+		var name = character == null ? '' : StringTools.trim(Std.string(character));
+		if (name == '')
+			return null;
+		try {
+			if (Character.characterExists(name))
+				warmCharacterAtlas(name);
+		} catch (error:Dynamic) {
+			trace('HXC character warm-load failed for ' + name + ': ' + Std.string(error));
+		}
+		return Character.hxcCharacterData(name);
+	}
+
+	/** Route a costume/character swap through the live PlayState character ABI. */
+	function hxcChangeCharacter(character:Dynamic, role:Dynamic):Void {
+		if (character == null || role == null)
+			return;
+		switchCharacter(Std.string(character), Std.string(role));
+	}
+
+	/**
+		Evaluate one optional property read without evaluating its provider twice.
+		HxcCompat passes a zero-argument provider for `factory()?.field`; ordinary
+		property chains pass the already-evaluated object. Supporting both forms is
+		what lets one engine-level lowering handle nested Haxe optional chains.
+	*/
+	function hxcOptionalField(provider:Dynamic, field:String):Dynamic {
+		if (provider == null || field == null || field == '')
+			return null;
+		var value = provider;
+		if (Reflect.isFunction(value))
+			value = Reflect.callMethod(null, value, []);
+		return value == null ? null : Reflect.field(value, field);
+	}
+
+	/** Invoke one optional method while preserving the receiver as `this`. */
+	function hxcOptionalCall(receiver:Dynamic, method:String, args:Array<Dynamic>):Dynamic {
+		if (receiver == null || method == null || method == '')
+			return null;
+		var fn = Reflect.field(receiver, method);
+		if (fn == null || !Reflect.isFunction(fn))
+			return null;
+		return Reflect.callMethod(receiver, fn, args == null ? [] : args);
+	}
+
+	/** Assign through an optional property chain, stopping safely at null. */
+	function hxcOptionalSet(receiver:Dynamic, path:Array<String>, value:Dynamic, assignmentOperator:String):Dynamic {
+		if (receiver == null || path == null || path.length == 0)
+			return null;
+		var target = receiver;
+		for (index in 0...(path.length - 1)) {
+			if (target == null)
+				return null;
+			target = Reflect.field(target, path[index]);
+		}
+		if (target == null)
+			return null;
+		var field = path[path.length - 1];
+		var next:Dynamic = value;
+		if (assignmentOperator != null && assignmentOperator != '=') {
+			var current:Dynamic = Reflect.field(target, field);
+			switch (assignmentOperator) {
+				case '+=': next = current + value;
+				case '-=': next = current - value;
+				case '*=': next = current * value;
+				case '/=': next = current / value;
+			}
+		}
+		Reflect.setField(target, field, next);
+		return next;
+	}
+
+	/** Evaluate HXC's lazy null-coalescing operands exactly once. */
+	function hxcCoalesce(left:Dynamic, right:Dynamic):Dynamic {
+		var leftValue = left;
+		if (Reflect.isFunction(leftValue))
+			leftValue = Reflect.callMethod(null, leftValue, []);
+		if (leftValue != null)
+			return leftValue;
+		var rightValue = right;
+		if (Reflect.isFunction(rightValue))
+			rightValue = Reflect.callMethod(null, rightValue, []);
+		return rightValue;
+	}
+
+	/** Materialize a donor Haxe map literal without loading donor classes. */
+	function hxcMap(entries:Array<Dynamic>):Dynamic {
+		return new HxcDynamicMap(entries);
+	}
+
+	/** Seed character-local HXC helpers after the shared engine aliases. */
+	function seedHxcCharacterCompat(interp:Interp, scriptPath:String, ?roleOverride:String):Void {
+		var role = roleOverride == null || StringTools.trim(roleOverride) == ''
+			? hxcCharacterRoleForPath(scriptPath) : StringTools.trim(roleOverride).toLowerCase();
+		if (role == '')
+			role = 'boyfriend';
+		var actorForRole = function():Character return hxcCharacterForRole(role);
+		interp.variables.set('hxcCharacter', actorForRole);
+		interp.variables.set('getCurrentAnimation', function()
+			return EngineCompat.hxcCurrentAnimation(actorForRole()));
+		interp.variables.set('setAnimationOffsets', function(name:String, x:Float = 0, y:Float = 0)
+			return EngineCompat.hxcSetAnimationOffsets(actorForRole(), name, x, y));
+		interp.variables.set('hasAnimation', function(name:String)
+			return EngineCompat.hxcHasAnimation(actorForRole(), name));
+		interp.variables.set('isSinging', function()
+			return EngineCompat.hxcIsSinging(actorForRole()));
+		interp.variables.set('isAnimationFinished', function() {
+			var actor = actorForRole();
+			return actor != null && actor.isAnimationFinished();
+		});
+		interp.variables.set('getDataFlipX', function()
+			return EngineCompat.hxcGetDataFlipX(actorForRole()));
+		interp.variables.set('playAnimation', function(name:String, restart:Bool = false,
+				ignoreOther:Bool = false, reversed:Bool = false)
+			return EngineCompat.hxcPlayAnimation(actorForRole(), name, restart, ignoreOther, reversed));
+		interp.variables.set('playSingAnimation', function(direction:Int, miss:Bool = false,
+			?suffix:String = '') {
+			var actor = actorForRole();
+			if (actor != null)
+				actor.playSingAnimation(direction, miss, suffix);
+			return actor;
+		});
+	}
+	/**
+		Load the native HScript spelling first, then route a sibling Lua module
+		through the same deterministic source adapter used by the importer.  This
+		keeps runtime-loaded stages/modcharts on one compatibility path and leaves
+		the donor Lua file untouched.
+	*/
+	function getCompatibleHscript(path:String, ?metadataSink:Dynamic):Null<String> {
+		if (metadataSink != null)
+			Reflect.setField(metadataSink, 'result', null);
+		var normalized = Path.normalize(path);
+		var lower = normalized.toLowerCase();
+		// Discovery returns concrete filenames. FNFAssets.getHscript() expects a
+		// path without an extension, so accept explicit native files here first.
+		if ((lower.endsWith('.hscript') || lower.endsWith('.hxs')) && FNFAssets.exists(normalized))
+			return FNFAssets.getText(normalized);
+		if (lower.endsWith('.lua') && FNFAssets.exists(normalized)) {
+			var converted = LuaCompat.translate(FNFAssets.getText(normalized), normalized);
+			for (diagnostic in converted.diagnostics)
+				trace(diagnostic);
+			return converted.hscript;
+		}
+		if (lower.endsWith('.hxc') && FNFAssets.exists(normalized)) {
+			var converted = HxcCompat.translate(FNFAssets.getText(normalized), normalized);
+			if (metadataSink != null)
+				Reflect.setField(metadataSink, 'result', converted);
+			for (diagnostic in converted.diagnostics)
+				trace('[hxc-' + diagnostic.code + '] ' + diagnostic.message + ' (' + normalized + ')');
+			// Debug hook: DUMP_GENERATED_HXC=<dir> writes each translated script
+			// beside a numbered copy of its source path so donor-compat gaps in
+			// the generated HScript can be inspected directly.
+			#if sys
+			var dumpDir = Sys.environment().get('DUMP_GENERATED_HXC');
+			if (dumpDir != null && dumpDir != '') {
+				var flat = StringTools.replace(Path.withoutDirectory(normalized), '/', '_');
+				try File.saveContent(Path.join([dumpDir, flat + '.generated.hscript']), Std.string(converted.generatedHscript));
+			}
+			#end
+			return converted.generatedHscript == null || StringTools.trim(converted.generatedHscript) == ''
+				? null : converted.generatedHscript;
+		}
+		var direct = FNFAssets.getHscript(path);
+		if (direct != null)
+			return direct;
+		var luaPath = path;
+		if (StringTools.endsWith(luaPath.toLowerCase(), '.hscript'))
+			luaPath = luaPath.substr(0, luaPath.length - '.hscript'.length) + '.lua';
+		else if (!StringTools.endsWith(luaPath.toLowerCase(), '.lua'))
+			luaPath += '.lua';
+		if (!FNFAssets.exists(luaPath))
+			return null;
+		var converted = LuaCompat.translate(FNFAssets.getText(luaPath), luaPath);
+		for (diagnostic in converted.diagnostics)
+			trace(diagnostic);
+		return converted.hscript;
+	}
+
+	/** Keep Lua table rules inside proven translated Lua scopes. An older
+		generated .hscript is eligible only when its surviving Lua sibling still
+		translates byte-for-byte to that unmarked source. */
+	function luaProgramFor(path:String, source:String, ?mixedOverride:Bool = false):Dynamic {
+		if (source == null)
+			return {translated: false, source: source};
+		if (StringTools.startsWith(source, LuaCompat.TRANSLATED_MARKER))
+			return {translated: true, source: source};
+		// PsychStageCompat can provide native stage scaffolding with embedded
+		// translated callbacks. Its unmarked override retains native indexing.
+		if (mixedOverride)
+			return {translated: false, source: source};
+		var lower = path.toLowerCase();
+		if (lower.endsWith('.lua'))
+			return {translated: true, source: source};
+		var stem = lower.endsWith('.hscript') || lower.endsWith('.hxs')
+			? path.substr(0, path.lastIndexOf('.')) : path;
+		var sibling = stem + '.lua';
+		if (!FNFAssets.exists(sibling))
+			return {translated: false, source: source};
+		try {
+			var translated = LuaCompat.translate(FNFAssets.getText(sibling), sibling).hscript;
+			var marker = LuaCompat.TRANSLATED_MARKER + '\n';
+			if (translated == null || !StringTools.startsWith(translated, marker))
+				return {translated: false, source: source};
+			var unmarked = translated.substr(marker.length);
+			if (source == unmarked)
+				return {translated: true, source: translated};
+			// Earlier generated sources used the sequence helpers for pairs too.
+			// Compare the complete old output; an edited native script cannot match.
+			var oldPairs = StringTools.replace(unmarked, 'luaPairsLength', 'luaTableLength');
+			oldPairs = StringTools.replace(oldPairs, 'luaPairsKey', 'luaTableKey');
+			oldPairs = StringTools.replace(oldPairs, 'luaPairsValue', 'luaTableValue');
+			oldPairs = StringTools.replace(oldPairs, 'luaIpairsLength', 'luaTableLength');
+			oldPairs = StringTools.replace(oldPairs, 'luaIpairsKey', 'luaTableKey');
+			oldPairs = StringTools.replace(oldPairs, 'luaIpairsValue', 'luaTableValue');
+			var oldLength = ~/luaSequenceLength\(([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\)/g;
+			oldPairs = oldLength.replace(oldPairs, '$1.length');
+			return source == oldPairs
+				? {translated: true, source: translated} : {translated: false, source: source};
+		} catch (_:Dynamic) {
+			return {translated: false, source: source};
+		}
+	}
+
+	/** Find the manifest namespace which owns one copied compatibility script. */
+	function hxcAssetRootForScript(scriptPath:String):String {
+		if (scriptPath == null || StringTools.trim(scriptPath) == '')
+			return '';
+		var normalized = Path.normalize(StringTools.replace(scriptPath, '\\', '/'));
+		#if sys
+		var fullScript = Path.normalize(StringTools.replace(FileSystem.fullPath(normalized), '\\', '/'));
+		#end
+		for (root in compatForeignScriptRoots()) {
+			var cleanRoot = Path.normalize(StringTools.replace(root, '\\', '/'));
+			#if sys
+			var fullRoot = Path.normalize(StringTools.replace(FileSystem.fullPath(cleanRoot), '\\', '/'));
+			if (normalized == cleanRoot || normalized.startsWith(cleanRoot + '/')
+				|| fullScript == fullRoot || fullScript.startsWith(fullRoot + '/'))
+			#else
+			if (normalized == cleanRoot || normalized.startsWith(cleanRoot + '/'))
+			#end
+				return cleanRoot;
+		}
+		return '';
+	}
+
+	/** Build the small dynamic Paths surface used by imported HXC programs. */
+	function makeHxcPathsProxy(root:String):Dynamic {
+		var proxy:Dynamic = {};
+		var cleanKey = function(value:String):String {
+			var clean = StringTools.replace(StringTools.trim(value == null ? '' : value), '\\', '/');
+			while (clean.startsWith('./'))
+				clean = clean.substr(2);
+			while (clean.startsWith('/'))
+				clean = clean.substr(1);
+			if (clean.toLowerCase().startsWith('assets/'))
+				clean = clean.substr('assets/'.length);
+			return clean;
+		};
+		var scopedFile = function(relative:String):String {
+			var path = HxcOwnedPath.existing(root, relative);
+			return path != null && FNFAssets.isInScope(path) ? path : null;
+		};
+		var scopedImage = function(key:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('images/'))
+				clean = clean.substr('images/'.length);
+			if (clean.toLowerCase().endsWith('.png'))
+				clean = clean.substr(0, clean.length - 4);
+			return scopedFile('images/' + clean + '.png');
+		};
+		var nativeImage = function(key:String, library:String):Dynamic {
+			var candidates = VSliceSharedAssetPaths.imageCandidates(key,
+				uiSmelly == null ? null : Reflect.field(uiSmelly, 'uses'));
+			for (candidate in candidates) {
+				var path = Paths.image(candidate, library);
+				if (path != null && FNFAssets.exists(path))
+					return path;
+			}
+			if (candidates.length > 0)
+				throw '[hxc-vslice-image-missing] V-Slice countdown image "' + key
+					+ '" has no selected-owner resource or native fallback (' + candidates.join(', ') + ').';
+			return Paths.image(key, library);
+		};
+		var scopedAtlas = function(key:String, packer:Bool):Dynamic {
+			var image = scopedImage(key);
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('images/'))
+				clean = clean.substr('images/'.length);
+			if (clean.toLowerCase().endsWith('.png'))
+				clean = clean.substr(0, clean.length - 4);
+			var metadata = scopedFile('images/' + clean + (packer ? '.txt' : '.xml'));
+			if (image == null)
+				image = nativeImage(key, null);
+			if (metadata == null)
+				metadata = packer ? Paths.file('images/' + clean + '.txt') : Paths.file('images/' + clean + '.xml');
+			var imageValue:Dynamic = image;
+			if (image != null && FNFAssets.exists(image))
+				imageValue = FNFAssets.getBitmapData(image);
+			// FlxAtlasFrames only treats a metadata string as a path when the
+			// path is known to FlxG.assets. Imported files are intentionally not
+			// embedded, so feed their contents explicitly instead of making the
+			// atlas parser interpret `/.../file.xml` as XML text.
+			var metadataValue:Dynamic = metadata;
+			if (metadata != null && FNFAssets.exists(metadata))
+				metadataValue = FNFAssets.getText(metadata);
+			return packer
+				? FlxAtlasFrames.fromSpriteSheetPacker(imageValue, metadataValue)
+				: FlxAtlasFrames.fromSparrow(imageValue, metadataValue);
+		};
+		Reflect.setField(proxy, 'image', function(key:String, ?library:String):Dynamic {
+			var scoped = scopedImage(key);
+			// FlxG.bitmap.add()/FlxSprite.loadGraphic() only understands a String
+			// as an OpenFL asset id. Imported files are intentionally absent from
+			// that manifest, so hand the caller decoded BitmapData for a scoped
+			// image; native fallback paths keep their normal String behavior.
+			return scoped == null ? nativeImage(key, library) : FNFAssets.getBitmapData(scoped);
+		});
+		Reflect.setField(proxy, 'getSparrowAtlas', function(key:String, ?library:String):Dynamic return scopedAtlas(key, false));
+		Reflect.setField(proxy, 'getPackerAtlas', function(key:String, ?library:String):Dynamic return scopedAtlas(key, true));
+		Reflect.setField(proxy, 'file', function(file:String, ?type:Dynamic, ?library:String):String {
+			if (root != null && root != '') {
+				if (HxcOwnedPath.candidate(root, file) == null) {
+					trace('[hxc-path-unsafe] Rejected Paths.file key outside the selected import: ' + file);
+					return null;
+				}
+				var scoped = HxcOwnedPath.scoped(root, file);
+				return scoped != null && FNFAssets.isInScope(scoped) ? scoped : null;
+			}
+			return Paths.file(file);
+		});
+		Reflect.setField(proxy, 'xml', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('data/'))
+				clean = clean.substr('data/'.length);
+			var scoped = scopedFile('data/' + clean + '.xml');
+			return scoped == null ? Paths.xml(key, library) : scoped;
+		});
+		Reflect.setField(proxy, 'txt', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('data/'))
+				clean = clean.substr('data/'.length);
+			var scoped = scopedFile('data/' + clean + '.txt');
+			return scoped == null ? Paths.txt(key, library) : scoped;
+		});
+		Reflect.setField(proxy, 'json', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('data/'))
+				clean = clean.substr('data/'.length);
+			var scoped = scopedFile('data/' + clean + '.json');
+			return scoped == null ? Paths.json(key, library) : scoped;
+		});
+		Reflect.setField(proxy, 'frag', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('shaders/'))
+				clean = clean.substr('shaders/'.length);
+			var scoped = scopedFile('shaders/' + (clean.toLowerCase().endsWith('.frag') ? clean : clean + '.frag'));
+			if (scoped != null)
+				return scoped;
+			var roots = root == null || root == '' ? null : [root];
+			return ShaderPaths.resolve(key, roots);
+		});
+		Reflect.setField(proxy, 'sound', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('sounds/'))
+				clean = clean.substr('sounds/'.length);
+			var scoped = scopedFile('sounds/' + (clean.toLowerCase().endsWith('.ogg') ? clean : clean + '.ogg'));
+			if (scoped != null) return scoped;
+			var shared = VSliceSharedAssetPaths.sound(clean);
+			return shared != null && FNFAssets.exists(shared) ? shared : Paths.sound(key, library);
+		});
+		// V-Slice's FunkinSound.load commonly asks for an alternate vocal stem
+		// through Paths.voices. Keep this lookup in the same manifest root as the
+		// other HXC media helpers; falling back to the native song resolver preserves
+		// legacy charts whose stems are already imported under assets/songs.
+		Reflect.setField(proxy, 'voices', function(song:String, ?suffix:String = ''):String {
+			var cleanSong = cleanKey(song);
+			if (cleanSong.toLowerCase().startsWith('songs/'))
+				cleanSong = cleanSong.substr('songs/'.length);
+			var cleanSuffix = suffix == null ? '' : StringTools.trim(suffix);
+			var filename = cleanSong + '_Voices' + cleanSuffix + TitleState.soundExt;
+			var scoped = scopedFile('songs/' + cleanSong + '/' + filename);
+			if (scoped != null)
+				return scoped;
+			var legacy = scopedFile('songs/' + cleanSong + '/' + cleanSong + cleanSuffix + TitleState.soundExt);
+			return legacy == null ? Paths.voices(cleanSong) : legacy;
+		});
+		Reflect.setField(proxy, 'music', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('music/'))
+				clean = clean.substr('music/'.length);
+			var scoped = scopedFile('music/' + (clean.toLowerCase().endsWith('.ogg') ? clean : clean + '.ogg'));
+			return scoped == null ? Paths.music(key, library) : scoped;
+		});
+		Reflect.setField(proxy, 'font', function(key:String):String {
+			var nativeFont = Paths.font(key);
+			var ownerFont = HxcOwnerFont.family(root, key, nativeFont);
+			return ownerFont == null ? nativeFont : ownerFont;
+		});
+		Reflect.setField(proxy, 'videos', function(key:String, ?library:String):String {
+			var clean = cleanKey(key);
+			if (clean.toLowerCase().startsWith('videos/'))
+				clean = clean.substr('videos/'.length);
+			if (!clean.toLowerCase().endsWith('.mp4') && !clean.toLowerCase().endsWith('.webm'))
+				clean += '.mp4';
+			var scoped = scopedFile('videos/' + clean);
+			return scoped == null ? Paths.file('videos/' + clean) : scoped;
+		});
+		return proxy;
+	}
+
+	/**
+		Build the companion's runtime `Assets` surface.  OpenFL's static asset
+		registry only contains files known to Project.xml, while imported HXC
+		files are copied after the build into a manifest-selected namespace.  The
+		proxy deliberately delegates to FNFAssets: on native targets it reads a
+		disk file when it is not embedded, and on packaged targets it retains the
+		usual OpenFL lookup semantics.
+	*/
+	function makeHxcAssetsProxy():Dynamic {
+		var proxy:Dynamic = {};
+		Reflect.setField(proxy, 'getText', function(id:String):String {
+			return FNFAssets.getText(id);
+		});
+		Reflect.setField(proxy, 'getBitmapData', function(id:Dynamic, ?useCache:Bool = true):Dynamic {
+			if (id != null && Std.isOfType(id, BitmapData))
+				return id;
+			return FNFAssets.getBitmapData(Std.string(id), useCache);
+		});
+		Reflect.setField(proxy, 'loadBitmapData', function(id:String, ?useCache:Bool = true):Dynamic {
+			return FNFAssets.loadBitmapData(id, useCache);
+		});
+		Reflect.setField(proxy, 'getSound', function(id:String, ?useCache:Bool = true):Dynamic {
+			return FNFAssets.getSound(id, useCache);
+		});
+		Reflect.setField(proxy, 'getBytes', function(id:String):Dynamic {
+			return FNFAssets.getBytes(id);
+		});
+		Reflect.setField(proxy, 'getPath', function(id:String):String {
+			// Imported HXC Paths helpers already return a destination-local path;
+			// OpenFL's getPath is therefore an identity operation at this boundary.
+			return id;
+		});
+		Reflect.setField(proxy, 'exists', function(id:Dynamic, ?type:Dynamic):Bool {
+			// FNFAssets.exists accepts an optional extension enum rather than
+			// OpenFL's AssetType.  HXC only uses the second argument as a filter;
+			// checking the concrete id is the safe behavior for imported files.
+			return id != null && Std.isOfType(id, BitmapData) ? true : FNFAssets.exists(Std.string(id));
+		});
+		return proxy;
+	}
+	function compatibleScriptIdentity(path:String):String {
+		var identity = Path.normalize(path).toLowerCase();
+		for (extension in ['.hscript', '.hxs', '.lua', '.hxc'])
+			if (identity.endsWith(extension)) {
+				identity = identity.substr(0, identity.length - extension.length);
+				break;
+			}
+		return identity;
+	}
+	function compatibleScriptKey(scope:String):String {
+		var clean = scope == null ? 'script' : ~/[^A-Za-z0-9_]+/g.replace(scope, '_');
+		return 'compat_' + clean + '_' + psychCompatScriptIndex++;
+	}
+	/** Native assets remain the first compatibility source.  Imported foreign
+	 * roots are appended only when the current song's destination-only manifest
+	 * names them; donor absolute paths never reach runtime. */
+	function getCompatScriptManifest():CompatScriptManifestData {
+		if (cachedCompatScriptManifest != null)
+			return cachedCompatScriptManifest;
+		cachedCompatScriptManifest = {version:CompatScriptManifest.VERSION, roots:[]};
+		#if sys
+		var manifestPath = currentSongDataPath(CompatScriptManifest.FILE_NAME);
+		if (FNFAssets.exists(manifestPath)) {
+			try {
+				cachedCompatScriptManifest = CompatScriptManifest.parse(FNFAssets.getText(manifestPath));
+			} catch (error:Dynamic) {
+				trace('[compat-manifest-error] ' + manifestPath + ': ' + Std.string(error));
+			}
+		}
+		#end
+		return cachedCompatScriptManifest;
+	}
+
+	/** Only the current song's selected, installed V-Slice source owns this
+	 * camera contract. Other roots in a mixed manifest cannot opt the song in. */
+	function selectedVSliceCameraSource():Bool {
+		#if sys
+		var manifest = getCompatScriptManifest();
+		if (manifest == null || manifest.roots == null) return false;
+		var selected = CompatScriptManifest.selectedRoot(manifest);
+		if (selected == null || selected == '' || !FileSystem.isDirectory(selected)) return false;
+		for (entry in manifest.roots)
+			if (entry != null && entry.engine == ImportEngine.V_SLICE
+				&& CompatScriptManifest.destinationKey(entry.path)
+					== CompatScriptManifest.destinationKey(selected)) return true;
+		#end
+		return false;
+	}
+
+	/** A skin belongs to the selected Psych owner, never another root in a
+	 * mixed manifest. Null means the native/source-specific UI remains in use. */
+	function selectedPsychSkinRoot():Null<String> {
+		#if sys
+		var manifest = getCompatScriptManifest();
+		if (manifest == null || manifest.roots == null) return null;
+		var selected = CompatScriptManifest.selectedRoot(manifest);
+		if (selected == null || selected == '' || !FileSystem.isDirectory(selected)) return null;
+		for (entry in manifest.roots)
+			if (entry != null && entry.engine == ImportEngine.PSYCH
+				&& CompatScriptManifest.destinationKey(entry.path)
+					== CompatScriptManifest.destinationKey(selected)) return selected;
+		#end
+		return null;
+	}
+
+	/** Resolve a script's own Psych root for APIs such as getModSetting and
+	 * FlxAnimate that belong to globally loaded scripts. Song note skins keep
+	 * using selectedPsychSkinRoot() so another imported pack cannot take over. */
+	function compatPsychOwnerForScript(scriptOrigin:String):Null<String> {
+		var manifest = getCompatScriptManifest();
+		if (manifest == null || manifest.roots == null) return null;
+		var candidates:Array<String> = [];
+		for (entry in manifest.roots)
+			if (entry != null && entry.engine == ImportEngine.PSYCH && entry.path != null)
+				candidates.push(entry.path);
+		return PsychModSettingCompat.ownerForScriptRoots(scriptOrigin, candidates);
+	}
+
+	function preparePsychNoteDefinitions(ownerRoot:Null<String>):Void {
+		// Psych's string note types do not require a native generated sidecar.
+		// Keep existing imported definitions, and leave native null semantics alone.
+		if (ownerRoot != null && Note.specialNoteJson == null) Note.specialNoteJson = [];
+	}
+
+	function configurePsychNoteSkin(note:Note, ownerRoot:Null<String>):Void {
+		if (note == null || ownerRoot == null || SONG == null) return;
+		if (!psychNoteSkinDiagnosticsChecked) {
+			psychNoteSkinDiagnosticsChecked = true;
+			psychNoteSkinDiagnosticsEnabled = RuntimeSmokeHarness.enabled();
+		}
+		var diagnosticNoteIndex = 0;
+		if (psychNoteSkinDiagnosticsEnabled) {
+			psychNoteSkinConfigureCount++;
+			if (psychNoteSkinConfigureCount == 1 || psychNoteSkinConfigureCount % 256 == 0)
+				diagnosticNoteIndex = psychNoteSkinConfigureCount;
+		}
+		if (diagnosticNoteIndex > 0) {
+			RuntimeSmokeHarness.markStep('psych-note-skin:begin count=' + diagnosticNoteIndex);
+		}
+		note.configurePsychSkin(ownerRoot, SONG.arrowSkin, SONG.disableNoteRGB == true,
+			pixelUI, '', diagnosticNoteIndex, psychNoteSkinDiagnosticsEnabled);
+		if (diagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:complete count=' + diagnosticNoteIndex);
+	}
+
+	function configurePsychStrumSkins():Void {
+		var ownerRoot = selectedPsychSkinRoot();
+		if (ownerRoot == null || SONG == null) return;
+		for (line in [enemyStrums, playerStrums])
+			if (line != null)
+				for (strum in line.members)
+					if (strum != null)
+						strum.configurePsychSkin(ownerRoot, SONG.arrowSkin, SONG.disableNoteRGB == true, pixelUI);
+	}
+
+	/** Codename scripts only see the root selected for this chart. */
+	function codenameSelectedRoot():String {
+		#if sys
+		var manifest = getCompatScriptManifest();
+		if (manifest == null || manifest.roots == null) return '';
+		// The explicit Imported Mods route may keep an owner active while moving
+		// from its menu into an imported chart. It can only override the chart's
+		// selected owner when that exact namespace is present in this chart's
+		// installed manifest; a stale session can never borrow another chart's
+		// scripts.
+		var active = CodenameModRuntime.activeRoot();
+		if (active != null && active != '')
+			for (entry in manifest.roots)
+				if (entry != null && entry.engine == ImportEngine.CODENAME
+					&& CompatScriptManifest.destinationKey(entry.path)
+						== CompatScriptManifest.destinationKey(active)
+					&& FileSystem.isDirectory(active)) return active;
+		var selected = CompatScriptManifest.selectedRoot(manifest);
+		if (selected == null || selected == '') return '';
+		for (entry in manifest.roots)
+			if (entry != null && entry.engine == ImportEngine.CODENAME
+				&& CompatScriptManifest.destinationKey(entry.path)
+					== CompatScriptManifest.destinationKey(selected)
+				&& FileSystem.isDirectory(selected)) return selected;
+		#end
+		return '';
+	}
+
+	/** Owner bridge used by shared Codename transition hooks when this chart is
+		launched through native Freeplay instead of an explicit mod session. */
+	public function codenameTransitionOwnerRoot():String return codenameSelectedRoot();
+
+	function getCodenameScriptPlan():CodenameScriptPlanData {
+		if (codenamePlanChecked) return cachedCodenameScriptPlan;
+		codenamePlanChecked = true;
+		var root = codenameSelectedRoot();
+		var source = codenameSourceFolder(root);
+		var path = CodenameScriptPlan.metadataPath(root, source);
+		var safePath = path != '' && FNFAssets.exists(path);
+		#if sys
+		if (safePath) safePath = CodenameScriptDiscovery.withinRoot(root, path);
+		#end
+		if (!safePath) {
+			if (root != '') trace('[codename-script-plan] Missing selected-owner metadata; reimport the song to repair it: ' + path);
+			return null;
+		}
+		try {
+			var plan = CodenameScriptPlan.parse(FNFAssets.getText(path));
+			if (source != '' && plan.song.toLowerCase() == source.toLowerCase()) cachedCodenameScriptPlan = plan;
+			else trace('[codename-script-plan] Song id mismatch in ' + path);
+		} catch (error:Dynamic) {
+			trace('[codename-script-plan] ' + path + ': ' + Std.string(error));
+		}
+		return cachedCodenameScriptPlan;
+	}
+
+	/** One metadata object is shared by this state's Codename script scopes. */
+	function getCodenameSongView():CodenameSongView {
+		if (cachedCodenameSongView != null) return cachedCodenameSongView;
+		var metadata:Dynamic = null;
+		var root = codenameSelectedRoot();
+		var source = codenameSourceFolder(root);
+		var resolvedPath = CodenameSongMetadata.resolvedPath(root, source);
+		var resolvedExists = resolvedPath != '' && FNFAssets.exists(resolvedPath);
+		var path = resolvedExists ? resolvedPath : CodenameSongMetadata.path(root, source);
+		var safe = root != '' && path != '' && FNFAssets.exists(path);
+		#if sys
+		if (safe) safe = CodenameScriptDiscovery.withinRoot(root, path);
+		#end
+		if (safe) {
+			try {
+				if (resolvedExists) {
+					var record = CodenameSongMetadata.parseResolved(FNFAssets.getText(path), source);
+					var difficulty = codenameDifficulty(Reflect.fields(record.difficulties));
+					metadata = CodenameSongMetadata.selectedResolved(record, difficulty);
+					if (metadata == null) throw 'Missing or ambiguous selected difficulty metadata';
+				} else {
+					var original = CodenameSongMetadata.parse(FNFAssets.getText(path), source);
+					var scripts = getCodenameScriptPlan();
+					var names = scripts == null ? [] : Reflect.fields(scripts.stages);
+					metadata = CodenameSongMetadata.resolve(source, original.meta, null, names);
+					trace('[codename-song-meta] Using legacy base metadata; reimport for difficulty metadata: ' + path);
+				}
+			} catch (error:Dynamic) trace('[codename-song-meta] ' + path + ': ' + Std.string(error));
+		} else if (root != '')
+			trace('[codename-song-meta] Missing selected-owner song metadata; reimport to repair: ' + path);
+		cachedCodenameSongView = new CodenameSongView(function() return SONG, metadata);
+		return cachedCodenameSongView;
+	}
+
+	/** Share the selected chart metadata with owner-scoped transitions and
+		substates while this PlayState is their live parent. */
+	public function codenameSongView():CodenameSongView return getCodenameSongView();
+
+	/** Source identity for the shared Codename Charter adapter. Keep the
+	 * authored meta.name distinct from the provenance folder: Codename scripts
+	 * receive the former, while the latter proves which imported owner is active. */
+	@:keep public function codenameCharterIdentity():Dynamic {
+		if (SONG == null) return null;
+		var root = codenameSelectedRoot();
+		if (root == '') return null;
+		var source = codenameSourceFolder(root);
+		if (source == '') return null;
+		var view = getCodenameSongView();
+		if (view == null) return null;
+		var metadata = view.getField('meta');
+		if (metadata == null) return null;
+		var song:Dynamic = Reflect.field(metadata, 'name');
+		if (!Std.isOfType(song, String) || !CodenameScriptDiscovery.safeName(cast song)
+			|| StringTools.trim(cast song) == '') return null;
+		var difficulty = storyDifficultyText == null ? '' : StringTools.trim(storyDifficultyText);
+		if (!CodenameScriptDiscovery.safeName(difficulty) || difficulty == '') return null;
+		var storage = Song.storageFolder(SONG);
+		var chartFile:Dynamic = Reflect.field(SONG, 'compatChartFileName');
+		if (!CodenameScriptDiscovery.safeName(storage) || !Std.isOfType(chartFile, String)) return null;
+		var chartName = StringTools.trim(cast chartFile);
+		if (chartName == '' || chartName == '.' || chartName == '..'
+			|| chartName.indexOf('/') >= 0 || chartName.indexOf('\\') >= 0
+			|| chartName.indexOf(':') >= 0) return null;
+		return {
+			song: song,
+			difficulty: difficulty,
+			variation: Reflect.field(metadata, 'variant'),
+			sourceFolder: source,
+			storageFolder: storage,
+			chartFile: chartName
+		};
+	}
+
+	/** Initial construction only: later stage swaps need their own placement. */
+	function getCodenameActorPlan():CodenameActorPlan {
+		if (codenameActorPlanChecked) return cachedCodenameActorPlan;
+		codenameActorPlanChecked = true;
+		var root = codenameSelectedRoot();
+		if (root == '') return null;
+		var source = codenameSourceFolder(root);
+		var path = CodenameScriptPlan.cameraMetadataPath(root, source);
+		var safePath = path != '' && FNFAssets.exists(path);
+		#if sys
+		if (safePath) safePath = CodenameScriptDiscovery.withinRoot(root, path);
+		#end
+		if (!safePath) {
+			trace('[codename-actor-plan] Missing selected-owner camera metadata: ' + path);
+			return null;
+		}
+		try {
+			var plan = CodenameScriptPlan.parseCamera(FNFAssets.getText(path));
+			if (source == '' || Std.string(Reflect.field(plan, 'song')).toLowerCase() != source.toLowerCase())
+				throw 'Song identity mismatch';
+			var difficulty = codenameDifficulty(Reflect.fields(Reflect.field(plan, 'difficulties')));
+			var entry = CodenameScriptPlan.selectedCamera(plan, difficulty);
+			var scripts = getCodenameScriptPlan();
+			if (entry == null || scripts == null)
+				throw 'Missing or inconsistent selected difficulty/stage';
+			var selectedStage = CodenameScriptPlan.selectedStage(scripts, difficulty);
+			var authoredStage = Reflect.field(entry, 'stage');
+			var nativeStage = Reflect.field(entry, 'nativeStage');
+			if (!Std.isOfType(authoredStage, String) || !Std.isOfType(selectedStage, String)
+				|| !CodenameScriptDiscovery.safeName(cast authoredStage)
+				|| cast(authoredStage, String).toLowerCase() != cast(selectedStage, String).toLowerCase()
+				|| !Std.isOfType(nativeStage, String)
+				|| !CodenameScriptDiscovery.safeName(cast nativeStage))
+				throw 'Missing or inconsistent selected difficulty/stage';
+			var stageAuthored:Dynamic = Reflect.hasField(SONG, 'compatStageAuthored')
+				? Reflect.field(SONG, 'compatStageAuthored') : null;
+			var replaceInferredStage = stageAuthored == false;
+			if (!replaceInferredStage && !codenameStageIdentityMatches(cast nativeStage, SONG.stage))
+				throw 'Missing or inconsistent native stage identity';
+			// Some older imported camera sidecars use `stage-script` as a broad
+			// marker for any companion script. Recheck the exact selected-owner
+			// source so prop/camera-only scripts do not hide XML actor slots.
+			var verifiedStageScript:String = null;
+			#if sys
+			var authoredStageName:String = Reflect.field(entry, 'stage');
+			if (CodenameScriptDiscovery.safeName(authoredStageName))
+				for (extension in ['.hx', '.hscript']) {
+					var relative = CodenameScriptDiscovery.resolveScopedRelative(root,
+						'data/stages/' + authoredStageName + extension);
+					if (relative == null) continue;
+					var stagePath = haxe.io.Path.join([root, relative]);
+					if (!CodenameScriptDiscovery.withinRoot(root, stagePath)) continue;
+					try verifiedStageScript = FNFAssets.getText(stagePath)
+					catch (error:Dynamic)
+						trace('[codename-stage-placement] Could not inspect selected stage source '
+							+ relative + ': ' + Std.string(error));
+					break;
+				}
+			#end
+			var fallbackHost = codenameMissingCharacterFallback(root, entry);
+			cachedCodenameActorPlan = new CodenameActorPlan(entry, verifiedStageScript, fallbackHost);
+			// Song.loadFromJson marks whether its selected chart/default supplied
+			// this stage id. Legacy name-based defaults are not authored identity;
+			// for those only, use the selected owner's already-validated stage.
+			if (replaceInferredStage) SONG.stage = cast nativeStage;
+			for (actor in cachedCodenameActorPlan.occurrences)
+				if (!actor.placement.supported) {
+					trace('[codename-actor-plan] Stage placement has unresolved dependencies; initial slot orientation is unavailable.');
+					break;
+				}
+		} catch (error:Dynamic) {
+			trace('[codename-actor-plan] ' + path + ': ' + Std.string(error));
+		}
+		return cachedCodenameActorPlan;
+	}
+
+	function codenameStageIdentityMatches(left:String, right:String):Bool {
+		if (!CodenameScriptDiscovery.safeName(left) || !CodenameScriptDiscovery.safeName(right)) return false;
+		var nativeLeft = EngineCompat.resolveStageAlias(left);
+		var nativeRight = EngineCompat.resolveStageAlias(right);
+		return nativeLeft != null && nativeRight != null
+			&& nativeLeft.toLowerCase() == nativeRight.toLowerCase();
+	}
+
+	var codenameCharacterScopes:Array<{actor:Character, runtime:CodenameCharacterRuntime}> = [];
+
+	function codenameCharacterConstruction(record:CodenameActorPlan.CodenameActorOccurrence):CodenameCharacterConstruction {
+		return record == null ? null
+			: codenameCharacterConstructionForId(codenameSelectedRoot(), record.authoredId, record.nativeName);
+	}
+
+	function codenameMissingCharacterFallback(root:String, entry:Dynamic):String {
+		if (root == null || root == '') return null;
+		var missing:Dynamic = Reflect.field(entry, 'missingCharacters');
+		if (!Std.isOfType(missing, Array)) return null;
+		var resolve = function(owner:String, relative:String):Null<String>
+			return CodenameScriptDiscovery.resolveScopedRelative(owner, relative);
+		var read = function(owner:String, relative:String):String
+			return FNFAssets.getText(haxe.io.Path.join([owner, relative]));
+		var dependency = function(owner:String, id:String):Null<CodenameBaseCharacterDependency.CodenameBaseCharacterDependencyResolution>
+			return CodenameBaseCharacterDependency.resolveImported(owner, id);
+		for (id in (cast missing:Array<Dynamic>))
+			if (Std.isOfType(id, String)) {
+				var definition = CodenameCharacterFallback.resolve(root, cast id, resolve, read, dependency);
+				if (definition != null && definition.usedFallback)
+					return definition.definitionId;
+			}
+		return null;
+	}
+
+	function codenameCharacterConstructionForId(root:String, authoredId:String,
+		nativeName:String):CodenameCharacterConstruction {
+		#if sys
+		if (root == '' || !CodenameScriptDiscovery.safeRelativeName(authoredId)
+			|| nativeName == null || nativeName == '') return null;
+		var resolve = function(owner:String, relative:String):Null<String>
+			return CodenameScriptDiscovery.resolveScopedRelative(owner, relative);
+		var read = function(owner:String, relative:String):String
+			return FNFAssets.getText(haxe.io.Path.join([owner, relative]));
+		var dependency = function(owner:String, id:String):Null<CodenameBaseCharacterDependency.CodenameBaseCharacterDependencyResolution>
+			return CodenameBaseCharacterDependency.resolveImported(owner, id);
+		var definition = CodenameCharacterFallback.resolve(root, authoredId, resolve, read, dependency);
+		if (definition == null || definition.xmlText == null) {
+			if (definition != null && definition.diagnostic != null)
+				trace('[codename-character-fallback-unavailable] ' + authoredId + ': ' + definition.diagnostic);
+			return null;
+		}
+		return {root:root, authoredId:authoredId,
+			nativeName:nativeName,
+			xmlText:definition.xmlText, sourceDefinitionId:definition.definitionId,
+			usedSourceFallback:definition.usedFallback,
+			configuredSourceFallback:definition.configuredFallback,
+			assetRoot:definition.assetRoot == null ? root : definition.assetRoot,
+			fallbackAssetFiles:definition.fallbackAssetFiles == null ? [] : definition.fallbackAssetFiles,
+			createRuntime:function(actor:Character):CodenameCharacterRuntime {
+				return createCodenameCharacterRuntime(actor, root, authoredId, definition.definitionId);
+			}};
+		#else
+		return null;
+		#end
+	}
+
+	function codenameConstructScriptCharacter(args:Array<Dynamic>):Character {
+		var x:Float = args != null && args.length > 0 ? cast args[0] : 0;
+		var y:Float = args != null && args.length > 1 ? cast args[1] : 0;
+		var authoredId = args != null && args.length > 2 && args[2] != null
+			? StringTools.trim(Std.string(args[2])) : 'bf';
+		var isPlayer = args != null && args.length > 3 && args[3] == true;
+		if (authoredId == '') throw '[codename-character] Character requires a nonempty identity';
+		var root = codenameSelectedRoot();
+		var construction = codenameCharacterConstructionForId(root, authoredId, authoredId);
+		var actorName = construction == null ? authoredId : construction.nativeName;
+		var actor = new Character(x, y, actorName, isPlayer, construction);
+		if (root != '') {
+			actor.characterType = isPlayer ? 'bf' : 'dad';
+			rememberCodenameActor(actor);
+		}
+		return actor;
+	}
+
+	function codenamePrimaryConstruction(role:String, nativeName:String):CodenameCharacterConstruction {
+		var plan = getCodenameActorPlan();
+		if (plan == null) return null;
+		var record = plan.primaryFor(role, nativeName);
+		return record == null ? null
+			: codenameCharacterConstructionForId(codenameSelectedRoot(), record.authoredId, nativeName);
+	}
+
+	/** Victory re-creates the song's characters while this PlayState is still
+	 * its parent. Keep their selected-owner XML and atlas construction instead
+	 * of falling back to a legacy char.png that the donor may not contain. */
+	public function makePostSongCharacter(role:String, x:Float, y:Float,
+		name:String, isPlayer:Bool):Character {
+		return new Character(x, y, name, isPlayer, codenamePrimaryConstruction(role, name));
+	}
+
+	function seedCodenameNoteGlobals(interp:CodenameScriptInterp):Void {
+		interp.bindLiveGlobal('paused', function():Dynamic return paused,
+			function(value:Dynamic):Void paused = value == true);
+		interp.bindLiveGlobal('accuracy', function():Dynamic return codenameAccuracy,
+			function(value:Dynamic):Void codenameAccuracy = value);
+		interp.bindLiveGlobal('comboRatings', function():Dynamic return comboRatings,
+			function(value:Dynamic):Void comboRatings = value);
+		interp.bindLiveGlobal('curRating', function():Dynamic return curRating,
+			function(value:Dynamic):Void curRating = value);
+		interp.variables.set('updateRating', updateRating);
+		interp.bindLiveGlobal('misses', function():Dynamic return misses,
+			function(value:Dynamic):Void misses = value);
+		interp.bindLiveGlobal('songScore', function():Dynamic return songScore,
+			function(value:Dynamic):Void songScore = value);
+		interp.bindLiveGlobal('combo', function():Dynamic return combo,
+			function(value:Dynamic):Void combo = Std.int(value));
+		interp.bindLiveGlobal('comboBreaks', function():Dynamic return comboBreaks,
+			function(value:Dynamic):Void comboBreaks = value == true);
+		interp.bindLiveGlobal('downscroll', function():Dynamic return downscroll,
+			function(value:Dynamic):Void downscroll = value == true);
+		interp.bindLiveGlobal('defaultDisplayRating', function():Dynamic return defaultDisplayRating,
+			function(value:Dynamic):Void defaultDisplayRating = value);
+		interp.bindLiveGlobal('defaultDisplayCombo', function():Dynamic return defaultDisplayCombo,
+			function(value:Dynamic):Void defaultDisplayCombo = value);
+		interp.bindLiveGlobal('minDigitDisplay', function():Dynamic return minDigitDisplay,
+			function(value:Dynamic):Void minDigitDisplay = value);
+		interp.bindLiveGlobal('muteVocalsOnMiss', function():Dynamic return muteVocalsOnMiss,
+			function(value:Dynamic):Void muteVocalsOnMiss = value);
+		interp.bindLiveGlobal('accuracyPressedNotes', function():Dynamic return accuracyPressedNotes,
+			function(value:Dynamic):Void accuracyPressedNotes = value);
+		interp.bindLiveGlobal('totalAccuracyAmount', function():Dynamic return totalAccuracyAmount,
+			function(value:Dynamic):Void totalAccuracyAmount = value);
+		interp.bindLiveGlobal('ratingNum', function():Dynamic return ratingNum,
+			function(value:Dynamic):Void ratingNum = value);
+	}
+
+	/** Codename actor globals resolve to the first character on their source
+	 * strumline. Keep absent lines nullable instead of falling back to native
+	 * PlayState actors; source Character swaps replace the line's first actor. */
+	function codenameScriptCharacterAtLine(lineIndex:Int):Character {
+		var line = getCodenameInputLine(lineIndex);
+		if (line == null) return null;
+		var actors = line.characters;
+		return actors == null || actors.length == 0 ? null : actors[0];
+	}
+
+	function setCodenameScriptCharacterAtLine(lineIndex:Int, actor:Dynamic):Void {
+		var line = getCodenameInputLine(lineIndex);
+		if (line == null) return;
+		line.characters = actor == null ? [] : [cast actor];
+	}
+
+	function bindCodenameActorAliases(interp:CodenameScriptInterp):Void {
+		interp.bindLiveGlobal('dad', function():Dynamic return codenameScriptCharacterAtLine(0),
+			function(value:Dynamic):Void setCodenameScriptCharacterAtLine(0, value));
+		interp.bindLiveGlobal('bf', function():Dynamic return codenameScriptCharacterAtLine(1),
+			function(value:Dynamic):Void setCodenameScriptCharacterAtLine(1, value));
+		interp.bindLiveGlobal('boyfriend', function():Dynamic return codenameScriptCharacterAtLine(1),
+			function(value:Dynamic):Void setCodenameScriptCharacterAtLine(1, value));
+		interp.bindLiveGlobal('gf', function():Dynamic return codenameScriptCharacterAtLine(2),
+			function(value:Dynamic):Void setCodenameScriptCharacterAtLine(2, value));
+	}
+
+	function createCodenameCharacterRuntime(actor:Character, root:String, authoredId:String,
+		sourceDefinitionId:String):CodenameCharacterRuntime {
+		actor.codenameGamePostCreated = startedCountdown;
+		var publicScopeKey = 'character:' + authoredId + ':' + nextCodenamePublicScopeToken++;
+		var paths = new CodenamePaths(root);
+		var interpreter = new CodenameScriptInterp(paths, new CodenameFlxGFacade([camGame, camHUD, camOther], root),
+			function(name:String):Dynamic return codenameCustomShader(paths, name));
+		seedCodenameScriptGlobals(interpreter);
+		interpreter.characterFactory = function(args:Array<Dynamic>):Dynamic
+			return codenameConstructScriptCharacter(args);
+		seedCodenameNoteGlobals(interpreter);
+		interpreter.bindScriptObject(actor, ['curCharacter'=>'codenameSourceId',
+			'playAnim'=>'codenamePlayAnim', 'tryDance'=>'codenameTryDance',
+			'singAnims'=>'codenameSingAnims', 'getSingAnim'=>'codenameGetSingAnim',
+			'playSingAnim'=>'codenamePlaySingAnim',
+			'playSingAnimUnsafe'=>'codenamePlaySingAnimUnsafe']);
+		codenamePublicScriptGlobals.attach(interpreter);
+		var bindings = codenameImportBindings(paths, interpreter);
+		bindCodenameImportScript(interpreter, root, bindings, publicScopeKey);
+		interpreter.bindLiveGlobal('camFollow', function():Dynamic return camFollow,
+			function(value:Dynamic):Void camFollow = cast value);
+		bindCodenameCameraGlobals(interpreter);
+		bindings.set('haxe.xml.Access', CodenameXmlAccess);
+		bindings.set('Xml', Xml);
+		for (name in bindings.keys()) interpreter.variables.set(name.substr(name.lastIndexOf('.') + 1), bindings.get(name));
+		interpreter.variables.set('Paths', paths);
+		interpreter.variables.set('CoolUtil', CodenameModBindings.coolUtil(paths));
+		interpreter.variables.set('Assets', paths.assets());
+		interpreter.variables.set('FlxTween', interpreter.tweenFacade());
+		interpreter.variables.set('FlxG', interpreter.flxG);
+		interpreter.variables.set('FlxSprite', FlxSprite);
+		interpreter.variables.set('FlxTypedGroup', FlxTypedGroup);
+		interpreter.variables.set('FlxTimer', FlxTimer);
+		interpreter.variables.set('FlxCamera', FlxCamera);
+		interpreter.variables.set('FunkinSprite', CodenameFunkinSprite);
+		interpreter.variables.set('FlxColor', HxcFlxColorCompat);
+		interpreter.variables.set('Math', Math);
+		interpreter.variables.set('Conductor', Conductor);
+		interpreter.variables.set('SONG', getCodenameSongView());
+		interpreter.variables.set('game', this);
+		interpreter.variables.set('comboGroup', comboGroup);
+		interpreter.variables.set('character', actor);
+		interpreter.variables.set('char', actor);
+		interpreter.variables.set('camGame', camGame);
+		interpreter.variables.set('camHUD', camHUD);
+		interpreter.variables.set('stage', curStage);
+		interpreter.variables.set('curBeat', curBeat);
+		interpreter.variables.set('curStep', curStep);
+		for (context in ['SING', 'MISS', 'DANCE', 'LOCK']) interpreter.variables.set(context, context);
+		interpreter.variables.set('NONE', null);
+		var owned:Array<FlxBasic> = [];
+		var place = function(value:Dynamic, ?index:Null<Int>):Dynamic {
+			if (!isScriptObject(value) || value == actor || protectedStageObject(value)) return value;
+			var sprite:FlxBasic = cast value;
+			if (members.indexOf(sprite) >= 0 && owned.indexOf(sprite) < 0) {
+				trace('[codename-character-ownership] Cannot claim an existing scene object: ' + authoredId);
+				return value;
+			}
+			if (owned.indexOf(sprite) < 0) owned.push(sprite);
+			interpreter.claimSceneObject(sprite);
+			if (!hasExplicitCameras(sprite)) sprite.cameras = [camGame];
+			if (members.indexOf(sprite) >= 0) remove(sprite, true);
+			if (index == null) add(sprite); else insert(index, sprite);
+			return value;
+		};
+		interpreter.variables.set('add', function(value:Dynamic):Dynamic return place(value));
+		interpreter.variables.set('insert', function(index:Int, value:Dynamic):Dynamic return place(value, index));
+		interpreter.variables.set('remove', function(value:Dynamic):Dynamic {
+			if (isScriptObject(value) && owned.indexOf(cast value) >= 0) remove(cast value, true);
+			return value;
+		});
+		var source:String = null;
+		var origin = 'data/characters/' + sourceDefinitionId + '.hx';
+		#if sys
+		var relative = CodenameScriptDiscovery.resolveScopedRelative(root, origin);
+		if (relative != null) { origin = relative; source = FNFAssets.getText(haxe.io.Path.join([root, relative])); }
+		#end
+		var runtime:CodenameCharacterRuntime = null;
+		runtime = new CodenameCharacterRuntime(interpreter, source, origin, bindings, function():Void {
+			codenamePublicScriptGlobals.releaseScope(publicScopeKey);
+			codenamePublicScriptGlobals.detach(interpreter);
+			for (scope in codenameCharacterScopes.copy())
+				if (scope.actor == actor) codenameCharacterScopes.remove(scope);
+			for (sprite in owned) {
+				if (sprite == null || sprite == actor || protectedStageObject(sprite)) continue;
+				if (members.indexOf(sprite) >= 0) remove(sprite, true);
+				removeGlobalSpriteReferences(sprite);
+				try sprite.destroy() catch (_:Dynamic) {}
+			}
+			owned.resize(0);
+		}, function(names:Array<String>):Void {
+			codenamePublicScriptGlobals.declare(interpreter, names, publicScopeKey, origin);
+		});
+		if (runtime.ready) codenameCharacterScopes.push({actor:actor, runtime:runtime});
+		return runtime;
+	}
+
+	/** Match Codename's shared globals while keeping receptor groups live through
+	 * stage scripts that load before this state's strumlines are constructed. */
+	function seedCodenameScriptGlobals(interp:CodenameScriptInterp):Void {
+		interp.variables.set('state', FlxG.state);
+		interp.variables.set('window', Lib.application == null ? null : Lib.application.window);
+		// Codename gameplay scripts use health as a bare live global, including
+		// in top-level initializers such as `var lastHealth = health`.
+		interp.bindLiveGlobal('health', function():Dynamic return health,
+			function(value:Dynamic):Void health = value);
+		interp.bindLiveGlobal('subState', function():Dynamic return subState,
+			function(_value:Dynamic):Void {});
+		// Codename's `cpu` and `player` aliases point at source StrumLine
+		// indices 0 and 1. Resolve through the live source-line view because it
+		// is created after some scripts and can be replaced during setup.
+		interp.bindLiveGlobal('cpu', function():Dynamic return getCodenameInputLine(0),
+			function(_value:Dynamic):Void {});
+		interp.bindLiveGlobal('player', function():Dynamic return getCodenameInputLine(1),
+			function(_value:Dynamic):Void {});
+		bindCodenameActorAliases(interp);
+		interp.bindLiveGlobal('cpuStrums', function():Dynamic return enemyStrums,
+			function(value:Dynamic):Void enemyStrums = cast value);
+		interp.bindLiveGlobal('playerStrums', function():Dynamic return playerStrums,
+			function(value:Dynamic):Void playerStrums = cast value);
+	}
+
+	function refreshCodenameCharacterScopes():Void {
+		for (scope in codenameCharacterScopes) {
+			var interpreter = scope.runtime.interp;
+			if (interpreter == null) continue;
+			interpreter.variables.set('stage', curStage);
+			interpreter.variables.set('curBeat', curBeat);
+			interpreter.variables.set('curStep', curStep);
+		}
+	}
+
+	function codenameInitialActorIsPlayer(role:String, nativeName:String, fallback:Bool):Bool {
+		var plan = getCodenameActorPlan();
+		if (plan == null) return fallback;
+		var actor = plan.primaryFor(role, nativeName);
+		if (actor == null || !actor.placement.supported) return fallback;
+		return actor.placement.isPlayer;
+	}
+
+	function rememberCodenameActor(actor:Character):Void {
+		if (actor == null || codenameSelectedRoot() == '' || codenameActorBaselines.exists(actor)) return;
+		var row = Song.characterVisualRegistryEntryInManifest(actor.curCharacter, codenameSelectedRoot());
+		var meta:Dynamic = actor.codenameLiveDefinition == null
+			? (row == null ? null : Reflect.field(row, 'codenameCharacter'))
+			: {x:actor.globalOffset.x, y:actor.globalOffset.y, playerOffsets:actor.playerOffsets};
+		codenameActorBaselines.set(actor, {scaleX:actor.scale.x, scaleY:actor.scale.y,
+			alpha:actor.alpha, angle:actor.angle, skewX:actor.skew.x, skewY:actor.skew.y,
+			cameraX:actor.codenameLiveDefinition == null ? actor.cameraPosition[0] : actor.cameraOffset.x,
+			cameraY:actor.codenameLiveDefinition == null ? actor.cameraPosition[1] : actor.cameraOffset.y,
+			globalX:meta == null ? 0.0 : Reflect.field(meta, 'x'),
+			globalY:meta == null ? 0.0 : Reflect.field(meta, 'y'),
+			playerOffsets:meta != null && Reflect.field(meta, 'playerOffsets') == true});
+	}
+
+	function placeCodenameRuntimeActor(actor:Character, occurrence:CodenameActorPlan.CodenameActorOccurrence):Void {
+		if (curStage == null) return;
+		var plan = getCodenameActorPlan();
+		var model = codenameActorPlacementModel(plan);
+		// Old stage scripts do not publish a model. Their primary placements
+		// remain authoritative; the verified selected-owner model is available
+		// only while the active stage still has that exact stage identity.
+		if (model == null) return;
+		if (plan == null) throw 'Current Codename actor plan is unavailable';
+		var placement = plan.selectStagePlacement(model, occurrence);
+		if (!placement.supported) throw 'Current Codename stage placement has unresolved dependencies';
+		rememberCodenameActor(actor);
+		var baseline = codenameActorBaselines.get(actor);
+		if (actor.codenameLiveDefinition != null) {
+			// Source characters keep XML offsets in draw space, not stage x/y.
+			actor.setPosition(placement.x, placement.y);
+			actor.cameraOffset.set(baseline.cameraX + placement.cameraX, baseline.cameraY + placement.cameraY);
+		} else {
+			var sign = actor.isPlayer == baseline.playerOffsets ? 1 : -1;
+			actor.setPosition(placement.x + sign * baseline.globalX, placement.y + baseline.globalY);
+		}
+		actor.scrollFactor.set(placement.scrollX, placement.scrollY);
+		actor.scale.set(baseline.scaleX * placement.scaleX, baseline.scaleY * placement.scaleY);
+		actor.alpha = baseline.alpha * placement.alpha;
+		actor.angle = baseline.angle + placement.angle;
+		actor.skew.set(baseline.skewX + placement.skewX, baseline.skewY + placement.skewY);
+		actor.cameraPosition = [baseline.cameraX + placement.cameraX, baseline.cameraY + placement.cameraY];
+		if (placement.zoomFactor != 1)
+			trace('[codename-actor-presentation] Per-character zoomFactor is not implemented: ' + occurrence.authoredId);
+		actor.syncHxcPosition();
+		curStage.placeCodenameActor(actor, placement.slotKey);
+	}
+
+	function codenameActorPlacementModel(plan:CodenameActorPlan):Null<CodenameStagePlacementData> {
+		if (curStage == null) return null;
+		var activeModel = curStage.getCodenamePlacement();
+		if (activeModel != null) return activeModel;
+		if (plan == null || plan.stagePlacement == null || plan.nativeStage == null || SONG == null
+			|| !codenameStageIdentityMatches(curStage.authoredName, plan.nativeStage)
+			|| !codenameStageIdentityMatches(SONG.stage, plan.nativeStage)) return null;
+		return plan.stagePlacement;
+	}
+
+	function initializeCodenameActors():Void {
+		if (codenameActors != null || curStage == null) return;
+		var plan = getCodenameActorPlan();
+		if (plan == null) return;
+		var placementModel = codenameActorPlacementModel(plan);
+		if (placementModel == null) return;
+		if (placementModel.unsupported.length > 0) {
+			trace('[codename-actor-runtime] Current stage placement has unresolved dependencies; preserving primary actors and checking verified XML slots per occurrence.');
+		}
+		for (diagnostic in plan.diagnostics)
+			trace('[codename-actor-plan] ' + diagnostic);
+		var primaries:Map<String, Character> = ['player' => boyfriend, 'opponent' => dad, 'gf' => gf];
+		var seen:Map<String, Bool> = [];
+		for (record in plan.occurrences) if (!seen.exists(record.role)) {
+			seen.set(record.role, true);
+			var actor = primaries.get(record.role);
+			if (record.nativeName != null && actor != null
+				&& !plan.primaryIdentityMatches(record.role, actor.curCharacter)) {
+				trace('[codename-actor-runtime] Primary chart identity differs from import metadata; refresh metadata before creating additional actors.');
+				return;
+			}
+		}
+		codenameActors = new CodenameActorRuntime<Character>(plan, function(record) {
+			if (!Character.characterExists(record.nativeName)) {
+				trace('[codename-actor-runtime] Missing character definition: ' + record.nativeName);
+				return null;
+			}
+			var placement = plan.selectStagePlacement(placementModel, record);
+			var actor = new Character(0, 0, record.nativeName, placement.isPlayer, codenameCharacterConstruction(record));
+			actor.characterType = switch (record.role) {
+				case 'player': 'boyfriend';
+				case 'opponent': 'dad';
+				case 'gf': 'gf';
+				default: 'codename';
+			};
+			rememberCodenameActor(actor);
+			actor.cameras = [camGame];
+			add(actor);
+			return actor;
+		}, placeCodenameRuntimeActor, function(actor) {
+			remove(actor, true);
+			codenameActorBaselines.remove(actor);
+			if (runtimeSmokeActorTracking()) runtimeSmokeOwnedDestroyCalls++;
+			actor.destroy();
+		});
+		for (role in primaries.keys()) {
+			var actor = primaries.get(role);
+			if (actor != null) codenameActors.bindPrimary(role, actor.curCharacter, actor);
+		}
+		codenameActors.materialize();
+		for (diagnostic in codenameActors.diagnostics) trace('[codename-actor-runtime] ' + diagnostic);
+		for (diagnostic in codenameActors.structuredDiagnostics)
+			trace('[codename-actor-diagnostic] ' + haxe.Json.stringify(diagnostic));
+		var unownedNotes = 0;
+		for (note in unspawnNotes)
+			if (note != null && note.codenameOrigin == null) unownedNotes++;
+		if (unownedNotes > 0)
+			trace('[codename-note-metadata] ' + unownedNotes + ' note(s) lack authored line provenance; '
+				+ 'refresh this selected-owner chart to restore source actor and callback routing.');
+		initializeCodenameInputLines(plan);
+	}
+
+	function initializeCodenameInputLines(plan:CodenameActorPlan):Void {
+		if (plan == null || codenameInputLines.length > 0) return;
+		captureCodenameNoteReceptorOffsets();
+		initializeCodenameStrumlines(plan);
+		// Solo uses the native active bank; coop maps p1/p2 by authored
+		// line type. The native opponent-mode setup otherwise leaves p2 in
+		// a Solo scheme when both source players need separate Duo banks.
+		if (duoMode) {
+			controls.setKeyboardScheme(Duo(true));
+			controlsPlayerTwo.setKeyboardScheme(Duo(false));
+		} else if (opponentPlayer)
+			controlsPlayerTwo.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
+		else controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
+		for (index in 0...plan.lines.length) {
+			var sourceLine = plan.lines[index];
+			if (sourceLine == null) {
+				codenameInputLines.push(null);
+				continue;
+			}
+			var lineType:Null<Int> = Reflect.field(sourceLine, 'type');
+			var lineIndex = index;
+			var nativeStrumline = getCodenameLineStrumline(lineIndex);
+			var inputLine = new CodenameInputLine<Character>(index, lineType,
+				opponentPlayer, duoMode, demoMode,
+				opponentPlayer ? controlsPlayerTwo : controls, controls, controlsPlayerTwo,
+				getCodenameLineActorSlots,
+				function() return ghostTapping,
+				function(sourceIndex:Int):Dynamic return getCodenameLineMembers(sourceIndex),
+				Reflect.field(sourceLine, 'visible') != false,
+				Reflect.field(sourceLine, 'keyCount') == null ? 4 : Reflect.field(sourceLine, 'keyCount'),
+				Reflect.field(sourceLine, 'strumLinePos'),
+				Reflect.field(sourceLine, 'strumPos'),
+				Reflect.field(sourceLine, 'strumScale'),
+				Reflect.field(sourceLine, 'strumSpacing'),
+				codenameLineVisibilityHandler(lineIndex),
+				nativeStrumline == null ? null : nativeStrumline.onMiss,
+				getCodenameLineNotes,
+				function():Float return Conductor.songPosition);
+			codenameInputLines.push(inputLine);
+			if (nativeStrumline != null) nativeStrumline.bindCodenameInputLine(inputLine);
+		}
+		for (note in unspawnNotes) bindCodenameNoteLine(note);
+		if (notes != null) for (note in notes.members) bindCodenameNoteLine(note);
+	}
+
+	function captureCodenameNoteReceptorOffsets():Void {
+		for (note in unspawnNotes) captureCodenameNoteReceptorOffset(note);
+		if (notes != null) for (note in notes.members) captureCodenameNoteReceptorOffset(note);
+	}
+
+	function captureCodenameNoteReceptorOffset(note:Note):Void {
+		if (note == null || note.codenameOrigin == null || note.codenameReceptorXOffset != null) return;
+		var line = note.mustPress ? playerStrums : enemyStrums;
+		var lane = codenameNoteLane(note);
+		if (line != null && lane >= 0 && lane < line.members.length && line.members[lane] != null)
+			note.codenameReceptorXOffset = note.codenameGeneratedX == null
+				? note.x - line.members[lane].x : note.x - note.codenameGeneratedX;
+	}
+
+	function codenameLineVisibilityHandler(lineIndex:Int):Bool->Void {
+		return function(visible:Bool):Void {
+			var line = getCodenameLineStrumline(lineIndex);
+			if (line != null) line.visible = visible;
+		};
+	}
+
+	/** Materialize native receptor ownership by authored source index. The first
+	 * ordinary player/opponent line can reuse the legacy banks; every further
+	 * line owns a distinct group so line members never alias by role. */
+	function initializeCodenameStrumlines(plan:CodenameActorPlan):Void {
+		if (plan == null || codenameStrumlines.length > 0) return;
+		var hasPlayer = false;
+		var hasOpponent = false;
+		for (index in 0...plan.lines.length) {
+			var sourceLine = plan.lines[index];
+			if (sourceLine == null) {
+				codenameStrumlines.push(null);
+				continue;
+			}
+			var role:String = Reflect.field(sourceLine, 'role');
+			var nativeLine:Strumline = null;
+			if (role == 'player' && !hasPlayer) {
+				nativeLine = playerStrums;
+				hasPlayer = true;
+			} else if (role == 'opponent' && !hasOpponent) {
+				nativeLine = enemyStrums;
+				hasOpponent = true;
+			}
+			if (nativeLine == null)
+				nativeLine = new Strumline(0, strumLine == null ? 50 : strumLine.y, SONG.uiType);
+			configureCodenameStrumline(nativeLine, sourceLine);
+			codenameStrumlines.push(nativeLine);
+		}
+		// Native banks without a corresponding authored source line must not
+		// leave decorative receptors behind the materialized Codename layout.
+		if (!hasPlayer && playerStrums != null) playerStrums.visible = false;
+		if (!hasOpponent && enemyStrums != null) enemyStrums.visible = false;
+		for (line in codenameStrumlines) {
+			if (line == null || line == playerStrums || line == enemyStrums) continue;
+			line.cameras = [camHUD];
+			line.noteHoldCovers.cameras = [camHUD];
+			var receptorIndex = members.indexOf(notes);
+			if (receptorIndex < 0) receptorIndex = members.indexOf(grpNoteSplashes);
+			if (receptorIndex < 0) add(line); else insert(receptorIndex, line);
+			var coverIndex = members.indexOf(healthBarBG);
+			if (coverIndex < 0) add(line.noteHoldCovers); else insert(coverIndex, line.noteHoldCovers);
+		}
+	}
+
+	function configureCodenameStrumline(line:Strumline, sourceLine:Dynamic):Void {
+		if (line == null || sourceLine == null) return;
+		var placement = CodenameStrumlineLayout.resolve(sourceLine, FlxG.width,
+			strumLine == null ? 50 : strumLine.y, Note.swagWidth, Note.NOTE_AMOUNT);
+		if (placement == null) return;
+		line.x = placement.x;
+		line.y = placement.y;
+		line.visible = placement.visible;
+		line.setNoteSpacing(placement.spacing);
+		line.setSourceStrumScale(placement.scale);
+		for (index in 0...line.members.length) {
+			var receptor = line.members[index];
+			if (receptor != null && index >= placement.keyCount) receptor.visible = false;
+		}
+	}
+
+	/** Return the live native receptor array for one authored Codename line. */
+	function getCodenameLineMembers(lineIndex:Int):Dynamic {
+		var line = getCodenameLineStrumline(lineIndex);
+		return line == null ? null : line.members;
+	}
+
+	/** Return pending and active native notes for one authored Codename line. */
+	function getCodenameLineNotes(lineIndex:Int):Array<Dynamic> {
+		return CodenameLineNoteQuery.collectIndexed(lineIndex, codenameLineNoteIndex,
+			notes == null ? null : cast notes.members);
+	}
+
+	@:keep public function getCodenameLineStrumline(lineIndex:Int):Strumline {
+		return lineIndex < 0 || lineIndex >= codenameStrumlines.length
+			? null : codenameStrumlines[lineIndex];
+	}
+
+	function getNoteStrumline(note:Note):Strumline {
+		if (note != null && note.codenameInputLine != null)
+			return getCodenameLineStrumline(note.codenameInputLine.lineIndex);
+		return note != null && note.mustPress ? playerStrums : enemyStrums;
+	}
+
+	function configureNightmareVisionStrumlines():Void {
+		var format = SONG.format == null ? '' : StringTools.trim(SONG.format).toLowerCase();
+		if (format != 'nmv2' && format != 'psych_v1') return;
+		var centerY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height,
+			Note.swagWidth, downscroll);
+		for (field in 0...2) {
+			var line = field == 0 ? playerStrums : enemyStrums;
+			if (line != null) line.setCenteredLayout(
+				NightmareVisionPlayfieldLayout.centerX(field, Note.NOTE_AMOUNT,
+					FlxG.width, Note.swagWidth), centerY);
+		}
+	}
+
+	function getInputStrumline(sourceLine:CodenameInputLine<Character>, playerOne:Bool):Strumline {
+		return sourceLine == null ? (playerOne ? playerStrums : enemyStrums)
+			: getCodenameLineStrumline(sourceLine.lineIndex);
+	}
+
+	function codenameNoteLane(note:Note):Int {
+		return note == null || Note.NOTE_AMOUNT <= 0 ? 0
+			: Std.int(Math.abs(note.noteData)) % Note.NOTE_AMOUNT;
+	}
+
+	function alignCodenameNoteToReceptor(note:Note, line:Strumline):Void {
+		if (note == null || note.codenameInputLine == null || line == null
+			|| note.codenameReceptorXOffset == null) return;
+		var lane = codenameNoteLane(note);
+		if (lane < 0 || lane >= line.members.length || line.members[lane] == null) return;
+		// The captured offset excludes constructor padding for generated chart
+		// notes, while script-created notes retain their explicit placement.
+		// Keep atlas/style offsets visible; align sustains to their own head.
+		note.x = line.members[lane].x + note.codenameReceptorXOffset;
+		if (note.isSustainNote)
+			note.x += note.sustainHeadAnchorX() - note.graphicCenterOffsetX();
+	}
+
+	/** Apply Codename's strum-angle travel path to a note owned by an authored input line. */
+	function applyCodenameNotePresentation(note:Note, line:Strumline, travelDistance:Float):Void {
+		if (note == null || line == null || note.codenameInputLine == null) return;
+		var lane = codenameNoteLane(note);
+		if (lane < 0 || lane >= line.members.length || line.members[lane] == null) return;
+		var receptor:Strumline.StrumNote = line.members[lane];
+		var travelAngle = receptor.getNotesAngle(note);
+		var verticalDistance = downscroll ? -travelDistance : travelDistance;
+		var extraY = note.y - (receptor.y + verticalDistance);
+		var offset = CodenameNoteAngleCompat.travelOffset(travelDistance, travelAngle, downscroll);
+		note.x += offset.x;
+		note.y = receptor.y + offset.y + extraY;
+		note.angle = CodenameNoteAngleCompat.spriteAngle(note.isSustainNote, receptor.angle, travelAngle);
+	}
+
+	@:keep public function prepareCodenameNoteCreation(note:Note):Void {
+		if (note == null || note.codenameOrigin == null || note.codenameInputLine != null) return;
+		var index = note.codenameOrigin.lineIndex;
+		if (index < 0 || index >= codenameInputLines.length) return;
+		var plan = getCodenameActorPlan();
+		if (plan == null || index >= plan.lines.length) return;
+		var role:String = Reflect.field(plan.lines[index], 'role');
+		if ((role == 'player' && note.codenameOrigin.nativeSide == 0)
+			|| ((role == 'opponent' || role == 'gf') && note.codenameOrigin.nativeSide == 1)) {
+			note.codenameInputLine = codenameInputLines[index];
+			var placement = CodenameStrumlineLayout.resolve(plan.lines[index], FlxG.width,
+				strumLine == null ? 50 : strumLine.y, Note.swagWidth, Note.NOTE_AMOUNT);
+			if (placement != null) note.codenamePreparedStrumScale = placement.scale;
+		}
+	}
+
+	function bindCodenameNoteLine(note:Note):Void {
+		if (note == null || note.codenameOrigin == null || note.codenameLineConfigured) return;
+		var index = note.codenameOrigin.lineIndex;
+		if (index < 0 || index >= codenameInputLines.length) {
+			note.codenameLineConfigured = true;
+			return;
+		}
+		var plan = getCodenameActorPlan();
+		if (plan == null || index >= plan.lines.length) {
+			note.codenameLineConfigured = true;
+			return;
+		}
+		var role:String = Reflect.field(plan.lines[index], 'role');
+		if ((role == 'player' && note.codenameOrigin.nativeSide == 0)
+			|| ((role == 'opponent' || role == 'gf') && note.codenameOrigin.nativeSide == 1)) {
+			if (note.codenameInputLine == null)
+				note.codenameInputLine = codenameInputLines[index];
+			var sourceScale = note.codenameInputLine == null ? 1
+				: CodenameStrumlineLayout.resolve(plan.lines[index], FlxG.width,
+					strumLine == null ? 50 : strumLine.y, Note.swagWidth, Note.NOTE_AMOUNT).scale;
+			if (note.codenameCreationScaleSet)
+				note.codenameSourceStrumScale = sourceScale;
+			else
+				note.applyCodenameSourceStrumScale(sourceScale);
+			captureCodenameNoteReceptorOffset(note);
+			if (role == 'gf') note.forceGfSing = true;
+		}
+		note.codenameLineConfigured = true;
+	}
+
+	function rebindCodenameInputActor(previous:Character, replacement:Character):Void {
+		for (line in codenameInputLines) if (line != null)
+			line.rebindActor(previous, replacement);
+	}
+
+	@:keep public function getCodenameInputLine(index:Int):CodenameInputLine<Character> {
+		return index < 0 || index >= codenameInputLines.length ? null : codenameInputLines[index];
+	}
+
+	/** Source occurrence indices are engine-owned, including unresolved nulls. */
+	function getCodenameLineActorSlots(lineIndex:Int):Array<Null<Character>> {
+		return codenameActors == null ? [] : codenameActors.lineCharacters(lineIndex);
+	}
+
+	/** Script-facing actor list contains only materialized characters. */
+	@:keep public function getCodenameLineCharacters(lineIndex:Int):Array<Character> {
+		var result:Array<Character> = [];
+		for (actor in getCodenameLineActorSlots(lineIndex)) if (actor != null) result.push(actor);
+		return result;
+	}
+
+	function runtimeSmokeActorTracking():Bool {
+		return RuntimeSmokeHarness.enabled() && RuntimeSmokeHarness.config().playstateVisits == 2;
+	}
+
+	function runtimeSmokeActorSummary():Dynamic {
+		var result:Dynamic = {actors:[], owned:0, borrowed:0};
+		if (codenameActors == null) return result;
+		for (binding in codenameActors.bindings) {
+			var actor = binding.actor;
+			if (actor.runtimeSmokeActorToken == 0) actor.runtimeSmokeActorToken = nextRuntimeSmokeActorToken++;
+			if (binding.owned) result.owned++; else result.borrowed++;
+			result.actors.push({token:actor.runtimeSmokeActorToken,
+				lineIndex:binding.occurrence.lineIndex, occurrenceIndex:binding.occurrence.occurrenceIndex,
+				authoredId:binding.occurrence.authoredId, nativeName:actor.curCharacter, owned:binding.owned,
+				x:actor.x, y:actor.y, scaleX:actor.scale.x, scaleY:actor.scale.y,
+				alpha:actor.alpha, displayIndex:members.indexOf(actor)});
+		}
+		return result;
+	}
+
+	function reapplyCodenameActors():Void {
+		if (codenameActors == null) return;
+		if (curStage == null || curStage.getCodenamePlacement() == null) {
+			trace('[codename-actor-runtime] Replacement stage has no published placement; retaining actor instances.');
+			return;
+		}
+		if (curStage.getCodenamePlacement().unsupported.length > 0) {
+			trace('[codename-actor-runtime] Replacement stage placement has unresolved dependencies; retaining actor instances.');
+			return;
+		}
+		for (binding in codenameActors.bindings)
+			placeCodenameRuntimeActor(binding.actor, binding.occurrence);
+	}
+
+	/** Codename's Stage constructor applies each authored start camera axis
+	 * independently. An omitted axis keeps the current follow position. */
+	function applyCodenameStageStartCamera():Void {
+		if (curStage == null || camFollow == null) return;
+		var placement = curStage.getCodenamePlacement();
+		if (placement == null) return;
+		if (placement.startCamera.x != null) camFollow.x = placement.startCamera.x;
+		if (placement.startCamera.y != null) camFollow.y = placement.startCamera.y;
+	}
+
+	/** Native charts store the song key lowercased; the imported namespace keeps
+	 * the donor's original folder spelling. Require one unambiguous owner. */
+	function codenameSourceFolder(root:String):String {
+		#if sys
+		if (root == '' || SONG == null || !CodenameScriptDiscovery.safeName(SONG.song)) return '';
+		var songs = Path.join([root, 'songs']);
+		if (!FileSystem.isDirectory(songs)) return '';
+		// Owner-qualified native charts keep their source identity in this
+		// destination-only record. The root, engine and destination must all agree
+		// before its sourceFolder can select a donor-side metadata directory.
+		var storage = Song.storageFolder(SONG);
+		if (CodenameScriptDiscovery.safeName(storage)) {
+			var provenancePath = Path.join(['assets', 'data', storage, 'importProvenance.json']);
+			if (FNFAssets.exists(provenancePath)) {
+				try {
+					var provenance:Dynamic = Json.parse(FNFAssets.getText(provenancePath));
+					var version:Dynamic = Reflect.field(provenance, 'version');
+					var sourceValue:Dynamic = Reflect.field(provenance, 'sourceFolder');
+					var engineValue:Dynamic = Reflect.field(provenance, 'sourceEngine');
+					var ownerValue:Dynamic = Reflect.field(provenance, 'sourceOwner');
+					var destinationValue:Dynamic = Reflect.field(provenance, 'destinationFolder');
+					var source = sourceValue == null ? '' : StringTools.trim(Std.string(sourceValue));
+					var engine = engineValue == null ? '' : StringTools.trim(Std.string(engineValue));
+					var owner = ownerValue == null ? '' : StringTools.trim(Std.string(ownerValue));
+					var destination = destinationValue == null ? '' : StringTools.trim(Std.string(destinationValue));
+					var candidate = Path.join([songs, source]);
+					if (Std.isOfType(version, Int) && version == 1
+						&& CodenameScriptDiscovery.safeName(source)
+						&& engine.toLowerCase() == ImportEngine.CODENAME.toLowerCase()
+						&& CompatScriptManifest.destinationKey(owner) == CompatScriptManifest.destinationKey(root)
+						&& destination.toLowerCase() == storage.toLowerCase()
+						&& FileSystem.isDirectory(candidate)
+						&& CodenameScriptDiscovery.withinRoot(root, candidate)) return source;
+				} catch (_:Dynamic) {}
+			}
+		}
+		// Legacy imports predate importProvenance.json. Keep the old exact
+		// source-folder behavior as a bounded, unique lookup under this selected
+		// owner; presentation titles are only a fallback, never an owner selector.
+		var requested = [SONG.song, storage];
+		try {
+			var entries = FileSystem.readDirectory(songs);
+			for (name in requested) {
+				if (!CodenameScriptDiscovery.safeName(name)) continue;
+				var found = '';
+				for (entry in entries)
+					if (CodenameScriptDiscovery.safeName(entry)
+						&& entry.toLowerCase() == name.toLowerCase()) {
+						var candidate = Path.join([songs, entry]);
+						if (FileSystem.isDirectory(candidate)
+							&& CodenameScriptDiscovery.withinRoot(root, candidate)) {
+							if (found != '') return '';
+							found = entry;
+						}
+					}
+				if (found != '') return found;
+				}
+		} catch (_:Dynamic) return '';
+		return '';
+		#else
+		return '';
+		#end
+	}
+
+	/** Select the authored case from one bounded difficulty list. */
+	function codenameDifficulty(names:Array<String>):String {
+		var requested = storyDifficultyText == null ? '' : StringTools.trim(storyDifficultyText);
+		if (!CodenameScriptDiscovery.safeName(requested) || names == null) return '';
+		for (name in names)
+			if (name == requested) return name;
+		var found = '';
+		for (name in names)
+			if (CodenameScriptDiscovery.safeName(name)
+				&& name.toLowerCase() == requested.toLowerCase()) {
+				if (found != '' && found != name) return '';
+				found = name;
+			}
+		return found;
+	}
+
+	function codenameImportBindings(paths:CodenamePaths, interp:CodenameScriptInterp):Map<String, Dynamic> {
+		var bindings:Map<String, Dynamic> = new Map<String, Dynamic>();
+		CodenameImportBindings.addShared(bindings, interp, paths);
+		bindings.set('CodenameMapCompat', CodenameMapCompat);
+		bindings.set('Options', {downscroll: OptionsHandler.options.downscroll});
+		bindings.set('modchart.Manager', modchart.Manager);
+		bindings.set('modchart.engine.PlayField', modchart.engine.PlayField);
+		#if cpp
+		bindings.set('hxvlc.flixel.FlxVideoSprite', hxvlc.flixel.FlxVideoSprite);
+		#end
+		bindings.set('funkin.game.PlayState', new CodenamePlayStateFacade(this, getCodenameSongView));
+		bindings.set('funkin.backend.scripting.events.gameplay.EventGameEvent', CodenameGameEvent);
+		bindings.set('funkin.backend.scripting.events.note.NoteHitEvent', CodenameNoteHitEvent);
+		bindings.set('funkin.game.PlayState.ComboRating', CodenameComboRating);
+		bindings.set('funkin.backend.scripting.events.gameplay.RatingUpdateEvent', CodenameRatingUpdateEvent);
+		bindings.set('funkin.backend.scripting.events.note.NoteMissEvent', CodenameNoteMissEvent);
+		bindings.set('funkin.backend.scripting.events.character.DirectionAnimEvent', CodenameDirectionAnimEvent);
+		return bindings;
+	}
+
+	function codenameAuthoredEvents():Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		for (event in songEvents) {
+			var authored = CodenameEventDispatch.fromNative(event);
+			if (authored != null) result.push(authored);
+		}
+		return result;
+	}
+
+	function codenameStrumLineView():Dynamic
+		return new CodenameStrumLineCollection<Character>(codenameInputLines);
+
+	function bindCodenameImportScript(interp:CodenameScriptInterp, root:String,
+		bindings:Map<String, Dynamic>, scopeKey:String):Void {
+		var imported:Map<String, Bool> = new Map();
+		var importCount = 0;
+		interp.variables.set('importScript', function(request:String):Void {
+			if (request == null) throw '[codename-import-script] Missing relative script path';
+			var relative = StringTools.trim(request);
+			if (relative == '') throw '[codename-import-script] Missing relative script path';
+			if (!StringTools.endsWith(relative.toLowerCase(), '.hx')) relative += '.hx';
+			var resolved = CodenameScriptDiscovery.scopedResolution(root, relative);
+			if (resolved.relative == null)
+				throw '[codename-import-script] ' + relative + ' ' + resolved.status + ' in selected owner';
+			var key = resolved.relative.toLowerCase();
+			if (imported.exists(key)) return;
+			if (importCount >= 64)
+				throw '[codename-import-script] Script import limit reached';
+			imported.set(key, true);
+			importCount++;
+			var path = haxe.io.Path.join([root, resolved.relative]);
+			var prepared = CodenameScriptParser.prepare(FNFAssets.getText(path), bindings, resolved.relative);
+			CodenameScriptParser.reportRecoverableDiagnostics(prepared, resolved.relative);
+			if (prepared.program == null || CodenameScriptParser.hasFatalDiagnostics(prepared)) {
+				for (diagnostic in prepared.diagnostics)
+					trace('[codename-script-' + diagnostic.code + '] ' + resolved.relative + ':'
+						+ diagnostic.line + ': ' + diagnostic.message);
+				throw '[codename-import-script] Could not parse ' + resolved.relative;
+			}
+			codenamePublicScriptGlobals.declare(interp, prepared.publicVariables,
+				scopeKey, resolved.relative);
+			var previous:Map<String, Dynamic> = [];
+			for (name in interp.variables.keys()) {
+				var callback = interp.variables.get(name);
+				if (Reflect.isFunction(callback)) previous.set(name, callback);
+			}
+			try interp.executeImportedScript(prepared.program) catch (error:Dynamic) {
+				codenamePublicScriptGlobals.releaseOwner(scopeKey, resolved.relative);
+				throw '[codename-import-script] ' + resolved.relative + ': ' + Std.string(error);
+			}
+			for (name in interp.variables.keys()) {
+				var callback = interp.variables.get(name);
+				if (!Reflect.isFunction(callback) || (previous.exists(name) && previous.get(name) == callback))
+					continue;
+				var callbacks = interp.importedCallbacks.get(name);
+				if (callbacks == null) {
+					callbacks = [];
+					interp.importedCallbacks.set(name, callbacks);
+				}
+				callbacks.push({callback:callback, origin:resolved.relative});
+				if (previous.exists(name)) interp.variables.set(name, previous.get(name));
+			}
+		});
+	}
+
+	function reconcileCodenameScriptLineActors():Void {
+		if (codenameActors == null) return;
+		for (lineIndex in 0...codenameInputLines.length) {
+			var line = codenameInputLines[lineIndex];
+			if (line == null) continue;
+			var current = codenameActors.lineCharacters(lineIndex);
+			line.commitScriptCharacters();
+			var occurrenceCount = Std.int(Math.max(line.actorSlots.length, current.length));
+			for (occurrenceIndex in 0...occurrenceCount) {
+				var replacement:Character = occurrenceIndex < line.actorSlots.length
+					? line.actorSlots[occurrenceIndex] : null;
+				var previous:Character = occurrenceIndex < current.length ? current[occurrenceIndex] : null;
+				if (replacement == previous) continue;
+				if (replacement == null) {
+					codenameActors.removeActor(lineIndex, occurrenceIndex);
+					continue;
+				}
+				var nativePrimary = replacement == boyfriend || replacement == dad || replacement == gf;
+				var found = codenameActors.replaceActor(lineIndex, occurrenceIndex,
+					replacement, !nativePrimary);
+				if (!found) {
+					trace('[codename-character-switch] Could not bind replacement actor to line '
+						+ lineIndex + ' occurrence ' + occurrenceIndex);
+					continue;
+				}
+				var plan = getCodenameActorPlan();
+				var binding = codenameActors.find(lineIndex, occurrenceIndex);
+				if (plan != null && binding != null) replacement.characterType = switch (binding.occurrence.role) {
+					case 'player': 'boyfriend';
+					case 'opponent': 'dad';
+					case 'gf': 'gf';
+					default: 'codename';
+				};
+				rememberCodenameActor(replacement);
+			}
+			line.refreshActors();
+		}
+	}
+
+	function commitCodenameScriptLineActors():Void {
+		var changed = false;
+		for (line in codenameInputLines)
+			if (line != null && line.commitScriptCharacters()) changed = true;
+		if (changed) reconcileCodenameScriptLineActors();
+	}
+
+	function codenameCustomShader(paths:CodenamePaths, name:String):Dynamic
+		return CodenameModBindings.customShader(paths, name);
+
+	function codenameMembership():CodenameSceneMembership<FlxBasic> {
+		if (codenameSceneMembership == null)
+			codenameSceneMembership = new CodenameSceneMembership<FlxBasic>(
+				function() return members.copy(),
+				function(node) { if (members.indexOf(node) >= 0) remove(node, true); },
+				function(index, node) this.insert(index, node));
+		return codenameSceneMembership;
+	}
+
+	function codenameBorrowedNode(node:FlxBasic):Bool {
+		return node != null && !protectedStageObject(node)
+			&& nativeStageHudMembers().indexOf(node) >= 0;
+	}
+
+	function refreshCodenameHudBindings(interp:CodenameScriptInterp):Void {
+		interp.stageBindings.refresh(interp.variables, curStage == null ? null : curStage.elements,
+			interp.isStageActorAlias);
+		interp.variables.set('members', members);
+		interp.variables.set('healthBarBG', healthBarBG);
+		interp.variables.set('healthBar', healthBar);
+		interp.variables.set('iconP1', iconP1);
+		interp.variables.set('iconP2', iconP2);
+		interp.variables.set('scoreTxt', scoreTxt);
+		interp.variables.set('missesTxt', missesTxt);
+		interp.variables.set('iconArray', iconArray);
+		interp.variables.set('comboGroup', comboGroup);
+		interp.variables.set('splashHandler', splashHandler);
+		interp.variables.set('healthTxt', healthTxt);
+		interp.variables.set('accuracyTxt', accuracyTxt);
+		interp.variables.set('difficTxt', difficTxt);
+		interp.variables.set('songPosBG', songPosBG);
+		interp.variables.set('songName', songName);
+	}
+
+	function bindCodenameCameraGlobals(interp:CodenameScriptInterp):Void {
+		interp.bindLiveGlobal('defaultCamZoom', function():Dynamic return defaultCamZoom,
+			function(value:Dynamic):Void {
+				defaultCamZoom = value;
+				baseCameraZoom = null;
+			});
+		interp.bindLiveGlobal('defaultHudZoom', function():Dynamic return defaultHudZoom,
+			function(value:Dynamic):Void defaultHudZoom = value);
+	}
+
+	function callCodenameScript(scope:{file:CodenameScriptFile, interp:CodenameScriptInterp,
+		owned:Array<FlxBasic>, postCreated:Bool, failedCallbacks:Map<String, Bool>}, name:String, args:Array<Dynamic>):Bool {
+		var smokeProfileAt = name == 'update' && RuntimeSmokeHarness.profileEnabled()
+			? haxe.Timer.stamp() : 0.0;
+		var interp = scope.interp;
+		if (interp.scriptDisabled) return true;
+		var mainCallback:Dynamic = interp.variables.get(name);
+		var imported = interp.importedCallbacks.get(name);
+		if (!Reflect.isFunction(mainCallback) && (imported == null || imported.length == 0)) return true;
+		interp.variables.set('curStep', curStep);
+		interp.variables.set('curBeat', curBeat);
+		interp.variables.set('stage', curStage);
+		refreshCodenameHudBindings(interp);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('codename-bind:' + scope.file.relative, now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		var succeeded = true;
+		var call = function(callback:Dynamic, origin:String):Void {
+			var key = origin + '.' + name;
+			if (scope.failedCallbacks.exists(key)) {
+				succeeded = false;
+				return;
+			}
+			var previousSource = interp.variables.get('__compatDiagnosticSource');
+			var previousCallback = interp.variables.get('__compatDiagnosticCallback');
+			interp.variables.set('__compatDiagnosticSource', origin);
+			interp.variables.set('__compatDiagnosticCallback', name);
+			try Reflect.callMethod(null, callback, args == null ? [] : args)
+			catch (error:Dynamic) {
+				scope.failedCallbacks.set(key, true);
+				trace('[codename-script-error] ' + key + ': ' + Std.string(error));
+				succeeded = false;
+			}
+			interp.variables.set('__compatDiagnosticSource', previousSource);
+			interp.variables.set('__compatDiagnosticCallback', previousCallback);
+		};
+		if (Reflect.isFunction(mainCallback)) call(mainCallback, scope.file.relative);
+		if (imported != null) for (entry in imported)
+			if (entry.callback != mainCallback) call(entry.callback, entry.origin);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('codename-callback:' + scope.file.relative, now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		commitCodenameScriptLineActors();
+		if (smokeProfileAt > 0)
+			RuntimeSmokeHarness.profileSection('codename-commit:' + scope.file.relative,
+				haxe.Timer.stamp() - smokeProfileAt);
+		return succeeded;
+	}
+
+	/** A test-only, primitive snapshot of objects owned by one selected Codename
+	 * script scope. Never serialize the Flx objects or any absolute media path. */
+	function codenameRuntimeVisualSnapshot(scope:Dynamic, includeMediaClock:Bool):Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		if (scope == null || !Std.isOfType(Reflect.field(scope, 'owned'), Array))
+			return result;
+		var owned:Array<Dynamic> = cast Reflect.field(scope, 'owned');
+		var limit = Std.int(Math.min(owned.length, 16));
+		for (index in 0...limit) {
+			var node:Dynamic = owned[index];
+			if (node == null) continue;
+			var cls = Type.getClass(node);
+			var summary:Dynamic = {
+				index: index,
+				kind: Std.isOfType(node, FlxSprite) ? 'sprite' : 'basic',
+				className: cls == null ? '' : Type.getClassName(cls),
+				exists: Reflect.field(node, 'exists'),
+				active: Reflect.field(node, 'active'),
+				visible: Reflect.field(node, 'visible')
+			};
+			if (Std.isOfType(node, FlxSprite)) {
+				var sprite:FlxSprite = cast node;
+				var shaderClass = sprite.shader == null ? null : Type.getClass(sprite.shader);
+				var graphicWidth = sprite.graphic == null ? 0 : sprite.graphic.width;
+				var graphicHeight = sprite.graphic == null ? 0 : sprite.graphic.height;
+				Reflect.setField(summary, 'x', sprite.x);
+				Reflect.setField(summary, 'y', sprite.y);
+				Reflect.setField(summary, 'alpha', sprite.alpha);
+				Reflect.setField(summary, 'width', sprite.width);
+				Reflect.setField(summary, 'height', sprite.height);
+				Reflect.setField(summary, 'graphicWidth', graphicWidth);
+				Reflect.setField(summary, 'graphicHeight', graphicHeight);
+				Reflect.setField(summary, 'cameraCount', sprite.cameras == null ? 0 : sprite.cameras.length);
+				Reflect.setField(summary, 'shaderClass', shaderClass == null ? null : Type.getClassName(shaderClass));
+				#if cpp
+				if (Std.isOfType(node, FlxVideoSprite)) {
+					var video:FlxVideoSprite = cast node;
+					var media = video.bitmap;
+					var bitmap = media == null ? null : media.bitmapData;
+					Reflect.setField(summary, 'kind', 'video');
+					Reflect.setField(summary, 'videoLoaded', bitmap != null && bitmap.width > 1 && bitmap.height > 1);
+					Reflect.setField(summary, 'videoPlaying', media != null && media.isPlaying);
+					if (includeMediaClock && media != null) {
+						Reflect.setField(summary, 'videoTimeMs', Std.parseFloat(Std.string(media.time)));
+						Reflect.setField(summary, 'videoLengthMs', Std.parseFloat(Std.string(media.length)));
+					}
+				}
+				#end
+			}
+			result.push(summary);
+		}
+		return result;
+	}
+
+	function markCodenameRuntimeVisuals(scope:Dynamic, callback:String,
+		event:CodenameGameEvent = null):Void {
+		if (!RuntimeSmokeHarness.codenameVisualsEnabled() || scope == null)
+			return;
+		var eventData:Dynamic = event == null ? null : Reflect.field(event, 'event');
+		var eventName = eventData == null || Reflect.field(eventData, 'name') == null
+			? '' : Std.string(Reflect.field(eventData, 'name'));
+		var eventTime:Null<Float> = null;
+		if (eventData != null) {
+			var time:Dynamic = Reflect.field(eventData, 'time');
+			if (Std.isOfType(time, Int) || Std.isOfType(time, Float))
+				eventTime = cast time;
+		}
+		RuntimeSmokeHarness.markCodenameVisualSnapshot(codenameSelectedRoot(),
+			scope.file.relative, callback, eventName, eventTime,
+			codenameRuntimeVisualSnapshot(scope, callback == 'onEvent'), {
+				gameZoom: camGame == null ? null : camGame.zoom,
+				gameVisible: camGame == null ? null : camGame.visible,
+				gameAlpha: camGame == null ? null : camGame.alpha,
+				hudZoom: camHUD == null ? null : camHUD.zoom,
+				hudVisible: camHUD == null ? null : camHUD.visible,
+				hudAlpha: camHUD == null ? null : camHUD.alpha,
+				otherZoom: camOther == null ? null : camOther.zoom,
+				mainIsGame: FlxG.camera == camGame,
+				mainVisible: FlxG.camera == null ? null : FlxG.camera.visible,
+				mainAlpha: FlxG.camera == null ? null : FlxG.camera.alpha,
+				cameraLayers: [for (index in 0...Std.int(Math.min(FlxG.cameras.list.length, 8))) {
+					index: index,
+					game: FlxG.cameras.list[index] == camGame,
+					hud: FlxG.cameras.list[index] == camHUD,
+					visible: FlxG.cameras.list[index].visible,
+					alpha: FlxG.cameras.list[index].alpha,
+					bgColor: Std.string(FlxG.cameras.list[index].bgColor)
+				}]
+			});
+	}
+
+	/** Bounded smoke-only motion trace for imported actors and source videos.
+	 * This samples the same native objects that render, after song beat scripts
+	 * have changed character visibility and video playback. */
+	function markCodenameMotionSnapshot():Void {
+		if (!RuntimeSmokeHarness.codenameVisualsEnabled() || codenameActors == null
+			|| curBeat < 0 || curBeat % 4 != 0) return;
+		var actors:Array<Dynamic> = [];
+		for (binding in codenameActors.bindings) {
+			if (actors.length >= 16) break;
+			var actor = binding.actor;
+			if (actor == null) continue;
+			var inputLine = binding.occurrence.lineIndex < codenameInputLines.length
+				? codenameInputLines[binding.occurrence.lineIndex] : null;
+			actors.push({lineIndex:binding.occurrence.lineIndex,
+				occurrenceIndex:binding.occurrence.occurrenceIndex,
+				inputIndex:inputLine == null ? -1 : inputLine.actorSlots.indexOf(actor),
+				visible:actor.visible, exists:actor.exists, active:actor.active,
+				animation:Character.animationName(actor),
+				frame:actor.animation == null || actor.animation.curAnim == null
+					? -1 : actor.animation.curAnim.curFrame,
+				x:actor.x, y:actor.y});
+		}
+		var videos:Array<Dynamic> = [];
+		#if cpp
+		for (scope in codenameScriptScopes) {
+			if (videos.length >= 8) break;
+			var owned:Dynamic = Reflect.field(scope, 'owned');
+			if (!Std.isOfType(owned, Array)) continue;
+			for (node in (cast owned:Array<Dynamic>)) {
+				if (videos.length >= 8) break;
+				if (!Std.isOfType(node, FlxVideoSprite)) continue;
+				var video:FlxVideoSprite = cast node;
+				var media = video.bitmap;
+				videos.push({script:scope.file.relative, visible:video.visible,
+					exists:video.exists, playing:media != null && media.isPlaying,
+					timeMs:media == null ? null : Std.parseFloat(Std.string(media.time)),
+					lengthMs:media == null ? null : Std.parseFloat(Std.string(media.length))});
+			}
+		}
+		#end
+		RuntimeSmokeHarness.markCodenameMotionSnapshot(curBeat, Conductor.songPosition,
+			actors, videos);
+	}
+
+	function callCodenameScripts(name:String, args:Array<Dynamic>):Void {
+		for (scope in codenameScriptScopes.copy()) {
+			var hasCallback = scope.interp.variables.exists(name);
+			var completed = callCodenameScript(scope, name, args);
+			if (hasCallback && completed)
+				markCodenameRuntimeVisuals(scope, name);
+		}
+	}
+
+	function countCodenameCallbacks(name:String):Int {
+		var count = 0;
+		for (scope in codenameScriptScopes) {
+			var imported = scope.interp.importedCallbacks.get(name);
+			if (scope.interp.variables.exists(name)
+				|| (imported != null && imported.length > 0)) count++;
+		}
+		for (scope in codenameCharacterScopes)
+			if (scope.runtime != null && scope.runtime.interp != null
+				&& scope.runtime.interp.variables.exists(name)) count++;
+		return count;
+	}
+
+	/** Creation hooks run from Note/StrumNote constructors. Keep the callback
+	 * check bounded to object creation and share one event across script scopes,
+	 * matching Codename's game-and-character event broadcast. */
+	@:keep public function hasCodenameCreationCallback(name:String):Bool {
+		if (name == null || name == '') return false;
+		for (scope in codenameScriptScopes) {
+			var imported = scope.interp.importedCallbacks.get(name);
+			if (scope.interp.variables.exists(name)
+				|| (imported != null && imported.length > 0)) return true;
+		}
+		for (scope in codenameCharacterScopes)
+			if (scope.runtime != null && scope.runtime.interp != null
+				&& scope.runtime.interp.variables.exists(name)) return true;
+		return false;
+	}
+
+	@:keep public function dispatchCodenameCreationCallback(name:String,
+		event:CodenameGameEvent):Void {
+		if (event == null || !hasCodenameCreationCallback(name)) return;
+		for (scope in codenameScriptScopes.copy()) {
+			if (codenameScriptScopes.indexOf(scope) < 0) continue;
+			if (!scope.interp.variables.exists(name)
+				&& (scope.interp.importedCallbacks.get(name) == null
+					|| scope.interp.importedCallbacks.get(name).length == 0)) continue;
+			callCodenameScript(scope, name, [event]);
+			if (event.stopsPropagation()) return;
+		}
+		for (scope in codenameCharacterScopes.copy()) {
+			if (scope.runtime != null) scope.runtime.call(name, [event]);
+			if (event.stopsPropagation()) break;
+		}
+	}
+
+	@:keep public function codenameCreationOwnerRoot():String return codenameSelectedRoot();
+
+	/** Resolve the source default note/receptor atlas once for each selected
+	 * owner in this PlayState. Missing stale imports therefore fall back to the
+	 * native UI without logging once per note or receptor. */
+	@:keep public function codenameDefaultNoteAtlasFrames():flixel.graphics.frames.FlxFramesCollection {
+		var root = codenameSelectedRoot();
+		if (root == '') return null;
+		if (codenameDefaultNoteAtlasResolved.exists(root)) return codenameDefaultNoteAtlases.get(root);
+		codenameDefaultNoteAtlasResolved.set(root, true);
+		try {
+			var frames = new CodenamePaths(root).getFrames('game/notes/default');
+			if (frames == null) throw 'resolver returned no frames';
+			codenameDefaultNoteAtlases.set(root, frames);
+		} catch (error:Dynamic) {
+			codenameDefaultNoteAtlases.set(root, null);
+			trace('[codename-default-note-atlas] Could not load selected-owner '
+				+ 'images/game/notes/default.png from ' + root
+				+ '; using native UI fallback: ' + Std.string(error));
+		}
+		return codenameDefaultNoteAtlases.get(root);
+	}
+
+	/** Codename's event uses the source strum-line index; legacy banks map to
+	 * opponent/player when no authored line plan is available. */
+	@:keep public function codenameStrumCreationPlayer(line:Strumline):Int {
+		if (line != null)
+			for (index in 0...codenameStrumlines.length)
+				if (codenameStrumlines[index] == line) return index;
+		return line == playerStrums ? 1 : 0;
+	}
+
+	/** Smoke-only first-per-line receipts plus an aggregate; gameplay never
+	 * writes per-note logs when the import harness is off. */
+	@:keep public function markCodenameCreationVisual(kind:String, lineIndex:Int, lane:Int,
+		assetPath:String, atlasApplied:Bool, frameOffsetX:Float, frameOffsetY:Float):Void {
+		if (!RuntimeSmokeHarness.enabled()) return;
+		if (kind == 'note') {
+			codenameCreationNoteCount++;
+			if (atlasApplied) codenameCreationNoteAtlasCount++;
+		} else {
+			codenameCreationStrumCount++;
+			if (atlasApplied) codenameCreationStrumAtlasCount++;
+		}
+		if (codenameCreationVisualSmokeMarks == null)
+			codenameCreationVisualSmokeMarks = new Map();
+		var key = kind + ':' + lineIndex;
+		if (!codenameCreationVisualSmokeMarks.exists(key)) {
+			codenameCreationVisualSmokeMarks.set(key, true);
+			RuntimeSmokeHarness.markStep('codename-creation-visual:first kind=' + kind
+				+ ' line=' + lineIndex + ' lane=' + lane + ' atlas=' + assetPath
+				+ ' applied=' + atlasApplied + ' frameOffset=' + frameOffsetX + ',' + frameOffsetY);
+		}
+	}
+
+	@:keep public function markCodenameCreationVisualSummary():Void {
+		if (!RuntimeSmokeHarness.enabled() || codenameCreationSummaryMarked) return;
+		codenameCreationSummaryMarked = true;
+		RuntimeSmokeHarness.markStep('codename-creation-visual:summary notes=' + codenameCreationNoteCount
+			+ ' noteAtlases=' + codenameCreationNoteAtlasCount + ' strums=' + codenameCreationStrumCount
+			+ ' strumAtlases=' + codenameCreationStrumAtlasCount);
+	}
+
+	function callCodenameEvent(name:String, event:CodenameGameEvent):Void {
+		for (scope in codenameScriptScopes.copy()) {
+			// A prior callback can replace the stage and release its old scope.
+			if (codenameScriptScopes.indexOf(scope) < 0) continue;
+			var hasCallback = scope.interp.variables.exists(name);
+			var completed = callCodenameScript(scope, name, [event]);
+			if (name == 'onEvent' && hasCallback && completed)
+				markCodenameRuntimeVisuals(scope, name, event);
+			if (event.stopsPropagation()) break;
+		}
+		for (scope in codenameCharacterScopes.copy()) scope.runtime.event(name, event);
+	}
+
+	function setCodenameScriptsPaused(value:Bool):Void {
+		if (comboGroup != null) comboGroup.setPaused(value);
+		for (scope in codenameCharacterScopes) scope.runtime.setPaused(value);
+		for (scope in codenameScriptScopes)
+			scope.interp.setPaused(value);
+		if (value) {
+			for (key => tween in codenameNativeEventTweens)
+				if (tween != null && tween.active && !codenameNativeEventResumeTweens.exists(key))
+					codenameNativeEventResumeTweens.set(key, tween);
+			for (key => tween in codenameNativeEventResumeTweens)
+				if (tween != null && codenameNativeEventTweens.get(key) == tween)
+					tween.active = false;
+		} else {
+			for (key => tween in codenameNativeEventResumeTweens)
+				if (tween != null && codenameNativeEventTweens.get(key) == tween && !tween.finished)
+					tween.active = true;
+			codenameNativeEventResumeTweens.clear();
+		}
+	}
+
+	function releaseCodenameStageScripts():Void {
+		var retained:Array<{file:CodenameScriptFile, interp:CodenameScriptInterp,
+			owned:Array<FlxBasic>, postCreated:Bool, failedCallbacks:Map<String, Bool>}> = [];
+		for (scope in codenameScriptScopes) {
+			if (scope.file.family == 'stage') {
+				callCodenameScript(scope, 'destroy', []);
+				releaseCodenameScope(scope);
+			} else retained.push(scope);
+		}
+		codenameScriptScopes = retained;
+	}
+
+	function releaseCodenameScope(scope:{file:CodenameScriptFile, interp:CodenameScriptInterp,
+		owned:Array<FlxBasic>, postCreated:Bool, failedCallbacks:Map<String, Bool>}):Void {
+		if (codenameSceneMembership != null) codenameSceneMembership.release(scope);
+		codenamePublicScriptGlobals.releaseScope(scope.file.relative);
+		codenamePublicScriptGlobals.detach(scope.interp);
+		scope.interp.release();
+		for (sprite in scope.owned) {
+			if (sprite == null || protectedStageObject(sprite)) continue;
+			stageSprites.remove(sprite);
+			if (members.indexOf(sprite) >= 0) remove(sprite);
+			removeGlobalSpriteReferences(sprite);
+			try sprite.destroy() catch (_:Dynamic) {}
+		}
+		scope.owned.resize(0);
+	}
+
+	function dispatchCodenamePostCreate():Void {
+		refreshCodenameCharacterScopes();
+		for (scope in codenameCharacterScopes.copy()) if (!scope.actor.codenameGamePostCreated) {
+			scope.actor.codenameGamePostCreated = true;
+			scope.runtime.call('gamePostCreate', []);
+		}
+		for (scope in codenameScriptScopes.copy())
+			if (!scope.postCreated) {
+				var gameAlpha = camGame == null ? 1 : camGame.alpha;
+				var hudAlpha = camHUD == null ? 1 : camHUD.alpha;
+				if (callCodenameScript(scope, 'postCreate', [])) {
+					scope.postCreated = true;
+					markCodenameRuntimeVisuals(scope, 'postCreate');
+				}
+				else {
+					if (camGame != null) camGame.alpha = gameAlpha;
+					if (camHUD != null) camHUD.alpha = hudAlpha;
+					codenameScriptScopes.remove(scope);
+					releaseCodenameScope(scope);
+				}
+			}
+	}
+
+	function loadCodenameScript(file:CodenameScriptFile, root:String):Void {
+		var paths = new CodenamePaths(root);
+		var interp = new CodenameScriptInterp(paths, new CodenameFlxGFacade([camGame, camHUD, camOther], root),
+			function(name:String):Dynamic return codenameCustomShader(paths, name));
+		interp.ownerStateFactory = function(name:String):Dynamic {
+			var source:Dynamic = interp.variables.get('__compatDiagnosticSource');
+			return CodenameModRuntime.stateInitIfAvailable(root, name,
+				source == null ? '' : Std.string(source));
+		};
+		interp.modStateFactory = function(name:String):Dynamic return CodenameModRuntime.stateInit(root, name);
+		seedCodenameScriptGlobals(interp);
+		interp.characterFactory = function(args:Array<Dynamic>):Dynamic
+			return codenameConstructScriptCharacter(args);
+		seedCodenameNoteGlobals(interp);
+		var bindings = codenameImportBindings(paths, interp);
+		bindCodenameImportScript(interp, root, bindings, file.relative);
+		interp.bindLiveGlobal('camFollow', function():Dynamic return camFollow,
+			function(value:Dynamic):Void camFollow = cast value);
+		var source = FNFAssets.getText(file.path);
+		// Class imports belong to this installed owner. Seed the loader with the
+		// same trusted Flixel and Paths bindings as the classless script before
+		// parser import validation, then expose only classes it actually loaded.
+		var ownerPrepared = CodenameScriptClassLoader.prepareOwnerScript(root, source,
+			bindings, interp.variables, interp, file.relative, RuntimeSmokeHarness.enabled());
+		var parsed = ownerPrepared.parsed;
+		for (diagnostic in ownerPrepared.classLoad.diagnostics)
+			trace('[codename-class-module] ' + diagnostic);
+		for (diagnostic in ownerPrepared.classLoad.sourceUseDiagnostics)
+			trace(diagnostic);
+		CodenameScriptParser.reportRecoverableDiagnostics(parsed, file.relative);
+		if (parsed.program == null || CodenameScriptParser.hasFatalDiagnostics(parsed)) {
+			if (RuntimeSmokeHarness.enabled()) {
+				var normalized = parsed.source == null ? '' : parsed.source;
+				var samples:Array<String> = [];
+				var searchAt = 0;
+				while (samples.length < 6 && searchAt < normalized.length) {
+					var question = normalized.indexOf('?', searchAt);
+					if (question < 0) break;
+					var sampleStart = Std.int(Math.max(0, question - 48));
+					var sampleEnd = Std.int(Math.min(normalized.length, question + 64));
+					var sample = normalized.substring(sampleStart, sampleEnd)
+						.split('\r').join('\\r').split('\n').join('\\n');
+					samples.push('offset=' + question + ' `' + sample + '`');
+					searchAt = question + 1;
+				}
+				var bytes = haxe.io.Bytes.ofString(source);
+				trace('[codename-parser-smoke] origin=' + file.relative + ' bytes=' + bytes.length
+					+ ' sha256=' + haxe.crypto.Sha256.encode(source)
+					+ ' normalizedBytes=' + haxe.io.Bytes.ofString(normalized).length
+					+ ' stages=' + (parsed.normalizationTrace == null || parsed.normalizationTrace.length == 0
+						? '<disabled>' : parsed.normalizationTrace.join('|'))
+					+ ' questionSamples=' + (samples.length == 0 ? '<none>' : samples.join(' || ')));
+			}
+			for (diagnostic in parsed.diagnostics)
+				trace('[codename-script-' + diagnostic.code + '] ' + file.relative + ':'
+					+ diagnostic.line + ': ' + diagnostic.message);
+			interp.release();
+			return;
+		}
+		for (name in bindings.keys())
+			interp.variables.set(name.substr(name.lastIndexOf('.') + 1), bindings.get(name));
+		interp.protectImportAliases(bindings);
+		interp.variables.set('Paths', paths);
+		interp.variables.set('Assets', paths.assets());
+		interp.variables.set('FlxTween', interp.tweenFacade());
+		interp.variables.set('FunkinSprite', CodenameFunkinSprite);
+		interp.variables.set('FlxG', interp.flxG);
+		interp.variables.set('FlxCamera', FlxCamera);
+		interp.variables.set('FlxSprite', FlxSprite);
+		interp.variables.set('FlxTypedGroup', FlxTypedGroup);
+		interp.variables.set('FlxTimer', FlxTimer);
+		interp.variables.set('FlxColor', HxcFlxColorCompat);
+		interp.variables.set('FlxPoint', CodenameImportBindings.pointConstants());
+		interp.variables.set('Math', Math);
+		interp.variables.set('Conductor', Conductor);
+		interp.variables.set('SONG', getCodenameSongView());
+		interp.variables.set('CoolUtil', CodenameModBindings.coolUtil(paths));
+		interp.variables.set('Flags', CodenameImportBindings.codenameFlags());
+		interp.variables.set('getCodenameLineCharacters', getCodenameLineCharacters);
+		interp.variables.set('getCodenameInputLine', getCodenameInputLine);
+		interp.variables.set('events', codenameAuthoredEvents());
+		interp.variables.set('executeEvent', function(event:Dynamic):Void executeCodenameEvent(event));
+		interp.variables.set('strumLines', codenameStrumLineView());
+		interp.variables.set('scripts', codenamePublicScriptGlobals.scriptFacade(file.relative, file.relative));
+		interp.variables.set('curSong', SONG.song);
+		interp.variables.set('curStep', curStep);
+		interp.variables.set('curBeat', curBeat);
+		interp.variables.set('stage', curStage);
+		interp.variables.set('camGame', camGame);
+		interp.variables.set('camHUD', camHUD);
+		interp.variables.set('game', this);
+		if (codenameInstFacade == null) codenameInstFacade = new CodenameInstrumentalFacade(inst);
+		interp.variables.set('inst', codenameInstFacade);
+		interp.variables.set('maxHealth', 2.0);
+		interp.variables.set('startSong', startSong);
+		interp.bindLiveGlobal('startedCountdown', function():Dynamic return startedCountdown,
+			function(value:Dynamic):Void startedCountdown = value == true);
+		interp.bindLiveGlobal('curCameraTarget', function():Dynamic return curCameraTarget,
+			function(value:Dynamic):Void curCameraTarget = Std.int(value));
+		bindCodenameCameraGlobals(interp);
+		refreshCodenameHudBindings(interp);
+		var scope = {file:file, interp:interp, owned:new Array<FlxBasic>(),
+			postCreated:false, failedCallbacks:new Map<String, Bool>()};
+		var placeOne = function(value:Dynamic, layer:Int, exactIndex:Null<Int> = null):Dynamic {
+			if (protectedStageObject(value)) return value;
+			var sprite = interp.nativeFlxBasic(value);
+			if (sprite == null || protectedStageObject(sprite)) {
+				trace('[codename-scene] add/insert requires a native FlxBasic or a class proxy from this owner in ' + file.relative);
+				return value;
+			}
+			for (other in codenameScriptScopes)
+				if (other != scope && other.owned.indexOf(sprite) >= 0) {
+					trace('[codename-scene] Cannot move another script scope object in ' + file.relative);
+					return value;
+				}
+			if (codenameBorrowedNode(sprite)) {
+				var index = exactIndex;
+				if (index == null) {
+					var without = members.copy();
+					without.remove(sprite);
+					index = without.length;
+					if (layer != 0) {
+						if (layer & BEHIND_GF != 0 && gf != null && without.indexOf(gf) >= 0) index = Std.int(Math.min(index, without.indexOf(gf)));
+						if (layer & BEHIND_DAD != 0 && dad != null && without.indexOf(dad) >= 0) index = Std.int(Math.min(index, without.indexOf(dad)));
+						if (layer & BEHIND_BF != 0 && boyfriend != null && without.indexOf(boyfriend) >= 0) index = Std.int(Math.min(index, without.indexOf(boyfriend)));
+					}
+				}
+				codenameMembership().place(scope, sprite, index);
+				return value;
+			}
+			if (members.indexOf(sprite) >= 0 && scope.owned.indexOf(sprite) < 0) {
+				trace('[codename-scene] Cannot claim an existing scene object in ' + file.relative);
+				return value;
+			}
+			if (scope.owned.indexOf(sprite) < 0) scope.owned.push(sprite);
+			interp.claimSceneObject(value);
+			if (file.family == 'stage') registerStageSprite(sprite);
+			if (exactIndex == null) addHscriptSprite(sprite, layer);
+			else {
+				if (RuntimeSmokeHarness.enabled() && file.family == 'stage') {
+					var spriteClass = Type.getClass(sprite);
+					RuntimeSmokeHarness.markStep('codename-scene-insert:source=' + file.relative
+						+ ':requested=' + exactIndex + ':existing=' + members.indexOf(sprite)
+						+ ':gf=' + members.indexOf(gf) + ':dad=' + members.indexOf(dad)
+						+ ':bf=' + members.indexOf(boyfriend) + ':memberCount=' + members.length
+						+ ':class=' + (spriteClass == null ? '<unknown>' : Type.getClassName(spriteClass)));
+				}
+				// Match FlxGroup.insert(): inserting a current member is a no-op.
+				// Codename stages commonly insert one view before several actors to
+				// express a layer boundary; moving it on every call changes that intent.
+				if (members.indexOf(sprite) >= 0) return value;
+				if (!hasExplicitCameras(sprite)) sprite.cameras = [camGame];
+				this.insert(exactIndex, sprite);
+			}
+			return value;
+		};
+		var place = function(value:Dynamic, layer:Int, exactIndex:Null<Int> = null):Dynamic {
+			var batch = CodenameSceneBatch.collect(value,
+				function(candidate:Dynamic):Null<FlxBasic> {
+					if (protectedStageObject(candidate)) return null;
+					return interp.nativeFlxBasic(candidate);
+				},
+				function(candidate:Dynamic):Void {
+					if (!protectedStageObject(candidate))
+						trace('[codename-scene] add/insert requires a native FlxBasic or a class proxy from this owner in ' + file.relative);
+				});
+			for (index in 0...batch.length)
+				placeOne(batch[index], layer, exactIndex == null ? null : exactIndex + index);
+			return value;
+		};
+		interp.variables.set('add', function(value:Dynamic):Dynamic return place(value, 0));
+		interp.variables.set('disableScript', interp.disableScript);
+		interp.variables.set('insert', function(index:Int, value:Dynamic):Dynamic return place(value, 0, index));
+		interp.variables.set('behindGF', function(value:Dynamic):Dynamic return place(value, BEHIND_GF));
+		interp.variables.set('behindDad', function(value:Dynamic):Dynamic return place(value, BEHIND_DAD));
+		interp.variables.set('behindBF', function(value:Dynamic):Dynamic return place(value, BEHIND_BF));
+		interp.variables.set('addBehindGF', function(value:Dynamic):Dynamic return place(value, BEHIND_GF));
+		interp.variables.set('addBehindDad', function(value:Dynamic):Dynamic return place(value, BEHIND_DAD));
+		interp.variables.set('addBehindBF', function(value:Dynamic):Dynamic return place(value, BEHIND_BF));
+		interp.variables.set('remove', function(value:Dynamic):Void {
+			var basic = interp.nativeFlxBasic(value);
+			if (basic != null && !protectedStageObject(basic)) {
+				if (codenameBorrowedNode(basic)) codenameMembership().place(scope, basic, null);
+				else if (scope.owned.indexOf(basic) >= 0 && members.indexOf(basic) >= 0) remove(basic, true);
+			}
+		});
+		var gameAlpha = camGame == null ? 1 : camGame.alpha;
+		var hudAlpha = camHUD == null ? 1 : camHUD.alpha;
+		try {
+			codenamePublicScriptGlobals.attach(interp);
+			codenamePublicScriptGlobals.declare(interp, parsed.publicVariables, file.relative, file.relative);
+			interp.execute(parsed.program);
+			if (interp.scriptDisabled) {
+				releaseCodenameScope(scope);
+				return;
+			}
+			codenameScriptScopes.push(scope);
+			if (!callCodenameScript(scope, 'create', [])) {
+				if (camGame != null) camGame.alpha = gameAlpha;
+				if (camHUD != null) camHUD.alpha = hudAlpha;
+				codenameScriptScopes.remove(scope);
+				releaseCodenameScope(scope);
+			}
+		} catch (error:Dynamic) {
+			if (camGame != null) camGame.alpha = gameAlpha;
+			if (camHUD != null) camHUD.alpha = hudAlpha;
+			codenameScriptScopes.remove(scope);
+			releaseCodenameScope(scope);
+			trace('[codename-script-error] ' + file.relative + ': ' + Std.string(error));
+		}
+	}
+
+	function refreshCodenameStageAliases():Void {
+		refreshCodenameCharacterScopes();
+		// Song timers may reference props even when their script has no update
+		// hook. Refresh surviving scopes immediately on stage replacement.
+		for (scope in codenameScriptScopes) {
+			scope.interp.variables.set('stage', curStage);
+			scope.interp.stageBindings.refresh(scope.interp.variables,
+				curStage == null ? null : curStage.elements,
+				scope.interp.isStageActorAlias);
+		}
+	}
+
+	function loadCodenameStageCompat(?requested:String):Void {
+		refreshCodenameStageAliases();
+		#if sys
+		var root = codenameSelectedRoot();
+		var plan = getCodenameScriptPlan();
+		if (root == '' || plan == null) return;
+		var stage = CodenameScriptPlan.selectedStage(plan, codenameDifficulty(Reflect.fields(plan.stages)));
+		if (requested != null && requested != '') {
+			var original = registeredStage(SONG.stage);
+			if (requested != SONG.stage && (original == null || requested != original.name))
+				stage = requested;
+		}
+		for (file in CodenameScriptDiscovery.discover(root, null, null, stage))
+			if (file.family == 'stage') loadCodenameScript(file, root);
+		if (RuntimeSmokeHarness.enabled()) {
+			var order = new Array<String>();
+			for (index in 0...members.length) {
+				var member = members[index];
+				if (member == gf) order.push('gf:' + index);
+				else if (member == dad) order.push('dad:' + index);
+				else if (member == boyfriend) order.push('bf:' + index);
+				else if (member != null) {
+					var memberClass = Type.getClass(member);
+					var className = memberClass == null ? '' : Type.getClassName(memberClass);
+					if (className.indexOf('FlxView3D') >= 0)
+						order.push('view:' + index + ':' + className);
+				}
+			}
+			RuntimeSmokeHarness.markStep('codename-scene-order-after-stage:' + order.join(','));
+		}
+		if (startedCountdown) dispatchCodenamePostCreate();
+		#end
+	}
+
+	/** Run the selected owner's PlayState script as part of this native gameplay
+	 * state's normal Codename lifecycle. Its `scripts.set()` exports are shared
+	 * with later stage and song scopes and are released with this PlayState. */
+	function loadCodenameStateCompat():Void {
+		if (codenameStateScriptLoaded) return;
+		codenameStateScriptLoaded = true;
+		#if sys
+		var root = codenameSelectedRoot();
+		if (root == '') return;
+		var relative = 'data/states/PlayState.hx';
+		var resolution = CodenameScriptDiscovery.scopedResolution(root, relative);
+		if (resolution.relative == null) {
+			if (resolution.status != 'missing')
+				trace('[codename-state-script] ' + relative + ' ' + resolution.status + ' in the selected owner.');
+			return;
+		}
+		var path = Path.join([root, resolution.relative]);
+		if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) {
+			trace('[codename-state-script] Resolved gameplay state script is not a readable file: ' + resolution.relative);
+			return;
+		}
+		loadCodenameScript({path:path, relative:resolution.relative, family:'state'}, root);
+		#end
+	}
+
+	function loadCodenameSongScripts():Void {
+		if (codenameSongScriptsLoaded) return;
+		codenameSongScriptsLoaded = true;
+		#if sys
+		var root = codenameSelectedRoot();
+		var plan = getCodenameScriptPlan();
+		if (root == '' || plan == null) return;
+		var scriptDifficulties:Array<String> = [];
+		var scriptsFolder = Path.join([root, 'songs', plan.song, 'scripts']);
+		if (FileSystem.isDirectory(scriptsFolder)) try {
+			for (entry in FileSystem.readDirectory(scriptsFolder))
+				if (CodenameScriptDiscovery.safeName(entry)
+					&& FileSystem.isDirectory(Path.join([scriptsFolder, entry]))
+					&& CodenameScriptDiscovery.withinRoot(root, Path.join([scriptsFolder, entry])))
+					scriptDifficulties.push(entry);
+		} catch (_:Dynamic) {}
+		var selected = codenameDifficulty(scriptDifficulties);
+		for (file in CodenameScriptDiscovery.discover(root, plan.song,
+			selected == '' ? [] : [selected], null))
+			if (file.family == 'global-song' || file.family == 'hud'
+				|| file.family == 'song' || file.family == 'difficulty') loadCodenameScript(file, root);
+		// Note-type scripts are shared scene scopes in Codename. Load the selected
+		// chart's types before deferred note construction, so creation, input,
+		// hit/miss and cleanup hooks all follow the ordinary source lifecycle.
+		var noteTypes:Dynamic = Reflect.field(SONG, 'codenameNoteTypes');
+		if (noteTypes == null) {
+			// Older generated charts remain byte-identical during a missing-only
+			// owner refresh. The new sidecar retains each authored difficulty's
+			// ordered type table without borrowing another difficulty's scripts.
+			var noteTypePath = CodenameScriptPlan.noteTypesMetadataPath(root, plan.song);
+			if (FNFAssets.exists(noteTypePath) && CodenameScriptDiscovery.withinRoot(root, noteTypePath)) {
+				try {
+					var table = CodenameScriptPlan.parseNoteTypes(FNFAssets.getText(noteTypePath));
+					if (table.song != plan.song)
+						throw 'Invalid selected-owner note-type table';
+					noteTypes = CodenameScriptPlan.selectedNoteTypes(table,
+						codenameDifficulty(Reflect.fields(table.difficulties)));
+				} catch (error:Dynamic) {
+					trace('[codename-note-types] ' + noteTypePath + ': ' + Std.string(error));
+				}
+			} else
+				trace('[codename-note-types] Missing selected-chart type metadata; refresh the imported owner.');
+		}
+		if (Std.isOfType(noteTypes, Array)) {
+			codenameSelectedNoteTypes = (cast noteTypes:Array<Dynamic>).copy();
+			var notePlan = CodenameScriptDiscovery.discoverNoteTypesDetailed(root, noteTypes);
+			for (diagnostic in notePlan.diagnostics) trace('[codename-note-types] ' + diagnostic);
+			for (file in notePlan.files) {
+				var loaded = false;
+				for (scope in codenameScriptScopes)
+					if (scope.file.path == file.path) { loaded = true; break; }
+				if (!loaded) loadCodenameScript(file, root);
+			}
+		}
+		#end
+	}
+
+	/** Source type IDs are one-based indices, independent of native note banks. */
+	@:keep public function codenameNoteTypeIndex(kind:String):Int {
+		if (kind == null || kind == '') return 0;
+		return codenameSelectedNoteTypes.indexOf(kind) + 1;
+	}
+
+	/** Match Codename's implicit custom-type atlas without decoding it per note. */
+	@:keep public function codenameNoteSprite(kind:String):String {
+		if (kind == null || kind == '' || !CodenameScriptDiscovery.safeName(kind)) return 'game/notes/default';
+		if (codenameNoteSpritePaths.exists(kind)) return codenameNoteSpritePaths.get(kind);
+		var result = 'game/notes/default';
+		var root = codenameSelectedRoot();
+		if (root != '') try {
+			var relative = 'game/notes/' + kind;
+			var path = new CodenamePaths(root).file('images/' + relative + '.png');
+			if (FNFAssets.exists(path)) result = relative;
+		} catch (_:Dynamic) {}
+		codenameNoteSpritePaths.set(kind, result);
+		return result;
+	}
+
+	/** Finish the deferred constructor phase exactly once, after selected-owner
+	 * song/HUD scripts have run create() and before any receptor entrance tween. */
+	function prepareCodenameCreationVisuals():Void {
+		if (!codenameCreationStrumsPrepared) {
+			codenameCreationStrumsPrepared = true;
+			if (codenameSelectedRoot() != ''
+				&& (hasCodenameCreationCallback('onStrumCreation')
+					|| hasCodenameCreationCallback('onPostStrumCreation'))) {
+				var lines:Array<Strumline> = [];
+				for (line in [playerStrums, enemyStrums])
+					if (line != null && lines.indexOf(line) < 0) lines.push(line);
+				for (line in codenameStrumlines)
+					if (line != null && lines.indexOf(line) < 0) lines.push(line);
+				for (line in lines) {
+					var positions:Array<{x:Float, y:Float, visible:Bool, alpha:Float}> = [];
+					for (receptor in line.members)
+						positions.push({x:receptor.x, y:receptor.y,
+							visible:receptor.visible, alpha:receptor.alpha});
+					line.changeType(line.type, false, true);
+					// The source lifecycle has no receptors for create() to alter;
+					// preserve existing script-authored lane placement in this host.
+					for (index in 0...Std.int(Math.min(positions.length, line.members.length))) {
+						var receptor = line.members[index];
+						var previous = positions[index];
+						receptor.x = previous.x;
+						receptor.y = previous.y;
+						receptor.visible = previous.visible;
+						receptor.alpha = previous.alpha;
+					}
+				}
+				configurePsychStrumSkins();
+			}
+		}
+		if (pendingCodenameNoteGeneration != null) {
+			var generate = pendingCodenameNoteGeneration;
+			pendingCodenameNoteGeneration = null;
+			generate();
+		}
+		markCodenameCreationVisualSummary();
+	}
+
+	/** Event-family scopes keep their original countdown-time load point, after
+	 * generateSong has populated the authored event list and note group. */
+	function loadCodenameEventScripts():Void {
+		if (codenameEventScriptsLoaded) return;
+		codenameEventScriptsLoaded = true;
+		#if sys
+		var root = codenameSelectedRoot();
+		var plan = getCodenameScriptPlan();
+		if (root == '' || plan == null) return;
+		var eventNames:Array<String> = [];
+		for (event in songEvents) {
+			var authored = CodenameEventDispatch.fromNative(event);
+			if (authored != null && eventNames.indexOf(authored.name) < 0) eventNames.push(authored.name);
+		}
+		for (file in CodenameScriptDiscovery.discoverEvents(root, eventNames))
+			loadCodenameScript(file, root);
+		if (songEvents.length > 0 && eventNames.length == 0)
+			trace('[codename-event-metadata] This import has no authored event metadata; refresh generated charts to enable structured callbacks.');
+		#end
+	}
+
+	function compatScriptRoots():Array<String> {
+		var roots:Array<String> = ['assets'];
+		#if sys
+		var manifest = getCompatScriptManifest();
+		if (manifest != null && manifest.roots != null)
+			for (entry in CompatScriptManifest.rootsInPrecedence(manifest)) {
+				if (entry == null || entry.path == null || StringTools.trim(entry.path) == '')
+					continue;
+				var path = Path.normalize(entry.path);
+				if (roots.indexOf(path) < 0 && FileSystem.isDirectory(path))
+					roots.push(path);
+			}
+		#end
+		return roots;
+	}
+
+	/** Roots belonging to foreign compatibility imports, excluding the native
+	 * asset tree. Event-owned resources must not silently resolve to another
+	 * mod's same-named native asset. */
+	function compatForeignScriptRoots():Array<String> {
+		var roots:Array<String> = [];
+		for (root in compatScriptRoots())
+			if (root != null && root != 'assets' && roots.indexOf(root) < 0)
+				roots.push(root);
+		return roots;
+	}
+
+	/** Resolve imported shaders before falling back to native assets. */
+	function resolveCompatShader(name:String):Null<String> {
+		// V-Slice's scripted wrapper calls the shared vignette fragment
+		// `VignEffect`; this engine stores the same authored effect as
+		// `vignette.frag`. Keep the alias at the resolver boundary so ordinary
+		// shader names and manifest scoping remain unchanged.
+		var requested = name != null && name.toLowerCase() == 'vigneffect' ? 'vignette' : name;
+		var frag = ShaderPaths.resolve(requested, compatForeignScriptRoots(), false);
+		return frag == null ? ShaderPaths.resolve(requested) : frag;
+	}
+
+	function hxcScriptRoots():Array<String> {
+		var roots:Array<String> = ['assets/scripts'];
+		#if sys
+		for (compatRoot in compatScriptRoots()) {
+			if (compatRoot == 'assets')
+				continue;
+			// The isolated namespace retains scripts/, stages/, shared/, and the
+			// HXC data-family adapters. Discover from its root so direct HXC stage
+			// trees are selected as well as scripts/stages/*.hxc.
+			if (FileSystem.isDirectory(compatRoot) && roots.indexOf(compatRoot) < 0)
+				roots.push(compatRoot);
+		}
+		#end
+		return roots;
+	}
+	function loadPsychCompatScripts():Void {
+		if (psychCompatScriptsLoaded)
+			return;
+		psychCompatScriptsLoaded = true;
+		#if sys
+		for (compatRoot in compatScriptRoots()) {
+			var plan = PsychScriptDiscovery.discover(compatRoot, Song.storageFolder(SONG), SONG, songEvents);
+			for (entry in plan.scripts) {
+			if (entry == null || entry.path == null || entry.scope == PsychScriptDiscovery.STAGE)
+				continue;
+			var basename = Path.withoutDirectory(entry.path).toLowerCase();
+			// The native loader below chooses exactly one difficulty-aware modchart.
+			// Discovery sees every sibling, so never replay those as generic song
+			// scripts. Psych script.lua and additional modules still load normally.
+			if (basename.startsWith('modchart.') || basename.startsWith('modchart-'))
+				continue;
+			var identity = compatibleScriptIdentity(entry.path);
+			if (loadedCompatScriptPaths.exists(identity))
+				continue;
+			var scriptScope = compatibleScriptKey(entry.scope);
+			try {
+				makeHaxeState(scriptScope, Path.directory(entry.path) + '/',
+					Path.withoutDirectory(entry.path));
+				if (entry.scope == PsychScriptDiscovery.CUSTOM_EVENT
+					&& StringTools.trim(Path.withoutExtension(Path.withoutDirectory(entry.path))).toLowerCase() == 'flash'
+					&& hscriptStates.exists(scriptScope)
+					&& hscriptStates.get(scriptScope).variables.exists('onEvent'))
+					psychFlashEventScopes.set(scriptScope, true);
+			} catch (error:Dynamic) {
+				// A single optional/global donor script must not make every imported
+				// song unplayable. The exact path and parser/runtime error stay visible.
+				trace('[compat-script-error] ' + entry.path + ': ' + Std.string(error));
+			}
+			}
+		}
+		#end
+	}
+
+	/** Load globally enabled Psych scripts from the configured imported owner.
+	 * Only the selected provider's global scripts are eligible; no donor path or
+	 * other installed package is searched at runtime. */
+	function loadDefaultPsychGlobalScripts():Void {
+		if (defaultPsychGlobalScriptsLoaded)
+			return;
+		defaultPsychGlobalScriptsLoaded = true;
+		#if sys
+		var owner = PsychGlobalPackImporter.defaultProvider();
+		if (owner == null)
+			return;
+		var plan = PsychScriptDiscovery.discover(owner, Song.storageFolder(SONG), SONG, songEvents);
+		for (entry in plan.scripts) {
+			if (entry == null || entry.scope != PsychScriptDiscovery.GLOBAL || entry.path == null)
+				continue;
+			var identity = compatibleScriptIdentity(entry.path);
+			if (loadedCompatScriptPaths.exists(identity))
+				continue;
+			var scope = compatibleScriptKey('global_provider');
+			try {
+				makeHaxeState(scope, Path.directory(entry.path) + '/', Path.withoutDirectory(entry.path),
+					null, null, null, null, owner);
+				defaultPsychGlobalScopes.push(scope);
+			} catch (error:Dynamic) {
+				trace('[psych-global-provider-error] ' + entry.path + ': ' + Std.string(error));
+			}
+		}
+		#end
+	}
+	/** Psych's addLuaScript resolves a relative Lua path inside this song's
+	 * declared compatibility roots, then the native asset tree. */
+	function resolvePsychLuaScriptPath(requested:String, ?callerPath:String):Null<String> {
+		if (requested == null)
+			return null;
+		var clean = StringTools.replace(StringTools.trim(requested), '\\', '/');
+		while (clean.startsWith('./'))
+			clean = clean.substr(2);
+		if (clean.startsWith('assets/'))
+			clean = clean.substr('assets/'.length);
+		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0)
+			return null;
+		for (part in clean.split('/'))
+			if (part == '' || part == '..' || part == '.')
+				return null;
+		if (clean.startsWith('imported_mods/'))
+			return null;
+		if (!clean.toLowerCase().endsWith('.lua')) {
+			if (Path.extension(clean) != '')
+				return null;
+			clean += '.lua';
+		}
+		var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+		var roots = selectedRoot == null || selectedRoot == ''
+			? compatForeignScriptRoots() : [selectedRoot];
+		var allowNative = true;
+		if (callerPath != null) {
+			var owner = Path.normalize(callerPath);
+			for (root in roots)
+				if (owner.startsWith(Path.normalize(root) + '/')) {
+					allowNative = false;
+					break;
+				}
+		}
+		if (allowNative)
+			roots.push('assets');
+		for (root in roots) {
+			for (base in (root == 'assets' ? [root] : [root, Path.join([root, 'assets'])])) {
+				var candidate = Path.normalize(Path.join([base, clean]));
+				if (FNFAssets.isInScope(candidate) && FNFAssets.exists(candidate))
+					return candidate;
+			}
+		}
+		return null;
+	}
+
+	function compatAddLuaScript(luaFile:String, ?ignoreAlreadyRunning:Bool = false,
+		?callerPath:String):Bool {
+		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath);
+		if (scriptPath == null) {
+			trace('[psych-add-lua-script-missing] ' + luaFile);
+			return false;
+		}
+		var identity = compatibleScriptIdentity(scriptPath);
+		if (loadingPsychLuaScriptPaths.exists(identity)) {
+			trace('[psych-add-lua-script-recursive] ' + scriptPath);
+			return false;
+		}
+		if (!ignoreAlreadyRunning && compatScriptRunning(identity)) {
+			trace('[psych-add-lua-script-already-running] ' + scriptPath);
+			return false;
+		}
+		loadingPsychLuaScriptPaths.set(identity, true);
+		try {
+			makeHaxeState(compatibleScriptKey('script'), Path.directory(scriptPath) + '/',
+				Path.withoutDirectory(scriptPath));
+			loadingPsychLuaScriptPaths.remove(identity);
+			return true;
+		} catch (error:Dynamic) {
+			loadingPsychLuaScriptPaths.remove(identity);
+			trace('[psych-add-lua-script-error] ' + scriptPath + ': ' + Std.string(error));
+			return false;
+		}
+	}
+
+	/** A closed script or a stage interpreter replaced under the same scope is
+	 * no longer running. Drop stale registrations before duplicate checks. */
+	function compatScriptRunning(identity:String):Bool {
+		var scopes = compatScriptScopes.get(identity);
+		if (scopes == null)
+			return false;
+		var active:Array<{scope:String, interp:Interp, path:String}> = [];
+		var runningLua = false;
+		for (registration in scopes)
+			if (hscriptStates.get(registration.scope) == registration.interp
+				&& registration.interp.variables.get('__compatClosed') != true) {
+				active.push(registration);
+				if (registration.path.endsWith('.lua'))
+					runningLua = true;
+			}
+		if (active.length == 0) {
+			compatScriptScopes.remove(identity);
+			loadedCompatScriptPaths.remove(identity);
+			return false;
+		}
+		compatScriptScopes.set(identity, active);
+		return runningLua;
+	}
+
+	/** Psych removes a Lua script's callbacks, but its already-created stage
+	 * objects remain. Resolve inside the caller's owned root just like add. */
+	function compatRemoveLuaScript(luaFile:String, ?callerPath:String):Bool {
+		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath);
+		if (scriptPath == null)
+			return false;
+		for (root in compatForeignScriptRoots()) {
+			var prefix = Path.normalize(root) + '/';
+			var songPrefix = Path.normalize(currentSongDataFolder()) + '/';
+			if (Path.normalize(scriptPath).startsWith(prefix)
+				&& (callerPath == null || (!Path.normalize(callerPath).startsWith(prefix)
+					&& !Path.normalize(callerPath).startsWith(songPrefix))))
+				return false;
+		}
+		var identity = compatibleScriptIdentity(scriptPath);
+		if (!compatScriptRunning(identity))
+			return false;
+		var scopes = compatScriptScopes.get(identity);
+		var removed = false;
+		var selectedPath = Path.normalize(scriptPath).toLowerCase();
+		for (registration in scopes) {
+			if (registration.path != selectedPath)
+				continue;
+			var target = hscriptStates.get(registration.scope);
+			if (target == null || target != registration.interp
+				|| target.variables.get('__compatClosed') == true)
+				continue;
+			target.variables.set('__compatClosed', true);
+			removed = true;
+		}
+		if (removed) {
+			// A same-stem HScript is a different source file and keeps its own
+			// interpreter live when Psych removes only the Lua sibling.
+			compatScriptRunning(identity);
+		}
+		return removed;
+	}
+	function hxcScriptMatches(path:String, names:Array<String>):Bool {
+		var stem = HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(path));
+		for (name in names)
+			if (stem == HxcScriptDiscovery.normalizeToken(name))
+				return true;
+		return false;
+	}
+	/**
+		Return the manifest-owned character companions selected for this song.
+		The discovery plan can contain several roots (including stale roots from
+		older imports); ownership is resolved once per character id before any
+		interpreter is created, so a swap can never load a sibling-root duplicate.
+	*/
+	function hxcCharacterPaths(plan:HxcScriptDiscovery.HxcScriptDiscoveryResult,
+		names:Array<String>):Array<String> {
+		if (plan == null || plan.all == null)
+			return [];
+		var manifest = getCompatScriptManifest();
+		return HxcScriptDiscovery.selectCharacterPaths(plan.all, names, hxcScriptRoots(),
+			CompatScriptManifest.selectedRoot(manifest));
+	}
+
+	/**
+		Return true only when a selected manifest-owned HXC character can provide a
+		complete native visual before its generated onAdd callback runs.
+
+		Character.new is intentionally synchronous, while HXC CharacterInfo
+		adapters are attached immediately afterwards by loadHxcCharacterCompat().
+		That ordering used to emit a false registry-missing diagnostic (and make
+		preload code reject the actor) for names such as WhitBonkers even though the
+		adapter had a valid CharacterInfo definition and a usable atlas.  A script
+		file alone is not enough: requiring the literal definition plus both atlas
+		files keeps real missing dependencies visible.
+	*/
+	public function hasPendingHxcCharacterVisual(characterName:String):Bool {
+		if (characterName == null || StringTools.trim(characterName) == '')
+			return false;
+		var key = HxcScriptDiscovery.normalizeToken(characterName);
+		if (key == '')
+			return false;
+		if (pendingHxcCharacterVisuals.exists(key))
+			return pendingHxcCharacterVisuals.get(key);
+		pendingHxcCharacterVisuals.set(key, false);
+		#if sys
+		try {
+			if (SONG == null)
+				return false;
+			var plan = getHxcScriptPlan();
+			for (scriptPath in hxcCharacterPaths(plan, [characterName]))
+				if (hxcCharacterDefinitionHasAtlas(scriptPath)) {
+					pendingHxcCharacterVisuals.set(key, true);
+					return true;
+				}
+		} catch (error:Dynamic) {
+			trace('[hxc-character-probe-error] ' + characterName + ': ' + Std.string(error));
+		}
+		#end
+		return false;
+	}
+
+	/** Probe the exact static media that applyCharacterInfo() will attach. */
+	function hxcCharacterDefinitionHasAtlas(scriptPath:String):Bool {
+		if (scriptPath == null || StringTools.trim(scriptPath) == '')
+			return false;
+		var source = FNFAssets.getText(scriptPath);
+		if (source == null || StringTools.trim(source) == '')
+			return false;
+		var definition:HxcCompatResult = HxcCompat.analyze(source, scriptPath);
+		if (definition == null || definition.kind != 'character'
+			|| definition.characterDefinition == null)
+			return false;
+		var spriteValue:Dynamic = Reflect.field(definition.characterDefinition, 'spritePath');
+		var spritePath = spriteValue == null ? '' : StringTools.trim(Std.string(spriteValue));
+		var animations:Dynamic = Reflect.field(definition.characterDefinition, 'animations');
+		if (spritePath == '' || !Std.isOfType(animations, Array)
+			|| (cast animations:Array<Dynamic>).length == 0)
+			return false;
+		var clean = StringTools.replace(spritePath, '\\', '/');
+		while (clean.startsWith('./'))
+			clean = clean.substr(2);
+		while (clean.startsWith('/'))
+			clean = clean.substr(1);
+		if (clean.toLowerCase().startsWith('assets/'))
+			clean = clean.substr('assets/'.length);
+		if (clean.toLowerCase().startsWith('images/'))
+			clean = clean.substr('images/'.length);
+		for (extension in ['.png', '.xml'])
+			if (clean.toLowerCase().endsWith(extension))
+				clean = clean.substr(0, clean.length - extension.length);
+		if (clean == '' || clean.indexOf('..') >= 0 || clean.indexOf(':') >= 0)
+			return false;
+		var root = hxcAssetRootForScript(scriptPath);
+		var scopedImage = HxcStateAssetScope.scopedAssetPath(root, 'images/' + clean + '.png');
+		var scopedMetadata = HxcStateAssetScope.scopedAssetPath(root, 'images/' + clean + '.xml');
+		// HXC CharacterInfo packs commonly namespace the script but share their
+		// atlas in the engine-owned assets/images tree. This mirrors the runtime
+		// atlas resolver's bounded native fallback without opening arbitrary paths.
+		if (scopedImage == null)
+			scopedImage = FNFAssets.exists('assets/images/' + clean + '.png')
+				? 'assets/images/' + clean + '.png' : null;
+		if (scopedMetadata == null)
+			scopedMetadata = FNFAssets.exists('assets/images/' + clean + '.xml')
+				? 'assets/images/' + clean + '.xml' : null;
+		return scopedImage != null && scopedMetadata != null;
+	}
+
+	function loadHxcCharacterCompat(characterName:String, characterRole:String,
+		?characterOverride:Character):Void {
+		#if sys
+		// Character actors are created before the song's countdown.  Do not make
+		// their HXC companion depend on the later all-script load gate: that left
+		// imported FPS Plus CharacterInfo definitions dormant until the first
+		// countdown (and made the actor render as the emergency Dad visual during
+		// the opening).  Loading one selected character companion here is safe and
+		// idempotent; loadHxcCompatScripts() skips its identity when it later
+		// materializes the remaining song/stage/module scopes.
+		if (characterName == null || StringTools.trim(characterName) == '')
+			return;
+		var plan = getHxcScriptPlan();
+		if (plan == null || plan.all == null)
+			return;
+		for (scriptPath in hxcCharacterPaths(plan, [characterName])) {
+			if (HxcScriptDiscovery.familyForPath(scriptPath) != 'character'
+				|| !HxcScriptDiscovery.characterMatches(scriptPath, [characterName])
+				|| loadedCompatScriptPaths.exists(compatibleScriptIdentity(scriptPath)))
+				continue;
+			try {
+				var scope = compatibleScriptKey('hxc_character');
+				makeHaxeState(scope, Path.directory(scriptPath) + '/', Path.withoutDirectory(scriptPath),
+					null, characterRole, characterOverride);
+				registerHxcCharacterScope(scope, scriptPath, characterRole);
+					var loadedActor = characterOverride == null
+						? hxcCharacterForRole(characterRole) : characterOverride;
+				// Donor CharacterData calls setScale while constructing its actor.
+				// Native Character has already applied that definition before this
+				// companion is loaded, so replay the lifecycle callback with the
+				// recorded base scale. Script fields derived from scale must exist
+				// before an inherited getScreenPosition hook can render the actor.
+				if (loadedActor != null) {
+					var previousActor = hxcCharacterCallbackActor;
+					var previousRole = hxcCharacterCallbackRole;
+					hxcCharacterCallbackActor = loadedActor;
+					hxcCharacterCallbackRole = hxcCharacterRole(characterRole);
+					callHscript('setScale', [loadedActor.stageBaseScaleX], scope, true);
+					hxcCharacterCallbackActor = previousActor;
+					hxcCharacterCallbackRole = previousRole;
+				}
+					callHxcCharacterAdded(loadedActor, characterRole, characterOverride);
+			} catch (error:Dynamic) {
+				trace('[hxc-character-runtime-error] ' + scriptPath + ': ' + Std.string(error));
+			}
+		}
+		#end
+	}
+	function getHxcScriptPlan():HxcScriptDiscovery.HxcScriptDiscoveryResult {
+		#if sys
+		if (cachedHxcScriptPlan == null) {
+			var paths:Array<String> = [];
+			var roots = hxcScriptRoots();
+			for (root in roots) {
+				var part = HxcScriptDiscovery.discoverRoot(root, SONG.song);
+				if (part == null || part.all == null)
+					continue;
+				for (path in part.all)
+					if (paths.indexOf(path) < 0)
+						paths.push(path);
+			}
+			paths = HxcScriptDiscovery.preferFamilyPaths(paths, roots, 'module');
+			paths = HxcScriptDiscovery.preferFamilyPaths(paths, roots, 'song');
+			cachedHxcScriptPlan = HxcScriptDiscovery.discover(paths, SONG.song);
+		}
+		return cachedHxcScriptPlan;
+		#else
+		return null;
+		#end
+	}
+	function loadHxcCompatScripts():Void {
+		if (hxcCompatScriptsLoaded)
+			return;
+		hxcCompatScriptsLoaded = true;
+		#if sys
+		var plan = getHxcScriptPlan();
+		if (plan == null)
+				return;
+			var characterNames = [SONG.player1, SONG.player2, SONG.gf];
+			var selectedCharacterPaths = hxcCharacterPaths(plan, characterNames);
+			// Allocate and register every module scope before executing any module's
+			// start hook. A module may call a sibling through ModuleHandler during
+			// initialization, so discovery order must not decide whether that call
+			// resolves.
+			for (scriptPath in plan.all) {
+				if (HxcScriptDiscovery.familyForPath(scriptPath) != 'module')
+					continue;
+				var moduleIdentity = compatibleScriptIdentity(scriptPath);
+				if (loadedCompatScriptPaths.exists(moduleIdentity) || hxcModulePaths.exists(moduleIdentity))
+					continue;
+				var moduleScope = compatibleScriptKey('hxc_module');
+				hxcModulePaths.set(moduleIdentity, moduleScope);
+				registerHxcModule(scriptPath, moduleScope);
+			}
+			for (scriptPath in plan.all) {
+			var family = HxcScriptDiscovery.familyForPath(scriptPath);
+			var selected = switch (family) {
+				case 'song': plan.chart.indexOf(scriptPath) >= 0;
+				case 'character': selectedCharacterPaths.indexOf(scriptPath) >= 0;
+				case 'cutscene': hxcScriptMatches(scriptPath, [SONG.cutsceneType]);
+				case 'ui': hxcScriptMatches(scriptPath, [SONG.uiType]);
+				// V-Slice modules/events/note kinds are global registration families.
+				// HxcCompat emits only callbacks whose bodies passed its safety pass.
+				case 'module' | 'event' | 'note': true;
+				default: false;
+			};
+			if (!selected || loadedCompatScriptPaths.exists(compatibleScriptIdentity(scriptPath)))
+				continue;
+			try {
+				var identity = compatibleScriptIdentity(scriptPath);
+				var scope = family == 'module' ? hxcModulePaths.get(identity) : null;
+				if (scope == null)
+					scope = compatibleScriptKey('hxc_' + family);
+				var metadataSink:Dynamic = {result: null};
+				makeHaxeState(scope, Path.directory(scriptPath) + '/',
+					Path.withoutDirectory(scriptPath), null,
+					family == 'character' ? hxcCharacterRoleForPath(scriptPath) : null, null, metadataSink);
+				var translatedCompat:HxcCompatResult = cast Reflect.field(metadataSink, 'result');
+				if (family == 'note' && translatedCompat != null && translatedCompat.kind == 'note-kind')
+					hxcNoteKindScopes.set(scope, HxcScriptDiscovery.normalizeToken(translatedCompat.identifier));
+				// Mixed HXC files may carry a Module companion beside their selected
+				// Song/Event class. The
+				// generated scope is safe to expose through ModuleHandler by name; no
+				// donor Module object is constructed.
+				registerHxcCompanionModules(scriptPath, scope, translatedCompat);
+				if (family == 'character') {
+					registerHxcCharacterScope(scope, scriptPath);
+					callHxcCharacterAdded(hxcCharacterForRole(hxcCharacterRoleForPath(scriptPath)),
+						hxcCharacterRoleForPath(scriptPath));
+				}
+			} catch (error:Dynamic) {
+				trace('[hxc-runtime-error] ' + scriptPath + ': ' + Std.string(error));
+			}
+		}
+		#end
+	}
+
+	/** Name of an imported FPS/Kade cutscene selected by cutscene.json. */
+	function importedCutsceneScript():String {
+		if (SONG == null)
+			return '';
+		var value:Dynamic = Reflect.field(SONG, 'cutsceneScript');
+		return value == null ? '' : StringTools.trim(Std.string(value));
+	}
+
+	/** Central gate for sidecar metadata; native cutscenes keep their old gate. */
+	function shouldPlayImportedCutscene():Bool {
+		return EngineCompat.importedCutsceneAllowed(SONG, alwaysDoCutscenes, isStoryMode, watchedCutscene);
+	}
+
+	/** Load one sidecar-selected HXC cutscene through the normal cutscene ABI. */
+	function loadHxcCutsceneCompat(scriptName:String):Bool {
+		#if sys
+		if (scriptName == null || StringTools.trim(scriptName) == '')
+			return false;
+		var plan = getHxcScriptPlan();
+		if (plan == null || plan.all == null)
+			return false;
+		for (scriptPath in plan.all) {
+			if (HxcScriptDiscovery.familyForPath(scriptPath) != 'cutscene'
+				|| !hxcScriptMatches(scriptPath, [scriptName])
+				|| loadedCompatScriptPaths.exists(compatibleScriptIdentity(scriptPath)))
+				continue;
+			try {
+				// Constructor-only FPS Plus cutscenes are lowered to a data timeline
+				// and consumed by the native owner. Do this before generated HScript so
+				// no donor object graph, closure, or timer can be constructed.
+				var timelineCompat = HxcCompat.analyze(FNFAssets.getText(scriptPath), scriptPath);
+				if (timelineCompat.cutsceneTimeline != null) {
+					startHxcCutsceneTimeline(timelineCompat.cutsceneTimeline, scriptPath);
+					loadedCompatScriptPaths.set(compatibleScriptIdentity(scriptPath), true);
+					return true;
+				}
+				// HXC ScriptedCutscene constructors are deliberately not executed by
+				// HxcCompat. If translation exposes no native start/onCreate hook,
+				// let customIntro use the generated dialogue fallback instead of
+				// claiming a cutscene that can never complete.
+				var converted = getCompatibleHscript(scriptPath);
+				if (converted == null || !new EReg('\\bfunction\\s+start\\s*\\(', 'm').match(converted)) {
+					trace('[hxc-cutscene-fallback] no compatible start callback: ' + scriptPath);
+					return false;
+				}
+				makeHaxeState('cutscene', Path.directory(scriptPath) + '/', Path.withoutDirectory(scriptPath));
+				return true;
+			} catch (error:Dynamic) {
+				trace('[hxc-cutscene-runtime-error] ' + scriptPath + ': ' + Std.string(error));
+			}
+		}
+		#end
+		return false;
+	}
+	function loadHxcStageCompat():Bool {
+		#if sys
+		var plan = getHxcScriptPlan();
+		if (plan == null)
+			return false;
+		for (scriptPath in plan.all) {
+			if (HxcScriptDiscovery.familyForPath(scriptPath) != 'stage'
+				|| !hxcScriptMatches(scriptPath, [SONG.stage]))
+				continue;
+			try {
+				// Keep the converted/native stage in the canonical `stage` slot. The
+				// companion gets a private scope so its build/onCreate hook can add
+				// authored props and its later callbacks can run alongside the native
+				// stage without replacing it or constructing another StageHelper.
+				var scope = 'stage-hxc-' + hxcStageScopeIndex++;
+				makeHaxeState(scope, Path.directory(scriptPath) + '/', Path.withoutDirectory(scriptPath));
+				hxcStageScopes.push(scope);
+				// A stage with no converted/native registry entry still needs the
+				// StageHelper back-reference used by legacy stage helpers.  Native
+				// stages already own `curStage.interp`; never replace that canonical
+				// interpreter when this is a companion-only load.
+				if (curStage != null && curStage.interp == null)
+					curStage.interp = hscriptStates.get(scope);
+				return true;
+			} catch (error:Dynamic) {
+				trace('[hxc-stage-runtime-error] ' + scriptPath + ': ' + Std.string(error));
+			}
+		}
+		#end
+		return false;
+	}
+
+	/** Remove only isolated HXC stage interpreters before an in-song stage swap. */
+	function clearHxcStageScopes():Void {
+		for (scope in hxcStageScopes.copy()) {
+			if (hscriptStates.exists(scope))
+				callHscript('destroy', [], scope, true);
+			hscriptStates.remove(scope);
+			hxcPayloadStates.remove(scope);
+		}
+		hxcStageScopes.resize(0);
+	}
+	function runtimeSmokeCameraSnapshot(phase:String, chartEventTimestampMs:Null<Float> = null,
+		targetZoom:Null<Float> = null, eventDurationSeconds:Null<Float> = null):Void {
+		if (!RuntimeSmokeHarness.enabled() || camGame == null)
+			return;
+		var section:Dynamic = SONG != null && SONG.notes != null && curSection >= 0
+			&& curSection < SONG.notes.length ? SONG.notes[curSection] : null;
+		var boyfriendMidpoint = boyfriend == null ? null : boyfriend.getMidpoint();
+		var opponentMidpoint = dad == null ? null : dad.getMidpoint();
+		RuntimeSmokeHarness.markCameraSnapshot(phase, {
+			chart: SONG == null ? '' : SONG.song,
+			stage: curStage == null ? '' : curStage.name,
+			songPositionMs: Conductor.songPosition,
+			chartEventTimestampMs: chartEventTimestampMs,
+			eventTargetZoom: targetZoom,
+			eventDurationSeconds: eventDurationSeconds,
+			cameraZoom: camGame.zoom,
+			activeCameraZoom: FlxG.camera == null ? null : FlxG.camera.zoom,
+			defaultCamZoom: defaultCamZoom,
+			stageDefaultZoom: curStage == null ? null : curStage.defaultZoom,
+			followTargetX: camFollow == null ? null : camFollow.x,
+			followTargetY: camFollow == null ? null : camFollow.y,
+			cameraCount: FlxG.cameras == null || FlxG.cameras.list == null ? 0 : FlxG.cameras.list.length,
+			psychCameraCompatibilityActive: psychCameraCompatibilityActive,
+			cameraScrollX: camGame.scroll.x,
+			cameraScrollY: camGame.scroll.y,
+			curSection: curSection,
+			mustHitSection: section == null ? null : section.mustHitSection,
+			gfSection: section == null ? null : section.gfSection,
+			boyfriendX: boyfriend == null ? null : boyfriend.x,
+			boyfriendY: boyfriend == null ? null : boyfriend.y,
+			boyfriendImageFile: compatGetProperty('boyfriend.imageFile'),
+			boyfriendFollowCamX: boyfriend == null ? null : boyfriend.followCamX,
+			boyfriendFollowCamY: boyfriend == null ? null : boyfriend.followCamY,
+			boyfriendPsychInitialFollowCamX: boyfriend == null ? null : boyfriend.psychInitialFollowCamX,
+			boyfriendPsychInitialFollowCamY: boyfriend == null ? null : boyfriend.psychInitialFollowCamY,
+			boyfriendPsychCameraContribution: psychCameraContribution('boyfriend'),
+			boyfriendMidX: boyfriendMidpoint == null ? null : boyfriendMidpoint.x,
+			boyfriendMidY: boyfriendMidpoint == null ? null : boyfriendMidpoint.y,
+			opponentX: dad == null ? null : dad.x,
+			opponentY: dad == null ? null : dad.y,
+			opponentImageFile: compatGetProperty('dad.imageFile'),
+			opponentFollowCamX: dad == null ? null : dad.followCamX,
+			opponentFollowCamY: dad == null ? null : dad.followCamY,
+			opponentPsychInitialFollowCamX: dad == null ? null : dad.psychInitialFollowCamX,
+			opponentPsychInitialFollowCamY: dad == null ? null : dad.psychInitialFollowCamY,
+			opponentPsychCameraContribution: psychCameraContribution('dad'),
+			opponentMidX: opponentMidpoint == null ? null : opponentMidpoint.x,
+			opponentMidY: opponentMidpoint == null ? null : opponentMidpoint.y,
+			girlfriendFollowCamX: gf == null ? null : gf.followCamX,
+			girlfriendFollowCamY: gf == null ? null : gf.followCamY,
+			girlfriendPsychInitialFollowCamX: gf == null ? null : gf.psychInitialFollowCamX,
+			girlfriendPsychInitialFollowCamY: gf == null ? null : gf.psychInitialFollowCamY,
+			girlfriendPsychCameraContribution: psychCameraContribution('gf')
+		});
+	}
+	function psychStagePoint(data:Dynamic, field:String):Null<Array<Float>> {
+		if (data == null || !Reflect.hasField(data, field))
+			return null;
+		var value:Dynamic = Reflect.field(data, field);
+		if (!Std.isOfType(value, Array) || (cast value:Array<Dynamic>).length < 2)
+			return null;
+		var values:Array<Dynamic> = cast value;
+		var x = Std.parseFloat(Std.string(values[0]));
+		var y = Std.parseFloat(Std.string(values[1]));
+		return Math.isNaN(x) || Math.isNaN(y) ? null : [x, y];
+	}
+
+	function rememberPsychStagePoint(role:String, point:Null<Array<Float>>):Void {
+		if (point == null || curStage == null)
+			return;
+		var info = curStage.getInfo(role);
+		if (info != null) {
+			info.x = point[0];
+			info.y = point[1];
+		}
+		var index = switch (role) {
+			case 'bf': 0;
+			case 'gf': 2;
+			default: 4;
+		};
+		swapOffsets[index] = point[0];
+		swapOffsets[index + 1] = point[1];
+	}
+
+	public function syncPsychStageGroupAnchor(role:String, axis:String, value:Float):Void {
+		if (!Math.isFinite(value) || (axis != 'x' && axis != 'y'))
+			throw '[psych-stage] Invalid character group anchor';
+		var index = switch (role) {
+			case 'bf': 0;
+			case 'gf': 2;
+			case 'dad': 4;
+			default: throw '[psych-stage] Unknown character group role: ' + role;
+		};
+		swapOffsets[index + (axis == 'y' ? 1 : 0)] = value;
+	}
+
+	function clearPsychStageCharacterPosition():Void {
+		psychStageCharacterRoot = null;
+		psychStageLibrary = null;
+		psychStageCameraBoyfriend = [0, 0];
+		psychStageCameraOpponent = [0, 0];
+		psychStageCameraGirlfriend = [0, 0];
+		if (swapOffsetsBeforePsychStage != null) {
+			for (i in 0...swapOffsets.length)
+				swapOffsets[i] = swapOffsetsBeforePsychStage[i];
+			swapOffsetsBeforePsychStage = null;
+		}
+	}
+
+	/** The character array remains live so Psych scripts can read or write
+	 * cameraPosition through the shared property bridge. Only the role sign and
+	 * stage JSON offset are composed here. */
+	function psychCameraContribution(role:String):Array<Float> {
+		var actor:Character = null;
+		var stageOffset:Array<Float> = null;
+		var normalizedRole = role == null ? '' : role.trim().toLowerCase();
+		switch (normalizedRole) {
+			case 'boyfriend' | 'bf' | 'player1':
+				actor = boyfriend;
+				stageOffset = psychStageCameraBoyfriend;
+			case 'gf' | 'girlfriend' | 'player3':
+				actor = gf;
+				stageOffset = psychStageCameraGirlfriend;
+			default:
+				actor = dad;
+				stageOffset = psychStageCameraOpponent;
+		}
+		if (!psychCameraCompatibilityActive || actor == null || actor.authoredCamOffsets)
+			return [0, 0];
+		return PsychCharacterPosition.effectiveCameraOffset(normalizedRole, actor.cameraPosition,
+			stageOffset, actor.followCamX - actor.psychInitialFollowCamX,
+			actor.followCamY - actor.psychInitialFollowCamY);
+	}
+
+	/** Build an actor follow target with the selected engine's camera convention.
+	 * Psych replaces native role defaults, then adds live Psych metadata and any
+	 * changes made to followCam after the Character's own init hook. */
+	function cameraTargetForActor(actor:Character, role:String, extraX:Float = 0,
+		extraY:Float = 0, includeTurnNudge:Bool = true):Array<Float> {
+		if (actor == null)
+			return null;
+		if (actor.codenameLiveDefinition != null) {
+			var point = actor.getCameraPosition();
+			var target = [point.x + extraX, point.y + extraY];
+			point.put();
+			return target;
+		}
+		var normalizedRole = role == null ? '' : role.trim().toLowerCase();
+		var midpoint = actor.getMidpoint();
+		if (psychCameraCompatibilityActive && !actor.authoredCamOffsets) {
+			var contribution = psychCameraContribution(normalizedRole);
+			return [midpoint.x + contribution[0] + extraX,
+				midpoint.y + contribution[1] + extraY];
+		}
+		var xOffset:Float = 0;
+		var yOffset:Float = 0;
+		switch (normalizedRole) {
+			case 'boyfriend' | 'bf' | 'player1':
+				xOffset = (actor.authoredCamOffsets ? 0 : bfCamOffset[0])
+					+ actor.followCamX + (includeTurnNudge ? bfcam[0] : 0);
+				yOffset = (actor.authoredCamOffsets ? 0 : bfCamOffset[1])
+					+ actor.followCamY + (includeTurnNudge ? bfcam[1] : 0);
+			case 'gf' | 'girlfriend' | 'player3':
+				xOffset = actor.followCamX;
+				yOffset = actor.followCamY;
+			default:
+				xOffset = (actor.authoredCamOffsets ? 0 : dadCamOffset[0])
+					+ actor.followCamX + (includeTurnNudge ? dadcam[0] : 0);
+				yOffset = (actor.authoredCamOffsets ? 0 : dadCamOffset[1])
+					+ actor.followCamY + (includeTurnNudge ? dadcam[1] : 0);
+		}
+		return [midpoint.x + xOffset + extraX, midpoint.y + yOffset + extraY];
+	}
+
+	function setCameraFollowActor(actor:Character, role:String):Void {
+		if (camFollow == null || actor == null)
+			return;
+		var target = cameraTargetForActor(actor, role);
+		if (target != null && target.length >= 2)
+			camFollow.setPosition(target[0], target[1]);
+	}
+
+	/** Expose Psych's section camera API to compiled stage callbacks. */
+	@:keep public function moveCameraSection(?sec:Null<Int>):Void {
+		if (SONG == null || SONG.notes == null) return;
+		var index = sec == null ? curSection : sec;
+		if (index < 0) index = 0;
+		if (index >= SONG.notes.length || SONG.notes[index] == null) return;
+		var section = SONG.notes[index];
+		if (gf != null && section.gfSection == true)
+			setCameraFollowActor(gf, 'gf');
+		else
+			moveCamera(section.mustHitSection != true);
+	}
+
+	@:keep public function moveCamera(isDad:Bool):Void {
+		if (isDad)
+			setCameraFollowActor(dad, 'dad');
+		else
+			setCameraFollowActor(boyfriend, 'boyfriend');
+	}
+
+	/** Donor PlayState initializes its camera after Stage.addCharacter has
+	 * applied placement and both character/stage camera offsets. Keep scripts
+	 * that already claimed the camera in charge of their own opening frame. */
+	function initializeVSliceCameraFocus(beforeStageX:Float, beforeStageY:Float):Void {
+		if (!selectedVSliceCameraSource()) return;
+		vSliceCameraHoldsFocus = true;
+		if (camFollow == null || dad == null || forceCamera || scriptableCamera != 'false'
+			|| camFollow.x != beforeStageX || camFollow.y != beforeStageY)
+			return;
+		var target = cameraTargetForActor(dad, 'dad', 0, 0, false);
+		if (target == null || target.length < 2) return;
+		camFollow.setPosition(target[0], target[1]);
+		focusCameraDrivesFollow = true;
+		if (camGame != null) {
+			camGame.follow(camFollow, LOCKON, camFollowLerp());
+			camGame.focusOn(camFollow.getPosition());
+		}
+	}
+
+	function holdVSliceSectionCamera():Bool
+		return vSliceCameraHoldsFocus && scriptableCamera == 'false';
+
+	function applyPsychStageCameraOffsets(data:Dynamic):Void {
+		psychStageCameraBoyfriend = psychStagePoint(data, 'camera_boyfriend');
+		psychStageCameraOpponent = psychStagePoint(data, 'camera_opponent');
+		psychStageCameraGirlfriend = psychStagePoint(data, 'camera_girlfriend');
+		if (psychStageCameraBoyfriend == null)
+			psychStageCameraBoyfriend = [0, 0];
+		if (psychStageCameraOpponent == null)
+			psychStageCameraOpponent = [0, 0];
+		if (psychStageCameraGirlfriend == null)
+			psychStageCameraGirlfriend = [0, 0];
+	}
+
+	function stageCharacterOffset(actor:Character, role:String):Array<Float> {
+		var nativeX:Float = switch (role) {
+			case 'boyfriend': actor.playerOffsetX;
+			case 'gf': actor.gfOffsetX;
+			default: actor.likeGf ? actor.gfOffsetX : actor.enemyOffsetX;
+		};
+		var nativeY:Float = switch (role) {
+			case 'boyfriend': actor.playerOffsetY;
+			case 'gf': actor.gfOffsetY;
+			default: actor.likeGf ? actor.gfOffsetY : actor.enemyOffsetY;
+		};
+		return psychStageCharacterRoot == null ? [nativeX, nativeY]
+			: PsychCharacterPosition.resolve(actor.curCharacter, psychStageCharacterRoot, nativeX, nativeY);
+	}
+	function refreshPsychStageCameraTarget():Void {
+		if (camFollow == null || SONG == null || SONG.notes == null || SONG.notes.length == 0
+			|| SONG.notes[0] == null)
+			return;
+		var boyfriendTarget:Array<Float> = cameraTargetForActor(boyfriend, 'boyfriend');
+		var dadTarget:Array<Float> = cameraTargetForActor(dad, 'dad');
+		var girlfriendTarget:Array<Float> = cameraTargetForActor(gf, 'gf');
+		var firstSection = SONG.notes[0];
+		var target = psychInitialCameraTarget(firstSection.mustHitSection, firstSection.gfSection == true,
+			gfSinging, boyfriendTarget, dadTarget, girlfriendTarget);
+		if (target == null || target.length < 2)
+			return;
+		camFollow.setPosition(target[0], target[1]);
+		if (camGame != null)
+			camGame.focusOn(camFollow.getPosition());
+	}
+	function applyPsychStageJson(path:String, scopedRoot:String):Void {
+		if (path == null || !FNFAssets.exists(path))
+			return;
+		try {
+			var data:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
+			if (data == null)
+				return;
+			var sourceLibrary = Reflect.field(data, 'directory');
+			var cleanLibrary = sourceLibrary == null ? null
+				: PsychOwnerAssetPath.cleanId(Std.string(sourceLibrary));
+			psychStageLibrary = cleanLibrary != null && cleanLibrary.indexOf('/') < 0
+				? cleanLibrary : null;
+			var zoom = Reflect.field(data, 'defaultZoom');
+			if (zoom != null) {
+				var parsedZoom = Std.parseFloat(Std.string(zoom));
+				if (!Math.isNaN(parsedZoom) && parsedZoom > 0) {
+					curStage.defaultZoom = parsedZoom;
+					defaultCamZoom = parsedZoom;
+					setGameCameraZoom(parsedZoom);
+				}
+			}
+			var bfPoint = psychStagePoint(data, 'boyfriend');
+			var opponentPoint = psychStagePoint(data, 'opponent');
+			var gfPoint = psychStagePoint(data, 'girlfriend');
+			var dadPoint = dad != null && dad.likeGf ? gfPoint : opponentPoint;
+			if (bfPoint != null || opponentPoint != null || gfPoint != null) {
+				if (swapOffsetsBeforePsychStage == null)
+					swapOffsetsBeforePsychStage = swapOffsets.copy();
+				psychStageCharacterRoot = scopedRoot;
+				rememberPsychStagePoint('bf', bfPoint);
+				rememberPsychStagePoint('dad', opponentPoint);
+				rememberPsychStagePoint('gf', gfPoint);
+			}
+			if (bfPoint != null && boyfriend != null) {
+				var bfPosition = stageCharacterOffset(boyfriend, 'boyfriend');
+				boyfriend.setPosition(bfPoint[0] + bfPosition[0], bfPoint[1] + bfPosition[1]);
+			}
+			if (dadPoint != null && dad != null) {
+				var dadPosition = stageCharacterOffset(dad, 'dad');
+				dad.setPosition(dadPoint[0] + dadPosition[0], dadPoint[1] + dadPosition[1]);
+			}
+			if (gfPoint != null && gf != null) {
+				var gfPosition = stageCharacterOffset(gf, 'gf');
+				gf.setPosition(gfPoint[0] + gfPosition[0], gfPoint[1] + gfPosition[1]);
+			}
+			// Store stage offsets separately from Character.followCam so a repeated
+			// stage load or character replacement composes each authored value once.
+			applyPsychStageCameraOffsets(data);
+			// Camera follow is initialized before imported stage JSON positions its
+			// characters. Recompute the first-section target after all stage camera
+			// offsets are applied so the initial frame matches normal section follow.
+			refreshPsychStageCameraTarget();
+		} catch (error:Dynamic) {
+			trace('[psych-stage-json-error] ' + path + ': ' + Std.string(error));
+		}
+	}
+	function loadPsychStageCompat():Bool {
+		#if sys
+		for (compatRoot in compatScriptRoots()) {
+			var plan = PsychScriptDiscovery.discover(compatRoot, Song.storageFolder(SONG), SONG);
+			for (entry in plan.scripts) {
+			if (entry == null || entry.scope != PsychScriptDiscovery.STAGE || entry.path == null)
+				continue;
+			var directory = Path.directory(entry.path) + '/';
+			var filename = Path.withoutDirectory(entry.path);
+			var stem = Path.withoutExtension(filename);
+			applyPsychStageJson(Path.join([Path.directory(entry.path), stem + '.json']), compatRoot);
+			var fallback:String = null;
+			var runtimeSource:String = null;
+			var useStaticFallback = false;
+			var fallbackDiagnostics:Array<Dynamic> = [];
+			if (entry.path.toLowerCase().endsWith('.lua')) {
+				var translated = PsychStageCompat.translateFile(entry.path);
+				for (diagnostic in translated.diagnostics)
+					fallbackDiagnostics.push(diagnostic);
+				fallback = translated.hscript;
+				// The normal LuaCompat path is preferred when it produced a real
+				// callback module. If its safety parser disabled the generated source,
+				// use the static adapter instead; otherwise a stage would quietly load
+				// with neither onCreate nor its preserved runtime callbacks.
+				var luaSource = FNFAssets.getText(entry.path);
+				var luaResult = LuaCompat.translate(luaSource, entry.path);
+				runtimeSource = luaResult.hscript;
+				var hasCreationHook = runtimeSource != null
+					&& (new EReg('\\bfunction\\s+(?:onCreate|start)\\s*\\(', '').match(runtimeSource));
+				useStaticFallback = runtimeSource == null || StringTools.trim(runtimeSource) == '' || !hasCreationHook;
+			}
+			try {
+				// Prefer the full Lua compatibility path so onUpdate/onBeatHit remain
+				// live. The static stage adapter is a safe fallback for syntax the
+				// general Lua bridge cannot yet parse.
+				if (useStaticFallback && fallback != null && StringTools.trim(fallback) != '') {
+					for (diagnostic in fallbackDiagnostics)
+						trace('[psych-stage-' + diagnostic.code + '] ' + diagnostic.message + ' (' + entry.path + ':' + diagnostic.line + ')');
+					makeHaxeState('stage', directory, filename, fallback);
+				}
+				else if (runtimeSource != null)
+					makeHaxeState('stage', directory, filename, runtimeSource);
+				else
+					makeHaxeState('stage', directory, filename);
+				return true;
+			} catch (error:Dynamic) {
+				trace('[psych-stage-runtime-error] ' + entry.path + ': ' + Std.string(error));
+				if (fallback != null && StringTools.trim(fallback) != '') {
+					try {
+						for (diagnostic in fallbackDiagnostics)
+							trace('[psych-stage-' + diagnostic.code + '] ' + diagnostic.message + ' (' + entry.path + ':' + diagnostic.line + ')');
+						makeHaxeState('stage', directory, filename, fallback);
+						return true;
+					} catch (fallbackError:Dynamic) {
+						trace('[psych-stage-fallback-error] ' + entry.path + ': ' + Std.string(fallbackError));
+					}
+				}
+			}
+			}
+		}
+		#end
+		return false;
+	}
+
+	/** Psych source projects can ship stage JSON and media while keeping the
+	 * actual built-in stage class in donor Haxe source. When no asset script can
+	 * be loaded, still apply the selected owner's authored camera/start metadata
+	 * before the visible-stage fallback is reported. */
+	function psychStageMetadataPath(scopedRoot:String, stageName:String):String {
+		#if sys
+		if (scopedRoot == null || StringTools.trim(scopedRoot) == '' || stageName == null)
+			return null;
+		var cleanName = StringTools.trim(stageName);
+		if (cleanName == '' || cleanName.indexOf('/') >= 0 || cleanName.indexOf('\\') >= 0
+			|| cleanName.indexOf('..') >= 0 || cleanName.indexOf(':') >= 0)
+			return null;
+		for (directory in ['stages', 'shared/stages']) {
+			var stageRoot = Path.join([scopedRoot, directory]);
+			if (!FileSystem.isDirectory(stageRoot))
+				continue;
+			var exact = Path.join([stageRoot, cleanName + '.json']);
+			if (FileSystem.exists(exact) && !FileSystem.isDirectory(exact))
+				return exact;
+			var entries:Array<String>;
+			try {
+				entries = FileSystem.readDirectory(stageRoot);
+			} catch (_:Dynamic) {
+				continue;
+			}
+			var wanted = (cleanName + '.json').toLowerCase();
+			var match:String = null;
+			for (entry in entries) {
+				if (entry.toLowerCase() != wanted || FileSystem.isDirectory(Path.join([stageRoot, entry])))
+					continue;
+				if (match != null)
+					return null;
+				match = Path.join([stageRoot, entry]);
+			}
+			if (match != null)
+				return match;
+		}
+		#end
+		return null;
+	}
+
+	function applyOwnedPsychStageMetadataOnly(?selectedOwnerRoot:String):Bool {
+		if (SONG == null || SONG.stage == null)
+			return false;
+		var scopedRoot = selectedOwnerRoot;
+		if (scopedRoot == null || StringTools.trim(scopedRoot) == '')
+			scopedRoot = selectedPsychSkinRoot();
+		if (scopedRoot == null || StringTools.trim(scopedRoot) == '')
+			scopedRoot = Song.characterRootForSong(Song.storageFolder(SONG), ImportEngine.PSYCH);
+		var path = psychStageMetadataPath(scopedRoot, Std.string(SONG.stage));
+		if (path == null)
+			return false;
+		applyPsychStageJson(path, scopedRoot);
+		trace('[psych-stage-metadata] Applied selected-owner stage metadata from ' + path
+			+ '; native camera, character-start, and zoom fields were applied.');
+		return true;
+	}
+
+	/** Resolve a compiled stage from the exact Psych owner selected by the chart's
+	 * manifest. The source dispatcher and class file must agree inside that root. */
+	function psychCompiledStageSourceForCurrentSong():Null<PsychCompiledStageSource> {
+		if (SONG == null || SONG.stage == null)
+			return null;
+		var ownerRoot = selectedPsychSkinRoot();
+		return ownerRoot == null ? null : PsychSourceStageCompat.resolve(ownerRoot, Std.string(SONG.stage));
+	}
+
+	/** Preserve useful diagnostics for archive stages whose imported owner only
+	 * retained assets. When source is present, use its own dispatcher result. */
+	function psychCompiledStageClassForCurrentSong():Null<String> {
+		if (SONG == null || SONG.stage == null)
+			return null;
+		var ownerRoot = selectedPsychSkinRoot();
+		if (ownerRoot == null || StringTools.trim(ownerRoot) == '')
+			return null;
+		var source = PsychSourceStageCompat.resolve(ownerRoot, Std.string(SONG.stage));
+		return source == null ? PsychSourceStageCompat.knownSourceClass(Std.string(SONG.stage)) : source.className;
+	}
+
+	function reportPsychCompiledStageRuntimeDiagnostics():Void {
+		if (psychCompiledStageRuntime == null)
+			return;
+		var diagnostics = psychCompiledStageRuntime.diagnostics;
+		while (psychCompiledStageDiagnosticsReported < diagnostics.length) {
+			trace(diagnostics[psychCompiledStageDiagnosticsReported]);
+			psychCompiledStageDiagnosticsReported++;
+		}
+	}
+
+	function startPsychCompiledStage(ownerRoot:String, source:PsychCompiledStageSource):Bool {
+		psychCompiledStageRuntimeError = '';
+		psychCompiledStageDiagnosticsReported = 0;
+		psychCompiledStageRuntime = new PsychCompiledStageRuntime(ownerRoot, source.modulePath, this,
+			PsychCompiledStageBindings.create(ownerRoot, psychStageLibrary));
+		if (!psychCompiledStageRuntime.create()) {
+			var diagnostics = psychCompiledStageRuntime.diagnostics;
+			psychCompiledStageRuntimeError = diagnostics.join('; ');
+			for (diagnostic in diagnostics) trace(diagnostic);
+			psychCompiledStageRuntime.destroy();
+			psychCompiledStageRuntime = null;
+			return false;
+		}
+		trace('[psych-stage-runtime] executing ' + source.modulePath + ' from ' + source.sourcePath);
+		if (RuntimeSmokeHarness.enabled())
+			trace('[psych-stage-callbacks] story=' + isStoryMode + ' songName=' + PsychSongNameCompat.format(SONG.song)
+				+ ' start=' + (psychStageStartCallback != null) + ' end=' + (psychStageEndCallback != null));
+		pushPsychCompiledStageEvents();
+		return psychCompiledStageRuntime != null && psychCompiledStageRuntime.active;
+	}
+
+	/** Psych BaseStage replaces these native transition hooks during create().
+	 * Keep them on this PlayState so a source stage cannot retain another song's
+	 * callback after its owner scope is released. */
+	@:keep public function setStartCallback(callback:Dynamic):Void {
+		if (callback != null && !Reflect.isFunction(callback))
+			throw '[psych-stage] start callback must be a function';
+		psychStageStartCallback = callback;
+	}
+
+	@:keep public function setEndCallback(callback:Dynamic):Void {
+		if (callback != null && !Reflect.isFunction(callback))
+			throw '[psych-stage] end callback must be a function';
+		psychStageEndCallback = callback;
+		if (RuntimeSmokeHarness.enabled()) trace('[psych-stage-callbacks] end callback registered');
+	}
+
+	function runPsychStageStartCallback():Bool {
+		var callback = psychStageStartCallback;
+		psychStageStartCallback = null;
+		if (callback == null) return false;
+		try Reflect.callMethod(null, callback, []) catch (error:Dynamic) {
+			trace('[psych-stage] start callback failed: ' + Std.string(error));
+			startCountdown();
+		}
+		return true;
+	}
+
+	function runPsychStageEndCallback():Bool {
+		var callback = psychStageEndCallback;
+		psychStageEndCallback = null;
+		if (callback == null) return false;
+		psychStageCutsceneEnding = true;
+		try Reflect.callMethod(null, callback, []) catch (error:Dynamic) {
+			trace('[psych-stage] end callback failed: ' + Std.string(error));
+			psychStageCutsceneEnding = false;
+			endForReal();
+		}
+		return true;
+	}
+
+	function dispatchPsychCompiledStage(callback:String, ?args:Array<Dynamic>):Bool {
+		if (psychCompiledStageRuntime == null || !psychCompiledStageRuntime.active)
+			return false;
+		var runtime = psychCompiledStageRuntime;
+		var dispatched = runtime.dispatch(callback, args);
+		reportPsychCompiledStageRuntimeDiagnostics();
+		if (!runtime.active) {
+			runtime.destroy();
+			psychCompiledStageRuntimeError = runtime.diagnostics.join('; ');
+			reportPsychCompiledStageRuntimeDiagnostics();
+			if (curStage != null)
+				curStage.fallbackDiagnostic = '[psych-stage-runtime-error] ' + psychCompiledStageRuntimeError;
+			psychCompiledStageRuntime = null;
+		}
+		return dispatched;
+	}
+
+	function psychCompiledStageFloat(value:Dynamic):Null<Float> {
+		if (value == null)
+			return null;
+		var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+		return Math.isNaN(parsed) ? null : parsed;
+	}
+
+	function psychCompiledStageEventFloat2(name:String, value:Dynamic):Null<Float> {
+		// Psych normalizes Hey!'s duration before forwarding the event to
+		// BaseStage.eventCalled, including an empty or nonpositive value2.
+		if (name == 'Hey!') return PsychHeyEventCompat.duration(value);
+		return psychCompiledStageFloat(value);
+	}
+
+	function dispatchPsychCompiledStageEvent(event:Dynamic):Void {
+		if (event == null)
+			return;
+		var name = Reflect.field(event, 'name');
+		if (name == null)
+			return;
+		var value1:Dynamic = Reflect.field(event, 'v1');
+		var value2:Dynamic = Reflect.field(event, 'v2');
+		var time:Dynamic = Reflect.field(event, 'time');
+		dispatchPsychCompiledStage('eventCalled', [Std.string(name),
+			value1 == null ? '' : Std.string(value1), value2 == null ? '' : Std.string(value2),
+			psychCompiledStageFloat(value1), psychCompiledStageEventFloat2(Std.string(name), value2),
+			time == null ? 0 : Std.parseFloat(Std.string(time))]);
+	}
+
+	function pushPsychCompiledStageEvents():Void {
+		if (psychCompiledStageRuntime == null || songEvents == null)
+			return;
+		var pushedNames:Map<String, Bool> = new Map();
+		for (event in songEvents) {
+			if (event == null)
+				continue;
+			var eventName = Reflect.field(event, 'name');
+			if (eventName == null)
+				continue;
+			var name = Std.string(eventName);
+			var value1:Dynamic = Reflect.field(event, 'v1');
+			var value2:Dynamic = Reflect.field(event, 'v2');
+			var time:Dynamic = Reflect.field(event, 'time');
+			var eventNote:Dynamic = {
+				strumTime:(time == null ? 0 : Std.parseFloat(Std.string(time))) + OptionsHandler.options.offset,
+				event:name,
+				value1:value1 == null ? '' : Std.string(value1),
+				value2:value2 == null ? '' : Std.string(value2)
+			};
+			dispatchPsychCompiledStage('eventPushedUnique', [eventNote]);
+			if (!pushedNames.exists(name)) {
+				pushedNames.set(name, true);
+				dispatchPsychCompiledStage('eventPushed', [eventNote]);
+			}
+			if (psychCompiledStageRuntime == null || !psychCompiledStageRuntime.active)
+				return;
+		}
+	}
+
+	function reportUnsupportedPsychCompiledStage(className:String):String {
+		var searched = EngineCompat.visualDependencySearchPaths('stage', SONG == null ? '' : SONG.stage);
+		var dispatchEvidence = 'Psych source dispatcher -> ' + className;
+		if (searched.indexOf(dispatchEvidence) < 0)
+			searched.push(dispatchEvidence);
+		var plan = EngineCompat.planVisualFallback('stage', SONG == null ? '' : SONG.stage,
+			'runtime selected Psych source stage class ' + className,
+			searched,
+			'compiled stage class behavior is not executed; available native visuals are fallback only and are not equivalent for props, effects, callbacks, or lifecycle',
+			'unsupported-engine-behavior');
+		return EngineCompat.reportVisualFallback(plan);
+	}
+
+	function makeHaxeState(usehaxe:String, path:String, filename:String, ?sourceOverride:String,
+			?characterRole:String, ?characterOverride:Character, ?metadataSink:Dynamic,
+			?extraPsychOwnerRoot:String) {
 		trace("opening a haxe state (because we are cool :))");
 		var parser = new ParserEx();
-		var program = parser.parseString(FNFAssets.getHscript(path + filename));
-		var interp = PluginManager.createSimpleInterp();
+		if (metadataSink != null)
+			Reflect.setField(metadataSink, 'result', null);
+		var source = sourceOverride == null ? getCompatibleHscript(path + filename, metadataSink) : sourceOverride;
+		if (source == null)
+			throw 'No compatible HScript/Lua module found at ' + path + filename;
+		var luaProgram = luaProgramFor(path + filename, source, sourceOverride != null);
+		var translatedLua:Bool = luaProgram.translated;
+		source = luaProgram.source;
+		// Older generated V-Slice stages omitted the post-scale hitbox update.
+		// Normalize only their proven stage-prop construction blocks in memory.
+		var stageSource = VSliceStageCompat.normalizeGeneratedPropHitboxes(source, getCompatScriptManifest(),
+			usehaxe == 'stage' && sourceOverride == null && !translatedLua);
+		if (stageSource != source)
+			trace('[vslice-stage-prop-hitbox] Corrected generated stage geometry in memory (' + path + filename + ')');
+		source = stageSource;
+		stageSource = VSliceStageCompat.normalizeGeneratedPropLayers(source, getCompatScriptManifest(),
+			usehaxe == 'stage' && sourceOverride == null && !translatedLua);
+		if (stageSource != source)
+			trace('[vslice-stage-prop-layer] Restored generated prop ordering in memory (' + path + filename + ')');
+		source = stageSource;
+		stageSource = VSliceStageCompat.normalizeGeneratedCharacterPresentation(source, getCompatScriptManifest(),
+			usehaxe == 'stage' && sourceOverride == null && !translatedLua);
+		if (stageSource != source)
+			trace('[vslice-stage-character-presentation] Restored generated role data in memory (' + path + filename + ')');
+		source = stageSource;
+		var isHxcSource = sourceOverride == null && (path + filename).toLowerCase().endsWith('.hxc');
+		var hxcStageBindings:Map<String, Dynamic> = null;
+		if (isHxcSource && isStageScriptScope(usehaxe)) {
+			hxcStageBindings = nativeStagePropBindings();
+			source = filterHxcStageDuplicateProps(source, hxcStageBindings);
+		}
+		if (isHxcSource)
+			source = EngineCompat.rewriteScopedAssetPaths(source);
+		source = EngineCompat.rewriteLegacyAssetPaths(source);
+		if (!isHxcSource) {
+			var legacyFrameDelta = EngineCompat.normalizeLegacyFrameDeltas(source);
+			for (diagnostic in legacyFrameDelta.diagnostics)
+				trace('[legacy-frame-' + diagnostic.code + '] ' + diagnostic.message + ' (' + path + filename + ':' + diagnostic.line + ')');
+			source = legacyFrameDelta.source;
+		}
+		var program = parser.parseString(source);
+		var interp:Interp = translatedLua
+			? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
+		interp.variables.set('__compatDiagnosticSource', path + filename);
 		// set vars
 		interp.variables.set("BEHIND_GF", BEHIND_GF);
 		interp.variables.set("BEHIND_BF", BEHIND_BF);
@@ -348,9 +10125,76 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("opponentPlayer", opponentPlayer);
 		interp.variables.set("demoMode", demoMode);
 		interp.variables.set("Math", Math);
+		if (isHxcSource) {
+			var hxcRoot = hxcAssetRootForScript(path + filename);
+			interp.variables.set('hxcAssetRoot', hxcRoot);
+			interp.variables.set('hxcPaths', makeHxcPathsProxy(hxcRoot));
+			interp.variables.set('hxcAssets', makeHxcAssetsProxy());
+			// Keep missing window icons inside the same selected owner and retain
+			// the source module in the dependency diagnostic.
+			var hxcWindowOrigin = path + filename;
+			interp.variables.set('hxcSetWindowIcon', function(icon:Dynamic)
+				HxcWindowCompat.setIcon(icon, hxcWindowOrigin));
+			// HXC imports are metadata after translation.  The donor uses only
+			// ReflectUtil's class-name and anonymous-field helpers; bind their safe
+			// native equivalents so an optional module does not throw every frame.
+			interp.variables.set('ReflectUtil', HxcCompatRuntime.reflectUtilFacade());
+			// HXC factory calls are resolved against the manifest root owning this
+			// script. Native aliases still go through HxcCompatRuntime, while custom
+			// names are materialized only from that one imported root.
+			interp.variables.set('hxcStateInit', function(name:Dynamic):Dynamic
+				return HxcStateFactory.stateInit(hxcRoot, name));
+			interp.variables.set('hxcSubStateInit', function(name:Dynamic):Dynamic
+				return HxcStateFactory.subStateInit(hxcRoot, name));
+			interp.variables.set('hxcStateFactory', function(name:Dynamic, ?args:Array<Dynamic>):Dynamic
+				return HxcStateFactory.stateFactory(hxcRoot, name, args));
+			interp.variables.set('hxcDeferredStateFactory', function(name:Dynamic, ?args:Array<Dynamic>):Dynamic {
+				return new HxcDeferredValue(function()
+					return HxcStateFactory.stateFactory(hxcRoot, name, args));
+			});
+			interp.variables.set('hxcSwitchState', function(target:Dynamic):Bool
+				return HxcStateFactory.switchStateScoped(hxcRoot, target));
+			interp.variables.set('hxcStartExitState', function(target:Dynamic):Bool
+				return HxcStateFactory.startExitState(hxcRoot, target));
+			interp.variables.set('hxcOpenSubState', function(target:Dynamic):Bool
+				return HxcStateFactory.openSubStateScoped(hxcRoot, this, target));
+			interp.variables.set('hxcOpenSubStateOn', function(host:Dynamic, target:Dynamic):Bool
+				return HxcStateFactory.openSubStateScoped(hxcRoot, host, target));
+			interp.variables.set('hxcBack', function():Bool return HxcStateFactory.back(this));
+			interp.variables.set('hxcResetState', HxcStateFactory.resetState);
+			interp.variables.set('CreditsState', CreditsState);
+			interp.variables.set('SaveDataState', SaveDataState);
+			interp.variables.set('FreeplayState', FreeplayState);
+		}
 		interp.variables.set("Conductor", Conductor);
 		interp.variables.set("songData", SONG);
+		// HXC's currentSong.id maps to the native chart's `song` field through
+		// HxcCompat's SONG.song lowering.
+		interp.variables.set("SONG", SONG);
 		interp.variables.set("curSong", SONG.song);
+		interp.variables.set("bpm", Conductor.bpm); // old modcharts read bare `bpm` for sway math
+		// Psych exposes the live BPM and beat lengths as bare globals. Keep these
+		// separate from the authored `bpm` value above so imported scripts observe
+		// chart BPM changes through the same engine-owned timing state.
+		interp.variables.set("curBpm", Conductor.bpm);
+		interp.variables.set("stepCrochet", Conductor.stepCrochet);
+		// Psych scripts use this legacy global to choose their old/new property
+		// paths.  Keep the generation in one engine-level adapter so imported
+		// scripts do not need chart-specific rewrites.
+		interp.variables.set("version", EngineCompat.psychCompatibilityVersion());
+		// This fork has no reduced-quality mode, so Psych's quality gate stays
+		// disabled and its authored full-quality visual path remains available.
+		interp.variables.set("lowQuality", false);
+		interp.variables.set("flashingLights", OptionsHandler.options.flashingLights);
+		interp.variables.set("addLuaScript", function(luaFile:String, ?ignoreAlreadyRunning:Bool = false):Bool
+			return compatAddLuaScript(luaFile, ignoreAlreadyRunning, path + filename));
+		interp.variables.set("removeLuaScript", function(luaFile:String):Bool
+			return compatRemoveLuaScript(luaFile, path + filename));
+		// seedEngineCompat installs the donor-facing story/cutscene context.
+		// Kade/FPS Plus modcharts read the live millisecond clock as `songPos`.
+		// Keep the donor spelling in every compatibility interpreter; the value is
+		// refreshed around each frame below rather than frozen at load time.
+		interp.variables.set("songPos", Conductor.songPosition);
 		interp.variables.set("downscroll", downscroll);
 		interp.variables.set("middlescroll", midscroll);
 		interp.variables.set("scrollSpeed", daScrollSpeed);
@@ -358,28 +10202,38 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("curStep", 0);
 		interp.variables.set("curBeat", 0);
 		interp.variables.set("camHUD", camHUD);
+		interp.variables.set("camOther", camOther);
+		interp.variables.set("frameRateScale", PlayState.frameRateScale);
 
 		interp.variables.set("WiggleEffect", WiggleEffect);
 
 		interp.variables.set("getUV", getUV);
 		interp.variables.set("updateUV", updateUV);
-		
+
 		interp.variables.set("setPresence", function (to:String) {
 			#if (windows && cpp)
 			customPrecence = to == '' ? detailsText : to;
 			updatePresence();
-			#else 
+			#else
 			FlxG.log.warn("Ignoring hscript setPresence as we aren't on windows");
 			#end
 		});
-		
+
 		interp.variables.set("showOnlyStrums", false);
 		interp.variables.set("playerStrums", playerStrums);
 		interp.variables.set("enemyStrums", enemyStrums);
 		interp.variables.set("mustHit", false);
-		interp.variables.set("strumLineY", strumLine.y);
+		var initialSection:Dynamic = SONG != null && SONG.notes != null && SONG.notes.length > 0 ? SONG.notes[0] : null;
+		interp.variables.set("mustHitSection", initialSection == null ? false : initialSection.mustHitSection);
+		interp.variables.set("gfSection", initialSection != null && initialSection.gfSection == true);
+		// Character HXC companions are loaded from addCharacter() before the
+		// gameplay strum line is constructed.  Keep the compatibility ABI
+		// available during that early load without dereferencing the not-yet
+		// allocated native sprite.  Once the line exists, this still exposes its
+		// live position exactly as before.
+		interp.variables.set("strumLineY", strumLine == null ? 0 : strumLine.y);
 		interp.variables.set("hscriptPath", path);
-		interp.variables.set("startShader", function (shader:String) { 
+		interp.variables.set("startShader", function (shader:String) {
 			return (new ShaderHandler(shader)); // wigglestuff
 		});
 		interp.variables.set("boyfriend", boyfriend);
@@ -387,72 +10241,150 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("dad", dad);
 		interp.variables.set("stage", curStage);
 		interp.variables.set("vocals", vocals);
-		interp.variables.set("gfSpeed", gfSpeed);
 		interp.variables.set("tweenCamIn", tweenCamIn);
 		interp.variables.set("health", health);
 		interp.variables.set("healthChange", healthChange);
 		interp.variables.set("iconP1", iconP1);
 		interp.variables.set("iconP2", iconP2);
 		interp.variables.set("currentPlayState", this);
+		// V-Slice menu globals exist process-wide and are simply null outside
+		// their screens; donor modules read them unguarded every update.
+		interp.variables.set("currentFreeplayState", null);
+		interp.variables.set("AttractState", null);
+		interp.variables.set("currentMenuState", null);
 		interp.variables.set("PlayState", PlayState);
 		interp.variables.set("paused", paused);
 		interp.variables.set("window", Lib.application.window);
 		// give them access to save data, everything will be fine ;)
 		interp.variables.set("isInCutscene", function () return inCutscene);
-		interp.variables.set("endSong", function () {if (endingSong) endForReal();}); // for cutscenes at the end of a song
+		// Psych's endSong() re-enters the native end callback gate after a Lua
+		// onEndSong hook has returned Function_Stop (for example while a results
+		// screen is open). Legacy HScript cutscenes use this name as their explicit
+		// final handoff, so keep their direct path intact.
+		if (Std.isOfType(interp, LuaCompatInterp))
+			interp.variables.set("endSong", function () this.endSong());
+		else
+			interp.variables.set("endSong", function () {if (endingSong) endForReal();});
 		trace("set vars");
-		interp.variables.set("camZooming", false);
+		// NOTE: camZooming/camSpeed/gfSpeed are deliberately NOT seeded here.
+		// The per-frame sync only reads them from the script when the script
+		// itself set them - seeding made every script "own" a stale false
+		// value, which killed the zoom-return lerp and beat bops for every
+		// modchart song (Illusion New's camera stranded at the intro zoom)
 		interp.variables.set('FocusCamera', FocusCamera);
 		interp.variables.set('ZoomCamera', ZoomCamera);
 		interp.variables.set('SetCameraBop', SetCameraBop);
-		interp.variables.set("camSpeed", 0.08);
 		interp.variables.set("skipCountdown", function() skipCountdown = true);
+		// old-engine helper API used across the ported library
+		interp.variables.set("getGlobalSprite", function(name:String):FlxSprite return PlayState.globalSprites.get(name));
+		interp.variables.set("setGlobalSprite", function(name:String, spr:FlxSprite) {
+			PlayState.globalSprites.set(name, spr);
+			if (isStageScriptScope(usehaxe)) {
+				registerStageSprite(spr);
+				trackImportedStageHudProp(spr, usehaxe);
+			}
+			else if (usehaxe == 'cutscene')
+				trackHscriptSprite(spr, usehaxe);
+		});
+		interp.variables.set("handoffCutsceneSprite", function(sprite, ?releaseOnOpponentSing:Bool = false,
+				?releaseDelaySeconds:Float = 0) {
+			if (usehaxe == 'cutscene')
+				handoffCutsceneSprite(sprite, releaseOnOpponentSing, releaseDelaySeconds);
+		});
+		interp.variables.set("releaseCutsceneSprite", releaseCutsceneSprite);
+		interp.variables.set("blendModeFromString", function(m:String) return CoolUtil.getBlendMode(m));
+		interp.variables.set("addCamZoom", function(x:Float, y:Float) {
+			// HScript's old camGame alias is not guaranteed to remain FlxG.camera
+			// after a camera frontend change. Apply additive script zooms to the
+			// canonical gameplay camera and the alias together.
+			cameraZoomIntroGameTarget = null;
+			cameraZoomIntroHudTarget = null;
+			var currentGameZoom = camGame.zoom;
+			setGameCameraZoom(currentGameZoom + x);
+			camHUD.zoom += y;
+		});
+		// V-Slice's stage changer and legacy scripts use both names. The adapter
+		// validates the native stage registry before touching the active stage.
+		interp.variables.set('swapStage', swapStage);
+		interp.variables.set('changeStage', swapStage);
+		interp.variables.set("setUIAlpha", function(alpha:Float, duration:Float = 0) {
+			FlxTween.cancelTweensOf(camHUD);
+			if (duration <= 0)
+				camHUD.alpha = alpha;
+			else
+				FlxTween.tween(camHUD, {alpha: alpha}, duration);
+		});
+		interp.variables.set("addGrayScaleEffect", function(target:String = "cam", ?sprite:FlxSprite) {
+			cameraOrSpriteShader(target, sprite, GRAYSCALE_FRAG);
+		});
+		interp.variables.set("addVCREffect", function(target:String = "camgame", ?sprite:FlxSprite, strength:Float = 0.1,
+				?scan:Bool = true, ?chroma:Bool = true, ?noise:Bool = true) {
+			var shader = new ShaderHandler.CoolRuntimeShader(VCR_FRAG);
+			shader.setFloat("vcrStrength", strength);
+			shader.setFloat("vcrScan", scan ? 1 : 0);
+			shader.setFloat("vcrChroma", chroma ? 1 : 0);
+			shader.setFloat("vcrNoise", noise ? 1 : 0);
+			if (sprite != null)
+				sprite.shader = shader;
+			else {
+				var cam = target == "camhud" ? camHUD : FlxG.camera;
+				cam.filters = [new openfl.filters.ShaderFilter(cast shader)];
+			}
+		});
+		interp.variables.set("HealthIcon", HealthIcon);
+		interp.variables.set("FlxTextFormat", flixel.text.FlxTextFormat);
+		interp.variables.set("FlxTypeText", flixel.addons.text.FlxTypeText);
+		interp.variables.set("ShaderFilter", openfl.filters.ShaderFilter);
 		interp.variables.set("scriptableCamera", 'false');
 		interp.variables.set("scriptCamPos", scriptCamPos);
 		// callbacks
-		interp.variables.set("start", function (song) {});
-		interp.variables.set("songStart", function (song) {});
-		interp.variables.set("beatHit", function (beat) {});
-		interp.variables.set("update", function (elapsed) {});
-		interp.variables.set("onPause", function () {});
-		interp.variables.set("onResume", function () {});
-		interp.variables.set("stepHit", function(step) {});
-		interp.variables.set("playerTwoTurn", function () {});
-		interp.variables.set("playerTwoMiss", function () {});
-		interp.variables.set("playerTwoSing", function () {});
-		interp.variables.set("playerOneTurn", function() {});
-		interp.variables.set("playerOneMiss", function() {});
-		interp.variables.set("playerOneSing", function() {});
-		interp.variables.set("noteLoaded", function (note) {});
-		interp.variables.set("noteHit", function(player1:Bool, note:Note, wasGoodHit:Bool) {});
-		interp.variables.set("onCharacterAdded", function(char:Character, type:String) {});
-		interp.variables.set("addSprite", function (sprite, position) {
-			// sprite is a FlxSprite
-			// position is a Int
-			if (position & BEHIND_GF != 0)
-				remove(gf);
-			if (position & BEHIND_DAD != 0)
-				remove(dad);
-			if (position & BEHIND_BF != 0)
-				remove(boyfriend);
-			add(sprite);
-			if (position & BEHIND_GF != 0)
-				add(gf);
-			if (position & BEHIND_DAD != 0)
-				add(dad);
-			if (position & BEHIND_BF != 0)
-				add(boyfriend); 
+		// Lifecycle callbacks are intentionally not seeded: callHscript() can
+		// then route a donor spelling such as onCreate/onUpdate to the canonical
+		// hook without a seeded no-op masking it.
+		// no-op seed so states without onEvent (stages) don't spam
+		// "Function doesn't exist" once per chart event
+		interp.variables.set("onEvent", function (name, v1, v2, v3) {});
+		interp.variables.set("addSprite", function (sprite, ?position:Int) {
+			addHscriptSprite(sprite, position);
+			trackHscriptSprite(sprite, usehaxe);
 		});
-		interp.variables.set("add", add);
+		interp.variables.set("add", function(sprite) {
+			if (Std.isOfType(sprite, FlxBasic) && !hasExplicitCameras(cast sprite))
+				(cast sprite : FlxBasic).cameras = [camGame];
+			var added = add(sprite);
+			trackHscriptSprite(sprite, usehaxe);
+			return added;
+		});
 		interp.variables.set("remove", remove);
-		interp.variables.set("insert", insert);
-		interp.variables.set("setDefaultZoom", function(zoom:Float){
-			defaultCamZoom = zoom;
-			FlxG.camera.zoom = zoom;
-			if (usehaxe == 'stage') curStage.defaultZoom = zoom;
+		// Donor V-Slice Stage helpers reference the stage member array
+		// unqualified once the translator strips `this.` (Stage.contains():
+		// `obj.parent != null || members.indexOf(obj) != -1`). Bind the live
+		// display-list here so those membership checks - and the remove() calls
+		// gated on them - see real attachment instead of dying on an unknown
+		// identifier, which left toggled-in stage layers displayed forever.
+		if (isStageScriptScope(usehaxe)) {
+			interp.variables.set("members", members);
+			// Donor Stage.refresh() re-sorts the stage display list by zIndex;
+			// the state-level refresh is the same operation for imported props
+			// and actors (the translator strips the Stage qualifier).
+			interp.variables.set("refresh", refresh);
+		}
+		interp.variables.set("insert", function(position:Int, sprite) {
+			var inserted = insert(position, sprite);
+			trackHscriptSprite(sprite, usehaxe);
+			return inserted;
 		});
+			interp.variables.set("setDefaultZoom", function(zoom:Float){
+				defaultCamZoom = zoom;
+				// Donor setStageZoom writes currentCameraZoom, making the stage
+				// zoom the resting target of the beat decay.
+				baseCameraZoom = zoom;
+				setGameCameraZoom(zoom);
+				if (isStageScriptScope(usehaxe) && curStage != null) curStage.defaultZoom = zoom;
+			});
 		interp.variables.set("removeSprite", function(sprite) {
 			remove(sprite);
+			forgetCutsceneSprite(sprite);
 		});
 		interp.variables.set("getHaxeActor", getHaxeActor);
 		interp.variables.set("instancePluginClass", instanceExClass);
@@ -478,6 +10410,27 @@ class PlayState extends MusicBeatState {
 
 		//the impostor
 		interp.variables.set("swapChar", switchCharacter);
+
+		// old modcharts call Sys.command("start <file>") to pop an external
+		// viewer window (control's GIF "jumpscare") - hscript has no Sys and
+		// an unknown variable throw would kill the rest of the hook, so hand
+		// out a no-op stand-in
+		interp.variables.set("Sys", {command: function(args:String) {
+			trace('hscript Sys.command blocked: ' + args);
+			return -1;
+		}});
+
+		// hscript-facing FlxG.sound.play stand-in: on sys, Sound.fromFile
+		// THROWS for a missing file, killing the rest of the calling hook
+		// (faker's whole static effect died this way every frame). ~48 library
+		// scripts reference sounds the donor never shipped - the old engine
+		// just played nothing, so guard instead of throwing. Delegates to the
+		// static cache in hscriptSafePlay (decode-once; the uncached fork
+		// play path re-decoded the ogg on EVERY call and segfaulted).
+		interp.variables.set("soundPlaySafe", PlayState.hscriptSafePlay);
+		interp.variables.set("preloadSound", PlayState.preloadHscriptSound);
+		seedEngineCompat(interp, extraPsychOwnerRoot);
+		seedHxcCharacterCompat(interp, path + filename, characterRole);
 
 		//no sus here
 		interp.variables.set("addCharacter", addCharacter);
@@ -517,9 +10470,128 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("swapOffsets", swapOffsets);
 
 		trace("set stuff");
+		if (isStageScriptScope(usehaxe))
+			snapshotStageVariables(interp);
+		if (usehaxe == 'cutscene')
+			inheritHscriptVariables('stage', interp);
+		// watermark for the imported-stage HUD clamp: everything this scope
+		// registers from here on is diffed against stageSprites afterwards
+		var hudPropWatermark:Int = stageSprites.length;
 		interp.execute(program);
+		if (hxcStageBindings != null)
+			for (name in hxcStageBindings.keys())
+				interp.variables.set(name, hxcStageBindings.get(name));
 		hscriptStates.set(usehaxe,interp);
-		callHscript("start", [SONG.song], usehaxe);
+		// Only source files that actually came from HXC opt into mutable payload
+		// arguments.  A generated Lua/native HScript fallback must keep the
+		// existing Psych/Modding Plus callback ABI.
+		hxcPayloadStates.set(usehaxe, sourceOverride == null
+			&& (path + filename).toLowerCase().endsWith('.hxc'));
+		loadedCompatScriptPaths.set(compatibleScriptIdentity(path + filename), true);
+		var scriptIdentity = compatibleScriptIdentity(path + filename);
+		var scriptScopes = compatScriptScopes.get(scriptIdentity);
+		if (scriptScopes == null) {
+			scriptScopes = [];
+			compatScriptScopes.set(scriptIdentity, scriptScopes);
+		}
+		scriptScopes.push({scope:usehaxe, interp:interp,
+			path:Path.normalize(path + filename).toLowerCase()});
+		if (usehaxe == 'cutscene')
+			cutsceneStartInProgress = true;
+		// A start hook is allowed to hide the cameras while it builds a
+		// cinematic, but if it throws before restoring them (for example an
+		// unavailable imported effect class) the old engine leaves the entire
+		// world black forever. Restore the pre-hook visibility only on failure.
+		var startGameAlpha = camGame == null ? 1 : camGame.alpha;
+		var startHudAlpha = camHUD == null ? 1 : camHUD.alpha;
+		var startOtherAlpha = camOther == null ? 1 : camOther.alpha;
+		var startGameVisible = camGame == null ? true : camGame.visible;
+		var startHudVisible = camHUD == null ? true : camHUD.visible;
+		var startOtherVisible = camOther == null ? true : camOther.visible;
+		// HXC character constructors are routed through start(). Their generated
+		// onCreate hooks can write actor fields before onAdd is dispatched, so bind
+		// the selected actor for this one lifecycle window and restore the previous
+		// callback owner even if authored HScript throws.
+		var bindCharacterStart = isHxcSource && characterRole != null
+			&& StringTools.trim(characterRole) != '';
+		var previousStartActor = hxcCharacterCallbackActor;
+		var previousStartRole = hxcCharacterCallbackRole;
+		if (bindCharacterStart) {
+			hxcCharacterCallbackActor = characterOverride == null
+				? hxcCharacterForRole(characterRole) : characterOverride;
+			hxcCharacterCallbackRole = hxcCharacterRole(characterRole);
+		}
+		var startSucceeded = false;
+		try {
+			startSucceeded = callHscript("start", [SONG.song], usehaxe, true);
+			// Psych/Kade split creation into onCreate and onCreatePost.  The former
+			// is routed by the start call above; dispatch the post phase once the
+			// canonical state has finished seeding its objects.
+			callHscript("createPost", [], usehaxe, true);
+		} catch (error:Dynamic) {
+			if (bindCharacterStart) {
+				hxcCharacterCallbackActor = previousStartActor;
+				hxcCharacterCallbackRole = previousStartRole;
+			}
+			throw error;
+		}
+		if (bindCharacterStart) {
+			hxcCharacterCallbackActor = previousStartActor;
+			hxcCharacterCallbackRole = previousStartRole;
+		}
+		if (usehaxe == 'cutscene' && !startSucceeded) {
+			// A translated HXC class may expose only helper methods (its donor
+			// constructor is intentionally not executed). Complete the cutscene
+			// hand-off instead of leaving the play state black and stuck inCutscene.
+			pendingCutsceneHandoff = true;
+		}
+		if (!startSucceeded) {
+			if (camGame != null) {
+				camGame.alpha = startGameAlpha;
+				camGame.visible = startGameVisible;
+			}
+			if (camHUD != null) {
+				camHUD.alpha = startHudAlpha;
+				camHUD.visible = startHudVisible;
+			}
+			if (camOther != null) {
+				camOther.alpha = startOtherAlpha;
+				camOther.visible = startOtherVisible;
+			}
+		}
+		if (usehaxe == 'cutscene') {
+			cutsceneStartInProgress = false;
+			if (pendingCutsceneHandoff) {
+				pendingCutsceneHandoff = false;
+				// Re-enter through the normal hand-off so every sprite added by
+				// the completed start() hook is included in cleanup.
+				startCountdown();
+			}
+		}
+		if (isStageScriptScope(usehaxe)) {
+			registerStageSprites(interp);
+			// every sprite this scope registered (adds during start plus the
+			// exports above) is a candidate for the imported-stage HUD clamp
+			for (i in hudPropWatermark...stageSprites.length)
+				trackImportedStageHudProp(stageSprites[i], usehaxe);
+			if (isImportedStageScope(usehaxe))
+				layerNativeStageHudOverProps();
+			// The stage script may have assigned authored character/prop z
+			// values; one sort here puts the opening frame in donor order
+			// (characters above backdrops, foreground layers on top).
+			refresh();
+		}
+		// old-engine scripts call FlxG.cameras.add(cam) expecting flixel-4
+		// semantics, but flixel 6 makes each new camera a default draw
+		// target - every null-camera sprite then renders on it too
+		// (purgatory's monitorCam drew the whole stage at 2.5x). the fork's
+		// convention is defaults=[camGame]; UI sprites get explicit cameras.
+		// _defaultCameras aliases the front end's defaults array, so mutate
+		// it in place (rebinding would detach the alias)
+		@:privateAccess {
+			FlxCamera._defaultCameras.splice(0, FlxCamera._defaultCameras.length);
+			FlxCamera._defaultCameras.push(FlxG.camera);
+		}
 		trace('executed');
 	}
 
@@ -539,14 +10611,30 @@ class PlayState extends MusicBeatState {
 		// I need to merge this with the other makeHaxeState
 		trace("opening a haxe state (because we are cool :))");
 		var parser = new ParserEx();
-		var program = parser.parseString(FNFAssets.getText(path + filename));
-		var interp = PluginManager.createSimpleInterp();
+		var source = getCompatibleHscript(path + filename);
+		if (source == null)
+			throw 'No compatible HScript/Lua UI module found at ' + path + filename;
+		var luaProgram = luaProgramFor(path + filename, source);
+		var translatedLua:Bool = luaProgram.translated;
+		source = luaProgram.source;
+		source = EngineCompat.rewriteLegacyAssetPaths(source);
+		var legacyFrameDelta = EngineCompat.normalizeLegacyFrameDeltas(source);
+		for (diagnostic in legacyFrameDelta.diagnostics)
+			trace('[legacy-frame-' + diagnostic.code + '] ' + diagnostic.message + ' (' + path + filename + ':' + diagnostic.line + ')');
+		source = legacyFrameDelta.source;
+		var program = parser.parseString(source);
+		var interp:Interp = translatedLua
+			? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
+		interp.variables.set('__compatDiagnosticSource', path + filename);
 		// set vars
 		interp.variables.set("difficulty", storyDifficulty);
 	    interp.variables.set("Math", Math);
 		interp.variables.set("Conductor", Conductor);
 		interp.variables.set("songData", SONG);
 		interp.variables.set("curSong", SONG.song);
+		interp.variables.set("bpm", Conductor.bpm); // old modcharts read bare `bpm` for sway math
+		interp.variables.set("curBpm", Conductor.bpm);
+		interp.variables.set("stepCrochet", Conductor.stepCrochet);
 		interp.variables.set("curStep", 0);
 		interp.variables.set("curBeat", 0);
 		interp.variables.set("duoMode", duoMode);
@@ -555,15 +10643,19 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("demoMode", demoMode);
 		interp.variables.set("disableScoreChange", function(funny:Bool) {disableScoreChange = funny;});
 		interp.variables.set("camHUD", camHUD);
+		interp.variables.set("camOther", camOther);
+		interp.variables.set("frameRateScale", PlayState.frameRateScale);
 		interp.variables.set("downscroll", downscroll);
 		interp.variables.set("middlescroll", midscroll);
 		interp.variables.set("playerStrums", playerStrums);
 		interp.variables.set("enemyStrums", enemyStrums);
 
+		interp.variables.set("getGlobalSprite", function(name:String):FlxSprite return PlayState.globalSprites.get(name));
+		interp.variables.set("setGlobalSprite", function(name:String, sprite:FlxSprite) PlayState.globalSprites.set(name, sprite));
 		interp.variables.set("getUV", getUV);
 		interp.variables.set("updateUV", updateUV);
 
-		interp.variables.set("strumLineY", strumLine.y);
+		interp.variables.set("strumLineY", strumLine == null ? 0 : strumLine.y);
 		interp.variables.set("hscriptPath", path);
 		interp.variables.set("health", health);
 		interp.variables.set("scoreTxt", scoreTxt);
@@ -592,6 +10684,9 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("iconP1", iconP1);
 		interp.variables.set("iconP2", iconP2);
 		interp.variables.set("currentPlayState", this);
+		interp.variables.set("currentFreeplayState", null);
+		interp.variables.set("AttractState", null);
+		interp.variables.set("currentMenuState", null);
 		interp.variables.set("PlayState", PlayState);
 
 		//funny numbers (how do I make them read only????????)
@@ -601,22 +10696,21 @@ class PlayState extends MusicBeatState {
 		interp.variables.set("accuracy", accuracy);
 		interp.variables.set("combo", combo);
 
-		interp.variables.set("start", function (song) {});
-		interp.variables.set("songStart", function (song) {});
-		interp.variables.set("update", function (elapsed) {});
-		interp.variables.set("onPause", function () {});
-		interp.variables.set("onResume", function () {});
-		interp.variables.set("beatHit", function (beat) {});
-		interp.variables.set("stepHit", function(step) {});
-		interp.variables.set("playerTwoTurn", function () {});
-		interp.variables.set("playerTwoMiss", function () {});
-		interp.variables.set("playerTwoSing", function () {});
-		interp.variables.set("playerOneTurn", function() {});
-		interp.variables.set("playerOneMiss", function() {});
-		interp.variables.set("playerOneSing", function() {});
-		interp.variables.set("noteLoaded", function (note) {});
-		interp.variables.set("noteHit", function(player1:Bool, note:Note, wasGoodHit:Bool) {});
-		interp.variables.set("addSprite", function (sprite) {add(sprite);});
+		// See makeHaxeState(): lifecycle hooks must remain unseeded so aliases
+		// (onCreate/onUpdate/onBeatHit...) are visible to the resolver.
+		interp.variables.set("onEvent", function (name, v1, v2, v3) {});
+		interp.variables.set("addSprite", function (sprite) {
+			addHscriptSprite(sprite, 0);
+			trackHscriptSprite(sprite, usehaxe);
+		});
+		// guarded + cached sound play for ported scripts (see hscriptSafePlay)
+		interp.variables.set("soundPlaySafe", PlayState.hscriptSafePlay);
+		interp.variables.set("preloadSound", PlayState.preloadHscriptSound);
+		seedEngineCompat(interp);
+		// UI layouts can also arrive through the Lua compatibility importer; seed
+		// the same side-specific receptor globals as gameplay scopes.
+		seedLuaDynamicGlobals(interp);
+		seedHxcCharacterCompat(interp, path + filename);
 		interp.variables.set("removeSprite", function(sprite) {remove(sprite);});
 		interp.variables.set("replaceSprite", function(sprite, replaced) {replace(sprite, replaced);});
 		interp.variables.set("PlayState", PlayState);
@@ -625,7 +10719,39 @@ class PlayState extends MusicBeatState {
 		trace("set stuff");
 		interp.execute(program);
 		hscriptStates.set(usehaxe,interp);
-		callHscript("start", [SONG.song], usehaxe);
+		var startGameAlpha = camGame == null ? 1 : camGame.alpha;
+		var startHudAlpha = camHUD == null ? 1 : camHUD.alpha;
+		var startOtherAlpha = camOther == null ? 1 : camOther.alpha;
+		var startGameVisible = camGame == null ? true : camGame.visible;
+		var startHudVisible = camHUD == null ? true : camHUD.visible;
+		var startOtherVisible = camOther == null ? true : camOther.visible;
+		var startSucceeded = callHscript("start", [SONG.song], usehaxe, true);
+		callHscript("createPost", [], usehaxe, true);
+		if (!startSucceeded) {
+			if (camGame != null) {
+				camGame.alpha = startGameAlpha;
+				camGame.visible = startGameVisible;
+			}
+			if (camHUD != null) {
+				camHUD.alpha = startHudAlpha;
+				camHUD.visible = startHudVisible;
+			}
+			if (camOther != null) {
+				camOther.alpha = startOtherAlpha;
+				camOther.visible = startOtherVisible;
+			}
+		}
+		// old-engine scripts call FlxG.cameras.add(cam) expecting flixel-4
+		// semantics, but flixel 6 makes each new camera a default draw
+		// target - every null-camera sprite then renders on it too
+		// (purgatory's monitorCam drew the whole stage at 2.5x). the fork's
+		// convention is defaults=[camGame]; UI sprites get explicit cameras.
+		// _defaultCameras aliases the front end's defaults array, so mutate
+		// it in place (rebinding would detach the alias)
+		@:privateAccess {
+			FlxCamera._defaultCameras.splice(0, FlxCamera._defaultCameras.length);
+			FlxCamera._defaultCameras.push(FlxG.camera);
+		}
 		trace('executed');
 	}
 
@@ -635,7 +10761,11 @@ class PlayState extends MusicBeatState {
 	function makeHaxeExState(usehaxe:String, path:String, filename:String) {
 		trace("opening a haxe state (because we are cool :))");
 		var parser = new ParserEx();
-		var program = parser.parseModule(FNFAssets.getHscript(path + filename));
+		var source = getCompatibleHscript(path + filename);
+		if (source == null)
+			throw 'No compatible HScript/Lua module found at ' + path + filename;
+		source = EngineCompat.rewriteLegacyAssetPaths(source);
+		var program = parser.parseModule(source);
 		trace("set stuff");
 		exInterp.registerModule(program);
 
@@ -643,6 +10773,8 @@ class PlayState extends MusicBeatState {
 	}
 	#end
 	var useCustomInput:Bool = false;
+	/** Codename scripts can change the game-wide default used by authored lines. */
+	@:keep public var ghostTapping:Bool = false;
 	var showMisses:Bool = false;
 	var useSongBar:Bool = true;
 	var useTimings:Bool = true;
@@ -651,20 +10783,49 @@ class PlayState extends MusicBeatState {
 	var songName:FlxText;
 	var uiSmelly:TUI;
 	override public function create() {
+		if (guardMissingSongBeforeCreate()) return;
+		Sys.println('[dims] FlxG=' + FlxG.width + 'x' + FlxG.height + ' initial=' + FlxG.initialWidth + 'x' + FlxG.initialHeight);
 		#if desktop
-		// pre lowercasing the song name (create)
-        var songLowercase = StringTools.replace(PlayState.SONG.song, " ", "-").toLowerCase();
-        switch (songLowercase) {
-            case 'dad-battle': songLowercase = 'dadbattle';
-        }
+		var songLowercase = currentSongStorageFolder();
 		#end
 		if (instance != null) trace('already has playstate idfk');
 		instance = this;
+		// startingPosition is the editor's one-shot launch request. Capture it on
+		// the owning state before HXC callbacks run, then clear the static scratch
+		// value so a later Freeplay/retry launch of the same song starts at zero.
+		startTimestamp = consumeStartingPosition();
+		startPosSong = SONG.song;
+		var psychCameraRoot = Song.currentPsychCharacterRoot();
+		psychCameraCompatibilityActive = psychCameraRoot != null && StringTools.trim(psychCameraRoot) != '';
+		RuntimeSmokeHarness.markPlayStateStart(SONG);
+		clearScriptOwnership();
+		CodenameModRuntime.synchronizeChartOwner(codenameSelectedRoot());
+		// Imported HXC character callbacks may select game-over/pause audio for
+		// this song. Clear the previous song's bounded suffix view before native
+		// characters and their generated callbacks are created.
+		HxcCompatRuntime.resetGameOverSettings();
+		// Song scripts can change these static values, so reset them before
+		// applying this run's modifiers. Exiting Control Loaded early otherwise
+		// leaves health gain disabled for every later song.
+		resetSongHealthMultipliers();
 		Note.getFrames = true;
 		Note.getSpecialFrames = true;
 		Note.specialNoteJson = null;
-		if (FNFAssets.exists('assets/data/${SONG.song.toLowerCase()}/noteInfo.json'))
-			Note.specialNoteJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/${SONG.song.toLowerCase()}/noteInfo.json'));
+		var noteInfoPath = currentSongDataPath('noteInfo.json');
+		if (FNFAssets.exists(noteInfoPath))
+			Note.specialNoteJson = CoolUtil.parseJson(FNFAssets.getText(noteInfoPath));
+		#if sys
+		if (Note.specialNoteJson != null) {
+			var noteStyleRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+			var restoredPolicies = VSliceImporter.applyRuntimeNoteKindPolicies(cast Note.specialNoteJson, noteStyleRoot);
+			if (restoredPolicies > 0)
+				trace('[vslice-note-policy] Recovered ' + restoredPolicies + ' hazardous note policies from the selected namespace.');
+			var restoredStyles = VSliceImporter.applyRuntimeNoteKindStyles(cast Note.specialNoteJson, noteStyleRoot);
+			if (restoredStyles > 0)
+				trace('[vslice-note-style] Restored ' + restoredStyles
+					+ ' note kind atlas descriptors from the selected script namespace.');
+		}
+		#end
 		universalVar = new Map<String, Dynamic>();
 		Judgement.uiJson = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_ui/ui_packs/ui.json'));
 		uiSmelly = Reflect.field(Judgement.uiJson, SONG.uiType);
@@ -704,7 +10865,7 @@ class PlayState extends MusicBeatState {
 
 		// String for when the game is paused
 		detailsPausedText = "Paused - " + detailsText;
-		
+
 		// Updating Discord Rich Presence.
 		updatePresence();
 		/*DiscordClient.changePresence(customPrecence
@@ -722,19 +10883,24 @@ class PlayState extends MusicBeatState {
 			+ misses, iconRPC);
 		*/
 		#end
-		
+
 		// var gameCam:FlxCamera = FlxG.camera;
-		camGame = new FlxCamera();
+		camGame = new CompatCamera();
 		camHUD = new FlxCamera();
+		camOther = new FlxCamera();
 		camHUD.bgColor.alpha = 0;
+		camOther.bgColor.alpha = 0;
 		FlxG.cameras.reset(camGame);
 		FlxG.cameras.add(camHUD, false);
+		FlxG.cameras.add(camOther, false);
 
 		//dynamicMouse = true;
 		persistentUpdate = true;
 		persistentDraw = true;
 		alwaysDoCutscenes = OptionsHandler.options.alwaysDoCutscenes;
 		useCustomInput = OptionsHandler.options.useCustomInput;
+		ghostTapping = useCustomInput;
+		comboBreaks = !ghostTapping;
 		useVictoryScreen = !OptionsHandler.options.skipVictoryScreen;
 		downscroll = OptionsHandler.options.downscroll;
 		midscroll = OptionsHandler.options.midscroll;
@@ -761,6 +10927,7 @@ class PlayState extends MusicBeatState {
 			soloMode = ModifierState.namedModifiers.nos.value;
 			opponentPlayer = ModifierState.namedModifiers.oppnt.value;
 			demoMode = ModifierState.namedModifiers.demo.value;
+			if (demoMode) maxStepCatchUp = 0;
 			if (ModifierState.namedModifiers.healthloss.value)
 				healthLossMultiplier = ModifierState.namedModifiers.healthloss.amount;
 			if (ModifierState.namedModifiers.healthgain.value)
@@ -786,6 +10953,13 @@ class PlayState extends MusicBeatState {
 		} else {
 			ModifierState.scoreMultiplier = 1;
 		}
+		// Smoke practice must also work when the user's modifier menu is skipped.
+		if (RuntimeSmokeHarness.enabled() && RuntimeSmokeHarness.config().practice)
+			practiceMode = true;
+		if (RuntimeSmokeHarness.enabled() && RuntimeSmokeHarness.config().botplay) {
+			demoMode = true;
+			maxStepCatchUp = 0;
+		}
 		player1GoodHitSignal = new Signal<Note>();
 		player2GoodHitSignal = new Signal<Note>();
 		// rebind always, to support multi-key
@@ -800,6 +10974,23 @@ class PlayState extends MusicBeatState {
 		if (SONG == null)
 			SONG = Song.loadFromJson('tutorial');
 		grpNoteSplashes = new FlxTypedGroup<NoteSplash>();
+		var codenameOwnerRoot = codenameSelectedRoot();
+		if (codenameOwnerRoot != '') {
+			codenameNoteSplashHandler = new CodenameNoteSplashHandler(codenameOwnerRoot);
+			codenameRatingEnabled = true;
+			comboGroup = new CodenameNotePresentation(codenameOwnerRoot,
+				FlxG.width * 0.55, FlxG.height * 0.5 - 60);
+			comboGroup.cameras = [camGame];
+		}
+		// Keep a small recycled pool per character lane. Crossfades are visual
+		// snapshots, so retaining dozens of full-size character sprites would
+		// needlessly increase draw and memory cost during dense sections.
+		gfCrossFades = new FlxTypedGroup<CrossFade>(3);
+		dadCrossFades = new FlxTypedGroup<CrossFade>(4);
+		boyfriendCrossFades = new FlxTypedGroup<CrossFade>(4);
+		gfCrossFades.cameras = [camGame];
+		dadCrossFades.cameras = [camGame];
+		boyfriendCrossFades.cameras = [camGame];
 		var sploosh = new NoteSplash(100, 100, 0);
 		sploosh.alpha = 0.1;
 		grpNoteSplashes.add(sploosh);
@@ -827,7 +11018,7 @@ class PlayState extends MusicBeatState {
 			dialogSuffix = "-perfect";
 		}
 		var filename:Null<String> = null;
-		if (FNFAssets.exists('assets/images/custom_chars/' + SONG.player1 + '/' + SONG.song.toLowerCase() + 'Dialog.txt')) {	
+		if (FNFAssets.exists('assets/images/custom_chars/' + SONG.player1 + '/' + SONG.song.toLowerCase() + 'Dialog.txt')) {
 			filename = 'assets/images/custom_chars/' + SONG.player1 + '/' + SONG.song.toLowerCase() + 'Dialog.txt';
 			if (FNFAssets.exists('assets/images/custom_chars/' + SONG.player1 + '/' + SONG.song.toLowerCase() + 'Dialog'+dialogSuffix+'.txt'))
 				filename = 'assets/images/custom_chars/' + SONG.player1 + '/' + SONG.song.toLowerCase() + 'Dialog' + dialogSuffix + '.txt';
@@ -837,15 +11028,17 @@ class PlayState extends MusicBeatState {
 				filename = 'assets/images/custom_chars/' + SONG.player2 + '/' + SONG.song.toLowerCase() + 'Dialog${dialogSuffix}.txt';
 			}
 			// if no player dialog, use default
-		} else if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialog.txt')) {
-			filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialog.txt';
-			if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialog${dialogSuffix}.txt')) {
-				filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialog${dialogSuffix}.txt';
+		} else if (FNFAssets.exists(currentSongDataPath('dialog.txt'))) {
+			filename = currentSongDataPath('dialog.txt');
+			var songDialogVariant = currentSongDataPath('dialog' + dialogSuffix + '.txt');
+			if (FNFAssets.exists(songDialogVariant)) {
+				filename = songDialogVariant;
 			}
-		} else if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialogue.txt')) {
-			filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialogue.txt';
-			if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialogue${dialogSuffix}.txt')) {
-				filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialogue${dialogSuffix}.txt';
+		} else if (FNFAssets.exists(currentSongDataPath('dialogue.txt'))) {
+			filename = currentSongDataPath('dialogue.txt');
+			var songDialogueVariant = currentSongDataPath('dialogue' + dialogSuffix + '.txt');
+			if (FNFAssets.exists(songDialogueVariant)) {
+				filename = songDialogueVariant;
 			}
 		}
 		//filename = FNFAssets.getFileWithSuffixes('assets/data/${SONG.song.toLowerCase()}/dialog', [dialogSuffix, 'ue${dialogSuffix}', 'ue']);
@@ -866,11 +11059,16 @@ class PlayState extends MusicBeatState {
 		#end
 
 		daScrollSpeed = OptionsHandler.options.scrollSpeed == 1 ? SONG.speed : OptionsHandler.options.scrollSpeed;
-		
+		dynamicScrollTarget = OptionsHandler.options.dynamicScrollSpeed;
+		noteSpawnLookahead = scrollSpawnLookahead(dynamicScrollTarget);
+
+		initializeNightmareVisionScripts();
 		trace(SONG.gf);
-		gf = addCharacter(SONG.gf, 'gf');
-		
-		dad = addCharacter(SONG.player2, 'dad');
+		gf = addCharacter(SONG.gf, 'gf', null, codenameInitialActorIsPlayer('gf', SONG.gf, false));
+
+		loadNightmareVisionCharacter(gf);
+		dad = addCharacter(SONG.player2, 'dad', null, codenameInitialActorIsPlayer('opponent', SONG.player2, false));
+		loadNightmareVisionCharacter(dad);
 		if (duoMode || opponentPlayer || soloMode)
 			dad.beingControlled = true;
 
@@ -886,7 +11084,8 @@ class PlayState extends MusicBeatState {
 			}
 		}
 
-		boyfriend = addCharacter(SONG.player1, 'bf');
+		boyfriend = addCharacter(SONG.player1, 'bf', null, codenameInitialActorIsPlayer('player', SONG.player1, true));
+		loadNightmareVisionCharacter(boyfriend);
 		if (!opponentPlayer && !demoMode)
 			boyfriend.beingControlled = true;
 
@@ -905,6 +11104,10 @@ class PlayState extends MusicBeatState {
 		gf.y += gfoffset[1];
 		dad.x += dadoffset[0];
 		dad.y += dadoffset[1];
+		boyfriend.syncHxcPosition();
+		gf.syncHxcPosition();
+		dad.syncHxcPosition();
+		RuntimeSmokeHarness.markLoadPhase('initial_characters');
 		trace('befpre spoop check');
 		if (SONG.isSpooky) {
 			trace("WOAH SPOOPY");
@@ -915,12 +11118,17 @@ class PlayState extends MusicBeatState {
 			trace(evilTrail);
 			add(evilTrail);
 		}
-		add(gf);
-		trace('dad');
-		add(dad);
-		trace('dy UWU');
-		add(boyfriend);
-		trace('bf cheeks');
+		if (nightmareVisionAddActors) {
+			add(gfCrossFades);
+			add(gf);
+			trace('dad');
+			add(dadCrossFades);
+			add(dad);
+			trace('dy UWU');
+			add(boyfriendCrossFades);
+			add(boyfriend);
+			trace('bf cheeks');
+		}
 
 		doof = new DialogueBox(false, goodDialog);
 		trace('doofensmiz');
@@ -947,6 +11155,8 @@ class PlayState extends MusicBeatState {
 
 		enemyStrums = new Strumline(92, strumLine.y, SONG.uiType);
 		playerStrums = new Strumline(FlxG.width / 2 + 92, strumLine.y, SONG.uiType);
+		configurePsychStrumSkins();
+		configureNightmareVisionStrumlines();
 		if ((midscroll && !duoMode) || soloMode) { // middlescroll hijinks (coming 2085)
 			if (opponentPlayer) {
 				enemyStrums.x += 325;
@@ -956,18 +11166,47 @@ class PlayState extends MusicBeatState {
 				enemyStrums.x = -500; // gone
 			}
 		}
+		// highway dim: 1x1 black pixel stretched every frame to sit just
+		// behind the player's arrows. added BEFORE the strums/splashes/notes
+		// groups below so receptors and notes draw on top of it
+		highwayDimSprite = new FlxSprite().makeGraphic(1, 1, FlxColor.BLACK);
+		// flixel scales sprites around `origin` (frame center by default),
+		// which rendered the veil shifted half its width left - anchor top-left
+		highwayDimSprite.origin.set(0, 0);
+		highwayDimSprite.cameras = [camHUD];
+		highwayDimSprite.scrollFactor.set();
+		highwayDimSprite.visible = false;
+		add(highwayDimSprite);
 		enemyStrums.alpha = 0;
 		playerStrums.alpha = 0;
 		add(enemyStrums);
 		add(playerStrums);
 		add(grpNoteSplashes);
+		if (codenameNoteSplashHandler != null)
+			add(codenameNoteSplashHandler);
+		if (comboGroup != null) add(comboGroup);
 
 		comboBreakThingies(0);
 		comboBreakThingies(1);
-		
+
 		// startCountdown();
 		trace('before generate');
-		generateSong(SONG.song);
+		if (nightmareVisionScripts == null) {
+			generateSong(SONG.song);
+			RuntimeSmokeHarness.markLoadPhase('chart_generated');
+		} else {
+			notes = new FlxTypedGroup<Note>();
+			add(notes);
+		}
+
+		// warm the atlases of characters the chart swaps to mid-song, so the
+		// first "Change Character" (2k22 hides these behind a white flash)
+		// doesn't stall building a multi-MB sheet during gameplay
+		if (nightmareVisionScripts == null) {
+			preloadSwapCharacters();
+			RuntimeSmokeHarness.markLoadPhase('swap_characters_preloaded');
+		}
+
 
 		// add(strumLine);
 		camFollow = new FlxObject(0, 0, 1, 1);
@@ -981,9 +11220,9 @@ class PlayState extends MusicBeatState {
 
 		add(camFollow);
 
-		FlxG.camera.follow(camFollow, LOCKON, camSpeed);
+		FlxG.camera.follow(camFollow, LOCKON, camFollowLerp());
 		// FlxG.camera.setScrollBounds(0, FlxG.width, 0, FlxG.height);
-		FlxG.camera.zoom = defaultCamZoom;
+		setGameCameraZoom(defaultCamZoom);
 		FlxG.camera.focusOn(camFollow.getPosition());
 		FlxG.camera.scroll.x = camPos.x;
 		FlxG.camera.scroll.y = camPos.y;
@@ -1006,12 +11245,21 @@ class PlayState extends MusicBeatState {
 		songPosBar.numDivisions = 1000;
 		songPosBar.cameras = [camHUD];
 
-		songName = new FlxText(songPosBG.x, songPosBG.y, songPosBG.width, StringTools.replace(SONG.song, '-', ' '), 16);
+		var shownSongTitle = SONG.compatPreserveSongTitle == true ? SONG.song
+			: StringTools.replace(SONG.song, '-', ' ');
+		songName = new FlxText(songPosBG.x, songPosBG.y, songPosBG.width, shownSongTitle, 16);
 		if (downscroll)
 			songName.y -= 3;
 		songName.setFormat("assets/fonts/vcr.ttf", 16, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		songName.scrollFactor.set();
 		songName.cameras = [camHUD];
+		// old-engine global sprite names for the song progress UI
+		PlayState.globalSprites.set("timeBarBG", songPosBG);
+		PlayState.globalSprites.set("timeBar", songName);
+		// old-engine field names for the same objects (milk 2.0 moves them via
+		// currentPlayState.timeBarBG / .timeBar)
+		timeBarBG = songPosBG;
+		timeBar = songName;
 
 		if (useSongBar) {
 			add(songPosBG);
@@ -1032,13 +11280,19 @@ class PlayState extends MusicBeatState {
 		healthBar = new FlxBar(healthBarBG.x + 4, healthBarBG.y + 4, RIGHT_TO_LEFT, Std.int(healthBarBG.width - 8), Std.int(healthBarBG.height - 8), this,
 			'health', 0, 2);
 		healthBar.scrollFactor.set();
-		
+
 		// healthBar
 		add(healthBar);
 
 		scoreTxt = new FlxText(0, healthBarBG.y + 40, FlxG.width, "", 200);
 		scoreTxt.setFormat("assets/fonts/vcr.ttf", 20, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
 		scoreTxt.scrollFactor.set();
+		if (codenameSelectedRoot() != '') {
+			missesTxt = new FlxText(healthBarBG.x + 50, scoreTxt.y,
+				healthBarBG.width - 100, 'Misses: 0', 16);
+			missesTxt.setFormat("assets/fonts/vcr.ttf", 16, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+			missesTxt.scrollFactor.set();
+		}
 
 		healthTxt = new FlxText(healthBarBG.x + healthBarBG.width - 300, scoreTxt.y, 0, "", 200);
 		healthTxt.setFormat("assets/fonts/vcr.ttf", 20, FlxColor.WHITE, RIGHT, OUTLINE, FlxColor.BLACK);
@@ -1057,15 +11311,20 @@ class PlayState extends MusicBeatState {
 		difficTxt.y -= difficTxt.height;
 		if (downscroll)
 			difficTxt.y = 0;
-		difficTxt.text = storyDifficultyText + ' - Disappointing+ ${MainMenuState.version}';
-		
+		difficTxt.text = storyDifficultyText + ' - CammieEngine ${MainMenuState.version}';
+
 		iconP1 = new HealthIcon(SONG.player1, true, true);
+		iconP1.codenameBop = codenameSelectedRoot() != '';
+		iconP1.defaultScale = iconP1.scale.x;
 		iconP1.y = healthBar.y - (iconP1.height / 2);
 		add(iconP1);
 
 		iconP2 = new HealthIcon(SONG.player2, false, true);
+		iconP2.codenameBop = iconP1.codenameBop;
+		iconP2.defaultScale = iconP2.scale.x;
 		iconP2.y = healthBar.y - (iconP2.height / 2);
 		add(iconP2);
+		iconArray = [iconP1, iconP2];
 
 		updateHealthColors();
 
@@ -1076,9 +11335,13 @@ class PlayState extends MusicBeatState {
 		add(practiceDieIcon);
 
 		grpNoteSplashes.cameras = [camHUD];
+		if (codenameNoteSplashHandler != null)
+			codenameNoteSplashHandler.cameras = [camHUD];
 		strumLineNotes.cameras = [camHUD];
 		enemyStrums.cameras = [camHUD];
 		playerStrums.cameras = [camHUD];
+		enemyStrums.noteHoldCovers.cameras = [camHUD];
+		playerStrums.noteHoldCovers.cameras = [camHUD];
 		notes.cameras = [camHUD];
 		healthBar.cameras = [camHUD];
 		healthBarBG.cameras = [camHUD];
@@ -1086,6 +11349,7 @@ class PlayState extends MusicBeatState {
 		iconP2.cameras = [camHUD];
 		practiceDieIcon.cameras = [camHUD];
 		scoreTxt.cameras = [camHUD];
+		if (missesTxt != null) missesTxt.cameras = [camHUD];
 		healthTxt.cameras = [camHUD];
 		doof.cameras = [camHUD];
 		accuracyTxt.cameras = [camHUD];
@@ -1093,55 +11357,226 @@ class PlayState extends MusicBeatState {
 		practiceDieIcon.visible = false;
 
 		add(scoreTxt);
+		if (missesTxt != null) add(missesTxt);
+		if (demoMode) {
+			demoSpeedTxt = new FlxText(10, 24, 0, "Demo: 1x  |  Left / Right", 16);
+			demoSpeedTxt.setFormat("assets/fonts/vcr.ttf", 16, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
+			demoSpeedTxt.scrollFactor.set();
+			demoSpeedTxt.cameras = [camHUD];
+			add(demoSpeedTxt);
+		}
 		add(difficTxt);
+		initializeNightmareVisionHUD();
 
 		startingSong = true;
 		trace('finish uo');
-		
-		final stageJson = CoolUtil.parseJson(FNFAssets.getText("assets/images/custom_stages/custom_stages.json"));
-		if (Reflect.hasField(stageJson, SONG.stage)) {
+
+		var beforeStageCameraX = camFollow == null ? 0 : camFollow.x;
+		var beforeStageCameraY = camFollow == null ? 0 : camFollow.y;
+		var psychCompiledStageOwner = selectedPsychSkinRoot();
+		var psychCompiledStageSource = psychCompiledStageSourceForCurrentSong();
+		var psychCompiledStageClass = psychCompiledStageSource == null
+			? psychCompiledStageClassForCurrentSong() : psychCompiledStageSource.className;
+		var psychStageMetadataApplied = false;
+		var psychCompiledStageCreated = false;
+		if (psychCompiledStageOwner != null && psychCompiledStageSource != null) {
 			curStage = new StageHelper(SONG.stage);
-			makeHaxeState("stage", "assets/images/custom_stages/" + SONG.stage + "/", "../"+Reflect.field(stageJson, SONG.stage));
-			curStage.interp = hscriptStates.get('stage');
-		} else
-			curStage = new StageHelper('Invalid Stage: ' + SONG.stage);
+			curStage.authoredName = SONG.stage;
+			psychStageMetadataApplied = applyOwnedPsychStageMetadataOnly(psychCompiledStageOwner);
+			psychCompiledStageCreated = startPsychCompiledStage(psychCompiledStageOwner, psychCompiledStageSource);
+		}
+		var psychCompiledStageDiagnostic = psychCompiledStageClass == null || psychCompiledStageCreated ? ''
+			: reportUnsupportedPsychCompiledStage(psychCompiledStageClass);
+		if (psychCompiledStageRuntimeError != '')
+			psychCompiledStageDiagnostic += ' [psych-stage-runtime-error] ' + psychCompiledStageRuntimeError;
+		var nativeStage = registeredStage(SONG.stage);
+		if (nightmareVisionScripts != null) {
+			// NMV owns its stage before actor construction.
+		} else if (psychCompiledStageCreated) {
+			// Psych source stages coexist with chart-selected Lua/HScript stage
+			// modules. Run those through their existing compatibility loader beside
+			// the owner-scoped compiled BaseStage implementation.
+			if (loadHxcStageCompat() || loadPsychStageCompat())
+				curStage.interp = hscriptStates.get('stage');
+		} else if (nativeStage != null) {
+			// Keep the chart's authored id in SONG, but load the canonical native
+			// implementation for standard legacy aliases such as halloween/spooky.
+			curStage = new StageHelper(nativeStage.name);
+			curStage.authoredName = SONG.stage;
+			if (nativeStage.unavailable == true)
+				trace('[imported-stage-missing] ' + SONG.stage + ': ' + nativeStage.reason);
+			else {
+				makeHaxeState("stage", nativeStage.directory + nativeStage.name + "/", "../" + nativeStage.script);
+				curStage.interp = hscriptStates.get('stage');
+			}
+			// V-Slice imports materialize a native stage registry entry for the JSON
+			// camera/prop data, while the companion HXC may own additional props or
+			// stage callbacks. Load that companion beside the native implementation;
+			// loadHxcStageCompat() keeps it isolated and manifest-scoped.
+			loadHxcStageCompat();
+			if (psychCompiledStageClass != null) {
+				// Keep selected-owner metadata available to the fallback and record
+				// that the imported compiled behavior could not be executed.
+				if (!psychStageMetadataApplied) {
+					psychStageMetadataApplied = applyOwnedPsychStageMetadataOnly(psychCompiledStageOwner);
+					if (!psychStageMetadataApplied && psychCompiledStageOwner == null)
+						psychStageMetadataApplied = applyOwnedPsychStageMetadataOnly();
+				}
+				curStage.fallbackDiagnostic = psychCompiledStageDiagnostic;
+			}
+		} else {
+			// Imported Psych/Kade stages live in assets/stages and are intentionally
+			// not rewritten into the native registry. Resolve their Lua/HScript and
+			// JSON metadata through the compatibility layer at runtime.
+			curStage = new StageHelper(SONG.stage);
+			if (loadHxcStageCompat() || loadPsychStageCompat()) {
+				curStage.interp = hscriptStates.get('stage');
+				if (psychCompiledStageClass != null)
+					curStage.fallbackDiagnostic = psychCompiledStageDiagnostic;
+			} else {
+				// Psych source distributions can provide stage JSON and its media
+				// while keeping the actual scene implementation in donor Haxe code.
+				// Preserve owner-authored start/camera metadata, but keep the missing
+				// stage implementation visible in the native fallback diagnostic.
+				if (!psychStageMetadataApplied) {
+					psychStageMetadataApplied = applyOwnedPsychStageMetadataOnly(psychCompiledStageOwner);
+					if (!psychStageMetadataApplied && psychCompiledStageOwner == null)
+						psychStageMetadataApplied = applyOwnedPsychStageMetadataOnly();
+				}
+				// A chart may arrive with a donor stage id whose source payload was
+				// never present in the donor package. Keep the authored id for
+				// diagnostics/currentStageId, but run the neutral native stage group so
+				// chart timing, notes, and gameplay callbacks remain launchable.
+				var stagePlan = EngineCompat.planVisualFallback('stage', SONG.stage,
+					'runtime chart "' + SONG.song + '" stage field',
+					EngineCompat.visualDependencySearchPaths('stage', SONG.stage),
+					'stage visuals use the neutral native stage group; notes, timing, and gameplay callbacks continue',
+					psychCompiledStageClass != null ? 'unsupported-engine-behavior' : 'unresolved-source-dependency');
+				var missingStageDiagnostic = psychCompiledStageClass != null
+					? psychCompiledStageDiagnostic : EngineCompat.reportVisualFallback(stagePlan);
+				curStage.applyNativeFallback(SONG.stage, missingStageDiagnostic);
+			}
+		}
 		setAllHaxeVar('stage', curStage);
+		applyCodenameStageStartCamera();
+		initializeCodenameActors();
+		if (codenameActors != null && camFollow != null) {
+			curCameraTarget = 0;
+			moveCodenameCamera();
+			camGame.focusOn(camFollow.getPosition());
+		}
+		loadCodenameStateCompat();
+		loadCodenameStageCompat();
+		flushPendingHxcCharacterAdded();
+		initializeVSliceCameraFocus(beforeStageCameraX, beforeStageCameraY);
+		if (psychCompiledStageCreated)
+			dispatchPsychCompiledStage('createPost', []);
 		//add(curStage);
 
 		trace('stage done');
-		
+		RuntimeSmokeHarness.markLoadPhase('stage_loaded');
+
+		RuntimeSmokeHarness.markStep('playstate:create:ui-layout-begin');
 		final uiJson = CoolUtil.parseJson(FNFAssets.getText("assets/images/custom_ui/ui_layouts/ui.json"));
 		if (SONG.forceLayout != 'none')
 			makeHaxeStateUI("uilayout", "assets/images/custom_ui/ui_layouts/" + SONG.forceLayout + "/", "../" + SONG.forceLayout + ".hscript");
 		else if (Reflect.field(uiJson, 'layout') != 'none')
 			makeHaxeStateUI("uilayout", "assets/images/custom_ui/ui_layouts/" + Reflect.field(uiJson, 'layout') + "/", "../" + Reflect.field(uiJson, 'layout') + ".hscript");
 
+		// UI scripts may add/reorder cameras. Reassert the donor camera contract
+		// after they finish and bind every null-camera world member explicitly.
+		bindGameplayCameras();
 		trace('ui done');
+		RuntimeSmokeHarness.markStep('playstate:create:ui-layout-complete');
 
-		if ((alwaysDoCutscenes || isStoryMode) && !watchedCutscene) {
+		if (nightmareVisionScripts != null) {
+			nightmareVisionScripts.loadScope('song');
+			callNightmareVision('preNoteGeneration', []);
+			generateSong(SONG.song);
+			RuntimeSmokeHarness.markLoadPhase('chart_generated');
+			preloadSwapCharacters();
+			RuntimeSmokeHarness.markLoadPhase('swap_characters_preloaded');
+		}
+
+		RuntimeSmokeHarness.markStep('playstate:create:intro-selection-begin');
+		var importedCutscene = importedCutsceneScript();
+		var shouldShowCutscene = importedCutscene != ''
+			? shouldPlayImportedCutscene()
+			: ((alwaysDoCutscenes || isStoryMode) && !watchedCutscene);
+		if (psychCompiledStageCreated && runPsychStageStartCallback()) {
+			// The source callback owns the countdown or intro-video handoff.
+		} else if (shouldShowCutscene) {
 			inCutscene = true;
-			switch (SONG.cutsceneType) {
-				case 'senpai':
-					schoolIntro(doof);
-				case 'angry-senpai':
-					schoolIntro(doof);
-				case 'none':
-					startCountdown();
-				default:
-					// schoolIntro(doof);
-					customIntro(doof);
+			if (importedCutscene != '') {
+				customIntro(doof);
+			} else {
+				switch (SONG.cutsceneType) {
+					case 'senpai':
+						schoolIntro(doof);
+					case 'angry-senpai':
+						schoolIntro(doof);
+					case 'none':
+						startCountdown();
+					default:
+						// schoolIntro(doof);
+						customIntro(doof);
+				}
 			}
 		} else {
 			startCountdown();
 		}
 
+		RuntimeSmokeHarness.markStep('playstate:create:intro-dispatch-returned');
+		RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');
+		callNightmareVision('onCreatePost', []);
+		RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');
 		super.create();
+		RuntimeSmokeHarness.markStep('playstate:create:super-create-complete');
+		RuntimeSmokeHarness.markStep('playstate:create:stateChangeEnd-begin');
+		callAllHScript('stateChangeEnd', [EngineCompat.hxcLifecyclePayload('stateChangeEnd', {targetState: this})]);
+		RuntimeSmokeHarness.markStep('playstate:create:stateChangeEnd-complete');
+		RuntimeSmokeHarness.markPlayStateReady(SONG);
+		if (runtimeSmokeActorTracking()) RuntimeSmokeHarness.markCodenameActorSnapshot(runtimeSmokeActorSummary());
+		runtimeSmokeCameraSnapshot('playstate-ready');
 	}
 
 	function customIntro(?dialogueBox:DialogueBox) {
+		var importedScript = importedCutsceneScript();
+		if (importedScript != '' && loadHxcCutsceneCompat(importedScript))
+			return;
+		if (importedScript != '') {
+			trace('Missing compatible imported cutscene start: ' + importedScript);
+			if (dialogueBox != null)
+				schoolIntro(dialogueBox);
+			else
+				startCountdown();
+			return;
+		}
+		var ownedCutscene = SONG == null ? null : ImportedCutsceneRegistry.resolve(
+			Song.storageFolder(SONG), SONG.cutsceneType,
+			function(path) return FNFAssets.exists(path),
+			function(path) return FNFAssets.getText(path),
+			function(source) return CoolUtil.parseJson(source));
+		if (ownedCutscene != null) {
+			if (ownedCutscene.unavailable) {
+				trace('[missing-donor-dependency] Selected cutscene ' + SONG.cutsceneType
+					+ ' is unavailable in its import owner: ' + ownedCutscene.reason);
+				startCountdown();
+				return;
+			}
+			makeHaxeState('cutscene', ownedCutscene.directory + ownedCutscene.name + '/',
+				'../' + ownedCutscene.script);
+			return;
+		}
 		var goodJson = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_cutscenes/cutscenes.json'));
 		if (!Reflect.hasField(goodJson, SONG.cutsceneType)) {
 			schoolIntro(dialogueBox);
+			return;
+		}
+		var scriptPath = "assets/images/custom_cutscenes/" + Reflect.field(goodJson, SONG.cutsceneType);
+		if (!FNFAssets.exists(scriptPath, Hscript)) {
+			trace('Missing cutscene script: ' + scriptPath + '; starting countdown');
+			startCountdown();
 			return;
 		}
 		makeHaxeState("cutscene", "assets/images/custom_cutscenes/" + SONG.cutsceneType + '/', "../" + Reflect.field(goodJson, SONG.cutsceneType));
@@ -1158,8 +11593,8 @@ class PlayState extends MusicBeatState {
 		if (FNFAssets.exists('assets/images/custom_chars/'+SONG.player2+'/Senpai_Dies.ogg')) {
 			senpaiSound = FNFAssets.getSound('assets/images/custom_chars/'+SONG.player2+'/Senpai_Dies.ogg');
 		// otherwise, try and find a song one
-		} else if (FNFAssets.exists('assets/data/'+SONG.song.toLowerCase()+'/Senpai_Dies.ogg')) {
-			senpaiSound = FNFAssets.getSound('assets/data/'+SONG.song.toLowerCase()+'Senpai_Dies.ogg');
+		} else if (FNFAssets.exists(currentSongDataPath('Senpai_Dies.ogg'))) {
+			senpaiSound = FNFAssets.getSound(currentSongDataPath('Senpai_Dies.ogg'));
 		// otherwise, use the default sound
 		} else {
 			senpaiSound = FNFAssets.getSound('assets/sounds/Senpai_Dies.ogg');
@@ -1227,61 +11662,879 @@ class PlayState extends MusicBeatState {
 				} else
 					if (intro)
 						startCountdown();
-					else 
+					else
 						endForReal();
 
 				remove(black);
 			}
 		});
 	}
-	function videoIntro(filename:String) {
-		startCountdown();
-		/*
-		var b = new FlxSprite(-200, -200).makeGraphic(2*FlxG.width,2*FlxG.height, -16777216);
-		b.scrollFactor.set();
-		add(b);
-		trace(filename);
-		new FlxVideo(filename).finishCallback = function () {
-			remove(b);
-			FlxTween.tween(FlxG.camera, {zoom: defaultCamZoom}, (Conductor.crochet / 1000) * 5, {ease: FlxEase.quadInOut});
-			startCountdown();
-		}*/
+	@:keep public function startVideo(name:String) {
+		if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active) {
+			var ownerRoot = selectedPsychSkinRoot();
+			if (ownerRoot == null)
+				throw '[psych-stage-video] active stage has no selected asset owner';
+			var ownerPaths = PsychOwnerPaths.create(ownerRoot, psychStageLibrary);
+			var videoPath = Reflect.callMethod(ownerPaths, Reflect.field(ownerPaths, 'video'), [name]);
+			var clean = hxcResolveImportedVideoPath(videoPath, ownerRoot);
+			if (clean == null) {
+				trace('[psych-stage-video] could not play selected-owner video ' + videoPath);
+				if (psychStageCutsceneEnding) endForReal(); else startCountdown();
+				return;
+			}
+			#if cpp
+			inCutscene = true;
+			canPause = false;
+			var ending = psychStageCutsceneEnding;
+			var clip:VideoCutscene = null;
+			clip = new VideoCutscene(clean, function() {
+				var callback = clip.skipRequested ? clip.onSkip : clip.finishCallback;
+				remove(clip);
+				clip.destroy();
+				if (videoCutscene == clip) videoCutscene = null;
+				canPause = true;
+				inCutscene = false;
+				if (callback == null) {
+					if (ending) endForReal(); else startCountdown();
+				} else try Reflect.callMethod(null, callback, []) catch (error:Dynamic) {
+					trace('[psych-stage-video] transition callback failed: ' + Std.string(error));
+					if (ending) endForReal(); else startCountdown();
+				}
+			}, {skipHoldSeconds: 1, skipPressed: function() return PsychControlsCompat.instance.pressed('accept')});
+			clip.finishCallback = function() {if (ending) endForReal(); else startCountdown();};
+			clip.onSkip = clip.finishCallback;
+			videoCutscene = clip;
+			add(clip);
+			#else
+			trace('[psych-stage-video] native video playback is unavailable on this target: ' + clean);
+			if (psychStageCutsceneEnding) endForReal(); else startCountdown();
+			#end
+			return;
+		}
+		videoIntro("assets/videos/" + name + ".mp4");
 	}
+	#if cpp
+	function eventVideoBool(options:Dynamic, field:String, fallback:Bool):Bool {
+		var value = options == null ? null : Reflect.field(options, field);
+		if (value == null)
+			return fallback;
+		if (Std.isOfType(value, Bool))
+			return cast value;
+		var text = StringTools.trim(Std.string(value)).toLowerCase();
+		return text == 'true' || text == '1' || text == 'yes' || text == 'on';
+	}
+
+	function eventVideoFloat(options:Dynamic, field:String, fallback:Float):Float {
+		var value = options == null ? null : Reflect.field(options, field);
+		if (value == null)
+			return fallback;
+		var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	/** Resolve a chart-event clip in its selected import owner. An imported
+	 * chart cannot borrow an identically named video from another package's
+	 * shared assets; base charts keep the ordinary global video directory. */
+	function compatEventVideoPath(name:String):String {
+		if (name == null) return null;
+		var clean = StringTools.replace(StringTools.trim(name), '\\', '/');
+		while (clean.startsWith('./')) clean = clean.substr(2);
+		if (clean.toLowerCase().startsWith('assets/videos/'))
+			clean = clean.substr('assets/videos/'.length);
+		while (clean.toLowerCase().startsWith('videos/'))
+			clean = clean.substr('videos/'.length);
+		if (clean == '' || clean.indexOf(':') >= 0 || clean.startsWith('/')) return null;
+		for (part in clean.split('/')) if (part == '' || part == '..' || part == '.') return null;
+		var extensions = ['.mp4', '.webm', '.ogv'];
+		var authoredExtension:String = null;
+		for (extension in extensions)
+			if (clean.toLowerCase().endsWith(extension)) {
+				authoredExtension = extension;
+				clean = clean.substr(0, clean.length - extension.length);
+				break;
+			}
+		if (clean == '') return null;
+		var owner = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+		var roots = owner == null || owner == ''
+			? ['assets/videos']
+			: [Path.join([owner, 'videos']), Path.join([owner, 'videos/videos']),
+				Path.join([owner, 'assets/videos'])];
+		for (root in roots)
+			for (extension in (authoredExtension == null ? extensions : [authoredExtension])) {
+				var candidate = Path.join([root, clean + extension]);
+				if (FNFAssets.isInScope(candidate) && FNFAssets.exists(candidate))
+					return candidate;
+			}
+		return null;
+	}
+
+	/** Exercise a forward seek with no video active from the native smoke harness. */
+	@:keep public function seekForwardForSmoke(target:Float):Dynamic {
+		if (!RuntimeSmokeHarness.enabled() || !Math.isFinite(target)
+			|| FlxG.sound.music == null || startingSong || endingSong
+			|| compatEventVideo != null || target < 0 || target > songLength
+			|| target <= Conductor.songPosition)
+			return null;
+		return seekForwardSongTime(target, true);
+	}
+
+	/** Apply the shared forward-seek state update used by smoke and video skip. */
+	function seekForwardSongTime(target:Float, captureSmokeState:Bool):Dynamic {
+		if (FlxG.sound.music == null || startingSong || endingSong
+			|| !Math.isFinite(target) || target < 0 || target > songLength
+			|| target <= Conductor.songPosition)
+			return null;
+		var from = Conductor.songPosition;
+		var musicTimeBefore = FlxG.sound.music.time;
+		var vocalTimeBefore = vocalTime();
+		var conductorLastPositionBefore = Conductor.lastSongPos;
+		var songTimeBefore = songTime;
+		var eventIndexBefore = songEventIndex;
+		var removedUnspawnNotes = 0;
+		var removedActiveNotes = 0;
+		var firedEvents = 0;
+		var skippedVideoEvents = 0;
+		pauseVocals();
+		FlxG.sound.music.time = target;
+		seekVocals(target);
+		playVocals();
+		Conductor.songPosition = target;
+		Conductor.lastSongPos = target;
+		songTime = target;
+		previousFrameTime = FlxG.game.ticks;
+
+		// Crossing the video segment is a seek, not a run of missed notes.
+		// Keep the first note and event at the landing time.
+		while (unspawnNotes.length > 0 && unspawnNotes[0].strumTime < target) {
+			var old = unspawnNotes.shift();
+			// Later sustain segments keep prevNote references after they leave the
+			// active queue. Mark the predecessor dead before destroy() clears its
+			// FlxSprite fields, so their alive-gated update paths cannot touch a
+			// destroyed scale/animation/height object on the next frame.
+			old.kill();
+			old.destroy();
+			if (captureSmokeState) removedUnspawnNotes++;
+		}
+		for (note in notes.members.copy()) {
+			if (note != null && note.strumTime < target) {
+				notes.remove(note, true);
+				// A surviving sustain may still refer to this note as prevNote.
+				// Keep the same dead-before-destroy invariant as unspawn notes.
+				note.kill();
+				note.destroy();
+				if (captureSmokeState) removedActiveNotes++;
+			}
+		}
+		// Survivors can still link to an earlier note that was just retired.
+		// Repair both queues before normal update touches any sustain predecessor.
+		for (note in unspawnNotes)
+			if (note != null)
+				note.repairSustainChainAfterSeek();
+		for (note in notes.members)
+			if (note != null)
+				note.repairSustainChainAfterSeek();
+		var bpm = SONG.bpm;
+		for (change in Conductor.bpmChangeMap)
+			if (change.songTime <= target)
+				bpm = change.bpm;
+		Conductor.changeBPM(bpm);
+		updateCurStep();
+		curBeat = Math.floor(curStep / 4);
+		curSection = getSection();
+		setAllHaxeVar('curStep', curStep);
+		setAllHaxeVar('curBeat', curBeat);
+		syncPsychTimingGlobals();
+		syncLegacyKadeGlobals();
+		// The normal startingPosition seek replays chart events up to its landing
+		// frame. Do the same here so camera, stage, and character state reach the
+		// authored endpoint. Another video event is omitted to avoid opening a
+		// new clip while disposing the one the player just skipped.
+		while (songEventIndex < songEvents.length && songEvents[songEventIndex].time < target) {
+			var event = songEvents[songEventIndex++];
+			if (EngineCompat.eventName(event.name) != 'Play Video') {
+				fireSongEvent(event);
+				if (captureSmokeState) firedEvents++;
+			} else if (captureSmokeState)
+				skippedVideoEvents++;
+		}
+		if (!captureSmokeState)
+			return null;
+		var staleUnspawnNotes = 0;
+		var remainingNotes = 0;
+		var firstRemainingNoteMs:Float = Math.NaN;
+		for (note in unspawnNotes)
+			if (note != null) {
+				remainingNotes++;
+				if (note.strumTime < target) staleUnspawnNotes++;
+				if (Math.isNaN(firstRemainingNoteMs) || note.strumTime < firstRemainingNoteMs)
+					firstRemainingNoteMs = note.strumTime;
+			}
+		var staleActiveNotes = 0;
+		for (note in notes.members)
+			if (note != null) {
+				remainingNotes++;
+				if (note.strumTime < target) staleActiveNotes++;
+				if (Math.isNaN(firstRemainingNoteMs) || note.strumTime < firstRemainingNoteMs)
+					firstRemainingNoteMs = note.strumTime;
+			}
+		return {
+			fromMs: from,
+			targetMs: target,
+			eventVideoActive: compatEventVideo != null,
+			hasVocals: vocalTracks != null || vocals != null,
+			sourceNeedsVoices: SONG != null && Reflect.field(SONG, 'needsVoices') == true,
+			musicTimeBeforeMs: musicTimeBefore,
+			vocalTimeBeforeMs: vocalTimeBefore,
+			conductorLastPositionBeforeMs: conductorLastPositionBefore,
+			songTimeBeforeMs: songTimeBefore,
+			musicTimeMs: FlxG.sound.music.time,
+			vocalTimeMs: vocalTime(),
+			conductorPositionMs: Conductor.songPosition,
+			conductorLastPositionMs: Conductor.lastSongPos,
+			songTimeMs: songTime,
+			eventIndexBefore: eventIndexBefore,
+			eventIndexAfter: songEventIndex,
+			totalEvents: songEvents.length,
+			crossedEvents: songEventIndex - eventIndexBefore,
+			firedEvents: firedEvents,
+			skippedVideoEvents: skippedVideoEvents,
+			removedUnspawnNotes: removedUnspawnNotes,
+			removedActiveNotes: removedActiveNotes,
+			discardedNotes: removedUnspawnNotes + removedActiveNotes,
+			staleUnspawnNotes: staleUnspawnNotes,
+			staleActiveNotes: staleActiveNotes,
+			remainingNotes: remainingNotes,
+			firstRemainingNoteMs: Math.isNaN(firstRemainingNoteMs) ? null : firstRemainingNoteMs,
+			curStep: curStep,
+			curBeat: curBeat,
+			curSection: curSection,
+			bpm: Conductor.bpm
+		};
+	}
+
+	/** Advance an explicitly skipped event video to its chart-time endpoint. */
+	function skipCompatEventVideoToEnd(eventTime:Float, durationMs:Float):Void {
+		if (FlxG.sound.music == null || startingSong || endingSong)
+			return;
+		var target = EventVideoSkip.target(Conductor.songPosition, eventTime, durationMs, songLength);
+		if (target <= Conductor.songPosition)
+			return;
+		var from = Conductor.songPosition;
+		var eventIndexBefore = songEventIndex;
+		seekForwardSongTime(target, false);
+		RuntimeSmokeHarness.markEventVideoSkip(eventTime, from, target,
+			durationMs, songEventIndex - eventIndexBefore);
+	}
+
+	/** Restore and dispose one chart-event video without touching intro state. */
+	function finishCompatEventVideo():Void {
+		var active = compatEventVideo;
+		compatEventVideo = null;
+		if (active != null) {
+			remove(active);
+			active.destroy();
+		}
+		if (compatEventVideoHudFaded && camHUD != null) {
+			FlxTween.cancelTweensOf(camHUD, ['alpha']);
+			if (compatEventVideoHudFadeDuration > 0)
+				FlxTween.tween(camHUD, {alpha: compatEventVideoHudAlpha}, compatEventVideoHudFadeDuration);
+			else
+				camHUD.alpha = compatEventVideoHudAlpha;
+		}
+		compatEventVideoControlsDisabled = false;
+		compatEventVideoHudFaded = false;
+		compatEventVideoHudFadeDuration = 0;
+		var shouldResync = compatEventVideoResync;
+		compatEventVideoResync = false;
+		compatEventVideoEventTime = 0;
+		if (shouldResync && !endingSong && FlxG.sound.music != null)
+			resyncVocals();
+	}
+
+	/** Dispose an event video during state teardown, without restarting audio. */
+	function stopCompatEventVideo():Void {
+		var active = compatEventVideo;
+		compatEventVideo = null;
+		if (active != null) {
+			remove(active);
+			active.destroy();
+		}
+		if (compatEventVideoHudFaded && camHUD != null) {
+			FlxTween.cancelTweensOf(camHUD, ['alpha']);
+			camHUD.alpha = compatEventVideoHudAlpha;
+		}
+		compatEventVideoControlsDisabled = false;
+		compatEventVideoResync = false;
+		compatEventVideoEventTime = 0;
+		compatEventVideoHudFaded = false;
+		compatEventVideoHudFadeDuration = 0;
+	}
+
+	/** Play V-Slice's event video ABI while keeping chart and intro cutscenes separate. */
+	function playCompatEventVideo(filename:String, options:Dynamic, timestamp:Float, eventTime:Float):Void {
+		if (filename == null || StringTools.trim(filename) == '' || !FNFAssets.exists(filename)) {
+			trace('[hxc-video-missing] Play Video requires ' + filename);
+			return;
+		}
+		if (compatEventVideo != null)
+			finishCompatEventVideo();
+		var cutsceneMode = Std.int(eventVideoFloat(options, 'isCutscene', 1));
+		var fadeDuration = Math.max(0, eventVideoFloat(options, 'duration', 1));
+		var fadeSeconds = fadeDuration / Math.max(0.001, playbackRate);
+		var hideHud = cutsceneMode == 2 || cutsceneMode == 3;
+		compatEventVideoHudFaded = hideHud && camHUD != null;
+		compatEventVideoHudAlpha = camHUD == null ? 1 : camHUD.alpha;
+		compatEventVideoHudFadeDuration = cutsceneMode == 3 ? 0 : fadeSeconds;
+		compatEventVideoResync = eventVideoBool(options, 'resync', true);
+		compatEventVideoEventTime = eventTime;
+		compatEventVideoControlsDisabled = eventVideoBool(options, 'disableControl', false);
+		if (hideHud && camHUD != null) {
+			FlxTween.cancelTweensOf(camHUD, ['alpha']);
+			if (cutsceneMode == 3 || fadeDuration <= 0)
+				camHUD.alpha = 0;
+			else
+				FlxTween.tween(camHUD, {alpha: 0}, fadeSeconds);
+		}
+		var zValue:Dynamic = options == null ? null : Reflect.field(options, 'zIndex');
+		var zIndex:Null<Int> = zValue == null ? null : Std.int(eventVideoFloat(options, 'zIndex', 300));
+		var video:VideoCutscene = null;
+		video = new VideoCutscene(filename, function() {
+			if (compatEventVideo == video) {
+				if (video.skipped)
+					skipCompatEventVideoToEnd(eventTime, video.durationMs);
+				finishCompatEventVideo();
+			} else {
+				remove(video);
+				video.destroy();
+			}
+		}, {
+			mute: eventVideoBool(options, 'mute', false),
+			timestamp: Math.max(0, timestamp),
+			zIndex: zIndex,
+			allowSkip: false
+		});
+		compatEventVideo = video;
+		add(video);
+	}
+	#end
+	@:keep public function videoIntro(filename:String) {
+		#if cpp
+		var video:VideoCutscene = null;
+		video = new VideoCutscene(filename, function() {
+			remove(video);
+			video.destroy();
+			startCountdown();
+		});
+		add(video);
+		#else
+		trace('Video cutscenes are not supported on this target: ' + filename);
+		startCountdown();
+		#end
+	}
+
+	/**
+		Create one engine-owned video-module bridge for a generated HXC module.
+	*/
+	@:keep public function hxcCreateVideoModule(assetRoot:String):Dynamic {
+		var host = new HxcVideoModuleHost(this, assetRoot);
+		hxcVideoModuleHosts.push(host);
+		return host;
+	}
+
+	/**
+		Resolve one imported HXC video path to the engine's allowed video roots.
+		This same boundary is used by event cutscenes and module-owned sprites.
+	*/
+	@:keep public function hxcResolveImportedVideoPath(filename:Dynamic, ?ownerRoot:String):String {
+		var clean = filename == null ? '' : StringTools.trim(Std.string(filename));
+		clean = StringTools.replace(clean, '\\', '/');
+		while (clean.startsWith('./'))
+			clean = clean.substr(2);
+		// Assets.getPath may return an absolute path for an imported file. Keep
+		// only the destination-local assets portion and reject every other root.
+		if (clean.startsWith('/') || (clean.length > 1 && clean.charAt(1) == ':')) {
+			var marker = clean.indexOf('/assets/videos/');
+			if (marker < 0)
+				marker = clean.indexOf('/assets/imported_mods/');
+			if (marker < 0) {
+				trace('[hxc-video-rejected] out-of-scope video path ' + clean);
+				return null;
+			}
+			clean = clean.substr(marker + 1);
+		}
+		if (clean.startsWith('videos/'))
+			clean = 'assets/' + clean;
+		if (!clean.startsWith('assets/videos/') && !clean.startsWith('assets/imported_mods/')) {
+			trace('[hxc-video-rejected] video path is outside the native/imported video roots: ' + clean);
+			return null;
+		}
+		for (part in clean.split('/'))
+			if (part == '..' || part == '') {
+				trace('[hxc-video-rejected] invalid video path ' + clean);
+				return null;
+			}
+		if (!clean.toLowerCase().endsWith('.mp4') && !clean.toLowerCase().endsWith('.webm')
+			&& !clean.toLowerCase().endsWith('.ogv'))
+			clean += '.mp4';
+		clean = Path.normalize(clean);
+		if (clean.startsWith('assets/imported_mods/')) {
+			var owner = ownerRoot == null
+				? CompatScriptManifest.selectedRoot(getCompatScriptManifest()) : ownerRoot;
+			owner = owner == null ? '' : Path.normalize(owner);
+			var relative = clean.startsWith(owner + '/') ? clean.substr(owner.length + 1) : '';
+			if (relative == '' || HxcOwnedPath.existing(owner, relative) != clean) {
+				trace('[hxc-video-rejected] video is outside the selected import owner: ' + clean);
+				return null;
+			}
+		}
+		if (!FNFAssets.isInScope(clean) || !FNFAssets.exists(clean)) {
+			trace('[hxc-video-missing] ' + clean);
+			return null;
+		}
+		return clean;
+	}
+
+	/**
+		Resolve and play a VideoCutscene requested by imported HXC. Paths.videos
+		returns either a native asset id or a selected imported namespace; reduce
+		both forms to an in-scope video file before handing it to the native class.
+	*/
+	@:keep public function hxcPlayImportedVideo(filename:Dynamic, ?ending:Bool = false):Bool {
+		var clean = hxcResolveImportedVideoPath(filename);
+		if (clean == null)
+			return false;
+		#if cpp
+		var video:VideoCutscene = null;
+		video = new VideoCutscene(clean, function() {
+			remove(video);
+			video.destroy();
+			if (ending)
+				endForReal();
+			else
+				startCountdown();
+		});
+		add(video);
+		return true;
+		#else
+		trace('Video cutscenes are not supported on this target: ' + clean);
+		if (ending)
+			endForReal();
+		else
+			startCountdown();
+		return false;
+		#end
+	}
+
+	/** Resolve a registered stage name without allowing an event value to turn
+	 * into an arbitrary script path. The registry is the same source used by
+	 * initial stage creation, including case-insensitive lookup for imported
+	 * V-Slice stage ids. */
+	function manifestOwnedStage(requested:String):Dynamic {
+		if (SONG == null) return null;
+		// Imported charts can have a presentation title that differs from their
+		// lowercased, owner-qualified storage folder. Registries and manifests
+		// belong to the selected chart folder, not the title shown in the UI.
+		return ImportedStageRegistry.resolve(Song.storageFolder(SONG), requested,
+			function(path) return FNFAssets.exists(path),
+			function(path) return FNFAssets.getText(path),
+			function(text) return CoolUtil.parseJson(text));
+	}
+
+	function registeredStage(stageName:String):Dynamic {
+		if (stageName == null)
+			return null;
+		var requested = StringTools.trim(stageName);
+		if (requested == '' || requested.indexOf('/') >= 0 || requested.indexOf('\\') >= 0
+			|| requested.indexOf('..') >= 0 || requested.indexOf(':') >= 0)
+			return null;
+		var ownedStage = manifestOwnedStage(requested);
+		if (ownedStage != null)
+			return ownedStage;
+		try {
+			var registry:Dynamic = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_stages/custom_stages.json'));
+			var resolved = EngineCompat.resolveStageAlias(requested);
+			for (key in Reflect.fields(registry)) {
+				if (key.toLowerCase() != resolved.toLowerCase())
+					continue;
+				var value:Dynamic = Reflect.field(registry, key);
+				if (value == null)
+					return null;
+				var script = StringTools.trim(Std.string(value));
+				if (script.toLowerCase().endsWith('.hscript'))
+					script = script.substr(0, script.length - 8);
+				if (script == '' || script.indexOf('/') >= 0 || script.indexOf('\\') >= 0
+					|| script.indexOf('..') >= 0 || script.indexOf(':') >= 0)
+					return null;
+				return {name: key, script: script, directory:'assets/images/custom_stages/'};
+			}
+		} catch (error:Dynamic) {
+			trace('Unable to resolve stage ' + requested + ': ' + error);
+		}
+		// Some legacy Modding Plus donors omit a custom_stages.json key even
+		// though the chart, direct hscript module and hscriptPath asset folder
+		// form a complete stage implementation.  Song.validStage accepts this
+		// same bounded direct-script shape; keep the runtime resolver in sync so
+		// the imported chart reaches its authored stage instead of falling back
+		// to the stock stage.  Never interpret a path supplied through a chart or
+		// event, and keep registry entries authoritative when one exists.
+		if (requested.indexOf('/') < 0 && requested.indexOf('\\') < 0
+			&& requested.indexOf('..') < 0 && requested.indexOf(':') < 0
+			&& FNFAssets.exists('assets/images/custom_stages/' + requested, Hscript))
+			return {name: requested, script: requested, directory:'assets/images/custom_stages/'};
+		return null;
+	}
+
+	function protectedStageObject(value:Dynamic):Bool {
+		return value == null || value == boyfriend || value == dad || value == gf
+			|| (codenameActors != null && Std.isOfType(value, Character) && codenameActors.contains(cast value))
+			|| value == notes || value == camGame || value == camHUD || value == camOther;
+	}
+
+	/** Detach and destroy only the currently active stage's script-owned
+	 * objects. Characters, notes, cameras, HUD objects, and the modchart
+	 * interpreter intentionally survive a stage event. */
+	function clearRuntimeStage():Void {
+		clearPsychStageCharacterPosition();
+		var oldStage = curStage;
+		var owned:Array<FlxBasic> = [];
+		for (sprite in stageSprites)
+			if (sprite != null && owned.indexOf(sprite) == -1)
+				owned.push(sprite);
+		if (oldStage != null) {
+			// Order nodes remain stage-owned after a reversible script removal.
+			// Keep detached props/anchors in the final destruction snapshot.
+			for (node in oldStage.codenameOrderNodes)
+				if (node.sprite != null && owned.indexOf(node.sprite) == -1)
+					owned.push(node.sprite);
+			for (element in oldStage.elements) {
+				if (Std.isOfType(element, FlxGroup)) {
+					var elementGroup:FlxGroup = cast element;
+					elementGroup.forEach(function(child:FlxBasic) {
+						if (child != null && owned.indexOf(child) == -1)
+							owned.push(child);
+					});
+				}
+				if (isScriptObject(element)) {
+					var basic:FlxBasic = cast element;
+					if (owned.indexOf(basic) == -1)
+						owned.push(basic);
+				}
+			}
+			// StageHelper normally destroys its elements. Runtime cleanup owns the
+			// final destroy below so objects registered both through addSprite and
+			// stage.addElement are not destroyed twice.
+			oldStage.clearStage(false);
+		}
+		stageSprites.resize(0);
+		importedStageHudProps.resize(0);
+		for (sprite in owned) {
+			if (protectedStageObject(sprite))
+				continue;
+			remove(sprite);
+			removeGlobalSpriteReferences(sprite);
+			try {
+				// A registered FlxGroup may contain sprites already collected
+				// above. Empty the group without destroying its children twice.
+				if (Std.isOfType(sprite, FlxGroup))
+					(cast sprite:FlxGroup).clear();
+				sprite.destroy();
+			} catch (error:Dynamic) {
+				trace('Unable to destroy old stage object: ' + error);
+			}
+		}
+		stageSeededVariables = [];
+	}
+
+	/** Swap a stage from an event or donor script using the native registry and
+	 * HScript lifecycle. Returns false for an unregistered/invalid stage and
+	 * leaves the active stage untouched in that case. */
+	public function swapStage(stageName:String = '', ?characters:Array<String>):Bool {
+		var entry = registeredStage(stageName);
+		if (entry == null || entry.unavailable == true) {
+			trace('Change Stage skipped: unavailable stage ' + stageName);
+			return false;
+		}
+		// Registry resolution already canonicalized aliases/case. Distinct exact
+		// owned keys (Room/room) must still be able to replace one another.
+		if (curStage != null && curStage.name == entry.name
+			&& hscriptStates.exists('stage'))
+			return true;
+		if (FlxG.camera != null)
+			FlxG.camera.filters = [];
+		if (hscriptStates.exists('stage'))
+			callHscript('destroy', [], 'stage', true);
+		releaseCodenameStageScripts();
+		clearHxcStageScopes();
+		clearRuntimeStage();
+		hscriptStates.remove('stage');
+		curStage = new StageHelper(entry.name);
+		try {
+			makeHaxeState('stage', entry.directory + entry.name + '/', '../' + entry.script);
+			curStage.interp = hscriptStates.get('stage');
+			loadHxcStageCompat();
+			setAllHaxeVar('stage', curStage);
+			applyCodenameStageStartCamera();
+			reapplyCodenameActors();
+			loadCodenameStageCompat(stageName);
+			flushPendingHxcCharacterAdded();
+			bindGameplayCameras();
+			return true;
+		} catch (error:Dynamic) {
+			trace('Change Stage failed for ' + entry.name + ': ' + error);
+			// A failed replacement must not leave a half-initialized interpreter
+			// reachable from later callbacks.
+			hscriptStates.remove('stage');
+			curStage = new StageHelper('Invalid Stage: ' + entry.name);
+			setAllHaxeVar('stage', curStage);
+			refreshCodenameStageAliases();
+			flushPendingHxcCharacterAdded();
+			return false;
+		}
+	}
+
 	var startTimer:FlxTimer;
 
+	// Ported stages/chars/modcharts author countdownTick (or the
+	// onCountdownTick spelling) to line things up with the ready/set/go
+	// popups - officeourple sets camSpeed = 1000 in start() and puts it back
+	// to 1 at tick 4. That hook was never dispatched here, so such a stage
+	// kept an instant (snapping) camera follow for the entire song. Dispatch
+	// both spellings with the tick and the running timer; extra arguments are
+	// dropped for one-parameter hooks.
+	function psychCompiledCountdownValue(tick:Int):Dynamic {
+		return switch (tick) {
+			case 0: PsychBaseStageCountdown.THREE;
+			case 1: PsychBaseStageCountdown.TWO;
+			case 2: PsychBaseStageCountdown.ONE;
+			case 3: PsychBaseStageCountdown.GO;
+			case 4: PsychBaseStageCountdown.START;
+			default: null;
+		};
+	}
+
+	function callCountdownTick(tick:Int, tmr:FlxTimer) {
+		dispatchPsychCompiledStage('countdownTick', [psychCompiledCountdownValue(tick), tick]);
+		callAllHScript('countdownStep', [EngineCompat.hxcCountdownStepPayload(tick)]);
+		callAllHScript('countdownTick', [tick, tmr]);
+	}
+	function removeGlobalSpriteReferences(sprite:FlxBasic):Void {
+		var names:Array<String> = [];
+		for (name in PlayState.globalSprites.keys())
+			if (PlayState.globalSprites.get(name) == sprite)
+				names.push(name);
+		for (name in names)
+			PlayState.globalSprites.remove(name);
+	}
+	/** Native owner for the bounded HXC Countdown.skipCountdown facade. */
+	@:keep public function hxcSkipCountdown():Bool {
+		skipCountdown = true;
+		hxcCountdownStopRequested = false;
+		if (startTimer != null) {
+			startTimer.cancel();
+			startTimer.active = false;
+			// A skip requested after the timer was created must hand the clock over
+			// immediately; otherwise startingSong remains below zero until a stale
+			// countdown loop happens to finish.
+			if (startedCountdown)
+				Conductor.songPosition = 0;
+		}
+		return true;
+	}
+
+	/** Native owner for the bounded HXC Countdown.stopCountdown facade. */
+	@:keep public function hxcStopCountdown():Bool {
+		hxcCountdownStopRequested = true;
+		if (startTimer != null) {
+			startTimer.cancel();
+			startTimer.active = false;
+		}
+		return true;
+	}
+
 	public function startCountdown():Void {
+		RuntimeSmokeHarness.markStep('countdown:entry');
+		if (hxcCountdownHookDispatching || codenameCountdownPreparationInProgress) {
+			RuntimeSmokeHarness.markStep('countdown:guarded-return');
+			return;
+		}
+		#if cpp
+		if (compatEventVideo != null) stopCompatEventVideo();
+		#end
+		hxcCountdownStopRequested = false;
+		// A script-driven cutscene handback (the donor song script re-requesting
+		// the countdown after its intro) also ends the entrance staging: restore
+		// any role actor the stage's authored hide staged out, or a merged
+		// import's opponent would stay invisible for the whole song.
+		if (hxcScriptInCutscene && curStage != null)
+			curStage.restoreStagedActors();
+		// A user skip, missing dialogue owner, or state transition may request
+		// countdown while the native timeline is still active. Cancel its bounded
+		// clock first so no later event can mutate gameplay after the hand-off.
+		if (hxcCutsceneTimelineRuntime != null
+			&& !hxcCutsceneTimelineRuntime.isDone()) {
+			hxcCutsceneTimelineRuntime.cancel(false);
+			hxcCutsceneTimelineRuntime = null;
+		}
 		if (inCutscene) {
+			if (cutsceneStartInProgress) {
+				// HScript can request the countdown before the rest of start()
+				// has added its overlays. Finish cleanup after the hook returns so
+				// those late additions cannot escape the ownership list.
+				pendingCutsceneHandoff = true;
+				return;
+			}
+			// The cutscene interpreter is normally discarded at the hand-off.
+			// Capture only its one-shot opponent-sing hook when an imported script
+			// explicitly handed overlays into gameplay; this keeps the rest of the
+			// cutscene callbacks from running during the song.
+			if (cutsceneHandoffReleaseOnOpponentSing.length > 0) {
+				var cutsceneInterp = hscriptStates.get('cutscene');
+				if (cutsceneInterp != null && cutsceneInterp.variables.exists('playerTwoSing'))
+					cutsceneHandoffOpponentSing = cutsceneInterp.variables.get('playerTwoSing');
+			}
+			// Drop only objects owned by the cutscene (letterbox bars, blackout
+			// overlays). Explicitly handed-off overlays and inherited stage objects
+			// such as Chaos's chamber survive the hand-off.
+			for (spr in cutsceneSprites) {
+				remove(spr);
+				removeGlobalSpriteReferences(spr);
+			}
+			cutsceneSprites.resize(0);
 			hscriptStates.remove('cutscene');
 			inCutscene = false;
-			if (SONG.cutsceneType != 'none') watchedCutscene = true;
+			if (SONG.cutsceneType != 'none' || importedCutsceneScript() != '')
+				watchedCutscene = true;
 		}
 
-		enemyStrums.transIn();
-		playerStrums.transIn();
-		var daDefault = DifficultyManager.getDefaultFromName(storyDifficultyText);
-		if (daDefault == '') daDefault = storyDifficultyText.toLowerCase();
-		if (FNFAssets.exists("assets/data/" + SONG.song.toLowerCase() + "/modchart-" + daDefault, Hscript))
-			makeHaxeState("modchart", "assets/data/" + SONG.song.toLowerCase() + "/", "modchart-" + daDefault);
-		else if (FNFAssets.exists("assets/data/" + SONG.song.toLowerCase() + "/modchart", Hscript))
-			makeHaxeState("modchart", "assets/data/" + SONG.song.toLowerCase() + "/", "modchart");
+		diagnoseLegacyKadeOffset();
+		// Only Codename needs this re-entry guard: loading its create() callbacks
+		// can request another countdown while chart-note/receptor construction is
+		// still pending. Clear it on every error path so a failed owner script does
+		// not permanently suppress a later recovery attempt.
+		var codenameGuardSet = codenameSelectedRoot() != '';
+		if (codenameGuardSet) codenameCountdownPreparationInProgress = true;
+		try {
+			RuntimeSmokeHarness.markStep('countdown:modchart-load-begin');
+			var daDefault = DifficultyManager.getDefaultFromName(storyDifficultyText);
+			if (daDefault == '') daDefault = storyDifficultyText.toLowerCase();
+			var modchartRoot = currentSongDataFolder() + "/";
+			var difficultyModchart = modchartRoot + "modchart-" + daDefault;
+			var genericModchart = modchartRoot + "modchart";
+			if (FNFAssets.exists(difficultyModchart, Hscript) || FNFAssets.exists(difficultyModchart + '.lua'))
+				makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart-" + daDefault);
+			else if (FNFAssets.exists(genericModchart, Hscript) || FNFAssets.exists(genericModchart + '.lua'))
+				makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart");
+			RuntimeSmokeHarness.markStep('countdown:modchart-load-complete');
+			// Psych/Kade allow multiple independent global, song, custom-event, and
+			// custom-note scripts. Load every script selected by the chart-aware plan;
+			// each receives the same centralized aliases and lifecycle broadcasts.
+			RuntimeSmokeHarness.markStep('countdown:psych-scripts-begin');
+			loadPsychCompatScripts();
+			loadDefaultPsychGlobalScripts();
+			RuntimeSmokeHarness.markStep('countdown:psych-scripts-complete');
+			RuntimeSmokeHarness.markStep('countdown:hxc-scripts-begin');
+			loadHxcCompatScripts();
+			RuntimeSmokeHarness.markStep('countdown:hxc-scripts-complete');
+			RuntimeSmokeHarness.markStep('countdown:codename-song-scripts-begin');
+			loadCodenameSongScripts();
+			RuntimeSmokeHarness.markStep('countdown:codename-song-scripts-complete');
+			RuntimeSmokeHarness.markStep('countdown:creation-visuals-begin');
+			prepareCodenameCreationVisuals();
+			RuntimeSmokeHarness.markStep('countdown:creation-visuals-complete');
+			RuntimeSmokeHarness.markStep('countdown:codename-event-scripts-begin');
+			loadCodenameEventScripts();
+			RuntimeSmokeHarness.markStep('countdown:codename-event-scripts-complete');
+			RuntimeSmokeHarness.markStep('countdown:codename-post-create-begin');
+			dispatchCodenamePostCreate();
+			RuntimeSmokeHarness.markStep('countdown:codename-post-create-complete');
+			// Constructor callbacks and atlas changes are complete before any receptor
+			// is made visible. Re-entry from a script during preparation is absorbed
+			// by codenameCountdownPreparationInProgress above.
+			RuntimeSmokeHarness.markStep('countdown:strum-transitions-begin');
+			enemyStrums.transIn();
+			playerStrums.transIn();
+			for (line in codenameStrumlines) if (line != null
+				&& line != playerStrums && line != enemyStrums) line.transIn();
+			RuntimeSmokeHarness.markStep('countdown:strum-transitions-complete');
+			if (codenameGuardSet) codenameCountdownPreparationInProgress = false;
+		} catch (error:Dynamic) {
+			if (codenameGuardSet) codenameCountdownPreparationInProgress = false;
+			throw error;
+		}
+		if (!hxcSongLoadedDispatched) {
+			hxcSongLoadedDispatched = true;
+			RuntimeSmokeHarness.markStep('countdown:song-loaded-callbacks-begin');
+			var songLoadedEvent = EngineCompat.hxcLifecyclePayload('songLoaded', {events: songEvents});
+			callAllHScript('songLoaded', [songLoadedEvent]);
+			callAllHScript('stateChangeBegin', [EngineCompat.hxcLifecyclePayload('stateChangeBegin', {targetState: this})]);
+			RuntimeSmokeHarness.markStep('countdown:song-loaded-callbacks-complete');
+		}
+		RuntimeSmokeHarness.markStep('countdown:camera-intro-targets-begin');
+		detectCameraZoomIntroTargets();
+		RuntimeSmokeHarness.markStep('countdown:camera-intro-targets-complete');
+		// HXC/V-Slice exposes a mutable countdown event.  Dispatch it after all
+		// script families have been loaded so event.cancel() can stop the native
+		// timer while still allowing a cutscene/script to start a later countdown.
+		var countdownEvent = EngineCompat.hxcCountdownStartPayload();
+		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-begin');
+		callAllHScript('countdownStart', [countdownEvent]);
+		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-complete');
+		if (countdownEvent.eventCanceled == true || countdownEvent.canceled == true
+			|| countdownEvent.cancelled == true) {
+			RuntimeSmokeHarness.markStep('countdown:cancelled-by-countdownStart');
+			return;
+		}
+		if (hxcCountdownStopRequested) {
+			RuntimeSmokeHarness.markStep('countdown:stopped-by-script');
+			return;
+		}
+		// Psych exposes the countdown gate as onStartCountdown.  Preserve its
+		// Function_Stop/Function_Continue result instead of treating the callback
+		// as a fire-and-forget notification.  Loading-screen Lua relies on this to
+		// keep the countdown paused until its timer calls startCountdown() again.
+		// Keep a script's own countdown gate across re-entry. Psych Lua modules
+		// commonly declare `local allowCountdown = false` and release it only
+		// after their intro; resetting every interpreter here skipped that intro.
+		var countdownResults:Array<Dynamic> = [];
+		hxcCountdownHookDispatching = true;
+		try {
+			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-begin');
+			callAllHScript('startCountdown', [], false, countdownResults);
+			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-complete');
+		} catch (error:Dynamic) {
+			hxcCountdownHookDispatching = false;
+			throw error;
+		}
+		hxcCountdownHookDispatching = false;
+		if (EngineCompat.anyFunctionStop(countdownResults)) {
+			RuntimeSmokeHarness.markStep('countdown:stopped-by-startCountdown');
+			return;
+		}
 
 		if (duoMode)
 			controls.setKeyboardScheme(Duo(true));
 
 		talking = false;
 		startedCountdown = true;
+		// Psych marks a stage-owned intro seen at countdown handoff even when
+		// it has no native cutsceneType metadata.
+		if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)
+			watchedCutscene = true;
 		Conductor.songPosition = 0;
+		RuntimeSmokeHarness.markStep('countdown:timer-setup-begin');
 		if (!skipCountdown) {
 			Conductor.songPosition -= Conductor.crochet * 5;
 
 			var swagCounter:Int = 0;
 
 			startTimer = new FlxTimer().start(Conductor.crochet / 1000, function(tmr:FlxTimer) {
-				if (!duoMode || opponentPlayer)
+				// Live Codename actors dance through their source beat/update hooks.
+				// The legacy countdown must not bypass those hooks with another dance.
+				if ((!duoMode || opponentPlayer) && dad.codenameLiveDefinition == null)
 					dad.dance();
-				if (opponentPlayer)
+				if (opponentPlayer && boyfriend.codenameLiveDefinition == null)
 					boyfriend.dance();
-				gf.dance();
+				if (gf.codenameLiveDefinition == null) gf.dance();
 
 				var introAssets:Map<String, Array<String>> = new Map<String, Array<String>>();
 
@@ -1333,6 +12586,8 @@ class PlayState extends MusicBeatState {
 					introGoSound = FNFAssets.getSound('assets/sounds/introGo.ogg');
 				}*/
 
+				callCountdownTick(swagCounter, tmr);
+
 				switch (swagCounter) {
 					case 0:
 						FlxG.sound.play(intro3Sound, 0.6);
@@ -1359,6 +12614,7 @@ class PlayState extends MusicBeatState {
 				trace('countdown skipped');
 			});
 		}
+		RuntimeSmokeHarness.markStep('countdown:timer-setup-complete');
 		/*
 		regenTimer = new FlxTimer().start(2, function (tmr:FlxTimer) {
 			var bonus = drainBy;
@@ -1398,11 +12654,11 @@ class PlayState extends MusicBeatState {
 				default:
 					'assets/images/restart.png';
 			}
-		
+
 		var countImage = FNFAssets.getBitmapData(sussyPath);
 		var count:FlxSprite = new FlxSprite().loadGraphic(countImage);
 		count.scrollFactor.set();
-		
+
 		if (pixelUI)
 			count.setGraphicSize(Std.int(count.width * daPixelZoom));
 
@@ -1420,6 +12676,75 @@ class PlayState extends MusicBeatState {
 	var previousFrameTime:Int = 0;
 	var songTime:Float = 0;
 
+	/** Dispatch events through a chart-time bound while advancing the cursor
+	 * before callbacks. A callback may end the song or re-enter this pump; the
+	 * current row must not be delivered twice. With no explicit bound, sample
+	 * Conductor for each row to preserve scripts which seek during an event. */
+	function dispatchDueSongEvents(?throughTime:Null<Float>):Void {
+		if (throughTime != null && Math.isNaN(throughTime))
+			return;
+		while (songEventIndex < songEvents.length) {
+			var event:Dynamic = songEvents[songEventIndex];
+			if (event == null) {
+				songEventIndex++;
+				continue;
+			}
+			var eventTime:Float = event.time;
+			if (Math.isNaN(eventTime)) {
+				songEventIndex++;
+				continue;
+			}
+			var position:Float = throughTime == null ? Conductor.songPosition : throughTime;
+			if (eventTime > position)
+				break;
+			// Advance before invoking script/native behavior so a callback that
+			// ends the song and drains the same queue cannot replay this row.
+			songEventIndex++;
+			fireSongEvent(event);
+		}
+	}
+
+	/** Source charts may contain authored events after their instrumental ends.
+	 * The native check counts only rows that can fire before audio completion. */
+	function dueSongEventCount(throughTime:Float):Int {
+		var count = 0;
+		if (Math.isNaN(throughTime)) return count;
+		for (event in songEvents) {
+			if (event == null) {
+				count++;
+				continue;
+			}
+			var eventTime:Float = event.time;
+			if (Math.isNaN(eventTime) || eventTime <= throughTime) count++;
+		}
+		return count;
+	}
+
+	/** Natural audio completion can happen between PlayState updates. Flush
+	 * chart events through the song boundary before songEnd hooks and teardown. */
+	function handleSongAudioComplete():Void {
+		if (RuntimeSmokeHarness.enabled())
+			RuntimeSmokeHarness.markStep('codename-audio-complete hasOnComplete='
+				+ (codenameInstFacade != null && codenameInstFacade.onComplete != null));
+		if (demoMode) {
+			demoSongFinished = true;
+			return;
+		}
+		dispatchDueSongEvents(songLength);
+		RuntimeSmokeHarness.markNaturalSongEnd(SONG == null ? '' : SONG.song,
+			songLength, Conductor.songPosition, songEventIndex, songEvents.length,
+			dueSongEventCount(songLength));
+		if (codenameInstFacade != null && codenameInstFacade.onComplete != null) {
+			try {
+				codenameInstFacade.complete();
+				return;
+			} catch (error:Dynamic) {
+				trace('[codename-audio-complete-error] ' + Std.string(error));
+			}
+		}
+		endSong();
+	}
+
 	function startSong():Void {
 		startingSong = false;
 		if (FlxG.sound.music != null) {
@@ -1428,71 +12753,3179 @@ class PlayState extends MusicBeatState {
 		}
 		// : )
 		previousFrameTime = FlxG.game.ticks;
-		
+
 		if (!paused)
 			FlxG.sound.playMusic(inst, 1, false);
 		songLength = FlxG.sound.music.length;
 		updateUV('songLength', songLength);
 
-		FlxG.sound.music.onComplete = endSong;
-		vocals.play();
+		FlxG.sound.music.onComplete = function() handleSongAudioComplete();
+		playVocals();
+		applyDemoPlaybackRate();
 
+		if (!hxcCountdownEndDispatched) {
+			hxcCountdownEndDispatched = true;
+			callAllHScript('countdownEnd', [EngineCompat.hxcLifecyclePayload('countdownEnd', {countdownStep: 4})]);
+		}
+		if (playHUD != null) playHUD.onSongStart();
+		callNightmareVision('onSongStart', []);
 		callAllHScript('songStart', [SONG.song]);
+		if (!codenameSongStartDispatched) {
+			codenameSongStartDispatched = true;
+			if (RuntimeSmokeHarness.enabled())
+				RuntimeSmokeHarness.markStep('codename-on-start-song storyMode=' + isStoryMode
+					+ ' onStartSong=' + countCodenameCallbacks('onStartSong')
+					+ ' onSongStart=' + countCodenameCallbacks('onSongStart'));
+			callCodenameScripts('onStartSong', []);
+			callCodenameScripts('onSongStart', []);
+			for (scope in codenameCharacterScopes.copy()) scope.runtime.call('onSongStart', []);
+		}
+		// NOTE: "start" is NOT called here - makeHaxeState already invokes it
+		// once when each hscript state loads; calling it again re-runs intro
+		// effects (black overlays that never fade, duplicated stage sprites)
 		callAllHScript("stepHit", [0]);
 		callAllHScript("beatHit", [0]);
 
-		vocals.pause();
+		pauseVocals();
 		FlxG.sound.music.pause();
-		Conductor.songPosition = startingPosition;
+		Conductor.songPosition = startTimestamp;
 		FlxG.sound.music.time = Conductor.songPosition;
-		vocals.time = Conductor.songPosition;
+		seekVocals(Conductor.songPosition);
 		FlxG.sound.music.play();
-		vocals.play();
+		playVocals();
+		dispatchPsychCompiledStage('startSong', []);
+		RuntimeSmokeHarness.markSongStart(SONG.song);
+	}
+
+	// ---- hscript helper shaders (old-engine effect API) ----
+	static final GRAYSCALE_FRAG:String = "
+#pragma header
+void main(void) {
+	vec4 col = texture2D(bitmap, openfl_TextureCoordv);
+	float gray = dot(col.rgb, vec3(0.299, 0.587, 0.114));
+	gl_FragColor = vec4(vec3(gray), col.a);
+}";
+
+	static final VCR_FRAG:String = "
+#pragma header
+uniform float vcrStrength;
+uniform float vcrScan;
+uniform float vcrChroma;
+uniform float vcrNoise;
+float vcrRand(vec2 co) {
+	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+}
+void main(void) {
+	vec2 uv = openfl_TextureCoordv;
+	float shift = vcrChroma * vcrStrength * 0.004;
+	vec4 col;
+	col.r = texture2D(bitmap, uv + vec2(shift, 0.0)).r;
+	col.g = texture2D(bitmap, uv).g;
+	col.b = texture2D(bitmap, uv - vec2(shift, 0.0)).b;
+	col.a = texture2D(bitmap, uv).a;
+	col.rgb *= mix(1.0, 0.85 + 0.15 * step(0.5, fract(uv.y * 220.0)), vcrScan);
+	col.rgb *= mix(1.0, 0.92 + 0.08 * vcrRand(uv * openfl_TextureSize), vcrNoise);
+	gl_FragColor = col;
+}";
+
+	function cameraOrSpriteShader(target:String, sprite:FlxSprite, frag:String):Void {
+		var shader = new ShaderHandler.CoolRuntimeShader(frag);
+		if (sprite != null) {
+			sprite.shader = shader;
+		} else {
+			var cam = target == "camhud" ? camHUD : FlxG.camera;
+			cam.filters = [new openfl.filters.ShaderFilter(cast shader)];
+		}
+	}
+
+	function charForEventTarget(name:String):Character {
+		if (name == null)
+			return null;
+		switch (name.toLowerCase()) {
+			case 'bf' | 'boyfriend' | 'player1':
+				return boyfriend;
+			case 'dad' | 'opponent' | 'player2':
+				return dad;
+			case 'gf' | 'girlfriend' | 'player3':
+				return gf;
+		}
+		// otherwise it's a character name - match whoever is on stage
+		if (boyfriend != null && boyfriend.curCharacter == name)
+			return boyfriend;
+		if (dad != null && dad.curCharacter == name)
+			return dad;
+		if (gf != null && gf.curCharacter == name)
+			return gf;
+		return null;
+	}
+
+	static function parseF(v:String):Float {
+		if (v == null)
+			return Math.NaN;
+		var f = Std.parseFloat(StringTools.trim(v));
+		return Math.isNaN(f) ? 0 : f;
+	}
+
+	static function compatEventBool(options:Dynamic, field:String, fallback:Bool):Bool {
+		var value = options == null ? null : Reflect.field(options, field);
+		if (value == null)
+			return fallback;
+		if (Std.isOfType(value, Bool))
+			return cast value;
+		var text = StringTools.trim(Std.string(value)).toLowerCase();
+		return text == 'true' || text == '1' || text == 'yes' || text == 'on';
+	}
+
+	static function compatEventFloat(options:Dynamic, field:String, fallback:Float):Float {
+		var value = options == null ? null : Reflect.field(options, field);
+		if (value == null)
+			return fallback;
+		var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	/** Apply V-Slice's generic SetHealthIcon event without replacing a
+	 * character. Character ids use the same 0=player, 1=opponent, 2=GF slots as
+	 * FocusCamera; this engine has no separate GF health icon, so that slot is
+	 * retained for scripts and skipped by the native renderer. */
+	function applyCompatHealthIcon(character:Dynamic, iconId:Dynamic, packed:Dynamic):Void {
+		var id = StringTools.trim(iconId == null ? '' : Std.string(iconId));
+		if (id == '')
+			return;
+		var slot = StringTools.trim(character == null ? '0' : Std.string(character)).toLowerCase();
+		var icon:HealthIcon = null;
+		var playerSlot = false;
+		switch (slot) {
+			case '' | '0' | 'bf' | 'boyfriend' | 'player' | 'player1':
+				icon = iconP1;
+				playerSlot = true;
+			case '1' | 'dad' | 'opponent' | 'player2':
+				icon = iconP2;
+			case '2' | 'gf' | 'girlfriend' | 'player3':
+				trace('Set Health Icon skipped: this engine has no separate GF health icon.');
+				return;
+			default:
+				trace('Set Health Icon skipped: unknown character slot ' + slot);
+				return;
+		}
+		if (icon == null)
+			return;
+		var options = EngineCompat.eventOptions(packed);
+		var shouldBop = compatEventBool(options, 'shouldBop', true);
+		var isPixel = compatEventBool(options, 'isPixel', false);
+		var scale = Math.max(0.01, compatEventFloat(options, 'scale', 1));
+		var baseSize = Std.int(Math.max(1, Math.round(150 * scale * (isPixel ? 6 : 1))));
+		icon.isNormal = shouldBop;
+		icon.switchAnim(id);
+		icon.bopBaseSize = baseSize;
+		icon.antialiasing = !isPixel;
+		icon.flipX = compatEventBool(options, 'flipX', false);
+		icon.setGraphicSize(baseSize);
+		icon.updateHitbox();
+		var offsetX = compatEventFloat(options, 'offsetX', 0);
+		var offsetY = compatEventFloat(options, 'offsetY', 0);
+		if (playerSlot) {
+			compatIconP1OffsetX = offsetX;
+			compatIconP1OffsetY = offsetY;
+		} else {
+			compatIconP2OffsetX = offsetX;
+			compatIconP2OffsetY = offsetY;
+		}
+		updateHealthColors();
+	}
+
+	/** Convert V-Slice event palette ids or a native color token. */
+	static function compatEventColor(value:Dynamic, fallback:Int):Int {
+		if (value == null)
+			return fallback;
+		var text = StringTools.trim(Std.string(value));
+		if (text == '')
+			return fallback;
+		var numeric = Std.parseInt(text);
+		if (numeric != null && text.indexOf('x') < 0 && text.indexOf('#') < 0) {
+			return switch (numeric) {
+				case 0: 0xFF000000;
+				case 1: 0xFF0000FF;
+				case 2: 0xFFA52A2A;
+				case 3: 0xFF00FFFF;
+				case 4: 0xFF808080;
+				case 5: 0xFF008000;
+				case 6: 0xFF00FF00;
+				case 7: 0xFFFF00FF;
+				case 8: 0xFFFFA500;
+				case 9: 0xFF800080;
+				case 10: 0xFFFF0000;
+				case 11: 0x00000000;
+				case 12: 0xFFFFFFFF;
+				case 13: 0xFFFFFF00;
+				default: fallback;
+			};
+		}
+		var resolved = FlxColor.fromString(text);
+		return resolved == 0 && text != '0' && text.toLowerCase() != '00000000'
+			? fallback : resolved;
+	}
+
+	/** Return the primary or secondary lyric line, creating it on demand. */
+	function ensureLyricLine(second:Bool):FlxText {
+		if (second) {
+			if (lyricSecondTxt == null) {
+				lyricSecondTxt = new FlxText(0, FlxG.height - 50, FlxG.width, '', 24);
+				lyricSecondTxt.setFormat(null, 24, 0xFFFFFFFF, CENTER, OUTLINE, 0xFF000000);
+				lyricSecondTxt.borderSize = 3;
+				lyricSecondTxt.scrollFactor.set();
+				lyricSecondTxt.cameras = [camHUD];
+				lyricSecondTxt.alpha = 0.001;
+				add(lyricSecondTxt);
+			}
+			return lyricSecondTxt;
+		}
+		if (lyricTxt == null) {
+			lyricTxt = new FlxText(0, FlxG.height - 90, FlxG.width, '', 28);
+			lyricTxt.setFormat(null, 28, 0xFFFFFFFF, CENTER, OUTLINE, 0xFF000000);
+			lyricTxt.borderSize = 3;
+			lyricTxt.scrollFactor.set();
+			lyricTxt.cameras = [camHUD];
+			lyricTxt.alpha = 0.001;
+			add(lyricTxt);
+		}
+		return lyricTxt;
+	}
+
+	/** Read one optional V-Slice lyric field without making chart JSON typed. */
+	function lyricOption(options:Dynamic, field:String):Dynamic {
+		return options == null || field == null ? null : Reflect.field(options, field);
+	}
+
+	function lyricOptionBool(options:Dynamic, field:String, fallback:Bool):Bool {
+		var value = lyricOption(options, field);
+		if (value == null)
+			return fallback;
+		if (Std.isOfType(value, Bool))
+			return cast value;
+		var text = StringTools.trim(Std.string(value)).toLowerCase();
+		return text == 'true' || text == '1' || text == 'yes' || text == 'on';
+	}
+
+	function lyricOptionFloat(options:Dynamic, field:String, fallback:Float):Float {
+		var value = lyricOption(options, field);
+		if (value == null)
+			return fallback;
+		var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	/** Resolve an imported lyric font only inside the native fonts directory. */
+	function resolveLyricFont(value:Dynamic):String {
+		var raw = value == null ? '' : StringTools.trim(Std.string(value));
+		if (raw == '')
+			raw = 'vcr';
+		raw = StringTools.replace(raw, '\\', '/');
+		while (raw.startsWith('assets/fonts/'))
+			raw = raw.substr('assets/fonts/'.length);
+		if (raw.startsWith('fonts/'))
+			raw = raw.substr('fonts/'.length);
+		if (raw.indexOf('..') >= 0 || raw.indexOf('/') >= 0)
+			return null;
+		var lower = raw.toLowerCase();
+		if (!lower.endsWith('.ttf') && !lower.endsWith('.otf'))
+			raw += '.ttf';
+		var path = 'assets/fonts/' + raw;
+		return FNFAssets.exists(path) ? path : null;
+	}
+
+	/** Put a lyric on the same side of the strumlines as the donor module. */
+	function placeLyricLine(line:FlxText, behind:Bool):Void {
+		if (line == null || members == null)
+			return;
+		var strumIndex = enemyStrums == null ? -1 : members.indexOf(enemyStrums);
+		if (strumIndex < 0 && playerStrums != null)
+			strumIndex = members.indexOf(playerStrums);
+		if (strumIndex < 0 || members.indexOf(line) < 0)
+			return;
+		remove(line);
+		var target = strumIndex + (behind ? -1 : 1);
+		if (target < 0)
+			target = 0;
+		if (target > members.length)
+			target = members.length;
+		insert(target, line);
+	}
+
+	/** Apply the Add Lyrics event's module options to one native FlxText. */
+	function applyLyricStyle(line:FlxText, options:Dynamic, second:Bool):Void {
+		if (line == null || options == null)
+			return;
+		var font = resolveLyricFont(lyricOption(options, second ? 'font2nd' : 'font'));
+		var size = Std.int(Math.max(1, lyricOptionFloat(options,
+			second ? 'fontSize2nd' : 'fontSize', 32)));
+		var color = compatEventColor(lyricOption(options,
+			second ? 'textColor2nd' : 'textColor'), 0xFFFFFFFF);
+		var borderColor = compatEventColor(lyricOption(options, 'textBorderColor'), 0xFF000000);
+		var borderSize = Math.max(0, lyricOptionFloat(options, 'borderSize', 1));
+		var centered = lyricOptionBool(options, second ? 'isCentered2nd' : 'isCentered', false);
+		line.setFormat(font, size, color, CENTER, OUTLINE, borderColor);
+		line.borderSize = borderSize;
+		line.letterSpacing = lyricOptionFloat(options, 'letterSpacing', 0);
+		line.italic = lyricOptionBool(options, 'isItalic', false);
+		line.bold = lyricOptionBool(options, 'isBold', false);
+		line.antialiasing = lyricOptionBool(options, 'hasAntiAliasing', true);
+		line.screenCenter(centered ? FlxAxes.XY : FlxAxes.X);
+		if (!centered) {
+			line.y = OptionsHandler.options.downscroll
+				? FlxG.height * (second ? 0.30 : 0.25)
+				: FlxG.height * (second ? 0.75 : 0.70);
+		} else if (second && lyricTxt != null && lyricTxt.text != '') {
+			line.y = lyricTxt.y + lyricTxt.height + 5;
+		} else if (!second && lyricSecondTxt != null && lyricSecondTxt.text != '') {
+			line.y = lyricSecondTxt.y - line.height - 5;
+		}
+		placeLyricLine(line, lyricOptionBool(options,
+			second ? 'isBehindStrumLines2nd' : 'isBehindStrumLines', true));
+	}
+
+	/** Set one actor-owned lyric line, retaining the old duration spelling. */
+	function setLyricLine(text:String, actor:String, second:Bool, duration:Float, ?style:Dynamic):Void {
+		var line = ensureLyricLine(second);
+		var normalizedText = text == null ? '' : text;
+		var normalizedActor = EngineCompat.lyricActor(actor);
+		FlxTween.cancelTweensOf(line);
+		if (StringTools.trim(normalizedText) == '') {
+			line.text = '';
+			line.alpha = 0.001;
+			if (second)
+				lyricSecondActor = '';
+			else
+				lyricPrimaryActor = '';
+			return;
+		}
+		line.text = normalizedText;
+		line.alpha = 1;
+		if (second)
+			lyricSecondActor = normalizedActor;
+		else
+			lyricPrimaryActor = normalizedActor;
+		if (style != null) {
+			applyLyricStyle(line, style, second);
+			line.alpha = Math.max(0, Math.min(1, lyricOptionFloat(style, 'opacity', 1)));
+		}
+		if (duration > 0 && style == null)
+			FlxTween.tween(line, {alpha: 0.001}, 0.5, {startDelay: duration});
+	}
+
+	/** Clear only the lyric lines owned by an actor; blank means all actors. */
+	function clearLyricLines(actor:String):Void {
+		var normalizedActor = EngineCompat.lyricActor(actor);
+		if (lyricTxt != null && (normalizedActor == '' || lyricPrimaryActor == normalizedActor)) {
+			FlxTween.cancelTweensOf(lyricTxt);
+			lyricTxt.text = '';
+			lyricTxt.alpha = 0.001;
+			lyricPrimaryActor = '';
+		}
+		if (lyricSecondTxt != null && (normalizedActor == '' || lyricSecondActor == normalizedActor)) {
+			FlxTween.cancelTweensOf(lyricSecondTxt);
+			lyricSecondTxt.text = '';
+			lyricSecondTxt.alpha = 0.001;
+			lyricSecondActor = '';
+		}
+	}
+
+	/**
+		Compatibility boundary for imported HXC lyric modules. The donor helper
+		passes a positional style array; keep conversion and all FlxText ownership
+		here so foreign scripts never receive native display objects directly.
+	*/
+	public function hxcSetLyricText(values:Array<Dynamic>, ?second:Bool = false):Bool {
+		if (values == null)
+			values = [];
+		var text = values.length > 0 && values[0] != null ? Std.string(values[0]) : '';
+		var style:Dynamic = {};
+		var duration:Float = 0;
+		var asFloat = function(value:Dynamic, fallback:Float):Float {
+			if (value == null)
+				return fallback;
+			var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+			return Math.isNaN(parsed) ? fallback : parsed;
+		};
+		if (!second) {
+			duration = values.length > 1 ? asFloat(values[1], 0) : 0;
+			var fields = ['text', 'duration', 'textColor', 'font', 'fontSize', 'isItalic', 'isBold',
+				'hasAntiAliasing', 'isCentered', 'opacity', 'letterSpacing', 'textBorderColor',
+				'borderSize', 'isBehindStrumLines'];
+			for (index in 2...values.length)
+				if (index < fields.length)
+					Reflect.setField(style, fields[index], values[index]);
+			// The native setter consumes text/duration separately from its style bag.
+			Reflect.deleteField(style, 'text');
+			Reflect.deleteField(style, 'duration');
+		} else {
+			var secondFields = ['text2nd', 'textColor2nd', 'font2nd', 'fontSize2nd',
+				'isCentered2nd', 'isBehindStrumLines2nd'];
+			for (index in 1...values.length)
+				if (index < secondFields.length)
+					Reflect.setField(style, secondFields[index], values[index]);
+		}
+		if (Reflect.fields(style).length == 0)
+			style = null;
+		setLyricLine(text, '', second, duration, style);
+		return true;
+	}
+
+	/** Clear all native lyric lines used by imported modules. */
+	public function hxcClearLyricText():Bool {
+		clearLyricLines('');
+		return true;
+	}
+
+	/** Return the native stage/UI pixel decision for imported song credits. */
+	public function hxcSongCreditsPixel():Bool {
+		var stage = currentStageId;
+		return pixelUI || (stage != null && stage.toLowerCase().indexOf('pixel') >= 0);
+	}
+
+	/** Resolve a requested banner font without making imported fonts mandatory. */
+	function hxcSongCreditsFont(pixel:Bool, preferred:String):String {
+		var preferredPath = 'assets/fonts/' + (pixel ? 'vcr.ttf' : preferred);
+		if (FNFAssets.exists(preferredPath))
+			return preferredPath;
+		var fallback = 'assets/fonts/vcr.ttf';
+		return FNFAssets.exists(fallback) ? fallback : null;
+	}
+
+	/**
+		Show the bounded native song-credit banner. The icon is resolved only
+		inside the selected HXC manifest root; a missing/partial PNG simply leaves
+		the text banner visible and never falls through to an unrelated asset.
+	*/
+	public function hxcShowSongCredits(songName:Dynamic, artist:Dynamic, pixel:Bool,
+		iconKey:String, assetRoot:String):Bool {
+		hxcClearSongCredits();
+		var title = songName == null ? '' : Std.string(songName);
+		var artistText = artist == null ? '' : Std.string(artist);
+		if (StringTools.trim(artistText) == '')
+			artistText = 'Unknown';
+
+		hxcSongCreditsName = new FlxText(20, 0, 0, title, 36);
+		hxcSongCreditsName.setFormat(hxcSongCreditsFont(pixel, 'riffic.ttf'), 36,
+			FlxColor.WHITE, 'right', FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		hxcSongCreditsName.borderSize = 2;
+		hxcSongCreditsName.scrollFactor.set();
+		hxcSongCreditsName.alpha = 0;
+		hxcSongCreditsName.cameras = [camHUD];
+			hxcSongCreditsName.updateHitbox();
+		hxcSongCreditsName.x = FlxG.width - (hxcSongCreditsName.width + 20);
+
+		hxcSongCreditsArtist = new FlxText(38, 38, 0, artistText, 20);
+		hxcSongCreditsArtist.setFormat(hxcSongCreditsFont(pixel, 'Aller_Rg.ttf'), 20,
+			FlxColor.WHITE, 'right', FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		hxcSongCreditsArtist.borderSize = 2;
+		hxcSongCreditsArtist.scrollFactor.set();
+		hxcSongCreditsArtist.alpha = 0;
+		hxcSongCreditsArtist.cameras = [camHUD];
+			hxcSongCreditsArtist.updateHitbox();
+		hxcSongCreditsArtist.x = FlxG.width - (hxcSongCreditsArtist.width + 20);
+
+		var cleanIcon = HxcCompatRuntime.songCreditsIcon(iconKey);
+		if (cleanIcon != '') {
+			var iconPath = HxcStateAssetScope.scopedAssetPath(assetRoot,
+				'images/songCredits/' + cleanIcon + '.png');
+			if (iconPath != null) {
+				try {
+					hxcSongCreditsIcon = new FlxSprite();
+					hxcSongCreditsIcon.loadGraphic(FNFAssets.getBitmapData(iconPath));
+					hxcSongCreditsIcon.updateHitbox();
+					hxcSongCreditsIcon.scrollFactor.set();
+					hxcSongCreditsIcon.scale.set(0.35, 0.35);
+					hxcSongCreditsIcon.updateHitbox();
+					hxcSongCreditsIcon.x = FlxG.width - hxcSongCreditsName.width - 120;
+					hxcSongCreditsIcon.y = -hxcSongCreditsIcon.height / 2 + 16;
+					hxcSongCreditsIcon.cameras = [camHUD];
+						hxcSongCreditsIcon.alpha = 0;
+				} catch (error:Dynamic) {
+					trace('[hxc-song-credits-asset-error] Could not load scoped icon '
+						+ iconPath + ': ' + Std.string(error));
+					hxcSongCreditsIcon = null;
+				}
+			} else {
+				trace('[hxc-song-credits-asset-missing] No manifest-scoped icon for '
+					+ cleanIcon + '; showing text only.');
+			}
+		}
+
+		add(hxcSongCreditsName);
+		if (hxcSongCreditsIcon != null)
+			add(hxcSongCreditsIcon);
+		add(hxcSongCreditsArtist);
+		hxcSongCreditsNameTween = FlxTween.tween(hxcSongCreditsName,
+			{alpha: 1, y: 20}, 0.4,
+			{ease: FlxEase.quartInOut, startDelay: 0.3});
+		if (hxcSongCreditsIcon != null)
+			hxcSongCreditsIconTween = FlxTween.tween(hxcSongCreditsIcon,
+				{alpha: 1, y: 20 - (hxcSongCreditsIcon.height / 2) + 16}, 0.4,
+				{ease: FlxEase.quartInOut, startDelay: 0.3});
+		hxcSongCreditsArtistTween = FlxTween.tween(hxcSongCreditsArtist,
+			{alpha: 1, y: 58}, 0.4,
+			{ease: FlxEase.quartInOut, startDelay: 0.4});
+		hxcSongCreditsTimer = new FlxTimer();
+		hxcSongCreditsTimer.start(3, function(_timer:FlxTimer) {
+			if (hxcSongCreditsName != null)
+				hxcSongCreditsNameTween = FlxTween.tween(hxcSongCreditsName,
+					{alpha: 0, y: 0}, 0.4,
+					{ease: FlxEase.quartInOut, startDelay: 0.3});
+			if (hxcSongCreditsIcon != null)
+				hxcSongCreditsIconTween = FlxTween.tween(hxcSongCreditsIcon,
+					{alpha: 0, y: -hxcSongCreditsIcon.height / 2 + 16}, 0.4,
+					{ease: FlxEase.quartInOut, startDelay: 0.3});
+			if (hxcSongCreditsArtist != null)
+				hxcSongCreditsArtistTween = FlxTween.tween(hxcSongCreditsArtist,
+					{alpha: 0, y: 38}, 0.4,
+					{ease: FlxEase.quartInOut, startDelay: 0.3});
+		});
+		return true;
+	}
+
+	/** Clear all native objects/timers owned by the song-credit banner. */
+	public function hxcClearSongCredits():Bool {
+		if (hxcSongCreditsTimer != null) {
+			hxcSongCreditsTimer.cancel();
+			hxcSongCreditsTimer.destroy();
+			hxcSongCreditsTimer = null;
+		}
+		if (hxcSongCreditsNameTween != null)
+			hxcSongCreditsNameTween.cancel();
+		if (hxcSongCreditsIconTween != null)
+			hxcSongCreditsIconTween.cancel();
+		if (hxcSongCreditsArtistTween != null)
+			hxcSongCreditsArtistTween.cancel();
+		hxcSongCreditsNameTween = null;
+		hxcSongCreditsIconTween = null;
+		hxcSongCreditsArtistTween = null;
+		for (sprite in [hxcSongCreditsName, hxcSongCreditsIcon, hxcSongCreditsArtist]) {
+			if (sprite == null)
+				continue;
+			try remove(sprite) catch (_:Dynamic) {}
+			try sprite.destroy() catch (_:Dynamic) {}
+		}
+		hxcSongCreditsName = null;
+		hxcSongCreditsIcon = null;
+		hxcSongCreditsArtist = null;
+		return true;
+	}
+
+	/** Mount one validated, data-only imported note-text cue in this state. */
+	public function hxcMountNoteTextCue(assetRoot:String, rawSpec:Dynamic):Dynamic {
+		if (!HxcCompatRuntime.isImportedManifestRoot(assetRoot))
+			return null;
+		var spec = HxcNoteTextSpec.fromDynamic(rawSpec);
+		if (spec == null)
+			return null;
+		var songId = SONG == null || SONG.song == null ? '' : SONG.song;
+		if (!HxcNoteTextSpec.appliesToSong(songId, spec))
+			return null;
+		var cue:Dynamic = {root: assetRoot, spec: spec, text: null, overlay: null,
+			active: false, startStep: -1};
+		var overlaySpec:Dynamic = Reflect.field(spec, 'staticOverlay');
+		if (overlaySpec != null) {
+			var imagePath = HxcStateAssetScope.scopedAssetPath(assetRoot, overlaySpec.image);
+			if (imagePath != null) {
+				try {
+					var overlay = new FlxSprite().loadGraphic(FNFAssets.getBitmapData(imagePath), true,
+						overlaySpec.frameWidth, overlaySpec.frameHeight);
+					overlay.animation.add('imported-static', cast overlaySpec.frames,
+						overlaySpec.fps, overlaySpec.loop);
+					overlay.animation.play('imported-static');
+					overlay.scale.set(overlaySpec.scaleX, overlaySpec.scaleY);
+					overlay.updateHitbox();
+					overlay.screenCenter();
+					overlay.alpha = overlaySpec.idleAlpha;
+					overlay.cameras = [camHUD];
+					insert(0, overlay);
+					cue.overlay = overlay;
+				} catch (error:Dynamic) {
+					trace('[hxc-note-text-overlay] could not load selected-root image: ' + error);
+				}
+			}
+		}
+		hxcNoteTextCues.push(cue);
+		return cue;
+	}
+
+	/** Resolve the authored font inside this import, then use a native fallback. */
+	function hxcNoteTextFont(root:String, font:String):String {
+		var key = font == null ? '' : StringTools.trim(font);
+		if (key.toLowerCase().startsWith('fonts/'))
+			key = key.substr('fonts/'.length);
+		var scoped = HxcStateAssetScope.scopedAssetPath(root, 'fonts/' + key);
+		if (scoped != null)
+			return scoped;
+		var native = 'assets/fonts/' + key;
+		if (FNFAssets.exists(native))
+			return native;
+		return FNFAssets.exists('assets/fonts/vcr.ttf') ? 'assets/fonts/vcr.ttf' : null;
+	}
+
+	/** Handle a shared HXC note-hit payload using only this cue's extracted data. */
+	public function hxcTriggerNoteTextCue(handle:Dynamic, event:Dynamic):Bool {
+		return hxcTriggerNoteTextCueForRules(handle, event, false);
+	}
+
+	/** Miss rules share the cue's visual owner and once-at-a-time lifetime. */
+	public function hxcTriggerMissNoteTextCue(handle:Dynamic, event:Dynamic):Bool {
+		return hxcTriggerNoteTextCueForRules(handle, event, true);
+	}
+
+	function hxcTriggerNoteTextCueForRules(handle:Dynamic, event:Dynamic, missed:Bool):Bool {
+		if (handle == null || hxcNoteTextCues.indexOf(handle) < 0 || event == null
+			|| SONG == null || dad == null || handle.active)
+			return false;
+		var judgement:Dynamic = Reflect.field(event, 'judgement');
+		if (!missed && (judgement == null || Std.string(judgement).toLowerCase() != handle.spec.triggerJudgement))
+			return false;
+		var rules:Dynamic = Reflect.field(handle.spec, missed ? 'missRules' : 'rules');
+		if (!Std.isOfType(rules, Array))
+			return false;
+		var songId = SONG.song == null ? '' : SONG.song;
+		var selected:Dynamic = null;
+		for (rule in (cast rules:Array<Dynamic>))
+			if (Std.string(rule.songId) == songId) {
+				selected = rule;
+				break;
+			}
+		if (selected == null || selected.lines == null
+			|| !FlxG.random.bool(selected.chancePercent))
+			return false;
+		var lines:Array<String> = cast selected.lines;
+		var spec:Dynamic = handle.spec;
+		if (lines.length > 0) {
+			var line = lines[FlxG.random.int(0, lines.length - 1)];
+			var text = new FlxText(dad.x + FlxG.random.float(spec.xOffsetMin, spec.xOffsetMax),
+				dad.y + FlxG.random.float(spec.yOffsetMin, spec.yOffsetMax), 0, line, spec.fontSize);
+			text.setFormat(hxcNoteTextFont(handle.root, spec.font), spec.fontSize, spec.color);
+			text.bold = spec.bold;
+			HxcCompatRuntime.setZIndex(text, spec.zIndex);
+			add(text);
+			refresh();
+			handle.text = text;
+		}
+		handle.active = true;
+		handle.startStep = curStep;
+		var overlay:FlxSprite = cast handle.overlay;
+		var overlaySpec:Dynamic = Reflect.field(spec, 'staticOverlay');
+		if (overlay != null && overlaySpec != null)
+			overlay.alpha = overlaySpec.hitAlpha;
+		if (overlaySpec != null && overlaySpec.sound != null) {
+			var soundPath = HxcStateAssetScope.scopedAssetPath(handle.root, overlaySpec.sound);
+			if (soundPath != null)
+				try FlxG.sound.play(FNFAssets.getSound(soundPath)) catch (error:Dynamic) {
+					trace('[hxc-note-text-overlay] could not play selected-root sound: ' + error);
+				}
+		}
+		RuntimeSmokeHarness.markStep('hxc-note-text-cue-active');
+		if (missed)
+			RuntimeSmokeHarness.markStep('hxc-note-miss-text-cue-active');
+		if (overlay != null)
+			RuntimeSmokeHarness.markStep('hxc-note-static-overlay-active');
+		return true;
+	}
+
+	/** Remove the active display object but leave its module handle reusable. */
+	public function hxcResetNoteTextCue(handle:Dynamic):Bool {
+		if (handle == null || hxcNoteTextCues.indexOf(handle) < 0)
+			return false;
+		var text:FlxText = cast handle.text;
+		if (text != null) {
+			remove(text);
+			text.destroy();
+			handle.text = null;
+		}
+		var overlay:FlxSprite = cast handle.overlay;
+		var overlaySpec:Dynamic = Reflect.field(handle.spec, 'staticOverlay');
+		if (overlay != null && overlaySpec != null)
+			overlay.alpha = overlaySpec.idleAlpha;
+		handle.active = false;
+		handle.startStep = -1;
+		return true;
+	}
+
+	/** Release one module handle; safe when its script already cleared it. */
+	public function hxcClearNoteTextCue(handle:Dynamic):Bool {
+		if (!hxcResetNoteTextCue(handle))
+			return false;
+		var overlay:FlxSprite = cast handle.overlay;
+		if (overlay != null) {
+			remove(overlay);
+			overlay.destroy();
+			handle.overlay = null;
+		}
+		hxcNoteTextCues.remove(handle);
+		return true;
+	}
+
+	function hxcExpireNoteTextCues():Void {
+		for (cue in hxcNoteTextCues) {
+			if (cue == null || !cue.active || cue.startStep < 0)
+				continue;
+			if (HxcNoteTextSpec.isExpired(cue.startStep, curStep, cue.spec))
+				hxcResetNoteTextCue(cue);
+		}
+	}
+
+	function hxcTickNoteTextOverlays():Void {
+		if (paused)
+			return;
+		for (cue in hxcNoteTextCues) {
+			if (cue == null || !cue.active || cue.overlay == null)
+				continue;
+			var overlaySpec:Dynamic = Reflect.field(cue.spec, 'staticOverlay');
+			if (overlaySpec != null)
+				(cast cue.overlay:FlxSprite).alpha = FlxG.random.float(
+					overlaySpec.flickerMin, overlaySpec.flickerMax);
+		}
+	}
+
+	function hxcClearAllNoteTextCues():Void {
+		for (cue in hxcNoteTextCues.copy())
+			hxcClearNoteTextCue(cue);
+	}
+
+	/** Pause/resume the native timer and tweens while the imported module pauses. */
+	public function hxcPauseSongCredits():Bool {
+		if (hxcSongCreditsTimer != null)
+			hxcSongCreditsTimer.active = false;
+		if (hxcSongCreditsNameTween != null)
+			hxcSongCreditsNameTween.active = false;
+		if (hxcSongCreditsIconTween != null)
+			hxcSongCreditsIconTween.active = false;
+		if (hxcSongCreditsArtistTween != null)
+			hxcSongCreditsArtistTween.active = false;
+		return true;
+	}
+
+	public function hxcResumeSongCredits():Bool {
+		if (hxcSongCreditsTimer != null)
+			hxcSongCreditsTimer.active = true;
+		if (hxcSongCreditsNameTween != null)
+			hxcSongCreditsNameTween.active = true;
+		if (hxcSongCreditsIconTween != null)
+			hxcSongCreditsIconTween.active = true;
+		if (hxcSongCreditsArtistTween != null)
+			hxcSongCreditsArtistTween.active = true;
+		return true;
+	}
+
+	/** Start the native vignette shader/filter owned by this PlayState. */
+	public function hxcPrepareVignette():Bool {
+		if (!OptionsHandler.options.vignetteEffects) {
+			clearHxcVignette();
+			return false;
+		}
+		return createHxcVignetteShader();
+	}
+
+	/** Clear the native vignette shader/filter and any active tween. */
+	public function hxcClearVignette():Bool {
+		clearHxcVignette();
+		return true;
+	}
+
+	public function hxcPauseVignette():Bool {
+		if (hxcVignetteTween != null)
+			CoolUtil.pauseTween(hxcVignetteTween);
+		return true;
+	}
+
+	public function hxcResumeVignette():Bool {
+		if (hxcVignetteTween != null)
+			CoolUtil.resumeTween(hxcVignetteTween);
+		return true;
+	}
+
+	/** Apply the positional intensity/duration/ease ABI of a vignette helper. */
+	public function hxcSetVignette(values:Array<Dynamic>):Bool {
+		if (!OptionsHandler.options.vignetteEffects || values == null || values.length == 0)
+			return false;
+		if (!createHxcVignetteShader())
+			return false;
+		var parseValue = function(value:Dynamic, fallback:Float):Float {
+			if (value == null)
+				return fallback;
+			var parsed = Std.parseFloat(StringTools.trim(Std.string(value)));
+			return Math.isNaN(parsed) ? fallback : parsed;
+		};
+		var intensity = parseValue(values[0], 0);
+		var duration = values.length > 1 ? parseValue(values[1], 0) : 0;
+		if (duration <= 0) {
+			setHxcVignetteIntensity(intensity);
+			return true;
+		}
+		if (hxcVignetteTween != null)
+			hxcVignetteTween.cancel();
+		var ease:Dynamic = values.length > 2 && values[2] != null ? values[2] : FlxEase.linear;
+		var created:FlxTween = null;
+		created = FlxTween.num(hxcVignetteIntensity, intensity, duration,
+			{ease: ease, onComplete: function(_) {
+				if (hxcVignetteTween == created)
+					hxcVignetteTween = null;
+			}}, function(value:Float) setHxcVignetteIntensity(value));
+		hxcVignetteTween = created;
+		return true;
+	}
+
+	// old-engine modchart API: fire a chart event from script. Several library
+	// modcharts (overthrone, origins, peccatum, control) drive their whole
+	// choreography through currentPlayState.triggerEventNote(...) - without
+	// this the call throws mid-hook and kills everything after it.
+	public function triggerEventNote(name:String, v1:Dynamic, v2:Dynamic, ?v3:Dynamic):Void {
+		fireSongEvent({
+			time: Conductor.songPosition,
+			name: name,
+			v1: v1 == null ? '' : Std.string(v1),
+			v2: v2 == null ? '' : Std.string(v2),
+			v3: v3 == null ? '' : Std.string(v3)
+		});
+	}
+
+	// old-engine helper the ported exe-rewrite modcharts call after swapping
+	// characters (trinity, instigation, simulation...) - the fork's equivalent
+	// is updateHealthColors; the scripts re-switch the icons themselves right
+	// before calling, which re-derives the icon colors this reads
+	public function specialReloadHealthBarColors(dadChar:Character, bfChar:Character):Void {
+		updateHealthColors();
+	}
+
+	// psych shader API some modcharts use (schoolhouse's radial blur overlay);
+	// runtime frag shaders live at assets/shaders/<name>.frag
+	public function initLuaShader(name:String):Bool {
+		var frag = resolveCompatShader(name);
+		if (frag != null)
+			return true;
+		trace('initLuaShader: $frag missing');
+		return false;
+	}
+
+	public function createRuntimeShader(name:String):ShaderHandler.CoolRuntimeShader {
+		var frag = resolveCompatShader(name);
+		if (frag == null) {
+			trace('createRuntimeShader: $frag missing');
+			return null;
+		}
+		return new ShaderHandler.CoolRuntimeShader(frag);
+	}
+
+	/**
+		Native owner for data-only HXC camera shader descriptors. HxcCompat emits
+		only literal fragment/uniform/camera data; this boundary owns construction,
+		filter lifetime, exact asset-root resolution, and per-binding tween/timer
+		state. Imported HScript receives only an opaque string handle.
+	*/
+	public function hxcApplyRuntimeShaderDescriptor(descriptor:Dynamic,
+		?assetRoot:String):Bool {
+		return hxcCreateRuntimeShaderHandle(descriptor, assetRoot) != null;
+	}
+
+	/** Create one manifest-scoped runtime shader binding and attach its filters. */
+	public function hxcCreateRuntimeShaderHandle(descriptor:Dynamic,
+		?assetRoot:String):Dynamic {
+		if (descriptor == null)
+			return null;
+		var shaderName = Reflect.field(descriptor, 'shaderName');
+		var cameras:Dynamic = Reflect.field(descriptor, 'cameras');
+		if (shaderName == null || cameras == null || !Std.isOfType(cameras, Array)
+			|| !hxcSafeShaderName(Std.string(shaderName)))
+			return null;
+		var root = assetRoot == null ? '' : StringTools.trim(assetRoot);
+		if (root == '' || root.startsWith('/') || root.indexOf(':') >= 0
+			|| root.indexOf('..') >= 0
+			|| !(root == CompatScriptManifest.ROOT_PREFIX
+				|| root.startsWith(CompatScriptManifest.ROOT_PREFIX + '/'))) {
+			trace('[hxc-shader-rejected] Shader asset root is not a manifest-scoped root: ' + root);
+			return null;
+		}
+		// ShaderPaths owns the manifest-root policy. Passing exactly one root is
+		// intentional: no native/foreign fallback and no sibling-root search.
+		var frag = ShaderPaths.resolve(Std.string(shaderName), [root], false);
+		if (frag == null) {
+			trace('[hxc-shader-asset-missing] Scoped shader ' + Std.string(shaderName)
+				+ ' was not found below ' + root + '.');
+			return null;
+		}
+		var normalizedCameras:Array<Dynamic> = [];
+		for (cameraName in (cast cameras:Array<Dynamic>)) {
+			var camera = hxcRuntimeShaderCamera(cameraName);
+			if (camera == null) {
+				trace('[hxc-shader-rejected] Unknown camera target ' + Std.string(cameraName) + '.');
+				return null;
+			}
+			if (normalizedCameras.indexOf(camera.camera) < 0)
+				normalizedCameras.push(camera.camera);
+		}
+		var cameraRefs:Dynamic = Reflect.field(descriptor, 'cameraRefs');
+		if (cameraRefs != null && Std.isOfType(cameraRefs, Array))
+			for (cameraRef in (cast cameraRefs:Array<Dynamic>)) {
+				var camera = hxcRuntimeShaderCamera(cameraRef);
+				if (camera == null) {
+					trace('[hxc-shader-rejected] Dynamic camera target is not a registered FlxCamera.');
+					return null;
+				}
+				if (normalizedCameras.indexOf(camera.camera) < 0)
+					normalizedCameras.push(camera.camera);
+			}
+		if (normalizedCameras.length == 0)
+			return null;
+		var shader:ShaderHandler.CoolRuntimeShader = null;
+		try shader = new ShaderHandler.CoolRuntimeShader(frag)
+		catch (error:Dynamic) {
+			trace('[hxc-shader-error] Could not create scoped shader ' + Std.string(shaderName)
+				+ ': ' + Std.string(error));
+			return null;
+		}
+		var filter = new ShaderFilter(cast shader);
+		var handle = 'hxc-shader-' + (++hxcRuntimeShaderBindingId);
+		var uniforms:Array<String> = [];
+		var authoredUniforms:Dynamic = Reflect.field(descriptor, 'uniforms');
+		if (authoredUniforms != null && Std.isOfType(authoredUniforms, Array))
+			for (uniform in (cast authoredUniforms:Array<Dynamic>))
+				if (uniform != null && hxcSafeShaderName(Std.string(uniform))
+					&& uniforms.indexOf(Std.string(uniform)) < 0)
+					uniforms.push(Std.string(uniform));
+		var binding:Dynamic = {
+				id: handle,
+				assetRoot: root,
+				shader: shader,
+				filter: filter,
+				cameras: normalizedCameras,
+				uniforms: uniforms,
+				cameraStates: [],
+				tween: null,
+				timer: null,
+				enabled: false
+			};
+		hxcRuntimeShaderBindings.set(handle, binding);
+		var initialEnabled = Reflect.field(descriptor, 'initialEnabled') != false;
+		if (Reflect.field(descriptor, 'deferCameraBinding') != true)
+			for (camera in normalizedCameras)
+				if (!hxcSetRuntimeShaderCamera(binding, camera, initialEnabled, true)) {
+					hxcClearRuntimeShader(handle);
+					return null;
+				}
+		return handle;
+	}
+
+	/** Append/remove only this binding's exact filter identity. */
+	public function hxcBindRuntimeShader(handle:Dynamic, cameraName:Dynamic,
+		enabled:Bool):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		var camera = hxcRuntimeShaderCamera(cameraName);
+		return binding == null || camera == null ? false
+			: hxcSetRuntimeShaderCamera(binding, camera.camera, enabled, true);
+	}
+
+	/** Mutate one descriptor-declared uniform on an owned shader. */
+	public function hxcSetRuntimeShaderUniform(handle:Dynamic, name:String,
+		value:Dynamic):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null || name == null || !hxcSafeShaderName(name))
+			return false;
+		var uniforms:Dynamic = Reflect.field(binding, 'uniforms');
+		if (uniforms == null || !Std.isOfType(uniforms, Array)
+			|| (cast uniforms:Array<String>).indexOf(name) < 0) {
+			trace('[hxc-shader-rejected] Uniform ' + name + ' is not declared by the imported shader.');
+			return false;
+		}
+		var shader:Dynamic = Reflect.field(binding, 'shader');
+		if (shader == null)
+			return false;
+		try {
+			var parsed = Std.parseFloat(Std.string(value));
+			if (Math.isNaN(parsed))
+				parsed = 0;
+			shader.setFloat(name, parsed);
+			return true;
+		} catch (_:Dynamic) {
+			return false;
+		}
+	}
+
+	/** Enable/disable all cameras owned by a shader binding. */
+	public function hxcSetRuntimeShaderEnabled(handle:Dynamic, enabled:Bool):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		var cameras:Dynamic = Reflect.field(binding, 'cameras');
+		var changed = false;
+		if (cameras != null && Std.isOfType(cameras, Array))
+			for (camera in (cast cameras:Array<Dynamic>))
+				changed = hxcSetRuntimeShaderCamera(binding, camera, enabled, true) || changed;
+		Reflect.setField(binding, 'enabled', enabled);
+		return changed;
+	}
+
+	/** Native pulse used by HXC helpers such as Markov's funnyGlitch. */
+	public function hxcPulseRuntimeShader(handle:Dynamic, from:Float, to:Float,
+		pulseDuration:Float, holdDuration:Float, ?ease:Dynamic, ?uniformName:String):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		var uniform = uniformName == null || StringTools.trim(uniformName) == '' ? 'alpha' : uniformName;
+		var uniforms:Dynamic = Reflect.field(binding, 'uniforms');
+		if (uniforms == null || !Std.isOfType(uniforms, Array)
+			|| (cast uniforms:Array<String>).indexOf(uniform) < 0)
+			return false;
+		hxcCancelRuntimeShaderMotion(binding);
+		hxcSetRuntimeShaderEnabled(handle, true);
+		var duration = pulseDuration <= 0 ? 0.001 : pulseDuration;
+		var easeFunction:Float->Float = ease == null ? FlxEase.circOut : cast ease;
+		var created:FlxTween = null;
+		created = FlxTween.num(from, to, duration, {ease: easeFunction,
+			onComplete: function(_) {
+				if (Reflect.field(binding, 'tween') == created)
+					Reflect.setField(binding, 'tween', null);
+		}}, function(value:Float) hxcSetRuntimeShaderUniform(handle, uniform, value));
+		Reflect.setField(binding, 'tween', created);
+		var hold = holdDuration < 0 ? 0 : holdDuration;
+		if (hold <= 0) {
+			hxcSetRuntimeShaderEnabled(handle, false);
+		} else {
+			var timer = new FlxTimer();
+			timer.start(hold, function(_) {
+				hxcSetRuntimeShaderEnabled(handle, false);
+				if (Reflect.field(binding, 'timer') == timer)
+					Reflect.setField(binding, 'timer', null);
+			});
+			Reflect.setField(binding, 'timer', timer);
+		}
+		return true;
+	}
+
+	public function hxcPauseRuntimeShader(handle:Dynamic):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		var tween:FlxTween = cast Reflect.field(binding, 'tween');
+		if (tween != null)
+			CoolUtil.pauseTween(tween);
+		var timer:FlxTimer = cast Reflect.field(binding, 'timer');
+		if (timer != null)
+			timer.active = false;
+		return true;
+	}
+
+	public function hxcResumeRuntimeShader(handle:Dynamic):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		var tween:FlxTween = cast Reflect.field(binding, 'tween');
+		if (tween != null)
+			CoolUtil.resumeTween(tween);
+		var timer:FlxTimer = cast Reflect.field(binding, 'timer');
+		if (timer != null)
+			timer.active = true;
+		return true;
+	}
+
+	public function hxcResetRuntimeShader(handle:Dynamic):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		hxcCancelRuntimeShaderMotion(binding);
+		hxcSetRuntimeShaderEnabled(handle, false);
+		return true;
+	}
+
+	public function hxcClearRuntimeShader(handle:Dynamic):Bool {
+		var binding = hxcRuntimeShaderBinding(handle);
+		if (binding == null)
+			return false;
+		hxcCancelRuntimeShaderMotion(binding);
+		var cameras:Dynamic = Reflect.field(binding, 'cameras');
+		if (cameras != null && Std.isOfType(cameras, Array))
+			for (camera in (cast cameras:Array<Dynamic>))
+				hxcRemoveRuntimeShaderCamera(binding, camera);
+		var id = Std.string(Reflect.field(binding, 'id'));
+		hxcRuntimeShaderBindings.remove(id);
+		return true;
+	}
+
+	public function hxcClearRuntimeShaderBindings():Void {
+		var handles:Array<String> = [];
+		for (handle in hxcRuntimeShaderBindings.keys())
+			handles.push(handle);
+		for (handle in handles)
+			hxcClearRuntimeShader(handle);
+		hxcRuntimeShaderBindings = new Map<String, Dynamic>();
+	}
+
+	function hxcRuntimeShaderBinding(handle:Dynamic):Dynamic {
+		if (handle == null)
+			return null;
+		var id = Std.string(handle);
+		return id.startsWith('hxc-shader-') ? hxcRuntimeShaderBindings.get(id) : null;
+	}
+
+	public function hxcResolveRuntimeShaderFilter(value:Dynamic):Dynamic {
+		if (Std.isOfType(value, openfl.filters.BitmapFilter))
+			return value;
+		var binding = hxcRuntimeShaderBinding(value);
+		return binding == null ? null : Reflect.field(binding, 'filter');
+	}
+
+	function hxcRuntimeShaderCamera(name:Dynamic, allowDetached:Bool = false):Dynamic {
+		if (Std.isOfType(name, FlxCamera)) {
+			var camera:FlxCamera = cast name;
+			if (!allowDetached && (FlxG.cameras == null || FlxG.cameras.list == null
+				|| FlxG.cameras.list.indexOf(camera) < 0))
+				return null;
+			var label = camera == camGame ? 'camGame' : (camera == camHUD ? 'camHUD' : 'custom');
+			return {name: label, camera: camera};
+		}
+		var lower = name == null ? '' : StringTools.trim(Std.string(name)).toLowerCase();
+		return switch (lower) {
+			case 'camgame': {name: 'camGame', camera: camGame};
+			case 'camhud': {name: 'camHUD', camera: camHUD};
+			default: null;
+		};
+	}
+
+	function hxcSetRuntimeShaderCamera(binding:Dynamic, cameraName:Dynamic,
+		enabled:Bool, keepFilter:Bool):Bool {
+		var target = hxcRuntimeShaderCamera(cameraName);
+		if (binding == null || target == null || target.camera == null)
+			return false;
+		var camera:FlxCamera = cast target.camera;
+		var filter:Dynamic = Reflect.field(binding, 'filter');
+		var states:Array<Dynamic> = cast Reflect.field(binding, 'cameraStates');
+		var state:Dynamic = null;
+		for (candidate in states)
+			if (candidate != null && candidate.camera == target.camera) {
+				state = candidate;
+				break;
+			}
+		if (state == null) {
+			state = {camera: target.camera, previousEnabled: camera.filtersEnabled, enabled: enabled};
+			states.push(state);
+		} else
+			Reflect.setField(state, 'enabled', enabled);
+		var filters:Array<openfl.filters.BitmapFilter> = camera.filters == null
+			? [] : camera.filters.copy();
+		var present = filters.indexOf(cast filter) >= 0;
+		if (keepFilter && !present)
+			filters.push(cast filter);
+		if (!keepFilter)
+			while (filters.remove(cast filter)) {}
+		camera.filters = filters;
+		camera.filtersEnabled = enabled;
+		hxcRecomputeRuntimeShaderCamera(target.camera);
+		return true;
+	}
+
+	function hxcRemoveRuntimeShaderCamera(binding:Dynamic, cameraName:Dynamic):Void {
+		var target = hxcRuntimeShaderCamera(cameraName, true);
+		if (binding == null || target == null || target.camera == null)
+			return;
+		var camera:FlxCamera = cast target.camera;
+		var filter:Dynamic = Reflect.field(binding, 'filter');
+		var filters:Array<openfl.filters.BitmapFilter> = camera.filters == null
+			? [] : camera.filters.copy();
+		var removed = false;
+		while (filters.remove(cast filter))
+			removed = true;
+		if (removed)
+			camera.filters = filters;
+		var states:Array<Dynamic> = cast Reflect.field(binding, 'cameraStates');
+		var previous:Null<Bool> = null;
+		for (state in states)
+			if (state != null && state.camera == target.camera) {
+				previous = state.previousEnabled == true;
+				break;
+			}
+		var anotherBinding = false;
+		var anotherEnabled = false;
+		for (other in hxcRuntimeShaderBindings) {
+			if (other == null || other == binding)
+				continue;
+			var otherFilter:Dynamic = Reflect.field(other, 'filter');
+			if (camera.filters == null || camera.filters.indexOf(cast otherFilter) < 0)
+				continue;
+			anotherBinding = true;
+			var otherStates:Array<Dynamic> = cast Reflect.field(other, 'cameraStates');
+			for (otherState in otherStates)
+				if (otherState != null && otherState.camera == target.camera
+					&& otherState.enabled == true)
+					anotherEnabled = true;
+		}
+		if (anotherBinding)
+			camera.filtersEnabled = anotherEnabled;
+		else if (previous != null)
+			camera.filtersEnabled = previous;
+	}
+
+	function hxcRecomputeRuntimeShaderCamera(cameraName:Dynamic):Void {
+		var target = hxcRuntimeShaderCamera(cameraName, true);
+		if (target == null || target.camera == null)
+			return;
+		var camera:FlxCamera = cast target.camera;
+		var found = false;
+		var enabled = false;
+		for (binding in hxcRuntimeShaderBindings) {
+			if (binding == null)
+				continue;
+			var filter:Dynamic = Reflect.field(binding, 'filter');
+			if (camera.filters == null || camera.filters.indexOf(cast filter) < 0)
+				continue;
+			var states:Array<Dynamic> = cast Reflect.field(binding, 'cameraStates');
+			for (state in states)
+				if (state != null && state.camera == target.camera) {
+					found = true;
+					enabled = enabled || state.enabled == true;
+				}
+		}
+		if (found)
+			camera.filtersEnabled = enabled;
+	}
+
+	function hxcCancelRuntimeShaderMotion(binding:Dynamic):Void {
+		if (binding == null)
+			return;
+		var tween:FlxTween = cast Reflect.field(binding, 'tween');
+		if (tween != null)
+			tween.cancel();
+		var timer:FlxTimer = cast Reflect.field(binding, 'timer');
+		if (timer != null) {
+			timer.cancel();
+			timer.destroy();
+		}
+		Reflect.setField(binding, 'tween', null);
+		Reflect.setField(binding, 'timer', null);
+	}
+
+	function hxcSafeShaderName(value:String):Bool {
+		if (value == null || StringTools.trim(value) == '' || value.startsWith('/')
+			|| value.indexOf('..') >= 0 || value.indexOf(':') >= 0)
+			return false;
+		return true;
+	}
+
+	/** Resolve the V-Slice/HXC vignette shader only through the active song's
+	 * compatibility roots. The native event adapter must not accidentally pick
+	 * a same-named shader copied for another imported mod. */
+	function createHxcVignetteShader():Bool {
+		if (hxcVignetteShader != null && hxcVignetteFilter != null)
+			return true;
+		var frag = ShaderPaths.resolve('vignette', compatForeignScriptRoots(), false);
+		if (frag == null) {
+			trace('[hxc-event-asset-missing] Vignette requires a manifest-scoped vignette.frag shader.');
+			return false;
+		}
+		try {
+			hxcVignetteShader = new ShaderHandler.CoolRuntimeShader(frag);
+			hxcVignetteFilter = new ShaderFilter(cast hxcVignetteShader);
+			hxcVignetteIntensity = 0;
+			hxcVignetteShader.setFloat('u_intensity', hxcVignetteIntensity);
+			var filters:Array<openfl.filters.BitmapFilter> = camGame == null || camGame.filters == null
+				? [] : camGame.filters.copy();
+			filters.push(hxcVignetteFilter);
+			if (camGame != null)
+				camGame.filters = filters;
+			return true;
+		} catch (error:Dynamic) {
+			trace('[hxc-event-asset-error] Could not create manifest-scoped vignette shader: ' + Std.string(error));
+			hxcVignetteShader = null;
+			hxcVignetteFilter = null;
+			return false;
+		}
+	}
+
+	function setHxcVignetteIntensity(value:Float):Void {
+		hxcVignetteIntensity = value;
+		if (hxcVignetteShader != null)
+			try hxcVignetteShader.setFloat('u_intensity', value) catch (_:Dynamic) {}
+	}
+
+	/** Convert V-Slice's separate easing type/direction fields to the native
+	 * FlxEase function vocabulary. */
+	function hxcEventEase(easeName:String, easeDirection:String):Dynamic {
+		var ease = StringTools.trim(easeName == null ? 'linear' : easeName);
+		if (ease == '' || ease.toLowerCase() == 'linear')
+			return FlxEase.linear;
+		var lower = ease.toLowerCase();
+		if (lower == 'instant')
+			return null;
+		var hasDirection = lower.endsWith('in') || lower.endsWith('out') || lower.endsWith('inout');
+		var candidate = ease;
+		if (!hasDirection) {
+			var direction = StringTools.trim(easeDirection == null ? 'In' : easeDirection);
+			if (direction == '')
+				direction = 'In';
+			candidate += direction.charAt(0).toUpperCase() + direction.substr(1);
+		}
+		var resolved:Dynamic = Reflect.field(FlxEase, candidate);
+		if (resolved == null)
+			resolved = Reflect.field(FlxEase, ease);
+		if (resolved == null)
+			trace('[hxc-event-ease] Unknown Vignette easing ' + ease + ' (' + easeDirection + '); using linear.');
+		return resolved == null ? FlxEase.linear : resolved;
+	}
+
+	function applyHxcVignetteEvent(event:Dynamic):Void {
+		if (!OptionsHandler.options.vignetteEffects) {
+			clearHxcVignette();
+			return;
+		}
+		if (event == null || !createHxcVignetteShader())
+			return;
+		var intensity = StringTools.trim(event.v1 == null ? '' : Std.string(event.v1)) == ''
+			? 1 : parseF(event.v1);
+		var duration = StringTools.trim(event.v2 == null ? '' : Std.string(event.v2)) == ''
+			? 4 : parseF(event.v2);
+		if (duration <= 0) {
+			trace('[hxc-event-error] Extra Events | Add Vignette Effect: Duration cannot be less or equal to 0. Duration must be greater than 0.');
+			return;
+		}
+		var options = EngineCompat.eventOptions(event.v3);
+		var easeName:Dynamic = options == null ? 'linear' : Reflect.field(options, 'ease');
+		var easeDirection:Dynamic = options == null ? 'In' : Reflect.field(options, 'easeDir');
+		if (easeName == null)
+			easeName = 'linear';
+		if (easeDirection == null)
+			easeDirection = 'In';
+		if (StringTools.trim(Std.string(easeName)).toLowerCase() == 'instant') {
+			if (hxcVignetteTween != null)
+				hxcVignetteTween.cancel();
+			hxcVignetteTween = null;
+			setHxcVignetteIntensity(intensity);
+			return;
+		}
+		if (hxcVignetteTween != null)
+			hxcVignetteTween.cancel();
+		var durationSeconds = Conductor.stepsToTime(duration) / 1000;
+		var ease = hxcEventEase(Std.string(easeName), Std.string(easeDirection));
+		var created:FlxTween = null;
+		created = FlxTween.num(hxcVignetteIntensity, intensity, durationSeconds,
+			{ease: ease, onComplete: function(_) {
+				if (hxcVignetteTween == created)
+					hxcVignetteTween = null;
+			}} , function(value:Float) setHxcVignetteIntensity(value));
+		hxcVignetteTween = created;
+	}
+
+	/** Load validated visual-event metadata from the manifest owner only. New
+	 * imports use a destination catalog; older imports derive the same bounded
+	 * data from scripts/events without scanning other roots or executing HXC. */
+	function hxcEventSpriteDescriptors(root:String):Array<Dynamic> {
+		if (root == null || StringTools.trim(root) == '')
+			return [];
+		if (cachedHxcEventSpriteCatalogs.exists(root))
+			return cachedHxcEventSpriteCatalogs.get(root);
+		var descriptors:Array<Dynamic> = [];
+		var catalogPath = Path.join([root, HxcEventSpriteDescriptor.CATALOG_FILE]);
+		if (FNFAssets.exists(catalogPath)) {
+			try descriptors = HxcEventSpriteDescriptor.parseCatalog(FNFAssets.getText(catalogPath))
+			catch (error:Dynamic) trace('[hxc-event-catalog-error] ' + catalogPath + ': ' + Std.string(error));
+		}
+		#if sys
+		if (descriptors.length == 0) {
+			var eventDirectories:Array<String> = [];
+			for (base in [root, Path.join([root, 'shared'])]) {
+				var events = Path.join([base, 'scripts', 'events']);
+				if (FileSystem.isDirectory(events) && eventDirectories.indexOf(events) < 0)
+					eventDirectories.push(events);
+			}
+			var filesRead = 0;
+			for (events in eventDirectories) {
+				var entries:Array<String> = [];
+				try entries = FileSystem.readDirectory(events) catch (_:Dynamic) {}
+				entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
+				for (entry in entries) {
+					if (filesRead >= 128)
+						break;
+					if (entry == null || !entry.toLowerCase().endsWith('.hxc'))
+						continue;
+					var path = Path.join([events, entry]);
+					if (!FileSystem.exists(path) || FileSystem.isDirectory(path))
+						continue;
+					filesRead++;
+					try {
+						var stat = FileSystem.stat(path);
+						if (stat.size > 1024 * 1024)
+							continue;
+						var descriptor = EngineCompat.eventSpriteDescriptorFromSource(File.getContent(path));
+						if (descriptor != null)
+							descriptors.push(descriptor);
+					} catch (_:Dynamic) {}
+				}
+			}
+		}
+		#end
+		cachedHxcEventSpriteCatalogs.set(root, descriptors);
+		return descriptors;
+	}
+
+	function hxcEventSpriteCoordinate(event:Dynamic, field:String, slot:String):Float {
+		if (event == null)
+			return 0;
+		for (raw in [Reflect.field(event, 'v1'), Reflect.field(event, 'v3')]) {
+			if (raw == null)
+				continue;
+			try {
+				var parsed:Dynamic = Json.parse(Std.string(raw));
+				var value:Dynamic = parsed == null ? null : Reflect.field(parsed, field);
+				if (value != null) {
+					var number = Std.parseFloat(Std.string(value));
+					if (!Math.isNaN(number) && Math.abs(number) <= 1000000)
+						return number;
+				}
+			} catch (_:Dynamic) {}
+		}
+		var positional:Dynamic = Reflect.field(event, slot);
+		var result = positional == null ? 0 : parseF(Std.string(positional));
+		return Math.isNaN(result) || Math.abs(result) > 1000000 ? 0 : result;
+	}
+
+	/** Render a static imported HXC event sprite when its selected root contains
+	 * a validated descriptor. Returning true means the descriptor owns the event,
+	 * including when the optional atlas is missing and the safe result is a no-op. */
+	function spawnHxcEventSprite(event:Dynamic):Bool {
+		if (event == null)
+			return false;
+		var root = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+		var descriptor = HxcEventSpriteDescriptor.find(hxcEventSpriteDescriptors(root),
+			EngineCompat.eventName(Std.string(Reflect.field(event, 'name'))));
+		if (descriptor == null)
+			return false;
+		if (curStage == null || isMinimalMode)
+			return true;
+		var atlasKey = Std.string(Reflect.field(descriptor, 'atlasKey'));
+		var atlasType = Std.string(Reflect.field(descriptor, 'atlasType'));
+		var atlas = HxcStateAssetScope.eventAtlas(root, atlasKey, atlasType,
+			'HXC event ' + Std.string(Reflect.field(descriptor, 'canonicalName')));
+		if (atlas == null)
+			return true;
+		var x = hxcEventSpriteCoordinate(event, Std.string(Reflect.field(descriptor, 'xField')), 'v1');
+		var y = hxcEventSpriteCoordinate(event, Std.string(Reflect.field(descriptor, 'yField')), 'v2');
+		var camera = Std.string(Reflect.field(descriptor, 'camera')) == 'hud' ? camHUD : camGame;
+		if (camera == null)
+			return true;
+		try {
+			var sprite = new FlxSprite(x, y);
+			sprite.frames = atlas;
+			sprite.animation.addByPrefix(Std.string(Reflect.field(descriptor, 'animationName')),
+				Std.string(Reflect.field(descriptor, 'framePrefix')),
+				Std.int(Reflect.field(descriptor, 'frameRate')), false);
+			sprite.animation.play(Std.string(Reflect.field(descriptor, 'animationName')));
+			sprite.scrollFactor.set(Reflect.field(descriptor, 'scrollX'), Reflect.field(descriptor, 'scrollY'));
+			sprite.cameras = [camera];
+			add(sprite);
+			sprite.animation.finishCallback = function(_name:String) {
+				if (sprite == null || finishedHxcEventSprites.indexOf(sprite) >= 0) return;
+				sprite.active = false;
+				sprite.visible = false;
+				finishedHxcEventSprites.push(sprite);
+			};
+		} catch (error:Dynamic) {
+			trace('[hxc-event-asset-error] Could not render ' + Std.string(Reflect.field(descriptor, 'canonicalName'))
+				+ ': ' + Std.string(error));
+		}
+		return true;
+	}
+
+	function disposeFinishedHxcEventSprites():Void {
+		for (sprite in finishedHxcEventSprites) {
+			if (sprite == null) continue;
+			if (members.indexOf(sprite) >= 0) remove(sprite, true);
+			if (sprite.animation != null) sprite.destroy();
+		}
+		finishedHxcEventSprites.resize(0);
+	}
+
+	function clearHxcVignette():Void {
+		if (hxcVignetteTween != null)
+			hxcVignetteTween.cancel();
+		hxcVignetteTween = null;
+		if (hxcVignetteFilter != null && camGame != null && camGame.filters != null) {
+			var filters = camGame.filters.copy();
+			while (filters.remove(hxcVignetteFilter)) {}
+			camGame.filters = filters;
+		}
+		hxcVignetteFilter = null;
+		hxcVignetteShader = null;
+		hxcVignetteIntensity = 0;
+	}
+
+	// set by schoolhouse's modchart to keep debug text off during botplay
+	public var disableDebug:Bool = false;
+
+	// the old engine had a botplay text object; ported stage scripts just set
+	// its font (mxv2, served-v2, lilac...). Keep a dead offscreen stand-in so
+	// those lines don't throw - the fork renders botplay state elsewhere
+	public var botplayTxt:FlxText = new FlxText(-500, -500, 0, '', 1);
+
+	public var gfSinging:Bool = false;
+	public function getOpponentSinger():Character {
+		return gfSinging && gf != null ? gf : dad;
+	}
+
+	var codenameEventDiagnostics:Map<String, Bool> = new Map();
+	// Codename camera cadence has its own interval/axis/offset and conductor
+	// timeline. Keep it separate from the legacy camZoomRate compatibility API.
+	var codenameCameraModuloActive:Bool = false;
+	var codenameCameraModuloConfig:CodenameCameraModuloConfig = CodenameCameraModulo.defaults();
+	var codenameCameraModuloTimeline:Array<CodenameCameraModuloChange> = [];
+	var codenameCameraModuloLastBucket:Float = 0;
+	var codenameCameraModuloBpmAnchor:Dynamic = null;
+	// Codename's camera/scroll event tweens are state-owned. Keep independent
+	// channels so replacing one zoom doesn't cancel the other camera's tween.
+	var codenameNativeEventTweens:Map<String, FlxTween> = new Map();
+	var codenameNativeEventResumeTweens:Map<String, FlxTween> = new Map();
+	public var curCameraTarget:Int = -1;
+	var codenameCameraControlled:Bool = false;
+	var codenameCameraFollowSuspended:Bool = false;
+	var codenameCameraSavedFollow:Bool = true;
+	var codenameCameraLineViews:Map<Int, Dynamic> = new Map();
+
+	/** Camera and input share mutable actor slots and stable source identity.
+	 * The model still does not implement donor note/receptor groups or signals. */
+	public function moveCodenameCamera():Bool {
+		if (codenameActors == null || camFollow == null)
+			return false;
+		// Even an empty or disabled selected line owns source camera following:
+		// Codename leaves camFollow where it was in those cases.
+		if (curCameraTarget < 0 || codenameCameraControlled || forceCamera)
+			return true;
+		var inputLine = getCodenameInputLine(curCameraTarget);
+		var characters = inputLine == null ? getCodenameLineCharacters(curCameraTarget) : inputLine.characters;
+		var position = FlxPoint.get();
+		var amount = 0;
+		for (actor in characters) {
+			if (actor == null || !actor.visible) continue;
+			var actorPosition = actor.getCameraPosition();
+			position.x += actorPosition.x;
+			position.y += actorPosition.y;
+			actorPosition.put();
+			amount++;
+		}
+		if (amount == 0) {
+			position.put();
+			return true;
+		}
+		position.x /= amount;
+		position.y /= amount;
+		var lineView:Dynamic = inputLine;
+		if (lineView == null) {
+			lineView = codenameCameraLineViews.get(curCameraTarget);
+			if (lineView == null) {
+				lineView = {lineIndex:curCameraTarget, characters:characters};
+				codenameCameraLineViews.set(curCameraTarget, lineView);
+			} else lineView.characters = characters;
+		}
+		var event = new CodenameCameraMoveEvent(position, lineView, amount, curCameraTarget);
+		for (scope in codenameScriptScopes.copy()) {
+			if (codenameScriptScopes.indexOf(scope) < 0) continue;
+			callCodenameScript(scope, 'onCameraMove', [event]);
+			if (event.stopsPropagation()) break;
+		}
+		if (!event.cancelled && event.position != null)
+			camFollow.setPosition(event.position.x, event.position.y);
+		// A callback may replace event.position; only the average belongs to us.
+		position.put();
+		return true;
+	}
+
+	function restoreCodenameCameraFollow():Void {
+		if (!codenameCameraFollowSuspended) return;
+		if (camGame != null) camGame.followEnabled = codenameCameraSavedFollow;
+		codenameCameraFollowSuspended = false;
+	}
+
+	function cancelCodenameCameraMovement():Void {
+		// Upstream completes the old movement's follow-restoration before cancel.
+		// Its completion does not move the camera to the old destination.
+		restoreCodenameCameraFollow();
+		cancelCodenameNativeEventTween('cameraMovement');
+	}
+
+	function releaseCodenameCameraControl():Void {
+		cancelCodenameCameraMovement();
+		codenameCameraControlled = false;
+		curCameraTarget = -1;
+	}
+
+	/** Camera Movement's first parameter is an authored strumline index, not
+	 * the three-slot native BF/dad/GF camera order. Empty lines still select a
+	 * valid source target and retain the previous follow point. */
+	function applyCodenameCameraMovement(params:Array<Dynamic>):Void {
+		cancelCodenameCameraMovement();
+		if (curCamPos != null) curCamPos.cancel();
+		codenameCameraControlled = false;
+		focusCameraDrivesFollow = true;
+		scriptableCamera = 'false';
+		var selected = Std.int(codenameEventNumber(params.length > 0 ? params[0] : null, 0));
+		curCameraTarget = selected;
+		if (camGame == null || camFollow == null) return;
+		var plan = getCodenameActorPlan();
+		if (plan == null || codenameActors == null) {
+			var diagnostic = 'Camera Movement needs a live selected-owner actor plan and runtime';
+			if (!codenameEventDiagnostics.exists(diagnostic)) {
+				codenameEventDiagnostics.set(diagnostic, true);
+				trace('[codename-event-unsupported] ' + diagnostic);
+			}
+			return;
+		}
+		if (selected < 0 || selected >= plan.lines.length) return;
+		moveCodenameCamera();
+		// Source checks the selected line after onCameraMove. A callback can
+		// change curCameraTarget and suppress the snap or scroll tween.
+		if (curCameraTarget < 0 || curCameraTarget >= plan.lines.length) return;
+		if (!codenameEventBoolean(params.length > 1 ? params[1] : null, true)) {
+			if (camGame.target != null) camGame.snapToTarget();
+			return;
+		}
+		var ease = params.length > 3 ? params[3] : null;
+		if (ease == null || Std.string(ease) == 'CLASSIC') return;
+		var duration = Conductor.stepCrochet / 1000
+			* codenameEventNumber(params.length > 2 ? params[2] : null, 4);
+		var motion:FlxTween = null;
+		codenameCameraSavedFollow = camGame.followEnabled;
+		codenameCameraFollowSuspended = true;
+		camGame.followEnabled = false;
+		motion = FlxTween.tween(camGame.scroll,
+			{x:camFollow.x - camGame.width * 0.5, y:camFollow.y - camGame.height * 0.5}, duration, {
+				ease:codenameEventEase(Std.string(ease),
+					codenameEventText(params.length > 4 ? params[4] : null, 'In')),
+				onComplete:function(_) {
+					if (codenameNativeEventTweens.get('cameraMovement') == motion)
+						restoreCodenameCameraFollow();
+					finishCodenameNativeEventTween('cameraMovement', motion);
+				}
+			});
+		trackCodenameNativeEventTween('cameraMovement', motion);
+	}
+
+	function applyCodenameCameraPosition(params:Array<Dynamic>):Void {
+		cancelCodenameCameraMovement();
+		if (camGame == null || camFollow == null) return;
+		if (curCamPos != null) curCamPos.cancel();
+		if (!codenameCameraControlled) camGame.followLerp = DONOR_CAMERA_FOLLOW_RATE;
+		codenameCameraControlled = true;
+		curCameraTarget = -1;
+		focusCameraDrivesFollow = true;
+		var relative = codenameEventBoolean(params.length > 6 ? params[6] : null, false);
+		var x = codenameEventNumber(params.length > 0 ? params[0] : null, 0);
+		var y = codenameEventNumber(params.length > 1 ? params[1] : null, 0);
+		camFollow.setPosition(x + (relative ? camFollow.x : 0), y + (relative ? camFollow.y : 0));
+		var tween = codenameEventBoolean(params.length > 2 ? params[2] : null, true);
+		if (!tween) {
+			// snapToTarget uses Flixel's target geometry and scroll bounds.
+			if (camGame.target != null) camGame.snapToTarget();
+			return;
+		}
+		var ease = codenameEventText(params.length > 4 ? params[4] : null, 'CLASSIC');
+		if (ease == 'CLASSIC') return;
+		var duration = Conductor.stepCrochet / 1000
+			* codenameEventNumber(params.length > 3 ? params[3] : null, 4);
+		var direction = codenameEventText(params.length > 5 ? params[5] : null, 'In');
+		// The compatibility camera suspends follow without hiding its target
+		// from scripts. Preserve the previous flag when the motion is replaced.
+		codenameCameraSavedFollow = camGame.followEnabled;
+		codenameCameraFollowSuspended = true;
+		camGame.followEnabled = false;
+		var motion:FlxTween = null;
+		motion = FlxTween.tween(camGame.scroll,
+			{x:camFollow.x - camGame.width * 0.5, y:camFollow.y - camGame.height * 0.5}, duration, {
+				ease:codenameEventEase(ease, direction),
+				onComplete:function(_) {
+					if (codenameNativeEventTweens.get('cameraMovement') == motion)
+						restoreCodenameCameraFollow();
+					finishCodenameNativeEventTween('cameraMovement', motion);
+				}
+			});
+		trackCodenameNativeEventTween('cameraMovement', motion);
+	}
+
+	public static function codenameEventNumber(value:Dynamic, fallback:Float):Float {
+		if (value == null)
+			return fallback;
+		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
+			var number:Float = cast value;
+			return Math.isFinite(number) ? number : fallback;
+		}
+		if (Std.isOfType(value, String)) {
+			var number = Std.parseFloat(StringTools.trim(cast value));
+			return Math.isFinite(number) ? number : fallback;
+		}
+		return fallback;
+	}
+
+	public static function codenameEventBoolean(value:Dynamic, fallback:Bool):Bool {
+		if (value == null)
+			return fallback;
+		if (Std.isOfType(value, Bool))
+			return cast value;
+		var text = StringTools.trim(Std.string(value)).toLowerCase();
+		return switch (text) {
+			case 'true' | '1': true;
+			case 'false' | '0': false;
+			default: fallback;
+		};
+	}
+
+	public static function codenameEventText(value:Dynamic, fallback:String):String {
+		return value == null ? fallback : StringTools.trim(Std.string(value));
+	}
+
+	function codenameEventEase(easeName:String, easeDirection:String):Dynamic {
+		var resolvedName = resolveFocusCameraEase(easeName, easeDirection);
+		var resolved:Dynamic = Reflect.field(FlxEase, resolvedName);
+		return resolved == null ? FlxEase.linear : resolved;
+	}
+
+	function cancelCodenameNativeEventTween(key:String):Void {
+		var tween = codenameNativeEventTweens.get(key);
+		if (tween != null)
+			tween.cancel();
+		codenameNativeEventTweens.remove(key);
+		codenameNativeEventResumeTweens.remove(key);
+	}
+
+	function trackCodenameNativeEventTween(key:String, tween:FlxTween):Void {
+		if (tween == null || !tween.active)
+			return;
+		codenameNativeEventTweens.set(key, tween);
+		if (paused) {
+			codenameNativeEventResumeTweens.set(key, tween);
+			tween.active = false;
+		}
+	}
+
+	function finishCodenameNativeEventTween(key:String, tween:FlxTween):Void {
+		if (codenameNativeEventTweens.get(key) == tween)
+			codenameNativeEventTweens.remove(key);
+		if (codenameNativeEventResumeTweens.get(key) == tween)
+			codenameNativeEventResumeTweens.remove(key);
+	}
+
+	function clearCodenameNativeEventTweens():Void {
+		releaseCodenameCameraControl();
+		for (tween in codenameNativeEventTweens)
+			if (tween != null)
+				tween.cancel();
+		codenameNativeEventTweens.clear();
+		codenameNativeEventResumeTweens.clear();
+	}
+
+	function setCodenameCameraZoomDefault(cameraKey:String, value:Float):Void {
+		if (cameraKey == 'camHUD.zoom')
+			defaultHudZoom = value;
+		else {
+			defaultCamZoom = value;
+			// CNE camera zoom events own the same resting target as defaultCamZoom.
+			baseCameraZoom = null;
+		}
+	}
+
+	/** Apply typed native CNE chart events before the legacy row adapter. */
+	public function applyCodenameNativeEvent(event:Dynamic):Bool {
+		if (event == null || !Std.isOfType(Reflect.field(event, 'params'), Array))
+			return false;
+		var name:Dynamic = Reflect.field(event, 'name');
+		var params:Array<Dynamic> = cast Reflect.field(event, 'params');
+		if (name == 'Play Animation') {
+			return CodenameEventDispatch.applyPlayAnimation(event,
+				function(index:Int):Array<Character> {
+					var line = getCodenameInputLine(index);
+					return line == null ? null : line.characters;
+				},
+				function(actor:Character, animationName:String):Bool {
+					return actor.animation != null && actor.animation.exists(animationName);
+				},
+				function(actor:Character, animationName:String, force:Null<Bool>, context:Dynamic):Void {
+					actor.codenamePlayAnim(animationName, force, context);
+				});
+		}
+		if (name == 'HScript Call') {
+			var callback = params.length > 0 && params[0] != null ? Std.string(params[0]) : '';
+			if (callback != '') {
+				var rawArgs = params.length > 1 && params[1] != null ? Std.string(params[1]) : '';
+				var args:Array<Dynamic> = cast rawArgs.split(',');
+				callCodenameScripts(callback, args);
+				for (scope in codenameCharacterScopes.copy()) scope.runtime.call(callback, args);
+			}
+			return true;
+		}
+		if (name == 'Camera Modulo Change') {
+			codenameCameraModuloActive = true;
+			codenameCameraModuloConfig = CodenameCameraModulo.apply(
+				codenameCameraModuloConfig, params);
+			return true;
+		}
+		if (name == 'BPM Change') {
+			var bpm = codenameEventNumber(params.length > 0 ? params[0] : null, Conductor.bpm);
+			if (Math.isFinite(bpm) && bpm > 0)
+				Conductor.changeBPM(bpm);
+			return true;
+		}
+		if (name == 'Continuous BPM Change') {
+			// The selected chart's continuous ramp is evaluated from its conductor
+			// timeline once per frame, including the shared Conductor step clock.
+			return true;
+		}
+		if (name == 'Time Signature Change') {
+			// The selected Codename chart's signature map is built before playback,
+			// just like Codename Conductor. Consume this row without a second
+			// mutation of the native fixed-meter conductor.
+			return true;
+		}
+		if (name == 'Alt Animation Toggle') {
+			var index = Std.int(codenameEventNumber(params.length > 2 ? params[2] : null, 0));
+			var line = getCodenameInputLine(index);
+			if (line != null) {
+				line.altAnim = codenameEventBoolean(params.length > 0 ? params[0] : null, true);
+				var idleSuffix = codenameEventBoolean(params.length > 1 ? params[1] : null, true)
+					? line.defaultAnimSuffix : '';
+				if (line.actorSlots != null)
+					for (actor in line.actorSlots) if (actor != null)
+						actor.idleSuffix = idleSuffix;
+			}
+			return true;
+		}
+		if (name == 'Add Camera Zoom') {
+			var camera = codenameEventText(params.length > 1 ? params[1] : null, 'camGame') == 'camHUD'
+				? camHUD : camGame;
+			if (camera != null) {
+				var amount = codenameEventNumber(params.length > 0 ? params[0] : null, 0.05);
+				if (camera == camGame) setGameCameraZoom(camera.zoom + amount);
+				else camera.zoom += amount;
+			}
+			return true;
+		}
+		if (name == 'Camera Movement') {
+			applyCodenameCameraMovement(cast Reflect.field(event, 'params'));
+			return true;
+		}
+		if (name == 'Camera Position') {
+			applyCodenameCameraPosition(cast Reflect.field(event, 'params'));
+			return true;
+		}
+		if (name != 'Camera Zoom' && name != 'Scroll Speed Change')
+			return false;
+		if (name == 'Camera Zoom') {
+			var cameraIsHud = codenameEventText(params.length > 2 ? params[2] : null, 'camGame') == 'camHUD';
+			var cameraKey = cameraIsHud ? 'camHUD.zoom' : 'camGame.zoom';
+			var camera = cameraIsHud ? camHUD : camGame;
+			cancelCodenameNativeEventTween(cameraKey);
+			if (camera == null)
+				return true;
+
+			var zoom = codenameEventNumber(params.length > 1 ? params[1] : null, 1);
+			var mode = codenameEventText(params.length > 6 ? params[6] : null, 'direct');
+			var baseline = mode == 'direct' ? FlxCamera.defaultZoom
+				: (curStage == null ? defaultCamZoom : curStage.defaultZoom);
+			var finalZoom = zoom * baseline;
+			if (codenameEventBoolean(params.length > 7 ? params[7] : null, false))
+				finalZoom *= camera.zoom;
+
+			var tweenZoom = codenameEventBoolean(params.length > 0 ? params[0] : null, true);
+			var easeName = codenameEventText(params.length > 4 ? params[4] : null, 'linear');
+			if (params.length <= 4 || easeName == '') easeName = 'linear';
+			if (!tweenZoom) {
+				camera.zoom = finalZoom;
+				setCodenameCameraZoomDefault(cameraKey, finalZoom);
+				return true;
+			}
+			if (easeName == 'CLASSIC') {
+				setCodenameCameraZoomDefault(cameraKey, finalZoom);
+				return true;
+			}
+
+			var durationSteps = codenameEventNumber(params.length > 3 ? params[3] : null, 4);
+			var duration = Conductor.stepCrochet / 1000 * durationSteps;
+			var easeDirection = codenameEventText(params.length > 5 ? params[5] : null, 'In');
+			if (easeDirection == '') easeDirection = 'In';
+			var tween:FlxTween = null;
+			tween = FlxTween.tween(camera, {zoom: finalZoom}, duration, {
+				ease: codenameEventEase(easeName, easeDirection),
+				onUpdate: function(_) setCodenameCameraZoomDefault(cameraKey, camera.zoom),
+				onComplete: function(_) {
+					setCodenameCameraZoomDefault(cameraKey, finalZoom);
+					finishCodenameNativeEventTween(cameraKey, tween);
+				}
+			});
+			trackCodenameNativeEventTween(cameraKey, tween);
+			return true;
+		}
+
+		var speedKey = 'scrollSpeedTween';
+		cancelCodenameNativeEventTween(speedKey);
+		var speed = codenameEventNumber(params.length > 1 ? params[1] : null, 1);
+		var finalSpeed = codenameEventBoolean(params.length > 5 ? params[5] : null, false)
+			? scrollSpeed * speed : speed;
+		if (!codenameEventBoolean(params.length > 0 ? params[0] : null, true)) {
+			scrollSpeed = finalSpeed;
+			return true;
+		}
+		var speedSteps = codenameEventNumber(params.length > 2 ? params[2] : null, 4);
+		var speedDuration = Conductor.stepCrochet / 1000 * speedSteps;
+		var speedEase = codenameEventText(params.length > 3 ? params[3] : null, 'linear');
+		if (speedEase == '') speedEase = 'linear';
+		var speedEaseDirection = codenameEventText(params.length > 4 ? params[4] : null, 'In');
+		if (speedEaseDirection == '') speedEaseDirection = 'In';
+		var speedTween:FlxTween = null;
+		speedTween = FlxTween.tween(this, {scrollSpeed: finalSpeed}, speedDuration, {
+			ease: codenameEventEase(speedEase, speedEaseDirection),
+			onComplete: function(_) finishCodenameNativeEventTween(speedKey, speedTween)
+		});
+		trackCodenameNativeEventTween(speedKey, speedTween);
+		return true;
+	}
+
+	/** Prepare the selected Codename chart's continuous beat axes and source
+	 * startup cadence after embedded and shared events have been merged. */
+	function initializeCodenameCameraModulo():Void {
+		codenameCameraModuloActive = codenameSelectedRoot() != '';
+		codenameCameraModuloConfig = CodenameCameraModulo.defaults();
+		codenameCameraModuloTimeline = [];
+		codenameCameraModuloLastBucket = 0;
+		codenameCameraModuloBpmAnchor = null;
+		if (!codenameCameraModuloActive)
+			return;
+
+		var metadata:Dynamic = null;
+		try metadata = getCodenameSongView().getField('meta') catch (_:Dynamic) {}
+		if (metadata == null)
+			metadata = {};
+		if (Reflect.field(metadata, 'bpm') == null)
+			Reflect.setField(metadata, 'bpm', SONG == null ? Conductor.bpm : SONG.bpm);
+		if (Reflect.field(metadata, 'beatsPerMeasure') == null)
+			Reflect.setField(metadata, 'beatsPerMeasure', 4);
+		if (Reflect.field(metadata, 'stepsPerBeat') == null)
+			Reflect.setField(metadata, 'stepsPerBeat', 4);
+
+		var authoredEvents:Array<Dynamic> = [];
+		for (nativeEvent in songEvents) {
+			var authored = CodenameEventDispatch.fromNative(nativeEvent);
+			if (authored != null)
+				authoredEvents.push(authored);
+		}
+		codenameCameraModuloConfig = CodenameCameraModulo.songDefaults(metadata, authoredEvents);
+		codenameCameraModuloTimeline = CodenameCameraModulo.buildTimeline(metadata, authoredEvents);
+	}
+
+	/** Source Codename checks its continuous modulo bucket once per update,
+	 * before executing chart events due on that frame. */
+	function updateCodenameCameraModulo():Void {
+		if (!codenameCameraModuloActive)
+			return;
+		var position = CodenameCameraModulo.positionAt(codenameCameraModuloTimeline,
+			Conductor.songPosition);
+		// The fork's fixed-meter MusicBeatState asks Conductor for a step clock.
+		// Keep a single moving anchor at the current Codename position so discrete
+		// and continuous BPM changes stay cumulative without growing the map per frame.
+		Conductor.changeBPM(position.bpm);
+		if (codenameCameraModuloBpmAnchor == null) {
+			codenameCameraModuloBpmAnchor = {
+				stepTime:Std.int(Math.floor(position.step)),
+				songTime:Conductor.songPosition,
+				bpm:position.bpm
+			};
+			Conductor.bpmChangeMap.push(cast codenameCameraModuloBpmAnchor);
+		} else {
+			Reflect.setField(codenameCameraModuloBpmAnchor, 'stepTime', Std.int(Math.floor(position.step)));
+			Reflect.setField(codenameCameraModuloBpmAnchor, 'songTime', Conductor.songPosition);
+			Reflect.setField(codenameCameraModuloBpmAnchor, 'bpm', position.bpm);
+		}
+		if (camGame == null || camHUD == null || !OptionsHandler.options.zoomCamera
+			|| !camZooming || inCutscene || endingSong)
+			return;
+		var axis = CodenameCameraModulo.axis(codenameCameraModuloConfig,
+			position.step, position.beat, position.measure);
+		var bucket = CodenameCameraModulo.bucket(axis,
+			codenameCameraModuloConfig.interval, codenameCameraModuloConfig.offset);
+		if (codenameCameraModuloLastBucket == bucket)
+			return;
+		codenameCameraModuloLastBucket = bucket;
+		// Match this fork's normal camera bop while applying Codename's configured
+		// strength. Camera decay remains owned by PlayState's usual update path.
+		if (camGame.zoom < 1.35) {
+			setGameCameraZoom(camGame.zoom + 0.015 * codenameCameraModuloConfig.strength);
+			camHUD.zoom += 0.03 * codenameCameraModuloConfig.strength;
+		}
+	}
+
+	/** Route chart and script-created Codename events through the same mutable
+	 * callback payload, native action, and post-callback sequence. */
+	function executeCodenameEvent(authored:Dynamic):Void {
+		if (codenameSelectedRoot() == '') return;
+		try {
+			CodenameEventDispatch.run(authored, callCodenameEvent, function(event:Dynamic) {
+				if (applyCodenameNativeEvent(event)) return;
+				var routed = CodenameEventDispatch.nativeRoute(event);
+				if (routed != null) fireNativeSongEvent(routed);
+				else if (CodenameScriptDiscovery.isBuiltInEvent(event.name)
+					&& !codenameEventDiagnostics.exists(event.name)) {
+					codenameEventDiagnostics.set(event.name, true);
+					trace('[codename-event-unsupported] No native action for ' + event.name);
+				}
+			});
+		} catch (error:Dynamic) {
+			var diagnostic = Std.string(error);
+			if (!codenameEventDiagnostics.exists(diagnostic)) {
+				codenameEventDiagnostics.set(diagnostic, true);
+				trace('[codename-event-error] ' + diagnostic);
+			}
+		}
+		reconcileCodenameScriptLineActors();
+	}
+
+	function fireSongEvent(e:Dynamic) {
+		if (e != null && Reflect.field(e, 'codename') != null && codenameSelectedRoot() != '') {
+			var authored = CodenameEventDispatch.fromNative(e);
+			if (authored != null) {
+				executeCodenameEvent(authored);
+				return;
+			}
+		}
+		fireNativeSongEvent(e);
+		if (e != null) callNightmareVision('onEvent', [e.name, e.v1, e.v2]);
+	}
+
+	function fireNativeSongEvent(e:Dynamic) {
+		var psychStageEvent:Dynamic = e;
+		var eventNameLower = e == null || e.name == null ? ''
+			: StringTools.trim(Std.string(e.name)).toLowerCase();
+		if (!smokeFirstZoomEventCaptured && RuntimeSmokeHarness.enabled()
+			&& ['set cam zoomboom', 'set cam zoomboomslow', 'legacy camera zoom', 'set cam zoom']
+				.indexOf(eventNameLower) >= 0) {
+			smokeFirstZoomEventCaptured = true;
+			smokeFirstZoomEventTime = e.time == null ? Conductor.songPosition : parseF(Std.string(e.time));
+			var targetZoom:Null<Float> = e.v1 == null || StringTools.trim(Std.string(e.v1)) == ''
+				? null : parseF(Std.string(e.v1));
+			var durationSeconds:Null<Float> = e.v2 == null || StringTools.trim(Std.string(e.v2)) == ''
+				? null : parseF(Std.string(e.v2));
+			runtimeSmokeCameraSnapshot('first-authored-zoom-start', smokeFirstZoomEventTime,
+				targetZoom, durationSeconds);
+		}
+		// every event goes to hscript first - old modcharts implement their
+		// own onEvent handlers for mod-specific stuff. 4 args: several
+		// library modcharts declare onEvent(name, v1, v2, v3) and hscript
+		// rejects short calls, while extra args are truncated harmlessly.
+		trace('event: ${e.name} @ ${Math.round(e.time)}ms v1=${e.v1} v2=${e.v2}');
+		callAllHScript('onEvent', [e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3]);
+		// HXC/V-Slice song scripts use onSongEvent(event) and receive a single
+		// structured payload. Keep that lifecycle alongside the legacy Psych
+		// onEvent broadcast; EngineCompat.callbackArguments performs the payload
+		// adaptation without changing the chart's event row.
+		var hxcEvent = EngineCompat.hxcSongEventPayload(
+			[e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3, e.time]);
+		callAllHScript('songEvent', [hxcEvent]);
+		// HXC's eventCanceled flag is intentionally honored only for this donor
+		// lifecycle. Psych's onEvent remains observational and keeps the legacy
+		// event pump's behavior unchanged.
+		if (hxcEvent.eventCanceled == true) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+		// A translated HXC callback may own the equivalent native effect (for
+		// example a donor stage's direct camera flash).  Its bounded runtime helper
+		// claims only the native side, so stage-specific HXC visuals still run while
+		// the canonical switch executes once at most.
+		if (hxcEvent.nativeHandled == true || hxcEvent.handled == true) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+
+		// A referenced Psych custom Flash.lua owns the legacy `Flash` event.  The
+		// native alias remains the fallback for charts without that handler, while
+		// canonical `Camera Flash` rows continue through the native event switch.
+		if (EngineCompat.psychFlashScriptOwnsLegacyEvent(e.name,
+			psychFlashEventScopes.keys().hasNext())) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+
+		// Keep the original event name for scripts, but route built-in aliases
+		// through one native switch so charts from Psych/Kade/V-Slice do not need
+		// their event strings rewritten.  The adapter also fixes old value-slot
+		// conventions (FPS `Flash` and `screenShakeSimple`) without mutating the
+		// donor chart or the script-facing callback above.
+		var routedEvent = EngineCompat.routeLegacyEvent(e.name, e.v1, e.v2, e.v3);
+		e = {
+			time: e.time,
+			name: routedEvent.name,
+			v1: routedEvent.v1,
+			v2: routedEvent.v2,
+			v3: routedEvent.v3
+		};
+		if (spawnHxcEventSprite(e)) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+		 switch (EngineCompat.eventName(e.name)) {
+			case 'GF Sing':
+				gfSinging = true;
+				if (gf != null) gf.visible = true;
+			case 'Dad Sing':
+				gfSinging = false;
+			case 'Note Swap':
+				applyCompatNoteSwap(e.v1, e.v2);
+			case 'Add Camera Zoom':
+				if (!OptionsHandler.options.zoomCamera) {
+					dispatchPsychCompiledStageEvent(psychStageEvent);
+					return;
+				}
+				// old docs: v1 = camera zoom add (default 0.015), v2 = UI zoom add (default 0.03)
+				var cameraZoom = e.v1 == '' ? 0.015 : parseF(e.v1);
+				var hudZoom = e.v2 == '' ? 0.03 : parseF(e.v2);
+				if (StringTools.trim(e.v3).toLowerCase() == 'psych') {
+					// TAKEOVER's AddCamZoomPsych leaves the gameplay camera for
+					// the ordinary beat bop and raises its multiplier instead.
+					cameraBopMultiplier += cameraZoom;
+					camHUD.zoom += hudZoom;
+				} else {
+				var currentGameZoom = camGame.zoom;
+				var resolvedZooms = cameraZoomEventTargets(currentGameZoom, camHUD.zoom,
+					cameraZoom, hudZoom, cameraZoomIntroTargets);
+				var isAbsoluteTarget = cameraZoomIntroTargets && cameraZoomEventIsAbsolute(cameraZoom, hudZoom);
+				if (isAbsoluteTarget) {
+					cameraZoomIntroGameTarget = resolvedZooms[0];
+					// Paired legacy target values describe the gameplay camera.  Do
+					// not hold the copied second value on camHUD: that camera owns
+					// arrows, pause menus, score text, and all other interface
+					// sprites, and must remain at its own zoom (normally 1).
+					cameraZoomIntroHudTarget = null;
+				} else {
+					// A later ordinary Psych pulse or explicit script event takes
+					// ownership, so it must not be pulled back to an old intro target.
+					cameraZoomIntroGameTarget = null;
+					cameraZoomIntroHudTarget = null;
+				}
+				setGameCameraZoom(resolvedZooms[0]);
+				if (e.v2 != '' && !isAbsoluteTarget)
+					camHUD.zoom = resolvedZooms[1];
+				// Psych's normal event is additive and does not enable the separate
+				// camZooming return lerp.  A proven legacy intro sequence instead
+				// uses paired .3..2 values as absolute targets; setting those values
+				// directly makes Locked linger at 0.5, 0.6, ... rather than stacking
+				// to an impossible 4x zoom. Note hits and explicit SetCameraBop/
+				// Zoom Camera events still opt into the decay path.
+				}
+			case 'Screen Shake':
+				// values are "duration, intensity" per the old chart editor docs
+				var g = StringTools.trim(e.v1).split(',');
+				var h = StringTools.trim(e.v2).split(',');
+				if (g.length == 2)
+					FlxG.camera.shake(parseF(g[1]), parseF(g[0]));
+				if (h.length == 2)
+					camHUD.shake(parseF(h[1]), parseF(h[0]));
+			case 'Focus Camera':
+				// V-Slice FocusCamera carries a character slot plus optional
+				// duration/ease fields. The importer keeps those named fields in v3;
+				// invoke the same native helper used by HScript instead of reducing
+				// char-only rows to an x coordinate in Camera Follow Pos.
+				var focusOptions = EngineCompat.eventOptions(e.v3);
+				var focusChar = -2;
+				var focusDuration:Float = 4;
+				var focusEase = 'classic';
+				var focusEaseDir = '';
+				if (focusOptions != null) {
+					var authoredChar = Reflect.field(focusOptions, 'char');
+					if (authoredChar != null)
+						focusChar = Std.int(parseF(Std.string(authoredChar)));
+					var authoredDuration = Reflect.field(focusOptions, 'duration');
+					if (authoredDuration != null)
+						focusDuration = parseF(Std.string(authoredDuration));
+					var authoredEase = Reflect.field(focusOptions, 'ease');
+					if (authoredEase != null && StringTools.trim(Std.string(authoredEase)) != '')
+						focusEase = Std.string(authoredEase);
+					var authoredEaseDir = Reflect.field(focusOptions, 'easeDir');
+					if (authoredEaseDir != null && StringTools.trim(Std.string(authoredEaseDir)) != '')
+						focusEaseDir = Std.string(authoredEaseDir);
+				}
+				FocusCamera({
+					char: focusChar,
+					x: e.v1 == '' ? 0 : parseF(e.v1),
+					y: e.v2 == '' ? 0 : parseF(e.v2),
+					duration: focusDuration,
+					ease: focusEase,
+					easeDir: focusEaseDir
+				});
+			case 'Camera Follow Pos' | 'Camera Position':
+				// old-engine semantics, proven by the corpus: 13 songs fire
+				// this with EMPTY args as a release, and one-shot users
+				// (zoinks, tone-it-down, control's modchart at step 12...)
+				// expect the camera to STAY locked where it was sent - the
+				// per-section auto-follow must not override it. Coords lock
+				// the camera (scriptable 'static'), empty args release it
+				// back to the automatic follow.
+				if (StringTools.trim(e.v1) == '' && StringTools.trim(e.v2) == '') {
+					if (scriptableCamera == 'static')
+						scriptableCamera = 'false';
+				} else {
+					scriptCamPos[0] = [parseF(e.v1), parseF(e.v2)];
+					scriptableCamera = 'static';
+				}
+			case 'Toggle Camera Movement':
+				// FPS Plus overhead rows encode the enabled bit in value1.  Lock
+				// the current follow point while disabled, then return to normal
+				// section-based following when the bit is cleared.
+				var movementValue = StringTools.trim(e.v1).toLowerCase();
+				var movementDisabled = movementValue == '1' || movementValue == 'true'
+					|| movementValue == 'on' || movementValue == 'disable'
+					|| movementValue == 'disabled';
+				if (movementDisabled) {
+					if (camFollow != null)
+						scriptCamPos[0] = [camFollow.x, camFollow.y];
+					scriptableCamera = 'static';
+				} else {
+					scriptableCamera = 'false';
+				}
+			case 'Camera Target':
+				// Funkadelix/V-Slice uses role names for a camera lock.  Reuse the
+				// existing scriptable-camera modes so automatic section following
+				// and donor camera targets share one native path.
+				var cameraTarget = StringTools.trim(e.v1).toLowerCase();
+				switch (cameraTarget) {
+					case '' | 'none' | 'off' | 'release':
+						scriptableCamera = 'false';
+					case 'bf' | 'boyfriend' | 'bf-lock' | 'boyfriend-lock':
+						scriptableCamera = 'bf';
+					case 'dad' | 'opponent' | 'dad-lock' | 'opponent-lock':
+						scriptableCamera = 'dad';
+					case 'gf' | 'girlfriend' | 'gf-lock' | 'girlfriend-lock':
+						scriptableCamera = 'gf';
+					case 'center' | 'center-lock':
+						if (camFollow != null)
+							scriptCamPos[0] = [camFollow.x, camFollow.y];
+						scriptableCamera = 'static';
+					default:
+						trace('Camera Target skipped: unknown target $cameraTarget');
+				}
+			case 'Play Animation':
+				var t = charForEventTarget(e.v2);
+				if (t != null)
+					t.playAnim(e.v1, true);
+			case 'Set Health Icon':
+				applyCompatHealthIcon(e.v1, e.v2, e.v3);
+			case 'Change Character':
+				var slot = switch (StringTools.trim(e.v1)) {
+					// Old Modding Plus charts left player1 blank. Terrible Fate
+					// uses this form for its bfdrowned/benbf swaps.
+					case '' | '0' | 'bf' | 'boyfriend': 'bf';
+					case '2' | 'gf' | 'girlfriend': 'gf';
+					default: 'dad';
+				};
+				var target = e.v2 != null ? StringTools.trim(e.v2) : '';
+				// many ported charts swap to chars that were never ported
+				// (locked's agoti-eye, gorefest's grimware...) - swapping to
+				// a failsafe dad is worse than keeping the current char
+				if (target.length > 0 && Character.characterExists(target)) {
+					switchCharacter(target, slot);
+				} else if (target.length > 0) {
+					trace('change character to missing $target skipped');
+				}
+			case 'Change Stage':
+				var stageId = StringTools.trim(e.v1 == null || e.v1 == '' ? e.v2 : e.v1);
+				if (stageId == '')
+					trace('Change Stage skipped: event has no stage id');
+				else
+					swapStage(stageId);
+			case 'Hey!':
+				if (selectedPsychSkinRoot() != null) {
+					var target = PsychHeyEventCompat.target(e.v1);
+					var duration = PsychHeyEventCompat.duration(e.v2);
+					if (target != 0) {
+						var cheerActor = dad != null && dad.curCharacter != null
+							&& dad.curCharacter.startsWith('gf') ? dad : gf;
+						if (cheerActor != null) {
+							cheerActor.playAnim('cheer', true);
+							cheerActor.specialAnim = true;
+							cheerActor.heyTimer = duration;
+						}
+					}
+					if (target != 1 && boyfriend != null) {
+						boyfriend.playAnim('hey', true);
+						boyfriend.specialAnim = true;
+						boyfriend.heyTimer = duration;
+					}
+				} else if (e.v1 != null && e.v1.toLowerCase() == 'bf')
+					boyfriend.playAnim('hey', true);
+				else if (gf != null && gf.animation.getByName('cheer') != null)
+					gf.playAnim('cheer', true);
+			case 'Set GF Speed':
+				gfSpeed = Std.int(Math.max(1, parseF(e.v1)));
+			case 'Set Cam Zoom' | 'Set Default Cam Zoom' | 'Change Camera Zoom' | 'Cambiar Zoom Default' | 'zoom out'
+				| 'Zoom' | 'zoom':
+				var setZoom = parseF(e.v1);
+				var setZoomDuration = e.v2 == '' ? 0 : parseF(e.v2);
+				defaultCamZoom = setZoom;
+				if (setZoomDuration > 0) {
+					FlxTween.cancelTweensOf(camGame, ['zoom']);
+					FlxTween.tween(camGame, {zoom: setZoom}, setZoomDuration,
+						{ease: FlxEase.sineInOut,
+						 onComplete: function(_) defaultCamZoom = setZoom});
+				} else {
+					setGameCameraZoom(setZoom);
+				}
+			case 'Legacy Camera Zoom':
+				// FPS Plus/Kade `camZoom` and PERFEXION's ZoomBoom use seconds,
+				// an absolute target, and a circOut tween.  Empty camZoom pulses
+				// carry no target and are intentionally inert rather than setting
+				// the camera to zero.
+				if (StringTools.trim(e.v1) != '') {
+					var legacyZoom = parseF(e.v1);
+					var legacyDuration = e.v2 == '' ? 0 : parseF(e.v2);
+					var cameraEventTime = e.time == null ? Conductor.songPosition : parseF(Std.string(e.time));
+					var captureFirstZoomCompletion = smokeFirstZoomEventCaptured
+						&& Math.abs(cameraEventTime - smokeFirstZoomEventTime) < 0.001;
+					defaultCamZoom = legacyCameraZoomDefaultOnStart(defaultCamZoom, legacyZoom, legacyDuration);
+					FlxTween.cancelTweensOf(camGame, ['zoom']);
+					if (legacyDuration > 0) {
+						FlxTween.tween(camGame, {zoom: legacyZoom}, legacyDuration,
+							{ease: FlxEase.circOut,
+							 onComplete: function(_) {
+								defaultCamZoom = legacyZoom;
+								if (captureFirstZoomCompletion)
+									runtimeSmokeCameraSnapshot('first-authored-zoom-complete',
+										cameraEventTime, legacyZoom, legacyDuration);
+							}});
+					} else {
+						setGameCameraZoom(legacyZoom);
+						if (captureFirstZoomCompletion)
+							runtimeSmokeCameraSnapshot('first-authored-zoom-complete',
+								cameraEventTime, legacyZoom, legacyDuration);
+					}
+				}
+			case 'Set camzoom':
+				// Ourple's legacy event stores a multiplier. Golden's stage is
+				// 2.85 and repeatedly returns to 0.9; treating 0.9 as absolute
+				// shrank the whole stage to the centre of the screen.
+				defaultCamZoom = legacyStageZoom(curStage.defaultZoom, parseF(e.v1));
+			case 'FadeWhite':
+				FlxG.camera.flash(0xFFFFFFFF, Math.max(parseF(e.v2), parseF(e.v1)));
+			case 'Camera Zoom':
+				// packed args: v1 = "enabled?,zoom,camera,durationSteps"
+				// v2 = "ease,easeDir,mode,?" - routes into the engine's ZoomCamera.
+				// The leading flag is the charting tool's event-enabled toggle,
+				// not a tween flag: the only 'false' events in the whole library
+				// (Illusion New hard, t=0) ask for zoom 4 on BOTH cameras, and an
+				// instant set would start the song at 2x the stage zoom with a
+				// 4x HUD - inert is the only reading that makes every charted
+				// event sane, so disabled events are skipped entirely.
+				var p = StringTools.trim(e.v1).split(',');
+				if (p.length > 0 && StringTools.trim(p[0]).toLowerCase() == 'false') {
+					// disabled in the chart editor - do nothing
+				} else {
+					var q = StringTools.trim(e.v2).split(',');
+					var zoom = p.length > 1 ? parseF(p[1]) : 1;
+					var dur = p.length > 3 ? parseF(p[3]) : 4;
+					var ease = q.length > 0 && StringTools.trim(q[0]) != '' ? StringTools.trim(q[0]) : 'linear';
+					var mode = q.length > 2 && StringTools.trim(q[2]) != '' ? StringTools.trim(q[2]) : 'direct';
+					var isCamHUD = p.length > 2 && StringTools.trim(p[2]) == 'camHUD';
+					if (isCamHUD) {
+						FlxTween.tween(camHUD, {zoom: cameraZoomTarget(curStage.defaultZoom, zoom, mode)}, Conductor.stepsToTime(dur) / 1000);
+					} else {
+						ZoomCamera({zoom: zoom, duration: dur, ease: ease, mode: mode});
+					}
+				}
+			case 'Camera Flash':
+				if (!OptionsHandler.options.flashingLights) {
+					if (camGame != null)
+						camGame.stopFlash();
+					if (camHUD != null)
+						camHUD.stopFlash();
+						if (camOther != null)
+							camOther.stopFlash();
+						dispatchPsychCompiledStageEvent(psychStageEvent);
+						return;
+				}
+				// Psych uses v1=color/v2=duration. Funkadelix instead uses
+				// v1=hud (or game/both) and v2=duration; V-Slice may pack
+				// applyToHud/color/duration in v3. Keep the authored target on
+				// its matching native camera, including Psych's overlay camera.
+				var flashValue = StringTools.trim(e.v1);
+				var flashTarget = flashValue.toLowerCase();
+				var flashOptions = EngineCompat.eventOptions(e.v3);
+				var flashDuration = e.v2 != '' ? parseF(e.v2) : (parseF(e.v1) > 0 ? parseF(e.v1) : 1);
+				var flashDurationInSteps = false;
+				var flashColorValue = flashValue;
+				var flashGame = flashTarget != 'hud' && flashTarget != 'camhud'
+					&& flashTarget != 'other' && flashTarget != 'camother';
+				var flashHud = flashTarget == 'hud' || flashTarget == 'camhud' || flashTarget == 'both';
+				var flashOther = flashTarget == 'other' || flashTarget == 'camother';
+				if (flashTarget == 'both')
+					flashGame = true;
+				if (flashOptions != null) {
+					var optionColor = Reflect.field(flashOptions, 'color');
+					if (optionColor != null && StringTools.trim(Std.string(optionColor)) != '')
+						flashColorValue = Std.string(optionColor);
+					var optionDuration = Reflect.field(flashOptions, 'duration');
+					if (optionDuration != null)
+						flashDuration = parseF(Std.string(optionDuration));
+					var optionDurationSteps = Reflect.field(flashOptions, 'durationSteps');
+					if (optionDurationSteps != null) {
+						var durationStepsText = StringTools.trim(Std.string(optionDurationSteps)).toLowerCase();
+						flashDurationInSteps = optionDurationSteps == true || durationStepsText == 'true' || durationStepsText == '1';
+					}
+					var optionHud = Reflect.field(flashOptions, 'applyToHud');
+					if (optionHud != null) {
+						var optionHudText = StringTools.trim(Std.string(optionHud)).toLowerCase();
+						flashHud = flashHud || optionHudText == 'true' || optionHudText == '1';
+					}
+					var optionOther = Reflect.field(flashOptions, 'applyToOther');
+					if (optionOther != null) {
+						var optionOtherText = StringTools.trim(Std.string(optionOther)).toLowerCase();
+						flashOther = flashOther || optionOtherText == 'true' || optionOtherText == '1';
+					}
+				}
+				if (flashDurationInSteps)
+					flashDuration = Conductor.stepsToTime(flashDuration) / 1000;
+				var flashColor = compatEventColor(flashColorValue, 0xFFFFFFFF);
+				if (flashGame)
+					camGame.flash(flashColor, flashDuration);
+				if (flashHud)
+					camHUD.flash(flashColor, flashDuration);
+				if (flashOther)
+					camOther.flash(flashColor, flashDuration);
+			case 'Vignette':
+				// Centralized native route for V-Slice Vignette events. The HXC
+				// event/handler classes remain data-only adapters; shader/filter and
+				// tween lifetime belong to this PlayState instance.
+				applyHxcVignetteEvent(e);
+			case 'Play Video':
+				// V-Slice's generic event supplies a path plus optional packed
+				// playback options. Event videos deliberately use a separate native
+				// owner from intro cutscenes: the chart keeps running, and HUD/audio/
+				// controls are restored when the clip ends.
+				var videoName = StringTools.trim(e.v1);
+				var videoOptions = EngineCompat.eventOptions(e.v2);
+				if (videoOptions == null)
+					videoOptions = EngineCompat.eventOptions(e.v3);
+				if (videoName == '' && videoOptions != null) {
+					for (field in ['path', 'video', 'file', 'name']) {
+						var option = Reflect.field(videoOptions, field);
+						if (option != null && StringTools.trim(Std.string(option)) != '') {
+							videoName = StringTools.trim(Std.string(option));
+							break;
+						}
+					}
+				}
+				if (videoName != '') {
+					#if cpp
+					var videoPath = compatEventVideoPath(videoName);
+					var eventTime = e.time == null ? Conductor.songPosition : Std.parseFloat(Std.string(e.time));
+					if (Math.isNaN(eventTime))
+						eventTime = Conductor.songPosition;
+					var videoOffset = eventVideoBool(videoOptions, 'resync', true)
+						? Math.max(0, Conductor.songPosition - eventTime) : 0;
+					if (videoPath == null)
+						trace('[hxc-video-missing] Play Video has no selected-owner media for ' + videoName);
+					else playCompatEventVideo(videoPath, videoOptions, videoOffset, eventTime);
+					#else
+					trace('Play Video is not supported on this target: ' + videoName);
+					#end
+				} else {
+					trace('Play Video skipped: event has no video path');
+				}
+			case 'Custom Flash':
+				// agoti-style flash variants: 1 = white, 2 = blue, 3 = red
+				var dur = e.v1 != '' ? parseF(e.v1) : 0.5;
+				var col:FlxColor = switch (StringTools.trim(e.v2)) {
+					case '2': 0xFF4D6FFF;
+					case '3': 0xFFBA1E24;
+					default: 0xFFFFFFFF;
+				};
+				FlxG.camera.flash(col, dur);
+			case 'Zoom Camera' | 'CameraZoom' | 'Slow Camera Zoom':
+				// Library convention (14 charts + overthrone/origins modcharts
+				// trigger it): v1 = target zoom, v2 = duration in steps. V-Slice
+				// keeps its ease/mode object in v3; route it through the same
+				// canonical ZoomCamera implementation instead of dropping those
+				// fields during import.
+				var zoomOptions = EngineCompat.eventOptions(e.v3);
+				if (zoomOptions != null) {
+					var zoomEase = Reflect.field(zoomOptions, 'ease');
+					var zoomMode = Reflect.field(zoomOptions, 'mode');
+					ZoomCamera({
+						zoom: parseF(e.v1),
+						duration: parseF(e.v2),
+						ease: zoomEase == null ? 'linear' : Std.string(zoomEase),
+						mode: zoomMode == null ? 'direct' : Std.string(zoomMode)
+					});
+				} else {
+					FlxTween.cancelTweensOf(camGame, ["zoom"]);
+					var zcDur = parseF(e.v2);
+					if (zcDur <= 0)
+						setGameCameraZoom(parseF(e.v1));
+					else
+						FlxTween.tween(camGame, {zoom: parseF(e.v1)}, Conductor.stepsToTime(zcDur) / 1000);
+					camZooming = true;
+				}
+			case 'Wacky Zoom':
+				setGameCameraZoom(camGame.zoom + parseF(e.v1));
+				camZooming = true;
+			case 'Change Scroll Speed':
+				var scrollOptions = EngineCompat.eventOptions(e.v3);
+				if (scrollOptions != null) {
+					// V-Slice's duration is already in steps; Psych's legacy
+					// two-value event below continues to use seconds.
+					var scrollEase = Reflect.field(scrollOptions, 'ease');
+					var scrollAbsolute = Reflect.field(scrollOptions, 'absolute');
+					var scrollStrumline = Reflect.field(scrollOptions, 'strumline');
+					tweenScrollSpeed({
+						scroll: parseF(e.v1),
+						duration: parseF(e.v2),
+						ease: scrollEase == null ? 'linear' : Std.string(scrollEase),
+						absolute: scrollAbsolute == null ? false : StringTools.trim(Std.string(scrollAbsolute)).toLowerCase() == 'true',
+						strumline: scrollStrumline == null ? 'both' : Std.string(scrollStrumline)
+					});
+				} else {
+					// Psych gives seconds; the engine's tween wants steps.
+					var secs = e.v2 != '' ? parseF(e.v2) : 1;
+					tweenScrollSpeed({scroll: parseF(e.v1), duration: secs * 1000 / Conductor.stepCrochet});
+				}
+			case 'Set Camera Bop':
+				SetCameraBop({rate: parseF(e.v1), intensity: parseF(e.v2)});
+			case 'Cam Boom Speed':
+				// PERFEXION's Lua custom event stores a beat interval and a
+				// multiplier, with 0/0 meaning disabled in the authored charts.
+				camBoomSpeed = Std.int(parseF(e.v1));
+				if (camBoomSpeed < 0)
+					camBoomSpeed = 0;
+				camBoomIntensity = StringTools.trim(e.v2) == '' ? 1 : parseF(e.v2);
+				if (camBoomSpeed == 0)
+					camBoomIntensity = 0;
+			case 'goodbye hud':
+				FlxTween.cancelTweensOf(camHUD, ["alpha"]);
+				FlxTween.tween(camHUD, {alpha: parseF(e.v1)}, Math.max(0.001, parseF(e.v2)));
+			case 'Alter Visibility':
+				if (e.v1 == 'camGame') camGame.visible = e.v2 == 'true';
+				if (e.v1 == 'camHUD') camHUD.visible = e.v2 == 'true';
+			case 'Black flash':
+				FlxG.camera.flash(0xFF000000, e.v1 == '' ? 1 : parseF(e.v1), null, true);
+			case 'Flash Camera':
+				// duration lives in v1 (sometimes with a trailing 's' - parseFloat ignores it)
+				var dur = parseF(e.v1) > 0 ? parseF(e.v1) : 1;
+				FlxG.camera.flash(0xFFFFFFFF, dur);
+			case 'Flash White':
+				var dur = parseF(e.v1) > 0 ? parseF(e.v1) : 1;
+				var col = FlxColor.fromString(StringTools.trim(e.v2));
+				FlxG.camera.flash(col == 0 ? 0xFFFFFFFF : col, dur);
+			case 'Camera Fade':
+				// Legacy rows use v1=in/out and v2=seconds. V-Slice's event adds
+				// palette color, step duration, and optional HUD/overlay target in v3.
+				var fadeOptions = EngineCompat.eventOptions(e.v3);
+				var fadeIn = StringTools.trim(e.v1).toLowerCase() == '1'
+					|| StringTools.trim(e.v1).toLowerCase() == 'true';
+				var fadeDuration = e.v2 != '' ? parseF(e.v2) : 1;
+				var fadeApplyHud = false;
+				var fadeApplyOther = false;
+				var fadeColorValue:Dynamic = 0;
+				if (fadeOptions != null) {
+					var optionFadeIn = Reflect.field(fadeOptions, 'shouldFadeIn');
+					if (optionFadeIn != null)
+						fadeIn = Std.string(optionFadeIn).toLowerCase() == 'true'
+							|| Std.string(optionFadeIn) == '1';
+					var optionDuration = Reflect.field(fadeOptions, 'duration');
+					if (optionDuration != null)
+						fadeDuration = parseF(Std.string(optionDuration));
+					var optionHud = Reflect.field(fadeOptions, 'applyToHud');
+					if (optionHud != null)
+						fadeApplyHud = Std.string(optionHud).toLowerCase() == 'true'
+							|| Std.string(optionHud) == '1';
+					var optionOther = Reflect.field(fadeOptions, 'applyToOther');
+					if (optionOther != null)
+						fadeApplyOther = Std.string(optionOther).toLowerCase() == 'true'
+							|| Std.string(optionOther) == '1';
+					var optionColor = Reflect.field(fadeOptions, 'color');
+					if (optionColor != null)
+						fadeColorValue = optionColor;
+				}
+				var fadeColor = compatEventColor(fadeColorValue, 0xFF000000);
+				var fadeSeconds = fadeDuration > 0 ? Conductor.stepsToTime(fadeDuration) / 1000 : 0;
+				var fadeCamera = compatCameraForName(fadeApplyOther ? 'other' : (fadeApplyHud ? 'hud' : 'game'));
+				if (fadeCamera != null) {
+					fadeCamera.stopFade();
+					fadeCamera.fade(fadeColor, fadeSeconds / Math.max(0.001, playbackRate), fadeIn);
+				}
+				// Transparent is the donor's special "fade the UI" mode rather than
+				// a visible camera veil. Keep the authored alpha transition as well.
+				if (fadeColor == 0 && camHUD != null)
+					FlxTween.tween(camHUD, {alpha: fadeIn ? 1.0 : 0.00001},
+						Math.max(0.001, fadeSeconds / Math.max(0.001, playbackRate)));
+			case 'Lyrics':
+				if (!OptionsHandler.options.lyricsEnabled) {
+					clearLyricLines('');
+					dispatchPsychCompiledStageEvent(psychStageEvent);
+					return;
+				}
+				// Native legacy rows use v2 as a fade duration. Funkadelix uses
+				// the same slot for an actor id, so accept both without changing
+				// the old numeric form.
+				var lyricMeta = EngineCompat.lyricDurationOrActor(e.v2);
+				var lyricOptions = EngineCompat.eventOptions(e.v3);
+				setLyricLine(e.v1, lyricMeta.actor, false, lyricMeta.duration, lyricOptions);
+				if (lyricOptions != null && Reflect.hasField(lyricOptions, 'text2nd')) {
+					var secondText = Reflect.field(lyricOptions, 'text2nd');
+					setLyricLine(secondText == null ? '' : Std.string(secondText), lyricMeta.actor,
+						true, lyricMeta.duration, lyricOptions);
+				}
+			case 'Second Lyric Line':
+				if (!OptionsHandler.options.lyricsEnabled) {
+					clearLyricLines('');
+					dispatchPsychCompiledStageEvent(psychStageEvent);
+					return;
+				}
+				// The second line is independently owned by its actor; empty text
+				// is an authored clear for that actor's secondary line.
+				var secondActor = EngineCompat.lyricActor(e.v2);
+				setLyricLine(e.v1, secondActor, true, 0);
+			case 'Clear Lyrics':
+				// Funkadelix stores the actor in value1 (some exports use value2).
+				var clearActor = StringTools.trim(e.v1) == '' ? e.v2 : e.v1;
+				clearLyricLines(clearActor);
+			case 'Image Flash' | 'Image Appearance':
+				// v1 = image name in the song's data folder (also data/ root or
+				// images/ root); literal 'white'/'black' synthesize a solid
+				// overlay. v2 = seconds on screen
+				var dur = parseF(e.v2) > 0 ? parseF(e.v2) : 1;
+				var nm = StringTools.trim(e.v1);
+				if (eventImageSprite == null) {
+					eventImageSprite = new FlxSprite();
+					eventImageSprite.scrollFactor.set();
+					// cover the play area AND the HUD, whatever their zooms
+					eventImageSprite.cameras = [FlxG.camera, camHUD];
+					eventImageSprite.visible = false;
+					add(eventImageSprite);
+				}
+				var path:String = null;
+				for (cand in [currentSongDataPath(nm + '.png'),
+							'assets/data/' + nm + '.png', 'assets/images/' + nm + '.png']) {
+					if (FNFAssets.exists(cand)) {
+						path = cand;
+						break;
+					}
+				}
+				if (path != null) {
+					eventImageSprite.loadGraphic(path);
+					eventImageIsSolid = false;
+					fitEventImageCover();
+					eventImageSprite.visible = true;
+					eventImageSprite.alpha = 1;
+					FlxTween.cancelTweensOf(eventImageSprite);
+					FlxTween.tween(eventImageSprite, {alpha: 0.001}, 0.4, {startDelay: dur, onComplete: function(_) eventImageSprite.visible = false});
+				} else if (nm == 'white' || nm == 'black') {
+					eventImageSprite.makeGraphic(8, 8, nm == 'white' ? 0xFFFFFFFF : 0xFF000000);
+					eventImageIsSolid = true;
+					fitEventImageCover();
+					eventImageSprite.visible = true;
+					eventImageSprite.alpha = 1;
+					FlxTween.cancelTweensOf(eventImageSprite);
+					FlxTween.tween(eventImageSprite, {alpha: 0.001}, 0.4, {startDelay: dur, onComplete: function(_) eventImageSprite.visible = false});
+				} else {
+					trace('Image Flash: no image for ${e.v1} (inert)');
+				}
+			case 'Alt Idle Animation':
+				// v1 = char (or 0 to reset), v2 = anim suffix (kade convention)
+				var suf = e.v2 != '' ? StringTools.trim(e.v2) : '-alt';
+				var who = StringTools.trim(e.v1).toLowerCase();
+				if (who == '0' || who == 'false' || who == 'off') {
+					boyfriend.idleSuffix = '';
+					dad.idleSuffix = '';
+					if (gf != null) gf.idleSuffix = '';
+				} else if (who == '1' || who == 'true' || who == 'on') {
+					if (gf != null) gf.idleSuffix = suf; // kade's alt-idle is gf's
+				} else {
+					var target = charForEventTarget(e.v1);
+					if (target != null)
+						target.idleSuffix = suf;
+				}
+			case 'Goodbye Hud':
+				// v1 = 1/show else hide, v2 = tween seconds
+				var show = StringTools.trim(e.v1) == '1';
+				FlxTween.tween(camHUD, {alpha: show ? 1 : 0}, Math.max(parseF(e.v2), 0.05));
+			case 'ShowHud' | 'Show HUD':
+				FlxTween.tween(camHUD, {alpha: 1}, 0.5);
+			case 'Ocultar HUD':
+				// spanish "hide HUD": 0 = bring it back, anything else hides it
+				if (StringTools.trim(e.v1) == '0')
+					FlxTween.tween(camHUD, {alpha: 1}, 0.5);
+				else
+					FlxTween.tween(camHUD, {alpha: 0}, 0.5);
+			case 'Set Property':
+				// resolvable subset of the psych-style event; unknown props are
+				// inert (they were inert in the old engine too)
+				var k = StringTools.trim(e.v1);
+				var val = parseF(e.v2);
+				switch (k) {
+					case 'cameraSpeed':
+						camSpeed = val;
+					case 'camGame.angle' | 'camera.angle':
+						camGame.angle = val;
+					case 'camHUD.angle':
+						camHUD.angle = val;
+					case 'defaultCamZoom':
+						// psych/FPS-ported name for the engine's default zoom;
+						// behaves like the existing 'Set Cam Zoom' event (instant)
+						defaultCamZoom = val;
+					case 'camZoomingMult':
+						// psych name for the beat-bump size multiplier
+						camZoomIntensity = val;
+					case 'camZoomingDecay':
+						// psych name for how fast zoom returns to default; the
+						// engine's return lerp is fixed at 0.95 so scale the
+						// per-frame approach by it (1 = stock speed)
+						camZoomDecay = val;
+					default:
+						trace('Set Property: ${e.v1} unhandled (inert)');
+				}
+			default:
+				// mod-specific: onEvent above is the whole handler
+		}
+		dispatchPsychCompiledStageEvent(psychStageEvent);
+	}
+
+	// camGame starts as the camera passed to FlxG.cameras.reset(), so the two
+	// references normally alias. Imported scripts can still add/rebind cameras,
+	// and the rest of PlayState (follow/beat decay) reads FlxG.camera. Keep both
+	// references synchronized whenever a chart event owns the game zoom.
+	function hasExplicitCameras(object:FlxBasic):Bool {
+		if (object == null)
+			return false;
+		var explicit = false;
+		// FlxBasic.cameras returns the current default list when `_cameras` is
+		// null, so checking the public property cannot distinguish a world
+		// sprite from one explicitly assigned to camHUD. Read the backing field
+		// only for this small camera-routing compatibility shim.
+		@:privateAccess {
+			explicit = object._cameras != null && object._cameras.length > 0;
+		}
+		return explicit;
+	}
+
+	/**
+	 * Restore the PlayState camera contract after an imported script touches
+	 * FlxG.cameras. The donor engine used `FlxCamera.defaultCameras =
+	 * [camGame]`; in Flixel 6, adding a camera as a default draw target can
+	 * otherwise leave world sprites drawing through a stale camera while HUD
+	 * sprites (which have explicit camHUD arrays) continue to zoom normally.
+	 */
+	function ensureGameplayCameraBinding():Void {
+		if (camGame == null)
+			return;
+
+		if (FlxG.camera != camGame)
+			FlxG.camera = camGame;
+
+		// Keep the global default target restricted to gameplay. Objects with an
+		// explicit camera (HUD, overlays, split-screen effects) are unaffected.
+		// CameraFrontEnd.setDefaultDrawTarget(false) splices even when a camera
+		// is not currently a default target in Flixel 6.1.2, so resetting through
+		// that public helper can briefly remove the wrong camera every frame.
+		// Mutate the aliased defaults list in place, matching the post-HScript
+		// compatibility reset above.
+		@:privateAccess {
+			if (FlxCamera._defaultCameras.length != 1 || FlxCamera._defaultCameras[0] != camGame) {
+				FlxCamera._defaultCameras.splice(0, FlxCamera._defaultCameras.length);
+				FlxCamera._defaultCameras.push(camGame);
+			}
+		}
+	}
+
+	/** Assign the gameplay camera to world objects that did not opt into one. */
+	function bindGameplayCameras():Void {
+		if (camGame == null || members == null)
+			return;
+		ensureGameplayCameraBinding();
+		for (member in members) {
+			if (member == null || !Std.isOfType(member, FlxBasic))
+				continue;
+			var object:FlxBasic = cast member;
+			if (!hasExplicitCameras(object))
+				object.cameras = [camGame];
+		}
+	}
+
+	function setGameCameraZoom(zoom:Float):Void {
+		ensureGameplayCameraBinding();
+		if (camGame != null)
+			camGame.zoom = zoom;
+		if (FlxG.camera != null && FlxG.camera != camGame)
+			FlxG.camera.zoom = zoom;
+	}
+
+	/** Cancel donor camera-follow tweens without exposing the donor camera API. */
+	public function cancelCameraFollowTween():Void {
+		if (camFollow != null)
+			FlxTween.cancelTweensOf(camFollow);
+	}
+
+	/** Route V-Slice's camera-focus helper to the live gameplay follow target. */
+	public function tweenCameraToPosition(x:Float, y:Float, duration:Float = 0):Void {
+		if (camFollow == null)
+			return;
+		FlxTween.cancelTweensOf(camFollow);
+		if (duration <= 0) {
+			camFollow.setPosition(x, y);
+			return;
+		}
+		FlxTween.tween(camFollow, {x: x, y: y}, duration, {ease: FlxEase.linear});
+	}
+
+	function holdCameraZoomTargets():Void {
+		if (cameraZoomIntroGameTarget != null) {
+			var currentGameZoom = camGame.zoom;
+			setGameCameraZoom(cameraZoomHoldValue(currentGameZoom, cameraZoomIntroGameTarget));
+		}
+		if (cameraZoomIntroHudTarget != null && camHUD != null)
+			camHUD.zoom = cameraZoomHoldValue(camHUD.zoom, cameraZoomIntroHudTarget);
+	}
+
+	function detectCameraZoomIntroTargets():Void {
+		cameraZoomIntroTargets = false;
+		cameraZoomIntroGameTarget = null;
+		cameraZoomIntroHudTarget = null;
+		var compatibilityMetadata:Dynamic = SONG == null ? null : Reflect.field(SONG, 'compatMetadata');
+		var importedMode:Dynamic = compatibilityMetadata == null ? null
+			: Reflect.field(compatibilityMetadata, 'cameraZoomMode');
+		var mode = importedMode == null ? '' : StringTools.trim(Std.string(importedMode)).toLowerCase();
+		if (mode == 'absolute-target-intro') {
+			cameraZoomIntroTargets = true;
+			return;
+		}
+		if (mode != '')
+			trace('[camera-zoom-mode-unsupported] Unknown imported camera zoom mode "' + mode
+				+ '"; falling back to event-shape inference.');
+		if (curStage == null || songEvents == null)
+			return;
+
+		var firstAddTime:Float = 1e30;
+		var firstCameraZoom:Float = 0;
+		var firstHudZoom:Float = 0;
+		var firstNoteTime:Float = unspawnNotes.length > 0 ? unspawnNotes[0].strumTime : 1e30;
+		var introTargetCount:Int = 0;
+		for (event in songEvents) {
+			if (event == null || Std.string(event.name).toLowerCase() != 'add camera zoom')
+				continue;
+			var eventTime:Float = event.time;
+			var cameraZoom:Float = event.v1 == '' ? 0.015 : parseF(event.v1);
+			var hudZoom:Float = event.v2 == '' ? 0.03 : parseF(event.v2);
+			if (eventTime < firstAddTime) {
+				firstAddTime = eventTime;
+				firstCameraZoom = cameraZoom;
+				firstHudZoom = hudZoom;
+			}
+			if (eventTime >= -0.000001 && eventTime < firstNoteTime - 0.000001
+				&& cameraZoomEventIsAbsolute(cameraZoom, hudZoom))
+				introTargetCount++;
+		}
+
+		cameraZoomIntroTargets = cameraZoomIntroUsesTargets(firstAddTime, firstNoteTime,
+			firstCameraZoom, firstHudZoom, introTargetCount, curStage.defaultZoom);
+		if (cameraZoomIntroTargets)
+			trace('[camera-zoom-mode-inferred] Absolute intro targets were inferred from legacy event shape; reimporting can persist this compatibility metadata.');
+	}
+
+	private static function sectionHasCrossFade(section:SwagSection, playerNote:Bool):Bool {
+		if (section == null)
+			return false;
+		// `crossFade` is the shared Denpa spelling. Modding Plus charts use the
+		// side-specific lower-case fields, which must remain independent when a
+		// section contains notes for both lanes.
+		if (section.crossFade == true)
+			return true;
+		return playerNote ? section.crossfadeBf == true : section.crossfadeDad == true;
+	}
+
+	private function spawnCrossFade(character:Character, note:Note):Void {
+		if (character == null || note == null || note.isSustainNote || !note.crossFade)
+			return;
+
+		var group:FlxTypedGroup<CrossFade> = character == boyfriend
+			? boyfriendCrossFades
+			: character == dad
+				? dadCrossFades
+				: character == gf ? gfCrossFades : null;
+		if (group == null)
+			return;
+
+		var afterImage = group.recycle(CrossFade);
+		if (afterImage != null)
+			afterImage.resetShit(character);
+	}
+
+	private function resolveNativeVocalStem(file:String):String {
+		if (file == null)
+			return null;
+		var clean = StringTools.replace(StringTools.trim(file), '\\', '/');
+		if (clean == '')
+			return null;
+		if (clean.toLowerCase().startsWith('assets/'))
+			return clean;
+		// Chart metadata only needs a basename, but accepting a relative song path
+		// keeps hand-authored imports portable without allowing a donor path to
+		// escape the destination asset tree.
+		return Path.join([currentSongAudioFolder(), Path.withoutDirectory(clean)]);
+	}
+
+	private function loadVocalTrack(path:String):FlxSound {
+		if (path == null || !FNFAssets.exists(path))
+			return null;
+		try {
+			#if sys
+			return new FlxSound().loadEmbedded(SongAudioNormalizer.prepare(
+				FNFAssets.getSound(path), path, OptionsHandler.options.normalizeSongAudio));
+			#else
+			return new FlxSound().loadEmbedded(path);
+			#end
+		} catch (error:Dynamic) {
+			trace('Unable to load vocal stem ' + path + ': ' + error);
+			return null;
+		}
+	}
+
+	private function initializeVocalTracks(useVocals:String):Void {
+		var splitPaths:Array<{path:String, role:String}> = [];
+		if (SONG != null && SONG.vocalStems != null) {
+			for (entry in SONG.vocalStems) {
+				var file:Dynamic = entry;
+				if (entry != null && !Std.isOfType(entry, String)) {
+					file = Reflect.field(entry, 'file');
+					if (file == null)
+						file = Reflect.field(entry, 'path');
+				}
+				var path = resolveNativeVocalStem(file == null ? null : Std.string(file));
+				if (path == null || !FNFAssets.exists(path))
+					continue;
+				var duplicate = false;
+				for (existing in splitPaths)
+					if (VocalStemSelection.sameStem(existing.path, path)) {
+						// Importers can retain both MP3 and Ogg copies of one source
+						// stem. Native playback selects its supported encoding once.
+						if (VocalStemSelection.prefer(path, existing.path, TitleState.soundExt)) {
+							existing.path = path;
+							var preferredRole:Dynamic = entry == null || Std.isOfType(entry, String)
+								? null : Reflect.field(entry, 'role');
+							if (preferredRole != null) existing.role = Std.string(preferredRole);
+						}
+						duplicate = true;
+						break;
+					}
+				if (!duplicate) {
+					var sourceRole:Dynamic = entry == null || Std.isOfType(entry, String)
+						? null : Reflect.field(entry, 'role');
+					splitPaths.push({path: path,
+						role: sourceRole == null ? "player" : Std.string(sourceRole)});
+				}
+			}
+		}
+
+		var sounds:Array<{sound:FlxSound, role:String}> = [];
+		// Split metadata is authoritative. A legacy Voices.ogg alias may exist for
+		// previews or older imports, but playing it in addition to every stem would
+		// double the vocals.
+		if (splitPaths.length > 0) {
+			for (entry in splitPaths) {
+				var sound = loadVocalTrack(entry.path);
+				if (sound != null)
+					sounds.push({sound: sound, role: entry.role});
+			}
+		} else {
+			var legacy = loadVocalTrack(useVocals);
+			if (legacy != null)
+				sounds.push({sound: legacy, role: "player"});
+		}
+
+		if (sounds.length == 0) {
+			vocals = new FlxSound();
+			if (SONG != null && SONG.needsVoices == true)
+				trace('[vocal-fallback] No imported vocal stem or Voices.ogg for '
+					+ SONG.song + '; using a silent vocal track.');
+		}
+		else {
+			vocals = sounds[0].sound;
+			vocalTracks = new VocalTracks(vocals);
+			for (index in 1...sounds.length)
+				vocalTracks.add(sounds[index].sound, sounds[index].role);
+			// The constructor's primary slot defaults to the legacy player role.
+			// Override it when source metadata identifies an opponent-only stem.
+			vocalTracks.setRole(vocals, sounds[0].role);
+		}
+		if (vocalTracks == null)
+			vocalTracks = new VocalTracks(vocals);
+		for (sound in vocalTracks.tracks) {
+			sound.looped = false;
+			FlxG.sound.list.add(sound);
+		}
+	}
+
+	private function syncVocalTrackState():Void {
+		if (vocalTracks == null || vocalTracks.tracks.length <= 1 || vocals == null)
+			return;
+		// Keep direct script writes such as `PlayState.instance.vocals.volume = 0`
+		// compatible with imported split songs. Native engine calls already update
+		// the whole group, while this cheap mirror catches the legacy primary field.
+		vocalTracks.syncPrimaryVolume();
+		var playing = vocals.playing;
+		var time = vocals.time;
+		for (sound in vocalTracks.tracks)
+			if (sound != null && sound != vocals) {
+				// Scripts historically receive the primary FlxSound directly and may
+				// call play/pause/stop on it. Mirror that state on the split stems at
+				// the next update while retaining the exact primary transport time.
+				if (playing && !sound.playing)
+					sound.play();
+				else if (!playing && sound.playing)
+					sound.pause();
+				// Keep the same 20ms tolerance used by the normal music/vocal
+				// resync check; seeking a secondary decoder for sub-millisecond
+				// drift every frame causes audible stutter on native targets.
+				if (Math.abs(sound.time - time) > 20)
+					sound.time = time;
+			}
+	}
+
+	private function playVocals():Void {
+		if (vocalTracks != null)
+			vocalTracks.play();
+		else if (vocals != null)
+			vocals.play();
+	}
+
+	private function pauseVocals():Void {
+		if (vocalTracks != null)
+			vocalTracks.pause();
+		else if (vocals != null)
+			vocals.pause();
+	}
+
+	private function stopVocals():Void {
+		if (vocalTracks != null)
+			vocalTracks.stop();
+		else if (vocals != null)
+			vocals.stop();
+	}
+
+	private function seekVocals(time:Float):Void {
+		if (vocalTracks != null)
+			vocalTracks.seek(time);
+		else if (vocals != null)
+			vocals.time = time;
+	}
+
+	private function vocalTime():Float {
+		return vocalTracks == null ? (vocals == null ? 0 : vocals.time) : vocalTracks.getTime();
+	}
+
+	private function setVocalsVolume(volume:Float):Void {
+		if (vocalTracks != null)
+			vocalTracks.setVolume(volume);
+		else if (vocals != null)
+			vocals.volume = volume;
+	}
+
+	/** Bounded HXC vocal-bus setter; source playerVolume targets player stems only. */
+	@:keep public function hxcSetPlayerVocalVolume(volume:Float):Bool {
+		if (vocalTracks == null || !Math.isFinite(volume))
+			return false;
+		vocalTracks.setPlayerVolume(Math.max(0, Math.min(1, volume)));
+		return true;
+	}
+
+	@:keep public function hxcGetPlayerVocalVolume():Float {
+		return vocalTracks == null ? 1 : vocalTracks.getPlayerVolume();
+	}
+
+	private function getVocalsActualVolume():Float {
+		return vocalTracks == null ? (vocals == null ? 0 : vocals.getActualVolume()) : vocalTracks.getActualVolume();
+	}
+
+	private function setVocalsPitch(pitch:Float):Void {
+		if (vocalTracks != null)
+			vocalTracks.setPitch(pitch);
+		else if (vocals != null)
+			vocals.pitch = pitch;
+	}
+
+	private function destroyVocals():Void {
+		if (vocalTracks == null) {
+			if (vocals != null) {
+				FlxG.sound.list.remove(vocals);
+				vocals.destroy();
+			}
+			vocals = null;
+			return;
+		}
+		for (sound in vocalTracks.tracks)
+			if (sound != null)
+				FlxG.sound.list.remove(sound);
+		vocalTracks.destroy();
+		vocalTracks = null;
+		vocals = null;
 	}
 
 	private function generateSong(dataPath:String):Void {
+		var psychSkinRoot = selectedPsychSkinRoot();
+		preparePsychNoteDefinitions(psychSkinRoot);
 		var songData = SONG;
 		Conductor.changeBPM(songData.bpm);
+		songEvents = [];
+		songEventIndex = 0;
+		var companionEvents:Array<Dynamic> = null;
+		var eventPath = currentSongDataPath('events.json');
+		if (FNFAssets.exists(eventPath)) {
+			var eventData:Dynamic = CoolUtil.parseJson(FNFAssets.getText(eventPath));
+			companionEvents = SongEvents.fromSong(eventData);
+		}
+		songEvents = SongEvents.collect(SongEvents.fromSong(songData), companionEvents);
+		for (i in 0...songEvents.length) songEvents[i].order = i;
+		songEvents.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
+		RuntimeSmokeHarness.markLoadPhase('events_normalized');
+		initializeCodenameCameraModulo();
 
 		curSong = songData.song;
 
 		var useInst = null; // now can use both 'Inst.ogg' and '(songname)_Inst.ogg' (and the music folder if you're still using that lol)
 		if (OptionsHandler.options.stressTankmen)
-			useInst = CoolUtil.getSongFile(SONG.song + "Shit", "assets/songs/" + SONG.song + '/');
+			useInst = CoolUtil.getSongFile(SONG.song + "Shit", currentSongAudioFolder() + '/');
 
 		var daDefault = DifficultyManager.getDefaultFromName(storyDifficultyText);
 		if (daDefault == '') daDefault = storyDifficultyText.toLowerCase();
-		useInst = CoolUtil.getSongFile(SONG.song, "assets/songs/" + SONG.song + '/', true, '-' + daDefault);
+		useInst = CoolUtil.getSongFile(SONG.song, currentSongAudioFolder() + '/', true, '-' + daDefault);
 
 		if (useInst == null)
-			useInst = CoolUtil.getSongFile(SONG.song, "assets/songs/" + SONG.song + '/');
+			useInst = CoolUtil.getSongFile(SONG.song, currentSongAudioFolder() + '/');
 
 		var useVocals = null; // now can use both 'Voices.ogg' and '(songname)_Voices.ogg' (and the music folder if you're still using that lol)
 		if (OptionsHandler.options.stressTankmen)
-			useVocals = CoolUtil.getSongFile(SONG.song + "Shit", "assets/songs/" + SONG.song + '/', false);
+			useVocals = CoolUtil.getSongFile(SONG.song + "Shit", currentSongAudioFolder() + '/', false);
 
-		useVocals = CoolUtil.getSongFile(SONG.song, "assets/songs/" + SONG.song + '/', false, '-' + daDefault);
+		useVocals = CoolUtil.getSongFile(SONG.song, currentSongAudioFolder() + '/', false, '-' + daDefault);
 
 		if (useVocals == null)
-			useVocals = CoolUtil.getSongFile(SONG.song, "assets/songs/" + SONG.song + '/', false);
+			useVocals = CoolUtil.getSongFile(SONG.song, currentSongAudioFolder() + '/', false);
+		RuntimeSmokeHarness.markLoadPhase('audio_paths_resolved');
 		
-		inst = Sound.fromFile(useInst);
+		inst = SongAudioNormalizer.prepare(Sound.fromFile(useInst), useInst,
+			OptionsHandler.options.normalizeSongAudio);
+		RuntimeSmokeHarness.markLoadPhase('instrument_loaded');
 
-		if (SONG.needsVoices) {
-			#if sys
-			var vocalSound = Sound.fromFile(useVocals);
-			vocals = new FlxSound().loadEmbedded(vocalSound);
-			#else
-			vocals = new FlxSound().loadEmbedded(useVocals);
-			#end
-		} else
+		if (SONG.needsVoices)
+			initializeVocalTracks(useVocals);
+		else {
 			vocals = new FlxSound();
+			vocalTracks = new VocalTracks(vocals);
+			vocals.looped = false;
+			FlxG.sound.list.add(vocals);
+		}
+		RuntimeSmokeHarness.markLoadPhase('vocal_tracks_loaded');
 
-		vocals.looped = false;
-		FlxG.sound.list.add(vocals);
-
-		notes = new FlxTypedGroup<Note>();
-		add(notes);
+		if (nightmareVisionScripts == null || notes == null) {
+			notes = new FlxTypedGroup<Note>();
+			add(notes);
+		}
+		// Keep V-Slice hold covers above the note group while retaining the
+		// legacy Strumline member type.  The Strumline refreshes their positions
+		// when scripts move a receptor line.
+		add(enemyStrums.noteHoldCovers);
+		add(playerStrums.noteHoldCovers);
 
 		var noteData:Array<SwagSection>;
 
@@ -1500,17 +15933,34 @@ class PlayState extends MusicBeatState {
 		noteData = songData.notes;
 
 		var daSection:Int = 0;
+		var traceNoteConstruction = RuntimeSmokeHarness.enabled();
+		var generateChartNotes:Void->Void = function():Void {
+		RuntimeSmokeHarness.markLoadPhase('note_generation_started');
+		var noteConstructionCount:Int = 0;
+		var markNoteConstructed:Void->Void = function():Void {
+			noteConstructionCount++;
+			if (noteConstructionCount == 1)
+				RuntimeSmokeHarness.markLoadPhase('first_note_constructed');
+			else if (noteConstructionCount % 256 == 0)
+				RuntimeSmokeHarness.markLoadPhase('notes_constructed_' + noteConstructionCount);
+		};
 
 		for (section in noteData) {
 			var coolSection:Int = Std.int(section.lengthInSteps / 4);
-
+			var rowIndex:Int = 0;
 			for (songNotes in section.sectionNotes) {
+				var authoredRowIndex = rowIndex++;
+				// old-format chart events ([time, -1, name, v1, v2]) - not
+				// notes! collect for the event pump instead of spawning them
+				// Events from both formats are already collected before note generation.
+				if (songNotes.length >= 2 && songNotes[1] == -1)
+					continue;
+
+				var authoredTime:Dynamic = traceNoteConstruction && songNotes.length > 0 ? songNotes[0] : null;
+				var authoredLane:Dynamic = traceNoteConstruction && songNotes.length > 1 ? songNotes[1] : null;
+				var authoredSustain:Dynamic = traceNoteConstruction && songNotes.length > 2 ? songNotes[2] : null;
 				var daStrumTime:Float = songNotes[0] + OptionsHandler.options.offset;
-				if (startPosSong != SONG.song) {
-					startingPosition = 0;
-					startPosSong = SONG.song;
-				}
-				if (daStrumTime >= startingPosition) {
+				if (daStrumTime >= startTimestamp) {
 				var daNoteData:Int = Std.int(songNotes[1] % Note.NOTE_AMOUNT);
 				//var noteHeal:Float = songNotes[5] != null ? songNotes[5] : 1;
 				//var noteDamage:Float = songNotes[6] == null ? 1 : songNotes[6];
@@ -1521,17 +15971,21 @@ class PlayState extends MusicBeatState {
 				// casting is ok as null is falsey
 				//var ignoreHealthMods:Bool = cast songNotes[10];
 				//var animSuffix:Null<String> = songNotes[11];
-				var gottaHitNote:Bool = section.mustHitSection;
+				var gottaHitNote:Bool = ChartNoteOwnership.mustPress(SONG.format,
+					Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
+			// Keep the exact source field and actor/autoplay policy alongside the
+			// legacy mustPress bit; that bit cannot represent NMV's extra BF fields.
+				var chartAddress:ChartNoteAddress = ChartNoteOwnership.address(SONG.format,
+					Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
+				var sourcePlayerControlled:Null<Bool> = ChartNoteOwnership.playerControlOverride(
+					SONG.format, chartAddress);
 				var altNote:Bool = false;
 				var doTheFunny:Bool = false;
 				var soloNote:Bool = false;
-				if (songNotes[1] % (Note.NOTE_AMOUNT*2) > Note.NOTE_AMOUNT-1)
-					gottaHitNote = !section.mustHitSection;
-
-				if (ModifierState.namedModifiers.nos.value && !gottaHitNote) {
-					gottaHitNote = true;
-					soloNote = true;
-				}
+					if (ModifierState.namedModifiers.nos.value && !gottaHitNote) {
+						gottaHitNote = true;
+						soloNote = true;
+					}
 
 				/*
 				if (songNotes[1] >= (Note.NOTE_AMOUNT*2) && songNotes[1] < (Note.NOTE_AMOUNT*4)) {
@@ -1546,20 +16000,74 @@ class PlayState extends MusicBeatState {
 					animSuffix = "lift";
 				}
 				*/
-				if (songNotes[3] || section.altAnim)
-					altNote = true;
+					// Psych/Kade use the fourth row value for a string noteType;
+					// older Modding Plus charts use it for an alt animation number.
+					// Resolve only the alt part here and leave the authored value
+					// untouched for scripts/charting state.
+					if (NoteTypeCompat.altNum(songNotes[3], 0) > 0 || section.altAnim)
+						altNote = true;
 
 				// force nuke notes : )
-				if (songNotes[1] >= Note.NOTE_AMOUNT * 2 && songNotes[1] < Note.NOTE_AMOUNT * 4 && SONG.convertMineToNuke) {
-					songNotes[1] += Note.NOTE_AMOUNT * 4;
-				}
-				var oldNote:Note;
+					if (songNotes[1] >= Note.NOTE_AMOUNT * 2 && songNotes[1] < Note.NOTE_AMOUNT * 4 && SONG.convertMineToNuke) {
+						songNotes[1] += Note.NOTE_AMOUNT * 4;
+					}
+					// Custom Psych/Kade note types are encoded only on this transient
+					// Note object. The source/destination chart row remains a string,
+					// so importing never rewrites authored chart semantics.
+					var runtimeNoteData:Int = NoteTypeCompat.nativeNoteData(songNotes, Note.NOTE_AMOUNT, Note.specialNoteJson);
+					var oldNote:Note;
 				if (unspawnNotes.length > 0)
 					oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
-				else
+			else
 					oldNote = null;
-				// stand back i am a professional idiot
-				var swagNote:Note = new Note(daStrumTime, songNotes[1], oldNote, false);
+					// stand back i am a professional idiot
+					var legacyAnimSuffix = EngineCompat.legacyNoteAnimSuffix(songNotes);
+					var swagNote:Note;
+					if (traceNoteConstruction)
+						swagNote = cast runSmokeNoteGenerationStep(daSection, authoredRowIndex,
+							authoredTime, authoredLane, authoredSustain, 'head', 0, 'head-constructor',
+							function():Dynamic return new Note(daStrumTime, runtimeNoteData, oldNote, false, legacyAnimSuffix,
+								CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote));
+					else
+						swagNote = new Note(daStrumTime, runtimeNoteData, oldNote, false, legacyAnimSuffix,
+							CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+					swagNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
+					swagNote.sourceDirection = chartAddress.direction;
+					swagNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;
+					swagNote.sourcePlayfieldAutoPlay = chartAddress.autoPlay;
+					if (traceNoteConstruction) markNoteConstructed();
+					if (traceNoteConstruction)
+						runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
+							authoredSustain, 'head', 0, 'head-legacy-row', function():Dynamic {
+								EngineCompat.applyLegacyNoteRow(swagNote, songNotes);
+								return null;
+							});
+					else
+						EngineCompat.applyLegacyNoteRow(swagNote, songNotes);
+					if (traceNoteConstruction)
+						runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
+							authoredSustain, 'head', 0, 'head-psych-skin', function():Dynamic {
+								configurePsychNoteSkin(swagNote, psychSkinRoot);
+								return null;
+							});
+					else
+						configurePsychNoteSkin(swagNote, psychSkinRoot);
+					if (traceNoteConstruction)
+						runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
+							authoredSustain, 'head', 0, 'head-smoke-visual', function():Dynamic {
+								RuntimeSmokeHarness.markCustomNoteVisual(swagNote);
+								return null;
+							});
+					else
+						RuntimeSmokeHarness.markCustomNoteVisual(swagNote);
+					if (section.gfSection == true && !gottaHitNote)
+						swagNote.forceGfSing = true;
+				// Crossfade is authored either on a note (legacy index 12) or on
+				// its section. Store the resolved side-specific value on every
+				// note so hits, autoplay, and sustain generation share one path.
+				var noteCrossFade:Bool = songNotes.length > 12 && songNotes[12] == true;
+				swagNote.crossFade = swagNote.crossFade || noteCrossFade
+					|| sectionHasCrossFade(section, gottaHitNote);
 				/*if (!swagNote.dontEdit && !swagNote.mineNote && !swagNote.nukeNote && !swagNote.isLiftNote) {
 					swagNote.shouldBeSung = shouldSing;
 					swagNote.ignoreHealthMods = ignoreHealthMods;
@@ -1575,24 +16083,63 @@ class PlayState extends MusicBeatState {
 
 				// altNote
 				swagNote.altNote = altNote;
-				swagNote.altNum = songNotes[3] == null ? (swagNote.altNote ? 1 : 0) : songNotes[3];
+					swagNote.altNum = songNotes[3] == null ? (swagNote.altNote ? 1 : 0)
+						: NoteTypeCompat.altNum(songNotes[3], swagNote.altNote ? 1 : 0);
 
-				swagNote.sustainLength = songNotes[2] != null ? songNotes[2] : 0;
-				swagNote.scrollFactor.set();
+				// Imported charts may serialize an intended zero as a floating-point
+				// remainder (or as a numeric string). Normalize once at the chart
+				// boundary so generation, rendering, and receptor timing agree.
+				swagNote.sustainLength = normalizeSustainLength(songNotes[2], Conductor.stepCrochet);
+					swagNote.scrollFactor.set();
 
-				var susLength:Float = swagNote.sustainLength;
+					var susLength:Float = swagNote.sustainLength;
+					var sustainSteps:Int = sustainStepCount(susLength, Conductor.stepCrochet);
 
 				susLength = susLength / Conductor.stepCrochet;
 				unspawnNotes.push(swagNote);
 				// when the imposter is sus XD
-				if (susLength != 0 && !ModifierState.namedModifiers.nos.value) {
-					for (susNote in 0...Math.floor(susLength)) { // no + 2 please and thanks <3
+					if (sustainSteps > 0 && !ModifierState.namedModifiers.nos.value) {
+						for (susNote in 0...sustainSteps) {
 						oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
 						if (susLength > susNote) {
-							var sustainNote:Note = new Note(daStrumTime + (Conductor.stepCrochet * susNote) + Conductor.stepCrochet, songNotes[1], oldNote, true);
+							var sustainNote:Note;
+							if (traceNoteConstruction)
+								sustainNote = cast runSmokeNoteGenerationStep(daSection, authoredRowIndex,
+									authoredTime, authoredLane, authoredSustain, 'sustain', susNote, 'sustain-constructor',
+									function():Dynamic return new Note(daStrumTime + (Conductor.stepCrochet * susNote) + Conductor.stepCrochet,
+										runtimeNoteData, oldNote, true, legacyAnimSuffix,
+										CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote));
+							else
+								sustainNote = new Note(daStrumTime + (Conductor.stepCrochet * susNote) + Conductor.stepCrochet,
+									runtimeNoteData, oldNote, true, legacyAnimSuffix,
+									CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+							sustainNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
+							sustainNote.sourceDirection = chartAddress.direction;
+							sustainNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;
+							sustainNote.sourcePlayfieldAutoPlay = chartAddress.autoPlay;
+							if (traceNoteConstruction) markNoteConstructed();
+							if (traceNoteConstruction)
+								runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
+										authoredSustain, 'sustain', susNote, 'sustain-legacy-row', function():Dynamic {
+										EngineCompat.applyLegacyNoteRow(sustainNote, songNotes);
+										return null;
+									});
+							else
+								EngineCompat.applyLegacyNoteRow(sustainNote, songNotes);
+							if (traceNoteConstruction)
+								runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
+										authoredSustain, 'sustain', susNote, 'sustain-psych-skin', function():Dynamic {
+										configurePsychNoteSkin(sustainNote, psychSkinRoot);
+										return null;
+									});
+							else
+								configurePsychNoteSkin(sustainNote, psychSkinRoot);
+							if (section.gfSection == true && !gottaHitNote)
+								sustainNote.forceGfSing = true;
 							sustainNote.duoMode = duoMode;
 							sustainNote.oppMode = opponentPlayer;
 							sustainNote.funnyMode = demoMode;
+							sustainNote.crossFade = swagNote.crossFade;
 
 							sustainNote.scrollFactor.set();
 							unspawnNotes.push(sustainNote);
@@ -1609,13 +16156,27 @@ class PlayState extends MusicBeatState {
 							if (sustainNote.mustPress) {
 								sustainNote.x += FlxG.width / 2; // general offset
 							}
+							sustainNote.codenameGeneratedX = sustainNote.x;
 						}
 					}
 
 					if (OptionsHandler.options.emuOsuLifts && !swagNote.dontCountNote && !swagNote.isLiftNote) {
 						// simulate osu!mania holds by adding lifts at the end
 						oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
-						var liftNote:Note = new Note(oldNote.strumTime, daNoteData + (Note.NOTE_AMOUNT * 4), oldNote);
+						var liftNote:Note;
+						if (traceNoteConstruction)
+							liftNote = cast runSmokeNoteGenerationStep(daSection, authoredRowIndex,
+								authoredTime, authoredLane, authoredSustain, 'osu_lift', -1, 'lift-constructor',
+								function():Dynamic return new Note(oldNote.strumTime, daNoteData + (Note.NOTE_AMOUNT * 4), oldNote, false, null,
+									CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote));
+						else
+							liftNote = new Note(oldNote.strumTime, daNoteData + (Note.NOTE_AMOUNT * 4), oldNote, false, null,
+								CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+						liftNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
+						liftNote.sourceDirection = chartAddress.direction;
+						liftNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;
+						liftNote.sourcePlayfieldAutoPlay = chartAddress.autoPlay;
+						if (traceNoteConstruction) markNoteConstructed();
 						liftNote.soloMode = soloNote;
 						liftNote.duoMode = duoMode;
 						liftNote.oppMode = opponentPlayer;
@@ -1626,6 +16187,7 @@ class PlayState extends MusicBeatState {
 						liftNote.mustPress = gottaHitNote;
 						if (liftNote.mustPress)
 							liftNote.x += FlxG.width / 2;
+						liftNote.codenameGeneratedX = liftNote.x;
 					}
 				}
 
@@ -1634,18 +16196,150 @@ class PlayState extends MusicBeatState {
 				if (swagNote.mustPress) {
 					swagNote.x += FlxG.width / 2; // general offset
 				}
+				swagNote.codenameGeneratedX = swagNote.x;
 			}
 			}
 			daSection += 1;
 		}
+		if (traceNoteConstruction && noteConstructionCount > 0)
+			RuntimeSmokeHarness.markLoadPhase('last_note_constructed');
 		
 		unspawnNotes.sort(sortByShit);
-		defaultNoteWidth = unspawnNotes[0].width;
+		codenameLineNoteIndex = CodenameLineNoteQuery.index(cast unspawnNotes);
+		var noteManifest = CompatScriptManifest.normalize(getCompatScriptManifest());
+		var selectedNoteRoot = CompatScriptManifest.selectedRoot(noteManifest);
+		hxcStrumlineNoteSurface = null;
+		if (selectedNoteRoot != '')
+			for (entry in noteManifest.roots)
+				if (entry.path == selectedNoteRoot && entry.engine == ImportEngine.V_SLICE) {
+					hxcStrumlineNoteSurface = new HxcStrumlineNoteSurface(unspawnNotes);
+					break;
+				}
+		RuntimeSmokeHarness.markChartNoteSides(SONG.format, unspawnNotes);
+		defaultNoteWidth = initialNoteAlignmentWidth();
 		generatedMusic = true;
+		};
+		if (codenameSelectedRoot() != '') {
+			// Owner song/HUD scripts are loaded at countdown hand-off, before the
+			// note constructors run. Keep audio, events and the live notes group at
+			// their original load point; only defer chart sprites.
+			generatedMusic = false;
+			pendingCodenameNoteGeneration = generateChartNotes;
+		} else
+			generateChartNotes();
 	}
+	/** Run a chart-note constructor or compatibility callback with an
+	 * authored-row diagnostic. Callers use this only in explicit smoke runs. */
+	private function runSmokeNoteGenerationStep(sectionIndex:Int, rowIndex:Int, authoredTime:Dynamic,
+		authoredLane:Dynamic, authoredSustain:Dynamic, objectKind:String, objectIndex:Int,
+		phase:String, action:Void->Dynamic):Dynamic {
+		try {
+			return action();
+		} catch (error:Dynamic) {
+			try {
+				RuntimeSmokeHarness.markNoteGenerationFailure(sectionIndex, rowIndex,
+					Std.string(authoredTime), Std.string(authoredLane), Std.string(authoredSustain),
+					objectKind, objectIndex, phase, Std.string(error));
+			} catch (_:Dynamic) {}
+			throw error;
+		}
+	}
+
 	var defaultNoteWidth:Float;
+	/** Event-only/cutscene charts may have no notes. Use the loaded receptor
+	 * pack for alignment instead of dereferencing an absent first note. */
+	function initialNoteAlignmentWidth():Float {
+		if (unspawnNotes.length > 0 && unspawnNotes[0] != null)
+			return unspawnNotes[0].width;
+		for (line in [playerStrums, enemyStrums])
+			if (line != null && line.members != null)
+				for (receptor in line.members)
+					if (receptor != null && Math.isFinite(receptor.width) && receptor.width > 0)
+						return receptor.width;
+		return Note.swagWidth;
+	}
 	function sortByShit(Obj1:Note, Obj2:Note):Int {
 		return FlxSort.byValues(FlxSort.ASCENDING, Obj1.strumTime, Obj2.strumTime);
+	}
+
+	// Legacy modcharts select each side's receptor pack independently.
+	@:keep public function generateStaticArrows(player:Int, type:String, transition:Bool = false):Void {
+		if (player != 0 && player != 1) return;
+		if (!Reflect.hasField(Judgement.uiJson, type)) {
+			trace('Unknown strumline UI pack: ' + type);
+			return;
+		}
+		var line = player == 1 ? playerStrums : enemyStrums;
+		if (line != null) line.changeType(type, transition);
+	}
+
+	/**
+		Apply the engine-neutral NoteSwapEvent surface used by V-Slice/HXC.
+		The donor module rebuilds receptors for one or both strumlines; keeping the
+		operation here means the imported chart can retain `strumline`/`notestyle`
+		fields without carrying the donor module or its chart-specific code.
+	*/
+	function applyCompatNoteSwap(target:String, authoredStyle:String):Void {
+		var slot = StringTools.trim(target == null ? 'both' : target).toLowerCase();
+		var style = StringTools.trim(authoredStyle == null ? 'normal' : authoredStyle).toLowerCase();
+		// DDTO names the stock styles `funkin` and `pixel`; this engine's UI
+		// registry calls the former `normal` while retaining `pixel`.
+		if (style == '' || style == 'funkin' || style == "funkin'")
+			style = 'normal';
+		if (!Reflect.hasField(Judgement.uiJson, style)) {
+			// Generated V-Slice packs keep a namespaced native id but retain the
+			// authored style alias so Note Swap events can continue to use the
+			// donor spelling without a chart-specific rewrite.
+			for (candidate in Reflect.fields(Judgement.uiJson)) {
+				var entry:Dynamic = Reflect.field(Judgement.uiJson, candidate);
+				var alias = entry == null ? null : Reflect.field(entry, 'vSliceAlias');
+				if (alias != null && Std.string(alias).toLowerCase() == style) {
+					style = candidate;
+					break;
+				}
+			}
+		}
+		if (!Reflect.hasField(Judgement.uiJson, style)) {
+			trace('Note Swap skipped: unknown note-style ' + authoredStyle);
+			return;
+		}
+		var player = slot == 'player' || slot == 'playerstrumline' || slot == 'bf'
+			|| slot == 'boyfriend' || slot == '1';
+		var opponent = slot == 'opponent' || slot == 'opponentstrumline' || slot == 'dad'
+			|| slot == 'enemy' || slot == '2';
+		var both = !player && !opponent || slot == 'both' || slot == 'all';
+		if (player || both)
+			generateStaticArrows(1, style);
+		if (opponent || both)
+			generateStaticArrows(0, style);
+		// V-Slice rebuilds every already-spawned note and hold cover when the
+		// strumline changes.  Keep the same invariant for the native Note class;
+		// otherwise the receptors change while the pending/visible notes remain
+		// in the previous atlas until they leave the screen.
+		var styleNotes:Array<Note> = [];
+		for (note in unspawnNotes)
+			if (note != null && note.exists && note.animation != null
+				&& ((player && note.mustPress) || (opponent && !note.mustPress) || both))
+				styleNotes.push(note);
+		if (notes != null) {
+			for (note in notes.members)
+				if (note != null && note.exists && note.animation != null
+					&& ((player && note.mustPress) || (opponent && !note.mustPress) || both))
+					styleNotes.push(note);
+		}
+		// A hold body's style rebuild resets its own scale before the next
+		// sustain segment stretches it. Active and unspawned notes live in
+		// separate containers, so process their shared predecessor chain in
+		// chronological order rather than by container.
+		styleNotes.sort(function(a:Note, b:Note):Int
+			return a.strumTime < b.strumTime ? -1 : a.strumTime > b.strumTime ? 1 : 0);
+		for (note in styleNotes)
+			note.switchType(style);
+		// New notes are constructed from SONG.uiType.  Keep the shared chart view
+		// in sync for a both-lane swap; side-specific swaps retain their native
+		// line identity and still rebuild every live receptor.
+		if (both && SONG != null)
+			SONG.uiType = style;
 	}
 
 	/*private function generateStaticArrows(player:Int, type:String, transition:Bool):Void {
@@ -1769,7 +16463,7 @@ class PlayState extends MusicBeatState {
 				babyArrow.alpha = 0;
 				FlxTween.tween(babyArrow, {y: babyArrow.y + 10, alpha: 1}, 1, {ease: FlxEase.circOut, startDelay: 0.5 + (0.2 * i)});
 			}
-			
+
 			babyArrow.ID = i;
 
 			if (player == 1)
@@ -1876,50 +16570,80 @@ class PlayState extends MusicBeatState {
 	}
 
 	function tweenCamIn():Void {
-		FlxTween.tween(FlxG.camera, {zoom: 1.3}, (Conductor.stepCrochet * 4 / 1000), {ease: FlxEase.elasticInOut});
+		ensureGameplayCameraBinding();
+		FlxTween.tween(camGame, {zoom: 1.3}, (Conductor.stepCrochet * 4 / 1000), {ease: FlxEase.elasticInOut});
 	}
 
 	// from newer fnf
 	var curCamPos:FlxTween;
+	function resolveFocusCameraEase(ease:String, easeDir:String):String {
+		var base = ease == null ? 'linear' : StringTools.trim(ease);
+		if (base == '')
+			base = 'linear';
+		var lower = base.toLowerCase();
+		if (lower == 'classic' || lower == 'instant'
+			|| StringTools.endsWith(lower, 'in') || StringTools.endsWith(lower, 'out')
+			|| StringTools.endsWith(lower, 'inout'))
+			return base;
+		var canonicalBase = switch (lower) {
+			case 'smoothstep': 'smoothStep';
+			case 'smootherstep': 'smootherStep';
+			case 'cubic': 'cube';
+			default: lower;
+		};
+		var suffix = switch (easeDir == null ? '' : StringTools.trim(easeDir).toLowerCase()) {
+			case 'in': 'In';
+			case 'out': 'Out';
+			case 'inout' | 'in-out' | 'in_out': 'InOut';
+			default: '';
+		};
+		return suffix == '' ? base : canonicalBase + suffix;
+	}
+
 	function FocusCamera(eventInfo:Dynamic):Void {
+		if (codenameCameraControlled) releaseCodenameCameraControl();
+		ensureGameplayCameraBinding();
 		var char:Int = eventInfo.char != null ? eventInfo.char : -2;
 		var x:Float = eventInfo.x != null ? eventInfo.x : 0;
 		var y:Float = eventInfo.y != null ? eventInfo.y : 0;
 		var duration:Float = eventInfo.duration != null ? eventInfo.duration : 4;
 		var ease:String = eventInfo.ease != null ? eventInfo.ease : 'classic';
-		
+		var easeDir:String = eventInfo.easeDir != null ? eventInfo.easeDir : '';
+		ease = resolveFocusCameraEase(ease, easeDir);
+
 		var targetPos:Array<Float> = [x, y];
 		switch(char) {
 			case -1 | 3:
 				// don't needa thing
 			case 0:
-				targetPos[0] += boyfriend.getMidpoint().x + bfCamOffset[0] + boyfriend.followCamX;
-				targetPos[1] += boyfriend.getMidpoint().y + bfCamOffset[1] + boyfriend.followCamY;
+				// Donor FocusCamera captures the same role-aware point used by
+				// normal follow. Imported Psych characters replace native defaults.
+				targetPos = cameraTargetForActor(boyfriend, 'boyfriend', x, y, false);
 			case 1:
-				targetPos[0] += dad.getMidpoint().x + dadCamOffset[0] + dad.followCamX;
-				targetPos[1] += dad.getMidpoint().y + dadCamOffset[1] + dad.followCamY;
+				targetPos = cameraTargetForActor(dad, 'dad', x, y, false);
 			case 2:
-				targetPos[0] += gf.getMidpoint().x + gf.followCamX;
-				targetPos[1] += gf.getMidpoint().y + gf.followCamY;
+				targetPos = cameraTargetForActor(gf, 'gf', x, y, false);
 			default:
 				trace('cant focus on that ($char)');
 		}
 		if (curCamPos != null) curCamPos.cancel();
+		// Donor semantics (FocusCameraSongEvent CLASSIC): the follow point is
+		// captured ONCE - character cameraFocusPoint (anim-independent) plus the
+		// event x/y - and then held static until the next event, while the
+		// camera itself glides to it at Constants.DEFAULT_CAMERA_FOLLOW_RATE
+		// (0.04).  Keep the follow point static instead of tracking the live
+		// midpoint, and adopt the donor glide rate while this adapter drives
+		// the camera; the classic section-follow path keeps its own rate.
+		focusCameraDrivesFollow = true;
 		switch(ease.toLowerCase()) {
 			case 'classic':
 				switch(char) {
 					case -1:
 						scriptableCamera = 'static';
 						scriptCamPos[0] = targetPos;
-					case 0:
-						scriptableCamera = 'bf';
-						scriptCamPos[0] = [x, y];
-					case 1:
-						scriptableCamera = 'dad';
-						scriptCamPos[0] = [x, y];
-					case 2:
-						scriptableCamera = 'gf';
-						scriptCamPos[0] = [x, y];
+					case 0 | 1 | 2:
+						scriptableCamera = 'static';
+						scriptCamPos[0] = targetPos;
 					default:
 						trace('cant focus on that ($char), turning off scriptcam');
 						scriptableCamera = 'false';
@@ -1929,16 +16653,19 @@ class PlayState extends MusicBeatState {
 				scriptCamPos[0] = targetPos;
 				camFollow.x = targetPos[0];
 				camFollow.y = targetPos[1];
-				var realTarget = camFollow.getPosition() - FlxPoint.weak(FlxG.camera.width * 0.5, FlxG.camera.height * 0.5);
-				FlxG.camera.scroll.x = realTarget.x;
-				FlxG.camera.scroll.y = realTarget.y;
+				var realTarget = camFollow.getPosition() - FlxPoint.weak(camGame.width * 0.5, camGame.height * 0.5);
+				camGame.scroll.x = realTarget.x;
+				camGame.scroll.y = realTarget.y;
 			default:
 				scriptableCamera = 'static';
 				camFollow.x = targetPos[0];
 				camFollow.y = targetPos[1];
 				scriptCamPos[0] = targetPos;
-				var realTarget = camFollow.getPosition() - FlxPoint.weak(FlxG.camera.width * 0.5, FlxG.camera.height * 0.5);
-				curCamPos = FlxTween.tween(FlxG.camera.scroll, {x: realTarget.x, y: realTarget.y}, Conductor.stepsToTime(duration)/1000, {ease: Reflect.field(FlxEase, ease), onComplete:
+				var realTarget = camFollow.getPosition() - FlxPoint.weak(camGame.width * 0.5, camGame.height * 0.5);
+				var focusEase = Reflect.field(FlxEase, ease);
+				if (focusEase == null)
+					focusEase = FlxEase.linear;
+				curCamPos = FlxTween.tween(camGame.scroll, {x: realTarget.x, y: realTarget.y}, Conductor.stepsToTime(duration)/1000, {ease: focusEase, onComplete:
 					function(e) {
 						// uh
 					}
@@ -1947,25 +16674,89 @@ class PlayState extends MusicBeatState {
 	}
 
 	var curCamZoom:FlxTween;
+	var vSliceScrollTweens:Array<FlxTween> = [];
+	var vSliceScrollTargets:Array<{line:Strumline, speed:Float}> = [];
+
+	/** V-Slice's source API takes seconds and a direct/stage-relative mode.
+	 * Camera events below keep their separate step-based object payload. */
+	@:keep public function tweenCameraZoom(zoom:Float = 1, duration:Float = 0,
+		direct:Bool = false, ?ease:Dynamic):Void {
+		if (!Math.isFinite(zoom) || zoom <= 0 || !Math.isFinite(duration)) {
+			trace('[vslice-camera-zoom-invalid] Invalid zoom or duration');
+			return;
+		}
+		ensureGameplayCameraBinding();
+		if (curCamZoom != null) curCamZoom.cancel();
+		var stageZoom = curStage == null ? defaultCamZoom : curStage.defaultZoom;
+		var target = zoom * (direct ? 1 : stageZoom);
+		if (duration <= 0) {
+			currentCameraZoom = target;
+			return;
+		}
+		curCamZoom = FlxTween.tween(this, {currentCameraZoom: target},
+			duration / Math.max(0.001, playbackRate),
+			{ease: ease == null ? FlxEase.linear : ease});
+	}
+
+	function cancelVSliceScrollTweens():Void {
+		for (tween in vSliceScrollTweens)
+			if (tween != null) tween.cancel();
+		vSliceScrollTweens.resize(0);
+	}
+
+	function tweenVSliceScrollSpeed(speed:Dynamic, durationSeconds:Dynamic,
+		ease:Dynamic, lineNames:Dynamic):Void {
+		var parsedSpeed = Std.parseFloat(Std.string(speed));
+		var duration = Std.parseFloat(Std.string(durationSeconds));
+		if (!Math.isFinite(parsedSpeed) || parsedSpeed <= 0 || !Math.isFinite(duration)
+			|| !Std.isOfType(lineNames, Array)) {
+			trace('[vslice-scroll-speed-invalid] Invalid speed, duration or strumlines');
+			return;
+		}
+		cancelVSliceScrollTweens();
+		// Source cancels the previous tween by first snapping each affected line
+		// to that event's target, so a later event has a stable starting value.
+		for (target in vSliceScrollTargets)
+			if (target.line != null) target.line.scrollSpeed = target.speed;
+		vSliceScrollTargets.resize(0);
+		for (rawName in (cast lineNames:Array<Dynamic>)) {
+			var line:Strumline = switch (Std.string(rawName)) {
+				case 'playerStrumline': playerStrums;
+				case 'opponentStrumline': enemyStrums;
+				default: null;
+			};
+			if (line == null) {
+				trace('[vslice-scroll-speed-invalid] Unknown strumline: ' + Std.string(rawName));
+				continue;
+			}
+			if (duration <= 0)
+				line.scrollSpeed = parsedSpeed;
+			else
+				vSliceScrollTweens.push(FlxTween.tween(line, {scrollSpeed: parsedSpeed},
+					duration / Math.max(0.001, playbackRate),
+					{ease: ease == null ? FlxEase.linear : ease}));
+			vSliceScrollTargets.push({line: line, speed: parsedSpeed});
+		}
+	}
 	function ZoomCamera(eventInfo:Dynamic):Void {
+		ensureGameplayCameraBinding();
 		var zoom:Float = eventInfo.zoom != null ? eventInfo.zoom : 1;
 		var duration:Float = eventInfo.duration != null ? eventInfo.duration : 4;
+		// Chart events use steps; cutscene scripts can supply seconds to retain
+		// FlxTween's cinematic timing without depending on the song BPM.
+		var durationSeconds:Null<Float> = eventInfo.durationSeconds;
 		var ease:String = eventInfo.ease != null ? eventInfo.ease : 'linear';
 		var mode:String = eventInfo.mode != null ? eventInfo.mode : 'direct';
 
 		if (curCamZoom != null) curCamZoom.cancel();
-		var daCamZom = switch(mode) {
-			case 'stage':
-				curStage.defaultZoom;
-			default:
-				1;
-		}
-		if (ease.toLowerCase() == 'instant' || duration <= 0) {
-			FlxG.camera.zoom = zoom * daCamZom;
-			defaultCamZoom = zoom * daCamZom;
+		var daCamZom = cameraZoomTarget(curStage.defaultZoom, zoom, mode);
+		var tweenDuration = cameraZoomDuration(durationSeconds, Conductor.stepsToTime(duration));
+		if (ease.toLowerCase() == 'instant' || tweenDuration <= 0) {
+			setGameCameraZoom(daCamZom);
+			defaultCamZoom = daCamZom;
 		} else
-			curCamZoom = FlxTween.tween(FlxG.camera, {zoom: zoom * daCamZom}, Conductor.stepsToTime(duration)/1000, {ease: Reflect.field(FlxEase, ease), onComplete: 
-				function(e) {defaultCamZoom = zoom * daCamZom;}
+			curCamZoom = FlxTween.tween(camGame, {zoom: daCamZom}, tweenDuration, {ease: Reflect.field(FlxEase, ease), onComplete:
+				function(e) {defaultCamZoom = daCamZom;}
 			});
 	}
 
@@ -1980,7 +16771,17 @@ class PlayState extends MusicBeatState {
 		camZoomIntensity = intensity;
 	}
 
-	function tweenScrollSpeed(eventInfo:Dynamic) {
+	@:keep public function tweenScrollSpeed(eventInfo:Dynamic, ?durationSeconds:Dynamic,
+		?sourceEase:Dynamic, ?sourceStrumlines:Dynamic) {
+		if (durationSeconds != null || sourceStrumlines != null
+			|| Std.isOfType(eventInfo, Float) || Std.isOfType(eventInfo, Int)) {
+			tweenVSliceScrollSpeed(eventInfo, durationSeconds, sourceEase, sourceStrumlines);
+			return;
+		}
+		if (eventInfo == null) {
+			trace('[scroll-speed-invalid] Missing event payload');
+			return;
+		}
 		var scroll:Float = eventInfo.scroll != null ? eventInfo.scroll : 1;
 		var duration:Float = eventInfo.duration != null ? eventInfo.duration : 4;
 		var ease:String = eventInfo.ease != null ? eventInfo.ease : 'linear';
@@ -2005,19 +16806,53 @@ class PlayState extends MusicBeatState {
 		}
 	}
 
+	/** Preserve the optional trail lifecycle used by foreign character events. */
+	function compatClearCharacterTrail(character:Dynamic):Void {
+		if (character == null)
+			return;
+		try {
+			if (Reflect.hasField(character, 'trail')) {
+				var trail = Reflect.field(character, 'trail');
+				if (trail != null) {
+					if (Reflect.hasField(trail, 'destroy'))
+						Reflect.callMethod(trail, Reflect.field(trail, 'destroy'), []);
+					Reflect.setField(character, 'trail', null);
+				}
+			}
+		} catch (_:Dynamic) {}
+	}
+
+	function compatEnableCharacterTrail(character:Dynamic):Void {
+		if (character == null)
+			return;
+		try {
+			if (Reflect.hasField(character, 'enableTrail'))
+				Reflect.callMethod(character, Reflect.field(character, 'enableTrail'), []);
+		} catch (_:Dynamic) {}
+	}
+
 	function switchCharacter(charTo:String, charState:String) { //the non sus version
 		if (charState == 'bf' || charState == 'player1') charState = 'boyfriend';
 		if (charState == 'opponent' || charState == 'player2') charState = 'dad';
 		if (charState == 'girlfriend' || charState == 'player3') charState = 'gf';
-	    switch(charState) {
+		var smokeSwapStartedAt = RuntimeSmokeHarness.beginCharacterSwap();
+		var previousStageActor:Character = null;
+		    switch(charState) {
 			case 'boyfriend':
-			    remove(boyfriend);
+				previousStageActor = boyfriend;
+				compatClearCharacterTrail(boyfriend);
+				remove(boyfriend);
 				boyfriend.destroy();
-				boyfriend = new Character(swapOffsets[0], swapOffsets[1], charTo, true);
+				boyfriend = new Character(swapOffsets[0], swapOffsets[1], charTo, codenameInitialActorIsPlayer('player', charTo, true), codenamePrimaryConstruction('player', charTo));
+				loadHxcCharacterCompat(boyfriend.curCharacter, 'boyfriend', boyfriend);
+				compatEnableCharacterTrail(boyfriend);
 				if (!opponentPlayer && !demoMode)
 					boyfriend.beingControlled = true;
-				boyfriend.x += boyfriend.playerOffsetX;
-				boyfriend.y += boyfriend.playerOffsetY;
+				if (curStage == null || !curStage.applyVSliceCharacterPresentation('boyfriend', boyfriend)) {
+					var bfPosition = stageCharacterOffset(boyfriend, 'boyfriend');
+					boyfriend.x += bfPosition[0];
+					boyfriend.y += bfPosition[1];
+				}
 				/*if (boyfriend.likeGf) {
 					boyfriend.setPosition(gf.x, gf.y);
 					gf.visible = false;
@@ -2025,7 +16860,9 @@ class PlayState extends MusicBeatState {
 					gf.visible = true;
 				}*/
 				iconP1.switchAnim(charTo);
+				#if (windows && cpp)
 				iconRPC = charTo;
+				#end
 
 				// Layering nonsense
 				if (dad.likeGf) {
@@ -2035,16 +16872,27 @@ class PlayState extends MusicBeatState {
 				    add(boyfriend);
 				    add(dad);
 				}
+				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, boyfriend);
 				setAllHaxeVar("boyfriend", boyfriend);
+				callHxcCharacterAdded(boyfriend, charState);
 				callAllHScript('onCharacterAdded', [boyfriend, charState]);
 			case 'dad':
+				previousStageActor = dad;
+				compatClearCharacterTrail(dad);
 				remove(dad);
 				dad.destroy();
-				dad = new Character(swapOffsets[4], swapOffsets[5], charTo);
+				dad = new Character(swapOffsets[4], swapOffsets[5], charTo, codenameInitialActorIsPlayer('opponent', charTo, false), codenamePrimaryConstruction('opponent', charTo));
+				loadHxcCharacterCompat(dad.curCharacter, 'dad', dad);
+				compatEnableCharacterTrail(dad);
 				if (duoMode || opponentPlayer || soloMode)
 					dad.beingControlled = true;
-				dad.x += dad.enemyOffsetX;
-				dad.y += dad.enemyOffsetY;
+				if (psychStageCharacterRoot != null && dad.likeGf && curStage != null)
+					dad.setPosition(curStage.gfInfo.x, curStage.gfInfo.y);
+				if (curStage == null || !curStage.applyVSliceCharacterPresentation('dad', dad)) {
+					var dadPosition = stageCharacterOffset(dad, 'dad');
+					dad.x += dadPosition[0];
+					dad.y += dadPosition[1];
+				}
 				/*if (dad.likeGf) {
 					dad.setPosition(gf.x, gf.y);
 					gf.visible = false;
@@ -2061,15 +16909,24 @@ class PlayState extends MusicBeatState {
 				    add(dad);
 				    add(boyfriend);
 				}
+				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, dad);
 				setAllHaxeVar("dad", dad);
+				callHxcCharacterAdded(dad, charState);
 				callAllHScript('onCharacterAdded', [dad, charState]);
 			case 'gf':
+				previousStageActor = gf;
+				compatClearCharacterTrail(gf);
 				remove(gf);
 				gf.destroy();
-				gf = new Character(swapOffsets[2], swapOffsets[3], charTo);
+				gf = new Character(swapOffsets[2], swapOffsets[3], charTo, codenameInitialActorIsPlayer('gf', charTo, false), codenamePrimaryConstruction('gf', charTo));
+				loadHxcCharacterCompat(gf.curCharacter, 'gf', gf);
+				compatEnableCharacterTrail(gf);
 				gf.scrollFactor.set(0.95, 0.95);
-				gf.x += gf.gfOffsetX;
-				gf.y += gf.gfOffsetY;
+				if (curStage == null || !curStage.applyVSliceCharacterPresentation('gf', gf)) {
+					var gfPosition = stageCharacterOffset(gf, 'gf');
+					gf.x += gfPosition[0];
+					gf.y += gfPosition[1];
+				}
 
 				// Layering nonsense
 				remove(boyfriend);
@@ -2077,19 +16934,42 @@ class PlayState extends MusicBeatState {
 				add(gf);
 				add(dad);
 				add(boyfriend);
+				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, gf);
 				setAllHaxeVar("gf", gf);
+				callHxcCharacterAdded(gf, charState);
 				callAllHScript('onCharacterAdded', [gf, charState]);
 		}
+		if (curStage != null) {
+			var stageActor:Character = switch (charState) {
+				case 'boyfriend': boyfriend;
+				case 'dad': dad;
+				case 'gf': gf;
+				default: null;
+			};
+			if (stageActor != null) {
+				if (codenameActors != null && codenameActors.rebindBorrowed(previousStageActor, stageActor))
+					rebindCodenameInputActor(previousStageActor, stageActor);
+				curStage.rebindCharacterZ(charState, previousStageActor, stageActor);
+				var stageRoleInfo = curStage.getInfo(charState);
+				if (stageRoleInfo != null && stageRoleInfo.zIndex != -69)
+					curStage.refresh();
+			}
+		}
 		updateHealthColors();
+		RuntimeSmokeHarness.markCharacterSwap(smokeSwapStartedAt, charTo, charState);
 	}
 
-	function addCharacter(charTo:String = 'dad', charState:String = 'dad', ?stageName:String) {
+	function addCharacter(charTo:String = 'dad', charState:String = 'dad', ?stageName:String, ?constructorIsPlayer:Null<Bool>) {
 		if (charState == 'bf' || charState == 'player1') charState = 'boyfriend';
 		if (charState == 'opponent' || charState == 'player2') charState = 'dad';
 		if (charState == 'girlfriend' || charState == 'player3') charState = 'gf';
-		var flipChar = charState == 'boyfriend';
+		var flipChar = constructorIsPlayer == null ? charState == 'boyfriend' : constructorIsPlayer;
 
-		var newChar = new Character(0, 0, charTo, flipChar);
+		var role = charState == 'boyfriend' ? 'player' : (charState == 'dad' ? 'opponent' : 'gf');
+		var newChar = new Character(0, 0, charTo, flipChar, codenamePrimaryConstruction(role, charTo));
+		rememberCodenameActor(newChar);
+		newChar.characterType = charState;
+		loadHxcCharacterCompat(newChar.curCharacter, charState, newChar);
 		var charInfo:StageHelper.CharacterInfo = switch(charState) {
 			case 'boyfriend': curStage != null ? curStage.bfInfo : StageHelper.defaultInfo('bf');
 			case 'dad': curStage != null ? curStage.dadInfo : StageHelper.defaultInfo('dad');
@@ -2097,33 +16977,119 @@ class PlayState extends MusicBeatState {
 		}
 		if (newChar.likeGf) charInfo = curStage != null ? curStage.gfInfo : StageHelper.defaultInfo('gf');
 
-		newChar.setPosition(charInfo.x, charInfo.y);
-		newChar.followCamX += charInfo.camOffsetX;
-		newChar.followCamY += charInfo.camOffsetY;
-		newChar.scrollFactor.copyFrom(charInfo.scrollFactor);
-		if (!newChar.likeGf) {
-			switch(charState) {
-				case 'boyfriend':
-					newChar.x += newChar.playerOffsetX;
-					newChar.y += newChar.playerOffsetY;
-				case 'dad':
-					newChar.x += newChar.enemyOffsetX;
-					newChar.y += newChar.enemyOffsetY;
-				case 'gf':
-					newChar.x += newChar.gfOffsetX;
-					newChar.y += newChar.gfOffsetY;
+		if (curStage == null || !curStage.applyVSliceCharacterPresentation(charState, newChar)) {
+			newChar.setPosition(charInfo.x, charInfo.y);
+			if (charInfo.camOffsetsAbsolute) {
+				// Donor composition (matches StageHelper.setCamOffsets): the stored
+				// slot offsets are the stage's authored values; a converted V-Slice
+				// character adds its own CharacterData cameraOffsets on top.
+				newChar.followCamX = charInfo.camOffsetX + newChar.vSliceCamOffsetX;
+				newChar.followCamY = charInfo.camOffsetY + newChar.vSliceCamOffsetY;
+				newChar.camOffsetX = newChar.followCamX;
+				newChar.camOffsetY = newChar.followCamY;
+				newChar.authoredCamOffsets = true;
+			} else {
+				newChar.followCamX += charInfo.camOffsetX;
+				newChar.followCamY += charInfo.camOffsetY;
 			}
-		} else {
-			newChar.x += newChar.gfOffsetX;
-			newChar.y += newChar.gfOffsetY;
+			newChar.scrollFactor.copyFrom(charInfo.scrollFactor);
+			var charPosition = stageCharacterOffset(newChar, charState);
+			newChar.x += charPosition[0];
+			newChar.y += charPosition[1];
+			// Keep V-Slice's originalPosition ABI in sync with the canonical native
+			// stage placement before imported lifecycle callbacks can read it.
+			newChar.syncHxcPosition();
 		}
 
+		callHxcCharacterAdded(newChar, charState, newChar);
 		callAllHScript('onCharacterAdded', [newChar, charState]);
 		if (stageName != null) curStage.addElement(stageName, newChar, charInfo.zIndex);
 		return newChar;
 	}
 
-	function switchToChar(daCharacter:Character, charState:String, destroy:Bool = false) {
+	// Build every character the chart's "Change Character" events reference,
+	// plus preload.txt entries, while still on the loading screen.
+	function compatAddCharacterToList(name:Dynamic, role:Dynamic):Void {
+		if (name == null) return;
+		var characterName = StringTools.trim(Std.string(name));
+		if (characterName == '' || !Character.characterExists(characterName)) return;
+		var side = role == null ? '' : StringTools.trim(Std.string(role)).toLowerCase();
+		warmCharacterAtlas(characterName, side == 'boyfriend' || side == 'bf' || side == 'player');
+	}
+
+	function warmCharacterAtlas(name:String, ?isPlayer:Bool = false):Void {
+		var warm:Character = null;
+		try {
+			var root = codenameSelectedRoot();
+			var construction = root == '' ? null
+				: codenameCharacterConstructionForId(root, name, name);
+			var nativeName = construction == null ? name : construction.nativeName;
+			warm = new Character(-99999, -99999, nativeName, isPlayer, construction);
+		} catch (error:Dynamic) {
+			trace('preload character ' + name + ' failed: ' + Std.string(error));
+		}
+		if (warm != null)
+			try {
+				warm.destroy();
+			} catch (error:Dynamic) {
+				trace('preload character ' + name + ' cleanup failed: ' + Std.string(error));
+			}
+	}
+
+	function preloadSwapCharacters() {
+		var names:Array<String> = [];
+		var playerNames:Map<String, Bool> = new Map();
+		for (e in songEvents) {
+			var authored = CodenameEventDispatch.fromNative(e);
+			if (authored != null) {
+				var authoredParams = codenameSwapPreloadParams(authored);
+				if (codenameSelectedRoot() != '' && authored.name == 'Change Character'
+						&& authoredParams != null) {
+					var authoredName = StringTools.trim(Std.string(authoredParams[3]));
+					if (authoredName != '' && names.indexOf(authoredName) < 0) names.push(authoredName);
+					var lineIndex = Std.parseInt(Std.string(authoredParams[1]));
+					if (lineIndex == 1) playerNames.set(authoredName, true);
+				}
+				// Converted CNE events keep their authored values in metadata. The
+				// legacy v1/v2 route is not a native Change Character event.
+				continue;
+			}
+			if (e.name == 'Change Character' && e.v2 != null) {
+				var n = StringTools.trim(Std.string(e.v2));
+				if (n.length > 0 && n != SONG.player1 && n != SONG.player2 && n != SONG.gf
+					&& names.indexOf(n) == -1)
+					names.push(n);
+			}
+		}
+		#if desktop
+		var preloadPath = currentSongDataPath('preload.txt');
+		if (FileSystem.exists(preloadPath))
+			for (n in CoolUtil.coolTextFile(preloadPath)) {
+				var name = StringTools.trim(n);
+				if (name.length > 0 && names.indexOf(name) == -1)
+					names.push(name);
+			}
+		#end
+		for (n in names) {
+			if (!Character.characterExists(n))
+				continue;
+			warmCharacterAtlas(n, playerNames.exists(n) && playerNames.get(n));
+		}
+	}
+
+	static function codenameSwapPreloadParams(authored:Dynamic):Null<Array<Dynamic>> {
+		if (authored == null || Reflect.field(authored, 'name') != 'Change Character')
+			return null;
+		var rawParams:Dynamic = Reflect.field(authored, 'params');
+		if (!Std.isOfType(rawParams, Array))
+			return null;
+		var params:Array<Dynamic> = cast rawParams;
+		if (params.length <= 3 || params[0] != true || !Std.isOfType(params[3], String))
+			return null;
+		return params;
+	}
+
+	public function switchToChar(daCharacter:Character, charState:String, destroy:Bool = false) {
 		if ((daCharacter is String))
 			daCharacter = curStage.getElement(cast daCharacter);
 		if (daCharacter == null) return;
@@ -2131,6 +17097,13 @@ class PlayState extends MusicBeatState {
 		if (charState == 'bf' || charState == 'player1') charState = 'boyfriend';
 		if (charState == 'opponent' || charState == 'player2') charState = 'dad';
 		if (charState == 'girlfriend' || charState == 'player3') charState = 'gf';
+		var previousStageActor:Character = switch (charState) {
+			case 'boyfriend': boyfriend;
+			case 'dad': dad;
+			case 'gf': gf;
+			default: null;
+		};
+		daCharacter.characterType = charState;
 		switch(charState) {
 			case 'boyfriend':
 				remove(boyfriend);
@@ -2139,8 +17112,11 @@ class PlayState extends MusicBeatState {
 					daCharacter.beingControlled = true;
 				boyfriend = daCharacter;
 				iconP1.switchAnim(daCharacter.curCharacter);
+				#if (windows && cpp)
 				iconRPC = daCharacter.curCharacter;
+				#end
 				add(boyfriend);
+				setAllHaxeVar('boyfriend', boyfriend);
 			case 'dad':
 				remove(dad);
 				if (destroy) dad.destroy();
@@ -2149,6 +17125,7 @@ class PlayState extends MusicBeatState {
 				dad = daCharacter;
 				iconP2.switchAnim(daCharacter.curCharacter);
 				add(dad);
+				setAllHaxeVar('dad', dad);
 			case 'gf':
 				remove(gf);
 				if (destroy) gf.destroy();
@@ -2158,15 +17135,43 @@ class PlayState extends MusicBeatState {
 				add(gf);
 				add(boyfriend);
 				add(dad);
+				setAllHaxeVar('gf', gf);
 		}
+		rememberCodenameActor(daCharacter);
+		if (codenameActors != null && codenameActors.rebindBorrowed(previousStageActor, daCharacter))
+			rebindCodenameInputActor(previousStageActor, daCharacter);
+		if (curStage != null) curStage.rebindCodenameActor(previousStageActor, daCharacter);
+		loadHxcCharacterCompat(daCharacter.curCharacter, charState, daCharacter);
+		// Keep the pending actor explicit through the lifecycle boundary too.  The
+		// assignment above normally makes the slot visible already, but passing the
+		// actor prevents an onAdd callback from observing a stale slot if a swap is
+		// dispatched while another character transition is still unwinding.
+		callHxcCharacterAdded(daCharacter, charState, daCharacter);
 		updateHealthColors();
 	}
 
+	override public function onFocus():Void {
+		super.onFocus();
+		callCodenameScripts('onFocus', []);
+		callAllHScript('focusGained', [EngineCompat.hxcLifecyclePayload('focusGained', {targetState: this})]);
+	}
+
+	override public function onFocusLost():Void {
+		super.onFocusLost();
+		callCodenameScripts('onFocusLost', []);
+	}
+
 	override function openSubState(SubState:FlxSubState) {
+		dispatchPsychCompiledStage('openSubState', [SubState]);
 		if (paused) {
+			#if cpp
+			if (compatEventVideo != null) compatEventVideo.suspend();
+			#end
+			HxcCompatRuntime.pauseFunkinVideos(this);
+			if (demoMode) FlxG.timeScale = 1;
 			if (FlxG.sound.music != null) {
 				FlxG.sound.music.pause();
-				vocals.pause();
+				pauseVocals();
 			}
 			controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 			#if windows
@@ -2184,14 +17189,30 @@ class PlayState extends MusicBeatState {
 				+ " | Misses: "
 				+ misses, iconRPC, null, null, playingAsRpc);
 			#end
-			if (!startTimer.finished)
+			if (startTimer != null && !startTimer.finished)
 				startTimer.active = false;
 		}
 
 		super.openSubState(SubState);
+		// Codename substate open/close dispatch callbacks without synthesizing a
+		// state transition. Scripts may explicitly call startTransition; the
+		// canOpenCustomTransition flag only chooses where that transition lives.
+		if (paused && SubState != null && Std.isOfType(SubState, PauseSubState))
+			RuntimeSmokeHarness.markPauseTransition('pause_open');
+		if (paused) setCodenameScriptsPaused(true);
+		if (SubState != null) callCodenameScripts('onSubstateOpen', [new CodenameGameEvent()]);
+		callAllHScript('subStateOpenEnd', [EngineCompat.hxcLifecyclePayload('subStateOpenEnd', {targetState: SubState})]);
 	}
 
 	override function closeSubState() {
+		var codenameClosingSubstate = subState != null;
+		var closingNativePause = paused && subState != null && Std.isOfType(subState, PauseSubState);
+		var resumeEventVideo = paused;
+		var resumePsychCustom = compatCustomSubstatePausesGame
+			&& subState != null && subState == compatCustomSubstate;
+		// Codename close callbacks inspect the still-open substate and paused
+		// flag before the host resumes gameplay.
+		if (codenameClosingSubstate) callCodenameScripts('onSubstateClose', [new CodenameGameEvent()]);
 		if (paused) {
 			if (FlxG.sound.music != null && !startingSong)
 				resyncVocals();
@@ -2199,14 +17220,17 @@ class PlayState extends MusicBeatState {
 				controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 			if (duoMode)
 				controls.setKeyboardScheme(Duo(true));
-			if (!startTimer.finished)
+			if (!resumePsychCustom && startTimer != null && !startTimer.finished)
 				startTimer.active = true;
 			paused = false;
+			applyDemoPlaybackRate();
 			setAllHaxeVar("paused", paused);
 			callAllHScript('onResume', []);
+			callNightmareVision('onResume', []);
 
 			CoolUtil.resumeTween(curCamPos);
 			CoolUtil.resumeTween(curCamZoom);
+			for (tween in vSliceScrollTweens) CoolUtil.resumeTween(tween);
 
 			var currentIconState = "";
 			if (opponentPlayer) {
@@ -2229,7 +17253,7 @@ class PlayState extends MusicBeatState {
 				}
 			}
 			#if windows
-			if (startTimer.finished) {
+			if (startTimer != null && startTimer.finished) {
 				updatePresence();
 				/*DiscordClient.changePresence(customPrecence
 					+ " "
@@ -2257,16 +17281,26 @@ class PlayState extends MusicBeatState {
 			#end
 		}
 
+		callAllHScript('subStateCloseBegin', [EngineCompat.hxcLifecyclePayload('subStateCloseBegin', {targetState: this})]);
 		super.closeSubState();
+		dispatchPsychCompiledStage('closeSubState', []);
+		if (closingNativePause) RuntimeSmokeHarness.markPauseTransition('pause_resume');
+		if (resumePsychCustom) resumePsychCustomTimeline();
+		if (resumeEventVideo) setCodenameScriptsPaused(false);
+		if (resumeEventVideo) HxcCompatRuntime.resumeFunkinVideos(this);
+		#if cpp
+		if (resumeEventVideo && compatEventVideo != null) compatEventVideo.resume();
+		#end
+		callAllHScript('subStateCloseEnd', [EngineCompat.hxcLifecyclePayload('subStateCloseEnd', {targetState: this})]);
 	}
 
 	function resyncVocals():Void {
-		vocals.pause();
+		pauseVocals();
 
 		FlxG.sound.music.play();
 		Conductor.songPosition = FlxG.sound.music.time;
-		vocals.time = Conductor.songPosition;
-		vocals.play();
+		seekVocals(Conductor.songPosition);
+		playVocals();
 		
 		#if windows
 		updatePresence();
@@ -2288,14 +17322,212 @@ class PlayState extends MusicBeatState {
 	}
 
 	private var paused:Bool = false;
+	/** Read-only pause state used by native compatibility hosts that cannot access this private field. */
+	public var isGamePaused(get, never):Bool;
+	inline function get_isGamePaused():Bool
+		return paused;
 	var startedCountdown:Bool = false;
 	var canPause:Bool = true;
+	/** V-Slice song scripts can suspend gameplay lane input while their own
+	 * selection controls still receive FlxG keyboard events. */
+	@:keep public var disableKeys:Bool = false;
+	// V-Slice exposes the same pause gate as mayPauseGame. Keep one live flag so
+	// donor cutscenes that disable/restore pausing control the native Enter gate.
+	public var mayPauseGame(get, set):Bool;
+	function get_mayPauseGame():Bool
+		return canPause;
+	function set_mayPauseGame(value:Bool):Bool {
+		canPause = value;
+		return value;
+	}
+
+	// scale the Image Flash overlay so it covers the whole screen no matter the
+	// camera zoom: a scrollFactor-0 sprite is itself scaled by the camera, so a
+	// plain screen-sized graphic only covered zoom == 1 (2k22's flash vanished
+	// whenever defaultCamZoom sat at 0.5-0.8). Sized against the most zoomed
+	// out of the play/HUD cameras so it covers both.
+	function fitEventImageCover() {
+		if (eventImageSprite == null || eventImageSprite.graphic == null)
+			return;
+		var z = Math.min(FlxG.camera.zoom, camHUD.zoom);
+		if (z <= 0 || z > 1)
+			z = 1;
+		var gw = eventImageSprite.graphic.width;
+		var gh = eventImageSprite.graphic.height;
+		var s = Math.max((FlxG.width / z) / gw, (FlxG.height / z) / gh);
+		eventImageSprite.scale.set(s, s);
+		eventImageSprite.updateHitbox();
+		eventImageSprite.screenCenter();
+	}
+
+	function setDemoPlaybackRate(rate:Float):Void {
+		if (!demoMode) return;
+		demoPlaybackRate = FlxMath.bound(rate, 1, 50);
+		applyDemoPlaybackRate();
+		if (demoSpeedTxt != null)
+			demoSpeedTxt.text = 'Demo: ${demoPlaybackRate}x  |  Left / Right';
+	}
+
+	function applyDemoPlaybackRate():Void {
+		if (!demoMode) return;
+		FlxG.timeScale = paused || endingSong ? 1 : demoPlaybackRate;
+		if (!startingSong) {
+			if (FlxG.sound.music != null) FlxG.sound.music.pitch = demoPlaybackRate;
+			if (vocals != null) setVocalsPitch(demoPlaybackRate);
+		}
+	}
+
+	function resetDemoPlaybackRate():Void {
+		if (!demoMode) return;
+		FlxG.timeScale = 1;
+		if (FlxG.sound.music != null) FlxG.sound.music.pitch = 1;
+		if (vocals != null) setVocalsPitch(1);
+	}
+
+	function updateDemoClock():Void {
+		if (demoMode && !startingSong && !paused && !endingSong && FlxG.sound.music != null) {
+			var music = FlxG.sound.music;
+			var endWindow = songLength > 0 ? Math.min(1000, songLength * 0.5) : 0;
+			// Some native audio backends expose the end-of-track position as zero
+			// before FlxSound clears its channel and calls onComplete. Treat that
+			// near-end wrap as completion even while `playing` is still true, or
+			// MusicBeatState can rewind and replay every beat hook.
+			var completedAudio = music.time <= 0 && endWindow > 0
+				&& Conductor.songPosition > 0
+				&& Conductor.songPosition >= songLength - endWindow;
+			Conductor.songPosition = demoSongFinished || completedAudio ? songLength : music.time;
+		}
+	}
+
+	/**
+		Refresh Kade/FPS Plus's legacy `songPos` global from the one authoritative
+		Conductor clock.  Keep this as an engine-level alias so old modcharts can
+		share the normal update/step timing without chart-side variable shims.
+	*/
+	function syncLegacyKadeGlobals():Void {
+		setAllHaxeVar('songPos', Conductor.songPosition);
+		// Kade/FPS Plus uses `bpm` (rather than Psych's `curBpm`) in live
+		// modchart math. Seed-time SONG.bpm is stale after a chart BPM change,
+		// so refresh the legacy spelling from the authoritative Conductor clock
+		// beside songPos before every callback phase.
+		setAllHaxeVar('bpm', Conductor.bpm);
+	}
+
+	/**
+		The mounted Kade corpus contains an empty `0.offset` marker. Empty files
+		are intentionally inert; non-empty files have no generic, evidence-backed
+		meaning in this engine yet, so surface an informational diagnostic rather
+		than inventing timing semantics or changing the chart clock.
+	*/
+	function diagnoseLegacyKadeOffset():Void {
+		#if sys
+		if (legacyOffsetDiagnosticEmitted || SONG == null)
+			return;
+		legacyOffsetDiagnosticEmitted = true;
+		var offsetPath = currentSongDataPath('0.offset');
+		if (!FNFAssets.exists(offsetPath))
+			return;
+		try {
+			var raw = StringTools.trim(FNFAssets.getText(offsetPath));
+			if (raw != '')
+				trace('[kade-offset-unsupported] Ignoring non-empty legacy 0.offset for '
+					+ SONG.song + '; no timing semantics are inferred.');
+		} catch (error:Dynamic) {
+			trace('[kade-offset-unsupported] Could not inspect legacy 0.offset for '
+				+ SONG.song + ': ' + Std.string(error));
+		}
+		#end
+	}
+
+	/**
+		Refresh Psych's live timing globals from the authoritative Conductor.
+		`curBpm` and `stepCrochet` are bare variables in imported Psych scripts;
+		keep them current when a chart changes BPM instead of freezing the values
+		at interpreter creation time.
+	*/
+	function syncPsychTimingGlobals():Void {
+		setAllHaxeVar('curBpm', Conductor.bpm);
+		// Keep the legacy Kade spelling in the same callback-phase snapshot.
+		// This matters when a section changes BPM inside beatHit() before the
+		// imported callback reads its bare `bpm` global.
+		setAllHaxeVar('bpm', Conductor.bpm);
+		setAllHaxeVar('crochet', Conductor.crochet);
+		setAllHaxeVar('stepCrochet', Conductor.stepCrochet);
+	}
+
+	override public function draw():Void {
+		// FlxState skips this state's members while a non-persistent substate is
+		// open. Do not leave native note sprites hidden when only the substate
+		// will draw; the adapter restores any previous suppression in that case.
+		var parentWillDrawMembers = persistentDraw || subState == null;
+		var smokeProfileAt = RuntimeSmokeHarness.profileEnabled() ? haxe.Timer.stamp() : 0.0;
+		modchart.backend.standalone.adapters.cammie.Cammie.prepareNativeDraw(this, parentWillDrawMembers);
+		if (smokeProfileAt > 0)
+			RuntimeSmokeHarness.profileSection('play-modchart-pre-draw', haxe.Timer.stamp() - smokeProfileAt);
+		super.draw();
+	}
 
 	override public function update(elapsed:Float) {
+		// FlxTimer's global plugin runs before state update, so a delayed death
+		// can finish here without advancing song callbacks or note processing.
+		if (psychGameOverTransitionPending)
+			return;
+		var smokeProfileAt = RuntimeSmokeHarness.profileEnabled() ? haxe.Timer.stamp() : 0.0;
+		CodenameModRuntime.updateGlobal(elapsed);
+		if (RuntimeSmokeHarness.tick(elapsed)) return;
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-global-runtime', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		if (demoMode && startedCountdown && !paused && !inCutscene && !endingSong) {
+			var speedChange = (FlxG.keys.justPressed.RIGHT ? 1 : 0) - (FlxG.keys.justPressed.LEFT ? 1 : 0);
+			if (speedChange != 0) setDemoPlaybackRate(demoPlaybackRate + speedChange * 0.5);
+		}
+		// Sample audio before scripts, beat hooks, and sprite timing updates.
+		updateDemoClock();
+		syncLegacyKadeGlobals();
+		syncPsychTimingGlobals();
+		syncVocalTrackState();
+		if (missesTxt != null)
+			missesTxt.text = (comboBreaks ? 'Combo Breaks: ' : 'Misses: ') + misses;
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-timing-audio-sync', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		//setAllHaxeVar('camZooming', camZooming);
 		//setAllHaxeVar('gfSpeed', gfSpeed);
 		//setAllHaxeVar('health', health);
+		callNightmareVision('onUpdate', [elapsed]);
 		callAllHScript('update', [elapsed]);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-hscript-update', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		refreshCodenameCharacterScopes();
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-codename-scope-refresh', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		callCodenameScripts('update', [elapsed]);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-codename-update', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		hxcTickNoteTextOverlays();
+		// Native constructor-only HXC timelines use their own bounded clock.  The
+		// runner dispatches events before camera binding and never evaluates donor
+		// expressions or object graphs from the source class.
+		if (hxcCutsceneTimelineRuntime != null)
+			hxcCutsceneTimelineRuntime.advance(elapsed);
+		// HScript can add a camera or a sprite during update(). Keep the
+		// gameplay camera authoritative before Flixel follows and draws the
+		// world; HUD objects retain their explicit camHUD assignment.
+		bindGameplayCameras();
 		
 		if (hscriptStates.exists("modchart")) {
 			if (getHaxeVar("showOnlyStrums", "modchart")) {
@@ -2307,18 +17539,52 @@ class PlayState extends MusicBeatState {
 			} else {
 				healthBarBG.visible = true;
 				healthBar.visible = true;
-				iconP1.visible = true;
-				iconP2.visible = true;
+				iconP1.visible = !Character.isNoGirlfriend(iconP1.character);
+				iconP2.visible = !Character.isNoGirlfriend(iconP2.character);
 				scoreTxt.visible = true;
 			}
-			camZooming = getHaxeVar("camZooming", "modchart");
-			camSpeed = getHaxeVar("camSpeed", "modchart");
-			gfSpeed = getHaxeVar("gfSpeed", "modchart");
+			// only sync a value the script actually set - reading an
+			// undefined variable gives null, which permanently killed
+			// camZooming (and the zoom-return lerp) on every modchart song
+			// that doesn't opt in, stranding the camera mid-tween zoomed in
+			var modchartInterp = hscriptStates.get("modchart");
+			if (modchartInterp.variables.exists("camZooming"))
+				camZooming = getHaxeVar("camZooming", "modchart");
+			if (modchartInterp.variables.exists("camSpeed"))
+				camSpeed = getHaxeVar("camSpeed", "modchart");
+			if (modchartInterp.variables.exists("gfSpeed"))
+				gfSpeed = getHaxeVar("gfSpeed", "modchart");
 			//health = getHaxeVar("health", "modchart");
 		}
 
-		FlxG.camera.follow(camFollow, LOCKON, camSpeed);
-		
+		ensureGameplayCameraBinding();
+		if (!codenameCameraControlled)
+			FlxG.camera.follow(camFollow, LOCKON, camFollowLerp());
+
+		// Fire every chart event whose time has passed. Natural audio completion
+		// also drains through songLength in case the final callback lands between
+		// state updates.
+		updateCodenameCameraModulo();
+		dispatchDueSongEvents();
+		// The follow pass and imported update hooks can touch the canonical
+		// camera immediately after an event. Reassert an authored target before
+		// rendering so the intro visibly affects the world as well as the HUD.
+		holdCameraZoomTargets();
+
+		// keep the Image Flash overlay covering the screen if the camera zooms
+		// while it is on screen
+		if (eventImageSprite != null && eventImageSprite.visible)
+			fitEventImageCover();
+
+		#if debug
+		// Camera diagnostics are useful during development, not normal playback.
+		zoomDebugTimer += elapsed;
+		if (zoomDebugTimer >= 1) {
+			zoomDebugTimer = 0;
+			trace('zoomcam: zoom=${FlxG.camera.zoom} default=$defaultCamZoom camZooming=$camZooming rate=$camZoomRate pos=${Math.round(Conductor.songPosition)}ms');
+		}
+		#end
+
 		var joe = notesHitArray.length-1;
 		while (joe >= 0) {
 			var mama:Date = notesHitArray[joe];
@@ -2331,9 +17597,44 @@ class PlayState extends MusicBeatState {
 		nps = notesHitArray.length;
 		setAllHaxeVar('nps', nps);
 
+		// An imported update hook or an event above can seek the Conductor clock.
+		// Mirror it once more immediately before MusicBeatState dispatches any
+		// beatHit/stepHit callbacks, so those hooks observe the same value.
+		syncLegacyKadeGlobals();
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-pre-super', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		if (modManager != null) {
+			// NMV samples its decimal beat in MusicBeatState.update, before the
+			// later PlayState clock advance. Preserve that sample for callbacks.
+			curDecStep = NightmareVisionDecimalStep.getStep(Conductor.songPosition, SONG.bpm,
+				cast Conductor.bpmChangeMap, nightmareVisionPrefs.view.noteOffset);
+			curDecBeat = curDecStep / 4;
+			if (playHUD != null) playHUD.updateTimer(Conductor.songPosition, songLength,
+				nightmareVisionPrefs.view.noteOffset, nightmareVisionPrefs.view.timeBarType,
+				startingSong, paused, endingSong, SONG.song);
+		}
 		super.update(elapsed);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-flixel-super', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		disposeFinishedHxcEventSprites();
+		// Psych's MusicBeatState updates compiled BaseStage instances after the
+		// beat/step catch-up pass. Dispatch here so the callback sees this frame's
+		// authoritative clock and still runs before rendering.
+		dispatchPsychCompiledStage('update', [elapsed]);
 		if (snapToStrumline) {
 			notes.forEachAlive(function(daNote) {
+				// Codename notes already received their source-line placement and
+				// angle-based travel above. This legacy pass only knows the two
+				// primary banks, so snapping them here would erase extra-line,
+				// authored-offset, and angled note geometry.
+				if (daNote.codenameInputLine != null)
+					return;
 				var noteData = daNote.noteData;
 				var strums = daNote.mustPress ? playerStrums : enemyStrums;
 				//if (daNote.mustPress)
@@ -2342,9 +17643,11 @@ class PlayState extends MusicBeatState {
 				if (daNote.isSustainNote) {
 					daNote.scale.x = daNote.normalSize * (strums.members[noteData].scale.x / strums.members[noteData].normalSize);
 					if (daNote.prevNote.alive && daNote.prevNote.isSustainNote)
-						daNote.prevNote.scale.y = daNote.prevNote.normalSize * (initialStepCrochet / 100 * 1.5 * daScrollSpeed);
+						daNote.prevNote.scale.y = daNote.prevNote.normalSize * (initialStepCrochet / 100 * 1.5
+							* (dynamicScrollTarget <= 0 && strums.hasScrollSpeedOverride()
+								? strums.scrollSpeed : effectiveScrollSpeed));
 					daNote.updateHitbox();
-					daNote.x += defaultNoteWidth / 2 - daNote.width / 2;
+					daNote.x += daNote.sustainHeadAnchorX() - daNote.graphicCenterOffsetX();
 				} else {
 					daNote.angle = strums.members[noteData].angle;
 					daNote.scale.x = daNote.normalSize * (strums.members[noteData].scale.x / strums.members[noteData].normalSize);
@@ -2371,6 +17674,7 @@ class PlayState extends MusicBeatState {
 			case None:
 				accuracy = 0;
 		}*/
+		if (codenameRatingEnabled) syncCodenameAccuracyHud();
 		if (disableScoreChange == false)
 			scoreTxt.text = Ratings.CalculateRanking(songScore, songScoreDef, nps, accuracy);
 
@@ -2382,20 +17686,40 @@ class PlayState extends MusicBeatState {
 			else
 				health = -50;
 		}
-		accuracyTxt.text = "Accuracy:" + accuracy + "%";
+		if (codenameRatingEnabled) updateCodenameRatingHud();
+		else accuracyTxt.text = "Accuracy:" + accuracy + "%";
 		if (controls.SYNC_VOCALS)
 			resyncVocals();
-		if (FlxG.keys.justPressed.ENTER && startedCountdown && canPause) {
+		if (controls.PAUSE && startedCountdown && canPause
+			&& callNightmareVision('onPause', []) != NightmareVisionScriptGroup.STOP_FUNC) {
 			persistentUpdate = false;
 			persistentDraw = true;
 			paused = true;
 			setAllHaxeVar("paused", paused);
-			callAllHScript('onPause', []);
+			var pauseResults:Array<Dynamic> = [];
+			var pauseEvent = EngineCompat.hxcLifecyclePayload('pause');
+			callAllHScript('onPause', [], false, pauseResults, [pauseEvent]);
+			if (pauseEvent.eventCanceled == true || pauseEvent.canceled == true
+				|| pauseEvent.cancelled == true || EngineCompat.anyFunctionStop(pauseResults)) {
+				// Psych's onPause gate is allowed to consume the key press (custom
+				// pause screens use this to count attempts). Restore the state flags
+				// that were staged before the callback so the native pause substate is
+				// not opened after a donor requested Function_Stop.
+				if (!compatCustomSubstateOpen || !compatCustomSubstatePausesGame) {
+					paused = false;
+					persistentUpdate = true;
+					persistentDraw = compatCustomSubstateOpen;
+					setAllHaxeVar("paused", paused);
+				}
+				if (compatCustomSubstateOpen) return;
+			} else {
+				CoolUtil.pauseTween(curCamPos);
+				CoolUtil.pauseTween(curCamZoom);
+				for (tween in vSliceScrollTweens) CoolUtil.pauseTween(tween);
 
-			CoolUtil.pauseTween(curCamPos);
-			CoolUtil.pauseTween(curCamZoom);
-
-			openSubState(new PauseSubState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y, camHUD));
+				callCodenameEvent('onGamePause', new CodenameGameEvent());
+				openSubState(new PauseSubState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y, camHUD));
+			}
 		}
 
 		var canShowKeys = true;
@@ -2436,8 +17760,33 @@ class PlayState extends MusicBeatState {
 			barShowingPoison = false;
 		}
 
-		iconP1.x = healthBar.x + (healthBar.width * (FlxMath.remapToRange(healthBar.percent, 0, 100, 100, 0) * 0.01) - iconOffset);
-		iconP2.x = healthBar.x + (healthBar.width * (FlxMath.remapToRange(healthBar.percent, 0, 100, 100, 0) * 0.01)) - (iconP2.width - iconOffset);
+		if (!iconOverride && iconsVertical) {
+			// A 90-degree bar rotates about its centre, not its top-left corner.
+			var centreX = healthBar.x + healthBar.width / 2;
+			var dividerY = healthBar.y + healthBar.height / 2 + healthBar.width * (0.5 - healthBar.percent / 100);
+			iconP1.x = centreX - iconP1.width / 2;
+			iconP2.x = centreX - iconP2.width / 2;
+			iconP1.y = dividerY - iconOffset;
+			iconP2.y = dividerY - (iconP2.height - iconOffset);
+		} else if (!iconOverride) {
+			iconP1.x = healthBar.x + (healthBar.width * (FlxMath.remapToRange(healthBar.percent, 0, 100, 100, 0) * 0.01) - iconOffset);
+			iconP2.x = healthBar.x + (healthBar.width * (FlxMath.remapToRange(healthBar.percent, 0, 100, 100, 0) * 0.01)) - (iconP2.width - iconOffset);
+		}
+		if (!iconOverride) {
+			iconP1.x += compatIconP1OffsetX;
+			iconP2.x += compatIconP2OffsetX;
+			if (iconsVertical) {
+				iconP1.y += compatIconP1OffsetY;
+				iconP2.y += compatIconP2OffsetY;
+			} else {
+				// Horizontal layouts do not recompute icon y every frame. Apply only
+				// the offset delta so a persistent event value cannot drift downward.
+				iconP1.y += compatIconP1OffsetY - compatIconP1AppliedOffsetY;
+				iconP2.y += compatIconP2OffsetY - compatIconP2AppliedOffsetY;
+			}
+			compatIconP1AppliedOffsetY = compatIconP1OffsetY;
+			compatIconP2AppliedOffsetY = compatIconP2OffsetY;
+		}
 		player1Icon = boyfriend.curCharacter;
 		switch(boyfriend.curCharacter) {
 			case "bf-car" | "bf-christmas" | "bf-holding-gf":
@@ -2452,23 +17801,27 @@ class PlayState extends MusicBeatState {
 				player1Icon = "gf";
 		}
 		if (healthBar.percent < 20) {
-			iconP1.iconState = Dying;
-			iconP2.iconState = Winning;
+			if (iconP1auto && iconP1.autoUpdate)
+				iconP1.iconState = Dying;
+			if (iconP2auto && iconP2.autoUpdate)
+				iconP2.iconState = Winning;
 			#if windows
 			iconRPC = player1Icon + "-dead";
 			#end
 		} else {
-			iconP1.iconState = Normal;
+			if (iconP1auto && iconP1.autoUpdate)
+				iconP1.iconState = Normal;
 			#if windows
 			iconRPC = player1Icon;
 			#end
 		}
 		if (!opponentPlayer && poisonTimes != 0) {
-			iconP1.iconState = Poisoned;
+			if (iconP1auto && iconP1.autoUpdate)
+				iconP1.iconState = Poisoned;
 			#if windows
 			iconRPC = player1Icon + "-dazed";
 			#end
-		}	
+		}
 		
 		// duo mode shouldn't show low health
 		if (properHealth < 20 && !duoMode) {
@@ -2491,8 +17844,9 @@ class PlayState extends MusicBeatState {
 		}
 
 		if (healthBar.percent > 80) {
-			iconP2.iconState = Dying;
-			if (iconP1.iconState != Poisoned) {
+			if (iconP2auto && iconP2.autoUpdate)
+				iconP2.iconState = Dying;
+			if (iconP1auto && iconP1.autoUpdate && iconP1.iconState != Poisoned) {
 				iconP1.iconState = Winning;
 			}
 			#if windows
@@ -2500,17 +17854,18 @@ class PlayState extends MusicBeatState {
 				iconRPC = player2Icon + "-dead";
 			#end
 		} else {
-			iconP2.iconState = Normal;
+			if (iconP2auto && iconP2.autoUpdate)
+				iconP2.iconState = Normal;
 			#if windows
 			if (opponentPlayer)
 				iconRPC = player2Icon;
 			#end
 		}
 		if (healthBar.percent < 20) {
-			iconP2.iconState = Winning;
+			if (iconP2.autoUpdate) iconP2.iconState = Winning;
 		}
 		if (poisonTimes != 0 && opponentPlayer) {
-			iconP2.iconState = Poisoned;
+			if (iconP2.autoUpdate) iconP2.iconState = Poisoned;
 			#if windows
 			if (opponentPlayer)
 				iconRPC = player2Icon + "-dazed";
@@ -2527,11 +17882,12 @@ class PlayState extends MusicBeatState {
 			}
 		} else {
 			// Conductor.songPosition = FlxG.sound.music.time;
-			Conductor.songPosition += FlxG.elapsed * 1000;
+			if (!demoMode)
+				Conductor.songPosition += FlxG.elapsed * 1000;
 			songLength = getUV('songLength');
 			songPositionBar = Conductor.songPosition / songLength;
 			if (!paused) {
-				songTime += FlxG.game.ticks - previousFrameTime;
+				songTime += (FlxG.game.ticks - previousFrameTime) * (demoMode ? demoPlaybackRate : 1);
 				previousFrameTime = FlxG.game.ticks;
 
 				// Interpolation type beat
@@ -2547,70 +17903,120 @@ class PlayState extends MusicBeatState {
 		}
 
 		if (camNotes) {
-			if (dad.camOffsets.exists(dad.animation.curAnim.name)) {
-				final daCam = dad.camOffsets.get(dad.animation.curAnim.name);
+			final fallbackCamOffset = cameraNoteOffset(defaultCamZoom);
+			final dadAnimName = characterAnimationName(dad);
+			if (dad.camOffsets.exists(dadAnimName)) {
+				final daCam = dad.camOffsets.get(dadAnimName);
 				dadcam = [daCam[0], daCam[1]];
 			} else {
-				final dadAnim = dad.animation.curAnim.name.split('-');
+				final dadAnim = dadAnimName.split('-');
 				switch(dadAnim[0]) {
 					case 'singLEFT':
-						dadcam = [-25, 0];
+						dadcam = [-fallbackCamOffset, 0];
 					case 'singRIGHT':
-						dadcam = [25, 0];
+						dadcam = [fallbackCamOffset, 0];
 					case 'singUP':
-						dadcam = [0, -25];
+						dadcam = [0, -fallbackCamOffset];
 					case 'singDOWN':
-						dadcam = [0, 25];
+						dadcam = [0, fallbackCamOffset];
 					default:
 						dadcam = [0, 0];
 				}
 			}
 
-			if (boyfriend.camOffsets.exists(boyfriend.animation.curAnim.name)) {
-				final daCam = boyfriend.camOffsets.get(boyfriend.animation.curAnim.name);
-				bfcam = [daCam[0], daCam[1]];
-			} else {
-				final boyfriendAnim = boyfriend.animation.curAnim.name.split('-');
-				switch(boyfriendAnim[0]) {
-					case 'singLEFT':
-						bfcam = [-25, 0];
-					case 'singRIGHT':
-						bfcam = [25, 0];
-					case 'singUP':
-						bfcam = [0, -25];
-					case 'singDOWN':
-						bfcam = [0, 25];
-					default:
-						bfcam = [0, 0];
+				final boyfriendAnimName = characterAnimationName(boyfriend);
+				if (boyfriend.camOffsets.exists(boyfriendAnimName)) {
+					final daCam = boyfriend.camOffsets.get(boyfriendAnimName);
+					bfcam = [daCam[0], daCam[1]];
+				} else {
+					final boyfriendAnim = boyfriendAnimName.split('-');
+					switch(boyfriendAnim[0]) {
+						case 'singLEFT':
+							bfcam = [-fallbackCamOffset, 0];
+						case 'singRIGHT':
+							bfcam = [fallbackCamOffset, 0];
+						case 'singUP':
+							bfcam = [0, -fallbackCamOffset];
+						case 'singDOWN':
+							bfcam = [0, fallbackCamOffset];
+						default:
+							bfcam = [0, 0];
+					}
 				}
-			}
+				// Imported stages author the camera offsets absolutely; the
+				// classic per-animation camera nudges have no donor equivalent
+				// and would drift the focus off the authored framing.
+				if (psychCameraCompatibilityActive || dad.authoredCamOffsets)
+					dadcam = [0, 0];
+				if (psychCameraCompatibilityActive || boyfriend.authoredCamOffsets)
+					bfcam = [0, 0];
 		}
 
-		if (endingSong)
+		if (endingSong) {
+			// A Psych Function_Stop may keep PlayState alive for an authored
+			// outro. The donor still dispatches onUpdatePost during that hold;
+			// scripts use it to receive Accept and call endSong() again.
+			if (RuntimeSmokeHarness.enabled() && controls.ACCEPT)
+				RuntimeSmokeHarness.markStep('ending-input accept=true scriptProperty='
+					+ compatGetProperty('endingSong'));
+			callAllHScript('updatePost', [elapsed]);
+			callNightmareVision('onUpdatePost', [elapsed]);
+			callCodenameScripts('postUpdate', [elapsed]);
 			return;
+		}
 		if (generatedMusic && PlayState.SONG.notes[curSection] != null) {
 			setAllHaxeVar("mustHit", PlayState.SONG.notes[curSection].mustHitSection);
-			switch(scriptableCamera) {
-				case 'static':
-					camFollow.setPosition(scriptCamPos[0][0], scriptCamPos[0][1]);
-				case 'bf':
-					camFollow.setPosition(boyfriend.getMidpoint().x + bfCamOffset[0] + boyfriend.followCamX + bfcam[0] + scriptCamPos[0][0], boyfriend.getMidpoint().y + bfCamOffset[1] + boyfriend.followCamY + bfcam[1] + scriptCamPos[0][1]);
-				case 'dad':
-					camFollow.setPosition(dad.getMidpoint().x + dadCamOffset[0] + dad.followCamX + dadcam[0]  + scriptCamPos[0][0], dad.getMidpoint().y + dadCamOffset[1] + dad.followCamY + dadcam[1] + scriptCamPos[0][1]);
-				case 'gf':
-					camFollow.setPosition(gf.getMidpoint().x + gf.followCamX + scriptCamPos[0][0], gf.getMidpoint().y + gf.followCamY + scriptCamPos[0][1]);
-				default:
-					if (PlayState.SONG.notes[curSection].mustHitSection)
-						camFollow.setPosition(boyfriend.getMidpoint().x + bfCamOffset[0] + boyfriend.followCamX + bfcam[0], boyfriend.getMidpoint().y + bfCamOffset[1] + boyfriend.followCamY + bfcam[1]);
+			if (forceCamera || (psychCameraCompatibilityActive && isCameraOnForcedPos)) {
+				// the modchart is driving camFollow itself - don't fight it
+				} else if (codenameCameraControlled) {
+					// A Codename position event leaves camFollow mutable by scripts;
+					// it must not be replaced by native section/animation following.
+				} else if (scriptableCamera == 'false' && moveCodenameCamera()) {
+					// Source charts follow their selected actor line across sections.
+				} else if (holdVSliceSectionCamera()) {
+					// V-Slice keeps the last authored focus; section flags own note lanes.
+				} else switch(scriptableCamera) {
+					case 'static':
+						camFollow.setPosition(scriptCamPos[0][0], scriptCamPos[0][1]);
+					case 'bf':
+						var cameraTarget = cameraTargetForActor(boyfriend, 'boyfriend',
+							scriptCamPos[0][0], scriptCamPos[0][1]);
+						camFollow.setPosition(cameraTarget[0], cameraTarget[1]);
+					case 'dad':
+						var cameraTarget = cameraTargetForActor(dad, 'dad',
+							scriptCamPos[0][0], scriptCamPos[0][1]);
+						camFollow.setPosition(cameraTarget[0], cameraTarget[1]);
+					case 'gf':
+						var cameraTarget = cameraTargetForActor(gf, 'gf',
+							scriptCamPos[0][0], scriptCamPos[0][1]);
+						camFollow.setPosition(cameraTarget[0], cameraTarget[1]);
+					default:
+						if (PlayState.SONG.notes[curSection].mustHitSection)
+							setCameraFollowActor(boyfriend, 'boyfriend');
+						else if ((gfSinging || PlayState.SONG.notes[curSection].gfSection == true) && gf != null)
+							setCameraFollowActor(gf, 'gf');
 					else
-						camFollow.setPosition(dad.getMidpoint().x + dadCamOffset[0] + dad.followCamX + dadcam[0], dad.getMidpoint().y + dadCamOffset[1] + dad.followCamY + dadcam[1]);
+						setCameraFollowActor(dad, 'dad');
+				}
+				// playerOneTurn/playerTwoTurn mark the start of a player's turn, so
+			// they fire once when the section changes. Calling them every frame
+			// made ported modcharts spam one-shot effects (Hedgehog Stew added
+			// +0.015 camera zoom every frame until the view was unusable, other
+			// charts retweened the camera or drained health continuously).
+			if (curSection != lastTurnSection) {
+				lastTurnSection = curSection;
+				if (PlayState.SONG.notes[curSection].mustHitSection)
+					callAllHScript("playerOneTurn", []);
+				else
+					callAllHScript("playerTwoTurn", []);
 			}
-			if (PlayState.SONG.notes[curSection].mustHitSection) {
-				callAllHScript("playerOneTurn", []);
-			} else {
-				callAllHScript("playerTwoTurn", []);
-				vocals.volume = 1;
+			if (!smokeFirstBfFocusCaptured && RuntimeSmokeHarness.enabled()
+				&& PlayState.SONG.notes[curSection].mustHitSection) {
+				smokeFirstBfFocusCaptured = true;
+				runtimeSmokeCameraSnapshot('first-bf-focus');
 			}
+			if (!PlayState.SONG.notes[curSection].mustHitSection)
+				setVocalsVolume(1);
 			var currentIconState = "";
 			if (opponentPlayer) {
 				if (healthBar.percent > 80)
@@ -2629,26 +18035,38 @@ class PlayState extends MusicBeatState {
 				if (poisonTimes != 0)
 					currentIconState = "Being Poisoned";
 			}
+			// these hold modifiers drain per frame; frameRateScale keeps their
+			// authored 60 FPS rate real-second based instead of scaling with the
+			// user's fps cap
 			if (supLove)
-				health += loveMultiplier * (opponentPlayer ? -1 : 1) / 600000;
+				health += loveMultiplier * (opponentPlayer ? -1 : 1) / 600000 * frameRateScale(elapsed);
 
 			if (poisonExr)
-				health -= poisonMultiplier * (opponentPlayer ? -1 : 1)/ 700000;
+				health -= poisonMultiplier * (opponentPlayer ? -1 : 1)/ 700000 * frameRateScale(elapsed);
 
 			playingAsRpc = "Playing as " + (opponentPlayer ? player2Icon : player1Icon) + " | " + currentIconState;
 		}
 
-		if (camZooming) {
-			FlxG.camera.zoom = FlxMath.lerp(defaultCamZoom, FlxG.camera.zoom, 0.95);
-			camHUD.zoom = FlxMath.lerp(1, camHUD.zoom, 0.95);
+		// Intro/cutscene scripts own the camera tween. Gameplay's beat decay must
+		// not pull a cinematic zoom back toward the song default while the
+		// cutscene is still running.
+		if (camZooming && !inCutscene) {
+			ensureGameplayCameraBinding();
+			camGame.zoom = FlxMath.lerp(gameplayZoomBase(), camGame.zoom, Math.pow(0.95, camZoomDecay));
+			camHUD.zoom = FlxMath.lerp(defaultHudZoom, camHUD.zoom, Math.pow(0.95, camZoomDecay));
 		}
+		// Beat decay runs after MusicBeatState.update(), which is also where
+		// note hooks may change zoom. Target-style intro events must survive that
+		// pass; ordinary additive pulses have no held targets and are untouched.
+		holdCameraZoomTargets();
 
 		FlxG.watch.addQuick("beatShit", curBeat);
 		FlxG.watch.addQuick("stepShit", curStep);
 		// better streaming of shit
 
 		// RESET = Quick Game Over Screen
-		if (controls.RESET && !duoMode && !inCutscene) {
+		if (controls.RESET && !duoMode && !inCutscene && !compatEventVideoControlsDisabled
+			&& !hxcVideoControlsDisabled) {
 			if (opponentPlayer)
 				health = 2;
 			else
@@ -2673,60 +18091,71 @@ class PlayState extends MusicBeatState {
 				setAllHaxeVar("paused", paused);
 
 				if (curCamPos != null) curCamPos.cancel();
-
-				vocals.stop();
-				FlxG.sound.music.stop();
-			
-				if (inALoop) {
-					FlxG.resetState();
-				} else {
-					// 1 / 1000 chance for Gitaroo Man easter egg
-					if (FlxG.random.bool(0.1)) {
-						// gitaroo man easter egg
-						LoadingState.loadAndSwitchState(new GitarooPause());
-					} else
-						openSubState(new GameOverSubstate(getHaxeActor("bf")));
-					#if windows
-					// Game Over doesn't get his own variable because it's only used here
-					DiscordClient.changePresence("GAME OVER -- "
-						+ SONG.song
-						+ " ("
-						+ storyDifficultyText
-						+ ") "
-						+ Ratings.GenerateLetterRank(accuracy),
-						"\nAcc: "
-						+ HelperFunctions.truncateFloat(accuracy, 2)
-						+ "% | Score: "
-						+ songScore
-						+ " | Misses: "
-						+ misses, iconRPC, null, null,
-						playingAsRpc);
-					#end
+				psychGameOverTransitionPending = true;
+				var deathDelay = psychGameOverDeathDelay();
+				if (deathDelay > 0) {
+					new FlxTimer().start(deathDelay, function(_:FlxTimer) runPsychGameOverTransition());
+					return;
 				}
+				runPsychGameOverTransition();
 			} else if (!practiceDied && practiceMode) {
 				practiceDied = true;
 				practiceDieIcon.visible = true;
 			}
 		}
-		if (unspawnNotes[0] != null) {
-			if (unspawnNotes[0].strumTime - Conductor.songPosition < 1500) {
+		if (modManager != null) modManager.updateTimeline(curDecStep);
+		// Drain the ready queue: at high playback rates a single frame can
+		// cross several notes, chords, and sustain segments.
+		while (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead) {
 				var dunceNote:Note = unspawnNotes[0];
-				notes.add(dunceNote);
-
-				callAllHScript("noteLoaded", [dunceNote]);
-
+				bindCodenameNoteLine(dunceNote);
 				var index:Int = unspawnNotes.indexOf(dunceNote);
-				unspawnNotes.splice(index, 1);
-			}
+				if (index >= 0)
+					unspawnNotes.splice(index, 1);
+
+				if (callNightmareVision('onSpawnNote', [dunceNote]) == NightmareVisionScriptGroup.STOP_FUNC) {
+					dunceNote.kill();
+					dunceNote.destroy();
+					continue;
+				}
+
+				// HXC note handlers run before a note becomes active.  The shared
+				// payload preserves the live Note under `event.note` and lets a
+				// handler cancel or kill it without chart/donor edits.
+				var incomingEvent = EngineCompat.hxcNoteIncomingPayload(dunceNote);
+				// Ordinary HScript/Psych hooks retain their broadcast behavior. HXC
+				// callbacks go through the actor-local route so a BF companion cannot
+				// mutate an opponent note (or vice versa) while it is merely entering
+				// the active queue.
+				callAllHScript("noteIncoming", [dunceNote, incomingEvent], true);
+				callHxcNoteHScript("noteIncoming", [dunceNote, incomingEvent]);
+				EngineCompat.hxcApplyNoteCallbackPayload(incomingEvent);
+				if (incomingEvent.eventCanceled == true || incomingEvent.canceled == true
+					|| incomingEvent.cancelled == true || !dunceNote.alive) {
+					dunceNote.kill();
+					dunceNote.active = false;
+					dunceNote.visible = false;
+					dunceNote.destroy();
+				} else {
+					notes.add(dunceNote);
+					if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.spawn(dunceNote);
+					callAllHScript("noteLoaded", [dunceNote]);
+					callNightmareVision('onSpawnNotePost', [dunceNote]);
+				}
 		}
 
+		for (line in codenameInputLines) if (line != null) line.botplay = demoMode;
 		if (generatedMusic) {
 			notes.forEachAlive(function(daNote:Note) {
+				daNote.updateAutoHit(Conductor.songPosition);
+				if (updateCodenameNoteLifetime(daNote)) return;
+				var sourceVisible = daNote.codenameInputLine == null
+					|| daNote.codenameInputLine.visible;
 				if (daNote.y > FlxG.height) {
 					daNote.active = false;
 					daNote.visible = false;
 				} else {
-					daNote.visible = !invsNotes;
+					daNote.visible = !invsNotes && sourceVisible;
 					daNote.active = true;
 				}
 				var coolMustPress = daNote.mustPress;
@@ -2735,22 +18164,28 @@ class PlayState extends MusicBeatState {
 				if (opponentPlayer)
 					coolMustPress = !daNote.mustPress;
 
-				var daNoteStrums = daNote.mustPress ? playerStrums : enemyStrums;
+				var daNoteStrums = getNoteStrumline(daNote);
+				if (daNoteStrums == null) return;
+				alignCodenameNoteToReceptor(daNote, daNoteStrums);
+				var noteScrollSpeed = FlxMath.roundDecimal(dynamicScrollTarget > 0 ? effectiveScrollSpeed
+					: (daNoteStrums.hasScrollSpeedOverride() ? daNoteStrums.scrollSpeed
+						: (FlxG.save.data.scrollSpeed == 1 ? daScrollSpeed : FlxG.save.data.scrollSpeed)), 2);
 							
 				if (downscroll) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y
 						+
-						0.45 * (Conductor.songPosition - daNote.strumTime) * FlxMath.roundDecimal(FlxG.save.data.scrollSpeed == 1 ? daScrollSpeed : FlxG.save.data.scrollSpeed,
-							2));
+						0.45 * (Conductor.songPosition - daNote.strumTime) * noteScrollSpeed);
 
 					if (daNote.isSustainNote) {
 						// Remember = minus makes notes go up, plus makes them go down
-						if (daNote.animation.curAnim.name.endsWith('end') && daNote.prevNote != null)
+						var noteAnimationName = daNote.animation != null && daNote.animation.curAnim != null
+							? daNote.animation.curAnim.name : '';
+						if (noteAnimationName.endsWith('end') && daNote.prevNote != null)
 							daNote.y += daNote.prevNote.height;
 						else
 							daNote.y += daNote.height / 2;
 							
-						if ((daNote.wasGoodHit || daNote.prevNote.wasGoodHit && !daNote.canBeHit)
+						if (!daNote.noSustainClip && (daNote.wasGoodHit || daNote.prevNote.wasGoodHit && !daNote.canBeHit)
 							&& (daNote.y - daNote.offset.y * daNote.scale.y + daNote.height) >= (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y + Note.swagWidth / 2)
 							&& (!daNote.mustPress || (daNote.wasGoodHit || (daNote.prevNote.wasGoodHit && !daNote.canBeHit))))
 						{
@@ -2767,12 +18202,11 @@ class PlayState extends MusicBeatState {
 					}
 				} else {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y
-						- 0.45 * (Conductor.songPosition - daNote.strumTime) * FlxMath.roundDecimal(FlxG.save.data.scrollSpeed == 1 ? daScrollSpeed : FlxG.save.data.scrollSpeed,
-							2));
+						- 0.45 * (Conductor.songPosition - daNote.strumTime) * noteScrollSpeed);
 					if (daNote.isSustainNote) {
 						daNote.y -= daNote.height / 2;
 
-						if ((daNote.wasGoodHit || daNote.prevNote.wasGoodHit && !daNote.canBeHit)
+						if (!daNote.noSustainClip && (daNote.wasGoodHit || daNote.prevNote.wasGoodHit && !daNote.canBeHit)
 							&& daNote.y + daNote.offset.y * daNote.scale.y <= (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y + Note.swagWidth / 2)
 							&& (!daNote.mustPress || (daNote.wasGoodHit || (daNote.prevNote.wasGoodHit && !daNote.canBeHit))))
 						{
@@ -2789,9 +18223,9 @@ class PlayState extends MusicBeatState {
 				}
 					/*
 					if (downscroll) {
-						daNote.y = (strumLine.y + (Conductor.songPosition - daNote.strumTime) * (0.45 * FlxMath.roundDecimal(daScrollSpeed, 2)));
+						daNote.y = (strumLine.y + (Conductor.songPosition - daNote.strumTime) * (0.45 * noteScrollSpeed));
 					} else {
-						daNote.y = (strumLine.y - (Conductor.songPosition - daNote.strumTime) * (0.45 * FlxMath.roundDecimal(daScrollSpeed, 2)));
+						daNote.y = (strumLine.y - (Conductor.songPosition - daNote.strumTime) * (0.45 * noteScrollSpeed));
 					}
 					
 
@@ -2811,31 +18245,49 @@ class PlayState extends MusicBeatState {
 				
 				
 
-				if (!daNote.mustPress && daNote.wasGoodHit && ((!duoMode && !opponentPlayer) || demoMode)) {
-					camZooming = true;
-					dad.altAnim = "";
-					dad.altNum = 0;
-					if (daNote.altNote) {
-						dad.altAnim = '-alt';
-						dad.altNum = 1;
+				if (!daNote.mustPress && daNote.wasGoodHit && (daNote.codenameInputLine != null
+					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : daNote.isAutoPlayed())) {
+					if (daNote.codenameInputLine != null) {
+						if (!dispatchHxcAutoNoteHit(daNote, false)) return;
+						hitCodenameNote(daNote, true);
+						return;
 					}
-					dad.altNum = daNote.altNum;
+					// Computer notes are still real note hits for imported HXC
+					// modules. Dispatch before native singing/removal, with the
+					// perfect judgement that autoplay produced.
+					if (!dispatchHxcAutoNoteHit(daNote, false))
+						return;
+					// Psych's GF Sing noteType is a note-local actor route.  Do not
+					// toggle the global GF-sing event flag: simultaneous charts can
+					// mix ordinary opponent notes and GF notes in one section.
+					var singer = daNote.forceGfSing && gf != null ? gf : getOpponentSinger();
+					camZooming = true;
+					if (daNote.codenameInputLine == null) {
+					singer.altAnim = "";
+					singer.altNum = 0;
+					if (daNote.altNote) {
+						singer.altAnim = '-alt';
+						singer.altNum = 1;
+					}
+					singer.altNum = daNote.altNum;
 					if (SONG.notes[curSection] != null) {
 						if ((SONG.notes[curSection].altAnimNum > 0 && SONG.notes[curSection].altAnimNum != null) || SONG.notes[curSection].altAnim)
 							// backwards compatibility shit
 							if (SONG.notes[curSection].altAnimNum == 1 || SONG.notes[curSection].altAnim || daNote.altNote)
-								dad.altNum = 1;
+								singer.altNum = 1;
 							else if (SONG.notes[curSection].altAnimNum != 0)
-								dad.altNum = SONG.notes[curSection].altAnimNum;
+								singer.altNum = SONG.notes[curSection].altAnimNum;
 					}
 					
-					if (dad.altNum == 1)
-						dad.altAnim = '-alt';
-					else if (dad.altNum > 1)
-						dad.altAnim = '-alt' + dad.altNum;
+					if (singer.altNum == 1)
+						singer.altAnim = '-alt';
+					else if (singer.altNum > 1)
+						singer.altAnim = '-alt' + singer.altNum;
+					}
 					callAllHScript("playerTwoSing", []);
+					callCutsceneOpponentSing();
 					// go wild <3
-					if (daNote.shouldBeSung) {
+					if (daNote.aiShouldHit || daNote.shouldBeSung) {
 						final singAnim = currentKey.getSing(daNote.noteData);
 						var singNum = -1;
 						switch(singAnim) {
@@ -2848,23 +18300,26 @@ class PlayState extends MusicBeatState {
 							case 'singRIGHT':
 								singNum = 3;
 						}
-						if (!modernSustain || !daNote.isSustainNote || !dad.animation.curAnim.name.startsWith(singAnim)) {
-							if (singNum == -1)
-								dad.playAnim(singAnim, true);
-							else
-								dad.sing(singNum, false, daNote.altNum);
+						if (!singCodenameNoteActors(daNote, daNote.noteData, false, daNote.altNum)) {
+							if (!modernSustain || !daNote.isSustainNote || !Character.animationName(singer).startsWith(singAnim)) {
+								if (singNum == -1)
+									singer.playAnim(singAnim, true);
+								else
+									singer.sing(singNum, false, daNote.altNum);
+							}
+							spawnCrossFade(singer, daNote);
 						}
 
-						if (daNote.oppntSing != null)
+						if (daNote.codenameInputLine == null && daNote.oppntSing != null)
 							boyfriend.sing(daNote.oppntSing.direction, daNote.oppntSing.miss, daNote.oppntSing.alt);
 
-						dad.holdTimer = 0;
+						if (daNote.codenameInputLine == null) singer.holdTimer = 0;
 					}
 
-					if (!daNote.dontStrum)
-						enemyStrums.forEach(function(spr:Strumline.StrumNote) {
+					if (daNote.aiShouldHit || !daNote.dontStrum)
+						enemyStrums.forEachReceptor(function(spr:Strumline.StrumNote) {
 							if (Math.abs(daNote.noteData) == spr.ID) {
-								spr.playAnim('confirm', true);
+								spr.playConfirm(daNote.isSustainNote, true);
 								sustain2(spr.ID, spr, daNote);
 							}
 						});
@@ -2873,15 +18328,25 @@ class PlayState extends MusicBeatState {
 						callHscript(daNote.noteHit, [daNote], "modchart");
 
 					if (SONG.needsVoices)
-						vocals.volume = 1;
+						setVocalsVolume(1);
 
 					daNote.kill();
 					notes.remove(daNote, true);
 					daNote.destroy();
-				} else if (daNote.mustPress && daNote.wasGoodHit && (opponentPlayer || demoMode)) {
+					return; // This note is gone; do not position it or judge it again.
+				} else if (daNote.mustPress && daNote.wasGoodHit && (daNote.codenameInputLine != null
+					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : (opponentPlayer || demoMode))) {
+					if (daNote.codenameInputLine != null) {
+						if (!dispatchHxcAutoNoteHit(daNote, true)) return;
+						hitCodenameNote(daNote, true);
+						return;
+					}
+					if (!dispatchHxcAutoNoteHit(daNote, true))
+						return;
+					applyDemoHealth(daNote);
 					camZooming = true;
 					callAllHScript("playerOneSing", []);
-					if (daNote.shouldBeSung) {
+					if (daNote.aiShouldHit || daNote.shouldBeSung) {
 						final singAnim = currentKey.getSing(daNote.noteData % Note.NOTE_AMOUNT);
 						var singNum = -1;
 						switch(singAnim) {
@@ -2895,25 +18360,28 @@ class PlayState extends MusicBeatState {
 								singNum = 3;
 						}
 
-						if (!modernSustain || !daNote.isSustainNote || !boyfriend.animation.curAnim.name.startsWith(singAnim)) {
-							if (singNum == -1)
-								boyfriend.playAnim(singAnim, true);
-							else
-								boyfriend.sing(singNum, false, daNote.altNum);
+						if (!singCodenameNoteActors(daNote, daNote.noteData, false, daNote.altNum)) {
+							if (!modernSustain || !daNote.isSustainNote || !Character.animationName(boyfriend).startsWith(singAnim)) {
+								if (singNum == -1)
+									boyfriend.playAnim(singAnim, true);
+								else
+									boyfriend.sing(singNum, false, daNote.altNum);
+							}
+							spawnCrossFade(boyfriend, daNote);
 						}
 
-						if (daNote.oppntSing != null) {
+						if (daNote.codenameInputLine == null && daNote.oppntSing != null) {
 							dad.sing(Std.int(Math.abs(daNote.oppntSing.direction % 4)), daNote.oppntSing.miss, daNote.oppntSing.alt);
 							// don't strum it because there isn't actually a note
 						}
 
-						boyfriend.holdTimer = 0;
+						if (daNote.codenameInputLine == null) boyfriend.holdTimer = 0;
 					}
 
-					if (!daNote.dontStrum)
-						playerStrums.forEach(function(spr:Strumline.StrumNote) {
+					if (daNote.aiShouldHit || !daNote.dontStrum)
+						playerStrums.forEachReceptor(function(spr:Strumline.StrumNote) {
 							if (Math.abs(daNote.noteData) == spr.ID) {
-								spr.playAnim('confirm', true);
+								spr.playConfirm(daNote.isSustainNote, true);
 								sustain2(spr.ID, spr, daNote);
 							}
 						});
@@ -2922,17 +18390,18 @@ class PlayState extends MusicBeatState {
 						callHscript(daNote.noteHit, [daNote], "modchart");
 
 					if (SONG.needsVoices)
-						vocals.volume = 1;
+						setVocalsVolume(1);
 
 					daNote.kill();
 					notes.remove(daNote, true);
 					daNote.destroy();
+					return; // This note is gone; do not position it or judge it again.
 				}
 				var neg = downscroll ? -1 : 1;
 				if (drunkNotes) {
-					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * ((Math.sin(songTime/400)/6)+0.5) * noteSpeed * FlxMath.roundDecimal(daScrollSpeed, 2));
+					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * ((Math.sin(songTime/400)/6)+0.5) * noteSpeed * noteScrollSpeed);
 				} else {
-					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * (noteSpeed * FlxMath.roundDecimal(daScrollSpeed, 2)));
+					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * (noteSpeed * noteScrollSpeed));
 				}
 				if (vnshNotes)
 					daNote.alpha = FlxMath.remapToRange(neg*daNote.y, neg*daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y, FlxG.height, 0, 1);
@@ -2943,6 +18412,12 @@ class PlayState extends MusicBeatState {
 					else
 						daNote.x = snekNumber+(Note.swagWidth*daNote.noteData)+50;
 				}
+				if (daNote.codenameInputLine != null) {
+					var travelDistance = (daNote.strumTime - Conductor.songPosition) * 0.45 * noteScrollSpeed;
+					applyCodenameNotePresentation(daNote, daNoteStrums, travelDistance);
+				}
+				RuntimeSmokeHarness.markLiveCustomNoteVisual(daNote,
+					daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))]);
 				// WIP interpolation shit? Need to fix the pause issue
 				// daNote.y = (strumLine.y - (songTime - daNote.strumTime) * (0.45 * PlayState.SONG.speed));
 
@@ -2952,12 +18427,18 @@ class PlayState extends MusicBeatState {
 					daNote.noteStrum = null;
 				}
 
-				if (((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll)) && !daNote.dontCountNote) {
-					if (daNote.tooLate || !daNote.wasGoodHit) {
+				if ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll)) {
+					if (daNote.codenameInputLine != null) {
+						// Source line lifetime is decided above by the hit-sustain
+						// duration and tooLate branches, not by screen clipping.
+						return;
+					}
+					if (!daNote.isAutoPlayed() && !daNote.dontCountNote && !daNote.ignoreNote
+						&& (daNote.tooLate || !daNote.wasGoodHit)) {
 						// always show the graphic
 						noteMiss(daNote.noteData, daNote.mustPress, daNote, false);
 						if (!OptionsHandler.options.dontMuteMiss)
-							vocals.volume = 0;
+							setVocalsVolume(0);
 						if (poisonPlus && poisonTimes < 3) {
 							poisonTimes += 1;
 							var poisonPlusTimer = new FlxTimer().start(0.5, function(tmr:FlxTimer) {
@@ -2984,22 +18465,107 @@ class PlayState extends MusicBeatState {
 			});
 		}
 
-		if (!inCutscene && !demoMode) {
+		if (!inCutscene && !demoMode && !disableKeys
+			&& !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			// is that why it was crashing
-			if (!opponentPlayer)
-				keyShit(true);
-			if (duoMode || opponentPlayer)
-				keyShit(false);
+			if (RuntimeSmokeHarness.playerHitsEnabled())
+				runtimeSmokePlayerHits();
+			else if (codenameInputLines.length > 0) {
+				for (line in codenameInputLines) if (line != null && line.canProcessInput()) {
+					var plan = getCodenameActorPlan();
+					var role:String = plan == null ? '' : Reflect.field(plan.lines[line.lineIndex], 'role');
+					keyShit(role == 'player', line);
+				}
+				// An authored line cannot consume an untagged native/Psych note.
+				// Only run the old bank when such notes are actually present, avoiding
+				// an extra ghost miss on every source-only key press.
+				if (!opponentPlayer && hasUntaggedInputNotes(true)) keyShit(true);
+				if ((duoMode || opponentPlayer) && hasUntaggedInputNotes(false)) keyShit(false);
+			} else {
+				if (!opponentPlayer) keyShit(true);
+				if (duoMode || opponentPlayer) keyShit(false);
+			}
 		}
-			
+
+		updateHighwayDim();
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-post-super', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
+		// Psych's onUpdatePost runs after native note/HUD positioning. Running
+		// it beside onUpdate lets the native icon pass overwrite donor layout
+		// in the same frame, so keep this as the actual post-update phase.
+		callAllHScript('updatePost', [elapsed]);
+		callNightmareVision('onUpdatePost', [elapsed]);
+		callCodenameScripts('postUpdate', [elapsed]);
+		if (smokeProfileAt > 0)
+			RuntimeSmokeHarness.profileSection('play-script-post-update', haxe.Timer.stamp() - smokeProfileAt);
+		if (demoSongFinished && !endingSong) {
+			demoSongFinished = false;
+			RuntimeSmokeHarness.markNaturalSongEnd(SONG == null ? '' : SONG.song,
+				songLength, Conductor.songPosition, songEventIndex, songEvents.length,
+				dueSongEventCount(songLength));
+			endSong();
+		}
 
 		#if debug
 		if (FlxG.keys.justPressed.ONE)
 			endSong();
 		#end
 	}
+
+	/** Drive the real hit route only in an explicitly requested native smoke. */
+	function runtimeSmokePlayerHits():Void {
+		if (startingSong || paused || !generatedMusic || notes == null)
+			return;
+		// goodNoteHit removes notes, so take a snapshot before dispatching them.
+		for (note in notes.members.copy())
+			if (note != null && note.alive && note.mustPress && !note.wasGoodHit
+				&& note.canBeHit && !note.tooLate && note.canAutoHit()
+				&& note.strumTime <= Conductor.songPosition)
+				goodNoteHit(note, true);
+	}
+
+	// keeps the highway dim glued behind the player's arrows: re-reads the
+	// option every frame (the pause menu edits options) and tracks the
+	// strums' bounds so midscroll/solo layouts, key-amount resizes and
+	// script/event strum moves all stay covered. being in camHUD means
+	// camera zoom/pan events carry it along automatically
+	function updateHighwayDim() {
+		if (highwayDimSprite == null)
+			return;
+		var dim = FlxMath.bound(OptionsHandler.options.highwayDim, 0, 0.9);
+		highwayDimSprite.visible = dim > 0;
+		if (!highwayDimSprite.visible)
+			return;
+		highwayDimSprite.alpha = dim;
+		var minX:Float = Math.POSITIVE_INFINITY;
+		var maxX:Float = Math.NEGATIVE_INFINITY;
+		for (strum in playerStrums.members) {
+			if (strum == null)
+				continue;
+			minX = Math.min(minX, strum.x);
+			maxX = Math.max(maxX, strum.x + strum.width);
+		}
+		if (minX > maxX)
+			return; // no strums (removed by a script) - leave the last rect
+		// overdraw on y so HUD zoom-out events don't reveal the edges
+		highwayDimSprite.x = minX - 12;
+		highwayDimSprite.y = -FlxG.height;
+		highwayDimSprite.scale.set(maxX - minX + 24, FlxG.height * 3);
+	}
+	function applyDemoHealth(note:Note):Void {
+		if (!demoMode || !note.mustPress || !note.canAutoHit()) return;
+		var gain = note.getHealth('sick') * (note.isSustainNote ? 0.2 : 1);
+		health = Math.min(2, health + gain);
+	}
+
 	function sustain2(strum:Int, spr:Strumline.StrumNote, note:Note):Void {
-		var length:Float = note.sustainLength;
+		// Keep receptor timing on the same tap/hold boundary as note
+		// generation, including notes supplied by scripts or charting tools.
+		var length:Float = normalizeSustainLength(note.sustainLength, Conductor.stepCrochet);
+		note.sustainLength = length;
 		/*if (length > 0)
 		{
 			if (opponentPlayer)
@@ -3010,16 +18576,41 @@ class PlayState extends MusicBeatState {
 
 		var bps:Float = Conductor.bpm / 60;
 		var spb:Float = 1 / bps;
+		var confirmationGeneration = spr.confirmationGeneration;
 
-		if (!note.isSustainNote) {
-			new FlxTimer().start(length == 0 ? 0.2 : (length / Conductor.crochet * spb) + 0.1, function(tmr:FlxTimer) {
-				if (spr.animation.curAnim.finished) {
-					spr.playAnim('static', true);
-				} else {
-					tmr.reset(0.1);
-				}
+		// Generated sustain pieces can arrive after the head's authored duration
+		// because the legacy chart rule rounds their count up to a whole step.
+		// Keep the head confirmation alive through the latest possible rounded
+		// segment, then let the segment's own timer finish the final animation.
+		var resetDelay:Float = length == 0 ? 0.2
+			: ((length + Conductor.stepCrochet) / Conductor.crochet * spb) + 0.1;
+		if (note.isSustainNote) {
+			var segmentSpacing = Conductor.stepCrochet;
+			if (note.prevNote != null && note.prevNote != note) {
+				var previousSpacing = note.strumTime - note.prevNote.strumTime;
+				if (Math.isFinite(previousSpacing) && previousSpacing > 0)
+					segmentSpacing = previousSpacing;
+			}
+			resetDelay = Math.max(0.2, Math.max(segmentSpacing / 1000,
+				length == 0 ? 0 : length / Conductor.crochet * spb) + 0.1);
+		}
 
-				/*if (opponentPlayer) {
+		new FlxTimer().start(resetDelay, function(tmr:FlxTimer) {
+			// A newer note may have confirmed on this receptor while this timer
+			// waited for the previous animation. Stale timers cannot end it.
+			if (!spr.exists || spr.confirmationGeneration != confirmationGeneration
+				|| spr.animation == null || spr.animation.curAnim == null)
+				return;
+			var animationName = spr.animation.curAnim.name;
+			if (animationName != 'confirm' && animationName != 'confirmHold')
+				return;
+			if (spr.animation.curAnim.finished) {
+				spr.playAnim('static', true);
+			} else {
+				tmr.reset(0.1);
+			}
+
+			/*if (opponentPlayer) {
 					if (!strumming1[strum])
 					{
 						spr.animation.play("static", true);
@@ -3039,17 +18630,148 @@ class PlayState extends MusicBeatState {
 						strumming2[strum] = false;
 						spr.animation.play("static", true);
 					}
-				}*/
-			});
+			}*/
+		});
+	}
+	/** A fallback ending is an overlay over the selected scene. Codename may
+	 * have appended gameplay cameras after the host overlay during play. Move
+	 * only this camera when the provider claims the ending; preserve the source
+	 * scene's camera order, defaults, and main-camera selection. */
+	function promoteCompatEndingOverlay():Void {
+		if (camOther == null) return;
+		var cameras = FlxG.cameras;
+		if (cameras.list.indexOf(camOther) != cameras.list.length - 1) {
+			var main = FlxG.camera;
+			@:privateAccess var wasDefault = cameras.defaults.indexOf(camOther) >= 0;
+			if (cameras.list.indexOf(camOther) >= 0) cameras.remove(camOther, false);
+			cameras.add(camOther, wasDefault);
+			FlxG.camera = main;
+		}
+		if (RuntimeSmokeHarness.enabled()) {
+			for (scope in defaultPsychGlobalScopes) {
+				var interp = hscriptStates.get(scope);
+				if (interp == null) continue;
+				var globals:Dynamic = {};
+				for (key in interp.variables.keys()) {
+					var value:Dynamic = interp.variables.get(key);
+					if (Std.isOfType(value, String) || Std.isOfType(value, Bool)
+						|| Std.isOfType(value, Int) || Std.isOfType(value, Float))
+						Reflect.setField(globals, key, value);
+				}
+				RuntimeSmokeHarness.markStep('psych-global-provider:snapshot ' + haxe.Json.stringify({
+					scope:scope, globals:globals, score:songScore, misses:misses, combo:combo,
+					accuracy:accuracy, difficulty:storyDifficultyText,
+					overlayIndex:cameras.list.indexOf(camOther), cameraCount:cameras.list.length}));
+			}
 		}
 	}
-	function endSong():Void {
+
+	function endSong(?force:Bool = false):Void {
+		resetDemoPlaybackRate();
+		if (force) {
+			#if cpp
+			stopCompatEventVideo();
+			#end
+			endingSong = true;
+			endForReal();
+			return;
+		}
 		endingSong = true;
+		var codenameSongEndEvent = new CodenameGameEvent();
+		callCodenameEvent('onSongEnd', codenameSongEndEvent);
+		if (codenameSongEndEvent.cancelled) {
+			endingSong = false;
+			return;
+		}
+		// HXC end-song callbacks cancel the first native transition while they
+		// show an outro/dialogue. A later endSong(true) is the explicit handoff
+		// from that callback and bypasses the cancellation gate.
+		var canPauseBeforeEnd = canPause;
+		// Psych closes the gameplay pause gate before dispatching onEndSong.
+		// Keep the same state while a results provider owns this PlayState so
+		// Enter cannot open the native pause menu over its result screen.
+		canPause = false;
+		if (callNightmareVision('onEndSong', []) == NightmareVisionScriptGroup.STOP_FUNC) {
+			selectedCompatEndingClaimed = true;
+			useVictoryScreen = false;
+			return;
+		}
+		var songEndEvent = EngineCompat.hxcSongEndPayload(Conductor.songPosition, songLength);
+		var songEndResults:Array<Dynamic> = [];
+		callAllHScript('songEnd', [songEndEvent], false, songEndResults);
+		#if cpp
+		stopCompatEventVideo();
+		#end
+		var selectedEventCancelled = songEndEvent.eventCanceled == true
+			|| songEndEvent.canceled == true || songEndEvent.cancelled == true;
+		var selectedCallbackStopped = EngineCompat.anyFunctionStop(songEndResults);
+		var selectedDisposition = PsychEndSongLifecycle.selectedDisposition(
+			selectedEventCancelled, selectedCallbackStopped);
+		if (RuntimeSmokeHarness.enabled())
+			RuntimeSmokeHarness.markStep('ending-selected result=' + selectedDisposition
+				+ ' stopped=' + selectedCallbackStopped + ' cancelled=' + selectedEventCancelled
+				+ ' callbacks=' + [for (value in songEndResults) Std.string(value)].join(','));
+		if (selectedDisposition != PsychEndSongLifecycle.CONTINUE_NATIVE) {
+			if (defaultPsychGlobalScopes.length > 0) {
+				selectedCompatEndingClaimed = true;
+				useVictoryScreen = false;
+			}
+			if (selectedDisposition == PsychEndSongLifecycle.RELEASE_FOR_OUTRO) {
+				endingSong = false;
+				canPause = canPauseBeforeEnd;
+			} else {
+				// Function_Stop owns the native end gate until a later endSong()
+				// call. Keep beat/step hooks stopped during the script's screen.
+				endingSong = true;
+				canPause = false;
+			}
+			return;
+		}
+		// A configured global results provider is the fallback for an ending
+		// that the selected mod did not claim. Its Lua endSong() later re-enters
+		// this gate after the screen closes. Do not show the native victory screen
+		// behind a provider which has taken ownership of this ending.
+		var globalResults:Array<Dynamic> = [];
+		if (!selectedCompatEndingClaimed) {
+			for (scope in defaultPsychGlobalScopes) {
+				if (!hscriptStates.exists(scope)) continue;
+				var callbackName = '<missing>';
+				var providerInterp = hscriptStates.get(scope);
+				if (providerInterp != null)
+					for (candidate in EngineCompat.callbackNames('songEnd'))
+						if (providerInterp.variables.exists(candidate)
+							&& providerInterp.variables.get(candidate) != null) {
+							callbackName = candidate;
+							break;
+						}
+				RuntimeSmokeHarness.markStep('psych-global-provider:callback-enter scope=' + scope
+						+ ' hook=' + callbackName + ' endingSong=' + endingSong + ' canPause=' + canPause);
+				var callbackInvoked = callHscript('songEnd', [songEndEvent], scope, true, globalResults);
+				var returnedValues = [for (value in globalResults) Std.string(value)].join(',');
+				RuntimeSmokeHarness.markStep('psych-global-provider:callback-exit scope=' + scope
+					+ ' invoked=' + callbackInvoked + ' returned=' + returnedValues);
+			}
+		}
+		var providerEventCancelled = songEndEvent.eventCanceled == true
+			|| songEndEvent.canceled == true || songEndEvent.cancelled == true;
+		var providerCallbackStopped = EngineCompat.anyFunctionStop(globalResults);
+		var providerDisposition = PsychEndSongLifecycle.providerDisposition(
+			providerEventCancelled, providerCallbackStopped);
+		if (providerDisposition != PsychEndSongLifecycle.CONTINUE_NATIVE) {
+			useVictoryScreen = false;
+			promoteCompatEndingOverlay();
+			// The provider screen lives inside this PlayState. Keep native gameplay
+			// hooks and pause input gated until its later endSong() handoff.
+			endingSong = true;
+			canPause = false;
+			return;
+		}
 		canPause = false;
 		FlxG.sound.music.volume = 0;
-		vocals.volume = 0;
-		vocals.pause();
-		trace(vocals.getActualVolume());
+		setVocalsVolume(0);
+		pauseVocals();
+		trace(getVocalsActualVolume());
+		if (runPsychStageEndCallback()) return;
 		var dialogSuffix = "-end";
 		if (OptionsHandler.options.stressTankmen) {
 			dialogSuffix += "-shit";
@@ -3081,15 +18803,17 @@ class PlayState extends MusicBeatState {
 				filename = 'assets/images/custom_chars/' + SONG.player2 + '/' + SONG.song.toLowerCase() + 'Dialog${dialogSuffix}.txt';
 			}
 			// if no player dialog, use default
-		} else if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialog-end.txt')) {
-			filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialog-end.txt';
-			if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialog${dialogSuffix}.txt')) {
-				filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialog${dialogSuffix}.txt';
+		} else if (FNFAssets.exists(currentSongDataPath('dialog-end.txt'))) {
+			filename = currentSongDataPath('dialog-end.txt');
+			var songDialogVariant = currentSongDataPath('dialog' + dialogSuffix + '.txt');
+			if (FNFAssets.exists(songDialogVariant)) {
+				filename = songDialogVariant;
 			}
-		} else if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialogue-end.txt')) {
-			filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialogue-end.txt';
-			if (FNFAssets.exists('assets/data/' + SONG.song.toLowerCase() + '/dialogue${dialogSuffix}.txt')) {
-				filename = 'assets/data/' + SONG.song.toLowerCase() + '/dialogue${dialogSuffix}.txt';
+		} else if (FNFAssets.exists(currentSongDataPath('dialogue-end.txt'))) {
+			filename = currentSongDataPath('dialogue-end.txt');
+			var songDialogueVariant = currentSongDataPath('dialogue' + dialogSuffix + '.txt');
+			if (FNFAssets.exists(songDialogueVariant)) {
+				filename = songDialogueVariant;
 			}
 		}
 		var goodDialog:String;
@@ -3112,8 +18836,12 @@ class PlayState extends MusicBeatState {
 		
 	}
 	function endForReal() {
+		psychStageCutsceneEnding = false;
+		clearHxcVignette();
+		hxcClearRuntimeShaderBindings();
+		hxcClearSongCredits();
 		#if !switch
-		if (!demoMode && ModifierState.scoreMultiplier > 0)
+		if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)
 			Highscore.saveScore(SONG.song, songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge);
 		#end
 		controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
@@ -3124,7 +18852,7 @@ class PlayState extends MusicBeatState {
 			storyPlaylist.remove(storyPlaylist[0]);
 
 			if (storyPlaylist.length <= 0) {
-				if (!demoMode && ModifierState.scoreMultiplier > 0)
+				if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)
 					Highscore.saveWeekScore(storyWeek, campaignScore, storyDifficulty, campaignAccuracy / defaultPlaylistLength);
 				campaignAccuracy = campaignAccuracy / defaultPlaylistLength;
 				if (useVictoryScreen) {
@@ -3201,8 +18929,16 @@ class PlayState extends MusicBeatState {
 					+ " | Misses: "
 					+ misses, iconRPC, playingAsRpc);
 				#end
-				LoadingState.loadAndSwitchState(new VictoryLoopState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y,
-					gf.getScreenPosition().x, gf.getScreenPosition().y, accuracy, songScore, dad.getScreenPosition().x, dad.getScreenPosition().y));
+				var victoryBfX = boyfriend.getScreenPosition().x;
+				var victoryBfY = boyfriend.getScreenPosition().y;
+				var victoryGfX = gf.getScreenPosition().x;
+				var victoryGfY = gf.getScreenPosition().y;
+				var victoryDadX = dad.getScreenPosition().x;
+				var victoryDadY = dad.getScreenPosition().y;
+				var victoryAccuracy = accuracy;
+				var victoryScore = songScore;
+				LoadingState.loadAndSwitchStateFactory(() -> new VictoryLoopState(victoryBfX, victoryBfY,
+					victoryGfX, victoryGfY, victoryAccuracy, victoryScore, victoryDadX, victoryDadY));
 			} else
 				LoadingState.loadAndSwitchState(new FreeplayState());
 		}
@@ -3211,10 +18947,10 @@ class PlayState extends MusicBeatState {
 	var endingSong:Bool = false;
 	var timeShown:Int = 0;
 	private function popUpScore(strumtime:Float, daNote:Note, playerOne:Bool, forceMiss:Bool = false):Void {
-		var noteDiff:Float = Math.abs(Conductor.songPosition - daNote.strumTime);
+		var noteDiff:Float = adjustedNoteDiff(daNote);
 		var noteDiffSigned:Float = Conductor.songPosition - daNote.strumTime;
 		var wife:Float = HelperFunctions.wife3(noteDiffSigned, Conductor.timeScale);
-		vocals.volume = 1;
+		setVocalsVolume(1);
 		camZooming = true;
 		var placement:String = Std.string(combo);
 		
@@ -3222,12 +18958,7 @@ class PlayState extends MusicBeatState {
 		var score:Int = 350;
 
 		var daRating:String = "sick";
-		if (daNote.mineNote)
-			// make note diff sussy and harder to hit because mine notes are weird champ
-			noteDiff *= 1.9;
-		if (daNote.nukeNote)
-			noteDiff *= 3;
-		daNote.rating = Ratings.CalculateRating(noteDiff);
+		daNote.rating = noteRatingAtHit(daNote);
 		daRating = daNote.rating;
 		trace(daRating);
 		var healthBonus = 0.0;
@@ -3306,10 +19037,12 @@ class PlayState extends MusicBeatState {
 						sicks++;
 					}
 
-					if (!daNote.isSustainNote && useNoteSplashes) {
-						final strums = playerOne ? playerStrums : enemyStrums;
-						var recycledNote = strums.doSplash(daNote.noteData);
-						grpNoteSplashes.add(recycledNote);
+					if (shouldShowNoteSplash(daNote)) {
+						final strums = getNoteStrumline(daNote);
+						if (strums != null && strums.showNotesplash) {
+							var recycledNote = strums.doSplash(daNote.noteData);
+							grpNoteSplashes.add(recycledNote);
+						}
 					}
 
 				case 'miss':
@@ -3370,9 +19103,12 @@ class PlayState extends MusicBeatState {
 			if (!downscroll)
 				rating.y = FlxG.height - rating.height;
 		}
+		rating.x += judOffsetX;
+		rating.y += judOffsetY;
 		if (showRatings)
 			add(rating);
-		rating.setGraphicSize(Std.int(rating.width * 0.7));
+		var judgementScale = uiSmelly.judgementScale == null ? 0.7 : uiSmelly.judgementScale;
+		rating.setGraphicSize(Std.int(rating.width * judgementScale));
 
 		var msTiming = HelperFunctions.truncateFloat(noteDiffSigned, 3);
 		if (FlxG.save.data.botplay)
@@ -3434,7 +19170,8 @@ class PlayState extends MusicBeatState {
 
 			if (!pixelUI) {
 				numScore.antialiasing = true;
-				numScore.setGraphicSize(Std.int(numScore.width * 0.5));
+				var comboScale = uiSmelly.comboScale == null ? 0.5 : uiSmelly.comboScale;
+				numScore.setGraphicSize(Std.int(numScore.width * comboScale));
 			} else
 				numScore.setGraphicSize(Std.int(numScore.width * daPixelZoom));
 			numScore.updateHitbox();
@@ -3520,6 +19257,12 @@ class PlayState extends MusicBeatState {
 					rightSideFill = boyfriend.poisonColor;
 			}
 		}
+		if (!poison) {
+			if (compatHealthBarLeft != null)
+				leftSideFill = cast compatHealthBarLeft;
+			if (compatHealthBarRight != null)
+				rightSideFill = cast compatHealthBarRight;
+		}
 		healthBar.createFilledBar(leftSideFill, rightSideFill);
 		healthBar.updateBar();
 	}
@@ -3603,9 +19346,44 @@ class PlayState extends MusicBeatState {
 			}
 		});
 	}
-	private function keyShit(?playerOne:Bool = true):Void {
+	function noteBelongsToInputLine(note:Note, sourceLine:CodenameInputLine<Character>):Bool {
+		return sourceLine == null
+			? (codenameInputLines.length == 0 || note.codenameInputLine == null)
+			: note.codenameInputLine == sourceLine;
+	}
+
+	function hasUntaggedInputNotes(playerOne:Bool):Bool {
+		if (notes == null) return false;
+		for (note in notes.members)
+			if (note != null && note.alive && note.codenameInputLine == null
+				&& note.mustPress == playerOne && !note.wasGoodHit && !note.isAutoPlayed())
+				return true;
+		return false;
+	}
+
+	function codenameLineIsPlayer(line:CodenameInputLine<Character>):Bool {
+		var plan = getCodenameActorPlan();
+		return plan != null && line != null && line.lineIndex >= 0
+			&& line.lineIndex < plan.lines.length
+			&& Reflect.field(plan.lines[line.lineIndex], 'role') == 'player';
+	}
+
+	function codenameVisualInputOwner(line:CodenameInputLine<Character>):Bool {
+		if (line == null) return false;
+		var side = codenameLineIsPlayer(line);
+		for (earlier in codenameInputLines) {
+			if (earlier == line) return true;
+			if (earlier != null && earlier.canProcessInput()
+				&& codenameLineIsPlayer(earlier) == side) return false;
+		}
+		return false;
+	}
+
+	private function keyShit(?playerOne:Bool = true, ?sourceLine:CodenameInputLine<Character>):Void {
 		// HOLDING
 		var coolControls = playerOne ? controls : controlsPlayerTwo;
+		if (sourceLine != null) coolControls = cast sourceLine.controls;
+		if (coolControls == null) return;
 
 		var ctrlA = coolControls.CTRLA;
 		var ctrlB = coolControls.CTRLB;
@@ -3640,14 +19418,37 @@ class PlayState extends MusicBeatState {
 		var holdArray = [ctrlA, ctrlB, ctrlC, ctrlD, ctrlE, ctrlF, ctrlG, ctrlH, ctrlI];
 		var releaseArray = [ctrlAR, ctrlBR, ctrlCR, ctrlDR, ctrlER, ctrlFR, ctrlGR, ctrlHR, ctrlIR];
 		var controlArray:Array<Bool> = [ctrlAP, ctrlBP, ctrlCP, ctrlDP, ctrlEP, ctrlFP, ctrlGP, ctrlHP, ctrlIP];
+		if (sourceLine != null) {
+			holdArray = holdArray.slice(0, 4);
+			releaseArray = releaseArray.slice(0, 4);
+			controlArray = controlArray.slice(0, 4);
+		}
+		var rawReleaseArray = sourceLine == null ? releaseArray : releaseArray.copy();
+		var rawControlArray = sourceLine == null ? controlArray : controlArray.copy();
+		if (sourceLine != null) {
+			var event = new CodenameInputEvent(holdArray, controlArray, releaseArray,
+				sourceLine, sourceLine.lineIndex);
+			callCodenameEvent('onInputUpdate', event);
+			if (event.cancelled) return;
+			holdArray = event.pressed == null ? [] : event.pressed.slice(0, 4);
+			controlArray = event.justPressed == null ? [] : event.justPressed.slice(0, 4);
+			releaseArray = event.justReleased == null ? [] : event.justReleased.slice(0, 4);
+			if (holdArray.contains(true)) {
+				var locked:Array<Character> = [];
+				for (actor in sourceLine.actorSlots) if (actor != null && !locked.contains(actor)) {
+					locked.push(actor);
+					actor.lockCodenameAnimationForInput();
+				}
+			}
+		}
 		var pressArray = controlArray;
 
 		// FlxG.watch.addQuick('asdfa', upP);
-		var actingOn:Character = playerOne ? boyfriend : dad;
-		var onActing:Character = playerOne ? dad : boyfriend;
+		var actingOn:Character = playerOne ? boyfriend : getOpponentSinger();
+		var onActing:Character = playerOne ? getOpponentSinger() : boyfriend;
 		// <3 easy way of doing it
-		if (controlArray.contains(true) && !actingOn.stunned && generatedMusic) {
-			if (!soloMode)
+		if (controlArray.contains(true) && (sourceLine != null || !actingOn.stunned) && generatedMusic) {
+			if (sourceLine == null && !soloMode)
 				actingOn.holdTimer = 0;
 
 			var possibleNotes:Array<Note> = [];
@@ -3657,11 +19458,15 @@ class PlayState extends MusicBeatState {
 
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
-				if (daNote.canBeHit && coolShouldPress && !daNote.tooLate && !daNote.wasGoodHit && !daNote.isLiftNote) {
+				if (noteBelongsToInputLine(daNote, sourceLine) && daNote.canBeHit && coolShouldPress
+					&& !(daNote.mustPress && daNote.blockHit)
+					&& !daNote.tooLate && !daNote.wasGoodHit && !daNote.isLiftNote) {
 					// the sorting probably doesn't need to be in here? who cares lol
 					if (directionList.contains(daNote.noteData)) {
 						for (coolNote in possibleNotes) {
-							if (coolNote.noteData == daNote.noteData && Math.abs(daNote.strumTime - coolNote.strumTime) < 10) {
+							if (coolNote.noteData == daNote.noteData && (sourceLine == null
+								? Math.abs(daNote.strumTime - coolNote.strumTime) < 10
+								: Math.abs(daNote.strumTime - coolNote.strumTime) <= 2)) {
 								dumbNotes.push(daNote);
 								break;
 							} else if (coolNote.noteData == daNote.noteData && daNote.strumTime < coolNote.strumTime) {
@@ -3691,20 +19496,25 @@ class PlayState extends MusicBeatState {
 				if (pressArray[i] && !directionList.contains(i))
 					dontCheck = true;
 			}
-			if (possibleNotes.length > 0 && !dontCheck) {
+			if (sourceLine != null && !sourceLine.ghostTapping)
+				for (lane in 0...pressArray.length)
+					if (pressArray[lane] && !directionList.contains(lane))
+						noteMiss(lane, playerOne, null, true, sourceLine);
+			if (possibleNotes.length > 0 && (sourceLine != null || !dontCheck)) {
 				var daNote = possibleNotes[0];
 
-				if (!OptionsHandler.options.useCustomInput) {
+				if (sourceLine == null && !OptionsHandler.options.useCustomInput) {
 					for (shit in 0...pressArray.length) { // if a direction is hit that shouldn't be
 						if (pressArray[shit] && !directionList.contains(shit))
-							noteMiss(shit, playerOne);
+							noteMiss(shit, playerOne, null, true, sourceLine);
 					}
 				}
 				
 				// Jump notes
 				for (coolNote in possibleNotes) {
 					// even though IT SHOULD BE ABLE TO BE HIT we do this terrible ness
-					if (pressArray[coolNote.noteData] && coolNote.canBeHit && !coolNote.tooLate) {
+					if (pressArray[coolNote.noteData] && coolNote.canBeHit && !coolNote.tooLate
+						&& (sourceLine == null || (coolNote.alive && !coolNote.wasGoodHit))) {
 						if (mashViolations != 0)
 							mashViolations--;
 						scoreTxt.color = FlxColor.WHITE;
@@ -3712,24 +19522,25 @@ class PlayState extends MusicBeatState {
 					}
 				}
 
-			} else if (!OptionsHandler.options.useCustomInput) {
+			} else if (sourceLine == null && !OptionsHandler.options.useCustomInput) {
 				for (shit in 0...pressArray.length)
 					if (pressArray[shit])
-						noteMiss(shit, playerOne);
+						noteMiss(shit, playerOne, null, true, sourceLine);
 			}
 			// :shrug: idk what this for
-			if (dontCheck && possibleNotes.length > 0 && OptionsHandler.options.useCustomInput && !demoMode) {
+			if (sourceLine == null && dontCheck && possibleNotes.length > 0
+				&& OptionsHandler.options.useCustomInput && !demoMode) {
 				if (mashViolations > 4) {
 					trace('mash violations ' + mashViolations);
 					scoreTxt.color = FlxColor.RED;
-					noteMiss(0, playerOne);
+					noteMiss(0, playerOne, null, true, sourceLine);
 				} else
 					mashViolations++;
 			}
 		}
 		// lift notes :)
-		if (releaseArray.contains(true) && !actingOn.stunned && generatedMusic) {
-			if (!soloMode)
+		if (releaseArray.contains(true) && (sourceLine != null || !actingOn.stunned) && generatedMusic) {
+			if (sourceLine == null && !soloMode)
 				actingOn.holdTimer = 0;
 
 			var possibleNotes:Array<Note> = [];
@@ -3739,11 +19550,15 @@ class PlayState extends MusicBeatState {
 
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
-				if (daNote.canBeHit && coolShouldPress && !daNote.tooLate && !daNote.wasGoodHit && daNote.isLiftNote) {
+				if (noteBelongsToInputLine(daNote, sourceLine) && daNote.canBeHit && coolShouldPress
+					&& !(daNote.mustPress && daNote.blockHit)
+					&& !daNote.tooLate && !daNote.wasGoodHit && daNote.isLiftNote) {
 					// the sorting probably doesn't need to be in here? who cares lol
 					if (directionList.contains(daNote.noteData)) {
 						for (coolNote in possibleNotes) {
-							if (coolNote.noteData == daNote.noteData && Math.abs(daNote.strumTime - coolNote.strumTime) < 10) {
+							if (coolNote.noteData == daNote.noteData && (sourceLine == null
+								? Math.abs(daNote.strumTime - coolNote.strumTime) < 10
+								: Math.abs(daNote.strumTime - coolNote.strumTime) <= 2)) {
 								dumbNotes.push(daNote);
 								break;
 							} else if (coolNote.noteData == daNote.noteData && daNote.strumTime < coolNote.strumTime) {
@@ -3772,11 +19587,12 @@ class PlayState extends MusicBeatState {
 				if (releaseArray[i] && !directionList.contains(i))
 					dontCheck = true;
 			}
-			if (possibleNotes.length > 0 && !dontCheck) {
+			if (possibleNotes.length > 0 && (sourceLine != null || !dontCheck)) {
 				var daNote = possibleNotes[0];
 				//	 Jump notes
 				for (coolNote in possibleNotes) {
-					if (releaseArray[coolNote.noteData]) {
+					if (releaseArray[coolNote.noteData]
+						&& (sourceLine == null || (coolNote.alive && !coolNote.wasGoodHit))) {
 						if (mashViolations != 0)
 							mashViolations--;
 						scoreTxt.color = FlxColor.WHITE;
@@ -3785,22 +19601,25 @@ class PlayState extends MusicBeatState {
 				}
 			}
 			// :shrug: idk what this for
-			if (dontCheck && possibleNotes.length > 0 && OptionsHandler.options.useCustomInput && !demoMode) {
+			if (sourceLine == null && dontCheck && possibleNotes.length > 0
+				&& OptionsHandler.options.useCustomInput && !demoMode) {
 				if (mashViolations > 4) {
 					trace('mash violations ' + mashViolations);
 					scoreTxt.color = FlxColor.RED;
-					noteMiss(0, playerOne);
+						noteMiss(0, playerOne, null, true, sourceLine);
 				} else
 					mashViolations++;
 			}
 		}
-		if (holdArray.contains(true) && !actingOn.stunned && generatedMusic) {
+		if (holdArray.contains(true) && (sourceLine != null || !actingOn.stunned) && generatedMusic) {
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
 				var daRating = Ratings.CalculateRating(Math.abs(daNote.strumTime - Conductor.songPosition));
 				// make sustain notes act
 				// changing it to sick :blush:
-				if (daNote.canBeHit && coolShouldPress && daNote.isSustainNote && !daNote.isLiftNote && daRating == 'sick') {
+				if (noteBelongsToInputLine(daNote, sourceLine) && (sourceLine == null || !daNote.wasGoodHit) && daNote.canBeHit
+					&& !(daNote.mustPress && daNote.blockHit)
+					&& coolShouldPress && daNote.isSustainNote && !daNote.isLiftNote && daRating == 'sick') {
 					if (holdArray[daNote.noteData])
 						goodNoteHit(daNote, playerOne);
 				}
@@ -3812,29 +19631,48 @@ class PlayState extends MusicBeatState {
 				var daRating = Ratings.CalculateRating(Math.abs(daNote.strumTime - Conductor.songPosition));
 				// make sustain notes act
 				// changing it to sick :blush:
-				if (daNote.canBeHit && coolShouldPress && daNote.isSustainNote && daNote.isLiftNote && daRating == 'sick') {
+				if (noteBelongsToInputLine(daNote, sourceLine) && (sourceLine == null || !daNote.wasGoodHit) && daNote.canBeHit
+					&& !(daNote.mustPress && daNote.blockHit)
+					&& coolShouldPress && daNote.isSustainNote && daNote.isLiftNote && daRating == 'sick') {
 					if (!holdArray[daNote.noteData])
 						goodNoteHit(daNote, playerOne);
 				}
 			});
 		}
-		if (actingOn.holdTimer > Conductor.stepCrochet * 4 * 0.001 && !holdArray.contains(true)) {
-			if ((actingOn.animation.curAnim.name.startsWith('sing') || actingOn.singPriority.contains(actingOn.animation.curAnim.name)) && !actingOn.animation.curAnim.name.endsWith('miss')) {
+		if (sourceLine == null && actingOn.holdTimer > Conductor.stepCrochet * 4 * 0.001 && !holdArray.contains(true)) {
+			var actingAnimationName = Character.animationName(actingOn);
+			if ((actingAnimationName.startsWith('sing') || actingOn.singPriority.contains(actingAnimationName)) && !actingAnimationName.endsWith('miss')) {
 				actingOn.dance();
 				trace("idle from non miss sing");
 			}
 		}
-		if (soloMode && onActing.holdTimer > Conductor.stepCrochet * 4 * 0.001 && !holdArray.contains(true)) {
-			if ((onActing.animation.curAnim.name.startsWith('sing') || onActing.singPriority.contains(onActing.animation.curAnim.name)) && !onActing.animation.curAnim.name.endsWith('miss')) {
+		if (sourceLine == null && soloMode && onActing.holdTimer > Conductor.stepCrochet * 4 * 0.001 && !holdArray.contains(true)) {
+			var onActingAnimationName = Character.animationName(onActing);
+			if ((onActingAnimationName.startsWith('sing') || onActing.singPriority.contains(onActingAnimationName)) && !onActingAnimationName.endsWith('miss')) {
 				onActing.dance();
 				trace("idle from non miss sing");
 			}
 		}
-		var strums = playerOne ? playerStrums : enemyStrums;
-		strums.forEach(function(spr:Strumline.StrumNote) {
-			if (controlArray[spr.ID] && spr.animation.curAnim.name != 'confirm') {
+		if (sourceLine == null || codenameVisualInputOwner(sourceLine)) {
+		var strums = getInputStrumline(sourceLine, playerOne);
+		if (strums == null) strums = playerOne ? playerStrums : enemyStrums;
+		var visualControls = sourceLine == null ? controlArray : rawControlArray;
+		var visualReleases = sourceLine == null ? releaseArray : rawReleaseArray;
+		// A normal sustain has no separate key-release note row. End its cover
+		// on the generic release path as soon as the authored lane is released;
+		// missed sustain segments still take the noteMiss/head-resolution path.
+		for (lane in 0...visualReleases.length)
+			if (visualReleases[lane])
+				strums.endNoteHoldCoverAtLane(lane);
+		// forEachReceptor: imported scripts can attach effect sprites to the
+		// strumline container; a typed StrumNote closure that received one would
+		// be nulled by the native cast and fault on its first field read.
+		strums.forEachReceptor(function(spr:Strumline.StrumNote) {
+			var strumAnimationName = spr.animation != null && spr.animation.curAnim != null
+				? spr.animation.curAnim.name : '';
+			if (visualControls[spr.ID] && strumAnimationName != 'confirm') {
 				spr.playAnim('pressed');
-				if (useCustomInput && OptionsHandler.options.singYourHeartOut) {
+				if (sourceLine == null && useCustomInput && OptionsHandler.options.singYourHeartOut) {
 					var singAnim = currentKey.getSing(spr.ID);
 					var singNum = 0;
 					switch(singAnim) {
@@ -3856,16 +19694,364 @@ class PlayState extends MusicBeatState {
 						actingOn.sing(singNum);
 				}
 			}
-			if (releaseArray[spr.ID])
+			if (visualReleases[spr.ID])
 				spr.playAnim('static');
 		});
+		}
+		if (sourceLine != null) {
+			callCodenameScripts('onPostInputUpdate', []);
+			for (scope in codenameCharacterScopes.copy()) scope.runtime.call('onPostInputUpdate', []);
+		}
 	}
 	var mashing:Int = 0;
 	var mashViolations:Int = 0;
-	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true):Void {
-		var actingOn = playerOne ? boyfriend : dad;
-		var onActing = playerOne ? dad : boyfriend;
-		if (!actingOn.stunned) {
+	/** Animate the exact actors attached to a source note's authored line.
+	 * A bound empty line still owns the note; it must not sing a native role actor. */
+	function singCodenameNoteActors(note:Note, direction:Int, miss:Bool, alt:Int = 0,
+		?sourceLine:CodenameInputLine<Character>):Bool {
+		var line = note != null ? note.codenameInputLine : sourceLine;
+		if (line == null) return false;
+		var seen:Array<Character> = [];
+		for (actor in line.actorSlots) {
+			if (actor == null || seen.contains(actor)) continue;
+			seen.push(actor);
+			actor.altNum = alt;
+			actor.altAnim = alt == 1 ? '-alt' : (alt > 1 ? '-alt' + alt : '');
+			actor.holdTimer = 0;
+			actor.sing(direction, miss, alt);
+			if (!miss && note != null) spawnCrossFade(actor, note);
+		}
+		return true;
+	}
+
+	function displayCodenameNoteRating(event:CodenameNoteHitEvent):Void {
+		if (comboGroup != null) comboGroup.display(event, combo, Conductor.crochet, minDigitDisplay);
+	}
+
+	/** Donor scripts.event runs before the line signal; character callbacks run
+	 * with the later gameAndCharsEvent hook. Keep one mutable event throughout. */
+	function callCodenameSceneNoteEvent(name:String, event:CodenameGameEvent):Void {
+		for (scope in codenameScriptScopes.copy()) {
+			if (codenameScriptScopes.indexOf(scope) < 0) continue;
+			callCodenameScript(scope, name, [event]);
+			if (event.stopsPropagation()) break;
+		}
+	}
+
+	function applyCodenameNoteHealth(line:CodenameInputLine<Character>, gain:Float):Void {
+		// Source StrumLine.addHealth flips the sign for any type other than 1.
+		health += gain * (line.lineType == 1 ? 1 : -1);
+	}
+
+	function updateCodenameRatingHud():Void {
+		if (accuracyTxt == null) return;
+		if (curRating == null) curRating = new CodenameComboRating(0, '[N/A]', 0xFF888888);
+		var ratio = codenameAccuracy;
+		var percentage = ratio < 0 ? '-%' : Std.string(Math.fround(ratio * 100 * 100) / 100) + '%';
+		accuracyTxt.text = 'Accuracy:' + percentage + ' - ' + curRating.rating;
+		if (codenameRatingFormat != null) accuracyTxt.removeFormat(codenameRatingFormat);
+		if (codenameRatingFormat == null || codenameRatingFormatColor != curRating.color) {
+			codenameRatingFormat = new flixel.text.FlxTextFormat(curRating.color);
+			codenameRatingFormatColor = curRating.color;
+		}
+		accuracyTxt.addFormat(codenameRatingFormat,
+			accuracyTxt.text.length - curRating.rating.length, accuracyTxt.text.length);
+	}
+
+	function syncCodenameAccuracyHud():Void {
+		// Host scoring text expects a percentage; source scripts observe a ratio.
+		accuracy = Math.max(0, 100 * codenameAccuracy);
+		setAllHaxeVar('accuracy', accuracy);
+	}
+
+	@:keep public function updateRating():Void {
+		var rating:CodenameComboRating = null;
+		var acc = codenameAccuracy;
+		if (comboRatings != null && comboRatings.length > 0) for (entry in comboRatings)
+			if (entry.percent <= acc && entry.maxMisses >= misses
+				&& (rating == null || rating.percent < entry.percent)) rating = entry;
+		var event = new CodenameRatingUpdateEvent(rating, curRating);
+		callCodenameEvent('onRatingUpdate', event);
+		if (!event.cancelled) curRating = event.rating;
+	}
+
+	function updateCodenameNoteAccuracy(value:Float):Void {
+		accuracyPressedNotes++;
+		totalAccuracyAmount += value;
+		syncCodenameAccuracyHud();
+		updateRating();
+	}
+
+	/** Honor a Codename hit callback's mutable Note.splash selection. The owner
+		default definition overrides the native splash when it was staged; absent
+		default data keeps the engine's existing UI-pack splash behavior.
+	*/
+	function showCodenameNoteSplash(note:Note, strums:Strumline, direction:Int):Void {
+		if (note == null || strums == null || !strums.showNotesplash || !useNoteSplashes
+			|| (codenameNoteSplashHandler != null && !codenameNoteSplashHandler.exists)
+			|| grpNoteSplashes == null || direction < 0 || direction >= strums.members.length)
+			return;
+		var splashName = note.splash;
+		if (codenameNoteSplashHandler != null
+			&& codenameNoteSplashHandler.hasSplashDefinition(splashName)) {
+			var receptor = strums.members[direction];
+			if (receptor != null)
+				codenameNoteSplashHandler.showSplash(splashName, receptor,
+					strums.sourceStrumScale, [camHUD], note);
+			return;
+		}
+		if (splashName == null || StringTools.trim(splashName) == '' || splashName == 'default') {
+			grpNoteSplashes.add(strums.doSplash(direction));
+			return;
+		}
+		if (codenameNoteSplashHandler != null)
+			codenameNoteSplashHandler.reportMissingSplash(splashName);
+		else
+			trace('[codename-note-splash] selected owner is unavailable for "' + splashName + '"');
+	}
+
+	/** Donor StrumLine judges tooLate every update and retires accepted holds
+	 * at their end time. A canceled/prevented miss may run again next frame. */
+	function updateCodenameNoteLifetime(note:Note):Bool {
+		if (note == null || note.codenameInputLine == null) return false;
+		if (note.wasGoodHit && note.codenameHitDispatched && note.isSustainNote
+			&& note.strumTime + note.sustainLength < Conductor.songPosition) {
+			note.kill();
+			notes.remove(note, true);
+			note.destroy();
+			return true;
+		}
+		if (note.tooLate && !note.wasGoodHit) {
+			if (!note.codenameInputLine.cpu)
+				noteMiss(note.noteData, note.mustPress, note, true);
+			else {
+				note.kill();
+				notes.remove(note, true);
+				note.destroy();
+			}
+			return !note.alive;
+		}
+		return false;
+	}
+
+	/** Return true when an authored line handled this judgement. */
+	function hitCodenameNote(note:Note, alreadyMarked:Bool = false):Bool {
+		if (note == null || note.codenameInputLine == null) return false;
+		var line = note.codenameInputLine;
+		if (!note.alive || note.codenameHitDispatched || (note.wasGoodHit && !alreadyMarked)) return true;
+		// Donor marks the note before all hit callbacks; cancellation does not
+		// turn it back into a hittable note.
+		note.wasGoodHit = true;
+		note.codenameHitDispatched = true;
+		var difference = Math.abs(Conductor.songPosition - note.strumTime);
+		var rating = ratingManager.judgeNote(difference);
+		var player = !line.cpu;
+		var event = new CodenameNoteHitEvent(rating.breaksCombo, player && !note.isSustainNote,
+			player && !note.isSustainNote, null, defaultDisplayRating, defaultDisplayCombo,
+			note, cast line.actorSlots, player, note.sourceKind,
+			line.noteAnimSuffix(note.codenameAuthoredAnimSuffix), 'game/score/', '', note.noteData,
+			player ? rating.score : 0, player && !note.isSustainNote ? rating.accuracy : null,
+			player ? rating.health : 0, rating.name,
+			player && useNoteSplashes && !note.isSustainNote && rating.splash,
+			0.5, true, 0.7, true, true, player ? iconP1 : iconP2);
+		event.deleteNote = !note.isSustainNote;
+		callCodenameSceneNoteEvent(player ? 'onPlayerHit' : 'onDadHit', event);
+		line.onHit.dispatch(event);
+		callCodenameEvent('onNoteHit', event);
+		CodenameNoteTypeCompat.applyHit(event);
+		note.noSustainClip = !event.clipSustain;
+		if (RuntimeSmokeHarness.codenameVisualsEnabled()) {
+			var hitActors:Array<Dynamic> = [];
+			if (event.characters != null) for (actor in event.characters) {
+				var occurrenceIndex = -1;
+				if (codenameActors != null) for (binding in codenameActors.bindings)
+					if (binding.actor == actor && binding.occurrence.lineIndex == line.lineIndex)
+						occurrenceIndex = binding.occurrence.occurrenceIndex;
+				hitActors.push({occurrenceIndex:occurrenceIndex,
+					visible:actor != null && actor.visible});
+			}
+			RuntimeSmokeHarness.markCodenameHitActorSnapshot(Conductor.songPosition,
+				line.lineIndex, event.cancelled, event.animCancelled, hitActors);
+		}
+		if (!event.cancelled) {
+			if (!note.isSustainNote) {
+				if (event.countScore) {
+					songScore += event.score;
+					songScoreDef += event.score;
+					trueScore += event.score;
+					setAllHaxeVar('songScore', songScore);
+					setAllHaxeVar('songScoreDef', songScoreDef);
+				}
+				if (event.accuracy != null) updateCodenameNoteAccuracy(event.accuracy);
+				if (event.misses) {
+					combo = 0;
+					misses++;
+					setAllHaxeVar('misses', misses);
+					setAllHaxeVar('combo', combo);
+				} else if (event.countAsCombo) {
+					combo++;
+					setAllHaxeVar('combo', combo);
+				}
+				if (event.showRating == true || (event.showRating == null && event.player)) {
+					displayCodenameNoteRating(event);
+					ratingNum++;
+				}
+			}
+			applyCodenameNoteHealth(line, event.healthGain);
+			if (!event.animCancelled && event.characters != null) {
+				for (actor in event.characters) if (actor != null) {
+					if (actor.codenameLiveDefinition != null)
+						actor.codenamePlaySingAnim(event.direction, event.animSuffix, 'SING', event.forceAnim);
+					else actor.sing(event.direction, false);
+					spawnCrossFade(actor, note);
+				}
+			}
+			var strums = getNoteStrumline(note);
+			if (strums != null && !note.dontStrum) {
+				if (!event.strumGlowCancelled)
+					strums.forEachReceptor(function(spr:Strumline.StrumNote) {
+						if (spr.ID == event.direction) {
+							spr.playConfirm(note.isSustainNote, true);
+							// Codename owns note dispatch, but the receptor animation
+							// lifecycle is shared with native/Psych hits.
+							sustain2(spr.ID, spr, note);
+						}
+					});
+				if (event.showSplash) showCodenameNoteSplash(event.note, strums, event.direction);
+			}
+			// Foreign observers receive the committed source judgement while the
+			// note is still in the live group. Sustain pieces do not have a head
+			// judgement in Psych, even though they receive hit callbacks.
+			note.rating = note.isSustainNote ? 'unknown' : ratingManager.psychJudgement(event.rating, event.accuracy);
+			callAllHScript(player ? 'goodNoteHit' : 'opponentNoteHit', [note, player], true);
+			traceCompatNoteObserver(note, event, player);
+		}
+		// These effects remain outside the cancellation block in the donor.
+		if (event.unmuteVocals) setVocalsVolume(1);
+		if (event.enableCamZooming) camZooming = true;
+		if (event.deleteNote && note.alive) {
+			note.kill();
+			notes.remove(note, true);
+			note.destroy();
+		}
+		callCodenameEvent('onPostNoteHit', event);
+		return true;
+	}
+
+	function traceCompatNoteObserver(note:Note, event:CodenameNoteHitEvent, player:Bool):Void {
+		if (RuntimeSmokeHarness.enabled() && player && !note.isSustainNote) {
+			var observers:Array<Dynamic> = [];
+			for (scope in defaultPsychGlobalScopes) {
+				var interp = hscriptStates.get(scope);
+				if (interp == null) continue;
+				var counters:Dynamic = {};
+				for (key in interp.variables.keys()) {
+					var value = interp.variables.get(key);
+					if (Std.isOfType(value, Int) || Std.isOfType(value, Float))
+						Reflect.setField(counters, key, value);
+				}
+				observers.push({scope:scope, counters:counters});
+			}
+			RuntimeSmokeHarness.markStep('compat-note-observer ' + haxe.Json.stringify({
+				sourceRating:event.rating, rating:note.rating, accuracy:event.accuracy,
+				index:notes.members.indexOf(note), combo:combo, observers:observers}));
+		}
+	}
+
+	function missCodenameNote(direction:Int, note:Null<Note>, playSound:Bool,
+		line:CodenameInputLine<Character>):Bool {
+		if (line == null) return false;
+		var sound = 'assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt;
+		var event = new CodenameNoteMissEvent(note, -10, 1, muteVocalsOnMiss,
+			note == null ? -0.04 : -0.0475, sound, FlxG.random.float(0.1, 0.2),
+			note == null, combo > 5, 'sad', true, true, 'miss', cast line.actorSlots,
+			line.lineIndex, note == null ? null : note.sourceKind,
+			note == null ? direction : note.noteData, 0);
+		event.playMissSound = playSound;
+		callCodenameEvent('onPlayerMiss', event);
+		CodenameNoteTypeCompat.applyPlayerMiss(event);
+		line.onMiss.dispatch(event);
+		if (event.cancelled) return true;
+		applyCodenameNoteHealth(line, event.healthGain);
+		if (gf != null && event.gfSad && gf.animation != null && gf.animation.exists(event.gfSadAnim)) {
+			if (gf.codenameLiveDefinition != null)
+				gf.codenamePlayAnim(event.gfSadAnim, event.forceGfAnim, 'MISS');
+			else gf.playAnim(event.gfSadAnim, event.forceGfAnim);
+		}
+		if (event.resetCombo) {combo = 0; setAllHaxeVar('combo', combo);}
+		songScore += event.score;
+		misses += event.misses;
+		setAllHaxeVar('songScore', songScore);
+		setAllHaxeVar('misses', misses);
+		if (event.playMissSound) {
+			var soundAsset:Dynamic = event.missSound;
+			if (Std.isOfType(soundAsset, String) && event.missSound != sound) {
+				try soundAsset = new CodenamePaths(codenameSelectedRoot()).sound(event.missSound)
+				catch (error:Dynamic) {
+					trace('[codename-note-sound] ' + Std.string(error));
+					soundAsset = null;
+				}
+			}
+			if (soundAsset != null) FlxG.sound.play(soundAsset, event.missVolume);
+		}
+		if (event.muteVocals) setVocalsVolume(0);
+		if (event.accuracy != null) updateCodenameNoteAccuracy(event.accuracy);
+		if (!event.animCancelled && event.characters != null) {
+			for (actor in event.characters) if (actor != null) {
+				if (event.stunned) actor.stunned = true;
+				if (actor.codenameLiveDefinition != null)
+					actor.codenamePlaySingAnim(note == null ? direction : note.noteData,
+						event.animSuffix, 'MISS', event.forceAnim);
+				else actor.sing(note == null ? direction : note.noteData, true);
+			}
+		}
+		callAllHScript('noteMiss', [note, !line.cpu, direction], true);
+		if (event.deleteNote && note != null && note.alive) {
+			note.kill();
+			notes.remove(note, true);
+			note.destroy();
+		}
+		return true;
+	}
+
+	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
+		?sourceLine:CodenameInputLine<Character>):Void {
+		// A missed sustain segment can be several generated Note objects after
+		// the authored head. Strumline resolves it back to that head so an early
+		// release/miss ends the pooled V-Slice cover immediately.
+		var authoredLine = note != null && note.codenameInputLine != null ? note.codenameInputLine : sourceLine;
+		if (note != null) {
+			var noteStrums = getInputStrumline(authoredLine, playerOne);
+			if (noteStrums != null) noteStrums.endNoteHoldCover(note);
+		}
+		var opponentSinger = note != null && note.forceGfSing && gf != null ? gf : getOpponentSinger();
+		var actingOn = playerOne ? boyfriend : opponentSinger;
+		var onActing = playerOne ? opponentSinger : boyfriend;
+		if (authoredLine != null || !actingOn.stunned) {
+			// HXC note callbacks receive one shared mutable event. Run them before
+			// native miss bookkeeping so cancelEvent() has the donor meaning.
+			if (note == null && playerOne) {
+				// A ghost miss has no live Note object, but V-Slice still exposes the
+				// lane direction through NoteScriptEvent.dir. Keep this dispatch HXC-
+				// only; Psych/Kade retain their historical noteMiss route below.
+				var hxcGhostEvent = EngineCompat.hxcNoteCallbackPayload(
+					[note, playerOne, direction], 'noteGhostMiss');
+				callHxcNoteHScript('noteGhostMiss', [note, playerOne, direction, hxcGhostEvent]);
+				EngineCompat.hxcApplyNoteCallbackPayload(hxcGhostEvent);
+			}
+			var hxcMissEvent:Dynamic = null;
+			if (note != null) {
+				hxcMissEvent = EngineCompat.hxcNoteCallbackPayload([note, playerOne, direction], "noteMiss");
+				callHxcNoteHScript("noteMiss", [note, playerOne, direction, hxcMissEvent]);
+				if (!playerOne)
+					callHxcNoteHScript("opponentNoteMiss", [note, playerOne, direction, hxcMissEvent]);
+				EngineCompat.hxcApplyNoteCallbackPayload(hxcMissEvent);
+			}
+			if ((hxcMissEvent != null && (hxcMissEvent.eventCanceled == true || hxcMissEvent.canceled == true
+				|| hxcMissEvent.cancelled == true)) || (note != null && !note.alive))
+				return;
+			if (missCodenameNote(direction, note, playMissSound, authoredLine)) return;
+			if (note != null && hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.miss(note);
 			misses += 1;
 			setAllHaxeVar("misses", misses);
 			if (note != null && note.noteMiss != null)
@@ -3892,43 +20078,72 @@ class PlayState extends MusicBeatState {
 			// FlxG.sound.play('assets/sounds/missnote1' + TitleState.soundExt, 1, false);
 			// FlxG.log.add('played imss note');
 
-			actingOn.stunned = true;
-
-			// get stunned for 5 seconds
-			new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
-				actingOn.stunned = false;
-			});
-			if (note != null && note.shouldBeSung) {
-				var singAnim = currentKey.getSing(note.noteData);
-				var singNum = 0;
-				switch(singAnim) {
-					case 'singLEFT':
-						singNum = 0;
-					case 'singDOWN':
-						singNum = 1;
-					case 'singUP':
-						singNum = 2;
-					case 'singRIGHT':
-						singNum = 3;
-				}
-				var realActor = actingOn;
-				if (note.soloMode)
-					realActor = onActing;
-				realActor.sing(singNum, true);
-				if (note != null && note.oppntSing != null) {
-					onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
+			if (authoredLine != null) {
+				var stunned:Array<Character> = [];
+				for (actor in authoredLine.characters) if (actor != null && !stunned.contains(actor)) {
+					stunned.push(actor);
+					actor.stunned = true;
+					var missedActor = actor;
+					new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
+						missedActor.stunned = false;
+					});
 				}
 			} else {
-				var realActor = actingOn;
-				if (note != null && note.soloMode)
-					realActor = onActing;
-				realActor.sing(direction, true);
+				actingOn.stunned = true;
+				new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
+					actingOn.stunned = false;
+				});
+			}
+			if (note == null || note.allowsAnimation(true)) {
+				if (note != null && note.shouldBeSung) {
+					var singAnim = currentKey.getSing(note.noteData);
+					var singNum = 0;
+					switch(singAnim) {
+						case 'singLEFT':
+							singNum = 0;
+						case 'singDOWN':
+							singNum = 1;
+						case 'singUP':
+							singNum = 2;
+						case 'singRIGHT':
+							singNum = 3;
+					}
+					if (!singCodenameNoteActors(note, note.noteData, true)) {
+						var realActor = actingOn;
+						if (note.soloMode)
+							realActor = onActing;
+						realActor.sing(singNum, true);
+					}
+					if (authoredLine == null && note.oppntSing != null)
+						onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
+				}
+				else {
+					if (!singCodenameNoteActors(note, direction, true, 0, sourceLine)) {
+						var realActor = actingOn;
+						if (note != null && note.soloMode)
+							realActor = onActing;
+						realActor.sing(direction, true);
+					}
+				}
 			}
 				
 			if (playerOne)
 				callAllHScript("playerOneMiss", []);
 			else
 				callAllHScript("playerTwoMiss", []);
+			if (note == null)
+				dispatchPsychCompiledStage('noteMissPress', [direction]);
+			else
+				dispatchPsychCompiledStage('noteMiss', [note]);
+			// Psych/Kade callbacks receive the miss through their own names. Keep
+			// the native Modding Plus hooks above and route these in parallel so a
+			// donor script never needs a chart-side rename.
+			// Keep the live Note for native hooks, and append the raw direction so
+			// EngineCompat can expose Psych's (id, direction, noteType,
+			// isSustainNote) ABI even when a miss has no Note instance.
+			callAllHScript("noteMiss", [note, playerOne, direction, hxcMissEvent], true);
+			if (!playerOne)
+				callAllHScript("opponentNoteMiss", [note], true);
 		}
 	}
 
@@ -3952,24 +20167,99 @@ class PlayState extends MusicBeatState {
 	}
 
 	function noteCheck(keyP:Bool, note:Note, playerOne:Bool):Void {
-		var noteDiff:Float = Math.abs(note.strumTime - Conductor.songPosition);
-
-		note.rating = Ratings.CalculateRating(noteDiff);
+		note.rating = noteRatingAtHit(note);
 		if (keyP)
 			goodNoteHit(note,playerOne);
 		else
 			badNoteCheck(playerOne);
 	}
 
+	/** The same stricter timing used by mine/nuke score and hit callbacks. */
+	static function adjustedNoteDiff(note:Note):Float {
+		var noteDiff:Float = Math.abs(note.strumTime - Conductor.songPosition);
+		if (note.mineNote)
+			noteDiff *= 1.9;
+		if (note.nukeNote)
+			noteDiff *= 3;
+		return noteDiff;
+	}
+
+	/** Keep imported pre-hit callbacks and the native score on one judgement. */
+	static function noteRatingAtHit(note:Note):String
+		return Ratings.CalculateRating(adjustedNoteDiff(note));
+
+	/** Match the pre-judgement HXC route for notes the computer hits itself. */
+	function dispatchHxcAutoNoteHit(note:Note, playerOne:Bool):Bool {
+		if (note == null || !note.alive)
+			return false;
+		if (note.isSustainNote)
+			return true;
+		note.rating = 'sick';
+		var event = EngineCompat.hxcNoteCallbackPayload([playerOne, note, false], 'noteHit');
+		// The V-Slice bot and opponent routes emit 'perfect', which is
+		// distinct from a manually scored player's 'sick'.
+		event.judgement = 'perfect';
+		callHxcNoteHScript('noteHit', [playerOne, note, false, event]);
+		callHxcNoteHScript(playerOne ? 'goodNoteHit' : 'opponentNoteHit',
+			[playerOne, note, false, event]);
+		EngineCompat.hxcApplyNoteCallbackPayload(event);
+		if (!note.alive) {
+			notes.remove(note, true);
+			note.destroy();
+			return false;
+		}
+		if (event.eventCanceled == true || event.canceled == true
+			|| event.cancelled == true) {
+			note.wasGoodHit = false;
+			note.autoHitSuppressed = true;
+			return false;
+		}
+		return true;
+	}
+
 	function goodNoteHit(note:Note, playerOne:Bool):Void {
-		var actingOn = playerOne ? boyfriend : dad;
-		var onActing = playerOne ? dad : boyfriend;
+		if (note != null && note.codenameInputLine != null && (!note.alive || note.wasGoodHit)) return;
+		var opponentSinger = note != null && note.forceGfSing && gf != null ? gf : getOpponentSinger();
+		var actingOn = playerOne ? boyfriend : opponentSinger;
+		var onActing = playerOne ? opponentSinger : boyfriend;
 		if (!note.canBeHit || note.tooLate)
 			return;
-		if (!note.isSustainNote)
+		// HXC note callbacks run before popUpScore, including through the custom
+		// input path. Supply the same rating that the score will show below.
+		note.rating = noteRatingAtHit(note);
+		// Give HXC note kinds first refusal over the native judgement. The
+		// payload keeps the live Note separately, so generic cancellation and
+		// graphics writes can be observed without changing Psych's ABI.
+		var hxcHitEvent = EngineCompat.hxcNoteCallbackPayload([playerOne, note, false], "noteHit");
+		// V-Slice's authored hold uses a separate SustainTrail. Generated
+		// legacy sustain segments must not send extra NoteHit events.
+		if (!note.isSustainNote) {
+			callHxcNoteHScript("noteHit", [playerOne, note, false, hxcHitEvent]);
+			callHxcNoteHScript(playerOne ? "goodNoteHit" : "opponentNoteHit",
+				[playerOne, note, false, hxcHitEvent]);
+			EngineCompat.hxcApplyNoteCallbackPayload(hxcHitEvent);
+		}
+		if (hxcHitEvent.eventCanceled == true || hxcHitEvent.canceled == true
+			|| hxcHitEvent.cancelled == true || !note.alive) {
+			var noteStrums = getNoteStrumline(note);
+			if (noteStrums != null) noteStrums.endNoteHoldCover(note);
+			if (!note.alive) {
+				notes.remove(note, true);
+				note.destroy();
+			}
+			return;
+		}
+		if (hitCodenameNote(note)) return;
+		var hitCausesMiss = dispatchHitCausesMiss(note, playerOne);
+		if (!note.isSustainNote && !hitCausesMiss)
 			notesHitArray.push(Date.now());
+		if (hitCausesMiss) {
+			finishGoodNoteHit(note, playerOne, hxcHitEvent, false);
+			return;
+		}
 		if (!note.wasGoodHit) {
 			trace("<3 was good hit");
+			if (note.codenameInputLine == null) {
 			actingOn.altAnim = "";
 			actingOn.altNum = 0;
 			
@@ -3991,6 +20281,7 @@ class PlayState extends MusicBeatState {
 			} else if (actingOn.altNum > 1) {
 				actingOn.altAnim = '-alt' + actingOn.altNum;
 			}
+			}
 			// We pop it up even for sustains, just to update score. We don't actually show anything.
 			trace("<3 pop up score");
 			if (!note.dontCountNote)
@@ -4010,31 +20301,45 @@ class PlayState extends MusicBeatState {
 				}
 			}
 
-			if (note.shouldBeSung) {
-				var singAnim = currentKey.getSing(note.noteData);
-				var singNum = 0;
-				switch(singAnim) {
-					case 'singLEFT':
-						singNum = 0;
-					case 'singDOWN':
-						singNum = 1;
-					case 'singUP':
-						singNum = 2;
-					case 'singRIGHT':
-						singNum = 3;
-					default:
-						singNum = -1;
-				}
-				var realActor = actingOn;
-				if (note.soloMode)
-					realActor = onActing;
-				realActor.holdTimer = 0;
-
-				if (!modernSustain || !note.isSustainNote || !realActor.animation.curAnim.name.startsWith(singAnim) || realActor.animation.curAnim.name.endsWith('miss')) {
-					if (singNum == -1)
-						realActor.playAnim(singAnim, true);
-					else
-						realActor.sing(singNum, false, actingOn.altNum);
+			// V-Slice character onNoteHit overrides run through the shared HXC
+			// payload before the native singer. A handled marker preserves the
+			// donor's custom/early-return animation without suppressing scoring,
+			// health, or the rest of the note judgement.
+			var hxcCharacterHandled = hxcHitEvent != null
+				&& Reflect.field(hxcHitEvent, 'characterHandled') == true;
+			if (note.shouldBeSung && !hxcCharacterHandled) {
+				if (note.allowsAnimation()) {
+					var singAnim = currentKey.getSing(note.noteData);
+					var singNum = 0;
+					switch(singAnim) {
+						case 'singLEFT':
+							singNum = 0;
+						case 'singDOWN':
+							singNum = 1;
+						case 'singUP':
+							singNum = 2;
+						case 'singRIGHT':
+							singNum = 3;
+						default:
+							singNum = -1;
+					}
+					var realActor = actingOn;
+					if (note.soloMode)
+						realActor = onActing;
+					var codenameSang = singCodenameNoteActors(note, note.noteData, false, note.altNum);
+					if (!codenameSang) {
+						realActor.holdTimer = 0;
+						var realActorAnimationName = Character.animationName(realActor);
+						if (!modernSustain || !note.isSustainNote || !realActorAnimationName.startsWith(singAnim) || realActorAnimationName.endsWith('miss')) {
+							if (singNum == -1)
+								realActor.playAnim(singAnim, true);
+							else
+							realActor.sing(singNum, false, actingOn.altNum);
+						}
+						spawnCrossFade(realActor, note);
+					}
+					if (note.codenameInputLine == null && note.oppntSing != null)
+						onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
 				}
 
 				// callAllHScript("noteHit", [playerOne, note, goodhit]);
@@ -4044,54 +20349,124 @@ class PlayState extends MusicBeatState {
 
 				if (playerOne)
 					callAllHScript("playerOneSing", []);
-				else
+				else {
 					callAllHScript("playerTwoSing", []);
+					callCutsceneOpponentSing();
+				}
 				
-				if (note.oppntSing != null)
-					onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
 			}
 
 			if (!note.dontStrum) {
-				final strums = playerOne ? playerStrums : enemyStrums;
-				strums.forEach(function(spr:Strumline.StrumNote) {
+				final strums = getNoteStrumline(note);
+				if (strums == null) return;
+				strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 					if (Math.abs(note.noteData) == spr.ID)
-						spr.playAnim('confirm', true);
+							spr.playConfirm(note.isSustainNote, true);
 				});
+				// V-Slice styles can supply a separate hold-cover effect.  The
+				// chart head owns the sustain duration, so start the pooled cover
+				// once here rather than once per generated sustain segment.
+				if (!note.isSustainNote && note.sustainLength > SUSTAIN_LENGTH_EPSILON)
+					strums.playNoteHoldCover(note);
 			}
 
-			note.wasGoodHit = true;
-			var goodhit = note.wasGoodHit;
-			vocals.volume = 1;
-			if (playerOne)
-				player1GoodHitSignal.trigger(note);
-			else
-				player2GoodHitSignal.trigger(note);
-
-			callAllHScript("noteHit", [playerOne, note, goodhit]);
-			if (note.noteHit != null)
-				callHscript(note.noteHit, [note], "modchart");
-
-			if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll) || (note.y > getHaxeActor('0').y + 20 && downscroll))) {
-				callHscript(note.noteStrum, [], "modchart");
-				note.noteStrum = null;
-			}
-			note.kill();
-			notes.remove(note, true);
-			note.destroy();
+			finishGoodNoteHit(note, playerOne, hxcHitEvent);
 		}
+	}
+
+	/** Psych hit-causing-miss notes still complete the hit callback route after
+	 * applying the ordinary miss judgement. Authored Codename lines own their
+	 * separate note lifecycle and return through hitCodenameNote first. */
+	function dispatchHitCausesMiss(note:Note, playerOne:Bool):Bool {
+		if (note == null || !playerOne || !note.hitCausesMiss || note.wasGoodHit
+			|| note.codenameInputLine != null)
+			return false;
+		note.wasGoodHit = true;
+		noteMiss(note.noteData, playerOne, note);
+		setVocalsVolume(0);
+		splashHitCausesMissNote(note);
+		return true;
+	}
+
+	/** Shared global and note-local gates for native and Psych note splashes. */
+	function shouldShowNoteSplash(note:Note):Bool {
+		return note != null && !note.isSustainNote && !note.isNoteSplashDisabled()
+			&& useNoteSplashes && grpNoteSplashes != null
+			&& (codenameNoteSplashHandler == null || codenameNoteSplashHandler.exists);
+	}
+
+	/** Psych shows a splash for an enabled hit-causes-miss head. Use the same
+	 * global and strumline gates as ordinary native note splashes. */
+	function splashHitCausesMissNote(note:Note):Void {
+		if (!shouldShowNoteSplash(note))
+			return;
+		var strums = getNoteStrumline(note);
+		if (strums == null || !strums.showNotesplash)
+			return;
+		var lane = Std.int(Math.abs(note.noteData));
+		if (lane < 0 || lane >= strums.members.length)
+			return;
+		grpNoteSplashes.add(strums.doSplash(lane));
+	}
+
+	/** Shared successful-hit callbacks and note retirement, including Psych
+	 * hazards whose miss judgement still counts as a hit callback. */
+	function finishGoodNoteHit(note:Note, playerOne:Bool, hxcHitEvent:Dynamic,
+		restoreVocals:Bool = true):Void {
+		note.wasGoodHit = true;
+		if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.hit(note);
+		var goodhit = note.wasGoodHit;
+		if (restoreVocals)
+			setVocalsVolume(1);
+		if (playerOne)
+			player1GoodHitSignal.trigger(note);
+		else
+			player2GoodHitSignal.trigger(note);
+
+		dispatchPsychCompiledStage(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note]);
+		callAllHScript("noteHit", [playerOne, note, goodhit, hxcHitEvent], true);
+		callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true);
+		if (note.noteHit != null)
+			callHscript(note.noteHit, [note], "modchart");
+
+		if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll)
+			|| (note.y > getHaxeActor('0').y + 20 && downscroll))) {
+			callHscript(note.noteStrum, [], "modchart");
+			note.noteStrum = null;
+		}
+		note.kill();
+		notes.remove(note, true);
+		note.destroy();
 	}
 
 	var sectionSteps:Int = 0;
 	override function stepHit() {
+		// Audio completion can begin the state handoff before this frame's
+		// catch-up steps are delivered. Outgoing scripts must not receive
+		// another step after their song-end callback has begun teardown.
+		if (endingSong) return;
+		// Psych dispatches stage.stepHit before its every-four-steps beatHit call.
+		dispatchPsychCompiledStage('stepHit', []);
 		super.stepHit();
-		if (SONG.needsVoices) {
-			if (vocals.time > Conductor.songPosition + 20 || vocals.time < Conductor.songPosition - 20) {
+		hxcExpireNoteTextCues();
+		#if cpp
+		if (compatEventVideo != null && compatEventVideoResync)
+			compatEventVideo.resyncSongTime(
+				Math.max(0, Conductor.songPosition - compatEventVideoEventTime));
+		#end
+		if (SONG.needsVoices && !demoSongFinished) {
+			if (vocalTime() > Conductor.songPosition + 20 || vocalTime() < Conductor.songPosition - 20) {
 				resyncVocals();
 			}
 		}
 
 		setAllHaxeVar("curStep", curStep);
+		syncPsychTimingGlobals();
+		callNightmareVision('onStepHit', []);
 		callAllHScript("stepHit", [curStep]);
+		refreshCodenameCharacterScopes();
+		for (scope in codenameCharacterScopes.copy()) scope.runtime.call('stepHit', [curStep]);
+		callCodenameScripts('stepHit', [curStep]);
 
 		// this works but prone to breaking
 		/*sectionSteps += 1;
@@ -4100,7 +20475,20 @@ class PlayState extends MusicBeatState {
 			sectionSteps = 0;
 		}*/
 		// but i think this may cause lag :shrug:
+		var previousSection = curSection;
 		curSection = getSection();
+		if (SONG != null && SONG.notes != null && curSection >= 0 && curSection < SONG.notes.length
+			&& SONG.notes[curSection] != null) {
+			setAllHaxeVar("mustHitSection", SONG.notes[curSection].mustHitSection);
+			setAllHaxeVar("gfSection", SONG.notes[curSection].gfSection == true);
+		}
+		setAllHaxeVar("crochet", Conductor.crochet);
+		if (curSection != previousSection) {
+			NightmareVisionPluginHost.callActive('onSectionHit');
+			callNightmareVision('onSectionHit', []);
+			dispatchPsychCompiledStage('sectionHit', []);
+			callAllHScript('sectionHit', [curSection]);
+		}
 		#if windows
 		// Updating Discord Rich Presence (with Time Left)
 		updatePresence();
@@ -4108,43 +20496,98 @@ class PlayState extends MusicBeatState {
 	}
 
 
+	/** Return whether a character's authored idle cadence is due on this beat.
+	 * The default value of one preserves the native behaviour; zero is useful
+	 * for V-Slice characters which intentionally never auto-dance. */
+	function characterDanceDue(character:Character, beat:Int):Bool {
+		if (character == null || character.animation == null
+			|| character.codenameLiveDefinition != null || character.danceEvery <= 0)
+			return false;
+		return character.danceEvery == 1 || beat % character.danceEvery == 0;
+	}
+
 	override function beatHit() {
+		if (endingSong) return;
 		super.beatHit();
+		dispatchPsychCompiledStage('beatHit', []);
 		
 		if (generatedMusic)
 			notes.sort(FlxSort.byY, downscroll ? FlxSort.ASCENDING : FlxSort.DESCENDING);
+		var dadAnim = Character.animationName(dad);
+		var boyfriendAnim = Character.animationName(boyfriend);
 
 		if (SONG.notes[curSection] != null) {
 			if (SONG.notes[curSection].changeBPM) {
 				Conductor.changeBPM(SONG.notes[curSection].bpm);
 				FlxG.log.add('CHANGED BPM!');
 			}
+			syncPsychTimingGlobals();
 			
 			// Dad doesnt interupt his own notes
-			if ((!dad.animation.curAnim.name.startsWith("sing") && !dad.singPriority.contains(dad.animation.curAnim.name)) && ((!duoMode && !opponentPlayer && !soloMode) || demoMode))
+			if ((!dadAnim.startsWith("sing") && !dad.singPriority.contains(dadAnim)) && ((!duoMode && !opponentPlayer && !soloMode) || demoMode)
+				&& characterDanceDue(dad, curBeat))
 				dad.dance();
-			if ((!boyfriend.animation.curAnim.name.startsWith("sing") && !boyfriend.singPriority.contains(boyfriend.animation.curAnim.name)) && (opponentPlayer || demoMode))
+			if ((!boyfriendAnim.startsWith("sing") && !boyfriend.singPriority.contains(boyfriendAnim)) && (opponentPlayer || demoMode)
+				&& characterDanceDue(boyfriend, curBeat))
 				boyfriend.dance();
 		}
 
 		setAllHaxeVar('curBeat', curBeat);
+		// Some imported charts perform their own camera bump in beatHit().
+		// Capture that mutation before applying the engine's stock bump so both
+		// paths do not stack into an unintended double zoom.
+		var gameZoomBeforeScript = camGame.zoom;
+		var hudZoomBeforeScript = camHUD.zoom;
+		if (codenameActors != null) for (binding in codenameActors.bindings) if (binding.owned) {
+			var actor = binding.actor;
+			var animation = Character.animationName(actor);
+			if (!animation.startsWith('sing') && !actor.singPriority.contains(animation)
+				&& characterDanceDue(actor, curBeat)) actor.dance();
+		}
+		callNightmareVision('onBeatHit', []);
 		callAllHScript('beatHit', [curBeat]);
+		refreshCodenameCharacterScopes();
+		for (scope in codenameCharacterScopes.copy()) scope.actor.codenameBeatHit(curBeat);
+		callCodenameScripts('beatHit', [curBeat]);
+		markCodenameMotionSnapshot();
+		var scriptChangedZoom = cameraZoomChanged(gameZoomBeforeScript, hudZoomBeforeScript, camGame.zoom, camHUD.zoom);
+		var nativeCamBoomPulse = false;
+		if (!inCutscene && !endingSong && !scriptChangedZoom && camBoomSpeed > 0
+			&& camBoomIntensity != 0 && curBeat % camBoomSpeed == 0) {
+			// Match Cam Boom Speed.lua: first apply the normal Add Camera Zoom
+			// pulse, then add its high-zoom reinforcement when the resulting
+			// gameplay camera is already at/above 1.35.
+			setGameCameraZoom(camGame.zoom + 0.015 * camBoomIntensity);
+			camHUD.zoom += 0.03 * camBoomIntensity;
+			if (camGame.zoom >= 1.35) {
+				setGameCameraZoom(camGame.zoom + 0.025 * camBoomIntensity);
+				camHUD.zoom += 0.03 * camBoomIntensity;
+			}
+			nativeCamBoomPulse = true;
+		}
 		
-		if (!endingSong && camZooming && FlxG.camera.zoom < 1.35 && camZoomRate > 0 && curBeat % camZoomRate == 0) {
-			FlxG.camera.zoom += 0.015 * camZoomIntensity;
+		if (!codenameCameraModuloActive && !inCutscene && !endingSong && !scriptChangedZoom && !nativeCamBoomPulse
+			&& camZooming && camGame.zoom < 1.35 && camZoomRate > 0 && curBeat % camZoomRate == 0) {
+			setGameCameraZoom(camGame.zoom + 0.015 * camZoomIntensity);
 			camHUD.zoom += 0.03 * camZoomIntensity;
 		}
 
-		iconP1.dance();
-		iconP2.dance();
+		if (iconP1auto && iconP1.autoUpdate)
+			iconP1.dance();
+		if (iconP2auto && iconP2.autoUpdate)
+			iconP2.dance();
 		practiceDieIcon.dance();
-		if (curBeat % gfSpeed == 0) // && !gf.animation.curAnim.name.startsWith("sing") && !gf.singPriority.contains(gf.animation.curAnim.name)
+		var gfAnimationName = Character.animationName(gf);
+		if (curBeat % gfSpeed == 0 && (!gfSinging || !gfAnimationName.startsWith("sing"))
+			&& characterDanceDue(gf, curBeat))
 			gf.dance();
 
-		if (!boyfriend.animation.curAnim.name.startsWith("sing") && !boyfriend.singPriority.contains(boyfriend.animation.curAnim.name) && !opponentPlayer && !demoMode)
+		if (!boyfriendAnim.startsWith("sing") && !boyfriend.singPriority.contains(boyfriendAnim) && !opponentPlayer && !demoMode
+			&& characterDanceDue(boyfriend, curBeat))
 			boyfriend.dance();
 
-		if (dad.animation.curAnim != null && !dad.animation.curAnim.name.startsWith("sing") && !dad.singPriority.contains(dad.animation.curAnim.name) && (duoMode || opponentPlayer || soloMode) && !demoMode)
+		if (!dadAnim.startsWith("sing") && !dad.singPriority.contains(dadAnim) && (duoMode || opponentPlayer || soloMode) && !demoMode
+			&& characterDanceDue(dad, curBeat))
 			dad.dance();
 
 		if (curBeat % 8 == 7 && SONG.isHey)
@@ -4194,5 +20637,125 @@ class PlayState extends MusicBeatState {
 		value = FlxMath.bound(value, 0, 2);
 		setAllHaxeVar('health', value);
 		return health = value;
+	}
+
+	override public function destroy() {
+		cancelVSliceScrollTweens();
+		vSliceScrollTargets.resize(0);
+		var codenameTransitionOwner = codenameSelectedRoot();
+		var smokeActors:Dynamic = runtimeSmokeActorTracking() ? runtimeSmokeActorSummary() : null;
+		if (compatCustomSubstate != null) {
+			if (compatCustomSubstate.lifecycleCreated)
+				compatCustomSubstate.notifyBeforeParentDestroy();
+			else compatCustomSubstate.cancelBeforeCreate();
+		}
+		resumePsychCustomTimeline();
+		if (hxcCutsceneTimelineRuntime != null) {
+			hxcCutsceneTimelineRuntime.cancel(false);
+			hxcCutsceneTimelineRuntime = null;
+		}
+		clearHxcCutsceneTimelineNativeObjects();
+		if (nightmareVisionScripts != null) {
+			try nightmareVisionScripts.destroy() catch (error:Dynamic)
+				trace('[nightmare-vision-script-release-error] ' + Std.string(error));
+			nightmareVisionScripts = null;
+		}
+		if (modManager != null) {
+			modManager.destroy();
+			modManager = null;
+		}
+		if (playHUD != null) {
+			playHUD.release();
+			playHUD = null;
+		}
+		nightmareVisionPlugins = null;
+		nightmareVisionPaths = null;
+		nightmareVisionPrefs = null;
+		callAllHScript('destroy', []);
+		HxcCompatRuntime.destroyFunkinVideos(this);
+		HxcCompatRuntime.clearFunkinCameras(this);
+		// The state still owns sprites queued by a finish callback when a script
+		// switches state during that same frame; Flixel destroys those with it.
+		finishedHxcEventSprites.resize(0);
+		hxcStrumlineNoteSurface = null;
+		if (psychCompiledStageRuntime != null) {
+			psychCompiledStageRuntime.destroy();
+			reportPsychCompiledStageRuntimeDiagnostics();
+			psychCompiledStageRuntime = null;
+		}
+		for (videoModule in hxcVideoModuleHosts.copy())
+			if (videoModule != null)
+				videoModule.destroy();
+		hxcVideoModuleHosts.resize(0);
+		for (scope in codenameCharacterScopes.copy()) scope.runtime.destroy();
+		codenameCharacterScopes.resize(0);
+		callCodenameScripts('destroy', []);
+		for (scope in codenameScriptScopes)
+			releaseCodenameScope(scope);
+		codenameScriptScopes.resize(0);
+		codenamePublicScriptGlobals.clear();
+		codenameDefaultNoteAtlasResolved.clear();
+		codenameDefaultNoteAtlases.clear();
+		if (codenameInstFacade != null) {
+			codenameInstFacade.release();
+			codenameInstFacade = null;
+		}
+		if (comboGroup != null) {
+			if (members.indexOf(comboGroup) >= 0) remove(comboGroup, true);
+			comboGroup.destroy();
+			comboGroup = null;
+		}
+		hxcClearAllNoteTextCues();
+		#if cpp
+		stopCompatEventVideo();
+		#end
+		clearHxcVignette();
+		hxcClearRuntimeShaderBindings();
+		hxcClearSongCredits();
+		// A converted Psych script may fail before its onDestroy hook reaches the
+		// adapter. Always detach the native signal before the state is released.
+		compatRemoveShaderCoordFix();
+		for (sound in psychTaggedSounds)
+			if (sound != null && sound.exists) sound.stop();
+		psychTaggedSounds.clear();
+		clearEngineCompatObjects();
+		clearCodenameNativeEventTweens();
+		resetDemoPlaybackRate();
+		if (codenameSelectedRoot() != '') FlxG.timeScale = 1;
+		HxcCompatRuntime.clearActiveState(this);
+		// vocals only lives in FlxG.sound.list, which outlives the state -
+		// without this every visited song leaves a buffer-holding corpse
+		if (vocals != null) {
+			stopVocals();
+			destroyVocals();
+		}
+		clearScriptOwnership();
+		clearHscriptSoundCache();
+		for (line in codenameStrumlines) if (line != null) line.unbindCodenameInputLine();
+		if (playerStrums != null) playerStrums.unbindCodenameInputLine();
+		if (enemyStrums != null) enemyStrums.unbindCodenameInputLine();
+		for (line in codenameInputLines) if (line != null) line.release();
+		codenameInputLines.resize(0);
+		codenameLineNoteIndex = new CodenameLineNoteIndex();
+		if (codenameActors != null) {
+			codenameActors.cleanup();
+			if (smokeActors != null) {
+				smokeActors.remainingBindings = codenameActors.bindings.length;
+				smokeActors.cleanupErrors = [for (diagnostic in codenameActors.diagnostics)
+					if (StringTools.startsWith(diagnostic, 'cleanup-failed:')) diagnostic];
+			}
+			codenameActors = null;
+		}
+		codenameCameraLineViews.clear();
+		codenameActorBaselines.clear();
+		if (smokeActors != null) {
+			smokeActors.destroyCalls = runtimeSmokeOwnedDestroyCalls;
+			if (!Reflect.hasField(smokeActors, 'remainingBindings')) smokeActors.remainingBindings = 0;
+			if (!Reflect.hasField(smokeActors, 'cleanupErrors')) smokeActors.cleanupErrors = [];
+			RuntimeSmokeHarness.markCodenameActorTeardown(smokeActors);
+		}
+		super.destroy();
+		CodenameMusicBeatTransition.releaseChartOwner(codenameTransitionOwner);
+		if (smokeActors != null) RuntimeSmokeHarness.markPlayStateDestroyed(smokeActors);
 	}
 }

@@ -1,11 +1,19 @@
 package;
 
 import DynamicSprite.DynamicAtlasFrames;
+import CodenameNoteMetadata.CodenameNoteOrigin;
 import Judgement.TUI;
 import openfl.errors.Error;
 import flixel.util.typeLimit.OneOfTwo;
 import flixel.FlxSprite;
+import flixel.FlxCamera;
 import flixel.graphics.frames.FlxAtlasFrames;
+import flixel.graphics.frames.FlxFrame;
+import flixel.graphics.frames.FlxFrame.FlxFrameAngle;
+import flixel.math.FlxAngle;
+import flixel.math.FlxMatrix;
+import flixel.math.FlxPoint;
+import flixel.math.FlxRect;
 import flixel.math.FlxMath;
 import flixel.util.FlxColor;
 import lime.system.System;
@@ -55,6 +63,12 @@ typedef NoteInfo = {
 	 * Whether it should be sung. 
 	 */
 	var ?shouldSing:Null<Bool>;
+	/** Whether this custom note emits a character crossfade afterimage. */
+	var ?crossFade:Null<Bool>;
+	/** Let the computer hit, sing, and strum this note even when players should avoid it. */
+	var ?aiShouldHit:Null<Bool>;
+	/** Explicitly skip this note for player-side autoplay. */
+	var ?avoidAutoHit:Null<Bool>;
 	/**
 	 * Overwritten by healAmount. How much the healing should be multiplied.
 	 */
@@ -127,6 +141,17 @@ typedef NoteInfo = {
 	 * Leave null (or just not include it) to use standard sustains
 	 */
 	var ?customSustainPath:Null<String>;
+	/** Per-kind V-Slice note-style rendering metadata. */
+	var ?customNoteIsPixel:Null<Bool>;
+	var ?customNoteScale:Null<Float>;
+	var ?customNoteOffsetX:Null<Float>;
+	var ?customNoteOffsetY:Null<Float>;
+	/** Source-engine note type retained for runtime bridges (for example,
+		Psych's GF Sing note). */
+	var ?sourceNoteType:Null<String>;
+	/** Authored HXC/V-Slice kind retained separately from the native note id. */
+	var ?sourceKind:Null<String>;
+	var ?sourceEngine:Null<String>;
 }
 /**
  * Used to make opponent sing.
@@ -147,6 +172,108 @@ typedef SingInfo = {
 }
 // sinful dynamic sprite
 class Note extends DynamicSprite {
+	/** Psych 0.7.3 logical texture. Empty means the current chart's arrow skin. */
+	public var texture(get, set):String;
+	var psychTexture:String = '';
+	var psychSkinOwner:String = null;
+	var psychChartSkin:String = null;
+	var psychPixelSkin:Bool = false;
+	var psychSkinPostfix:String = '';
+	var psychRGBDisabled:Bool = false;
+	var psychRGBShader:PsychRGBShaderReference = null;
+	@:keep public var rgbShader(get, never):PsychRGBShaderReference;
+	@:keep function get_rgbShader():PsychRGBShaderReference return psychRGBShader;
+	var psychSkinDiagnosticNoteIndex:Int = 0;
+	var psychSkinDiagnosticsEnabled:Bool = false;
+	function get_texture():String return psychTexture;
+	function set_texture(value:String):String {
+		if (value == null) value = '';
+		if (psychSkinOwner == null) return psychTexture = value;
+		if (value != psychTexture && PsychSkinRuntime.reloadNote(this, value, psychSkinOwner,
+			psychChartSkin, psychPixelSkin, psychSkinPostfix, psychSkinDiagnosticsEnabled)) {
+			psychTexture = value;
+			refreshPsychNoteType();
+		}
+		return psychTexture;
+	}
+
+	public function configurePsychSkin(ownerRoot:String, arrowSkin:String, disableNoteRGB:Bool,
+		pixel:Bool, ?postfix:String = '', ?diagnosticNoteIndex:Int = 0,
+		?diagnosticEnabled:Bool = false):Bool {
+		psychSkinDiagnosticsEnabled = diagnosticEnabled;
+		if (diagnosticEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('configure:reset');
+		psychSkinOwner = ownerRoot;
+		psychChartSkin = arrowSkin;
+		psychPixelSkin = pixel;
+		psychSkinPostfix = postfix;
+		psychTexture = '';
+		psychRGBDisabled = disableNoteRGB;
+		psychSkinDiagnosticNoteIndex = diagnosticNoteIndex;
+		if (diagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:reload-begin count=' + diagnosticNoteIndex);
+		if (diagnosticEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('configure:reload');
+		if (!PsychSkinRuntime.reloadNote(this, '', ownerRoot, arrowSkin, pixel, postfix, diagnosticEnabled)) {
+			if (diagnosticNoteIndex > 0)
+				RuntimeSmokeHarness.markStep('psych-note-skin:reload-missing count=' + diagnosticNoteIndex);
+			psychSkinDiagnosticNoteIndex = 0;
+			return false;
+		}
+		if (diagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:reload-complete count=' + diagnosticNoteIndex);
+		if (diagnosticEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('configure:refresh');
+		if (diagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:rgb-refresh-begin count=' + diagnosticNoteIndex);
+		refreshPsychNoteType();
+		if (diagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:rgb-refresh-complete count=' + diagnosticNoteIndex);
+		psychSkinDiagnosticNoteIndex = 0;
+		if (diagnosticEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('configure:complete');
+		return true;
+	}
+
+	/** Call after an authored note type changes; texture reload itself does not alter it. */
+	public function refreshPsychNoteType():Void {
+		if (psychSkinOwner == null) return;
+		// Psych shares lane palettes, then gives each note a copy-on-write view.
+		// This also bounds generated shader construction when large charts load.
+		if (psychRGBShader == null) {
+			if (psychSkinDiagnosticsEnabled)
+				RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:shader-create');
+			if (psychSkinDiagnosticNoteIndex > 0)
+				RuntimeSmokeHarness.markStep('psych-note-skin:rgb-shader-create-begin count=' + psychSkinDiagnosticNoteIndex);
+			var palette = PsychRGBPalette.defaultFor(noteData, psychPixelSkin, sourceKind == 'Hurt Note');
+			psychRGBShader = new PsychRGBShaderReference(this, palette);
+			if (psychRGBDisabled)
+				psychRGBShader.enabled = false;
+			if (psychSkinDiagnosticNoteIndex > 0)
+				RuntimeSmokeHarness.markStep('psych-note-skin:rgb-shader-create-complete count=' + psychSkinDiagnosticNoteIndex);
+		} else {
+			if (psychSkinDiagnosticsEnabled)
+				RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:palette');
+			var palette = PsychRGBPalette.defaultFor(noteData, psychPixelSkin, sourceKind == 'Hurt Note');
+			psychRGBShader.usePalette(palette);
+		}
+		if (psychSkinDiagnosticsEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:palette');
+		if (psychSkinDiagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:rgb-palette-begin count=' + psychSkinDiagnosticNoteIndex);
+		if (psychSkinDiagnosticNoteIndex > 0)
+			RuntimeSmokeHarness.markStep('psych-note-skin:rgb-palette-complete count=' + psychSkinDiagnosticNoteIndex);
+		if (psychSkinDiagnosticsEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:bind');
+		shader = psychRGBShader.enabled ? psychRGBShader.parent.shader : null;
+		if (psychSkinDiagnosticsEnabled)
+			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:complete');
+	}
+
+	/** A Psych atlas swap rebuilds the sprite's frame centering from its new canvas. */
+	public function resetPsychVisualOffset():Void {
+		offsetState = new NoteOffsetState();
+	}
 	public var strumTime:Float = 0;
 	public static var getFrames:Bool = true;
 	static var framesKey:Array<String> = [];
@@ -157,19 +284,36 @@ class Note extends DynamicSprite {
 	public var mustPress:Bool = false;
 	public var noteData:Int = 0;
 	public var trueNoteData:Int = 0;
+	/** Source chart field identity, independent from the binary `mustPress`
+	 * contract and from note-type bits stored in trueNoteData. */
+	public var sourcePlayfieldIndex:Int = -1;
+	/** Direction within sourcePlayfieldIndex before destination note encoding. */
+	public var sourceDirection:Int = -1;
+	/** Optional source-field actor owner, independent of native mustPress. NMV has
+	 * several BF-owned fields, but only one native player/opponent boolean. */
+	public var sourcePlayfieldPlayerControlled:Null<Bool> = null;
+	/** Source fields can autoplay independently of the user's botplay setting. */
+	public var sourcePlayfieldAutoPlay:Bool = false;
 	public var canBeHit:Bool = false;
 	public var tooLate:Bool = false;
 	public var wasGoodHit:Bool = false;
 	public var prevNote:Note;
+	/** The head owns a sustain's lane anchor even after it is judged. */
+	var sustainHead:Note = null;
+	var sustainHeadCenterX:Null<Float> = null;
 	public var duoMode:Bool = false;
 	public var oppMode:Bool = false;
 	public var soloMode:Bool = false;
 	public var sustainLength:Float = 0;
 	public var isSustainNote:Bool = false;
+	/** Optional Codename direction override for this note's travel path. */
+	@:keep public var noteAngle:Null<Float> = null;
 	public var modifiedByLua:Bool = false;
 	public var funnyMode:Bool = false;
 	public var noteScore:Float = 1;
 	public var altNote:Bool = false;
+	/** Whether this note should emit a character crossfade afterimage. */
+	public var crossFade:Bool = false;
 	public var altNum:Int = 0;
 	public var isPixel:Bool = false;
 	public var normalSize:Float = 0.7;
@@ -178,6 +322,16 @@ class Note extends DynamicSprite {
 	public static var specialNoteJson:Null<Array<NoteInfo>>;
 	public var damageAmount:Null<Float> = null;
 	public var healAmount:Null<Float> = null;
+	/** Explicit Psych Lua health overrides. Null keeps the native note judgement. */
+	public var hitHealth:Null<Float> = null;
+	public var missHealth:Null<Float> = null;
+	public var hitCausesMiss:Bool = false;
+	public var ignoreNote:Bool = false;
+	/** Psych source stages can defer player hits until an earlier action unblocks them. */
+	public var blockHit:Bool = false;
+	/** Psych Lua can toggle splash behavior on one live note independently of
+		its note type or the global splash option. */
+	public var noteSplashData:Dynamic = {disabled: false};
 	// pwease freeplay state don't edit me i already have special info :grief: :grief:
 	public var dontEdit:Bool = false;
 	public var rating = "miss";
@@ -195,7 +349,21 @@ class Note extends DynamicSprite {
 	public var timingMultiplier:Float = 1;
 	// whether to play the sing animation for hitting this note
 	public var shouldBeSung:Bool = true;
+	/** Psych can suppress hit and miss animations independently. */
+	public var noAnimation:Bool = false;
+	public var noMissAnimation:Bool = false;
+	public var aiShouldHit:Bool = false;
+	public var avoidAutoHit:Bool = false;
+	/** A script canceled this computer hit; let the note pass without retrying it. */
+	public var autoHitSuppressed:Bool = false;
 	public var ignoreHealthMods:Bool = false;
+
+	/** Null or partial Psych splash tables keep the native splash behavior. */
+	public function isNoteSplashDisabled():Bool {
+		if (noteSplashData == null)
+			return false;
+		return Reflect.field(noteSplashData, 'disabled') == true;
+	}
 	public var healCutoff:Null<String>;
 	var specialNoteInfo:NoteInfo;
 	public var dontCountNote = false;
@@ -206,15 +374,119 @@ class Note extends DynamicSprite {
 	public var oppntAnim:Null<String> = null;
 	public var classes:Null<Array<String>> = [];
 	public var coolId:Null<String> = null;
+	/** Authored note kind used by HXC/V-Slice callback payloads. */
+	public var sourceKind(default, set):Null<String> = null;
+	function set_sourceKind(value:Null<String>):Null<String> {
+		sourceKind = value;
+		applyPsychNoteAnimationType(value);
+		refreshPsychNoteType();
+		return value;
+	}
+	function applyPsychNoteAnimationType(value:Null<String>):Void {
+		if (value == 'No Animation') {
+			noAnimation = true;
+			noMissAnimation = true;
+		}
+	}
+	public function allowsAnimation(miss:Bool = false):Bool {
+		return miss ? !noMissAnimation : !noAnimation;
+	}
+	/** Psych Lua exposes the authored type through the mutable noteType field. */
+	public var noteType(get, set):String;
+	function get_noteType():String {
+		return sourceKind == null ? '' : sourceKind;
+	}
+	function set_noteType(value:String):String {
+		sourceKind = value;
+		return value;
+	}
+	/** Original authored strumline/note identity, independent of input modifiers. */
+	@:keep public var codenameOrigin:CodenameNoteOrigin = null;
+	/** Stable input/actor ownership for an authored source strumline. */
+	@:keep public var codenameInputLine:CodenameInputLine<Character> = null;
+	/** Authored horizontal shift retained while its source strumline moves.
+	 * Chart notes exclude this fork's constructor lane padding. */
+	@:keep public var codenameReceptorXOffset:Null<Float> = null;
+	/** Chart-generation x before source callbacks, used to keep authored note
+	 * motion without preserving this fork's legacy constructor lane padding. */
+	public var codenameGeneratedX:Null<Float> = null;
+	/** Codename's sprite-space visual nudge. Allocate only when a loaded script
+	 * reads or writes it; ordinary/Psych notes never pay for a FlxPoint. */
+	@:keep public var frameOffset(get, set):FlxPoint;
+	var codenameFrameOffset:FlxPoint = null;
+	var codenameFrameOffsetOwned:Bool = false;
+	function get_frameOffset():FlxPoint {
+		if (codenameFrameOffset == null) {
+			codenameFrameOffset = FlxPoint.get();
+			codenameFrameOffsetOwned = true;
+		}
+		return codenameFrameOffset;
+	}
+	function set_frameOffset(value:FlxPoint):FlxPoint {
+		if (value == codenameFrameOffset) return value;
+		// Getter-created points belong to this note's pool slot. A point assigned
+		// by a script remains caller-owned, matching Codename's writable field.
+		if (codenameFrameOffset != null && codenameFrameOffsetOwned)
+			codenameFrameOffset.put();
+		codenameFrameOffset = value;
+		codenameFrameOffsetOwned = false;
+		return value;
+	}
+	/** Source Codename splash identifier. PlayState resolves custom selections
+	 * through the selected owner's data/splashes definitions. */
+	@:keep public var splash:String = 'default';
+	@:keep public var codenameLineConfigured:Bool = false;
+	@:keep public var codenamePreparedStrumScale:Float = 1;
+	@:keep public var codenameCreationScaleSet:Bool = false;
+	/** The line scale applied after this note's chart/style scale. */
+	@:keep public var codenameSourceStrumScale:Float = 1;
+	public function applyCodenameSourceStrumScale(value:Float):Void {
+		if (!Math.isFinite(value) || value <= 0) value = 1;
+		if (value == codenameSourceStrumScale) return;
+		var factor = value / codenameSourceStrumScale;
+		scale.set(scale.x * factor, scale.y * factor);
+		codenameSourceStrumScale = value;
+		updateHitbox();
+	}
+	/** Codename scripts address the note's source line as note.strumLine. */
+	@:keep public var strumLine(get, never):CodenameInputLine<Character>;
+	function get_strumLine():CodenameInputLine<Character> return codenameInputLine;
+	/** Codename's per-note input window scales; scripts can change these on a live note. */
+	@:keep public var earlyPressWindow:Float = 1;
+	@:keep public var latePressWindow:Float = 1;
+	/** Source sustain hits may remain alive after their one callback. */
+	@:keep public var codenameHitDispatched:Bool = false;
+	/** Codename hit callbacks can keep an authored sustain visually uncut. */
+	@:keep public var noSustainClip:Bool = false;
+	@:keep public var noteTypeID:Int = 0;
+	/** Donor note views use this to lower incoming-note priority. */
+	public var lowPriority:Bool = false;
 	public var animSuffix:Null<String> = null;
+	/** The Codename sing suffix before native note-skin naming rewrites animSuffix. */
+	public var codenameAuthoredAnimSuffix:Null<String> = null;
 	public var numSuffix:Null<Dynamic> = null;
 	public var oppntSing:Null<SingInfo>;
+	/** Psych/Kade GF Sing notes use the girlfriend actor without changing the
+		chart row's authored string noteType. */
+	public var forceGfSing:Bool = false;
 	public var customNotePath:Null<String> = null;
 	public var customSustainPath:Null<String> = null;
+	/** Optional V-Slice hold-cover effect currently attached to this hold. */
+	public var cover:NoteHoldCover = null;
+	/** Imported HXC note views expose this read-only shader saturation value. */
+	public var hxcHsvSaturation:Float = 0;
 	var currentKey = null; // I tried pulling this from Playstate but it was being weird...
+	var offsetState:NoteOffsetState;
+	var offsetWritesReady:Bool = false;
+	/** An ordinary V-Slice tap is centered on this fork's lane independently
+	 * of receptor offsets. Null keeps native and Psych hitbox rules intact. */
+	var vSliceNoteOffsetX:Null<Float> = null;
+	var vSliceNoteOffsetY:Float = 0;
 	// altNote can be int or bool. int just determines what alt is played
 	// format: [strumTime:Float, noteDirection:Int, sustainLength:Float, altNote:Union<Bool, Int>]
-	public function new(strumTime:Float, noteData:Int, ?prevNote:Note, ?sustainNote:Bool = false)
+	public function new(strumTime:Float, noteData:Int, ?prevNote:Note, ?sustainNote:Bool = false,
+		?authoredAnimSuffix:String = null, ?authoredCodenameOrigin:CodenameNoteOrigin = null,
+		?authoredMustHit:Null<Bool> = null)
 	{
 		super(42);
 		// uh oh notedata sussy :flushed:
@@ -223,8 +495,17 @@ class Note extends DynamicSprite {
 
 		this.prevNote = prevNote;
 		isSustainNote = sustainNote;
+		if (isSustainNote) {
+			sustainHead = prevNote.isSustainNote ? prevNote.sustainHead : prevNote;
+			if (sustainHead != null)
+				sustainHeadCenterX = sustainHead.graphicCenterOffsetX();
+		}
+		codenameOrigin = authoredCodenameOrigin;
+		codenameAuthoredAnimSuffix = authoredAnimSuffix;
 
 		var curUiType:TUI = Reflect.field(Judgement.uiJson, PlayState.SONG.uiType);
+		var noteIsPixel = curUiType.isPixel;
+		setVSliceNoteOffsets(curUiType);
 		/*var notePresets;
 		if (FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/multiNotePresets.json'))
 			notePresets = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/multiNotePresets.json'));
@@ -232,11 +513,20 @@ class Note extends DynamicSprite {
 			notePresets = CoolUtil.parseJson(FNFAssets.getText('assets/data/defaultNotePresets.json'));
 		currentKey = Reflect.field(notePresets, 'key' + NOTE_AMOUNT);*/
 		currentKey = new NoteKeys(curUiType.uses);
+		var noteAsset = curUiType.noteAsset == null || StringTools.trim(curUiType.noteAsset) == ''
+			? (curUiType.isPixel ? 'arrows-pixels' : 'NOTE_assets') : curUiType.noteAsset;
+		var holdAsset = curUiType.holdAsset == null ? '' : StringTools.trim(curUiType.holdAsset);
+		var holdAssetXml = curUiType.holdAssetXml == true;
+		var holdFramesPerLane = curUiType.holdFramesPerLane == null ? 1 : curUiType.holdFramesPerLane;
+		if (holdFramesPerLane < 1)
+			holdFramesPerLane = 1;
 		
 		x += 50;
 		// MAKE SURE ITS DEFINITELY OFF SCREEN?
 		y -= 2000;
 		this.strumTime = strumTime;
+		if (authoredAnimSuffix != null && StringTools.trim(authoredAnimSuffix) != '')
+			animSuffix = StringTools.trim(authoredAnimSuffix);
 
 		trueNoteData = noteData;
 		this.noteData = noteData % NOTE_AMOUNT;
@@ -270,6 +560,10 @@ class Note extends DynamicSprite {
 			
 			if (thingie.shouldSing != null)
 				shouldBeSung = thingie.shouldSing;
+			if (thingie.crossFade != null)
+				crossFade = thingie.crossFade;
+			aiShouldHit = thingie.aiShouldHit == true;
+			avoidAutoHit = thingie.avoidAutoHit == true;
 
 			if (thingie.consistentHealth != null)
 				consistentHealth = thingie.consistentHealth;
@@ -303,6 +597,10 @@ class Note extends DynamicSprite {
 
 			if (thingie.id != null)
 				coolId = thingie.id;
+			if (Reflect.field(thingie, 'sourceKind') != null)
+				sourceKind = Std.string(Reflect.field(thingie, 'sourceKind'));
+			else if (Reflect.field(thingie, 'sourceNoteType') != null)
+				sourceKind = Std.string(Reflect.field(thingie, 'sourceNoteType'));
 
 			if (thingie.singInfo != null) {
 				oppntSing = thingie.singInfo;
@@ -315,6 +613,11 @@ class Note extends DynamicSprite {
 				customNotePath = thingie.customNotePath;
 			if (thingie.customSustainPath != null)
 				customSustainPath = thingie.customSustainPath;
+			if (thingie.customNoteIsPixel != null)
+				noteIsPixel = thingie.customNoteIsPixel;
+			if (Reflect.field(thingie, 'sourceNoteType') != null
+				&& NoteTypeCompat.isGfSing(Reflect.field(thingie, 'sourceNoteType')))
+				forceGfSing = true;
 
 			specialNoteInfo = thingie;
 			ignoreHealthMods = cast thingie.ignoreHealthMods;
@@ -334,7 +637,80 @@ class Note extends DynamicSprite {
 			customSustainPath = prevNote.customSustainPath;
 		}
 
-		if (!curUiType.isPixel) {	
+		var customStyleScale = specialNoteInfo == null ? null : specialNoteInfo.customNoteScale;
+		var initialNoteScale:Float = customStyleScale != null ? customStyleScale
+			: (curUiType.noteScale == null ? 0.7 : curUiType.noteScale);
+		if (isSustainNote && holdAsset != ''
+			&& FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.png'))
+			initialNoteScale = curUiType.holdScale == null ? initialNoteScale : curUiType.holdScale;
+		var codenameCreationEvent:CodenameNoteCreationEvent = null;
+		var codenameVisualWasCancelled = false;
+		var codenameAtlasWasChanged = false;
+		var initialCodenameSprite = 'game/notes/default';
+		var codenameOwnerActive = PlayState.instance != null
+			&& PlayState.instance.codenameCreationOwnerRoot() != '';
+		if (PlayState.instance != null && codenameOrigin != null) {
+			noteTypeID = PlayState.instance.codenameNoteTypeIndex(sourceKind);
+			initialCodenameSprite = PlayState.instance.codenameNoteSprite(sourceKind);
+		}
+		if (PlayState.instance != null
+			&& (codenameOwnerActive
+				|| initialCodenameSprite != 'game/notes/default'
+				|| PlayState.instance.hasCodenameCreationCallback('onNoteCreation')
+				|| PlayState.instance.hasCodenameCreationCallback('onPostNoteCreation'))) {
+			PlayState.instance.prepareCodenameNoteCreation(this);
+			var initialCodenameScale = initialNoteScale * codenamePreparedStrumScale;
+			var strumLineID = codenameOrigin != null ? codenameOrigin.lineIndex
+				: (authoredMustHit == true ? 1 : 0);
+			var noteType = sourceKind == null
+				? (mineNote ? 'Mine' : nukeNote ? 'Nuke' : isLiftNote ? 'Lift' : '')
+				: sourceKind;
+			codenameCreationEvent = new CodenameNoteCreationEvent(this,
+				Std.int(Math.abs(this.noteData)) % NOTE_AMOUNT, noteType, noteTypeID, strumLineID,
+				authoredMustHit == true, initialCodenameSprite,
+				authoredAnimSuffix == null ? '' : authoredAnimSuffix, initialCodenameScale);
+			PlayState.instance.dispatchCodenameCreationCallback('onNoteCreation', codenameCreationEvent);
+			if (codenameCreationEvent.animSuffix != null) {
+				var callbackSuffix = StringTools.trim(codenameCreationEvent.animSuffix);
+				animSuffix = callbackSuffix == '' ? null : callbackSuffix;
+				codenameAuthoredAnimSuffix = animSuffix;
+			}
+			codenameVisualWasCancelled = codenameCreationEvent.cancelled;
+			var selectedAtlasPath = CodenameCreationVisual.selectedAtlasPath(codenameOwnerActive,
+				codenameCreationEvent.noteSprite, codenameVisualWasCancelled);
+			codenameCreationScaleSet = codenameCreationEvent.noteScale != null
+				&& codenameCreationEvent.noteScale != initialCodenameScale;
+			if (selectedAtlasPath != null) {
+				try {
+					var ownerFrames = selectedAtlasPath == 'game/notes/default'
+						? PlayState.instance.codenameDefaultNoteAtlasFrames()
+						: new CodenamePaths(PlayState.instance.codenameCreationOwnerRoot())
+							.getFrames(selectedAtlasPath);
+					if (CodenameCreationVisual.applyNoteAtlas(this, ownerFrames,
+							CodenameCreationVisual.noteDirection(codenameCreationEvent.strumID),
+							animSuffix, isSustainNote,
+							codenameCreationScaleSet ? codenameCreationEvent.noteScale : initialNoteScale,
+							PlayState.instance.codenameCreationOwnerRoot(), selectedAtlasPath)) {
+						normalSize = codenameCreationScaleSet
+							? codenameCreationEvent.noteScale : initialNoteScale;
+						codenameAtlasWasChanged = true;
+					}
+				} catch (error:Dynamic) {
+					trace('[codename-note-creation] Could not load selected-owner atlas '
+						+ selectedAtlasPath + ': ' + Std.string(error));
+					codenameAtlasWasChanged = false;
+				}
+			}
+		}
+
+		isPixel = noteIsPixel;
+		if (codenameVisualWasCancelled) {
+			// Cancellable creation scripts own all visual setup after cancel().
+		} else if (codenameAtlasWasChanged) {
+			// The selected owner's atlas and its trim/rotation metadata were
+			// installed above before this note's hitbox and sustain sizing.
+		} else {
+		if (!noteIsPixel) {
 			if (customNotePath != null) {
 				if (getSpecialFrames) {
 					getSpecialFrames = false;
@@ -359,10 +735,10 @@ class Note extends DynamicSprite {
 				if (funnyNum == -1) {
 					var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
 						+ curUiType.uses
-						+ "/NOTE_assets.png",
+						+ '/' + noteAsset + ".png",
 						'assets/images/custom_ui/ui_packs/'
 						+ curUiType.uses
-						+ "/NOTE_assets.xml");
+						+ '/' + noteAsset + ".xml");
 					framesKey.push(PlayState.SONG.uiType);
 					gotFrames.push(daFrames);
 					funnyNum = framesKey.length - 1;
@@ -387,7 +763,32 @@ class Note extends DynamicSprite {
 			else
 				animation.addByPrefix('Scroll', noteName + '${animSuffix}0');
 
-			if (prevNote.nukeNote) {
+			var customHold = isSustainNote && holdAsset != '' && !dontEdit
+				&& FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.png');
+			if (customHold) {
+				var holdPath = 'assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.png';
+				if (holdAssetXml && FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.xml')) {
+					frames = DynamicAtlasFrames.fromSparrow(holdPath,
+						'assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.xml');
+					animation.addByPrefix('holdend', currentKey.getNote(noteData % NOTE_AMOUNT) + ' hold end');
+					animation.addByPrefix('hold', currentKey.getNote(noteData % NOTE_AMOUNT) + ' hold piece');
+				} else {
+					var holdBitmap = FNFAssets.getBitmapData(holdPath);
+					var holdWidth = Std.int(holdBitmap.width / (NOTE_AMOUNT * holdFramesPerLane));
+					if (holdWidth < 1) holdWidth = holdBitmap.width;
+					loadGraphic(holdBitmap, true, holdWidth, holdBitmap.height);
+					var holdLane = PlayState.flippedNotes ? NOTE_AMOUNT - (noteData % NOTE_AMOUNT + 1) : noteData % NOTE_AMOUNT;
+					var holdFrame = holdLane * holdFramesPerLane;
+					var holdEndFrame = holdFramesPerLane > 1 ? holdFrame + 1 : holdFrame;
+					animation.add('holdend', [holdEndFrame]);
+					animation.add('hold', [holdFrame]);
+				}
+				normalSize = curUiType.holdScale == null ? 0.7 : curUiType.holdScale;
+				setGraphicSize(Std.int(width * normalSize));
+				if (curUiType.holdOffsetX != null || curUiType.holdOffsetY != null)
+					offset.set(curUiType.holdOffsetX == null ? 0 : curUiType.holdOffsetX,
+						curUiType.holdOffsetY == null ? 0 : curUiType.holdOffsetY);
+			} else if (prevNote.nukeNote) {
 				animation.addByPrefix('holdend', noteName + ' nuke hold end${animSuffix}');
 				animation.addByPrefix('hold', noteName + ' nuke hold piece${animSuffix}');
 			} else if (prevNote.mineNote) {
@@ -401,14 +802,18 @@ class Note extends DynamicSprite {
 				animation.addByPrefix('hold', noteName + ' hold piece${animSuffix}');
 			}
 
-			setGraphicSize(Std.int(width * 0.7));
-			normalSize = 0.7;
+			var noteScale = initialNoteScale;
+			if (isSustainNote && holdAsset != '' && FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + '/' + holdAsset + '.png'))
+				noteScale = curUiType.holdScale == null ? noteScale : curUiType.holdScale;
+			setGraphicSize(Std.int(width * noteScale));
+			normalSize = noteScale;
 			updateHitbox();
 			antialiasing = true;
 			// when arrowsEnds != arrowEnds :laughing_crying:
 		} else {
 			isPixel = true;
-			if (FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + "/arrows-pixels.xml")) {
+			if ((customNotePath != null && FNFAssets.exists(customNotePath + '.xml'))
+				|| FNFAssets.exists('assets/images/custom_ui/ui_packs/' + curUiType.uses + "/arrows-pixels.xml")) {
 				if (customNotePath != null) {
 					if (getSpecialFrames) {
 						getSpecialFrames = false;
@@ -431,12 +836,12 @@ class Note extends DynamicSprite {
 					}
 					var funnyNum = framesKey.indexOf(PlayState.SONG.uiType);
 					if (funnyNum == -1) {
-						var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
-							+ curUiType.uses
-							+ "/arrows-pixels.png",
-							'assets/images/custom_ui/ui_packs/'
-							+ curUiType.uses
-							+ "/arrows-pixels.xml");
+					var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
+						+ curUiType.uses
+						+ '/' + noteAsset + ".png",
+						'assets/images/custom_ui/ui_packs/'
+						+ curUiType.uses
+						+ '/' + noteAsset + ".xml");
 						framesKey.push(PlayState.SONG.uiType);
 						gotFrames.push(daFrames);
 						funnyNum = framesKey.length - 1;
@@ -561,8 +966,15 @@ class Note extends DynamicSprite {
 			updateHitbox();
 			normalSize = 6;
 		}
+		}
+		if (codenameCreationScaleSet && codenameCreationEvent != null && !codenameVisualWasCancelled) {
+			scale.set(codenameCreationEvent.noteScale, codenameCreationEvent.noteScale);
+			updateHitbox();
+			normalSize = codenameCreationEvent.noteScale;
+		}
 		x += swagWidth * (noteData % NOTE_AMOUNT);
-		animation.play('Scroll');
+		if (!codenameVisualWasCancelled)
+			animation.play('Scroll');
 
 		// trace(prevNote);
 		if (isSustainNote && OptionsHandler.options.downscroll)
@@ -574,6 +986,7 @@ class Note extends DynamicSprite {
 			// sustain notes are notes too #equalrightsforsustains
 			altNote = prevNote.altNote;
 			altNum = prevNote.altNum;
+			crossFade = prevNote.crossFade;
 
 			nukeNote = prevNote.nukeNote;
 			mineNote = prevNote.mineNote;
@@ -581,6 +994,8 @@ class Note extends DynamicSprite {
 			drainNote = prevNote.drainNote;
 			dontCountNote = prevNote.dontCountNote;
 			dontStrum = prevNote.dontStrum;
+			aiShouldHit = prevNote.aiShouldHit;
+			avoidAutoHit = prevNote.avoidAutoHit;
 
 			dontEdit = prevNote.dontEdit;
 			if (dontEdit) {
@@ -610,16 +1025,186 @@ class Note extends DynamicSprite {
 				// DO mod it because we DIDN'T do that
 				prevNote.animation.play('hold');
 
-				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.daScrollSpeed;
+				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;
 				prevNote.updateHitbox();
 				// prevNote.setGraphicSize();
 			}
 		}
+		offsetWritesReady = true;
+		if (codenameCreationEvent != null && PlayState.instance != null) {
+			PlayState.instance.dispatchCodenameCreationCallback('onPostNoteCreation', codenameCreationEvent);
+			PlayState.instance.markCodenameCreationVisual('note', codenameCreationEvent.strumLineID,
+				codenameCreationEvent.strumID,
+				codenameAtlasWasChanged ? codenameCreationEvent.noteSprite : 'native-ui',
+				codenameAtlasWasChanged && !codenameVisualWasCancelled,
+				codenameFrameOffset == null ? 0 : codenameFrameOffset.x,
+				codenameFrameOffset == null ? 0 : codenameFrameOffset.y);
+		}
+	}
+
+	/** Flixel's drawn frame center relative to x, including its current atlas offset. */
+	public function graphicCenterOffsetX():Float {
+		if (origin == null || offset == null || scale == null)
+			return width / 2;
+		var center = origin.x - offset.x - origin.x * scale.x + width / 2;
+		return Math.isFinite(center) ? center : width / 2;
+	}
+
+	/** Keep every piece under its own hold head as the receptor moves or scales. */
+	public function sustainHeadAnchorX():Float {
+		if (sustainHead != null) {
+			if (sustainHead.alive && sustainHead.origin != null
+				&& sustainHead.offset != null && sustainHead.scale != null)
+				sustainHead.sustainHeadCenterX = sustainHead.graphicCenterOffsetX();
+			if (sustainHead.sustainHeadCenterX != null)
+				sustainHeadCenterX = sustainHead.sustainHeadCenterX;
+		}
+		return sustainHeadCenterX == null ? swagWidth / 2 : sustainHeadCenterX;
+	}
+
+	/** A forward seek can retire the head or predecessor of a sustain that
+	 * remains on screen. Re-root that surviving piece before the next gameplay
+	 * update reads fields from the destroyed note. Preserve its cached head
+	 * anchor so the hold does not jump horizontally at the seek boundary. */
+	public function repairSustainChainAfterSeek():Void {
+		if (prevNote == null || !prevNote.exists || !prevNote.alive)
+			prevNote = this;
+		if (sustainHead != null && (!sustainHead.exists || !sustainHead.alive)) {
+			if (sustainHeadCenterX == null)
+				sustainHeadCenterX = graphicCenterOffsetX();
+			sustainHead = null;
+		}
+	}
+
+	override public function updateHitbox():Void {
+		if (offsetState == null)
+			offsetState = new NoteOffsetState();
+		offsetState.capture(offset.x, offset.y, offsetWritesReady);
+		super.updateHitbox();
+		if (!isSustainNote && customNotePath != null && specialNoteInfo != null
+			&& Reflect.field(specialNoteInfo, 'sourceNoteStyle') != null) {
+			var authoredX = specialNoteInfo.customNoteOffsetX == null ? 0 : specialNoteInfo.customNoteOffsetX;
+			var authoredY = specialNoteInfo.customNoteOffsetY == null ? 0 : specialNoteInfo.customNoteOffsetY;
+			offset.x = NoteStyleAlignment.centeredOffsetX(width, origin.x, scale.x, swagWidth, authoredX);
+			offset.y += authoredY;
+		} else if (!isSustainNote && customNotePath == null && psychSkinOwner == null
+			&& vSliceNoteOffsetX != null) {
+			// Donor Strumline.buildNoteSprite centers a tap in its 104px lane.
+			// PlayState snaps our x to the receptor without that width correction,
+			// so center the canvas in this fork's 112px lane after every hitbox reset.
+			offset.x = NoteStyleAlignment.centeredOffsetX(width, origin.x, scale.x,
+				swagWidth, vSliceNoteOffsetX);
+			offset.y += vSliceNoteOffsetY;
+		}
+	offsetState.finish(offset.x, offset.y);
+		offset.set(offsetState.x, offsetState.y);
+		if (!isSustainNote)
+			sustainHeadCenterX = graphicCenterOffsetX();
+	}
+
+	/** Apply Codename's note-frame nudge in sprite space. Keep the native
+	 * Flixel fast path for the overwhelmingly common zero-offset note. */
+	override function drawFrameComplex(frame:FlxFrame, camera:FlxCamera):Void {
+		var visualOffset = codenameFrameOffset;
+		if (visualOffset == null || (visualOffset.x == 0 && visualOffset.y == 0)) {
+			super.drawFrameComplex(frame, camera);
+			return;
+		}
+		final matrix = _matrix;
+		frame.prepareMatrix(matrix, FlxFrameAngle.ANGLE_0, checkFlipX(), checkFlipY());
+		matrix.translate(-origin.x, -origin.y);
+		CodenameCreationVisual.applyFrameOffset(matrix, visualOffset.x, visualOffset.y);
+		matrix.scale(scale.x, scale.y);
+		if (bakedRotationAngle <= 0) {
+			updateTrig();
+			if (angle != 0) matrix.rotateWithTrig(_cosAngle, _sinAngle);
+		}
+		getScreenPosition(_point, camera).subtract(offset);
+		_point.add(origin.x, origin.y);
+		matrix.translate(_point.x, _point.y);
+		if (isPixelPerfectRender(camera)) {
+			matrix.tx = Math.floor(matrix.tx);
+			matrix.ty = Math.floor(matrix.ty);
+		}
+		CodenameFunkinSprite.applyCameraTransform(matrix, camera, 1, 1, true, true);
+		camera.drawPixels(frame, framePixels, matrix, colorTransform, blend, antialiasing, shader);
+	}
+
+	override public function isSimpleRenderBlit(?camera:FlxCamera):Bool {
+		if (codenameFrameOffset != null
+			&& (codenameFrameOffset.x != 0 || codenameFrameOffset.y != 0)) return false;
+		return super.isSimpleRenderBlit(camera);
+	}
+
+	/** Keep a shifted atlas frame inside its draw bounds for Flixel culling. */
+	override public function getScreenBounds(?newRect:FlxRect, ?camera:FlxCamera):FlxRect {
+		var visualOffset = codenameFrameOffset;
+		if (visualOffset == null || (visualOffset.x == 0 && visualOffset.y == 0))
+			return super.getScreenBounds(newRect, camera);
+		if (camera == null) camera = getDefaultCamera();
+		var bounds = super.getScreenBounds(newRect, camera);
+		var scaledX = visualOffset.x * scale.x + (scale.x < 0 ? frameWidth * scale.x : 0);
+		var scaledY = visualOffset.y * scale.y + (scale.y < 0 ? frameHeight * scale.y : 0);
+		var radians = bakedRotationAngle <= 0 ? angle * FlxAngle.TO_RAD : 0;
+		var cos = Math.cos(radians);
+		var sin = Math.sin(radians);
+		bounds.x -= scaledX * cos - scaledY * sin;
+		bounds.y -= scaledX * sin + scaledY * cos;
+		var scrollX = camera.scroll.x * scrollFactor.x;
+		var scrollY = camera.scroll.y * scrollFactor.y;
+		bounds.x += Std.int(scrollX) - scrollX;
+		bounds.y += Std.int(scrollY) - scrollY;
+		if (isPixelPerfectRender(camera)) {
+			bounds.x -= 2;
+			bounds.y -= 2;
+			bounds.width += 4;
+			bounds.height += 4;
+		}
+		if (!CodenameFunkinSprite.hasCameraTransform(camera, 1, 1, true, true)) {
+			// The default Codename camera factors are identity; no extra bounds
+			// transform is needed here.
+		}
+		return bounds;
+	}
+
+	override public function destroy():Void {
+		if (codenameFrameOffset != null && codenameFrameOffsetOwned) {
+			codenameFrameOffset.put();
+		}
+		codenameFrameOffset = null;
+		codenameFrameOffsetOwned = false;
+		super.destroy();
 	}
 
 	public function switchType(uiType:String) {
+		// A timed style event can arrive while an already-hit note still has a
+		// slot in the state's note group. FlxSprite.destroy() releases animation;
+		// only live sprites can be rebuilt for the new receptor pack.
+		if (animation == null) return;
 		final newType = Reflect.field(Judgement.uiJson, uiType);
+		if (newType == null)
+			return;
+		setVSliceNoteOffsets(newType);
+		// NoteKeys is the authored animation-name table as well as the atlas
+		// descriptor.  Reusing the old table made a mid-song note-style swap
+		// load the new bitmap but keep the previous style's animation prefixes,
+		// which is especially visible on pixel/hold notes.
+		if (currentKey == null)
+			currentKey = new NoteKeys(newType.uses, newType.isPixel);
+		else
+			currentKey.newKey(newType.uses, newType.isPixel);
 		isPixel = newType.isPixel;
+		var noteAsset = newType.noteAsset == null || StringTools.trim(newType.noteAsset) == ''
+			? (newType.isPixel ? 'arrows-pixels' : 'NOTE_assets') : newType.noteAsset;
+		var holdAsset = newType.holdAsset == null ? '' : StringTools.trim(newType.holdAsset);
+		var holdFramesPerLane = newType.holdFramesPerLane == null ? 1 : newType.holdFramesPerLane;
+		if (holdFramesPerLane < 1)
+			holdFramesPerLane = 1;
+		var customStylePixel:Dynamic = specialNoteInfo == null ? null : specialNoteInfo.customNoteIsPixel;
+		if (customStylePixel != null)
+			isPixel = customStylePixel == true;
+		else
+			isPixel = newType.isPixel;
 		if (!isPixel) {
 			if (customNotePath != null) {
 				if (getSpecialFrames) {
@@ -645,10 +1230,10 @@ class Note extends DynamicSprite {
 				if (funnyNum == -1) {
 					var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
 						+ newType.uses
-						+ "/NOTE_assets.png",
+						+ '/' + noteAsset + ".png",
 						'assets/images/custom_ui/ui_packs/'
 						+ newType.uses
-						+ "/NOTE_assets.xml");
+						+ '/' + noteAsset + ".xml");
 					framesKey.push(uiType);
 					gotFrames.push(daFrames);
 					funnyNum = framesKey.length - 1;
@@ -669,7 +1254,30 @@ class Note extends DynamicSprite {
 			else
 				animation.addByPrefix('Scroll', noteName + '0');
 
-			if (prevNote.nukeNote) {
+			var customHold = isSustainNote && holdAsset != '' && !dontEdit
+				&& FNFAssets.exists('assets/images/custom_ui/ui_packs/' + newType.uses + '/' + holdAsset + '.png');
+			if (customHold) {
+				var holdPath = 'assets/images/custom_ui/ui_packs/' + newType.uses + '/' + holdAsset + '.png';
+				if (newType.holdAssetXml == true && FNFAssets.exists('assets/images/custom_ui/ui_packs/' + newType.uses + '/' + holdAsset + '.xml')) {
+					frames = DynamicAtlasFrames.fromSparrow(holdPath,
+						'assets/images/custom_ui/ui_packs/' + newType.uses + '/' + holdAsset + '.xml');
+					animation.addByPrefix('holdend', noteName + ' hold end');
+					animation.addByPrefix('hold', noteName + ' hold piece');
+				} else {
+					var holdBitmap = FNFAssets.getBitmapData(holdPath);
+					var holdWidth = Std.int(holdBitmap.width / (NOTE_AMOUNT * holdFramesPerLane));
+					if (holdWidth < 1) holdWidth = holdBitmap.width;
+					loadGraphic(holdBitmap, true, holdWidth, holdBitmap.height);
+					var holdLane = PlayState.flippedNotes ? NOTE_AMOUNT - (noteData % NOTE_AMOUNT + 1) : noteData % NOTE_AMOUNT;
+					var holdFrame = holdLane * holdFramesPerLane;
+					var holdEndFrame = holdFramesPerLane > 1 ? holdFrame + 1 : holdFrame;
+					animation.add('holdend', [holdEndFrame]);
+					animation.add('hold', [holdFrame]);
+				}
+				if (newType.holdOffsetX != null || newType.holdOffsetY != null)
+					offset.set(newType.holdOffsetX == null ? 0 : newType.holdOffsetX,
+						newType.holdOffsetY == null ? 0 : newType.holdOffsetY);
+			} else if (prevNote.nukeNote) {
 				animation.addByPrefix('holdend', noteName + ' nuke hold end');
 				animation.addByPrefix('hold', noteName + ' nuke hold piece');
 			} else if (prevNote.mineNote) {
@@ -686,9 +1294,16 @@ class Note extends DynamicSprite {
 				animation.addByPrefix('hold', noteName + ' hold piece');
 			}
 
-			normalSize = 0.7;
+			normalSize = (isSustainNote && holdAsset != '' && FNFAssets.exists('assets/images/custom_ui/ui_packs/' + newType.uses + '/' + holdAsset + '.png'))
+				? (newType.holdScale == null ? 0.7 : newType.holdScale)
+				: (newType.noteScale == null ? 0.7 : newType.noteScale);
+			if (!isSustainNote && customNotePath != null && specialNoteInfo != null
+				&& Reflect.field(specialNoteInfo, 'sourceNoteStyle') != null
+				&& specialNoteInfo.customNoteScale != null)
+				normalSize = specialNoteInfo.customNoteScale;
 		} else {
-			if (FNFAssets.exists('assets/images/custom_ui/ui_packs/' + newType.uses + "/arrows-pixels.xml")) {
+			if ((customNotePath != null && FNFAssets.exists(customNotePath + '.xml'))
+				|| FNFAssets.exists('assets/images/custom_ui/ui_packs/' + newType.uses + "/arrows-pixels.xml")) {
 				if (customNotePath != null) {
 					if (getSpecialFrames) {
 						getSpecialFrames = false;
@@ -711,12 +1326,12 @@ class Note extends DynamicSprite {
 					}
 					var funnyNum = framesKey.indexOf(uiType);
 					if (funnyNum == -1) {
-						var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
+					var daFrames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/'
 							+ newType.uses
-							+ "/arrows-pixels.png",
+							+ '/' + noteAsset + ".png",
 							'assets/images/custom_ui/ui_packs/'
 							+ newType.uses
-							+ "/arrows-pixels.xml");
+							+ '/' + noteAsset + ".xml");
 						framesKey.push(uiType);
 						gotFrames.push(daFrames);
 						funnyNum = framesKey.length - 1;
@@ -806,52 +1421,93 @@ class Note extends DynamicSprite {
 
 			updateHitbox();
 
-			if (prevNote.isSustainNote) {
+			if (prevNote.isSustainNote && prevNote.animation != null && prevNote.exists) {
 				prevNote.animation.play('hold');
 
-				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.daScrollSpeed;
+				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;
 
 				prevNote.updateHitbox();
 			}
 		}
 	}
 
+	function setVSliceNoteOffsets(style:TUI):Void {
+		if (style.vSliceAlias == null || StringTools.trim(Std.string(style.vSliceAlias)) == '') {
+			vSliceNoteOffsetX = null;
+			vSliceNoteOffsetY = 0;
+			return;
+		}
+		vSliceNoteOffsetX = style.noteOffsetX == null ? 0 : style.noteOffsetX;
+		vSliceNoteOffsetY = style.noteOffsetY == null ? 0 : style.noteOffsetY;
+	}
+
+	public inline function isAutoPlayed():Bool {
+		if (codenameInputLine != null)
+			return funnyMode || codenameInputLine.cpu || codenameInputLine.botplay;
+		return funnyMode || sourcePlayfieldAutoPlay || (!duoMode && (mustPress ? oppMode : !oppMode));
+	}
+
+	/** Resolve the authored actor without changing the old two-side mustPress API. */
+	public inline function isPlayerControlled():Bool
+		return sourcePlayfieldPlayerControlled == null ? mustPress : sourcePlayfieldPlayerControlled;
+
+	public function canAutoHit():Bool {
+		// The opponent may opt into hazard animations; BF must still avoid them.
+		if (mustPress)
+			return !ignoreNote && !blockHit && !hitCausesMiss && !avoidAutoHit && !dontCountNote
+				&& !mineNote && !nukeNote && getHealth('sick') >= 0;
+		return !dontCountNote || aiShouldHit;
+	}
+
+	// Called by PlayState as well as sprite updates. Rendering/activity must
+	// never decide whether a computer-controlled note gets hit.
+	public function updateAutoHit(songPosition:Float):Void {
+		if (!isAutoPlayed() || autoHitSuppressed) return;
+		canBeHit = false;
+		if (canAutoHit() && strumTime <= songPosition)
+			wasGoodHit = true;
+	}
+
 	override function update(elapsed:Float) {
 		super.update(elapsed);
 		// if we are player one and it's bf's note or we are duo mode or we are player two and it's p2's note
 		// and it isn't demo mode
-		if ((((mustPress && !oppMode) || duoMode) || (oppMode && !mustPress)) && !funnyMode) {
+		if (!isAutoPlayed()) {
 			var signedDiff = Conductor.songPosition - strumTime;
 			// ok.... so if strumTime is bigger than songPosition that means it is waiting to be hit because well the song hasn't reached it???
 			// negative is early, positive is late
 			var noteDiff = Math.abs(signedDiff);
-			// The * 0.5 us so that its easier to hit them too late, instead of too early
-			if (noteDiff < Judge.wayoffJudge * timingMultiplier) {
-				canBeHit = true;
-			} else
-				canBeHit = false;
-			// Nuke notes can only be hit with a bad or better because nuke notes are weird champ
-			if (nukeNote && !(noteDiff < Judge.badJudge * timingMultiplier)) {
-				canBeHit = false;
-			}
-			if (mineNote && !(noteDiff < Judge.shitJudge * timingMultiplier)) {
-				canBeHit = false;
-			}
-			if (signedDiff > Judge.wayoffJudge)
-				tooLate = true;
-			if (nukeNote && signedDiff > Judge.badJudge) {
-				tooLate = true;
-			}
-			if (mineNote && signedDiff > Judge.shitJudge) {
-				tooLate = true;
+			if (codenameInputLine != null && PlayState.instance != null && PlayState.instance.ratingManager != null) {
+				// Codename's StrumLine gates input with its last registered rating
+				// window. The late-miss threshold itself is not scaled per note.
+				var hitWindow = PlayState.instance.ratingManager.lastHitWindow;
+				canBeHit = signedDiff < hitWindow * latePressWindow
+					&& signedDiff > -hitWindow * earlyPressWindow;
+				if (signedDiff > hitWindow && !wasGoodHit) tooLate = true;
+			} else {
+				// The * 0.5 us so that its easier to hit them too late, instead of too early
+				if (noteDiff < Judge.wayoffJudge * timingMultiplier) {
+					canBeHit = true;
+				} else
+					canBeHit = false;
+				// Nuke notes can only be hit with a bad or better because nuke notes are weird champ
+				if (nukeNote && !(noteDiff < Judge.badJudge * timingMultiplier)) {
+					canBeHit = false;
+				}
+				if (mineNote && !(noteDiff < Judge.shitJudge * timingMultiplier)) {
+					canBeHit = false;
+				}
+				if (signedDiff > Judge.wayoffJudge)
+					tooLate = true;
+				if (nukeNote && signedDiff > Judge.badJudge) {
+					tooLate = true;
+				}
+				if (mineNote && signedDiff > Judge.shitJudge) {
+					tooLate = true;
+				}
 			}
 		} else {
-			if (!dontCountNote) {
-				canBeHit = false;
-
-				if (strumTime <= Conductor.songPosition)
-					wasGoodHit = true;
-			}
+			updateAutoHit(Conductor.songPosition);
 		}
 
 		if (tooLate) {
@@ -879,6 +1535,10 @@ class Note extends DynamicSprite {
 			else
 				return 0;
 		}
+		if (rating == 'miss' && missHealth != null)
+			return -missHealth * (ignoreHealthMods ? 1 : PlayState.healthLossMultiplier);
+		if (rating != 'miss' && hitHealth != null)
+			return hitHealth * (ignoreHealthMods ? 1 : PlayState.healthGainMultiplier);
 		if (consistentHealth) {
 			var ouchie = false;
 			switch (healCutoff) {

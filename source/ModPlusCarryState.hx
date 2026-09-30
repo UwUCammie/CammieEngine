@@ -181,7 +181,7 @@ class ModPlusCarryState extends MusicBeatState
 			trace('doing good');
 			var daSongs = [];
 			trace(dataPath);
-			var coolSongListFile:Array<Dynamic> = CoolUtil.parseJson(haxe.io.Path.join([dataPath, 'freeplaySongJson.jsonc']));
+			var coolSongListFile:Array<Dynamic> = CoolUtil.parseJson(File.getContent(FreeplayRegistry.getPathInRoot(assetsPath)));
 			for (coolCategory in coolSongListFile) {
 				var categorySongs:Array<Dynamic> = coolCategory.songs;
 				for (coolSong in categorySongs) {
@@ -241,7 +241,7 @@ class ModPlusCarryState extends MusicBeatState
 		if (voicePath != null) {
 			File.copy(voicePath,'assets/music/'+nameText.text+'_Voices.ogg');
 		}
-		var coolSongListFile:Array<Dynamic> = CoolUtil.parseJson(FNFAssets.getJson('assets/data/freeplaySongJson'));
+		var coolSongListFile:Array<Dynamic> = cast FreeplayRegistry.getJson();
 		var foundSomething:Bool = false;
 		for (coolCategory in coolSongListFile) {
 			if (coolCategory.name == categoryText.text) {
@@ -254,7 +254,7 @@ class ModPlusCarryState extends MusicBeatState
 			// must be a new category
 			coolSongListFile.push({"name": categoryText.text, "songs": [nameText.text]});
 		}
-		File.saveContent('assets/data/freeplaySongJson.jsonc',CoolUtil.stringifyJson(coolSongListFile));
+		FreeplayRegistry.saveJson(coolSongListFile);
 		#end
 	}*/
 }

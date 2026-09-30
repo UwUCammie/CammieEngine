@@ -97,6 +97,9 @@ class TitleState extends MusicBeatState {
 		curWacky = FlxG.random.getObject(getIntroTextShit());
 		// DEBUG BULLSHIT
 		super.create();
+		// FlxGame resets this to true while constructing the first state, after
+		// Main has already loaded the user's options for the game arguments.
+		FlxG.autoPause = OptionsHandler.options.autoPause;
 		FlxG.mouse.visible = false;
 		FlxG.save.bind("preferredSave", "bulbyVR");
 		var preferredSave:Int = 0;
@@ -183,7 +186,7 @@ class TitleState extends MusicBeatState {
 		credGroup.add(blackScreen);
 		// THIS SHIT DOESN'T WORK ON NEKO!
 		// IDK WHY I AM TESTING IT ON NEKO!
-		coolDudes = Assets.getText('assets/data/creators.txt').split("\n");
+		coolDudes = FNFAssets.getText('assets/data/creators.txt').split("\n");
 		trace(coolDudes);
 
 		ngSpr = new FlxSprite(0, FlxG.height * 0.52).loadGraphic('assets/images/newgrounds_logo.png');
@@ -232,7 +235,7 @@ class TitleState extends MusicBeatState {
 	}
 
 	function getIntroTextShit():Array<Array<String>> {
-		var fullText:String = Assets.getText('assets/data/introText.txt');
+		var fullText:String = FNFAssets.getText('assets/data/introText.txt');
 
 		var firstArray:Array<String> = fullText.split('\n');
 		var swagGoodArray:Array<Array<String>> = [];

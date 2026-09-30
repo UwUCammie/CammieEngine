@@ -1,8 +1,626 @@
-Hey there, how's it going? I made this update log so people can actually know what I add when I update Disappointing Plus.
-Just a disclaimer, I only started making this after 1.3.0, so some of the updates before that may be wrong.
+CammieEngine update log
+Earlier Disappointing Plus development history is retained below.
 
-1.5.4
+0.0.1 alpha — CammieEngine
+	- Add owner-scoped Nightmare Vision mod/difficulty context, live timing/window helpers and source-defined missing-sound fallback diagnostics
+	- Refresh release credits, notices and player guide; unify visible CammieEngine branding and application-version reporting
+	- Prepare the first CammieEngine alpha with concise setup and compatibility documentation
+	- Show CammieEngine v0.0.1 on the main menu
+	- Add Windows x64 ZIP builds through GitHub Actions, with checksums and automatic tagged alpha prerelease attachments
+	- Exclude local imports, generated audio mirrors, build output and machine caches from source uploads
+
+1.5.4 (inherited development history)
 [Additions]
+	- Add shared Nightmare Vision plugin loading, owner-scoped saves, script callback scheduling and live HUD access; further source APIs remain under verification
+	- Report Codename demo/autoplay accurately through both player.cpu and playerStrums.cpu while preserving authored note ownership
+	- Support Nightmare Vision sprite zIndex script access through the shared display-order storage
+	- Play Codename composite Animate sprite timelines through the shared FunkinSprite adapter, including source symbols, frame labels and draw transforms
+	- Stop automatically triggering selected sticker transitions when native pause opens or resumes; retain explicit script and state-handoff transitions
+	- Retain selected-owner default note/receptor atlases during Codename import and apply them through the shared creation callbacks
+	- Correct shared modchart sustain atlas coordinates and preserve arrow camera inheritance when rendering outside native note groups
+	- Retain complete selected Nightmare Vision asset trees with a separate engine-core dependency, preserving existing imported files
+	- Add owner-scoped Nightmare Vision Paths, runtime shader loading, script constants, color helpers, camera helpers and detached ClientPrefs data
+	- Add opt-in Normalize Song Audio in main and imported Codename settings, balancing instrumental and vocal stems at load time while preserving scripted volume controls and source files
+	- Select BF consistently for unknown default-results characters; use supported requested character families without changing gameplay identity or mod-owned results
+	- Preserve Codename Play Animation force and context for every character on the authored strumline
+	- Load authored Codename note-type scripts, difficulty tables and atlases through the shared importer and callback system
+	- Initialize selected Codename package globals on direct chart launches before notes and characters, preserve same-owner sessions, and release globals when changing imports
+	- Keep Codename character shortcuts live across actor swaps, and resolve complete case-matched asset paths without mixing Sparrow and Animate atlas inputs
+	- Retain Nightmare Vision data-family and song Haxe scripts at their owner-relative paths, with missing-file repair checks and non-overwriting copies
+	- Use a separate pinned Iris interpreter for Nightmare Vision imports, aliases and constants, with per-owner import/extension bindings and source key/value loop handling
+	- Share Haxe string interpolation handling across Codename and Nightmare Vision, including literal dollar escapes
+	- Connect the Nightmare Vision main script group to gameplay creation, camera events, updates, pause/spawn/end gates and cleanup; remaining foreign API and rendering gaps stay explicit
+	- Keep native Nightmare Vision script errors distinct from break/continue/return signals so incomplete modules are reported instead of accepted
+	- Preserve selected Nightmare Vision stage JSON with missing-file repair and source stage defaults; add the source easing-name helper
+	- Route HXC incoming-note callbacks using native note ownership and preserve script-returned character screen positions
+	- Apply Psych receptor RGB toggles to both live strumlines through native property setters, including re-enabling disabled receptors
+	- Keep the default results overlay above imported gameplay cameras, expose the selected difficulty, and preserve authored Psych Animate registration origins
+	- Deliver committed Codename judgements to default results observers using live Lua note indices; include custom rating tiers without changing source scoring or combo rules
+	- Recognize native note objects in Psych callbacks so simultaneous notes read their own judgement and direction
+	- Preserve source song metadata for the matching incoming Codename transition after gameplay cleanup
+	- Report unsupported Nightmare Vision stage, character, global, song, note-type and event scripts during import instead of silently omitting them
+	- Preserve Nightmare Vision key counts and playfield settings per difficulty, and center receptors using the source engine's layout across resets and skin changes
+	- Capture countdown and song-start receptor geometry in isolated native tests without changing gameplay or personal settings
+	- Preserve script changes to ordinary note ownership while retaining separate Nightmare Vision field ownership and autoplay metadata
+	- Record binary, chart, settings and manifest identity in offscreen completion receipts so affected checks can be selected without treating historical completion as current source parity
+	- Add opt-in compact Psych chart/row diagnostics for investigating intermittent native importer faults
+	- Discover separate Nightmare Vision content packs and their legacy Psych charts without mixing chart ownership across packs
+	- Keep source-declared Nightmare Vision menu difficulties separate from raw chart keys and explain unsupported third-playfield charts before selection
+	- Show bounded source-path and reason diagnostics when an import candidate lacks required audio or a valid chart
+	- Keep offscreen natural-ending checks alive after an imported song returns directly to Freeplay, and trace the first results sprite when a native allocator failure recurs
+	- Import chart-free Psych global packs into separate owner namespaces and select a default results provider without changing personal options
+	- Keep Psych-owned result screens in the ending state and disable native pause until their endSong handoff, so post-song beat hooks cannot advance the outgoing chart
+	- Continue imported script post-update callbacks during an authored ending hold, allowing Psych outros to receive Accept and hand off through endSong
+	- Keep accelerated demo playback's beat clock at the natural audio boundary when a native channel briefly reports time zero before its completion callback
+	- Resolve missing native assets only once per lookup while continuing to discover files added by a later import
+	- Preserve V-Slice source rows outside playable strumlines on their selected difficulty for editor round trips without adding gameplay notes
+	- Treat literal HXC `permanentCacheTexture` calls as image dependencies even when the source passes a `Paths.sound` key, while keeping separate real sound requests intact
+	- Refresh selected V-Slice owner visuals through a backed-up transaction that restores existing charts, audio, registries, Freeplay and personal settings before accepting new owner files
+	- Bind Codename script `gf` to the live actor on an authored third strumline, so two-line charts do not enter nonexistent GF-line callbacks
+	- Pair Codename pause/resume transitions with the actual outgoing script and its static state even when the script selector changes while paused
+	- Preserve offscreen game diagnostics and input receipts during a timeout by streaming complete child-output lines
+	- Launch imported Codename packages through one owner-labelled entry, following authored title, main-menu and Freeplay state constructors within the selected owner
+	- Resolve Codename chart metadata and source-form import aliases inside their selected package; keep opponent/co-op high scores separate from normal-mode records
+	- Collect dynamically named Codename Sparrow atlases from statically known owner directories, including paired menu icon PNG/XML files without an arbitrary entry cap
+	- Index Codename note identities once and run live-note callbacks within the source timing window, removing the whole-chart per-frame slowdown measured in Try Harder
+	- Suppress the duplicate native note pass when FunkinModchart owns rendering, while retaining transformed notes and restoring visibility across renderer teardown and pause drawing
+	- Release per-song cached HScript sound objects and playback maps when PlayState is destroyed, preserving decoded-sound reuse while that song runs
+	- Preserve the real FlxG.game path for Psych class-property reads and writes, with a bounded diagnostic for unresolved native values
+	- Preserve the real FlxG.game path for Psych class-property reads and writes, with a bounded diagnostic for unresolved native values
+	- Share Psych RGB note and receptor palettes while keeping each object's rgbShader color edits independent
+	- Parse Haxe final local declarations in owner-scoped Codename scripts and expose the live splash handler so authored HUD scripts can hide note splashes correctly
+	- Preserve existing imported Freeplay registry bytes on no-op reimports, including when song registration was already present
+	- Diagnose missing HXC window icons with their selected import owner and source script instead of resolving a same-named host asset
+	- Discover script-selectable V-Slice characters across a selected package and keep their paired atlases and registry entries inside that import owner
+	- Refresh visuals for a selected owner in an older mixed-owner chart folder without adding duplicate charts, audio folders or Freeplay rows
+	- Keep a V-Slice character's playable primary animations when a separate death atlas is missing, while reporting the missing animation sheets
+	- Check HXC shader-pulse sound arguments in the compiled compatibility runtime so numeric script arguments do not fail type lookup during play
+	- Resolve nested shared V-Slice music for HXC Paths.music imports and retain the runtime's flat music alias inside the selected owner
+	- Keep overlays with absent merge bases as missing-base dependencies on native builds, while checking symlinked paths before normalization
+	- Limit static missing-asset warnings from unselected V-Slice stage scripts without dropping their source assets or scripts from import copies
+	- Repair sustain chains after a forward seek so surviving notes cannot read destroyed predecessors; verify synced vocals, timing, events and note cleanup offscreen
+	- Resolve imported HXC camera filter handles to native BitmapFilters before rendering and reject invalid filter values without letting OpenFL crash
+	- Resolve in-stage HXC video media from selected-owner video layouts, including packaged nested video directories, before shared assets
+	- Expose Codename source-line live notes and FlxTypedGroup-style forEachAlive callbacks across auxiliary lines without changing chart content
+	- Honor Codename receptor creation event.cancelAnimation per receptor while preserving later press and confirm animations
+	- Attribute HScript null-access and null-iterator diagnostics to their source file and callback while preserving per-callback reports
+	- Resolve V-Slice shared pixel countdown image names through available UI packs when exported packages omit the base game image library
+	- Stage literal HXC health-icon references under their selected import owner without replacing global or existing icon files
+	- Preserve V-Slice startTimestamp as the per-launch editor seek offset used by both note filtering and audio startup
+	- Preserve Codename character XML and referenced atlases inside each selected import owner, so native conversion can load source character behavior without borrowing another package's art
+	- Resolve Psych Lua FlxG class-property reads through live game, input, sound, camera and scale objects, and expose native judgement windows through ClientPrefs-compatible fields
+	- Keep V-Slice chart-event videos with their import owner, resolve playback from that owner, and follow the source event's non-skippable video behavior
+	- Keep imported HXC Paths.file lookups inside their selected owner when a relative key traverses directories or an owner file links outside it, while retaining safe base-game asset fallback
+	- Keep HXC event and module video playback within the selected import owner, including canonical checks on resolved files
+	- Recognize generated V-Slice solid-color stage props written with Haxe hex literals when restoring old hitboxes, layer depth and named HXC prop lookup
+	- Route imported HXC character originalPosition, characterOrigin, resetPosition and animation calls to the live native Character across stage transitions
+	- Expose V-Slice HealthIcon.loadCharacter through the selected owner's existing native icon reload path
+	- Support authored V-Slice health-icon animations and their auto-update gate, and expose each stage's unmodified zoom to imported scripts
+	- Honor V-Slice scripts' disableKeys gameplay-input gate while leaving their own selection controls active
+	- Resolve V-Slice logical pixel and standard countdown sounds through the native shared audio pack when an import has no owned copy
+	- Expose live V-Slice player/opponent strumline note lists and persistent authored hold views, carrying source kind and accepted hit/miss state across native sustain-segment retirement
+	- Let V-Slice scripts replace a native scored line's unresolved notes and holds from a selected chart variation, including deliberate player/opponent side swaps
+	- Expose a copied active-chart note list for V-Slice scripts that repartition existing notes at runtime
+	- Bridge direct HXC in-stage video sprites and cameras with selected-owner media paths, source-controlled playback and pause/retry cleanup
+	- Dispose finished V-Slice event sprites after Flixel's animation signal dispatch to prevent mid-song native crashes
+	- Move V-Slice type-2 HXC video bars onto the cutscene camera after their authored fade, and import complete literal Paths.file package assets without guessing dynamic paths
+	- Refresh Codename owner assets and generated metadata only after exact source, owner and hash checks, with backups and rollback for every applied change
+	- Verify package-local Codename DEFAULT_CHARACTER XML, atlas, script and provenance before refreshing missing-character camera mappings
+	- Resolve owner-qualified imported chart folders through verified provenance when planning Codename event metadata refreshes
+	- Stop script beat and step callbacks once song-ending teardown begins, including accelerated playback catch-up
+	- Preserve private settings while checking FNAS and HL17 natural endings on the refreshed release build
+	- Reuse the pinned OpenFL 3D snapshot staging buffer across frames to reduce repeated full-frame allocations without limiting frame rate
+	- Map Codename adult-content, music/SFX volume, character-colored health-bar, LOW/HIGH/CUSTOM quality, and week-six pixel preferences through shared settings while keeping unverified visual/memory effects and unsupported developer controls explicit
+	- Bridge legacy Codename `_requestedState` reads and writes to Flixel 6's pending state, with concrete-target leases released after state switches or cancellation
+	- Keep direct imported Freeplay empty when its selected owner has no registered songs and return safely to its captured imported menu
+	- Recover missing Freeplay source subtitles from matching same-folder import provenance without changing owned charts or registry rows
+	- Preserve selected-owner Codename Options checkbox values across menu returns and private sessions while showing unsupported source preferences explicitly
+	- Carry a concrete same-owner destination into callback-driven Codename transition scripts, including direct and LoadingState switches, while leaving the native completion callback in control
+	- Return directly opened imported Freeplay screens to their captured same-owner menu after Back, including ModifierState round trips
+	- Deduplicate visual dependency candidates with per-search normalized keys to avoid repeated path normalization during mounted Auto import scans
+	- Resolve extensionless Codename transition script selectors inside the selected import owner and stage available `CoolUtil.playMenuSFX` sounds chosen by numeric ID
+	- Render selected-owner Codename note splash atlases on successful hits while keeping absent definitions explicit
+	- Keep cached Codename splash atlas graphics alive across transient effects, and release their references on eviction and song cleanup
+	- Initialize direct imported Freeplay launches from their active owner, guard empty registries, and return Codename Options to its imported caller
+	- Dispatch Codename pre/post note and receptor creation events with mutable atlas and animation settings, preserving selected-owner Sparrow trim/rotation and script-owned frame offsets
+	- Keep Codename owner-switch menu choices grouped by valid import owner, including global-script-only packages, and remove stale or transition-helper launch rows through a scoped catalog refresh
+	- Resolve selected-owner text font families and validate imported menu URL actions through shared Codename bindings
+	- Expose a shared Codename Options menu with native settings and selected-owner XML checkbox categories, while diagnosing unsupported option types
+	- Stage source OBJ material sidecars and their diffuse textures under the same Codename import owner when those files exist, while reporting absent or unsafe dependencies
+	- Transfer accepted Codename menu state targets out of the outgoing script's cleanup scope so a New Game transition can create its PlayState safely
+	- Dispatch imported Codename camera-shader uniforms by their declared GLSL types, restoring float-valued contrast and saturation when native HScript boxes whole numbers as integers
+	- Stage missing Codename default-character atlas/XML assets from a compiled installation under the selected import owner with exact-file SHA-256 receipts and owner-local script precedence
+	- Preserve Codename Flixel group insertion order when scripts insert one owned stage object more than once, keeping 3D floors behind authored character layers
+	- Construct Codename death characters safely when owner metadata exists but the replacement has no live XML definition
+	- Apply Codename's default Animate stage matrix before character create scripts and honor explicit character XML values after atlas loading
+	- Route Psych v1 chart lanes to their authored player and opponent sides across difficulties without changing installed charts
+	- Reconnect moved imports by package ID or matching label plus bounded chart/audio fingerprint, while keeping same-name packages in separate owners
+	- Show imported chart sources as smaller parenthesized Freeplay subtitles and group same-title versions next to their base chart in All without changing saved category order
+	- Keep empty Freeplay and category search results from opening or deleting the previously highlighted hidden entry
+	- Derive missing chart-editor section lengths from authored section beats and preview every declared vocal stem through shared pause and seek transport
+	- Keep edited or deleted companion events changed after chart-editor reload and during gameplay without rewriting the imported events.json
+	- Continue offscreen Freeplay selection through the default Play action to verify the real menu-to-gameplay path
+	- Read authored HaxeFlixel Project.xml titles as import package names without depending on downloaded folder names, and avoid repeating the engine name in Freeplay labels
+	- Let offscreen native imports supply the same validated name prompt result used by interactive imports when one package lacks authored metadata
+	- Restyle active and future notes in song order during timed note-style swaps, keeping sustain segments sized to their current predecessor and skipping destroyed animation state
+	- Initialize HXC character scale state from the native actor and keep inherited position, idle-suffix and pixel fields bound to that actor
+	- Keep safe HXC camera shaders in separate field-owned handles and initialize non-countdown stage handles before later song events use them
+	- Keep imported Psych source-class static variables inside their selected owner and carry source-declared mapped character notes into compiled stage callbacks
+	- Keep every matched legacy left/right sing animation suffix and its authored offsets together when placing a character in the player slot
+	- Expose V-Slice's mutable defaultHUDCameraZoom name for imported song and stage scripts
+	- Forward Psych's normalized Hey! duration to compiled stages and resolve package-wide StringTools extension calls inside imported HScript classes
+	- Keep V-Slice directional animation and CharacterData global offsets separate from stage placement, including legacy generated imports and indexed HXC script reads
+	- Expose source V-Slice strumline and timing constants to owner-scoped HXC scripts and count null arithmetic in compatibility checks
+	- Retain package-wide data sidecars inside each selected import owner so HXC scripts can read their own text and JSON without changing other songs
+	- Execute one selected-owner copy of each HXC song companion when older import roots contain the same relative script
+	- Run source-backed HXC stage countdown shader, filter, shadow, and actor placement callbacks when their operations are safely translated
+	- Route HXC extra strumlines and configurable health icons through explicit compatibility constructors
+	- Register imported HXC fonts from the selected owner's font directory so scripted text uses the authored family
+	- Expose V-Slice tween-group pause/resume and local weekday reads through shared HXC runtime bridges
+	- Guard hxcpp large-allocation recycling by checking live-list ownership before accounting or reuse, with an exact pinned-source setup patch
+	- Report Psych static stage translation warnings only when that fallback stage implementation actually runs
+	- Support V-Slice source camera zoom and per-strumline scroll-speed tweens, reset, pause, and cleanup through shared native objects
+	- Register V-Slice stage props under their authored names and resolve older generated props in the live stage without rewriting imports
+	- Expose the full Psych source BlendMode constants to compiled stage scripts
+	- Honor Psych's per-song GameOverSubstate deathDelay before stopping audio and opening game over
+	- Respect Psych note noAnimation and noMissAnimation flags on hit and miss while keeping scoring and callbacks
+	- Forward Psych camera focusOn calls to the native camera
+	- Load valid HXC classes with no gameplay hooks as empty script scopes instead of rejecting them
+	- Resolve Psych actor-group stage facades to live actors for scene insertion, removal, and layer indexing
+	- Expose a shared mutable character skipDance flag for Psych stage-controlled idle suppression
+	- Swap Codename player left/right sing frames and animation offsets for every authored suffix pose, including alt, dodge and loop
+	- Return source script sprites for indexed Flixel group member reads without changing native group storage
+	- Keep held-note receptor confirmations active through the final sustain segment, then return them to static without stale timers clearing a newer confirm
+	- Preserve source-class fields when an HScript constructor or method parameter has the same name, including fields declared without an initializer
+	- Apply HScript writes to Int-backed FlxColor channels, including compound brightness and saturation changes used by compiled source stages
+	- Resolve selected-owner source classes as values for typed group recycling, preserving reuse and rotating group behavior
+	- Bind Flixel trail and typed-text classes for compiled Psych stage and dialogue dependencies
+	- Keep mapped Psych library sound folders under their selected import owner for stage effects and cutscenes
+	- Preserve V-Slice authored left/right sing frames and offsets in the player slot while retaining its facing flip
+	- Infer missing Psych chart stages from the selected donor's StageData source mapping during import
+	- Run compiled Psych stage sprites through inherited script classes and iterable group callbacks without losing their owner methods
+	- Resolve selected-owner direct HUD icons when a registered character has no custom icon strip
+	- Include the loaded script path in callback error diagnostics
+	- Apply selected-owner Psych character flip rules without swapping authored sing directions or their offsets
+	- Let Psych stage videos hand off through replaceable finish and skip callbacks, including chained intros
+	- Use a one-second held, remappable Accept action for Psych video skipping and mark stage intros seen on countdown handoff
+	- Preserve Psych skip callbacks when video duration is unavailable, and expose source section camera movement and forced camera positions to compiled stages
+	- Evaluate HScript-ex assignments once and invoke function-valued source-class fields used by cutscene callbacks
+	- Select compiled source-class video and native-target branches from actual runtime capabilities, and support bound Haxe function callbacks
+	- Run compiled Psych stage start and end callbacks once, resolve their videos from the selected import owner, and complete skipped endings
+	- Match Psych stage song-name and story flags to source PlayState semantics without reading the native HUD title sprite
+	- Run owner HScript Flixel objects through their authored update, draw and destroy hooks after stage/group insertion, with scope cleanup
+	- Expose active state, configured controls and transition flags to compiled Psych cutscene classes
+	- Keep compiled Psych stage `create` scenery behind character actors while retaining `createPost` foreground layering
+	- Initialize unassigned source class fields with Haxe defaults before compiled Psych stage objects are constructed
+	- Initialize compiled Psych shader numeric and sampler uniforms through native shader data so source stage effects can construct on Linux
+	- Expose Psych Animate completion listeners through the installed renderer and detach them when destroyed
+	- Honor source `blockHit` on player notes during manual input and botplay until a stage unblocks the note
+	- Count every compiled Psych stage callback failure in strict full-song checks, including errors after stage creation
+	- Preserve mapped Psych stage images, videos, fonts, shaders and animation atlases inside each selected import owner without replacing existing files
+	- Resolve compiled Psych stage Paths through its selected owner and stage library, including graphic dimensions and folder-based Animate atlases
+	- Expose Psych character group coordinates to compiled stages and carry group moves into later character swaps
+	- Match Psych's FlxAnimate animation frame and length properties through the installed renderer
+	- Expand Haxe single-quoted strings in imported compiled classes, including braced expressions and malformed-expression diagnostics
+	- Bind standard Flixel math utilities for compiled Psych stage callbacks
+	- Scope compiled Psych stage Lime asset reads to the selected import and reject sibling-owner paths
+	- Apply the same selected-owner rules to compiled Psych OpenFL asset reads, including symlink and library IDs
+	- Route compiled Psych stage game-over character and sound settings through the native per-song class bridge
+	- Accept indexed loops and runtime-only generic field annotations in imported Psych source classes
+	- Parse direct expression-bodied methods in imported Psych classes without changing their authored expressions
+	- Keep authored left/right character animation offsets paired with their frames when player-facing sing, miss and hold animations swap
+	- Center sustain trails on their own hold head while receptors move or scale, including imported Codename strumlines
+	- Exclude native note-constructor padding when binding imported Codename chart notes to receptors, while retaining authored script movement
+	- Return Codename receptor confirms to their static animation after accepted notes finish
+	- Let imported Codename callbacks query animations on borrowed native characters through the shared hasAnim alias
+	- Reconcile Codename's generated stage and camera plans together on owner-matched re-import, and keep opacity-only stage changes from invalidating actor placement
+	- Write fresh owner-qualified chart provenance before validating its script manifest so new imports can finish without claiming another package's files
+	- Bind V-Slice character creation to its live actor, isolate mutable difficulty constants by import and song, and pass lifecycle events to HXC cleanup hooks
+	- Keep Psych stage sprite flips, health-bar colors, note type, custom note health and ignore flags in the shared compatibility layer
+	- Route Psych hit-causes-miss notes through native miss judgement, vocal mute and enabled splash effects while retaining good-hit script callbacks
+	- Honor Psych's per-note splash disable flag in both normal and hit-causes-miss note paths
+	- Read declared HXC health-bar Constants and bounded sprite pixels through the owner-scoped module bridge
+	- Detect untagged HScript callback errors during strict offscreen checks, including cleanup failures after a natural song ending
+	- Keep imported chart, audio and script ownership separate from engine base songs across all supported import formats; show colliding songs with their mod name in Freeplay
+	- Resume interrupted owner-qualified imports from matching provenance without allowing another package to claim their files; restore older D-Sides collisions in nine base song folders from scoped backups
+	- Carry a selected Codename chart owner through sticker transitions and expose its source metadata without a global mod session
+	- Accept owner-validated sprite arrays in shared Codename scene add/insert calls and normalize integer-coordinate GLSL in the shared shader loader
+	- Read package-authored mod names and ask for a name during interactive import when no authored metadata exists
+	- Apply the same owner-qualified destination and package-name prompt to the older Module import screen
+	- Keep distinct same-named songs from separate selected packages while collapsing duplicate scanner views of one physical chart source
+	- Give imported Codename scripts a live-only character list while preserving authored occurrence slots for note routing and diagnosing unresolved actors
+	- Route imported strumline character reads and edits through the typed live-actor view so transition scripts do not see null actor slots
+	- Expose Codename's tween-completion method to imported classes and prevent demo audio completion from replaying earlier beat hooks
+	- Let Codename scripts iterate the live strumline collection and retain its source-index slots
+	- Preserve imported Codename class aliases across bare script assignments and accept numeric GLSL scalar literals in shared shader translation
+	- Raise the selectable frame-rate cap to 480 FPS while keeping existing saved choices
+	- Load legacy Codename 3D views through an owner-scoped Away3D adapter with pinned dependency and explicit missing-material diagnostics
+	- Import bounded dynamic Codename image folders under the selected owner and decode OBJ bytes for native 3D rendering
+	- Resolve Psych's combined strumLineNotes property reads against live opponent and player receptors
+	- Compile FunkinModchart 1.2.5 with native timing, notes and rendering adapters for Codename scripts
+	- Give each authored Codename strumline its own receptor group, source layout and note ownership, including hidden GF lines; report unsupported key counts explicitly
+	- Let Codename scripts iterate live strumline receptors and parse numeric chart-event parameters with Std helpers
+	- Share Codename public script variables across owner scopes and let optional scripts disable only their own callbacks
+	- Run the selected Codename gameplay state script through the normal lifecycle and share its scripts.set exports with song and stage scopes
+	- Recreate selected Codename XML and Animate characters correctly for victory scenes after song end
+	- Expose Codename judgement sprite recycling, reset and score padding helpers to source rating scripts
+	- Keep authored shader uniform values available to later tweens and share live song metadata with transition scripts
+	- Expose the active substate to Codename song callbacks and recover unused top-level enum declarations with a diagnostic
+	- Let offscreen runtime checks reject script errors even when a song reaches its success marker
+	- Open Codename Charter imports in the native chart editor with selected-owner song and difficulty checks
+	- Stage literal Codename transition scripts and owner-local folder-listed assets during import
+	- Expose Codename HUD misses text, icon array and bump callbacks, score and scroll state, and source utility rounding
+	- Match Codename menu and game-over music argument order, loop choice and BPM in the shared audio facade
+	- Resolve Codename menu sound effect IDs through the selected import's audio and expose its default antialiasing option without rewriting personal settings
+	- Seed the selected asset root for imported V-Slice Freeplay modules, including video modules
+	- Play one native encoding of each imported split vocal stem when a chart lists MP3 and Ogg copies
+	- Let owner-scoped Psych stage classes pass their native sprites to Flixel groups and tweens; Dad Battle's source spotlight now plays through its ending
+	- Tween owner-scoped Codename script sprites through their native Flixel objects so reflective alpha writes no longer end a song
+	- Import bounded numbered sound and music paths referenced by literal Flixel random ranges under the selected owner
+	- Restore authored Codename event callbacks in older imports when generated JSON field order differs; HL17's camera follow event now keeps Linkinteen Parks in view after its intro
+	- Restore source note-line ownership in older Codename imports through a reviewed, backed-up refresh; Linkinteen Parks' visible player now animates after its character transitions
+	- Pass owner-scoped script sprites to native FlxSpriteUtil drawing helpers for imported textbox and UI classes
+	- Keep imported Codename shader and low-memory preferences available to scripts and apply the saved antialias default to new sprites
+	- Open imported Codename EditorPicker from its menu shortcut, show every choice, and route Chart to the native chart editor while marking unavailable editors
+	- Render imported editor picker labels at readable button size and honor Back and Escape
+	- Resolve finite list loops in imported menu asset references so their selected-owner image files can be staged
+	- Load selected-owner Codename source classes with a narrow missing field-terminator syntax retry
+	- Resolve referenced owner-local class wildcard imports and safe final, alias and StringTools syntax without reading foreign imports
+	- Load selected-owner Codename song classes before parser validation and place trusted FlxBasic-backed class instances with scoped cleanup
+	- Keep Codename stage character camera poses available to source scripts and clear them between stages
+	- Initialize imported Codename numeric and Boolean script fields with Haxe defaults before their first callback
+	- Let Codename scripts change an existing HUD health icon through setIcon
+	- Keep imported class-method locals intact when one script class calls another method
+	- Resolve inherited native UI properties in imported classes and expose primary/alternate keyboard bindings to owner menus
+	- Place extra Codename stage actors from XML when their source script only changes alpha
+	- Import multi-atlas Psych characters with the shared Sparrow atlas combiner
+	- Preserve bounded Psych Haxe source modules inside their import owner's namespace for future compiled-stage compatibility
+	- Resolve more owner-scoped Psych Haxe class syntax through bounded native bindings and type-checked string calls, with explicit diagnostics for remaining dependencies
+	- Render imported HL17 window controls in source order and prevent blank UI wrappers from drawing Flixel's fallback logo
+	- Persist supported imported Options edits through native settings and control bindings when the source menu saves them
+	- Report owner-relative source references to unsupported Codename Options fields without treating facade construction as a read
+	- Advance translated Lua numeric loops with explicit steps and preserve nil-global and nil-arithmetic behavior inside Lua scripts
+	- Refresh the selected Hopkins Hard chart with its 90 girlfriend-line notes, source timing, and matching player identity while backing up the prior chart
+	- Refresh nine stale D-Sides Hard charts with source notes and stage fields under exact owner checks and backups
+	- Defer victory-state graphics until the old song state and bitmap cache have been cleared
+	- Let scripts from one Codename import reorder the HUD camera in sequence and restore camera order when the song ends
+	- Expose Codename camera movement points and each note's bound strumline to imported callbacks
+	- Route Codename CustomShader tweens through shader uniforms so stage color effects animate without a native property error
+	- Expose the live Codename combo count to imported HUD and note scripts
+	- Expose native receptor members on imported Codename strumlines using each authored line's player, opponent or GF role
+	- Report the current native receptor animation to Codename note scripts
+	- Stage bounded Codename sticker-pack images by owner metadata and preserve transition statics between outgoing and incoming scenes
+	- Stage the selected Codename owner's score images so dynamically named rating and number art loads in gameplay
+	- Bind Codename's imported display, timer, reflection, memory and FPS interfaces to the real native runtime without changing personal settings
+	- Run Codename global script creation, update and cleanup hooks with owner-scoped save data
+	- Dispatch selected Codename global post-state creation hooks so menu overlays initialize before updates
+	- Open validated web links from imported Codename menus through the native browser action
+	- Keep camera cleanup safe when Flixel destroys the old state's cameras before script teardown during song reloads
+	- Recheck selected Codename stage scripts before treating old broad placement markers as actor movement
+	- Name unsupported imported class and enum declarations in script diagnostics
+	- Give Codename substate open/close hooks an event argument while keeping zero-argument scripts callable
+	- Dispatch Codename pause, game-over and song-end callbacks before their native transitions
+	- Apply Codename strum note-angle overrides to authored note travel and sustain rotation
+	- Expose the live window and FlxG time scale to Codename scripts, resetting time scale after gameplay
+	- Load owner-wide Codename song scripts and their song-start callbacks, including custom HUDs and ending routes
+	- Expose live Codename story and instrumental completion state to imported scripts, with owner-checked ModState transitions
+	- Support imported-state FlxGroup collision and overlap with scoped world bounds and cleanup of unused script objects
+	- Keep authored song titles in Codename's embedded section charts while using safe folder keys for imported audio and charts
+	- Write generated import charts with the stable JSON encoder to avoid native TJSON crashes during repeated imports
+	- Expose Codename's FlxBasePoint import and implicit FlxPoint helpers to shared song scripts
+	- Refresh the selected D-Sides Blammed difficulties from source with owner checks and chart backups
+	- Preserve Codename indexed-loop keys for arrays and maps, including nested loops and native numeric ranges
+	- Format imported Codename UI scores through Flixel's reflectable string utility bridge
+	- Judge imported Codename notes with source rating presets and script-added ratings, including timing gates, score, health, combo breaks and splashes
+	- Keep imported Modding Plus character atlases, aliases and cutscene scripts with each chart's selected donor so same-name content from another import cannot take over
+	- Match Codename's stock No Anim Note hit and miss animation cancellation while preserving authored note callbacks
+	- Resolve imported Codename OBJ model keys through the selected owner and stage literal model assets during import
+	- Give imported Codename scripts a detached Options view of supported native preferences, with explicit diagnostics for unavailable settings and no personal-save writes
+	- Discover and stage imported Codename source classes and their literal asset dependencies, and report private classes that still require an executable runtime
+	- Route Codename script-created events through the same callbacks and native actions as chart events
+	- Import owner-scoped Codename character definitions used by runtime scripts, including IDs chosen from script arrays
+	- Avoid false missing-character errors when a script-created Codename character has a valid owner XML and atlas
+	- Honor Psych stage game-over death, loop and end sound choices per song, resolving imported audio from the selected owner
+	- Honor Psych stage game-over character choices per song and use the selected imported character on death
+	- Keep Psych tagged sound effects available to fade and stop callbacks, then stop them when leaving the song
+	- Preserve Psych chart titles for gameplay text and script identity while resolving scripts and audio from the selected imported folder
+	- Preserve literal alpha values on Psych stage sprites during static stage conversion
+	- Honor owner-scoped Psych removeLuaScript calls during events, stopping later callbacks while keeping created stage objects
+	- Preserve explicit Psych difficulty character and stage IDs even when their source assets are missing, so dependencies remain visible
+	- Import Psych gfVersion separately for each difficulty and let sparse charts inherit the authored default girlfriend
+	- Resolve Codename stages, characters, scripts and camera plans from the selected imported chart owner when a song uses a different display title
+	- Normalize repeated separators in owner-scoped Codename asset keys and expose live strum groups, post-update callbacks and shared text/tween bindings
+	- Apply Codename camera modulo, BPM and time signature events through a shared timing map
+	- Apply Codename alternate sing and idle animation toggles by authored strumline
+	- Keep Codename XML startup placement usable when actor movement occurs only in later stage callbacks
+	- Preserve Codename legacy section-chart camera lines per difficulty and adapt HScript camera focus calls that pass camFollow objects
+	- Preserve both parent and imported Codename HScript callbacks, live field scope and owner-scoped text assets across importScript calls
+	- Stage Codename song data sidecars and Animate atlas folders used by source Paths helpers without replacing existing owner files
+	- Resolve Codename single-quoted path interpolation, shared text/group imports, HScript Call and Add Camera Zoom events
+	- Accept compatible float-bound GLSL shader loops and bounded HXC countdown shader callbacks with explicit source gates
+	- Import section-based charts alongside Codename strumline charts, preserving difficulty notes, events, BPM changes and character identities
+	- Support per-line Codename ghost-tapping overrides with a live engine default
+	- Preserve empty Codename strumline slots without shifting later actor, camera or input ownership
+	- Apply Codename stage start-camera coordinates independently on load and stage changes
+	- Resolve Codename chart metadata defaults from the selected owner's config files with authored metadata precedence
+	- Keep imported Psych sound effects in their selected owner folder and restore missing sounds on repeat import
+	- Ignore JSON files without Codename chart structure when listing playable difficulties
+	- Keep Codename numeric, angle and color tweens within script pause and cleanup ownership
+	- Retain imported V-Slice receptor anchors across hit animations and initialize character dimensions from the opening idle pose
+	- Preserve Psych script-local countdown gates and apply Always Do Cutscenes to imported Lua intros and endings in Freeplay
+	- Repair scaled dimensions for verified legacy generated Psych characters before camera placement
+	- Preserve V-Slice resting camera zoom and execute authored custom zoom events through the shared script runtime
+	- Match imported V-Slice receptor anchors and independently center notes using their own style offsets
+	- Start the first registered Psych sprite animation so effects do not display an unrelated atlas frame
+	- Preserve Psych note/splash skin metadata and explicit RGB choices across difficulty selection
+	- Load owner-scoped Psych note/receptor atlases, preserve sustain state on texture changes, and apply source hazard/receptor palettes
+	- Copy complete referenced Psych skin sheets into import namespaces without replacing existing files
+	- Initialize imported V-Slice cameras from final opponent focus and preserve authored focus across native section boundaries
+	- Resolve nested Psych tween targets such as sprite scale through the shared property bridge
+	- Run Psych custom pause callbacks on a real substate, preserving pause cancellation and menu timer lifecycles
+	- Preserve mounted Psych script paths while deduplicating canonical files, supporting isolated runtime overlays
+	- Run native smoke checks with disposable default options and isolated save paths, preserving personal settings
+	- Resolve Psych mouse coordinates through the requested camera so overlay hitboxes follow their displayed position
+	- Route Codename note hits and misses through mutable scene/line/character events, with source cancellation, score/health/combo fields and retained-note lifetime behavior
+	- Separate Codename judgement graphics from scoring, preserve script display settings and clean presentation tweens across pause, reuse and teardown
+	- Support Codename directional animation hooks and elapsed-time character stun without changing native miss-stun preferences
+	- Share Codename camera/input actor ownership and follow authored strumline indices for Camera Movement, including extra and empty lines
+	- Keep Codename input and CPU ownership per authored strumline, preserving simultaneous same-lane notes across lines and routing singing to the attached actors
+	- Support mutable and cancellable Codename input callbacks, held-input animation locks, and source control-bank selection in solo, opponent and co-op modes
+	- Play Codename XML loop-type animations during node construction with source callback order, initial force defaults and independent frame-loop flags
+	- Clear Codename sprite animation context when scripts request the default NONE context, preserving state for rejected animation names
+	- Apply Codename sprite frame offsets before scale and rotation, including authored offset angles and matching culling bounds
+	- Expose the Codename character animation API through actor references in song and stage scripts, preserving context, nullable force and source identity
+	- Follow Codename's selected character line using visible-actor camera averages and cancellable scene callbacks; prevent legacy countdown dances from overriding live source character hooks
+	- Separate live Codename character stage coordinates, global draw offsets and transformed animation offsets; compose stage camera offsets without drift and restore temporary draw flips
+	- Preserve Codename animation state for missing animation requests and follow authored finished-animation -loop transitions before script updates
+	- Resolve Codename animation restart defaults after mutable script callbacks, preserving omitted and explicit force values when scripts select another animation
+	- Run supported Codename character companions per actor with mutable XML construction, lifecycle/cancellation hooks, pause ownership and guarded teardown
+	- Preserve selected Codename character XML, scripts and static source atlases for shared runtime compatibility; support nested authored IDs and default sprite lookup through original IDs
+	- Add opt-in same-process native smoke reload checks for actor identity and exact teardown without changing saves
+	- Materialize distinct Codename character occurrences for published XML stages and restore their presentation from baselines on stage swaps
+	- Preserve Codename song metadata and resolve difficulty-file/default/inline overrides with owner-scoped SONG.meta views
+	- Add a backed-up Codename actor metadata refresh that verifies fresh import output and preserves edited metadata and charts
+	- Repair missing owned visuals when re-importing complete Codename and V-Slice songs, preserving existing chart and script edits
+	- Add reviewed missing-file repair for older Codename namespaces and stabilize actor metadata plans across separate Python processes
+	- Preserve Codename authored-to-native actor mappings and choose initial primary actor orientation from selected stage slots
+	- Match Codename constructor direction-frame/offset swapping and slot flips, including dance-pair characters and XML flipX
+	- Preserve Codename XML prop/character ordering with shared stage anchors, primary actor rebinding and detached stage-node cleanup
+	- Fixed native Codename/V-Slice import sorting coercing mixed note rows to integers, losing fractional timestamps and optional metadata
+	- Preserve Codename source note identities across import, sustain/lift generation and editor copies; retain unsupported line records per difficulty
+	- Fixed editor section copies dropping optional note fields and nested compatibility metadata
+	- Fixed native loading of empty/event-only charts by resolving note alignment width without dereferencing an absent note
+	- Preserved Codename difficulty-specific stages and missing-stage ownership, and fixed swaps between distinct case-sensitive stage IDs
+	- Import Codename character definitions across all strumlines/difficulties, preserve exact character identities and per-chart choices, and retain full stage placement metadata
+	- Scoped Codename stages and prop assets to their owning import; shared stage resolution preserves owned identities and rejects unavailable stage swaps
+	- Scoped Codename character assets, scripts and icons to their owning import, preserved authored native-name overrides and kept Freeplay icon owners separate
+	- Corrected shared Codename stage placement selection, role aliases/defaults and scroll factors; preserved absent versus explicit chart position slots
+	- Fixed shared camera scroll drifting while Codename Camera Position following is suspended, including pause/resume
+	- Matched Codename Camera Position relative coordinates, snaps and scroll-tween follow restoration; preserved camera identities for ongoing strumline compatibility
+	- Matched Codename camera zoom and scroll-speed event parameters, immediate actions, independent HUD zoom defaults, easing and tween lifecycle
+	- Added reviewed Codename event-metadata refresh tooling with owner checks, backups and preservation of unrelated chart edits
+	- Added scoped Codename event-script import/repair and structured event callbacks with cancellation, mutation, post-event ordering and the standard Std global
+	- Preserved Codename event parameters, exact timestamps and distinct identities through import and chart editing
+	- Exposed Codename XML stage prop names to scripts with stage-swap refresh and preservation of existing globals
+	- Made Codename HUD add/remove/insert reversible across script failures and teardown while preserving ownership of removed script props
+	- Added scoped Codename camera creation/cleanup with host-camera restoration and explicit ownership conflicts
+	- Suspended Codename script timers/tweens during pause, preserved authored difficulty case, and isolated failing callbacks without repeated per-frame errors
+	- Added initial scoped Codename classless-script lifecycle execution, sprite rendering and timer/tween ownership; broader API and event compatibility remain in progress
+	- Preserved Codename song, difficulty and stage scripts with literal media/font/data dependencies in the owning import namespace
+	- Composed live Psych character camera offsets with stage offsets without accumulating values across reloads or swaps
+	- Matched Psych paired dances and live idle suffix selection, with a backed-up provenance-checked refresh for older generated character scripts
+	- Preserved Psych character ID spelling and source position metadata within each import namespace
+	- Added the legacy Psych characterPlayAnim callback with upstream character-role and animation checks
+	- Kept the Psych compatibility version in full release form so legacy numeric version gates recognize the existing API generation
+	- Scoped Psych gameplay character atlases, scripts, registry metadata and icons to the selected import owner
+	- Isolated pause-menu rendering from authored HUD fades and transforms, and suspended event videos while paused
+	- Kept donor ownership consistent across chart/audio/script repairs and added a backed-up reset tool for previously mixed imports
+	- Made skipped chart-event videos seek audio, notes and event state to the clip endpoint
+	- Restored V-Slice stage presentation and authored depth during native character-change events
+	- Exposed shared Psych quality/story flags and reused existing HXC translation metadata during script loading
+	- Expanded shared Lua translation for compact then syntax, math.exp and bounded literal string.gsub; made corpus audits tolerate added fixtures
+	- Preserved imported V-Slice receptor style offsets and lane centering across static, pressed and confirm frames
+	- Preserved V-Slice manual versus automatic note judgements and routed autonomous note-head callbacks without sustain duplication
+	- Added botplay avoidance for optional harmful imported notes and retained script-written note offsets through hitbox updates
+	- Matched V-Slice character animation offsets at the live actor scale and shared the baseline with HXC super calls
+	- Bridged compatible HXC stage replacement through the native lifecycle and preserved actor depth on replacement
+	- Centered imported note-style tap graphics on their lanes and preserved authored offsets after repeated hitbox updates
+	- Matched the editor event column checkerboard to the note grid's cells and section alignment
+	- Preserved V-Slice numeric prop layers on import and recovered actor-relative ordering for older generated stage scripts
+	- Matched V-Slice's non-looping animation default while preserving explicit loop flags
+	- Resolved NoteKind identity from constructor declarations and recovered missing note visuals within the selected import namespace
+	- Matched V-Slice stage prop scale/hitbox/position order and corrected eligible older generated stage blocks in memory without chart or asset edits
+	- Added Lua table indexing, mixed-key storage, iterator helpers and truth-value semantics within proven translated Lua scopes, preserving native HScript behavior
+	- Added opt-in load/swap decode measurements and script/callback context to guarded HScript operand diagnostics
+	- Resolved Psych text font keys through selected-import and native font directories instead of using an unintended system font
+	- Matched native Psych camera-target color tweens: preserve tween completion without applying a new whole-camera tint
+	- Exposed each character's selected atlas through the Psych imageFile property and supported extensionless atlas stems in Lua sprite loaders
+	- Matched Psych setObjectOrder final-index semantics when moving display objects forward
+	- Added a scoped HXC note-style/splash runtime bridge with animation lifetime and single attachment ownership
+	- Restricted HXC NoteKind callbacks to matching authored notes, separated ghost misses, and preserved ordinary Psych callback arguments when their scope is explicitly non-HXC
+	- Fixed native Psych camera and Lua text property setters, default HUD text placement, and per-character stage offsets for initial loads and swaps using scoped metadata with base-engine fallbacks
+	- Preserved scoped V-Slice note-style metadata during import and repair instead of flattening note-kind styles into the global song UI registry
+	- Added a left event lane with event selection and seeking Previous/Next navigation, sharing timing and normalized event data across import formats
+	- Fixed authored stage-name validation before registry normalization and isolated imported Modding Plus stage scripts/assets from native registry-name collisions
+	- Forwarded directly added stage props to the live display/update list with single ownership, preserved cameras, and safe stage-swap cleanup
+	- Corrected Psych filesystem image loading, getter-backed strum group access, per-channel sprite color tweens, and post-update HUD callback ordering
+	- Renamed the app title, gameplay HUD, Discord presence, and desktop launcher to Cammie Engine +; kept existing save and executable identifiers so settings remain at their established paths
+	- Fixed Linux rebuilds overwriting live options by backing up settings before Lime asset sync; runtime media now uses a hardlink snapshot so an incremental build can reuse existing output, documentation-only edits no longer invalidate the build cache, and a failed compilation-server pass retries without that server
+	- Added a parallel module test runner for the full engine suite and updated architecture documentation and the README introduction while preserving the earlier README content
+	- Cached the compiled mounted Auto-import diagnostic scanner by generated source and local toolchain; every run still scans donor content, while repeated tests avoid rebuilding that scanner
+	- Added a Psych-format Events tab to the chart editor, bound Freeplay character-choice prompts to their selected song, and reused one parsed difficulty registry during Freeplay list creation
+	- Limited Freeplay display rows to a moving selection window while retaining full-list search and selection; a 1,300-song category opened in 237 ms instead of 585 ms in the same native smoke fixture
+	- Deferred HXC menu states stored inside module map literals until selected, avoiding a full imported state-tree analysis during ordinary song-select startup; isolated native Imported-category creation fell from 7,451 ms to 1,470 ms in the same smoke setup
+	- Replaced named imported Freeplay icon, overlay, and confirm routes with bounded literal metadata extraction and manifest-scoped capsule actions; confirm tokens now stay tied to one selection even when donor updates assign a new closure every frame
+	- Seeded imported preference stores from validated literal constructor defaults instead of a fixed donor key or a global synthetic setting
+	- Routed structurally matched imported game-over character replacement through a generic native adapter with a source-extracted player roster and manifest-root check
+	- Corrected Psych stage opening camera focus after imported stage positions and offsets are applied; the generic Psych Flash callback now honors the flashing-lights setting
+	- Added Psych's independent transparent camOther layer above the HUD and routed imported sprite/property/shader/shake/flash camera APIs to it, so a HUD fade cannot hide an authored overlay flash
+	- Kept notes, hold covers, and splashes above receptors when an imported stage's HUD props trigger a full z-index sort; the shared stage layer rule now raises the complete gameplay note stack
+	- Matched timed Psych legacy camera zoom events to donor tween completion, keeping the old base zoom until the authored tween finishes instead of pulling the camera toward its target early
+	- Let a loaded Psych custom Flash event own its legacy Flash row so the native fallback does not render a second flash; canonical Camera Flash and charts without that handler retain their native route
+	- Resolved V-Slice scripted NoteKind style ids from their literal constructors and imported the associated per-kind note and hold atlases without registering an incomplete UI preset; native notes use those visuals even with a pixel song UI
+	- Generalized missing V-Slice base-library countdown fallback across theme names using shared/default countdown path semantics; custom and traversal paths still report missing resources
+	- Added the HXC PlayState `isInCountdown` alias backed by the native countdown phase, fixing an imported stage callback's missing-field error
+	- Replaced a named HXC popup-asset path expansion with a bounded literal template evaluator that preserves nested-array relationships and applies to any imported script
+	- Replaced a fixed imported popup-event atlas and frame prefix with a bounded HXC sprite-event descriptor; import stores literal metadata and complete atlases inside the owning namespace, and older imports can derive the descriptor from selected-root event scripts
+	- Mapped HXC `currentChart.song.id` to the live song identity for imported static/text initialization
+	- Lowered bounded literal HXC perfect-hit text cues into a shared data descriptor; PlayState now owns root-scoped fonts, rendering, step expiry, and retry cleanup without named song or mod rules
+	- Extended the shared note-cue descriptor with validated root-scoped animated overlay and sound metadata; textless source rules still run their visual/audio cue and use the same strict step expiry
+	- Added bounded literal miss-text rules to that shared cue owner, preserving separate hit/miss probabilities and text with a common lifetime and cleanup
+	- Made targeted offscreen Freeplay smokes fail if they leave song select before reaching and accepting the requested row
+	- Resolved HXC character helpers against the current gameplay role, retaining a temporary construction binding only during onAdd so a character swap cannot animate an earlier instance
+	- Deferred HXC character onAdd callbacks until the chart stage is bound, so character-created stage props can attach during initial load and stage changes instead of calling a null stage
+	- Added the bounded HXC ReflectUtil class-name and field-read facade used by imported modules; the long Expurgation native smoke now logs no repeated ReflectUtil errors
+	- Fixed V-Slice character note hits when hxcpp hides typed Note fields from reflection; HXC now receives the lane and sing metadata, malformed note payloads preserve the native singer fallback, and a Fantasy Girl 01 player-side UP hit was verified to play singUP
+	- Added the opt-in `--smoke-trace-player-hits` diagnostic, which records player-one hit ownership and samples live actor animation after note callbacks in an isolated native smoke
+	- Reused cacheable disk bitmaps for repeated background/stage loads through Flixel's bitmap cache; explicit uncached callers still decode separately and normal PlayState exit clears cached images
+	- Prevented a native HScript SIGSEGV when an imported callback throws a non-enum value by checking its runtime type before enum-constructor inspection; a rebuilt Future Sound run now reaches and completes gameplay smoke
+	- Mapped the HXC `mayPauseGame` field to native pause control, completing the imported stage countdown callback without a missing-field error
+	- Kept automated native smoke and import-preparation launches on an isolated Xvfb display so test windows do not interrupt the desktop session
+	- Removed desktop display variables from every parallel test-module process; native smoke tests still create their own isolated Xvfb display
+	- Routed ordinary HXC character Sparrow sprites through the gameplay adapter instead of game-over-only handles, restoring stage effects such as floor spikes; translated native top-hit `sick` to V-Slice callback judgement `perfect` so generic text/static effect branches can run
+	- Calculated native note ratings before imported pre-hit callbacks, including custom input and mine/nuke timing, so hit-triggered effects receive the same judgement used by the score popup
+	- Added opt-in practice-mode player hits to the offscreen smoke harness, exercising the normal hit callbacks without changing saved controls or relying on desktop keyboard focus
+	- Translated bounded literal HXC constructor media preloads so compatible module callbacks can run; sound warmups now reuse a bounded cache scoped to imported asset paths
+	- Preserved imported note-kind graphic offsets and vertical flips through a bounded native note view, restoring authored positioning without editing note scripts or charts
+	- Validated imported Psych stages from their selected per-song compatibility manifest so hard-only charts retain authored stage JSON/Lua, camera zoom, and scene assets instead of falling back to the neutral stage
+	- Made translated Psych Lua positional parameters optional, matching Lua's nil-for-omitted-argument behavior and preventing a shared helper arity error during imported song setup
+	- Kept imported Modding Plus donor Base Game songs in the Imported category, prevented sibling chart stage variants from leaking into lower difficulties, and cached unchanged parsed character scripts with a bounded limit
+	- Recovered malformed flat custom-stage registries from older Modding Plus donors during import, so copied stage scripts and images keep their stage keys without modifying donor packages
+	- Added Codename Engine as a first-class Auto import family: songs/<song>/meta.json + charts/<diff>.json convert to native charts (strum lines map onto the player 0-3 / opponent 4-7 lanes with the authored type/position classification, sustains and BPM come from the donor meta, authored noteTypes become native custom-note identities, and the shared events.json sidecar merges into every difficulty), recognized camera/animation/character/scroll events route to their native equivalents with the Codename dad(0)/bf(1)/gf(2) camera order remapped, and unknown events are preserved for runtime compatibility dispatch exactly like V-Slice imports
+	- Codename imports are split-vocal aware (Voices-Player.ogg / Voices-Opponent.ogg become chart vocalStems with roles, no ambiguous Voices.ogg alias), data/characters/*.xml convert into custom_chars with their Sparrow atlas, animation prefixes/indices/offsets, donor health icon and healthbar color, and data/stages/*.xml convert into custom_stages with sprite props, document-order layering, zoom and the donor's stage-plus-character placement; Codename Haxe song scripts are diagnosed as untranslated while playable charts never depend on them
+	- Compiled Codename releases (HL17/fnas-style builds with a mods/<name> content tree) classify as Codename Engine, recover the real mods content instead of their embedded engine sample songs, and the scan report names the `import the mod source` expectation; girlfriend strum lines have no native third gameplay lane, so their notes are counted and diagnosed instead of silently dropped
+	- Kade source releases now import their code-defined characters too: KadeStageSource parses the mod's Character.hx switch (Sparrow atlas key/library, addByPrefix and addByIndices animations, addOffset entries, scale, playAnim), PlayState.hx's per-stage `gfVersion` switch, and the player2 arm's `dad.visible = false` statements, materializes referenced ids that do not already resolve natively (for example expurgation's tied gf from `fourth/EX Tricky GF.png`) as custom_chars characters with a generated dance/idle script and a no-clobber registry row, and extends the generated stage script with `switchCharacter("<gf>", "gf")` plus the authored gf placement and `dad.visible = false;` so source-stage imports match the donor's actors instead of the neutral girlfriend
+	- Added Kade-family Haxe source releases (Project.xml + source/*.hx beside the standard assets tree) as a first-class Auto import type: Auto classifies them as Kade Engine with `Haxe source release` evidence, resolves Kade `preload`-library layouts (charts below assets/preload/data, audio at assets/songs), and KadeStageSource extracts every song's authored stage from source/PlayState.hx so source downloads import the real scenes instead of the compiled release's neutral fallback
+	- Incomplete Haxe source downloads (a Project.xml without source/ or assets/data, such as an interrupted git checkout) are never misclassified: Auto skips them gracefully and the scan report explains `[source-release-incomplete] <name>: Haxe source project detected but source/ or assets/data is missing — re-download the complete source release.`
+	- Added generic FPS Plus character and stage conversion: data/characters and data/stages HXC modules are read data-only, so chart ids such as WhitBonkers/GfStandingScared register in custom_chars with their authored Sparrow atlas, animation prefixes/offsets, and donor health-icon strips, and stage ids such as alleyBalls register in custom_stages with a native script rebuilt from the donor's literal BGSprite/loadGraphic presentation and start-point offsets
+	- Native custom_chars characters now own their visuals when an imported HXC CharacterInfo companion is also present: the companion keeps donor extras (icon aliases, camera/reposition offsets) and behavior callbacks but no longer re-concatenates the same atlas, which corrupted frame collections into native SIGSEGVs on gameplay start
+	- Extended the Linux-host Windows cross-build to auto-detect self-contained LLVM-MinGW when the GCC triplet compiler is unavailable, normalize prefix/<triplet> sysroots, and select target LLVM archive/strip tools; documented CachyOS and unpacked LLVM-MinGW invocations
+	- Added an opt-in native runtime import-preparation CLI: an already-built binary runs the complete ImportWorkflow transaction with real media/converters/registries while Python records bounded markers below project tmp; the explicit structural audit fallback is clearly non-runnable and remains separate from the chart smoke matrix
+	- Added a source-tested native runtime smoke matrix for an already-built binary: direct folder/chart/difficulty PlayState launches, bounded machine-readable markers and exit codes, project-local logs, preserved options, and temporary fixture-root overrides for the six imported engine families plus named regressions
+	- Added bounded HXC native-object adapters for reachable V-Slice `FunkinSprite`, `FunkinCamera`, `FunkinSound`, `WiggleEffectRuntime`, and `WiggleEffectType` calls; sprites/atlases/audio stay manifest-scoped, WiggleEffect keeps its update/shader contract, DokiDoggle's extra Strumline remains on the engine-owned adapter, and unsupported donor members remain diagnosed
+	- Added generic HXC lifecycle facades for ghost-note misses, countdown completion/control, pause-substate aliases, read-only Conductor timing, bounded Conductor updates, story-mode state reads, imported videos, and fullscreen geometry; unsupported donor members remain diagnosed instead of executing foreign object graphs
+	- Added bounded native HXC main-menu and pause-overlay hosts: renamed V-Slice Module/MusicBeatState menu graphs and the complete DokiPause helper/substate graph now lower to typed manifest-scoped specs, native MainMenuState/PauseSubState camera/assets/input/cleanup, root-scoped imported-state materialization, and explicit no-op/native fallback diagnostics without donor object graphs, chart launches, or window close
+	- Added engine-aware Import Settings choices for Auto, V-Slice, Kade Engine, Modding Plus, Psych Engine, FPS Plus, and Legacy FNF/Polymod
+	- Added a bounded Legacy FNF/Polymod overlay transaction: deterministic `mods/modList.txt` planning, named/root `_append` and `_replace` byte application, validated JSON Patch `_merge`, rollback-safe `data/...` materialization, and destination-only provenance for missing bases without donor writes
+	- Retained Polymod overlays now resolve virtually at the native asset-read boundary: protected `_append`, binary-safe `_replace`, and validated `_merge` records preserve plan order, collapse only exact duplicate operations, preserve identical appends from distinct mods, fall back safely on malformed payloads, and reload after import without overwriting destination files
+	- Auto import detects every independent game/assets/mod root below one selected parent, including mixed-engine packs and nested mods, while avoiding duplicate roots and symlink loops
+	- Added a mounted Modding Plus end-to-end import regression for Fired, Let-us-in, and Slaughter, covering native charts/audio/sidecars, visual registries, UI assets, compatibility manifests, and donor immutability
+	- Added generic FPS Plus song-meta.json import support: artist/album/display and numeric difficulty ratings reach native charts and Freeplay, while unknown keys remain in a destination compatibility envelope; malformed metadata diagnoses and falls back without touching donor charts
+	- Auto root scans now surface a `[root-scan-truncated]` error with scanned/queued directory counts when the 8,192-directory safety bound leaves folders unvisited; Import Settings and the persistent report show the warning so a narrower source can be selected
+	- Auto package discovery now surfaces a generic `[package-scan-truncated]` diagnostic/error with scanned/queued counts when its separate 4,096-directory safety bound leaves standalone package folders unvisited; cancellation remains distinct, and Import Settings plus the persistent report show the warning
+	- Auto import keeps donor folder ids separate from display names, so space/case variants such as Dad Battle remain playable in Freeplay and difficulty lookup
+	- Added V-Slice v2 chart, character, stage, and asset conversion; foreign events and note kinds keep their authored identity for runtime adapters, while genuinely unsupported script behavior and unavailable asset conversions are reported
+	- Preserved V-Slice artist and album metadata in native charts so imported HXC/Discord RPC modules read the live song identity
+	- Added V-Slice SpriteSheetPacker atlas support: stage/character `.txt` frame metadata is scanned, copied without overwriting existing assets, and loaded with the authored packer format alongside Sparrow XML
+	- Added a portable V-Slice ASTC capability boundary: standard headers are validated, an installed Linux/Windows astcenc decoder can be discovered and invoked with shell-free `-ds` arguments to produce non-overwriting PNGs, and unavailable/invalid assets retain precise actionable diagnostics without modifying donors
+	- Linux, Windows, and AppImage builds now bootstrap a pinned checksum-verified official astcenc decoder into the game runtime, allowing V-Slice ASTC character, stage, icon, and event textures to import without a separate installation
+	- Added cross-platform V-Slice split-vocal support: Auto import copies every Voices stem to deterministic destinations, native charts record the copied files, and PlayState keeps all voices synchronized while preserving the script-facing vocals sound
+	- Extended synchronized split-vocal import to Psych/Kade/FPS packs that provide Voices-<stem> files without a Voices.ogg alias; native charts record the group without changing donor audio
+	- Added a shared legacy-event adapter for FPS Plus companion events.json wrappers and semicolon-delimited [section,time,type,payload] rows
+	- Added a mounted FPS Plus event-routing regression: all 84 Whitty ballistic/overhead/remorse sidecar rows preserve timestamps and value slots through SongEvents and route to native Legacy Camera Zoom, Camera Follow Pos, Toggle Camera Movement, Add Camera Zoom, or Change Character handlers without donor edits
+	- Classified accepted HXC cutscene engine-owned captures/filter cleanup and the unassigned bgm fade as informational adapter/no-op findings instead of unsupported diagnostics; genuinely rejected cutscene shapes retain precise unsupported codes
+	- Added destination-side adapters for FPS/Kade dialogue.json and cutscene.json sidecars; donor JSON stays intact while native dialogue and HXC cutscene hooks remain playable
+	- Added a bounded data-only FPS Plus HXC intro timeline extractor: mounted Ballistic/Lo-Fight/Overhead constructor timelines retain ordered literal/symbolic timings, camera/audio/sprite/dialogue actions, and manifest-relative assets; inherited default zoom/filter state is engine-owned, and Overhead's null music fade remains a diagnosed no-op without executing donor objects
+	- Added the native FPS Plus HXC timeline consumer: accepted Ballistic/Lo-Fight/Overhead data runs through a manifest-scoped sprite/audio/camera/dialogue owner with stable equal-time ordering, bounded clocks, cancellation cleanup, missing-asset diagnostics, and guaranteed countdown hand-off
+	- Hardened FPS/Kade dialogue portrait loading: invalid optional metadata and Sparrow XML now fall back to safe defaults/static source art, while mounted Whitty atlas order and authored offsets remain intact
+	- Added a VoicesTogether.ogg fallback for legacy packs that ship one pre-mixed vocal track; Auto import creates only the native Voices.ogg compatibility alias
+	- Honored imported cutscene sidecar storyOnly/playOnce flags, including freeplay intros and replayable cutscenes, while safely handing HXC scripts without a compatible start callback to the countdown
+	- Preserved V-Slice solid-colour stage backdrops and stopped requiring atlas XML for authored static stage graphics
+	- Matched V-Slice's health-icon fallback convention by resolving icon-<character> when a character omits healthIcon.id, including donor-backed speaker/Sayori aliases; pixel flags and exact silhouette/shadow asset-stem aliases now select matching freeplay icons without chart edits
+	- Preserved V-Slice costume roots/lists and doesLoop metadata through the native Character/HXC bridge; split non-multisparrow animation atlases now load lazily per animation, and unique nested/plural donor asset names are resolved without chart edits
+	- Added V-Slice/Psych character position aliases and authored death-camera offsets/zoom to the shared character and game-over runtime
+	- Added precise V-Slice split-animation dependency diagnostics: present PNG/decoded ASTC atlases use the generic lazy runtime adapter, while absent donor atlases retain their authored names and report the exact missing logical path without substitution; unavailable aliases are omitted from generated HScript instead of becoming zero-frame animations that can stall game-over fallback
+	- Fixed V-Slice multisparrow planning and runtime loading: checkout-local ASTC decoders are discovered during scans, authored ASTC primaries no longer produce duplicate missing-atlas warnings, native fallback primaries combine with imported sub-atlases, and genuinely absent split sources retain precise diagnostics
+	- V-Slice asset-gap diagnostics now retain the exact character/stage definition path and selected search root: mounted SadBF split death atlases and Future Sound's asset-less concert2 Teto prop are classified as genuine donor omissions without chart-specific substitutions
+	- Made V-Slice health-icon dependency checks role-aware: girlfriend-only definitions preserve authored icon metadata without requiring a donor HUD icon, while player/opponent gaps remain precise; mounted `lav`, `gf-pixelbar`, and `gf-markov` no longer produce false missing-icon diagnostics
+	- Normalized legacy V-Slice animation aliases (`fps`/`indices`) to the current `frameRate`/`frameIndices` importer fields for characters and stage props, preserving non-default timing and indexed frames without chart edits
+	- Preserved V-Slice `FocusCamera` character slots, offsets, step durations, and easing through the native camera event adapter (including `easeDir` composition such as quart + Out); character-only rows no longer become coordinate-only camera locks
+	- Added generic V-Slice custom note-style packs: authored note/receptor/splash atlases, two-cell-per-lane hold sheets, lane prefixes, held-confirm animations, offsets, scales, and alpha are imported under namespaced `vslice-*` UI types; source-backed popup/combo art is preserved and missing base/shared UI files stay precise diagnostics
+	- Imported V-Slice's enabled per-lane hold-cover atlases and authored prefixes into generated UI packs with a pooled native runtime effect; disabled cover definitions stay donor-optional, and base/shared countdown image/audio references now use precise native-fallback diagnostics
+	- Fixed Auto scan planning for generated V-Slice UI packs: supported `vslice-*` styles are no longer reported missing before import, their generated atlas/preset/registry mappings appear in scan details, and multi-file UI copies remain safe after the first destination folder is created
+	- Added a centralized cross-engine compatibility layer for imported callbacks, property paths, events, object ordering, tweens, timers, input helpers, precaching, camera effects, shaders, and stage changes
+	- Restored Modding Plus extended note-row health, timing, sing, and animation-suffix fields for generated heads and sustains without rewriting donor charts
+	- Replaced the expurgation-only anonymous Kade death-note switch with a generic engine/metadata-driven adapter; explicit note kinds win, unknown engines keep native mines, and mounted Kade regressions remain donor-immutable
+	- Added native HXC event adapters for Wacky World's manifest-scoped Vignette tween/shader and TAKEOVER's `EyePopup` Markov Pop Ups, decoding event-owned ASTC atlases through the portable PNG boundary when available and preserving exact failures without fabricating textures or leaking imported assets across songs
+	- Added centralized native semantics for mounted V-Slice `ScriptedSongEvent` aliases such as `Zoom Rabbit`, `Note Swap`, character/stage changes, camera effects, lyrics, and video; note-style swaps rebuild receptors plus active/pending note graphics
+	- Routed V-Slice `SetHealthIcon` through the native health-icon renderer, including player/opponent targeting, pixel scale, flip, offsets, authored scale, and bop behavior without changing the chart
+	- Added backwards-compatible visual safety preferences for imported camera zoom, flashing lights, vignette effects, and song lyrics; Add Lyrics now supports the donor's two-line font/color/position/layer options without modifying donor charts
+	- Added a dedicated native Play Video event owner with HUD fade modes, mute, control suppression, timestamp-based start/resync, display-list z-order, and teardown restoration; intro cutscene playback remains separate
+	- Added a safe Psych-style Lua compatibility bridge for imported callbacks, tables, common control flow, math/table helpers, and the shared cross-engine API; unsupported or unsafe Lua constructs are reported explicitly
+	- Extended the shared Lua/Kade bridge with actor lane movement, camera zoom tweens, text and mouse helpers, custom-substate lifecycle routing, song navigation, Lua standard-library shims, and Psych's primitive note-callback ABI without modifying donor charts
+	- Added executable mounted HellBeats Kade coverage for live song position/BPM, default receptor reads, lane movement, difficulty/step gating, and player-turn camera zoom; missing requested Voices stems now degrade to a silent native track, while empty legacy 0.offset markers remain inert and non-empty markers diagnose without invented timing semantics
+	- Added a centralized Psych Character healthColorArray adapter, deriving RGB components from the live health icons/role colours so imported silhouette scripts keep their authored tints without chart edits
+	- Completed the mounted Psych/Kade/FPS Lua runtime edge adapters: Function_Stop/Continue gates, onEvent/onMissNote/onGameOverStart/onEndSong callback ABIs, ClientPrefs/PlayState class properties, note-splash groups, animated Lua sprites, and Psych's zero-loop timers now route centrally; all 122 mounted Lua files now translate without compatibility diagnostics
+	- Made all 122 mounted donor Lua scripts translate to parseable HScript without compatibility diagnostics, including malformed legacy text bytes, wrapped expressions, adjacent one-line statements, and positive/negative stepped loops
+	- Added HXC compatibility adapters that recognize song-event, module, and note-kind classes, route known event names, and preserve authored note identities while reporting behavior that still needs a full HXC runtime
+	- Added generic HXC mixed-class, FPS Plus CharacterInfoBase, and owned runtime-shader adapters: Rabbit Hole option modules share an isolated `rabbit_hole_settings` gate, Whitty-style Sparrow metadata (including indexed animations, offsets, FPS/loop, and reposition data) reaches native Characters, Markov-style StaticShader uniforms/pulses use exact manifest-root camera bindings with per-binding cleanup, and standalone FlxRuntimeShader helpers remain data-only/no-op
+	- Added a generic legacy-HScript frame-delta normalizer: safe decimal `+=`/`-=` mutations inside `update(elapsed)` are scaled from their authored 60 FPS rate, integer input counters and already elapsed-based expressions stay unchanged, and ambiguous mutations receive diagnostics without editing donor scripts
+	- Imported chart difficulty suffixes are discovered at runtime before support maps are built, so donor-only variants such as `-encore` remain selectable without renaming charts; repaired the engine-owned difficulty registry JSON separator that previously forced fallback parsing
+	- Added conservative in-memory recovery for legacy charts missing a comma between newline-separated JSON properties; successful imports write valid native JSON while donor bytes remain unchanged and ambiguous malformed documents still fail with a precise diagnostic
+	- Classified legacy absolute camera-target intro sequences during import and stored their semantics in compatibility metadata, keeping gameplay-camera holds separate from ordinary additive HUD pulses while retaining a diagnosed runtime inference fallback for older imports
+	- Added safe direct custom-stage script fallback when a legacy donor omits its registry entry, preserving registry precedence and rejecting traversal; this restores reachable unregistered stage scripts such as the Chaos chamber without chart-specific branches
+	- HXC song-event callbacks now have a bounded native-ownership contract: direct donor camera flashes apply once and claim the matching native route, while stage-specific effects remain in HXC
+	- Added an engine-owned active-song tally view for supported HXC `Highscore.tallies.totalNotes`/`missed` accesses, preserving native hit/miss/retry accounting while unsupported tally fields remain diagnosed
+	- Corrected the HXC tally bridge so `totalNotesHit` uses native raw successful-hit accounting instead of weighted accuracy, while `maxCombo` resets per song/retry and remains observation-backed
+	- Expanded HXC callback compatibility with native per-song tally/rank aliases, fixed-rate icon easing, retry-stage opacity, window title/icon writes, and the named runtime-shader constructor; donor menu/freeplay graphs remain explicitly diagnosed
+	- Corrected HXC module safety for locals that read native PlayState fields, allowing exact IconColoredHealthBar and yo character/icon callbacks to use live engine objects without broad reflection
+	- Added the exact native HXC `Scoring.calculateRank` threshold adapter (empty chart, all-sick gold, PERFECT/EXCELLENT/GREAT/GOOD/SHIT boundaries) while keeping donor-specific weighting and score tables diagnosed
+	- Added a bounded HXC character inheritance closure: costume wrappers retain literal native Character definitions, inherited actor-local animation/colour hooks compose in ancestor-to-wrapper order, and unresolved game-over/pause donor hooks remain explicit diagnostics
+	- Added a central HXC game-over/pause suffix adapter: mounted character callbacks can select existing suffixed loss, game-over, ending, and pause tracks with native fallback behavior, while unsupported donor substate members remain diagnosed
+	- Added a generic HXC game-over death-overlay adapter: literal Sparrow assets stay manifest-scoped, GameOverSubstate owns overlay handles and cleanup, replacement-character callbacks follow the native dispatch binding, and window-close requests become bounded no-ops
+	- Added bounded TAKEOVER HXC module adapters for CountdownGF, DDTOGameOver, and CostumeMenuButtonv2: countdown options use a namespaced store, game-over actor hand-off stays inside native GameOverSubstate, and the costume action is added through native MainMenuState; its donor PleaseKrillMe atlas now resolves through the selected manifest asset scope with a native fallback only when incomplete
+	- Added generic HXC module boundaries for Wacky lyrics/vignette handlers and TAKEOVER sound-tray, Discord RPC, preferences, and menu overrides: native PlayState effects and namespaced metadata remain owned by the engine, donor menu/asset graphs stay opaque, and unsupported tray/menu hooks fall back safely without chart edits
+	- Added a bounded generic HXC song-credit banner adapter: song name/artist, pixel mode, and validated literal `songCredits/*` icons stay inside native PlayState, manifest-scoped assets fall back cleanly when absent, and pause/resume/retry cleanup remains safe
+	- Routed mounted TAKEOVER CatFightFreeplayFix and FreeplayFixes through namespace-safe native Freeplay capsule/icon adapters: Catfight popup selection and DDTO icon mappings retain authored ids without exposing donor capsule graphs; the week-type overlay now has a manifest-scoped native visual slot and reports an explicit fallback when its donor atlas is absent
+	- Routed shallow HXC Freeplay capsule payload fields through the engine-owned event view and bounded local PlayState song aliases; donor capsule graphs and unknown Song members remain explicit diagnostics
+	- Extended the central HXC syntax adapter for nested optional properties/calls, lazy null-coalescing, and Haxe `key => value` map literals; generated HScript now uses engine-owned lazy receivers/fallbacks and an isolated dynamic map without changing donor scripts
+	- Added namespace-isolated HXC Freeplay difficulty/selection callbacks; imported modules receive only their own songs' menu events and sibling module lookups cannot cross donor roots
+	- Added manifest-scoped HXC visual-asset planning for literal Paths image/atlas references: CostumeMenuButtonv2's PleaseKrillMe menu atlas and FreeplayFixes' week-type overlay now copy only referenced donor media into the selected namespace, while native MainMenu/Freeplay adapters use scoped assets with explicit fallback diagnostics and synthetic/mounted coverage
+	- Routed V-Slice/HXC stage role access (`getDad`, `getBoyfriend`, `getGirlfriend`, `getOpponent`, `getNamedProp`) and character animation access (`getCurrentAnimation`, `setAnimationOffsets`) through shared EngineCompat/PlayState/Character adapters; the mounted donor no longer reports these as unsupported HXC APIs
+	- Added runtime discovery for Psych/Kade global, song, stage, custom-event, and custom-note scripts, with one isolated interpreter per file and difficulty-aware modchart deduplication
+	- Preserved Psych/Kade/FPS companion events.json sidecars through import and fed their external event names into custom-script discovery, with per-file Lua compatibility diagnostics in the read-only scan
+	- Honored Psych's gfVersion chart spelling and converted Adobe Animate character folders (Animation.json + spritemaps) through the native DisSprite timeline adapter; Funkadelix-style characters no longer appear as false missing dependencies
+	- Isolated imported foreign script trees under deterministic per-source namespaces with destination-only compatScripts.json manifests, preventing global Psych/HXC scripts from leaking between mixed-engine songs and repairing older partial imports
+	- Added Psych stage loading from assets/stages, including stage JSON positions/zoom and a static Lua fallback for sprite layers, animation, scroll factors, and global assets/images paths
+	- Extended Psych stage Lua fallback compatibility with live onCreatePost/onUpdate/onBeatHit/onStepHit/onEvent/onTweenCompleted callbacks, shared tagged sprite helpers, non-destructive removal, and deterministic object ordering; mounted Haven cloud movement/reset callbacks remain donor-driven and unsupported Lua stays diagnosed
+	- Added runtime HXC discovery for copied V-Slice song, stage, character, module, event, note, UI, and cutscene families; safe generated lifecycle code runs through the shared HScript compatibility API
+	- Added manifest-scoped HXC state/substate factories: literal ScriptedMusicBeat init calls resolve only inside the selected import root, wrappers dispatch create/update/beat/step/destroy, and native state aliases plus guarded back/switch behavior remain available
+	- Extended manifest-scoped HXC state/substate navigation to dynamic name expressions, bounded native/HXC closure factories, and chained openSubState calls; donor-only or cross-root targets remain explicit diagnostics
+	- Added explicit HXC menu transition aliases for V-Slice Credits/Options closures (`CreditsState`/`SaveDataState`) and routed `currentState.startExitState(target)` through the caller-root switch guard; donor-only Attract/Debug and CostumeSelectState naming mismatches remain diagnosed
+	- Tightened HXC callback safety auditing: dotted names inside string literals are no longer treated as runtime roots, while seeded pause/control and native UI aliases are available to compatible callbacks; donor-only object graphs remain diagnosed
+	- Added HXC/V-Slice song-event payloads alongside the legacy four-value event callback, including shared event data/value aliases and cancellation that can stop native handling
+	- Routed Psych's common runHaxeCode camera shader-filter pattern through a narrow native shader API while arbitrary embedded Haxe remains blocked
+	- Added strict whole-block adapters for Reverse Glitch's runtime shader storage/filter lookup and resize cache workaround; other embedded Haxe remains blocked
+	- Extended the Lua compatibility bridge with pairs/ipairs iteration, bounded delimiter gmatch, string.format, Psych timer callback values, common chart globals, and countdown/menu aliases
+	- Routed the final mounted Lua edge through the narrow native camera-angle adapter: the legacy callback-local `els` spelling now maps to the callback delta without executing interpolated Haxe, bringing the corpus to 122/122 clean while unknown raw Haxe remains blocked
+	- Auto import now chooses the most complete same-name song candidate across mixed roots (chart coverage first, then audio and sidecars) instead of whichever folder was scanned first
+	- Extended the mounted Auto audit to validate every supported V-Slice character, stage, and note-style asset mapping against a real non-empty donor file and safe destination while proving the donor visual sources remain unchanged
+	- Fixed mixed-engine imports on legacy destinations that only have `freeplaySongJson.json`: registry reads, duplicate checks, repairs, and new registrations now use that existing JSON file instead of creating an invisible competing JSONC registry
+	- Centralized Freeplay registry resolution across menus, difficulty discovery, sorting/new-song screens, legacy import, and batch import: JSONC wins when both spellings exist, JSON-only destinations are preserved, and old image-tree registries are read and written in place
+	- Import scans now recognize dependencies already supplied by the destination registries and legacy role aliases such as boyfriend/bf, daddy/dad, and girlfriend/gf without rewriting source charts
+	- Added conservative legacy compatibility recovery for compiled character definitions, the standard halloween/spooky stage name, and base BOYFRIEND atlas paths while leaving ambiguous or missing donor content diagnosed
+	- Routed V-Slice's standard Erect stage ids (including `schoolEvilErect`) through the native stage registry with `stageID` variant selection, so the native erect graphics load without chart-specific edits or false missing-stage diagnostics
+	- Routed imported HXC character companions through actor-local scopes: matching `onCreate`/`onAdd`, note, animation, and animation-finished callbacks now follow active character swaps, dormant costumes stop receiving callbacks, and per-song cleanup clears their manifest bindings
+	- Fixed duplicate imported HXC character companions: each song manifest now has deterministic selected-root ownership, so same-id scripts from sibling roots cannot both run during character swaps
+	- Added an exact, registry-backed V-Slice base-character atlas fallback: omitted shared-library paths such as `characters/senpai` reuse only a destination atlas whose PNG/XML and all authored animation prefixes validate, with no donor edits or fuzzy character substitution
+	- Expanded the bounded V-Slice chart-pair probe so large packs with many preceding song folders/files are still detected by Auto
+	- V-Slice note kinds without native behavior are preserved as shared custom-note metadata instead of being discarded from imported charts
+	- Routed common V-Slice note-kind aliases (`gf`/`GF Sing`, `hurt`/`Hurt Note`, and `noanim`/`noanimation`) through the shared native note behavior adapter while retaining their authored kind for companion scripts
+	- Recognized custom V-Slice note kinds implemented by the selected song or active character HXC companion when its safe note callback references the exact authored kind, avoiding false unsupported warnings without accepting unrelated pack scripts
+	- Included characters introduced by V-Slice Change Character events when selecting note-kind HXC companions, so mid-song character-specific kinds route before conversion without broad pack-wide script matching
+	- Import Settings recursively imports compatible song packages, assets folders, game folders, and mod folders, skipping duplicate songs and non-destructively merging supported asset trees and registries
+	- Added a read-only importer Scan step with found/new/duplicate content counts, missing chart/script dependency diagnostics, exact searched paths, and a persistent import report
+	- Import reports now give compatibility aliases, duplicate candidates, and split-vocal notices stable diagnostic codes instead of grouping them as unclassified messages
+	- Large scans and imports now run in the background with a live progress bar, phase, count, and current file instead of freezing the menu
+	- Added build.sh targets for Linux executables/AppImages and run.bat for native Windows builds
+	- Linux, AppImage, Windows, and mounted-import tools now use the ignored project-local `tmp/` directory for scratch files instead of filling the system temporary drive
+	- Added a Linux-host Windows cross-build through hxcpp's MinGW toolchain (`-Dwindows -DHXCPP_MINGW`), a no-Linux-build setup mode, explicit `MINGW_ROOT`/triplet checks, quoted project paths, verified Windows ASTC decoder/license packaging, and an optional bounded Wine launch smoke that reports startup survival or crashes while preserving native run.bat builds
+	- Demo playback now gains health on successful BF notes, including scaled sustain healing; BF autoplay avoids bomb and danger notes while opponents retain opted-in hazard hits
+	- Added Static Scroll Speed: 0 (default) = off; 0.5 to 10 in steps of 0.5
+		- Nonzero fixes note speed across charts, overriding Scroll Speed and chart speed changes
+		- Sustain lengths follow the target; slow targets spawn notes earlier to avoid pop-in
     - Added Week 7 and Weekend1 to Story Mode
 	- Added proper Pico difficulty to show in Story Mode
 	- Added option to toggle FPS counter
@@ -11,15 +629,152 @@ Just a disclaimer, I only started making this after 1.3.0, so some of the update
 	- Added "Replay Cutscene" option to pause menu when the song has a cutscene
 	- Added "noAnims" variable to Strumline
 		- Turns off note press animations when true
+	- Added type-to-search to the Freeplay category menu (same filtering as the
+	  chart list: type to filter, backspace deletes, shift+up/down jumps 5,
+	  escape clears the search before leaving)
 
 [Bug Fixes]
+	- Fixed window-resize framing regressions and pinned the letterbox contract: the engine's fixed 1280x720 design space now installs its uniform-fit RatioScaleMode explicitly from Main (after the FlxGame exists - the setter drives game.onResize and FlxG.game is null during Main's constructor, which made an early assignment segfault at boot with no output), so any OS window keeps world framing identical to the 1280x720 window on 16:9 sizes and a centered letterbox on non-16:9 ones; verified headlessly against the 1280 reference at 1792x1008 (tutorial and imported Expurgation capture diffs align at zero offset with only animation noise, HUD bars land on exact 1.4x positions) and 1440x1080 (exact 135px centered bars, no stretch), via both the programmatic FlxG.resizeWindow path and a real window-manager resize (new tmp/vrun-wm-resize.sh; tmp/vrun-native-resize.sh and tmp/vrun.sh take a VRUN_DISPLAY override so concurrent runs no longer collide on Xvfb :94), with tools/tests/test_window_resize_framing.py pinning the design-size/letterbox math under the portable interpreter
+	- Fixed the imported V-Slice Expurgation SIGSEGV the moment the player hit a note (Vs Tricky 5's hell/death note kinds): donor notekind scripts attach their note splashes to the strumline container (`playerStrumline.add(splash)`), which the donor engine renders as a sibling of its receptor subgroup, but this engine's Strumline *is* the receptor group, so the splash landed at index 4 of the receptors the input loop walks and the typed receptor closure received it nulled by the native cast - first field read, segfault; Strumline.add now routes any non-receptor child to an attached effects layer that the line renders above its receptors, updates and destroys itself (matching the donor's container layout, with preAdd-style position/alpha/scroll-factor/camera propagation), and the native gameplay loops (key press, jump-note confirm, sustain confirm, note positioning) iterate through a live-receptors-only guard that can never pass a null, killed, or foreign member
+	- Fixed imported V-Slice character scripts failing to translate when they guard the inherited miss animation (`if (note is not a death note) super.onNoteMiss(event)` - bftricky.hxc parsed as EUnexpected(}) because the unsupported super call was stripped out leaving an empty if body); character onNoteMiss overrides now lower super.onNoteMiss to a native bridge that plays the actor's miss sing exactly like the donor base character, and any other dropped statement leaving a dangling if/for/while/else header is repaired with an explicit empty block so one unsupported line can never fail the whole script
+	- Fixed imported-mod Freeplay freezing once a mod-owned song was selected (TAKEOVER-PLUS-PLUS V10 scrolled from a snappy list into unplayable ~3 second frames that never recovered): translated HXC module update hooks legitimately call state factories every frame, and the factory's lookup re-walked and re-analyzed the mod's entire script tree per call, so CatFightFreeplayFix's per-frame confirm-popup arm alone re-scanned ~60 scripts each frame; factory lookups are now memoized per root/kind/name (both hits and misses, with a public clear for callers that swap tree contents), and the CatFight popup is materialized through its scoped factory only when the player actually accepts, exactly like the donor built it on confirm instead of on every update
+	- Fixed imported V-Slice characters with a danceLeft/danceRight pair (Expurgation's tied girlfriend, the Doki girlfriends, sayori, and every other imported V-Slice gf) dancing wrong during gameplay: their donor idle is one continuous swing split into two halves that the donor engine alternates on every dance tick, but the generated character script replayed a single fixed half on loop, so gf only ever showed the second half of the swing and snapped back mid-pose every loop (looked like the animations were too fast / cut off too early); generated scripts now carry the donor's dance alternation (force-restarted each tick like the donor's beat bop, holding a finished half until the next one), characters without the pair keep their previous fixed dance tick, and an unavailable half never alternates; already-imported character scripts with the old fixed dance body are upgraded in place, and authored `rate` fps values on animations are honored alongside `frameRate`/`fps`
+	- Fixed V-Slice characters whose primary atlas is the base game's rendering as nothing at all (Vs Tricky's bftricky stood invisible through all of Expurgation): mods omit atlases like characters/BOYFRIEND because real V-Slice supplies them from its own library, and the destination-native fallback accepted an engine-owned sheet only when EVERY authored frame label existed on it, so a single drifted label (bftricky's "Scared") rejected the whole bf atlas and left just the donor's signDeath dead.png in the character folder; a native candidate now wins when at least one authored prefix proves it is the right sheet, the generated script loads the engine's atlas in place (combined with any donor-shipped sub-atlases, so the signDeath death anims keep working and no base-game files are copied into the mod), per-animation atlases resolve natively too, and animations whose prefix the native atlas genuinely lacks stay unavailable with a named diagnostic instead of becoming zero-frame aliases that game over waits on forever
+	- Imported donor stages' letterbox "cinema bars" and every other stage prop keep their authored z-order while the engine's HUD stays readable (Fantasy Girl 01's concert stage draws black bars over the top and bottom of the screen): donor engines anchor their HUD at the top so bars at those z slots are harmless decoration there, but this engine keeps the health bar/score at the bottom and the receptors just under the top edge; imported stage props are now left exactly at their authored z (following the mod's layering) and instead the native HUD members (health bar, score text, receptors) are raised above the imported stage prop layer's ceiling once after the stage script loads, so the bars remain visible at their donor layer but can never cover the HUD, and full-screen donor fades/flashes pass untouched
+	- Fixed imported stage camera framing ignoring the authored camera offsets (Fantasy Girl 01's camera sat on the boyfriend instead of centered between him and Miku): stage.setCamOffsets only stored the values for future character swaps, so the per-frame camera math - which reads the live character's followCam fields - never saw them until a swap happened; setCamOffsets is now the single carrier that also applies to the live actor, V-Slice's authored cameraOffsets import as absolute values instead of stacking on the classic 150/-100 defaults the donor engine does not have, and characters swapped in mid-song converge on the same numbers the live actor already uses (classic additive setCamOffsets calls keep their accumulated semantics)
+	- V-Slice songs whose playData names no girlfriend, or leaves the field blank, now render without one (Fantasy Girl 01's reference video has no gf on stage): the converter previously filled the missing key with the engine's default gf, adding a character the donor never shows
+	- Fixed the VS Tricky V-Slice Expurgation freeze at song start: donor song scripts gate their intro cutscene on V-Slice's PlayState.isInCutscene, and the engine never exposed that spelling, so the cutscene's atlas write threw, the countdown stayed cancelled and the song never began; isInCutscene is now a read/write alias of the native cutscene state with script-owned storage, so the native countdown hand-off can't clobber a script's gate and the donor flow (cancel countdown -> entrance -> restart countdown) runs as authored
+	- Custom V-Slice SongEvent classes now import as executable scripts: event kinds the engine doesn't natively route (Expurgation's sign posts and HP gremlin) used to be reported unsupported with their handleEvent bodies never running; the translator now emits a self-filtering songEvent adapter per custom event class, bound to its authored kind with the native event payload, so mod mechanics authored as event classes run like any other donor script
+	- Fixed the imported sign posts and hell-note splashes never appearing (Vs Tricky Expurgation): every tricky.ExpurgationSignEvent fired its adapter but the sign module's appear died on the donor strumline API this engine's native Strumline never carried, so each event logged a swallowed Null Function Pointer and no sprite was ever created; the native Strumline now exposes the donor V-Slice surface those modules call - getXPos (live receptor lane offsets, with donor negative/out-of-range wrap, so strumline.x + getXPos(lane) is the lane's world position), the isDownscroll read, killNote for cancelled hell/death notes, and the donor INITIAL_OFFSET geometry constant (zero here because native receptors already sit at their final lanes)
+	- Health drains that were authored per frame now hold their rate at any fps cap: the held love/poison modifier drains (and every per-frame amount routed through frameRateScale) multiply their authored 60 FPS increment by real elapsed time, so a 240 fps update clock no longer drains health four times as fast as the donor's 60 FPS reference; 60 fps behavior is bit-identical
+	- Imported charts now receive converted events when re-importing with a richer source: a chart first imported from a narrower engine root kept its event-less chart forever even after a V-Slice root supplying the same song's authored events (camera direction, sign posts, gremlin) was present; re-imports upgrade only the missing events field and never touch existing notes, characters or user edits
+	- Kade-source stage hides of the opponent are now staged entrances instead of permanent states: a source-authored `dad.visible = false` whose re-show lives in compiled song code left the imported opponent invisible for the whole song when the song script came from another engine; the hide routes through the stage's staged-actor registry and the song script's cutscene handback (its startCountdown call) brings the actor back
+	- V-Slice health icon strips with fewer cells than the registry's four state slots can no longer pick wrong or looping frames (the imported Vs Tricky icons are two-cell strips while the registry asked for four states): out-of-range slots now clamp to real frames - winning falls back to the neutral cell and losing to the last available one - and health-state switching on a short strip can no longer recurse inside flixel's frame setter
+	- An imported V-Slice character whose atlas is the engine's own base-library character (the donor ships no sheet because the engine owns it, like Vs Tricky's bftricky) inherits that character's health icon instead of the neutral grid, via a native-icon-identity stamp the converter writes into the registry
+	- Imported V-Slice charts now keep their authored event kinds verbatim instead of renaming them at import: donor song scripts key their own handlers on the authored spellings (the concert stage's FocusCamera zoom tweens, Expurgation's scripted events), so a renamed row silently broke them; the engine resolves canonical names and value slots at dispatch time through the same single mapping the importer used, so donor handlers and the native event pump both work off one row
+	- Imported stage zooms follow the donor's currentCameraZoom semantics: script writes and tweens of PlayState.currentCameraZoom now set the camera's resting zoom (the target the beat decay returns to), instead of being transiently overridden by the fixed stage default - the same rule funkin uses, with native charts keeping their default zoom behavior
+	- Three V-Slice script companions that failed every run now execute cleanly: a character callback's bare `animation` reads route back to the actor (the translator strips the `this.` qualifier), FunkinMemory.cacheSound preloads through the scoped donor-sound loader instead of dying as an unknown API, and a stage script's bare refresh() call performs the same native z-order re-sort the donor Stage.refresh does
+	- The Tutorial's stale camera-zoom override is gone and the stage's authored 0.9 zoom applies again: a 2021 modchart had pinned the tutorial to zoom 1.0 to compensate for the engine silently dropping authored float scales (the same truncation fixed above), which once props rendered at their real size left GF and BF standing below the stage platform; every other shipped modchart carries no zoom override, so no other native song is affected
+	- Fixed a SIGSEGV crash deep into imported V-Slice songs that swap characters (Fantasy Girl 01 died right after its final Change Character cluster at 187s): character companion scopes are seeded once per script identity and kept a pointer to the first actor instance, so after Change Character destroyed that instance and installed a replacement, the scope's playAnimation/playSingAnimation calls still executed on the destroyed character and dereferenced nulled sprite internals; the role resolver now only honors a captured pointer while it is alive (still the slot actor, being installed, or the game-over binding) and otherwise resolves the role's current instance
+	- Hardened the same crash's neighborhood: the V-Slice alternate-atlas swap on a character refuses to assign a frame collection with no usable first frame (diagnosed once and keeps the current sheet instead), and the run.sh flixel patch now also makes FlxSprite.set_frame return safely on a null frame instead of dereferencing it - the same empty-frame SIGSEGV class as the existing checkEmptyFrame fallback
+	- Fixed imported stage scripts losing their background switches (Fantasy Girl 01's TWIM/ROLLING/Baka scene changes stacked the old background over the new one): donor V-Slice stage code calls Stage.contains() and Stage.remove() to take superseded layers off the display list, but the translated script's contains() referenced the stage member array through an identifier the scope never bound, so membership checks died and every remove() was skipped - stage script scopes now bind the live display list, making donor cleanup semantics work for every imported HXC stage
+	- Smoke harness gained a --smoke-song-rate multiplier (demo-style music pitch/time scale, 1-50x) so a full imported song fits into a short unattended window, and the victory/end-of-song overlay now keeps the smoke deadline running so full-song runs terminate cleanly instead of idling on the end screen; the duration bound was raised to ten minutes to cover long imported songs
+	- The game now renders in a fixed 1280x720 design space letterboxed into the OS window (FNF's native layout): previously the design space tracked the window size, so any non-16:9 window misplaced imported characters, stage props, and camera framing even though the picture looked letterboxed
+	- Imported V-Slice stage characters now carry their authored zIndex (funkin sorts props AND characters together, and donor art legitimately uses huge z values like foreground crowds at 100000): characters were buried under every later-added stage prop because hscript writes like `dad.zIndex = 200` cannot reach the engine's z sources; stage scripts now route through StageHelper.setCharacterZ which persists per slot and applies to the live actor, and the state re-sorts once after the stage script loads
+	- Change Stage events now work mid-song: the importer converts every stage a chart's events reference (not just the one it starts on), so Wacky World's pixel and mall sections swap scenes instead of logging "unregistered stage" while the characters still change; Play Video events likewise import their donor videos so intro cutscenes resolve
+	- FPS Plus imports now register the donor's code-defined characters and stages: data/characters/*.hxc CharacterInfo modules and data/stages/*.hxc stage modules are read data-only and materialized as native custom characters (art, icons, authored animation offsets) and stage scripts with no-clobber registry entries, so charts referencing ids like WhitBonkers or alleyBalls no longer fall back to dad on the Week 1 stage; a double-attach in HxcCompatRuntime.applyCharacterInfo that could crash gameplay after such an import was also fixed
+	- Fixed imported V-Slice stage characters rendering in the wrong place or invisible (Rabbit Hole/Fantasy Girl's oversized clipped cast): V-Slice stage positions anchor at the character's FEET (funkin's characterOrigin, recomputed from the live hitbox) while the engine applied them as top-left corners; the converted stage script now applies the donor's anchor conversion at runtime after the final sheet scale, so characters plant exactly where the donor puts them at any zoom
+	- Kade-family builds whose charts carry no `stage` field (the scene lives in compiled code) are no longer approximated: when the selected import source ships the mod's Haxe release, a generic source extractor reads the authored stage straight out of PlayState-style code - the per-song conditional chain (including braceless else arms), sprite coordinates/atlases/animations, setGraphicSize and scrollFactor values, curStage-guarded adds, defaultCamZoom, and the character repositioning switches - and materializes the native stage from those exact numbers. When the source ships no stage block, or only a compiled exe was selected, nothing is invented and the import report tells the user to import the mod's source release instead
+	- The runtime smoke harness gained a --smoke-practice flag so unattended long-run tests survive note-heavy sections and actually exercise mid-song events (character swaps, stage changes)
+	- Fixed EVERY imported V-Slice song losing all of its chart events (Focus Camera, Zoom Camera, Change Character, Flash/Fade, Lyrics, vignette intensity, stage changes): hxcpp's native Array.sort corrupted the converted event groups into bare `[time, 0]` rows, so imported charts played with zero camera effects and no mid-song character swaps; the converter now sorts by hand and events keep their full payloads
+	- Kade Tricky (V.S. Tricky 2.0) imports now rebuild their hardcoded stages: the donor ships charts without a `stage` field and renders each song's scene in code, so Expurgation fell back to the Week 1 stage with no graphics; the importer detects the donor's clown/images art tree and materializes native custom stages (Expurgation's crimson void with terrain, ceiling spikes and energy walls; Hellclown's red island) wired into the converted chart
+	- Fixed the systemic "missing background/effects" failure on imported HScript stages (Fantasy Girl 01's concert backdrop, and similar): a donor script writing a field on a null engine object (for example `game.comboPopUps.offsets = [...]`) used to throw EInvalidAccess, which native Dynamic-call plumbing swallowed with no diagnostic - silently aborting the rest of the callback and every later hook of that script; the vendored hscript interpreter now degrades null-object field reads/writes to diagnosed no-ops so the remainder of the closure keeps running
+	- Fixed hxcpp SIGSEGVs when a ported script chains optional lookups into arithmetic (`missing.field + 5`): the vendored interpreter's numeric/ordering binops now return null/false on null operands (diagnosed once per operator) instead of dereferencing the null value inside generated operator plumbing - DDTO's extra-opponent setup crashed the whole process this way
+	- Added the V-Slice `currentStage._data.characters.<role>` donor StageData view (position, cameraOffsets, scroll, zIndex) rebuilt from the native stage's persistent slot info, so scripts like DDTO's `createExtraOpp` place extra characters with authored numbers instead of a null chain
+	- Fixed imported V-Slice stages whose props ship a uniform `"scale": 1.9` (a lone number): the stage converter now reads the one-or-two-value Scale/Scroll form, so Wacky World's circo backdrop renders at authored size instead of sitting off-camera at 1x
+	- Imported V-Slice stage characters now apply the authored multiplicative stage scale (matching funkin's baseScale * stageCharData.scale), plus authored alpha/angle (Wacky World hides the girlfriend on the circo stage like the donor)
+	- Fixed a startup SIGSEGV on imported note skins whose multiNotePresets supply splash arrays (vslice-pomni and similar): NoteSplash animation names were built with a double-quoted `"note${i}-"` literal, so `animation.play("note0-0")` found nothing and the follow-up `curAnim.frameRate` write dereferenced null; names are now concatenated correctly
+	- Fixed the input calibration hint showing a literal `${4 - deltas.length}` instead of the remaining tap count
+	- Fixed imported HXC modules with donor default parameters (for example `onStateChangeEnd(event, fontSize = 24)`) throwing "Invalid number of parameters" on every native lifecycle dispatch: generated adapters now emit hscript optional parameters with literal-default guards, and `?name` markers are preserved
+	- Fixed a song-start freeze/SIGSEGV on imported shader stages: FlxRuntimeShader/ShaderFilter field initializers are no longer dropped from generated HXC adapters, donor `<camera>.filters = ...` writes route through a null-stripping runtime helper, and OpenFL's per-render filter clone can no longer dereference a null entry
+	- Added the V-Slice `PlayState.instance.refresh()` display-list ordering call as a stable state-level zIndex sort fed by the shared compat zIndex source; StageHelper keeps stage-object ordering
+	- Added the V-Slice `character.isDead` field as a shared alias of the native death flag with the donor's dance-gating semantics, so imported countdown and game-over modules read and write it without script rewrites
+	- Donor tweens of fields the native fork does not carry now drop only the missing fields through a diagnosed runtime helper instead of throwing inside the tween manager and ending the session
+	- Fixed imported song-event values parsed from scalar JSON (`"1"`) replacing the anonymous payload object, which made the typed-getter attach throw an uncaught "Invalid field:getFloat" during events
+	- Imported character script failures during resolution or init now degrade to the loaded visual with a precise diagnostic instead of ending the song during create; jsonbased character shims reuse the living sheet when a donor death sheet is missing, guard missing death offsets, and no longer reference an undefined parsedAnimJson variable in the followCam branch
+	- Generated V-Slice character scripts only switch to a death sheet when the donor actually shipped a dead atlas, and game over falls back to the living sheet with a precise diagnostic instead of crashing
+	- Translated Lua while and stepped-numeric loops now carry a one-million-iteration watchdog so a runaway donor condition becomes a normal catchable callback failure instead of hanging the engine during song load
+	- Made native asset reads prefer the selected runtime's disk files over embedded manifests, with deterministic case-insensitive path resolution and safe rejection of ambiguous or out-of-scope matches
+	- Fixed early HXC CharacterInfo loading before PlayState creates its strumline; strumLineY now has a safe initial value and follows the live strumline afterward
+	- Fixed Psych numeric atlas animations crashing Flixel on unnamed frames; imported addByIndices calls now validate named frames and register only safe indices
+	- Fixed Psych named-atlas animation lookup on native hxcpp targets by reading live frame collections directly before reflection, while retaining a safe positional fallback for genuinely unnamed atlases
+	- Normalized Psych addByIndices arrays and comma/bracket-delimited strings through one safe atlas adapter, retaining atlas metadata by live object identity when scripts rename or reuse sprite tags
+	- Added generic Modding Plus character:role ID handling so preloaded character variants resolve their real character assets without changing donor charts
+	- Routed V-Slice HXC zIndex reads and writes through an engine-owned ordering adapter, and supplied safe inert proxies for absent optional modules instead of null callback targets
+	- Added V-Slice HealthIcon configure/isLegacyStyle compatibility and finite planning for reachable dynamic HXC art families, nested mixed-case atlases, and shared assets without importing unrelated donor trees
+	- Made Auto dependency scans search bounded sibling/shared roots and destination assets, validate Modding Plus character implementations through their registries, prefer character atlases over portraits, and preserve role-specific animation requirements
+	- Cached repeated chart, registry, and case-insensitive path probes for each import scan, cutting the mounted mixed-engine scan from roughly 92 seconds to roughly 52 seconds while clearing every cache at the next scan boundary
+	- Resolved mixed-case parent directories and registry filenames during dependency scans, including Windows-authored `Data/Characters` and `Images/Custom_Chars` layouts on Linux
+	- Reused the registry/native/HXC character gate during the import phase so valid aliases do not produce false legacy-atlas warnings or chart-specific substitutions
+	- Fixed Imported Freeplay categories crashing in native difficulty selection when a late, duplicate, or repair import was absent from the title-time support map; difficulty reads now refresh lazily and never iterate a null list
+	- Kept Import Songs enabled for duplicate-safe asset, overlay, and repair work even when every chart is already present, and kept completion text readable by leaving full diagnostics in the paged details and persistent report
+	- Bound completed import plans to the source folder that was actually scanned, preventing a mid-scan setting change from applying one donor's plan to another donor
+	- Fixed missing-path identity collapsing distinct import candidates and registry aliases into one empty key; valid shared implementations now remain discoverable, with registry-proven characters avoiding unnecessary all-root expansion
+	- Removed noisy tooltip key traces and made missing control bindings fall back to their authored labels instead of indexing an empty input list
+	- Made early tooltip creation safe while player controls are still initializing, and hardened empty difficulty registries and story support maps against native null dereferences
+	- Routed reachable V-Slice note behavior from active character and song HXC companions when no dedicated note-kind class exists, while requiring a safe callback that explicitly references the authored kind
+	- Fixed Linux-hosted Windows builds by selecting Lime's windows -mingw target alongside the hxcpp MinGW flags
+	- Completed self-contained LLVM-MinGW support with case-safe Windows SDK header aliases, llvm-windres resource compilation, target runtime DLL staging, and a bounded Wine launch smoke test
+	- Scan details now label compatibility adapters, aliases, routed/preserved events and native fallbacks as informational; missing dependencies and genuinely unsupported foreign behavior have their own actionable labels instead of every diagnostic appearing as a warning
+	- Persistent import reports now reuse the same diagnostic labels, so compatibility evidence is recorded as INFO while missing and unsupported findings remain actionable
+	- Fixed mixed-engine Auto path handling across Linux and Windows: UNC/drive spellings now normalize consistently, Linux case-variant donor roots remain distinct, and equal case-folded directory names are discovered deterministically
+	- Resolved Windows-authored Psych/Kade/FPS asset casing against the real Linux filesystem (for example `whittyback` to `whittyBack.png`), caching successful lookups while leaving ambiguous case-collisions diagnosed instead of guessing
+	- Kept cached Linux builds launchable offline: the optional ASTC importer decoder is now downloaded only when a build/setup is actually required, while already-installed decoders are still synchronized beside the game
+	- Fixed Linux/AppImage ASTC importing depending on glibc 2.38 by pinning the checksum-verified official 3.7 SSE2 decoder, whose release binary retains a glibc 2.27 baseline; cached newer decoder installs are replaced automatically
+	- Fixed mixed-engine Auto imports treating interrupted or unregistered song folders as complete duplicates; scans can now repair missing files and register the songs without overwriting existing charts, audio, sidecars, or freeplay metadata
+	- Fixed mixed-root duplicate selection retaining an incomplete donor's chart/audio paths when a later engine root contained the playable copy
+	- Fixed import scans reporting valid HScript assets as missing when scripts build their path from hscriptPath and keep media in the script-named folder
+	- Fixed Kade-era charts with trailing NUL padding failing JSON parsing
+	- Fixed FPS Plus companion event rows being silently ignored, and fixed Psych/Kade split vocal packs losing all but the first (or every) vocal stem
+	- Fixed FPS Plus/Kade JSON dialogue and cutscene metadata being copied but never consumed by the native runtime
+	- Made completed Import Settings scans readable: summaries stay bounded, full root paths remain in wrapped paged details, and long diagnostics no longer overlap the panel
+	- Prevented character imports from crashing on legacy registry entries with missing optional colours/icons; malformed entries now receive safe defaults during normalization
+	- Fixed Import Settings getting stuck on scan-complete when its background worker finished between UI frames; completed results and scan details are now always consumed
+	- Fixed run.sh crashing when an asset mount directory is absent, and preserved in-game imported runtime assets across later Lime rebuilds
+	- Hardened Modding Poop song imports on Linux and Windows/Wine: optional files are checked safely, easy charts can be previewed, and exported metadata keeps its line breaks
+	- Restored Chaos's complete intro sequence (camera move, red fade, sound cues, Sonic's chamber fall, persistent chamber/platform, charged yellow beam, delayed countdown, and first-sing letterbox exit), and its first laser dodge can kill again when missed
+	- Fixed Chaos's intro zoom being too strong on its zoomed-out chamber stage; cutscene zooms can now use the stage baseline as a multiplier
+	- Fixed repeated HScript BEHIND layers filling removed actor slots out of order; stage graphics now retain script order, restoring Chaos's chamber/emerald layering
+	- Added reusable HScript sound preloading and used it for Chaos's timed intro cues, avoiding first-use OGG decoding in the middle of the cutscene
+	- Charts with missing or invalid visual metadata now inherit valid characters, stages, UI, and cutscenes from another difficulty without replacing their own notes or timing; this restores Inquiry Hard's stage graphics and prevents incomplete aliases such as Popipo Hard's miku entry from silently loading Dad
+	- Made Inquiry's spacebar-spam health drain and red overlay elapsed-time based, so 30, 60, and 120 FPS have the same rates
+	- Fixed Hellhole's stage failing during startup by restoring the donor-compatible exact graphic-size helper
+	- Reset song-specific health gain/loss multipliers when a new song starts, so leaving Control Loaded early no longer disables healing in later songs
+	- Fixed Terrible Fate's drowned BF/opponent character swaps: shared character aliases now resolve their atlas correctly, and blank legacy Change Character targets select BF
+	- Fixed Golden's legacy Set camzoom events using multipliers as absolute zooms, which shrank its stage into the centre of the screen
+	- Kept note-direction camera movement at its intended visible size on highly zoomed stages
+	- Fixed Guy's opponent visibility during the EndoHead swap
+	- Fixed vertical health icon positioning and Hedgehog Stew's fear meter disagreeing with its actual fear value
+	- Stopped optional countdown hooks flooding the log; missing explicit script callbacks now identify the script and function, while real hook errors remain visible
+	- Limited per-second camera diagnostics to debug builds
+	- Fixed ported characters built from JSON atlases (infidelitybfnew, infidelitymouse3new and 17 more) being invisible: hscript had no Paths variable and no Paths.getCharacterJson, so their init() died silently
+	- Fixed "Set Property: defaultCamZoom" being inert; also wired camZoomingMult (beat bump size) and camZoomingDecay (zoom return speed)
+	- Fixed imported absolute Add Camera Zoom intro targets (including Locked's 0.5-0.9 progression) being lost on the gameplay camera or stacking into an impossible zoom; targets now persist on the world camera while leaving the HUD at its independent scale, and normal small Psych pulses remain additive
+	- Kept world sprites explicitly bound to the gameplay camera after imported UI/modchart camera changes, so Locked's sustained zoom affects the stage and characters without shrinking the UI
+	- Fixed imported characters with no active animation crashing gameplay beats and game over
+	- Treated legacy one-step sustain sentinels as taps, including FNIA Ugh, while preserving longer holds
+	- Fixed Camera Note Movement crashing when an imported character has no current animation
+	- Fixed reused HScript sound effects crashing native builds after their cached player was destroyed
+	- Fixed Chug Easy/Hard referencing missing miku assets; both now use Normal's mikuv2 character
+	- Fixed victory screen crashing on missing imported characters (including MILF-G's playableex)
+	- Character checks now require an animation implementation; results reuse the loaded character
+	- Import repair/validation now flag incomplete character dependencies, including assets absent in the donor
 	- Erect and Nightmare difficulties now have the correct Story Mode sprites
 	- Fixed story mode allowing difficulties that not all the songs have
 	- Fixed crash when loading a song that was just added via ModuleState/NewSongState
 	- Fixed being able to reset during a cutscene, crashing the game
 	- Fixed random space in "note impact 1  blue" in noteSplashs.xml causing that splash to be broken
+	- Fixed black borders around the screen when zooming out in Freeplay (background now grows to stay fullscreen)
+	- Fixed typing "z" in the Freeplay search also launching the highlighted song/category
+	- Fixed playerOneTurn/playerTwoTurn firing every frame instead of once per turn, which stacked camera zoom (Hedgehog Stew zoomed in until unplayable) and spammed one-shot modchart effects
+	- Fixed "Image Flash" overlays only covering the screen at normal zoom, so white/black flashes vanished while the camera was zoomed out
+	- Fixed intro cutscene overlays (letterbox bars, blackouts) being left on screen when a cutscene hands off to the countdown
+	- Kept stage-owned sprites alive when cutscenes temporarily add them; cutscene-only overlays still clean up at countdown
+	- Fixed mid-song character swaps hitching: built character atlases are now reference-counted and cached, and every "Change Character" target (plus preload.txt) is decoded during the loading screen, so 2k22's flash swaps no longer stall on re-decoding a sheet
+	- Fixed camera-follow speed values from ported scripts: camSpeed is a speed multiplier (1 = normal), so a stage restoring it to 1 (Golden) or psych "Set Property: cameraSpeed" events (0.75-4) no longer remove the follow smoothing entirely and hard-cut the camera to every sing offset
+	- Fixed the mosaic pixelation shader treating its resting pixel value of 1 as active, which made Guy's character blocky from the song start until the guyglitch events actually raised the block size
+	- Normalized floating-point sustain noise from imported charts, so tap notes no longer enter sustain timing/rendering while legitimate short holds remain intact
+	- Restored Modding Plus sustain-piece rounding: fractional holds now get their ceiling number of pieces, so ordinary holds have a stretched stem instead of only a tiny end cap
+	- Restored Modding Plus/Denpa crossfade afterimages as a reusable engine effect: note and side-specific section flags now tint and fade copies of the singing character (including Cycles Wrath)
+	- Exposed the donor-compatible FlxEffectSprite and FlxGlitchEffect classes to HScript, and recover camera visibility when a start hook fails before its fade restore (fixing Springless's black world)
+	- Fixed imported V-Slice confirm popups (DDTO++'s "Choose Your Doki!" Catfight picker) SIGSEGV-ing the game on song launch: donor substates iterate FlxG.touches.list unconditionally, which the desktop interpreter host never materialized, and hscript's for-in then called .iterator() on null. The host now carries a donor-faithful empty touch frontend, vendored hscript treats for-in over a null value as an empty loop with a one-time diagnostic, and method calls on null objects / missing methods degrade the same way instead of crashing native builds
+	- Imported HXC substates can dismiss themselves again: donor close() now reaches the wrapper substate's native close, so popups confirm/close instead of dying on an unknown variable and blocking the menu
+	- Imported HXC state callbacks which throw are skipped after their first failure with a single clear diagnostic naming the script and callback, instead of re-running broken state every frame
+	- Fixed hxcpp silently corrupting imported script control flow: the vendored hscript interpreter's typed `catch(err:Stop)` also matched hscript.Error values thrown by real script errors, so a script try/catch body never ran and loop errors became phantom breaks/continues (this alone left the Catfight popup unable to confirm or close). Stop values are now matched by constructor name and genuine script errors reach the script's own try/catch or the diagnosed callback handler
+	- Fixed imported V-Slice gameplay math silently losing Float precision in compiled builds (Vs Tricky Expurgation's stop signs rendered giant, the HP gremlin drained health all the way to zero instead of stopping at the authored 20%, and the gremlin dragged toward the wrong end of the health bar instead of following the player icon): the vendored hscript interpreter's Dynamic `-`, `*` and `%` operators compile down to INT arithmetic on hxcpp, truncating every Float operand before the operation - interpreted runs (fixtures and --interp) kept full float semantics and never noticed, while the shipped binary evaluated the sign module's `setGraphicSize(Std.int(width * 0.67))` as 0 (the early-return left scale at 1 instead of 0.67, so the sprites rendered ~1.5x the donor size), the gremlin event's `toHealth = hpPercent / 100 * startHealth` as 0 (health lerped 1.0 -> 0.0 over the authored 13 seconds instead of stopping at 0.2), and the drag tween's `perct` as 0 (the gremlin chased the 0% bar position rather than the icon's drained position); the interpreter's `-`/`*`/`%` binops now promote to double math whenever either operand is a Float while Int-only arithmetic keeps the native path (compound `*=`/`-=`/`%=` route through the same fix), verified by an instrumented 195-second headless Expurgation run whose health writes match the donor formula exactly (0.8 hp drained over the authored 13 s, settling at 0.2) with the gremlin visibly riding the health bar gripping the player icon and the stop signs at donor scale, pinned by the extended tools/tests/test_vs_tricky_expurgation.py contracts (compiled-arith promotion helper, chart drain stopping at the donor percent, gremlin hold-tween icon-follow target, and donor sparrow frame-size semantics)
 
 [Changes]
+	- Fixed imported V-Slice FocusCamera events driving the gameplay camera with classic-engine semantics: matched-timestamp A/B against the donor build (Vs Tricky Expurgation at 230 BPM) showed the adapter re-aiming the follow point at the character's live midpoint every frame and gliding at the classic 0.08 rate, while the donor captures the follow point once (its anim-independent cameraFocusPoint) and glides at DEFAULT_CAMERA_FOLLOW_RATE 0.04 - at imported songs' focus cadence the two engines sat up to a couple hundred screen pixels apart at the same song moment, reading as characters pushed aside relative to the stage. The FocusCamera adapter now snaps its follow point once and glides at the donor rate (script camSpeed multipliers still apply); the classic section-follow and Camera Follow Pos paths keep their existing feel, pinned by tools/tests/test_focus_camera_donor_parity.py
 	- Cutscenes no longer replay on restarting the song
 
 1.5.3.1 (lol)
@@ -548,3 +1303,4 @@ I updated my haxe/haxeflixel/etc this update so things may break
 - Updated parent-christmas icons
 
 Dont ask where the versions before 1.2.0 are >:(
+FPS Plus/Kade dialogue portrait bundles now load their Sparrow animation and portrait JSON scale/offset/antialias settings instead of displaying the entire sprite sheet.

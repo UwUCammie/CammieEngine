@@ -129,7 +129,7 @@ class SelectSortState extends MusicBeatState
 					CategoryState.choosingFor = "sorting";
 					LoadingState.loadAndSwitchState(new CategoryState());
 				case "categories":
-					var coolCategoryJson:Array<SelectSongsState.TCategory> = CoolUtil.parseJson(Assets.getText('assets/data/freeplaySongJson.jsonc'));
+					var coolCategoryJson:Array<SelectSongsState.TCategory> = cast FreeplayRegistry.getJson();
 					var coolCategories:Array<String> = [];
 					for (coolCategory in coolCategoryJson)
 					{
@@ -142,7 +142,7 @@ class SelectSortState extends MusicBeatState
 					// gonna be reallllllllll fucky renaming files
 					SortState.sorting = "weeks";
 					// gonna do weeks ourselves?
-					var coolWeekJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(Assets.getText('assets/data/storySonglist.json'));
+					var coolWeekJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json'));
 					var coolWeeks:Array<String> = [];
 					for (i in 0...coolWeekJson.weeks.length)
 						coolWeeks.push("week" + i);

@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""Create a clean, downloadable Windows x64 runtime ZIP and SHA-256 file."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import stat
+import subprocess
+import tempfile
+import zipfile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+ARCHIVE_ROOT = "CammieEngine-windows-x64"
+REQUIRED_RUNTIME_PATHS = (
+    "Funkin.exe",
+    "lime.ndll",
+    "libvlc.dll",
+    "libvlccore.dll",
+    "plugins/plugins.dat",
+    "manifest/libvlc.json",
+    "assets",
+    "assets/data",
+    "tools/astcenc.exe",
+    "tools/astcenc-LICENSE.txt",
+)
+DOCS = (
+    ("LICENSE", "LICENSE"),
+    ("NOTICE", "NOTICE"),
+    ("CHANGELOG.md", "docs/CHANGELOG.md"),
+    ("USER-README.txt", "docs/USER-README.txt"),
+    ("updateLog.txt", "docs/updateLog.txt"),
+    ("README.md", "docs/BUILD-README.md"),
+    ("tools/licenses/CodenameEngine-Dev-LICENSE.txt", "licenses/CodenameEngine-Dev-LICENSE.txt"),
+    ("tools/licenses/astcenc-LICENSE.txt", "licenses/astcenc-LICENSE.txt"),
+)
+REQUIRED_DOCS = (
+    "LICENSE",
+    "NOTICE",
+    "tools/licenses/astcenc-LICENSE.txt",
+    "tools/licenses/CodenameEngine-Dev-LICENSE.txt",
+)
+EXCLUDED_DIRECTORY_NAMES = {
+    "imported_mods",
+    "imported-mods",
+    "local_imports",
+    "local-imports",
+}
+PACKAGED_CONTENT_ROOTS = {"assets", "mods", "templates", "do not readme.txt"}
+START_HERE = """CammieEngine — Windows x64
+
+1. Extract this ZIP to a writable folder.
+2. Run Funkin.exe from the extracted folder.
+
+The game includes its runtime libraries and bundled assets. It does not need
+Haxe, Neko, Visual Studio, or a separate installer. The optional ASTC texture
+decoder and its license are in tools/.
+
+Settings are created for this copy of the game on first launch. Keep the game
+folder writable so saves and settings can be stored beside the executable.
+
+See LICENSE, NOTICE, docs/, and licenses/ for project and bundled notices.
+"""
+
+
+def safe_tag(tag: str) -> str:
+    """Return a filename-safe label without allowing path components."""
+    label = re.sub(r"[^A-Za-z0-9._-]+", "-", tag.strip()).strip(".-")
+    if not label:
+        raise ValueError("release tag must contain at least one filename-safe character")
+    return label
+
+
+def excluded_runtime_path(relative: Path) -> bool:
+    parts = tuple(part.casefold() for part in relative.parts)
+    if any(part in EXCLUDED_DIRECTORY_NAMES for part in parts):
+        return True
+    return parts[-3:] == ("assets", "data", "options.json")
+
+
+def runtime_files(runtime: Path) -> list[tuple[Path, Path]]:
+    """List regular files below the build output, skipping local state/imports."""
+    result: list[tuple[Path, Path]] = []
+    for directory, child_dirs, filenames in os.walk(runtime, followlinks=False):
+        base = Path(directory)
+        relative_base = base.relative_to(runtime)
+        child_dirs[:] = sorted(
+            name for name in child_dirs
+            if name.casefold() not in EXCLUDED_DIRECTORY_NAMES
+            and not (base / name).is_symlink()
+        )
+        for filename in sorted(filenames):
+            source = base / filename
+            relative = relative_base / filename
+            if excluded_runtime_path(relative) or source.is_symlink():
+                continue
+            try:
+                if not stat.S_ISREG(source.stat().st_mode):
+                    continue
+            except OSError as error:
+                raise ValueError(f"could not inspect runtime file {source}: {error}") from error
+            result.append((source, relative))
+    return result
+
+
+def git_output(repository: Path, *arguments: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = getattr(error, "stderr", b"")
+        raise ValueError(f"could not read tracked release sources from Git: {detail.decode(errors='replace')}") from error
+    return result.stdout
+
+
+def tracked_runtime_content(repository: Path) -> dict[str, str]:
+    """Map built content paths to committed source files named by Project.xml."""
+    tracked = git_output(repository, "ls-files", "-z").decode("utf-8", errors="strict").split("\0")
+    result: dict[str, str] = {}
+    for source in tracked:
+        if not source:
+            continue
+        if source.startswith("assets/"):
+            target = source
+        elif source.startswith("example_mods/"):
+            target = "mods/" + source[len("example_mods/"):]
+        elif source.startswith("TempFiles/"):
+            target = "Templates/" + source[len("TempFiles/"):]
+        elif source == "art/readme.txt":
+            target = "do NOT readme.txt"
+        else:
+            continue
+        if "imported_mods" in source.casefold() or "local_imports" in source.casefold():
+            continue
+        result[target.casefold()] = source
+    return result
+
+
+def committed_file(repository: Path, relative: str) -> bytes:
+    """Read only the committed source file, never a runtime/user copy."""
+    return git_output(repository, "show", f"HEAD:{relative}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path = ROOT) -> tuple[Path, Path]:
+    label = safe_tag(tag)
+    runtime = runtime_dir.resolve(strict=True)
+    repository = repo_root.resolve(strict=True)
+    if not runtime.is_dir():
+        raise ValueError(f"runtime path is not a directory: {runtime}")
+    for relative in REQUIRED_RUNTIME_PATHS:
+        candidate = runtime / relative
+        if relative in {"assets", "assets/data"}:
+            valid = candidate.is_dir()
+        else:
+            valid = candidate.is_file()
+        if not valid:
+            raise ValueError(f"required Windows runtime file or directory is missing: {candidate}")
+    for relative in REQUIRED_DOCS:
+        if not (repository / relative).is_file():
+            raise ValueError(f"required release notice is missing: {repository / relative}")
+
+    tracked_content = tracked_runtime_content(repository)
+    seed = committed_file(repository, "assets/data/options.json")
+    try:
+        seed_options = json.loads(seed)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("committed assets/data/options.json is not valid JSON") from error
+    if not isinstance(seed_options, dict):
+        raise ValueError("committed assets/data/options.json must contain a JSON object")
+
+    files = runtime_files(runtime)
+    local_import_roots = []
+    for path in runtime.rglob("*"):
+        if path.is_dir() and path.name.casefold() in EXCLUDED_DIRECTORY_NAMES:
+            if any(entry.is_file() and not entry.is_symlink() for entry in path.rglob("*")):
+                local_import_roots.append(path)
+    if local_import_roots:
+        raise ValueError("runtime contains imported-owner files: "
+            + ", ".join(str(path.relative_to(runtime)) for path in local_import_roots[:5]))
+
+    allowed_runtime_files: list[tuple[Path, Path]] = []
+    skipped_non_source_content = 0
+    for source, relative in files:
+        if relative.parts and relative.parts[0].casefold() in PACKAGED_CONTENT_ROOTS:
+            if relative.as_posix().casefold() not in tracked_content:
+                skipped_non_source_content += 1
+                continue
+        allowed_runtime_files.append((source, relative))
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = output_dir / f"CammieEngine-{label}-windows-x64.zip"
+    checksum_path = output_dir / "SHA256SUMS.txt"
+    fd, temporary_name = tempfile.mkstemp(prefix=".windows-x64-", suffix=".zip", dir=output_dir)
+    os.close(fd)
+    temporary_archive = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(temporary_archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
+            archive_names: set[str] = set()
+            for source, relative in allowed_runtime_files:
+                archive_name = str(PurePosixPath(ARCHIVE_ROOT, *relative.parts))
+                archive.write(source, archive_name)
+                archive_names.add(archive_name)
+
+            options_name = f"{ARCHIVE_ROOT}/assets/data/options.json"
+            archive.writestr(options_name, seed)
+            archive_names.add(options_name)
+
+            start_name = f"{ARCHIVE_ROOT}/START-HERE.txt"
+            if start_name not in archive_names:
+                start_info = zipfile.ZipInfo(start_name)
+                start_info.compress_type = zipfile.ZIP_DEFLATED
+                start_info.external_attr = (stat.S_IFREG | 0o644) << 16
+                archive.writestr(start_info, START_HERE)
+                archive_names.add(start_name)
+
+            for source_relative, archive_relative in DOCS:
+                source = repository / source_relative
+                if not source.is_file():
+                    continue
+                archive_name = str(PurePosixPath(ARCHIVE_ROOT, archive_relative))
+                if archive_name not in archive_names:
+                    archive.write(source, archive_name)
+                    archive_names.add(archive_name)
+
+        os.replace(temporary_archive, archive_path)
+    finally:
+        temporary_archive.unlink(missing_ok=True)
+
+    checksum_path.write_text(f"{sha256(archive_path)}  {archive_path.name}\n", encoding="ascii")
+    print(f"Packaged Windows x64 runtime: {archive_path} ({archive_path.stat().st_size} bytes)")
+    if skipped_non_source_content:
+        print(f"Excluded {skipped_non_source_content} runtime content files absent from tracked source")
+    print(f"SHA-256: {checksum_path}")
+    return archive_path, checksum_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runtime", type=Path, required=True, help="Lime Windows runtime bin directory")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--tag", required=True, help="release tag or CI label used in the archive name")
+    parser.add_argument("--repo-root", type=Path, default=ROOT, help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    try:
+        make_package(args.runtime, args.output_dir, args.tag, args.repo_root)
+    except (OSError, ValueError, zipfile.BadZipFile) as error:
+        parser.exit(1, f"[windows-package] {error}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

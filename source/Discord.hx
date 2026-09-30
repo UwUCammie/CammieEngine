@@ -39,7 +39,7 @@ class DiscordClient {
 			details: "In the Menus",
 			state: null,
 			largeImageKey: 'icon',
-			largeImageText: "Friday Night Funkin' Disappointing Plus"
+			largeImageText: "CammieEngine"
 		});
         #end
 	}
@@ -73,7 +73,7 @@ class DiscordClient {
 			smallImageKey = "icon";
 
 		if (smallImageString == null)
-			smallImageString = "Friday Night Funkin' Disappointing Plus";
+			smallImageString = "CammieEngine";
 
 		DiscordRpc.presence({
 			details: details,

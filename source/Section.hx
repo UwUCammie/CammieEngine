@@ -8,6 +8,15 @@ typedef SwagSection = {
 	var changeBPM:Bool;
 	var altAnim:Bool;
 	var altAnimNum:Null<Int>;
+	// Psych marks whole opponent sections as girlfriend vocals/camera focus.
+	// Keep this optional so legacy Modding Plus sections retain their defaults.
+	@:optional var gfSection:Null<Bool>;
+	// Legacy Modding Plus/Denpa afterimage flags. These are optional because
+	// older charts omit them entirely; missing values mean false.
+	@:optional var crossfadeBf:Null<Bool>;
+	@:optional var crossfadeDad:Null<Bool>;
+	// Denpa charts also use one shared crossFade flag for both sides.
+	@:optional var crossFade:Null<Bool>;
 }
 
 class Section {

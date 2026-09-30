@@ -6,6 +6,7 @@ typedef NoteData = {
 	var idle:String;
 	var pressed:String;
 	var confirm:String;
+	@:optional var confirmHold:String;
 	var sing:String;
 }
 

@@ -15,7 +15,7 @@ class Tooltip extends FlxTypedSpriteGroup<FlxSprite> {
         super(x, y);
         keycap = new FnkButton(0, 0, platform, button, getFromControls);
         add(keycap);
-        text = new FlxText(keycap.width + 10, 0, 0, desc, 20);
+        text = new FlxText(keycap.width + 10, 0, 0, desc == null ? '' : desc, 20);
         add(text);
     }
 
@@ -32,20 +32,36 @@ class FnkButton extends FlxTypedSpriteGroup<FlxSprite> {
     public function new(x:Float, y:Float, platform:Platform, button:String, getFromControls:Bool) {
         super(x, y); 
         buttonImage = new FlxSprite();
-        var useText = button;
-        if (getFromControls) {
-            if (PlayerSettings.player1.controls.gamepadsAdded.length != 0) {
-                var inputs = PlayerSettings.player1.controls.getInputsFor(Controls.controlsFromStringMap.get(button), Gamepad(0));
-                useText = FlxGamepadInputID.toStringMap.get(inputs[0]);
-            
-                platform = Xbox;
-            } else {
-				var inputs = PlayerSettings.player1.controls.getInputsFor(Controls.controlsFromStringMap.get(button), Keys);
-                
-                useText = FlxKey.toStringMap.get(inputs[0]);
-                trace(useText);
-                platform = Keyboard;
-            }
+		var useText:String = button == null ? '' : button;
+		if (platform == null)
+			platform = Keyboard;
+		var playerControls:Controls = PlayerSettings.player1 == null ? null : PlayerSettings.player1.controls;
+		if (getFromControls && playerControls != null) {
+			var hasGamepad:Bool = playerControls.gamepadsAdded != null && playerControls.gamepadsAdded.length != 0;
+			if (hasGamepad) {
+				var action = button == null ? null : Controls.controlsFromStringMap.get(button);
+				var inputs = action == null ? [] : playerControls.getInputsFor(action, Gamepad(0));
+				if (inputs != null && inputs.length > 0) {
+					var label = FlxGamepadInputID.toStringMap.get(inputs[0]);
+					if (label != null)
+						useText = label;
+				}
+
+				platform = Xbox;
+			} else {
+				var action = button == null ? null : Controls.controlsFromStringMap.get(button);
+				var inputs = action == null ? [] : playerControls.getInputsFor(action, Keys);
+				if (inputs != null && inputs.length > 0) {
+					var label = FlxKey.toStringMap.get(inputs[0]);
+					if (label != null)
+						useText = label;
+				}
+				platform = Keyboard;
+			}
+		} else if (getFromControls) {
+			// Tooltips may be constructed while controls are still bootstrapping;
+			// retain the authored label instead of dereferencing player1.
+			platform = Keyboard;
         }
 		switch (platform)
 		{
@@ -69,4 +85,4 @@ class FnkButton extends FlxTypedSpriteGroup<FlxSprite> {
 		add(buttonImage);
         add(text);
     }
-} 
+}

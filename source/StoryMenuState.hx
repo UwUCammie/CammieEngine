@@ -78,6 +78,8 @@ class StoryMenuState extends MusicBeatState {
 	var leftArrow:FlxSprite;
 	var rightArrow:FlxSprite;
 	var yellowBG:FlxSprite;
+	/** HXC story-menu visuals and selection handoffs live with this menu state. */
+	var hxcStoryMenuRuntime:HxcStoryMenuRuntime;
 	override function create() {
 		trace(DifficultyIcons.getDefaultDiffFP());
 		curDifficulty = DifficultyIcons.getDefaultDiffFP();
@@ -88,7 +90,7 @@ class StoryMenuState extends MusicBeatState {
 			if (!FlxG.sound.music.playing)
 				FlxG.sound.playMusic('assets/music/freakyMenu' + TitleState.soundExt);
 		}
-		var storySongJson:StorySongsJson = CoolUtil.parseJson(Assets.getText('assets/data/storySonglist.json'));
+		var storySongJson:StorySongsJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json'));
 		persistentUpdate = persistentDraw = true;
 		var songsParsed:Array<Array<String>> = [];
 		var namesParsed:Array<String> = [];
@@ -320,6 +322,7 @@ class StoryMenuState extends MusicBeatState {
 		updateText();
 
 		super.create();
+		hxcStoryMenuRuntime = new HxcStoryMenuRuntime(this);
 	}
 
 	override function update(elapsed:Float) {
@@ -371,6 +374,16 @@ class StoryMenuState extends MusicBeatState {
 		}
 
 		super.update(elapsed);
+		if (hxcStoryMenuRuntime != null)
+			hxcStoryMenuRuntime.update();
+	}
+
+	override public function destroy():Void {
+		if (hxcStoryMenuRuntime != null) {
+			hxcStoryMenuRuntime.dispose();
+			hxcStoryMenuRuntime = null;
+		}
+		super.destroy();
 	}
 
 	var movedBack:Bool = false;
@@ -380,6 +393,10 @@ class StoryMenuState extends MusicBeatState {
 	function selectWeek() {
 		if (!weekUnlocked[curWeek])
 			return;
+		// A recognized imported story module owns the matching level's selection
+		// delay and transition. All ordinary weeks keep the native flow below.
+		var importedStoryTransition = hxcStoryMenuRuntime != null
+			&& hxcStoryMenuRuntime.handlesCurrentSelection();
 		if (!stopspamming) {
 			FlxG.sound.play('assets/sounds/confirmMenu' + TitleState.soundExt);
 
@@ -396,6 +413,7 @@ class StoryMenuState extends MusicBeatState {
 		PlayState.watchedCutscene = false;
 		ModifierState.isStoryMode = true;
 		selectedWeek = true;
+		var sourceWeekIndex = HxcStoryMenuRouting.sourceWeekIndex(curWeek, weekNums);
 
 		var diffic = grpDifficulty.getDiffEnding();
 
@@ -410,19 +428,106 @@ class StoryMenuState extends MusicBeatState {
 			}
 		}
 		PlayState.SONG = Song.loadFromJson(PlayState.storyPlaylist[0].toLowerCase() + diffic, PlayState.storyPlaylist[0].toLowerCase());
-		PlayState.storyWeek = weekNames[curWeek];
-		PlayState.storyWeekNum = curWeek;
+		PlayState.storyWeek = sourceWeekIndex >= 0 && sourceWeekIndex < weekNames.length
+			? weekNames[sourceWeekIndex] : weekNames[curWeek];
+		PlayState.storyWeekNum = sourceWeekIndex;
 		PlayState.campaignScore = 0;
 		PlayState.campaignAccuracy = 0;
-		new FlxTimer().start(1, function(tmr:FlxTimer) {
-			if (!OptionsHandler.options.skipModifierMenu)
-				 LoadingState.loadAndSwitchState(new ModifierState());
-			else {
-				if (FlxG.sound.music != null)
-					FlxG.sound.music.stop();
-				LoadingState.loadAndSwitchState(new PlayState());
+		if (!importedStoryTransition)
+			new FlxTimer().start(1, function(tmr:FlxTimer) {
+				if (!OptionsHandler.options.skipModifierMenu)
+					 LoadingState.loadAndSwitchState(new ModifierState());
+				else {
+					if (FlxG.sound.music != null)
+						FlxG.sound.music.stop();
+					LoadingState.loadAndSwitchState(new PlayState());
+				}
+			});
+	}
+
+	/** Current native story level id exposed to the bounded HXC story host. */
+	public function hxcStoryMenuCurrentLevelId():String {
+		var originalWeekIndex = HxcStoryMenuRouting.sourceWeekIndex(curWeek, weekNums);
+		return originalWeekIndex >= 0 && originalWeekIndex < weekNames.length
+			? weekNames[originalWeekIndex] : '';
+	}
+
+	/** Songs belonging to the currently selected native level. */
+	public function hxcStoryMenuCurrentSongs():Array<String>
+		return curWeek >= 0 && curWeek < weekData.length && weekData[curWeek] != null
+			? (cast weekData[curWeek]:Array<String>).copy() : [];
+
+	/** All currently visible story songs used to find their manifest-owned modules. */
+	public function hxcStoryMenuAllSongs():Array<String> {
+		var result:Array<String> = [];
+		for (week in weekData)
+			if (week != null)
+				for (song in (cast week:Array<String>))
+					if (song != null && result.indexOf(song) < 0)
+						result.push(song);
+		return result;
+	}
+
+	public function hxcStoryMenuIsSelected():Bool
+		return selectedWeek;
+
+	public function hxcStoryMenuCanSelectCurrentWeek():Bool
+		return curWeek >= 0 && curWeek < weekData.length && curWeek < weekUnlocked.length
+			&& weekUnlocked[curWeek] && weekData[curWeek] != null
+			&& (cast weekData[curWeek]:Array<String>).length > 0;
+
+	/** Add and refresh a menu-owned HXC sprite. */
+	public function hxcAddOwnedStorySprite(sprite:FlxSprite):Void {
+		if (sprite == null || members == null || members.indexOf(sprite) >= 0)
+			return;
+		add(sprite);
+	}
+
+	/** Remove and destroy a sprite owned by this menu's HXC runtime. */
+	public function hxcRemoveOwnedStorySprite(sprite:FlxSprite):Void {
+		if (sprite == null)
+			return;
+		if (members != null && members.indexOf(sprite) >= 0)
+			remove(sprite, true);
+		sprite.destroy();
+	}
+
+	/** Start the selected native campaign after a matched HXC transition delay. */
+	public function hxcStartImportedStorySelection(songIndex:Int):Bool {
+		if (!hxcStoryMenuIsSelected() || !hxcStoryMenuCanSelectCurrentWeek())
+			return false;
+		var songs = hxcStoryMenuCurrentSongs();
+		if (songIndex < 0 || songIndex >= songs.length)
+			return false;
+		var songName = songs[songIndex];
+		if (songName == null || StringTools.trim(songName) == '')
+			return false;
+
+		// selectWeek() initializes the campaign fields before the module timer is
+		// started. Repoint SONG only when the donor explicitly selected another
+		// song index; normal Tricky behavior selects the first song.
+		var loadedSong = PlayState.SONG == null || PlayState.SONG.song == null
+			? '' : PlayState.SONG.song.toLowerCase();
+		if (songIndex != 0 || loadedSong != songName.toLowerCase()) {
+			var suffix = grpDifficulty.getDiffEnding();
+			if (!FNFAssets.exists('assets/data/' + songName.toLowerCase() + '/'
+				+ songName.toLowerCase() + suffix + '.json')) {
+				suffix = '';
+				PlayState.storyDifficulty = DifficultyIcons.getDefaultDiffFP();
 			}
-		});
+			PlayState.SONG = Song.loadFromJson(songName.toLowerCase() + suffix,
+				songName.toLowerCase());
+			if (PlayState.SONG == null)
+				return false;
+		}
+
+		// The matched HXC module calls its engine's loadPlayState directly after
+		// its delay. That transition bypasses modifier selection regardless of
+		// this fork's ordinary Story Mode preference.
+		if (FlxG.sound.music != null)
+			FlxG.sound.music.stop();
+		LoadingState.loadAndSwitchState(new PlayState());
+		return true;
 	}
 
 	function changeDifficulty(change:Int = 0):Void {

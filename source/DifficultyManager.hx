@@ -1,9 +1,15 @@
 package;
 
+using StringTools;
+
 import StoryMenuState.StorySongsJson;
 import FreeplayState.JsonMetadata;
 import flixel.math.FlxMath;
 import DifficultyIcons.DiffInfo;
+import haxe.io.Path;
+#if sys
+import sys.FileSystem;
+#end
 typedef CoolCategory = {
     var name:String;
     var songs:Array<JsonMetadata>;
@@ -13,9 +19,27 @@ class DifficultyManager {
     public static var supportedDiff:Map<String,Array<Int>> = [];
     public static var weeksSupported:Map<Int, Array<Int>> = [];
 
-    public static function init() {
-        diffJson = CoolUtil.parseJson(FNFAssets.getJson("assets/images/custom_difficulties/difficulties"));
-        var fpJson:Array<CoolCategory> = CoolUtil.parseJson(FNFAssets.getJson("assets/data/freeplaySongJson"));
+	public static function init() {
+		supportedDiff = [];
+		weeksSupported = [];
+		diffJson = CoolUtil.parseJson(FNFAssets.getJson("assets/images/custom_difficulties/difficulties"));
+        var fpJson:Array<CoolCategory> = cast FreeplayRegistry.getJson();
+		// Importers preserve donor difficulty suffixes instead of rewriting them
+		// into the destination's built-in easy/normal/hard slots. Discover those
+		// suffixes before building each song's support map so files such as
+		// `<song>-encore.json` become selectable without editing the donor chart or
+		// maintaining a chart-specific registry entry.
+		#if sys
+		var discoveredSongs:Map<String, Bool> = new Map<String, Bool>();
+		for (cat in fpJson)
+			for (song in cat.songs) {
+				var key = song.name == null ? '' : song.name.toLowerCase();
+				if (key != '' && !discoveredSongs.exists(key)) {
+					discoveredSongs.set(key, true);
+					discoverSongDifficulties(key);
+				}
+			}
+		#end
         for (cat in fpJson) {
             for (song in cat.songs) {
                 addSongSupport(song.name);
@@ -48,39 +72,197 @@ class DifficultyManager {
         }
     }
 
-    public static function addSongSupport(song:String) {
-        supportedDiff.set(song.toLowerCase(), []);
-        for (diff in 0...diffJson.difficulties.length) {
-            if (FNFAssets.exists('assets/data/${song.toLowerCase()}/${song.toLowerCase()+getDiffEnding(diff)}.json')) {
-                // : )
-                supportedDiff.get(song.toLowerCase()).push(diff);
-            }
-        }
-    }
+	public static function addSongSupport(song:String) {
+		if (song == null || StringTools.trim(song) == '')
+			return;
+		if (supportedDiff == null)
+			supportedDiff = [];
+		var key = StringTools.trim(song).toLowerCase();
+		supportedDiff.set(key, []);
+		if (diffJson == null || diffJson.difficulties == null)
+			return;
+		var sourceDifficulties = readSourceSelectableDifficulties(key);
+		var unsupportedDifficulties = readSourceUnsupportedDifficulties(key);
+		for (diff in 0...diffJson.difficulties.length) {
+			var difficultyName = Std.string(Reflect.field(diffJson.difficulties[diff], 'name'));
+			if (FNFAssets.exists('assets/data/${key}/${key + getDiffEnding(diff)}.json')
+				&& NightmareVisionDifficultyCompat.allows(sourceDifficulties, difficultyName)
+				&& (unsupportedDifficulties == null
+					|| !NightmareVisionDifficultyCompat.allows(unsupportedDifficulties, difficultyName))) {
+				// : )
+				supportedDiff.get(key).push(diff);
+			}
+		}
+	}
+
+	/** NMV imports retain extra charts for source-script access, but only the
+	 * source owner's declared menu difficulties belong in Freeplay. */
+	static function readSourceSelectableDifficulties(song:String):Array<String> {
+		if (song == null || StringTools.trim(song) == '')
+			return null;
+		var path = 'assets/data/' + song.toLowerCase() + '/importProvenance.json';
+		if (!FNFAssets.exists(path))
+			return null;
+		try {
+			var metadata:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
+			if (metadata == null || Reflect.field(metadata, 'sourceEngine') != ImportEngine.NIGHTMARE_VISION)
+				return null;
+			var raw:Dynamic = Reflect.field(metadata, 'sourceSelectableDifficulties');
+			if (!Std.isOfType(raw, Array))
+				return null;
+			var result:Array<String> = [];
+			for (value in (cast raw:Array<Dynamic>))
+				if (value != null && StringTools.trim(Std.string(value)) != '')
+					result.push(StringTools.trim(Std.string(value)).toLowerCase());
+			return result.length == 0 ? null : result;
+		} catch (_:Dynamic) {
+			return null;
+		}
+	}
+
+	/** Imported NMV charts that fail the generic source-schema adapter remain
+	 * on disk for inspection, but must not be offered as playable difficulties. */
+	static function readSourceUnsupportedDifficulties(song:String):Array<String> {
+		if (song == null || StringTools.trim(song) == '')
+			return null;
+		var path = 'assets/data/' + song.toLowerCase() + '/importProvenance.json';
+		if (!FNFAssets.exists(path))
+			return null;
+		try {
+			var metadata:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
+			if (metadata == null || Reflect.field(metadata, 'sourceEngine') != ImportEngine.NIGHTMARE_VISION)
+				return null;
+			var raw:Dynamic = Reflect.field(metadata, 'sourceUnsupportedDifficulties');
+			if (!Std.isOfType(raw, Array))
+				return null;
+			var result:Array<String> = [];
+			for (value in (cast raw:Array<Dynamic>))
+				if (value != null && StringTools.trim(Std.string(value)) != '')
+					result.push(StringTools.trim(Std.string(value)).toLowerCase());
+			return result.length == 0 ? null : result;
+		} catch (_:Dynamic) {
+			return null;
+		}
+	}
+
+	/** Return a stable, never-null support list. Imports can finish after the
+	 * title-time registry scan, and duplicate/repair imports may add a Freeplay
+	 * entry without appearing in the current batch's newly-copied song list.
+	 * Resolve that race lazily instead of calling Array.contains on null in a
+	 * native build (which becomes a SIGSEGV). */
+	public static function getSupportedDiffs(song:String):Array<Int> {
+		if (song == null || StringTools.trim(song) == '')
+			return [];
+		if (supportedDiff == null)
+			supportedDiff = [];
+		var key = StringTools.trim(song).toLowerCase();
+		var supported = supportedDiff.get(key);
+		if (supported == null) {
+			addSongSupport(key);
+			supported = supportedDiff.get(key);
+		}
+		return supported == null ? [] : supported;
+	}
+
+	/** Return the donor difficulty suffix encoded in a native chart filename.
+	 * The base `<song>.json` chart is the configured default and therefore has
+	 * no new suffix. Sidecars are excluded so `events.json` can never become a
+	 * selectable difficulty. */
+	public static function difficultySuffixFromChartFile(song:String, file:String):String {
+		if (song == null || file == null)
+			return null;
+		var key = StringTools.trim(song).toLowerCase();
+		var name = Path.withoutDirectory(Path.normalize(file)).toLowerCase();
+		if (name.endsWith('.jsonc'))
+			name = name.substr(0, name.length - 6);
+		else if (name.endsWith('.json'))
+			name = name.substr(0, name.length - 5);
+		else
+			return null;
+		if (name == key)
+			return '';
+		var prefix = key + '-';
+		if (!name.startsWith(prefix))
+			return null;
+		var suffix = StringTools.trim(name.substr(prefix.length));
+		if (suffix == '' || suffix == 'events' || suffix == 'metadata'
+			|| suffix == 'manifest' || suffix == 'dialogue' || suffix == 'chartmeta')
+			return null;
+		return suffix;
+	}
+
+	#if sys
+	static function discoverSongDifficulties(song:String):Void {
+		var directory = Path.join(['assets', 'data', song]);
+		if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
+			return;
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(directory);
+		} catch (_:Dynamic) {
+			return;
+		}
+		entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
+		var sourceDifficulties = readSourceSelectableDifficulties(song);
+		var unsupportedDifficulties = readSourceUnsupportedDifficulties(song);
+		for (entry in entries) {
+			var suffix = difficultySuffixFromChartFile(song, entry);
+			if (suffix != null && suffix != ''
+				&& NightmareVisionDifficultyCompat.allows(sourceDifficulties, suffix)
+				&& (unsupportedDifficulties == null
+					|| !NightmareVisionDifficultyCompat.allows(unsupportedDifficulties, suffix)))
+				ensureDifficultyDefinition(suffix);
+		}
+	}
+	#end
+
+	static function ensureDifficultyDefinition(name:String):Int {
+		if (diffJson == null || diffJson.difficulties == null || name == null)
+			return -1;
+		var clean = StringTools.trim(name).toLowerCase();
+		if (clean == '')
+			return -1;
+		var difficulties:Array<Dynamic> = cast diffJson.difficulties;
+		for (index in 0...difficulties.length) {
+			var difficulty = difficulties[index];
+			if (difficulty != null && difficulty.name != null
+				&& Std.string(difficulty.name).toLowerCase() == clean)
+				return index;
+		}
+		// Reuse the ordinary HARD icon when a foreign engine does not provide an
+		// icon definition. The name and filename suffix remain exact.
+		difficulties.push({offset: 20, anim: 'HARD', name: clean});
+		return difficulties.length - 1;
+	}
 
     public static function changeDifficulty(diff:Int, ?change:Int=0):DiffInfo {
         // we can do it directly because Ints are saved by value : )
+		if (diffJson == null || diffJson.difficulties == null || diffJson.difficulties.length == 0)
+			return {difficulty: 0, text: ''};
         diff += change;
         diff = FlxMath.wrap(diff, 0, Std.int(diffJson.difficulties.length - 1));
         return {difficulty: diff, text: diffJson.difficulties[diff].name.toUpperCase()};
     }
 
     // sans : ) meaning without, this omits any bad difficulties
-    public static function changeDifficultySans(diff:Int, ?change:Int=0, ?song:String="tutorial"):DiffInfo {
-        var foundSomething = false;
-        var giveUpNum = 0;
-        var giveUpResult = changeDifficulty(diff, change);
-        var ignoreIfExists = change == 0;
+	public static function changeDifficultySans(diff:Int, ?change:Int=0, ?song:String="tutorial"):DiffInfo {
+		var foundSomething = false;
+		var giveUpNum = 0;
+		var giveUpResult = changeDifficulty(diff, change);
+		var supported = getSupportedDiffs(song);
+		if (supported.length == 0)
+			return giveUpResult;
+		var ignoreIfExists = change == 0;
         if (change == 0)
             change = 1;
         while (giveUpNum < diffJson.difficulties.length && !foundSomething) {
-            if (supportedDiff.get(song.toLowerCase()).contains(diff) && ignoreIfExists)
-                return giveUpResult;
+			if (supported.contains(diff) && ignoreIfExists)
+				return giveUpResult;
             var sus = changeDifficulty(diff, change);
             diff = sus.difficulty;
             
-            if (supportedDiff.get(song.toLowerCase()).contains(diff))
-                return sus;
+			if (supported.contains(diff))
+				return sus;
             giveUpNum++;
         }
         return giveUpResult;
@@ -93,7 +275,11 @@ class DifficultyManager {
 		var ignoreIfExists = change == 0;
 		if (change == 0)
 			change = 1;
+		if (weeksSupported == null)
+			return giveUpResult;
 		var daSupport = weeksSupported.get(week);
+		if (daSupport == null || daSupport.length == 0)
+			return giveUpResult;
 		while (giveUpNum < diffJson.difficulties.length && !foundSomething) {
 			if (daSupport.contains(diff) && ignoreIfExists)
 				return giveUpResult;
@@ -107,7 +293,7 @@ class DifficultyManager {
 		return giveUpResult;
     }
 
-    public static function getDiffName(diff:Int) {
+    public static function getDiffName(diff:Int):String {
 		return diffJson.difficulties[diff].name.toUpperCase();
     }
 
@@ -133,6 +319,21 @@ class DifficultyManager {
         return getDefaultForDiff(diff);
     }
 
+    // Song metadata fallback needs to consider sibling charts too. Keep the
+    // configured order here so web builds (which cannot enumerate the data
+    // directory) get the same candidates as native builds.
+    public static function getDifficultyNames():Array<String> {
+        var names:Array<String> = [];
+        if (diffJson == null || diffJson.difficulties == null)
+            return names;
+        var difficulties:Array<Dynamic> = cast diffJson.difficulties;
+        for (difficulty in difficulties) {
+            if (difficulty != null && difficulty.name != null)
+                names.push(difficulty.name);
+        }
+        return names;
+    }
+
     public static function getDiffEnding(diff:Int):String {
         var ending = "";
         if (diff != diffJson.defaultDiff)
@@ -141,8 +342,10 @@ class DifficultyManager {
     }
 
     // get a valid difficulty
-    public static function getValidDiff(diff:Int, song:String):Int {
-		var daThing = supportedDiff.get(song.toLowerCase());
+	public static function getValidDiff(diff:Int, song:String):Int {
+		var daThing = getSupportedDiffs(song);
+		if (daThing.length == 0)
+			return changeDifficulty(diff).difficulty;
         // if the diff is there, no problem
         if (daThing.contains(diff))
             return diff;

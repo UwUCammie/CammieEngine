@@ -11,6 +11,7 @@ import flixel.FlxSprite;
 import flixel.input.keyboard.FlxKey;
 using Lambda;
 class ControlsState extends MusicBeatState {
+    var returnState:FlxState;
     var askToBind:FlxTypedSpriteGroup<FlxSprite>;
     var bindTxt:FlxText;
     var askingToBind:Bool = false;
@@ -28,6 +29,10 @@ class ControlsState extends MusicBeatState {
 		['Volume Up', FlxG.save.data.keys.volUp],
 		['Volume Down', FlxG.save.data.keys.volDown]
 	];
+	public function new(?returnState:FlxState) {
+		super();
+		this.returnState = returnState;
+	}
     override function create() {
         var bg:FlxSprite = new FlxSprite(-80).loadGraphic('assets/images/menuBG.png');
 		bg.scrollFactor.x = 0;
@@ -46,8 +51,9 @@ class ControlsState extends MusicBeatState {
         askToBind.add(bindTxt);
         askToBind.visible = false;
 		askToBind.screenCenter();
-        grpBind = new FlxTypedGroup<Alphabet>();
-        add(grpBind);
+		grpBind = new FlxTypedGroup<Alphabet>();
+		add(grpBind);
+		editableControls.push(['Switch Mod', getSwitchModBindings()]);
 
         for (i in 0...editableControls.length) {
 			var coolText = editableControls[i][0] + ': ' + getControls(editableControls[i][1]);
@@ -70,6 +76,12 @@ class ControlsState extends MusicBeatState {
 			return FlxKey.toStringMap.get(key);
 		}).join(",");
 		return letters;
+	}
+	function getSwitchModBindings():Array<FlxKey> {
+		var player = PlayerSettings.player1;
+		if (player == null || player.controls == null) return [FlxKey.TAB];
+		var codes = player.controls.getKeyboardBindingsByName('SWITCHMOD');
+		return [for (code in codes) cast code];
 	}
 	function changeSelection(change:Int = 0) {
 		FlxG.sound.play('assets/sounds/custom_menu_sounds/'
@@ -224,6 +236,7 @@ class ControlsState extends MusicBeatState {
 		newControls.push(['Sync Vocals', FlxG.save.data.keys.syncVocals]);
 		newControls.push(['Volume Up', FlxG.save.data.keys.volUp]);
 		newControls.push(['Volume Down', FlxG.save.data.keys.volDown]);
+		newControls.push(['Switch Mod', getSwitchModBindings()]);
 		editableControls = newControls;
 
 		 for (i in 0...editableControls.length) {
@@ -259,11 +272,12 @@ class ControlsState extends MusicBeatState {
 				changeKey(1);
 			}
             if (controls.BACK) {
-                LoadingState.loadAndSwitchState(new SaveDataState());
+                LoadingState.loadAndSwitchState(returnState == null ? new SaveDataState() : returnState);
             }
-        } else {
+		} else {
 			if (FlxG.keys.firstJustPressed() == ESCAPE || FlxG.keys.firstJustPressed() == ENTER) {
-				if (currentKeys.length != 0) {
+				var editingSwitchMod = editableControls[awaitingFor][0] == 'Switch Mod';
+				if (currentKeys.length != 0 || editingSwitchMod) {
 					switch (editableControls[awaitingFor][0]) {
 						case 'Left': FlxG.save.data.keys.left = currentKeys;
 						case 'Down': FlxG.save.data.keys.down = currentKeys;
@@ -272,6 +286,11 @@ class ControlsState extends MusicBeatState {
 						case 'Sync Vocals': FlxG.save.data.keys.syncVocals = currentKeys;
 						case 'Volume Up': FlxG.save.data.keys.volUp = currentKeys;
 						case 'Volume Down': FlxG.save.data.keys.volDown = currentKeys;
+						case 'Switch Mod':
+							var keyCodes:Array<Int> = [for (key in currentKeys) cast key];
+							CodenameControlsCompat.saveSwitchModKeyboardBindings(FlxG.save.data, keyCodes);
+							if (PlayerSettings.player1 != null && PlayerSettings.player1.controls != null)
+								PlayerSettings.player1.controls.setKeyboardBindingsByName('SWITCHMOD', keyCodes);
 						case 'Ctrl A':
 							switch (curKey) {
 								case 1: FlxG.save.data.key1.ctrla = currentKeys;

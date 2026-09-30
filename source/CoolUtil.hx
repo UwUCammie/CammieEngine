@@ -8,6 +8,7 @@ import flash.display.BlendMode;
 import openfl.filters.ColorMatrixFilter;
 import flixel.addons.plugin.taskManager.FlxTask;
 import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
 import tjson.TJSON;
 using StringTools;
 
@@ -52,17 +53,37 @@ class CoolUtil {
 		var daFields = Reflect.fields(epicCharFile);
 		for (i in 0...daFields.length) {
 			var char = daFields[i];
+			var charData:Dynamic = Reflect.field(epicCharFile, char);
+			// Older registries (and some imported character packs) omit optional
+			// metadata.  Do not dereference a missing entry while normalizing the
+			// registry: native cpp builds can turn a null .length access into a
+			// SIGSEGV instead of a useful exception.
+			if (charData == null)
+				continue;
 			trace(char);
-			var like = Reflect.field(epicCharFile, char).like;
+			var like:Dynamic = Reflect.field(charData, 'like');
+			if (like == null || StringTools.trim(Std.string(like)) == '')
+				like = char;
 			trace(like);
-			var icons = Reflect.field(epicCharFile, char).icons;
+			var icons:Dynamic = Reflect.field(charData, 'icons');
+			if (icons == null)
+				icons = [0, 0, 0, 0];
 			if ((icons is String))
 				icons = '"' + icons + '"';
 			else
 				icons = icons.toString();
 			trace(icons);
 			
-			var colors = Reflect.field(epicCharFile, char).colors;
+			var colorsValue:Dynamic = Reflect.field(charData, 'colors');
+			var colors:Array<Dynamic>;
+			if (colorsValue == null)
+				colors = ['#FFFFFF'];
+			else if (Std.isOfType(colorsValue, Array))
+				colors = cast colorsValue;
+			else
+				colors = [colorsValue];
+			if (colors.length == 0)
+				colors.push('#FFFFFF');
 			trace(colors);
 			var fixedColors = '';
 			for(i in 0...colors.length) {
@@ -72,7 +93,7 @@ class CoolUtil {
 			}
 			trace(fixedColors);
 
-			var iconbop = Reflect.field(epicCharFile, char).iconbop;
+			var iconbop = Reflect.field(charData, 'iconbop');
 			if (iconbop != null) {
 				finalString += components[0] + char + components[1] + like + components[2] + icons + components[3] + fixedColors + components[5] + iconbop + components[6];
 			} else
@@ -85,16 +106,67 @@ class CoolUtil {
 	}
 
 	public static function getSongFile(song:String, path:String, inst:Bool = true, ?extension:String = '') { // 'path' is the song folder path
-		var daSong = null;
+		var daSong:String = null;
 		var songType = if (inst) 'Inst'; else 'Voices';
-		if (sys.FileSystem.exists(haxe.io.Path.join([path, song + '_' + songType + extension + TitleState.soundExt]))) {
-			daSong = haxe.io.Path.join([path, song + "_" + songType + extension + TitleState.soundExt]);
-		} else if (sys.FileSystem.exists(haxe.io.Path.join([path, songType + extension + TitleState.soundExt]))) {
-			daSong = haxe.io.Path.join([path, songType + extension + TitleState.soundExt]);
-		} else if (sys.FileSystem.exists(haxe.io.Path.join([path, '../../music/' + song + '_' + songType + extension + TitleState.soundExt]))) {
-			daSong = haxe.io.Path.join([path, '../../music/' + song + '_' + songType + extension + TitleState.soundExt]);
+		var candidates:Array<String> = [
+			haxe.io.Path.join([path, song + '_' + songType + extension + TitleState.soundExt]),
+			haxe.io.Path.join([path, songType + extension + TitleState.soundExt]),
+			haxe.io.Path.join([path, '../../music/' + song + '_' + songType + extension + TitleState.soundExt])
+		];
+		for (candidate in candidates) {
+			var resolved = FNFAssets.resolveCaseInsensitivePath(candidate);
+			if (resolved != null) {
+				daSong = resolved;
+				break;
+			}
 		}
 		return daSong;
+	}
+
+	/** Returns a FlxEase function from the source-compatible easing name. */
+	public static function getEaseFromString(ease:Null<String>)
+	{
+		if (ease == null) return FlxEase.linear;
+		return switch (ease.toLowerCase().trim())
+		{
+			case 'backin': FlxEase.backIn;
+			case 'backinout': FlxEase.backInOut;
+			case 'backout': FlxEase.backOut;
+			case 'bouncein': FlxEase.bounceIn;
+			case 'bounceinout': FlxEase.bounceInOut;
+			case 'bounceout': FlxEase.bounceOut;
+			case 'circin': FlxEase.circIn;
+			case 'circinout': FlxEase.circInOut;
+			case 'circout': FlxEase.circOut;
+			case 'cubein': FlxEase.cubeIn;
+			case 'cubeinout': FlxEase.cubeInOut;
+			case 'cubeout': FlxEase.cubeOut;
+			case 'elasticin': FlxEase.elasticIn;
+			case 'elasticinout': FlxEase.elasticInOut;
+			case 'elasticout': FlxEase.elasticOut;
+			case 'expoin': FlxEase.expoIn;
+			case 'expoinout': FlxEase.expoInOut;
+			case 'expoout': FlxEase.expoOut;
+			case 'quadin': FlxEase.quadIn;
+			case 'quadinout': FlxEase.quadInOut;
+			case 'quadout': FlxEase.quadOut;
+			case 'quartin': FlxEase.quartIn;
+			case 'quartinout': FlxEase.quartInOut;
+			case 'quartout': FlxEase.quartOut;
+			case 'quintin': FlxEase.quintIn;
+			case 'quintinout': FlxEase.quintInOut;
+			case 'quintout': FlxEase.quintOut;
+			case 'sinein': FlxEase.sineIn;
+			case 'sineinout': FlxEase.sineInOut;
+			case 'sineout': FlxEase.sineOut;
+			case 'smoothstepin': FlxEase.smoothStepIn;
+			case 'smoothstepinout': FlxEase.smoothStepInOut;
+			case 'smoothstepout': FlxEase.smoothStepOut;
+			case 'smootherstepin': FlxEase.smootherStepIn;
+			case 'smootherstepinout': FlxEase.smootherStepInOut;
+			case 'smootherstepout': FlxEase.smootherStepOut;
+			default: FlxEase.linear;
+		}
 	}
 
 	public static function getBlendMode(blend:String) {
@@ -207,12 +279,45 @@ class CoolUtil {
 		}
 		return dumbArray;
 	}
+	/**
+	 * Compatibility helper from Wednesday's Infidelity. This deliberately only
+	 * changes the render scale: refreshing the hitbox also shifts the effective
+	 * origin of its oversized Hellhole background layers.
+	 * It intentionally leaves width, height, offset and origin untouched.
+	 */
+	public static function exactSetGraphicSize(sprite:FlxSprite, width:Float = 0, height:Float = 0):Void {
+		if (sprite == null || sprite.width == 0 || sprite.height == 0)
+			return;
+		sprite.scale.set(
+			Math.abs(((sprite.width - width) / sprite.width) - 1),
+			Math.abs(((sprite.height - height) / sprite.height) - 1)
+		);
+	}
 	public static function clamp(mini:Float, maxi:Float, value:Float):Float {
 		return Math.min(Math.max(mini,value), maxi);
 	}
 	// can either return an array or a dynamic
 	public static function parseJson(json:String):Dynamic {
 		// the reason we do this is to make it easy to swap out json parsers
+		// release cpp builds have no null checks: TJSON.parse(null) SEGFAULTS
+		// (the story menu did exactly that via a mis-cased asset path), so
+		// fail with a message naming the real problem instead
+		if (json == null)
+			throw "parseJson: null input - an asset passed in above this call is missing or mis-cased";
+		// A few Kade-era releases were packaged with fixed-size chart buffers:
+		// their otherwise valid JSON is followed by NUL padding.  Keep this
+		// cleanup at the shared parser boundary so every importer/runtime path
+		// accepts those charts without rewriting the donor files.
+		var end:Int = json.length;
+		while (end > 0) {
+			var code:Int = json.charCodeAt(end - 1);
+			if (code == 0 || code == 9 || code == 10 || code == 13 || code == 32)
+				end--;
+			else
+				break;
+		}
+		if (end != json.length)
+			json = json.substr(0, end);
 		return TJSON.parse(json);
 	}
 	public static function stringifyJson(json:Dynamic, ?fancy:Bool = true):String {

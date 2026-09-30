@@ -1,0 +1,59 @@
+#!/bin/sh
+# AppImage launcher for Disappointing Plus.
+#
+# The game intentionally writes options, imported songs, characters, stages,
+# and weeks below its working directory. A normally mounted AppImage is
+# read-only, so callers that need those writes can either use the AppImage
+# runtime's extraction mode or set DISAPPOINTINGPLUS_RUNTIME_DIR. The latter
+# makes one persistent, versioned writable copy of usr/bin and runs from it.
+set -eu
+
+APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+BIN_DIR="$APPDIR/usr/bin"
+GAME="$BIN_DIR/Funkin"
+
+if [ ! -x "$GAME" ]; then
+	echo "!! AppImage payload is missing an executable: $GAME" >&2
+	exit 1
+fi
+
+RUNTIME_BASE="${DISAPPOINTINGPLUS_RUNTIME_DIR:-}"
+if [ -n "$RUNTIME_BASE" ]; then
+	case "$RUNTIME_BASE" in
+		/*) ;;
+		*) RUNTIME_BASE="$PWD/$RUNTIME_BASE" ;;
+	esac
+	PAYLOAD_ID="unknown"
+	if [ -f "$BIN_DIR/.dp-runtime-id" ]; then
+		PAYLOAD_ID="$(sed -n '1p' "$BIN_DIR/.dp-runtime-id")"
+	fi
+	[ -n "$PAYLOAD_ID" ] || PAYLOAD_ID="unknown"
+	RUNTIME_DIR="$RUNTIME_BASE/$PAYLOAD_ID"
+	if [ ! -x "$RUNTIME_DIR/Funkin" ]; then
+		mkdir -p "$RUNTIME_BASE"
+		STAGING="$RUNTIME_BASE/.${PAYLOAD_ID}.partial.$$"
+		rm -rf -- "$STAGING"
+		mkdir -p "$STAGING"
+		# cp -a keeps the large asset tree intact; this is done once per payload
+		# id, not on every launch. The copy can take time for this asset library.
+		cp -a "$BIN_DIR"/. "$STAGING"/
+		mv "$STAGING" "$RUNTIME_DIR"
+	fi
+	BIN_DIR="$RUNTIME_DIR"
+fi
+
+if [ ! -d "$BIN_DIR/assets/data" ] || [ ! -w "$BIN_DIR/assets/data" ]; then
+	cat >&2 <<'MESSAGE'
+!! Cammie Engine + is mounted read-only. The game saves options and
+imports content under assets/, so choose a writable runtime:
+
+  APPIMAGE_EXTRACT_AND_RUN=1 ./DisappointingPlus-*.AppImage
+  DISAPPOINTINGPLUS_RUNTIME_DIR="$HOME/.local/share/disappointing-plus" ./DisappointingPlus-*.AppImage
+
+The second form makes a persistent copy under the directory you provide.
+MESSAGE
+	exit 1
+fi
+
+cd "$BIN_DIR"
+exec "$BIN_DIR/Funkin" "$@"

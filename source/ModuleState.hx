@@ -200,6 +200,8 @@ class ModuleState extends MusicBeatState {
 		remove(transferButton);
 	}
 	function generateStuff() {
+		if (moduleMode == 'Import')
+			ImportSettings.ensureImportDirectories();
 		generateSongs();
 		generateChars();
 		generateStages();
@@ -377,32 +379,32 @@ class ModuleState extends MusicBeatState {
 		var daFolding:String = '';
 		switch(moduleMode) {
 			case 'Import':
-				daFolding = 'assets/module/import/';
+				daFolding = ModuleFunctions.importRoot();
 			case 'Export':
 				daFolding = 'assets/';
 			case 'Transfer':
 				daFolding = transferPath;
 		}
-		if (FileSystem.exists(haxe.io.Path.join([daFolding, 'songs/']))) {
-			var songFolder = haxe.io.Path.join([daFolding, 'songs/']);
+		if (FileSystem.exists(haxe.io.Path.join([daFolding, 'songs']))) {
+			var songFolder = haxe.io.Path.join([daFolding, 'songs']);
 			for (song in FileSystem.readDirectory(songFolder)) {
 				var path = haxe.io.Path.join([songFolder, song]);
-				if (moduleMode != 'Import' || (sys.FileSystem.isDirectory(path) && moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, '/info.txt'])))) {
+				if (moduleMode != 'Import' || (sys.FileSystem.isDirectory(path) && moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, 'info.txt'])))) {
 					songs.push(path);
 					var songName = 'null';
 					var iconP2 = 'bf';
 					if (moduleMode == 'Import') {
-						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, '/info.txt']));
-						songName = info.get('songname');
-						iconP2 = info.get('player2');
+						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, 'info.txt']));
+						songName = ModuleFunctions.getInfoValue(info, 'songname', song);
+						iconP2 = ModuleFunctions.getInfoValue(info, 'player2', 'bf');
 					} else {
 						var data = null;
-						if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json']))) {
-							data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json'])));
-						} else if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json']))) {
-							data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json'])));
-						} else if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json']))) {
-							data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json'])));
+					if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json']))) {
+						data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json'])));
+					} else if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json']))) {
+						data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json'])));
+					} else if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json']))) {
+						data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json'])));
 						}
 						if (data != null) {
 							songName = data.song;
@@ -428,6 +430,8 @@ class ModuleState extends MusicBeatState {
 			}
 		} else if (moduleMode != 'Import') {
 			var dataFolder = haxe.io.Path.join([daFolding, 'data/']);
+			if (!FileSystem.isDirectory(dataFolder))
+				return;
 			for (song in FileSystem.readDirectory(dataFolder)) {
 				var path = haxe.io.Path.join([dataFolder, song]);
 				if (sys.FileSystem.isDirectory(path)) {
@@ -440,8 +444,8 @@ class ModuleState extends MusicBeatState {
 					} else if (FileSystem.exists(haxe.io.Path.join([path, '/' + song + '-easy.json']))) {
 						data = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '/' + song + '-easy.json'])));
 					}
-					var songName = data.song;
-					var iconP2 = data.player2;
+						var songName = data != null && data.song != null ? data.song : song;
+						var iconP2 = data != null && data.player2 != null ? data.player2 : 'bf';
 
 					var daBox:ModuleBox = new ModuleBox(650, 10 + (180 * songs.indexOf(path)), 'song', songName, iconP2);
 					daBox.MainButton(moduleMode + " Song", function():Void {
@@ -474,23 +478,27 @@ class ModuleState extends MusicBeatState {
 		var daFolding:String = '';
 		switch(moduleMode) {
 			case 'Import':
-				daFolding = 'assets/module/import/characters/';
+				daFolding = ImportSettings.getImportPath('characters');
 			case 'Export':
 				daFolding = 'assets/images/custom_chars/';
 			case 'Transfer':
 				daFolding =  haxe.io.Path.join([transferPath, 'images/custom_chars/']);
 		}
+		if (!FileSystem.exists(daFolding) || !FileSystem.isDirectory(daFolding))
+			return;
+		if (FileSystem.isDirectory(daFolding))
 		for (char in FileSystem.readDirectory(daFolding)) {
 			var path = haxe.io.Path.join([daFolding, char]);
 			if (sys.FileSystem.isDirectory(path)) {
-				if (moduleMode != 'Import' || (moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, '/info.txt'])))) {
+				if (moduleMode != 'Import' || (moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, 'info.txt'])))) {
 					characters.push(path);
 					var charName = 'null';
 					var iconNum1 = 0;
 					if (moduleMode == 'Import') {
-						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, '/info.txt']));
-						charName = info.get('charname');
-						iconNum1 = Std.int(info.get('iconnums').split(',')[0]);
+						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, 'info.txt']));
+						charName = ModuleFunctions.getInfoValue(info, 'charname', char);
+						var iconNums = ModuleFunctions.getInfoValue(info, 'iconnums', '0,1,2,3').split(',');
+						iconNum1 = Std.int(Std.parseFloat(iconNums[0]));
 					} else {
 						charName = char;
 						/*if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json']))) {
@@ -563,21 +571,24 @@ class ModuleState extends MusicBeatState {
 		var daFolding:String = '';
 		switch(moduleMode) {
 			case 'Import':
-				daFolding = 'assets/module/import/stages/';
+				daFolding = ImportSettings.getImportPath('stages');
 			case 'Export':
 				daFolding = 'assets/images/custom_stages/';
 			case 'Transfer':
 				daFolding =  haxe.io.Path.join([transferPath, 'images/custom_stages/']);
 		}
+		if (!FileSystem.exists(daFolding) || !FileSystem.isDirectory(daFolding))
+			return;
+		if (FileSystem.isDirectory(daFolding))
 		for (stage in FileSystem.readDirectory(daFolding)) {
 			var path = haxe.io.Path.join([daFolding, stage]);
 			if (sys.FileSystem.isDirectory(path)) {
-				if (moduleMode != 'Import' || (moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, '/info.txt'])))) {
+				if (moduleMode != 'Import' || (moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, 'info.txt'])))) {
 					stages.push(path);
 					var stageName = 'null';
 					if (moduleMode == 'Import') {
-						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, '/info.txt']));
-						stageName = info.get('stagename');
+						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, 'info.txt']));
+						stageName = ModuleFunctions.getInfoValue(info, 'stagename', stage);
 					} else {
 						stageName = stage;
 						/*if (FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json']))) {
@@ -666,20 +677,15 @@ class ModuleState extends MusicBeatState {
 				var songPath = 'assets/songs/';
 				var dataPath = 'assets/data/';
 				if (moduleMode == 'Import') {
-					if (FileSystem.exists('assets/module/import/songs/' + daName + '/info.txt')) {
+					var importSongPath = haxe.io.Path.join([ModuleFunctions.importSongsPath(), daName]);
+					if (FileSystem.exists(haxe.io.Path.join([importSongPath, 'info.txt']))) {
 						if (FileSystem.exists(songPath + daName) || FileSystem.exists(dataPath + daName)) {
 							var daSongName = 'Null';
-							var infoText:Array<String> = CoolUtil.coolTextFile('assets/module/import/songs/' + daName + '/info.txt');
-							for (i in 0...infoText.length) {
-								var data:Array<String> = infoText[i].split(':');
-								switch(data[0]) {
-									case 'songname':
-										daSongName = data[1];
-								}
-							}
+							var info = ModuleFunctions.processInfo(haxe.io.Path.join([importSongPath, 'info.txt']));
+							daSongName = ModuleFunctions.getInfoValue(info, 'songname', daName);
 							
 						} else {
-							importSong(path);
+							importSong(daName);
 						}
 					}
 				} else {
@@ -697,14 +703,9 @@ class ModuleState extends MusicBeatState {
 				var charPath = 'assets/images/custom_chars/';
 				if (FileSystem.exists(charPath + daName)) {
 					var daCharName = 'Null';
-					var infoText:Array<String> = CoolUtil.coolTextFile('assets/module/import/characters/' + daName + '/info.txt');
-					for (i in 0...infoText.length) {
-						var data:Array<String> = infoText[i].split(':');
-						switch(data[0]) {
-							case 'charname':
-								daCharName = data[1];
-						}
-					}
+					var charImportPath = haxe.io.Path.join([ImportSettings.getImportPath('characters'), daName]);
+					var info = ModuleFunctions.processInfo(haxe.io.Path.join([charImportPath, 'info.txt']));
+					daCharName = ModuleFunctions.getInfoValue(info, 'charname', daName);
 					
 				} else {
 					importChar(daName);
@@ -723,58 +724,45 @@ class ModuleState extends MusicBeatState {
 		var songJson:SwagSong = null;
 		trace('about to load songs');
 		if (moduleMode == 'Import') {
-			inst = haxe.io.Path.join([path, '/Inst.ogg']);
-			voices = haxe.io.Path.join([path, '/Voices.ogg']);
-			for (i in 0...2) { // im too lazy to find the proper function for difficulty lol
-				switch (i) {
-					case 2:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '/easy.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '/easy.json'])));
-							break;
-						}
-					case 1:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '/normal.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '/normal.json'])));
-							break;
-						}
-					case 0:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '/hard.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '/hard.json'])));
-							break;
-						}
+			inst = haxe.io.Path.join([path, 'Inst.ogg']);
+			voices = haxe.io.Path.join([path, 'Voices.ogg']);
+			// Prefer hard, then normal, then easy.  The old two-item range
+			// never reached the easy case.
+			for (difficulty in ['hard', 'normal', 'easy']) {
+				var chartPath = haxe.io.Path.join([path, difficulty + '.json']);
+				if (sys.FileSystem.exists(chartPath)) {
+					songJson = Song.parseJSONshit(File.getContent(chartPath));
+					break;
 				}
 			}
 		} else {
 			inst = CoolUtil.getSongFile(song, path);
 			voices = CoolUtil.getSongFile(song, path, false);
-			for (i in 0...2) { // im too lazy to find the proper function for difficulty lol
-				switch (i) {
-					case 2:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-easy.json'])));
-							break;
-						}
-					case 1:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '.json'])));
-							break;
-						}
-					case 0:
-						if (sys.FileSystem.exists(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json']))) {
-							songJson = Song.parseJSONshit(File.getContent(haxe.io.Path.join([path, '../../data/' + song + '/' + song + '-hard.json'])));
-							break;
-						}
+			for (chartName in [song + '-hard.json', song + '.json', song + '-easy.json']) {
+				var chartPath = haxe.io.Path.join([path, '../../data', song, chartName]);
+				if (sys.FileSystem.exists(chartPath)) {
+					songJson = Song.parseJSONshit(File.getContent(chartPath));
+					break;
 				}
 			}
 		}
 		trace('song loaded');
+		if (!sys.FileSystem.exists(inst) || songJson == null) {
+			selectMode.text = 'Unable to listen: missing audio or chart.';
+			songPlaying = null;
+			return;
+		}
 		var songInst = Sound.fromFile(inst);
-		File.copy(voices, 'assets/module/tempVocals.ogg'); //this kills me to do
-		var vocalSound = Sound.fromFile('assets/module/tempVocals.ogg');
-		songVocals = new FlxSound().loadEmbedded(vocalSound);
-		FlxG.sound.list.add(songVocals);
+		if (voices != null && sys.FileSystem.exists(voices)) {
+			var tempVocalsPath = haxe.io.Path.join(['assets', 'module', 'tempVocals.ogg']);
+			File.copy(voices, tempVocalsPath); // FlxSound has no direct Sound path swap.
+			var vocalSound = Sound.fromFile(tempVocalsPath);
+			songVocals = new FlxSound().loadEmbedded(vocalSound);
+			FlxG.sound.list.add(songVocals);
+		}
 		FlxG.sound.playMusic(songInst);
-		songVocals.play();
+		if (songVocals != null)
+			songVocals.play();
 		Conductor.mapBPMChanges(songJson);
 		Conductor.changeBPM(songJson.bpm);
 		syncVocals();
@@ -788,8 +776,8 @@ class ModuleState extends MusicBeatState {
 	function endSong() {
 		songPlaying = null;
 		FlxG.sound.music.stop();
-		//songVocals.stop();
-		songVocals.pause();
+		if (songVocals != null)
+			songVocals.pause();
 		bf.animationNotes = [];
 		gf.animationNotes = [];
 		Conductor.changeBPM(125);
@@ -829,111 +817,113 @@ class ModuleState extends MusicBeatState {
 	function importSong(path:String, rename = null, ?assets:String) {
 		#if sys
 		if (moduleMode == 'Import') {
-			var basePath = "assets/module/import/songs/" + path;
-
-			var info = ModuleFunctions.processInfo(basePath + '/info.txt');
-
-			var songData:ModuleFunctions.SongImport = {
-				name: info.get('songname'),
-				p1: info.get('player1'),
-				p2: info.get('player2'),
-				gf: info.get('gf'),
-				stage: info.get('stage'),
-				ui: info.get('uiType'),
-				cutscene: info.get('cutsceneType'),
-				category: info.get('category'),
-				isHey: convertToBool(info.get('isHey')),
-				isCheer: convertToBool(info.get('isCheer')),
-				isMoody: convertToBool(info.get('isMoody')),
-				isSpooky: convertToBool(info.get('isSpooky')),
-				stageID: Std.int(Std.parseFloat(info.get('stageID'))),
-				week: Std.int(Std.parseFloat(info.get('week'))),
-				char: info.get('char'),
-				display: info.get('display'),
-				inst:null,
-				voices:null,
-				dialog:null,
-				modchart:null,
-				diffFiles:[]
-			};
-	
-			if (rename != null)
-				songData.name = rename;
-
-			songData.inst = basePath + '/Inst.ogg';
-			if (FileSystem.exists(basePath + '/Voices.ogg'))
-				songData.voices = basePath + '/Voices.ogg';
-			if (FileSystem.exists(basePath + '/dialog.txt'))
-				songData.dialog = basePath + '/dialog.txt';
-			if (FileSystem.exists(basePath + '/modchart.hscript'))
-				songData.modchart = basePath + '/modchart.hscript';
-
-			var coolDiffFiles:Array<String> = [];
-			var diffJson:TDifficulties = CoolUtil.parseJson(Assets.getText("assets/images/custom_difficulties/difficulties.json"));
-			for (i in 0...diffJson.difficulties.length) {
-				if (FileSystem.exists(basePath + '/' + diffJson.difficulties[i].name + '.json'))
-					coolDiffFiles[i] = basePath + '/' + diffJson.difficulties[i].name + '.json';
+			ImportSettings.ensureImportDirectories();
+			var basePath = haxe.io.Path.join([ModuleFunctions.importSongsPath(), path]);
+			var promptSongs:Array<Dynamic> = [
+				{source:ImportSettings.normalizeSourcePath(basePath), willImport:true}
+			];
+			var requests = ImportPackageNamePrompt.collectUnnamedRoots(promptSongs);
+			if (requests.length > 0) {
+				selectMode.text = 'Name this package before importing.';
+				openSubState(new ImportPackageNameSubState(requests, function(packageNames:Map<String, String>):Void {
+					if (packageNames == null) {
+						selectMode.text = 'Import cancelled before writing any files.';
+						return;
+					}
+					importSongPackage(basePath, packageNames);
+				}));
+			} else {
+				importSongPackage(basePath, null);
 			}
-			songData.diffFiles = coolDiffFiles;
-			ModuleFunctions.importSong(songData);
 		} else {
-			if (!FileSystem.exists('assets/songs/' + path))
-				FileSystem.createDirectory('assets/songs/' + path);
+			var targetSongFolder = haxe.io.Path.join(['assets', 'songs', path]);
+			var targetDataFolder = haxe.io.Path.join(['assets', 'data', path]);
+			if (!FileSystem.exists(targetSongFolder))
+				FileSystem.createDirectory(targetSongFolder);
 
 			//File.copy(CoolUtil.getSongFile(path, haxe.io.Path.join([assets, 'songs/' + path + '/'])), 'assets/songs/' + path + '/Inst.ogg');
 			//File.copy(CoolUtil.getSongFile(path, haxe.io.Path.join([assets, 'songs/' + path + '/']), false), 'assets/songs/' + path + '/Voices.ogg');
 			
-			if (FileSystem.exists(haxe.io.Path.join([assets, 'songs/' + path + '/Inst.ogg']))) {
-				File.copy(haxe.io.Path.join([assets, 'songs/' + path + '/Inst.ogg']), 'assets/songs/' + path + '/Inst.ogg');
-			} else if (FileSystem.exists(haxe.io.Path.join([assets, 'songs/' + path + '/' + path + '_Inst.ogg']))) {
-				File.copy(haxe.io.Path.join([assets, 'songs/' + path + '/' + path + '_Inst.ogg']), 'assets/songs/' + path + '/Inst.ogg');
-			} else {
-				File.copy(haxe.io.Path.join([assets, 'music/' + path + '_Inst.ogg']), 'assets/songs/' + path + '/Inst.ogg');
+			var sourceInst:String = null;
+			for (candidate in [
+				haxe.io.Path.join([assets, 'songs', path, 'Inst.ogg']),
+				haxe.io.Path.join([assets, 'songs', path, path + '_Inst.ogg']),
+				haxe.io.Path.join([assets, 'music', path + '_Inst.ogg'])
+			]) {
+				if (candidate != null && FileSystem.exists(candidate) && !FileSystem.isDirectory(candidate)) {
+					sourceInst = candidate;
+					break;
+				}
 			}
-
-			if (FileSystem.exists(haxe.io.Path.join([assets, 'songs/' + path + '/Voices.ogg']))) {
-				File.copy(haxe.io.Path.join([assets, 'songs/' + path + '/Voices.ogg']), 'assets/songs/' + path + '/Voices.ogg');
-			} else if (FileSystem.exists(haxe.io.Path.join([assets, 'songs/' + path + '/' + path + '_Voices.ogg']))) {
-				File.copy(haxe.io.Path.join([assets, 'songs/' + path + '/' + path + '_Voices.ogg']), 'assets/songs/' + path + '/Voices.ogg');
-			} else {
-				File.copy(haxe.io.Path.join([assets, 'music/' + path + '_Voices.ogg']), 'assets/songs/' + path + '/Voices.ogg');
+			if (sourceInst == null) {
+				selectMode.text = 'Unable to import: missing instrument audio.';
+				return;
 			}
+			File.copy(sourceInst, haxe.io.Path.join([targetSongFolder, 'Inst.ogg']));
 
-			if (!FileSystem.exists('assets/data/' + path))
-				FileSystem.createDirectory('assets/data/' + path);
-			if (FileSystem.exists(haxe.io.Path.join([assets, 'data/' + path + '/dialog.txt'])))
-				File.copy(haxe.io.Path.join([assets, 'data/' + path + '/dialog.txt']), 'assets/data/' + path + '/dialog.txt');
-			if (FileSystem.exists(haxe.io.Path.join([assets, 'data/' + path + '/modchart.hscript'])))
-				File.copy(haxe.io.Path.join([assets, 'data/' + path + '/modchart.hscript']), 'assets/data/' + path + '/modchart.hscript');
+			var sourceVoices:String = null;
+			for (candidate in [
+				haxe.io.Path.join([assets, 'songs', path, 'Voices.ogg']),
+				haxe.io.Path.join([assets, 'songs', path, path + '_Voices.ogg']),
+				haxe.io.Path.join([assets, 'music', path + '_Voices.ogg'])
+			]) {
+				if (candidate != null && FileSystem.exists(candidate) && !FileSystem.isDirectory(candidate)) {
+					sourceVoices = candidate;
+					break;
+				}
+			}
+			if (sourceVoices != null)
+				File.copy(sourceVoices, haxe.io.Path.join([targetSongFolder, 'Voices.ogg']));
 
-			var diffJson:TDifficulties = CoolUtil.parseJson(Assets.getText("assets/images/custom_difficulties/difficulties.json"));
+			if (!FileSystem.exists(targetDataFolder))
+				FileSystem.createDirectory(targetDataFolder);
+			if (FileSystem.exists(haxe.io.Path.join([assets, 'data', path, 'dialog.txt'])))
+				File.copy(haxe.io.Path.join([assets, 'data', path, 'dialog.txt']), haxe.io.Path.join([targetDataFolder, 'dialog.txt']));
+			if (FileSystem.exists(haxe.io.Path.join([assets, 'data', path, 'modchart.hscript'])))
+				File.copy(haxe.io.Path.join([assets, 'data', path, 'modchart.hscript']), haxe.io.Path.join([targetDataFolder, 'modchart.hscript']));
+
+			var diffJson:TDifficulties = CoolUtil.parseJson(FNFAssets.getText("assets/images/custom_difficulties/difficulties.json"));
 			for (i in 0...diffJson.difficulties.length) {
 				switch(diffJson.difficulties[i].name) {
 					case 'normal':
-						if (FileSystem.exists(haxe.io.Path.join([assets, 'data/' + path + '/' + path + '.json'])))
-							File.copy(haxe.io.Path.join([assets, 'data/' + path + '/' + path + '.json']), 'assets/data/' + path + '/' + path + '.json');
+						if (FileSystem.exists(haxe.io.Path.join([assets, 'data', path, path + '.json'])))
+							File.copy(haxe.io.Path.join([assets, 'data', path, path + '.json']), haxe.io.Path.join([targetDataFolder, path + '.json']));
 					default:
-						if (FileSystem.exists(haxe.io.Path.join([assets, 'data/' + path + '/' + path + '-' + diffJson.difficulties[i].name + '.json'])))
-							File.copy(haxe.io.Path.join([assets, 'data/' + path + '/' + path + '-' + diffJson.difficulties[i].name + '.json']), 'assets/data/' + path + '/' + path + '-' + diffJson.difficulties[i].name + '.json');
+						if (FileSystem.exists(haxe.io.Path.join([assets, 'data', path, path + '-' + diffJson.difficulties[i].name + '.json'])))
+							File.copy(haxe.io.Path.join([assets, 'data', path, path + '-' + diffJson.difficulties[i].name + '.json']), haxe.io.Path.join([targetDataFolder, path + '-' + diffJson.difficulties[i].name + '.json']));
 				}
 			}
 		}
 		#end
 	}
+
+	/** Keep the legacy per-song module screen on the same ownership-aware path
+	 * as Import Settings. The batch importer retains the source owner, plans a
+	 * safe destination for collisions, and writes the matching Freeplay label. */
+	function importSongPackage(basePath:String, packageNames:Map<String, String>):Void {
+		var result = ModuleFunctions.importSongsFromPath(basePath, ImportSettings.MODDING_PLUS, null, packageNames);
+		selectMode.text = ModuleFunctions.importBatchSummary(result, true);
+	}
+
 	function importChar(path:String, rename = null, ?assets:String) {
 		#if sys
 		if (moduleMode == 'Import') {
-			var basePath = "assets/module/import/characters/" + path;
+			ImportSettings.ensureImportDirectories();
+			var basePath = haxe.io.Path.join([ImportSettings.getImportPath('characters'), path]);
+			if (!FileSystem.isDirectory(basePath)) {
+				selectMode.text = 'Unable to import character: folder not found.';
+				return;
+			}
 
-			var info = ModuleFunctions.processInfo(basePath + '/info.txt');
+			var info = ModuleFunctions.processInfo(haxe.io.Path.join([basePath, 'info.txt']));
 
 			var numArray:Array<Float> = [];
 
-			var theNums = info.get('iconnums').split(',');
+			var theNums = ModuleFunctions.getInfoValue(info, 'iconnums', '0,1,2,3').split(',');
 			for (i in 0...theNums.length)
 				numArray.push(Std.parseFloat(theNums[i]));
 
-			var assets = {
+			var charAssets = {
 				"charpng": null,
 				"charxml": null,
 				"deadpng": null,
@@ -943,36 +933,42 @@ class ModuleState extends MusicBeatState {
 				"icons": null
 			};
 
-			assets.charpng = basePath + '/char.png';
-			if (FileSystem.exists(basePath + '/char.txt'))
-				assets.charxml = basePath + '/char.txt';
+			charAssets.charpng = haxe.io.Path.join([basePath, 'char.png']);
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'char.txt'])))
+				charAssets.charxml = haxe.io.Path.join([basePath, 'char.txt']);
 			else
-				assets.charxml = basePath + '/char.xml';
+				charAssets.charxml = haxe.io.Path.join([basePath, 'char.xml']);
+			if (!FileSystem.exists(charAssets.charpng) || !FileSystem.exists(charAssets.charxml)
+				|| FileSystem.isDirectory(charAssets.charpng) || FileSystem.isDirectory(charAssets.charxml)) {
+				selectMode.text = 'Unable to import character: char.png and char.xml/txt are required.';
+				return;
+			}
 
-			if (FileSystem.exists(basePath + '/dead.png'))
-				assets.deadpng = basePath + '/dead.png';
-			if (FileSystem.exists(basePath + '/dead.xml'))
-				assets.deadxml = basePath + '/dead.xml';
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'dead.png'])))
+				charAssets.deadpng = haxe.io.Path.join([basePath, 'dead.png']);
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'dead.xml'])))
+				charAssets.deadxml = haxe.io.Path.join([basePath, 'dead.xml']);
 
-			if (FileSystem.exists(basePath + '/crazy.png'))
-				assets.crazypng = basePath + '/crazy.png';
-			if (FileSystem.exists(basePath + '/crazy.xml'))
-				assets.crazyxml = basePath + '/crazy.xml';
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'crazy.png'])))
+				charAssets.crazypng = haxe.io.Path.join([basePath, 'crazy.png']);
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'crazy.xml'])))
+				charAssets.crazyxml = haxe.io.Path.join([basePath, 'crazy.xml']);
 
-			assets.icons = basePath + '/icons.png';
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'icons.png'])))
+				charAssets.icons = haxe.io.Path.join([basePath, 'icons.png']);
 
 			var likePath = null;
 
-			if (FileSystem.exists(basePath + '/like.hscript'))
-				likePath = basePath + '/like.hscript';
+			if (FileSystem.exists(haxe.io.Path.join([basePath, 'like.hscript'])))
+				likePath = haxe.io.Path.join([basePath, 'like.hscript']);
 
 			var charData:ModuleFunctions.CharImport = {
-				name: info.get('charname'),
-				like: info.get('like'),
+				name: ModuleFunctions.getInfoValue(info, 'charname', path),
+				like: ModuleFunctions.getInfoValue(info, 'like', path),
 				likePath: likePath,
-				assets: assets,
+				assets: charAssets,
 				iconNums: numArray,
-				colors: info.get('colors')
+				colors: ModuleFunctions.getInfoValue(info, 'colors', '255,255,255')
 			};
 
 			ModuleFunctions.importChar(charData);
@@ -986,13 +982,46 @@ class ModuleState extends MusicBeatState {
 		#end
 	}
 	function importStage(path:String, rename = null) {
-		
+		#if sys
+		if (moduleMode != 'Import')
+			return;
+		ImportSettings.ensureImportDirectories();
+		var basePath = haxe.io.Path.join([ImportSettings.getImportPath('stages'), path]);
+		if (!FileSystem.isDirectory(basePath)) {
+			selectMode.text = 'Unable to import stage: folder not found.';
+			return;
+		}
+		var info = ModuleFunctions.processInfo(haxe.io.Path.join([basePath, 'info.txt']));
+		var stageAssets:Array<String> = [];
+		for (entry in FileSystem.readDirectory(basePath)) {
+			var entryPath = haxe.io.Path.join([basePath, entry]);
+			if (FileSystem.isDirectory(entryPath)) {
+				// Exported modules place stage files in an assets/ subfolder.
+				if (entry == 'assets') {
+					for (asset in FileSystem.readDirectory(entryPath)) {
+						var assetPath = haxe.io.Path.join([entryPath, asset]);
+						if (!FileSystem.isDirectory(assetPath))
+							stageAssets.push(assetPath);
+					}
+				}
+			} else if (entry != 'info.txt' && entry != 'like.hscript') {
+				stageAssets.push(entryPath);
+			}
+		}
+		var stageData:ModuleFunctions.StageImport = {
+			name: rename != null && StringTools.trim(rename) != '' ? StringTools.trim(rename) : ModuleFunctions.getInfoValue(info, 'stagename', path),
+			like: ModuleFunctions.getInfoValue(info, 'like', path),
+			likePath: FileSystem.exists(haxe.io.Path.join([basePath, 'like.hscript'])) ? haxe.io.Path.join([basePath, 'like.hscript']) : null,
+			assets: stageAssets
+		};
+		ModuleFunctions.importStage(stageData);
+		#end
 	}
 	function importWeek(path:String, rename = null) {
 		
 	}
 	function syncVocals() {
-		if (songPlaying != null) {
+		if (songPlaying != null && songVocals != null) {
 			songVocals.pause();
 
 			FlxG.sound.music.play();
@@ -1000,5 +1029,14 @@ class ModuleState extends MusicBeatState {
 			songVocals.time = Conductor.songPosition;
 			songVocals.play();
 		}
+	}
+
+	override public function destroy() {
+		if (songVocals != null) {
+			songVocals.stop();
+			FlxG.sound.list.remove(songVocals);
+			songVocals.destroy();
+		}
+		super.destroy();
 	}
 }

@@ -32,7 +32,7 @@ class Conductor {
 	/**
 	 * Current song position
 	 */
-	public static var songPosition:Float;
+	public static var songPosition:Float = 0;
 	/**
 	 * Updated every update (?) song position of last update
 	 */

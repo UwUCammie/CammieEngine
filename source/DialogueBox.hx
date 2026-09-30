@@ -300,23 +300,67 @@ class DialogueBox extends FlxSpriteGroup {
 		/*portrait.frames = FlxAtlasFrames.fromSparrow(FNFAssets.getBitmapData('assets/images/custom_chars/$curCharacter/portrait.png'),
 			FNFAssets.getText('assets/images/custom_chars/$curCharacter/portrait.xml'));
 		portrait.animation.addByPrefix(curEmotion, curEmotion, 24, false);*/
-		portrait.loadGraphic(FNFAssets.getBitmapData('assets/images/custom_chars/$curCharacter/portraits/' + curEmotion + '.png'));
-		portrait.setGraphicSize(Std.int(portrait.width * 0.9));
+		var portraitId = LegacyDialoguePortraitCompat.safeId(curEmotion);
+		// FPS Plus/Kade dialogue sidecars name portraits directly and keep them
+		// under images/ui/dialogue/portraits rather than a native character
+		// folder. The importer retains that tree. Resolve the complete bundle so
+		// an authored Sparrow atlas is animated instead of drawing its whole sheet.
+		var characterId = LegacyDialoguePortraitCompat.safeId(curCharacter);
+		var portraitBase = 'assets/images/custom_chars/' + characterId + '/portraits/' + portraitId;
+		if (portraitId != '' && !FNFAssets.exists(portraitBase + '.png'))
+			portraitBase = 'assets/images/ui/dialogue/portraits/' + portraitId;
+		var portraitPath = portraitBase + '.png';
+		var portraitConfig = LegacyDialoguePortraitCompat.defaults();
+		var hasLegacyPortraitConfig = false;
+		if (portraitId != '' && FNFAssets.exists(portraitBase + '.json')) {
+			var portraitConfigText = FNFAssets.getText(portraitBase + '.json');
+			portraitConfig = LegacyDialoguePortraitCompat.parse(portraitConfigText);
+			hasLegacyPortraitConfig = LegacyDialoguePortraitCompat.hasMetadata(portraitConfigText);
+		}
+		if (portraitId != '' && FNFAssets.exists(portraitPath)) {
+			if (FNFAssets.exists(portraitBase + '.xml')) {
+				var atlasFrames:FlxAtlasFrames = null;
+				try {
+					atlasFrames = FlxAtlasFrames.fromSparrow(FNFAssets.getBitmapData(portraitPath),
+						FNFAssets.getText(portraitBase + '.xml'));
+				} catch (_:Dynamic) {}
+				if (atlasFrames != null) {
+					portrait.frames = atlasFrames;
+					var frameOrder = LegacyDialoguePortraitCompat.frameIndices(atlasFrames.frames.length);
+					if (frameOrder.length > 0) {
+						portrait.animation.add('legacyPortrait', frameOrder, portraitConfig.frameRate, portraitConfig.looped);
+						portrait.animation.play('legacyPortrait');
+					}
+				} else {
+					// A bad optional XML sidecar must not abort the dialogue.  The
+					// source PNG is still a usable static portrait.
+					try portrait.loadGraphic(FNFAssets.getBitmapData(portraitPath)) catch (_:Dynamic) portrait.visible = false;
+				}
+			} else
+				portrait.loadGraphic(FNFAssets.getBitmapData(portraitPath));
+		} else
+			portrait.visible = false;
+		if (!hasLegacyPortraitConfig)
+			portrait.setGraphicSize(Std.int(portrait.width * 0.9));
 		portrait.updateHitbox();
-		portrait.scale.set(charScale, charScale);
+		portrait.scale.set(charScale * portraitConfig.scale, charScale * portraitConfig.scale);
 		portrait.updateHitbox();
-		//portrait.animation.play(curEmotion);
 		portrait.scrollFactor.set();
 		add(portrait);
 
-		if (portrait.width < 256) {
+		if (!hasLegacyPortraitConfig && portrait.width < 256) {
 			trace(portrait.width);
 			portrait.setGraphicSize(Std.int(portrait.width * 6));
 			portrait.antialiasing = false;
-		} else
+		} else if (!hasLegacyPortraitConfig)
 			portrait.antialiasing = true;
 
 		portrait.updateHitbox();
+		// updateHitbox derives an offset from the final scale, so apply the
+		// foreign portrait's authored offset only after the last size update.
+		portrait.offset.set(portraitConfig.offsetX, portraitConfig.offsetY);
+		if (portraitConfig.antialiasing != null)
+			portrait.antialiasing = portraitConfig.antialiasing == true;
 
 		portrait.flipX = curFlip;
 

@@ -68,6 +68,7 @@ enum abstract Action(String) to String from String {
 	var SECONDARY = "secondary";
 	var TERTIARY = "tertiary";
 	var SYNC_VOCALS = "syncVocals";
+	var SWITCHMOD = "switch-mod";
 	var BACK = "back";
 	var PAUSE = "pause";
 	var RESET = "reset";
@@ -132,6 +133,7 @@ enum Control {
 	SECONDARY;
 	TERTIARY;
 	SYNC_VOCALS;
+	SWITCHMOD;
 	LEFT_MENU;
 	RIGHT_MENU;
 	UP_MENU;
@@ -207,6 +209,7 @@ class Controls extends FlxActionSet {
 	var _accept = new FlxActionDigital(Action.ACCEPT);
 	var _back = new FlxActionDigital(Action.BACK);
 	var _pause = new FlxActionDigital(Action.PAUSE);
+	var _switchMod = new FlxActionDigital(Action.SWITCHMOD);
 	var _reset = new FlxActionDigital(Action.RESET);
 	var _cheat = new FlxActionDigital(Action.CHEAT);
 	var _secondary = new FlxActionDigital(Action.SECONDARY);
@@ -399,7 +402,12 @@ class Controls extends FlxActionSet {
 
 	public var PAUSE(get, never):Bool;
 	inline function get_PAUSE()
-		return _pause.check();	
+		return _pause.check();
+
+	/** Codename's switch-mod action uses just-pressed bindings like other menu keys. */
+	public var SWITCHMOD(get, never):Bool;
+	inline function get_SWITCHMOD()
+		return _switchMod.check();
 
 	public var SECONDARY(get, never):Bool;
 	inline function get_SECONDARY()
@@ -479,6 +487,7 @@ class Controls extends FlxActionSet {
 		add(_accept);
 		add(_back);
 		add(_pause);
+		add(_switchMod);
 		add(_reset);
 		add(_cheat);
 		add(_secondary);
@@ -549,6 +558,7 @@ class Controls extends FlxActionSet {
 		add(_syncVocals);
 		add(_back);
 		add(_pause);
+		add(_switchMod);
 		add(_reset);
 		add(_cheat);
 
@@ -572,6 +582,28 @@ class Controls extends FlxActionSet {
 			throw 'Invalid name: $name';
 		#end
 		return byName[name].check();
+	}
+
+	/** Read the held state of this action's live bindings. Menu actions such as
+	 * ACCEPT are bound as JUST_PRESSED here, while Psych video skipping needs
+	 * their continuous pressed state without ignoring user key remaps. */
+	public function pressedByName(name:Action):Bool {
+		var action = byName[name];
+		if (action == null) return false;
+		for (input in action.inputs) {
+			switch (input.device) {
+				case KEYBOARD:
+					if (FlxG.keys.checkStatus(input.inputID, PRESSED)
+						|| FlxG.keys.checkStatus(input.inputID, JUST_PRESSED)) return true;
+				case GAMEPAD:
+					var pad = input.deviceID < 0 ? FlxG.gamepads.getFirstActiveGamepad()
+						: FlxG.gamepads.getByID(input.deviceID);
+					if (pad != null && (pad.checkStatus(input.inputID, PRESSED)
+						|| pad.checkStatus(input.inputID, JUST_PRESSED))) return true;
+				default:
+			}
+		}
+		return false;
 	}
 
 	public function getDialogueName(action:FlxActionDigital):String {
@@ -607,6 +639,7 @@ class Controls extends FlxActionSet {
 			case ACCEPT: _accept;
 			case BACK: _back;
 			case PAUSE: _pause;
+			case SWITCHMOD: _switchMod;
 			case RESET: _reset;
 			case CHEAT: _cheat;
 			case SECONDARY: _secondary;
@@ -694,6 +727,8 @@ class Controls extends FlxActionSet {
 				func(_back, JUST_PRESSED);
 			case PAUSE:
 				func(_pause, JUST_PRESSED);
+			case SWITCHMOD:
+				func(_switchMod, JUST_PRESSED);
 			case RESET:
 				func(_reset, JUST_PRESSED);
 			case CHEAT:
@@ -740,6 +775,27 @@ class Controls extends FlxActionSet {
 				if (toAdd != null)
 					bindButtons(control, id, [toAdd]);
 		}
+	}
+
+	/** Read only keyboard bindings for one action binder in their native order. */
+	public function getKeyboardBindingsByName(controlName:String):Array<Int> {
+		var control = Control.createByName(controlName.toUpperCase());
+		var action = getActionFromControl(control);
+		var keys:Array<Int> = [];
+		for (input in action.inputs) {
+			if (input.device == KEYBOARD && input.inputID > 0 && !keys.contains(input.inputID))
+				keys.push(input.inputID);
+		}
+		return keys;
+	}
+
+	/** Replace only this binder's keyboard inputs; gamepad bindings are untouched. */
+	public function setKeyboardBindingsByName(controlName:String, keys:Array<Int>):Void {
+		var control = Control.createByName(controlName.toUpperCase());
+		var current = getKeyboardBindingsByName(controlName);
+		unbindKeys(control, [for (key in current) cast key]);
+		if (keys != null && keys.length > 0)
+			bindKeys(control, [for (key in keys) cast key]);
 	}
 
 	public function copyFrom(controls:Controls, ?device:Device) {
@@ -856,14 +912,16 @@ class Controls extends FlxActionSet {
 			};
 		}
 		if (daKey == 'all' || daKey == '4') {
+			// keys doesn't exist yet on a fresh save - don't deref it
+			var oldKeys:Dynamic = FlxG.save.data.keys;
 			FlxG.save.data.keys = {
 				"left": [A, FlxKey.LEFT],
 				"down": [S, FlxKey.DOWN],
 				"up": [W, FlxKey.UP],
 				"right": [D, FlxKey.RIGHT],
-				"syncVocals": FlxG.save.data.keys.syncVocals,
-				"volUp": FlxG.save.data.keys.volUp,
-				"volDown": FlxG.save.data.keys.volDown
+				"syncVocals": oldKeys != null ? oldKeys.syncVocals : null,
+				"volUp": oldKeys != null ? oldKeys.volUp : null,
+				"volDown": oldKeys != null ? oldKeys.volDown : null
 			};
 		}
 		if (daKey == 'all' || daKey == '5') {
@@ -1143,6 +1201,36 @@ class Controls extends FlxActionSet {
 			case Custom: // nothing
 		}
 		#end
+		applyCodenameMenuKeys();
+	}
+
+	/** Codename Options stores UI bindings separately because native Controls
+	 * historically initializes these actions from fixed menu defaults. */
+	function applyCodenameMenuKeys():Void {
+		if (FlxG.save == null || FlxG.save.data == null) {
+			if (keyboardScheme != None)
+				setKeyboardBindingsByName('SWITCHMOD', [FlxKey.TAB]);
+			return;
+		}
+		var saved:Dynamic = Reflect.field(FlxG.save.data, 'codenameMenuKeys');
+		if (saved != null) {
+			for (name in ['UP', 'DOWN', 'LEFT', 'RIGHT', 'UP_MENU', 'DOWN_MENU', 'LEFT_MENU', 'RIGHT_MENU', 'ACCEPT', 'BACK', 'RESET', 'PAUSE']) {
+				var slotKeys:Dynamic = Reflect.field(saved, name.toLowerCase());
+				if (Std.isOfType(slotKeys, Array)) {
+					var activeKeys:Array<Int> = [];
+					for (value in (cast slotKeys:Array<Dynamic>)) {
+						var key = Std.isOfType(value, Int) ? (cast value:Int) : Std.parseInt(Std.string(value));
+						if (key != null && key > 0 && !activeKeys.contains(key)) activeKeys.push(key);
+					}
+					setKeyboardBindingsByName(name, activeKeys);
+				}
+			}
+		}
+		if (keyboardScheme != None) {
+			var defaultKey:Int = FlxKey.TAB;
+			var switchModKeys = CodenameControlsCompat.switchModKeyboardBindings(FlxG.save.data, defaultKey);
+			setKeyboardBindingsByName('SWITCHMOD', switchModKeys);
+		}
 	}
 
 	function removeKeyboard() {
@@ -1207,6 +1295,7 @@ class Controls extends FlxActionSet {
 			Control.LEFT_MENU => [DPAD_LEFT, LEFT_STICK_DIGITAL_LEFT],
 			Control.RIGHT_MENU => [DPAD_RIGHT, LEFT_STICK_DIGITAL_RIGHT],
 			Control.PAUSE => [START],
+			Control.SWITCHMOD => [FlxGamepadInputID.BACK],
 			Control.SECONDARY => [RIGHT_SHOULDER],
 			Control.TERTIARY => [LEFT_SHOULDER],
 			Control.LEFT_TAB => [LEFT_SHOULDER],
@@ -1224,6 +1313,7 @@ class Controls extends FlxActionSet {
 			Control.LEFT => [DPAD_LEFT, LEFT_STICK_DIGITAL_LEFT, RIGHT_STICK_DIGITAL_LEFT],
 			Control.RIGHT => [DPAD_RIGHT, LEFT_STICK_DIGITAL_RIGHT, RIGHT_STICK_DIGITAL_RIGHT],
 			Control.PAUSE => [START],
+			Control.SWITCHMOD => [FlxGamepadInputID.BACK],
 			//Swap Y and X for switch
 			Control.RESET => [Y],
 			Control.CHEAT => [X]

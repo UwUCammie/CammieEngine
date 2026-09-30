@@ -2,6 +2,7 @@ package;
 
 import Conductor.BPMChangeEvent;
 import flixel.FlxG;
+import flixel.FlxState;
 import flixel.addons.transition.FlxTransitionableState;
 import flixel.addons.ui.FlxUIState;
 import flixel.math.FlxRect;
@@ -13,6 +14,13 @@ class MusicBeatState extends FlxUIState {
 
 	private var curStep:Int = 0;
 	private var curBeat:Int = 0;
+	/** Read-only timing aliases for isolated imported state wrappers. */
+	public var hxcCurrentStep(get, never):Int;
+	public var hxcCurrentBeat(get, never):Int;
+	inline function get_hxcCurrentStep():Int return curStep;
+	inline function get_hxcCurrentBeat():Int return curBeat;
+	// Zero allows all crossed steps during accelerated demo playback.
+	public var maxStepCatchUp:Int = 32;
 	private var controls(get, never):Controls;
 	private var controlsPlayerTwo(get, never):Controls;
 	inline function get_controls():Controls
@@ -28,6 +36,22 @@ class MusicBeatState extends FlxUIState {
 		#end
 
 		super.create();
+		CodenameMusicBeatTransition.startPendingIncoming(this);
+		NightmareVisionPluginHost.callActive('onStateCreate');
+	}
+
+	/** Start the source-compatible Codename transition for this active owner.
+		Without a selected owner and explicit transition script, defer to the
+		existing FlxTransitionableState behavior unchanged.
+	*/
+	public function startTransition(?newState:FlxState, skipSubStates:Bool = false):Bool
+		return CodenameMusicBeatTransition.openForOwner(CodenameMusicBeatTransition.currentOwnerRoot(),
+			newState, skipSubStates, null);
+
+	override public function startOutro(onOutroComplete:Void->Void):Void {
+		if (CodenameMusicBeatTransition.completeTransitionSwitch(this, onOutroComplete)) return;
+		if (CodenameMusicBeatTransition.startOwnerOutro(this, onOutroComplete)) return;
+		super.startOutro(onOutroComplete);
 	}
 
 	override function update(elapsed:Float) {
@@ -42,8 +66,24 @@ class MusicBeatState extends FlxUIState {
 			FlxG.resetGame();
 		}
 
-		if (oldStep != curStep && curStep > 0)
-			stepHit();
+		if (oldStep != curStep && curStep > 0) {
+			// fire every step we crossed, not just the latest one: a laggy
+			// frame can hop a whole step (83ms at 180bpm) and single-step
+			// modchart events (Illusion New's final zoom-out) get eaten
+			var target:Int = curStep;
+			var from:Int = oldStep + 1;
+			if (from < 1)
+				from = 1;
+			if (maxStepCatchUp > 0 && target - from > maxStepCatchUp)
+				from = target - maxStepCatchUp;
+			for (s in from...target + 1) {
+				curStep = s;
+				updateBeat();
+				stepHit();
+			}
+			curStep = target;
+			updateBeat();
+		}
 
 		super.update(elapsed);
 	}
@@ -69,9 +109,10 @@ class MusicBeatState extends FlxUIState {
 	public function stepHit():Void {
 		if (curStep % 4 == 0)
 			beatHit();
+		NightmareVisionPluginHost.callActive('onStepHit');
 	}
 
 	public function beatHit():Void {
-		//do literally nothing dumbass
+		NightmareVisionPluginHost.callActive('onBeatHit');
 	}
 }

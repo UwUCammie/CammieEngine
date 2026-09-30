@@ -6,17 +6,29 @@ import Judgement.TUI;
 
 class NoteSplash extends FlxSprite {
     public var isPixel:Bool = false;
+    public var uiType:String = 'normal';
     public var variants:Int = 0;
     public var frameRate:Int = 24;
-    public function new(xPos:Float, yPos:Float, ?c:Int = 0, type:String = 'normal') {
+    /** Direction and owning native line retained for generic render adapters. */
+    public var direction:Int = 0;
+    public var sourceStrumline:Null<Strumline> = null;
+    public function new(xPos:Float, yPos:Float, ?c:Int = 0, type:String = 'normal',
+        ?skipNativeSplash:Bool = false) {
         super(xPos, yPos);
+		uiType = type;
 
 		final curUiType:TUI = Reflect.field(Judgement.uiJson, type);
         isPixel = curUiType.isPixel;
+        if (!skipNativeSplash) {
+        var splashAsset = curUiType.noteSplashAsset == null || StringTools.trim(curUiType.noteSplashAsset) == ''
+            ? 'noteSplashes' : curUiType.noteSplashAsset;
         if (!isPixel) {
-            if (FNFAssets.exists('assets/images/custom_ui/ui_packs/${curUiType.uses}/noteSplashes.png'))
-		        frames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/${curUiType.uses}/noteSplashes.png',
-			        'assets/images/custom_ui/ui_packs/${curUiType.uses}/noteSplashes.xml');
+            var customSplashPath = 'assets/images/custom_ui/ui_packs/${curUiType.uses}/${splashAsset}.png';
+            var customSplashXml = 'assets/images/custom_ui/ui_packs/${curUiType.uses}/${splashAsset}.xml';
+            if (curUiType.noteSplashAssetXml == true && FNFAssets.exists(customSplashPath)
+                && FNFAssets.exists(customSplashXml))
+		        frames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/${curUiType.uses}/${splashAsset}.png',
+			        customSplashXml);
             else
         	    frames = DynamicAtlasFrames.fromSparrow('assets/images/custom_ui/ui_packs/normal/noteSplashes.png',
 			        'assets/images/custom_ui/ui_packs/normal/noteSplashes.xml');
@@ -35,8 +47,8 @@ class NoteSplash extends FlxSprite {
             final noteSplashes = currentKey.getSplashes(i);
             if (noteSplashes != null) {
                 variants = noteSplashes.length;
-                for (splash in 1...variants)
-                    animation.addByPrefix("note${i}-" + splash, noteSplashes[splash], 24, false);
+                for (splash in 0...variants)
+                    animation.addByPrefix("note" + i + "-" + splash, noteSplashes[splash], 24, false);
             } else {
                 if (!isPixel) {
                     variants = 2;
@@ -57,21 +69,40 @@ class NoteSplash extends FlxSprite {
             scale.set(4, 4);
             updateHitbox();
         } else
-            antialiasing = true;
+            {
+                antialiasing = true;
+                if (curUiType.splashScale != null)
+                    scale.set(curUiType.splashScale, curUiType.splashScale);
+                if (curUiType.splashAlpha != null)
+                    alpha = curUiType.splashAlpha;
+            }
 
-        setupNoteSplash(xPos,xPos,c);
+		setupNoteSplash(xPos, yPos, c);
+        }
     }
 
     public function setupNoteSplash(xPos:Float, yPos:Float, ?c:Int = 0) {
         setPosition(xPos, yPos);
-        alpha = 0.6;
+		direction = c;
+		var curUiType = curUiTypeFor(uiType);
+        alpha = curUiType.splashAlpha == null ? 0.6 : curUiType.splashAlpha;
         animation.play("note" + c + "-" + FlxG.random.int(0,variants-1), true);
 		animation.curAnim.frameRate = frameRate + FlxG.random.int(-2, 2);
         updateHitbox();
-        if (!isPixel)
-            offset.set(0.3 * width, 0.3 * height);
+        if (!isPixel) {
+			var ui = curUiType;
+            if (ui.splashOffsetX != null || ui.splashOffsetY != null)
+                offset.set(ui.splashOffsetX == null ? 0 : ui.splashOffsetX,
+                    ui.splashOffsetY == null ? 0 : ui.splashOffsetY);
+            else
+                offset.set(0.3 * width, 0.3 * height);
+        }
         else
             offset.set(0.5, 13.5);
+    }
+
+    static function curUiTypeFor(type:String):TUI {
+        return Reflect.field(Judgement.uiJson, type);
     }
 
     override public function update(elapsed) {

@@ -11,11 +11,19 @@ class MusicBeatSubstate extends FlxSubState
 		super();
 	}
 
+	/** Codename states may opt into hosting a transition above this substate. */
+	public var canOpenCustomTransition:Bool = false;
+
 	private var lastBeat:Float = 0;
 	private var lastStep:Float = 0;
 
 	private var curStep:Int = 0;
 	private var curBeat:Int = 0;
+	/** Read-only timing aliases for isolated imported substate wrappers. */
+	public var hxcCurrentStep(get, never):Int;
+	public var hxcCurrentBeat(get, never):Int;
+	inline function get_hxcCurrentStep():Int return curStep;
+	inline function get_hxcCurrentBeat():Int return curBeat;
 	private var controls(get, never):Controls;
 
 	inline function get_controls():Controls

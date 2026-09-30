@@ -8,7 +8,12 @@ if (charJson.like == "dad") {
 function init(char) {
     trace(": )");
     var playerSuffix = "char";
-    if (char.isDie) {
+    // Imported characters frequently have no authored death sheet. Reuse the
+    // living sheet instead of crashing on a missing dead.png; the game-over
+    // substate already handles a missing firstDeath animation.
+    var hasDeathSheet = char.isDie && FNFAssets.exists(hscriptPath+"dead.png")
+        && charJson.deadAnimation != null;
+    if (hasDeathSheet) {
         // poor programming but whatev
         playerSuffix = 'dead';
         charJson.animation = charJson.deadAnimation;
@@ -22,6 +27,9 @@ function init(char) {
     if (FNFAssets.exists(hscriptPath+playerSuffix+".txt")){
         rawXml = FNFAssets.getText(hscriptPath+playerSuffix+'.txt');
         tex = FlxAtlasFrames.fromSpriteSheetPacker(rawPic,rawXml);
+    } else if (FNFAssets.exists(hscriptPath+playerSuffix+".xml")){
+        rawXml = FNFAssets.getText(hscriptPath+playerSuffix+'.xml');
+        tex = FlxAtlasFrames.fromSparrow(rawPic,rawXml);
     } else {
         rawXml = FNFAssets.getText(hscriptPath+playerSuffix);
         tex = FlxAtlasFrames.fromSparrow(rawPic,rawXml);
@@ -65,7 +73,7 @@ function init(char) {
     char.camOffsetY = if (charJson.camOffset != null) charJson.camOffset[1] else 0;
     char.enemyOffsetX = if (charJson.enemyOffset != null) charJson.enemyOffset[0] else 0;
     char.enemyOffsetY = if (charJson.enemyOffset != null) charJson.enemyOffset[1] else 0;
-    char.followCamX = if (charJson.followCam != null) parsedAnimJson.followCam[0] else 150;
+    char.followCamX = if (charJson.followCam != null) charJson.followCam[0] else 150;
     char.followCamY = if (charJson.followCam != null) charJson.followCam[1] else -100;
     char.midpointX = if (charJson.midpoint != null) charJson.midpoint[0] else 0;
     char.midpointY = if (charJson.midpoint != null) charJson.midpoint[1] else 0;

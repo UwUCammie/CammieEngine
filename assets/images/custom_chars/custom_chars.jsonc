@@ -1,240 +1,2095 @@
 {
-  "template": {
-    "like": "bf",
-    "icons": [0,1,24],
-    "iconbop": "test",
-    "colors": ["#149DFF"]
-  },
-  "bf": {
-    "like": "bf",
-    "icons": [0,1,2,3],
-    "colors": ["#149DFF"]
-  },
-  "bf-dark": {
-    "like": "bf",
-    "icons": "bf",
-    "colors": ["#149DFF"]
-  },
-  "bf-car": {
-    "like": "bf-car",
-    "icons": "bf",
-    "colors": ["#149DFF"]
-  },
-  "bf-christmas": {
-    "like": "bf-christmas",
-    "icons": "bf",
-    "colors": ["#149DFF"]
-  },
-  "bf-pixel": {
-    "like": "bf-pixel",
-    "icons": [0,1,2],
-    "colors": ["#149DFF"]
-  },
-  "bf-holding-gf": {
-    "like": "bf-holding-gf",
-    "icons": [0,1,2,3],
-    "colors": ["#149DFF","#EE19D9"]
-  },
-  "bulb-pixel": {
-    "like": "bf-pixel",
-    "icons": [0,1,2],
-    "colors": ["#F5E642"]
-  },
-  "dad": {
-    "like": "dad",
-    "icons": [0,1,2,3],
-    "colors": ["#A200CA"] 
-  },
-  "gf": {
-    "like": "gf",
-    "icons": [0,1,2,3],
-    "colors": ["#EE19D9"]
-  },
-  "gf-dark": {
-    "like": "gf",
-    "icons": "gf",
-    "colors": ["#EE19D9"]
-  },
-  "gf-car": {
-    "like": "gf-car",
-    "icons": "gf",
-    "colors": ["#EE19D9"]
-  },
-  "gf-christmas": {
-    "like": "gf",
-    "icons": "gf",
-    "colors": ["#EE19D9"]
-  },
-  "gf-pixel": {
-    "like": "gf-pixel",
-    "icons": "gf",
-    "colors": ["#EE19D9"]
-  },
-  "gf-tankmen": {
-    "like": "gf-tankmen",
-    "icons": "gf",
-    "colors": ["#EE19D9"]
-  },
-  "templateMonster": {
-    "like": "monster-old",
-    "icons": [0,1,2,3],
-    "colors": ["#F2D046"]
-  },
-  "monster": {
-    "like": "monster",
-    "icons": [0,1,2],
-    "colors": ["#F2D046"]
-  },
-  "monster-dark": {
-    "like": "monster",
-    "icons": "monster",
-    "colors": ["#F2D046"]
-  },
-  "monster-christmas": {
-    "like": "monster-christmas",
-    "icons": "monster",
-    "colors": ["#F2D046"]
-  },
-  "parents-christmas": {
-    "like": "parents",
-    "icons": [0,1,2,3],
-    "colors": ["#A200CA", "#FF95C5"]
-  },
-  "pico": {
-    "like": "pico",
-    "icons": [0,1,2,3],
-    "colors": ["#99FF7D"]
-  },
-  "pico-christmas": {
-    "like": "pico-christmas",
-    "icons": "pico",
-    "colors": ["#99FF7D"]
-  },
-  "pico-dark": {
-    "like": "pico-dark",
-    "icons": "pico",
-    "colors": ["#99FF7D"]
-  },
-  "pico-pixel": {
-    "like": "pico-pixel",
-    "icons": [0,1],
-    "colors": ["#88FF58"]
-  },
-  "pico-holding-nene": {
-    "like": "pico-holding-nene",
-    "icons": "pico",
-    "colors": ["#88FF58"]
-  },
-  "pico-speaker": {
-    "like": "pico-speaker",
-    "icons": "pico",
-    "colors": ["#99FF7D"]
-  },
-  "pico-speaker": {
-    "like": "pico-speaker",
-    "icons": "pico",
-    "colors": ["#99FF7D"]
-  },
-  "nene": {
-    "like": "nene",
-    "icons": "gf",
-    "colors": ["#EA687D"]
-  },
-  "nene-christmas": {
-    "like": "nene-christmas",
-    "icons": "gf",
-    "colors": ["#EA687D"]
-  },
-  "nene-dark": {
-    "like": "nene-dark",
-    "icons": "gf",
-    "colors": ["#EA687D"]
-  },
-  "nene-pixel": {
-    "like": "nene-pixel",
-    "icons": "gf",
-    "colors": ["#EA687D"]
-  },
-  "abot": {
-    "like": "abot",
-    "icons": "face"
-  },
-  "abot-dark": {
-    "like": "abot",
-    "icons": "face"
-  },
-  "abot-pixel": {
-    "like": "abot-pixel",
-    "icons": "face"
-  },
-  "darnell": {
-    "like": "darnell",
-    "icons": [0,1,2,3],
-    "colors": ["#735EB0"]
-  },
-  "otis-speaker": {
-    "like": "otis-speaker",
-    "icons": "pico",
-    "colors": ["#88FF58"]
-  },
-  "senpai-angry": {
-    "like": "senpai-angry",
-    "icons": [0,1,2,3],
-    "colors": ["#BC7333"]
-  },
-  "senpai": {
-    "like": "senpai",
-    "icons": [0,1,2],
-    "colors": ["#BC7333"]
-  },
-  "spirit": {
-    "like": "spirit",
-    "icons": [0,1,2],
-    "colors": ["#E77474"]
-  },
-  "spooky": {
-    "like": "spooky",
-    "icons": [0,1,2,3],
-    "colors": ["#FD9013","#C3C3C3"]
-  },
-  "spooky-dark": {
-    "like": "spooky",
-    "icons": "spooky",
-    "colors": ["#FD9013","#C3C3C3"]
-  },
-  "mom": {
-    "like": "mom",
-    "icons": [0,1,2,3],
-    "colors": ["#FF95C5"]
-  },
-  "mom-car": {
-    "like": "mom-car",
-    "icons": "mom",
-    "colors": ["#FF95C5"]
-  },
-  "tankman": {
-    "like": "tankman",
-    "icons": [0,1,2,3],
-    "colors": ["#F9B03A"]
-  },
-  "tankman-bloody": {
-    "like": "tankman-bloody",
-    "icons": [0,1,2,3],
-    "colors": ["#F9B03A"]
-  },
-  "templateSenpai-hd": {
-    "like": "senpai-hd",
-    "icons": [0,1,2],
-    "colors": ["#BC7333"]
-  },
-  "templateSenpaiAngry-hd": {
-    "like": "senpai-angry-hd",
-    "icons": [0,1,2],
-    "colors": ["#BC7333"]
-  },
-  "templateSpirit-hd": {
-    "like": "spirit-hd",
-    "icons": [0,1,2],
-    "colors": ["#BC7333"]
-  }
+     "miko" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "miko"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "miko"
+    }
+    ,"templateMonster" : {
+         "colors" : [
+             "#F2D046"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "monster-old"
+    }
+    ,"otis-speaker" : {
+         "colors" : [
+             "#88FF58"
+        ]
+        ,"icons" : "pico"
+        ,"like" : "otis-speaker"
+    }
+    ,"bulb-pixel" : {
+         "colors" : [
+             "#F5E642"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "bf-pixel"
+    }
+    ,"trickyH" : {
+         "legacyAtlas" : true
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"like" : "trickyH"
+    }
+    ,"bf-rabbit" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+            ,"scale" : 1
+            ,"id" : "BF_MIKU"
+            ,"flipX" : false
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-rabbit"
+        ,"vSliceCostumes" : null
+    }
+    ,"bf" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf"
+    }
+    ,"17bucksyuri" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "id" : "yuri"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "17bucksyuri"
+    }
+    ,"SGY" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#0000FF"
+        ]
+        ,"like" : "SGY"
+    }
+    ,"tricky" : {
+         "icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"legacyAtlas" : true
+        ,"like" : "tricky"
+    }
+    ,"PerfeXion2" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#FF0000"
+        ]
+        ,"like" : "PerfeXion2"
+    }
+    ,"abot" : {
+         "icons" : "face"
+        ,"like" : "abot"
+    }
+    ,"natsuki-pixelnew" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : true
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "natsuki-pixelnew"
+        ,"vSliceCostumes" : null
+    }
+    ,"dad" : {
+         "colors" : [
+             "#A200CA"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "dad"
+    }
+    ,"monika-angry" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "monika-angry"
+        ,"vSliceCostumes" : null
+    }
+    ,"gfdoki" : {
+         "vSliceHealthIconRequired" : false
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "gfdoki"
+    }
+    ,"monster-dark" : {
+         "colors" : [
+             "#F2D046"
+        ]
+        ,"icons" : "monster"
+        ,"like" : "monster"
+    }
+    ,"bf_tb" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "BF_MIKU"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "bf_tb"
+    }
+    ,"playablesenpai" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : true
+            ,"id" : "senpai-ddto"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "playablesenpai"
+        ,"vSliceCostumes" : null
+    }
+    ,"mom" : {
+         "colors" : [
+             "#FF95C5"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "mom"
+    }
+    ,"silhouettemonika" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "isPixel" : true
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "silhouettemonika"
+    }
+    ,"bf-car" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : "bf"
+        ,"like" : "bf-car"
+    }
+    ,"darnell" : {
+         "colors" : [
+             "#735EB0"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "darnell"
+    }
+    ,"protag" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+             {
+                 "subfolder" : true
+                ,"charFile" : "protag-casual"
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "protag-hotline"
+                ,"internal_Name" : "hotline"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "protag-henry"
+                ,"internal_Name" : "henry"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "protag-fanon"
+                ,"internal_Name" : "fanon"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "protag-blueskies"
+                ,"internal_Name" : "blueskies"
+            }
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "protag"
+        ,"vSliceCostumes" : "protag"
+    }
+    ,"bf-dead" : {
+         "colors" : [
+             "#17FFAA"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-dead"
+    }
+    ,"m1ku" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+            ,"scale" : 1
+            ,"id" : "M1KU"
+            ,"flipX" : false
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "m1ku"
+        ,"vSliceCostumes" : null
+    }
+    ,"monster-christmas" : {
+         "colors" : [
+             "#F2D046"
+        ]
+        ,"icons" : "monster"
+        ,"like" : "monster-christmas"
+    }
+    ,"bf-cooked" : {
+         "colors" : [
+             "#31B0D1"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-cooked"
+    }
+    ,"gf-week2" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#A5004D"
+        ]
+        ,"like" : "gf-week2"
+    }
+    ,"senpai-angry" : {
+         "colors" : [
+             "#BC7333"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "senpai-angry"
+    }
+    ,"bf-holding-gf" : {
+         "colors" : [
+             "#149DFF"
+            ,"#EE19D9"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-holding-gf"
+    }
+    ,"trickyMask" : {
+         "icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"legacyAtlas" : true
+        ,"like" : "trickyMask"
+    }
+    ,"bf-doki" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "id" : "bfdoki"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+             {
+                 "subfolder" : true
+                ,"charFile" : "bf-classic"
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-christmas"
+                ,"internal_Name" : "christmas"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-blueskies"
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "aloe"
+                ,"internal_Name" : "holofunk"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "aloe-classic"
+                ,"internal_Name" : "aloe-classic"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-minus"
+                ,"internal_Name" : "minus"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-minus-mean"
+                ,"internal_Name" : "minus-mean"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-minus-yellow"
+                ,"internal_Name" : "minus-yellow"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "sutazu"
+                ,"internal_Name" : "sutazu"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-soft"
+                ,"internal_Name" : "soft"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-soft-classic"
+                ,"internal_Name" : "soft-classic"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "mrcow"
+                ,"internal_Name" : "mrcow"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "bf-mcbf"
+                ,"internal_Name" : "mcbf"
+            }
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-doki"
+        ,"vSliceCostumes" : "bf"
+    }
+    ,"mom-car" : {
+         "colors" : [
+             "#FF95C5"
+        ]
+        ,"icons" : "mom"
+        ,"like" : "mom-car"
+    }
+    ,"yuri" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+             {
+                 "subfolder" : true
+                ,"charFile" : "yuri-blueskies"
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "yuri-casual"
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "yuri-picnic"
+                ,"internal_Name" : "picnic"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "yuri-taki"
+                ,"internal_Name" : "taki"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "yuri-derby"
+                ,"internal_Name" : "derby"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "yuri-tabi"
+                ,"internal_Name" : "tabi"
+            }
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "yuri"
+        ,"vSliceCostumes" : "yuri"
+    }
+    ,"templateSenpai-hd" : {
+         "colors" : [
+             "#BC7333"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "senpai-hd"
+    }
+    ,"sayori-pixel" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#CEEFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "id" : "sayori-pixel"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "sayori-pixel"
+    }
+    ,"gf-christmas" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "gf"
+    }
+    ,"sayo-speaker" : {
+         "vSliceHealthIconRequired" : false
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "sayo-speaker"
+    }
+    ,"Champ_Phase2" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#FFFFEB"
+        ]
+        ,"like" : "Champ_Phase2"
+    }
+    ,"pico-speaker" : {
+         "colors" : [
+             "#99FF7D"
+        ]
+        ,"icons" : "pico"
+        ,"like" : "pico-speaker"
+    }
+    ,"yuri-crazy" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+             {
+                 "charFile" : "yuri-crazy-casual"
+                ,"subfolder" : true
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "charFile" : "yuri-crazy-blueskies"
+                ,"subfolder" : true
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "charFile" : "yuri-crazy-taki"
+                ,"subfolder" : true
+                ,"internal_Name" : "taki"
+            }
+            ,{
+                 "charFile" : "yuri-crazy-derby"
+                ,"subfolder" : true
+                ,"internal_Name" : "derby"
+            }
+            ,{
+                 "charFile" : "yuri-crazy-tabi"
+                ,"subfolder" : true
+                ,"internal_Name" : "tabi"
+            }
+            ,{
+                 "charFile" : "yuri-crazy-picnic"
+                ,"subfolder" : true
+                ,"internal_Name" : "picnic"
+            }
+        ]
+        ,"vSliceCostumes" : "yuri"
+        ,"like" : "yuri-crazy"
+    }
+    ,"gf-pixel" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "gf-pixel"
+    }
+    ,"sayo-speakeropo" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "id" : "sayori"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "sayo-speakeropo"
+        ,"vSliceCostumes" : null
+    }
+    ,"spooky-dark" : {
+         "colors" : [
+             "#FD9013"
+            ,"#C3C3C3"
+        ]
+        ,"icons" : "spooky"
+        ,"like" : "spooky"
+    }
+    ,"nogf-pixel" : {
+         "vSliceHealthIconRequired" : false
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "nogf-pixel"
+    }
+    ,"garcellodead" : {
+         "legacyAtlas" : true
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"like" : "garcellodead"
+    }
+    ,"exTricky" : {
+         "legacyAtlas" : true
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"like" : "exTricky"
+    }
+    ,"boyf" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "id" : "bf"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "boyf"
+        ,"vSliceCostumes" : null
+    }
+    ,"monster" : {
+         "colors" : [
+             "#F2D046"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "monster"
+    }
+    ,"pico-christmas" : {
+         "colors" : [
+             "#99FF7D"
+        ]
+        ,"icons" : "pico"
+        ,"like" : "pico-christmas"
+    }
+    ,"sadbf" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "id" : "bfsad"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "sadbf"
+        ,"vSliceCostumes" : null
+    }
+    ,"sayori" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+             {
+                 "charFile" : "sayori-blueskies"
+                ,"subfolder" : true
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "charFile" : "sayori-casual"
+                ,"subfolder" : true
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "charFile" : "sayori-picnic"
+                ,"subfolder" : true
+                ,"internal_Name" : "picnic"
+            }
+            ,{
+                 "charFile" : "sayori-grace"
+                ,"subfolder" : true
+                ,"internal_Name" : "grace"
+            }
+            ,{
+                 "charFile" : "sayori-minus"
+                ,"subfolder" : true
+                ,"internal_Name" : "minus"
+            }
+            ,{
+                 "charFile" : "sayori-sleepwear"
+                ,"subfolder" : true
+                ,"internal_Name" : "sleepwear"
+            }
+            ,{
+                 "charFile" : "sayori-zipper"
+                ,"subfolder" : true
+                ,"internal_Name" : "zipper"
+            }
+        ]
+        ,"vSliceCostumes" : "sayori"
+        ,"like" : "sayori"
+    }
+    ,"wackycaine" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "offsets" : [
+                 0
+                ,0
+            ]
+            ,"isPixel" : false
+            ,"scale" : 1
+            ,"flipX" : false
+            ,"id" : "WackyCaine"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "wackycaine"
+    }
+    ,"gf-realdoki-be" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : false
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "gf-realdoki-be"
+        ,"vSliceCostumes" : null
+    }
+    ,"daddy" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#AF66CE"
+        ]
+        ,"like" : "daddy"
+    }
+    ,"zipper" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "zipper"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "zipper"
+    }
+    ,"silhouettebf" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "id" : "pixelbfdokiangry"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "silhouettebf"
+        ,"vSliceCostumes" : null
+    }
+    ,"gf-annoy" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#A5004D"
+        ]
+        ,"like" : "gf-annoy"
+    }
+    ,"abot-dark" : {
+         "icons" : "face"
+        ,"like" : "abot"
+    }
+    ,"bfpixelnew" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "id" : "pixelbfdoki"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "bfpixelnew"
+    }
+    ,"m1ku_fs" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "M1KU"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "m1ku_fs"
+    }
+    ,"templateSenpaiAngry-hd" : {
+         "colors" : [
+             "#BC7333"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "senpai-angry-hd"
+    }
+    ,"pico-dark" : {
+         "colors" : [
+             "#99FF7D"
+        ]
+        ,"icons" : "pico"
+        ,"like" : "pico-dark"
+    }
+    ,"pico-pixel" : {
+         "colors" : [
+             "#88FF58"
+        ]
+        ,"icons" : [
+             0
+            ,1
+        ]
+        ,"like" : "pico-pixel"
+    }
+    ,"bf-fire" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "bf-car"
+    }
+    ,"gf" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "gf"
+    }
+    ,"bf-dark" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : "bf"
+        ,"like" : "bf"
+    }
+    ,"Champ" : {
+         "colors" : [
+             "#FFFFFF"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "Champ"
+    }
+    ,"duetnew" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : true
+            ,"id" : "duet"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "duetnew"
+        ,"vSliceCostumes" : null
+    }
+    ,"Freddy" : {
+         "colors" : [
+             "#964B00"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "mom-car"
+    }
+    ,"pico-holding-nene" : {
+         "colors" : [
+             "#88FF58"
+        ]
+        ,"icons" : "pico"
+        ,"like" : "pico-holding-nene"
+    }
+    ,"natsuki" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+             {
+                 "charFile" : "natsuki-blueskies"
+                ,"subfolder" : true
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "charFile" : "natsuki-buff"
+                ,"subfolder" : true
+                ,"internal_Name" : "buff"
+            }
+            ,{
+                 "charFile" : "natsuki-casual"
+                ,"subfolder" : true
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "charFile" : "natsuki-hank"
+                ,"subfolder" : true
+                ,"internal_Name" : "hank"
+            }
+            ,{
+                 "charFile" : "natsuki-kapi"
+                ,"subfolder" : true
+                ,"internal_Name" : "kapi"
+            }
+            ,{
+                 "charFile" : "natsuki-sunday"
+                ,"subfolder" : true
+                ,"internal_Name" : "sunday"
+            }
+            ,{
+                 "charFile" : "natsuki-skater"
+                ,"subfolder" : true
+                ,"internal_Name" : "skater"
+            }
+        ]
+        ,"vSliceCostumes" : "natsuki"
+        ,"like" : "natsuki"
+    }
+    ,"wackypomni" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+            ,"offsets" : [
+                 0
+                ,0
+            ]
+            ,"scale" : 1
+            ,"id" : "WackyPomni"
+            ,"flipX" : false
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "wackypomni"
+        ,"vSliceCostumes" : null
+    }
+    ,"nene-christmas" : {
+         "colors" : [
+             "#EA687D"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "nene-christmas"
+    }
+    ,"gf-fire" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : [
+             0
+            ,0
+            ,1
+        ]
+        ,"like" : "gf"
+    }
+    ,"gf-dark" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "gf"
+    }
+    ,"Golden-freddy" : {
+         "colors" : [
+             "#FFFF00"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "mom-car"
+    }
+    ,"pico" : {
+         "colors" : [
+             "#99FF7D"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "pico"
+    }
+    ,"gf-car" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "gf-car"
+    }
+    ,"garcellotired" : {
+         "icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"legacyAtlas" : true
+        ,"like" : "garcellotired"
+    }
+    ,"nene-pixel" : {
+         "colors" : [
+             "#EA687D"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "nene-pixel"
+    }
+    ,"bf-Phonedead" : {
+         "colors" : [
+             "#31B0D1"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-Phonedead"
+    }
+    ,"pixelbfangry-new" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "id" : "pixelbfdokiangry"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "pixelbfangry-new"
+    }
+    ,"hidden" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "hidden"
+    }
+    ,"boyfriend" : {
+         "colors" : [
+             "#31B0D1"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "boyfriend"
+    }
+    ,"spooky" : {
+         "colors" : [
+             "#FD9013"
+            ,"#C3C3C3"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "spooky"
+    }
+    ,"boyfriend-vampire" : {
+         "colors" : [
+             "#31B0D1"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "boyfriend-vampire"
+    }
+    ,"PerfeXion" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#FF0000"
+        ]
+        ,"like" : "PerfeXion"
+    }
+    ,"senpai-ddto" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : true
+            ,"id" : "senpai-ddto"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "senpai-ddto"
+        ,"vSliceCostumes" : null
+    }
+    ,"playablegf" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "gf-doki"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+             {
+                 "charFile" : "playablegf-casual"
+                ,"subfolder" : true
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "charFile" : "playablegf"
+                ,"subfolder" : false
+                ,"internal_Name" : ""
+            }
+            ,{
+                 "charFile" : "playablegf-christmas"
+                ,"subfolder" : true
+                ,"internal_Name" : "christmas"
+            }
+            ,{
+                 "charFile" : "playablegf-blueskies"
+                ,"subfolder" : true
+                ,"internal_Name" : "blueskies"
+            }
+        ]
+        ,"vSliceCostumes" : "gf"
+        ,"like" : "playablegf"
+    }
+    ,"ghost-intro" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+            ,"scale" : 1
+            ,"id" : "libitina"
+            ,"flipX" : false
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "ghost-intro"
+        ,"vSliceCostumes" : null
+    }
+    ,"nene" : {
+         "colors" : [
+             "#EA687D"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "nene"
+    }
+    ,"tankman" : {
+         "colors" : [
+             "#F9B03A"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "tankman"
+    }
+    ,"nada" : {
+         "vSliceHealthIconRequired" : false
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "lav"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "nada"
+    }
+    ,"gacha-bg" : {
+         "colors" : [
+             "#A1A1A1"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "gacha-bg"
+    }
+    ,"spirit" : {
+         "colors" : [
+             "#E77474"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "spirit"
+    }
+    ,"bigmonika" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bigmonika"
+        ,"vSliceCostumes" : null
+    }
+    ,"monika" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+             {
+                 "subfolder" : true
+                ,"charFile" : "monika-blueskies"
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-valentine"
+                ,"internal_Name" : "valentine"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-hex"
+                ,"internal_Name" : "hex"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-senpai"
+                ,"internal_Name" : "senpai"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-vigilante"
+                ,"internal_Name" : "vigilante"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-casual"
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "monika-casuallong"
+                ,"internal_Name" : "casuallong"
+            }
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "monika"
+        ,"vSliceCostumes" : "monika"
+    }
+    ,"PerfeXion-Test" : {
+         "colors" : [
+             "#FF0000"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "PerfeXion-Test"
+    }
+    ,"Freddy-angry" : {
+         "colors" : [
+             "#964B00"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "parents"
+    }
+    ,"monika-pixelnew" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "monika-pixelnew"
+    }
+    ,"spi-monika" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "spi-monika"
+        ,"vSliceCostumes" : "spirit-monika"
+    }
+    ,"garcello" : {
+         "icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"legacyAtlas" : true
+        ,"like" : "garcello"
+    }
+    ,"gf-realdoki" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : false
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+             {
+                 "subfolder" : true
+                ,"charFile" : "gf-soft"
+                ,"internal_Name" : "soft"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "gf-christmas"
+                ,"internal_Name" : "christmas"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "gf-blueskies"
+                ,"internal_Name" : "blueskies"
+            }
+            ,{
+                 "subfolder" : false
+                ,"charFile" : "gf-classic"
+                ,"internal_Name" : "casual"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "gf-minus"
+                ,"internal_Name" : "minus"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "gf-soft"
+                ,"internal_Name" : "soft"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "gf-nene"
+                ,"internal_Name" : "holofunk"
+            }
+            ,{
+                 "subfolder" : false
+                ,"charFile" : "sayo-speaker"
+                ,"internal_Name" : "sayo"
+            }
+            ,{
+                 "subfolder" : true
+                ,"charFile" : "tbdtan"
+                ,"internal_Name" : "tbd"
+            }
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "gf-realdoki"
+        ,"vSliceCostumes" : "gf"
+    }
+    ,"nene-dark" : {
+         "colors" : [
+             "#EA687D"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "nene-dark"
+    }
+    ,"yuri-closet" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "yuri-closet"
+    }
+    ,"bf-pixelbar" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : true
+        ,"vSliceHealthIcon" : {
+             "isPixel" : false
+            ,"id" : "pixelbfdoki"
+        }
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "bf-pixelbar"
+        ,"vSliceCostumes" : null
+    }
+    ,"Young" : {
+         "colors" : [
+             "#0000FF"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "Young"
+    }
+    ,"Champ-Huge" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"like" : "Champ-Huge"
+    }
+    ,"bf-christmas" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : "bf"
+        ,"like" : "bf-christmas"
+    }
+    ,"template" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"iconbop" : "test"
+        ,"icons" : [
+             0
+            ,1
+            ,24
+        ]
+        ,"like" : "bf"
+    }
+    ,"monica" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : {
+             "scale" : 1
+            ,"isPixel" : false
+            ,"flipX" : false
+            ,"id" : "monica"
+        }
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "monica"
+    }
+    ,"gf-pixelbar" : {
+         "colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceHealthIconRequired" : false
+        ,"vSliceHealthIcon" : null
+        ,"vSliceDoesLoop" : false
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "gf-pixelbar"
+        ,"vSliceCostumes" : null
+    }
+    ,"tankman-bloody" : {
+         "colors" : [
+             "#F9B03A"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "tankman-bloody"
+    }
+    ,"senpai" : {
+         "colors" : [
+             "#BC7333"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "senpai"
+    }
+    ,"marvin" : {
+         "icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"colors" : [
+             "#A1A1A1"
+        ]
+        ,"like" : "marvin"
+    }
+    ,"bf-pixel" : {
+         "colors" : [
+             "#149DFF"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "bf-pixel"
+    }
+    ,"gf-tankmen" : {
+         "colors" : [
+             "#EE19D9"
+        ]
+        ,"icons" : "gf"
+        ,"like" : "gf-tankmen"
+    }
+    ,"templateSpirit-hd" : {
+         "colors" : [
+             "#BC7333"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+        ]
+        ,"like" : "spirit-hd"
+    }
+    ,"parents-christmas" : {
+         "colors" : [
+             "#A200CA"
+            ,"#FF95C5"
+        ]
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"like" : "parents"
+    }
+    ,"jill" : {
+         "vSliceHealthIconRequired" : true
+        ,"colors" : [
+             "#FFFFFFFF"
+        ]
+        ,"vSliceDoesLoop" : false
+        ,"vSliceHealthIcon" : null
+        ,"icons" : [
+             0
+            ,1
+            ,2
+            ,3
+        ]
+        ,"vSliceCostumeList" : [
+
+        ]
+        ,"vSliceCostumes" : null
+        ,"like" : "jill"
+    }
+    ,"abot-pixel" : {
+         "icons" : "face"
+        ,"like" : "abot-pixel"
+    }
+    ,"garcelloghosty" : {
+         "legacyAtlas" : true
+        ,"colors" : [
+             "#FFFFFF"
+        ]
+        ,"icons" : [
+             0
+            ,0
+            ,0
+            ,0
+        ]
+        ,"like" : "garcelloghosty"
+    }
 }

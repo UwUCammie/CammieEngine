@@ -121,106 +121,23 @@ class NewSongState extends MusicBeatState
 
 		importText = new FlxUIInputText(400,10,70,"Ugh");
 		importButton = new FlxUIButton(400,50, "Import Song", function():Void {
-			var basePath:String = "assets/module/import/songs/" + importText.text;
-			if (FileSystem.exists(basePath)) {
-				instPath = basePath + '/Inst.ogg';
-				
-				if (FileSystem.exists(basePath + '/Voices.ogg'))
-					voicePath = basePath + '/Voices.ogg';
-				
-				if (FileSystem.exists(basePath + '/dialog.txt'))
-					dialogPath = basePath + '/dialog.txt';
-				
-				if (FileSystem.exists(basePath + '/modchart.hscript'))
-					modchartPath = basePath + '/modchart.hscript';
-				
-				var daInfo:String = basePath + '/info.txt';
-				getInfo(daInfo);
-				
-				for (i in 0...diffJson.difficulties.length) {
-					if (FileSystem.exists(basePath + '/' + diffJson.difficulties[i].name + '.json'))
-						coolDiffFiles[i] = basePath + '/' + diffJson.difficulties[i].name + '.json';
-				}
+			ImportSettings.ensureImportDirectories();
+			var basePath:String = haxe.io.Path.join([ImportSettings.getImportPath('songs'), importText.text]);
+			if (!FileSystem.isDirectory(basePath)) {
+				trace('Unable to import song: folder not found.');
+				return;
 			}
+			var importedSong = ModuleFunctions.songImportFromFolder(basePath);
+			if (ModuleFunctions.validateSongImport(importedSong) != null) {
+				trace('Unable to import song: Inst.ogg and a valid chart are required.');
+				return;
+			}
+			applySongImport(importedSong);
 		});
 
 		exportText = new FlxUIInputText(490,10,70,"Dadbattle");
 		exportButton = new FlxUIButton(490,50, "Export Song", function():Void {
-			var exportPath:String = "assets/module/export/songs/" + exportText.text;
-			var songPath:String = "assets/songs/" + exportText.text;
-			var dataPath:String = "assets/data/" + exportText.text;
-
-			if (!FileSystem.exists(exportPath))
-				FileSystem.createDirectory(exportPath);
-
-			if (FileSystem.exists(songPath + '/' + exportText.text + '_Inst.ogg'))
-				File.copy(songPath + '/' + exportText.text + '_Inst.ogg', exportPath + '/Inst.ogg');
-
-			if (FileSystem.exists(songPath + '/' + exportText.text + '_Voices.ogg'))
-				File.copy(songPath + '/' + exportText.text + '_Voices.ogg', exportPath + '/Voices.ogg');
-
-			if (FileSystem.exists(dataPath + '/dialog.txt'))
-				File.copy(dataPath + '/dialog.txt', exportPath + '/dialog.txt');
-
-			if (FileSystem.exists(dataPath + '/modchart.hscript'))
-				File.copy(dataPath + '/modchart.hscript', exportPath + '/modchart.hscript');
-
-			var daInfo:Array<String> = [];
-			var songInfo = null;
-			if (FileSystem.exists(dataPath + '/' + exportText.text + '.json'))
-				songInfo = dataPath + '/' + exportText.text + '.json';
-			else
-				for (i in 0...diffJson.difficulties.length) {
-					if (songInfo == null)
-						switch(diffJson.difficulties[i].name) {
-							case 'normal':
-								//do nothing
-								//why would you need this
-							default:
-								if (FileSystem.exists(dataPath + '/' + exportText.text + '-' + diffJson.difficulties[i].name + '.json'))
-									songInfo = dataPath + '/' + exportText.text + '-' + diffJson.difficulties[i].name + '.json';
-						}
-				}
-			var coolSong:Dynamic = CoolUtil.parseJson(File.getContent(songInfo));
-			var coolSongSong:Dynamic = coolSong.song;
-			//var epicCategoryJs:Array<Dynamic> = CoolUtil.parseJson(FNFAssets.getText('assets/data/freeplaySongJson.jsonc'));
-			//how do I make this better???
-			daInfo.push("This song info was made using Disappointing Plus");
-			daInfo.push("I would recommend changing the nulls to your desired values before importing!");
-			daInfo.push("");
-			daInfo.push("songname:" + coolSongSong.song);
-			daInfo.push("player1:" + coolSongSong.player1);
-			daInfo.push("player2:" + coolSongSong.player2);
-			daInfo.push("gf:" + coolSongSong.gf);
-			daInfo.push("stage:" + coolSongSong.stage);
-			daInfo.push("uiType:" + coolSongSong.uiType);
-			daInfo.push("cutsceneType:" + coolSongSong.cutsceneType);
-			daInfo.push("isHey:" + coolSongSong.isHey);
-			daInfo.push("isCheer:" + coolSongSong.isCheer);
-			daInfo.push("isMoody:" + coolSongSong.isMoody);
-			daInfo.push("isSpooky:" + coolSongSong.isSpooky);
-			daInfo.push("category:null");
-			daInfo.push("stageID:" + coolSongSong.stageID);
-			daInfo.push("week:0");
-			daInfo.push("char:null");
-			daInfo.push("display:null");
-			//haha among us funny
-			var sussyInfo = StringTools.replace(daInfo.toString(), ',', '\n');
-			sussyInfo = StringTools.replace(sussyInfo, '[', '');
-			sussyInfo = StringTools.replace(sussyInfo, ']', '');
-			trace(sussyInfo);
-			File.saveContent(exportPath + '/info.txt', sussyInfo);
-
-			for (i in 0...diffJson.difficulties.length) {
-				switch(diffJson.difficulties[i].name) {
-					case 'normal':
-						if (FileSystem.exists(dataPath + '/' + exportText.text + '.json'))
-							File.copy(dataPath + '/' + exportText.text + '.json', exportPath + '/' + diffJson.difficulties[i].name + '.json');
-					default:
-						if (FileSystem.exists(dataPath + '/' + exportText.text + '-' + diffJson.difficulties[i].name + '.json'))
-							File.copy(dataPath + '/' + exportText.text + '-' + diffJson.difficulties[i].name + '.json', exportPath + '/' + diffJson.difficulties[i].name + '.json');
-				}
-			}
+			ModuleFunctions.exportSong(exportText.text);
 		});
 
 		for (i in 0...diffJson.difficulties.length) {
@@ -253,8 +170,10 @@ class NewSongState extends MusicBeatState
 		add(stageID);
 		add(diffButtons);
 		finishButton = new FlxButton(FlxG.width - 170, FlxG.height - 50, "Finish", function():Void {
-			writeCharacters();
-			LoadingState.loadAndSwitchState(new SaveDataState());
+			if (writeCharacters())
+				LoadingState.loadAndSwitchState(new SaveDataState());
+			else
+				trace('Unable to save song: Inst.ogg and at least one valid chart are required.');
 		});
 		instButton = new FlxUIButton(190, 10, "Instruments", function():Void {
 			var coolDialog = new FileDialog();
@@ -318,47 +237,52 @@ class NewSongState extends MusicBeatState
 		}
 		return daBool;
 	}
-	function getInfo(infoPath:String) {
-		var infoText:Array<String> = CoolUtil.coolTextFile(infoPath);
-		for (i in 0...infoText.length) {
-			var data:Array<String> = infoText[i].split(':');
-			switch(data[0]) { // this is probably unnecessary
-				case 'songname':
-					nameText.text = data[1];
-				case 'player1':
-					p1Text.text = data[1];
-				case 'player2':
-					p2Text.text = data[1];
-				case 'gf':
-					gfText.text = data[1];
-				case 'stage':
-					stageText.text = data[1];
-				case 'uiType':
-					uiText.text = data[1];
-				case 'cutsceneType':
-					cutsceneText.text = data[1];
-				case 'category':
-					categoryText.text = data[1];
-				case 'isHey':
-					isHey.checked = convertToBool(data[1]);
-				case 'isCheer':
-					isCheer.checked = convertToBool(data[1]);
-				case 'isMoody':
-					isMoody.checked = convertToBool(data[1]);
-				case 'isSpooky':
-					isSpooky.checked = convertToBool(data[1]);
-				case 'stageID':
-					stageID.value = Std.parseFloat(data[1]);
-				case 'week':
-					weekText.text = data[1];
-				case 'char':
-					charText.text = data[1];
-				case 'display':
-					displayText.text = data[1];
-			}
-		}
+	function applySongImport(songData:ModuleFunctions.SongImport):Void {
+		if (songData == null)
+			return;
+		nameText.text = songData.name;
+		p1Text.text = songData.p1;
+		p2Text.text = songData.p2;
+		gfText.text = songData.gf;
+		stageText.text = songData.stage;
+		uiText.text = songData.ui;
+		cutsceneText.text = songData.cutscene;
+		categoryText.text = songData.category;
+		isHey.checked = songData.isHey;
+		isCheer.checked = songData.isCheer;
+		isMoody.checked = songData.isMoody;
+		isSpooky.checked = songData.isSpooky;
+		stageID.value = songData.stageID;
+		weekText.text = Std.string(songData.week);
+		charText.text = songData.char;
+		displayText.text = songData.display;
+		instPath = songData.inst;
+		voicePath = songData.voices;
+		dialogPath = songData.dialog;
+		modchartPath = songData.modchart;
+		coolDiffFiles = songData.diffFiles == null ? [] : songData.diffFiles.copy();
 	}
-	function writeCharacters() {
+	function getInfo(infoPath:String) {
+		var info = ModuleFunctions.processInfo(infoPath);
+		nameText.text = ModuleFunctions.getInfoValue(info, 'songname', nameText.text);
+		p1Text.text = ModuleFunctions.getInfoValue(info, 'player1', p1Text.text);
+		p2Text.text = ModuleFunctions.getInfoValue(info, 'player2', p2Text.text);
+		gfText.text = ModuleFunctions.getInfoValue(info, 'gf', gfText.text);
+		stageText.text = ModuleFunctions.getInfoValue(info, 'stage', stageText.text);
+		uiText.text = ModuleFunctions.getInfoValue(info, 'uiType', uiText.text);
+		cutsceneText.text = ModuleFunctions.getInfoValue(info, 'cutsceneType', cutsceneText.text);
+		categoryText.text = ModuleFunctions.getInfoValue(info, 'category', categoryText.text);
+		isHey.checked = ModuleFunctions.getInfoBool(info, 'isHey', isHey.checked);
+		isCheer.checked = ModuleFunctions.getInfoBool(info, 'isCheer', isCheer.checked);
+		isMoody.checked = ModuleFunctions.getInfoBool(info, 'isMoody', isMoody.checked);
+		isSpooky.checked = ModuleFunctions.getInfoBool(info, 'isSpooky', isSpooky.checked);
+		stageID.value = ModuleFunctions.getInfoInt(info, 'stageID', Std.int(stageID.value));
+		weekText.text = ModuleFunctions.getInfoValue(info, 'week', weekText.text);
+		charText.text = ModuleFunctions.getInfoValue(info, 'char', charText.text);
+		displayText.text = ModuleFunctions.getInfoValue(info, 'display', displayText.text);
+	}
+	function writeCharacters():Bool {
+		var parsedWeek = Std.parseInt(weekText.text);
 		var daData:ModuleFunctions.SongImport = {
 			name: nameText.text,
 			p1: p1Text.text,
@@ -373,7 +297,7 @@ class NewSongState extends MusicBeatState
 			isMoody: isMoody.checked,
 			isSpooky: isSpooky.checked,
 			stageID: Std.int(stageID.value),
-			week: Std.parseInt(weekText.text),
+			week: parsedWeek == null ? -1 : parsedWeek,
 			char: charText.text,
 			display: displayText.text,
 			inst: instPath,
@@ -382,7 +306,7 @@ class NewSongState extends MusicBeatState
 			modchart: modchartPath,
 			diffFiles: coolDiffFiles
 		}
-		ModuleFunctions.importSong(daData);
+		return ModuleFunctions.importSong(daData);
 	}
 
 
@@ -429,7 +353,7 @@ class NewSongState extends MusicBeatState
 		}
 		if (charText.text == 'null')
 			charText.text = p2Text.text;
-		var coolSongListFile:Array<Dynamic> = CoolUtil.parseJson(FNFAssets.getJson('assets/data/freeplaySongJson'));
+		var coolSongListFile:Array<Dynamic> = cast FreeplayRegistry.getJson();
 		var foundSomething:Bool = false;
 		for (coolCategory in coolSongListFile) {
 			if (coolCategory.name == categoryText.text) {
@@ -448,7 +372,7 @@ class NewSongState extends MusicBeatState
 			else
 				coolSongListFile.push({"name": categoryText.text, "songs": [{"name": nameText.text, "character": charText.text, "week": Std.parseFloat(weekText.text), "display": displayText.text}]});
 		}
-		File.saveContent('assets/data/freeplaySongJson.jsonc',CoolUtil.stringifyJson(coolSongListFile));
+		FreeplayRegistry.saveJson(coolSongListFile);
 		#end
 	}
 }

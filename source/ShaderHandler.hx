@@ -73,13 +73,47 @@ class ShaderHandler {
 
 class CoolRuntimeShader extends FlxRuntimeShader {
 	//uhhhhhh
-	public function new(frag) {
+	public function new(frag, ?vertex:String) {
 		if ((frag is String)) {
-			if (StringTools.startsWith(frag, 'assets/'))
-				frag = FNFAssets.getText(frag + ".frag");
-			else
-				frag = FNFAssets.getText("assets/shaders/" + frag + ".frag");
+			var s:String = frag;
+			// old-engine scripts pass RAW GLSL source (lofright's stage
+			// grayscale, etc.) - if it looks like shader code, hand it
+			// straight through instead of treating it as a shader NAME and
+			// trying to read 'assets/shaders/#pragma header...}.frag'
+			if (StringTools.ltrim(s).indexOf('#pragma') == 0 || s.indexOf('void main') != -1) {
+				super(CodenameShaderSource.normalizeOpenFL(s), vertex == null ? null : CodenameShaderSource.normalizeOpenFL(vertex));
+				return;
+			}
+			var path = ShaderPaths.resolve(s);
+			if (path == null) throw 'Shader not found: $s';
+			s = FNFAssets.getText(path);
+			super(CodenameShaderSource.normalizeOpenFL(s), vertex == null ? null : CodenameShaderSource.normalizeOpenFL(vertex));
+			return;
 		}
-		super(frag);
+		 super(frag, vertex);
+	}
+
+	/**
+		Small ScriptedFlxRuntimeShader compatibility surface used by imported HXC
+		modules. Keep the bridge explicit: generic donor script methods are not
+		reflected into the native shader, while the common Vignette intensity pair
+		maps to the native uniform spelling.
+	*/
+	public function scriptCall(methodName:String, ?args:Array<Dynamic>):Dynamic {
+		if (methodName == 'setIntensity') {
+			var value:Float = 0;
+			if (args != null && args.length > 0 && args[0] != null) {
+				var parsed = Std.parseFloat(Std.string(args[0]));
+				if (!Math.isNaN(parsed))
+					value = parsed;
+			}
+			setFloat('u_intensity', value);
+		}
+		return null;
+	}
+
+	public function scriptGet(fieldName:String):Dynamic {
+		var uniform = fieldName == 'uIntensity' ? 'u_intensity' : fieldName;
+		return getFloat(uniform);
 	}
 }

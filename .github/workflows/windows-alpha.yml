@@ -1,0 +1,99 @@
+name: Windows x64 alpha
+
+on:
+  push:
+    tags:
+      - 'alpha-*'
+      - 'v*-alpha*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-x64-alpha-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and package Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python for the canonical Windows build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Build with the pinned portable toolchain
+        shell: cmd
+        run: call run.bat build
+
+      - name: Package runtime, notices, and checksum
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME
+          } else {
+            $tag = "ci-$env:GITHUB_RUN_NUMBER"
+          }
+          python tools/package_windows_release.py `
+            --runtime export/release/windows/bin `
+            --output-dir dist `
+            --tag $tag
+
+      - name: Upload downloadable Windows x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CammieEngine-Windows-x64-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-alpha:
+    name: Attach package to tagged alpha release
+    if: github.ref_type == 'tag' && (startsWith(github.ref_name, 'alpha-') || contains(github.ref_name, '-alpha'))
+    needs: build
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: CammieEngine-Windows-x64-${{ github.run_number }}
+          path: dist
+
+      - name: Create or update prerelease assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $zip = Get-ChildItem -Path dist -Filter '*.zip' -File | Select-Object -First 1
+          $checksums = Join-Path $PWD 'dist/SHA256SUMS.txt'
+          if ($null -eq $zip -or -not (Test-Path -LiteralPath $checksums)) {
+            throw 'The Windows package or SHA256SUMS.txt is missing.'
+          }
+          $existing = gh release view $tag --json isPrerelease --jq .isPrerelease 2>$null
+          $viewStatus = $LASTEXITCODE
+          if ($viewStatus -eq 0) {
+            if ($existing.Trim() -ne 'true') {
+              throw "Refusing to replace assets on non-prerelease tag $tag."
+            }
+            gh release upload $tag $zip.FullName $checksums --clobber
+          } else {
+            gh release create $tag $zip.FullName $checksums `
+              --title $tag `
+              --notes 'CammieEngine Windows x64 alpha build. Extract the ZIP and run Funkin.exe.' `
+              --prerelease --verify-tag
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw 'GitHub CLI could not publish the alpha release assets.'
+          }

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=CammieEngine
+Comment=Friday Night Funkin' CammieEngine
+Exec=AppRun %U
+Icon=disappointing-plus
+Terminal=false
+Categories=Game;

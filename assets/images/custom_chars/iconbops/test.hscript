@@ -2,7 +2,7 @@ var danced = false;
 function dance(icon) {
     switch(icon.iconState) {
 	case 0: //Normal
-	    icon.setGraphicSize(Std.int(icon.width + 30));
+	    icon.setGraphicSize(Std.int(icon.width + icon.bopPulseSize()));
     	    icon.updateHitbox();
 	case 1: //Dying
 
@@ -18,7 +18,7 @@ function dance(icon) {
 }
 
 function update(elapsed, icon) {
-    icon.setGraphicSize(Std.int(FlxMath.lerp(150, icon.width, 0.8)));
+    icon.setGraphicSize(Std.int(FlxMath.lerp(icon.bopBaseSize, icon.width, 0.8)));
     icon.updateHitbox();
 
     if (icon.iconState == 1)

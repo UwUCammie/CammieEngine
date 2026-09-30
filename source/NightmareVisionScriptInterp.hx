@@ -1,0 +1,400 @@
+package;
+
+import crowplexus.hscript.Expr;
+import crowplexus.hscript.Interp;
+import crowplexus.hscript.Tools;
+import crowplexus.iris.utils.UsingEntry.UsingCall;
+
+/**
+	The Nightmare Vision script-scope semantics layered on its namespaced,
+	pinned Iris interpreter. Parsing and engine bindings remain the caller's
+	responsibility; this class only implements name lookup/write-through and the
+	`public` metadata marker emitted by the Nightmare Vision parser.
+*/
+@:access(crowplexus.hscript.Interp)
+class NightmareVisionScriptInterp extends Interp {
+	/** Fully qualified host adapters belonging to this interpreter's owner. */
+	public var importBindings(default, null):Map<String, Dynamic> = new Map();
+	var usingBindings:Map<String, UsingCall> = new Map();
+	var boundUsings:Map<String, Bool> = new Map();
+	/** Optional state object exposed as bare script identifiers. */
+	public var parentFields:Array<String> = [];
+	/** Cross-script values declared with Nightmare Vision's `public` syntax. */
+	public var sharedFields:Map<String, Dynamic>;
+	/** Save adapter owned by this interpreter's selected imported root. */
+	public var ownerSave(default, null):Null<NightmareVisionSaveFacade>;
+	public var parent(default, set):Dynamic;
+
+	public function new(?parent:Dynamic, ?sharedFields:Map<String, Dynamic>) {
+		super();
+		this.sharedFields = sharedFields;
+		if (parent != null) this.parent = parent;
+	}
+
+	public function bindImport(path:String, value:Dynamic):Void importBindings.set(path, value);
+
+	/** Create a script-local facade over the selected owner's private storage.
+	 * The host should seed `FlxG` with `new NightmareVisionFlxGView(FlxG, facade)`
+	 * before executing plugin `onLoad` callbacks. */
+	public function bindOwnerSave(ownerRoot:String, storage:Dynamic):NightmareVisionSaveFacade {
+		if (ownerSave != null) ownerSave.release();
+		ownerSave = new NightmareVisionSaveFacade(ownerRoot, storage);
+		return ownerSave;
+	}
+
+	/** Preserve Iris's native-class fallback without consulting another
+	 * imported owner's process-global proxy table. */
+	override public function getOrImportClass(name:String):Dynamic {
+		return importBindings.exists(name) ? importBindings.get(name) : Tools.getClass(name);
+	}
+
+	/** Custom extension adapters stay local; built-in native extensions retain
+	 * Iris's normal dispatch. Never register an owner closure in Iris's globals. */
+	public function bindUsing(path:String, callback:UsingCall):Void usingBindings.set(path, callback);
+
+	override function useUsing(name:String):Void {
+		if (!usingBindings.exists(name)) {
+			super.useUsing(name);
+			return;
+		}
+		if (boundUsings.exists(name)) return;
+		registerUsingLocal(name, usingBindings.get(name));
+		boundUsings.set(name, true);
+	}
+
+	function set_parent(value:Dynamic):Dynamic {
+		parent = value;
+		if (value == null) {
+			parentFields = [];
+		} else {
+			var parentClass = Type.getClass(value);
+			parentFields = parentClass == null
+				? Reflect.fields(value)
+				: Type.getInstanceFields(parentClass);
+		}
+		return parent;
+	}
+
+	/** Break all interpreter-owned references at the end of a script lifetime. */
+	public function release():Void {
+		var saveError:Dynamic = null;
+		if (ownerSave != null) {
+			try ownerSave.release() catch (error:Dynamic) saveError = error;
+			ownerSave = null;
+		}
+		parent = null;
+		sharedFields = null;
+		parentFields = [];
+		imports.clear();
+		importBindings.clear();
+		usingBindings.clear();
+		boundUsings.clear();
+		usings.resize(0);
+		variables.clear();
+		locals.clear();
+		declared.resize(0);
+		returnValue = null;
+		depth = 0;
+		inTry = false;
+		if (saveError != null) throw saveError;
+	}
+
+	function setTo(id:String, value:Dynamic, canDefine:Bool = false):Dynamic {
+		if (locals.exists(id)) {
+			var local = locals.get(id);
+			if (local.const != true) local.r = value;
+			else warn(ECustom('Cannot reassign final, for constant expression -> ' + id));
+		} else if (variables.exists(id)) {
+			// HScript presets (including false, zero, and null values) shadow
+			// imports and parent members, just as they do during resolve().
+			setVar(id, value);
+			return value;
+		} else if (hasParentWriteField(id)) {
+			Reflect.setProperty(parent, id, value);
+			return value;
+		} else if (sharedFields != null && sharedFields.exists(id)) {
+			sharedFields.set(id, value);
+		}
+
+		// Match the source interpreter: plain `=` may materialize a variable
+		// after a local/shared write, while compound/inc writes do not.
+		if (canDefine) {
+			setVar(id, value);
+		}
+		return value;
+	}
+
+	function hasParentWriteField(id:String):Bool {
+		return parent != null && (parentFields.indexOf(id) >= 0 || parentFields.indexOf('set_' + id) >= 0);
+	}
+
+	function hasParentReadField(id:String):Bool {
+		return parent != null && (parentFields.indexOf(id) >= 0 || parentFields.indexOf('get_' + id) >= 0);
+	}
+
+	/** Iris 1.1.3 restores absent bindings as null map entries, but its own
+	 * resolver (and NMV's) treats map presence as a live LocalVar. Remove the
+	 * absent slot so a finished block/loop reveals the outer scope again. */
+	override function restore(old:Int):Void {
+		while (declared.length > old) {
+			var declaration = declared.pop();
+			if (declaration.old == null) locals.remove(declaration.n);
+			else locals.set(declaration.n, declaration.old);
+		}
+	}
+
+	/** Keep a failed callback from retaining its execution frame. Captured
+	 * values and mutations survive, while scope bookkeeping returns to the
+	 * caller's frame, including re-entrant calls through a host binding. */
+	public function callCallback(method:Dynamic, args:Array<Dynamic>):Dynamic {
+		var oldLocals = locals;
+		var oldDepth = depth;
+		var oldDeclared = declared.length;
+		var oldTry = inTry;
+		var oldReturn = returnValue;
+		try {
+			return Reflect.callMethod(null, method, args);
+		} catch (error:Dynamic) {
+			locals = oldLocals;
+			depth = oldDepth;
+			declared.resize(oldDeclared);
+			inTry = oldTry;
+			returnValue = oldReturn;
+			throw error;
+		}
+	}
+
+	/** hxcpp can match a typed enum catch to another enum. Check the actual
+	 * enum identity before interpreting an exception as script control flow. */
+	static function controlSignal(signal:Dynamic):String {
+		return switch (Type.typeof(signal)) {
+			case TEnum(kind) if (Type.getEnumName(kind) == 'crowplexus.hscript._Interp.Stop'):
+				Type.enumConstructor(signal);
+			default: '';
+		};
+	}
+
+	override function exprReturn(expression:Expr):Dynamic {
+		try return expr(expression) catch (signal:Dynamic) {
+			switch (controlSignal(signal)) {
+				case 'SBreak': throw 'Invalid break';
+				case 'SContinue': throw 'Invalid continue';
+				case 'SReturn':
+					var value = returnValue;
+					returnValue = null;
+					return value;
+				default: throw signal;
+			}
+		}
+	}
+
+	override function whileLoop(condition:Expr, body:Expr):Void {
+		var old = declared.length;
+		while (expr(condition) == true) {
+			try expr(body) catch (signal:Dynamic) {
+				switch (controlSignal(signal)) {
+					case 'SContinue':
+					case 'SBreak': break;
+					default: throw signal;
+				}
+			}
+		}
+		restore(old);
+	}
+
+	override function doWhileLoop(condition:Expr, body:Expr):Void {
+		var old = declared.length;
+		do {
+			try expr(body) catch (signal:Dynamic) {
+				switch (controlSignal(signal)) {
+					case 'SContinue':
+					case 'SBreak': break;
+					default: throw signal;
+				}
+			}
+		} while (expr(condition) == true);
+		restore(old);
+	}
+
+	override function resolve(id:String):Dynamic {
+		if (locals.exists(id)) return locals.get(id).r;
+		if (variables.exists(id)) return variables.get(id);
+		if (imports.exists(id)) return imports.get(id);
+		if (hasParentReadField(id)) return Reflect.getProperty(parent, id);
+		if (sharedFields != null && sharedFields.exists(id)) return sharedFields.get(id);
+		return super.resolve(id);
+	}
+
+	/** Flixel sprites do not carry the source engine's display-order field.
+	 * Keep reads and writes on the same owner-aware compatibility side table used
+	 * by HXC and V-Slice scripts. */
+	override function get(object:Dynamic, field:String):Dynamic {
+		if (object != null && field == 'zIndex') return HxcCompatRuntime.getZIndex(object);
+		if (Std.isOfType(object, NightmareVisionFlxGView))
+			return (cast object:NightmareVisionFlxGView).getField(field);
+		if (Std.isOfType(object, NightmareVisionSaveData))
+			return (cast object:NightmareVisionSaveData).getField(field);
+		// This is host lifecycle plumbing, not part of the source FlxSave API.
+		if (Std.isOfType(object, NightmareVisionSaveFacade) && field == 'release') return null;
+		return super.get(object, field);
+	}
+
+	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
+		if (object != null && field == 'zIndex') return HxcCompatRuntime.setZIndex(object, value);
+		if (Std.isOfType(object, NightmareVisionFlxGView))
+			return (cast object:NightmareVisionFlxGView).setField(field, value);
+		if (Std.isOfType(object, NightmareVisionSaveData))
+			return (cast object:NightmareVisionSaveData).setField(field, value);
+		if (Std.isOfType(object, NightmareVisionSaveFacade) && field == 'data')
+			throw '[nightmare-vision-save] Refused to replace owner save data';
+		return super.set(object, field, value);
+	}
+
+	override function assign(left:Expr, right:Expr):Dynamic {
+		switch (Tools.expr(left)) {
+			case EIdent(id):
+				return setTo(id, expr(right), true);
+			default:
+				return super.assign(left, right);
+		}
+	}
+
+	override function evalAssignOp(op:String, operation:Dynamic->Dynamic->Dynamic,
+		left:Expr, right:Expr):Dynamic {
+		switch (Tools.expr(left)) {
+			case EIdent(id):
+				return setTo(id, operation(expr(left), expr(right)));
+			default:
+				return super.evalAssignOp(op, operation, left, right);
+		}
+	}
+
+	override function increment(expression:Expr, prefix:Bool, delta:Int):Dynamic {
+		#if hscriptPos
+		curExpr = expression;
+		#end
+		switch (Tools.expr(expression)) {
+			case EIdent(id):
+				var previous:Dynamic = resolve(id);
+				var updated:Dynamic = previous + delta;
+				setTo(id, updated);
+			return prefix ? updated : previous;
+			default:
+				return super.increment(expression, prefix, delta);
+		}
+	}
+
+	override function makeIterator(value:Dynamic):Iterator<Dynamic> {
+		if (Std.isOfType(value, Array)) return (cast value:Array<Dynamic>).iterator();
+		var method:Dynamic = value.iterator;
+		var iterator:Dynamic = method == null ? value : Reflect.callMethod(value, method, []);
+		if (iterator.hasNext == null || iterator.next == null) error(EInvalidIterator(iterator));
+		return iterator;
+	}
+
+	override function fcall(object:Dynamic, field:String, args:Array<Dynamic>):Dynamic {
+		for (extension in usings) {
+			var result = extension.call(object, field, args);
+			if (result != null) return result;
+		}
+		var method = get(object, field);
+		if (method == null) {
+			crowplexus.iris.Iris.error('Unknown function: ' + field, posInfos());
+			return null;
+		}
+		return call(object, method, args);
+	}
+
+	function makeKeyValueIterator(value:Dynamic):KeyValueIterator<Dynamic, Dynamic> {
+		if (Std.isOfType(value, haxe.Constraints.IMap))
+			return (cast value:haxe.Constraints.IMap<Dynamic, Dynamic>).keyValueIterator();
+		if (Std.isOfType(value, Array)) return (cast value:Array<Dynamic>).keyValueIterator();
+		var method:Dynamic = value.keyValueIterator;
+		var iterator:Dynamic = method == null ? value : Reflect.callMethod(value, method, []);
+		if (iterator.hasNext == null || iterator.next == null) error(EInvalidIterator(iterator));
+		return iterator;
+	}
+
+	/** Source InterpEx binds native iterator methods once and catches loop
+	 * control separately from script errors, including key/value iterators. */
+	override function forLoop(name:String, iteratorExpr:Expr, body:Expr):Void {
+		var valueName:Null<String> = null;
+		switch (Tools.expr(iteratorExpr)) {
+			case EMeta(':nmvKeyValue', [binding], iterable):
+				switch (Tools.expr(binding)) {
+					case EIdent(value): valueName = value;
+					default: error(ECustom('Invalid key/value loop binding'));
+				}
+				iteratorExpr = iterable;
+			default:
+		}
+		var old = declared.length;
+		declared.push({n:name, old:locals.get(name)});
+		if (valueName != null) declared.push({n:valueName, old:locals.get(valueName)});
+		var iterator:Dynamic = valueName == null
+			? makeIterator(expr(iteratorExpr)) : makeKeyValueIterator(expr(iteratorExpr));
+		var next:Void->Dynamic = iterator.next;
+		var hasNext:Void->Bool = iterator.hasNext;
+		while (hasNext()) {
+			var value:Dynamic = next();
+			if (valueName == null) locals.set(name, {r:value, const:false});
+			else {
+				// These checks deliberately follow the source's null rejection.
+				if (value.key == null) error(ECustom(valueName + ' has no field key'));
+				if (value.value == null) error(ECustom(valueName + ' has no field value'));
+				locals.set(name, {r:value.key, const:false});
+				locals.set(valueName, {r:value.value, const:false});
+			}
+			try expr(body) catch (signal:Dynamic) {
+				switch (controlSignal(signal)) {
+					case 'SContinue':
+					case 'SBreak': break;
+					default: throw signal;
+				}
+			}
+		}
+		restore(old);
+	}
+
+	override public function expr(expression:Expr):Dynamic {
+		#if hscriptPos
+		curExpr = expression;
+		#end
+		switch (Tools.expr(expression)) {
+			case ETry(body, name, _, handler):
+				var old = declared.length;
+				var oldTry = inTry;
+				try {
+					inTry = true;
+					var value = expr(body);
+					restore(old);
+					inTry = oldTry;
+					return value;
+				} catch (signal:Dynamic) {
+					inTry = oldTry;
+					if (controlSignal(signal) != '') throw signal;
+					restore(old);
+					declared.push({n:name, old:locals.get(name)});
+					locals.set(name, {r:signal, const:false});
+					var value = expr(handler);
+					restore(old);
+					return value;
+				}
+			case EMeta(':sharable', _, wrapped) if (sharedFields != null):
+				switch (Tools.expr(wrapped)) {
+					case EFunction(_, _, name, _) if (depth == 0 && name != null):
+						var functionValue = expr(wrapped);
+						sharedFields.set(name, functionValue);
+						return functionValue;
+					case EVar(name, _, initialValue, _) if (depth == 0):
+						var value = initialValue == null ? null : expr(initialValue);
+						sharedFields.set(name, value);
+						return value;
+					default:
+						return expr(wrapped);
+				}
+			default:
+				return super.expr(expression);
+		}
+	}
+}

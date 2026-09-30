@@ -27,7 +27,7 @@ class MenuItem extends FlxSpriteGroup
 		// WHY THE FUCK DO YOU READ A FILE FUCKING 5 TIMES
 		// NO WONDER THERE ARE PREFORMANCE ISSUE
 		
-		var parsedWeekJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(FNFAssets.getJson("assets/data/storySongList"));
+		var parsedWeekJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(FNFAssets.getJson("assets/data/storySonglist"));
 		var weekName = parsedWeekJson.weeks[weekNum].name;
 		var rawPic = FNFAssets.getBitmapData('assets/images/campaign-ui-week/' + weekName + ".png");
 		
@@ -50,11 +50,18 @@ class MenuItem extends FlxSpriteGroup
 			week.animation.pause();
 			week.updateHitbox();
 		} else {
-			week.loadGraphic(rawPic);
+			week = createWeekSpriteFromGraphic(rawPic);
 			add(week);
 			week.updateHitbox();
 		}
-		
+
+	}
+
+	/** PNG-only campaign entries still need their FlxSprite instance created. */
+	static function createWeekSpriteFromGraphic(rawPic:Dynamic):FlxSprite {
+		var sprite = new FlxSprite();
+		sprite.loadGraphic(rawPic);
+		return sprite;
 	}
 
 	override function update(elapsed:Float)

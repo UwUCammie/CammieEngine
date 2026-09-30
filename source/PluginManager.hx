@@ -5,9 +5,12 @@ import flixel.system.frontEnds.BitmapFrontEnd;
 import flixel.system.FlxAssets.FlxSoundAsset;
 import flixel.sound.FlxSound;
 import flixel.group.FlxGroup.FlxTypedGroup;
+import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
+import flixel.effects.FlxFlicker;
 import flixel.sound.FlxSoundGroup;
 import flixel.system.frontEnds.SoundFrontEnd;
 import openfl.display.DisplayObject;
+import openfl.display.Bitmap;
 import flixel.input.keyboard.FlxKeyboard;
 import flixel.system.frontEnds.InputFrontEnd;
 import flixel.math.FlxRect;
@@ -18,9 +21,18 @@ import flixel.FlxGame;
 import flixel.input.gamepad.FlxGamepadManager;
 import flixel.FlxCamera;
 import flixel.util.FlxColor;
+import flixel.util.FlxStringUtil;
 import flixel.text.FlxText;
+import flixel.text.FlxText.FlxTextBorderStyle;
+import ExtraStrumlineAdapter.ExtraStrumlineNoteStyleRegistry;
+import HxcNoteStyleCompat.HxcNoteSplashCompat;
+import ExtraStrumlineAdapter.ExtraStrumlineRhythm;
+import HxcHealthIconAdapter;
+import flixel.ui.FlxButton;
 import flixel.tweens.FlxEase;
 import flixel.addons.effects.FlxTrail;
+import flixel.addons.effects.chainable.FlxEffectSprite;
+import flixel.addons.effects.chainable.FlxGlitchEffect;
 import plugins.tools.MetroSprite;
 import hscript.InterpEx;
 import hscript.Interp;
@@ -28,6 +40,8 @@ import flixel.FlxG;
 import lime.system.System;
 import sys.io.File;
 import sys.FileSystem;
+import haxe.ds.StringMap;
+import lime.utils.Assets;
 
 import animate.FlxAnimate;
 import animate.FlxAnimateFrames;
@@ -75,13 +89,34 @@ class PluginManager {
         interp.variables.set("FlxAnimate", FlxAnimate);
         interp.variables.set("FlxAnimateFrames", FlxAnimateFrames);
 		interp.variables.set("FlxGroup", flixel.group.FlxGroup);
+		interp.variables.set("FlxTypedGroup", FlxTypedGroup);
+		interp.variables.set("FlxTypedSpriteGroup", FlxTypedSpriteGroup);
+		interp.variables.set("FlxFlicker", FlxFlicker);
 		interp.variables.set("FlxAngle", flixel.math.FlxAngle);
 		interp.variables.set("FlxMath", flixel.math.FlxMath);
+		// HXC modules use these concrete Flixel utility classes directly.  They
+		// are native engine APIs, so expose the same live classes used by source
+		// code instead of leaving the rooted module gate to guess at donor names.
+		interp.variables.set("FlxColor", HxcFlxColorCompat);
+		interp.variables.set("FlxStringUtil", FlxStringUtil);
 		interp.variables.set("TitleState", TitleState);
+		interp.variables.set("MainMenuState", MainMenuState);
+		// HXC character callbacks refer to the donor spelling
+		// `GameOverSubState`; this alias is only a class boundary. Static suffix
+		// writes are lowered by HxcCompat to HxcCompatRuntime, while native
+		// substate behavior remains owned by these local classes.
+		interp.variables.set("GameOverSubState", GameOverSubstate);
+		interp.variables.set("PauseSubState", PauseSubState);
         interp.variables.set("CoolUtil", CoolUtil);
         interp.variables.set("coolTextFile", CoolUtil.coolTextFile);
 		interp.variables.set("makeRangeArray", CoolUtil.numberArray);
 		interp.variables.set("FNFAssets", FNFAssets);
+		// ported char scripts reference Paths.* (getCharacterJson for JSON
+		// atlases, getSparrowAtlas/image in stages/modcharts)
+        interp.variables.set("Paths", Paths);
+		interp.variables.set("Assets", Assets);
+		interp.variables.set("Bitmap", Bitmap);
+		interp.variables.set("StringMap", StringMap);
 		// : )
         interp.variables.set("System", lime.system.System);
         interp.variables.set("File", sys.io.File);
@@ -91,7 +126,9 @@ class PluginManager {
         interp.variables.set("FlxObject", flixel.FlxObject);
 		interp.variables.set("FlxTween", flixel.tweens.FlxTween);
         interp.variables.set("FlxCamera", flixel.FlxCamera);
-        interp.variables.set("FlxText", flixel.text.FlxText);
+		interp.variables.set("FlxText", flixel.text.FlxText);
+		interp.variables.set("FlxTextBorderStyle", FlxTextBorderStyle);
+		interp.variables.set("FlxButton", FlxButton);
         interp.variables.set("SHADOW", FlxTextBorderStyle.SHADOW);
         interp.variables.set("OUTLINE", FlxTextBorderStyle.OUTLINE);
         interp.variables.set("OUTLINE_FAST", FlxTextBorderStyle.OUTLINE_FAST);
@@ -99,14 +136,56 @@ class PluginManager {
 		interp.variables.set("Std", Std);
 		interp.variables.set("StringTools", StringTools);
 		interp.variables.set("MetroSprite", MetroSprite);
-        interp.variables.set("FlxRuntimeShader", ShaderHandler.CoolRuntimeShader);
-        interp.variables.set("DropShadowShader", shaders.DropShadowShader);
+		interp.variables.set("FlxRuntimeShader", ShaderHandler.CoolRuntimeShader);
+		interp.variables.set("ShaderFilter", openfl.filters.ShaderFilter);
+		interp.variables.set("DropShadowShader", shaders.DropShadowShader);
 		interp.variables.set("FlxTrail", FlxTrail);
+		// Springless and other imported modcharts construct these chainable
+		// effects directly. Keeping them in the common interpreter prevents a
+		// missing class from aborting start() halfway through a camera fade.
+		interp.variables.set("FlxEffectSprite", FlxEffectSprite);
+		interp.variables.set("FlxGlitchEffect", FlxGlitchEffect);
 		interp.variables.set("FlxEase", FlxEase);
 		interp.variables.set("Reflect", Reflect);
 		interp.variables.set("Character", Character);
-		interp.variables.set("OptionsHandler", OptionsHandler);
-        interp.variables.set("DifficultyManager", DifficultyManager);
+		// Imported V-Slice song scripts use a second Strumline only for their
+		// own copied note stream.  These aliases point at the bounded native
+		// adapter; they do not expose donor Strumline/NoteStyle instances.
+		interp.variables.set("Strumline", ExtraStrumlineAdapter);
+		interp.variables.set("HxcHealthIconAdapter", HxcHealthIconAdapter);
+		interp.variables.set("NoteStyleRegistry", ExtraStrumlineNoteStyleRegistry);
+		interp.variables.set("HxcNoteStyleCompat", HxcNoteStyleCompat);
+		interp.variables.set("HxcNoteSplashCompat", HxcNoteSplashCompat);
+		interp.variables.set("GRhythmUtil", ExtraStrumlineRhythm);
+		// HXC modules use the native control singleton for menu navigation. Keep
+		// the live PlayerSettings object available in every interpreter instead
+		// of treating its authored reads as donor-only globals.
+		interp.variables.set("PlayerSettings", PlayerSettings);
+			interp.variables.set("OptionsHandler", OptionsHandler);
+			// Generated HXC adapters use this namespaced store for the small common
+			// Save/Preferences surface; never expose the donor singleton itself.
+			interp.variables.set("HxcCompatRuntime", HxcCompatRuntime);
+			interp.variables.set("hxcSetWindowTitle", HxcWindowCompat.setTitle);
+			interp.variables.set("hxcSetWindowIcon", HxcWindowCompat.setIcon);
+			interp.variables.set("hxcStateInit", HxcCompatRuntime.stateInit);
+			// Generic interpreters have no manifest owner. Keep the same helpers
+			// available for generated HXC adapters, but an empty root permits only
+			// the explicit native aliases and rejects foreign state/substate names.
+			interp.variables.set("hxcSubStateInit", function(name:Dynamic):Dynamic
+				return HxcStateFactory.subStateInit('', name));
+			interp.variables.set("hxcStateFactory", function(name:Dynamic, ?args:Array<Dynamic>):Dynamic
+				return HxcStateFactory.stateFactory('', name, args));
+			interp.variables.set("hxcSwitchState", function(target:Dynamic):Bool
+				return HxcStateFactory.switchStateScoped('', target));
+			interp.variables.set("hxcStartExitState", function(target:Dynamic):Bool
+				return HxcStateFactory.startExitState('', target));
+			interp.variables.set("hxcOpenSubState", function(target:Dynamic):Bool
+				return HxcStateFactory.openSubStateScoped('', null, target));
+			interp.variables.set("hxcOpenSubStateOn", function(host:Dynamic, target:Dynamic):Bool
+				return HxcStateFactory.openSubStateScoped('', host, target));
+			interp.variables.set("DifficultyManager", DifficultyManager);
+			interp.variables.set("CreditsState", CreditsState);
+			interp.variables.set("SaveDataState", SaveDataState);
 		#if debug
 		interp.variables.set("debug", true);
 		#else
@@ -131,8 +210,9 @@ class HscriptGlobals {
     public static var game(get, never):FlxGame;
     public static var gamepads(get, never):FlxGamepadManager;
     public static var height(get, never):Int;
-    public static var initialHeight(get, never):Int;
-    public static var initialWidth(get, never):Int;
+	public static var initialHeight(get, never):Int;
+	public static var initialWidth(get, never):Int;
+	public static var onMobile(get, never):Bool;
     //public static var initialZoom(get, never):Float;
     public static var inputs(get, never):InputFrontEnd;
     public static var keys(get, never):FlxKeyboard;
@@ -150,7 +230,12 @@ class HscriptGlobals {
     public static var state(get, never):FlxState;
     // no swipes because no mobile : )
     public static var timeScale(get, set):Float;
-    // no touch because no mobile : )
+    // flixel only compiles FlxTouchManager under FLX_TOUCH (mobile targets),
+    // but ported V-Slice menus iterate FlxG.touches.list unconditionally, so
+    // the surrogate must exist on desktop too: an empty touch list is exactly
+    // what the real manager holds without a touch screen. Leaving the member
+    // null made for-in reach hscript makeIterator(null) and SIGSEGV.
+    public static var touches(get, never):HscriptTouchFrontEnd;
     public static var updateFramerate(get,set):Int;
     // no vcr : )
     // no watch : )
@@ -220,9 +305,12 @@ class HscriptGlobals {
     static function get_gamepads():FlxGamepadManager {
         return FlxG.gamepads;
     }
-    static function get_initialWidth():Int {
-        return FlxG.initialWidth;
-    }
+	static function get_initialWidth():Int {
+		return FlxG.initialWidth;
+	}
+	static function get_onMobile():Bool {
+		return FlxG.onMobile;
+	}
     /*static function get_initialZoom():Float {
         return FlxG.initialZoom;
     }*/
@@ -252,6 +340,9 @@ class HscriptGlobals {
     }
     static function get_state() {
         return FlxG.state;
+    }
+    static function get_touches():HscriptTouchFrontEnd {
+        return HscriptTouchFrontEnd.instance;
     }
     static function set_timeScale(s) {
         return FlxG.timeScale = s;
@@ -310,6 +401,25 @@ class HscriptGlobals {
         FlxG.resizeWindow(Width, Height);
     }
     // no switch state because i don't trust you guys
+}
+
+/**
+    Minimal desktop stand-in for flixel's FlxTouchManager (compiled only under
+    FLX_TOUCH).  Ported donor menus read FlxG.touches.list / getFirst() without
+    checking FlxG.onMobile first; an empty list and a null first touch are
+    exactly what the real manager holds on a desktop, so those scripts see
+    donor-faithful data instead of a null manager.
+*/
+class HscriptTouchFrontEnd {
+    public static var instance:HscriptTouchFrontEnd = new HscriptTouchFrontEnd();
+
+    public var list:Array<Dynamic> = [];
+
+    function new() {}
+
+    public function getFirst():Dynamic {
+        return list.length == 0 ? null : list[0];
+    }
 }
 
 class HscriptSoundFrontEndWrapper {

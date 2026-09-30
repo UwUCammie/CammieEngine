@@ -28,27 +28,102 @@ enum Extensions {
  */
 class FNFAssets {
     public static var _file:FileReference;
+	#if sys
+	// Keep only successful resolutions. Imports can add a previously-missing
+	// file while the game is running, so misses must never be cached.
+	static var caseResolvedPaths:Map<String, String> = new Map<String, String>();
+	#end
+
+	/**
+	 * Resolve one dynamic asset id against the native filesystem using the
+	 * case-insensitive semantics donor engines received on Windows.
+	 *
+	 * A folded match is accepted only when every path component is unique. A
+	 * Linux tree containing both `Icon.png` and `icon.png` is ambiguous and is
+	 * intentionally left unresolved instead of selecting by directory order.
+	 */
+	public static function resolveCaseInsensitivePath(id:String):Null<String> {
+		#if sys
+		if (id == null || StringTools.trim(id) == '' || id.indexOf(String.fromCharCode(0)) >= 0)
+			return null;
+		var normalized = Path.normalize(id);
+		if (normalized == null || normalized == '')
+			return null;
+		var absolute = Path.normalize(FileSystem.absolutePath(normalized));
+		var embedded = Assets.exists(normalized);
+		var inScope = isInScope(absolute);
+		if (!embedded && !inScope)
+			return null;
+		if (inScope && FileSystem.exists(absolute))
+			return normalized;
+		if (caseResolvedPaths.exists(absolute)) {
+			var cached = caseResolvedPaths.get(absolute);
+			if (cached != null && FileSystem.exists(cached))
+				return Path.normalize(cached);
+			caseResolvedPaths.remove(absolute);
+		}
+
+		var root = Path.normalize(FileSystem.absolutePath(Main.cwd == null ? Sys.getCwd() : Main.cwd));
+		if (absolute != root && !absolute.startsWith(root + '/'))
+			return embedded ? normalized : null;
+		var relative = absolute == root ? '' : absolute.substr(root.length + 1);
+		if (relative == '')
+			return normalized;
+		var current = root;
+		for (part in relative.split('/')) {
+			if (part == '' || part == '.' || part == '..' || !FileSystem.isDirectory(current))
+				return null;
+			var matches:Array<String> = [];
+			try {
+				for (entry in FileSystem.readDirectory(current))
+					if (entry.toLowerCase() == part.toLowerCase())
+						matches.push(entry);
+			} catch (_:Dynamic) {
+				return null;
+			}
+			if (matches.length != 1)
+				return null;
+			current = Path.join([current, matches[0]]);
+		}
+		if (!FileSystem.exists(current))
+			return embedded ? normalized : null;
+		caseResolvedPaths.set(absolute, current);
+		return Path.normalize(current);
+		#else
+		return Assets.exists(id) ? id : null;
+		#end
+	}
     /**
      * Get text content of a file. 
      * @param id Path to file.
      * @return String The file content. 
      */
-    public static function getText(id:String):String {
-        #if sys
+	public static function getText(id:String):String {
+		id = Path.normalize(id);
+	        #if sys
             // if there a library strip it out..
             // future proofing ftw
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
-			var path = Assets.exists(id) ? Assets.getPath(id) : null;
-            if (path == null)
-                path = id;
-			else
-				return Assets.getText(id);
+				var resolved = resolveCaseInsensitivePath(id);
+				var path:String = null;
+				var content:String = null;
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
+					path = resolved;
+				else if (Assets.exists(id)) {
+					path = Assets.getPath(id);
+					content = Assets.getText(id);
+				}
+			if (path == null)
+				throw 'File $id doesn\'t exist or cannot be read.';
+			if (content == null) {
 			try {
-			return File.getContent(path);
+			content = File.getContent(path);
 			} catch (e:Any) {
 				throw 'File $path doesn\'t exist or cannot be read.';
 			}
+			}
+			return ImportOverlayResolver.applyText(id, content);
             
         #else
             // no need to strip it out... 
@@ -61,10 +136,17 @@ class FNFAssets {
 	 * @param id Path without extension
 	 */
 	static public function getJson(id:String):Null<String> {
+		id = Path.normalize(id);
+		if (CoolUtil.JSON_EXT.indexOf(Path.extension(id)) != -1) {
+			if (exists(id)) return getText(id);
+			id = Path.withoutExtension(id);
+		}
 		return getAmbigAsset([id], CoolUtil.JSON_EXT, AssetType.TEXT);
 	}
 	static public function getHscript(id:String):Null<String> {
-		return getAmbigAsset([id], CoolUtil.HSCRIPT_EXT, AssetType.TEXT);
+		// Script folders are optional. Collapse video/../video before asking
+		// the filesystem, which otherwise requires the video directory to exist.
+		return getAmbigAsset([Path.normalize(id)], CoolUtil.HSCRIPT_EXT, AssetType.TEXT);
 	}
 	/**
 	 * A safer way to get assets. Checks if the first asset exists and if not ALWAYS uses 2nd asset.
@@ -131,16 +213,25 @@ class FNFAssets {
 		// future proofing ftw
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
-			var path = Assets.exists(id) ? Assets.getPath(id) : null;
+				var resolved = resolveCaseInsensitivePath(id);
+				var path:String = null;
+				var content:Bytes = null;
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
+					path = resolved;
+				else if (Assets.exists(id)) {
+					path = Assets.getPath(id);
+					content = Assets.getBytes(id);
+				}
 			if (path == null)
-				path = id;
-			else
-				return Assets.getBytes(id);
+				throw 'File $id doesn\'t exist or cannot be read.';
+			if (content == null) {
 			try {
-			return File.getBytes(path);
+			content = File.getBytes(path);
 			} catch (e:Any) {
 			throw 'File $path doesn\'t exist or cannot be read.';
 			}
+			}
+			return ImportOverlayResolver.applyBytes(id, content);
 			
 		#else
 		// no need to strip it out...
@@ -164,13 +255,10 @@ class FNFAssets {
 				if (!isInScope(id))
 					return false;
 				#if sys
-				var path = Assets.exists(id) ? Assets.getPath(id) : null;
-				if (path == null)
-					path = id;
-				else
-					// if it _does_ exist then yeah of course  it works
+				var resolved = resolveCaseInsensitivePath(id);
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
 					return true;
-				return FileSystem.exists(path);
+				return Assets.exists(id);
 				#else
 				return Assets.exists(id);
 				#end
@@ -197,8 +285,13 @@ class FNFAssets {
 		#if sys
 		if (Assets.exists(id))
 			return true;
-		// If path isn't within cwd return false
-		if (!Path.normalize(FileSystem.absolutePath(id)).contains(Path.normalize(Main.cwd)))
+		// If path isn't within cwd return false. Do not use String.contains here:
+		// `/game-evil/file` must not count as being under `/game`.
+		if (id == null || id.indexOf(String.fromCharCode(0)) >= 0)
+			return false;
+		var absolute = Path.normalize(FileSystem.absolutePath(id));
+		var root = Path.normalize(FileSystem.absolutePath(Main.cwd == null ? Sys.getCwd() : Main.cwd));
+		if (absolute != root && !absolute.startsWith(root + '/'))
 			return false;
 		#end
 		return true;
@@ -206,7 +299,7 @@ class FNFAssets {
     /**
      * Get bitmap data of a file.
      * @param id Path of file
-     * @param useCache Whether to reuse assets if file was already requested. Only works on non-dynamically loaded assets.
+     * @param useCache Whether to reuse assets if file was already requested.
      * @return BitmapData the data of the file.
      */
     public static function getBitmapData(id:String, ?useCache:Bool=true):BitmapData {
@@ -214,15 +307,41 @@ class FNFAssets {
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
             // idk if this works lol
-			var path = Assets.exists(id) ? Assets.getPath(id) : null;
-            if (path == null)
-                path = id;
-			else return Assets.getBitmapData(id, useCache);
-			try {
-				return BitmapData.fromFile(path);
-			} catch (e:Any) {
-				throw 'File $path doesn\'t exist or cannot be read.';
-			}
+				var resolved = resolveCaseInsensitivePath(id);
+				var path:String = null;
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
+					path = resolved;
+				else if (Assets.exists(id))
+					return Assets.getBitmapData(id, useCache);
+			if (path == null)
+				throw 'File $id doesn\'t exist or cannot be read.';
+			var bitmapKey = DiskBitmapCache.key(FileSystem.absolutePath(path));
+			return DiskBitmapCache.getOrLoad(bitmapKey, useCache,
+				function(key:String):BitmapData {
+					var graphic = FlxG.bitmap.get(key);
+					var cached = graphic == null || graphic.isDestroyed ? null : graphic.bitmap;
+					if (cached != null)
+						RuntimeDecodeMetrics.recordHit();
+					return cached;
+				},
+				function():BitmapData {
+					var timing = RuntimeDecodeMetrics.enabled;
+					var startedAt = timing ? Sys.time() : 0.0;
+					try {
+						var bitmap = BitmapData.fromFile(path);
+						if (timing)
+							RuntimeDecodeMetrics.recordMiss((Sys.time() - startedAt) * 1000);
+						return bitmap;
+					} catch (_:Any) {
+						if (timing)
+							RuntimeDecodeMetrics.recordMiss((Sys.time() - startedAt) * 1000);
+						throw 'File $path doesn\'t exist or cannot be read.';
+					}
+				},
+				function(key:String, data:BitmapData):BitmapData {
+					var graphic = FlxG.bitmap.add(data, false, key);
+					return graphic == null ? data : graphic.bitmap;
+				});
         #else
             return Assets.getBitmapData(id, useCache);
         #end
@@ -239,10 +358,14 @@ class FNFAssets {
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
             // idk if this works lol
-			var path = Assets.exists(id) ? Assets.getPath(id) : null;
-            if (path == null)
-                path = id;
-			else return Assets.loadBitmapData(id, useCache);
+				var resolved = resolveCaseInsensitivePath(id);
+				var path:String = null;
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
+					path = resolved;
+				else if (Assets.exists(id))
+					return Assets.loadBitmapData(id, useCache);
+			if (path == null)
+				throw 'File $id doesn\'t exist or cannot be read.';
 			try {
 				return BitmapData.loadFromFile(path);
 			} catch (e:Any) {
@@ -262,12 +385,15 @@ class FNFAssets {
         #if sys
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
-			var path = Assets.exists(id) ? Assets.getPath(id) : null;
-            if (path == null)
-                path = id;
-			else
-				// prefer using assets as it uses a cache??
-				return Assets.getSound(id, useCache);
+				var resolved = resolveCaseInsensitivePath(id);
+				var path:String = null;
+				if (resolved != null && FileSystem.exists(FileSystem.absolutePath(resolved)))
+					path = resolved;
+				else if (Assets.exists(id))
+					// Prefer a manifest asset only when no disk file shadows it.
+					return Assets.getSound(id, useCache);
+			if (path == null)
+				throw 'File $id doesn\'t exist or cannot be read.';
 		try {
 			return Sound.fromFile(path);
 		} catch (e:Any) {

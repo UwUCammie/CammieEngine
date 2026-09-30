@@ -1,16 +1,20 @@
 ---
 name: Bug Report
-about: Report a bug or critical performance issue
+about: Report a CammieEngine bug or performance issue
 title: 'Bug Report: '
 labels: bug
 ---
-#### Please check for duplicates or similar issues, as well performing simple troubleshooting steps (such as clearing cookies, clearing AppData, trying another browser) before submitting an issue.
+## Engine version and operating system
+Include the version shown on the main menu and your Windows or Linux version.
+For performance issues, include CPU, GPU, RAM and the selected FPS cap.
 
-### If you are playing a downloaded version of the game, what operating system are you using?
-Windows (`x86`), Windows (`x86_64`), Linux, or macOS? Specify below.
+## Source package, engine, song and difficulty
+For imported content, include the mod version and source engine. Describe how
+the original engine behaves. Do not upload copyrighted mod archives here.
 
-## What version of the game are you using? Look in the bottom left corner of the main menu.
+## Steps to reproduce
+Include whether this followed a reload, seek, pause, difficulty change or import.
 
-## Have you identified any steps to reproduce the bug? If so, please describe them below. Use images if possible.
-
-## Please describe your issue. Provide extensive detail and images if possible.
+## Expected and actual behavior
+Attach relevant screenshots and log excerpts. Check logs for personal paths or
+other private information before posting. Preserve your saves and settings.
