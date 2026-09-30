@@ -138,6 +138,7 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         init = section(ps, '\t\tdaScrollSpeed = OptionsHandler.options.scrollSpeed == 1', '\t\ttrace(SONG.gf);')
         tween = section(ps, '\t@:keep public function tweenScrollSpeed(', '\n\tfunction healthChange(')
         queue = section(ps, '\t\twhile (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead)', '\n\t\tif (generatedMusic)')
+        speed_resolution = section(ps, '\t\t\t\tvar noteScrollSpeed = FlxMath.roundDecimal(', '\n\t\t\t\tif (downscroll)')
         movement = section(ps, '\t\t\t\tvar neg = downscroll ? -1 : 1;', '\t\t\t\tif (vnshNotes)')
         sustain = section(ps, '\t\t\t\t\t\tdaNote.prevNote.scale.y =', ';') + ';'
         sinks = [line for line in note.splitlines() if 'prevNote.scale.y *= Conductor.stepCrochet' in line]
@@ -145,7 +146,8 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         self.assertTrue(all('effectiveScrollSpeed' in line for line in sinks))
         # One resolved speed value feeds the downscroll and upscroll positions.
         self.assertEqual(ps.count('dynamicScrollTarget > 0 ? effectiveScrollSpeed'), 1)
-        self.assertIn('FlxG.save.data.scrollSpeed == 1 ? daScrollSpeed : FlxG.save.data.scrollSpeed', ps)
+        self.assertIn(': effectiveScrollSpeed), 2);', speed_resolution)
+        self.assertNotIn('FlxG.save.data.scrollSpeed', ps)
         self.assertEqual(movement.count('* noteScrollSpeed)'), 2)
         fixture = '''
 class OptionsHandler {public static var options = {scrollSpeed:1.0, dynamicScrollSpeed:0.0};}
@@ -180,10 +182,19 @@ class PlayState {
  function bindCodenameNoteLine(note:Note):Void {}
  var downscroll=false; var drunkNotes=false; var songTime:Float=0; var noteSpeed:Float=0.45;
  var noteScrollSpeed:Float=1;
- var strums={scrollSpeed:1.0,hasScrollSpeedOverride:function()return false};
+ var lineOverride=false;
+ var strums:Dynamic;
  var initialStepCrochet:Float=100;
  var daNoteStrums={members:[{y:100.0}]};
- public function new() {}
+ public function new() {
+  var self=this;
+  strums={scrollSpeed:1.0,hasScrollSpeedOverride:function()return self.lineOverride};
+ }
+ function resolveNoteScrollSpeed():Float {
+  var daNoteStrums = strums;
+''' + speed_resolution + '''
+  return noteScrollSpeed;
+ }
  function initializeNightmareVisionScripts():Void {}
  // The extracted chart has no selected NMV owner; preserve normal note flow.
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
@@ -195,6 +206,7 @@ class PlayState {
 ''' + init + '\nnoteScrollSpeed = effectiveScrollSpeed;\n}\n' + tween + '\nfunction spawn() {\n' + queue + '''
  }
  function move(daNote:Dynamic) {
+  noteScrollSpeed=resolveNoteScrollSpeed();
 ''' + movement + '''
  }
  function size(daNote:Dynamic) {
@@ -211,6 +223,13 @@ class PlayState {
   var state=new PlayState();
   for (chart in [0.7, 1.0, 2.7, 5.0]) {
    SONG.speed=chart; OptionsHandler.options.dynamicScrollSpeed=0; state.init(); near(effectiveScrollSpeed, chart);
+   near(state.resolveNoteScrollSpeed(), chart);
+   state.downscroll=false;
+   var staticNote:Dynamic={noteData:0,strumTime:1000.0,y:0.0}; state.move(staticNote);
+   near(staticNote.y, 100 + 450 * chart);
+   state.lineOverride=true; state.strums.scrollSpeed=3.5; near(state.resolveNoteScrollSpeed(), 3.5);
+   OptionsHandler.options.dynamicScrollSpeed=2.5; state.init(); near(state.resolveNoteScrollSpeed(), 2.5);
+   state.lineOverride=false;
    for (target in [0.5, 1.0, 2.5, 10.0]) {
     OptionsHandler.options.dynamicScrollSpeed=target; state.init(); near(effectiveScrollSpeed,target); near(daScrollSpeed,chart);
     for (down in [false,true]) {

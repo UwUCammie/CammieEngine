@@ -24,6 +24,11 @@ import sys.io.File;
 import haxe.Json;
 import tjson.TJSON;
 
+#if (sys && windows)
+import UpdateChecker.UpdateRelease;
+import UpdateChecker.UpdateCheckResult;
+#end
+
 using StringTools;
 typedef TOption = {
 	var name:String;
@@ -55,6 +60,17 @@ class SaveDataState extends MusicBeatState {
 	var preferredSave:Int = 0;
 	var description:FlxText;
 	var forbiddenIndexes:Array<Int> = [];
+	#if (sys && windows)
+	var updateDialogBackground:FlxSprite;
+	var updateDialogText:FlxText;
+	var updateDialogVisible:Bool = false;
+	var updateDialogMode:String = '';
+	var updateCheckRequestId:Int = -1;
+	var updateOffer:Null<UpdateRelease>;
+	var updateInstallStatusPath:Null<String>;
+	var lastInstallStatus:Null<String>;
+	var updateProgressDismissed:Bool = false;
+	#end
 	public static var prevPath:String = 'title';
 	override function create() {
 		FlxG.sound.music.stop();
@@ -127,9 +143,12 @@ class SaveDataState extends MusicBeatState {
 							#if sys
 							{name: "Toggle Title Background", value: true, intName:'titleToggle', desc:"Turn on/off the title screen background.", ignore: true,},
 							//{name: "UI Layout...", value: false, intName:'newui', desc: "Change the layout of the UI in-game!", ignore: true,},
-							{name:"Module...", value:false, intName:'module', desc: "Make new stuff!", ignore: true,},
-							{name:"newModule...", value:false, intName:'newmodule', desc: "Make newnew stuff!", ignore: true,},
-							{name:"Import Settings...", value:false, intName:'importSettings', desc: "Choose the song importer.", ignore: true,},
+								{name:"Module...", value:false, intName:'module', desc: "Make new stuff!", ignore: true,},
+								{name:"newModule...", value:false, intName:'newmodule', desc: "Make newnew stuff!", ignore: true,},
+								{name:"Import Settings...", value:false, intName:'importSettings', desc: "Choose the song importer.", ignore: true,},
+								#if windows
+								{name:"Check for Updates...", value:false, intName:'checkUpdates', desc: "Check for a newer Windows release and choose whether to download and install it.", ignore:true,},
+								#end
 							//{name:"New Character...", value: false, intName:'newchar', desc: "Make a new character!", ignore: true,},
 							//{name:"New Stage...", value:false, intName:'newstage', desc: "Make a new stage!", ignore: true,},
 							//{name: "New Song...", value: false, intName:'newsong', desc: "Make a new song!", ignore: true,},
@@ -228,6 +247,17 @@ class SaveDataState extends MusicBeatState {
 		description.text = "Amongus???";
 		description.scrollFactor.set();
 		optionMenu.add(description);
+		#if (sys && windows)
+		updateDialogBackground = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(0, 0, 0, 220));
+		updateDialogBackground.scrollFactor.set();
+		updateDialogBackground.visible = false;
+		add(updateDialogBackground);
+		updateDialogText = new FlxText(90, 145, FlxG.width - 180, '', 420);
+		updateDialogText.setFormat('assets/fonts/vcr.ttf', 24, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
+		updateDialogText.scrollFactor.set();
+		updateDialogText.visible = false;
+		add(updateDialogText);
+		#end
 		changeSelection();
 		if (curOptions.allowEditOptions)
 			swapMenus();
@@ -235,6 +265,11 @@ class SaveDataState extends MusicBeatState {
 	}
 	override function update(elapsed:Float) {
 		super.update(elapsed);
+		#if (sys && windows)
+		pollUpdateCheck();
+		pollUpdateInstall();
+		if (handleUpdateDialog()) return;
+		#end
 		if (controls.BACK) {
 			if (!saves.members[curSelected].beingSelected) {
 				// our current save saves this
@@ -349,6 +384,10 @@ class SaveDataState extends MusicBeatState {
 						saveOptions();
 
 						LoadingState.loadAndSwitchState(new ImportSettingsState());
+					#if windows
+					case "Check for Updates...":
+						beginUpdateCheck();
+					#end
 					case "New Week...":
 						saveOptions();
 						NewWeekState.sorted = false;
@@ -388,6 +427,123 @@ class SaveDataState extends MusicBeatState {
 		}
 
 	}
+	#if (sys && windows)
+	function beginUpdateCheck():Void {
+		if (updateCheckRequestId >= 0 || updateInstallStatusPath != null) return;
+		var currentTag = UpdateChecker.installedReleaseTag();
+		var installedLabel = currentTag == 'unknown'
+			? 'unknown (app version v' + EngineBranding.version() + ')'
+			: currentTag;
+		showUpdateDialog('Checking GitHub releases...\nInstalled release: ' + installedLabel
+			+ '\n\nBACK: dismiss', 'checking');
+		updateCheckRequestId = UpdateChecker.beginCheck(currentTag);
+	}
+
+	function pollUpdateCheck():Void {
+		if (updateCheckRequestId < 0) return;
+		var result:UpdateCheckResult = UpdateChecker.takeCheckResult(updateCheckRequestId);
+		if (result == null) return;
+		updateCheckRequestId = -1;
+		if (result.error != null) {
+			showUpdateDialog('Could not check for updates.\n' + result.error + '\n\nACCEPT or BACK: close', 'message');
+			return;
+		}
+		var latest = result.latest;
+		if (latest == null) {
+			showUpdateDialog('No Windows release package is available.\n\nACCEPT or BACK: close', 'message');
+			return;
+		}
+		var currentLabel = result.currentTag == 'unknown'
+			? 'unknown (app version v' + EngineBranding.version() + ')'
+			: result.currentTag;
+		if (!result.updateAvailable) {
+			showUpdateDialog('Installed: ' + currentLabel + '\nLatest: ' + latest.tag
+				+ '\n\nYou are up to date.\n\nACCEPT or BACK: close', 'message');
+			return;
+		}
+		updateOffer = latest;
+		showUpdateDialog('Update available\nInstalled: ' + currentLabel + '\nLatest: ' + latest.tag
+			+ '\nDownload size: ' + UpdateChecker.formatSize(latest.sizeBytes)
+			+ '\n\nThe full Windows package will download and install after you close the game.'
+			+ '\nSettings and imported content are preserved. Existing asset files stay in place, so static asset changes require a manual clean install.'
+			+ '\n\nACCEPT: download and install\nBACK: cancel', 'prompt');
+	}
+
+	function pollUpdateInstall():Void {
+		if (updateInstallStatusPath == null) return;
+		var status = UpdateChecker.readInstallStatus(updateInstallStatusPath);
+		if (status == null || status == lastInstallStatus) return;
+		lastInstallStatus = status;
+		if (updateProgressDismissed) return;
+		switch (status) {
+			case 'downloading':
+				showUpdateDialog('Downloading the full Windows package...\nThis can take a while. You can keep playing; the verified update installs after the game closes.\n\nBACK: hide this message', 'progress');
+			case 'verifying':
+				showUpdateDialog('Download complete. Verifying the ZIP against GitHub and its release checksum...\n\nBACK: hide this message', 'progress');
+			case 'extracting':
+				showUpdateDialog('The package is verified. Preparing the files for installation...\n\nBACK: hide this message', 'progress');
+			case 'ready':
+				showUpdateDialog('The update is verified and ready. It will install automatically after you close the game. You can keep playing.\n\nSettings and imported content are preserved. Existing asset files stay in place, so static asset changes require a manual clean install.\n\nBACK: close', 'ready');
+			case 'installing':
+				showUpdateDialog('Installing the verified update.\n\nThe update helper will ask whether to start the new version when installation finishes.', 'progress');
+			case 'complete':
+				updateInstallStatusPath = null;
+				showUpdateDialog('The update has been installed.\n\nACCEPT or BACK: close', 'message');
+			default:
+				if (StringTools.startsWith(status, 'error:')) {
+					updateInstallStatusPath = null;
+					showUpdateDialog(status.substr('error:'.length) + '\n\nACCEPT or BACK: close', 'message');
+				}
+		}
+	}
+
+	function handleUpdateDialog():Bool {
+		if (!updateDialogVisible) return false;
+		if (controls.ACCEPT) {
+			if (updateDialogMode == 'prompt' && updateOffer != null) {
+				var started = UpdateChecker.startInstall(updateOffer);
+				if (started.error != null) {
+					showUpdateDialog('Could not start the update.\n' + started.error + '\n\nACCEPT or BACK: close', 'message');
+				} else {
+					updateInstallStatusPath = started.statusPath;
+					lastInstallStatus = null;
+					updateProgressDismissed = false;
+					showUpdateDialog('The Windows update helper has started. It downloads and verifies the full package, then installs it after you close the game.\n\nYou can keep playing. BACK hides this message.', 'progress');
+				}
+			} else if (updateDialogMode == 'checking') {
+				updateCheckRequestId = -1;
+				hideUpdateDialog();
+			} else if (updateDialogMode != 'progress') {
+				hideUpdateDialog();
+			}
+			return true;
+		}
+		if (controls.BACK) {
+			if (updateDialogMode == 'prompt') updateOffer = null;
+			if (updateDialogMode == 'checking') updateCheckRequestId = -1;
+			if ((updateDialogMode == 'progress' || updateDialogMode == 'ready') && updateInstallStatusPath != null)
+				updateProgressDismissed = true;
+			hideUpdateDialog();
+			return true;
+		}
+		return true;
+	}
+
+	function showUpdateDialog(text:String, mode:String):Void {
+		updateDialogMode = mode;
+		updateDialogVisible = true;
+		updateDialogBackground.visible = true;
+		updateDialogText.text = text;
+		updateDialogText.visible = true;
+	}
+
+	function hideUpdateDialog():Void {
+		updateDialogVisible = false;
+		updateDialogBackground.visible = false;
+		updateDialogText.visible = false;
+	}
+	#end
+
 	function changeAmount(increase:Bool = false) {
 		if (!numberDisplays[optionsSelected].visible)
 			return;

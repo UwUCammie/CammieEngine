@@ -1,0 +1,3 @@
+# The bundled results provider is mirrored from its source. Keep its original
+# CRLF and authored spaces without flooding staged whitespace checks.
+assets/imported_mods/bundled-vslice-results/** -text whitespace=-trailing-space,cr-at-eol

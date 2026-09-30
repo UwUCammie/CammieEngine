@@ -149,6 +149,38 @@ class ImportRootScanner {
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_scanner_normalizes_null_directory_enumeration_before_sorting(self):
+        method = extract_method(self.scanner, "static function sortDirectoryEntries")
+        read_directory = extract_method(self.scanner, "static function readDirectory")
+        self.assertIn("!FileSystem.isDirectory(path)", read_directory)
+        self.assertIn("sortDirectoryEntries(FileSystem.readDirectory(path))", read_directory)
+        fixture = """import sys.FileSystem;
+class ImportRootScanner {
+""" + read_directory + "\n" + method + r'''
+  static function main() {
+    var missingPath:Array<String> = ImportRootScanner.readDirectory('missing-directory');
+    if (missingPath == null || missingPath.length != 0)
+      throw 'missing directory was not normalized to an empty array';
+    var missing:Array<String> = ImportRootScanner.sortDirectoryEntries(null);
+    if (missing == null || missing.length != 0)
+      throw 'null directory listing was not normalized to an empty array';
+    var entries = ImportRootScanner.sortDirectoryEntries(['pack', 'Alpha', 'Pack']);
+    if (entries.join('|') != 'Alpha|Pack|pack')
+      throw 'directory sorting order changed: ' + entries.join('|');
+  }
+}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "ImportRootScanner.hx"
+            fixture_path.write_text(fixture)
+            result = subprocess.run(
+                [str(HAXE), "-cp", folder, "--run", "ImportRootScanner"],
+                cwd=folder,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_synthetic_parent_finds_multiple_engine_roots_without_assets_duplicates(self):
         main = """class Main {
   static function main() {

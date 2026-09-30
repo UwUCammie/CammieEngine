@@ -56,8 +56,11 @@ class PsychModSettingCompat {
 		if (origin == '' || origin.indexOf(String.fromCharCode(0)) >= 0)
 			return null;
 		// PsychScriptDiscovery returns absolute paths for actual installed
-		// scripts. Relative callers still receive the stricter traversal check.
-		if (!origin.startsWith('/') && safeRelativePath(origin) == null)
+		// scripts. Haxe represents Windows absolute paths as `C:/...` after
+		// separator normalization, so don't mistake a drive path for an unsafe
+		// relative path merely because it doesn't begin with `/`.
+		// Relative callers still receive the stricter traversal check.
+		if (!isAbsoluteScriptOrigin(origin) && safeRelativePath(origin) == null)
 			return null;
 		if (!FileSystem.isDirectory(root) || !FileSystem.exists(origin)) return null;
 		try {
@@ -70,6 +73,18 @@ class PsychModSettingCompat {
 		#else
 		return null;
 		#end
+	}
+
+	static function isAbsoluteScriptOrigin(value:String):Bool {
+		if (value == null)
+			return false;
+		var clean = StringTools.replace(StringTools.trim(value), '\\', '/');
+		if (clean.startsWith('/'))
+			return true;
+		if (clean.length < 3 || clean.charAt(1) != ':' || clean.charAt(2) != '/')
+			return false;
+		var drive = clean.charCodeAt(0);
+		return (drive >= 'A'.code && drive <= 'Z'.code) || (drive >= 'a'.code && drive <= 'z'.code);
 	}
 
 	/** Resolve the actual imported owner of a globally loaded script. This is

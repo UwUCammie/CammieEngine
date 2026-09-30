@@ -17,6 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
+BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 REQUIRED_RUNTIME_PATHS = (
     "Funkin.exe",
     "lime.ndll",
@@ -28,6 +29,8 @@ REQUIRED_RUNTIME_PATHS = (
     "assets/data",
     "tools/astcenc.exe",
     "tools/astcenc-LICENSE.txt",
+    "assets/imported_mods/bundled-vslice-results/pack.json",
+    "assets/imported_mods/bundled-vslice-results/scripts/results.lua",
 )
 DOCS = (
     ("LICENSE", "LICENSE"),
@@ -42,6 +45,7 @@ DOCS = (
 REQUIRED_DOCS = (
     "LICENSE",
     "NOTICE",
+    "updateLog.txt",
     "tools/licenses/astcenc-LICENSE.txt",
     "tools/licenses/CodenameEngine-Dev-LICENSE.txt",
 )
@@ -78,7 +82,10 @@ def safe_tag(tag: str) -> str:
 
 def excluded_runtime_path(relative: Path) -> bool:
     parts = tuple(part.casefold() for part in relative.parts)
-    if any(part in EXCLUDED_DIRECTORY_NAMES for part in parts):
+    if "imported_mods" in parts and parts[:3] != BUNDLED_RESULTS_ROOT \
+            and parts != BUNDLED_RESULTS_ROOT[:len(parts)]:
+        return True
+    if any(part in EXCLUDED_DIRECTORY_NAMES - {"imported_mods"} for part in parts):
         return True
     return parts[-3:] == ("assets", "data", "options.json")
 
@@ -91,7 +98,7 @@ def runtime_files(runtime: Path) -> list[tuple[Path, Path]]:
         relative_base = base.relative_to(runtime)
         child_dirs[:] = sorted(
             name for name in child_dirs
-            if name.casefold() not in EXCLUDED_DIRECTORY_NAMES
+            if not excluded_runtime_path(relative_base / name)
             and not (base / name).is_symlink()
         )
         for filename in sorted(filenames):
@@ -139,7 +146,9 @@ def tracked_runtime_content(repository: Path) -> dict[str, str]:
             target = "do NOT readme.txt"
         else:
             continue
-        if "imported_mods" in source.casefold() or "local_imports" in source.casefold():
+        if ("imported_mods" in source.casefold()
+                and not source.casefold().startswith("assets/imported_mods/bundled-vslice-results/")) \
+                or "local_imports" in source.casefold():
             continue
         result[target.casefold()] = source
     return result
@@ -186,18 +195,15 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         raise ValueError("committed assets/data/options.json must contain a JSON object")
 
     files = runtime_files(runtime)
-    local_import_roots = []
-    for path in runtime.rglob("*"):
-        if path.is_dir() and path.name.casefold() in EXCLUDED_DIRECTORY_NAMES:
-            if any(entry.is_file() and not entry.is_symlink() for entry in path.rglob("*")):
-                local_import_roots.append(path)
-    if local_import_roots:
-        raise ValueError("runtime contains imported-owner files: "
-            + ", ".join(str(path.relative_to(runtime)) for path in local_import_roots[:5]))
-
     allowed_runtime_files: list[tuple[Path, Path]] = []
     skipped_non_source_content = 0
     for source, relative in files:
+        if tuple(part.casefold() for part in relative.parts[:3]) == BUNDLED_RESULTS_ROOT:
+            original = repository / relative
+            if not original.is_file() or original.is_symlink() or sha256(original) != sha256(source):
+                raise ValueError(f"bundled results asset differs from its release source: {relative}")
+            allowed_runtime_files.append((source, relative))
+            continue
         if relative.parts and relative.parts[0].casefold() in PACKAGED_CONTENT_ROOTS:
             if relative.as_posix().casefold() not in tracked_content:
                 skipped_non_source_content += 1
@@ -214,9 +220,19 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         with zipfile.ZipFile(temporary_archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
             archive_names: set[str] = set()
             for source, relative in allowed_runtime_files:
+                if relative.as_posix().casefold() in {"release_tag", "updatelog.txt"}:
+                    continue
                 archive_name = str(PurePosixPath(ARCHIVE_ROOT, *relative.parts))
                 archive.write(source, archive_name)
                 archive_names.add(archive_name)
+
+            release_log_name = f"{ARCHIVE_ROOT}/updateLog.txt"
+            archive.write(repository / "updateLog.txt", release_log_name)
+            archive_names.add(release_log_name)
+
+            release_tag_name = f"{ARCHIVE_ROOT}/RELEASE_TAG"
+            archive.writestr(release_tag_name, label + "\n")
+            archive_names.add(release_tag_name)
 
             options_name = f"{ARCHIVE_ROOT}/assets/data/options.json"
             archive.writestr(options_name, seed)

@@ -8,6 +8,8 @@ using a release ZIP do not need Haxe, Visual Studio or a source checkout.
 Use the menus to select songs and change settings. Keyboard bindings are
 configurable in Settings. Close the game before replacing or rebuilding it.
 Back up the extracted game folder and your saves before updating an alpha.
+The release includes a default V-Slice-style results screen. Imported mods can
+provide their own ending screen.
 
 IMPORT MODS
 Use the engine's import menu to select a supported source package. Imports

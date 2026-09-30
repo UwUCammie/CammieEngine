@@ -29,6 +29,8 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         repo = root / "repo"
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         write(runtime / "Funkin.exe", b"exe")
+        write(runtime / "RELEASE_TAG", b"previous-release\n")
+        write(runtime / "updateLog.txt", b"stale runtime notes")
         write(runtime / "lime.ndll", b"runtime native library")
         write(runtime / "libvlc.dll", b"VLC library")
         write(runtime / "libvlccore.dll", b"VLC core library")
@@ -40,6 +42,9 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         write(runtime / "assets/data/song/chart.json", b"chart")
         write(runtime / "assets/data/private-flat-song/chart.json", b"untracked local chart")
         write(runtime / "assets/data/options.json", b'{"personal":true}')
+        write(runtime / "assets/imported_mods/bundled-vslice-results/pack.json", b'{"runsGlobally":true}')
+        write(runtime / "assets/imported_mods/bundled-vslice-results/scripts/results.lua", b"onEndSong = function() end")
+        write(runtime / "assets/imported_mods/bundled-vslice-results/images/results.png", b"bundled results image")
         write(runtime / "tools/astcenc.exe", b"decoder")
         write(runtime / "tools/astcenc-LICENSE.txt", b"runtime decoder license")
         for name in (
@@ -55,6 +60,9 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         write(repo / "CHANGELOG.md", b"history")
         write(repo / "assets/data/options.json", b'{"fpsCap":60,"normalizeSongAudio":false}')
         write(repo / "assets/data/song/chart.json", b"tracked chart")
+        write(repo / "assets/imported_mods/bundled-vslice-results/pack.json", b'{"runsGlobally":true}')
+        write(repo / "assets/imported_mods/bundled-vslice-results/scripts/results.lua", b"onEndSong = function() end")
+        write(repo / "assets/imported_mods/bundled-vslice-results/images/results.png", b"bundled results image")
         write(repo / "example_mods/readme.txt", b"tracked bundled example")
         subprocess.run(["git", "-C", str(repo), "add", "-f", "."], check=True)
         subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c",
@@ -83,6 +91,11 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 self.assertIn(prefix + "tools/astcenc.exe", names)
                 self.assertIn(prefix + "tools/astcenc-LICENSE.txt", names)
                 self.assertIn(prefix + "assets/data/song/chart.json", names)
+                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"alpha-test.1\n")
+                self.assertEqual(package.read(prefix + "updateLog.txt"), b"release notes")
+                self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/pack.json", names)
+                self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/scripts/results.lua", names)
+                self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/images/results.png", names)
                 self.assertFalse(any("private-flat-song" in name for name in names))
                 self.assertEqual(
                     package.read(prefix + "assets/data/options.json"),
@@ -114,16 +127,34 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, missing.replace(".", r"\.")):
                     PACKAGE.make_package(runtime, root / f"dist-missing-{missing}", "alpha-test", repo)
                 write(runtime / missing, b"restored fixture library")
+            bundled_script = runtime / "assets/imported_mods/bundled-vslice-results/scripts/results.lua"
+            bundled_script.unlink()
+            with self.assertRaisesRegex(ValueError, "bundled-vslice-results/scripts/results.lua"):
+                PACKAGE.make_package(runtime, root / "dist-missing-results", "alpha-test", repo)
+            write(bundled_script, b"onEndSong = function() end")
             (repo / "tools/licenses/CodenameEngine-Dev-LICENSE.txt").unlink()
             with self.assertRaisesRegex(ValueError, "required release notice"):
                 PACKAGE.make_package(runtime, root / "dist2", "alpha-test", repo)
 
-    def test_refuses_owner_import_trees(self):
+    def test_excludes_owner_import_trees_without_modifying_them(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             root = Path(temp)
             runtime, repo = self.make_package_fixture(root)
             write(runtime / "assets/imported_mods/owner/owner.json", b"local owner")
-            with self.assertRaisesRegex(ValueError, "imported-owner"):
+            write(runtime / "assets/imported_mods/globalResultsProvider.json", b"personal provider")
+            archive, _ = PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+            with zipfile.ZipFile(archive) as package:
+                names = package.namelist()
+                self.assertFalse(any("/imported_mods/owner/" in name for name in names))
+                self.assertFalse(any(name.endswith("globalResultsProvider.json") for name in names))
+            self.assertEqual((runtime / "assets/imported_mods/owner/owner.json").read_bytes(), b"local owner")
+
+    def test_refuses_modified_bundled_results_media(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            write(runtime / "assets/imported_mods/bundled-vslice-results/images/results.png", b"changed locally")
+            with self.assertRaisesRegex(ValueError, "bundled results asset differs"):
                 PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
 
     def test_canonical_windows_build_has_linux_shared_pins_and_patches(self):
@@ -141,7 +172,25 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         ):
             self.assertIn(required, batch)
 
-    def test_workflow_builds_and_publishes_with_scoped_permissions(self):
+    def test_one_command_linux_cross_release_includes_results_source(self):
+        script = ROOT / "build-windows-release.sh"
+        subprocess.run(["bash", "-n", str(script)], check=True)
+        help_result = subprocess.run([str(script), "--help"], check=True,
+                                     capture_output=True, text=True)
+        self.assertIn("Windows x64", help_result.stdout)
+        content = script.read_text(encoding="utf-8")
+        for required in (
+            "./run.sh setup",
+            ".tools/llvm-mingw/bin/x86_64-w64-mingw32-clang++",
+            "./build.sh windows",
+            "tools/package_windows_release.py",
+            "bundled-vslice-results",
+        ):
+            self.assertIn(required, content)
+        project = (ROOT / "Project.xml").read_text(encoding="utf-8")
+        self.assertIn('assets/imported_mods/bundled-vslice-results', project)
+
+    def test_workflow_builds_comparison_artifacts_without_replacing_local_release(self):
         workflow_path = ROOT / ".github/workflows/windows-alpha.yml"
         workflow = workflow_path.read_text(encoding="utf-8")
         self.assertNotIn("\t", workflow)
@@ -149,15 +198,14 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             "windows-2022",
             "call run.bat build",
             "actions/upload-artifact@v4",
-            "actions/download-artifact@v4",
-            "contents: write",
-            "gh release create",
-            "gh release upload",
-            "SHA256SUMS.txt",
+            "contents: read",
+            "tools/package_windows_release.py",
             "retention-days: 30",
         ):
             self.assertIn(required, workflow)
         self.assertNotIn("krdlab/setup-haxe", workflow)
+        self.assertNotIn("gh release upload", workflow)
+        self.assertNotIn("publish-alpha:", workflow)
         self.assertFalse((ROOT / ".github/workflows/build.yml").exists())
         self.assertFalse((ROOT / ".github/workflows/FunkyMainMenu.yml").exists())
         self.assertFalse((ROOT / ".github/workflows/win64.yml").exists())
@@ -166,7 +214,17 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             import yaml
         except ImportError:
             return
-        yaml.safe_load(workflow)
+        parsed = yaml.safe_load(workflow)
+        self.assertEqual(list(parsed["jobs"]), ["build"])
+        build = parsed["jobs"]["build"]
+        cache = next(step for step in build["steps"] if step.get("uses") == "actions/cache@v4")
+        self.assertEqual(cache["with"]["path"].splitlines(), [".tools", ".haxelib"])
+        cache_key = cache["with"]["key"]
+        self.assertIn("hashFiles('run.bat'", cache_key)
+        self.assertIn("tools/patch_*.py", cache_key)
+        self.assertIn("steps.haxelib-revisions.outputs.hscript_ex", cache_key)
+        self.assertIn("steps.haxelib-revisions.outputs.discord_rpc", cache_key)
+        self.assertNotIn("export", cache["with"]["path"])
 
 
 if __name__ == "__main__":

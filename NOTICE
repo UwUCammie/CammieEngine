@@ -17,6 +17,9 @@ Individual libraries, artwork, music, fonts and other third-party material
 retain their respective authorship and licence terms. A supported import
 format does not imply affiliation with its engine or mod authors. Imported
 mods are supplied by the user and are not included in clean alpha releases.
+The V-Slice-style results screen is bundled as a default compatibility UI:
+the original results visuals and music come from Friday Night Funkin', with
+the Psych Engine port credited to Castanova. Other imported mods stay local.
 
 Libraries and tools used by the engine include Haxe, Neko, hxcpp, Lime,
 OpenFL, HaxeFlixel and its addons, flixel-animate, funkin-modchart, HScript,

@@ -823,8 +823,15 @@ and then checks the embedded asset manifest. It does not cache misses: imports
 can add a previously absent file while the process is running, and the next
 lookup must see it. This matters during note creation because legacy UI packs
 may omit `multiNotePresets.json`, causing repeated lookups before the default
-preset is selected. The resolver optimization reduces duplicate directory
-walks; it is not evidence that the unrelated native heap abort is fixed.
+preset is selected. Exact native disk hits skip the OpenFL manifest probe;
+the resolver optimization reduces duplicate directory walks. Neither change
+is evidence that the unrelated native heap abort is fixed.
+
+`NoteKeys` keeps a bounded cache of parsed preset templates for one song.
+Each note receives a deep clone, preserving independent mutable keys and
+definitions. Song creation and the main-thread import-completion handoff clear
+the cache, including cached missing paths, so the next chart observes newly
+imported preset files. Parse failures still reach the caller.
 
 An experimental per-song atlas holder was removed after a native same-binary
 comparison found equivalent swap times with and without it. OpenFL already
@@ -1838,8 +1845,11 @@ are used during chart conversion. Declared variants and flags.ini overrides
 are diagnosed as unsupported, rather than silently claimed as compatible.
 
 `PlayState.getCodenameSongView` validates the selected owner's source folder
-and selects the difficulty record. Invalid resolved records do not fall back
-to base metadata. Older raw-only owners use normalized base metadata with a
+and selects the difficulty record. Runtime loading rebuilds the derived
+`resolved` fields from retained source metadata, so a stale generated cache
+cannot discard an otherwise valid owner's song view. The importer still rejects
+an inconsistent cache when generating its sidecar. Invalid owner, difficulty,
+or source-file records do not fall back to base metadata. Older raw-only owners use normalized base metadata with a
 reimport diagnostic. `CodenameSongView` forwards ordinary chart reads/writes
 to the live native SONG while storing script metadata separately per PlayState;
 `CodenameScriptInterp` implements this property access. Global SONG and imported
@@ -3053,6 +3063,13 @@ source subtrees, preserves their case, and skips existing owner files. A
 missing source definition can use the receipt-verified default character
 from its selected compiled installation; sibling imports never supply one.
 
+`ChooseCharState` derives its visible roster from the current global character
+registry on each entry. `CharacterSelectRoster` asks the same
+`Song.resolveCharacterVisual` loader used by gameplay whether each entry has a
+complete visual under its own asset name. This keeps stale registry names from
+appearing in clean release installations whose imported media was excluded,
+while installed characters become selectable without a restart.
+
 The Codename script parser lowers local Haxe `final` declarations to HScript
 `var` bindings while leaving comments and string literals intact. Its script
 scope exposes the live owner splash group as `splashHandler`; killing that
@@ -3281,8 +3298,30 @@ resolution and the source callback/cancellation boundaries. Wildcard imports,
 the release's older plugin API and all compiled-class dependencies still need
 source-specific verification; successful parsing is not execution coverage.
 
+### Windows release updates
+
+The Windows release ZIP carries `RELEASE_TAG` beside `Funkin.exe`. Settings
+checks GitHub's release list because the `latest` endpoint omits prereleases.
+`UpdateChecker` accepts only a matching Windows x64 archive with a SHA-256 asset
+digest and checksum sidecar. It downloads in a helper process, verifies both
+hashes and ZIP paths, then waits for the running executable to close. The
+installer backs up files it replaces and restores them if copying fails; the
+release tag changes only after a successful overlay. Existing files under
+`assets/`, `mods/`, and `imported_mods/` are retained because older packages
+have no ownership manifest. This preserves imports and settings but means
+changes to previously installed static assets need a clean extraction.
+
 
 ### Cross-engine default results observation
+
+`PsychGlobalPackImporter.defaultProvider` uses a valid user-selected imported
+global pack first, then the bundled V-Slice-style results pack. The packaged
+provider lives at `assets/imported_mods/bundled-vslice-results`; it is a fixed
+engine-owned path, not an imported song owner. `Project.xml` copies that tree
+into native builds. The release packager includes only this fixed tree inside
+the otherwise excluded imported-mod namespace, verifying each file against
+the source checkout. A newly imported global pack can still become the user's
+selected provider without rewriting the bundled files or their settings.
 
 The default Psych results provider receives committed native note outcomes.
 Codename hit/miss dispatch runs its source event and scoring first, then sends
@@ -3549,17 +3588,28 @@ See the verification report for the built/native status of this integration.
 ### Windows alpha distribution
 
 `.github/workflows/windows-alpha.yml` builds Windows x64 on Windows 2022 through
-`run.bat build`. Manual runs upload a ZIP and SHA-256 checksum as Actions artifacts;
-`alpha-*` or `v*-alpha*` tags also attach them to a GitHub prerelease. Only the
-publishing job receives repository write permission.
+`run.bat build`. Manual and tagged runs upload a ZIP and SHA-256 checksum as
+Actions artifacts for comparison. Prereleases are populated from the verified
+local cross-build, so a later CI run cannot replace that release asset. The
+workflow needs repository read permission only. Its exact dependency cache
+keys cover the portable toolchain, pinned libraries, setup patches, and current
+Git-backed library revisions; generated C++ output is still rebuilt.
+
+On Linux, `build-windows-release.sh <tag>` runs toolchain setup, `build.sh
+windows`, and `tools/package_windows_release.py` as one command. It uses the
+local LLVM-MinGW toolchain when available. The build holds the runtime lock and
+stages the Windows runtime DLLs and ASTC decoder. A fresh cross-built
+runtime reached gameplay and exited cleanly under isolated offscreen Wine for
+base Tutorial and an imported Codename chart; native Windows playback remains
+to be verified on actual Windows hardware.
 
 `tools/package_windows_release.py` retains native libraries, VLC plugins/manifests
 and the ASTC decoder. Game content is limited to tracked source asset paths,
-including the Project.xml mappings for templates and bundled example modules.
+including the Project.xml mappings for templates and bundled example modules,
+plus the fixed bundled results tree when its runtime files match the source
+checkout.
 The settings file always comes from the committed repository seed. Packaging
-rejects populated import-owner trees and excludes untracked flat content. This
-pipeline needs its first Windows build and native playback verification; Linux
-checks cannot establish Windows runtime compatibility.
+skips other import owners without touching them and excludes untracked flat content.
 
 
 ### NMV source context and native utility views

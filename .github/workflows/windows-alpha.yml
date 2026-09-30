@@ -25,6 +25,34 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Resolve Git-backed Haxe library revisions
+        id: haxelib-revisions
+        shell: pwsh
+        run: |
+          $repositories = @{
+            hscript_ex = 'https://github.com/ianharrigan/hscript-ex'
+            discord_rpc = 'https://github.com/Aidan63/linc_discord-rpc'
+          }
+          foreach ($name in $repositories.Keys) {
+            $result = git ls-remote $repositories[$name] HEAD
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not resolve the $name Haxe library revision."
+            }
+            $revision = ($result -split '\s+')[0]
+            if ($revision -notmatch '^[0-9a-f]{40}$') {
+              throw "Git returned an invalid $name Haxe library revision."
+            }
+            "$name=$revision" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Restore pinned Windows toolchain and Haxe libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            .tools
+            .haxelib
+          key: windows-dependencies-${{ runner.os }}-${{ hashFiles('run.bat', 'tools/patch_*.py', 'tools/patch_flixel_fallback.ps1', 'tools/install_codename_3d.py') }}-${{ steps.haxelib-revisions.outputs.hscript_ex }}-${{ steps.haxelib-revisions.outputs.discord_rpc }}
+
       - name: Set up Python for the canonical Windows build
         uses: actions/setup-python@v5
         with:
@@ -54,46 +82,3 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
-
-  publish-alpha:
-    name: Attach package to tagged alpha release
-    if: github.ref_type == 'tag' && (startsWith(github.ref_name, 'alpha-') || contains(github.ref_name, '-alpha'))
-    needs: build
-    runs-on: windows-2022
-    permissions:
-      contents: write
-    steps:
-      - name: Download packaged runtime
-        uses: actions/download-artifact@v4
-        with:
-          name: CammieEngine-Windows-x64-${{ github.run_number }}
-          path: dist
-
-      - name: Create or update prerelease assets
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $tag = $env:GITHUB_REF_NAME
-          $zip = Get-ChildItem -Path dist -Filter '*.zip' -File | Select-Object -First 1
-          $checksums = Join-Path $PWD 'dist/SHA256SUMS.txt'
-          if ($null -eq $zip -or -not (Test-Path -LiteralPath $checksums)) {
-            throw 'The Windows package or SHA256SUMS.txt is missing.'
-          }
-          $existing = gh release view $tag --json isPrerelease --jq .isPrerelease 2>$null
-          $viewStatus = $LASTEXITCODE
-          if ($viewStatus -eq 0) {
-            if ($existing.Trim() -ne 'true') {
-              throw "Refusing to replace assets on non-prerelease tag $tag."
-            }
-            gh release upload $tag $zip.FullName $checksums --clobber
-          } else {
-            gh release create $tag $zip.FullName $checksums `
-              --title $tag `
-              --notes 'CammieEngine Windows x64 alpha build. Extract the ZIP and run Funkin.exe.' `
-              --prerelease --verify-tag
-          }
-          if ($LASTEXITCODE -ne 0) {
-            throw 'GitHub CLI could not publish the alpha release assets.'
-          }

@@ -11102,3 +11102,196 @@ The inherited LICENSE, executable filename and save/package identifiers remain.
 Discord's inherited application ID still needs a project-owned replacement to
 change its service-side application identity. No Git remote change or push was
 performed. Static metadata/credit checks and `git diff --check` pass.
+
+### Local Windows cross-build and loading checks — 2026-09-30
+
+The repository's bundled LLVM MinGW toolchain built the Windows x64 executable
+from Linux with `./build.sh windows`. The output includes the PE executable,
+`lime.ndll`, VLC and LLVM runtime DLLs, and the ASTC decoder. The local release
+packager produced `dist/CammieEngine-local-linux-cross-windows-x64.zip`
+(1,144,444,693 bytes; SHA-256
+`e8c7d5e1244f41599eec01ab444f0fd78fa221ed6227b31f0e60d49b1e7a7db2`).
+Archive integrity and checksum verification passed. The archive excludes imported
+mods and personal options; its settings file matches the repository seed.
+
+The Windows alpha workflow now caches exact pinned toolchain and haxelib inputs.
+The reported GitHub job spent about 20 minutes in its build step, but a new CI
+run is needed to measure the cache benefit. The README documents the local
+cross-build and package commands. This is a local alternative for building and
+testing Windows releases; the GitHub runner remains available.
+
+The missing or stationary scrolling notes on a fresh Windows save came from
+using the absent legacy `scrollSpeed` save field as the travel-speed multiplier.
+The shared gameplay path now uses `effectiveScrollSpeed`, retaining the existing
+dynamic speed and strumline override precedence. The regression test executes
+the extracted Haxe expression for a missing legacy field and explicit settings.
+
+Cold imported-song loading had two verified shared costs. Native asset path
+resolution made redundant OpenFL manifest and scope probes; a synthetic 1,000
+path benchmark went from 97.9 ms and 3,000 manifest probes to 29.0 ms and none.
+`NoteKeys` repeatedly parsed the same preset JSON for each note; a bounded,
+per-song template cache now deep-clones presets for note isolation and resets at
+song creation and import completion. Its 2,304-note Haxe benchmark went from
+177–188 ms and 2,304 reads to 62–69 ms and one read. The representative
+imported Codename chart's offscreen Wine note construction went from about
+3.0 seconds to 0.252 seconds; PlayState readiness went from 8.057 to 5.299
+seconds. The latest Linux run reached PlayState in 5.267 seconds. Bitmap
+decoding still consumed about 2.5 seconds in the Wine run, so other large
+imports can remain slow; no async image-loading claim is made.
+
+Runtime Codename song metadata now re-derives generated fields from validated
+source fields when loading a sidecar. Import-time generation still rejects an
+inconsistent cache. This removed the null metadata errors found by the first
+strict Wine replay without changing the donor or doing a bulk import refresh.
+
+After these changes, `./run.sh build` and the local Windows cross-build passed.
+The full test suite passed: **1,681 tests across 506 modules, 65 skipped, zero
+failed** (`tmp/full-suite-note-cache-final.log`). A fresh private Wine prefix,
+Xvfb, dummy video and null audio ran imported Codename Try Harder Hard for 12
+seconds offscreen: `tmp/windows-note-cache-smoke-retry.json` reports success,
+zero strict diagnostics and unchanged options. The load log records the first
+and last note at 2.823 and 3.075 seconds and PlayState ready at 5.299 seconds.
+The current run does not verify every difficulty, full song completion, visual
+parity by screenshot, actual Windows hardware, or the reported slow loads for
+other imported charts. The broader Example Mods completion goal remains open.
+
+### Bundled Windows results screen — 2026-09-30
+
+The previously packaged local Windows ZIP contained **zero** files under
+`assets/imported_mods/`; the locally imported V-Slice-style Psych results pack
+had been excluded along with personal imports. The clean release now carries a
+fixed, engine-owned `bundled-vslice-results` provider (138 files, 43 MB of
+source content). Its copied files match the supplied pack byte for byte. The
+release packager includes only this fixed tree from the imported-mod namespace,
+checks every packaged file against the source tree, excludes other imported
+owners, and writes the committed settings seed rather than personal options.
+`PsychGlobalPackImporter` uses a valid user-selected global provider first and
+the bundled provider otherwise. A newly imported global pack can still become
+the user's selected provider without modifying the bundled tree.
+
+Windows `PsychScriptDiscovery` reports absolute script paths such as `C:/...`.
+`PsychModSettingCompat` had treated every path not starting with `/` as relative
+and rejected the drive colon. That removed the results script's validated
+owner, so owner-scoped settings and media were unavailable. The shared path
+validator now recognizes drive-absolute script origins while retaining the
+traversal and drive-relative rejection checks. This is a Windows path rule,
+not a chart or pack-name exception.
+
+`./build-windows-release.sh local-results` completed the local LLVM-MinGW
+build and package in one command. The generated ZIP passed SHA-256 and archive
+integrity checks, contains all 138 results files and no other imported files,
+and contains the committed options seed. The Windows executable then ran the
+bundled provider against the packaged Tutorial Normal chart under isolated
+offscreen Wine. Song end invoked the provider, it created and added results
+sprites, and Return reached Freeplay with zero strict diagnostics. An Xvfb
+capture, `tmp/windows-vslice-results-state.png`, shows the actual results UI,
+character, score panel and title at 1280×720 (83.94% nonblack pixels). The
+runtime log is `tmp/runtime-smoke/logs/windows-vslice-provider-results.log`.
+The first private Wine prefix attempt stalled in `wineboot` before game launch;
+the warmed-prefix replay completed. The runtime lock and personal settings
+were preserved.
+
+The CI Windows workflow still builds comparison artifacts, but no longer
+automatically publishes them to a tagged prerelease. This prevents a later CI
+run from replacing the verified local cross-build after it is uploaded. The
+bundled pack is credited in NOTICE. Native Windows hardware, results for an
+imported full-song ending, accurate real-play scores, and complete visual/audio
+parity across all charts remain open checks. The supplied results pack has no
+license file, so its redistribution terms also need explicit review before a
+public release.
+
+Previous local upload candidate (superseded by the scan fix below):
+`dist/CammieEngine-v0.0.1-alpha.3-windows-x64.zip`
+(1,185,036,152 bytes; SHA-256
+`e80b9dd8262b34e84882f3ba1f00c1bbf2b5e8febfb925edab04540a54fe1c97`).
+It uses the existing prerelease asset name; checksum and ZIP integrity checks
+passed. It contains all 138 bundled results files, no other imported files,
+the committed options seed, and the updated player guide. The final suite
+passed **1,683 tests across 506 modules, 65 skipped, zero failed**
+(`tmp/full-suite-bundled-results-final.log`). The prerelease asset has not been
+uploaded; the checkout's changes and the new bundled files remain uncommitted.
+
+### Windows import scan null listing — 2026-09-30
+
+An offscreen Wine replay of the local Windows executable crashed while scanning
+the Psych `Hey kid do you wanna weiner` package, before `scan_ready` and before
+any import writes. The native fault was a read at `0x18` in hxcpp's array sort.
+The scanner tested Codename markers for every candidate root; this Psych root
+has no `data/config` directory, and Windows directory enumeration returned a
+null listing for that probe (`tmp/windows-sequential-import-3.log`).
+`ImportRootScanner.readDirectory` now checks that
+the target is a directory and normalizes a null listing to an empty array
+before sorting. This is a shared engine-detector fix; no donor or chart was
+changed. The focused interpreter test covers missing directories, null native
+listings, and deterministic case-insensitive ordering.
+
+In one disposable runtime, the Codename `bully-mod` import completed first
+with the original executable (1 song, 96 assets). The patched Windows
+executable was then rebuilt locally and, in separate Wine processes using that
+same runtime, imported the previously crashing Psych package (1 new song, 63
+assets) and ModdingPoop `cursed pergation` (1 new song, 88 assets).
+Both post-fix scans emitted `scan_ready` and both imports emitted `success`
+with `failed=0`. A repeat Psych import skipped both detected candidates and
+copied no assets, confirming that existing imported files were retained. The
+logs are `tmp/windows-sequential-import-2.log` and
+`tmp/windows-sequential-import-after-fix-{psych,third,repeat}.log`.
+
+The Psych transaction still reports one nonfatal source-asset diagnostic:
+`noteSkins/NOTE_assets` is absent from that donor. The separate import checks
+establish scan and transaction stability under Wine; they do not establish
+song-playthrough parity or a native Windows hardware result. The broader
+Example Mods completion goal remains open.
+
+The complete automated suite passed **1,684 tests across 506 modules, 65
+skipped, zero failed** after this change.
+Both `./run.sh build` and `./build-windows-release.sh v0.0.1-alpha.3` passed.
+The rebuilt ZIP is 1,185,037,288 bytes with SHA-256
+`871667c04a3ff5110aed1e8e44b2f130440f9de9fa35df7bf949d3fb1df3d8c7`.
+Archive integrity and `SHA256SUMS.txt` passed; the ZIP's executable matches
+the tested build, contains all 138 bundled results files, and contains no
+other imported-mod files. It has not been uploaded.
+
+### Character picker release roster — 2026-09-30
+
+The global character registry can retain names from earlier imports even when
+the release package excludes their media. `ChooseCharState` now derives its
+roster on each entry from the shared `Song.resolveCharacterVisual` resolver and
+lists only entries with a complete visual under their own asset name. A
+character with installed media remains selectable; stale names and aliases
+that only borrow another character's media are hidden. No chart or mod names
+are checked. The focused Haxe interpreter fixture passes and covers a missing
+visual, a borrowed alias, and refreshing the list after media becomes
+available. The Linux and Windows release builds both passed with this code.
+
+### Opt-in Windows release updater — 2026-09-30
+
+Windows Settings now checks the published GitHub release list on request, so
+alpha prereleases are included. It accepts only the matching Windows x64 ZIP
+with a GitHub SHA-256 asset digest and a matching `SHA256SUMS.txt` entry. The
+separate helper downloads and verifies the archive, checks its extraction
+paths, waits for the game executable to close, then overlays the runtime. It
+backs up replaced runtime files for rollback and commits `RELEASE_TAG` after
+the copy. Existing files under `assets/`, `mods/`, and `imported_mods/` are
+kept, including settings and owner imports. Because older releases have no
+package ownership manifest, this also retains older static asset files; the
+Settings prompt and README say a clean extraction is needed for static asset
+changes. The updater is offered only on Windows while no Linux package
+exists. The focused tests compile the Windows-only helper under Haxe
+`--interp`, exercise release filtering and version ordering, and check the
+generated helper contract. They pass; a live GitHub download and completed
+in-app install on native Windows hardware remain untested.
+
+The complete suite passed **1,687 tests across 508 modules, 65 skipped, zero
+failed** (`tmp/settings-updater-full-suite.log`). `./run.sh build` passed
+(`tmp/settings-updater-linux-build.log`). The local Windows cross-build passed
+(`tmp/settings-updater-windows-build.log`) and produced
+`dist/CammieEngine-v0.0.1-alpha.4-windows-x64.zip` (1,185,441,938 bytes;
+SHA-256 `c8c0b3229dadba0be5933b6a06c7a79b4fe86b9b2053b924a95bd4931a6df5c6`).
+ZIP integrity and `SHA256SUMS.txt` passed; its `RELEASE_TAG` is
+`v0.0.1-alpha.4`, all 138 bundled results files are present, and no other
+`assets/imported_mods` files are included. The packager now takes both release
+log copies from current source, so the root log cannot be stale after a
+cached runtime build. A 20-second offscreen, audio-disabled
+Wine startup stayed alive through its timeout (`tmp/wine-smoke-1188611.log`).
+The first sandboxed Wine attempt could not bind its local wineserver socket;
+the isolated retry succeeded. The updated ZIP has not been uploaded.

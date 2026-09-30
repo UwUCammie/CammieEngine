@@ -37,6 +37,12 @@ class PsychGlobalPackImportTest(unittest.TestCase):
             (donor_a / "songs/demo").mkdir(parents=True)
             (donor_a / "songs/demo/Inst.ogg").write_text("unused-audio", encoding="utf-8")
             (donor_b / "images" / "screen.png").write_text("image-b", encoding="utf-8")
+            bundled = work / "assets/imported_mods/bundled-vslice-results"
+            (bundled / "scripts").mkdir(parents=True)
+            (bundled / "pack.json").write_text(
+                '{"name":"Bundled default","runsGlobally":true}', encoding="utf-8"
+            )
+            (bundled / "scripts/results.lua").write_text("bundled results", encoding="utf-8")
             (chart_donor / "data" / "fixture").mkdir(parents=True)
             (chart_donor / "data" / "fixture" / "fixture-hard.json").write_text(
                 '{"song":{"notes":[],"bpm":120}}', encoding="utf-8"
@@ -52,6 +58,8 @@ class Main {
     var chartDonor = Sys.args()[2];
     FileSystem.createDirectory('assets/data');
     File.saveContent('assets/data/options.json', 'personal-options-sentinel');
+    check(PsychGlobalPackImporter.defaultProvider() == PsychGlobalPackImporter.BUNDLED_PROVIDER_ROOT,
+      'packaged results did not provide the clean-install default');
     check(PsychGlobalPackImporter.isEligible(donorA), 'generic global pack was not eligible');
     check(!PsychGlobalPackImporter.isEligible(chartDonor), 'chart-bearing pack was eligible');
     var first = PsychGlobalPackImporter.importPack(donorA);
@@ -89,6 +97,9 @@ class Main {
     check(PsychGlobalPackImporter.defaultProvider() == ownerA, 'later import silently changed the default');
     check(PsychGlobalPackImporter.selectDefaultProvider(second.ownerRoot), 'valid provider selection failed');
     check(PsychGlobalPackImporter.defaultProvider() == second.ownerRoot, 'provider config did not select owner B');
+    File.saveContent(PsychGlobalPackImporter.PROVIDER_CONFIG, '{invalid');
+    check(PsychGlobalPackImporter.defaultProvider() == PsychGlobalPackImporter.BUNDLED_PROVIDER_ROOT,
+      'invalid user selection did not fall back to packaged results');
     check(!PsychGlobalPackImporter.selectDefaultProvider('assets/imported_mods/../data'),
       'unsafe owner selection was accepted');
     check(!PsychGlobalPackImporter.selectDefaultProvider('assets/imported_mods/not-imported'),

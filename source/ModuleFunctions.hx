@@ -442,6 +442,7 @@ class ModuleFunctions {
 		// worker-side invalidation can race FNFAssets reads from the render thread
 		// and leave a partially observed cache between frames.
 		ImportOverlayResolver.invalidate();
+		NoteKeys.clearPresetCache();
 		Song.invalidateVisualRegistryCache();
 		if (songNames == null)
 			return;

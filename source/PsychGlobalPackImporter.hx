@@ -30,6 +30,7 @@ typedef PsychGlobalPackImportResult = {
 class PsychGlobalPackImporter {
 	public static inline var RECEIPT_NAME:String = 'psychGlobalPackImport.json';
 	public static inline var PROVIDER_CONFIG:String = 'assets/imported_mods/globalResultsProvider.json';
+	public static inline var BUNDLED_PROVIDER_ROOT:String = 'assets/imported_mods/bundled-vslice-results';
 	static inline var RECEIPT_VERSION:Int = 1;
 	static inline var PROVIDER_CONFIG_VERSION:Int = 1;
 	static inline var MAX_DEPTH:Int = 12;
@@ -114,27 +115,36 @@ class PsychGlobalPackImporter {
 		if (!writeReceipt(owner, installedPack, result))
 			return result;
 		result.imported = true;
-		if (defaultProvider() == null && !selectDefaultProvider(owner)) {
+		if (selectedImportedProvider() == null && !selectDefaultProvider(owner)) {
 			result.failed++;
 			result.errors.push('[psych-global-pack-skip] The pack was imported, but its default-provider config could not be written.');
 		}
 		return result;
 	}
 
-	/** Resolve the configured global-results owner after validating its receipt. */
+	/** Resolve the selected imported provider, or the packaged default. */
 	public static function defaultProvider():Null<String> {
 		#if sys
-		if (!FileSystem.exists(PROVIDER_CONFIG))
-			return null;
-		try {
-			var data:Dynamic = Json.parse(File.getContent(PROVIDER_CONFIG));
-			if (data == null || Std.int(Reflect.field(data, 'version')) != PROVIDER_CONFIG_VERSION)
-				return null;
-			var owner = safeOwnerPath(Reflect.field(data, 'defaultOwner'));
-			return owner != null && isImportedGlobalPack(owner) ? owner : null;
-		} catch (_:Dynamic) {
-			return null;
+		var selected = selectedImportedProvider();
+		return selected != null ? selected : (isBundledGlobalPack() ? BUNDLED_PROVIDER_ROOT : null);
+		#else
+		return null;
+		#end
+	}
+
+	static function selectedImportedProvider():Null<String> {
+		#if sys
+		if (FileSystem.exists(PROVIDER_CONFIG)) {
+			try {
+				var data:Dynamic = Json.parse(File.getContent(PROVIDER_CONFIG));
+				if (data != null && Std.int(Reflect.field(data, 'version')) == PROVIDER_CONFIG_VERSION) {
+					var owner = safeOwnerPath(Reflect.field(data, 'defaultOwner'));
+					if (owner != null && isImportedGlobalPack(owner))
+						return owner;
+				}
+			} catch (_:Dynamic) {}
 		}
+		return null;
 		#else
 		return null;
 		#end
@@ -362,6 +372,17 @@ class PsychGlobalPackImporter {
 		} catch (_:Dynamic) {
 			return false;
 		}
+		#else
+		return false;
+		#end
+	}
+
+	static function isBundledGlobalPack():Bool {
+		#if sys
+		var root = BUNDLED_PROVIDER_ROOT;
+		return FileSystem.isDirectory(root)
+			&& packRunsGlobally(Path.join([root, 'pack.json']))
+			&& FileSystem.exists(Path.join([root, 'scripts', 'results.lua']));
 		#else
 		return false;
 		#end

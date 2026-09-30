@@ -11,6 +11,9 @@
 /assets/*
 !/assets/data/
 /assets/data/*/
+!/assets/imported_mods/
+/assets/imported_mods/*
+!/assets/imported_mods/bundled-vslice-results/
 /mods/
 
 # Editor, assistant and machine-local configuration

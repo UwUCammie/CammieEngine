@@ -32,11 +32,20 @@ class PsychModSettingCompatTest(unittest.TestCase):
 import sys.FileSystem;
 import sys.io.File;
 
+@:access(PsychModSettingCompat)
 class PsychModSettingCompatTest {
  static function fail(message:String):Void throw message;
  static function main() {
   var owner = "OWNER_ROOT";
   var globalOwner = "GLOBAL_ROOT";
+  if (!PsychModSettingCompat.isAbsoluteScriptOrigin('C:/game/assets/imported_mods/provider/scripts/results.lua'))
+   fail('Windows drive-absolute script path was rejected');
+  if (!PsychModSettingCompat.isAbsoluteScriptOrigin('C:\\game\\assets\\imported_mods\\provider\\scripts\\results.lua'))
+   fail('Windows backslash-absolute script path was rejected');
+  if (PsychModSettingCompat.isAbsoluteScriptOrigin('C:relative\\results.lua'))
+   fail('drive-relative script path must not be treated as absolute');
+  if (PsychModSettingCompat.isAbsoluteScriptOrigin('1:/game/results.lua'))
+   fail('invalid drive prefix must not be treated as absolute');
   FileSystem.createDirectory(owner);
   FileSystem.createDirectory(owner + '/scripts');
   FileSystem.createDirectory(owner + '/data');

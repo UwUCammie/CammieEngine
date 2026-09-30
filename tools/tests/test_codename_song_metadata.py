@@ -87,9 +87,12 @@ class Main {
   var wrong:Dynamic=Json.parse(CodenameSongMetadata.stringifyResolved(resolved));
   wrong.difficulties.hard.resolved.bpm=190;
   var refused=false;
-  try CodenameSongMetadata.parseResolved(Json.stringify(wrong),"hopkins")
+  try CodenameSongMetadata.createResolved("hopkins",wrong.chartDifficulties,wrong.difficulties)
   catch (_:Dynamic) refused=true;
-  if (!refused) throw "tampered resolved meta accepted";
+  if (!refused) throw "importer accepted stale derived metadata";
+  var repaired=CodenameSongMetadata.parseResolved(Json.stringify(wrong),"hopkins");
+  if (CodenameSongMetadata.selectedResolved(repaired,"hard").bpm!=180)
+    throw "runtime did not rebuild derived metadata from source fields";
   if (CodenameSongMetadata.selectedResolved(roundtrip,"HARD")!=null)
     throw "difficulty case guessed";
   var derived=CodenameSongMetadata.resolve("song",{},null,["hard","easy","normal"]);

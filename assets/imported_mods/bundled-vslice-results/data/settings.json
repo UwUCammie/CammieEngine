@@ -1,0 +1,77 @@
+[
+	{
+		"save": "naughtyness",
+		"name": "Naughtyness",
+		"type": "bool",
+		"description": "If checked, you're guaranteed a spot on Santa's naughty list",
+		"value": true
+	},
+	{
+		"save": "accuracyStyle",
+		"name": "V-Slice Accuracy Style",
+		"type": "bool",
+		"description": "If checked, the accuracy system used in V-Slice will apply to the results screen.\n(Sicks and Goods = 100% accuracy)",
+		"value": true
+	},
+	{
+		"save": "excludeMisses",
+		"name": "Total Excludes Misses",
+		"type": "bool",
+		"description": "If checked, the \"TOTAL NOTES\" section of the menu will not include notes you missed. This is true in base game.",
+		"value": true
+	},
+	{
+		"save": "resultsChar",
+		"name": "Results Character:",
+		"type": "string",
+		"description": "Decides which character will be shown in the results screen. When Adaptive is selected, it will play the matching characters results screens. (Not BF or Pico = random)",
+		"value": "Adaptive"
+		"options": ["BF Only", "Pico Only", "Adaptive"]
+	},
+	{
+		"save": "themeColor",
+		"name": "Theme Color:",
+		"type": "string",
+		"description": "Changes the color of the results screen. To use custom RGB values, Custom must be selected. Adaptive bases the color of the screen off of your rank.",
+		"value": "Default",
+		"options": ["Default", "Custom", "Red", "Orange", "Yellow", "Green", "Blue", "Purple", "Adaptive"]
+	},
+	{
+		"save": "customRed",
+		"name": "Theme Red:",
+		"type": "integer",
+		"description": "Sets the red RGB value for the results screen. (MUST HAVE THEME COLOR SET TO CUSTOM)",
+		"value": 254,
+		"min": 0,
+		"max": 255,
+		"step": 1
+	},
+	{
+		"save": "customGreen",
+		"name": "Theme Green:",
+		"type": "integer",
+		"description": "Sets the green RGB value for the results screen. (MUST HAVE THEME COLOR SET TO CUSTOM)",
+		"value": 200,
+		"min": 0,
+		"max": 255,
+		"step": 1
+	},
+	{
+		"save": "customBlue",
+		"name": "Theme Blue:",
+		"type": "integer",
+		"description": "Sets the blue RGB value for the results screen. (MUST HAVE THEME COLOR SET TO CUSTOM)",
+		"value": 92,
+		"min": 0,
+		"max": 255,
+		"step": 1
+	},
+	{
+		"save": "mobileHelp",
+		"name": "Mobile Exit:",
+		"type": "string",
+		"description": "Helps mobile players be able to exit the results screen, if you are on PC, use the 'PC' Option",
+		"value": "PC",
+		"options": ["PC", "Exit Button", "Auto Exit"]
+	}
+]

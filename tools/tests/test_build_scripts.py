@@ -251,17 +251,17 @@ class BuildScriptTests(unittest.TestCase):
     def test_readme_documents_native_targets_and_appimage_writes(self):
         for text in (
             "./build.sh appimage",
-            "./build.sh windows",
+            "./build-windows-release.sh v0.0.1-alpha.4",
             "run.bat build",
             "DISAPPOINTINGPLUS_RUNTIME_DIR",
             "APPIMAGE_EXTRACT_AND_RUN",
             "read-only",
-            "Linux-host Windows builds (MinGW)",
+            "Windows x64 ZIP",
             "-Dwindows -DHXCPP_MINGW -DHXCPP_M64",
-            "self-contained LLVM-MinGW",
-            "MINGW_ROOT=/usr ./build.sh windows",
-            "x86_64-w64-mingw32-clang++",
-            "./build.sh wine-smoke",
+            ".tools/llvm-mingw",
+            "HXCPP_MINGW_EXE",
+            "MINGW_ROOT",
+            "--wine-smoke",
             "run.bat` remains the native Windows/MSVC entry point",
         ):
             self.assertIn(text, self.readme)

@@ -63,15 +63,11 @@ class ChooseCharState extends MusicBeatState {
 
         //char.flipX = false;
 
-        charJson = CoolUtil.parseJson(FNFAssets.getJson('assets/images/custom_chars/custom_chars'));
-
-        if (characters == null) {
-            // that is not how arrays work
-            // characters = mergeArray(Reflect.fields(charJson), Reflect.fields(regCharacters)); // this doesn't work, try to make this work or just ignore it
-            // reg characters should be first
-            characters = Reflect.fields(charJson);
-            characters.sort(sortAlph);
-        }
+        var registryText = FNFAssets.getJson('assets/images/custom_chars/custom_chars');
+        charJson = registryText == null ? null : CoolUtil.parseJson(registryText);
+        // Recheck on every entry: importing a character or changing the
+        // installation's assets must immediately change the visible roster.
+        characters = CharacterSelectRoster.availableNames(charJson, Song.resolveCharacterVisual);
 
         for (character in 0...characters.length) { //add chars
             var awesomeChar = new Alphabet(0, 10, "   "+characters[character], true, false, false);
@@ -125,15 +121,16 @@ class ChooseCharState extends MusicBeatState {
     }
 
     function changeSelection(change:Int = 0) {
+		if (characters == null || characters.length == 0)
+			return;
         FlxG.sound.play('assets/sounds/scrollMenu' + TitleState.soundExt, 0.4);
 
         curSelected += change;
-        curChar = characters[curSelected].toString();
-
         if (curSelected < 0)
             curSelected = characters.length - 1;
         if (curSelected >= characters.length)
             curSelected = 0;
+		curChar = characters[curSelected];
 
         var bullShit:Int = 0;
         for (i in 0...iconArray.length) {
@@ -157,6 +154,8 @@ class ChooseCharState extends MusicBeatState {
     }
 
     function chooseSelection() {
+		if (characters == null || characters.length == 0)
+			return;
         remove(char);
         if (!dadMenu) {
             char = new Character(600, 250, curChar, true);

@@ -226,7 +226,8 @@ class CodenameSongMetadata {
 
 	/** Additive sibling plan. `selectedFile` is a relative basename only; the
 	 * original file and inline chart meta remain available for provenance. */
-	public static function createResolved(song:String, chartDifficulties:Array<String>, entries:Dynamic):Dynamic {
+	static function buildResolved(song:String, chartDifficulties:Array<String>, entries:Dynamic,
+		verifyDerived:Bool):Dynamic {
 		if (!CodenameScriptDiscovery.safeName(song) || StringTools.trim(song) == ''
 			|| chartDifficulties == null || !isObject(entries))
 			throw 'Invalid Codename resolved metadata plan';
@@ -251,7 +252,7 @@ class CodenameSongMetadata {
 			var config = Reflect.field(entry, 'configDefaults');
 			var resolved = resolve(song, fileMeta, inlineMeta, safeNames, config);
 			var encoded:Dynamic = Reflect.field(entry, 'resolved');
-			if (encoded != null && canonical(encoded) != canonical(resolved))
+			if (verifyDerived && encoded != null && canonical(encoded) != canonical(resolved))
 				throw 'Codename resolved metadata differs from source fields';
 			Reflect.setField(safeEntries, difficulty, {selectedFile:selectedFile,
 				fileMeta:Json.parse(Json.stringify(fileMeta)),
@@ -264,6 +265,10 @@ class CodenameSongMetadata {
 		return {version:VERSION, song:song, chartDifficulties:safeNames, difficulties:safeEntries};
 	}
 
+	/** Build importer output and reject a stale derived metadata cache. */
+	public static function createResolved(song:String, chartDifficulties:Array<String>, entries:Dynamic):Dynamic
+		return buildResolved(song, chartDifficulties, entries, true);
+
 	public static function stringifyResolved(plan:Dynamic):String
 		return Json.stringify(createResolved(Reflect.field(plan, 'song'),
 			Reflect.field(plan, 'chartDifficulties'), Reflect.field(plan, 'difficulties')));
@@ -274,8 +279,11 @@ class CodenameSongMetadata {
 		if (!isObject(parsed) || !Std.isOfType(Reflect.field(parsed, 'version'), Int)
 			|| Reflect.field(parsed, 'version') != VERSION)
 			throw 'Invalid Codename resolved metadata version';
-		var data = createResolved(Reflect.field(parsed, 'song'),
-			Reflect.field(parsed, 'chartDifficulties'), Reflect.field(parsed, 'difficulties'));
+		// `resolved` is only a derived cache. Recompute it from the retained
+		// source metadata when loading so changes to the compatibility defaults
+		// cannot make valid imported metadata disappear at runtime.
+		var data = buildResolved(Reflect.field(parsed, 'song'),
+			Reflect.field(parsed, 'chartDifficulties'), Reflect.field(parsed, 'difficulties'), false);
 		if (Reflect.field(data, 'song') != expectedSong)
 			throw 'Codename resolved metadata owner mismatch';
 		return data;

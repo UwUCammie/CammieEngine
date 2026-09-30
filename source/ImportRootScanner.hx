@@ -1333,21 +1333,31 @@ class ImportRootScanner {
 
 	static function readDirectory(path:String):Array<String> {
 		try {
-			var entries = FileSystem.readDirectory(path);
-			entries.sort(function(a:String, b:String):Int {
-				var aLower = a.toLowerCase();
-				var bLower = b.toLowerCase();
-				if (aLower < bLower) return -1;
-				if (aLower > bLower) return 1;
-				// Case-sensitive filesystems can contain both `Pack` and `pack`.
-				// Keep discovery deterministic instead of inheriting directory
-				// enumeration order for equal case-folded names.
-				return a < b ? -1 : (a > b ? 1 : 0);
-			});
-			return entries;
+			if (path == null || path == '' || !FileSystem.exists(path) || !FileSystem.isDirectory(path))
+				return [];
+			return sortDirectoryEntries(FileSystem.readDirectory(path));
 		} catch (_:Dynamic) {
 			return [];
 		}
+	}
+
+	/** Some native filesystem implementations return null for a missing or
+		inaccessible directory instead of throwing. Normalize that result before
+		calling Array.sort, whose hxcpp implementation dereferences its receiver. */
+	static function sortDirectoryEntries(entries:Array<String>):Array<String> {
+		if (entries == null)
+			return [];
+		entries.sort(function(a:String, b:String):Int {
+			var aLower = a.toLowerCase();
+			var bLower = b.toLowerCase();
+			if (aLower < bLower) return -1;
+			if (aLower > bLower) return 1;
+			// Case-sensitive filesystems can contain both `Pack` and `pack`.
+			// Keep discovery deterministic instead of inheriting directory
+			// enumeration order for equal case-folded names.
+			return a < b ? -1 : (a > b ? 1 : 0);
+		});
+		return entries;
 	}
 
 	static function findDirectory(entries:Array<String>, root:String, name:String):String {

@@ -41,6 +41,12 @@ class FlxAtlasFrames {
 package openfl.media;
 class Sound { public function new() {} }
 ''')
+        self.write("flixel/system/FlxAssets.hx", '''
+package flixel.system;
+class FlxAssets {
+ public static function getSoundAddExtension(_path:String):openfl.media.Sound return new openfl.media.Sound();
+}
+''')
         self.write("FNFAssets.hx", '''
 class FNFAssets {
  public static function getText(path:String):String return sys.io.File.getContent(path);

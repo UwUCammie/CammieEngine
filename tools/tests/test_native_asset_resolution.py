@@ -28,6 +28,7 @@ class NativeAssetResolutionTest(unittest.TestCase):
     def test_resolver_is_safe_deterministic_and_import_aware(self):
         source = (ROOT / "source/FNFAssets.hx").read_text()
         resolver = extract_method(source, "public static function resolveCaseInsensitivePath(")
+        disk_resolver = extract_method(source, "static function resolveDiskPath(")
         in_scope = extract_method(source, "public static function isInScope(")
         self.assertIn("FNFAssets.resolveCaseInsensitivePath(candidate)",
                       (ROOT / "source/CoolUtil.hx").read_text())
@@ -38,14 +39,18 @@ import sys.FileSystem;
 using StringTools;
 
 class Assets {{
-  public static function exists(path:String):Bool
+  public static var existsCalls:Int = 0;
+  public static function exists(path:String):Bool {{
+    existsCalls++;
     return path == "assets/images/custom_chars/custom_chars.jsonc";
+  }}
 }}
 class Main {{
   public static var cwd:String;
 }}
 class FNFAssets {{
   static var caseResolvedPaths:Map<String, String> = new Map<String, String>();
+{disk_resolver}
 {resolver}
 {in_scope}
   static function main() {{
@@ -59,9 +64,13 @@ class FNFAssets {{
     var resolved = resolveCaseInsensitivePath("assets/music/chaos_inst.ogg");
     if (resolved == null || Path.withoutDirectory(resolved) != "Chaos_Inst.ogg")
       throw "mixed-case donor audio did not resolve: " + resolved;
+    if (Assets.existsCalls != 0)
+      throw "a dynamic case-fold hit probed the OpenFL asset index";
     var embeddedShadow = resolveCaseInsensitivePath("assets/images/custom_chars/custom_chars.jsonc");
     if (embeddedShadow == null || Path.withoutDirectory(embeddedShadow) != "custom_chars.jsonc")
       throw "disk registry was not preferred over embedded manifest";
+    if (Assets.existsCalls != 0)
+      throw "an exact disk hit probed the OpenFL asset index";
     sys.io.File.saveContent("assets/music/Icon.ogg", "one");
     sys.io.File.saveContent("assets/music/iCON.ogg", "two");
     if (resolveCaseInsensitivePath("assets/music/ICON.ogg") != null)
@@ -98,6 +107,62 @@ class FNFAssets {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_text_read_keeps_disk_scope_and_packaged_asset_rules(self):
+        source = (ROOT / "source/FNFAssets.hx").read_text()
+        disk_resolver = extract_method(source, "static function resolveDiskPath(")
+        in_scope = extract_method(source, "public static function isInScope(")
+        get_text = extract_method(source, "public static function getText(")
+        fixture = f'''import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+using StringTools;
+class Assets {{
+  public static var existsCalls:Int = 0;
+  public static function exists(path:String):Bool {{
+    existsCalls++;
+    return path == "../embedded.txt";
+  }}
+  public static function getPath(_path:String):String return "embedded.txt";
+  public static function getText(_path:String):String return "packaged asset";
+}}
+class ImportOverlayResolver {{
+  public static function applyText(_path:String, content:String):String return content;
+}}
+class Main {{ public static var cwd:String; }}
+class FNFAssets {{
+  static var caseResolvedPaths:Map<String, String> = new Map<String, String>();
+{disk_resolver}
+{in_scope}
+{get_text}
+  static function main() {{
+    Main.cwd = Sys.getCwd();
+    File.saveContent("dynamic.txt", "runtime file");
+    if (getText("dynamic.txt") != "runtime file")
+      throw "runtime disk read failed";
+    if (Assets.existsCalls != 0)
+      throw "exact runtime read queried the OpenFL manifest";
+    if (getText("../embedded.txt") != "packaged asset")
+      throw "out-of-root packaged asset was rejected";
+    var rejected = false;
+    try getText("../outside.txt") catch (error:Dynamic)
+      rejected = Std.string(error).indexOf("out of scope") >= 0;
+    if (!rejected) throw "out-of-root non-asset read was not rejected";
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            path = Path(folder) / "FNFAssets.hx"
+            path.write_text(fixture)
+            result = subprocess.run(
+                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                 "-main", "FNFAssets", "--interp"],
+                cwd=folder,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_exists_resolves_each_miss_once_and_rechecks_after_import(self):
         source = (ROOT / "source/FNFAssets.hx").read_text()
         exists = extract_method(source, "static public function exists(")
@@ -115,7 +180,7 @@ class CoolUtil {{
 class FNFAssets {{
   static var resolution:Null<String> = null;
   static var resolverCalls:Int = 0;
-  static function resolveCaseInsensitivePath(_id:String):Null<String> {{
+  static function resolveDiskPath(_id:String):Null<String> {{
     resolverCalls++;
     return resolution;
   }}

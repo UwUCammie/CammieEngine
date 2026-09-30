@@ -102,7 +102,9 @@ class Main {
   check(new Main(a).getCodenameSongView().getField("meta").bpm==120,"normal difficulty isolation");
   resolved.difficulties.Hard.resolved.bpm=99;
   File.saveContent(resolvedFile,Json.stringify(resolved));
-  check(new Main(a).getCodenameSongView().getField("meta")==null,"inconsistent sibling borrowed raw metadata");
+  var staleHard=new Main(a); staleHard.storyDifficultyText="hard";
+  check(staleHard.getCodenameSongView().getField("meta").bpm==175,
+   "stale derived metadata cache must rebuild from selected-owner source fields");
   Reflect.setField(entries,"hARD",{selectedFile:"meta-hARD.json",fileMeta:{bpm:180},inlineMeta:null});
   resolved=CodenameSongMetadata.createResolved("Fixture",["normal","Hard","hARD"],entries);
   File.saveContent(resolvedFile,CodenameSongMetadata.stringifyResolved(resolved));

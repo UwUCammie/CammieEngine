@@ -10784,6 +10784,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 	var uiSmelly:TUI;
 	override public function create() {
 		if (guardMissingSongBeforeCreate()) return;
+		// Note keys cache parsed UI presets only for this song. This keeps every
+		// generated note from rereading and reparsing the same JSON while still
+		// observing asset changes between charts.
+		NoteKeys.clearPresetCache();
 		Sys.println('[dims] FlxG=' + FlxG.width + 'x' + FlxG.height + ' initial=' + FlxG.initialWidth + 'x' + FlxG.initialHeight);
 		#if desktop
 		var songLowercase = currentSongStorageFolder();
@@ -18169,7 +18173,7 @@ void main(void) {
 				alignCodenameNoteToReceptor(daNote, daNoteStrums);
 				var noteScrollSpeed = FlxMath.roundDecimal(dynamicScrollTarget > 0 ? effectiveScrollSpeed
 					: (daNoteStrums.hasScrollSpeedOverride() ? daNoteStrums.scrollSpeed
-						: (FlxG.save.data.scrollSpeed == 1 ? daScrollSpeed : FlxG.save.data.scrollSpeed)), 2);
+						: effectiveScrollSpeed), 2);
 							
 				if (downscroll) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y

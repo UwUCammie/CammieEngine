@@ -1,0 +1,7 @@
+{
+	"name": "V-Slice Results Screen",
+	"description": "The results screen from base game.\nPorted by Castanova for Psych Engine 1.0+\n\nMAKE SURE TO CHECK THE MOD OPTIONS!",
+	"restart":true,
+	"runsGlobally": true,
+	"color": [254, 200, 92]
+}
