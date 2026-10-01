@@ -148,6 +148,10 @@ if not "!BUILD_RESULT!"=="0" (
 )
 call :sync_astc_decoder
 if errorlevel 1 exit /b 1
+if "!ARCH!"=="64" (
+	call :build_update_helper
+	if errorlevel 1 exit /b 1
+)
 
 if /I "!MODE!"=="build" goto build_done
 if /I "!MODE!"=="rebuild" goto build_done
@@ -190,6 +194,25 @@ Funkin.exe
 set "GAME_RESULT=!ERRORLEVEL!"
 popd
 exit /b !GAME_RESULT!
+
+:build_update_helper
+set "HELPER_CPP=!PROJECT_TMP!\windows-updater-cpp"
+echo ^>^> building standalone Windows update helper...
+call haxe -cp "!ROOT!\tools\updater" -cp "!ROOT!\source" -main CammieUpdateHelper -cpp "!HELPER_CPP!" -D HXCPP_M64 -D no-compilation
+if errorlevel 1 exit /b 1
+pushd "!HELPER_CPP!"
+if errorlevel 1 exit /b 1
+call haxelib run hxcpp Build.xml -DHXCPP_M64=1
+set "HELPER_RESULT=!ERRORLEVEL!"
+popd
+if not "!HELPER_RESULT!"=="0" exit /b !HELPER_RESULT!
+if not exist "!HELPER_CPP!\CammieUpdateHelper.exe" (
+	echo ERROR: Windows updater helper build did not produce CammieUpdateHelper.exe. 1>&2
+	exit /b 1
+)
+copy /Y "!HELPER_CPP!\CammieUpdateHelper.exe" "!ROOT!\!BUILD_ROOT!\windows\bin\CammieUpdateHelper.exe" >nul
+if errorlevel 1 exit /b 1
+exit /b 0
 
 :ensure_toolchain
 set "TOOLS=!ROOT!\.tools"

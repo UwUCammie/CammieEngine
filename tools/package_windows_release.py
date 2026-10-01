@@ -20,6 +20,7 @@ ARCHIVE_ROOT = "CammieEngine-windows-x64"
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 REQUIRED_RUNTIME_PATHS = (
     "Funkin.exe",
+    "CammieUpdateHelper.exe",
     "lime.ndll",
     "libvlc.dll",
     "libvlccore.dll",
@@ -61,7 +62,7 @@ START_HERE = """CammieEngine — Windows x64
 1. Extract this ZIP to a writable folder.
 2. Run Funkin.exe from the extracted folder.
 
-The game includes its runtime libraries and bundled assets. It does not need
+The game includes its runtime libraries, update helper, and bundled assets. It does not need
 Haxe, Neko, Visual Studio, or a separate installer. The optional ASTC texture
 decoder and its license are in tools/.
 

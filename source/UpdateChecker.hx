@@ -33,6 +33,9 @@ typedef UpdateStartResult = {
 }
 
 /** User-initiated updater for the published Windows x64 ZIP releases. */
+#if (cpp && windows)
+@:headerCode('extern "C" __declspec(dllimport) unsigned long __stdcall GetCurrentProcessId(void);')
+#end
 class UpdateChecker {
 	public static inline var RELEASES_API:String = 'https://api.github.com/repos/UwUCammie/CammieEngine/releases?per_page=20';
 	public static inline var RELEASE_DOWNLOAD_ROOT:String = 'https://github.com/UwUCammie/CammieEngine/releases/download/';
@@ -160,7 +163,7 @@ class UpdateChecker {
 		Thread.create(function() {
 			var result:UpdateCheckResult;
 			try {
-				var body = getText(RELEASES_API, 'application/vnd.github+json');
+				var body = WindowsUpdateDownload.getText(RELEASES_API);
 				var latest = parseLatestRelease(body);
 				result = {
 					requestId:requestId,
@@ -198,6 +201,9 @@ class UpdateChecker {
 
 		try {
 			var installRoot = Path.directory(FileSystem.fullPath(Sys.programPath()));
+			var helperSource = Path.join([installRoot, 'CammieUpdateHelper.exe']);
+			if (!FileSystem.exists(helperSource) || FileSystem.isDirectory(helperSource))
+				return {statusPath:null, error:'This build has no bundled update helper. Install the current Windows ZIP once to enable in-app updates.'};
 			var writeProbe = Path.join([installRoot,
 				'.cammie-update-write-test-' + Std.string(Std.random(1000000000))]);
 			if (FileSystem.exists(writeProbe))
@@ -210,18 +216,20 @@ class UpdateChecker {
 			var workRoot = Path.join([tempRoot, job]);
 			FileSystem.createDirectory(workRoot);
 			var statusPath = Path.join([workRoot, 'status.txt']);
-			File.saveContent(Path.join([workRoot, 'install-update.ps1']), installerScript());
-			var scriptPath = Path.join([workRoot, 'install-update.ps1']);
-			var arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File '
-				+ windowsArg(scriptPath) + ' ' + windowsArg(statusPath) + ' '
-				+ windowsArg(Sys.programPath()) + ' ' + windowsArg(installRoot) + ' '
-				+ windowsArg(release.archiveUrl) + ' ' + windowsArg(release.checksumUrl) + ' '
-				+ windowsArg(release.archiveName) + ' ' + windowsArg(release.sha256) + ' '
-				+ windowsArg(release.tag);
-			var launch = '$$shell = New-Object -ComObject WScript.Shell; [void]$$shell.Run('
-				+ powershellLiteral('powershell.exe ' + arguments) + ', 0, $$false)';
-			var exitCode = Sys.command('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', launch]);
-			if (exitCode != 0) return {statusPath:null, error:'Could not start the Windows update helper.'};
+			var helperPath = Path.join([workRoot, 'CammieUpdateHelper.exe']);
+			File.copy(helperSource, helperPath);
+			// hxcpp's MinGW executable may need one of these DLLs beside it.
+			// Copy only runtime libraries, never game assets or local user data.
+			for (name in ['libc++.dll', 'libunwind.dll', 'libwinpthread-1.dll',
+				'libstdc++-6.dll', 'libgcc_s_seh-1.dll']) {
+				var source = Path.join([installRoot, name]);
+				if (FileSystem.exists(source) && !FileSystem.isDirectory(source))
+					File.copy(source, Path.join([workRoot, name]));
+			}
+			var process = new sys.io.Process(helperPath, [statusPath, Sys.programPath(), installRoot,
+				release.archiveUrl, release.checksumUrl, release.archiveName,
+				release.sha256, release.tag, Std.string(gamePid())]);
+			process.close();
 			return {statusPath:statusPath, error:null};
 		} catch (error:Dynamic) {
 			return {statusPath:null, error:Std.string(error)};
@@ -231,6 +239,14 @@ class UpdateChecker {
 	public static function readInstallStatus(statusPath:String):Null<String> {
 		if (statusPath == null || !FileSystem.exists(statusPath)) return null;
 		try return StringTools.trim(File.getContent(statusPath)) catch (error:Dynamic) return null;
+	}
+
+	static function gamePid():Int {
+		#if cpp
+		return untyped __cpp__('GetCurrentProcessId()');
+		#else
+		return 0;
+		#end
 	}
 
 	#end
@@ -262,153 +278,5 @@ class UpdateChecker {
 
 	#if (sys && windows)
 
-	static function windowsArg(value:String):String
-		return '"' + StringTools.replace(value, '"', '\\"') + '"';
-
-	static function powershellLiteral(value:String):String
-		return "'" + StringTools.replace(value, "'", "''") + "'";
-
-	static function getText(url:String, accept:String):String {
-		var body:Null<String> = null;
-		var error:Null<String> = null;
-		var status:Int = 0;
-		var request = new haxe.Http(url);
-		request.cnxTimeout = 20;
-		request.setHeader('Accept', accept);
-		request.setHeader('X-GitHub-Api-Version', '2022-11-28');
-		request.setHeader('User-Agent', 'CammieEngine-Updater');
-		request.onStatus = function(code:Int) status = code;
-		request.onData = function(data:String) body = data;
-		request.onError = function(message:String) error = message;
-		request.request(false);
-		if (error != null) throw error;
-		if (status < 200 || status >= 300) throw 'GitHub returned HTTP ' + status;
-		if (body == null) throw 'GitHub returned an empty response';
-		return body;
-	}
-
-	static function installerScript():String {
-		return [
-			'param([string]$$StatusPath,[string]$$ExePath,[string]$$InstallRoot,[string]$$ArchiveUrl,[string]$$ChecksumUrl,[string]$$ArchiveName,[string]$$ApiSha256,[string]$$ReleaseTag)',
-			'$$ErrorActionPreference = "Stop"',
-			'function Set-UpdateStatus([string]$$Value) { Set-Content -LiteralPath $$StatusPath -Value $$Value -Encoding ASCII }',
-			'function Show-UpdateMessage([string]$$Message, [string]$$Title) { try { Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.MessageBox]::Show($$Message, $$Title, "OK", "Information") } catch {} }',
-			'$$workRoot = Split-Path -Parent $$StatusPath',
-			'$$archivePath = Join-Path $$workRoot $$ArchiveName',
-			'$$checksumPath = Join-Path $$workRoot "SHA256SUMS.txt"',
-			'$$stageRoot = Join-Path $$workRoot "expanded"',
-			'try {',
-			'  Set-UpdateStatus "downloading"',
-			'  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
-			'  $$client = New-Object System.Net.WebClient',
-			'  $$client.Headers.Add("User-Agent", "CammieEngine-Updater")',
-			'  $$client.DownloadFile($$ArchiveUrl, $$archivePath)',
-			'  $$client.DownloadFile($$ChecksumUrl, $$checksumPath)',
-			'  Set-UpdateStatus "verifying"',
-			'  $$pattern = "^(?<hash>[0-9a-fA-F]{64})\\s+\\*?" + [regex]::Escape($$ArchiveName) + "\\s*$$"',
-			'  $$checksumEntries = @(Get-Content -LiteralPath $$checksumPath | Where-Object { $$_ -match $$pattern })',
-			'  if ($$checksumEntries.Count -ne 1) { throw "The release checksum file did not contain exactly one matching ZIP entry." }',
-			'  $$sidecarHash = ([regex]::Match($$checksumEntries[0], $$pattern)).Groups["hash"].Value.ToLowerInvariant()',
-			'  $$actualHash = (Get-FileHash -LiteralPath $$archivePath -Algorithm SHA256).Hash.ToLowerInvariant()',
-			'  if ($$sidecarHash -ne $$ApiSha256 -or $$actualHash -ne $$ApiSha256) { throw "The downloaded ZIP failed its SHA-256 checks." }',
-			'  Set-UpdateStatus "extracting"',
-			'  Add-Type -AssemblyName System.IO.Compression.FileSystem',
-			'  $$zip = [System.IO.Compression.ZipFile]::OpenRead($$archivePath)',
-			'  try {',
-			'    $$stageFull = [System.IO.Path]::GetFullPath($$stageRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar',
-			'    $$seenEntries = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)',
-			'    foreach ($$entry in $$zip.Entries) {',
-			'      $$entryPath = $$entry.FullName.Replace([char]92, "/")',
-			'      if ([System.IO.Path]::IsPathRooted($$entryPath) -or $$entryPath -match "^[A-Za-z]:" -or ($$entryPath -split "/") -contains "..") { throw "The release ZIP contains an unsafe path." }',
-			'      if (-not $$seenEntries.Add($$entryPath)) { throw "The release ZIP contains a duplicate path." }',
-			'      $$destinationFull = [System.IO.Path]::GetFullPath((Join-Path $$stageRoot $$entryPath))',
-			'      if (-not $$destinationFull.StartsWith($$stageFull, [System.StringComparison]::OrdinalIgnoreCase)) { throw "The release ZIP contains a path outside its extraction folder." }',
-			'    }',
-			'  } finally { $$zip.Dispose() }',
-			'  Expand-Archive -LiteralPath $$archivePath -DestinationPath $$stageRoot -Force',
-			'  Remove-Item -LiteralPath $$archivePath,$$checksumPath -Force',
-			'  $$payloadRoot = Join-Path $$stageRoot "CammieEngine-windows-x64"',
-			'  foreach ($$required in @("Funkin.exe", "lime.ndll", "RELEASE_TAG", "assets")) { if (-not (Test-Path -LiteralPath (Join-Path $$payloadRoot $$required))) { throw "The release ZIP is missing $$required." } }',
-			'  $$packageTag = (Get-Content -LiteralPath (Join-Path $$payloadRoot "RELEASE_TAG") -Raw).Trim()',
-			'  if ($$packageTag -ne $$ReleaseTag) { throw "The release ZIP tag does not match the checked release." }',
-			'  if (-not (Test-Path -LiteralPath $$ExePath)) { throw "The installed executable could not be found." }',
-			'  Set-UpdateStatus "ready"',
-			'  function Test-GameProcessOpen {',
-			'    $$exeFullPath = [System.IO.Path]::GetFullPath($$ExePath)',
-			'    $$matching = @(Get-Process -Name "Funkin" -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and [System.IO.Path]::GetFullPath($$_.Path) -ieq $$exeFullPath })',
-			'    if ($$matching.Count -gt 0) { return $$true }',
-			'    try { $$stream = [System.IO.File]::Open($$ExePath,[System.IO.FileMode]::Open,[System.IO.FileAccess]::Read,[System.IO.FileShare]::None); $$stream.Dispose(); return $$false } catch { return $$true }',
-			'  }',
-			'  while (Test-GameProcessOpen) { Start-Sleep -Seconds 1 }',
-			'  Set-UpdateStatus "installing"',
-			'  $$protectedRoots = @("assets", "mods", "imported_mods")',
-			'  $$backupRoot = Join-Path $$workRoot "backup"',
-			'  $$script:createdFiles = New-Object System.Collections.ArrayList',
-			'  $$script:installStarted = $$true',
-			'  function Copy-ReleaseFiles([string]$$Source,[string]$$Destination,[string]$$Relative) {',
-			'    foreach ($$item in Get-ChildItem -LiteralPath $$Source -Force) {',
-			'      $$relativePath = if ($$Relative -eq "") { $$item.Name } else { Join-Path $$Relative $$item.Name }',
-			'      $$targetPath = Join-Path $$Destination $$item.Name',
-			'      if ($$item.PSIsContainer) {',
-			'        if (-not (Test-Path -LiteralPath $$targetPath)) { New-Item -ItemType Directory -Path $$targetPath -Force | Out-Null }',
-			'        Copy-ReleaseFiles $$item.FullName $$targetPath $$relativePath',
-			'      } else {',
-			'        $$isUserContent = $$false',
-			'        foreach ($$root in $$protectedRoots) { if ($$relativePath -ieq $$root -or $$relativePath.StartsWith($$root + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) { $$isUserContent = $$true; break } }',
-			'        if ($$isUserContent -and (Test-Path -LiteralPath $$targetPath)) { continue }',
-			'        if ($$relativePath -ieq "RELEASE_TAG") { continue }',
-			'        if (Test-Path -LiteralPath $$targetPath) {',
-			'          $$backupPath = Join-Path $$backupRoot $$relativePath',
-			'          if (-not (Test-Path -LiteralPath $$backupPath)) {',
-			'            $$backupDirectory = Split-Path -Parent $$backupPath',
-			'            if (-not (Test-Path -LiteralPath $$backupDirectory)) { New-Item -ItemType Directory -Path $$backupDirectory -Force | Out-Null }',
-			'            Copy-Item -LiteralPath $$targetPath -Destination $$backupPath -Force',
-			'          }',
-			'        } else { [void]$$script:createdFiles.Add($$targetPath) }',
-			'        Copy-Item -LiteralPath $$item.FullName -Destination $$targetPath -Force',
-			'      }',
-			'    }',
-			'  }',
-			'  Copy-ReleaseFiles $$payloadRoot $$InstallRoot ""',
-			'  $$tagPath = Join-Path $$InstallRoot "RELEASE_TAG"',
-			'  $$tagBackupPath = Join-Path $$backupRoot "RELEASE_TAG"',
-			'  if (Test-Path -LiteralPath $$tagPath) {',
-			'    if (-not (Test-Path -LiteralPath $$backupRoot)) { New-Item -ItemType Directory -Path $$backupRoot -Force | Out-Null }',
-			'    Copy-Item -LiteralPath $$tagPath -Destination $$tagBackupPath -Force',
-			'  } else { [void]$$script:createdFiles.Add($$tagPath) }',
-			'  $$tagTemporaryPath = Join-Path $$InstallRoot ".RELEASE_TAG.update.tmp"',
-			'  Set-Content -LiteralPath $$tagTemporaryPath -Value $$ReleaseTag -Encoding ASCII',
-			'  Move-Item -LiteralPath $$tagTemporaryPath -Destination $$tagPath -Force',
-			'  Remove-Item -LiteralPath $$stageRoot -Recurse -Force',
-			'  Set-UpdateStatus "complete"',
-			'  $$script:installStarted = $$false',
-			'  try {',
-			'    Add-Type -AssemblyName System.Windows.Forms',
-			'    $$choice = [System.Windows.Forms.MessageBox]::Show("CammieEngine " + $$ReleaseTag + " is installed. Start it now?", "CammieEngine update", "YesNo", "Information")',
-			'    if ($$choice -eq [System.Windows.Forms.DialogResult]::Yes) { Start-Process -FilePath $$ExePath -WorkingDirectory $$InstallRoot }',
-			'  } catch {}',
-			'} catch {',
-			'  $$message = "Update failed: " + $$_.Exception.Message',
-			'  if ($$script:installStarted) {',
-			'    try {',
-			'      foreach ($$newFile in $$script:createdFiles) { if (Test-Path -LiteralPath $$newFile) { Remove-Item -LiteralPath $$newFile -Force } }',
-			'      if (Test-Path -LiteralPath $$backupRoot) {',
-			'        $$backupFull = [System.IO.Path]::GetFullPath($$backupRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar',
-			'        foreach ($$savedFile in Get-ChildItem -LiteralPath $$backupRoot -File -Recurse) {',
-			'          $$relativeSavedPath = $$savedFile.FullName.Substring($$backupFull.Length)',
-			'          $$restorePath = Join-Path $$InstallRoot $$relativeSavedPath',
-			'          $$restoreDirectory = Split-Path -Parent $$restorePath',
-			'          if (-not (Test-Path -LiteralPath $$restoreDirectory)) { New-Item -ItemType Directory -Path $$restoreDirectory -Force | Out-Null }',
-			'          Copy-Item -LiteralPath $$savedFile.FullName -Destination $$restorePath -Force',
-			'        }',
-			'      }',
-			'    } catch { $$message += " Rollback also failed: " + $$_.Exception.Message }',
-			'  }',
-			'  if ($$tagTemporaryPath -and (Test-Path -LiteralPath $$tagTemporaryPath)) { Remove-Item -LiteralPath $$tagTemporaryPath -Force -ErrorAction SilentlyContinue }',
-			'  Set-UpdateStatus ("error:" + $$message)',
-			'  Show-UpdateMessage $$message "CammieEngine update failed"',
-			'}'
-		].join('\n');
-	}
 	#end
 }

@@ -11346,3 +11346,42 @@ The final `./run.sh build` succeeded. The complete parallel suite passed
 **1,691 tests across 509 modules, 65 skipped, zero failed**. The final ZIP
 is 1,185,459,082 bytes with SHA-256
 `96335c897480ab20c252194c33a0064fc75a1804a843e4862f6819561c0b3d86`.
+
+### Windows alpha.6 updater and version — 2026-10-01
+
+The Settings updater now starts a bundled Windows helper from a unique temporary
+job directory, allowing an update to replace the installed helper itself after
+the game exits. The same helper runs on Windows and under Wine; it no longer
+needs PowerShell. The update check and asset downloads use Windows URLMon HTTPS
+and certificate validation. A real Wine request downloaded the published
+alpha.5 checksum and release-list JSON, parsed the three returned releases, and
+rejected an expired-certificate test endpoint. This checks the network path but
+does not claim a published alpha.6 update was installed.
+
+An isolated Wine fixture installed a synthetic release, replacing the game,
+helper, and release tag while preserving `assets/data/options.json` and a
+personal imported chart. With a forced failure after two replacement files,
+the installer restored the old game, helper, and tag, left personal files intact,
+and removed the new asset. The helper verifies the ZIP checksum and archive
+paths before installation. These tests cover self-replacement and rollback;
+native Windows hardware and a full in-app update from GitHub remain to be
+checked.
+
+The runtime reads the installed `RELEASE_TAG` for user-facing version text, so
+the packaged build displays `v0.0.1-alpha.6` where the engine version appears.
+`Project.xml` keeps numeric `0.0.1` for Windows resource-compiler compatibility.
+The Linux build passed, and the parallel suite passed **1,693 tests across 510
+modules, 65 skipped, zero failed** (`tmp/wine-updater-full-suite-final.log`).
+The final 29 focused updater/build tests passed. The locally built Windows ZIP
+is 1,186,011,949 bytes with SHA-256
+`f0fcb09612617c3a89b659d96e732678a4a807c6f666e2b8a338b10c1ed7058e`.
+Its checksum and ZIP integrity passed; it contains `CammieUpdateHelper.exe` and
+`RELEASE_TAG=v0.0.1-alpha.6`. The ZIP is local and has not been published. The
+overall example-mod compatibility goal remains open; this evidence covers the
+updater and version work only.
+
+An additional 20-second offscreen Wine startup of the alpha.6 executable used
+Xvfb and dummy audio, reached `TitleState`, and remained alive until the
+intentional timeout (`tmp/alpha6-wine-startup.log`). The sandboxed first attempt
+could not bind a wineserver socket; the permitted retry completed. The runtime
+settings file was backed up and restored after the check.

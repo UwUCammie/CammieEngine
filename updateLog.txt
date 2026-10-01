@@ -2,6 +2,9 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 0.0.1 alpha — CammieEngine
+	- Show the full alpha release suffix in the menu and use the installed release tag for future version labels
+	- Bundle a self-updating Windows installer helper that runs under Wine without PowerShell
+	- Use Windows HTTPS certificate validation for both update checks and downloads so Wine can install releases
 	- Guard optional importer source-directory listings when Windows returns null; verify the HL17 scan under Wine
 	- Resolve Psych stock stage images from bundled engine assets and include the matching stage light
 	- Preserve full 32-bit Psych color values on Windows so the bundled results backdrop stays opaque

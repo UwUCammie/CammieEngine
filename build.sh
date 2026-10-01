@@ -116,6 +116,24 @@ ensure_portable_toolchain() {
 	[[ "$haxe_version" == 4.3.* ]] || die "expected portable Haxe 4.3.x, found '${haxe_version:-unavailable}'; run ./run.sh setup to repair .tools"
 }
 
+build_windows_update_helper() {
+	local output_dir="$1"
+	local generated_dir="$PROJECT_TMP/windows-updater-cpp"
+	local helper_exe="$generated_dir/CammieUpdateHelper.exe"
+	local haxe_args=(-cp tools/updater -cp source -main CammieUpdateHelper -cpp "$generated_dir"
+		-D windows -D HXCPP_MINGW -D HXCPP_M64 -D no-compilation)
+	local hxcpp_args=(Build.xml -DHXCPP_MINGW=1 -DHXCPP_M64=1)
+	if [[ "${DP_LLVM_MINGW:-0}" == 1 ]]; then
+		haxe_args+=(-D HXCPP_RC=llvm-windres)
+		hxcpp_args+=(-DHXCPP_RC=llvm-windres)
+	fi
+	echo ">> building standalone Windows update helper"
+	haxe "${haxe_args[@]}"
+	(cd "$generated_dir" && haxelib run hxcpp "${hxcpp_args[@]}")
+	require_file "$helper_exe" "Windows updater helper build did not produce an executable"
+	cp -f -- "$helper_exe" "$output_dir/CammieUpdateHelper.exe"
+}
+
 ensure_mingw_toolchain() {
 	local triplet="${HXCPP_MINGW_TRIPLET:-x86_64-w64-mingw32}"
 	local requested_compiler="${HXCPP_MINGW_EXE:-}"
@@ -785,6 +803,7 @@ case "$target_kind" in
 		require_file "$WINDOWS_EXE" "Windows build did not produce an executable; install MinGW and run ./build.sh windows first"
 		if [[ "$skip_build" == 0 ]]; then
 			sync_windows_astc_decoder "$WINDOWS_BIN"
+			build_windows_update_helper "$WINDOWS_BIN"
 		fi
 		if [[ "$wine_smoke" == 1 ]]; then
 			run_wine_smoke "$WINDOWS_EXE" "$WINDOWS_BIN"

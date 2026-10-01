@@ -29,6 +29,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         repo = root / "repo"
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         write(runtime / "Funkin.exe", b"exe")
+        write(runtime / "CammieUpdateHelper.exe", b"update helper")
         write(runtime / "RELEASE_TAG", b"previous-release\n")
         write(runtime / "updateLog.txt", b"stale runtime notes")
         write(runtime / "lime.ndll", b"runtime native library")
@@ -80,6 +81,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 names = set(package.namelist())
                 prefix = "CammieEngine-windows-x64/"
                 self.assertIn(prefix + "Funkin.exe", names)
+                self.assertIn(prefix + "CammieUpdateHelper.exe", names)
                 self.assertIn(prefix + "lime.ndll", names)
                 self.assertIn(prefix + "libunwind.dll", names)
                 self.assertIn(prefix + "libvlc.dll", names)
@@ -122,7 +124,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 PACKAGE.make_package(runtime, root / "dist", "alpha-test", ROOT)
 
             runtime, repo = self.make_package_fixture(root / "second")
-            for missing in ("lime.ndll", "libvlccore.dll"):
+            for missing in ("CammieUpdateHelper.exe", "lime.ndll", "libvlccore.dll"):
                 (runtime / missing).unlink()
                 with self.assertRaisesRegex(ValueError, missing.replace(".", r"\.")):
                     PACKAGE.make_package(runtime, root / f"dist-missing-{missing}", "alpha-test", repo)
@@ -169,6 +171,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             "tools\\patch_hscript_ex_owner_scope.py",
             "tools\\patch_funkin_modchart_uv.py",
             ":ensure_asset_scaffolding",
+            ":build_update_helper",
         ):
             self.assertIn(required, batch)
 

@@ -1,4 +1,4 @@
-"""Exercise release selection and the generated Windows updater contract."""
+"""Exercise release selection and the bundled Windows updater handoff."""
 
 from pathlib import Path
 import subprocess
@@ -57,11 +57,6 @@ class Main {
    "release selection did not filter draft, platform, and checksum metadata");
   check(selected.sizeBytes == 1073741824, "release asset size was lost");
 
-  var scriptFactory = Reflect.field(UpdateChecker, "installerScript");
-  var script:String = cast Reflect.callMethod(UpdateChecker, scriptFactory, []);
-  Sys.println("UPDATER_SCRIPT_BEGIN");
-  Sys.println(script);
-  Sys.println("UPDATER_SCRIPT_END");
  }
 }
 '''
@@ -73,31 +68,20 @@ class Main {
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("UPDATER_SCRIPT_BEGIN", result.stdout)
-        script = result.stdout.split("UPDATER_SCRIPT_BEGIN\n", 1)[1].split(
-            "\nUPDATER_SCRIPT_END", 1
-        )[0]
+        source = (ROOT / "source/UpdateChecker.hx").read_text()
         for required in (
-            '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12',
-            '$client.Headers.Add("User-Agent", "CammieEngine-Updater")',
-            r"\s+\*?",
-            "Get-FileHash -LiteralPath $archivePath -Algorithm SHA256",
-            "ZipFile]::OpenRead($archivePath)",
-            "contains an unsafe path",
-            "contains a duplicate path",
-            '$protectedRoots = @("assets", "mods", "imported_mods")',
-            '$backupRoot = Join-Path $workRoot "backup"',
-            "foreach ($savedFile in Get-ChildItem -LiteralPath $backupRoot -File -Recurse)",
+            "CammieUpdateHelper.exe",
+            "File.copy(helperSource, helperPath)",
+            "new sys.io.Process(helperPath",
+            "Std.string(gamePid())",
+            "WindowsUpdateDownload.getText(RELEASES_API)",
         ):
-            self.assertIn(required, script)
-        self.assertLess(script.index('Copy-ReleaseFiles $payloadRoot $InstallRoot ""'),
-                        script.index('Move-Item -LiteralPath $tagTemporaryPath'))
-        self.assertLess(script.index('Set-UpdateStatus "complete"'),
-                        script.index('Add-Type -AssemblyName System.Windows.Forms',
-                                     script.index('Set-UpdateStatus "complete"')))
-        self.assertLess(script.index('$script:installStarted = $false'),
-                        script.index('Add-Type -AssemblyName System.Windows.Forms',
-                                     script.index('Set-UpdateStatus "complete"')))
+            self.assertIn(required, source)
+        self.assertNotIn("powershell.exe", source.lower())
+        self.assertNotIn("install-update.ps1", source.lower())
+        transport = (ROOT / "source/WindowsUpdateDownload.hx").read_text()
+        self.assertIn("URLDownloadToFileW", transport)
+        self.assertIn("-lurlmon", transport)
 
     def test_settings_warn_about_preserved_assets_and_dismiss_stale_check(self):
         settings = (ROOT / "source/SaveDataState.hx").read_text(encoding="utf-8")

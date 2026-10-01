@@ -3300,12 +3300,21 @@ source-specific verification; successful parsing is not execution coverage.
 
 ### Windows release updates
 
-The Windows release ZIP carries `RELEASE_TAG` beside `Funkin.exe`. Settings
+The Windows release ZIP carries `RELEASE_TAG` and `CammieUpdateHelper.exe`
+beside `Funkin.exe`. The menu version reads the installed release tag, including
+its alpha suffix; source builds use `EngineBranding.FALLBACK_VERSION` because
+Windows resource compilation requires the numeric `Project.xml` app version. Settings
 checks GitHub's release list because the `latest` endpoint omits prereleases.
 `UpdateChecker` accepts only a matching Windows x64 archive with a SHA-256 asset
 digest and checksum sidecar. It downloads in a helper process, verifies both
 hashes and ZIP paths, then waits for the running executable to close. The
-installer backs up files it replaces and restores them if copying fails; the
+standalone Windows helper runs under native Windows or Wine without PowerShell.
+Both Settings and the helper download through URLMon, which uses the Windows
+or Wine certificate store; the helper verifies the downloaded ZIP against the
+GitHub release digest and the checksum sidecar before extracting it.
+The game copies it to a temporary work directory before launch, allowing the
+installed helper itself to be replaced. The installer backs up files it
+replaces and restores them if copying fails; the
 release tag changes only after a successful overlay. Existing files under
 `assets/`, `mods/`, and `imported_mods/` are retained because older packages
 have no ownership manifest. This preserves imports and settings but means
