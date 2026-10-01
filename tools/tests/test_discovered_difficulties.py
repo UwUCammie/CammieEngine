@@ -74,8 +74,9 @@ class DifficultySuffixTest {
 
     def test_runtime_discovers_suffixes_before_support_maps(self):
         source = (ROOT / "source/DifficultyManager.hx").read_text(encoding="utf-8")
-        discover = source.index("discoverSongDifficulties(key);")
-        support = source.index("addSongSupport(song.name);")
+        add_support = extract_method(source, "public static function addSongSupport(")
+        discover = add_support.index("discoverSongDifficulties(key);")
+        support = add_support.index("supportedDiff.set(key, []);")
         self.assertLess(discover, support)
         self.assertIn("ensureDifficultyDefinition(suffix);", source)
 
@@ -111,7 +112,7 @@ class DifficultyFilterTest {
     File.saveContent("assets/data/" + folder + "/" + name + ".json", "{}");
   static function fail(message:String):Void throw message;
   static function main():Void {
-    for (folder in ["alpha", "beta"]) FileSystem.createDirectory("assets/data/" + folder);
+    for (folder in ["alpha", "beta", "gamma"]) FileSystem.createDirectory("assets/data/" + folder);
     File.saveContent("assets/data/alpha/importProvenance.json", Json.stringify({
       sourceEngine:"Nightmare Vision", sourceSelectableDifficulties:["easy", "normal", "hard"],
       sourceUnsupportedDifficulties:["hard"]
@@ -140,6 +141,14 @@ class DifficultyFilterTest {
       fail("owner-declared mania chart was hidden");
     if (!FileSystem.exists("assets/data/alpha/alpha-crowd.json"))
       fail("source chart was removed instead of retained");
+    // This song appears after the startup registry scan. The import callback
+    // must add its new suffix before Freeplay asks for supported difficulties.
+    chart("gamma", "gamma-buck");
+    addSongSupport("gamma");
+    if (diffJson.difficulties.length != 5 || diffJson.difficulties[4].name != "buck")
+      fail("late import did not define its authored difficulty");
+    if (supportedDiff.get("gamma").length != 1 || supportedDiff.get("gamma")[0] != 4)
+      fail("late import could not select its only chart difficulty");
   }
 }
 '''
@@ -181,9 +190,12 @@ class DifficultyFilterTest {
         methods = "\n".join(
             extract_method(source, marker)
             for marker in (
+                "public static function difficultySuffixFromChartFile(",
                 "public static function addSongSupport(",
                 "static function readSourceSelectableDifficulties(",
                 "static function readSourceUnsupportedDifficulties(",
+                "static function discoverSongDifficulties(",
+                "static function ensureDifficultyDefinition(",
                 "public static function getSupportedDiffs(",
                 "public static function getDiffEnding(",
                 "public static function changeDifficulty(",
@@ -191,6 +203,8 @@ class DifficultyFilterTest {
             )
         )
         fixture = """using StringTools;
+import haxe.io.Path;
+import sys.FileSystem;
 
 typedef DiffInfo = { var difficulty:Int; var text:String; };
 

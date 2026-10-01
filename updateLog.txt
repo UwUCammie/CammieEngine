@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 0.0.1 alpha — CammieEngine
+	- Discover newly imported chart difficulties before Freeplay selects them, including in the same session as import
+	- Exercise import-to-All-Freeplay selection without restarting in the offscreen smoke harness
 	- Show the full alpha release suffix in the menu and use the installed release tag for future version labels
 	- Bundle a self-updating Windows installer helper that runs under Wine without PowerShell
 	- Use Windows HTTPS certificate validation for both update checks and downloads so Wine can install releases

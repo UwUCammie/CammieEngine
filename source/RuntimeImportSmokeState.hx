@@ -38,10 +38,13 @@ class RuntimeImportSmokeState extends FlxState {
 					throw '--smoke-import-play-after-complete cannot be combined with --smoke-import-scan-only';
 				if (playRequest == null || RuntimeSmokeHarness.getConfigurationError() != '')
 					throw 'play-after-import requires a valid RuntimeSmokeHarness chart request';
-				if (playRequest.songFolder == '' || playRequest.chart == '')
+				if (playRequest.chartEditor)
+					throw 'play-after-import cannot open the chart editor';
+				if (playRequest.freeplay) {
+					if (playRequest.freeplayAcceptSong == '')
+						throw 'play-after-import Freeplay requires --smoke-freeplay-select';
+				} else if (playRequest.songFolder == '' || playRequest.chart == '')
 					throw 'play-after-import requires --smoke-song and --smoke-chart';
-				if (playRequest.chartEditor || playRequest.freeplay)
-					throw 'play-after-import requires a direct PlayState request';
 			}
 			// Match TitleState's one-time setup before the worker reads registries
 			// and initializes native compatibility services.
@@ -115,8 +118,12 @@ class RuntimeImportSmokeState extends FlxState {
 				RuntimeImportSmokeHarness.fail('timeout', 'import cancellation completed');
 				return;
 			}
-			if (RuntimeImportSmokeHarness.finish(result, error))
-				FlxG.switchState(new RuntimeSmokeState());
+			if (RuntimeImportSmokeHarness.finish(result, error)) {
+				if (RuntimeSmokeHarness.config().freeplay)
+					FlxG.switchState(new RuntimeSmokeFreeplayState());
+				else
+					FlxG.switchState(new RuntimeSmokeState());
+			}
 		}
 	}
 }

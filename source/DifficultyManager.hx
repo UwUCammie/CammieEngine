@@ -24,22 +24,8 @@ class DifficultyManager {
 		weeksSupported = [];
 		diffJson = CoolUtil.parseJson(FNFAssets.getJson("assets/images/custom_difficulties/difficulties"));
         var fpJson:Array<CoolCategory> = cast FreeplayRegistry.getJson();
-		// Importers preserve donor difficulty suffixes instead of rewriting them
-		// into the destination's built-in easy/normal/hard slots. Discover those
-		// suffixes before building each song's support map so files such as
-		// `<song>-encore.json` become selectable without editing the donor chart or
-		// maintaining a chart-specific registry entry.
-		#if sys
-		var discoveredSongs:Map<String, Bool> = new Map<String, Bool>();
-		for (cat in fpJson)
-			for (song in cat.songs) {
-				var key = song.name == null ? '' : song.name.toLowerCase();
-				if (key != '' && !discoveredSongs.exists(key)) {
-					discoveredSongs.set(key, true);
-					discoverSongDifficulties(key);
-				}
-			}
-		#end
+		// addSongSupport discovers authored suffixes for each song before it
+		// builds the support map. Use the same path for startup and late imports.
         for (cat in fpJson) {
             for (song in cat.songs) {
                 addSongSupport(song.name);
@@ -78,6 +64,11 @@ class DifficultyManager {
 		if (supportedDiff == null)
 			supportedDiff = [];
 		var key = StringTools.trim(song).toLowerCase();
+		// Imports can finish after init() has scanned Freeplay. Discover any new
+		// authored suffix before building support for the newly registered song.
+		#if sys
+		discoverSongDifficulties(key);
+		#end
 		supportedDiff.set(key, []);
 		if (diffJson == null || diffJson.difficulties == null)
 			return;
@@ -202,6 +193,8 @@ class DifficultyManager {
 		} catch (_:Dynamic) {
 			return;
 		}
+		if (entries == null)
+			return;
 		entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 		var sourceDifficulties = readSourceSelectableDifficulties(song);
 		var unsupportedDifficulties = readSourceUnsupportedDifficulties(song);

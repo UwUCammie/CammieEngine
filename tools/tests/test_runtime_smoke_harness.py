@@ -791,6 +791,7 @@ class ImportWorkflow {
 }
 """,
             "RuntimeSmokeState.hx": "class RuntimeSmokeState extends flixel.FlxState {}\n",
+            "RuntimeSmokeFreeplayState.hx": "class RuntimeSmokeFreeplayState extends flixel.FlxState {}\n",
             "ImportPackageNamePrompt.hx": """class ImportPackageNamePrompt {
   public static function collectUnnamedRoots(songs:Array<Dynamic>):Array<Dynamic> return [];
   public static function validName(name:String):Bool return true;

@@ -1649,8 +1649,12 @@ class RuntimeSmokeHarness {
 			// curSelected is a static on FreeplayState; instance fields stay on
 			// the state object itself.
 			var index:Dynamic = stateClass == null ? null : Reflect.field(stateClass, 'curSelected');
+			var difficulty:Dynamic = stateClass == null ? null : Reflect.field(stateClass, 'curDifficulty');
 			var songs:Array<Dynamic> = cast Reflect.field(FlxG.state, 'songs');
 			observation.selection = index;
+			observation.difficulty = difficulty;
+			if (difficulty != null)
+				observation.difficultyName = DifficultyManager.getDiffName(Std.int(difficulty));
 			observation.songCount = songs == null ? -1 : songs.length;
 			var token:Dynamic = Reflect.field(FlxG.state, 'hxcConfirmToken');
 			observation.confirmArmed = token != null && token != 0;

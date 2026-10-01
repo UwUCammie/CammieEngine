@@ -11376,7 +11376,8 @@ The final 29 focused updater/build tests passed. The locally built Windows ZIP
 is 1,186,011,949 bytes with SHA-256
 `f0fcb09612617c3a89b659d96e732678a4a807c6f666e2b8a338b10c1ed7058e`.
 Its checksum and ZIP integrity passed; it contains `CammieUpdateHelper.exe` and
-`RELEASE_TAG=v0.0.1-alpha.6`. The ZIP is local and has not been published. The
+`RELEASE_TAG=v0.0.1-alpha.6`. The ZIP was subsequently published as the alpha.6
+GitHub prerelease. The
 overall example-mod compatibility goal remains open; this evidence covers the
 updater and version work only.
 
@@ -11385,3 +11386,34 @@ Xvfb and dummy audio, reached `TitleState`, and remained alive until the
 intentional timeout (`tmp/alpha6-wine-startup.log`). The sandboxed first attempt
 could not bind a wineserver socket; the permitted retry completed. The runtime
 settings file was backed up and restored after the check.
+
+### Windows alpha.7 same-session Freeplay difficulty — 2026-10-01
+
+The reported first-play failure was a difficulty registration race. A source
+package can provide only a suffixed chart while `DifficultyManager.init()` has
+already completed; the import handoff called `addSongSupport` but previously did
+not add the new suffix to the process-local difficulty definitions. Freeplay
+could then fall back to a base chart that the package never supplied. The shared
+support builder now discovers a song's authored suffixes immediately before it
+checks chart files. Startup and late imports use the same path, with one scan
+per song instead of two at startup. No chart, mod, or donor file was changed.
+
+The offscreen import smoke harness can now enter the real All Freeplay category
+after an import in the **same process**, retaining the difficulty registry from
+the import. A clean alpha.7 Windows ZIP was extracted into a disposable runtime
+and run under Xvfb/Wine with dummy audio. It imported the HL17 package (three
+songs, 242 copied assets, zero failed), selected Linkinteen Parks from All with
+`difficultyName=BUCK`, reached `playstate_ready`, and emitted `success` after
+15 seconds of gameplay. There was no restart between import and selection.
+The compact receipt is `tmp/alpha7-hl17-all-verification.json`; raw markers and
+the process log are under `tmp/alpha7-hl17-{import,freeplay}.jsonl` and
+`tmp/alpha7-hl17-all-wine-process.log`. This verifies the reported entry path,
+not a full-song source parity check or native Windows hardware.
+
+The focused difficulty and import smoke tests passed. The complete parallel
+suite passed **1,693 tests across 510 modules, 65 skipped, zero failed**
+(`tmp/alpha7-full-tests.log`). The final `./run.sh build` passed
+(`tmp/alpha7-linux-build-final.log`). The local alpha.7 Windows ZIP passed its
+checksum check, contains `RELEASE_TAG=v0.0.1-alpha.7`, and is 1,186,010,548
+bytes with SHA-256
+`9ed0eb97b6ea5a1ab4cf3c0caed1a22d805d88bebaf542b3c36decfdc7b80e84`.

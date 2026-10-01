@@ -33,6 +33,7 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
         cls.import_harness = (SOURCE / "RuntimeImportSmokeHarness.hx").read_text()
         cls.import_state = (SOURCE / "RuntimeImportSmokeState.hx").read_text()
         cls.play_state = (SOURCE / "RuntimeSmokeState.hx").read_text()
+        cls.freeplay_state = (SOURCE / "RuntimeSmokeFreeplayState.hx").read_text()
         cls.workflow = (SOURCE / "ImportWorkflow.hx").read_text()
 
     def test_opt_in_import_request_switches_after_main_thread_commit(self):
@@ -43,8 +44,11 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
         self.assertIn("play-after-import requires --smoke-song and --smoke-chart", self.import_state)
 
         complete = self.import_state.index("if (RuntimeImportSmokeHarness.finish(result, error))")
-        switch = self.import_state.index("FlxG.switchState(new RuntimeSmokeState());", complete)
-        self.assertLess(complete, switch)
+        direct_switch = self.import_state.index("FlxG.switchState(new RuntimeSmokeState());", complete)
+        freeplay_switch = self.import_state.index("FlxG.switchState(new RuntimeSmokeFreeplayState());", complete)
+        self.assertLess(complete, direct_switch)
+        self.assertLess(complete, freeplay_switch)
+        self.assertIn("play-after-import Freeplay requires --smoke-freeplay-select", self.import_state)
 
         import_job = self.workflow[self.workflow.index("class ImportImportJob {"):]
         poll = extract_method(import_job, "public function poll():ImportWorkflowProgress {")
@@ -56,6 +60,8 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
         consume = "RuntimeImportSmokeHarness.consumePreparedRuntimeForPlay()"
         self.assertIn(consume, self.play_state)
         self.assertLess(self.play_state.index(consume), self.play_state.index("PluginManager.init()"))
+        self.assertIn(consume, self.freeplay_state)
+        self.assertLess(self.freeplay_state.index(consume), self.freeplay_state.index("DifficultyManager.init()"))
         self.assertIn("preparedRuntimeForPlay = true;", self.import_harness)
         self.assertIn("public static function consumePreparedRuntimeForPlay():Bool", self.import_harness)
 

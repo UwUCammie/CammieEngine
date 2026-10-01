@@ -31,9 +31,11 @@ class RuntimeSmokeFreeplayState extends FlxState {
 			// unbound save's data field is null - a hard crash on native - so the
 			// save binding must happen exactly like TitleState does it.
 			RuntimeSmokeHarness.markStep('plugin-init');
-			PluginManager.init();
-			DifficultyManager.init();
-			ModifierState.init();
+			if (!RuntimeImportSmokeHarness.consumePreparedRuntimeForPlay()) {
+				PluginManager.init();
+				DifficultyManager.init();
+				ModifierState.init();
+			}
 			FlxG.save.bind("preferredSave", "bulbyVR");
 			var preferredSave:Int = 0;
 			if (Reflect.hasField(FlxG.save.data, "preferredSave")) {

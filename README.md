@@ -1,4 +1,4 @@
-# CammieEngine v0.0.1-alpha.6
+# CammieEngine v0.0.1-alpha.7
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -39,7 +39,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.1-alpha.6
+./build-windows-release.sh v0.0.1-alpha.7
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set

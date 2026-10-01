@@ -3649,7 +3649,12 @@ The completed import hands cache invalidation and difficulty registration back t
 that thread before newly imported charts can launch. `ImportDirectoryListing` and
 the Kade source scanner treat a null native directory listing as an empty optional
 folder; Windows/Wine can return null where Linux throws or returns an array.
-The opt-in import-then-play smoke path exercises that handoff in one process.
+`DifficultyManager.addSongSupport` discovers chart suffixes before it constructs
+the support map, both at startup and after a late import. This keeps an imported
+song with no base/default chart selectable on its authored difficulty in the
+same session. The opt-in import-then-play smoke path exercises that handoff in
+one process, including entry through the real All Freeplay category without
+reinitializing the difficulty registry between import and selection.
 
 `PsychOwnerPaths` checks the selected import owner first, then engine shared
 assets for stock Psych stage images. The engine's native stage asset folder
