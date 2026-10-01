@@ -25,8 +25,14 @@ Verification on this checkout:
   CRCs valid, SHA-256 matches `dist/SHA256SUMS.txt`.
 - Offscreen Wine smoke with dummy audio: the Windows game remained running
   throughout the 20-second startup window.
+- After publication, an offscreen Wine update fetched the ZIP and checksum
+  from GitHub. The helper reported `downloading`, `verifying`, `extracting`,
+  `installing`, and `complete`. The disposable install received the alpha.8
+  executable and replacement helper while its existing settings and imported
+  chart retained their original contents. All test files were cleaned up.
 
-The full release ZIP has not been installed through a published GitHub update
-in this check. A native Windows user should still verify the in-game download
-and bar after alpha.8 is published. The wider example-mod compatibility goal
-also remains open; this report only covers the updater failure and progress UI.
+The in-game bar itself still needs a visual check under Wine or native Windows;
+the compiled game starts under Wine and its progress calculation has an
+automated status-file test. Native Windows hardware has not been checked in
+this pass. The wider example-mod compatibility goal also remains open; this
+report only covers the updater failure and progress UI.
