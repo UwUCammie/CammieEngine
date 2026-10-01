@@ -11,6 +11,49 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class UpdateCheckerTest(unittest.TestCase):
+    def test_progress_reads_persistent_job_and_downloaded_bytes(self):
+        (ROOT / "tmp").mkdir(exist_ok=True)
+        fixture = r'''
+import UpdateChecker;
+import sys.io.File;
+@:access(UpdateChecker)
+class Main {
+ static function main():Void {
+  var root = Sys.getEnv("UPDATER_PROGRESS_FIXTURE");
+  var status = root + "/status.txt";
+  UpdateChecker.activeStatusPath = status;
+  UpdateChecker.activeRelease = {
+   tag:"v0.0.1-alpha.8", archiveName:"release.zip", archiveUrl:"", checksumUrl:"",
+   sha256:"", sizeBytes:100
+  };
+  File.saveContent(status, "downloading");
+  File.saveContent(root + "/release.zip", StringTools.lpad("", "x", 50));
+  var progress = UpdateChecker.installProgress();
+  if (progress == null || progress.fraction != 0.5 || !StringTools.contains(progress.label, "50%"))
+   throw "download byte progress was not shown";
+  File.saveContent(status, "ready");
+  progress = UpdateChecker.installProgress();
+  if (progress == null || progress.fraction != 1 || progress.status != "ready")
+   throw "ready status did not persist";
+  File.saveContent(status, "error:bad archive");
+  progress = UpdateChecker.installProgress();
+  if (progress == null || progress.label != "bad archive") throw "helper error was hidden";
+  UpdateChecker.clearInstallProgress();
+  if (UpdateChecker.installProgress() != null) throw "dismissed progress remained visible";
+ }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            Path(folder, "Main.hx").write_text(fixture)
+            result = subprocess.run(
+                [str(HAXE), "-D", "windows", "-cp", str(ROOT / "source"),
+                 "-cp", folder, "-main", "Main", "--interp"],
+                cwd=ROOT, env={**__import__("os").environ,
+                               "UPDATER_PROGRESS_FIXTURE": folder},
+                capture_output=True, text=True, timeout=60,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_release_selection_and_windows_helper(self):
         (ROOT / "tmp").mkdir(exist_ok=True)
         fixture = r'''

@@ -618,6 +618,11 @@ class FreeplayState extends MusicBeatState {
 			trace(md);
 		 */
 		
+		#if (sys && windows)
+		var updateProgressBar = new UpdateProgressBar();
+		updateProgressBar.cameras = [camUI];
+		add(updateProgressBar);
+		#end
 		super.create();
 	}
 

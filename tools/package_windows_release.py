@@ -211,6 +211,19 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
                 continue
         allowed_runtime_files.append((source, relative))
 
+    # Linux builds can contain case-only hardlink mirrors for song audio. Windows
+    # resolves those names to the same file, while the updater rejects duplicate
+    # case-insensitive paths. Collapse identical mirrors and reject ambiguous ones.
+    unique_files: dict[str, tuple[Path, Path]] = {}
+    for source, relative in allowed_runtime_files:
+        key = relative.as_posix().casefold()
+        prior = unique_files.get(key)
+        if prior is not None:
+            if source.stat().st_size != prior[0].stat().st_size or sha256(source) != sha256(prior[0]):
+                raise ValueError(f"conflicting Windows paths: {prior[1]} and {relative}")
+            continue
+        unique_files[key] = (source, relative)
+
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"CammieEngine-{label}-windows-x64.zip"
     checksum_path = output_dir / "SHA256SUMS.txt"
@@ -220,41 +233,50 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
     try:
         with zipfile.ZipFile(temporary_archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
             archive_names: set[str] = set()
-            for source, relative in allowed_runtime_files:
+            for source, relative in unique_files.values():
                 if relative.as_posix().casefold() in {"release_tag", "updatelog.txt"}:
                     continue
                 archive_name = str(PurePosixPath(ARCHIVE_ROOT, *relative.parts))
                 archive.write(source, archive_name)
-                archive_names.add(archive_name)
+                archive_names.add(archive_name.casefold())
 
             release_log_name = f"{ARCHIVE_ROOT}/updateLog.txt"
             archive.write(repository / "updateLog.txt", release_log_name)
-            archive_names.add(release_log_name)
+            archive_names.add(release_log_name.casefold())
 
             release_tag_name = f"{ARCHIVE_ROOT}/RELEASE_TAG"
             archive.writestr(release_tag_name, label + "\n")
-            archive_names.add(release_tag_name)
+            archive_names.add(release_tag_name.casefold())
 
             options_name = f"{ARCHIVE_ROOT}/assets/data/options.json"
             archive.writestr(options_name, seed)
-            archive_names.add(options_name)
+            archive_names.add(options_name.casefold())
 
             start_name = f"{ARCHIVE_ROOT}/START-HERE.txt"
-            if start_name not in archive_names:
+            if start_name.casefold() not in archive_names:
                 start_info = zipfile.ZipInfo(start_name)
                 start_info.compress_type = zipfile.ZIP_DEFLATED
                 start_info.external_attr = (stat.S_IFREG | 0o644) << 16
                 archive.writestr(start_info, START_HERE)
-                archive_names.add(start_name)
+                archive_names.add(start_name.casefold())
 
             for source_relative, archive_relative in DOCS:
                 source = repository / source_relative
                 if not source.is_file():
                     continue
                 archive_name = str(PurePosixPath(ARCHIVE_ROOT, archive_relative))
-                if archive_name not in archive_names:
+                if archive_name.casefold() not in archive_names:
                     archive.write(source, archive_name)
-                    archive_names.add(archive_name)
+                    archive_names.add(archive_name.casefold())
+
+        # Enforce the helper's Windows path rule before publishing a ZIP.
+        with zipfile.ZipFile(temporary_archive) as check:
+            seen: set[str] = set()
+            for name in check.namelist():
+                key = name.removeprefix(f"{ARCHIVE_ROOT}/").rstrip("/").casefold()
+                if key in seen:
+                    raise ValueError(f"duplicate Windows path in release ZIP: {name}")
+                seen.add(key)
 
         os.replace(temporary_archive, archive_path)
     finally:

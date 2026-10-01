@@ -1,4 +1,4 @@
-# CammieEngine v0.0.1-alpha.7
+# CammieEngine v0.0.1-alpha.8
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -16,8 +16,9 @@ and tools beside it. Players do not need a compiler or source checkout.
 On Windows, including under Wine, **Settings → Check for Updates** checks
 published releases and asks before downloading. A bundled Windows helper
 uses the Windows HTTPS and certificate APIs to verify and install the package
-after the game closes; it also replaces its
-own installed copy. Local settings and imports remain in place; an existing
+after the game closes; it also replaces its own installed copy. Download
+progress stays visible in Settings, Main Menu, and Freeplay browsing. Local
+settings and imports remain in place; an existing
 asset file is kept, so a clean extraction is needed when a release changes
 bundled static assets. Releases before alpha.6 need one manual ZIP extraction
 to acquire the bundled helper.
@@ -39,7 +40,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.1-alpha.7
+./build-windows-release.sh v0.0.1-alpha.8
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set

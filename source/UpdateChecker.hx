@@ -32,6 +32,12 @@ typedef UpdateStartResult = {
 	var error:Null<String>;
 }
 
+typedef UpdateProgress = {
+	var status:String;
+	var label:String;
+	var fraction:Float;
+}
+
 /** User-initiated updater for the published Windows x64 ZIP releases. */
 #if (cpp && windows)
 @:headerCode('extern "C" __declspec(dllimport) unsigned long __stdcall GetCurrentProcessId(void);')
@@ -42,6 +48,8 @@ class UpdateChecker {
 	static var nextRequestId:Int = 0;
 	#if (sys && windows)
 	static var checkResults:Deque<UpdateCheckResult> = new Deque<UpdateCheckResult>();
+	static var activeStatusPath:Null<String>;
+	static var activeRelease:Null<UpdateRelease>;
 	#end
 
 	public static function versionFromTag(tag:String):Null<Array<Dynamic>> {
@@ -230,6 +238,8 @@ class UpdateChecker {
 				release.archiveUrl, release.checksumUrl, release.archiveName,
 				release.sha256, release.tag, Std.string(gamePid())]);
 			process.close();
+			activeStatusPath = statusPath;
+			activeRelease = release;
 			return {statusPath:statusPath, error:null};
 		} catch (error:Dynamic) {
 			return {statusPath:null, error:Std.string(error)};
@@ -239,6 +249,42 @@ class UpdateChecker {
 	public static function readInstallStatus(statusPath:String):Null<String> {
 		if (statusPath == null || !FileSystem.exists(statusPath)) return null;
 		try return StringTools.trim(File.getContent(statusPath)) catch (error:Dynamic) return null;
+	}
+
+	/** Poll the same helper job from any browsing state. Download bytes are read
+	 * from its temporary ZIP; the helper remains responsible for verification. */
+	public static function installProgress():Null<UpdateProgress> {
+		if (activeStatusPath == null || activeRelease == null) return null;
+		var status = readInstallStatus(activeStatusPath);
+		if (status == null) status = 'starting';
+		if (StringTools.startsWith(status, 'error:'))
+			return {status:status, label:status.substr('error:'.length), fraction:0};
+		if (status == 'complete')
+			return {status:status, label:'Update installed', fraction:1};
+		if (status == 'downloading' || status == 'starting') {
+			var fraction = 0.0;
+			if (activeRelease.sizeBytes > 0) try {
+				var archivePath = Path.join([Path.directory(activeStatusPath), activeRelease.archiveName]);
+				if (FileSystem.exists(archivePath))
+					fraction = Math.max(0, Math.min(1, FileSystem.stat(archivePath).size / activeRelease.sizeBytes));
+			} catch (_:Dynamic) {}
+			var percent = Std.int(fraction * 100);
+			return {status:status, label:'Downloading update ' + activeRelease.tag + ' — ' + percent + '%', fraction:fraction};
+		}
+		return switch (status) {
+			case 'verifying': {status:status, label:'Verifying update ' + activeRelease.tag, fraction:1};
+			case 'extracting': {status:status, label:'Preparing update ' + activeRelease.tag, fraction:1};
+			case 'ready': {status:status, label:'Update ready — installs after exit', fraction:1};
+			case 'installing': {status:status, label:'Installing update ' + activeRelease.tag, fraction:1};
+			default: {status:status, label:'Update status: ' + status, fraction:0};
+		};
+	}
+
+	public static function activeInstallStatusPath():Null<String> return activeStatusPath;
+
+	public static function clearInstallProgress():Void {
+		activeStatusPath = null;
+		activeRelease = null;
 	}
 
 	static function gamePid():Int {

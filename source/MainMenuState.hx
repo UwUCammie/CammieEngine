@@ -170,6 +170,9 @@ class MainMenuState extends MusicBeatState {
 		}
 
 		changeItem();
+		#if (sys && windows)
+		add(new UpdateProgressBar());
+		#end
 
 		super.create();
 	}

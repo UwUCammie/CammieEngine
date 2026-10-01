@@ -138,6 +138,32 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "required release notice"):
                 PACKAGE.make_package(runtime, root / "dist2", "alpha-test", repo)
 
+    def test_case_only_runtime_mirrors_are_safe_for_windows_updater(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            first = "assets/songs/Example/Inst.ogg"
+            second = "assets/songs/example/Inst.ogg"
+            write(runtime / first, b"same audio")
+            write(runtime / second, b"same audio")
+            write(repo / first, b"same audio")
+            subprocess.run(["git", "-C", str(repo), "add", first], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c",
+                            "user.email=fixture@example.invalid", "commit", "-qm", "mirror"], check=True)
+            archive, _ = PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+            with zipfile.ZipFile(archive) as package:
+                names = [name.casefold() for name in package.namelist()]
+                self.assertEqual(len(names), len(set(names)))
+                self.assertEqual(sum(name.endswith("assets/songs/example/inst.ogg") for name in names), 1)
+
+            write(repo / second, b"different audio")
+            subprocess.run(["git", "-C", str(repo), "add", second], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c",
+                            "user.email=fixture@example.invalid", "commit", "-qm", "conflict"], check=True)
+            write(runtime / second, b"different audio")
+            with self.assertRaisesRegex(ValueError, "conflicting Windows paths"):
+                PACKAGE.make_package(runtime, root / "bad-dist", "alpha-test", repo)
+
     def test_excludes_owner_import_trees_without_modifying_them(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             root = Path(temp)

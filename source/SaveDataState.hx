@@ -257,6 +257,8 @@ class SaveDataState extends MusicBeatState {
 		updateDialogText.scrollFactor.set();
 		updateDialogText.visible = false;
 		add(updateDialogText);
+		updateInstallStatusPath = UpdateChecker.activeInstallStatusPath();
+		add(new UpdateProgressBar());
 		#end
 		changeSelection();
 		if (curOptions.allowEditOptions)
@@ -514,6 +516,9 @@ class SaveDataState extends MusicBeatState {
 				updateCheckRequestId = -1;
 				hideUpdateDialog();
 			} else if (updateDialogMode != 'progress') {
+				if (updateDialogMode == 'message' && lastInstallStatus != null
+					&& (lastInstallStatus == 'complete' || StringTools.startsWith(lastInstallStatus, 'error:')))
+					UpdateChecker.clearInstallProgress();
 				hideUpdateDialog();
 			}
 			return true;
@@ -523,6 +528,9 @@ class SaveDataState extends MusicBeatState {
 			if (updateDialogMode == 'checking') updateCheckRequestId = -1;
 			if ((updateDialogMode == 'progress' || updateDialogMode == 'ready') && updateInstallStatusPath != null)
 				updateProgressDismissed = true;
+			if (updateDialogMode == 'message' && lastInstallStatus != null
+				&& (lastInstallStatus == 'complete' || StringTools.startsWith(lastInstallStatus, 'error:')))
+				UpdateChecker.clearInstallProgress();
 			hideUpdateDialog();
 			return true;
 		}
