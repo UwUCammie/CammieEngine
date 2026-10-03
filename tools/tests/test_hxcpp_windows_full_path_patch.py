@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from tools.patch_hxcpp_windows_file_paths import unpatch_sys_source
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -136,7 +137,7 @@ int main() {
 class HxcppWindowsFullPathPatchTest(unittest.TestCase):
     @staticmethod
     def original_source() -> bytes:
-        source = PATCHER.SYS_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+        source = unpatch_sys_source(PATCHER.SYS_SOURCE.read_bytes()).replace(b"\r\n", b"\n")
         digest = hashlib.sha256(source).hexdigest()
         if digest == READ_DIRECTORY_PATCHER.PATCHED_SHA256:
             if source.count(READ_DIRECTORY_PATCHER.NEW) != 1:

@@ -329,6 +329,11 @@ function init(char) {
     def test_symlinked_preview_owner_parent_rejected(self):
         assets = self.preview / 'assets'
         actual = self.preview / 'real-assets'
+        # Check the fixture capability before moving a freshly written tree.
+        # Windows without Developer Mode should report the symlink skip first.
+        probe = self.preview / 'symlink-capability'
+        probe.symlink_to(assets, target_is_directory=True)
+        probe.unlink()
         assets.rename(actual)
         assets.symlink_to(actual, target_is_directory=True)
         with self.assertRaisesRegex(ValueError, 'unsafe selected manifest|unsafe preview'):

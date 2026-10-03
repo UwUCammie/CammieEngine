@@ -208,6 +208,7 @@ inst tjson
 python3 tools/patch_tjson_unicode.py
 python3 tools/patch_hxcpp_windows_full_path.py
 python3 tools/patch_hxcpp_windows_read_directory.py
+python3 tools/patch_hxcpp_windows_file_paths.py
 gitinst hscript-ex https://github.com/ianharrigan/hscript-ex
 gitinst discord_rpc https://github.com/Aidan63/linc_discord-rpc
 

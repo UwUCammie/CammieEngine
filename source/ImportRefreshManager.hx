@@ -159,6 +159,10 @@ class ImportRefreshManager {
 		var stage = Path.join([cache,"staging",Std.string(record.id) + "-" + Std.string(Date.now().getTime())]);
 		FileSystem.createDirectory(stage);
 		var io = ImportIO.begin(install,stage,masked);
+		var retainedEngines:Map<String, String> = new Map();
+		for (root in (cast record.roots:Array<Dynamic>))
+			retainedEngines.set(Path.join([source,Std.string(root.relative)]),Std.string(root.engine));
+		var previousEngines = ImportRootScanner.setRetainedSourceEngines(retainedEngines);
 		var ended = false;
 		try {
 			var registrySeeds:Map<String,String> = new Map();
@@ -242,6 +246,7 @@ class ImportRefreshManager {
 				outputs.push({path:path,stagedPath:path,sha256:ImportSourceSnapshot.sha256File(staged)});
 			}
 			ImportIO.end(); ended = true;
+			ImportRootScanner.setRetainedSourceEngines(previousEngines);
 			if (scan.detectedEngines != null) for (engine in scan.detectedEngines)
 				if (ImportRevision.normalizeEngine(engine) != "" && (cast record.engines:Array<String>).indexOf(engine) < 0)
 					(cast record.engines:Array<String>).push(engine);
@@ -262,6 +267,7 @@ class ImportRefreshManager {
 		} catch (error:Dynamic) {
 			trace("[import-refresh-conversion-error] " + Std.string(error) + "\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack()));
 			if (!ended) ImportIO.end();
+			ImportRootScanner.setRetainedSourceEngines(previousEngines);
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			try deleteStage(stage) catch (cleanup:Dynamic)
 				trace("[import-refresh-cleanup-error] " + Std.string(cleanup));
@@ -387,6 +393,12 @@ class ImportRefreshManager {
 		return candidate;
 	}
 	static function atomicText(path:String,text:String):Void {
+		// These owner pointers are immutable. A failed import can leave one
+		// behind; reuse it instead of renaming over it (Windows rejects that).
+		if (FileSystem.exists(path)) {
+			if (!FileSystem.isDirectory(path) && File.getContent(path) == text) return;
+			throw "Retained import pointer conflicts with its owner: " + path;
+		}
 		var temporary = path + ".tmp";
 		File.saveContent(temporary,text);
 		FileSystem.rename(temporary,path);

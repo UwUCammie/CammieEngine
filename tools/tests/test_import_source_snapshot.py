@@ -129,6 +129,7 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         struct.pack_into("<I", pe, 0x3C, 0x80)
         pe[0x80:0x84] = b"PE\x00\x00"
         (donor / "hidden-native.unknown").write_bytes(pe)
+        (donor / "Game.EXE").write_bytes(pe)
         before = self.tree_fingerprint(donor)
 
         result = self.run_capture(donor, cache)
@@ -164,6 +165,8 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         self.assertNotIn("payload.DLL", files)
         self.assertNotIn("sneaky.data", files)
         self.assertNotIn("hidden-native.unknown", files)
+        self.assertIn("Game.EXE", files)
+        self.assertEqual((snapshot / "content/Game.EXE").read_bytes(), bytes(pe))
         for relative, entry in files.items():
             self.assertEqual(hashlib.sha256((snapshot / "content" / relative).read_bytes()).hexdigest(), entry["sha256"])
             self.assertNotEqual(os.stat(snapshot / "content" / relative).st_ino, os.stat(donor / relative).st_ino,

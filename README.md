@@ -1,4 +1,4 @@
-# CammieEngine v0.0.9
+# CammieEngine v0.0.10
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -54,7 +54,7 @@ their skips explicitly.
 
 Use `.\run.bat` to build and play, `.\run.bat nobuild` to play the existing
 build, or `.\run.bat test debug` to build and test with debug symbols.
-To build, test and package the v0.0.9 alpha for release:
+To build, test and package the v0.0.10 alpha for release:
 
 ```powershell
 .\run.bat package
@@ -65,7 +65,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.9
+./build-windows-release.sh v0.0.10
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set
@@ -91,7 +91,8 @@ future imports. Deliberate new engine assets in ignored folders require
 `git add -f`; ordinary source-code changes do not.
 
 New imports retain the selected source package in `import-cache/` beside the
-game, excluding native executables and libraries. When an engine update changes
+game, including Windows `.exe` files used to identify the source engine. Shared
+libraries and other native payloads are excluded. When an engine update changes
 the importer revision, outdated imports rebuild automatically while browsing
 menus or Settings. Progress is shown there. The original folder is no longer
 needed for those refreshes; keep the cache with the installation. Retaining

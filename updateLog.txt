@@ -1,6 +1,11 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+0.0.10 alpha — CammieEngine
+	- Fix Windows imports with retained source paths longer than 259 characters, including D-Sides Redux; reuse cache owner pointers safely when retrying a failed import
+	- Preserve each source root's detected engine identity when rescanning retained sources, so excluded executable markers cannot switch Nightmare Vision imports to another engine
+	- Keep Windows .exe files in retained source packages, preserving the original engine marker bytes for future import scans
+
 0.0.9 alpha — CammieEngine
 	- Add one Windows 11 command, .\run.bat test, to build Windows x64 and run the full regression suite
 	- Bootstrap portable Windows tools and a verified LLVM-MinGW compiler when Visual Studio is unavailable; preserve copied toolchains

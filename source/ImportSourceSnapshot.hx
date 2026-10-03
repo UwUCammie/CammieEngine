@@ -85,8 +85,8 @@ class ImportSourceSnapshot {
 
 	/**
 		Capture all selected source content, including files with unknown
-		extensions and empty directories. Native executables and libraries are
-		omitted by extension or recognized file header and described in the
+		extensions, Windows executables and empty directories. Shared libraries
+		and other native payloads are omitted by extension/header and described in the
 		receipt. Path escapes, loops, caller-declared external dependencies, and
 		bounded-walk omissions are also described and make the receipt incomplete.
 	*/
@@ -199,7 +199,10 @@ class ImportSourceSnapshot {
 								addOmission(omissions, incompleteReasons, relative, "unreadable-header", "The file header could not be read.");
 								continue;
 							}
-							if (detectedHeader != "") exclusionReason = "native-header-" + detectedHeader;
+							// Keep Windows executables as source evidence. They can
+							// contain the only engine marker used by future rescans.
+							if (detectedHeader != "" && !name.toLowerCase().endsWith(".exe"))
+								exclusionReason = "native-header-" + detectedHeader;
 						}
 						if (exclusionReason != "") {
 							exclusions.push({path: relative, size: stat.size, reason: exclusionReason, detectedHeader: detectedHeader});
@@ -867,7 +870,7 @@ class ImportSourceSnapshot {
 
 	static function nativeExtension(name:String):String {
 		var lower = name.toLowerCase();
-		if (lower.endsWith(".exe") || lower.endsWith(".dll") || lower.endsWith(".ndll")
+		if (lower.endsWith(".dll") || lower.endsWith(".ndll")
 			|| lower.endsWith(".dylib") || lower.endsWith(".so") || hasVersionedSoSuffix(lower)
 			|| lower.endsWith(".a") || lower.endsWith(".lib"))
 			return "native-extension";

@@ -25,7 +25,7 @@ typedef ImportRevisionAssessment = {
 /** Shared import compatibility revisions persisted with source receipts. */
 class ImportRevision {
 	public static inline var SCHEMA_VERSION:Int = 1;
-	public static inline var COMMON_REVISION:Int = 1;
+	public static inline var COMMON_REVISION:Int = 2;
 	public static inline var UNKNOWN:String = "unknown";
 	public static inline var CURRENT:String = "current";
 	public static inline var OUTDATED:String = "outdated";

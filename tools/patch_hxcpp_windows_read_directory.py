@@ -179,10 +179,13 @@ def _digest(patched: bytes) -> str:
     return hashlib.sha256(patched).hexdigest()
 
 
+FILE_PATHS_PATCHED_SHA256 = 'c612fdc5a7b84a80981e864a529fcaf0560f9a1cf42483b2efb84ed6162dee1c'
+
+
 def patch_source(source: bytes) -> bytes:
     normalized = source.replace(b'\r\n', b'\n')
     digest = hashlib.sha256(normalized).hexdigest()
-    if digest == PATCHED_SHA256:
+    if digest in (PATCHED_SHA256, FILE_PATHS_PATCHED_SHA256):
         return source
     if digest != SOURCE_SHA256:
         raise ValueError(f'hxcpp Sys.cpp differs from pinned fullPath-patched 4.3.2 source; refusing patch ({digest})')

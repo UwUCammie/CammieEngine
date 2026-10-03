@@ -1,4 +1,4 @@
-CammieEngine v0.0.9 — alpha player guide
+CammieEngine v0.0.10 — alpha player guide
 
 PLAY
 Extract the complete release ZIP to a writable folder and run Funkin.exe.
@@ -16,8 +16,9 @@ Use the engine's import menu to select a supported source package. Imports
 are stored separately from the bundled songs; identically named songs can
 remain accessible with their source labels.
 
-New imports keep a source copy in import-cache beside the game, excluding
-native executable/library files. Future importer improvements automatically
+New imports keep a source copy in import-cache beside the game, including
+Windows .exe files used to identify the engine; shared libraries and other native
+payloads are excluded. Future importer improvements automatically
 refresh outdated imports while you browse menus or Settings; a progress bar
 shows the work. Keep import-cache when moving or updating the game. This uses
 additional disk space but removes the need to select the original folder again.

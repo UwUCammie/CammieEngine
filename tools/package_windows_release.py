@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
-DEFAULT_RELEASE_TAG = "v0.0.9"
+DEFAULT_RELEASE_TAG = "v0.0.10"
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 REQUIRED_RUNTIME_PATHS = (
     "Funkin.exe",

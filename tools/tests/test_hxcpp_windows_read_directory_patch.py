@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from tools.patch_hxcpp_windows_file_paths import unpatch_sys_source
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -237,7 +238,7 @@ int main() {
 class HxcppWindowsReadDirectoryPatchTest(unittest.TestCase):
     @staticmethod
     def source_before_patch() -> bytes:
-        source = PATCHER.SYS_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+        source = unpatch_sys_source(PATCHER.SYS_SOURCE.read_bytes()).replace(b"\r\n", b"\n")
         digest = hashlib.sha256(source).hexdigest()
         if digest == PATCHER.PATCHED_SHA256:
             if source.count(PATCHER.NEW) != 1 or source.count(PATCHER.INCLUDE_NEW) != 1:

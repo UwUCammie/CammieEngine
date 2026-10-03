@@ -50,18 +50,19 @@ class WindowsWorkflowTest(unittest.TestCase):
     def test_exclusive_file_lock_blocks_then_releases_a_second_process(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             lock_path = Path(directory) / 'runtime.lock'
-            script = '''from tools import file_lock
-import sys
+            script = '''import sys
+sys.path.insert(0, sys.argv[2])
+from tools import file_lock
 with open(sys.argv[1], 'a+b') as handle:
  try: file_lock.flock(handle, file_lock.LOCK_EX | file_lock.LOCK_NB)
  except BlockingIOError: sys.exit(17)
 '''
             with lock_path.open('a+b') as handle:
                 file_lock.flock(handle, file_lock.LOCK_EX)
-                locked = subprocess.run([sys.executable, '-c', script, str(lock_path)], cwd=ROOT)
+                locked = subprocess.run([sys.executable, '-c', script, str(lock_path), str(ROOT)], cwd=ROOT)
                 self.assertEqual(locked.returncode, 17)
                 file_lock.flock(handle, file_lock.LOCK_UN)
-            released = subprocess.run([sys.executable, '-c', script, str(lock_path)], cwd=ROOT)
+            released = subprocess.run([sys.executable, '-c', script, str(lock_path), str(ROOT)], cwd=ROOT)
             self.assertEqual(released.returncode, 0)
 
     @unittest.skipUnless(os.name == 'nt', 'native Windows batch workflow')

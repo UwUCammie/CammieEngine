@@ -96,6 +96,24 @@ typedef ImportRootScanCallbacks = {
 	hard-linked aliases cannot make an unbounded traversal.
 */
 class ImportRootScanner {
+	#if target.threaded
+	static var retainedEngines = new sys.thread.Tls<Map<String, String>>();
+	#else
+	static var retainedEngines:Map<String, String>;
+	#end
+
+	/** Scope trusted original scan identities to the current import worker.
+	 * Returning the previous map lets callers restore nested contexts. */
+	public static function setRetainedSourceEngines(engines:Map<String, String>):Map<String, String> {
+		#if target.threaded
+		var previous = retainedEngines.value;
+		retainedEngines.value = engines;
+		#else
+		var previous = retainedEngines;
+		retainedEngines = engines;
+		#end
+		return previous;
+	}
 	public static inline var MAX_DEPTH:Int = 10;
 	public static inline var MAX_DIRECTORIES:Int = 8192;
 	static inline var MAX_LUA_SONG_DIRECTORIES:Int = 24;
@@ -327,6 +345,9 @@ class ImportRootScanner {
 			return null;
 		var executableMarkers = probeExecutableMarkers(root, rootEntries);
 		var selected = ImportEngine.normalize(requestedEngine);
+		var retainedEngine = retainedSourceEngine(root);
+		if (selected == ImportEngine.AUTO && retainedEngine != '')
+			selected = retainedEngine;
 		var evidenceByEngine:Map<String, Array<String>> = new Map<String, Array<String>>();
 		var scores:Map<String, Int> = new Map<String, Int>();
 		for (engine in [ImportEngine.V_SLICE, ImportEngine.KADE, ImportEngine.MODDING_PLUS,
@@ -365,6 +386,8 @@ class ImportRootScanner {
 		var evidence = evidenceByEngine.get(bestEngine);
 		if (evidence == null)
 			evidence = [];
+		if (retainedEngine == bestEngine)
+			evidence.push('Engine identity retained from the original source scan');
 		if (nestedNightmareVisionOwner != '' && bestEngine == ImportEngine.NIGHTMARE_VISION)
 			evidence.push('Nested content package inherits Nightmare Vision identity from its parent game root');
 		var confidence = Math.min(1.0, bestScore / 100.0);
@@ -682,11 +705,34 @@ class ImportRootScanner {
 		var ownerRoot = Path.directory(contentRoot);
 		if (ownerRoot == null || ownerRoot == '' || ownerRoot == contentRoot)
 			return '';
+		if (retainedSourceEngine(ownerRoot) == ImportEngine.NIGHTMARE_VISION)
+			return ownerRoot;
 		var ownerEntries = readDirectory(ownerRoot);
 		if (hasNightmareVisionSourceProject(ownerRoot, ownerEntries))
 			return ownerRoot;
 		var markers = probeExecutableMarkers(ownerRoot, ownerEntries);
 		return hasMarker(markers, 'com.nmvteam.nightmareengine') ? ownerRoot : '';
+	}
+
+	static function retainedSourceEngine(root:String):String {
+		#if target.threaded
+		var engines = retainedEngines.value;
+		#else
+		var engines = retainedEngines;
+		#end
+		if (engines == null) return '';
+		var normalized = canonicalize(root);
+		for (path in engines.keys()) {
+			var known = canonicalize(path);
+			#if windows
+			if (known.toLowerCase() != normalized.toLowerCase()) continue;
+			#else
+			if (known != normalized) continue;
+			#end
+			var engine = ImportEngine.normalize(engines.get(path));
+			return engine == ImportEngine.AUTO ? '' : engine;
+		}
+		return '';
 	}
 
 	/** True only for a direct content/<pack> child; nested engine roots outside
