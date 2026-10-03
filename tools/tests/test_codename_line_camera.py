@@ -1,5 +1,7 @@
 """Execute the live Codename actor-line camera against the production method."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -141,15 +143,15 @@ class FlxPoint {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             path = Path(work)
-            (path / 'Main.hx').write_text(fixture)
+            (path / 'Main.hx').write_text(fixture, newline='\n')
             (path / 'flixel/math').mkdir(parents=True)
-            (path / 'flixel/math/FlxPoint.hx').write_text(point)
+            (path / 'flixel/math/FlxPoint.hx').write_text(point, newline='\n')
             for name in ('CodenameGameEvent', 'CodenameCameraMoveEvent',
                          'CodenameCameraMovePoint', 'CodenameStrumlineLayout', 'CodenameInputLine',
                          'CodenameStrumlineNoteCollection', 'CodenameLineNoteQuery',
                          'CodenameLineNoteIndex'):
-                (path / f'{name}.hx').write_text((ROOT / f'source/{name}.hx').read_text())
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'tools/tests/haxe_stubs'),
+                (path / f'{name}.hx').write_text((ROOT / f'source/{name}.hx').read_text(), newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'tools/tests/haxe_stubs'),
                                      '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', str(path),
                                      '--run', 'Main'], cwd=ROOT, text=True,
                                     capture_output=True, timeout=30)

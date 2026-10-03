@@ -8,7 +8,10 @@ Generate the preview with the current engine in an isolated offscreen runtime.
 import argparse
 import base64
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os
@@ -139,7 +142,7 @@ def matching_new_difficulty_charts(runtime, preview, folder, difficulties):
             chart = base / 'assets/data' / folder.name / (stem + '.json')
             if not chart.is_file() or not shared.within(chart, base):
                 raise ValueError('missing native chart for new difficulty: ' + diff)
-            hashes[str(chart)] = digest(chart.read_bytes())
+            hashes[chart.as_posix()] = digest(chart.read_bytes())
         old = read(runtime / 'assets/data' / folder.name / (stem + '.json'))
         fresh = read(preview / 'assets/data' / folder.name / (stem + '.json'))
         if shared.canonical(old) != shared.canonical(fresh):
@@ -179,8 +182,8 @@ def validate(paths):
     with tempfile.TemporaryDirectory(prefix='actor-schema-', dir=TMP) as work:
         request = Path(work) / 'paths.json'
         request.write_text(json.dumps([str(p) for p in paths]))
-        run = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
-                              '-cp', str(ROOT / 'tools'), '--run', 'CodenameActorMetadataValidate', str(request)],
+        run = subprocess.run([(ROOT / '.tools/haxe/haxe').as_posix(), '-cp', (ROOT / 'source').as_posix(),
+                              '-cp', (ROOT / 'tools').as_posix(), '--run', 'CodenameActorMetadataValidate', request.as_posix()],
                              cwd=ROOT, env={**os.environ, 'TMPDIR': work},
                              text=True, capture_output=True, timeout=60)
         if run.returncode:
@@ -211,12 +214,12 @@ def implementation_inputs(runtime, preview, owner, fresh):
                 raise ValueError('unsafe preview implementation')
             target = runtime / source.relative_to(preview)
             if not target.is_file() or not shared.within(target, runtime):
-                raise ValueError('missing owned implementation: ' + str(target.relative_to(runtime)))
+                raise ValueError('missing owned implementation: ' + target.relative_to(runtime).as_posix())
             source_hash, target_hash = digest(source.read_bytes()), digest(target.read_bytes())
             if source_hash != target_hash:
-                raise ValueError('changed owned implementation: ' + str(target.relative_to(runtime)))
-            hashes[str(source)] = source_hash
-            hashes[str(target)] = target_hash
+                raise ValueError('changed owned implementation: ' + target.relative_to(runtime).as_posix())
+            hashes[source.as_posix()] = source_hash
+            hashes[target.as_posix()] = target_hash
     return hashes
 
 
@@ -276,19 +279,19 @@ def make_plan(runtime_root, generated_root, line_only=False, include_new_difficu
             before = target.read_bytes()
             after = (json.dumps(after_data, ensure_ascii=False, indent=2) + '\n').encode()
             for path in (target, generated, manifest, installed_manifest, old_source[1], new_source[1]):
-                inputs[str(path)] = digest(path.read_bytes())
+                inputs[path.as_posix()] = digest(path.read_bytes())
             for provenance in (old_source[2], new_source[2]) if line_only else ():
                 if provenance is not None:
-                    inputs[str(provenance)] = digest(provenance.read_bytes())
+                    inputs[provenance.as_posix()] = digest(provenance.read_bytes())
             inputs.update(owned_inputs)
             inputs.update(chart_inputs)
-            candidates.append({'id': folder.name, 'target': str(target),
+            candidates.append({'id': folder.name, 'target': target.as_posix(),
                                'beforeSha256': digest(before), 'afterSha256': digest(after),
                                'afterBase64': base64.b64encode(after).decode()})
         except (ValueError, OSError, TypeError, KeyError) as error:
             skipped.append({'song': folder.name, 'reason': str(error)})
     return {'version': 1, 'lineOnly': line_only, 'includeNewDifficulties': include_new_difficulties,
-            'runtimeRoot': str(runtime), 'generatedRoot': str(preview),
+            'runtimeRoot': runtime.as_posix(), 'generatedRoot': preview.as_posix(),
             'toolSha256': fingerprint(), 'inputsSha256': inputs,
             'candidates': candidates, 'skipped': skipped}
 
@@ -370,7 +373,7 @@ def main():
         print('candidates=%d skipped=%d' % (len(plan['candidates']), len(plan['skipped'])))
     else:
         backup = apply_plan(read(args.plan), args.plan)
-        print('backup: ' + str(backup) if backup else 'no changes')
+        print('backup: ' + backup.as_posix() if backup else 'no changes')
 
 
 if __name__ == '__main__':

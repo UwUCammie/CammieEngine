@@ -1,6 +1,8 @@
 """Psych ClientPrefs source binding stays detached and owner scoped."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -48,7 +50,7 @@ class PrefsProbe {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "OptionsHandler.hx").write_text(
                 """class OptionsHandler {
 	public static var options:Dynamic = {
@@ -59,7 +61,7 @@ class PrefsProbe {
 	};
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "CodenameScriptInterp.hx").write_text(
                 """class CodenameScriptInterp {
 	public var variables:Map<String,Dynamic>=new Map();
@@ -67,7 +69,7 @@ class PrefsProbe {
 	public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 r"""import hscript.AbstractScriptClass;
 class Main {
@@ -116,9 +118,9 @@ class Main {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp",
                 str(ROOT / "source"),
                 "-cp",

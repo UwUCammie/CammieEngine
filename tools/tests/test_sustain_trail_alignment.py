@@ -1,9 +1,11 @@
 """Keep hold pieces centered on their own head through moving strumlines."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -117,9 +119,9 @@ class Main {
 '''.replace("GRAPHIC_CENTER", graphic_center).replace("HEAD_ANCHOR", head_anchor).replace(
             "CODENAME_ALIGN", align.replace("function alignCodenameNoteToReceptor", "static function alignCodenameNoteToReceptor"))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(code)
+            Path(folder, "Main.hx").write_text(code, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

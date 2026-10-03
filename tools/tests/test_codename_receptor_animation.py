@@ -1,5 +1,7 @@
 """Codename scripts see the live native receptor animation."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -31,8 +33,8 @@ class Main {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'Main', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

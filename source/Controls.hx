@@ -259,6 +259,32 @@ class Controls extends FlxActionSet {
 		return _menuRightHold.check();
 
 
+	// Psych-family script names use the active gameplay lane bindings.
+	@:keep public var NOTE_LEFT(get, never):Bool;
+	inline function get_NOTE_LEFT():Bool return CTRLA;
+	@:keep public var NOTE_LEFT_P(get, never):Bool;
+	inline function get_NOTE_LEFT_P():Bool return CTRLA_P;
+	@:keep public var NOTE_LEFT_R(get, never):Bool;
+	inline function get_NOTE_LEFT_R():Bool return CTRLA_R;
+	@:keep public var NOTE_DOWN(get, never):Bool;
+	inline function get_NOTE_DOWN():Bool return CTRLB;
+	@:keep public var NOTE_DOWN_P(get, never):Bool;
+	inline function get_NOTE_DOWN_P():Bool return CTRLB_P;
+	@:keep public var NOTE_DOWN_R(get, never):Bool;
+	inline function get_NOTE_DOWN_R():Bool return CTRLB_R;
+	@:keep public var NOTE_UP(get, never):Bool;
+	inline function get_NOTE_UP():Bool return CTRLC;
+	@:keep public var NOTE_UP_P(get, never):Bool;
+	inline function get_NOTE_UP_P():Bool return CTRLC_P;
+	@:keep public var NOTE_UP_R(get, never):Bool;
+	inline function get_NOTE_UP_R():Bool return CTRLC_R;
+	@:keep public var NOTE_RIGHT(get, never):Bool;
+	inline function get_NOTE_RIGHT():Bool return CTRLD;
+	@:keep public var NOTE_RIGHT_P(get, never):Bool;
+	inline function get_NOTE_RIGHT_P():Bool return CTRLD_P;
+	@:keep public var NOTE_RIGHT_R(get, never):Bool;
+	inline function get_NOTE_RIGHT_R():Bool return CTRLD_R;
+
 	public var CTRLA(get, never):Bool;
 	inline function get_CTRLA() {return _ctrla.check();}
 

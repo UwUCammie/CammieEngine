@@ -1,6 +1,8 @@
 """Exercise Codename's owner-scoped FlxGraphic cache through HScript."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,7 +47,7 @@ class CodenamePaths {
  public function new(root:String)this.root=root;
  public function getPath(value:String):String {
   if(value==null || value.indexOf('..')>=0) throw '[codename-asset] Invalid asset key: '+value;
-  if(value.startsWith('/')) {
+  if(haxe.io.Path.isAbsolute(value)) {
    if(!value.startsWith(root+'/')) throw '[codename-asset] Missing scoped asset: '+value;
    return value;
   }
@@ -67,7 +69,7 @@ class CodenameGraphicCacheTest(unittest.TestCase):
             for relative, source in STUBS.items():
                 target = base / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(source)
+                target.write_text(source, newline='\n')
             (base / "GraphicCacheTestMain.hx").write_text('''
 import flixel.FlxG;
 import flixel.FlxState;
@@ -109,9 +111,9 @@ class GraphicCacheTestMain {
    'state attachment and all owner cache holds are released');
  }
 }
-'''.replace("OWNER", repr(str(base / "owner"))))
+'''.replace("OWNER", repr((base / "owner").as_posix())), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "GraphicCacheTestMain", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,

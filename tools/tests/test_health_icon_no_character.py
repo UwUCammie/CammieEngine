@@ -1,5 +1,7 @@
 """The V-Slice missing-character sentinel must not draw a substitute icon."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -49,9 +51,9 @@ class HealthIconNoCharacterTest(unittest.TestCase):
 '''
         )
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", scratch, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", scratch, "-main", "Main", "--interp"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

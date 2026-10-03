@@ -9,8 +9,10 @@ Three engine behaviors are pinned here:
 3. Donor `<camera>.filters = ...` writes must be lowered to the
    native-filter-validating HxcCompatRuntime.assignFilters helper.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -37,9 +39,9 @@ class DefaultArgsProbe {{
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-default-args-", dir=ROOT / "tmp") as folder:
             path_file = Path(folder) / "DefaultArgsProbe.hx"
-            path_file.write_text(fixture)
+            path_file.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", folder,
                  "--run", "DefaultArgsProbe"],
                 cwd=folder, capture_output=True, text=True, timeout=300,

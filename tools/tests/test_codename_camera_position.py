@@ -1,5 +1,7 @@
 """Execute the Codename position controller with deterministic camera boundaries."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -124,8 +126,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as work:
-            path=Path(work);(path/'Main.hx').write_text(fixture)
-            r=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(path),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
+            path=Path(work);(path/'Main.hx').write_text(fixture, newline='\n')
+            r=subprocess.run([*HAXE_COMMAND,'-cp',str(path),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
             self.assertEqual(r.returncode,0,r.stdout+r.stderr)
 
 if __name__=='__main__':unittest.main()

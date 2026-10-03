@@ -1,6 +1,8 @@
 """Owner-scoped Codename pause and game-over script hooks."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -25,9 +27,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
-            (Path(work) / "Main.hx").write_text(fixture)
+            (Path(work) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", work,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", work,
                  "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )

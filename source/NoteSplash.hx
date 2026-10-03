@@ -12,6 +12,10 @@ class NoteSplash extends FlxSprite {
     /** Direction and owning native line retained for generic render adapters. */
     public var direction:Int = 0;
     public var sourceStrumline:Null<Strumline> = null;
+    /** Selected owner-local NMV skin retained by the recycled splash instance. */
+    public var nightmareVisionSkin:Null<NightmareVisionNoteSkin> = null;
+    /** Authored offset for the selected Nightmare Vision splash animation. */
+    public var nightmareVisionSplashOffset:Array<Float> = null;
     public function new(xPos:Float, yPos:Float, ?c:Int = 0, type:String = 'normal',
         ?skipNativeSplash:Bool = false) {
         super(xPos, yPos);
@@ -84,6 +88,17 @@ class NoteSplash extends FlxSprite {
     public function setupNoteSplash(xPos:Float, yPos:Float, ?c:Int = 0) {
         setPosition(xPos, yPos);
 		direction = c;
+		if (nightmareVisionSkin != null && nightmareVisionSkin.applySplash(this, c)) {
+			animation.play("note" + c + "-0", true);
+			updateHitbox();
+			centerOffsets();
+			centerOrigin();
+			if (nightmareVisionSplashOffset != null) {
+				offset.x += nightmareVisionSplashOffset.length > 0 ? nightmareVisionSplashOffset[0] : 0;
+				offset.y += nightmareVisionSplashOffset.length > 1 ? nightmareVisionSplashOffset[1] : 0;
+			}
+			return;
+		}
 		var curUiType = curUiTypeFor(uiType);
         alpha = curUiType.splashAlpha == null ? 0.6 : curUiType.splashAlpha;
         animation.play("note" + c + "-" + FlxG.random.int(0,variants-1), true);

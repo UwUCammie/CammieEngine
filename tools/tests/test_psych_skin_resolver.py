@@ -1,16 +1,20 @@
 """Interpreter coverage for bounded, owner-scoped Psych note skin paths."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class PsychSkinResolverTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_owner_pairs_pixel_and_unscoped_fallback(self):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
@@ -107,9 +111,9 @@ class Probe {
       'case variant collision');
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

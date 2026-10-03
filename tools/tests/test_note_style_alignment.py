@@ -1,9 +1,11 @@
 """Offscreen geometry checks for scoped imported note-style atlases."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -106,9 +108,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(source)
+            Path(folder, "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
@@ -246,9 +248,9 @@ class Main {
 }
 '''.replace("RECEPTOR_METHOD", receptor_method).replace("STYLE_METHOD", style_method).replace("CENTER_METHOD", center_method).replace("METHOD", method)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(source)
+            Path(folder, "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )

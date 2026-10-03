@@ -10,7 +10,10 @@ between the installed runtime and isolated preview. Other files are untouched.
 import argparse
 import base64
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os
@@ -200,8 +203,8 @@ def matching_atlas_inputs(runtime_character, preview_character, descriptor):
         old_hash, fresh_hash = digest(old.read_bytes()), digest(fresh.read_bytes())
         if old_hash != fresh_hash:
             raise ValueError("required owner atlas asset differs: " + relative)
-        hashes[str(old)] = old_hash
-        hashes[str(fresh)] = fresh_hash
+        hashes[old.as_posix()] = old_hash
+        hashes[fresh.as_posix()] = fresh_hash
     return hashes
 
 
@@ -238,7 +241,7 @@ def make_plan(runtime_root, generated_root, owner):
 
     inputs = {}
     for path in runtime_manifests + preview_manifests:
-        inputs[str(path)] = digest(path.read_bytes())
+        inputs[path.as_posix()] = digest(path.read_bytes())
     candidates, skipped = [], []
     for installed in sorted(runtime_chars.glob("*.hscript")):
         relative = installed.relative_to(runtime_owner)
@@ -260,16 +263,16 @@ def make_plan(runtime_root, generated_root, owner):
                     or not safe_directory(fresh_character, preview_owner)):
                 raise ValueError("missing or unsafe owner character bundle")
             inputs.update(matching_atlas_inputs(old_character, fresh_character, descriptor))
-            inputs[str(installed)] = digest(old_bytes)
-            inputs[str(fresh)] = digest(new_bytes)
+            inputs[installed.as_posix()] = digest(old_bytes)
+            inputs[fresh.as_posix()] = digest(new_bytes)
         except (ValueError, OSError, TypeError) as error:
             skipped.append({"id": relative.as_posix(), "reason": str(error)})
             continue
-        candidates.append({"id": relative.as_posix(), "target": str(installed),
+        candidates.append({"id": relative.as_posix(), "target": installed.as_posix(),
                            "beforeSha256": digest(old_bytes), "afterSha256": digest(new_bytes),
                            "afterBase64": base64.b64encode(new_bytes).decode("ascii")})
-    return {"version": 1, "owner": owner, "runtimeRoot": str(runtime),
-            "generatedRoot": str(preview), "toolSha256": fingerprint(),
+    return {"version": 1, "owner": owner, "runtimeRoot": runtime.as_posix(),
+            "generatedRoot": preview.as_posix(), "toolSha256": fingerprint(),
             "inputsSha256": inputs, "candidates": candidates, "skipped": skipped}
 
 
@@ -361,7 +364,7 @@ def main():
     else:
         plan = json.loads(args.plan.read_text())
         backup = apply_plan(plan, args.plan)
-        print("applied; backup: " + str(backup) if backup else "no changes in plan")
+        print("applied; backup: " + backup.as_posix() if backup else "no changes in plan")
 
 
 if __name__ == "__main__":

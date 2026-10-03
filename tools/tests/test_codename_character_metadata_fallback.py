@@ -1,6 +1,8 @@
 """Keep owner metadata safe for legacy-script Codename death actors."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -79,9 +81,9 @@ class Main {
 }'''.replace("__METHOD__", orientation)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

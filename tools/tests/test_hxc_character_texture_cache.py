@@ -1,10 +1,12 @@
 """Scoped V-Slice character texture warm-up survives the HXC safety gate."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,9 +70,9 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-character-texture-", dir=ROOT / "tmp") as folder:
             temporary = Path(folder)
-            (temporary / "Main.hx").write_text(main, encoding="utf-8")
+            (temporary / "Main.hx").write_text(main, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temporary),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temporary),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "Main", "--interp"], cwd=ROOT, capture_output=True,
                 text=True, timeout=300)

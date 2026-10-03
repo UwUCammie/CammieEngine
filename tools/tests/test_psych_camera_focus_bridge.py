@@ -1,6 +1,8 @@
 """Compiled Psych FlxG camera facade forwards focusOn to its native camera."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -37,7 +39,7 @@ class PsychCameraFocusBridgeProbe {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychCameraFocusBridgeProbe.hx").write_text(fixture, encoding="utf-8")
+            Path(folder, "PsychCameraFocusBridgeProbe.hx").write_text(fixture, encoding="utf-8", newline='\n')
             env = dict(os.environ)
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             env["LD_LIBRARY_PATH"] = str(ROOT / ".tools/neko")
@@ -45,7 +47,7 @@ class PsychCameraFocusBridgeProbe {
                 [str(ROOT / ".tools/haxe"), str(ROOT / ".tools/neko"), env.get("PATH", "")]
             )
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                  *FLIXEL_ARGS, "--run", "PsychCameraFocusBridgeProbe"],

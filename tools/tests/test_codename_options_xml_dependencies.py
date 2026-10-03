@@ -1,5 +1,7 @@
 """Selected-owner Codename package options XML import closure."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -74,11 +76,11 @@ class Main {
                 for relative, content in entries.items():
                     target = root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content)
+                    target.write_text(content, newline='\n')
             destination.mkdir()
-            (base / "Main.hx").write_text(main)
+            (base / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
                  str(selected), str(other), str(destination)],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )
@@ -94,16 +96,16 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             base = Path(work)
             selected, outside = base / "selected", base / "outside.xml"
-            outside.write_text("external options")
+            outside.write_text("external options", newline='\n')
             folder = selected / "data/config/options"
             folder.mkdir(parents=True)
             try:
                 (folder / "external.xml").symlink_to(outside)
             except OSError as error:
                 self.skipTest(f"symlink fixture unavailable: {error}")
-            (base / "Main.hx").write_text(main)
+            (base / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main", str(selected)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main", str(selected)],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

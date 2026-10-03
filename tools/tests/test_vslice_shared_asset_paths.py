@@ -1,6 +1,8 @@
 """V-Slice base countdown image ids resolve through native UI assets."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -54,10 +56,10 @@ class VSliceSharedAssetPathsTest(unittest.TestCase):
             folder_path = Path(folder)
             (folder_path / "VSliceSharedAssetPaths.hx").write_text(
                 (ROOT / "source/VSliceSharedAssetPaths.hx").read_text()
-            )
-            (folder_path / "Main.hx").write_text(fixture)
+            , newline='\n')
+            (folder_path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

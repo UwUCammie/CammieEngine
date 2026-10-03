@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import unittest
@@ -39,9 +40,9 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             live_chart.write_text(
                 '{"song":{"notes":[{"sectionNotes":[[1,2,3]]}]}}',
                 encoding="utf-8",
-            )
+             newline='\n')
             (live_chart.parent / "compatScripts.json").write_text(
-                json.dumps({"selectedRoot": owner}), encoding="utf-8")
+                json.dumps({"selectedRoot": owner}), encoding="utf-8", newline='\n')
             (runtime / owner).mkdir(parents=True)
 
             baseline = {"schema": 1, "rows": [
@@ -116,10 +117,10 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             runtime = base / "runtime"
             chart = runtime / "assets/data/demo/demo.json"
             chart.parent.mkdir(parents=True)
-            chart.write_text('{"song":{"notes":[{"sectionNotes":[[1],[2]]}]}}', encoding="utf-8")
+            chart.write_text('{"song":{"notes":[{"sectionNotes":[[1],[2]]}]}}', encoding="utf-8", newline='\n')
             owner = "assets/imported_mods/moved-owner"
             (runtime / owner).mkdir(parents=True)
-            (chart.parent / "compatScripts.json").write_text(json.dumps({"selectedRoot": owner}), encoding="utf-8")
+            (chart.parent / "compatScripts.json").write_text(json.dumps({"selectedRoot": owner}), encoding="utf-8", newline='\n')
             old = {"schema": 1, "rows": [{
                 "group": "Generic package", "package": "moved", "song": "demo",
                 "variant": "default", "difficulty": "normal", "referenceOnly": False,
@@ -165,7 +166,7 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             chart_path.write_bytes(chart_bytes)
             metadata_path.write_text(json.dumps({
                 "playData": {"difficulties": ["alt"]},
-            }), encoding="utf-8")
+            }), encoding="utf-8", newline='\n')
 
             runtime = base / "runtime"
             owner = "assets/imported_mods/example-owner"
@@ -174,9 +175,9 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             live_chart.write_text(
                 '{"song":{"notes":[{"sectionNotes":[[1,2,3]]}]}}',
                 encoding="utf-8",
-            )
+             newline='\n')
             (live_chart.parent / "compatScripts.json").write_text(
-                json.dumps({"selectedRoot": owner}), encoding="utf-8")
+                json.dumps({"selectedRoot": owner}), encoding="utf-8", newline='\n')
             (runtime / owner).mkdir(parents=True)
 
             baseline = {"schema": 1, "rows": [
@@ -216,7 +217,7 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             self.assertEqual(declared["difficulty"], "alt")
             self.assertTrue(declared["declaredDifficulty"])
             self.assertEqual(declared["declaredDifficultySource"], "source-metadata")
-            self.assertEqual(declared["declaredDifficultySourceFile"], str(metadata_path))
+            self.assertEqual(Path(declared["declaredDifficultySourceFile"]), metadata_path)
             self.assertTrue(declared["structurallyCovered"])
 
             diagnostics = result["nonPlayableDiagnostics"]
@@ -247,7 +248,7 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             chart_path.write_bytes(chart_bytes)
             metadata_path.write_text(json.dumps({
                 "playData": {"difficulties": []},
-            }), encoding="utf-8")
+            }), encoding="utf-8", newline='\n')
 
             declared = matrix.derive_vslice_declared_difficulty(
                 donor, "data/songs/example/example-chart.json", "alt", chart_bytes,
@@ -303,7 +304,7 @@ class RefreshExampleChartMatrixTest(unittest.TestCase):
             outside = root / "outside"
             donor.mkdir()
             (outside / "charts").mkdir(parents=True)
-            (outside / "charts/demo.json").write_text("{}", encoding="utf-8")
+            (outside / "charts/demo.json").write_text("{}", encoding="utf-8", newline='\n')
             (donor / "linked").symlink_to(outside, target_is_directory=True)
             with self.assertRaises(FileNotFoundError):
                 matrix.source_bytes(donor, "charts/demo.json")

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +39,7 @@ class NaturalEndingCoverageAuditTest(unittest.TestCase):
             receipt_path.write_text(
                 "".join(json.dumps(row) + "\n" for row in receipt_records),
                 encoding="utf-8",
-            )
+             newline='\n')
             return audit_matrix(
                 {"schema": 1, "rows": matrix_rows}, [receipt_path], current_build)
 
@@ -120,7 +121,7 @@ class NaturalEndingCoverageAuditTest(unittest.TestCase):
                 "binarySha256": "older-wrapper-build",
                 "runtimeChartSha256": "older-wrapper-chart",
                 "rows": [row],
-            }), encoding="utf-8")
+            }), encoding="utf-8", newline='\n')
             result = audit_matrix(
                 {"rows": matrix_rows}, [receipt_path], "current-build")
 

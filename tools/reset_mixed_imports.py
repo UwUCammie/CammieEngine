@@ -6,7 +6,10 @@ default; --apply requires both runtime locks and a stopped game.
 """
 
 import argparse
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os
@@ -130,9 +133,9 @@ def plan_reset(runtime_root: Path, owner: str) -> dict:
         for path in paths:
             safe_tree(path, runtime)
         candidates.append({"song": name, "foreignRoots": foreign,
-                           "paths": [str(path.relative_to(runtime)) for path in paths],
-                           "stamps": {str(path.relative_to(runtime)): tree_stamp(path) for path in paths}})
-    return {"version": 1, "runtimeRoot": str(runtime), "owner": owner,
+                           "paths": [path.relative_to(runtime).as_posix() for path in paths],
+                           "stamps": {path.relative_to(runtime).as_posix(): tree_stamp(path) for path in paths}})
+    return {"version": 1, "runtimeRoot": runtime.as_posix(), "owner": owner,
             "registrySha256": hashlib.sha256(raw_registry).hexdigest(),
             "candidates": candidates, "skipped": skipped}
 

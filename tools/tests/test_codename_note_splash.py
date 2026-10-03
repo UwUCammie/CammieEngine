@@ -1,6 +1,8 @@
 """Codename note splash selection follows its XML data and owner scope."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -56,9 +58,9 @@ class CodenameNoteSplashTest(unittest.TestCase):
   }
 }'''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", tmp, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
@@ -129,9 +131,9 @@ __METHOD__
   }
 }'''.replace("__METHOD__", marker)
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", tmp, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", tmp, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
@@ -218,9 +220,9 @@ __METHOD__
   }
 }'''.replace("__METHOD__", select)
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(tmp), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(tmp), "-main", "Main", "--interp"],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
@@ -282,9 +284,9 @@ __METHODS__
   }
 }'''.replace("__METHODS__", retain + "\n" + release)
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(tmp), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(tmp), "-main", "Main", "--interp"],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,

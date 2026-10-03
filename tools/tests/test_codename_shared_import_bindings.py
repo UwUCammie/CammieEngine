@@ -1,6 +1,8 @@
 """Exercise source-facing Codename bindings without starting the game."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -44,7 +46,7 @@ class FlxTextFormat {
  public var color:Int;
  public function new(color:Int) this.color=color;
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(f'''import flixel.text.FlxText;
 import hscript.Interp;
 class CodenameImportBindings {{
@@ -75,9 +77,9 @@ class Main {{
    "Discord globalName absence did not preserve the script's authored fallback");
   check(getFormatColor()==77, "flattened FlxTextFormat import lost its constructor");
  }}
-}}''')
+}}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT,

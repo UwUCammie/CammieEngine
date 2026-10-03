@@ -27,6 +27,7 @@ import lime.system.System;
 import lime.app.Application;
 import flixel.sound.FlxSound;
 import openfl.utils.AssetType;
+import flixel.util.FlxSignal;
 import Song.SwagSong;
 #if sys
 import sys.io.File;
@@ -187,6 +188,21 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	public var resolvedCharacter:String = '';
 	public var resolvedImplementation:String = '';
 	public var resolvedAssetRoot:String = '';
+	/** Source CharacterData's HUD icon identity. Nightmare Vision stores this as
+	 * `healthicon`; other character formats keep the established character-id
+	 * fallback so HealthIcon continues using its existing owner-aware resolver. */
+	@:keep public var healthIcon(get, never):String;
+	function get_healthIcon():String
+		return nightmareVisionHealthIcon == null ? curCharacter : nightmareVisionHealthIcon;
+
+	static function nightmareVisionHealthIconFromDefinition(definition:Dynamic):Null<String> {
+		if (definition == null) return null;
+		var authored:Dynamic = Reflect.field(definition, 'healthicon');
+		if (authored == null) return 'face';
+		if (Std.isOfType(authored, String)) return cast authored;
+		trace('[nightmare-vision-character-data] healthicon must be a string; using template face icon');
+		return 'face';
+	}
 	/** Psych Lua reads this to reuse the actor's currently selected atlas. */
 	public var imageFile:String = '';
 
@@ -217,6 +233,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	/** Raw Psych CharacterFile camera metadata for Lua/HScript property access.
 	 * PlayState applies the authored role sign when computing the camera target. */
 	public var cameraPosition:Array<Float> = [0, 0];
+	/** Raw authored Psych/Nightmare Vision character start position for scripts.
+	 * This remains metadata only; stage placement applies it through the engine's
+	 * existing position resolver, so reading it here must not move the actor. */
+	@:keep public var positionArray:Array<Float> = [0, 0];
 	/** Authored V-Slice CharacterData cameraOffsets, kept separate from the
 	 * classic follow defaults.  Imported stages zero followCamX/Y (classic
 	 * 150/-100 has no donor meaning) and StageHelper.setCamOffsets recomposes
@@ -339,6 +359,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	public var isPixel:Bool = false;
 	private var interp:Interp;
 	private var hxcFinishedAnimation:String = '';
+	/** Parsed owner-local Nightmare Vision definition used by native atlas playback. */
+	var nightmareVisionCharacterData:Dynamic = null;
+	/** Owner-local source healthicon retained even if the character atlas falls back. */
+	var nightmareVisionHealthIcon:Null<String> = null;
+	/** Source Character's no-argument animation-finish callback signal. */
+	public var onAnimationFinish:FlxSignal;
 	/** Deduplicated diagnostics exposed to import screens/tests and mirrored in
 	 * the native trace.  A missing visual must identify its dependency instead
 	 * of appearing only as a silent Dad fallback. */
@@ -590,6 +616,23 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 	/** HXC's animation call includes an ignoreOther flag which this fork does
 	 * not need; retaining the parameter keeps donor callbacks source-compatible. */
+	/** V-Slice character script variables belong to this actor's live companion. */
+	@:keep public function scriptGet(name:String):Dynamic
+		return PlayState.instance == null ? null : PlayState.instance.hxcCharacterScriptField(this, name);
+
+	@:keep public function scriptSet(name:String, value:Dynamic):Void {
+		if (PlayState.instance != null)
+			PlayState.instance.hxcCharacterScriptField(this, name, true, value);
+	}
+
+	/** Source character identity stays independent of the import's storage root. */
+	@:keep public var characterId(get, never):String;
+	@:keep function get_characterId():String return curCharacter;
+
+	/** Return-valued V-Slice character hook, queried by the native game-over host. */
+	@:keep public function getDeathQuote():Null<String>
+		return PlayState.instance == null ? null : PlayState.instance.hxcCharacterDeathQuote(this);
+
 	public function playAnimation(name:String, restart:Bool = false, ignoreOther:Bool = false,
 		reversed:Bool = false):Void {
 		playAnim(name, restart, reversed);
@@ -761,10 +804,192 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				method(args[0], args[1], args[2], args[3]);
 		}
 	}
+
+	/** Construct a Nightmare Vision character directly from its source JSON. */
+	function loadNightmareVisionCharacterVisual(definition:Dynamic, imageRoot:String, ownerRoot:String):Bool {
+		#if sys
+		if (definition == null || imageRoot == null || StringTools.trim(imageRoot) == ''
+			|| ownerRoot == null || StringTools.trim(ownerRoot) == '')
+			return false;
+		try {
+			var ownerImages = ownerRoot + '/images/';
+			var coreImages = ownerRoot + '/__nmv_core/images/';
+			var atlasKey:String;
+			var checkOwner:Bool;
+			if (StringTools.startsWith(imageRoot, ownerImages)) {
+				atlasKey = imageRoot.substr(ownerImages.length);
+				checkOwner = true;
+			} else if (StringTools.startsWith(imageRoot, coreImages)) {
+				atlasKey = imageRoot.substr(coreImages.length);
+				checkOwner = false;
+			} else
+				return false;
+			var ownerPaths = new NightmareVisionPaths(ownerRoot);
+			frames = ownerPaths.getTextureAtlas(atlasKey, null, true, checkOwner);
+			if (frames == null)
+				return false;
+			var animateAtlas = FileSystem.exists(imageRoot + '/Animation.json');
+			var sparrowAtlas = FileSystem.exists(imageRoot + '.png') && FileSystem.exists(imageRoot + '.xml');
+			if (!animateAtlas && !sparrowAtlas)
+				return false;
+
+			var authoredAnimations:Dynamic = Reflect.field(definition, 'animations');
+			if (!Std.isOfType(authoredAnimations, Array))
+				return false;
+			var loadedAnimations = 0;
+			for (spec in (cast authoredAnimations:Array<Dynamic>)) {
+				if (spec == null)
+					continue;
+				var rawAnimationName = Reflect.field(spec, 'anim');
+				var rawPrefix = Reflect.field(spec, 'name');
+				var animationName = rawAnimationName == null ? '' : StringTools.trim(Std.string(rawAnimationName));
+				var prefix = rawPrefix == null ? '' : StringTools.trim(Std.string(rawPrefix));
+				if (animationName == '')
+					continue;
+				var fps = nightmareVisionNumber(Reflect.field(spec, 'fps'), 24);
+				if (fps <= 0)
+					fps = 24;
+				var loop = Reflect.field(spec, 'loop') == true;
+				var indices:Array<Int> = [];
+				var rawIndices:Dynamic = Reflect.field(spec, 'indices');
+				if (Std.isOfType(rawIndices, Array))
+					for (rawIndex in (cast rawIndices:Array<Dynamic>)) {
+						var index = nightmareVisionNumber(rawIndex, Math.NaN);
+						if (!Math.isNaN(index))
+							indices.push(Std.int(index));
+					}
+
+				if (animateAtlas) {
+					if (prefix == '')
+						continue;
+					var flipAnimationX:Dynamic = Reflect.field(spec, 'flipX');
+					var flipAnimationY:Dynamic = Reflect.field(spec, 'flipY');
+					var registered = false;
+					var findFrameLabels = Reflect.field(animation, 'findFrameLabelIndices');
+					var frameLabels:Dynamic = findFrameLabels == null ? null
+						: Reflect.callMethod(animation, findFrameLabels, [prefix]);
+					if (Std.isOfType(frameLabels, Array) && (cast frameLabels:Array<Int>).length > 0) {
+						var addByFrameLabel = Reflect.field(animation, indices.length > 0
+							? 'addByFrameLabelIndices' : 'addByFrameLabel');
+						if (addByFrameLabel != null) {
+							var labelArgs:Array<Dynamic> = indices.length > 0
+								? [animationName, prefix, indices, fps, loop, flipAnimationX, flipAnimationY]
+								: [animationName, prefix, fps, loop, flipAnimationX, flipAnimationY];
+							Reflect.callMethod(animation, addByFrameLabel, labelArgs);
+							registered = animation.exists(animationName);
+						}
+					}
+					// Nightmare Vision's Animate API treats `name` as a frame-label
+					// prefix first, then as a nested symbol name.
+					if (!registered && indices.length > 0) {
+						var addBySymbolIndices = Reflect.field(animation, 'addBySymbolIndices');
+						if (addBySymbolIndices != null)
+							Reflect.callMethod(animation, addBySymbolIndices,
+								[animationName, prefix, indices, fps, loop, flipAnimationX, flipAnimationY]);
+					} else if (!registered) {
+						var addBySymbol = Reflect.field(animation, 'addBySymbol');
+						if (addBySymbol != null)
+							Reflect.callMethod(animation, addBySymbol,
+								[animationName, prefix, fps, loop, flipAnimationX, flipAnimationY]);
+					}
+					if (!animation.exists(animationName))
+						continue;
+				} else if (indices.length > 0 && prefix == '')
+					animation.add(animationName, indices, fps, loop);
+				else if (indices.length > 0)
+					animation.addByIndices(animationName, prefix, indices, '', fps, loop);
+				else if (prefix != '')
+					animation.addByPrefix(animationName, prefix, fps, loop);
+				else
+					continue;
+
+				if (!animation.exists(animationName))
+					continue;
+				loadedAnimations++;
+				var offsets:Array<Float> = nightmareVisionPair(Reflect.field(spec, 'offsets'));
+				animOffsets.set(animationName, [offsets[0], offsets[1]]);
+				var cameraOffset:Dynamic = Reflect.field(spec, 'cameraOffset');
+				if (cameraOffset != null) {
+					var camera:Array<Float> = nightmareVisionPair(cameraOffset);
+					camOffsets.set(animationName, [camera[0], camera[1]]);
+				}
+			}
+			if (loadedAnimations == 0)
+				return false;
+
+			var authoredScale = nightmareVisionNumber(Reflect.field(definition, 'scale'), 1);
+			if (authoredScale > 0 && authoredScale != 1) {
+				scale.set(authoredScale, authoredScale);
+				updateHitbox();
+			}
+			flipX = PsychCharacterOrientation.flipX(Reflect.field(definition, 'flip_x') == true, isPlayer);
+			antialiasing = Reflect.field(definition, 'no_antialiasing') != true;
+			this.cameraPosition = nightmareVisionPair(Reflect.field(definition, 'camera_position'));
+			var singDuration = nightmareVisionNumber(Reflect.field(definition, 'sing_duration'), holdTime);
+			if (singDuration > 0)
+				holdTime = singDuration;
+			var danceEvery = nightmareVisionNumber(Reflect.field(definition, 'dance_every'), beatInterval);
+			if (danceEvery >= 0) {
+				this.danceEvery = Std.int(danceEvery);
+				beatInterval = this.danceEvery;
+			}
+			var position:Array<Float> = nightmareVisionPair(Reflect.field(definition, 'position'));
+			positionArray = [position[0], position[1]];
+			enemyOffsetX = playerOffsetX = gfOffsetX = Std.int(Math.round(position[0]));
+			enemyOffsetY = playerOffsetY = gfOffsetY = Std.int(Math.round(position[1]));
+			nightmareVisionCharacterData = definition;
+			return true;
+		} catch (error:Dynamic) {
+			trace('[nightmare-vision-character-init-error] ' + curCharacter + ': ' + Std.string(error));
+			return false;
+		}
+		#else
+		return false;
+		#end
+	}
+
+	static function nightmareVisionNumber(value:Dynamic, fallback:Float):Float {
+		if (value == null)
+			return fallback;
+		var parsed = Std.parseFloat(Std.string(value));
+		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	static function nightmareVisionPair(value:Dynamic):Array<Float> {
+		if (!Std.isOfType(value, Array) || (cast value:Array<Dynamic>).length < 2)
+			return [0, 0];
+		var pair:Array<Dynamic> = cast value;
+		return [nightmareVisionNumber(pair[0], 0), nightmareVisionNumber(pair[1], 0)];
+	}
+
+	/** Read only the selected Psych owner's authored position metadata.  The
+	 * stage-position resolver separately applies native/base fallbacks when it
+	 * computes placement; scripts see the source pair (or the neutral default). */
+	static function psychCharacterPositionArray(id:String, scopedRoot:String):Array<Float> {
+		var name = id == null ? '' : StringTools.trim(id);
+		if (name == '' || !~/^[A-Za-z0-9_-]+$/.match(name)
+			|| scopedRoot == null || StringTools.trim(scopedRoot) == '')
+			return [0, 0];
+		for (folder in ['characters', 'shared/characters']) {
+			var path = scopedRoot + '/' + folder + '/' + name + '.json';
+			if (!FNFAssets.exists(path))
+				continue;
+			try {
+				var definition:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
+				var authored = PsychCharacterPosition.point(Reflect.field(definition, 'position'));
+				if (authored != null)
+					return authored;
+			} catch (_:Dynamic) {}
+		}
+		return [0, 0];
+	}
+
 	public function new(x:Float, y:Float, ?character:String = "bf", ?isPlayer:Bool = false, ?codename:CodenameCharacterConstruction) {
 		animOffsets = new Map<String, Array<Dynamic>>();
 		camOffsets = new Map<String, Array<Dynamic>>();
 		super(x, y);
+		onAnimationFinish = new FlxSignal();
+		animation.onFinish.add(function(_animationName:String):Void onAnimationFinish.dispatch());
 		markDeathConstructionStage('base');
 		characterOrigin = FlxPoint.get();
 		cameraFocusPoint = FlxPoint.get(x + followCamX, y + followCamY);
@@ -794,7 +1019,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// adapter metadata while its selected Codename owner is active.
 		var codenameCharacterMeta:Dynamic = null;
 		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
-			var codenameRoot = Song.characterRootForSong(PlayState.SONG.song, ImportEngine.CODENAME);
+			var codenameRoot = Song.characterRootForSong(Song.storageFolder(PlayState.SONG),
+				ImportEngine.CODENAME);
 			if (codenameRoot != '') {
 				var codenameRow = Song.characterVisualRegistryEntryInManifest(curCharacter, codenameRoot);
 				if (codenameRow != null)
@@ -803,7 +1029,20 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 					flipX = Reflect.field(codenameCharacterMeta, 'flipX') == true;
 			}
 		}
+		var nightmareVisionOwnerRoot = '';
+		var nightmareVisionOwnedCharacter:Dynamic = null;
+		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
+			nightmareVisionOwnerRoot = Song.characterRootForSong(Song.storageFolder(PlayState.SONG),
+				ImportEngine.NIGHTMARE_VISION);
+			if (nightmareVisionOwnerRoot != '')
+				nightmareVisionOwnedCharacter = NightmareVisionCharacterData.load(nightmareVisionOwnerRoot, curCharacter);
+		}
+		var nightmareVisionCharacterOwned = nightmareVisionOwnerRoot != ''
+			&& nightmareVisionOwnedCharacter != null;
+		if (nightmareVisionCharacterOwned)
+			nightmareVisionHealthIcon = nightmareVisionHealthIconFromDefinition(nightmareVisionOwnedCharacter);
 		var psychCameraRoot = Song.currentPsychCharacterRoot();
+		positionArray = psychCharacterPositionArray(curCharacter, psychCameraRoot);
 		// Psych keeps direction animation names and their named offsets authored
 		// on the character. Its JSON is preserved under the selected song owner,
 		// so existing imports can use Psych's slot flip without re-importing.
@@ -817,6 +1056,23 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// incomplete Popipo-style aliases look like an ordinary Dad chart.
 		var visualResolution:Dynamic = Song.resolveCharacterVisualForCurrentSong(curCharacter);
 		markDeathConstructionStage('visual-resolution');
+		if (nightmareVisionCharacterOwned) {
+			var nightmareVisionImageRoot = NightmareVisionCharacterData.imageRoot(nightmareVisionOwnerRoot,
+				nightmareVisionOwnedCharacter);
+			if (nightmareVisionImageRoot != null) {
+				if (loadNightmareVisionCharacterVisual(nightmareVisionOwnedCharacter, nightmareVisionImageRoot,
+					nightmareVisionOwnerRoot)) {
+					resolvedCharacter = curCharacter;
+					resolvedImplementation = curCharacter;
+					resolvedAssetRoot = nightmareVisionImageRoot;
+				} else if (visualResolution != null) {
+					visualResolution.complete = false;
+					visualResolution.diagnosticCode = 'nightmare-vision-character-atlas-load-failed';
+					visualResolution.diagnostic = 'Nightmare Vision character "' + curCharacter
+						+ '" definition loaded, but its atlas animations could not be initialized.';
+				}
+			}
+		}
 		if (visualResolution.complete) {
 			resolvedCharacter = visualResolution.selectedRegistryName == null
 				? curCharacter : Std.string(visualResolution.selectedRegistryName);
@@ -881,7 +1137,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// registry lookup. Report a missing character only if both paths failed.
 		if (!visualResolution.complete && !isDie && codenameLiveDefinition == null)
 			Character.reportResolution(visualResolution);
-		if (codenameLiveDefinition == null) {
+		if (codenameLiveDefinition == null && !nightmareVisionCharacterOwned) {
 			markDeathConstructionStage('before-character-interpreter');
 			interp = Character.getAnimInterp(curCharacter);
 			markDeathConstructionStage('after-character-interpreter');
@@ -928,7 +1184,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// during init, so measure the idle pose before Stage anchors its feet.
 		if (vSliceBaseFrames != null) updateHitbox();
 
-		if (codenameCharacterMeta == null && psychAuthoredFlipX == null && isPlayer && !noFlip) {
+		if (codenameCharacterMeta == null && psychAuthoredFlipX == null
+			&& !nightmareVisionCharacterOwned && isPlayer && !noFlip) {
 			flipX = !flipX;
 			// Doesn't flip for BF, since his are already in the right place???
 			// V-Slice keeps its authored direction names and changes only the slot flip.
@@ -1141,8 +1398,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				}
 			}
 		}
-		if (specialAnim && heyTimer <= 0 && animation.curAnim != null && animation.curAnim.finished)
+		if (specialAnim && heyTimer <= 0 && animation.curAnim != null && animation.curAnim.finished) {
 			specialAnim = false;
+			// Nightmare Vision returns to the normal dance as soon as a
+			// one-shot special animation completes, even between beats.
+			if (nightmareVisionCharacterData != null) dance();
+		}
 		var currentAnim = animationName(this);
 		if (animation.curAnim != null && animation.curAnim.finished) {
 			if (hxcFinishedAnimation != currentAnim) {
@@ -1176,7 +1437,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			if (currentAnim.startsWith('sing') || singPriority.contains(currentAnim))
 				holdTimer += elapsed;
 
-			var dadVar:Float = 4;
+			var dadVar:Float = nightmareVisionCharacterData == null ? 4
+				: nightmareVisionNumber(Reflect.field(nightmareVisionCharacterData, 'sing_duration'), 4);
 			if (interp != null)
 				dadVar = interp.variables.get("dadVar");
 			if (holdTimer >= Conductor.stepCrochet * dadVar * 0.001) {
@@ -1226,14 +1488,36 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 	private var danced:Bool = false;
 	@:keep public var canSing:Bool = true;
+	/** Nightmare Vision's source Bopper/FunkinSprite animation lock. */
+	@:keep public var canPlayAnimations:Bool = true;
 	@:keep public var specialAnim:Bool = false;
 	@:keep public var heyTimer:Float = 0;
+	var forcedAnimationTimer:FlxTimer = new FlxTimer();
+	/** Match Nightmare Vision's timed play helper; the optional forced mode
+	 * holds every later animation request until this actor's timer completes. */
+	@:keep public function playAnimForDuration(animToPlay:String, duration:Float = 0.6,
+		forced:Bool = false):Void {
+		if (forced) canPlayAnimations = true;
+		playAnim(animToPlay, true);
+		if (forced) canPlayAnimations = false;
+		forcedAnimationTimer.start(duration, function(_:FlxTimer):Void {
+			if (forced) canPlayAnimations = true;
+		});
+	}
 	@:keep public function specialPlayAnim(name:String, force:Bool = false, reversed:Bool = false, frame:Int = 0):Void {
 		playAnim(name, force, reversed, frame);
 		specialAnim = true;
 	}
+	/** Source Bopper dance gate reuses the shared animation suppression flag. */
+	@:keep public var canDance(get, set):Bool;
+	function get_canDance():Bool return !skipDance;
+	function set_canDance(value:Bool):Bool {
+		skipDance = !value;
+		return value;
+	}
 	public function dance() {
 		if (skipDance) return;
+		if (nightmareVisionCharacterData != null && specialAnim) return;
 		// A script can retain an actor after its visual is destroyed or fails to
 		// resolve. The next beat must not dereference its animation controller.
 		if (animation == null) return;
@@ -1249,6 +1533,18 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				name = danced ? 'danceLeft' : 'danceRight';
 			}
 			codenamePlayAnim(name + idleSuffix, null, 'DANCE');
+			return;
+		}
+		if (nightmareVisionCharacterData != null) {
+			var left = 'danceLeft' + idleSuffix;
+			var right = 'danceRight' + idleSuffix;
+			if (animation.exists(left) && animation.exists(right)) {
+				danced = !danced;
+				playAnim(danced ? right : left);
+			} else if (animation.exists('idle' + idleSuffix))
+				playAnim('idle' + idleSuffix);
+			else if (animation.exists('idle'))
+				playAnim('idle');
 			return;
 		}
 		if (!specialAnim && !debugMode && beNormal && !isDie && (animation.curAnim == null || !noDanceAnims.contains(animation.curAnim.name) || animation.curAnim.finished)) {
@@ -1272,7 +1568,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			PlayState.instance.dispatchHxcCharacterMethod(this, 'dance', [false]);
 	}
 
+	/** Match the source Bopper animation playback controls on native actors. */
+	@:keep public function pauseAnim():Void animation.pause();
+	@:keep public function resumeAnim():Void animation.resume();
+
 	public function playAnim(AnimName:String, Force:Bool = false, Reversed:Bool = false, Frame:Int = 0):Void {
+		if (!canPlayAnimations) return;
 		var codenameContext:Dynamic = null;
 		var codenamePlayback = false;
 		if (codenameLiveDefinition != null || codenameVisualBuilding) {
@@ -1504,6 +1805,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	override public function destroy():Void {
 		if (characterDestroyed) return;
 		characterDestroyed = true;
+		forcedAnimationTimer.cancel();
+		forcedAnimationTimer.destroy();
+		if (onAnimationFinish != null) {
+			onAnimationFinish.removeAll();
+			onAnimationFinish.destroy();
+		}
 		if (codenameRuntime != null) codenameRuntime.destroy();
 		codenameRuntime = null;
 		globalOffset.put(); cameraOffset.put(); frameOffset.put(); extraOffset.put();
@@ -1519,8 +1826,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		var mappedAnims = null;
 		if (song != null)
 			mappedAnims = song.notes;
-		else if (FileSystem.exists('assets/data/' + PlayState.SONG.song.toLowerCase() + '/' + curCharacter + '.json'))
-			mappedAnims = Song.loadFromJson(curCharacter, PlayState.SONG.song).notes;
+		else {
+			var songFolder = Song.storageFolder(PlayState.SONG);
+			if (songFolder != '' && FileSystem.exists('assets/data/' + songFolder + '/' + curCharacter + '.json'))
+				mappedAnims = Song.loadFromJson(curCharacter, songFolder).notes;
+		}
 
 		if (mappedAnims != null) {
 			var noteAmount = 4;

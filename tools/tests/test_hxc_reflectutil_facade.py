@@ -1,10 +1,12 @@
 """Focused coverage for imported HXC ReflectUtil calls."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,14 +43,14 @@ class Main {
             fixture.mkdir(parents=True)
             (fixture / "StoryMenuState.hx").write_text(
                 "package fixture.nativeclasses; class StoryMenuState { public function new() {} }"
-            )
+            , newline='\n')
             (fixture / "FreeplayState.hx").write_text(
                 "package fixture.nativeclasses; class FreeplayState { public function new() {} }"
-            )
+            , newline='\n')
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=180,
             )
@@ -90,10 +92,10 @@ class Main {{
             fixture.mkdir(parents=True)
             (fixture / "StoryMenuState.hx").write_text(
                 "package fixture.nativeclasses; class StoryMenuState { public function new() {} }"
-            )
-            (Path(folder) / "Main.hx").write_text(source)
+            , newline='\n')
+            (Path(folder) / "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=180,

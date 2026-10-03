@@ -1,6 +1,8 @@
 """Codename's hasAnim API must resolve on native imported Characters."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -100,9 +102,9 @@ class Main {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(fixture)
+            main.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"),
+                [*HAXE_COMMAND,
                  "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", folder, "--run", "Main"],

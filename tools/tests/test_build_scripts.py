@@ -4,6 +4,7 @@ These tests intentionally inspect only small scripts and documentation. They
 must not walk or package the repository's multi-gigabyte asset library.
 """
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 
@@ -27,6 +28,9 @@ class BuildScriptTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
         cls.project_xml = (ROOT / "Project.xml").read_text(encoding="utf-8")
+        cls.release_build = (ROOT / "build-windows-release.sh").read_text(encoding="utf-8")
+        cls.package_script = (ROOT / "tools/package_windows_release.py").read_text(encoding="utf-8")
+        cls.gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
 
     def test_build_sh_has_explicit_targets(self):
         self.assertIn("./build.sh linux", self.build_sh)
@@ -53,6 +57,15 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn('cp -aln "$ASSETS_BAK"/. "$RUNTIME_ASSETS"/', self.run_sh)
         self.assertIn("restore_runtime_assets", self.run_sh)
         self.assertIn("trap finish_build EXIT", self.run_sh)
+
+    def test_run_sh_preserves_standalone_import_cache_by_rename(self):
+        self.assertIn('RUNTIME_IMPORT_CACHE="$BUILD_DIR/linux/bin/import-cache"', self.run_sh)
+        self.assertIn('IMPORT_CACHE_HOLD="$BUILD_DIR/linux/.import-cache-preserve-$$"', self.run_sh)
+        self.assertIn('mv -- "$RUNTIME_IMPORT_CACHE" "$IMPORT_CACHE_HOLD"', self.run_sh)
+        self.assertIn('mv -- "$IMPORT_CACHE_HOLD" "$RUNTIME_IMPORT_CACHE"', self.run_sh)
+        self.assertIn("restore_import_cache", self.run_sh)
+        self.assertNotIn('cp -al "$RUNTIME_IMPORT_CACHE"', self.run_sh)
+        self.assertIn("/import-cache/", self.gitignore)
 
     def test_live_options_are_saved_before_runtime_assets_snapshot(self):
         self.assertLess(
@@ -251,8 +264,8 @@ class BuildScriptTests(unittest.TestCase):
     def test_readme_documents_native_targets_and_appimage_writes(self):
         for text in (
             "./build.sh appimage",
-            "./build-windows-release.sh v0.0.1-alpha.8",
-            "run.bat build",
+            "./build-windows-release.sh v0.0.9",
+            ".\\run.bat test",
             "DISAPPOINTINGPLUS_RUNTIME_DIR",
             "APPIMAGE_EXTRACT_AND_RUN",
             "read-only",
@@ -262,9 +275,24 @@ class BuildScriptTests(unittest.TestCase):
             "HXCPP_MINGW_EXE",
             "MINGW_ROOT",
             "--wine-smoke",
-            "run.bat` remains the native Windows/MSVC entry point",
+            "run.bat` is the native Windows entry point",
         ):
             self.assertIn(text, self.readme)
+
+    def test_current_release_version_is_used_by_branding_and_package_defaults(self):
+        version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
+        self.assertEqual(version, "0.0.9")
+        self.assertIn(f'version="{version}"', self.project_xml)
+        self.assertIn(f"CammieEngine v{version}", self.readme)
+        user_readme = (ROOT / "USER-README.txt").read_text(encoding="utf-8")
+        self.assertIn(f"CammieEngine v{version}", user_readme)
+        update_log = (ROOT / "updateLog.txt").read_text(encoding="utf-8")
+        self.assertIn(f"{version} alpha — CammieEngine", update_log)
+        branding = (ROOT / "source/EngineBranding.hx").read_text(encoding="utf-8")
+        self.assertIn(f"FALLBACK_VERSION:String = '{version}'", branding)
+        self.assertIn(f'TAG="${{1:-v{version}}}"', self.release_build)
+        self.assertIn(f'DEFAULT_RELEASE_TAG = "v{version}"', self.package_script)
+        self.assertIn("default=DEFAULT_RELEASE_TAG", self.package_script)
 
 
 if __name__ == "__main__":

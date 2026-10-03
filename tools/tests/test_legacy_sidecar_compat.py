@@ -1,6 +1,8 @@
 """Regression coverage for FPS/Kade JSON sidecars at the shared adapter boundary."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -77,9 +79,9 @@ class SidecarCompat {
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "SidecarCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "--run", "SidecarCompat"],
                 cwd=folder,
@@ -113,9 +115,9 @@ class SidecarCompat {
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "SidecarCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "--run", "SidecarCompat"],
                 cwd=folder,
@@ -150,9 +152,9 @@ class SidecarCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "SidecarCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "SidecarCompat"],
                 cwd=folder,
                 capture_output=True,

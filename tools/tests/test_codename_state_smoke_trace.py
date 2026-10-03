@@ -1,6 +1,8 @@
 """Opt-in Codename state smoke breadcrumbs remain scoped and inspectable."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import subprocess
 import tempfile
@@ -27,10 +29,10 @@ class Main {
   if (CodenameStateSmokeTrace.stateName(null) != 'null') throw 'null state label';
  }
 }
-''')
-            quiet = subprocess.run([str(HAXE), "-cp", scratch, "--run", "Main"],
+''', newline='\n')
+            quiet = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                                    cwd=ROOT, capture_output=True, text=True, timeout=30)
-            traced = subprocess.run([str(HAXE), "-cp", scratch, "--run", "Main",
+            traced = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main",
                                      "--codename-state-trace"], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(quiet.returncode, 0, quiet.stdout + quiet.stderr)

@@ -1,6 +1,8 @@
 """Execute production scroll-speed code with the portable Haxe interpreter."""
+from haxe_test_support import HAXE_COMMAND
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -19,10 +21,10 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             base = Path(folder)
-            (base / (name + '.hx')).write_text(text)
+            (base / (name + '.hx')).write_text(text, newline='\n')
             for filename, content in (extra_files or {}).items():
-                (base / filename).write_text(content)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                (base / filename).write_text(content, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', name, '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -137,8 +139,8 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         fields = section(ps, '\tpublic static var daScrollSpeed:Float = 1;', '\tpublic static var duoMode')
         init = section(ps, '\t\tdaScrollSpeed = OptionsHandler.options.scrollSpeed == 1', '\t\ttrace(SONG.gf);')
         tween = section(ps, '\t@:keep public function tweenScrollSpeed(', '\n\tfunction healthChange(')
-        queue = section(ps, '\t\twhile (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead)', '\n\t\tif (generatedMusic)')
-        speed_resolution = section(ps, '\t\t\t\tvar noteScrollSpeed = FlxMath.roundDecimal(', '\n\t\t\t\tif (downscroll)')
+        queue = section(ps, '\t\twhile (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead)', '\n\t\tvar nightmareContext =')
+        speed_resolution = section(ps, '\t\t\t\tvar noteScrollSpeed = FlxMath.roundDecimal(', '\n\t\t\t\tif (nightmareContext == null) {')
         movement = section(ps, '\t\t\t\tvar neg = downscroll ? -1 : 1;', '\t\t\t\tif (vnshNotes)')
         sustain = section(ps, '\t\t\t\t\t\tdaNote.prevNote.scale.y =', ';') + ';'
         sinks = [line for line in note.splitlines() if 'prevNote.scale.y *= Conductor.stepCrochet' in line]
@@ -160,6 +162,10 @@ class FlxTween {public static function tween(obj:Dynamic, props:Dynamic, duratio
 }}
 class Note {
  public var strumTime:Float; public var alive:Bool=true; public var active:Bool=true; public var visible:Bool=true;
+ public var spawned:Bool=false;
+ public var sourcePlayfieldIndex:Int=0; public var isSustainNote:Bool=false;
+ public var frameWidth:Float=10; public var frameHeight:Float=10; public var clipRect:Dynamic=null;
+ public var nightmareVisionRenderer:Dynamic=null;
  public function new(t:Float) {strumTime=t;}
  public function kill():Void alive=false;
  public function destroy():Void {}
@@ -172,12 +178,18 @@ class NightmareVisionScriptGroup {
  public static inline var CONTINUE_FUNC:Int=1;
  public static inline var STOP_FUNC:Int=2;
 }
+class NightmareVisionNoteTypeRuntime {
+ public static function noteTypeOf(_note:Dynamic):Dynamic return null;
+}
+class FlxRect {public function new(_x:Float,_y:Float,_width:Float,_height:Float) {}}
 class Group {public var members:Array<Note>=[]; public function new() {} public function add(n:Note) {members.push(n);}}
 class PlayState {
 ''' + fields + '''
  static var SONG={speed:1.0};
+ var noteKillOffset:Float=350; var playbackRate:Float=1;
  var unspawnNotes:Array<Note>=[]; var notes=new Group(); var loaded=0;
  var hxcStrumlineNoteSurface:Dynamic=null;
+ var nightmareVisionNoteTypes:Dynamic=null; var nightmareVisionScripts:Dynamic=null;
  var codenameInputLines:Array<Dynamic>=[]; var demoMode=false;
  function bindCodenameNoteLine(note:Note):Void {}
  var downscroll=false; var drunkNotes=false; var songTime:Float=0; var noteSpeed:Float=0.45;
@@ -199,6 +211,7 @@ class PlayState {
  // The extracted chart has no selected NMV owner; preserve normal note flow.
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
   return NightmareVisionScriptGroup.CONTINUE_FUNC;
+ function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
  function tweenVSliceScrollSpeed(speed:Dynamic, duration:Dynamic, ease:Dynamic, lines:Dynamic):Void {}
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}

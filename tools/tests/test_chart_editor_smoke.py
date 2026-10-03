@@ -1,10 +1,12 @@
 """Focused checks for the isolated native chart-editor round-trip smoke."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 
 
@@ -16,6 +18,20 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 
 import run_runtime_smoke_matrix as smoke_matrix
+
+
+def extract_method(source: str, marker: str) -> str:
+    start = source.index(marker)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"unterminated method: {marker}")
 
 
 class ChartEditorSmokeTest(unittest.TestCase):
@@ -33,8 +49,8 @@ class ChartEditorSmokeTest(unittest.TestCase):
             sidecar_bytes = b'{"events":[[250,[ ["Existing", "kept"] ]]]}\n'
             (selected / "owned-song-hard.json").write_bytes(chart_bytes)
             (selected / "events.json").write_bytes(sidecar_bytes)
-            (other / "other-song.json").write_text('{"song":{}}', encoding="utf-8")
-            (source_data / "options.json").write_text("{}", encoding="utf-8")
+            (other / "other-song.json").write_text('{"song":{}}', encoding="utf-8", newline='\n')
+            (source_data / "options.json").write_text("{}", encoding="utf-8", newline='\n')
 
             overlay_root = temp_root / "overlay"
             overlay_root.mkdir()
@@ -69,6 +85,10 @@ class ChartEditorSmokeTest(unittest.TestCase):
         self.assertIn("autosaveSong();", charting)
         self.assertIn("loadAutosave();", charting)
         self.assertIn("chartEditorSidecarBytes.compare(File.getBytes(sidecarPath))", harness)
+        self.assertIn("doCharDropdown('bf');", charting)
+        self.assertIn("markChartEditorBrowse();", charting)
+        self.assertIn("markChartEditorBrowseDestroyed();", charting)
+        self.assertIn('"chart_editor_browse", "chart_editor_browse_destroyed"', runner)
         self.assertIn("editor_source_unchanged", runner)
         self.assertIn("source_options_snapshot", runner)
         self.assertIn("SongEvents.collect(SongEvents.fromSong(song)",
@@ -77,6 +97,7 @@ class ChartEditorSmokeTest(unittest.TestCase):
     def test_editor_create_phase_markers_are_opt_in_and_cover_post_bpm_setup(self):
         harness = (SOURCE / "RuntimeSmokeHarness.hx").read_text(encoding="utf-8")
         charting = (SOURCE / "ChartingState.hx").read_text(encoding="utf-8")
+        runner = (TOOLS / "run_runtime_smoke_matrix.py").read_text(encoding="utf-8")
         marker = harness[harness.index("public static function markChartEditorCreatePhase("):
                          harness.index("\n\t/** True on the ChartingState creation", harness.index(
                              "public static function markChartEditorCreatePhase("))]
@@ -96,6 +117,28 @@ class ChartEditorSmokeTest(unittest.TestCase):
         self.assertIn("if (chartEditorSmokePending) {", charting)
         self.assertLess(charting.index("override function update(elapsed:Float)"),
                         charting.index("runChartEditorRoundTripSmoke();"))
+        update = extract_method(charting, "override function update(elapsed:Float)")
+        round_trip = extract_method(charting, "function runChartEditorRoundTripSmoke():Void")
+        self.assertIn("RuntimeSmokeHarness.markChartEditorBrowse();", update)
+        self.assertLess(update.index("doCharDropdown('bf');"),
+                        update.index("RuntimeSmokeHarness.markChartEditorBrowse();"))
+        self.assertLess(update.index("RuntimeSmokeHarness.markChartEditorBrowse();"),
+                        update.index("chartEditorBrowseSmokePending = true;"))
+        self.assertLess(update.index("doCharDropdown('bf');"),
+                        update.index("runChartEditorRoundTripSmoke();", update.index("if (runChartEditorSmokeAfterFrame)")))
+        self.assertLess(update.index("super.update(elapsed);"),
+                        update.index("if (runChartEditorSmokeAfterFrame)"))
+        self.assertLess(round_trip.index("RuntimeSmokeHarness.markChartEditorQuickSave(sidecarPath"),
+                        round_trip.index("autosaveSong();"))
+        self.assertIn("chartEditorBrowseSmokePending = true;", charting)
+        self.assertIn("runChartEditorSmokeAfterFrame", charting)
+        open_marker = extract_method(harness, "public static function markChartEditorBrowse():Void")
+        close_marker = extract_method(harness, "public static function markChartEditorBrowseDestroyed():Void")
+        self.assertIn("chartEditorSmokeEnabled()", open_marker)
+        self.assertIn("chartEditorBrowseActive", open_marker)
+        self.assertIn("chart_editor_browse", open_marker)
+        self.assertIn("chart_editor_browse_destroyed", close_marker)
+        self.assertIn('"chart_editor_browse", "chart_editor_browse_destroyed"', runner)
 
     def test_event_helper_exercises_companion_edit_delete_reload_and_runtime_collection(self):
         if not HAXE.is_file():
@@ -136,9 +179,9 @@ class ChartEditorSmokeTest(unittest.TestCase):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "ChartEditorSmokeFixture.hx"
-            fixture_path.write_text(fixture, encoding="utf-8")
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(SOURCE), "--run", "ChartEditorSmokeFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(SOURCE), "--run", "ChartEditorSmokeFixture"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

@@ -1,6 +1,8 @@
 """Imported stage z-order keeps gameplay notes above receptor graphics."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -88,9 +90,9 @@ class StageHudOrderFixture {
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "StageHudOrderFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "StageHudOrderFixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
             )

@@ -1,6 +1,8 @@
 """Psych owner sound copying preserves source identity and existing overrides."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -82,16 +84,16 @@ class Main {{
             target = work / "installed" / "psych-owner"
             (donor / "sounds" / "nested").mkdir(parents=True)
             (donor / "shared" / "sounds").mkdir(parents=True)
-            (donor / "sounds" / "intro.ogg").write_text("root-intro")
-            (donor / "sounds" / "nested" / "hit.ogg").write_text("hit")
-            (donor / "sounds" / "shared.ogg").write_text("root-shared")
-            (donor / "shared" / "sounds" / "shared.ogg").write_text("fallback-shared")
-            (work / "Main.hx").write_text(fixture)
+            (donor / "sounds" / "intro.ogg").write_text("root-intro", newline='\n')
+            (donor / "sounds" / "nested" / "hit.ogg").write_text("hit", newline='\n')
+            (donor / "sounds" / "shared.ogg").write_text("root-shared", newline='\n')
+            (donor / "shared" / "sounds" / "shared.ogg").write_text("fallback-shared", newline='\n')
+            (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Main",
                  str(donor), str(target)],
                 cwd=ROOT, capture_output=True, text=True,
             )

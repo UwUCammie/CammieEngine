@@ -1,5 +1,7 @@
 """Exercise frame/offset pairing in the legacy player-facing orientation path."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -10,7 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 class CharacterAnimationOrientationTest(unittest.TestCase):
     def test_frame_swaps_carry_offsets_and_preserve_missing_keys(self):
         source = (ROOT / "source/Character.hx").read_text()
-        constructor = source.split("if (codenameCharacterMeta == null && psychAuthoredFlipX == null && isPlayer && !noFlip)", 1)[1]
+        guard = ("if (codenameCharacterMeta == null && psychAuthoredFlipX == null\n"
+                 "\t\t\t&& !nightmareVisionCharacterOwned && isPlayer && !noFlip)")
+        self.assertIn(guard + " {", source)
+        constructor = source.split(guard, 1)[1]
         self.assertIn("CharacterAnimationOrientation.swapAll(animation.getNameList()", constructor)
         self.assertNotIn("animation.getByName('singRIGHT') != null", constructor)
 
@@ -76,9 +81,9 @@ class CharacterAnimationOrientationTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(path), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

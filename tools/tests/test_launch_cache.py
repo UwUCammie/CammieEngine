@@ -3,6 +3,7 @@ import importlib.util
 import io
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import subprocess
 import tempfile
@@ -34,7 +35,7 @@ class LaunchCacheTest(unittest.TestCase):
     def write(self, path, text):
         target = self.root / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
+        target.write_text(text, newline='\n')
         return target
 
     def record(self):
@@ -51,11 +52,12 @@ class LaunchCacheTest(unittest.TestCase):
             target.unlink()
             self.assertFalse(cache.fresh(self.root, self.build), path)
 
+    @unittest.skipIf(os.name == 'nt', 'Linux launch shell and metadata semantics fixture')
     def test_same_size_edit_with_restored_mtime_is_detected(self):
         self.record()
         target = self.root / 'assets/data/chart.json'
         original = target.stat()
-        target.write_text('[]')
+        target.write_text('[]', newline='\n')
         os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
         self.assertFalse(cache.fresh(self.root, self.build))
 
@@ -68,9 +70,9 @@ class LaunchCacheTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as external:
             self.write('.haxelib/library/.dev', external)
             source = Path(external) / 'Library.hx'
-            source.write_text('before')
+            source.write_text('before', newline='\n')
             self.record()
-            source.write_text('after')
+            source.write_text('after', newline='\n')
             self.assertFalse(cache.fresh(self.root, self.build))
 
     def test_live_settings_do_not_invalidate_but_missing_native_library_does(self):
@@ -105,6 +107,7 @@ class LaunchCacheTest(unittest.TestCase):
         return subprocess.run(['bash', 'run.sh', *args], cwd=self.root,
                               capture_output=True, text=True, timeout=10)
 
+    @unittest.skipIf(os.name == 'nt', 'Linux launch shell and metadata semantics fixture')
     def test_unchanged_default_launch_and_build_skip_toolchain_setup(self):
         # There is no Haxe or Neko installed in this fixture: any attempt to
         # enter the setup path would fail instead of producing these outputs.
@@ -115,6 +118,7 @@ class LaunchCacheTest(unittest.TestCase):
             self.assertIn('build is up to date', result.stdout)
             self.assertEqual('game-started' in result.stdout, launches)
 
+    @unittest.skipIf(os.name == 'nt', 'Linux launch shell and metadata semantics fixture')
     def test_nobuild_launches_without_cache_or_toolchain(self):
         result = self.run_launcher('nobuild')
         self.assertEqual(result.returncode, 0, result.stderr)

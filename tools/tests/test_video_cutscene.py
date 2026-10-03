@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -50,9 +52,9 @@ __METHOD__
                 asset = Path(folder) / relative
                 asset.parent.mkdir(parents=True, exist_ok=True)
                 asset.write_bytes(b'clip')
-            (Path(folder) / 'VideoOwnerFixture.hx').write_text(fixture)
+            (Path(folder) / 'VideoOwnerFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'VideoOwnerFixture', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'VideoOwnerFixture', '--interp'],
                 cwd=folder, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -195,8 +197,8 @@ __METHOD__
             for name, text in files.items():
                 path = Path(folder) / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(text)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'VideoTest', '--interp'], cwd=ROOT, capture_output=True, text=True)
+                path.write_text(text, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'VideoTest', '--interp'], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_event_video_skip_time_and_native_seek_boundary(self):
@@ -227,8 +229,8 @@ __METHOD__
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             for name, text in files.items():
-                (Path(folder) / name).write_text(text)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                (Path(folder) / name).write_text(text, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'SeekTest', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -376,8 +378,8 @@ __METHOD__
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             for name, text in files.items():
-                (Path(folder) / name).write_text(text)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                (Path(folder) / name).write_text(text, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'SkipIntegrationTest', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

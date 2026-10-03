@@ -3609,9 +3609,7 @@ class VSliceImporter {
 			// claim the same authored kind. Dedicated note-kind scripts above remain
 			// the strongest match; the song companion is a generic fallback for kinds
 			// with no active character owner.
-			if (characterIds != null)
-				for (character in characterIds)
-					appendHxcCompanionCandidate(companions, current, 'characters', character);
+			appendDeclaredHxcCharacterCompanions(companions, current, characterIds);
 			appendHxcCompanionCandidate(companions, current, 'songs', songName);
 			if (sourceFolder != '' && sourceFolder != '.')
 				appendHxcCompanionCandidate(companions, current, 'songs', sourceFolder);
@@ -3642,6 +3640,38 @@ class VSliceImporter {
 			current = parent;
 		}
 		return null;
+	}
+
+	/** Use the same declared character identity as runtime discovery. A wrapper
+	 * may live in stages/ and have a class filename unrelated to its actor id.
+	 * Start in script/data families, without walking root image/audio trees. */
+	static function appendDeclaredHxcCharacterCompanions(result:Array<String>, root:String,
+		characterIds:Array<String>):Void {
+		if (result == null || root == null || characterIds == null || characterIds.length == 0)
+			return;
+		var paths:Array<String> = [];
+		for (character in characterIds)
+			appendHxcCompanionCandidate(paths, root, 'characters', character);
+		// Runtime discovery owns the full imported root, including its V-Slice
+		// shared library. Mirror the known character-bearing HXC families there
+		// (`scripts`, `data`, `stages`, and `characters`); shared/stages is also an
+		// explicit V-Slice stage-script location. Scanning `shared` itself would
+		// walk images/audio and other package media.
+		for (relative in [
+			'scripts', 'data/characters', 'data/stages', 'stages', 'characters',
+			'shared/scripts', 'shared/data', 'shared/stages', 'shared/characters'
+		]) {
+			var directory = Path.join([root, relative]);
+			if (!FileSystem.isDirectory(directory))
+				continue;
+			// A diagnostic lookup must not stop at the discovery batch default.
+			for (path in HxcScriptDiscovery.discoverRoot(directory, null, 0x7FFFFFFF).all)
+				if (paths.indexOf(path) < 0)
+					paths.push(path);
+		}
+		for (path in HxcScriptDiscovery.selectCharacterPaths(paths, characterIds, [root], root))
+			if (result.indexOf(path) < 0)
+				result.push(path);
 	}
 
 	static function appendHxcCompanionCandidate(result:Array<String>, root:String,

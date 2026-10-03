@@ -1,5 +1,7 @@
 """Camera note offsets tolerate characters whose imported animation failed."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -42,8 +44,8 @@ class Test {{
 '''
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'Test.hx'
-            path.write_text(fixture)
-            result = subprocess.run([str(HAXE), '-cp', tmp, '--main', 'Test', '--interp'],
+            path.write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp, '--main', 'Test', '--interp'],
                                     cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

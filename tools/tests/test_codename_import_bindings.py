@@ -1,6 +1,8 @@
 """Run the Codename import enum facade without the native game target."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,7 +47,7 @@ class FlxBasePoint {
  public function new(x:Float=0,y:Float=0) { this.x=x; this.y=y; }
  public function set(x:Float,y:Float):FlxBasePoint { this.x=x; this.y=y; return this; }
 }
-''')
+''', newline='\n')
             (base / "Main.hx").write_text(f'''import hscript.Interp;
 import flixel.math.FlxPoint;
 import flixel.math.FlxPoint.FlxBasePoint;
@@ -68,9 +70,9 @@ class Main {{
    throw "Codename point values changed: " + observed;
  }}
 }}
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
@@ -102,9 +104,9 @@ class Main {{
   if (observed != "ab<c")
    throw "StringTools replacement facade changed source semantics: " + observed;
  }}
-}}''')
+}}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
@@ -133,7 +135,7 @@ class Main {{
                 "package flixel.util;\nclass FlxStringUtil {\n"
                 + format_money_method
                 + "\n}"
-            )
+            , newline='\n')
             (base / "Main.hx").write_text(f'''import hscript.Interp;
 import flixel.util.FlxStringUtil;
 class CodenameImportBindings {{
@@ -166,9 +168,9 @@ class Main {{
   check(defaultMoney() == "1,234.50", "Flixel's default decimal arguments changed");
   check(europeanMoney() == "1.234.567,88", "Flixel's localized decimal/comma rules changed");
  }}
-}}''')
+}}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT,
@@ -190,7 +192,7 @@ class Main {{
 enum abstract FlxTweenType(Int) from Int to Int {
  var PERSIST=1; var LOOPING=2; var PINGPONG=4; var ONESHOT=8; var BACKWARD=16;
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(f'''import hscript.Interp;
 import flixel.tweens.FlxTween.FlxTweenType;
 class Facade {{
@@ -211,9 +213,9 @@ class Main {{
   if(getFlag==null || getFlag()!=1) throw "top-level FlxTweenType import lost its enum constant";
  }}
 }}
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
@@ -239,7 +241,7 @@ class Main {{
 enum abstract FlxTweenType(Int) from Int to Int {
  var PERSIST=1; var LOOPING=2; var PINGPONG=4; var ONESHOT=8; var BACKWARD=16;
 }
-""")
+""", newline='\n')
             (base / "openfl/display/BlendMode.hx").parent.mkdir(parents=True)
             (base / "openfl/display/BlendMode.hx").write_text("""package openfl.display;
 enum abstract BlendMode(Int) from Int to Int {
@@ -247,18 +249,18 @@ enum abstract BlendMode(Int) from Int to Int {
  var HARDLIGHT=5; var INVERT=6; var LAYER=7; var LIGHTEN=8; var MULTIPLY=9;
  var NORMAL=10; var OVERLAY=11; var SCREEN=12; var SHADER=13; var SUBTRACT=14;
 }
-""")
+""", newline='\n')
             (base / "flixel/ui/FlxBar.hx").parent.mkdir(parents=True)
             (base / "flixel/ui/FlxBar.hx").write_text("""package flixel.ui;
 class FlxBar {}
 enum FlxBarFillDirection { LEFT_TO_RIGHT; RIGHT_TO_LEFT; TOP_TO_BOTTOM; BOTTOM_TO_TOP;
  HORIZONTAL_INSIDE_OUT; HORIZONTAL_OUTSIDE_IN; VERTICAL_INSIDE_OUT; VERTICAL_OUTSIDE_IN; }
-""")
+""", newline='\n')
             (base / "flixel/text/FlxText.hx").parent.mkdir(parents=True)
             (base / "flixel/text/FlxText.hx").write_text("""package flixel.text;
 class FlxText {}
 enum FlxTextBorderStyle { NONE; SHADOW; SHADOW_XY(offsetX:Float,offsetY:Float); OUTLINE; OUTLINE_FAST; }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(f"""import flixel.tweens.FlxTween.FlxTweenType;
 import openfl.display.BlendMode;
 import flixel.ui.FlxBar.FlxBarFillDirection;
@@ -283,9 +285,9 @@ class Main {{
    throw 'Codename text border styles changed';
  }}
 }}
-""")
+""", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", directory, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", directory, "--run", "Main"],
                 cwd=directory,
                 capture_output=True,
                 text=True,

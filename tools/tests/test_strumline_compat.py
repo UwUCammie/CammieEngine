@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -56,8 +58,8 @@ class CompatTest {
         self.assertIn('currentPlayState.generateStaticArrows(0, "fatal", true)', script)
         self.assertIn('currentPlayState.generateStaticArrows(1, "fatal", false)', script)
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'CompatTest.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'CompatTest', '--interp'], capture_output=True, text=True)
+            (Path(folder) / 'CompatTest.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'CompatTest', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_hold_timer_handles_replaced_or_unanimated_receptors(self):
@@ -78,12 +80,17 @@ class FlxTimer {
  public function fire():Void if(callback!=null)callback(this);
 }
 class TimerTest {
+ var playbackRate:Float=1;
  public function new(){}
+ function getNightmareVisionField(_strum:Int):Dynamic
+  return {autoPlayed:false,holdDropLeniency:0.15};
 ''' + sustain_helper + method + '''
  static function main(){
-  var state=new TimerTest();var note:Dynamic={sustainLength:500.,isSustainNote:false};
+  var state=new TimerTest();var note:Dynamic={sustainLength:500.,isSustainNote:false,
+   nightmareVisionTypeRuntime:null,nightmareVisionSustainEnd:false};
   var restored=0;
-  var spr:Dynamic={exists:true,confirmationGeneration:0,animation:{curAnim:{name:'confirm',finished:false}},playAnim:function(n:String,f:Bool){restored++;}};
+  var spr:Dynamic={exists:true,resetAnim:0.,coyoteTime:0.,holding:false,confirmationGeneration:0,
+   animation:{curAnim:{name:'confirm',finished:false}},playAnim:function(n:String,f:Bool){restored++;}};
   state.sustain2(0,spr,note);var timer=FlxTimer.last;
   timer.fire();
   if(timer.resets!=1||restored!=0)throw 'Must wait for confirmation animation';
@@ -97,13 +104,16 @@ class TimerTest {
   // A fractional hold may generate its final tail after the head's authored
   // duration. Keep the head deadline past its rounded last segment.
   var holdState=new TimerTest();var holdRestored=0;
-  var holdSpr:Dynamic={exists:true,confirmationGeneration:1,animation:{curAnim:{name:'confirm',finished:false}},playAnim:function(n:String,f:Bool){holdRestored++;}};
-  var head:Dynamic={sustainLength:385.,isSustainNote:false,strumTime:0.,prevNote:null};
+  var holdSpr:Dynamic={exists:true,resetAnim:0.,coyoteTime:0.,holding:false,confirmationGeneration:1,
+   animation:{curAnim:{name:'confirm',finished:false}},playAnim:function(n:String,f:Bool){holdRestored++;}};
+  var head:Dynamic={sustainLength:385.,isSustainNote:false,strumTime:0.,prevNote:null,
+   nightmareVisionTypeRuntime:null,nightmareVisionSustainEnd:false};
   holdState.sustain2(0,holdSpr,head);var headTimer=FlxTimer.last;
   if(headTimer.delay<=0.5)throw 'Head timer ended before the rounded final piece';
   holdSpr.confirmationGeneration++;
   holdSpr.animation.curAnim={name:'confirmHold',finished:false}; // final tail confirms
-  var tail:Dynamic={sustainLength:0.,isSustainNote:true,strumTime:500.,prevNote:{strumTime:375.}};
+  var tail:Dynamic={sustainLength:0.,isSustainNote:true,strumTime:500.,prevNote:{strumTime:375.},
+   nightmareVisionTypeRuntime:null,nightmareVisionSustainEnd:false};
   holdState.sustain2(0,holdSpr,tail);var tailTimer=FlxTimer.last;
   if(tailTimer.delay<0.2)throw 'Tail reset must wait through its next-piece interval';
   headTimer.fire();
@@ -116,6 +126,6 @@ class TimerTest {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'TimerTest.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'TimerTest', '--interp'], capture_output=True, text=True)
+            (Path(folder) / 'TimerTest.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'TimerTest', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

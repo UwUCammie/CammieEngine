@@ -1,8 +1,10 @@
 """A complete donor StageRegistry replacement reaches the native stage lifecycle."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -69,10 +71,10 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-stage-changer-", dir=ROOT / "tmp") as folder:
             fixture = Path(folder)
-            (fixture / "Main.hx").write_text(main)
-            (fixture / "good.hxc").write_text(donor)
-            (fixture / "bad.hxc").write_text(unsafe)
-            command = [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+            (fixture / "Main.hx").write_text(main, newline='\n')
+            (fixture / "good.hxc").write_text(donor, newline='\n')
+            (fixture / "bad.hxc").write_text(unsafe, newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", folder,
                        "--run", "Main", str(fixture / "good.hxc"), str(fixture / "bad.hxc")]
             if DONOR_SCRIPT.is_file():

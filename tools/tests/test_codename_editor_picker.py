@@ -1,6 +1,8 @@
 """Exercise HL17's key-7 EditorPicker handoff without launching the game."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -37,7 +39,7 @@ class FlxG {
  public static var lastOpenedURL:String='';
  public static function openURL(url:String):Void lastOpenedURL=url;
 }
-""")
+""", newline='\n')
             (base / "flixel/FlxSprite.hx").write_text("""package flixel;
 class FlxSprite {
  public var x:Float; public var y:Float; public var width:Float=0; public var height:Float=0;
@@ -49,7 +51,7 @@ class FlxSprite {
  public function setGraphicSize(Width:Int,Height:Int):Void {width=Width;height=Height;}
  public function updateHitbox():Void {}
 }
-""")
+""", newline='\n')
             (base / "flixel/FlxSubState.hx").write_text("""package flixel;
 class FlxSubState {
  public var members:Array<Dynamic>=[]; public var closed:Bool=false;
@@ -59,7 +61,7 @@ class FlxSubState {
  public function close():Void closed=true;
  public function add<T>(item:T):T {members.push(item);return item;}
 }
-""")
+""", newline='\n')
             (base / "flixel/text/FlxText.hx").parent.mkdir(parents=True, exist_ok=True)
             (base / "flixel/text/FlxText.hx").write_text("""package flixel.text;
 import flixel.FlxSprite;
@@ -78,7 +80,7 @@ class FlxText extends FlxSprite {
   width=fieldWidth;height=size+3;
  }
 }
-""")
+""", newline='\n')
             (base / "flixel/ui/FlxButton.hx").parent.mkdir(parents=True, exist_ok=True)
             (base / "flixel/ui/FlxButton.hx").write_text("""package flixel.ui;
 import flixel.FlxSprite;
@@ -96,14 +98,14 @@ class FlxButton extends FlxSprite {
  }
  public function click():Void if(callback!=null) callback();
 }
-""")
+""", newline='\n')
             (base / "ChartingState.hx").write_text("""class ChartingState { public function new(){} }
-""")
+""", newline='\n')
             (base / "LoadingState.hx").write_text("""class LoadingState {
  public static var lastState:Dynamic;
  public static function loadAndSwitchState(state:Dynamic):Void lastState=state;
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(r'''import hscript.Interp;
 import flixel.ui.FlxButton;
 import flixel.text.FlxText.FlxTextAlign;
@@ -164,9 +166,9 @@ class Main {
   flixel.FlxG.keys.justPressed.ESCAPE=true; escape.update(0);
   check(escape.closed,"Escape did not close the picker");
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT,

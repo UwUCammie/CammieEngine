@@ -1,5 +1,7 @@
 """Execute the real Codename data-only song metadata codec."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -114,8 +116,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'Main.hx').write_text(source)
-            run = subprocess.run([str(HAXE), '-cp', str(ROOT / 'source'), '-cp', folder,
+            (Path(folder) / 'Main.hx').write_text(source, newline='\n')
+            run = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', folder,
                                   '--run', 'Main'], cwd=ROOT, capture_output=True, text=True,
                                  timeout=30)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

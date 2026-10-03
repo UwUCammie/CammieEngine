@@ -1,6 +1,8 @@
 """Regression coverage for Psych Character healthColorArray reads."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -68,9 +70,9 @@ class PsychHealthColorArraySmoke {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             folder = Path(folder)
-            (folder / "PsychHealthColorArraySmoke.hx").write_text(fixture)
+            (folder / "PsychHealthColorArraySmoke.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(folder), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(folder), "-cp", str(ROOT / "source"),
                  "--run", "PsychHealthColorArraySmoke"],
                 cwd=ROOT,
                 env={**__import__("os").environ, "TMPDIR": str(ROOT / "tmp")},

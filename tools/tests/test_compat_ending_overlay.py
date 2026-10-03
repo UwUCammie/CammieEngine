@@ -1,5 +1,7 @@
 """A fallback ending must cover reordered gameplay cameras without destroying them."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -58,8 +60,8 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             path = Path(folder)
-            (path / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(path), '--run', 'Main'],
+            (path / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(path), '--run', 'Main'],
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -89,8 +91,8 @@ class Main {
 }"""
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             path = Path(folder)
-            (path / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+            (path / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(path), '--run', 'Main'],
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

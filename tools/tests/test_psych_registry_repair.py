@@ -1,6 +1,8 @@
 """A partial Psych character import can repair its registry entry safely."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -97,9 +99,9 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(fixture)
+            (temp / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "--run", "Main", str(temp / "runtime")],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main", str(temp / "runtime")],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

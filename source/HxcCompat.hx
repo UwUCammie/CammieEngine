@@ -275,11 +275,11 @@ class HxcCompat {
 		// the allow-list explicit; arbitrary qualified names must still fail the
 		// manifest-scoped state boundary below.
 		clean = lowerQualifiedStateAliases(clean);
-		var classPattern = '\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+extends\\s+([A-Za-z_][A-Za-z0-9_.]*)';
-		var classNames = collectMatches(clean, classPattern, 1);
-		var classBases = collectMatches(clean, classPattern, 2);
+		var classFragments = collectClassFragments(clean);
+		var classNames = [for (fragment in classFragments) fragment.name];
+		var classBases = [for (fragment in classFragments) fragment.base];
 		var selectedClassIndex = selectClassIndex(classNames, classBases,
-			path == null ? '' : path.toLowerCase());
+			path == null ? '' : path.toLowerCase(), text);
 		var className = selectedClassIndex >= 0 && selectedClassIndex < classNames.length
 			? classNames[selectedClassIndex] : '';
 		var baseClass = selectedClassIndex >= 0 && selectedClassIndex < classBases.length
@@ -292,7 +292,6 @@ class HxcCompat {
 		// path-aware precedence.  This matters for files such as rabbit-hole.hxc,
 		// where a Module options declaration intentionally shares one file with the
 		// Song implementation, and for standalone FlxRuntimeShader wrappers.
-		var classFragments = collectClassFragments(clean, classNames, classBases);
 		// Keep the mixed-file text for data-only descriptors.  Rabbit Hole stores
 		// its option Module before the Song class, so the shader gate lives outside
 		// the selected Song fragment even though the filter cameras belong to it.
@@ -493,6 +492,11 @@ class HxcCompat {
 				var companionFragment = classFragments[index];
 				if (companionFragment == null || companionFragment.name == null
 					|| companionFragment.name == '')
+					continue;
+				// Another concrete stage/character declaration has its own registry
+				// identity. Its lifecycle cannot run as the selected owner's module.
+				var companionFamily = HxcScriptIdentity.familyForBase(companionFragment.base);
+				if (companionFamily == 'stage' || companionFamily == 'character')
 					continue;
 				appendUnique(companionClassNames, companionFragment.name);
 				var companionPath = (path == null ? '' : path) + '#companion:' + companionFragment.name;
@@ -1519,6 +1523,11 @@ class HxcCompat {
 	}
 
 	static function classify(base:String, path:String, hasNoteKind:Bool, source:String):String {
+		// Concrete source types own their lifecycle even when a package stores
+		// a character companion beside stage or song scripts. Directory names
+		// remain the fallback for classless legacy files.
+		if (isCharacterBase(base))
+			return 'character';
 		if (base == 'scriptednotekind' || base == 'notekind' || hasNoteKind
 			|| path.indexOf('/notes/') >= 0 || path.indexOf('\\\\notes\\\\') >= 0)
 			return 'note-kind';
@@ -1557,10 +1566,10 @@ class HxcCompat {
 	}
 
 	/** Select the declaration whose family owns a mixed HXC source file. */
-	static function selectClassIndex(names:Array<String>, bases:Array<String>, path:String):Int {
+	static function selectClassIndex(names:Array<String>, bases:Array<String>, path:String, source:String):Int {
 		if (names == null || names.length == 0)
 			return -1;
-		var lowerPath = path == null ? '' : path.toLowerCase();
+		var lowerPath = path == null ? '' : path.replace('\\', '/').toLowerCase();
 		// Song files occasionally carry a small options Module before their Song
 		// class.  The chart-local Song declaration owns the generated program; the
 		// Module is merged as a safe companion below.
@@ -1578,14 +1587,39 @@ class HxcCompat {
 		// declaration when a donor keeps a helper class in the same file.
 		if (lowerPath.indexOf('/characters/') >= 0 || lowerPath.indexOf('\\\\characters\\\\') >= 0
 			|| lowerPath.indexOf('/character/') >= 0) {
+			var characterIndex = selectCharacterClassIndex(names, path, source);
+			if (characterIndex >= 0)
+				return characterIndex;
+		}
+		if (lowerPath.indexOf('/stages/') >= 0 || lowerPath.indexOf('\\\\stages\\\\') >= 0) {
+			var identity = HxcScriptIdentity.inspect(source, 'stage',
+				haxe.io.Path.withoutExtension(haxe.io.Path.withoutDirectory(path.replace('\\', '/'))));
 			for (index in 0...names.length)
-				if (index < bases.length && isCharacterBase(bases[index]))
+				if (names[index] == identity.stageClassName)
+					return index;
+			for (index in 0...names.length)
+				if (index < bases.length && HxcScriptIdentity.familyForBase(bases[index]) == 'stage')
 					return index;
 		}
 		for (index in 0...names.length)
 			if (index < bases.length && isShaderBase(bases[index]))
 				return index;
+		// Misplaced character companions can also carry unrelated helper classes.
+		// Select their actor declaration once the directory's owning type is absent.
+		var characterIndex = selectCharacterClassIndex(names, path, source);
+		if (characterIndex >= 0)
+			return characterIndex;
 		return 0;
+	}
+
+	/** Keep generated actor callbacks tied to the lexical discovery owner. */
+	static function selectCharacterClassIndex(names:Array<String>, path:String, source:String):Int {
+		var identity = HxcScriptIdentity.inspect(source, 'character',
+			haxe.io.Path.withoutExtension(haxe.io.Path.withoutDirectory(path.replace('\\', '/'))));
+		for (index in 0...names.length)
+			if (names[index] == identity.characterClassName)
+				return index;
+		return -1;
 	}
 
 	static function isSongBase(base:String):Bool {
@@ -1596,10 +1630,7 @@ class HxcCompat {
 	}
 
 	static function isCharacterBase(base:String):Bool {
-		if (base == null || base == '')
-			return false;
-		var lower = base.toLowerCase();
-		return lower.indexOf('character') >= 0 || lower.indexOf('sparrowcharacter') >= 0;
+		return HxcScriptIdentity.familyForBase(base) == 'character';
 	}
 
 	static function isShaderBase(base:String):Bool {
@@ -1612,24 +1643,16 @@ class HxcCompat {
 	}
 
 	/** Extract balanced top-level class fragments for the companion merge. */
-	static function collectClassFragments(source:String, names:Array<String>, bases:Array<String>):Array<HxcCompatClassFragment> {
+	static function collectClassFragments(source:String):Array<HxcCompatClassFragment> {
 		var result:Array<HxcCompatClassFragment> = [];
-		if (source == null || names == null)
+		if (source == null)
 			return result;
-		for (index in 0...names.length) {
-			var name = names[index];
-			var base = index < bases.length ? bases[index] : '';
-			var expression = new EReg('\\bclass\\s+' + name
-				+ '\\s+extends\\s+[A-Za-z_][A-Za-z0-9_.]*[^\\{]*\\{', 'm');
-			if (!expression.match(source)) {
-				result.push({name:name, base:base, source:source});
+		for (declaration in HxcScriptIdentity.classDeclarations(source)) {
+			// Keep the existing executable-family boundary: plain helper classes
+			// have no engine base and are not standalone lifecycle owners.
+			if (declaration.base == '')
 				continue;
-			}
-			var position = expression.matchedPos();
-			var open = source.indexOf('{', position.pos);
-			var close = open < 0 ? -1 : matchingDelimiter(source, open, '{', '}');
-			var fragment = close < 0 ? source : source.substr(position.pos, close - position.pos + 1);
-			result.push({name:name, base:base, source:fragment});
+			result.push({name: declaration.name, base: declaration.base, source: declaration.source});
 		}
 		return result;
 	}
@@ -3301,7 +3324,8 @@ class HxcCompat {
 		// shared FlxSprite/Character fields. Preserve that receiver before the
 		// ordinary HXC syntax pass removes `this.` from script-owned fields.
 		var actorSource = source;
-		for (field in ['x', 'y', 'idleSuffix', 'isPixel', 'originalPosition', 'characterOrigin'])
+		for (field in ['x', 'y', 'idleSuffix', 'isPixel', 'originalPosition', 'characterOrigin', 'zIndex',
+			'offset', 'shader', 'antialiasing'])
 			actorSource = new EReg('\\bthis\\s*\\.\\s*' + field + '\\b', 'g')
 				.replace(actorSource, 'hxcCharacter().' + field);
 		for (method in ['resetPosition', 'playAnimation', 'playSingAnimation'])
@@ -3318,7 +3342,7 @@ class HxcCompat {
 		var actorFields = ['color', 'flipX', 'holdTimer', 'isPlayer', 'alpha', 'visible', 'animation'];
 		// Bare inherited fields have the same receiver in Haxe. A method-local
 		// declaration shadows it, so leave that spelling alone when present.
-		for (field in ['originalPosition', 'characterOrigin'])
+		for (field in ['originalPosition', 'characterOrigin', 'zIndex'])
 			if ((arguments == null || arguments.indexOf(field) < 0)
 				&& !new EReg('\\b(?:var|final)\\s+' + field + '\\b', 'm').match(stripComments(source)))
 				actorFields.push(field);
@@ -3561,6 +3585,11 @@ class HxcCompat {
 			+ 'Paths\\s*\\.\\s*image\\s*\\(\\s*["\\\'][^"\\\']+["\\\']\\s*'
 			+ '(?:,\\s*["\\\'][^"\\\']+["\\\']\\s*)?\\)\\s*\\)', 'g');
 		var otherDonorCalls = boundedTextureCache.replace(source, '');
+		// A death quote returns a sound path through the owner-scoped proxy.
+		// Other Paths operations retain their existing explicit diagnostics.
+		if (methodName != null && methodName.toLowerCase() == 'getdeathquote')
+			otherDonorCalls = new EReg('\\bPaths\\s*\\.\\s*sound\\b', 'g')
+				.replace(otherDonorCalls, 'hxcPaths.sound');
 		for (root in ['FunkinMemory', 'FlxAnimationUtil', 'Paths'])
 			if (new EReg('\\b' + root + '\\b', 'm').match(otherDonorCalls) && !gameOverAssetsSafe)
 				return false;
@@ -8596,9 +8625,21 @@ class HxcCompat {
 			{owner: 'PauseSubState', member: 'musicSuffix', setter: 'setPauseMusicSuffix', getter: 'pauseMusicSuffix'}
 		]) {
 			var assignment = new EReg('\\b' + field.owner + '\\s*\\.\\s*' + field.member
-				+ '\\s*=\\s*([^;\\n]+)', 'g');
-			output = assignment.replace(output,
-				'HxcCompatRuntime.' + field.setter + '($1)');
+				+ '\\s*=(?!=)\\s*', 'g');
+			var assignmentOffset = 0;
+			while (assignment.matchSub(output, assignmentOffset)) {
+				var span = assignment.matchedPos();
+				var expressionStart = span.pos + span.len;
+				// Source assignments can contain multiline ternaries and quoted
+				// semicolons. End at the statement boundary, not a physical line.
+				var expressionLength = findTopLevelToken(output.substr(expressionStart), ';');
+				if (expressionLength < 0) break;
+				var expression = output.substr(expressionStart, expressionLength);
+				var replacement = 'HxcCompatRuntime.' + field.setter + '(' + expression + ')';
+				output = output.substr(0, span.pos) + replacement
+					+ output.substr(expressionStart + expressionLength);
+				assignmentOffset = span.pos + replacement.length;
+			}
 			output = new EReg('\\b' + field.owner + '\\s*\\.\\s*' + field.member + '\\b', 'g')
 				.replace(output, 'HxcCompatRuntime.' + field.getter);
 		}
@@ -8764,6 +8805,8 @@ class HxcCompat {
 			.replace(output, 'HxcCompatRuntime.setPlayerVocalVolume($1, $2);');
 		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*playerVolume\\b', 'g')
 			.replace(output, 'HxcCompatRuntime.getPlayerVocalVolume($1)');
+		output = new EReg('\\b(PlayState\\s*\\.\\s*instance|currentPlayState|game)\\s*\\.\\s*vocals\\s*\\.\\s*opponentVoices\\b', 'g')
+			.replace(output, 'HxcCompatRuntime.opponentVocalTracks($1)');
 		// V-Slice modules also spell the active chart identity as
 		// currentChart.song.id. The native SwagSong stores that identity directly
 		// in SONG.song, so lower this exact donor field chain before HScript sees
@@ -10445,7 +10488,7 @@ class HxcCompat {
 		// Keep call arguments free of nested delimiters here.  A permissive
 		// `[^;{}\\n]*` call matcher can consume across a ternary and rewrite
 		// `getDad() != null ? getDad().zIndex` as one malformed receiver.
-		var receiver = '[A-Za-z_][A-Za-z0-9_]*(?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*'
+		var receiver = '[A-Za-z_][A-Za-z0-9_]*(?:\\s*\\([^(){};\\n]*\\))?(?:\\s*\\.\\s*[A-Za-z_][A-Za-z0-9_]*'
 			+ '(?:\\s*\\([^(){};\\n]*\\))?)*';
 		var assignment = new EReg('\\b(' + receiver + ')'
 			+ '\\s*\\.\\s*zIndex\\s*(=|\\+=|-=|\\*=|/=)\\s*([^;\\n]+)', 'g');
@@ -10738,17 +10781,40 @@ class HxcCompat {
 				index++;
 				continue;
 			}
+			if (current == '~' && next == '/') {
+				var end = HxcScriptIdentity.regexLiteralEnd(source, index);
+				output.add(source.substring(index, end));
+				index = end;
+				continue;
+			}
 			if (current == '/' && next == '/') {
+				output.add(' ');
 				index += 2;
 				while (index < source.length && source.charAt(index) != '\n' && source.charAt(index) != '\r')
 					index++;
 				continue;
 			}
 			if (current == '/' && next == '*') {
+				// Comments separate tokens and Haxe allows nested block comments.
+				// Removing only through the first */ can expose a false class owner.
+				output.add(' ');
 				index += 2;
-				while (index + 1 < source.length && !(source.charAt(index) == '*' && source.charAt(index + 1) == '/'))
-					index++;
-				index = index + 1 < source.length ? index + 2 : source.length;
+				var depth = 1;
+				while (index < source.length && depth > 0) {
+					var commentCurrent = source.charAt(index);
+					var commentNext = index + 1 < source.length ? source.charAt(index + 1) : '';
+					if (commentCurrent == '/' && commentNext == '*') {
+						depth++;
+						index += 2;
+					} else if (commentCurrent == '*' && commentNext == '/') {
+						depth--;
+						index += 2;
+					} else {
+						if (commentCurrent == '\n' || commentCurrent == '\r')
+							output.add(commentCurrent);
+						index++;
+					}
+				}
 				continue;
 			}
 			output.add(current);

@@ -1,5 +1,7 @@
 """Focused interpreter tests for the shared Codename transition adapters."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -49,8 +51,8 @@ class CodenameMusicBeatTransitionTest(unittest.TestCase):
   lease.clear("owner");
   if (lease.take("owner", chart) != null) throw "abandoned lease survived";
  }
-}''')
-            result = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                      "--run", "Main"], capture_output=True, text=True, cwd=ROOT)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -156,9 +158,9 @@ class CodenameMusicBeatTransitionTest(unittest.TestCase):
   CodenameTransitionScope.restoreStaticVariables(a, 'data/stickerTransition.hx', ['lastStickers'], cleared);
   if (cleared.exists('lastStickers')) throw 'owner static state survived clear';
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -168,7 +170,7 @@ class CodenameMusicBeatTransitionTest(unittest.TestCase):
             base = Path(directory)
             (base / "CodenameStickerPack.hx").write_text(
                 (ROOT / "source/CodenameStickerPack.hx").read_text()
-            )
+            , newline='\n')
             stubs = {
                 "CodenamePaths.hx": '''class CodenamePaths {
  public var root:String;
@@ -200,7 +202,7 @@ class FlxG {
             for name, source in stubs.items():
                 dest = base / name
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(source)
+                dest.write_text(source, newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
  static function main() {
   var root = CodenameModRuntime.activeRoot();
@@ -243,9 +245,9 @@ class FlxG {
   if (error.indexOf('Default sticker pack') < 0) throw 'missing default did not fail clearly: ' + error;
   CodenameTransitionScope.clearOwner('/mods/foreign');
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

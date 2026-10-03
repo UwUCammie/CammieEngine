@@ -1,9 +1,12 @@
 """Keep NMV teardown complete while preserving owner-save flush failures."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -90,11 +93,12 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
-            (work / 'Main.hx').write_text(fixture)
+            write_flixel_point_stub(work)
+            (work / 'Main.hx').write_text(fixture, newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                        [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                          '-cp', str(IRIS), '-cp', str(work)] + defines + ['--run', 'Main'],
                         cwd=ROOT, capture_output=True, text=True, timeout=45)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

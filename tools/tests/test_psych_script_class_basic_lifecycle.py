@@ -1,6 +1,8 @@
 """Native lifecycle bridge for owner ScriptClass FlxBasic members."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -98,7 +100,7 @@ class CutsceneProbe extends FlxBasic {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             probe = base / "PsychScriptClassBasicLifecycleProbe.hx"
             probe.write_text(
                 r'''import flixel.FlxBasic;
@@ -182,9 +184,9 @@ class PsychScriptClassBasicLifecycleProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"), "-cp", str(base),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,

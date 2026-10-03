@@ -1,6 +1,8 @@
 """Exercise release selection and the bundled Windows updater handoff."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -44,9 +46,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(fixture)
+            Path(folder, "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-D", "windows", "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-D", "windows", "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, env={**__import__("os").environ,
                                "UPDATER_PROGRESS_FIXTURE": folder},
@@ -65,10 +67,22 @@ class Main {
  static function main():Void {
   var digest = "sha256:" + StringTools.lpad("", "0", 64);
   check(UpdateChecker.compareTags("v0.0.1-alpha.9", "v0.0.1-alpha.10") == -1,
-   "numeric prerelease comparison failed");
+   "legacy numeric prerelease comparison failed");
   check(UpdateChecker.compareTags("v0.0.1-alpha.10", "v0.0.1") == -1,
-   "stable release must sort after prerelease");
-  check(UpdateChecker.isNewerTag("unknown", "v0.0.1-alpha.10"),
+   "legacy stable release must sort after prerelease");
+  check(UpdateChecker.versionFromTag("v0.0.9") != null,
+   "numeric release version was rejected");
+  check(UpdateChecker.compareTags("v0.0.1-alpha.8", "v0.0.9") == -1,
+   "an alpha.8 install must sort below the numeric v0.0.9 release");
+  check(UpdateChecker.isNewerTag("v0.0.1-alpha.8", "v0.0.9"),
+   "an alpha.8 install must be offered the numeric v0.0.9 release");
+  check(UpdateChecker.compareTags("v0.0.9", "v0.0.10") == -1,
+   "numeric patch versions must sort numerically across digit widths");
+  check(UpdateChecker.isNewerTag("v0.0.9", "v0.0.10"),
+   "v0.0.10 must be offered to a v0.0.9 install");
+  check(UpdateChecker.archiveFileName("v0.0.10") == "CammieEngine-v0.0.10-windows-x64.zip",
+   "numeric release archive name failed");
+  check(UpdateChecker.isNewerTag("unknown", "v0.0.9"),
    "unknown installs must be offered the release");
   check(UpdateChecker.archiveFileName("../escape") == null,
    "unsafe release tags must not form an archive name");
@@ -82,31 +96,36 @@ class Main {
    {tag_name:"v0.0.1-alpha.11", draft:true, assets:[
     {name:"CammieEngine-v0.0.1-alpha.11-windows-x64.zip", digest:digest, size:10},
     {name:"SHA256SUMS.txt"}]},
-   {tag_name:"v0.0.1-alpha.12", draft:false, assets:[
-    {name:"CammieEngine-v0.0.1-alpha.12-linux-x64.zip", digest:digest, size:10},
+   {tag_name:"v0.0.12", draft:false, prerelease:true, assets:[
+    {name:"CammieEngine-v0.0.12-linux-x64.zip", digest:digest, size:10},
     {name:"SHA256SUMS.txt"}]},
-   {tag_name:"v0.0.1-alpha.10", draft:false, assets:[
-    {name:"CammieEngine-v0.0.1-alpha.10-windows-x64.zip", digest:digest, size:1073741824},
+   {tag_name:"v0.0.10", draft:false, prerelease:true, assets:[
+    {name:"CammieEngine-v0.0.10-windows-x64.zip", digest:digest, size:1073741824},
     {name:"SHA256SUMS.txt"}]},
-   {tag_name:"v0.0.1-alpha.9", draft:false, assets:[
-    {name:"CammieEngine-v0.0.1-alpha.9-windows-x64.zip", digest:digest, size:50},
+   {tag_name:"v0.0.9", draft:false, prerelease:true, assets:[
+    {name:"CammieEngine-v0.0.9-windows-x64.zip", digest:digest, size:50},
     {name:"SHA256SUMS.txt"}]},
-   {tag_name:"v0.0.1-alpha.13", draft:false, assets:[
-    {name:"CammieEngine-v0.0.1-alpha.13-windows-x64.zip", size:50},
+   {tag_name:"v0.0.1-alpha.8", draft:false, prerelease:true, assets:[
+    {name:"CammieEngine-v0.0.1-alpha.8-windows-x64.zip", digest:digest, size:30},
+    {name:"SHA256SUMS.txt"}]},
+   {tag_name:"v0.0.13", draft:false, prerelease:true, assets:[
+    {name:"CammieEngine-v0.0.13-windows-x64.zip", size:50},
     {name:"SHA256SUMS.txt"}]}
   ];
   var selected = UpdateChecker.parseLatestRelease(haxe.Json.stringify(releases));
-  check(selected != null && selected.tag == "v0.0.1-alpha.10",
-   "release selection did not filter draft, platform, and checksum metadata");
+  check(selected != null && selected.tag == "v0.0.10",
+   "release selection did not accept numeric prereleases or filter draft, platform, and checksum metadata");
+  check(UpdateChecker.isNewerTag("v0.0.1-alpha.8", selected.tag),
+   "the selected numeric prerelease was not newer than a legacy alpha.8 install");
   check(selected.sizeBytes == 1073741824, "release asset size was lost");
 
  }
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(fixture)
+            Path(folder, "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-D", "windows", "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-D", "windows", "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

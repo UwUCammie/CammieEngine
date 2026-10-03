@@ -1,5 +1,7 @@
 """Execute Character's live Codename draw and screen geometry methods."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -151,7 +153,7 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             work = Path(work)
-            (work / 'Main.hx').write_text(fixture)
+            (work / 'Main.hx').write_text(fixture, newline='\n')
             # The extracted draw method only needs these smoke hooks. Adding the
             # whole source classpath resolves the production harness instead,
             # which pulls Flixel and the complete Character dependency graph
@@ -159,8 +161,8 @@ class Main {
             (work / 'RuntimeSmokeHarness.hx').write_text('''class RuntimeSmokeHarness {
  public static function profileEnabled():Bool return false;
  public static function profileSection(_name:String,_seconds:Float):Void {}
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', work,
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', work,
                                      '--run', 'Main'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

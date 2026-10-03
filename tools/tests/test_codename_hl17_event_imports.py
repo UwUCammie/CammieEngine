@@ -1,6 +1,8 @@
 """Exercise the shared legacy imports used by selected-owner HL17 event classes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -74,13 +76,13 @@ class HLTextbox extends FlxSprite {
             for relative, content in modules.items():
                 path = base / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             (base / "CodenameScriptInterp.hx").write_text('''class CodenameScriptInterp {
  public var variables:Map<String,Dynamic>=new Map();
  public function new() {}
  public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import flixel.math.FlxMath;
 import flixel.FlxSprite;
 import flixel.util.FlxSpriteUtil;
@@ -106,10 +108,10 @@ class Main {
    throw "legacy FlxMath import did not execute";
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
             command = [
-                str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                 "--run", "Main", str(owner),
@@ -129,14 +131,14 @@ class Main {
             owner = base / "owner"
             owner_source = owner / "source/HLTextbox.hx"
             owner_source.parent.mkdir(parents=True, exist_ok=True)
-            owner_source.write_text(HL17_DONOR.read_text(encoding="utf-8"), encoding="utf-8")
+            owner_source.write_text(HL17_DONOR.read_text(encoding="utf-8"), encoding="utf-8", newline='\n')
             (owner_source.parent / "RobloxTextbox.hx").write_text(
                 ROBLOX_DONOR.read_text(encoding="utf-8"), encoding="utf-8"
-            )
+            , newline='\n')
             (owner / "source/PositionProbe.hx").write_text('''import fixture.NativePoint;
 class PositionProbe extends NativePoint {
  public function new() { super(x,y); }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
             stubs = {
                 "flixel/FlxSprite.hx": '''package flixel;
@@ -238,13 +240,13 @@ class FlxEase { public static var expoOut:Dynamic=0; public static var backIn:Dy
             for relative, content in stubs.items():
                 path = base / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             (base / "CodenameScriptInterp.hx").write_text('''class CodenameScriptInterp {
  public var variables:Map<String,Dynamic>=new Map();
  public function new() {}
  public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import flixel.FlxG;
 import flixel.FlxSprite;
 import fixture.NativePoint;
@@ -328,10 +330,10 @@ class Main {
   bubbleTimer.fire();
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
             command = [
-                str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                 "--run", "Main", str(owner),

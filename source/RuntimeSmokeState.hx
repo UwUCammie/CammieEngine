@@ -68,6 +68,17 @@ class RuntimeSmokeState extends FlxState {
 				if (!CodenameModRuntime.activateChartOwner(request.ownerRoot))
 					throw 'selected smoke owner has no installed Codename state';
 			}
+			if (request.returnFreeplay) {
+				// Direct smoke entry skips CategoryState, so seed the same merged
+				// All-song rows the ordinary category chooser would pass to Freeplay.
+				var globalSongs = RuntimeSmokeHarness.selectFreeplaySongs();
+				var population = RuntimeSmokeHarness.freeplayReturnPopulation(cast globalSongs,
+					function(songName:String):String
+						return ImportedModDiscovery.ownerForSong(songName, 'assets/data'));
+				if (!RuntimeSmokeHarness.freeplayReturnScopeValid('', '', population))
+					throw 'return-Freeplay smoke requires an All list with base and imported rows';
+				FreeplayState.currentSongList = globalSongs;
+			}
 			if (request.chartEditor)
 				FlxG.switchState(new ChartingState());
 			else

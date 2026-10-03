@@ -1,6 +1,8 @@
 """Psych compiled stages get donor FlxAnimate cursor fields on the native adapter."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -67,9 +69,9 @@ class PsychModchartAnimateProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(base),
                 *FLIXEL_ARGS,
@@ -100,9 +102,9 @@ class PsychModchartAnimateProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(base),
                 *FLIXEL_ARGS,
@@ -141,9 +143,9 @@ class PsychFlxAnimateProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(base),
                 *FLIXEL_ARGS,
@@ -196,9 +198,9 @@ class PsychFlxAnimateCompletionProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(base),
                 *FLIXEL_ARGS,

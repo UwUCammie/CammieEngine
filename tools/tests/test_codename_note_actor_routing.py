@@ -1,5 +1,7 @@
 """Exercise the actual PlayState exact-line singer helper with small actors."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -78,8 +80,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, 'Main.hx').write_text(fixture)
-            command = [str(ROOT / '.tools/haxe/haxe'), '-cp', tmp, '-main', 'Main', '--interp']
+            Path(tmp, 'Main.hx').write_text(fixture, newline='\n')
+            command = [*HAXE_COMMAND, '-cp', tmp, '-main', 'Main', '--interp']
             result = subprocess.run(command, cwd=ROOT, env=os.environ.copy(), text=True,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout)

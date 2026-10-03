@@ -1,5 +1,7 @@
 """Psych source defaults fill absent chart stages without donor-specific rules."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -77,9 +79,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
@@ -114,9 +116,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "--run", "Main", folder],
                 cwd=ROOT,
                 capture_output=True,
@@ -168,9 +170,9 @@ class ImportCompat {{
 }}
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "ImportCompat.hx").write_text(fixture)
+            (Path(folder) / "ImportCompat.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

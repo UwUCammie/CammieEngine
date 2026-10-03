@@ -1,10 +1,12 @@
 """Popipo's incomplete difficulty graphics must use sibling metadata."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -163,9 +165,9 @@ class PopipoVisualFallbackTest {
 
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "PopipoVisualFallbackTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "PopipoVisualFallbackTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,

@@ -1,6 +1,7 @@
 """Chug's difficulty charts must use its installed Miku character."""
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 import xml.etree.ElementTree as ET
 

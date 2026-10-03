@@ -1,6 +1,8 @@
 """Focused coverage for bounded validation rejections in song discovery."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -143,9 +145,9 @@ class SongImportRejectionFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "SongImportRejectionFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "SongImportRejectionFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "SongImportRejectionFixture"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

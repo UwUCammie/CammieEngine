@@ -1,10 +1,12 @@
 """Mounted regressions for complete HXC stage countdown shader callbacks."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,8 +28,8 @@ class HxcStageRuntimeShaderBridgeTest(unittest.TestCase):
     def run_fixture(self, source: str, *args: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(prefix="hxc-stage-shader-", dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
-            command = [str(HAXE), "-cp", str(ROOT / "source"),
+            main.write_text(source, newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", folder,
                        "--run", "Main", *args]
             return subprocess.run(command, cwd=ROOT, capture_output=True,

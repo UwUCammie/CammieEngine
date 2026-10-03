@@ -1,3 +1,4 @@
+from haxe_test_support import HAXE_COMMAND
 import pathlib
 import subprocess
 import tempfile
@@ -68,9 +69,9 @@ class Main {{
 """
 
         with tempfile.TemporaryDirectory() as folder:
-            (pathlib.Path(folder) / "Main.hx").write_text(haxe)
+            (pathlib.Path(folder) / "Main.hx").write_text(haxe, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

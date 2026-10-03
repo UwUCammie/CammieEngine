@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 from tools.inventory_nonasset_overlays import (
 	build_audit,
@@ -18,8 +19,8 @@ class NonAssetOverlayInventoryTests(unittest.TestCase):
 			(root / "mods/intro/_append/data").mkdir(parents=True)
 			(root / "mods/another/_replace/images").mkdir(parents=True)
 			(root / "assets/images").mkdir(parents=True)
-			(root / "_merge/data/config.json").write_text("{}", encoding="utf-8")
-			(root / "mods/intro/_append/data/intro.txt").write_text("+line", encoding="utf-8")
+			(root / "_merge/data/config.json").write_text("{}", encoding="utf-8", newline='\n')
+			(root / "mods/intro/_append/data/intro.txt").write_text("+line", encoding="utf-8", newline='\n')
 			(root / "mods/another/_replace/images/menu.png").write_bytes(b"image")
 			(root / "assets/images/not-an-overlay.png").write_bytes(b"asset")
 
@@ -40,7 +41,7 @@ class NonAssetOverlayInventoryTests(unittest.TestCase):
 		with tempfile.TemporaryDirectory() as temp_dir:
 			root = Path(temp_dir) / "mods"
 			(root / "alpha/_append/data").mkdir(parents=True)
-			(root / "alpha/_append/data/intro.txt").write_text("tail", encoding="utf-8")
+			(root / "alpha/_append/data/intro.txt").write_text("tail", encoding="utf-8", newline='\n')
 			self.assertEqual(
 				[entry["path"] for entry in scan_directory_overlays(root)],
 				["alpha/_append/data/intro.txt"],
@@ -68,10 +69,10 @@ class NonAssetOverlayInventoryTests(unittest.TestCase):
 			mount = Path(temp_dir) / "examples"
 			current = mount / "group" / "relocated"
 			(current / "mods/alpha/_append/data").mkdir(parents=True)
-			(current / "mods/alpha/_append/data/intro.txt").write_text("tail", encoding="utf-8")
+			(current / "mods/alpha/_append/data/intro.txt").write_text("tail", encoding="utf-8", newline='\n')
 			unknown = mount / "unlisted-project"
 			(unknown / "source_code").mkdir(parents=True)
-			(mount / "unlisted-project-marker.txt").write_text("root", encoding="utf-8")
+			(mount / "unlisted-project-marker.txt").write_text("root", encoding="utf-8", newline='\n')
 
 			inventory = {
 				"packages": [
@@ -89,7 +90,7 @@ class NonAssetOverlayInventoryTests(unittest.TestCase):
 			audit = build_audit(inventory, mount)
 
 		self.assertEqual(audit["packages"][0]["rootResolution"], "uniqueBasenameWithinMountRoot")
-		self.assertEqual(audit["packages"][0]["resolvedRoot"], str(current))
+		self.assertEqual(Path(audit["packages"][0]["resolvedRoot"]), current)
 		self.assertEqual(
 			audit["packages"][0]["overlayPathsNewToBaseCatalog"],
 			["mods/alpha/_append/data/intro.txt"],

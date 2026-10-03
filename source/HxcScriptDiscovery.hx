@@ -1,15 +1,24 @@
 package;
 
 import haxe.io.Path;
+import HxcScriptIdentity.HxcScriptIdentityData;
 #if sys
 import sys.FileSystem;
+import sys.io.File;
 #end
 using StringTools;
 
+private typedef HxcScriptIdentityCacheEntry = {
+	var modifiedAt:Float;
+	var size:Int;
+	var data:HxcScriptIdentityData;
+}
+
 /**
-	Filesystem-independent HXC layout discovery.  Importers can feed this helper
-	a list of candidate paths from any source root and keep chart-local scripts
-	separate from global modules/events without opening or modifying donor files.
+	HXC layout and declared-source discovery. Importers can feed candidate paths
+	from any source root; readable files refine character/stage identity without
+	executing or modifying donor code, while missing fixture paths retain layout
+	matching.
 */
 typedef HxcScriptDiscoveryResult = {
 	var all:Array<String>;
@@ -21,6 +30,14 @@ typedef HxcScriptDiscoveryResult = {
 }
 
 class HxcScriptDiscovery {
+	#if sys
+	/**
+		Source identity is metadata only. Re-read a real HXC file when its size or
+		mtime changes; nonexistent test/fixture paths keep their path-only result.
+	*/
+	static var sourceIdentityCache:Map<String, HxcScriptIdentityCacheEntry> = new Map();
+	#end
+
 	#if sys
 	/** Enumerate a copied donor scripts tree with bounded recursion. */
 	public static function discoverRoot(root:String, ?songId:String, maxFiles:Int = 4096):HxcScriptDiscoveryResult {
@@ -127,6 +144,17 @@ class HxcScriptDiscovery {
 
 	/** Map the donor directory layout to a stable importer family name. */
 	public static function familyForPath(path:String):String {
+		var pathFamily = layoutFamilyForPath(path);
+		#if sys
+		var metadata = sourceIdentity(path, pathFamily);
+		if (metadata != null)
+			return metadata.family;
+		#end
+		return pathFamily;
+	}
+
+	/** Return the original path-based family without reading the source file. */
+	static function layoutFamilyForPath(path:String):String {
 		if (path == null || path == '')
 			return 'unknown';
 		var normalized = path.replace('\\', '/').toLowerCase();
@@ -152,6 +180,35 @@ class HxcScriptDiscovery {
 		}
 		return 'unknown';
 	}
+
+	#if sys
+	static function sourceIdentity(path:String, pathFamily:String):HxcScriptIdentityData {
+		if (path == null || path == '' || !path.toLowerCase().endsWith('.hxc'))
+			return null;
+		var normalized = Path.normalize(StringTools.replace(path, '\\', '/'));
+		var key = normalized + '\u0000' + (pathFamily == null ? '' : pathFamily);
+		if (!FileSystem.exists(path)) {
+			sourceIdentityCache.remove(key);
+			return null;
+		}
+		try {
+			var stat = FileSystem.stat(path);
+			var modifiedAt = stat.mtime == null ? 0 : stat.mtime.getTime();
+			var cached = sourceIdentityCache.get(key);
+			if (cached != null && cached.modifiedAt == modifiedAt && cached.size == stat.size)
+				return cached.data;
+			// Replace a stale record before parsing so a failed read cannot leave an
+			// old valid identity attached to a changed file.
+			sourceIdentityCache.remove(key);
+			var data = HxcScriptIdentity.inspect(File.getContent(path), pathFamily, stem(path));
+			sourceIdentityCache.set(key, {modifiedAt: modifiedAt, size: stat.size, data: data});
+			return data;
+		} catch (_:Dynamic) {
+			sourceIdentityCache.remove(key);
+			return null;
+		}
+	}
+	#end
 
 	/**
 		Partition candidate paths.  Only `scripts/songs/<song>.hxc` is chart-local
@@ -214,10 +271,30 @@ class HxcScriptDiscovery {
 
 	/** Stable character id used by runtime routing and imported manifests. */
 	public static function characterId(path:String):String {
+		var pathFamily = layoutFamilyForPath(path);
+		#if sys
+		var metadata = sourceIdentity(path, pathFamily);
+		if (metadata != null) {
+			if (metadata.family != 'character')
+				return '';
+			if (metadata.hasCharacterClass) {
+				var declaredId = normalizeToken(metadata.characterId);
+				if (declaredId != '')
+					return declaredId;
+				// A selected character file in the canonical character tree may use a
+				// non-literal base constructor (for example a CharacterInfo wrapper).
+				// Its filename is still the established runtime identity there. Do not
+				// guess from a misplaced class file or from an unrelated helper class.
+				return pathFamily == 'character' ? normalizeToken(stem(path)) : '';
+			}
+			// Old classless callback scripts are still selected by their filename.
+			return metadata.hasDeclarations ? '' : normalizeToken(stem(path));
+		}
+		#end
 		return normalizeToken(stem(path));
 	}
 
-	/** Match a character companion by its filename, without opening the donor. */
+	/** Match a character companion using the shared declared-source identity. */
 	public static function characterMatches(path:String, names:Array<String>):Bool {
 		if (familyForPath(path) != 'character')
 			return false;
@@ -226,6 +303,41 @@ class HxcScriptDiscovery {
 			return false;
 		for (name in names)
 			if (id == normalizeToken(name))
+				return true;
+		return false;
+	}
+
+	/** Stable stage id used by runtime routing; declared literal ids win over filenames. */
+	public static function stageId(path:String):String {
+		var pathFamily = layoutFamilyForPath(path);
+		#if sys
+		var metadata = sourceIdentity(path, pathFamily);
+		if (metadata != null) {
+			// A concrete declaration from another family owns this file even when a
+			// stale `stages/` path would otherwise suggest a stage companion.
+			if (metadata.family != 'stage')
+				return '';
+			var declaredId = normalizeToken(metadata.stageId);
+			if (metadata.hasStageClass && declaredId != '')
+				return declaredId;
+			// Legacy/classless stage scripts and Stage wrappers with nonliteral
+			// constructors retain the established filename identity.
+			return normalizeToken(stem(path));
+		}
+		#end
+		return normalizeToken(stem(path));
+	}
+
+	/** Match a stage companion by declared constructor id, falling back to its filename. */
+	public static function stageMatches(path:String, names:Array<String>):Bool {
+		if (familyForPath(path) != 'stage')
+			return false;
+		var id = stageId(path);
+		var filenameId = normalizeToken(stem(path));
+		if ((id == '' && filenameId == '') || names == null)
+			return false;
+		for (name in names)
+			if (id == normalizeToken(name) || filenameId == normalizeToken(name))
 				return true;
 		return false;
 	}

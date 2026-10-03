@@ -1,5 +1,7 @@
 """HScript-ex class loading normalizes Haxe expression-bodied methods safely."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -24,7 +26,7 @@ def haxe_env():
 
 def fixture_command(base, *arguments):
     return [
-        str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+        *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
         "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
         "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *arguments,
     ]
@@ -56,7 +58,7 @@ class Main {
    throw 'comment/string changed';
   new ParserEx().parseModule(normalized,'fixture');
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main"), cwd=ROOT, env=haxe_env(),
                 text=True, capture_output=True, timeout=60,
@@ -90,7 +92,7 @@ class Main {
   var module=new ParserEx().parseModule(repaired,path);
   if(module.length==0) throw 'mounted module parsed as empty';
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main", str(GAMEPLAY_CHANGERS.parents[2]),
                                 str(GAMEPLAY_CHANGERS)),

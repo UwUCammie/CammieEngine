@@ -1,5 +1,7 @@
 """Execute the actual Psych mouse bridge against the pinned Flixel transform."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -57,8 +59,8 @@ class Main {
 }
 '''.replace('TRANSFORM', transform).replace('METHODS', methods)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'Main', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

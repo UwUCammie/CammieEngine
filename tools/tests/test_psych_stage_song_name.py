@@ -1,6 +1,8 @@
 """Psych stage songName follows Paths.formatToSongPath, not chart title case."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -26,9 +28,9 @@ class PsychStageSongNameTest(unittest.TestCase):
    throw 'source path convention';
  }
 }
-""", encoding="utf-8")
+""", encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

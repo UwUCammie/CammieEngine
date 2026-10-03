@@ -1,6 +1,7 @@
 """Exercise the production camera-filter boundary with owned shader handles."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -41,7 +42,7 @@ class HxcFilterAssignmentOwnerTest(unittest.TestCase):
             (scratch / "openfl/filters").mkdir(parents=True)
             (scratch / "openfl/filters/BitmapFilter.hx").write_text(
                 "package openfl.filters; class BitmapFilter { public function new() {} }\n"
-            )
+            , newline='\n')
             (scratch / "PlayState.hx").write_text(
                 "import openfl.filters.BitmapFilter; using StringTools;\n"
                 "class PlayState {\n"
@@ -51,7 +52,7 @@ class HxcFilterAssignmentOwnerTest(unittest.TestCase):
                 " public function add(handle:String,filter:Dynamic):Void "
                 "hxcRuntimeShaderBindings.set(handle,{filter:filter});\n"
                 + binding + "\n" + resolver + "\n}\n"
-            )
+            , newline='\n')
             (scratch / "HxcCompatRuntime.hx").write_text(
                 "class HxcCompatRuntime {\n"
                 " static var activeState:Dynamic;\n"
@@ -60,7 +61,7 @@ class HxcFilterAssignmentOwnerTest(unittest.TestCase):
                 " static function runtimeField(value:Dynamic,name:String):Dynamic "
                 "return Reflect.field(value,name);\n"
                 + assign + "\n}\n"
-            )
+            , newline='\n')
             (scratch / "Main.hx").write_text(
                 "import openfl.filters.BitmapFilter;\n"
                 "class Main {\n"
@@ -78,7 +79,7 @@ class HxcFilterAssignmentOwnerTest(unittest.TestCase):
                 "  HxcCompatRuntime.assignFilters(camera,[]);\n"
                 "  check(camera.filters==null,'empty assignment did not clear filters');\n"
                 " }\n}\n"
-            )
+            , newline='\n')
             result = subprocess.run(
                 [str(haxe), "-cp", str(scratch), "--interp", "-main", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,

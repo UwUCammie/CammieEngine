@@ -3,8 +3,8 @@ package;
 import haxe.Json;
 import haxe.io.Path;
 #if sys
-import sys.FileSystem;
-import sys.io.File;
+import ImportFileSystem as FileSystem;
+import ImportFile as File;
 #end
 
 using StringTools;

@@ -1,5 +1,7 @@
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +40,7 @@ class PsychScriptMediaCompatTest(unittest.TestCase):
         self.assertNotIn("selectedRoot", fallback)
         self.assertNotIn("selectedPsychSkinRoot", fallback)
 
+    @unittest.skipIf(not (ROOT.parent / 'FNF-Example-Mods/misc/psych_source_code/source/psychlua/FunkinLua.hx').is_file(), 'mounted Psych source fixture is unavailable')
     def test_donor_and_results_script_use_the_supported_paths(self):
         psych = PSYCH_SOURCE.read_text(encoding="utf-8")
         self.assertIn('Lua_helper.add_callback(lua, "precacheImage"', psych)

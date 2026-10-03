@@ -1,6 +1,8 @@
 """Regression coverage for the live Kade/FPS Plus ``songPos`` alias."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -61,9 +63,9 @@ class KadeClockCompat {{
 """.format(method=method)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "KadeClockCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "KadeClockCompat", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "KadeClockCompat", "--interp"],
                 cwd=ROOT,
                 env={**__import__("os").environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,
@@ -98,10 +100,10 @@ class KadeCorpusCompat {{
 """.format(path=str(KADE_MODCHART).replace('\\', '\\\\').replace('"', '\\"'))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "KadeCorpusCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

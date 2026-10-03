@@ -3,12 +3,15 @@
 This covers its import and callback contract, not the plugin implementation or
 native gameplay integration.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import hashlib
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 ROOT = Path(__file__).resolve().parents[2]
 DONOR = (ROOT.parent / "FNF-Example-Mods/nightmare-vision/dsides_r_11_final"
@@ -21,6 +24,7 @@ class NightmareVisionCompletionScriptTest(unittest.TestCase):
         before = hashlib.sha256(DONOR.read_bytes()).hexdigest()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / "Main.hx").write_text(r'''
 class Main {
  static var errors:Array<String> = [];
@@ -69,11 +73,11 @@ class Main {
   eq(pluginCalls,3); eq(flushes,2);
   reloaded.destroy(); other.destroy(); eq(errors.length,0);
  }
-}''')
+}''', newline='\n')
             for flags in ([], ["-D", "hscriptPos"]):
                 with self.subTest(flags=flags):
                     result = subprocess.run(
-                        [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                        [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                          "-cp", str(ROOT / ".haxelib/hscript-iris/1,1,3"),
                          "-cp", str(work)] + flags + ["--run", "Main", str(DONOR)],
                         cwd=ROOT, capture_output=True, text=True, timeout=30)

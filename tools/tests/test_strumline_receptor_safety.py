@@ -7,8 +7,10 @@ their own subgroup, so those calls can never pollute receptor iteration; this
 fork's Strumline *is* the receptor group, so the native gameplay loops rely on
 the routing/guard contract pinned here.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -20,8 +22,8 @@ HAXE = ROOT / ".tools/haxe/haxe"
 def run_interp(main_source: str, extra_classpaths=None, classpath_first=False):
     with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
         temp = Path(folder)
-        (temp / "Main.hx").write_text(main_source)
-        command = [str(HAXE)]
+        (temp / "Main.hx").write_text(main_source, newline='\n')
+        command = [*HAXE_COMMAND]
         paths = [str(ROOT / "source"), str(temp)]
         if classpath_first:
             paths = [str(temp), str(ROOT / "source")]
@@ -194,10 +196,10 @@ class Main {
  }
 }
 '''
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             # The temp classpath must come last: duplicate module names resolve
             # to the last classpath, so this shadows source/Main.hx.
-            command = [str(HAXE), "-cp", str(ROOT / "source"),
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                        "-cp", str(temp), "-main", "Main", "--interp"]
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=300)

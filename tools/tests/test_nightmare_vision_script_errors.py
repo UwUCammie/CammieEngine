@@ -1,9 +1,12 @@
 """NMV interpreter error and control-flow behavior, executed with Iris."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +18,7 @@ class NightmareVisionScriptErrorsTest(unittest.TestCase):
     def test_unknown_variable_errors_loop_control_and_recovery(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / "Main.hx").write_text(r'''
 enum ForeignFlow {
  SBreak;
@@ -56,6 +60,8 @@ class Main {
   var script = g.loadSource('errors.hx', '
    var attempts = 0;
    function functionError() return missingFunction;
+   function nullRead() { var target = null; return target.visible; }
+   function nullWrite() { var target = null; target.visible = false; }
    function whileError() {
     var index = 0;
     while (index < 1) { index++; var value = missingWhile; }
@@ -117,6 +123,8 @@ class Main {
   if (script == null) fail('valid error fixture failed to load: ' + errors.join(','));
 
   assertCallbackError(g, 'functionError');
+  assertCallbackError(g, 'nullRead');
+  assertCallbackError(g, 'nullWrite');
   assertCallbackError(g, 'whileError');
   assertCallbackError(g, 'doWhileError');
   assertCallbackError(g, 'forError');
@@ -150,11 +158,11 @@ class Main {
   g.destroy();
  }
 }
-''')
+''', newline='\n')
             for defines in ([], ["-D", "hscriptPos"]):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work)]
+                        [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work)]
                         + defines + ["--main", "Main", "--interp"],
                         cwd=work,
                         capture_output=True,

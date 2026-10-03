@@ -1,6 +1,8 @@
 """Bounded Haxe surface normalization shared by Codename script families."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -43,9 +45,9 @@ class Main {
   for (index in 0...expected.length) if (actual[index]!=expected[index])
    throw index+': '+actual[index];
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                  "--main", "Main", "--interp"], cwd=ROOT,
@@ -73,8 +75,8 @@ class Main {
   if(read()==7) return;
   throw "final local initializer changed behavior";
  }
-}''', encoding="utf-8")
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', encoding="utf-8", newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main"], cwd=ROOT,
@@ -110,8 +112,8 @@ class Main {
   if(malformed.program!=null || !rejected)
    throw "unterminated braced interpolation was not reported explicitly: "+[for(item in malformed.diagnostics) item.message].join(";");
  }
-}''', encoding="utf-8")
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', encoding="utf-8", newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main"], cwd=ROOT,
@@ -145,8 +147,8 @@ class Main {
    || vram.sourceUseDiagnostics[0].indexOf("not an observed runtime read")<0)
    throw "static evidence was mislabeled as an observed runtime read";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main"],
@@ -232,8 +234,8 @@ class Main {
     && item.message.indexOf("owner-scoped module loader")>=0) classDiagnostic=true;
   if(!classDiagnostic) throw "missing named class diagnostic: "+[for(item in hl.diagnostics) item.message].join(";");
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main", str(DONOR_COMPOSER_INTRO), str(DONOR_HL17)],
@@ -382,8 +384,8 @@ class Main {
   if(values[7]!=11 || values[8]!=12 || values[9]!=13 || values[10]!=17 || values[11]!=4)
     throw "null-coalescing assignment";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main"], cwd=ROOT, text=True, capture_output=True)
@@ -417,8 +419,8 @@ class Main {
     || parsed.normalizationTrace[3].indexOf("activeCoalesceAssign=0") < 0)
    throw "mounted source retained active ??= after its normalization stage";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main", str(DONOR_PACK)], cwd=ROOT,
@@ -442,8 +444,8 @@ class Main {
     || prepared.source.indexOf("public var darkLights") >= 0)
    throw "top-level public fields survived lowering";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main", str(DONOR_STAGE)], cwd=ROOT,
@@ -480,8 +482,8 @@ class Main {
   interp.variables.set("json", null);
   interp.execute(prepared.program);
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main", str(DONOR_LYRICS)], cwd=ROOT,

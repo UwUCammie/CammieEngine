@@ -1,9 +1,11 @@
 """Behavior tests for the bounded Freeplay row window."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,9 +42,9 @@ class FreeplayListWindowTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "FreeplayListWindowFixture.hx").write_text(fixture)
+            (Path(folder) / "FreeplayListWindowFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "FreeplayListWindowFixture"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

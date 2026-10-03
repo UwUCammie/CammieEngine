@@ -17,6 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
+DEFAULT_RELEASE_TAG = "v0.0.9"
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 REQUIRED_RUNTIME_PATHS = (
     "Funkin.exe",
@@ -56,6 +57,7 @@ EXCLUDED_DIRECTORY_NAMES = {
     "local_imports",
     "local-imports",
 }
+STANDALONE_USER_STATE_ROOTS = {"import-cache"}
 PACKAGED_CONTENT_ROOTS = {"assets", "mods", "templates", "do not readme.txt"}
 START_HERE = """CammieEngine — Windows x64
 
@@ -83,6 +85,8 @@ def safe_tag(tag: str) -> str:
 
 def excluded_runtime_path(relative: Path) -> bool:
     parts = tuple(part.casefold() for part in relative.parts)
+    if parts and parts[0] in STANDALONE_USER_STATE_ROOTS:
+        return True
     if "imported_mods" in parts and parts[:3] != BUNDLED_RESULTS_ROOT \
             and parts != BUNDLED_RESULTS_ROOT[:len(parts)]:
         return True
@@ -113,6 +117,40 @@ def runtime_files(runtime: Path) -> list[tuple[Path, Path]]:
             except OSError as error:
                 raise ValueError(f"could not inspect runtime file {source}: {error}") from error
             result.append((source, relative))
+    return result
+
+
+def regular_files(root: Path, label: str) -> dict[str, Path]:
+    """Map regular files below root by relative POSIX path, ignoring symlinks."""
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError(f"{label} directory is missing or is not a real directory: {root}")
+
+    result: dict[str, Path] = {}
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    try:
+        for directory, child_dirs, filenames in os.walk(
+                root, followlinks=False, onerror=raise_walk_error):
+            base = Path(directory)
+            child_dirs[:] = sorted(
+                name for name in child_dirs
+                if not (base / name).is_symlink()
+            )
+            for filename in sorted(filenames):
+                path = base / filename
+                if path.is_symlink():
+                    continue
+                try:
+                    mode = path.stat(follow_symlinks=False).st_mode
+                except OSError as error:
+                    raise ValueError(f"could not inspect {label} file {path}: {error}") from error
+                if not stat.S_ISREG(mode):
+                    continue
+                result[path.relative_to(root).as_posix()] = path
+    except OSError as error:
+        raise ValueError(f"could not enumerate {label} files under {root}: {error}") from error
     return result
 
 
@@ -181,12 +219,18 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         else:
             valid = candidate.is_file()
         if not valid:
-            raise ValueError(f"required Windows runtime file or directory is missing: {candidate}")
+            raise ValueError(f"required Windows runtime file or directory is missing: {candidate.as_posix()}")
     for relative in REQUIRED_DOCS:
         if not (repository / relative).is_file():
             raise ValueError(f"required release notice is missing: {repository / relative}")
 
     tracked_content = tracked_runtime_content(repository)
+    for target, original in tracked_content.items():
+        if target.startswith(('assets/songs/', 'assets/music/')):
+            source = repository / original
+            built = runtime / original
+            if not built.is_file() or built.stat().st_size != source.stat().st_size:
+                raise ValueError(f'bundled audio is missing or incomplete in runtime: {original}')
     seed = committed_file(repository, "assets/data/options.json")
     try:
         seed_options = json.loads(seed)
@@ -196,6 +240,25 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         raise ValueError("committed assets/data/options.json must contain a JSON object")
 
     files = runtime_files(runtime)
+    bundled_results_source = regular_files(
+        repository.joinpath(*BUNDLED_RESULTS_ROOT), "bundled results source"
+    )
+    bundled_results_runtime: dict[str, Path] = {}
+    for runtime_file, relative in files:
+        if tuple(part.casefold() for part in relative.parts[:3]) == BUNDLED_RESULTS_ROOT:
+            name = PurePosixPath(*relative.parts[3:]).as_posix()
+            bundled_results_runtime[name] = runtime_file
+
+    missing_results = sorted(bundled_results_source.keys() - bundled_results_runtime.keys())
+    extra_results = sorted(bundled_results_runtime.keys() - bundled_results_source.keys())
+    if missing_results or extra_results:
+        details = []
+        if missing_results:
+            details.append("missing runtime files: " + ", ".join(missing_results))
+        if extra_results:
+            details.append("unexpected runtime files: " + ", ".join(extra_results))
+        raise ValueError("bundled results files do not match source (" + "; ".join(details) + ")")
+
     allowed_runtime_files: list[tuple[Path, Path]] = []
     skipped_non_source_content = 0
     for source, relative in files:
@@ -294,7 +357,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True, help="Lime Windows runtime bin directory")
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--tag", required=True, help="release tag or CI label used in the archive name")
+    parser.add_argument("--tag", default=DEFAULT_RELEASE_TAG,
+                        help=f"release tag or CI label used in the archive name (default: {DEFAULT_RELEASE_TAG})")
     parser.add_argument("--repo-root", type=Path, default=ROOT, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:

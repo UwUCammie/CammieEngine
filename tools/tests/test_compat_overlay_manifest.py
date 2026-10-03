@@ -1,7 +1,9 @@
 """Destination-only retention records remain safe and deterministic."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -62,11 +64,11 @@ class Main {
         TMP_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             folder_path = Path(folder)
-            (folder_path / "Main.hx").write_text(main)
+            (folder_path / "Main.hx").write_text(main, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(TMP_ROOT)
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder_path),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder_path),
                  "--run", "Main"],
                 cwd=folder_path,
                 capture_output=True,

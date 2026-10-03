@@ -1,6 +1,8 @@
 """Run the real Codename Charter adapter against lightweight native state stubs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -40,25 +42,25 @@ class CodenameCharterAdapterTest(unittest.TestCase):
  public function codenameCharterIdentity():Dynamic return identity;
  public static function resetSongInfos():Void resets++;
  public static function __loadSong(song:String, ?difficulty:String):Void loaded=song+":"+difficulty;
-}''')
+}''', newline='\n')
             (base / 'ChartingState.hx').write_text('''class ChartingState {
  public var created:Bool=false;
  public var destroyed:Bool=false;
  public function new() {}
  public function create():Void created=true;
  public function destroy():Void destroyed=true;
-}''')
+}''', newline='\n')
             (base / 'Conductor.hx').write_text('''class Conductor {
  public static var songPosition:Float=0;
-}''')
+}''', newline='\n')
             flxg = base / 'flixel/FlxG.hx'
             flxg.parent.mkdir(parents=True)
             flxg.write_text('''package flixel;
-class FlxG { public static var state:Dynamic; }''')
+class FlxG { public static var state:Dynamic; }''', newline='\n')
             (base / 'CodenameSongView.hx').write_text('''class CodenameSongView {
  public var meta:Dynamic;
  public function new(meta:Dynamic) this.meta=meta;
-}''')
+}''', newline='\n')
             (base / 'Main.hx').write_text('''import hscript.Interp;
 class Main {
  static function check(ok:Bool, message:String):Void if (!ok) throw message;
@@ -122,9 +124,9 @@ class Main {
   PlayState.SONG={meta:{name:"replacement-song"}};
   expectError(function() stale.create(),"active chart changed");
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(base), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                  '-cp', str(ROOT / '.haxelib/hscript-ex/git/src'), '--run', 'Main'],
                 cwd=ROOT, text=True, capture_output=True, timeout=40)

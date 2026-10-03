@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import hashlib
 import json
 import os
@@ -87,7 +88,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
-            (Path(directory) / "Main.hx").write_text(source)
+            (Path(directory) / "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
                 [str(DIAGNOSTIC.HAXE), "-cp", directory, "--run", "Main"],
                 cwd=directory, capture_output=True, text=True, timeout=30,
@@ -104,7 +105,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
         cache_root = ROOT / "tmp/auto-import-diagnostic-cache" / key
         cache_root.mkdir(parents=True)
         executable = cache_root / "Main"
-        executable.write_text("#!/bin/sh\nprintf 'CACHED_SCANNER_OK\\n'\n")
+        executable.write_text("#!/bin/sh\nprintf 'CACHED_SCANNER_OK\\n'\n", newline='\n')
         executable.chmod(0o755)
         actual_scan = DIAGNOSTIC.run_bounded_native_scan
         seen_timeouts = []
@@ -131,7 +132,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
         cache_root = ROOT / "tmp/auto-import-diagnostic-cache" / key
         cache_root.mkdir(parents=True)
         executable = cache_root / "Main"
-        executable.write_text("#!/bin/sh\nprintf 'TRACE=%s\\n' \"${DISAPPOINTINGPLUS_PSYCH_DISCOVERY_TRACE-unset}\"\n")
+        executable.write_text("#!/bin/sh\nprintf 'TRACE=%s\\n' \"${DISAPPOINTINGPLUS_PSYCH_DISCOVERY_TRACE-unset}\"\n", newline='\n')
         executable.chmod(0o755)
         trace_name = "DISAPPOINTINGPLUS_PSYCH_DISCOVERY_TRACE"
         try:
@@ -154,7 +155,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
         cache_root = ROOT / "tmp/auto-import-diagnostic-recycle-cache" / key
         cache_root.mkdir(parents=True)
         executable = cache_root / "Main"
-        executable.write_text("#!/bin/sh\nprintf 'RECYCLE_SCANNER_OK\\n'\n")
+        executable.write_text("#!/bin/sh\nprintf 'RECYCLE_SCANNER_OK\\n'\n", newline='\n')
         executable.chmod(0o755)
         try:
             with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as donor:
@@ -198,19 +199,21 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 DIAGNOSTIC.parse_arguments(["--scan-timeout-seconds", value])
 
+    @unittest.skipIf(os.name == 'nt', 'uses Linux native scanner, shell wrappers or ELF cache fixtures')
     def test_fixture_source_changes_cache_key(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             source = Path(directory) / "Main.hx"
-            source.write_text("class Main { static function main() {} }\n")
+            source.write_text("class Main { static function main() {} }\n", newline='\n')
             first = DIAGNOSTIC.native_scan_cache_key(Path(directory))
             self.assertEqual(first, DIAGNOSTIC.native_scan_cache_key(Path(directory)))
-            source.write_text("class Main { static function main() { trace(1); } }\n")
+            source.write_text("class Main { static function main() { trace(1); } }\n", newline='\n')
             self.assertNotEqual(first, DIAGNOSTIC.native_scan_cache_key(Path(directory)))
 
+    @unittest.skipIf(os.name == 'nt', 'uses Linux native scanner, shell wrappers or ELF cache fixtures')
     def test_gc_debug_build_uses_isolated_cache_key(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             source = Path(directory) / "Main.hx"
-            source.write_text("class Main { static function main() {} }\n")
+            source.write_text("class Main { static function main() {} }\n", newline='\n')
             fixture = Path(directory)
             normal = DIAGNOSTIC.native_scan_cache_key(fixture)
             debug = DIAGNOSTIC.native_scan_cache_key(fixture, gc_debug_level_1=True)
@@ -231,10 +234,11 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
             ["-DHXCPP_COMPILE_THREADS=4", "-DHXCPP_GC_DEBUG_LEVEL=1"],
         )
 
+    @unittest.skipIf(os.name == 'nt', 'uses Linux native scanner, shell wrappers or ELF cache fixtures')
     def test_asan_mode_has_isolated_cache_and_rejects_gc_debug_combo(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             fixture = Path(directory)
-            (fixture / "Main.hx").write_text("class Main { static function main() {} }\n")
+            (fixture / "Main.hx").write_text("class Main { static function main() {} }\n", newline='\n')
             normal = DIAGNOSTIC.native_scan_cache_key(fixture)
             gc_debug = DIAGNOSTIC.native_scan_cache_key(fixture, gc_debug_level_1=True)
             asan = DIAGNOSTIC.native_scan_cache_key(fixture, asan=True)
@@ -361,7 +365,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
             destination = temp / "private-haxelib"
             hxcpp = source / "hxcpp"
             (hxcpp / DIAGNOSTIC.HXCPP_PACKAGE_DIRECTORY / "src/hx/gc").mkdir(parents=True)
-            (hxcpp / ".current").write_text("4.3.2")
+            (hxcpp / ".current").write_text("4.3.2", newline='\n')
             (hxcpp / DIAGNOSTIC.HXCPP_PACKAGE_DIRECTORY / "src/hx/gc/GcRegCapture.cpp").write_bytes(original_bytes)
             (hxcpp / DIAGNOSTIC.HXCPP_PACKAGE_DIRECTORY / "src/hx/gc/Immix.cpp").write_bytes(original_immix_bytes)
             (source / "hscript").mkdir()
@@ -451,6 +455,7 @@ class AutoImportDiagnosticCacheTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "conservative patch changed; refusing"):
                     DIAGNOSTIC.patch_gc_recycler_source(conservative + b"// changed\n")
 
+    @unittest.skipIf(os.name == 'nt', 'Linux row-mark probe requires execinfo.h')
     def test_row_mark_probe_checks_both_paths_and_block_boundary(self):
         compiler = shutil.which("g++")
         if compiler is None:
@@ -488,7 +493,7 @@ int main(int argc, char **argv) {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             temp = Path(directory)
             cpp, executable = temp / "probe.cpp", temp / "probe"
-            cpp.write_text(source)
+            cpp.write_text(source, newline='\n')
             built = subprocess.run([compiler, str(cpp), "-o", str(executable)],
                                    capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
@@ -500,6 +505,7 @@ int main(int argc, char **argv) {
             self.assertIn("HXCPP_ROW_MARK_VIOLATION|", invalid.stderr)
             self.assertIn("|start=255|rows=2", invalid.stderr)
 
+    @unittest.skipIf(os.name == 'nt', 'Linux recycler probe requires execinfo.h')
     def test_recycler_private_helpers_compile_and_detect_transition_failures(self):
         compiler = shutil.which("g++")
         if compiler is None:
@@ -585,7 +591,7 @@ int main(int argc, char **argv) {
             temp = Path(directory)
             cpp = temp / "probe.cpp"
             executable = temp / "probe"
-            cpp.write_text(source)
+            cpp.write_text(source, newline='\n')
             built = subprocess.run(
                 [compiler, "-std=c++11", "-pthread", "-I", str(ROOT / ".haxelib/hxcpp/4,3,2/include"),
                  str(cpp), "-o", str(executable)],
@@ -612,7 +618,7 @@ int main(int argc, char **argv) {
             hxcpp = source / "hxcpp"
             capture_dir = hxcpp / DIAGNOSTIC.HXCPP_PACKAGE_DIRECTORY / "src/hx/gc"
             capture_dir.mkdir(parents=True)
-            (hxcpp / ".current").write_text(DIAGNOSTIC.HXCPP_PACKAGE_VERSION)
+            (hxcpp / ".current").write_text(DIAGNOSTIC.HXCPP_PACKAGE_VERSION, newline='\n')
             (capture_dir / "GcRegCapture.cpp").symlink_to(pinned)
             (capture_dir / "Immix.cpp").write_bytes(
                 (ROOT / ".haxelib/hxcpp/4,3,2/src/hx/gc/Immix.cpp").read_bytes()
@@ -635,7 +641,7 @@ int main(int argc, char **argv) {
             hxcpp = source / "hxcpp"
             source_dir = hxcpp / DIAGNOSTIC.HXCPP_PACKAGE_DIRECTORY / "src/hx/gc"
             source_dir.mkdir(parents=True)
-            (hxcpp / ".current").write_text(DIAGNOSTIC.HXCPP_PACKAGE_VERSION)
+            (hxcpp / ".current").write_text(DIAGNOSTIC.HXCPP_PACKAGE_VERSION, newline='\n')
             (source_dir / "GcRegCapture.cpp").write_bytes(pinned_capture.read_bytes())
             (source_dir / "Immix.cpp").symlink_to(pinned_immix)
 
@@ -646,18 +652,19 @@ int main(int argc, char **argv) {
 
         self.assertEqual(hashlib.sha256(pinned_immix.read_bytes()).hexdigest(), original_hash)
 
+    @unittest.skipIf(os.name == 'nt', 'uses Linux native scanner, shell wrappers or ELF cache fixtures')
     def test_asan_cxx_wrapper_logs_and_applies_flags(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             temp = Path(directory)
             fake_compiler = temp / "fake-g++"
             capture = temp / "compiler-argv.txt"
-            fake_compiler.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + str(capture) + "\"\n")
+            fake_compiler.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + str(capture) + "\"\n", newline='\n')
             fake_compiler.chmod(0o755)
             argument_log = temp / "asan-arguments"
             wrapper = temp / "asan-cxx"
             wrapper.write_text(
                 DIAGNOSTIC.asan_cxx_wrapper_text(fake_compiler, argument_log)
-            )
+            , newline='\n')
             wrapper.chmod(0o755)
             result = subprocess.run(
                 [str(wrapper), "-c", "source with spaces.cpp"],
@@ -679,10 +686,11 @@ int main(int argc, char **argv) {
             self.assertIn("arg\t-fsanitize=address", trace)
             self.assertIn("arg\tsource with spaces.cpp", trace)
 
+    @unittest.skipIf(os.name == 'nt', 'uses Linux native scanner, shell wrappers or ELF cache fixtures')
     def test_asan_cxx_command_is_absolute_without_checkout_spaces(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             wrapper = Path(directory) / "asan-cxx"
-            wrapper.write_text("#!/bin/sh\nexit 0\n")
+            wrapper.write_text("#!/bin/sh\nexit 0\n", newline='\n')
             wrapper.chmod(0o755)
             root_fd = os.open(ROOT, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try:

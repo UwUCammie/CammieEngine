@@ -1,6 +1,8 @@
 """Explicit Psych note health and ignore flags affect native judgement."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -51,7 +53,11 @@ class PsychNoteHealthFixture {
   public var ignoreHealthMods = false;
   public var hitHealth:Null<Float> = null;
   public var missHealth:Null<Float> = null;
+  // Outside Nightmare Vision, Note.canMiss defaults to false.
+  public var canMiss:Bool = false;
+  public var nightmareVisionTypeRuntime:Dynamic = null;
   public var mustPress = true;
+  public var sourcePlayfieldPlayerControlled:Null<Bool> = null;
   public var ignoreNote = false;
   public var blockHit = false;
   public var hitCausesMiss = false;
@@ -59,6 +65,8 @@ class PsychNoteHealthFixture {
   public var dontCountNote = false;
   public var aiShouldHit = false;
   public function new() {}
+  public inline function isPlayerControlled():Bool
+    return sourcePlayfieldPlayerControlled == null ? mustPress : sourcePlayfieldPlayerControlled;
 __METHODS__
   static function main():Void {
     var note = new PsychNoteHealthFixture();
@@ -86,9 +94,9 @@ __METHODS__
 }
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychNoteHealthFixture.hx").write_text(fixture)
+            Path(folder, "PsychNoteHealthFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychNoteHealthFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychNoteHealthFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True, text=True,
             )
@@ -121,6 +129,7 @@ class Note {
   public var codenameInputLine:Dynamic = null;
   public var noteData = 2;
   public var isSustainNote = false;
+  public var sourcePlayfieldIndex = -1;
   public function isNoteSplashDisabled():Bool return false;
   public function new() {}
 }
@@ -146,6 +155,7 @@ class PsychManualHazardFixture {
   public function new() {}
   function setVocalsVolume(value:Float):Void vocalVolume = value;
   function getNoteStrumline(note:Note):Strumline return strumline;
+  function nightmareVisionSkinForField(field:Int):Dynamic return null;
   function noteMiss(direction:Int, playerOne:Bool, note:Null<Note>,
       ?playMissSound:Bool = true, ?sourceLine:Dynamic):Void {
     if (note == null || !note.wasGoodHit || !playerOne || direction != note.noteData)
@@ -208,9 +218,9 @@ __SPLASH_METHOD__
             "__SPLASH_METHOD__", splash_method
         )
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychManualHazardFixture.hx").write_text(fixture)
+            Path(folder, "PsychManualHazardFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychManualHazardFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychManualHazardFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True, text=True,
             )

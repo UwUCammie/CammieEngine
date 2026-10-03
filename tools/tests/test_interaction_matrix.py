@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import sys
 from types import SimpleNamespace
@@ -68,7 +69,7 @@ class InteractionMatrixTest(unittest.TestCase):
                     'RUNTIME_SMOKE|{"event":"pause_open","musicPlaying":false,"musicTimeMs":5000}\n'
                     'RUNTIME_SMOKE|{"event":"pause_resume","musicPlaying":true,"musicTimeMs":5000}\n',
                     encoding="utf-8",
-                )
+                 newline='\n')
                 return {"status": "passed", "returncode": 0, "timed_out": False}
 
             with patch.object(interaction, "ROOT", local_root), \

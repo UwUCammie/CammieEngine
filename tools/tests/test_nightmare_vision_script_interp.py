@@ -1,9 +1,12 @@
 """Run the NMV name-resolution adapter against the pinned HScript runtime."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -153,12 +156,13 @@ class Main {
 }'''
 
         with tempfile.TemporaryDirectory(prefix="nmv-interp-", dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            (Path(scratch) / "HxcCompatRuntime.hx").write_text(runtime_stub)
+            write_flixel_point_stub(Path(scratch))
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            (Path(scratch) / "HxcCompatRuntime.hx").write_text(runtime_stub, newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(HAXE), "-cp", str(ROOT / "source"),
+                        [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                          "-cp", str(ROOT / ".haxelib/hscript-iris/1,1,3"), "-cp", scratch]
                         + defines + ["--run", "Main"],
                         cwd=ROOT, capture_output=True, text=True, timeout=60,

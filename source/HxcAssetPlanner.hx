@@ -1580,7 +1580,7 @@ class HxcAssetPlanner {
 			selectedStageNames = new Map<String, Bool>();
 			for (stage in selectedStages)
 				if (stage != null && StringTools.trim(stage) != '')
-					selectedStageNames.set(StringTools.trim(stage).toLowerCase(), true);
+					selectedStageNames.set(HxcScriptDiscovery.normalizeToken(stage), true);
 		}
 		var familyNames = [
 			'scripts', 'data', 'stages', 'modules', 'states', 'substates', 'ui',
@@ -1628,11 +1628,12 @@ class HxcAssetPlanner {
 			}
 			if (!entry.toLowerCase().endsWith('.hxc'))
 				continue;
-			// Stage HXC files named for stages absent from the selected chart
-			// metadata cannot contribute active chart dependencies. Keep the
-			// scripts in the donor copy; this filter affects diagnostics only.
+			// Declared stage IDs can differ from filenames. Character companions
+			// stored beside stages keep their ordinary non-stage dependency scope.
 			if (inStageFamily && selectedStages != null
-				&& !selectedStages.exists(Path.withoutExtension(entry).toLowerCase()))
+				&& HxcScriptDiscovery.familyForPath(path) == 'stage'
+				&& !selectedStages.exists(HxcScriptDiscovery.stageId(path))
+				&& !selectedStages.exists(HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(path))))
 				continue;
 			result.push(path);
 		}

@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import unittest
@@ -37,7 +38,7 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             binary.write_bytes(b"fixture")
             options = runtime / "assets/data/options.json"
             options.parent.mkdir(parents=True)
-            options.write_text("{}")
+            options.write_text("{}", newline='\n')
             validate_direct_private_runtime(runtime, binary)
             (runtime / "outside").symlink_to(ROOT / "export/release/linux/bin", target_is_directory=True)
             with self.assertRaisesRegex(ValueError, "links outside"):
@@ -48,10 +49,10 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             runtime = Path(scratch)
             options = runtime / "assets/data/options.json"
             options.parent.mkdir(parents=True)
-            options.write_text('{"personal":true}')
+            options.write_text('{"personal":true}', newline='\n')
             private_save = runtime / "xdg-data"
             private_save.mkdir()
-            (private_save / "old-save").write_text("fixture")
+            (private_save / "old-save").write_text("fixture", newline='\n')
             case = SmokeCase("private-case", "fixture", "song", "song", "normal")
             with patch('run_example_full_playthrough._run_case_in_overlay',
                        return_value={"status": "passed"}) as launch:
@@ -103,10 +104,10 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             process = local / 'tmp/runtime-smoke/logs/0-plain-plain.process.log'
             process.parent.mkdir(parents=True)
             process.write_text('RUNTIME_SMOKE|{"event":"song_start"}\n'
-                               'RUNTIME_SMOKE|{"event":"song_end","dispatchedEvents":0,"dueEvents":0,"totalEvents":0}\n')
+                               'RUNTIME_SMOKE|{"event":"song_end","dispatchedEvents":0,"dueEvents":0,"totalEvents":0}\n', newline='\n')
             song_chart = local / 'assets/data/plain/plain.json'
             song_chart.parent.mkdir(parents=True)
-            song_chart.write_text('{"song":{"song":"plain"}}')
+            song_chart.write_text('{"song":{"song":"plain"}}', newline='\n')
             (local / 'Funkin').write_bytes(b'current native binary')
             with patch('run_example_full_playthrough.ROOT', local), \
                  patch('run_example_full_playthrough.preflight', return_value=(song_chart, 8.0, None)), \
@@ -170,10 +171,10 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
                 '"dueEvents":0,"totalEvents":0}\n'
                 + 'RUNTIME_SMOKE|' + json.dumps(handoff) + '\n'
                 + 'OFFSCREEN_INPUT|' + json.dumps({"key": "Return", "trigger": "song_end",
-                                                   "delivered": True}) + '\n')
+                                                   "delivered": True}) + '\n', newline='\n')
             song_chart = local / 'assets/data/plain/plain.json'
             song_chart.parent.mkdir(parents=True)
-            song_chart.write_text('{"song":{"song":"plain"}}')
+            song_chart.write_text('{"song":{"song":"plain"}}', newline='\n')
             with patch('run_example_full_playthrough.ROOT', local), \
                  patch('run_example_full_playthrough.preflight', return_value=(song_chart, 8.0, None)), \
                  patch('run_example_full_playthrough.run_case',
@@ -201,10 +202,10 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
                 'RUNTIME_SMOKE|{"event":"end_handoff","state":"VictoryLoopState"}\n'
                 'RUNTIME_SMOKE|{"event":"end_handoff","state":"TitleState"}\n'
                 'OFFSCREEN_INPUT|{"key":"Return","trigger":"playstate_ready",'
-                '"delivered":true}\n')
+                '"delivered":true}\n', newline='\n')
             song_chart = local / 'assets/data/plain/plain.json'
             song_chart.parent.mkdir(parents=True)
-            song_chart.write_text('{"song":{"song":"plain"}}')
+            song_chart.write_text('{"song":{"song":"plain"}}', newline='\n')
             with patch('run_example_full_playthrough.ROOT', local), \
                  patch('run_example_full_playthrough.preflight', return_value=(song_chart, 8.0, None)), \
                  patch('run_example_full_playthrough.run_case',
@@ -228,10 +229,10 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
                 'RUNTIME_SMOKE|{"event":"song_end","dispatchedEvents":0,"dueEvents":0}\n'
                 'RUNTIME_SMOKE|{"event":"end_handoff","state":"FreeplayState"}\n'
                 'OFFSCREEN_INPUT|{"key":"Return","trigger":"repeat until song_start","delivered":true}\n'
-                'OFFSCREEN_INPUT|{"key":"Return","trigger":"song_end","delivered":true}\n')
+                'OFFSCREEN_INPUT|{"key":"Return","trigger":"song_end","delivered":true}\n', newline='\n')
             song_chart = local / 'assets/data/plain/plain.json'
             song_chart.parent.mkdir(parents=True)
-            song_chart.write_text('{"song":{"song":"plain"}}')
+            song_chart.write_text('{"song":{"song":"plain"}}', newline='\n')
             with patch('run_example_full_playthrough.ROOT', local), \
                  patch('run_example_full_playthrough.preflight', return_value=(song_chart, 8.0, None)), \
                  patch('run_example_full_playthrough.run_case',
@@ -257,9 +258,9 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             audio.mkdir(parents=True)
             (data / "example--owner-hard.json").write_text(json.dumps({
                 "song": {"song": "example", "notes": [{"sectionNotes": [[100, 0, 0]]}]}
-            }) + "\x00" * 8)
+            }) + "\x00" * 8, newline='\n')
             (data / "compatScripts.json").write_text(json.dumps({
-                "selectedRoot": "assets/imported_mods/owner"}))
+                "selectedRoot": "assets/imported_mods/owner"}), newline='\n')
             (audio / "example_Inst.ogg").write_bytes(b"fixture")
             row = {
                 "runtimeChartPresent": True, "ownerMatched": True,
@@ -282,8 +283,8 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             audio.mkdir(parents=True)
             (data / "example-hard.json").write_text(json.dumps({
                 "song": {"song": "example", "notes": [{"sectionNotes": [[100, 0, 0]]}]}
-            }))
-            (data / "compatScripts.json").write_text(json.dumps({"selectedRoot": "assets/imported_mods/other"}))
+            }), newline='\n')
+            (data / "compatScripts.json").write_text(json.dumps({"selectedRoot": "assets/imported_mods/other"}), newline='\n')
             row = {
                 "runtimeChartPresent": True, "ownerMatched": True,
                 "sourceVariantImported": True, "sourceNoteCountMatched": True,
@@ -293,7 +294,7 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             }
             _, _, error = preflight(row, root)
             self.assertIn("selected owner changed", error)
-            (data / "compatScripts.json").write_text(json.dumps({"selectedRoot": row["runtimeOwner"]}))
+            (data / "compatScripts.json").write_text(json.dumps({"selectedRoot": row["runtimeOwner"]}), newline='\n')
             _, _, error = preflight(row, root)
             self.assertIn("instrumental missing", error)
             row["sourceNoteCount"] = 2
@@ -324,9 +325,9 @@ class ExampleFullPlaythroughTest(unittest.TestCase):
             audio.mkdir(parents=True)
             (data / "example.json").write_text(json.dumps({"song": {
                 "song": "example", "notes": [{"sectionNotes": [[100, lane, 0]
-                                                for lane in range(8)]}]}}))
+                                                for lane in range(8)]}]}}), newline='\n')
             (data / "compatScripts.json").write_text(json.dumps({
-                "selectedRoot": "assets/imported_mods/owner"}))
+                "selectedRoot": "assets/imported_mods/owner"}), newline='\n')
             (audio / "Inst.ogg").write_bytes(b"fixture")
             row = {"group": "V-Slice", "runtimeChartPresent": True,
                    "ownerMatched": True, "sourceVariantImported": True,

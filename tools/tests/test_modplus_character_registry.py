@@ -1,8 +1,10 @@
 """Loose Modding Plus characters are claimed only from identical supplied media."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -22,14 +24,14 @@ class ModPlusCharacterRegistryTest(unittest.TestCase):
             target.mkdir(parents=True)
             (base / "ModPlusCharacterRegistry.hx").write_text(
                 (ROOT / "source/ModPlusCharacterRegistry.hx").read_text()
-            )
+            , newline='\n')
             (base / "CoolUtil.hx").write_text('''class CoolUtil {
  public static function parseJson(value:String):Dynamic return haxe.Json.parse(value);
  public static function stringifyJson(value:Dynamic):String return haxe.Json.stringify(value);
-}''')
+}''', newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main() Sys.println(ModPlusCharacterRegistry.repair(Sys.args()[0], Sys.args()[1]));
-}''')
+}''', newline='\n')
 
             def files(name, *, same=True):
                 (donor / name).mkdir()
@@ -50,11 +52,11 @@ class ModPlusCharacterRegistryTest(unittest.TestCase):
             files("foreign", same=False)
             files("existing", same=False)
             registry = target / "custom_chars.jsonc"
-            registry.write_text(json.dumps({"existing": {"like": "existing", "icons": [2, 3]}}))
+            registry.write_text(json.dumps({"existing": {"like": "existing", "icons": [2, 3]}}), newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(base)
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(base), "--run", "Main",
                  str(base / "donor"), str(base / "runtime")],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
             )

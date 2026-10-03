@@ -1,6 +1,8 @@
 """Focused coverage for Freeplay registry path precedence and writes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -87,9 +89,9 @@ class RegistryFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "RegistryFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "RegistryFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RegistryFixture"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

@@ -1,5 +1,7 @@
 """Botplay policy comes from declared note behavior, never content names."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -52,9 +54,9 @@ class Main {
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             path = Path(folder)
-            (path / 'Main.hx').write_text(source)
+            (path / 'Main.hx').write_text(source, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', folder,
                  '--run', 'Main', folder], cwd=ROOT, capture_output=True,
                 text=True, timeout=60)

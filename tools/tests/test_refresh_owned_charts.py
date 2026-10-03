@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 
@@ -24,22 +25,22 @@ class OwnedChartRefreshTest(unittest.TestCase):
             for base, song in ((preview, 'example'), (runtime, 'Example')):
                 chart = base / CHART
                 chart.parent.mkdir(parents=True)
-                chart.write_text(json.dumps({'song': {'song': song, 'notes': []}}))
+                chart.write_text(json.dumps({'song': {'song': song, 'notes': []}}), newline='\n')
                 (chart.parent / 'compatScripts.json').write_text(
-                    json.dumps({'selectedRoot': OWNER}))
-            (runtime / 'assets/data/options.json').write_text('{}')
+                    json.dumps({'selectedRoot': OWNER}), newline='\n')
+            (runtime / 'assets/data/options.json').write_text('{}', newline='\n')
             plan = refresh.make_plan(preview, runtime, OWNER, [CHART])
             self.assertEqual(len(plan['charts']), 1)
 
             (runtime / CHART).write_text(json.dumps(
-                {'song': {'song': 'Unrelated', 'notes': []}}))
+                {'song': {'song': 'Unrelated', 'notes': []}}), newline='\n')
             with self.assertRaisesRegex(ValueError, 'audio identity'):
                 refresh.make_plan(preview, runtime, OWNER, [CHART])
 
             (runtime / CHART).write_text(json.dumps(
-                {'song': {'song': 'Example', 'notes': []}}))
+                {'song': {'song': 'Example', 'notes': []}}), newline='\n')
             (runtime / CHART).parent.joinpath('compatScripts.json').write_text(
-                json.dumps({'selectedRoot': 'assets/imported_mods/foreign'}))
+                json.dumps({'selectedRoot': 'assets/imported_mods/foreign'}), newline='\n')
             with self.assertRaisesRegex(ValueError, 'owner mismatch'):
                 refresh.make_plan(preview, runtime, OWNER, [CHART])
 

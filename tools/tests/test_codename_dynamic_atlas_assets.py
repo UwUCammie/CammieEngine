@@ -1,10 +1,13 @@
 """Owner-scoped collection for Codename's composed Sparrow atlas paths."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,6 +15,7 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class CodenameDynamicAtlasAssetsTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'fixture requires distinct case-only GF/gf filenames')
     def test_composed_prefix_collects_unbounded_direct_png_xml_assets(self):
         importer = (ROOT / "source/ModuleFunctions.hx").read_text()
         self.assertIn("CodenameDynamicAtlasAssets.filesFor(sourceRoot", importer)
@@ -28,11 +32,11 @@ class CodenameDynamicAtlasAssetsTest(unittest.TestCase):
             for index in range(140):
                 stem = f"icon-{index:03d}"
                 (icons / f"{stem}.png").write_bytes(b"png")
-                (icons / f"{stem}.xml").write_text("<TextureAtlas/>")
+                (icons / f"{stem}.xml").write_text("<TextureAtlas/>", newline='\n')
             for stem in ("GF", "gf"):
                 (icons / f"{stem}.png").write_bytes(b"png")
-                (icons / f"{stem}.xml").write_text("<TextureAtlas/>")
-            (icons / "ignored.txt").write_text("not an atlas")
+                (icons / f"{stem}.xml").write_text("<TextureAtlas/>", newline='\n')
+            (icons / "ignored.txt").write_text("not an atlas", newline='\n')
             (nested / "nested.png").write_bytes(b"not a direct child")
             try:
                 (icons / "escape.png").symlink_to(outside)
@@ -44,7 +48,7 @@ class CodenameDynamicAtlasAssetsTest(unittest.TestCase):
                 "var directory = 'menus/freeplay/';\n"
                 "// Paths.getSparrowAtlas('ignored/' + song.icon);\n"
                 "Paths.getSparrowAtlas(directory + 'icons/' + song.icon);\n"
-            )
+            , newline='\n')
             fixture = r'''import sys.io.File;
 class Main {
   static inline var OWNER = @@OWNER@@;
@@ -91,9 +95,9 @@ class Main {
 }'''
             fixture = fixture.replace("@@OWNER@@", json.dumps(str(root)))
             fixture = fixture.replace("@@SCRIPT@@", json.dumps(str(script)))
-            (Path(temporary) / "Main.hx").write_text(fixture)
+            (Path(temporary) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", temporary,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", temporary,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

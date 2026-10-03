@@ -5,8 +5,10 @@ tests exercise the production adapters with a small synthetic Haxe fixture and
 then translate every mounted Lua script so the compatibility count stays
 visible when the corpus or importer changes.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -23,8 +25,8 @@ class LuaRuntimeCorpusTest(unittest.TestCase):
     def run_haxe(self, source, name, args=(), hscript=False):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             folder = Path(folder)
-            (folder / f"{name}.hx").write_text(source)
-            command = [str(HAXE), "-cp", str(folder), "-cp", str(ROOT / "source")]
+            (folder / f"{name}.hx").write_text(source, newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(folder), "-cp", str(ROOT / "source")]
             if hscript:
                 command += ["-cp", str(HSCRIPT)]
             # `--interp` treats trailing paths as compiler arguments. `--run`

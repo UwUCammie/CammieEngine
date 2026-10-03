@@ -1,5 +1,7 @@
 """Exercise the Codename group/text constructors through small source fixtures."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -96,12 +98,12 @@ class FlxTypedSpriteGroup<T:FlxSprite> extends FlxSprite {
             for name, content in stubs.items():
                 path = base / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
 
             json_method = extract_method(bindings, "public static function jsonConstants")
             (base / "CodenameImportBindings.hx").write_text(
                 "class CodenameImportBindings {\n" + json_method + "\n}"
-            )
+            , newline='\n')
             (base / "Main.hx").write_text('''import hscript.Interp;
 import hscript.Parser;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
@@ -149,9 +151,9 @@ class Main {
    && haxe.Json.parse(interp.variables.get("encoded")).lyrics[0]==1,
    "haxe.Json facade parse/stringify behavior");
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", str(base),
                  "--run", "Main"],
                 cwd=ROOT,

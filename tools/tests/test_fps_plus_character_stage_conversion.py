@@ -8,9 +8,11 @@ against a synthetic module and the mounted whitty donor.
 """
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -196,7 +198,7 @@ class ConverterFixture {{
 }}
 """
     path = folder / "ConverterFixture.hx"
-    path.write_text(source)
+    path.write_text(source, newline='\n')
     return path
 
 
@@ -206,7 +208,7 @@ class FpsPlusCharacterStageConversionTest(unittest.TestCase):
             folder_path = Path(folder)
             make_fixture(folder_path)
             result = subprocess.run(
-                [str(HAXE), "-cp", str(folder_path), "--run", "ConverterFixture",
+                [*HAXE_COMMAND, "-cp", str(folder_path), "--run", "ConverterFixture",
                  str(stage_path), str(character_path)],
                 cwd=ROOT,
                 capture_output=True,
@@ -223,9 +225,9 @@ class FpsPlusCharacterStageConversionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="fps-conv-synthetic-", dir=ROOT / "tmp") as folder:
             root = Path(folder)
             stage_path = root / "alleyBalls.hxc"
-            stage_path.write_text(SYNTHETIC_STAGE_HXC)
+            stage_path.write_text(SYNTHETIC_STAGE_HXC, newline='\n')
             character_path = root / "WhitBonkers.hxc"
-            character_path.write_text(SYNTHETIC_CHARACTER_HXC)
+            character_path.write_text(SYNTHETIC_CHARACTER_HXC, newline='\n')
             parsed = self.run_fixture(stage_path, character_path)
 
             self.assertTrue(parsed["characterFound"])
@@ -320,9 +322,9 @@ class PngCounterFixture {
 }
 """
             fixture_path = root / "PngCounterFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(root), "--run", "PngCounterFixture"],
+                [*HAXE_COMMAND, "-cp", str(root), "--run", "PngCounterFixture"],
                 cwd=root,
                 capture_output=True,
                 text=True,

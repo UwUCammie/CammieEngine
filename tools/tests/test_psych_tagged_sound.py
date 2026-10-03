@@ -1,6 +1,8 @@
 """Psych tagged sounds keep fade/stop targets within one PlayState."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -74,8 +76,8 @@ class Main {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
-            (Path(work) / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", work,
+            (Path(work) / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", work,
                                      "--run", "Main"], cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

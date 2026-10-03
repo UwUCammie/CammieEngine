@@ -1,6 +1,8 @@
 """Exercise Codename OBJ material and diffuse-texture import dependencies."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -115,19 +117,19 @@ class Main {
                 for relative, content in files.items():
                     target = root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content)
+                    target.write_text(content, newline='\n')
             destination_a.mkdir()
             destination_b.mkdir()
 
             main = base / "Main.hx"
-            main.write_text(main_source)
+            main.write_text(main_source, newline='\n')
             result = subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp", str(ROOT / "source"),
                     "-cp", str(base),
                     "--run", "Main",
-                    str(source_a), str(source_b), str(destination_a), str(destination_b),
+                    source_a.as_posix(), source_b.as_posix(), destination_a.as_posix(), destination_b.as_posix(),
                 ],
                 cwd=ROOT,
                 text=True,
@@ -148,19 +150,19 @@ class Main {
             source = base / "source"
             source.mkdir()
             outside = base / "outside.mtl"
-            outside.write_text("newmtl outside\nmap_Kd texture.png\n")
+            outside.write_text("newmtl outside\nmap_Kd texture.png\n", newline='\n')
             outside_texture = base / "texture.png"
-            outside_texture.write_text("outside texture")
+            outside_texture.write_text("outside texture", newline='\n')
             models = source / "models"
             models.mkdir()
-            (models / "plane.obj").write_text("mtllib escape.mtl\n")
+            (models / "plane.obj").write_text("mtllib escape.mtl\n", newline='\n')
             try:
                 (models / "escape.mtl").symlink_to(outside)
             except OSError as error:
                 self.skipTest(f"symlink fixture unavailable: {error}")
-            (base / "Main.hx").write_text(main)
+            (base / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "--run", "Main", str(source)],
                 cwd=ROOT,
                 text=True,

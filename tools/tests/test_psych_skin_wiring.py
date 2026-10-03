@@ -1,5 +1,7 @@
 """Selected source ownership gates both Psych skin banks and generated notes."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -86,8 +88,8 @@ class SkinWiring {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp', prefix='psych-skin-wiring-') as folder:
-            (Path(folder) / 'SkinWiring.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'SkinWiring.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-cp', str(ROOT / 'source'), '-main', 'SkinWiring', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

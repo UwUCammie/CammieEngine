@@ -1,9 +1,12 @@
 """Synthetic and mounted coverage for compiled legacy character atlases."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,11 +68,12 @@ class LegacyCharacterAtlasImportTest(unittest.TestCase):
                     extra: list[str] | None = None):
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             (temp / "LegacyCharacterAtlasImporter.hx").write_text(
                 (ROOT / "source/LegacyCharacterAtlasImporter.hx").read_text()
-            )
-            (temp / "Main.hx").write_text(MAIN)
-            args = [str(HAXE), "-cp", str(temp), "--run", "Main", str(donor), reference]
+            , newline='\n')
+            (temp / "Main.hx").write_text(MAIN, newline='\n')
+            args = [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main", str(donor), reference]
             if destination is not None:
                 args.append(str(destination))
             if extra is not None:
@@ -89,7 +93,7 @@ class LegacyCharacterAtlasImportTest(unittest.TestCase):
         (target / f"{stem}.png").write_bytes(b"png")
         (target / f"{stem}.xml").write_text(
             XML_TEMPLATE.format(image=f"{stem}.png", **prefixes)
-        )
+        , newline='\n')
 
     def test_synthetic_infers_prefixes_and_materializes_without_overwrite(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -142,7 +146,7 @@ class LegacyCharacterAtlasImportTest(unittest.TestCase):
             text = text.replace('  <SubTexture name="GF Down Note0000" x="0" y="0" width="10" height="10"/>\n', '')
             text = text.replace('  <SubTexture name="GF Left Note0000" x="0" y="0" width="10" height="10"/>\n', '')
             text = text.replace('  <SubTexture name="GF Right Note0000" x="0" y="0" width="10" height="10"/>\n', '')
-            xml.write_text(text)
+            xml.write_text(text, newline='\n')
             result = self.run_fixture(donor, "gf", extra=["gf"])
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
@@ -168,7 +172,7 @@ class LegacyCharacterAtlasImportTest(unittest.TestCase):
                     image="Broken.png", idle="Hero Idle", up="Hero Sing Up",
                     down="Hero Sing Down", left="Hero Sing Left", right="Missing Right"
                 ).replace('name="Missing Right0000"', 'name="Something Else0000"')
-            )
+            , newline='\n')
             missing = self.run_fixture(incomplete, "Broken")
             output = missing.stdout + missing.stderr
             self.assertEqual(missing.returncode, 0, output)

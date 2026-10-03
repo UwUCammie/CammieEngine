@@ -1,6 +1,8 @@
 """A replacement actor inherits the stage role depth without retaining the old actor."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -78,11 +80,11 @@ class Main {
 """
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = folder
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 env=env,
                 capture_output=True,

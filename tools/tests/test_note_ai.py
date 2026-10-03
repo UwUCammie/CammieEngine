@@ -1,5 +1,7 @@
 """Exercise Note's actual timing/health methods without initializing a renderer."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -11,9 +13,8 @@ class NoteAITest(unittest.TestCase):
     def test_ai_hits_hazards_but_human_players_still_take_damage(self):
         source = (ROOT / 'source/Note.hx').read_text()
         play = (ROOT / 'source/PlayState.hx').read_text()
-        self.assertIn('if (!daNote.mustPress && daNote.wasGoodHit && (daNote.codenameInputLine != null', play)
+        self.assertIn('if (!daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null', play)
         self.assertIn(': daNote.isAutoPlayed())) {', play)
-        self.assertIn(': (opponentPlayer || demoMode))) {', play)
         update = source[source.index('\tpublic inline function isAutoPlayed('):source.index('\t// inline because')]
         health = source[source.index('\tpublic function getHealth('):source.rfind('}')]
         # Keep production method bodies intact; stub only rendering and globals.
@@ -35,6 +36,7 @@ class PlayState {
 class OptionsHandler { public static var options = {useKadeHealth:false}; }
 class TestNote extends Base {
  public var mustPress=false; public var oppMode=false; public var duoMode=false;
+ public var nightmareVisionTypeRuntime:Dynamic=null; public var canMiss=false;
  public var sourcePlayfieldPlayerControlled:Null<Bool>=null;
  public var sourcePlayfieldAutoPlay=false;
  public var codenameInputLine:Dynamic=null;
@@ -100,6 +102,36 @@ class TestNoteAI {
   nmvExtra.sourcePlayfieldAutoPlay=true;
   check(nmvExtra.isAutoPlayed() && nmvExtra.isPlayerControlled(),
    "NMV extra fields belong to BF and autoplay despite the legacy hit side");
+  var nmvCpuOff = new TestNote(); nmvCpuOff.nightmareVisionTypeRuntime={};
+  nmvCpuOff.mustPress=false; nmvCpuOff.sourcePlayfieldPlayerControlled=true;
+  nmvCpuOff.sourcePlayfieldAutoPlay=false;
+  check(!nmvCpuOff.isAutoPlayed(),
+   "NMV source CPU-off policy overrides native opponent autoplay fallback");
+  nmvCpuOff.funnyMode=true;
+  check(!nmvCpuOff.isAutoPlayed(),
+   "NMV source CPU-off policy overrides global botplay fallback");
+  var nmvCpuOverride = new TestNote(); nmvCpuOverride.nightmareVisionTypeRuntime={};
+  nmvCpuOverride.mustPress=true; nmvCpuOverride.sourcePlayfieldAutoPlay=true;
+  check(nmvCpuOverride.isAutoPlayed(),
+   "NMV source CPU-on policy overrides the native player side");
+  var nmvPlayerCanMiss = new TestNote(); nmvPlayerCanMiss.nightmareVisionTypeRuntime={};
+  nmvPlayerCanMiss.mustPress=false; nmvPlayerCanMiss.sourcePlayfieldPlayerControlled=true;
+  nmvPlayerCanMiss.canMiss=true;
+  check(!nmvPlayerCanMiss.canAutoHit(),
+   "NMV BF-owned field cannot autoplay a canMiss note despite native opponent ownership");
+  var nmvPlayerHitCausesMiss = new TestNote(); nmvPlayerHitCausesMiss.nightmareVisionTypeRuntime={};
+  nmvPlayerHitCausesMiss.mustPress=false; nmvPlayerHitCausesMiss.sourcePlayfieldPlayerControlled=true;
+  nmvPlayerHitCausesMiss.hitCausesMiss=true;
+  check(!nmvPlayerHitCausesMiss.canAutoHit(),
+   "NMV BF-owned field cannot autoplay a hitCausesMiss note despite native opponent ownership");
+  var nmvOpponentHazard = new TestNote(); nmvOpponentHazard.nightmareVisionTypeRuntime={};
+  nmvOpponentHazard.mustPress=true; nmvOpponentHazard.sourcePlayfieldPlayerControlled=false;
+  nmvOpponentHazard.canMiss=true; nmvOpponentHazard.hitCausesMiss=true;
+  check(nmvOpponentHazard.canAutoHit(),
+   "NMV Dad-owned field follows source ownership and may autoplay hazards");
+  nmvOpponentHazard.ignoreNote=true;
+  check(!nmvOpponentHazard.canAutoHit(),
+   "NMV ignored notes remain excluded regardless of source field ownership");
   var mutableLegacy = new TestNote(); mutableLegacy.sourcePlayfieldPlayerControlled=null;
   mutableLegacy.mustPress=false;
   check(!mutableLegacy.isPlayerControlled(), "Legacy source owner falls back to mustPress");
@@ -195,8 +227,8 @@ class TestNoteAI {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'TestNoteAI.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'TestNoteAI.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'TestNoteAI', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

@@ -1,5 +1,7 @@
 """Run extracted Character animation methods across nullable Codename event dispatch."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -71,6 +73,7 @@ class PlayState { public static var instance:Dynamic=null; }
 class Character {
  public var codenameLiveDefinition:Dynamic={animations:[{name:'plain',forced:false},
   {name:'forced',forced:true}]};
+ public var canPlayAnimations:Bool=true;
  var codenameVisualBuilding=false;
  var codenameBuildingAnimations:Array<Dynamic>=null;
  public var codenameRuntime:Dynamic;
@@ -284,9 +287,9 @@ class Main {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
-            (Path(work) / 'Main.hx').write_text(fixture)
+            (Path(work) / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', work, '--run', 'Main'], cwd=ROOT,
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

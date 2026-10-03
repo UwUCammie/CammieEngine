@@ -1,10 +1,12 @@
 """State values in HXC maps resolve only when their map entry is read."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,9 +60,9 @@ class Main {{
     Sys.println("deferred state factory OK");
   }}
 }}'''
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

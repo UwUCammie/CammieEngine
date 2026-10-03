@@ -1,10 +1,12 @@
 """Portable ASTC header/probe coverage for the V-Slice importer boundary."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,9 +26,9 @@ class VSliceAstcAdapterTest(unittest.TestCase):
     def run_fixture(self, main_source: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
             main_path = Path(folder) / "Main.hx"
-            main_path.write_text(main_source)
+            main_path.write_text(main_source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

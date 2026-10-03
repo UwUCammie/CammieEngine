@@ -1,5 +1,7 @@
 """Execute the HXC video resolver against two installed import owners."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -50,8 +52,8 @@ class Main {
             (a / "clip.mp4").write_bytes(b"a")
             (b / "clip.mp4").write_bytes(b"b")
             (a / "escape.mp4").symlink_to(b / "clip.mp4")
-            (base / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+            (base / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                                      "-cp", str(base), "-main", "Main", "--interp"],
                                     cwd=base, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

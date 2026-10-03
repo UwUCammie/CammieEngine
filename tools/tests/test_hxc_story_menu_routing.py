@@ -1,10 +1,12 @@
 """Focused routing and lifecycle coverage for native HXC StoryMenu modules."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,7 +27,7 @@ class HxcStoryMenuRoutingTest(unittest.TestCase):
             ]
             for path in paths:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("class Fixture extends Song {}")
+                path.write_text("class Fixture extends Song {}", newline='\n')
             haxe_paths = ", ".join(json.dumps(str(path)) for path in paths)
             main = f'''class Main {{
   static function main() {{
@@ -40,9 +42,9 @@ class HxcStoryMenuRoutingTest(unittest.TestCase):
       throw result;
   }}
 }}'''
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
@@ -79,9 +81,9 @@ class HxcStoryMenuRoutingTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
@@ -102,7 +104,7 @@ class HxcStoryMenuRoutingTest(unittest.TestCase):
             ]
             for path in paths:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("class Fixture extends Module {}")
+                path.write_text("class Fixture extends Module {}", newline='\n')
             haxe_paths = ", ".join(json.dumps(str(path)) for path in paths)
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
@@ -122,9 +124,9 @@ class HxcStoryMenuRoutingTest(unittest.TestCase):
       fail("non-module files were changed: " + result);
   }}
 }}'''
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )

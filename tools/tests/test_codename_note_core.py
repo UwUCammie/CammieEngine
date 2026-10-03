@@ -1,5 +1,7 @@
 """Run production bound-note effect helpers with mutable source callbacks."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -85,6 +87,7 @@ class Main {
   observed.push({name:name,rating:note==null?null:note.rating,combo:combo,score:songScore});
  }
  var missCalls=0;
+ var playbackRate:Float=1;
  var health:Float=1;var songScore=0;var songScoreDef=0;var trueScore=0;
  var combo=0;var misses=0;var ratingNum=0;var accuracy:Float=0;
  var accuracyPressedNotes:Float=0;var totalAccuracyAmount:Float=0;
@@ -100,6 +103,7 @@ class Main {
  var codenameActors:{bindings:Array<Dynamic>}=null;
  var gf:Character=null;var grpNoteSplashes={add:function(v:Dynamic):Void {}};
  public function new() {codenameStrumlines=[enemyStrums,playerStrums];}
+ function getNightmareVisionField(id:Int):Dynamic return null;
  function getCodenameLineStrumline(index:Int):Strumline
   return index < 0 || index >= codenameStrumlines.length ? null : codenameStrumlines[index];
  function callCodenameScript(scope:Dynamic,name:String,args:Array<Dynamic>):Bool {
@@ -245,8 +249,8 @@ class Main {
                          'CodenameLineNoteQuery', 'CodenameLineNoteIndex',
                          'CodenameStrumlineLayout', 'CodenameComboRating', 'CodenameRatingUpdateEvent',
                          'CodenameNoteTypeCompat', 'CodenameRatingManager'):
-                (temp / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text())
-            (temp / 'Main.hx').write_text(fixture)
+                (temp / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
+            (temp / 'Main.hx').write_text(fixture, newline='\n')
             (temp / 'Character.hx').write_text('''class Character {
  public var id:Int; public var sings=0; public var lastDirection=-1;
  public var lastForce:Null<Bool>=null; public var codenameLiveDefinition:Dynamic={};
@@ -258,21 +262,24 @@ class Main {
  public function codenamePlaySingAnim(d:Int,s:String,c:Dynamic,f:Null<Bool>):Void
   {sings++;lastDirection=d;lastForce=f;}
  public function sing(d:Int,m:Bool):Void {sings++;lastDirection=d;}
-}''')
+}''', newline='\n')
             (temp / 'Note.hx').write_text('''class Note {
  public var codenameInputLine:CodenameInputLine<Character>;public var alive=true;
+ public var nightmareVisionTypeRuntime:Dynamic=null;
+ public var nightmareVisionSustainEnd=false;public var sourcePlayfieldIndex=-1;
  public var wasGoodHit=false;public var codenameHitDispatched=false;
  public var canBeHit=true;public var tooLate=false;public var rating='miss';
  public var isSustainNote=false;public var sourceKind:String=null;
  public var animSuffix:String='';public var codenameAuthoredAnimSuffix:String='';
  public var noteData=0;public var strumTime:Float=1000;public var prevNote:Note=null;
+ public var nightmareVisionTailState:Dynamic=null;
  public var sustainLength:Float=0;
  public var mustPress=true;public var dontStrum=false;public var destroyed=false;
  public var noSustainClip=false;
  public function new(line:CodenameInputLine<Character>) codenameInputLine=line;
  public function kill():Void alive=false;public function destroy():Void destroyed=true;
-}''')
-            (temp / 'HealthIcon.hx').write_text('class HealthIcon {public function new() {}}')
+}''', newline='\n')
+            (temp / 'HealthIcon.hx').write_text('class HealthIcon {public function new() {}}', newline='\n')
             (temp / 'Strumline.hx').write_text('''class Strumline {
  public var receptor=new Strumline.StrumNote(3);public var splashes=0;
  public function new() {}
@@ -280,6 +287,7 @@ class Main {
  public function doSplash(direction:Int):Dynamic {splashes++;return {};}
 }
 class StrumNote {public var ID:Int;public var confirms=0;public var confirmationGeneration:Int=0;
+ public var resetAnim:Float=0;public var coyoteTime:Float=0;
  public var exists=true;public var animation:Dynamic={curAnim:{name:'static',finished:false}};
  public var staticRestores=0;public var lastAnimation:String='static';
  public function new(id:Int) ID=id;
@@ -290,9 +298,9 @@ class StrumNote {public var ID:Int;public var confirms=0;public var confirmation
   lastAnimation=name;animation.curAnim.name=name;animation.curAnim.finished=false;
   if(name=='static')staticRestores++;
  }
-}''')
+}''', newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'tools/tests/haxe_stubs'),
+                *HAXE_COMMAND, '-cp', str(ROOT / 'tools/tests/haxe_stubs'),
                 '-cp', folder, '-main', 'Main', '--interp',
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

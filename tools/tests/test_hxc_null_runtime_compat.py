@@ -1,10 +1,12 @@
 """Regression coverage for generic HXC null-safe compatibility adapters."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,10 +24,10 @@ class HxcNullRuntimeCompatTest(unittest.TestCase):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="hxc-null-runtime-", dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp", str(ROOT / "source"),
                     "-cp", str(HSCRIPT),
                     "-cp", folder,

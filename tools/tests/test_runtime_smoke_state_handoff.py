@@ -1,6 +1,8 @@
 """Pin smoke-clock continuity when gameplay hands off to an imported state."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -115,9 +117,9 @@ class Main extends MusicBeatState {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             fixture_path = Path(work) / "Main.hx"
-            fixture_path.write_text(fixture, encoding="utf-8")
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(work), "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", str(work), "--interp", "-main", "Main"],
                 cwd=work,
                 capture_output=True,
                 text=True,

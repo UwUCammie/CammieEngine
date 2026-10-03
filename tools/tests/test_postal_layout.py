@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import re
@@ -18,8 +20,8 @@ class PostalLayoutTest(unittest.TestCase):
         fixture = fixture.replace('state={health:1.0,iconOverride:false}', 'state=new RuntimeState()')
         fixture += '\nclass RuntimeState {public var health=1.0; public function new(){} '+declaration+'}\n'
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'PostalLayoutTest.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'PostalLayoutTest.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                  '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-main', 'PostalLayoutTest', '--interp'],
                                 cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,6 +1,8 @@
 """Psych actor-group views unwrap to their native actors at scene boundaries."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -35,7 +37,7 @@ class ReorderStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "PsychStageActorGroupSceneProbe.hx").write_text(
                 r'''import flixel.FlxBasic;
 class PsychStageActorGroupSceneProbe {
@@ -82,7 +84,7 @@ class PsychStageActorGroupSceneProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             env = dict(os.environ)
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             env["LD_LIBRARY_PATH"] = str(ROOT / ".tools/neko")
@@ -90,7 +92,7 @@ class PsychStageActorGroupSceneProbe {
                 [str(ROOT / ".tools/haxe"), str(ROOT / ".tools/neko"), env.get("PATH", "")]
             )
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                  *FLIXEL_ARGS, "--run", "PsychStageActorGroupSceneProbe", str(owner)],

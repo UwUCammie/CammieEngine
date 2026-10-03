@@ -1,4 +1,5 @@
 """Bounded, data-only extraction coverage for the mounted FPS Plus cutscenes."""
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
@@ -7,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,9 +30,9 @@ class FpsCutsceneTimelineTest(unittest.TestCase):
         build_tmp.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=build_tmp) as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             command = [
-                str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                 "-main", "Main", "--interp",
             ]
             environment = os.environ.copy()

@@ -1,6 +1,8 @@
 """Psych compiled-stage Lime Assets calls stay inside the selected import owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -30,9 +32,9 @@ class PsychOwnerLimeAssetsTest(unittest.TestCase):
             (sibling / "data").mkdir(parents=True)
             (root / "shared").mkdir(parents=True)
             (work / "assets/data").mkdir(parents=True)
-            (root / "data/value.txt").write_text("owner-a", encoding="utf-8")
-            (sibling / "data/value.txt").write_text("owner-b", encoding="utf-8")
-            (work / "assets/data/native-only.txt").write_text("native", encoding="utf-8")
+            (root / "data/value.txt").write_text("owner-a", encoding="utf-8", newline='\n')
+            (sibling / "data/value.txt").write_text("owner-b", encoding="utf-8", newline='\n')
+            (work / "assets/data/native-only.txt").write_text("native", encoding="utf-8", newline='\n')
             (root / "shared/escape").symlink_to(sibling / "data", target_is_directory=True)
             (work / "FNFAssets.hx").write_text(
                 r'''package;
@@ -51,11 +53,11 @@ class FNFAssets {
  public static function getBitmapData(id:String, ?useCache:Bool = true):BitmapData return null;
  public static function getSound(id:String, ?useCache:Bool = true):Sound return null;
 }''', encoding="utf-8"
-            )
+            , newline='\n')
             (work / "CompatScriptManifest.hx").write_text(
                 'package; class CompatScriptManifest { public static inline var ROOT_PREFIX = "assets/imported_mods"; }',
                 encoding="utf-8",
-            )
+             newline='\n')
             (work / "PsychOwnerLimeAssetsProbe.hx").write_text(
                 r'''package;
 import lime.utils.Assets;
@@ -152,9 +154,9 @@ class PsychOwnerLimeAssetsProbe {
    throw "OpenFL facade did not preserve the native cache API object";
  }
 }''', encoding="utf-8"
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
                  "-lib", "lime", "-lib", "openfl", "--run", "PsychOwnerLimeAssetsProbe"],
                 cwd=work,
                 env=haxe_env(),

@@ -1,6 +1,8 @@
 """Regression coverage for Psych's string-valued generic property writes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -100,9 +102,9 @@ class PropertyCoercionCompat {{
 """.format(methods="\n".join(methods))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PropertyCoercionCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PropertyCoercionCompat", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PropertyCoercionCompat", "--interp"],
                 cwd=ROOT,
                 env={**__import__("os").environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

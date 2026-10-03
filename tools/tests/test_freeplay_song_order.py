@@ -1,10 +1,12 @@
 """The generated All category groups chart versions by title."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,9 +41,9 @@ class FreeplaySongOrderFixture {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'FreeplaySongOrderFixture.hx').write_text(fixture)
+            (Path(folder) / 'FreeplaySongOrderFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', folder, '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', folder, '-cp', str(ROOT / 'source'),
                  '--run', 'FreeplaySongOrderFixture'],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
@@ -86,10 +88,10 @@ class LegacyFreeplayOrderFixture {
                 'display': 'A Lovely Title · Pack · Codename Engine',
                 'modName': 'Pack',
                 'sourceEngine': 'Codename Engine',
-            }))
-            (directory / 'LegacyFreeplayOrderFixture.hx').write_text(fixture)
+            }), newline='\n')
+            (directory / 'LegacyFreeplayOrderFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', folder, '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', folder, '-cp', str(ROOT / 'source'),
                  '--run', 'LegacyFreeplayOrderFixture'],
                 cwd=directory, capture_output=True, text=True, timeout=30,
             )

@@ -1,6 +1,8 @@
 """Owner global callbacks carry source context and run postStateSwitch once."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -92,9 +94,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:
             work = Path(temporary)
-            (work / "Main.hx").write_text(fixture, encoding="utf-8")
+            (work / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(work), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )
 

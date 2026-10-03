@@ -1,9 +1,12 @@
 """Linux path coverage for case conventions used by imported legacy engines."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +27,7 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class LegacyAssetCasePathTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_paths_resolve_windows_case_spelling_on_native_disk(self):
         source = (ROOT / "source/Paths.hx").read_text()
         methods = "\n".join(
@@ -79,9 +83,9 @@ class PathsCaseFixture {{
             (root / "assets/images/alley/whittyFront.png").write_bytes(b"front")
             (root / "assets/images/alley/Icon.png").write_bytes(b"first")
             (root / "assets/images/alley/iCON.png").write_bytes(b"second")
-            (root / "PathsCaseFixture.hx").write_text(fixture)
+            (root / "PathsCaseFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "PathsCaseFixture", "--interp"],
                 cwd=folder,
                 capture_output=True,

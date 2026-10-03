@@ -1,8 +1,9 @@
 """Scoped mixed-owner import reset keeps unrelated runtime assets intact."""
 
-import fcntl
+from tools import file_lock as fcntl
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -33,12 +34,12 @@ class ResetMixedImportsTest(unittest.TestCase):
             {"name": "One", "songs": [{"name": "mixed", "character": "bf"},
                                       {"name": "owned", "character": "bf"}]},
             {"name": "Two", "songs": [{"name": "foreign", "character": "dad"}]},
-        ]))
+        ]), newline='\n')
         self.registry_before = self.registry.read_bytes()
         self.song("mixed", OWNER, [OTHER, OWNER])
         self.song("owned", OWNER, [OWNER])
         self.song("foreign", OTHER, [OTHER, OWNER])
-        (self.runtime / "assets/data/options.json").write_text('{"offset":33}')
+        (self.runtime / "assets/data/options.json").write_text('{"offset":33}', newline='\n')
         (self.runtime / OWNER / "image.png").write_bytes(b"shared media")
 
     def song(self, name, selected, roots):
@@ -49,8 +50,8 @@ class ResetMixedImportsTest(unittest.TestCase):
         (data / "compatScripts.json").write_text(json.dumps({
             "selectedRoot": selected,
             "roots": [{"engine": "V-Slice", "path": root} for root in roots],
-        }))
-        (data / f"{name}.json").write_text('{"song":{"song":"' + name + '"}}')
+        }), newline='\n')
+        (data / f"{name}.json").write_text('{"song":{"song":"' + name + '"}}', newline='\n')
         (audio / "Inst.ogg").write_bytes(b"audio")
 
     def test_plan_and_apply_move_only_mixed_selected_song(self):
@@ -75,7 +76,7 @@ class ResetMixedImportsTest(unittest.TestCase):
 
     def test_changed_plan_and_held_lock_leave_runtime_untouched(self):
         plan = reset.plan_reset(self.runtime, OWNER)
-        (self.runtime / "assets/data/mixed/mixed.json").write_text('{"song":{"song":"mixed","bpm":140}}')
+        (self.runtime / "assets/data/mixed/mixed.json").write_text('{"song":{"song":"mixed","bpm":140}}', newline='\n')
         with patch.object(reset, "running_funkin", return_value=False):
             with self.assertRaisesRegex(RuntimeError, "plan changed"):
                 reset.apply_reset(plan, repo_root=self.repo)

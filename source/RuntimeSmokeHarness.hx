@@ -42,6 +42,10 @@ typedef RuntimeSmokeOptions = {
 	var requireSongEnd:Bool;
 	/** Require a completed ending to leave PlayState, including result screens. */
 	var requireEndHandoff:Bool;
+	/** Trigger native death once song position reaches this point (-1 disables). */
+	var gameOverAfterMs:Float;
+	/** Internal one-shot state for the configured game-over trigger. */
+	var gameOverTriggered:Bool;
 	/** Collect bounded owner-scoped Codename callback/visual snapshots. */
 	var codenameVisuals:Bool;
 	/** Optional native window resize (WxH) applied once at song start, to
@@ -50,6 +54,9 @@ typedef RuntimeSmokeOptions = {
 	/** Open the native FreeplayState over a freeplay registry category and
 	    measure frame cost while the harness scrolls and leaves. */
 	var freeplay:Bool;
+	/** Enter ordinary Codename-owned gameplay, then require its natural ending
+	    to return to the unscoped global Freeplay library. */
+	var returnFreeplay:Bool;
 	/** Registry category name for --smoke-freeplay; empty merges every one. */
 	var freeplayCategory:String;
 	/** Milliseconds between simulated selection moves while in freeplay
@@ -72,6 +79,8 @@ typedef RuntimeSmokeOptions = {
 	var tracePlayerHits:Bool;
 	/** Exercise normal player-hit callbacks without desktop input; implies practice. */
 	var playerHits:Bool;
+	/** Optional gameplay-time delay for qualifying player-hit smoke callbacks. */
+	var playerHitDelayMs:Float;
 	/** Exercise the engine's actual demo/botplay route without saving modifiers. */
 	var botplay:Bool;
 	var frameStats:Bool;
@@ -88,6 +97,7 @@ typedef RuntimeSmokeOptions = {
 	var nextDifficulty:String;
 }
 
+@:access(PlayState)
 class RuntimeSmokeHarness {
 	static var parsed:Null<RuntimeSmokeOptions>;
 	static var smokeArgumentsSeen:Bool = false;
@@ -125,10 +135,18 @@ class RuntimeSmokeHarness {
 	static var codenameVisualSignatures:Map<String, String> = new Map();
 	/** Primitive hit snapshots awaiting the next update tick, after hit callbacks return. */
 	static var pendingPlayerHitProbes:Array<Dynamic> = [];
+	/** Bounded per-visit host/source judgement pairs for popup projection evidence. */
+	static var ratingPopupPairs:Map<String, Bool> = new Map();
+	static var ratingPopupPairCount:Int = 0;
 	static var visualNoteKinds:Map<String, Bool> = new Map();
+	static var nightmareVisionVisualKinds:Map<String, Bool> = new Map();
+	static var nightmareVisionSplashSeen:Map<Int, Bool> = new Map();
+	static var nightmareVisionLiveSamples:Map<String, Bool> = new Map();
+	static var nightmareVisionLiveCount:Int = 0;
 	static var liveVisualNoteKinds:Map<String, Bool> = new Map();
 	static var receptorVisualStates:Map<String, Bool> = new Map();
 	static var chartEditorPhase:Int = 0;
+	static var chartEditorBrowseActive:Bool = false;
 	static var chartEditorSidecarPath:String = '';
 	#if sys
 	static var chartEditorSidecarBytes:Bytes = null;
@@ -156,9 +174,12 @@ class RuntimeSmokeHarness {
 			songRate: 1,
 			requireSongEnd: false,
 			requireEndHandoff: false,
+			gameOverAfterMs: -1,
+			gameOverTriggered: false,
 			codenameVisuals: false,
 			windowResize: '',
 			freeplay: false,
+			returnFreeplay: false,
 			freeplayCategory: '',
 			freeplayScrollMs: 400,
 			freeplayLeaveMs: 0,
@@ -166,6 +187,7 @@ class RuntimeSmokeHarness {
 			freeplayAcceptSong: '',
 			tracePlayerHits: false,
 			playerHits: false,
+			playerHitDelayMs: 0,
 			botplay: false,
 			frameStats: false,
 			seekAfterMs: -1,
@@ -180,6 +202,7 @@ class RuntimeSmokeHarness {
 		var args = Sys.args();
 		var index = 0;
 		var difficultyProvided = false;
+		var playerHitDelayProvided = false;
 		while (index < args.length) {
 			var raw = args[index];
 			var key = raw;
@@ -239,12 +262,23 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					result.requireSongEnd = true;
 					result.requireEndHandoff = true;
+				case '--smoke-gameover-after-ms':
+					smokeArgumentsSeen = true;
+					result.gameOverAfterMs = parseSmokeTime(value);
+					if (result.gameOverAfterMs < 0)
+						configurationError = 'invalid --smoke-gameover-after-ms';
 				case '--smoke-codename-visuals':
 					smokeArgumentsSeen = true;
 					result.codenameVisuals = true;
 				case '--smoke-freeplay':
 					smokeArgumentsSeen = true;
 					result.freeplay = true;
+				case '--smoke-return-freeplay':
+					smokeArgumentsSeen = true;
+					result.returnFreeplay = true;
+					result.freeplay = true;
+					result.requireSongEnd = true;
+					result.requireEndHandoff = true;
 				case '--smoke-freeplay-category':
 					smokeArgumentsSeen = true;
 					result.freeplayCategory = safeToken(value);
@@ -267,6 +301,10 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					result.playerHits = true;
 					result.practice = true;
+				case '--smoke-player-hit-delay-ms':
+					smokeArgumentsSeen = true;
+					playerHitDelayProvided = true;
+					result.playerHitDelayMs = parseSmokeFloat(value);
 				case '--smoke-botplay':
 					smokeArgumentsSeen = true;
 					result.botplay = true;
@@ -315,10 +353,22 @@ class RuntimeSmokeHarness {
 			configurationError = '--smoke-playstate-visits requires 1 or 2';
 			result.playstateVisits = 1;
 		}
+		if (!playerHitDelayAllowed(playerHitDelayProvided, result.playerHitDelayMs, result.playerHits))
+			configurationError = '--smoke-player-hit-delay-ms requires --smoke-player-hits and a finite nonnegative value';
 		if (result.nextSongFolder == '' && (result.nextChart != '' || result.nextDifficulty != ''))
 			configurationError = '--smoke-next-song is required for a second chart';
 		if (result.nextSongFolder != '' && result.playstateVisits != 2)
 			configurationError = '--smoke-next-song requires --smoke-playstate-visits 2';
+		if (unsupportedEndHandoffVisits(result.requireEndHandoff, result.playstateVisits))
+			configurationError = '--smoke-require-end-handoff requires one PlayState visit';
+		if (unsupportedGameOverConfiguration(result.gameOverAfterMs, result.practice,
+			result.playerHits, result.requireSongEnd || result.requireEndHandoff,
+			result.chartEditor, result.playstateVisits))
+			configurationError = '--smoke-gameover-after-ms requires one non-practice gameplay visit without player-hit or song-end completion smoke';
+		if (result.returnFreeplay && (result.ownerRoot == '' || !result.botplay
+			|| result.practice || result.storyMode || result.chartEditor || result.gameOverAfterMs >= 0
+			|| result.playstateVisits != 1 || result.nextSongFolder != ''))
+			configurationError = '--smoke-return-freeplay requires one non-story Codename-owned botplay visit';
 		if (result.chartEditor && (result.playstateVisits != 1 || result.freeplay || result.requireSongEnd))
 			configurationError = '--smoke-chart-editor cannot be combined with multi-visit, freeplay, or song-end smoke';
 		var hasSeekAfter = result.seekAfterMs >= 0;
@@ -354,6 +404,49 @@ class RuntimeSmokeHarness {
 		return parsed;
 	}
 
+	/** Reload smoke owns song endings; state handoff is a single-visit check. */
+	public static function unsupportedEndHandoffVisits(required:Bool, visits:Int):Bool
+		return required && visits != 1;
+
+	/** Count global Freeplay rows by ownership without relying on display labels. */
+	public static function freeplayReturnPopulation(songs:Array<Dynamic>,
+		ownerForSong:String->String):Dynamic {
+		var baseRows = 0;
+		var importedRows = 0;
+		if (songs != null && ownerForSong != null) for (song in songs) {
+			if (song == null) continue;
+			var songName:Dynamic = Reflect.field(song, 'name');
+			if (!Std.isOfType(songName, String) || StringTools.trim(Std.string(songName)) == '')
+				songName = Reflect.field(song, 'songName');
+			if (!Std.isOfType(songName, String) || StringTools.trim(Std.string(songName)) == '')
+				continue;
+			var owner = ownerForSong(Std.string(songName));
+			if (owner == null || StringTools.trim(owner) == '') baseRows++;
+			else importedRows++;
+		}
+		return {baseRows:baseRows, importedRows:importedRows};
+	}
+
+	/** Require an unscoped return and a populated base-plus-import library. */
+	public static function freeplayReturnScopeValid(directOwnerRoot:String,
+		activeOwnerRoot:String, population:Dynamic):Bool {
+		if (directOwnerRoot != null && StringTools.trim(directOwnerRoot) != '') return false;
+		if (activeOwnerRoot != null && StringTools.trim(activeOwnerRoot) != '') return false;
+		if (population == null) return false;
+		var baseRows:Dynamic = Reflect.field(population, 'baseRows');
+		var importedRows:Dynamic = Reflect.field(population, 'importedRows');
+		return baseRows != null && importedRows != null
+			&& Std.int(baseRows) > 0 && Std.int(importedRows) > 0;
+	}
+
+	/** The forced death route cannot coexist with modes that mask or end gameplay first. */
+	public static function unsupportedGameOverConfiguration(gameOverAfterMs:Float,
+		practice:Bool, playerHits:Bool, requireSongEnd:Bool, chartEditor:Bool,
+		playstateVisits:Int):Bool {
+		return gameOverAfterMs >= 0 && (practice || playerHits || requireSongEnd || chartEditor
+			|| playstateVisits != 1);
+	}
+
 	/** The second RuntimeSmokeState is created after the first PlayState was destroyed. */
 	public static function nextVisitSelection():Dynamic {
 		var request = config();
@@ -376,8 +469,19 @@ class RuntimeSmokeHarness {
 		});
 	}
 
-	public static function playerHitsEnabled():Bool
+	public static function playerHitsEnabled():Bool {
 		return enabled() && config().playerHits;
+	}
+
+	/** A delay is inert unless the opt-in player-hit smoke route is active. */
+	public static function playerHitDelayMs():Float {
+		return playerHitsEnabled() ? config().playerHitDelayMs : 0;
+	}
+
+	/** Validate the optional delay without a source-specific upper bound. */
+	public static function playerHitDelayAllowed(provided:Bool, value:Float, playerHits:Bool):Bool {
+		return !provided || (playerHits && Math.isFinite(value) && value >= 0);
+	}
 
 	/** Whether ChartingState should run the opt-in editor round-trip. */
 	public static function chartEditorSmokeEnabled():Bool
@@ -387,6 +491,22 @@ class RuntimeSmokeHarness {
 	public static function markChartEditorCreatePhase(phase:String):Void {
 		if (chartEditorSmokeEnabled() && !finished)
 			emit('chart_editor_create_phase', {phase: phase});
+	}
+
+	/** Record that the chart editor opened its real in-game character picker. */
+	public static function markChartEditorBrowse():Void {
+		if (!chartEditorSmokeEnabled() || finished || chartEditorPhase != 0 || chartEditorBrowseActive)
+			return;
+		chartEditorBrowseActive = true;
+		emit('chart_editor_browse', {type: 'character'});
+	}
+
+	/** Require the picker to be destroyed when the smoke reloads ChartingState. */
+	public static function markChartEditorBrowseDestroyed():Void {
+		if (!chartEditorSmokeEnabled() || finished || !chartEditorBrowseActive)
+			return;
+		chartEditorBrowseActive = false;
+		emit('chart_editor_browse_destroyed', {});
 	}
 
 	/** True on the ChartingState creation caused by the smoke Quick Save reload. */
@@ -545,6 +665,7 @@ class RuntimeSmokeHarness {
 			drawFramerate: FlxG.drawFramerate,
 			runtimeRoot: config().runtimeRoot,
 			ownerRoot: config().ownerRoot,
+			returnFreeplay: config().returnFreeplay,
 			playstateVisits: config().playstateVisits,
 			nextSongFolder: config().nextSongFolder,
 			nextChart: config().nextChart,
@@ -564,8 +685,15 @@ class RuntimeSmokeHarness {
 			visitsStarted++;
 			transitionPending = false;
 		} else visitsStarted = 1;
+		naturalSongEndObserved = false;
+		naturalSongEndAt = 0;
+		config().gameOverTriggered = false;
 		visualNoteKinds = new Map();
+		nightmareVisionVisualKinds = new Map();
+		nightmareVisionSplashSeen = new Map();
 		liveVisualNoteKinds = new Map();
+		ratingPopupPairs = new Map();
+		ratingPopupPairCount = 0;
 		psychSkinDiagnosticPhase = '';
 		playStateStarted = true;
 		playStateReady = false;
@@ -656,18 +784,23 @@ class RuntimeSmokeHarness {
 			deadline = Sys.time() + config().durationMs / 1000.0;
 			#end
 		}
-		if (config().frameStats)
+		if (config().frameStats || config().returnFreeplay)
 			installFrameStats();
+		if (config().gameOverAfterMs >= 0)
+			installGameOverClock();
 		if (config().requireSongEnd || config().requireEndHandoff)
 			installSongEndCompletionWatch();
 		var name = song == null ? '' : Std.string(Reflect.field(song, 'song'));
 		var snapshot:Dynamic = RuntimeDecodeMetrics.snapshot();
 		Reflect.setField(snapshot, 'song', name);
+		for (identity in ['stage', 'player1', 'player2', 'gf'])
+			Reflect.setField(snapshot, identity, song == null ? null : Reflect.field(song, identity));
 		Reflect.setField(snapshot, 'visit', visitsStarted);
 		Reflect.setField(snapshot, 'elapsedMs', (haxe.Timer.stamp() - playStateLoadStartedAt) * 1000);
 		emit('playstate_ready', snapshot);
 		var visualState = PlayState.instance;
 		if (visualState != null) {
+			emit('stage_visual', RuntimeSmokeVisuals.stage(visualState.curStage));
 			markReceptorLayout('ready');
 			emit('character_visual', RuntimeSmokeVisuals.character('player', visualState.boyfriend));
 			emit('character_visual', RuntimeSmokeVisuals.character('opponent', visualState.dad));
@@ -782,6 +915,33 @@ class RuntimeSmokeHarness {
 		emit('custom_note_visual', RuntimeSmokeVisuals.note(note, Note.swagWidth));
 	}
 
+	/** One owner-skinned tap and hold per source field for native atlas evidence. */
+	public static function markNightmareVisionNoteVisual(note:Note):Void {
+		if (!enabled() || finished || note == null || note.sourcePlayfieldIndex < 0) return;
+		var key = note.sourcePlayfieldIndex + ':' + note.noteData + ':' + note.isSustainNote;
+		if (nightmareVisionVisualKinds.exists(key)) return;
+		nightmareVisionVisualKinds.set(key, true);
+		var snapshot:Dynamic = RuntimeSmokeVisuals.note(note, Note.swagWidth);
+		Reflect.setField(snapshot, 'sourcePlayfieldIndex', note.sourcePlayfieldIndex);
+		Reflect.setField(snapshot, 'isSustainNote', note.isSustainNote);
+		emit('nightmare_vision_note_visual', snapshot);
+	}
+
+	public static function markNightmareVisionSplashVisual(splash:NoteSplash):Void {
+		if (!enabled() || finished || splash == null || splash.nightmareVisionSkin == null
+			|| nightmareVisionSplashSeen.exists(splash.direction)) return;
+		nightmareVisionSplashSeen.set(splash.direction, true);
+		emit('nightmare_vision_splash_visual', {
+			direction: splash.direction,
+			graphicKey: splash.graphic == null ? '' : splash.graphic.key,
+			animation: splash.animation.curAnim == null ? '' : splash.animation.curAnim.name,
+			frameCount: splash.frames == null ? 0 : splash.frames.frames.length,
+			offsetX: splash.offset.x,
+			offsetY: splash.offset.y,
+			scaleX: splash.scale.x
+		});
+	}
+
 	/** Once per kind, sample the final position after gameplay's note movement
 	 * and receptor snap, while the sprite is visible near its receptor. */
 	public static function markLiveCustomNoteVisual(note:Note, receptor:FlxSprite):Void {
@@ -805,6 +965,39 @@ class RuntimeSmokeHarness {
 		Reflect.setField(snapshot, 'centerErrorToReceptorX',
 			renderCenterX == null ? null : (cast renderCenterX:Float) - receptorCenterX);
 		emit('live_custom_note_visual', snapshot);
+	}
+
+	/** Bounded final-frame NMV geometry, sampled only in explicit profiler runs.
+	 * Construction snapshots cannot prove that notes follow live modifiers. */
+	public static function markLiveNightmareVisionNote(note:Note, receptor:FlxSprite):Void {
+		if (!profileEnabled() || finished || note == null || receptor == null
+			|| note.nightmareVisionRenderer == null || !note.visible || !note.active
+			|| nightmareVisionLiveCount >= 512 || Math.abs(note.strumTime - Conductor.songPosition) > 2000) return;
+		var key = note.sourcePlayfieldIndex + ':' + note.sourceDirection + ':'
+			+ (note.isSustainNote ? (note.nightmareVisionSustainEnd ? 'end' : 'body') : 'head')
+			+ ':' + Math.floor(Conductor.songPosition / 5000);
+		if (nightmareVisionLiveSamples.exists(key)) return;
+		nightmareVisionLiveSamples.set(key, true);
+		nightmareVisionLiveCount++;
+		var state = note.nightmareVisionRenderer.visualState(note);
+		var snapshot:Dynamic = RuntimeSmokeVisuals.note(note, Note.swagWidth);
+		Reflect.setField(snapshot, 'songPosition', Conductor.songPosition);
+		Reflect.setField(snapshot, 'strumTime', note.strumTime);
+		Reflect.setField(snapshot, 'sourcePlayfieldIndex', note.sourcePlayfieldIndex);
+		Reflect.setField(snapshot, 'sourceDirection', note.sourceDirection);
+		Reflect.setField(snapshot, 'isSustainNote', note.isSustainNote);
+		Reflect.setField(snapshot, 'isSustainEnd', note.nightmareVisionSustainEnd);
+		Reflect.setField(snapshot, 'duration', note.nightmareVisionSustainDuration);
+		Reflect.setField(snapshot, 'angle', note.angle);
+		Reflect.setField(snapshot, 'scaleY', note.scale.y);
+		Reflect.setField(snapshot, 'clip', note.clipRect == null ? null : {
+			x:note.clipRect.x, y:note.clipRect.y, width:note.clipRect.width, height:note.clipRect.height});
+		Reflect.setField(snapshot, 'receptor', {
+			x:receptor.x, y:receptor.y, scaleX:receptor.scale.x, scaleY:receptor.scale.y, angle:receptor.angle});
+		Reflect.setField(snapshot, 'transform', {
+			x:state.position.x, y:state.position.y, z:state.position.z,
+			alpha:state.alphaMod, shaderAlpha:state.rgbAlpha, distance:state.holdSegmentDistance});
+		emit('nightmare_vision_live_note', snapshot);
 	}
 
 	/** Emit camera measurements only for an explicit native runtime smoke. */
@@ -966,6 +1159,27 @@ class RuntimeSmokeHarness {
 		});
 	}
 
+	/** Record bounded distinct host/source rating popup projections in player-hit smoke. */
+	public static function markRatingPopup(hostRating:String, sourceRating:Dynamic):Void {
+		if (!playerHitsEnabled() || finished || ratingPopupPairCount >= 16 || sourceRating == null)
+			return;
+		var sourceName:Dynamic = Std.isOfType(sourceRating, String) ? sourceRating
+			: Reflect.getProperty(sourceRating, 'name');
+		var image:Dynamic = Std.isOfType(sourceRating, String) ? sourceRating
+			: Reflect.getProperty(sourceRating, 'image');
+		var host = boundedSmokeText(hostRating, 32);
+		var source = sourceName == null ? '' : boundedSmokeText(Std.string(sourceName), 32);
+		var imageName = image == null ? '' : boundedSmokeText(Std.string(image), 32);
+		if (host == '' || source == '' || imageName == '')
+			return;
+		var key = host + '\u0000' + source;
+		if (ratingPopupPairs.exists(key))
+			return;
+		ratingPopupPairs.set(key, true);
+		ratingPopupPairCount++;
+		emit('rating_popup', {host:host, source:source, image:imageName});
+	}
+
 	/** Confirm that a Story intro actually handed control to song audio. */
 	public static function markSongStart(song:String):Void {
 		if (!enabled()) return;
@@ -974,6 +1188,37 @@ class RuntimeSmokeHarness {
 			musicPlaying:FlxG.sound.music != null && FlxG.sound.music.playing,
 			musicTimeMs:FlxG.sound.music == null ? null : FlxG.sound.music.time});
 		markReceptorLayout('song_start');
+	}
+
+	/** Capture a bounded game-over lifecycle phase using primitive details only. */
+	public static function markGameOverPhase(phase:String, details:Dynamic):Void {
+		if (!enabled() || finished)
+			return;
+		var safeDetails:Dynamic = {};
+		if (details != null) {
+			for (field in Reflect.fields(details)) {
+				var key = boundedSmokeText(field, 64);
+				if (key == '' || key == 'phase' || key == 'event' || key == 'marker'
+					|| key == 'time' || key == 'runToken')
+					continue;
+				var value:Dynamic = Reflect.field(details, field);
+				switch (Type.typeof(value)) {
+					case TNull | TBool | TInt:
+						Reflect.setField(safeDetails, key, value);
+					case TFloat:
+						if (Math.isFinite(value))
+							Reflect.setField(safeDetails, key, value);
+					case TClass(classType):
+						if (classType == String)
+							Reflect.setField(safeDetails, key, boundedSmokeText(value, 256));
+					default:
+				}
+			}
+		}
+		emit('gameover_phase', {
+			phase: boundedSmokeText(phase, 64),
+			details: safeDetails
+		});
 	}
 
 	/** Keep countdown transition positions separate from settled song positions. */
@@ -1034,6 +1279,11 @@ class RuntimeSmokeHarness {
 	/** Small pure gate so end-of-song smoke tests can exercise the policy. */
 	public static function missingRequiredSongEnd(required:Bool, observed:Bool):Bool {
 		return required && !observed;
+	}
+
+	/** A configured forced-death smoke cannot report success without reaching its trigger. */
+	public static function missingRequiredGameOver(gameOverAfterMs:Float, triggered:Bool):Bool {
+		return gameOverAfterMs >= 0 && !triggered;
 	}
 
 	static function safeSmokeRelative(value:String, limit:Int):String {
@@ -1218,6 +1468,10 @@ class RuntimeSmokeHarness {
 			var visitExpired = elapsedMs >= visitDeadline;
 			#end
 			if (!visitExpired) return false;
+			if (missingRequiredSongEnd(config().requireSongEnd, naturalSongEndObserved)) {
+				fail('song-end-timeout', 'PlayState visit ended before natural song completion');
+				return true;
+			}
 			if (visitsStarted == 1) {
 				transitionPending = true;
 				playStateReady = false;
@@ -1265,6 +1519,29 @@ class RuntimeSmokeHarness {
 
 	static var songEndCompletionWatchInstalled:Bool = false;
 	static var endHandoffObserved:Bool = false;
+	static var gameOverClockInstalled:Bool = false;
+
+	/** Continue the configured smoke deadline only after its death leaves PlayState. */
+	static function installGameOverClock():Void {
+		if (gameOverClockInstalled || !enabled() || config().gameOverAfterMs < 0)
+			return;
+		gameOverClockInstalled = true;
+		FlxG.signals.postUpdate.add(onGameOverClockPostUpdate);
+	}
+
+	/** Pure post-update gate: PlayState and its substates keep their normal single tick. */
+	public static function gameOverClockShouldTick(gameOverAfterMs:Float, triggered:Bool,
+		isPlayState:Bool):Bool {
+		return gameOverAfterMs >= 0 && triggered && !isPlayState;
+	}
+
+	static function onGameOverClockPostUpdate():Void {
+		var request = config();
+		if (request == null || finished || !gameOverClockShouldTick(request.gameOverAfterMs,
+			request.gameOverTriggered, Std.isOfType(FlxG.state, PlayState)))
+			return;
+		tick(FlxG.elapsed);
+	}
 
 	static function markEndHandoff():Void {
 		if (endHandoffObserved || !naturalSongEndObserved || Std.isOfType(FlxG.state, PlayState))
@@ -1294,7 +1571,9 @@ class RuntimeSmokeHarness {
 
 	/** Complete after the settle window once a song-end leaves PlayState. */
 	static function observeSongEndCompletion(isPlayState:Bool, settled:Bool):Void {
-		if (finished || !naturalSongEndObserved || isPlayState)
+		// Multi-visit runs complete only through the visit/teardown state machine.
+		// A settled first ending must not succeed while the reload wrapper is active.
+		if (config().playstateVisits != 1 || finished || !naturalSongEndObserved || isPlayState)
 			return;
 		if (config().requireEndHandoff)
 			markEndHandoff();
@@ -1321,12 +1600,20 @@ class RuntimeSmokeHarness {
 	public static function succeed():Void {
 		if (!enabled() || finished)
 			return;
+		if (missingRequiredGameOver(config().gameOverAfterMs, config().gameOverTriggered)) {
+			fail('gameover-timeout', 'Configured game-over position did not trigger before the smoke window ended');
+			return;
+		}
 		if (config().seekToMs >= 0 && !seekCompleted) {
 			fail('seek-timeout', 'Configured forward seek did not complete before the smoke window ended');
 			return;
 		}
 		if (missingRequiredSongEnd(config().requireSongEnd, naturalSongEndObserved)) {
 			fail('song-end-timeout', 'Smoke duration ended before natural song completion');
+			return;
+		}
+		if (config().returnFreeplay && !freeplaySeen) {
+			fail('freeplay-return-missing', 'Natural gameplay ending did not reach FreeplayState');
 			return;
 		}
 		finished = true;
@@ -1491,14 +1778,37 @@ class RuntimeSmokeHarness {
 			freeplaySeen = true;
 			freeplaySeenAt = now;
 			lastScrollAt = now;
-			emit('freeplay_start', {songs: Reflect.field(FlxG.state, 'songs') == null ? -1
-				: (cast Reflect.field(FlxG.state, 'songs'):Array<Dynamic>).length});
+			var rows:Array<Dynamic> = cast Reflect.field(FlxG.state, 'songs');
+			emit('freeplay_start', {songs: rows == null ? -1 : rows.length});
+			if (cfg.returnFreeplay) {
+				var directOwner:Dynamic = Reflect.field(FlxG.state, 'directOwnerRoot');
+				var activeOwner = CodenameModRuntime.activeRoot();
+				var population = freeplayReturnPopulation(rows, function(songName:String):String
+					return ImportedModDiscovery.ownerForSong(songName, 'assets/data'));
+				var valid = freeplayReturnScopeValid(directOwner == null ? '' : Std.string(directOwner),
+					activeOwner, population);
+				emit('freeplay_return', {
+					directOwnerRoot:directOwner == null ? '' : Std.string(directOwner),
+					activeOwnerRoot:activeOwner,
+					songs:rows == null ? -1 : rows.length,
+					baseRows:population.baseRows,
+					importedRows:population.importedRows
+				});
+				if (!valid) {
+					fail('freeplay-return-scope', 'returned Freeplay was scoped or lacked base/imported rows');
+					return;
+				}
+			}
 		}
 		if (!freeplaySeen) {
-			if (now - startedAtMs > 20000)
+			if (!cfg.returnFreeplay && now - startedAtMs > 20000)
 				fail('timeout', 'FreeplayState was never entered');
 			return;
 		}
+		// Return mode observes the real post-song menu without scrolling,
+		// accepting a row, leaving, or applying the standalone Freeplay deadline.
+		if (cfg.returnFreeplay)
+			return;
 		if (!inFreeplay && !leftFreeplay) {
 			leftFreeplay = true;
 			emit('freeplay_left', {});
@@ -1723,6 +2033,9 @@ class RuntimeSmokeHarness {
 		// that never starts an animation. This runs only with smoke frame stats.
 		var visualState = PlayState.instance;
 		if (playStateReady && visualState != null && FlxG.state == visualState) {
+			var scene = RuntimeSmokeVisuals.stage(visualState);
+			Reflect.setField(scene, 'songPosition', Conductor.songPosition);
+			emit('scene_visual', scene);
 			for (role in ['player', 'opponent', 'girlfriend']) {
 				var actor = role == 'player' ? visualState.boyfriend
 					: (role == 'opponent' ? visualState.dad : visualState.gf);
@@ -1861,8 +2174,14 @@ class RuntimeSmokeHarness {
 		return Math.isFinite(value) && value >= 0 && value <= 600000 ? value : -1;
 	}
 
-	/** Request the seek once audio has crossed the configured source position. */
+	/** Parse a finite nonnegative hit delay without a smoke-specific cap. */
+	static function parseSmokeFloat(raw:Null<String>):Float {
+		return Std.parseFloat(raw == null ? '' : StringTools.trim(raw));
+	}
+
+	/** Apply position-triggered smoke actions once gameplay has started. */
 	static function maybeRunSeek():Void {
+		maybeTriggerGameOver();
 		var request = config();
 		if (request == null || request.seekToMs < 0 || seekCompleted
 			|| !playStateReady || !songStartObserved)
@@ -1883,6 +2202,28 @@ class RuntimeSmokeHarness {
 		markSeekComplete(snapshot);
 	}
 
+	/** Exercise native health-based death after song start at an authored position. */
+	static function maybeTriggerGameOver():Void {
+		var request = config();
+		if (request == null || !enabled() || finished || !playStateReady || !songStartObserved
+			|| request.gameOverAfterMs < 0 || request.gameOverTriggered
+			|| !Math.isFinite(Conductor.songPosition) || Conductor.songPosition < request.gameOverAfterMs)
+			return;
+		var state = PlayState.instance;
+		if (state == null || !Std.isOfType(FlxG.state, PlayState) || FlxG.state != state
+			|| state.subState != null)
+			return;
+		var opponent = PlayState.opponentPlayer;
+		state.health = opponent ? 2 : 0;
+		request.gameOverTriggered = true;
+		emit('gameover_trigger', {
+			songPositionMs: Conductor.songPosition,
+			targetSongPositionMs: request.gameOverAfterMs,
+			opponentPlayer: opponent,
+			health: state.health
+		});
+	}
+
 	static function parseInt(raw:Null<String>, fallback:Int):Int {
 		if (raw == null)
 			return fallback;
@@ -1895,15 +2236,25 @@ class RuntimeSmokeHarness {
 		return value == '1' ? 1 : (value == '2' ? 2 : 0);
 	}
 
-	/** Mirror the demo playback-speed effect (music pitch + global time scale)
-		without requiring demo mode, so a full imported song fits into a short
-		smoke window.  Re-applied every tick because state switches reset the
-		global time scale. */
+	/** Use the native demo-rate helper when botplay enabled demo mode, so notes,
+		music, vocals, and the demo clock stay on one playback rate.  Ordinary
+		non-demo smoke playback retains the existing global/music rate path. */
 	static function applySongRate():Void {
-		var rate = config().songRate;
+		var request = config();
+		if (request == null)
+			return;
+		var rate = request.songRate;
 		if (rate <= 1)
 			return;
 		#if sys
+		var state = PlayState.instance;
+		if (state != null && state.demoMode) {
+			// endSong resets native demo playback to 1x; don't reapply smoke rate
+			// while results or another natural ending still owns PlayState.
+			if (!state.endingSong)
+				state.setDemoPlaybackRate(rate);
+			return;
+		}
 		FlxG.timeScale = rate;
 		if (FlxG.sound.music != null)
 			FlxG.sound.music.pitch = rate;

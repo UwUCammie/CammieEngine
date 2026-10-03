@@ -1,6 +1,8 @@
 """Regression coverage for Psych's static judgement-counter properties."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -26,10 +28,10 @@ class PsychJudgementCountersTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychCounterCompat.hx"
-            path.write_text(source)
+            path.write_text(source, newline='\n')
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

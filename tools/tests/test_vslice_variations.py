@@ -1,9 +1,11 @@
 """V-Slice sibling variations resolve as independent chart/audio/vocal plans."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -79,10 +81,10 @@ class VSliceVariationsTest(unittest.TestCase):
                     },
                 },
             }
-            (data / "bundle-song-metadata.json").write_text(json.dumps(base_metadata))
-            (data / "bundle-song-chart.json").write_text(json.dumps({"version": "2.0.0", "notes": {"normal": []}}))
-            (data / "bundle-song-metadata-alt.json").write_text(json.dumps(alt_metadata))
-            (data / "bundle-song-chart-alt.json").write_text(json.dumps({"version": "2.0.0", "notes": {"alt": []}}))
+            (data / "bundle-song-metadata.json").write_text(json.dumps(base_metadata), newline='\n')
+            (data / "bundle-song-chart.json").write_text(json.dumps({"version": "2.0.0", "notes": {"normal": []}}), newline='\n')
+            (data / "bundle-song-metadata-alt.json").write_text(json.dumps(alt_metadata), newline='\n')
+            (data / "bundle-song-chart-alt.json").write_text(json.dumps({"version": "2.0.0", "notes": {"alt": []}}), newline='\n')
             (audio / "Inst.ogg").write_bytes(b"base-inst")
             (audio / "Inst-alt.ogg").write_bytes(b"alt-inst")
             for name in ("Voices-bf-doki.ogg", "Voices-natsuki.ogg", "Voices-natsuki-alt.ogg", "Voices-tankman-doki.ogg"):
@@ -176,9 +178,9 @@ class Main {{
 }}
 '''
             with tempfile.TemporaryDirectory() as build:
-                Path(build, "Main.hx").write_text(main)
+                Path(build, "Main.hx").write_text(main, newline='\n')
                 result = subprocess.run(
-                    [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                    [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                      "-cp", build, "-main", "Main", "--interp"],
                     cwd=ROOT,
                     capture_output=True,

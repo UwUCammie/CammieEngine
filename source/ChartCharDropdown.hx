@@ -44,6 +44,7 @@ class ChartCharDropdown extends FlxTypedSpriteGroup<FlxSprite> {
 	public var shownButtons:Array<FlxUIButton>;
 	var charButtons:Array<FlxUIButton> = [];
 	var stageButtons:Array<FlxUIButton> = [];
+	var pickerDestroyed:Bool = false;
 
 	var buttonHeight:Int = 3;
 	var buttonWidth:Int = 3;
@@ -65,9 +66,6 @@ class ChartCharDropdown extends FlxTypedSpriteGroup<FlxSprite> {
 		bg = new FlxSprite(daX + 15, daY + 50).makeGraphic(170, 170, 0xFF808080);
 		add(bg);
 
-		var charIcon = new HealthIcon('bf');
-		charIcon.setGraphicSize(45, 45);
-
 		for (char in allChars) {
 			var charButton = new FlxUIButton(10, 10, char, function():Void {
 				ChartingState.setCharacter(char, charType);
@@ -78,9 +76,7 @@ class ChartCharDropdown extends FlxTypedSpriteGroup<FlxSprite> {
 			charButtonLabel.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, 'center', OUTLINE, 0xFF404040);
 			charButton.resize(50, 50);
 
-			charIcon.loadIcon(char).onComplete(function(icon) {
-				charButton.addIcon(icon);
-			});
+			loadCharacterIcon(char, charButton);
 
 			charButtons.push(charButton);
 			add(charButton);
@@ -133,23 +129,26 @@ class ChartCharDropdown extends FlxTypedSpriteGroup<FlxSprite> {
 		return a == b ? 0 : a > b ? 1 : -1;
 	}
 
-	/*override function destroy() {
-		for (button in charButtons) {
-			charButtons.remove(button);
-			button.destroy();
-		}
-		for (button in stageButtons) {
-			stageButtons.remove(button);
-			button.destroy();
-		}
-		searchBox.destroy();
-		clearSearch.destroy();
-		bg.destroy();
-		box.destroy();
-		upButton.destroy();
-		downButton.destroy();
-		exitButton.destroy();
-	}*/
+	function loadCharacterIcon(char:String, charButton:FlxUIButton):Void {
+		// Each async request needs its own receiver. Reusing one HealthIcon
+		// lets completions overwrite the graphic another button is stamping.
+		var charIcon = new HealthIcon('bf');
+		charIcon.setGraphicSize(45, 45);
+		charIcon.loadIcon(char).onComplete(function(icon) {
+			if (!pickerDestroyed)
+				charButton.addIcon(icon);
+			icon.destroy();
+		}).onError(function(_) {
+			charIcon.destroy();
+		});
+	}
+
+	override function destroy():Void {
+		if (pickerDestroyed)
+			return;
+		pickerDestroyed = true;
+		super.destroy();
+	}
 
 	var scroll:Int = 0;
 	override function update(elapsed:Float) {

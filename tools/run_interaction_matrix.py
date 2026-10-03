@@ -12,7 +12,10 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import asdict, dataclass
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import json
 import math
 from pathlib import Path, PurePosixPath

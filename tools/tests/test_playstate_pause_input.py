@@ -1,6 +1,7 @@
 """Gameplay pause uses the configured control action, including Escape and P."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

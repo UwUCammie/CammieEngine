@@ -1,6 +1,8 @@
 """Source-contract tests for the Nightmare Vision callback timeline adapter."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -20,6 +22,7 @@ class NightmareVisionModManagerTest(unittest.TestCase):
         fixture = r'''
 import crowplexus.hscript.Interp;
 import crowplexus.hscript.Parser;
+import flixel.tweens.FlxEase;
 
 class Main {
  static function fail(message:String):Void throw message;
@@ -109,17 +112,36 @@ class Main {
   manager.updateTimeline(51);
   eq(errors.length, 1, 'failed callback retried on a later update');
 
-  // Incomplete modifier APIs fail loudly instead of looking successfully queued.
+  // Modifier value events update before callback events at the same step.
+  manager.queueSet(60, 'reverse', 1);
+  manager.queueFuncOnce(60, function():Void {
+   eq(manager.getValue('reverse', 0), 1.0, 'callback did not observe due value event');
+  });
+  manager.updateTimeline(60);
+  eq(manager.getPercent('reverse', 1), 100.0, 'all-player value dispatch failed');
+  manager.queueEase(61, 65, 'reverse', 0, 'linear', 0);
+  manager.updateTimeline(61);
+  manager.updateTimeline(63);
+  eq(manager.getValue('reverse', 0), 0.5, 'source ease progress failed');
+  eq(manager.getValue('reverse', 1), 1.0, 'single-player ease leaked');
+  manager.updateTimeline(65);
+  eq(manager.getValue('reverse', 0), 0.0, 'named ease did not finish at its endpoint');
+  interp.variables.set('easeFunction', FlxEase.quadIn);
+  interp.execute(parser.parseString('modManager.queueEase(66, 68, "reverse", 1, easeFunction, 0);'));
+  manager.updateTimeline(67);
+  eq(manager.getValue('reverse', 0), 0.25, 'HScript EaseFunction argument was not evaluated');
+  manager.updateTimeline(68);
+  eq(manager.getValue('reverse', 0), 1.0, 'HScript EaseFunction endpoint diverged');
   var unsupported = false;
-  try manager.queueSet(0, 'reverse', 1) catch (error:Dynamic) {
-   unsupported = Std.string(error).indexOf('ModManager.queueSet is not implemented') >= 0;
+  try manager.queueSet(0, 'unregistered-scripted', 1) catch (error:Dynamic) {
+   unsupported = Std.string(error).indexOf('unsupported') >= 0;
   }
-  check(unsupported, 'unimplemented queueSet did not produce an explicit diagnostic');
+  check(unsupported, 'unknown scripted modifier did not produce an explicit diagnostic');
   check(NightmareVisionModManager.callbackEventClass() == NightmareVisionCallbackEvent,
    'CallbackEvent binding did not expose the source-compatible runtime event class');
   var unsupportedApis = NightmareVisionModManager.unimplementedModifierApis();
-  check(unsupportedApis.indexOf('queueSet') >= 0 && unsupportedApis.indexOf('getPos') >= 0,
-   'unimplemented source modifier APIs were not inventoried');
+  check(unsupportedApis.indexOf('registerScriptedModifiers') >= 0,
+   'unsupported scripted modifiers were not inventoried');
   var invalidCallback = false;
   try manager.queueFuncOnce(0, null) catch (_:Dynamic) invalidCallback = true;
   check(invalidCallback, 'invalid callback was silently accepted');
@@ -137,9 +159,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(ROOT / ".haxelib/flixel/6,1,2"), "-cp", str(work),
                  "--main", "Main", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=40,
             )
@@ -173,7 +195,7 @@ class Main {
         match = re.search(r"unimplementedModifierApis\(\).*?return \[(.*?)\];", source, re.S)
         self.assertIsNotNone(match, "manager must keep an explicit unsupported-API inventory")
         unsupported = set(re.findall(r"'([A-Za-z_][A-Za-z0-9_]*)'", match.group(1)))
-        supported = {"queueFuncOnce", "queueFunc", "receptors"}
+        supported = {"queueFuncOnce", "queueFunc", "receptors", "setValue", "setPercent", "queueSet", "queueSetP", "queueEase", "queueEaseP"}
         self.assertEqual(calls - supported - unsupported, set(),
             "retained NMV ModManager call has no real implementation or explicit unsupported diagnostic")
         self.assertTrue({"queueFuncOnce", "queueFunc"}.issubset(calls))

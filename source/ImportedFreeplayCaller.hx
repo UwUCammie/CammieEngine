@@ -39,10 +39,10 @@ class ImportedFreeplayCaller {
 		if (!keep) clear();
 	}
 
-	/** Return the package owner while native Freeplay is filtering its rows. */
+	/** Return only an explicitly captured imported Freeplay owner.
+	 * A chart's active Codename owner is gameplay context, not a menu filter. */
 	public static function ownerForFreeplay(activeOwner:String):String {
-		if (returnKind == 'package-picker' && ownerRoot != '') return ownerRoot;
-		return activeOwner == null ? '' : activeOwner;
+		return ownerRoot != '' && returnKind != '' ? ownerRoot : '';
 	}
 
 	public static function take(activeOwner:String):Dynamic {

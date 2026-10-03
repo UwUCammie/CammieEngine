@@ -120,6 +120,7 @@ class FNFAssets {
 	public static function getText(id:String):String {
 		id = Path.normalize(id);
 	        #if sys
+			if (ImportIO.current() != null) return AssetTextEncoding.stripBom(ImportFile.getContent(id));
             // if there a library strip it out..
             // future proofing ftw
 				var resolved = resolveDiskPath(id);
@@ -142,12 +143,12 @@ class FNFAssets {
 				throw 'File $path doesn\'t exist or cannot be read.';
 			}
 			}
-			return ImportOverlayResolver.applyText(id, content);
+			return ImportOverlayResolver.applyText(id, AssetTextEncoding.stripBom(content));
             
         #else
             // no need to strip it out... 
             // assets handles it
-            return Assets.getText(id);
+            return AssetTextEncoding.stripBom(Assets.getText(id));
         #end
     }
 	/**
@@ -228,6 +229,7 @@ class FNFAssets {
 	}
 	public static function getBytes(id:String):Bytes {
 		#if sys
+		if (ImportIO.current() != null) return ImportFile.getBytes(id);
 		// if there a library strip it out..
 		// future proofing ftw
 				var resolved = resolveDiskPath(id);
@@ -272,6 +274,7 @@ class FNFAssets {
 				return existsAmbig([id], CoolUtil.HSCRIPT_EXT) != '';
 			default: 
 				#if sys
+				if (ImportIO.current() != null) return ImportFileSystem.exists(id);
 				return resolveDiskPath(id) != null || Assets.exists(id);
 				#else
 				return Assets.exists(id);
@@ -424,6 +427,7 @@ class FNFAssets {
      */
     public static function saveContent(id:String, data:String):Void {
         #if sys
+			if (ImportIO.current() != null) { ImportFile.saveContent(id, data); return; }
 			if (!isInScope(id))
 				throw "Tried to access a file that is out of scope.";
 			try {
@@ -442,6 +446,7 @@ class FNFAssets {
 	 */
 	public static function saveBytes(id:String, data:Bytes) {
 		#if sys
+		if (ImportIO.current() != null) { ImportFile.saveBytes(id, data); return; }
 		if (!isInScope(id))
 			throw "Tried to access a file that is out of scope.";
 		try {

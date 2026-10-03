@@ -1,9 +1,12 @@
 """Selected-owner resolution for imported Modding Plus and Codename stages."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -204,9 +207,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp", prefix="imported-stage-registry-") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(fixture, encoding="utf-8")
+            (temp / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(temp), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
             )
@@ -346,18 +349,19 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp", prefix="imported-stage-wrapper-") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(fixture, encoding="utf-8")
+            install_import_io_dependencies(temp)
+            (temp / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             (temp / "ImportedStageRegistry.hx").write_text(
                 (ROOT / "source/ImportedStageRegistry.hx").read_text(encoding="utf-8"),
                 encoding="utf-8",
-            )
+             newline='\n')
             for module in ("CompatScriptManifest", "ImportSongOwnership", "ImportEngine"):
                 (temp / (module + ".hx")).write_text(
                     (ROOT / "source" / (module + ".hx")).read_text(encoding="utf-8"),
                     encoding="utf-8",
-                )
+                 newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(temp), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

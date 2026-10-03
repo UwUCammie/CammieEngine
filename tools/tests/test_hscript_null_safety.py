@@ -8,8 +8,10 @@ engine layers keep that survivable on hxcpp:
 2. HxcCompat lowers `currentStage._data.characters.<role>` to the native
    StageHelper slot snapshot so those chains carry real numbers.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,9 +47,9 @@ class NullAccessContextProbe {
 }
 '''
         with tempfile.TemporaryDirectory(prefix="hscript-null-access-context-") as folder:
-            (Path(folder) / "NullAccessContextProbe.hx").write_text(fixture)
+            (Path(folder) / "NullAccessContextProbe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", folder,
                  "-main", "NullAccessContextProbe", "--interp"],
                 text=True, capture_output=True, timeout=30,
             )
@@ -97,9 +99,9 @@ class WarningContextProbe {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'WarningContextProbe.hx').write_text(fixture)
+            (Path(folder) / 'WarningContextProbe.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', str(HSCRIPT), '-cp', folder,
+                [*HAXE_COMMAND, '-cp', str(HSCRIPT), '-cp', folder,
                  '-main', 'WarningContextProbe', '--interp'],
                 text=True, capture_output=True, timeout=30,
             )
@@ -129,9 +131,9 @@ class NullSafetyProbe {{
 '''
         with tempfile.TemporaryDirectory(prefix="hscript-null-safety-", dir=ROOT / "tmp") as folder:
             path = Path(folder) / "NullSafetyProbe.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", folder, "--run", "NullSafetyProbe"],
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", folder, "--run", "NullSafetyProbe"],
                 cwd=folder, capture_output=True, text=True, timeout=300,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -174,9 +176,9 @@ class NullSafetyProbe {{
 '''
         with tempfile.TemporaryDirectory(prefix="hscript-null-safety-", dir=ROOT / "tmp") as folder:
             path = Path(folder) / "NullSafetyProbe.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", folder, "--run", "NullSafetyProbe"],
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", folder, "--run", "NullSafetyProbe"],
                 cwd=folder, capture_output=True, text=True, timeout=300,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -214,9 +216,9 @@ class NullSafetyProbe {{
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-stage-data-", dir=ROOT / "tmp") as folder:
             path = Path(folder) / "StageDataProbe.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT), "-cp", folder,
                  "--run", "StageDataProbe"],
                 cwd=folder, capture_output=True, text=True, timeout=300,
             )

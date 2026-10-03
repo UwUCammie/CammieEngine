@@ -33,6 +33,9 @@ import tjson.TJSON;
 using StringTools;
 
 class FreeplayState extends MusicBeatState {
+	#if sys
+	var importRefreshGeneration:Int = 0;
+	#end
 	public static var currentSongList:Array<JsonMetadata> = [];
 	public static var soundTest:Bool = false;
 	var vocals:FlxSound;
@@ -198,6 +201,16 @@ class FreeplayState extends MusicBeatState {
 		return true;
 	}
 
+	/** Keep explicit imported Freeplay scope separate from a gameplay owner. */
+	function prepareDirectFreeplayContext():Void {
+		var activeCodenameOwner = CodenameModRuntime.activeRoot();
+		directOwnerRoot = ImportedFreeplayCaller.ownerForFreeplay(activeCodenameOwner);
+		// An active chart owner must not narrow an ordinary category/All Freeplay
+		// menu. Explicit imported-state/package entry tokens keep their own scope.
+		if (directOwnerRoot == '' && activeCodenameOwner != '')
+			CodenameModRuntime.clearActiveOwner();
+	}
+
 	/** Arm a callback currently installed on the selected manifest-scoped capsule. */
 	function refreshHxcConfirm():Void {
 		if (curSelected < 0 || curSelected >= songs.length)
@@ -308,7 +321,10 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	override function create() {
-		directOwnerRoot = ImportedFreeplayCaller.ownerForFreeplay(CodenameModRuntime.activeRoot());
+		#if sys
+		importRefreshGeneration = ImportRefreshManager.generation;
+		#end
+		prepareDirectFreeplayContext();
 		if (directOwnerRoot != '' || currentSongList == null || currentSongList.length == 0) {
 			var categories:Array<Dynamic> = null;
 			try categories = cast FreeplayRegistry.getJson() catch (error:Dynamic)
@@ -623,6 +639,11 @@ class FreeplayState extends MusicBeatState {
 		updateProgressBar.cameras = [camUI];
 		add(updateProgressBar);
 		#end
+		#if sys
+		var importRefreshBar = new ImportRefreshProgressBar();
+		importRefreshBar.cameras = [camUI];
+		add(importRefreshBar);
+		#end
 		super.create();
 	}
 
@@ -655,6 +676,14 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	override function update(elapsed:Float) {
+		#if sys
+		if (ImportRefreshManager.browseTick().busy) { super.update(elapsed); return; }
+		if (importRefreshGeneration != ImportRefreshManager.generation) {
+			currentSongList = [];
+			LoadingState.loadAndSwitchState(new FreeplayState());
+			return;
+		}
+		#end
 		var smokeProfile = RuntimeSmokeHarness.enabled();
 		var profileMark = smokeProfile ? haxe.Timer.stamp() : 0.0;
 		super.update(elapsed);
@@ -1044,9 +1073,15 @@ class FreeplayState extends MusicBeatState {
 		var needle = searchNorm(searchString);
 		if (needle.length == 0)
 			return true;
-		var hay = searchNorm(songs[i].songName);
-		var display = searchNorm(songs[i].display);
-		return hay.indexOf(needle) != -1 || display.indexOf(needle) != -1;
+		var song = songs[i];
+		var hay = searchNorm(song.songName);
+		var display = searchNorm(song.display);
+		if (hay.indexOf(needle) != -1 || display.indexOf(needle) != -1)
+			return true;
+		// Source labels are rendered separately from the title. Resolve them only
+		// when the title misses, then keep the existing per-row cache for typing.
+		sourceDisplayFor(song);
+		return searchNorm(song.sourceLabel).indexOf(needle) != -1;
 	}
 
 	function anyVisible():Bool {

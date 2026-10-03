@@ -1,5 +1,7 @@
 """Execute the NMV source-shaped runtime shader factory with isolated assets."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -35,6 +37,16 @@ class FlxAtlasFrames {
  public static function fromSparrow(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
  public static function fromAseprite(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
  public static function fromSpriteSheetPacker(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
+}
+''')
+        self.write("animate/FlxAnimateFrames.hx", '''
+package animate;
+import flixel.graphics.frames.FlxAtlasFrames;
+typedef SpritemapInput = {source:Dynamic, json:String}
+class FlxAnimateFrames extends FlxAtlasFrames {
+ public function new() super();
+ public static function fromAnimate(input:String, spritemaps:Array<SpritemapInput>,
+  ?metadata:String, ?key:String):FlxAnimateFrames return new FlxAnimateFrames();
 }
 ''')
         self.write("openfl/media/Sound.hx", '''
@@ -127,6 +139,21 @@ class NightmareVisionShaderFactoryTestMain {
   var empty = NightmareVisionShaderFactory.fromPath(owner, 'empty');
   check(empty.requestedFragment == '', 'an authored empty shader is forwarded like FunkinRuntimeShader.fromPath');
 
+  var rawSnowfall = FNFAssets.getText(owner + '/shaders/snowfall.frag');
+  check(rawSnowfall.indexOf('x + 48, 38 / (x + 2.5)') >= 0
+   && rawSnowfall.indexOf('x + 48.0') < 0,
+   'factory normalization must not rewrite the owner asset on disk');
+  var snowfall = NightmareVisionShaderFactory.fromPath(owner, 'snowfall', 'snowfall');
+  check(snowfall.requestedFragment.indexOf('x + 48.0') >= 0
+   && snowfall.requestedFragment.indexOf('38.0 / (x + 2.5)') >= 0
+   && snowfall.requestedFragment.indexOf('(43758.0)') >= 0
+   && snowfall.requestedFragment.indexOf('vec2(13, 78)') >= 0
+   && snowfall.requestedFragment.indexOf('for (int i = 0; i < amount; i++)') >= 0,
+   'fragment constructor input gets shared scalar normalization while integer syntax stays intact');
+  check(snowfall.requestedVertex.indexOf('x + 48.0') >= 0
+   && snowfall.requestedVertex.indexOf('38.0 / (x + 2.5)') >= 0,
+   'vertex constructor input gets the same shared scalar normalization');
+
   var broken = NightmareVisionShaderFactory.fromPath(owner, 'broken', 'selected');
   var recovered = broken.compileForTest('AUTHORED_VERTEX', 'BROKEN');
   check(recovered.vertexSource == 'AUTHORED_VERTEX', 'compile recovery retains authored vertex source');
@@ -153,13 +180,13 @@ class NightmareVisionShaderFactoryTestMain {
     def write(self, relative, content):
         path = self.work / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_text(content, newline='\n')
         return path
 
     def shader(self, root, relative, content):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        path.write_text(content, newline='\n')
         return path
 
     def test_source_factory_preserves_shader_source_and_owner_scope(self):
@@ -169,12 +196,20 @@ class NightmareVisionShaderFactoryTestMain {
         self.shader(self.core, "shaders/core-only.frag", "CORE_FRAGMENT\n")
         self.shader(self.owner, "shaders/vertex-only.vert", "OWNER_VERTEX\n")
         self.shader(self.owner, "shaders/empty.frag", "")
+        snowfall_source = (
+            "uniform float x;\nuniform int amount;\n"
+            "float rnd() { return fract(sin(dot(vec2(x + 48, 38 / (x + 2.5)), vec2(13, 78))) * (43758)); }\n"
+            "void main() { for (int i = 0; i < amount; i++) { float unused = float(i); } }\n"
+        )
+        self.shader(self.owner, "shaders/snowfall.frag", snowfall_source)
+        self.shader(self.owner, "shaders/snowfall.vert",
+                    "uniform float x;\nvoid main() { gl_Position = vec4(x + 48, 38 / (x + 2.5), 0.0, 1.0); }\n")
         self.shader(self.foreign, "shaders/foreign-only.frag", "FOREIGN_FRAGMENT\n")
         self.shader(self.foreign, "shaders/foreign-only.vert", "FOREIGN_VERTEX\n")
 
         self.shader(self.owner, "shaders/broken.frag", "BROKEN")
         result = subprocess.run(
-            [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(self.work),
+            [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(self.work),
              "--run", "NightmareVisionShaderFactoryTestMain", "assets/imported_mods/nmv-selected"],
             cwd=self.work, capture_output=True, text=True, timeout=60,
         )

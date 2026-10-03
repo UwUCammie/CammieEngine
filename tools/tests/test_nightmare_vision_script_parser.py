@@ -1,9 +1,12 @@
 """Exercise NMV parser syntax and owner-scoped Iris import/using bindings."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -324,10 +327,11 @@ class ReentrantHost {
 }'''
 
         with tempfile.TemporaryDirectory(prefix="nmv-parser-bindings-", dir=ROOT / "tmp") as scratch:
+            write_flixel_point_stub(Path(scratch))
             fixture_path = Path(scratch) / "Main.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             for use_positions in (False, True):
-                command = [str(HAXE), "-cp", str(ROOT / "source"),
+                command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                            "-cp", str(IRIS), "-cp", scratch]
                 if use_positions:
                     command.extend(["-D", "hscriptPos"])

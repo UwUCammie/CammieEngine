@@ -1,5 +1,7 @@
 """Execute authored prop references across stage swaps without stealing globals."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -41,8 +43,8 @@ class CodenameStageBindingsTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as work:
             p=Path(work)
-            (p/'Main.hx').write_text(fixture)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True)
+            (p/'Main.hx').write_text(fixture, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_names_refresh_across_stages_and_preserve_script_assignments(self):
@@ -70,6 +72,6 @@ class CodenameStageBindingsTest(unittest.TestCase):
   binding.refresh(interp.variables, null);
   if (interp.variables.get('ground') != custom || interp.variables.get('camHUD') != camera) throw 'teardown';
  }
-}''')
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True)
+}''', newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

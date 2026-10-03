@@ -1,5 +1,7 @@
 """NMV package/core asset collection preserves paths and rejects escapes."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -32,9 +34,9 @@ class Main {
   check(NightmareVisionAssetCollector.resolveCoreAssetsRoot(owner) == args[2], 'sibling core root mismatch');
   check(NightmareVisionAssetCollector.resolveCoreAssetsRoot(args[2]) == args[2], 'assets root core mismatch');
  }
-}''')
+}''', newline='\n')
         return subprocess.run(
-            [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", *args],
+            [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", *args],
             cwd=work,
             capture_output=True,
             text=True,
@@ -50,7 +52,7 @@ class Main {
             for index in range(13):
                 deep /= f"d{index}"
             deep.mkdir(parents=True)
-            (deep / "file.json").write_text("{}")
+            (deep / "file.json").write_text("{}", newline='\n')
             (owner / "images/atlas").mkdir(parents=True)
             (owner / "images/atlas/pixel.png").write_bytes(b"pixel")
             (owner / "images/collision.png").write_bytes(b"owner")
@@ -59,11 +61,11 @@ class Main {
             (owner / "images/atlas/alias").symlink_to(owner / "images/aliasTarget", target_is_directory=True)
             (owner / "images/atlas/loop").symlink_to(owner / "images/atlas", target_is_directory=True)
             (owner / "characters/bf").mkdir(parents=True)
-            (owner / "characters/bf/bf.json").write_text("{}")
+            (owner / "characters/bf/bf.json").write_text("{}", newline='\n')
             (owner / "noteskins").mkdir()
-            (owner / "noteskins/skin.json").write_text("{}")
+            (owner / "noteskins/skin.json").write_text("{}", newline='\n')
             (owner / "stages/legacy").mkdir(parents=True)
-            (owner / "stages/legacy/room.json").write_text("{}")
+            (owner / "stages/legacy/room.json").write_text("{}", newline='\n')
             song = owner / "songs/track"
             song.mkdir(parents=True)
             (song / "Inst.ogg").write_bytes(b"audio")
@@ -89,9 +91,9 @@ class Main {
   if (result.errors.length == 0) throw 'missing containment diagnostic';
   if (result.files.length != 0) throw 'external file was collected';
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(root)],
                 cwd=work,
                 capture_output=True,
                 text=True,

@@ -1,6 +1,8 @@
 """Character swaps reuse unchanged parsed scripts without sharing interpreters."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -43,9 +45,9 @@ class CharacterScriptCacheTest {
 """
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "CharacterScriptCacheTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(HSCRIPT),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(HSCRIPT),
                  "-main", "CharacterScriptCacheTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,

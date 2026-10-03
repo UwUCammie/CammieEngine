@@ -1,6 +1,8 @@
 """Codename launch catalog merges only validated destination owner state paths."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -20,9 +22,9 @@ class CodenameModCatalogTest(unittest.TestCase):
                 for name in names:
                     state = root / "data/states" / (name + ".hx")
                     state.parent.mkdir(parents=True, exist_ok=True)
-                    state.write_text("function create() {}")
+                    state.write_text("function create() {}", newline='\n')
             outside = base / "outside.hx"
-            outside.write_text("function create() {}")
+            outside.write_text("function create() {}", newline='\n')
             (owner / "data/states/Escape.hx").symlink_to(outside)
             (base / "Main.hx").write_text('''
 class Main {
@@ -48,8 +50,8 @@ class Main {
     "assets/imported_mods/../foreign","bad",["data/states/OtherMenu.hx"]);
   if (malicious.valid || malicious.changed) throw "unsafe root accepted";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", "assets/imported_mods/fnas-owner",
                                 "assets/imported_mods/other-owner"], cwd=base,
                                text=True, capture_output=True)
@@ -61,7 +63,7 @@ class Main {
             owner = base / "assets/imported_mods/fnas-owner"
             state = owner / "data/states/FnasMainState.hx"
             state.parent.mkdir(parents=True)
-            state.write_text("function create() {}")
+            state.write_text("function create() {}", newline='\n')
             (base / "Main.hx").write_text('''
 class Main {
  static function main():Void {
@@ -69,8 +71,8 @@ class Main {
     ["data/states/FnasMainState.hx"]);
   if (merged.valid || merged.changed || merged.error=="") throw "malformed catalog overwritten";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", "assets/imported_mods/fnas-owner"], cwd=base,
                                text=True, capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -85,13 +87,13 @@ class Main {
 MusicBeatTransition.script = 'data/states/Dsides/StickerTransition';
 MusicBeatTransition.script = 'data/states/Dsides/noTrans';
 function create() {}
-""")
-            (states / "MusicBeatTransition.hx").write_text("function create() {}")
+""", newline='\n')
+            (states / "MusicBeatTransition.hx").write_text("function create() {}", newline='\n')
             for name in ("StickerTransition", "noTrans"):
                 path = states / "Dsides" / (name + ".hx")
                 path.parent.mkdir(exist_ok=True)
-                path.write_text("function create() {}")
-            (states / "AppTransitionMenu.hx").write_text("function create() {}")
+                path.write_text("function create() {}", newline='\n')
+            (states / "AppTransitionMenu.hx").write_text("function create() {}", newline='\n')
             (base / "Main.hx").write_text('''
 class Main {
  static function main():Void {
@@ -115,8 +117,8 @@ class Main {
   if (!sys.FileSystem.exists(owner+"/data/states/Dsides/StickerTransition.hx"))
     throw "catalog cleanup removed owner file";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", "assets/imported_mods/owner"], cwd=base,
                                text=True, capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -127,7 +129,7 @@ class Main {
             owner = base / "assets/imported_mods/global-only"
             global_script = owner / "data/global.hx"
             global_script.parent.mkdir(parents=True)
-            global_script.write_text("function update(elapsed) {}")
+            global_script.write_text("function update(elapsed) {}", newline='\n')
             (base / "Main.hx").write_text('''
 class Main {
  static function main():Void {
@@ -141,8 +143,8 @@ class Main {
   if (!switches.valid || switches.entries.length!=2 || switches.entries[1].label!="Global only")
     throw "global-only owner missing from switch menu";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", "assets/imported_mods/global-only"], cwd=base,
                                text=True, capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)

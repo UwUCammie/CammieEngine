@@ -4,7 +4,7 @@ import haxe.Json;
 import haxe.crypto.Md5;
 import haxe.io.Path;
 #if sys
-import sys.FileSystem;
+import ImportFileSystem as FileSystem;
 #end
 
 using StringTools;
@@ -61,6 +61,13 @@ class CompatScriptManifest {
 
 	/** Stable destination namespace for one engine root. */
 	public static function namespaceFor(sourceRoot:String, engine:String):String {
+		#if sys
+		var context = ImportIO.current();
+		if (context != null) {
+			var retained = context.namespace(sourceRoot, engine);
+			if (retained != null && retained != '') return retained;
+		}
+		#end
 		var normalized = normalizeSource(sourceRoot);
 		var base = Path.withoutDirectory(normalized);
 		if (base == null || StringTools.trim(base) == '')

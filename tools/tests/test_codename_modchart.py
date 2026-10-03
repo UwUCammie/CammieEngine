@@ -1,5 +1,7 @@
 """Pin and exercise the shared FunkinModchart compatibility layer."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -85,9 +87,9 @@ class Main {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": work},
                 capture_output=True, text=True, timeout=30)

@@ -1,6 +1,8 @@
 """Psych/Funkadelix Animate character assets stay importable on Linux."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -70,18 +72,18 @@ class Main {{
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             fixture_path = temp / "Main.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             (temp / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             root = temp / "donor"
             animate = root / "IMAGES/Characters/Girlfriend/GF_WEEK2"
             animate.mkdir(parents=True)
-            (animate / "Animation.json").write_text("{}")
-            (animate / "spritemap1.json").write_text("{}")
+            (animate / "Animation.json").write_text("{}", newline='\n')
+            (animate / "spritemap1.json").write_text("{}", newline='\n')
             before = {path: path.read_bytes() for path in animate.iterdir()}
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(root)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

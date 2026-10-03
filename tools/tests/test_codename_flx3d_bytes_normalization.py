@@ -1,6 +1,7 @@
 """Pin the OpenFL byte-array boundary used by the Codename Away3D loader."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import unittest
 

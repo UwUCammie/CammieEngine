@@ -1,8 +1,11 @@
 """Execute the owner plugin lifecycle, including duplicate names and failures."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -11,6 +14,7 @@ class NightmareVisionPluginRuntimeTest(unittest.TestCase):
     def test_plugin_order_returns_repopulation_and_owner_release(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(r'''
 class Main {
  static function check(ok:Bool, reason:String) if (!ok) throw reason;
@@ -55,9 +59,9 @@ class Main {
   check(clears==3 && runtime.callPluginFunc('Utils','value',[8])==null,'idempotent release');
  }
 }
-''')
+''', newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                *HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                 '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'), '-cp', str(work),
                 '--main', 'Main', '--interp'], cwd=work, capture_output=True, text=True, timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -71,7 +75,7 @@ class Main {
                          'scripts/plugins/ignored.lua', 'scripts/normal.hx'):
                 path = owner / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text('function onLoad() {}')
+                path.write_text('function onLoad() {}', newline='\n')
             (work / 'Main.hx').write_text(r'''
 class Main {static function main() {
  var entries=NightmareVisionScriptDiscovery.discoverPlugins('assets/imported_mods/owner');
@@ -81,8 +85,8 @@ class Main {static function main() {
  var names=[for(entry in entries) entry.name];
  if(names.indexOf('other')<0 || names.filter(function(name) return name=='Utils').length!=2) throw 'duplicates lost';
 }}
-''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(work), '--run', 'Main'], cwd=work,
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -90,6 +94,7 @@ class Main {static function main() {
     def test_driver_persists_one_owner_and_detaches_signals_when_switching(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             stubs = {
                 'flixel/FlxBasic.hx': '''package flixel; class FlxBasic {
 public var active:Bool=true;public function new(){} public function update(elapsed:Float):Void{} public function destroy():Void{}}''',
@@ -109,14 +114,14 @@ class FlxG {public static var state:Dynamic='first';public static var plugins=ne
 public static var signals={preStateSwitch:new Signal(),postStateSwitch:new Signal()};}'''
             }
             for name, value in stubs.items():
-                path = work / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value)
+                path = work / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(value, newline='\n')
             for owner in ('a', 'b'):
                 path = work / 'assets/imported_mods' / owner / 'scripts/plugins/probe.hx'
                 path.parent.mkdir(parents=True)
                 path.write_text('''function onLoad() record("load");
 function onStateSwitch(state) record("pre:"+state);
 function onStateSwitchPost(state) record("post:"+state);
-function onUpdate(elapsed) record("tick");function onDestroy() record("destroy");''')
+function onUpdate(elapsed) record("tick");function onDestroy() record("destroy");''', newline='\n')
             (work / 'Main.hx').write_text(r'''
 class Main {
  static var log:Array<String>=[];
@@ -140,8 +145,8 @@ class Main {
    ||flixel.FlxG.signals.preStateSwitch.listeners.length!=0||flixel.FlxG.signals.postStateSwitch.listeners.length!=0||log.length!=length)throw 'native cleanup';
  }
 }
-''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'), '-cp', str(work),
                                      '--run', 'Main'], cwd=work, capture_output=True, text=True, timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,6 +1,8 @@
 """Psych Lua noteType reads use the authored chart label."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -54,9 +56,9 @@ __METHODS__
 }
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychNoteTypeAliasFixture.hx").write_text(fixture)
+            Path(folder, "PsychNoteTypeAliasFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychNoteTypeAliasFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychNoteTypeAliasFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True, text=True,
             )

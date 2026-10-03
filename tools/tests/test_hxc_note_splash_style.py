@@ -1,4 +1,5 @@
 """The imported note splash path keeps one selected style and a playable adapter."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,9 +45,9 @@ class Main {{
   }}
 }}'''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", tmp, "-main", "Main", "--interp",
             ], cwd=ROOT, text=True, capture_output=True, timeout=120)
@@ -115,9 +117,9 @@ class Main {
   }
 }'''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", tmp,
+                *HAXE_COMMAND, "-cp", tmp,
                 "-main", "Main", "--interp",
             ], cwd=ROOT, text=True, capture_output=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -162,13 +164,13 @@ class FakeCurAnim {
   public var finished:Bool = false;
   public function new(name:String) this.name = name;
 }
-''')
+''', newline='\n')
             (work / "flixel/FlxG.hx").write_text('''package flixel;
 class FlxG { public static var random = new FakeRandom(); }
 class FakeRandom { public function new() {} public function int(a:Int,b:Int):Int return a; }
-''')
+''', newline='\n')
             (work / "HxcNoteStyleCompat.hx").write_text(
-                (ROOT / "source/HxcNoteStyleCompat.hx").read_text())
+                (ROOT / "source/HxcNoteStyleCompat.hx").read_text(), newline='\n')
             (work / "HxcStateAssetScope.hx").write_text('''class HxcStateAssetScope {
   public static function scopedAssetPath(root:String, relative:String):String {
     var path = root + '/' + relative;
@@ -179,11 +181,11 @@ class FakeRandom { public function new() {} public function int(a:Int,b:Int):Int
     var xml = scopedAssetPath(root, 'images/' + key + '.xml');
     return image != null && xml != null ? {image:image, xml:xml} : null;
   }
-}''')
+}''', newline='\n')
             (work / "CoolUtil.hx").write_text(
-                "class CoolUtil { public static function parseJson(s:String):Dynamic return haxe.Json.parse(s); }")
+                "class CoolUtil { public static function parseJson(s:String):Dynamic return haxe.Json.parse(s); }", newline='\n')
             (work / "FNFAssets.hx").write_text(
-                "class FNFAssets { public static function getText(p:String):String return sys.io.File.getContent(p); }")
+                "class FNFAssets { public static function getText(p:String):String return sys.io.File.getContent(p); }", newline='\n')
             for root_name, scale, alpha, offsets in [
                 ("one", 0.6, 1.0, [-27.5, -75]),
                 ("two", 1.25, 0.3, [12, 34]),
@@ -194,11 +196,11 @@ class FakeRandom { public function new() {} public function int(a:Int,b:Int):Int
                     "assetPath": "shared:notes/SmokeSplash", "scale": scale,
                     "alpha": alpha, "offsets": offsets,
                     "data": {"enabled": True, "leftSplashes": [{"prefix": "smoke"}]},
-                }}}))
+                }}}), newline='\n')
             atlas = work / "one/images/notes"
             atlas.mkdir(parents=True)
-            (atlas / "SmokeSplash.png").write_text("pixels")
-            (atlas / "SmokeSplash.xml").write_text("atlas")
+            (atlas / "SmokeSplash.png").write_text("pixels", newline='\n')
+            (atlas / "SmokeSplash.xml").write_text("atlas", newline='\n')
             main = '''import HxcNoteStyleCompat.HxcNoteSplashCompat;
 class Main {
   static function main() {
@@ -231,9 +233,9 @@ class Main {
       throw 'missing scoped atlas made visible splash';
   }
 }'''
-            (work / "Main.hx").write_text(main)
+            (work / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", tmp,
+                *HAXE_COMMAND, "-cp", tmp,
                 "-main", "Main", "--interp",
             ], cwd=ROOT, text=True, capture_output=True, timeout=120,
                 env={**os.environ, "HXC_TEST_ROOT_ONE": str(work / "one"),

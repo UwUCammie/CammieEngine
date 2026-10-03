@@ -1,5 +1,7 @@
 """Exercise the selected-owner metadata loader, including reload and isolation."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -119,8 +121,8 @@ class Main {
             'new Main(', 'new SongViewFixture(')
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
-            (work / 'SongViewFixture.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(work),
+            (work / 'SongViewFixture.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(work),
                 '-cp', str(ROOT / 'source'), '--run', 'SongViewFixture'], cwd=work, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

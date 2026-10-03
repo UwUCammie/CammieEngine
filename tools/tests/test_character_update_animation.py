@@ -1,5 +1,7 @@
 """Character update tolerates imported characters with no active animation."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -32,8 +34,8 @@ class Character {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            Path(folder, 'Character.hx').write_text(fixture)
-            result = subprocess.run([str(HAXE), '-cp', folder, '-main', 'Character', '--interp'],
+            Path(folder, 'Character.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'Character', '--interp'],
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

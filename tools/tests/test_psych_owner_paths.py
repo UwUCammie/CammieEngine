@@ -1,6 +1,8 @@
 """Psych source Paths calls resolve through the selected import owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -26,6 +28,7 @@ def haxe_env():
 
 
 class PsychOwnerPathsTest(unittest.TestCase):
+    @unittest.skipUnless((PSYCH / 'source/states/stages/School.hx').is_file(), 'private Psych source archive fixture is unavailable')
     def test_school_dialogue_and_stage_media_paths_are_owner_scoped(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
@@ -50,8 +53,8 @@ class PsychOwnerPathsTest(unittest.TestCase):
             sibling_image = sibling / "images/leak.png"
             sibling_image.parent.mkdir(parents=True)
             sibling_image.write_bytes(b"sibling image")
-            dialogue.write_text("owner dialogue\n", encoding="utf-8")
-            atlas.write_text("owner animation metadata", encoding="utf-8")
+            dialogue.write_text("owner dialogue\n", encoding="utf-8", newline='\n')
+            atlas.write_text("owner animation metadata", encoding="utf-8", newline='\n')
             import base64
             image.write_bytes(base64.b64decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/c+sAAAAASUVORK5CYII="
@@ -60,14 +63,14 @@ class PsychOwnerPathsTest(unittest.TestCase):
             results_xml.write_text(
                 '<TextureAtlas imagePath="results.png"><SubTexture name="default0000" '
                 'x="0" y="0" width="1" height="1" /></TextureAtlas>', encoding="utf-8"
-            )
+            , newline='\n')
             results_sound.write_bytes(b"fixture sound")
             results_music.write_bytes(b"fixture music")
             video.write_bytes(b"fixture")
             # A similarly named base asset must not satisfy an owner Animate lookup.
             native_atlas = work / "assets/images/missing/Animation.json"
             native_atlas.parent.mkdir(parents=True)
-            native_atlas.write_text("native animation metadata", encoding="utf-8")
+            native_atlas.write_text("native animation metadata", encoding="utf-8", newline='\n')
             native_stage_back = work / "assets/images/custom_stages/stage/stageback.png"
             native_stage_back.parent.mkdir(parents=True)
             native_stage_back.write_bytes(b"native stage background")
@@ -93,11 +96,11 @@ class FNFAssets {
  public static function getSound(id:String, ?useCache:Bool = true):Sound return null;
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             (work / "CompatScriptManifest.hx").write_text(
                 'package; class CompatScriptManifest { public static inline var ROOT_PREFIX = "assets/imported_mods"; }',
                 encoding="utf-8",
-            )
+             newline='\n')
             (work / "PsychOwnerPathsProbe.hx").write_text(
                 r'''package;
 @:access(PsychOwnerPaths)
@@ -160,10 +163,10 @@ class PsychOwnerPathsProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
                 [
-                    str(ROOT / ".tools/haxe/haxe"),
+                    *HAXE_COMMAND,
                     "-cp",
                     str(ROOT / "source"),
                     "-cp",

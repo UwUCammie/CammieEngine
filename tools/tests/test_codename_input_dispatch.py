@@ -1,5 +1,7 @@
 """Execute the real input selector with independent authored line ownership."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -57,6 +59,7 @@ class OptionsHandler { public static var options={useCustomInput:true,singYourHe
 class Main {
  var controls:Dynamic; var controlsPlayerTwo:Dynamic;
  var codenameInputLines:Array<CodenameInputLine<Character>>=[];
+ var nightmareVisionScripts:Dynamic=null;
  var boyfriend=new Character(); var dad=new Character();
  var notes=new Notes(); var soloMode=false; var generatedMusic=true; var demoMode=false;
  var mashViolations=0; var scoreTxt={color:0}; var useCustomInput=true; public var ghostTapping=true;
@@ -73,6 +76,7 @@ class Main {
   controlsPlayerTwo=controls;
  }
  function getOpponentSinger():Character return dad;
+ function getNightmareVisionField(index:Int):Dynamic return {canInput:function() return true};
  function getCodenameLineStrumline(index:Int):Strumline
   return index < 0 || index >= codenameStrumlines.length ? null : codenameStrumlines[index];
  function codenameVisualInputOwner(line:CodenameInputLine<Character>):Bool return false;
@@ -156,7 +160,7 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             folder = Path(work)
-            (folder / 'Main.hx').write_text(fixture)
+            (folder / 'Main.hx').write_text(fixture, newline='\n')
             (folder / 'Strumline.hx').write_text('''class StrumNote {
  public var ID=0; public var animation:Dynamic=null;
  public function playAnim(s:String):Void {}
@@ -165,8 +169,8 @@ class Strumline {
  public function new() {}
  public function endNoteHoldCoverAtLane(i:Int):Void {}
  public function forEachReceptor(f:StrumNote->Void):Void {}
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'tools/tests/haxe_stubs'), '-cp', str(ROOT / 'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'tools/tests/haxe_stubs'), '-cp', str(ROOT / 'source'),
                                      '-cp', str(folder), '--run', 'Main'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,9 +1,12 @@
 """Exercise the owner-scoped HL17 UI subset with deterministic Flixel stubs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -119,7 +122,7 @@ class CodenameHl17UiCompatTest(unittest.TestCase):
             for relative, content in STUBS.items():
                 target = base / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content)
+                target.write_text(content, newline='\n')
             (base / "HL17UiTestMain.hx").write_text('''
 import flixel.FlxState;
 class HL17UiTestMain {
@@ -223,9 +226,9 @@ class HL17UiTestMain {
     'stale imported-state facade did not recheck owner activity before process exit');
  }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                  "-main", "HL17UiTestMain", "--interp"],
@@ -233,6 +236,7 @@ class HL17UiTestMain {
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/codename/hl17_v3/mods/HL17/data/states/HL17MainMenu.hx').is_file(), 'mounted HL17 donor fixture is unavailable')
     def test_menu_exit_never_binds_native_sys_and_window_modules_remain_diagnosed(self):
         bindings = (ROOT / "source/CodenameImportBindings.hx").read_text()
         self.assertIn("bindings.set('Sys', CodenameSysCompat.facade());", bindings)

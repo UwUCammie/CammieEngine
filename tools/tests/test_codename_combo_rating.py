@@ -1,5 +1,7 @@
 """Compile the production Codename rating value and update-event models."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -39,10 +41,10 @@ class Main {
                          'CodenameRatingUpdateEvent'):
                 (Path(folder) / (name + '.hx')).write_text(
                     (ROOT / 'source' / (name + '.hx')).read_text()
-                )
-            (Path(folder) / 'Main.hx').write_text(fixture)
+                , newline='\n')
+            (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'Main', '--interp',
+                *HAXE_COMMAND, '-cp', folder, '-main', 'Main', '--interp',
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('combo rating models ok', result.stdout)

@@ -1,6 +1,8 @@
 """Owner-scoped GLSL imports are expanded before OpenFL shader compilation."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -103,9 +105,9 @@ class CodenameShaderSourceTest(unittest.TestCase):
    catch (error:Dynamic) cycle = Std.string(error).indexOf("Cyclic shader import") >= 0;
   if (!cycle) throw "cyclic include accepted";
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -139,9 +141,9 @@ class CodenameShaderSourceTest(unittest.TestCase):
   for (fragment in ["noise(x+1.0,y)", "i.x + 1.0", "ivec2(x-2.0, y-2.0)"])
     if (normalized.indexOf(fragment) >= 0) throw "invalid integer arithmetic remains: " + fragment;
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,6 +1,8 @@
 """Psych/Kade sectionNotes[3] noteType compatibility stays engine-level."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -62,10 +64,10 @@ class PsychNoteTypeAdapterTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
-            (temp / "NoteTypeCompat.hx").write_text(adapter)
-            (temp / "Main.hx").write_text(main)
+            (temp / "NoteTypeCompat.hx").write_text(adapter, newline='\n')
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

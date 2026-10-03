@@ -1,6 +1,8 @@
 """Codename shader tweens update real uniforms while preserving callbacks."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -67,9 +69,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
-            (Path(directory) / "Main.hx").write_text(fixture)
+            (Path(directory) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", directory, "--run", "Main"],
+                *HAXE_COMMAND, "-cp", directory, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Std.isOfType(object, FlxRuntimeShader)", source)

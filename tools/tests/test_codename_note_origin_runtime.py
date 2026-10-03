@@ -1,7 +1,9 @@
 """Executable contract for Codename note-origin propagation at note creation."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -213,9 +215,9 @@ class NoteOriginProbe {{
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "--run", "Main"],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

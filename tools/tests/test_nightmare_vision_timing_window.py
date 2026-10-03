@@ -1,5 +1,7 @@
 """Live NMV conductor/window views without touching a desktop or native save."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -80,11 +82,11 @@ class NightmareVisionTimingWindowTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as directory:
             work=Path(directory)
-            (work/'Conductor.hx').write_text(native)
+            (work/'Conductor.hx').write_text(native, newline='\n')
             (work/'lime/ui').mkdir(parents=True)
-            (work/'lime/ui/Window.hx').write_text('package lime.ui; typedef Window = Dynamic;')
-            (work/'Main.hx').write_text(main)
-            result=subprocess.run([str(HAXE),'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=30)
+            (work/'lime/ui/Window.hx').write_text('package lime.ui; typedef Window = Dynamic;', newline='\n')
+            (work/'Main.hx').write_text(main, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,8 @@
 """FPS/Kade dialogue portrait bundles use the native dialogue renderer."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import os
 import subprocess
@@ -47,9 +49,9 @@ class PortraitCompatFixture {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PortraitCompatFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-cp", str(ROOT / "source"), "--run", "PortraitCompatFixture"],
                 cwd=folder, capture_output=True, text=True,
             )
@@ -124,9 +126,9 @@ class PortraitCompatFixture {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PortraitCompatFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-cp", str(ROOT / "source"), "--run", "PortraitCompatFixture", str(DONOR)],
                 cwd=folder, capture_output=True, text=True,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

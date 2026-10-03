@@ -1,6 +1,8 @@
 """Owner-qualified chart paths keep their source title and editor destination separate."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -41,8 +43,8 @@ class SongStorageFolderTest(unittest.TestCase):
             "}",
         ])
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            completed = subprocess.run([str(HAXE), "-cp", scratch, "--run", "Main"],
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            completed = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                                        cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
 
@@ -116,8 +118,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            completed = subprocess.run([str(HAXE), "-cp", scratch, "--run", "Main"],
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            completed = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                                        cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
 

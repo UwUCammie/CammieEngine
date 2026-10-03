@@ -1,6 +1,8 @@
 """Verify the real Note.strumLine export used by Codename note callbacks."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -39,9 +41,9 @@ class Main {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
-            (Path(work) / 'Main.hx').write_text(fixture)
+            (Path(work) / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                  '-cp', work, '--run', 'Main'], cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

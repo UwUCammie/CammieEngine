@@ -1,10 +1,13 @@
 """Owner-local source-compatible Nightmare Vision Mods and Difficulty APIs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,13 +35,70 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
-            (work / "Main.hx").write_text(fixture, encoding="utf-8")
+            write_flixel_point_stub(work)
+            (work / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work),
                  "--main", "Main", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_discord_presence_keeps_source_argument_order_and_defaults(self):
+        self.run_haxe(r'''
+var calls:Array<Array<Dynamic>> = [];
+var client = new NightmareVisionDiscordClient(function(details, state, small, timestamp, end, large)
+  calls.push([details, state, small, timestamp, end, large]));
+var interp = new NightmareVisionScriptInterp();
+interp.variables.set('DiscordClient', client);
+interp.bindImport('funkin.api.DiscordClient', client);
+interp.execute(new Parser().parseString(
+  'import funkin.api.DiscordClient;\n'
+  + 'DiscordClient.changePresence("Playing", "Composer", "small", true, 1234, "cover");\n'
+  + 'DiscordClient.changePresence();\n'
+  + 'if (DiscordClient.username != "Unknown") throw "fabricated Discord identity";'));
+eq(calls.length, 2, 'presence callback count');
+eq(calls[0][0], 'Playing', 'details');
+eq(calls[0][1], 'Composer', 'state');
+eq(calls[0][2], 'small', 'small image key');
+eq(calls[0][3], true, 'timestamp switch');
+eq(calls[0][4], 1234, 'end timestamp');
+eq(calls[0][5], 'cover', 'large image key');
+eq(calls[1][0], 'In the Menus', 'default details');
+eq(calls[1][5], 'icon', 'default large image key');
+''')
+
+    def test_chart_api_loads_owned_source_charts_without_changing_source_file(self):
+        self.run_haxe(r'''
+var owner = 'assets/imported_mods/selected';
+var json = '{"song":{"player3":"gf","notes":[{"mustHitSection":false,"sectionNotes":[[100,0,0], [200,-1,"Camera", "x", "y"]]}]}}';
+var readCount = 0;
+var chart = new NightmareVisionChartApi(function(path:String):String {
+  if (path != owner + '/songs/tutorial/data/gf.json') return null;
+  readCount++;
+  return json;
+}, function(song:String, difficulty:Int):String
+  return owner + '/songs/' + song + '/charts/' + (difficulty == 2 ? 'hard' : 'normal') + '.json');
+var interp = new NightmareVisionScriptInterp();
+interp.bindImport('funkin.data.Chart', chart);
+interp.variables.set('Paths', {json:function(name:String):String return owner + '/songs/' + name + '.json'});
+interp.execute(new Parser().parseString(
+  'import funkin.data.Chart;\n'
+  + 'var crowd = Chart.fromPath(Paths.json("tutorial/data/gf"));\n'
+  + 'if (crowd.gfVersion != "gf") throw "GF conversion missing";\n'
+  + 'if (crowd.notes[0].sectionNotes[0][1] != 4) throw "legacy lane swap missing";'));
+eq(readCount, 1, 'owned chart read');
+var loaded = chart.fromPath(owner + '/songs/tutorial/data/gf.json');
+eq(loaded.events.length, 1, 'legacy event extraction');
+eq(loaded.notes[0].sectionNotes.length, 1, 'event removed from note rows');
+eq(loaded.notes[0].sectionBeats, 4, 'default section beats');
+eq(loaded.arrowSkins.length, 2, 'source arrow skins');
+eq(json.indexOf('"player3"') >= 0, true, 'source text was not changed');
+var rejected = false;
+try chart.fromPath('assets/imported_mods/other/songs/tutorial/data/gf.json') catch (error:Dynamic)
+  rejected = Std.string(error).indexOf('couldnt find chart') >= 0;
+check(rejected, 'another owner chart was accepted');
+''')
 
     def test_mods_context_import_is_owner_local_and_rejects_switching(self):
         self.run_haxe(r'''

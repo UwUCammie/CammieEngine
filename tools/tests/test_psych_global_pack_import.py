@@ -1,6 +1,8 @@
 """Ownership and provider selection for chart-free Psych global packs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -21,32 +23,32 @@ class PsychGlobalPackImportTest(unittest.TestCase):
                 (donor / "scripts").mkdir(parents=True)
                 (donor / "pack.json").write_text(
                     '{"name":"Shared display name","runsGlobally":true}', encoding="utf-8"
-                )
-                (donor / "pack.png").write_text("pack-cover", encoding="utf-8")
-                (donor / "scripts" / "results.lua").write_text("return 'owned script'", encoding="utf-8")
+                , newline='\n')
+                (donor / "pack.png").write_text("pack-cover", encoding="utf-8", newline='\n')
+                (donor / "scripts" / "results.lua").write_text("return 'owned script'", encoding="utf-8", newline='\n')
                 (donor / "images").mkdir()
-                (donor / "images" / "screen.png").write_text("image-a", encoding="utf-8")
+                (donor / "images" / "screen.png").write_text("image-a", encoding="utf-8", newline='\n')
                 (donor / "sounds").mkdir()
-                (donor / "sounds" / "confirm.ogg").write_text("sound-a", encoding="utf-8")
+                (donor / "sounds" / "confirm.ogg").write_text("sound-a", encoding="utf-8", newline='\n')
                 (donor / "data").mkdir()
                 (donor / "data" / "settings.json").write_text(
                     '{"allowResultsAnimation":{"value":true}}', encoding="utf-8"
-                )
+                , newline='\n')
             (donor_a / "shared/images").mkdir(parents=True)
-            (donor_a / "shared/images/atlas.png").write_text("shared-image", encoding="utf-8")
+            (donor_a / "shared/images/atlas.png").write_text("shared-image", encoding="utf-8", newline='\n')
             (donor_a / "songs/demo").mkdir(parents=True)
-            (donor_a / "songs/demo/Inst.ogg").write_text("unused-audio", encoding="utf-8")
-            (donor_b / "images" / "screen.png").write_text("image-b", encoding="utf-8")
+            (donor_a / "songs/demo/Inst.ogg").write_text("unused-audio", encoding="utf-8", newline='\n')
+            (donor_b / "images" / "screen.png").write_text("image-b", encoding="utf-8", newline='\n')
             bundled = work / "assets/imported_mods/bundled-vslice-results"
             (bundled / "scripts").mkdir(parents=True)
             (bundled / "pack.json").write_text(
                 '{"name":"Bundled default","runsGlobally":true}', encoding="utf-8"
-            )
-            (bundled / "scripts/results.lua").write_text("bundled results", encoding="utf-8")
+            , newline='\n')
+            (bundled / "scripts/results.lua").write_text("bundled results", encoding="utf-8", newline='\n')
             (chart_donor / "data" / "fixture").mkdir(parents=True)
             (chart_donor / "data" / "fixture" / "fixture-hard.json").write_text(
                 '{"song":{"notes":[],"bpm":120}}', encoding="utf-8"
-            )
+            , newline='\n')
 
             (work / "Main.hx").write_text(r'''import sys.FileSystem;
 import sys.io.File;
@@ -111,9 +113,9 @@ class Main {
     check(!rejected.eligible && !rejected.imported && rejected.ownerRoot == '',
       'chart-bearing global pack was imported');
   }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main",
                  str(donor_a), str(donor_b), str(chart_donor)],
                 cwd=work,
                 capture_output=True,
@@ -126,7 +128,9 @@ class Main {
         workflow = (ROOT / "source/ImportWorkflow.hx").read_text(encoding="utf-8")
         settings = (ROOT / "source/ImportSettingsState.hx").read_text(encoding="utf-8")
         self.assertIn("PsychGlobalPackImporter.isEligible(descriptor.root, descriptor.contentRoot)", workflow)
-        self.assertIn("imported = importChartFreePsychGlobalPacks()", workflow)
+        self.assertIn("public static function convertRetainedSource", workflow)
+        self.assertIn("return ImportImportJob.importChartFreePsychGlobalPacks(scan)", workflow)
+        self.assertIn("public static function importChartFreePsychGlobalPacks(scan:ImportScanResult)", workflow)
         self.assertIn("PsychGlobalPackImporter.importPack(root.root, root.contentRoot)", workflow)
         self.assertIn("scanResult.globalPacksToImport > 0", settings)
 

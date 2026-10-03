@@ -1,6 +1,8 @@
 """Imported Mods groups owners by package and follows owner-local menu routes."""
+from haxe_test_support import HAXE_COMMAND
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -28,7 +30,7 @@ class ImportedModDiscoveryTest(unittest.TestCase):
             for relative, content in dsides_states.items():
                 path = owners["dsides"] / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             ambiguous_states = {
                 "data/states/Entry/TitleState.hx": "FlxG.switchState(new MainMenuState());",
                 "data/states/One/MainMenuState.hx": "function create() {}",
@@ -37,7 +39,7 @@ class ImportedModDiscoveryTest(unittest.TestCase):
             for relative, content in ambiguous_states.items():
                 path = owners["ambiguous"] / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
 
             def receipt(folder, owner, engine, title, name_source):
                 song_folder = base / "assets/data" / folder
@@ -50,7 +52,7 @@ class ImportedModDiscoveryTest(unittest.TestCase):
                     "sourceFolder": folder,
                     "modName": title,
                     "nameSource": name_source,
-                }))
+                }), newline='\n')
 
             receipt("song-a", "dsides", "Codename Engine", "D-Sides", "metadata")
             receipt("song-b", "dsides", "Codename Engine", "Outer Archive Name", "inferred")
@@ -62,7 +64,7 @@ class ImportedModDiscoveryTest(unittest.TestCase):
                 {"root": "assets/imported_mods/ambiguous", "label": "Ambiguous Pack · Codename Engine",
                  "states": list(ambiguous_states)},
             ]}
-            (base / "catalog.json").write_text(json.dumps(catalog))
+            (base / "catalog.json").write_text(json.dumps(catalog), newline='\n')
             (base / "Main.hx").write_text(r'''
 class Main {
  static function main():Void {
@@ -115,9 +117,9 @@ class Main {
   if (fallbackOwner != "assets/imported_mods/dsides")
    throw "chart provenance owner fallback failed";
  }
-}''')
+}''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=base, text=True, capture_output=True, timeout=60,
             )
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)

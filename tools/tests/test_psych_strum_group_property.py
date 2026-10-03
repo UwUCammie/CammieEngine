@@ -1,6 +1,8 @@
 """Psych group access must honor FlxSpriteGroup's members getter."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -92,9 +94,9 @@ class ExtractedBridge {
  __METHODS__
 }'''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "PsychStrumGroupPropertyFixture.hx").write_text(fixture)
+            (Path(folder) / "PsychStrumGroupPropertyFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "PsychStrumGroupPropertyFixture"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

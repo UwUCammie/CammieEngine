@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import tempfile
 import unittest
@@ -34,15 +35,15 @@ class RefreshVSliceVisualsTest(unittest.TestCase):
                 "characters": {"bf": {"zIndex": 300}, "dad": {"zIndex": 200}, "gf": {"zIndex": 100}},
                 "props": [{"name": "cover", "zIndex": 210, "position": [20, 30],
                            "scale": [1.5, 1.5], "assetPath": "stages/cover", "animType": "none"}],
-            }))
+            }), newline='\n')
             (donor / "images/stages/cover.png").write_bytes(b"fixture-png")
             owner = refresh.namespace_for(donor)
             (runtime / "assets/data/one/compatScripts.json").write_text(json.dumps({
                 "version": 1, "selectedRoot": owner, "roots": [{"engine": "V-Slice", "path": owner}]
-            }))
+            }), newline='\n')
             (runtime / "assets/data/one/one.json").write_text(json.dumps({"song": {
                 "song": "one", "stage": "arena", "player1": "bf", "player2": "dad", "gf": "gf"
-            }}))
+            }}), newline='\n')
             target = runtime / "assets/images/custom_stages/arena.hscript"
             generated = refresh.haxe_convert([{"kind": "stage", "reference": "arena",
                 "definition": str(definition), "contentRoot": str(donor)}], runtime)[0]
@@ -50,7 +51,7 @@ class RefreshVSliceVisualsTest(unittest.TestCase):
             mapping = generated["assets"][0]
             (runtime / "assets/images/custom_stages/arena" / mapping["destination"]).write_bytes(b"fixture-png")
             old = generated["hscript"].replace("    stage.setZIndex(vSliceProp_cover_0, 210);\n", "")
-            target.write_text(old)
+            target.write_text(old, newline='\n')
             options = runtime / "assets/data/options.json"
             options.write_bytes(b'{"custom":"keep"}')
             plan = refresh.make_plan(donor, runtime)
@@ -58,7 +59,7 @@ class RefreshVSliceVisualsTest(unittest.TestCase):
                              [("stage", "arena")])
             self.assertIn("+    stage.setZIndex(vSliceProp_cover_0, 210);", plan["candidates"][0]["diff"])
             plan_path = base / "reviewed-plan.json"
-            plan_path.write_text(json.dumps(plan))
+            plan_path.write_text(json.dumps(plan), newline='\n')
             # This fixture only replaces its private runtime. Keep real flock
             # behavior but isolate lock files from the user's game/build.
             (base / "source").symlink_to(ROOT / "source", target_is_directory=True)
@@ -79,12 +80,12 @@ class RefreshVSliceVisualsTest(unittest.TestCase):
             base = Path(folder)
             donor, runtime = base / "donor", base / "runtime"
             (donor / "data/stages").mkdir(parents=True)
-            (donor / "data/stages/arena.json").write_text(json.dumps({"name": "arena", "props": []}))
+            (donor / "data/stages/arena.json").write_text(json.dumps({"name": "arena", "props": []}), newline='\n')
             for song, owner in (("one", refresh.namespace_for(donor)), ("two", "assets/imported_mods/v-slice-other-123")):
                 target = runtime / "assets/data" / song
                 target.mkdir(parents=True)
-                (target / "compatScripts.json").write_text(json.dumps({"selectedRoot": owner, "roots": [{"engine": "V-Slice", "path": owner}]}))
-                (target / (song + ".json")).write_text(json.dumps({"song": {"stage": "arena"}}))
+                (target / "compatScripts.json").write_text(json.dumps({"selectedRoot": owner, "roots": [{"engine": "V-Slice", "path": owner}]}), newline='\n')
+                (target / (song + ".json")).write_text(json.dumps({"song": {"stage": "arena"}}), newline='\n')
             plan = refresh.make_plan(donor, runtime)
             self.assertEqual(plan["candidates"], [])
             self.assertIn("ID referenced by another manifest owner", [item["reason"] for item in plan["skipped"]])
@@ -102,13 +103,13 @@ class RefreshVSliceVisualsTest(unittest.TestCase):
             definition.write_text(json.dumps({"name": "hero", "assetPath": "characters/bf",
                 "renderType": "sparrow", "animations": [
                     {"name": "idle", "prefix": "BF idle dance", "frameRate": 24},
-                    {"name": "singUP", "prefix": "BF NOTE UP", "frameRate": 24}]}))
+                    {"name": "singUP", "prefix": "BF NOTE UP", "frameRate": 24}]}), newline='\n')
             (runtime / "assets/images/custom_chars/custom_chars.jsonc").write_text(json.dumps({
-                "bf": {"like": "bf", "icons": [0, 0, 0, 0]}}))
+                "bf": {"like": "bf", "icons": [0, 0, 0, 0]}}), newline='\n')
             (runtime / "assets/images/custom_chars/bf/char.png").write_bytes(b"fixture-png")
             (runtime / "assets/images/custom_chars/bf/char.xml").write_text(
                 '<TextureAtlas><SubTexture name="BF idle dance0000"/>'
-                '<SubTexture name="BF NOTE UP0000"/></TextureAtlas>')
+                '<SubTexture name="BF NOTE UP0000"/></TextureAtlas>', newline='\n')
             converted = refresh.haxe_convert([{"kind": "character", "reference": "hero",
                 "definition": str(definition), "contentRoot": str(donor)}], runtime)[0]
             script = converted["hscript"]

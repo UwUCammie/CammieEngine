@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -84,9 +86,9 @@ class CategorySearchMain {
 ''')
 
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'CategorySearchMain.hx').write_text(fixture)
+            (Path(folder) / 'CategorySearchMain.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'CategorySearchMain', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'CategorySearchMain', '--interp'],
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

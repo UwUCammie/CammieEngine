@@ -1,6 +1,8 @@
 """Execute the shared event-video clock correction against donor timing rules."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -54,8 +56,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", scratch,
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", scratch,
                                      "--run", "Main"], cwd=ROOT, text=True,
                                     capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -99,8 +101,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", scratch,
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", scratch,
                                      "--run", "Main"], cwd=ROOT, text=True,
                                     capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

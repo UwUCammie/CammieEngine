@@ -3,6 +3,7 @@
 import importlib.util
 import io
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -32,7 +33,7 @@ class TestRunnerOffscreen(unittest.TestCase):
         environment = launch.call_args.kwargs["env"]
         self.assertEqual(environment["KEEP_ME"], "yes")
         for name in ("TMPDIR", "TMP", "TEMP"):
-            self.assertEqual(environment[name], str(ROOT / "tmp"))
+            self.assertEqual(Path(environment[name]), ROOT / "tmp")
         for name in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
                      "XAUTHORITY", "XDG_RUNTIME_DIR"):
             self.assertNotIn(name, environment)
@@ -41,7 +42,7 @@ class TestRunnerOffscreen(unittest.TestCase):
     def test_empty_test_module_fails_the_suite(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
-            (folder / "test_empty.py").write_text("# No test cases here.\n")
+            (folder / "test_empty.py").write_text("# No test cases here.\n", newline='\n')
             output = io.StringIO()
             errors = io.StringIO()
             with patch.object(RUN_TESTS, "TESTS", folder), \

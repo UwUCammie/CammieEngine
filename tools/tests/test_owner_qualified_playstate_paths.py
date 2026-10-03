@@ -1,5 +1,7 @@
 """Owner-qualified songs keep chart identity while sidecars/audio use storage keys."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -56,8 +58,8 @@ class Main {{
     if (main.currentSongStorageFolder() != 'canonical song')
       throw 'invalid storage key was accepted';
   }}
-}}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(tmp), "--run", "Main"],
+}}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(tmp), "--run", "Main"],
                                     cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

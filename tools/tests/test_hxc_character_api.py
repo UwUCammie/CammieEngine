@@ -1,6 +1,7 @@
 """Source-level coverage for the shared HXC character/stage API aliases."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

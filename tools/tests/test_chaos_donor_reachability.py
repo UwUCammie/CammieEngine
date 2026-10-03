@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import unittest
 

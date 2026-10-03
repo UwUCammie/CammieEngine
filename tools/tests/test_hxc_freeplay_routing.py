@@ -1,9 +1,11 @@
 """Focused isolation fixtures for native Freeplay HXC routing."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 from tools.tests.test_psych_character_scope import extract_method
 
@@ -71,9 +73,9 @@ class HxcFreeplayRoutingTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                 "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
@@ -152,9 +154,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder)
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", str(path), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", str(path), "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

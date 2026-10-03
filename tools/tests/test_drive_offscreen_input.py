@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import signal
 import subprocess
 import sys
@@ -37,12 +38,13 @@ class OffscreenInputTest(unittest.TestCase):
             path = Path(folder) / "markers.jsonl"
             self.assertFalse(driver.marker_seen(path, "playstate_ready"))
             path.write_text("noise\nRUNTIME_SMOKE|" + json.dumps({"event": "playstate_start"})
-                            + "\nRUNTIME_SMOKE|bad-json\n", encoding="utf-8")
+                            + "\nRUNTIME_SMOKE|bad-json\n", encoding="utf-8", newline='\n')
             self.assertFalse(driver.marker_seen(path, "playstate_ready"))
             with path.open("a", encoding="utf-8") as stream:
                 stream.write("RUNTIME_SMOKE|" + json.dumps({"event": "playstate_ready"}) + "\n")
             self.assertTrue(driver.marker_seen(path, "playstate_ready"))
 
+    @unittest.skipIf(os.name == 'nt', 'uses POSIX shell executable and X11 fixtures')
     def test_game_diagnostics_stream_before_outer_timeout_without_line_corruption(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
@@ -50,7 +52,7 @@ class OffscreenInputTest(unittest.TestCase):
             fake_bin.mkdir()
             xdotool = fake_bin / "xdotool"
             xdotool.write_text("#!/bin/sh\nif [ \"$1\" = search ]; then echo 123; fi\nexit 0\n",
-                               encoding="utf-8")
+                               encoding="utf-8", newline='\n')
             xdotool.chmod(0o755)
             marker_log = scratch / "markers.jsonl"
             child = scratch / "fake_game.py"
@@ -67,7 +69,7 @@ sys.stdout.flush()
 sys.stdout.write("[hscript-null-access] captured before timeout\\n")
 sys.stdout.flush()
 time.sleep(30)
-''', encoding="utf-8")
+''', encoding="utf-8", newline='\n')
             command = [
                 sys.executable, str(driver.__file__), "--marker-log", str(marker_log),
                 "--key", "Escape", "--delay-seconds", "0", "--",
@@ -103,13 +105,14 @@ time.sleep(30)
             self.assertLess(lines.index(input_lines[0]), lines.index(game_markers[0]), output)
             self.assertIn("[hscript-null-access] captured before timeout", output)
 
+    @unittest.skipIf(os.name == 'nt', 'uses POSIX shell executable and X11 fixtures')
     def test_dialogue_repeat_and_post_song_input_have_separate_triggers(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
             fake_bin = scratch / "bin"
             fake_bin.mkdir()
             xdotool = fake_bin / "xdotool"
-            xdotool.write_text('#!/bin/sh\nif [ "$1" = search ]; then echo 123; fi\nexit 0\n')
+            xdotool.write_text('#!/bin/sh\nif [ "$1" = search ]; then echo 123; fi\nexit 0\n', newline='\n')
             xdotool.chmod(0o755)
             marker_log = scratch / "markers.jsonl"
             child = scratch / "fake_game.py"
@@ -120,7 +123,7 @@ for event in ('playstate_ready', 'song_start', 'song_end'):
     with marker.open('a') as stream:
         stream.write('RUNTIME_SMOKE|' + json.dumps({'event': event}) + '\\n')
     time.sleep(0.4)
-''')
+''', newline='\n')
             command = [sys.executable, str(driver.__file__), '--marker-log', str(marker_log),
                        '--repeat-key', 'Return', '--repeat-start-delay-seconds', '0',
                        '--repeat-interval-seconds', '0.25', '--post-key', 'Return',

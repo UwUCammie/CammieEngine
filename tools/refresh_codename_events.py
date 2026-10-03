@@ -9,7 +9,10 @@ or any other chart bytes. Never modify the donor.
 import argparse
 import base64
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import math
@@ -405,11 +408,11 @@ def make_plan(donor_root, runtime_root):
             if not target.is_file() or not within(target, runtime):
                 issues.append({"song": folder.name, "difficulty": difficulty, "reason": "native chart missing"})
                 continue
-            chart_inputs.append({"id": folder.name + "/" + difficulty, "chart": str(chart),
-                                 "sidecar": str(sidecar) if sidecar.is_file() else None,
-                                 "difficulty": difficulty, "target": str(target),
-                                 "manifest": str(manifest), "sourcePlan": str(source_plan_path),
-                                 "meta": str(meta)})
+            chart_inputs.append({"id": folder.name + "/" + difficulty, "chart": chart.as_posix(),
+                                 "sidecar": sidecar.as_posix() if sidecar.is_file() else None,
+                                 "difficulty": difficulty, "target": target.as_posix(),
+                                 "manifest": manifest.as_posix(), "sourcePlan": source_plan_path.as_posix(),
+                                 "meta": meta.as_posix()})
     if not list(selected_songs(runtime, owner)):
         raise ValueError("no song selects the exact Codename donor namespace")
     output = render(donor, [{key: item[key] for key in ("id", "chart", "sidecar", "difficulty")}
@@ -445,7 +448,7 @@ def make_plan(donor_root, runtime_root):
                    for key in ("chart", "manifest", "sourcePlan", "meta")}
         if item["sidecar"]:
             sources["sidecar"] = {"path": item["sidecar"], "sha256": file_digest(Path(item["sidecar"]))}
-        candidates.append({"id": item["id"], "target": str(target), "difficulty": item["difficulty"],
+        candidates.append({"id": item["id"], "target": target.as_posix(), "difficulty": item["difficulty"],
                            "beforeSha256": digest(before), "afterSha256": digest(after),
                            "afterBase64": base64.b64encode(after).decode(), "sources": sources,
                            "legacyProjection": "epsilon-exclusive-source-order",

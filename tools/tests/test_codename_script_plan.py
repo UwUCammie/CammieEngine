@@ -1,6 +1,8 @@
 """Destination-only Codename song and authored-stage selection."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -42,9 +44,9 @@ class CodenameScriptPlanTest(unittest.TestCase):
     && rejected('{"version":1,"song":"try-harder","difficulties":{"hard":[3]}}'),
     "malformed note sidecar accepted");
  }
-}''')
+}''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
@@ -108,9 +110,9 @@ class Main {
     check(rejected({hard:unsafeStage}), "unsafe native stage accepted");
   }
 }
-''')
+''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
@@ -142,9 +144,9 @@ class Main {
         || !rejects('{"version":1,"song":"source-folder","stages":4}')) throw "unsafe plan";
   }
 }
-''')
+''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)

@@ -1,5 +1,7 @@
 """Execute the shared Codename character orientation helper with frame/offset doubles."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -75,9 +77,9 @@ class CodenameCharacterOrientationTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(path), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

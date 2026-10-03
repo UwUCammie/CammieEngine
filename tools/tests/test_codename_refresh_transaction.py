@@ -1,10 +1,11 @@
 """Exercise refresh transaction failures using isolated locks and real files."""
 import base64
 import copy
-import fcntl
+from tools import file_lock as fcntl
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -38,7 +39,7 @@ class CodenameRefreshTransactionTest(unittest.TestCase):
             'runtimeRoot': str(runtime), 'selectedRoot': 'owner',
             'inputsSha256': {'frozen': 'test'}, 'candidates': candidates}
         self.path = self.work / 'plan.json'
-        self.path.write_text(json.dumps(self.plan))
+        self.path.write_text(json.dumps(self.plan), newline='\n')
         # Conversion/provenance is covered by the renderer suite; this exercises
         # the transaction after a freshly regenerated plan has been obtained.
         for mock in (patch.object(REFRESH, 'ROOT', self.work),

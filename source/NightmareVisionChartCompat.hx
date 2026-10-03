@@ -73,10 +73,6 @@ class NightmareVisionChartCompat {
 		}
 
 		var arrowSkins:Dynamic = Reflect.field(song, 'arrowSkins');
-		if (arrowSkins != null && Std.isOfType(arrowSkins, Array)
-			&& (cast arrowSkins:Array<Dynamic>).length > 0)
-			diagnostics.push(message('nightmare-vision-unsupported-arrow-skins', sourcePath,
-				'per-field arrowSkins are retained but source skin loading is not implemented by the destination runtime'));
 		if (Reflect.field(song, 'trackSwap') == true)
 			diagnostics.push(message('nightmare-vision-unsupported-track-swap', sourcePath,
 				'NMV trackSwap audio routing is not represented by the destination runtime'));

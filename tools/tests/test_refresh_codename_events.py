@@ -3,9 +3,11 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import tempfile
 import unittest
+import os
 from unittest.mock import patch
 
 
@@ -22,24 +24,24 @@ class CodenameEventRefreshTest(unittest.TestCase):
         song = donor / "songs/SourceSong"
         (song / "charts").mkdir(parents=True)
         (runtime / "assets/data/sourcesong").mkdir(parents=True)
-        (song / "meta.json").write_text('{"displayName":"Alias","difficulties":["normal"],"bpm":120,"stepsPerBeat":4}')
+        (song / "meta.json").write_text('{"displayName":"Alias","difficulties":["normal"],"bpm":120,"stepsPerBeat":4}', newline='\n')
         (song / "charts/normal.json").write_text(json.dumps({"codenameChart": True,
             "events": [
                 {"name": "Set GF Speed", "time": 100.00005, "params": [3]},
                 {"name": "Set GF Speed", "time": 100.0, "params": [2]},
                 {"name": "Set GF Speed", "time": 50.0, "params": [1]},
                 {"name": "Set GF Speed", "time": 300.0, "params": [4]},
-            ]}))
+            ]}), newline='\n')
         (song / "events.json").write_text(json.dumps({"events": [
             {"name": "Set GF Speed", "time": 300.0, "params": [5]}
-        ]}))
+        ]}), newline='\n')
         owner = REFRESH.render(donor.resolve(), [])["namespace"]
         data = runtime / "assets/data/sourcesong"
         (data / "compatScripts.json").write_text(json.dumps({"version": 1,
-            "roots": [{"engine": "Codename Engine", "path": owner}], "selectedRoot": owner}))
+            "roots": [{"engine": "Codename Engine", "path": owner}], "selectedRoot": owner}), newline='\n')
         plan = runtime / owner / "songs/SourceSong/__cammie_compat_scripts.json"
         plan.parent.mkdir(parents=True)
-        plan.write_text(json.dumps({"version": 1, "song": "SourceSong", "stages": {}}))
+        plan.write_text(json.dumps({"version": 1, "song": "SourceSong", "stages": {}}), newline='\n')
         request = [{"id": "sourcesong/normal", "chart": str(song / "charts/normal.json"),
                     "sidecar": str(song / "events.json"), "difficulty": "normal"}]
         rendered = REFRESH.render(donor.resolve(), request)["charts"][0]
@@ -48,7 +50,7 @@ class CodenameEventRefreshTest(unittest.TestCase):
         # Keep intentional whitespace and an unrelated user-authored note edit.
         before = '{ "song" : {"song":"sourcesong", "notes" : [{"custom":"keep me"}], "events" : ' + \
                  json.dumps(old, separators=(",", ":")) + ', "extra": 123}, "other": "preserve" }\n'
-        native.write_text(before)
+        native.write_text(before, newline='\n')
         return donor, runtime, native, rendered, before
 
     def test_legacy_match_updates_only_events_and_preserves_source_timing(self):
@@ -61,7 +63,7 @@ class CodenameEventRefreshTest(unittest.TestCase):
             self.assertEqual(candidate["newTimes"], [50, 100, 100.00005, 300])
             self.assertEqual(candidate["oldRows"], candidate["newRows"])
             plan_file = Path(scratch) / "reviewed-plan.json"
-            plan_file.write_text(json.dumps(plan))
+            plan_file.write_text(json.dumps(plan), newline='\n')
             # This fixture checks event bytes, while the transaction suite tests
             # real flock behavior in isolated lock files. Avoid contending with
             # a canonical build or live native run during the parallel suite.
@@ -87,31 +89,32 @@ class CodenameEventRefreshTest(unittest.TestCase):
             donor, runtime, native, _, _ = self.fixture(Path(scratch))
             plan = REFRESH.make_plan(donor, runtime)
             plan_file = Path(scratch) / "reviewed-plan.json"
-            plan_file.write_text(json.dumps(plan))
-            native.write_text(native.read_text().replace('"Set GF Speed"', '"Edited Event"', 1))
+            plan_file.write_text(json.dumps(plan), newline='\n')
+            native.write_text(native.read_text().replace('"Set GF Speed"', '"Edited Event"', 1), newline='\n')
             self.assertEqual(len(REFRESH.make_plan(donor, runtime)["candidates"]), 0)
             with patch.object(REFRESH.fcntl, "flock"), self.assertRaises(ValueError):
                 REFRESH.apply_plan(plan, plan_file)
             self.assertIn("Edited Event", native.read_text())
             donor, runtime, native, _, before = self.fixture(Path(scratch) / "second")
             plan = REFRESH.make_plan(donor, runtime)
-            plan_file.write_text(json.dumps(plan))
-            (donor / "songs/SourceSong/charts/normal.json").write_text('{"events":[]}')
+            plan_file.write_text(json.dumps(plan), newline='\n')
+            (donor / "songs/SourceSong/charts/normal.json").write_text('{"events":[]}', newline='\n')
             with patch.object(REFRESH.fcntl, "flock"), self.assertRaises(ValueError):
                 REFRESH.apply_plan(plan, plan_file)
             self.assertEqual(native.read_text(), before)
 
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_owner_and_ambiguous_difficulty_do_not_refresh(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             donor, runtime, native, _, _ = self.fixture(Path(scratch))
             manifest = native.parent / "compatScripts.json"
             data = json.loads(manifest.read_text())
             data["selectedRoot"] = "assets/imported_mods/foreign"
-            manifest.write_text(json.dumps(data))
+            manifest.write_text(json.dumps(data), newline='\n')
             with self.assertRaisesRegex(ValueError, "no song selects"):
                 REFRESH.make_plan(donor, runtime)
             data["selectedRoot"] = data["roots"][0]["path"]
-            manifest.write_text(json.dumps(data))
+            manifest.write_text(json.dumps(data), newline='\n')
             second = donor / "songs/SourceSong/charts/Normal.json"
             second.write_bytes((donor / "songs/SourceSong/charts/normal.json").read_bytes())
             plan = REFRESH.make_plan(donor, runtime)
@@ -189,7 +192,7 @@ class CodenameEventRefreshTest(unittest.TestCase):
             metadata = source.parent / "Source Mélodie/__cammie_compat_scripts.json"
             value = json.loads(metadata.read_text())
             value["song"] = "Source Mélodie"
-            metadata.write_text(json.dumps(value))
+            metadata.write_text(json.dumps(value), newline='\n')
             plan = REFRESH.make_plan(donor, runtime)
             self.assertEqual(len(plan["candidates"]), 1, plan["skipped"])
             self.assertEqual(plan["candidates"][0]["id"], "source mélodie/Hard Mode")

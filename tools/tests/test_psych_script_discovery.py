@@ -1,8 +1,10 @@
 """Read-only Psych/Kade script-scope discovery coverage."""
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import subprocess
 import tempfile
@@ -60,12 +62,12 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             shutil.copy(ROOT / "source/PsychScriptDiscovery.hx", temp / "PsychScriptDiscovery.hx")
-            (temp / "Main.hx").write_text(MAIN)
+            (temp / "Main.hx").write_text(MAIN, newline='\n')
             args = []
             for root, chart, song in plans:
                 args.extend([str(root), str(chart) if chart else "", song])
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", *args],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", *args],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -90,9 +92,9 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             shutil.copy(ROOT / "source/PsychScriptDiscovery.hx", temp / "PsychScriptDiscovery.hx")
-            (temp / "Main.hx").write_text(COMPANION_MAIN)
+            (temp / "Main.hx").write_text(COMPANION_MAIN, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", str(root), str(chart), str(companion)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(root), str(chart), str(companion)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -107,10 +109,10 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             donor = root / "donor"
             scripts = donor / "scripts"
             scripts.mkdir(parents=True)
-            (scripts / "global.lua").write_text("function onCreate() end")
+            (scripts / "global.lua").write_text("function onCreate() end", newline='\n')
             stages = donor / "stages"
             stages.mkdir()
-            (stages / "scene.lua").write_text("function onCreate() end")
+            (stages / "scene.lua").write_text("function onCreate() end", newline='\n')
             # Same real files under two content roots must still run once.
             (donor / "shared").symlink_to(donor, target_is_directory=True)
             runtime = root / "runtime"
@@ -118,7 +120,7 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             mount = runtime / "assets"
             mount.symlink_to(donor, target_is_directory=True)
             chart = root / "chart.json"
-            chart.write_text(json.dumps({"song": {"song": "probe", "stage": "scene"}}))
+            chart.write_text(json.dumps({"song": {"song": "probe", "stage": "scene"}}), newline='\n')
             plan = self.run_plans([(mount, chart, "probe")])[0]
             self.assertEqual(len(plan["entries"]), 2)
             self.assertEqual({entry["scope"] for entry in plan["entries"]}, {"global", "stage"})
@@ -150,7 +152,7 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             for relative, content in files.items():
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             chart = root / "chart.json"
             chart.write_text(json.dumps({
                 "song": {
@@ -167,7 +169,7 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
                         [10, 1, 0, "unused/DirectType"],
                     ]}],
                 },
-            }))
+            }), newline='\n')
             before = {
                 relative: hashlib.sha256((root / relative).read_bytes()).digest()
                 for relative in files
@@ -198,11 +200,11 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             song = root / "assets/data/songData/TestSong"
             song.mkdir(parents=True)
             script = song / "script.lua"
-            script.write_text("function onCreate() end")
+            script.write_text("function onCreate() end", newline='\n')
             chart = root / "chart.json"
             chart.write_text(json.dumps({
                 "song": {"song": "testsong", "stage": "stage", "notes": []},
-            }))
+            }), newline='\n')
 
             plan = self.run_plans([(root, chart, "TestSong")])[0]
 
@@ -237,13 +239,13 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             root = Path(folder) / "donor"
             event = root / "CUSTOM_EVENTS/SideOnly.lua"
             event.parent.mkdir(parents=True)
-            event.write_text("function onEvent(name, value1, value2) end")
+            event.write_text("function onEvent(name, value1, value2) end", newline='\n')
             unused = root / "CUSTOM_EVENTS/Unused.lua"
-            unused.write_text("function onEvent(name, value1, value2) end")
+            unused.write_text("function onEvent(name, value1, value2) end", newline='\n')
             chart = root / "chart.json"
-            chart.write_text(json.dumps({"song": {"song": "testsong", "stage": "stage"}}))
+            chart.write_text(json.dumps({"song": {"song": "testsong", "stage": "stage"}}), newline='\n')
             companion = root / "events.json"
-            companion.write_text(json.dumps({"events": [[0, [["SideOnly", "", ""]]]]}))
+            companion.write_text(json.dumps({"events": [[0, [["SideOnly", "", ""]]]]}), newline='\n')
             lines = self.run_companion_plan(root, chart, companion)
             paths = "\n".join(lines).lower()
             self.assertIn("sideonly.lua", paths)
@@ -255,9 +257,9 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             root = Path(folder) / "donor"
             event = root / "custom_events/FocusCamera.lua"
             event.parent.mkdir(parents=True)
-            event.write_text("function onEvent(name, value1, value2) end")
+            event.write_text("function onEvent(name, value1, value2) end", newline='\n')
             unused = root / "custom_events/Unused.lua"
-            unused.write_text("function onEvent(name, value1, value2) end")
+            unused.write_text("function onEvent(name, value1, value2) end", newline='\n')
             chart = root / "chart.json"
             chart.write_text(json.dumps({
                 "song": {
@@ -268,9 +270,9 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
                         {"t": 24, "e": "MissingEvent", "v": []},
                     ],
                 },
-            }))
+            }), newline='\n')
             companion = root / "events.json"
-            companion.write_text("{}")
+            companion.write_text("{}", newline='\n')
             lines = self.run_companion_plan(root, chart, companion)
             paths = "\n".join(lines).lower()
             self.assertIn("focuscamera.lua", paths)

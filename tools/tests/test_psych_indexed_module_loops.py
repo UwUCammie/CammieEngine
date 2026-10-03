@@ -1,6 +1,8 @@
 """Psych compiled class modules retain Haxe indexed-loop semantics in HScript."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -27,7 +29,7 @@ def haxe_env():
 
 def fixture_command(base, *arguments):
     return [
-        str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+        *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
         "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
         "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *arguments,
     ]
@@ -55,7 +57,7 @@ class Main {
   if(unchanged.error!="" || unchanged.source!=expression)
    throw "generic-looking expression was rewritten as a type position";
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main", str(RAIN_SHADER)),
                 cwd=ROOT, env=haxe_env(), text=True, capture_output=True, timeout=60,
@@ -119,7 +121,7 @@ class Main {
   if(genericTypes.source.indexOf("new FlxTypedGroup<MenuItem>()")<0)
    throw "type-position normalization changed a generic constructor expression";
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main", str(PSYCH_SOURCE), str(STORY_MENU)),
                 cwd=ROOT, env=haxe_env(), text=True, capture_output=True, timeout=60,
@@ -143,7 +145,7 @@ class GenericTypeProbe {
   result.push(row);
   return result[0];
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import hscript.ScriptClassScope;
 import sys.io.File;
 @:access(CodenameScriptClassLoader)
@@ -162,7 +164,7 @@ class Main {
    throw "generic type erasure changed function argument, local, or return behavior";
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_env(), text=True, capture_output=True, timeout=60,
@@ -213,7 +215,7 @@ class IndexedLoopProbe {
   }
   return output;
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
  static function main():Void {
   var bindings:Map<String,Dynamic>=new Map();
@@ -235,7 +237,7 @@ class IndexedLoopProbe {
    throw "nested indexed loops or computed iterables changed";
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_env(), text=True, capture_output=True, timeout=60,

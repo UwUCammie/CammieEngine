@@ -1,6 +1,8 @@
 """Exercise the shared native imports used by Codename global scripts."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -25,7 +27,7 @@ def extract_method(source: str, marker: str) -> str:
 
 def run_haxe(folder: Path, main: str = "Main") -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+        [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
          "-cp", str(folder), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
          "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", main],
         cwd=ROOT, capture_output=True, text=True, timeout=30,
@@ -73,7 +75,7 @@ class CodenameRuntimeSharedImportsTest(unittest.TestCase):
             system.parent.mkdir(parents=True)
             system.write_text("""package openfl.system;
 class System { public static var totalMemoryNumber:Float = 0; }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(f'''import hscript.Interp;
 import haxe.Timer as HaxeTimer;
 import openfl.system.System;
@@ -111,7 +113,7 @@ class Main {{
   check(result[2] == 987654.5, "MemoryUtil did not read current process memory");
  }}
 }}
-''')
+''', newline='\n')
             result = run_haxe(base)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -128,7 +130,7 @@ class Sprite {
  public function addChild(child:Dynamic):Dynamic { children.push(child); return child; }
  public function removeChild(child:Dynamic):Dynamic { children.remove(child); return child; }
 }
-""")
+""", newline='\n')
             fps = base / "openfl/display/FPS.hx"
             fps.write_text("""package openfl.display;
 class FPS extends Sprite {
@@ -136,7 +138,7 @@ class FPS extends Sprite {
  public var textWidth:Float = 20;
  public function new(x:Float=0, y:Float=0, color:Int=0) { super(); this.x=x; this.y=y; }
 }
-""")
+""", newline='\n')
             text_field = base / "openfl/text/TextField.hx"
             text_field.parent.mkdir(parents=True)
             text_field.write_text("""package openfl.text;
@@ -146,13 +148,13 @@ class TextField {
  public var defaultTextFormat:TextFormat; public var selectable:Bool=true;
  public function new() {}
 }
-""")
+""", newline='\n')
             (text_field.parent / "TextFormat.hx").write_text("""package openfl.text;
 class TextFormat {
  public var leading:Float=0;
  public function new(font:String="_sans", size:Int=12, color:Int=0) {}
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text('''import hscript.Interp;
 import openfl.display.FPS;
 import openfl.display.Sprite;
@@ -198,7 +200,7 @@ class Main extends Sprite {
   check(observed[7] == 1, "Main.instance was not the live display root");
  }
 }
-''')
+''', newline='\n')
             result = run_haxe(base)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

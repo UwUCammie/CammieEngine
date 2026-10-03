@@ -1,10 +1,13 @@
 """Round 17: bounded native HXC main-menu specs and host boundaries."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
+import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,9 +25,9 @@ class HxcMenuOverlayRound17Test(unittest.TestCase):
     def run_fixture(self, source: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             command = [
-                str(HAXE),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", folder,
@@ -32,6 +35,7 @@ class HxcMenuOverlayRound17Test(unittest.TestCase):
             ]
             return subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=300)
 
+    @unittest.skipIf(not (MIKU.is_file() and DOKI.is_file()), 'mounted menu donor fixtures are unavailable')
     def test_renamed_module_and_state_lower_to_data_only_native_host_calls(self):
         miku = MIKU.read_text(errors="ignore")
         doki = DOKI.read_text(errors="ignore")
@@ -80,6 +84,7 @@ class Main {{
         result = self.run_fixture(main)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not (MIKU.is_file() and DOKI.is_file()), 'mounted menu donor fixtures are unavailable')
     def test_mounted_donors_are_read_only_and_generated_output_is_parseable(self):
         before_miku = MIKU.read_bytes()
         before_doki = DOKI.read_bytes()

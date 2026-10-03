@@ -1,6 +1,8 @@
 """Regression coverage for Psych's legacy ``version`` compatibility global."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -20,10 +22,10 @@ class PsychVersionGlobalTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychVersionCompat.hx"
-            path.write_text(source)
+            path.write_text(source, newline='\n')
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

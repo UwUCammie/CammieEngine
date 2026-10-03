@@ -1,6 +1,8 @@
 """Psych stage references are valid only through the song's import manifest."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -48,11 +50,18 @@ class FNFAssets {
   public static function exists(path:String):Bool return FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
+class NightmareVisionCharacterData {
+  public static function load(_root:String, _name:String):Dynamic return null;
+}
+class NightmareVisionStageData {
+  public static function getStageFile(_root:String, _name:String):Dynamic return null;
+}
 
 class PsychStageManifestValidationTest {
 """ + fields + methods + """
   static function isValidVisualValue(field:String, value:Dynamic):Bool return false;
   static function characterRootForSong(_folder:String):String return '';
+  static function characterOwnerEngineForSong(_folder:String):String return '';
   static function ownedStageEntry(_folder:String,_name:String):Dynamic return null;
   static function ownedCutsceneEntry(_folder:String,_name:String):Dynamic return null;
   static function readCharacterRegistryInManifest(_root:String):Dynamic return null;
@@ -107,18 +116,18 @@ class PsychStageManifestValidationTest {
             (temp / "assets/imported_mods/psych-root/stages").mkdir(parents=True)
             (temp / "assets/imported_mods/psych-root/stages/Unused").mkdir()
             (temp / "assets/imported_mods/vslice-root/stages").mkdir(parents=True)
-            (temp / "assets/imported_mods/psych-root/stages/Haven.lua").write_text("")
-            (temp / "assets/imported_mods/psych-root/stages/Unused/NestedOnly.lua").write_text("")
-            (temp / "assets/imported_mods/vslice-root/stages/Foreign.lua").write_text("")
+            (temp / "assets/imported_mods/psych-root/stages/Haven.lua").write_text("", newline='\n')
+            (temp / "assets/imported_mods/psych-root/stages/Unused/NestedOnly.lua").write_text("", newline='\n')
+            (temp / "assets/imported_mods/vslice-root/stages/Foreign.lua").write_text("", newline='\n')
             (temp / "assets/data/song/compatScripts.json").write_text(
                 '{"roots":['
                 '{"engine":"Psych Engine","path":"assets/imported_mods/psych-root"},'
                 '{"engine":"V-Slice","path":"assets/imported_mods/vslice-root"}'
                 '],"selectedRoot":"assets/imported_mods/psych-root"}'
-            )
-            (temp / "PsychStageManifestValidationTest.hx").write_text(fixture)
+            , newline='\n')
+            (temp / "PsychStageManifestValidationTest.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(temp), "-cp", str(ROOT / "source"),
                  "-main", "PsychStageManifestValidationTest", "--interp"],
                 cwd=temp,
                 capture_output=True,

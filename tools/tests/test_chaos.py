@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import re
 import subprocess
@@ -26,7 +28,7 @@ class ChaosTest(unittest.TestCase):
         if not fixture.is_file():
             self.skipTest(f'mounted Chaos stage fixture unavailable: {fixture}')
         result = subprocess.run([
-            str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'tools/tests/fixtures'),
+            *HAXE_COMMAND, '-cp', str(ROOT / 'tools/tests/fixtures'),
             '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-main', 'ChaosIntroTest', '--interp'
         ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -144,9 +146,9 @@ class OwnershipTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'OwnershipTest.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'OwnershipTest', '--interp'
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -200,9 +202,9 @@ class HandoffTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'HandoffTest.hx'
-            path.write_text(handoff_fixture)
+            path.write_text(handoff_fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'HandoffTest', '--interp'
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -263,9 +265,9 @@ class OwnershipSnapshotTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'OwnershipSnapshotTest.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'OwnershipSnapshotTest', '--interp'
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -362,9 +364,9 @@ class EarlyHandoffTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'EarlyHandoffTest.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'EarlyHandoffTest', '--interp'
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -463,9 +465,9 @@ class RegistryResetTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'RegistryResetTest.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'RegistryResetTest', '--interp'
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

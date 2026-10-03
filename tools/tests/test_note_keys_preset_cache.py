@@ -1,5 +1,7 @@
 """Exercise the production note-preset cache with isolated assets."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -126,15 +128,15 @@ class CoolUtil {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             base = Path(folder)
-            (base / "NoteKeys.hx").write_text(source)
-            (base / "Main.hx").write_text(main)
+            (base / "NoteKeys.hx").write_text(source, newline='\n')
+            (base / "Main.hx").write_text(main, newline='\n')
             # Haxe resolves same-package secondary types by module name, so
             # provide the three tiny test doubles in their own source modules.
-            (base / "Note.hx").write_text(fixture[fixture.index("class Note {"):fixture.index("class FNFAssets {")])
-            (base / "FNFAssets.hx").write_text(fixture[fixture.index("class FNFAssets {"):fixture.index("class CoolUtil {")])
-            (base / "CoolUtil.hx").write_text(fixture[fixture.index("class CoolUtil {"):])
+            (base / "Note.hx").write_text(fixture[fixture.index("class Note {"):fixture.index("class FNFAssets {")], newline='\n')
+            (base / "FNFAssets.hx").write_text(fixture[fixture.index("class FNFAssets {"):fixture.index("class CoolUtil {")], newline='\n')
+            (base / "CoolUtil.hx").write_text(fixture[fixture.index("class CoolUtil {"):], newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

@@ -1,6 +1,8 @@
 """Psych per-note animation flags reach the shared hit and miss paths."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -83,11 +85,11 @@ __METHODS__
 }
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychNoteAnimationProbe.hx").write_text(fixture, encoding="utf-8")
+            Path(folder, "PsychNoteAnimationProbe.hx").write_text(fixture, encoding="utf-8", newline='\n')
             env = dict(os.environ)
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "--run", "PsychNoteAnimationProbe"],
                 cwd=ROOT,
                 env=env,

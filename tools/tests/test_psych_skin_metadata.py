@@ -1,5 +1,7 @@
 """Psych skin metadata survives native difficulty selection without losing resets."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -55,8 +57,8 @@ class PsychSkinMetadataTest(unittest.TestCase):
 '''
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp', prefix='psych-skin-metadata-') as folder:
-            (Path(folder) / 'SkinMetadata.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'SkinMetadata.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'SkinMetadata', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

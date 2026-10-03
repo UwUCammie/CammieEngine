@@ -1,6 +1,8 @@
 """Execute the native text-cue owner with separate hit and miss rule sets."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -85,9 +87,9 @@ class CueOwnerFixture {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "CueOwnerFixture.hx").write_text(fixture)
+            (Path(folder) / "CueOwnerFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "CueOwnerFixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
             )

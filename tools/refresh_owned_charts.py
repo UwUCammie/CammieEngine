@@ -2,7 +2,10 @@
 """Plan or apply a backed-up, owner-scoped chart refresh from a private preview."""
 
 import argparse
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os

@@ -4,8 +4,8 @@ import haxe.Json;
 import haxe.crypto.Md5;
 import haxe.io.Path;
 #if sys
-import sys.FileSystem;
-import sys.io.File;
+import ImportFileSystem as FileSystem;
+import ImportFile as File;
 #end
 
 /** A non-overwriting repair cannot change the donor which owns chart/audio.
@@ -39,7 +39,7 @@ class ImportSongOwnership {
 		for (key in overrides.keys()) {
 			var value = overrides.get(key);
 			if (key != null && validIdentityLabel(value))
-				identityOverrides.set(key, StringTools.trim(value));
+				identityOverrides.set(identityRootKey(key), StringTools.trim(value));
 		}
 	}
 
@@ -608,6 +608,13 @@ class ImportSongOwnership {
 		// Source script API label; separate from stable ownership and display names.
 		if (sourceRoot != null && StringTools.trim(sourceRoot) != '')
 			Reflect.setField(result, 'sourceModDirectory', Path.withoutDirectory(normalizeIdentityRoot(sourceRoot)));
+		#if sys
+		var context = ImportIO.current();
+		if (context != null) {
+			var label = context.sourceLabel(sourceRoot);
+			if (label != null && label != '') Reflect.setField(result, 'sourceModDirectory', label);
+		}
+		#end
 		var identity = stableIdentity(sourceRoot, engine);
 		if (identity != '')
 			Reflect.setField(result, 'sourceIdentity', identity);
@@ -692,6 +699,18 @@ class ImportSongOwnership {
 		}
 		if (dataFolder && isBaseSong(Path.withoutDirectory(normalized)))
 			return 'Destination ' + folder + ' is an engine-owned base song.';
+		var context = ImportIO.current();
+		if (context != null && context.hasOwnedPath(normalized)) {
+			// Masked charts regenerate into staging, but their installed ownership
+			// still decides which source may reuse the destination key.
+			var installed = haxe.io.Path.join([Sys.getCwd(), normalized, CompatScriptManifest.FILE_NAME]);
+			if (sys.FileSystem.exists(installed)) try {
+				var old = CompatScriptManifest.parse(sys.io.File.getContent(installed));
+				var desired = CompatScriptManifest.destinationRoot(sourceRoot, engine);
+				if (old.roots.length > 0 && CompatScriptManifest.selectedRoot(old) == desired
+					&& old.roots.filter(function(root) return root.path != desired).length == 0) return null;
+			} catch (_:Dynamic) {}
+		}
 		if (!FileSystem.exists(folder)) return null;
 		if (sourceRoot == null || StringTools.trim(sourceRoot) == '')
 			return 'Destination ' + folder + ' exists but the source owner is unknown.';

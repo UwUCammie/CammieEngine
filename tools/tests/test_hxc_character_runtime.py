@@ -1,6 +1,8 @@
 """Donor-backed guards for actor-local V-Slice/HXC character runtime routing."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -76,6 +78,45 @@ class HxcCharacterRuntimeTest(unittest.TestCase):
         self.assertIn("dispatchHxcCharacterMethod(this, 'dance'", source)
         self.assertIn("dispatchHxcCharacterMethod(this, 'onAnimationFinished'", source)
         self.assertIn("hxcFinishedAnimation", source)
+
+    def test_seeded_native_helpers_are_not_character_overrides(self):
+        start = self.play_state.index("function hxcCharacterMethodIsAuthored(")
+        end = self.play_state.index("public function dispatchHxcCharacterMethod", start)
+        method = self.play_state[start:end]
+        main = '''class Interp {
+  public var variables:Map<String, Dynamic> = new Map();
+  public function new() {}
+}
+class Main {
+  public function new() {}
+''' + method + '''
+  static function main() {
+    var host = new Main();
+    var interp = new Interp();
+    var nativeSing = function() {};
+    var authoredSing = function() {};
+    interp.variables.set('playSingAnimation', nativeSing);
+    interp.variables.set('__hxcNativeCharacterMethods', ['playSingAnimation' => nativeSing]);
+    if (host.hxcCharacterMethodIsAuthored(interp, 'playSingAnimation'))
+      throw 'native helper replayed as authored override';
+    interp.variables.set('playSingAnimation', authoredSing);
+    if (!host.hxcCharacterMethodIsAuthored(interp, 'playSingAnimation'))
+      throw 'authored override was suppressed';
+    if (host.hxcCharacterMethodIsAuthored(interp, 'absent')) throw 'missing callback';
+    interp.variables.set('dance', authoredSing);
+    if (!host.hxcCharacterMethodIsAuthored(interp, 'dance')) throw 'unseeded authored callback';
+  }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
+            temp = Path(folder)
+            (temp / 'Main.hx').write_text(main, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, '-cp', str(temp), '--run', 'Main'],
+                cwd=temp, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        dispatch = self.play_state[end:self.play_state.index(
+            'public function dispatchHxcCharacterScreenPosition', end)]
+        self.assertIn('hxcCharacterMethodIsAuthored(hscriptStates.get(scope), methodName)', dispatch)
 
     def test_character_screen_and_gameover_hooks_use_native_runtime_boundaries(self):
         self.assertIn("hxcBaseScreenPosition", self.character)
@@ -254,9 +295,9 @@ class Main {{
 }}'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(temp), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300,
             )
@@ -292,9 +333,9 @@ class Main {{
 }}'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(temp), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300,
             )
@@ -355,10 +396,12 @@ class Main {{
 }'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
-            (temp / "HxcScriptDiscovery.hx").write_text(self.discovery)
-            (temp / "Main.hx").write_text(main)
+            (temp / "HxcScriptDiscovery.hx").write_text(self.discovery, newline='\n')
+            (temp / "HxcScriptIdentity.hx").write_text(
+                (ROOT / "source/HxcScriptIdentity.hx").read_text(), newline='\n')
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(temp), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],
                 cwd=temp,
                 capture_output=True,
                 text=True,

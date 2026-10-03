@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -51,9 +53,9 @@ class LuaResultsCompatTest {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "LuaResultsCompatTest.hx").write_text(fixture)
+            (Path(folder) / "LuaResultsCompatTest.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(HAXESCRIPT),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(HAXESCRIPT),
                  "-main", "LuaResultsCompatTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

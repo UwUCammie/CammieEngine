@@ -7,7 +7,9 @@ straight into HaxeFlixel's follow lerp turned 1 into "no easing at all",
 so Golden's camera hard-cut to every sing offset. The engine maps the
 multiplier onto its own smoothing instead.
 """
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -58,9 +60,9 @@ class Test {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'Test.hx').write_text(fixture)
+            (Path(folder) / 'Test.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', folder, '-main', 'Test', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'Test', '--interp'],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

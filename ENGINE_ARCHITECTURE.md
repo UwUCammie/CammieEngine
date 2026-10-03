@@ -223,6 +223,30 @@ unique scripts from other roots remain available. The importer retains
 package-wide files directly under `data/` inside the owner namespace, so
 `Paths.txt/json` reads cannot borrow another mod's same-named sidecar. The HXC
 runtime exposes group tween pause/resume and a bounded local-weekday host call.
+
+Character companions are identified by their declared character base and the
+selected class's literal constructor ID, even when stored beside stage or song
+scripts. A concrete stage/song declaration keeps ownership of its mixed file.
+Canonical character files without a literal constructor ID retain filename
+matching. Source identity is cached by file size and modification time; actor
+routing and owner selection use the same identity. Native character helpers
+remain callable from scripts, but only authored overrides are replayed after
+native animation operations. This prevents inherited singing helpers from
+resetting a costume selected by an authored animation override. Character layer
+reads and writes use the shared stage ordering adapter.
+
+Stage companions use the same lexical identity reader: a Stage's literal
+constructor ID selects it even when its filename differs; filename aliases
+remain available for older imports. Runtime discovery, HXC class selection,
+and importer asset planning agree on that owner. Colocated concrete Stage or
+Character classes keep their own lifecycle instead of running as helper modules
+of another registry entry. Character `scriptGet`/`scriptSet` access only live
+actor-owned interpreters, enabling stage events to update character script fields.
+Registration precedes start/onCreate, with the temporary actor binding retained
+while a new actor is being constructed and restored after its creation hook.
+The V-Slice `vocals.opponentVoices` API reads actual native opponent stems through
+the shared vocal-role adapter rather than treating the aggregate sound as a group.
+
 The translated `new Strumline` and `new HealthIcon` constructors name explicit
 adapters because HScript resolves compiled classes before variable aliases;
 the health icon adapter delays a missing placeholder diagnostic until its
@@ -3455,6 +3479,24 @@ action dispatch (including native early-return paths). Pause and spawn STOP
 returns cancel native work. End STOP retains the state and gives the mod
 priority over default results. Teardown broadcasts before releasing the group.
 
+`NightmareVisionScriptInterp` forwards camera `addShader`/`removeShader` calls
+to `NightmareVisionCameraShaders`, reproducing the source FlxCamera macro's
+append and first identity-match removal semantics. Each script removes its
+remaining attached filters at release without disturbing filters from other
+scripts. The source `Play Animation` event marks its actor's animation as
+special after starting it. Nightmare Vision character dancing respects that
+lock until the one-shot finishes, including when a note shares the event's
+timestamp.
+
+Nightmare Vision stage scripts use the native scene ownership contract:
+`StageHelper.add` attaches each prop to
+PlayState through `attachStageMember`, preserving explicit child cameras.
+The helper remains a bookkeeping group and is never mounted a second time.
+This follows the shared direct attachment used by Psych's stage host; mounting
+the helper would duplicate sprite updates/draws and propagate camGame over
+screen overlays during gameplay camera binding. NMV's `onAddSpriteGroups`
+STOP still controls native actor attachment.
+
 `NightmareVisionStageData` retains the selected StageFile without replacing
 missing fields with native defaults. Lookup uses the source's directory/flat
 forms under `data/stages`, then `stages`; a wholly absent file uses the source
@@ -3579,19 +3621,66 @@ These views preserve import ownership; the interpreter still exposes native APIs
 and is not a security sandbox. Save failures are reported after owned script
 cleanup, so they cannot strand the remaining song or plugin objects.
 
-`NightmareVisionModManager` currently implements the source callback timeline:
+`NightmareVisionModManager` implements the source callback timeline:
 ordered one-shots, inclusive repeating intervals, due callbacks after a forward
 seek, and no resurrection of finished events after a backward seek. Decimal steps
 use the BPM map, note offset and the source pre-clock-advance sample. Modifier
-value/easing/rendering APIs remain explicitly unsupported. This must not be
-reported as a complete modifier implementation.
+values and easing now use a registered modifier timeline; easing accepts source
+function values as well as named `FlxEase` functions. The pure registry, transform,
+skin-offset and renderer classes live in `source/nightmarevision/modchart/`.
+Gameplay applies them to real receptors and notes, including sustain endpoint
+stretch, rotation and clipping. Notes expose the source baseline scale point,
+with `defScale` as a historical alias for `baseScale`; the renderer reads live
+script changes without compounding modifier scale across frames. Scripted modifier registration, source scroll
+velocity changes, live splash transforms and extra playfield integration remain
+open. This is not a complete modifier implementation.
 
 `NightmareVisionHUDAdapter` forwards script access to existing native HUD objects;
 it does not place those objects in another draw group. The source `timeBar` view
 references the actual fill/background; `timeTxt` references the live text field.
 The native legacy `timeBar` text alias remains available to other engine adapters.
-Source HUD popup rendering and additional HUD behavior remain diagnosed gaps.
+Popup placement shares `PsychRatingPresentationCommon`; classic Psych's transient
+physics sprites and Nightmare Vision's persistent/recycled popup objects have
+separate presentation classes. Gameplay currently wires the Nightmare Vision
+presentation; the classic Psych helper is not a claim that every legacy popup
+path has migrated. Safe removal unwraps HUD views to real display objects and
+never inserts the same objects into a second owning group.
+`NightmareVisionHUDProfile` identifies the selected core's complete default digit
+layout. Legacy flat cores use a live shared `ratingPrefix`/`ratingSuffix` for
+ratings and combo digits; split cores retain the independent `comboPrefix` API.
+An explicit combo prefix is preserved even on a legacy core. Partial layouts
+never select legacy behavior, and missing requested files retain exact owner-path
+diagnostics. This supports release-era HUDs without rewriting donor scripts or
+aliasing asset paths.
 See the verification report for the built/native status of this integration.
+
+Identical RGB channel mapping lives in `PsychRGBShader`/`PsychRGBPalette`.
+Nightmare Vision adds per-object alpha/flash through `NightmareVisionRGBGraphics`;
+independent palettes keep those uniforms from leaking between lanes or sprites.
+Shader construction requests OpenFL's generated initialization and diagnoses
+missing parameter bindings before assigning identity defaults. Native checks
+still expose intermittent missing RGB parameters and second-visit black quads;
+this guard is diagnostic evidence, not a completed rendering repair. Shared
+`PsychCharacterCache` similarly supplies cached actor
+identity to the Nightmare Vision character-bank facade, while source-specific
+script callbacks and note-type lifecycle remain in the Nightmare Vision adapter.
+Nightmare Vision character orientation reuses `PsychCharacterOrientation`'s
+authored-flip/slot calculation. Its HUD character-change adapter calls the shared
+icon/color refresh; unchanged icon IDs preserve existing animation/bop state,
+and absent/null NV health-icon metadata uses the source `face` template.
+Text asset reads remove a UTF-8 BOM through `AssetTextEncoding`; binary reads
+preserve every byte. Donor assets are not rewritten.
+
+Nightmare Vision sustain generation uses `NightmareVisionSustainLayout` rather
+than the legacy Modding Plus sentinel convention: a positive rounded tail has
+`rounded + 1` pieces, starting at the head time with source subdivision/BPM
+spacing. Tap/hold callback dispatch is guarded against repeated scoring and
+type-local setup/spawn/hit/miss callbacks preserve the source group's order and
+STOP semantics. Stage, event and dynamic modules can call the owner-local
+`callNoteTypeScript` and `callEventScript` APIs. Event and note-type modules are
+initialized in the main lifecycle group before the same module instances join
+their specialized lookup groups, matching the supplied source. Passing a startup
+probe does not verify hold input or all events.
 
 
 ### Windows alpha distribution
@@ -3642,6 +3731,25 @@ not establish that a missing donor asset is present or that the package is verif
 API versions and Flixel's version. Release names do not change executable, save,
 or package identifiers.
 
+### Nightmare Vision note visuals
+
+`Song` retains each source playfield's `arrowSkins`; a missing list selects the
+source `default` skin. `NightmareVisionNoteSkin` loads that definition and its
+Sparrow atlases through `NightmareVisionPaths`, so the selected import or its
+own core dependency supplies tap, sustain, receptor and splash graphics.
+PlayState indexes skins by `Note.sourcePlayfieldIndex`, while Strumline maps
+the player and opponent receptor banks to source fields zero and one. The
+adapter applies authored animation prefixes, scale, antialiasing, RGB colors
+and offsets. It reports absent atlas frames and currently unsupported pixel
+sheet skins explicitly. Recycled splashes retain their selected skin and
+recenter on the owning receptor. Runtime smoke snapshots capture the atlas
+key for taps, holds and hit splashes.
+
+`EngineCompat.normalizeLegacyNoteRows` is a Modding Plus fifth-column ABI
+adapter. `Song.loadFromJson` calls it only for Modding Plus provenance or
+unlabelled legacy charts; Nightmare Vision and other declared engines keep
+their own fifth-column values and source lane indices.
+
 ### Windows import and Psych visual compatibility
 
 Import scans run on a worker and publish immutable snapshots to the Flixel thread.
@@ -3662,3 +3770,212 @@ contains the common backdrop, front, curtains, and light. Psych's default note
 skin resolves to the engine's normal UI atlas when a mod does not package it.
 `PlayState.compatParseColor` combines two 16-bit halves for eight-digit ARGB
 values because Windows hxcpp can clamp a single 32-bit `Std.parseInt` call.
+
+
+### V-Slice return-valued character queries and death audio
+
+`Character.characterId` exposes the actor identity, while `getDeathQuote()`
+queries only the active, authored HXC companion for that actor. PlayState's
+query boundary temporarily restores the original gameplay actor when a native
+substate has bound a separate death actor, then restores the previous binding.
+Closed, inactive, foreign and inherited helper scopes cannot supply a quote.
+Explicit `getDeathQuote` and `getScreenPosition` queries retain return values;
+Void HXC lifecycle callbacks still cannot cancel native gates through an
+incidental HScript expression result. Sound paths use the selected owner's
+existing `Paths` proxy.
+
+`GameOverSubstate` owns its death sprite and binds it through the shared HXC
+role bridge, allowing authored animation overrides to select costume atlases.
+It checks the initial death animation before `super.update`, queries the
+original character as prescribed by the V-Slice API, and preserves the second
+query at quote activation. `HxcDeathQuotePlayback` coordinates the host's audio
+handles: loop music at 0.2, one quote, then a four-second fade to 1.0 on quote
+completion. Exit, confirmation and destruction invalidate completion callbacks
+and stop an unfinished quote. A missing quote retains normal loop music.
+Missing requested media remains an explicit diagnostic.
+
+The opt-in `--smoke-gameover-after-ms` harness action exercises the normal
+health-based death path only after gameplay starts. It rejects incompatible
+practice, editor, completion and multiple-visit requests, emits primitive
+lifecycle markers, and fails if its requested trigger never executes.
+
+
+Custom Codename game-over substates keep their post-super callback order; a
+captured initial animation still allows their native ending gate to observe
+completion without replaying an already advanced death loop. Ordinary V-Slice
+quote gates precede super as prescribed by their source. The configured smoke
+clock also advances after a requested game over returns to a menu, through a
+post-update observer that does not double-tick PlayState or its substates.
+
+
+### V-Slice note-kind diagnostic ownership (2 October 2026)
+
+`VSliceImporter` resolves character-owned note kinds with the same lexical
+character identity and active-actor selection as `HxcScriptDiscovery`.
+It inspects copied `scripts/` and source `data/characters` / `data/stages`
+script trees, so a character wrapper in a stage directory can own a kind
+even when its file/class name differs from its literal constructor id.
+Inactive characters cannot claim a note implementation merely by mentioning
+its kind. Dedicated NoteKind scripts retain priority over companions.
+Authored note kind identity remains in the generated custom definition;
+a character-handled kind is not rewritten into a guessed built-in alias.
+
+
+### Mixed HXC character declaration ownership (2 October 2026)
+
+`HxcScriptIdentity` records the selected character class name along with its
+literal constructor ID. In a character-owned mixed file, class-name or
+constructor-ID matches to the filename take precedence over the first actor
+class. Files with no match retain the first actor fallback. `HxcCompat` uses
+that same selection for generated callbacks, including characters declared
+outside the canonical character directory. Song/event/stage/shader precedence
+is retained. Other concrete actors are excluded from companion callback merges;
+module companions retain their separate safety pass. Separator normalization
+before directory precedence makes Windows and POSIX paths select the same
+stage/character owner.
+
+Class fragments now come from the lexical reader's balanced declaration spans,
+not a regex over string-preserving source. Quoted class text, regex bodies, and
+nested comments cannot supply a competing constructor or callback fragment.
+Comment removal keeps token separation and newline structure. It shares the
+regex literal delimiter/flag reader with lexical discovery, including a regex
+terminator immediately followed by a line or block comment. Only classes
+with an explicit `extends` base enter the owner/companion selection;
+plain helper-class support is unchanged.
+
+The importer note-kind diagnostic lookup also visits direct `stages/` and
+`characters/` trees and the shared `scripts/`, `data/`, `stages/`, `characters/`
+families. It starts in those families rather than at package/shared media
+roots. The active-character selector and its stable owner/path precedence
+remain shared with runtime discovery. This records the tested conventional
+layouts; it is not a claim that arbitrary misplaced HXC files in media folders
+are supported.
+
+### Character metadata ownership
+
+Character construction and legacy mapped animations resolve their companion metadata through `Song.storageFolder(PlayState.SONG)`. The authored song title is presentation data and can collide across imported packages; it must not select a character metadata owner. The selected chart storage key remains authoritative across engine families.
+
+### Accepted host rating presentation
+
+`PsychRatingPresentationCommon.acceptedHostRating` is an explicit boundary for the native host judgement string sent into the Nightmare Vision HUD. The host has a wider `wayoff` tier (and its `ignoreVile` setting can name accepted late hits `miss`); the source Psych/NV default rating set ends with `shit`. The presenter receives that final source rating for these accepted host-only tiers. Generic source rating objects, custom image fields, and genuine note-miss dispatch remain unchanged. This projection fixes popup asset requests; host score and miss bookkeeping still need a separate source-parity audit.
+
+### Borrowed HUD draw-list ordering
+
+Nightmare Vision's source HUD is a group; the host adapter exposes existing PlayState-owned objects. `NightmareVisionHUDAdapter.sort` therefore updates both its logical member order and only the occupied HUD-member slots in the actual state's `members` draw list. Other display objects and empty slots keep their positions. Source `refreshZ(playHUD)` reaches this operation through the normal group sort binding, allowing authored zIndex order to place black shadows/panels behind foreground text. The adapter remains non-owning.
+
+### Compatibility script cadence
+
+`CompatScriptClock` schedules source callbacks independently of rendering. Nightmare Vision gameplay uses paired `onUpdate` / `onUpdatePost` batches at its default 60 Hz; native chart timing, event dispatch, physics and rendering retain their existing host ordering. Catch-up dispatch has no tick cap. Paused wall time is excluded and fractional phase is preserved. Persistent menu/plugin modules are not bound to a gameplay clock.
+
+`NightmareVisionFlxGView` supplies fixed `elapsed` only while these callbacks run. `CompatScriptInputSnapshot` latches keyboard edges over host frames without a due source tick, delivers them on the newest catch-up tick, and keeps the same snapshot through its update/post pair. Owner-save release removes the clock/view references. Clock and input fixtures verify 60/240/480 Hz counts and edge delivery; native visual parity remains a verification gate.
+
+Nightmare Vision native chart character events and script changes now use the same `PsychCharacterCache`-backed group. The legacy destructive `switchCharacter` path is bypassed for that source runtime. Its native event adapter retains related-identity animation/frame continuation; actor ownership and placement remain in the state/group bridge. This prevents cached groups from retaining actors destroyed by a separate event path.
+
+The pinned OpenFL dependency patch `tools/patch_openfl_blend_restore.py` invalidates the parent's cached blend mode before restoring it after child/filter rendering on the shared Context3D. Both `run.sh` and `run.bat` apply the hash-checked, idempotent patch. The regression simulates saved NORMAL state with a child leaving ADD and checks override preservation. Native visual attribution remains separate from that semantic test.
+
+### Live source song speed and note retirement
+
+`PlayState.songSpeed` exposes the same live value as the existing `scrollSpeed`
+property. Shared Psych property reads and writes use this live property instead
+of mutating `SONG.speed`, which is the authored chart baseline. Nightmare Vision
+retains its source extension: speed changes refresh `noteKillOffset` using
+`max(stepCrochet, 350 / effectiveScrollSpeed * playbackRate)`. Initialization
+sets that default before source stage creation so authored overrides retain
+their normal order. Instant changes and interpolated host speed tweens both
+refresh the window. The host's optional fixed scroll target remains the
+effective rendering speed used by this calculation.
+
+
+## Retained import sources and automatic regeneration
+
+`ImportRefreshManager` coordinates native imports and importer migrations. Each
+new import captures the entire selected source directory using
+`ImportSourceSnapshot`; unknown extensions and empty directories are retained.
+Executable and native-library extensions and recognized native headers are
+excluded and recorded. Source bytes are copied with bounded streaming buffers,
+not linked to the donor. The snapshot receipt is written last before publishing
+the source directory. Snapshot identity includes content hashes and exclusions.
+No total byte/file/depth limit is imposed by the snapshot helper by default.
+
+The runtime layout is outside asset discovery:
+
+```
+import-cache/
+  sources/<snapshot-id>/receipt.json
+  sources/<snapshot-id>/content/        # unchanged donor content
+  records/<import-id>.json              # pointer to committed ownership
+  state/<owner-hash>/manifest.json      # outputs, revisions, registry deltas
+  state/<owner-hash>/...                # journal and scoped recovery backups
+  staging/<import-id>-<time>/assets/    # disposable conversion output
+```
+
+`ImportRevision` tracks common and per-engine importer revisions independently
+of application versions. Developers must bump the common revision for changed
+shared import semantics, or the corresponding engine revision for an adapter
+change that needs regeneration. Changes shared by Psych and Nightmare Vision
+must bump the common revision or both affected engine revisions. A game
+version change alone does not scan or
+rehash sources. Normal launch reads small receipts only. Outdated records are
+queued when Main Menu, Freeplay or Settings polls `browseTick`; gameplay and
+results do not poll this coordinator. Browsing actions that could start play,
+editors or another import are gated while refresh is active. A main-thread
+handoff invalidates derived song support and reloads Freeplay after publication.
+
+During regeneration the retained receipt and files are checked, the package is
+rescanned, and existing root identities must remain recognized. Truncated/error
+refresh scans and failed conversions preserve the installed tree. The importer
+runs under thread-local `ImportIO`, `ImportFile` and `ImportFileSystem` routing:
+reads prefer staging, previous owned outputs are masked to force regeneration,
+and asset writes reach staging only. The renderer keeps its installed reads.
+Donor reads and retained raw-cache reads remain outside this virtual output
+tree. No process-wide working-directory change is used. Namespace, source label
+and prompted package name overrides retain the original import identity.
+
+`ImportRegistryRefresh` removes the prior generated contribution from a private
+registry seed and reconciles the new delta with current installed content. It
+preserves unrelated entries and detects conflicting edits; registry hashes are
+validated again by `ImportRefreshTransaction` before publication. Only verified
+owned output files may be replaced or retired. Settings and unowned content are
+excluded. Publication journals and backs up changes, writes the manifest last,
+and recovers interrupted transactions on the next browsing launch. Conflicts
+preserve local bytes and are displayed instead of silently replacing edits.
+Missing source dependencies remain structured diagnostics; a retained snapshot
+means the selected bytes are available, not that the mod is gameplay compatible.
+
+Legacy imports lack trusted generated baselines and cannot automatically become
+owned just because the same folder is selected. They are preserved; migration
+requires an explicit baseline-establishing workflow. Deleting `import-cache`
+disables future automatic refresh for those imports. Linux builds preserve the
+runtime cache across asset synchronization; standalone ZIP packaging excludes
+it, and the updater preserves it as local state. The source cache is gitignored.
+
+The reusable native importer check is `tools/run_import_refresh_smoke.py`. It
+uses private default settings and an isolated display, imports two generic
+Psych fixtures separately, deletes one fixture donor, models a valid older
+importer receipt and checks automatic Freeplay refresh. It also checks Unicode
+registry entries, unknown files, Wavefront meshes and Java classes, plus native
+executable exclusion. Its disposable runtime is removed; JSON evidence stays
+under `tmp/import-refresh-native-check/`. This is an importer lifecycle check,
+not song-completion or source-behavior compatibility evidence.
+
+The shared pinned TJSON 1.4.0 parser is patched by
+`tools/patch_tjson_unicode.py` during Linux and Windows setup. It keeps literal
+UTF-16 surrogate pairs together on hxcpp and decodes escaped Unicode through
+the standard JSON string decoder. This preserves astral characters and fixes
+lowercase hexadecimal decoding while retaining JSONC, single quotes and
+trailing commas. The patch accepts only the original or patched source hash;
+it does not alter donor or installed asset files.
+
+Windows snapshot verification compares canonical paths with normalized lexical
+paths, preserving filename spelling in receipts and keeping POSIX case
+distinctions. `tools/patch_hxcpp_windows_full_path.py` patches the pinned Windows
+`FileSystem.fullPath` implementation to allocate the buffer size requested by
+`GetFullPathNameW` and retry if the required size grows. A positive required
+length from a too-small buffer is not a successful resolved path. This corrects
+containment and cleanup for deeply nested staging paths; it does not change
+the Linux filesystem implementation. The subsequent pinned
+`tools/patch_hxcpp_windows_read_directory.py` removes the desktop enumerator's
+fixed buffer and null return above `MAX_PATH`, uses extended drive/UNC paths,
+and throws on incomplete enumeration. Both bootstraps verify the combined
+source hash on repeated setup. Import cleanup reports enumeration failures
+explicitly; cleanup after a committed publication cannot undo its success.

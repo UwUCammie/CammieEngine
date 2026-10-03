@@ -1,6 +1,8 @@
 """A non-overwriting import must not retarget another donor's scripts."""
+from haxe_test_support import HAXE_COMMAND
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -39,8 +41,8 @@ class Main {
   File.saveContent("song/compatScripts.json", CompatScriptManifest.stringify(manifest));
   if (ImportSongOwnership.conflict("song", b, "Psych Engine") == null) throw "mixed old import allowed";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_mixed_selected_owner_repairs_visuals_without_duplicate_chart(self):
@@ -75,8 +77,8 @@ class Main {
   if (Reflect.field(base, "visualOnly") == true || Reflect.field(base, "qualified") != true)
     throw "base-song guard was bypassed";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                                      "-cp", tmp, "--run", "Main"], cwd=tmp,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -125,8 +127,8 @@ class Main {
   if (ImportSongOwnership.conflict(folder, a, "Codename Engine") == null)
     throw "valid provenance bypassed corrupt completed ownership";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_collision_gets_stable_owner_key_and_destination_only_provenance(self):
@@ -194,8 +196,8 @@ class Main {
   if (engineMonster == packMonster)
     throw "Nested content pack reused the executable's owner-qualified song key";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_pristine_collision_destination_records_owner_before_manifest_guard(self):
@@ -243,8 +245,8 @@ class Main {
   if (ImportSongOwnership.conflict(folder, nextRoot, "Codename Engine") != null)
     throw "completed owner-qualified destination lost its ownership";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
@@ -306,8 +308,8 @@ class Main {
   if (ImportSongOwnership.modDisplayName("nested-psych") != "Bruce Update")
     throw "nested Psych pack name";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_package_id_reuses_existing_owner_after_source_root_moves(self):
@@ -344,8 +346,8 @@ class Main {
   if (ImportSongOwnership.conflict(destination, newRoot, engine) != null)
     throw "moved package could not refresh its existing chart owner";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_unnamed_package_uses_user_label_as_movable_identity(self):
@@ -395,8 +397,8 @@ class Main {
     throw "user label did not reconnect a renamed package root";
   ImportSongOwnership.clearIdentityOverrides();
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_legacy_import_without_fingerprint_does_not_claim_moved_owner(self):
@@ -430,8 +432,8 @@ class Main {
   if (File.getContent("assets/data/legacy-song/compatScripts.json") != originalManifest)
     throw "failed legacy claim mutated the existing owner manifest";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_project_title_reconnects_and_duplicate_title_owners_fail_closed(self):
@@ -493,8 +495,8 @@ class Main {
   if (ambiguous == expectedNamespace || ambiguous == "psych-other-owner-1234567890")
     throw "duplicate title chose one existing owner instead of failing closed";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_second_package_with_same_title_gets_separate_owner_by_chart_audio_fingerprint(self):
@@ -560,8 +562,8 @@ class Main {
     || File.getContent(existing + "/shared-song.json") != chartBefore)
     throw "collision planning modified the first package's imported files";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_ambiguous_package_identity_does_not_merge_existing_owners(self):
@@ -592,6 +594,6 @@ class Main {
   if (next == "owner-1-1234567890" || next == "owner-2-1234567890")
     throw "ambiguous identity selected a foreign imported namespace";
  }
-}''')
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

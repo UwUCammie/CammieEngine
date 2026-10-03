@@ -1,10 +1,13 @@
 """Psych character visuals and icon metadata stay with the selected owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -83,6 +86,12 @@ using StringTools;
 class CompatScriptManifest {{
   public static inline var ROOT_PREFIX:String = 'assets/imported_mods';
 }}
+class ImportEngine {{ public static inline var NIGHTMARE_VISION:String = 'Nightmare Vision'; }}
+class NightmareVisionCharacterData {{
+  public static function load(_root:String, _name:String):Dynamic return null;
+  public static function imageRoot(_root:String, _definition:Dynamic):String return null;
+  public static function definitionPath(_root:String, _name:String):String return null;
+}}
 class FNFAssets {{
   public static function exists(path:String):Bool return FileSystem.exists(path);
   public static function getText(path:String):String return File.getContent(path);
@@ -126,17 +135,18 @@ class Probe {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            install_import_io_dependencies(work)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             owner = work / "assets/imported_mods/psych-owner/images/custom_chars"
             scoped_actor = owner / "whitbonkers"
             scoped_actor.mkdir(parents=True)
             (owner / "custom_chars.jsonc").write_text(
                 '{"whitbonkers":{"like":"whitbonkers","icons":[0,1,2,3],'
                 '"colors":["#D70028"]},"broken":{"like":"broken"}}'
-            )
-            (owner / "whitbonkers.hscript").write_text("function init(char) {}")
+            , newline='\n')
+            (owner / "whitbonkers.hscript").write_text("function init(char) {}", newline='\n')
             (scoped_actor / "char.png").write_bytes(b"psych atlas")
 
             native_root = work / "assets/images/custom_chars"
@@ -147,24 +157,24 @@ class Probe {{
                 '"colors":["#FFFFFF"]},"plain":{"like":"plain","icons":[0,1,2,3],'
                 '"colors":["#FFFFFF"]},"broken":{"like":"broken","icons":[0,1,2,3],'
                 '"colors":["#FFFFFF"]}}'
-            )
-            (native_root / "WhitBonkers.hscript").write_text("function init(char) {}")
+            , newline='\n')
+            (native_root / "WhitBonkers.hscript").write_text("function init(char) {}", newline='\n')
             (old_actor / "char.png").write_bytes(b"fps atlas")
             plain = native_root / "plain"
             plain.mkdir()
-            (native_root / "plain.hscript").write_text("function init(char) {}")
+            (native_root / "plain.hscript").write_text("function init(char) {}", newline='\n')
             (plain / "char.png").write_bytes(b"native atlas")
 
             codename = work / "assets/imported_mods/codename-owner/images/custom_chars"
             (codename / "plain").mkdir(parents=True)
             (codename / "custom_chars.jsonc").write_text(
                 '{"plain":{"like":"plain","codenameCharacter":{"flipX":true}}}'
-            )
-            (codename / "plain.hscript").write_text("function init(char) {}")
+            , newline='\n')
+            (codename / "plain.hscript").write_text("function init(char) {}", newline='\n')
 
-            (work / "Probe.hx").write_text(fixture)
+            (work / "Probe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Probe", str(work)],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Probe", str(work)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True,
@@ -296,20 +306,21 @@ class Probe {{
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            install_import_io_dependencies(work)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             donor = work / "donor"
             (donor / "images/characters").mkdir(parents=True)
             (donor / "images/icons").mkdir(parents=True)
-            (donor / "images/characters/WhittyCrazy.png").write_text("psych-atlas")
-            (donor / "images/characters/WhittyCrazy.xml").write_text("<TextureAtlas/>")
-            (donor / "images/icons/angor.png").write_text("direct-icon")
+            (donor / "images/characters/WhittyCrazy.png").write_text("psych-atlas", newline='\n')
+            (donor / "images/characters/WhittyCrazy.xml").write_text("<TextureAtlas/>", newline='\n')
+            (donor / "images/icons/angor.png").write_text("direct-icon", newline='\n')
             (donor / "shared/images/characters").mkdir(parents=True)
             (donor / "shared/images/icons").mkdir(parents=True)
-            (donor / "shared/images/characters/SharedWhitty.png").write_text("shared-atlas")
-            (donor / "shared/images/characters/SharedWhitty.xml").write_text("<TextureAtlas/>")
-            (donor / "shared/images/icons/icon-shared-icon.png").write_text("prefixed-shared-icon")
+            (donor / "shared/images/characters/SharedWhitty.png").write_text("shared-atlas", newline='\n')
+            (donor / "shared/images/characters/SharedWhitty.xml").write_text("<TextureAtlas/>", newline='\n')
+            (donor / "shared/images/icons/icon-shared-icon.png").write_text("prefixed-shared-icon", newline='\n')
             (donor / "images/characters/picoAnims").mkdir(parents=True)
             for name in ("char", "char-1", "char-2"):
                 source_name = {
@@ -317,14 +328,14 @@ class Probe {{
                     "char-1": "picoAnims/Pico_Intro",
                     "char-2": "picoAnims/Pico_Shooting",
                 }[name]
-                (donor / "images/characters" / (source_name + ".png")).write_text("pico-" + name)
-                (donor / "images/characters" / (source_name + ".xml")).write_text("<TextureAtlas/>")
-            (donor / "shared/images/icons/icon-pico.png").write_text("pico-icon")
-            (work / "Probe.hx").write_text(fixture)
+                (donor / "images/characters" / (source_name + ".png")).write_text("pico-" + name, newline='\n')
+                (donor / "images/characters" / (source_name + ".xml")).write_text("<TextureAtlas/>", newline='\n')
+            (donor / "shared/images/icons/icon-pico.png").write_text("pico-icon", newline='\n')
+            (work / "Probe.hx").write_text(fixture, newline='\n')
             (work / "PsychCharacterDanceCompat.hx").write_text(
-                (ROOT / "source/PsychCharacterDanceCompat.hx").read_text())
+                (ROOT / "source/PsychCharacterDanceCompat.hx").read_text(), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Probe", str(work), str(donor)],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Probe", str(work), str(donor)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True,
@@ -407,22 +418,22 @@ class Probe {{
             work = Path(folder)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
-            (work / "PsychCharacterPosition.hx").write_text(position)
+            , newline='\n')
+            (work / "PsychCharacterPosition.hx").write_text(position, newline='\n')
             (work / "FNFAssets.hx").write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
-''')
+''', newline='\n')
             (work / "CoolUtil.hx").write_text('''
 class CoolUtil {
   public static function parseJson(source:String):Dynamic return haxe.Json.parse(source);
 }
-''')
-            (work / "Probe.hx").write_text(fixture)
+''', newline='\n')
+            (work / "Probe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Probe", str(work)],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Probe", str(work)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True,
@@ -479,6 +490,14 @@ class FNFAssets {{
   public static function getText(path:String):String return File.getContent(path);
 }}
 class CoolUtil {{ public static function parseJson(source:String):Dynamic return Json.parse(source); }}
+class NightmareVisionCharacterData {{
+  public static function load(_root:String, _name:String):Dynamic return null;
+  public static function imageRoot(_root:String, _definition:Dynamic):String return null;
+  public static function definitionPath(_root:String, _name:String):String return null;
+}}
+class NightmareVisionStageData {{
+  public static function getStageFile(_root:String, _name:String):Dynamic return null;
+}}
 class Song {{
   static var gameplayFields = ['song','notes','bpm'];
   static var visualFields = ['player1', 'player2', 'gf', 'stage', 'uiType', 'cutsceneType'];
@@ -487,6 +506,7 @@ class Song {{
   static function readRegistry(path:String):Dynamic
     return path == 'assets/images/custom_chars/custom_chars' ? globalCharacters : {{}};
   static function isValidVisualValue(field:String,value:Dynamic):Bool return false;
+  static function characterOwnerEngineForSong(_folder:String):String return '';
   static function validImportedPsychStage(name:String,folder:String):Bool return false;
   static function ownedCutsceneEntry(_folder:String,_name:String):Dynamic return null;
 {methods}
@@ -586,12 +606,13 @@ class Song {{
             work = Path(folder)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
-            (work / "Song.hx").write_text(fixture)
+            , newline='\n')
+            (work / "Song.hx").write_text(fixture, newline='\n')
             for module in ("ImportedStageRegistry", "CompatScriptManifest", "ImportSongOwnership", "ImportEngine"):
-                (work / (module + ".hx")).write_text((ROOT / "source" / (module + ".hx")).read_text())
+                (work / (module + ".hx")).write_text((ROOT / "source" / (module + ".hx")).read_text(), newline='\n')
+            install_import_io_dependencies(work)
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Song", str(work)],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Song", str(work)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True,

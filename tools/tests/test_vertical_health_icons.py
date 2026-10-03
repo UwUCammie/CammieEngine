@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -29,6 +31,6 @@ class Test {
  }
 }'''
         with tempfile.TemporaryDirectory() as d:
-            (Path(d)/'Test.hx').write_text(fixture)
-            p=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',d,'-main','Test','--interp'],capture_output=True,text=True)
+            (Path(d)/'Test.hx').write_text(fixture, newline='\n')
+            p=subprocess.run([*HAXE_COMMAND,'-cp',d,'-main','Test','--interp'],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stdout+p.stderr)

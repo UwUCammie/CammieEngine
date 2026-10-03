@@ -1,10 +1,13 @@
 """Case-folded native asset lookup used by Windows-authored donor packs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +28,7 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class NativeAssetResolutionTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_resolver_is_safe_deterministic_and_import_aware(self):
         source = (ROOT / "source/FNFAssets.hx").read_text()
         resolver = extract_method(source, "public static function resolveCaseInsensitivePath(")
@@ -87,12 +91,13 @@ class FNFAssets {{
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            install_import_io_dependencies(Path(folder))
             path = Path(folder) / "FNFAssets.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FNFAssets", "--interp"],
                 # Keep the fixture's relative asset tree isolated.  Running
                 # from the repository root makes the standalone probe write
@@ -109,13 +114,18 @@ class FNFAssets {{
 
     def test_text_read_keeps_disk_scope_and_packaged_asset_rules(self):
         source = (ROOT / "source/FNFAssets.hx").read_text()
+        encoding_source = (ROOT / "source/AssetTextEncoding.hx").read_text()
         disk_resolver = extract_method(source, "static function resolveDiskPath(")
         in_scope = extract_method(source, "public static function isInScope(")
         get_text = extract_method(source, "public static function getText(")
+        strip_bom = extract_method(encoding_source, "public static function stripBom(")
         fixture = f'''import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
 using StringTools;
+class AssetTextEncoding {{
+{strip_bom}
+}}
 class Assets {{
   public static var existsCalls:Int = 0;
   public static function exists(path:String):Bool {{
@@ -151,10 +161,11 @@ class FNFAssets {{
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            install_import_io_dependencies(Path(folder))
             path = Path(folder) / "FNFAssets.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FNFAssets", "--interp"],
                 cwd=folder,
                 capture_output=True,
@@ -207,9 +218,10 @@ class FNFAssets {{
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "FNFAssets.hx").write_text(fixture)
+            install_import_io_dependencies(Path(folder))
+            (Path(folder) / "FNFAssets.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FNFAssets", "--interp"],
                 cwd=folder,
                 capture_output=True,

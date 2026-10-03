@@ -1,6 +1,8 @@
 """Psych Lua text uses HUD defaults and native FlxText property setters."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -124,14 +126,14 @@ class PsychLuaTextFixture {
  }
 }'''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "PsychLuaTextFixture.hx").write_text(fixture)
+            (Path(folder) / "PsychLuaTextFixture.hx").write_text(fixture, newline='\n')
             (Path(folder) / "PsychFontPath.hx").write_text(
-                (ROOT / "source/PsychFontPath.hx").read_text())
+                (ROOT / "source/PsychFontPath.hx").read_text(), newline='\n')
             (Path(folder) / "FNFAssets.hx").write_text('''
 class FNFAssets {
  public static function exists(path:String):Bool return sys.FileSystem.exists(path);
 }
-''')
+''', newline='\n')
             scoped = Path(folder) / 'assets/imported_mods/fixture/fonts'
             scoped.mkdir(parents=True)
             (scoped / 'PixelOld.ttf').write_bytes(b'scoped')
@@ -140,7 +142,7 @@ class FNFAssets {
             (native / 'PixelOld.ttf').write_bytes(b'native')
             (native / 'NativeOnly.ttf').write_bytes(b'native')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "PsychLuaTextFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "PsychLuaTextFixture"],
                 cwd=folder, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

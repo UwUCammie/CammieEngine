@@ -1,5 +1,7 @@
 """Song-specific health multipliers must not leak into the next PlayState."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -30,9 +32,9 @@ class HealthMultiplierResetTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
-            (path / 'Probe.hx').write_text(fixture)
+            (path / 'Probe.hx').write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                *HAXE_COMMAND, '-cp', folder,
                 '-main', 'Probe', '--interp'
             ], cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

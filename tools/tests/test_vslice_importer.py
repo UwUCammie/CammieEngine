@@ -1,4 +1,5 @@
 """Synthetic-fixture coverage for the standalone V-Slice converter."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,9 +39,9 @@ class VSliceImporterTest(unittest.TestCase):
     def run_fixture(self, main_source: str, fixture_dir: Path, env=None) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main_path = Path(folder) / "Main.hx"
-            main_path.write_text(main_source)
+            main_path.write_text(main_source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -120,7 +122,7 @@ class Main {
             icon_folder = root / "images/icons"
             icon_folder.mkdir(parents=True)
             (icon_folder / "icon-our-harmony.png").write_bytes(b"donor-png")
-            (icon_folder / "icon-our-harmony.xml").write_text("<TextureAtlas />")
+            (icon_folder / "icon-our-harmony.xml").write_text("<TextureAtlas />", newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -152,19 +154,19 @@ class Main {
             secondary = root / "shared/characters"
             primary.mkdir(parents=True)
             secondary.mkdir(parents=True)
-            (primary / "ghost-sketch.json").write_text("{}")
-            (primary / "unsafe name.json").write_text("{}")
+            (primary / "ghost-sketch.json").write_text("{}", newline='\n')
+            (primary / "unsafe name.json").write_text("{}", newline='\n')
             (primary / "nested.json").mkdir()
-            (secondary / "GHOST-SKETCH.json").write_text("{}")
-            (secondary / "ghost.json").write_text("{}")
+            (secondary / "GHOST-SKETCH.json").write_text("{}", newline='\n')
+            (secondary / "ghost.json").write_text("{}", newline='\n')
 
             media = root / "shared/images/characters/ghost"
             media.mkdir(parents=True)
             (media / "Libitina_tmp.png").write_bytes(b"ghost atlas")
-            (media / "Libitina_tmp.xml").write_text("<TextureAtlas />")
+            (media / "Libitina_tmp.xml").write_text("<TextureAtlas />", newline='\n')
             missing = root / "shared/images/characters/yuri"
             missing.mkdir(parents=True)
-            (missing / "gore.xml").write_text("<TextureAtlas />")
+            (missing / "gore.xml").write_text("<TextureAtlas />", newline='\n')
 
             main = f'''import haxe.Json;
 class Main {{
@@ -208,7 +210,7 @@ class Main {{
             atlas = root / "shared/images/characters/hero"
             atlas.mkdir(parents=True)
             (atlas / "main.png").write_bytes(b"main atlas")
-            (atlas / "main.xml").write_text('<TextureAtlas><SubTexture name="idle0000"/></TextureAtlas>')
+            (atlas / "main.xml").write_text('<TextureAtlas><SubTexture name="idle0000"/></TextureAtlas>', newline='\n')
             main = f'''class Main {{
   static function main() {{
     var data = {{assetPath:"characters/hero/main", animations:[
@@ -270,8 +272,8 @@ class Main {{
             fixture = Path(folder)
             metadata_path = fixture / "meta.json"
             chart_path = fixture / "chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -335,8 +337,8 @@ class Main {{
             fixture = Path(folder)
             metadata_path = fixture / "synthetic-metadata.json"
             chart_path = fixture / "synthetic-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             source_path = haxe_string(str(fixture))
             metadata_path_hx = haxe_string(str(metadata_path))
             chart_path_hx = haxe_string(str(chart_path))
@@ -436,8 +438,8 @@ class Main {{
             fixture = Path(folder)
             metadata_path = fixture / "metadata.json"
             chart_path = fixture / "chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -497,8 +499,8 @@ class Main {{
             fixture = Path(folder)
             metadata_path = fixture / "metadata.json"
             chart_path = fixture / "chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -577,8 +579,8 @@ class Main {{
             fixture = Path(folder)
             pixel_metadata = fixture / "pixel-metadata.json"
             pixel_chart = fixture / "pixel-chart.json"
-            pixel_metadata.write_text(json.dumps(metadata))
-            pixel_chart.write_text(json.dumps(chart))
+            pixel_metadata.write_text(json.dumps(metadata), newline='\n')
+            pixel_chart.write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -641,7 +643,7 @@ class Main {{
                          "shared/images/splashes/example"):
                 (root / stem).parent.mkdir(parents=True, exist_ok=True)
                 (root / (stem + ".png")).write_bytes(b"png")
-                (root / (stem + ".xml")).write_text("<TextureAtlas />")
+                (root / (stem + ".xml")).write_text("<TextureAtlas />", newline='\n')
             (root / "shared/images/holds").mkdir(parents=True, exist_ok=True)
             (root / "shared/images/holds/example.png").write_bytes(b"png")
             for stem in ("shared/images/ui/countdown/example/ready", "shared/images/ui/countdown/example/set",
@@ -655,7 +657,7 @@ class Main {{
             judgement.parent.mkdir(parents=True, exist_ok=True)
             judgement.write_bytes(b"png")
             style_path = root / "style.json"
-            style_path.write_text(json.dumps(style))
+            style_path.write_text(json.dumps(style), newline='\n')
             main = f'''import haxe.Json;
 import sys.io.File;
 class Main {{
@@ -713,9 +715,9 @@ class Main {{
             for stem in ("shared/images/notes/example", "shared/images/receptors/example"):
                 (root / stem).parent.mkdir(parents=True, exist_ok=True)
                 (root / (stem + ".png")).write_bytes(b"png")
-                (root / (stem + ".xml")).write_text("<TextureAtlas />")
+                (root / (stem + ".xml")).write_text("<TextureAtlas />", newline='\n')
             style_path = root / "style.json"
-            style_path.write_text(json.dumps(style))
+            style_path.write_text(json.dumps(style), newline='\n')
             main = f'''import haxe.Json;
 import sys.io.File;
 class Main {{
@@ -766,11 +768,11 @@ class Main {{
                 "version": "2.2.0",
                 "songName": "Per Kind Style Fixture",
                 "playData": {"difficulties": ["normal"]},
-            }))
+            }), newline='\n')
             chart_path.write_text(json.dumps({
                 "version": "2.0.0",
                 "notes": {"normal": [{"t": 0, "d": 1, "k": "spooky"}]},
-            }))
+            }), newline='\n')
             style_path.write_text(json.dumps({
                 "version": "1.1.0",
                 "name": "Rare Danger",
@@ -785,9 +787,9 @@ class Main {{
                         "right": {"prefix": "Danger Right0"},
                     },
                 }},
-            }))
+            }), newline='\n')
             (root / "shared/images/notes/danger.png").write_bytes(b"png")
-            (root / "shared/images/notes/danger.xml").write_text("<TextureAtlas />")
+            (root / "shared/images/notes/danger.xml").write_text("<TextureAtlas />", newline='\n')
             # The adapter id, constructor style id, and script filename are all
             # intentionally distinct, matching real V-Slice NoteKind packs.
             (root / "scripts/notekinds/unrelated-file-name.hxc").write_text('''
@@ -795,7 +797,7 @@ import funkin.play.notes.notekind.NoteKind;
 class DangerAdapter extends NoteKind {
   public function new() { super("spooky", "Spooky", "rare", []); }
 }
-''')
+''', newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -849,7 +851,7 @@ class DangerAdapter extends NoteKind {
             (root / "images/notes").mkdir(parents=True)
             (other / "images/notes").mkdir(parents=True)
             (root / "scripts/notekinds/unrelated-name.hxc").write_text(
-                'class Danger extends NoteKind { function new() { super("danger", "", "warning", []); } }')
+                'class Danger extends NoteKind { function new() { super("danger", "", "warning", []); } }', newline='\n')
             (root / "data/notestyles/warning.json").write_text(json.dumps({
                 "assets": {"note": {
                     "assetPath": "shared:notes/danger",
@@ -862,11 +864,11 @@ class DangerAdapter extends NoteKind {
                         "right": {"prefix": "Danger Right0"},
                     },
                 }},
-            }))
+            }), newline='\n')
             (root / "images/notes/danger.png").write_bytes(b"png")
-            (root / "images/notes/danger.xml").write_text("<TextureAtlas />")
+            (root / "images/notes/danger.xml").write_text("<TextureAtlas />", newline='\n')
             (other / "images/notes/danger.png").write_bytes(b"png")
-            (other / "images/notes/danger.xml").write_text("<TextureAtlas />")
+            (other / "images/notes/danger.xml").write_text("<TextureAtlas />", newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function old(kind:String):Dynamic return {{
@@ -934,19 +936,19 @@ class DangerAdapter extends NoteKind {
             for stem in ("shared/images/notes/example", "shared/images/receptors/example"):
                 (root / stem).parent.mkdir(parents=True, exist_ok=True)
                 (root / (stem + ".png")).write_bytes(b"png")
-                (root / (stem + ".xml")).write_text("<TextureAtlas />")
+                (root / (stem + ".xml")).write_text("<TextureAtlas />", newline='\n')
             style_path = root / "style.json"
-            style_path.write_text(json.dumps(style))
+            style_path.write_text(json.dumps(style), newline='\n')
             supplied_root = root / "supplied"
             for stem in ("shared/images/notes/example", "shared/images/receptors/example"):
                 (supplied_root / stem).parent.mkdir(parents=True, exist_ok=True)
                 (supplied_root / (stem + ".png")).write_bytes(b"png")
-                (supplied_root / (stem + ".xml")).write_text("<TextureAtlas />")
+                (supplied_root / (stem + ".xml")).write_text("<TextureAtlas />", newline='\n')
             supplied_popup = supplied_root / "shared/images/ui/popup/funkin/sick.png"
             supplied_popup.parent.mkdir(parents=True, exist_ok=True)
             supplied_popup.write_bytes(b"png")
             supplied_style_path = supplied_root / "style.json"
-            supplied_style_path.write_text(json.dumps(style))
+            supplied_style_path.write_text(json.dumps(style), newline='\n')
             main = f'''import haxe.Json;
 import sys.io.File;
 class Main {{
@@ -1154,8 +1156,8 @@ class Main {{
             fixture = Path(folder)
             metadata_path = fixture / "variant-metadata.json"
             chart_path = fixture / "variant-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             normal_metadata = {**metadata, "playData": {**metadata["playData"], "stage": "schoolEvil"}}
             main = f'''import haxe.Json;
 class Main {{
@@ -1216,11 +1218,11 @@ class MarkovNotes extends Module {
             source_root = root / "data/songs/adapter"
             source_root.mkdir(parents=True)
             (root / "scripts/notes").mkdir(parents=True)
-            (root / "scripts/notes/markov.hxc").write_text(hxc)
+            (root / "scripts/notes/markov.hxc").write_text(hxc, newline='\n')
             metadata_path = source_root / "adapter-metadata.json"
             chart_path = source_root / "adapter-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -1276,11 +1278,11 @@ class BFCompanion extends SparrowCharacter {
             source_root = root / "data/songs/companion-fixture"
             source_root.mkdir(parents=True)
             (root / "scripts/characters").mkdir(parents=True)
-            (root / "scripts/characters/bf-companion.hxc").write_text(character_hxc)
+            (root / "scripts/characters/bf-companion.hxc").write_text(character_hxc, newline='\n')
             metadata_path = source_root / "companion-fixture-metadata.json"
             chart_path = source_root / "companion-fixture-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -1299,6 +1301,82 @@ class BFCompanion extends SparrowCharacter {
 }}'''
             result = self.run_fixture(main, root)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_declared_character_companion_families_preserve_note_identity(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            root = Path(folder)
+            song = root / "data/songs/arbitrary-folder"
+            song.mkdir(parents=True)
+            metadata = song / "fixture-metadata.json"
+            chart = song / "fixture-chart.json"
+            metadata.write_text(json.dumps({
+                "songName": "Unrelated display title", "timeChanges": [{"t": 0, "bpm": 120}],
+                "playData": {"difficulties": ["normal"],
+                             "characters": {"player": "bf", "opponent": "actor-id"}}
+            }), newline='\n')
+            chart.write_text(json.dumps({"notes": {"normal": [
+                {"t": 100, "d": 5, "k": "authored-kind", "l": 125},
+                {"t": 250, "d": 1, "k": "foreign-kind"}
+            ]}}), newline='\n')
+            media_script = root / "shared/images/characters/UnrelatedFileName.hxc"
+            media_script.parent.mkdir(parents=True)
+            media_script.write_text('''
+class MediaActor extends SparrowCharacter {
+ function new() { super("actor-id"); }
+ function onNoteHit(event) {
+  if (event.note.kind == "foreign-kind") { playAnimation("hey", true); return; }
+ }
+}
+''', newline='\n')
+            for layout in (
+                "data/stages", "scripts/stages", "stages", "characters",
+                "shared/data/stages", "shared/scripts/stages", "shared/stages",
+                "shared/characters",
+            ):
+                directory = root / layout
+                directory.mkdir(parents=True)
+                (directory / "UnrelatedFileName.hxc").write_text('''
+class DeclaredActor extends SparrowCharacter {
+ function new() { super("actor-id"); }
+ function onNoteHit(event) {
+  if (event.note.kind == "authored-kind") { playSingAnimation(1, false, "alt"); return; }
+ }
+}
+''', newline='\n')
+                (directory / "OtherActor.hxc").write_text('''
+class OtherActor extends SparrowCharacter {
+ function new() { super("inactive-id"); }
+ function onNoteHit(event) {
+  if (event.note.kind == "foreign-kind") { playAnimation("hey", true); return; }
+ }
+}
+''', newline='\n')
+                main = f'''class Main {{
+ static function main():Void {{
+  var result = VSliceImporter.convertFiles({haxe_string(str(metadata))},
+    {haxe_string(str(chart))}, {haxe_string(str(song))});
+  var owned:Dynamic = result.noteDefinitions[0];
+  var foreign:Dynamic = result.noteDefinitions[1];
+  if (owned.sourceKind != "authored-kind" || owned.sourceAdapter != "HXC"
+      || owned.sourceAdapterClass != "DeclaredActor" || owned.genericBehaviorRouted != true)
+   throw "declared active character companion lost";
+  if (Reflect.field(foreign, "sourceAdapter") == "HXC")
+   throw "inactive character claimed a note kind";
+  var rows:Array<Dynamic> = [];
+  for (section in (cast result.charts[0].chart.song.notes:Array<Dynamic>))
+   for (row in (cast section.sectionNotes:Array<Dynamic>)) rows.push(row);
+  if (rows.length != 2 || rows[0][0] != 100 || rows[0][1] != 45 || rows[0][2] != 125)
+   throw "source time/lane/sustain or custom identity changed";
+  for (finding in result.diagnostics)
+   if (finding.code == "note-kind-generic" && finding.message.indexOf("authored-kind") >= 0)
+    throw "false unsupported note-kind diagnostic";
+ }}
+}}'''
+                result = self.run_fixture(main, root)
+                self.assertEqual(result.returncode, 0, layout + result.stdout + result.stderr)
+                for path in directory.iterdir():
+                    path.unlink()
+                directory.rmdir()
 
     def test_event_character_companion_can_own_a_note_kind(self):
         metadata = {
@@ -1340,11 +1418,11 @@ class EventCompanion extends SparrowCharacter {
             source_root = root / "data/songs/event-companion-fixture"
             source_root.mkdir(parents=True)
             (root / "scripts/characters").mkdir(parents=True)
-            (root / "scripts/characters/event-companion.hxc").write_text(character_hxc)
+            (root / "scripts/characters/event-companion.hxc").write_text(character_hxc, newline='\n')
             metadata_path = source_root / "event-companion-fixture-metadata.json"
             chart_path = source_root / "event-companion-fixture-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -1525,8 +1603,8 @@ if ({variable}.noteKinds.length > 0 && {variable}.noteKinds[0] != "{kind}")
             fixture = Path(folder)
             metadata_path = fixture / "alias-metadata.json"
             chart_path = fixture / "alias-chart.json"
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
   static function main() {{
@@ -1629,17 +1707,17 @@ if ({variable}.noteKinds.length > 0 && {variable}.noteKinds[0] != "{kind}")
             (fixture / "shared/images/credits").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "shared/images/characters/boyfriend/BOYFRIEND.png").write_bytes(b"png")
-            (fixture / "shared/images/characters/boyfriend/BOYFRIEND.xml").write_text("<TextureAtlas/>")
+            (fixture / "shared/images/characters/boyfriend/BOYFRIEND.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "shared/images/credits/scanlines.png").write_bytes(b"png")
             (fixture / "images/icons/icon-sayori.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
             stage_path = fixture / "stage.json"
             metadata_path = fixture / "song-metadata.json"
             chart_path = fixture / "song-chart.json"
-            character_path.write_text(json.dumps(character))
-            stage_path.write_text(json.dumps(stage))
-            metadata_path.write_text(json.dumps(metadata))
-            chart_path.write_text(json.dumps(chart))
+            character_path.write_text(json.dumps(character), newline='\n')
+            stage_path.write_text(json.dumps(stage), newline='\n')
+            metadata_path.write_text(json.dumps(metadata), newline='\n')
+            chart_path.write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1693,10 +1771,10 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/hero.png").write_bytes(b"png")
-            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1745,11 +1823,11 @@ class Main {{
             image_root.mkdir(parents=True)
             for stem in ("main", "special"):
                 (image_root / f"{stem}.png").write_bytes(b"png")
-                (image_root / f"{stem}.xml").write_text("<TextureAtlas/>")
+                (image_root / f"{stem}.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/icons/icon-costume-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1801,10 +1879,10 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/legacy.png").write_bytes(b"png")
-            (fixture / "images/characters/legacy.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/legacy.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-legacy-animation-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1844,10 +1922,10 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/main.png").write_bytes(b"png")
-            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-missing-split-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1896,13 +1974,13 @@ class Main {{
             for stem in ("main", "special", "dead"):
                 (fixture / f"images/characters/{stem}.png").parent.mkdir(parents=True, exist_ok=True)
                 (fixture / f"images/characters/{stem}.png").write_bytes(b"png")
-                (fixture / f"images/characters/{stem}.xml").write_text("<TextureAtlas/>")
+                (fixture / f"images/characters/{stem}.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-multi.png").parent.mkdir(parents=True)
             (fixture / "images/icons/icon-multi.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             sparrow_path = fixture / "sparrow-character.json"
-            sparrow_path.write_text(json.dumps(sparrow_character))
+            sparrow_path.write_text(json.dumps(sparrow_character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1945,10 +2023,10 @@ class Main {{
             # An invalid ASTC header still represents a present authored source;
             # it must not be relabelled as an absent multisparrow primary.
             (fixture / "images/characters/main.astc").write_bytes(b"invalid astc source")
-            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-astc-unavailable-multi.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -1983,7 +2061,7 @@ class Main {{
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/icons/icon-missing-multi-primary.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2012,7 +2090,7 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/special.png").write_bytes(b"png")
-            (fixture / "images/characters/special.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/special.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-multi-native.png").write_bytes(b"icon")
             main = f'''class Main {{
   static function fail(value:String):Void throw value;
@@ -2066,9 +2144,9 @@ class Main {{
             fixture = Path(folder)
             (fixture / "shared/images/characters").mkdir(parents=True)
             (fixture / "shared/images/characters/signDeath.png").write_bytes(b"png")
-            (fixture / "shared/images/characters/signDeath.xml").write_text("<TextureAtlas/>")
+            (fixture / "shared/images/characters/signDeath.xml").write_text("<TextureAtlas/>", newline='\n')
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2166,10 +2244,10 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/hero.png").write_bytes(b"png")
-            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-fallback-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2200,9 +2278,9 @@ class Main {{
             fixture = Path(folder)
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/characters/gf-only.png").write_bytes(b"png")
-            (fixture / "images/characters/gf-only.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/gf-only.xml").write_text("<TextureAtlas/>", newline='\n')
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2233,11 +2311,11 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/freeplay/icons").mkdir(parents=True)
             (fixture / "images/characters/SilhouetteMonikaPixel.png").write_bytes(b"png")
-            (fixture / "images/characters/SilhouetteMonikaPixel.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/SilhouetteMonikaPixel.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/freeplay/icons/monikapixel.png").write_bytes(b"icon")
-            (fixture / "images/freeplay/icons/monikapixel.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/freeplay/icons/monikapixel.xml").write_text("<TextureAtlas/>", newline='\n')
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2256,6 +2334,7 @@ class Main {{
             result = self.run_fixture(main, fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_asset_resolution_accepts_case_variants_shared_roots_and_pixel_icons(self):
         character = {
             "version": "1.0.0",
@@ -2269,13 +2348,13 @@ class Main {{
             (fixture / "Shared/Images/Characters").mkdir(parents=True)
             (fixture / "Images/Freeplay/Icons").mkdir(parents=True)
             (fixture / "Shared/Images/Characters/Hero.PNG").write_bytes(b"png")
-            (fixture / "Shared/Images/Characters/Hero.XML").write_text("<TextureAtlas/>")
+            (fixture / "Shared/Images/Characters/Hero.XML").write_text("<TextureAtlas/>", newline='\n')
             # V-Slice freeplay exports commonly omit the icon- prefix and use a
             # pixel suffix.  The source spelling/case is deliberately foreign
             # to the native resolver.
             (fixture / "Images/Freeplay/Icons/GFDOKIPIXEL.PNG").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2308,7 +2387,7 @@ class Main {{
             (fixture / "Shared/Images/Characters/ASTC_HERO.AsTc").write_bytes(b"astc")
             (fixture / "Images/Icons/icon-astc-icon.ASTC").write_bytes(b"astc")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 using StringTools;
 class Main {{
@@ -2365,7 +2444,7 @@ else:
         with tempfile.TemporaryDirectory() as folder:
             fixture = Path(folder)
             decoder = fixture / "astcenc-fake.py"
-            decoder.write_text(fake_decoder)
+            decoder.write_text(fake_decoder, newline='\n')
             decoder.chmod(0o755)
             image_root = fixture / "images/characters"
             image_root.mkdir(parents=True)
@@ -2374,10 +2453,10 @@ else:
             astc = bytes.fromhex("13aba15c040401010000010000010000") + (b"\0" * 16)
             for stem in ("main", "special", "dead"):
                 (image_root / f"{stem}.astc").write_bytes(astc)
-                (image_root / f"{stem}.xml").write_text("<TextureAtlas/>")
+                (image_root / f"{stem}.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-decoder-multi.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             env = os.environ.copy()
             env["DISAPPOINTINGPLUS_ASTCENC"] = str(decoder)
             main = f'''import haxe.Json;
@@ -2427,10 +2506,10 @@ class Main {{
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/hero.png").write_bytes(b"png")
-            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/hero.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-camera-hero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2470,10 +2549,10 @@ class Main {{
             fixture = Path(folder)
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/characters/main.png").write_bytes(b"png")
-            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/main.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/characters/missing.png").write_bytes(b"png")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2542,9 +2621,9 @@ class Main {{
             fixture = Path(folder)
             (fixture / "images/stages").mkdir(parents=True)
             (fixture / "images/stages/front.png").write_bytes(b"png")
-            (fixture / "images/stages/front.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/stages/front.xml").write_text("<TextureAtlas/>", newline='\n')
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2598,7 +2677,7 @@ class Main {{
             (fixture / "images/circo/image0.png").write_bytes(b"png")
             (fixture / "images/circo/image1.png").write_bytes(b"png")
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2646,7 +2725,7 @@ class Main {{
             (fixture / "images/stage").mkdir(parents=True)
             (fixture / "images/stage/foreground.png").write_bytes(b"png")
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2669,6 +2748,7 @@ class Main {{
             result = self.run_fixture(main, fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_stage_packer_txt_atlas_is_case_safe_and_preserved(self):
         stage = {
             "version": "1.0.0",
@@ -2691,9 +2771,9 @@ class Main {{
             image_root = fixture / "Shared/Images/StAgEs"
             image_root.mkdir(parents=True)
             (image_root / "WEEBTREES.PNG").write_bytes(b"png")
-            (image_root / "WEEBTREES.TxT").write_text("0\n")
+            (image_root / "WEEBTREES.TxT").write_text("0\n", newline='\n')
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -2745,12 +2825,12 @@ class Concert2Stage extends Stage {
             fixture = Path(folder)
             (fixture / "images/stage").mkdir(parents=True)
             (fixture / "images/stage/teto_idle.png").write_bytes(b"png")
-            (fixture / "images/stage/teto_idle.xml").write_text("<TextureAtlas />")
+            (fixture / "images/stage/teto_idle.xml").write_text("<TextureAtlas />", newline='\n')
             (fixture / "scripts/stages").mkdir(parents=True)
-            (fixture / "scripts/stages/concert.hxc").write_text(hxc)
-            (fixture / "scripts/stages/concert2.hxc").write_text(unresolved_hxc)
+            (fixture / "scripts/stages/concert.hxc").write_text(hxc, newline='\n')
+            (fixture / "scripts/stages/concert2.hxc").write_text(unresolved_hxc, newline='\n')
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;

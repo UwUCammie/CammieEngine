@@ -1,5 +1,7 @@
 """Keep authored V-Slice left/right animations attached to their directions."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -27,7 +29,8 @@ class VSliceCharacterOrientationTest(unittest.TestCase):
         source = (ROOT / "source/Character.hx").read_text()
         orientation = block(
             source,
-            "if (codenameCharacterMeta == null && psychAuthoredFlipX == null && isPlayer && !noFlip)",
+            "if (codenameCharacterMeta == null && psychAuthoredFlipX == null\n"
+            "\t\t\t&& !nightmareVisionCharacterOwned && isPlayer && !noFlip)",
         )
         fixture = '''
 class FakeAnimationDef {
@@ -43,6 +46,7 @@ class FakeAnimation {
 class Main {
  var codenameCharacterMeta:Dynamic=null;
  var psychAuthoredFlipX:Null<Bool>=null;
+ var nightmareVisionCharacterOwned:Bool=false;
  var isPlayer:Bool=true;
  var noFlip:Bool=false;
  var flipX:Bool=true;
@@ -96,17 +100,24 @@ __ORIENTATION__
   codename.orient();
   check(codename.flipX && codename.animation.getByName('singLEFT').frames[0]==1,
    'Codename orientation path was changed');
+
+  var nightmareVision=actor(false);
+  nightmareVision.nightmareVisionCharacterOwned=true;
+  nightmareVision.orient();
+  check(nightmareVision.flipX && nightmareVision.animation.getByName('singLEFT').frames[0]==1
+   && nightmareVision.animOffsets.get('singLEFT')[0]==10,
+   'Nightmare Vision authored orientation must not use the legacy player frame swap');
  }
 }
 '''.replace("__ORIENTATION__", orientation)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             (folder / "CharacterAnimationOrientation.hx").write_text(
                 (ROOT / "source/CharacterAnimationOrientation.hx").read_text()
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

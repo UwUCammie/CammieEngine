@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import argparse
 import copy
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os
@@ -87,7 +90,7 @@ def plan(source: Path, preview: Path, runtime: Path, owner: str,
         chart_path = Path(relative)
         if chart_path.parts[:2] != ('assets', 'data') or chart_path.suffix != '.json':
             raise ValueError(f'not a native chart path: {relative}')
-        source_relative = str(Path('data').joinpath(*chart_path.parts[2:]))
+        source_relative = Path('data').joinpath(*chart_path.parts[2:]).as_posix()
         donor_chart = regular_child(source, source_relative)
         preview_chart = regular_child(preview, relative)
         live_chart = regular_child(runtime, relative)
@@ -110,9 +113,9 @@ def plan(source: Path, preview: Path, runtime: Path, owner: str,
                         'previewSha256': digest(preview_chart),
                         'installedSha256': digest(live_chart),
                         'changed': desired != installed})
-    return {'version': 1, 'source': str(source.resolve()),
-            'preview': str(preview.resolve()), 'runtime': str(runtime.resolve()),
-            'owner': owner, 'matrix': str(matrix.resolve()), 'package': package,
+    return {'version': 1, 'source': source.resolve().as_posix(),
+            'preview': preview.resolve().as_posix(), 'runtime': runtime.resolve().as_posix(),
+            'owner': owner, 'matrix': matrix.resolve().as_posix(), 'package': package,
             'charts': entries,
             'repoOptionsSha256': digest(ROOT / 'assets/data/options.json'),
             'runtimeOptionsSha256': digest(runtime / 'assets/data/options.json')}
@@ -165,7 +168,7 @@ def apply(saved_plan: dict, receipt_path: Path) -> dict:
             atomic_write(target, saved.read_bytes(), backup / (relative + '.restore'))
         raise
     receipt = {'version': 1, 'status': 'applied', 'owner': saved_plan['owner'],
-               'backup': str(backup), 'changed': len(replacements),
+               'backup': backup.as_posix(), 'changed': len(replacements),
                'charts': saved_plan['charts'], 'optionsUnchanged': True}
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')

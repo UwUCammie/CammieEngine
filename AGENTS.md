@@ -8,6 +8,21 @@ Friday Night Funkin' **Disappointing Plus**: a HaxeFlixel 6.1.2 fork of Modding 
 
 ## Commands
 
+### Build and test (Windows 11)
+
+From PowerShell in the repository, ` .\run.bat test` builds Windows x64 and
+runs the full regression suite. ` .\run.bat package` also packages the v0.0.9
+alpha ZIP and checksum in `dist/`, after successful tests. ` .\run.bat` builds
+and plays; ` .\run.bat nobuild` plays the current build. Add `debug` for a debug
+build. Close the game before building.
+
+Portable Haxe 4.3.6, Neko 2.3.0 and Python are bootstrapped into `.tools/`.
+MSVC is preferred when installed; otherwise a checksum-verified native
+Windows LLVM-MinGW compiler is downloaded without administrator access.
+Git for Windows is required for initial git-backed haxelib setup. Batch files
+must use CRLF (enforced by `.gitattributes`). Extensionless native Haxe/haxelib
+copies keep the existing interpreter probes compatible with Windows.
+
 ### Build and run (Linux, supported path)
 
 `./run.sh` is the canonical workflow. Do not hand-roll haxelib setup.

@@ -1,5 +1,7 @@
 """Codename character-swap preload metadata must be validated dynamically."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -46,8 +48,8 @@ class Test {
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / 'Test.hx').write_text(fixture)
-            result = subprocess.run([str(HAXE), '-cp', tmp, '--main', 'Test', '--interp'],
+            (Path(tmp) / 'Test.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp, '--main', 'Test', '--interp'],
                                     cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

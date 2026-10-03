@@ -1,4 +1,5 @@
 """Generic, manifest-scoped HXC game-over replacement adapter coverage."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,12 +25,12 @@ class HxcGameOverAdapterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="hxc-gameover-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             for name, content in files.items():
-                (temp / name).write_text(content)
+                (temp / name).write_text(content, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp", str(ROOT / "source"),
                     "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                     "-cp", folder,

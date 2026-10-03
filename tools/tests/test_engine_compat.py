@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -33,8 +35,8 @@ class Main {
   if (args[0]!=2 || args[1]!=0 || args[2]!="source-kind" || args[3]!=false)
    throw "class note callback did not preserve index/direction/type/sustain: " + args;
  }
-}''')
-            result = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder),
                                      "--run", "Main"], capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -571,7 +573,7 @@ class EngineCompatTest {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "EngineCompatTest.hx").write_text(fixture)
+            (Path(folder) / "EngineCompatTest.hx").write_text(fixture, newline='\n')
             typed_package = Path(folder) / "fixtures"
             typed_package.mkdir()
             (typed_package / "Note.hx").write_text(r'''package fixtures;
@@ -618,9 +620,9 @@ class NotePoint {
         this.x = x;
         this.y = y;
     }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-main", "EngineCompatTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -806,9 +808,9 @@ class EngineCompatStageTest {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "EngineCompatStageTest.hx").write_text(fixture)
+            (Path(folder) / "EngineCompatStageTest.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-main", "EngineCompatStageTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

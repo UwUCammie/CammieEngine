@@ -1,5 +1,7 @@
 """Run production PlayState rating methods against mutable donor-style events."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -111,10 +113,10 @@ class Main {
             temp = Path(folder)
             for name in ('CodenameGameEvent', 'CodenameComboRating',
                          'CodenameRatingUpdateEvent'):
-                (temp / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text())
-            (temp / 'Main.hx').write_text(fixture)
+                (temp / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
+            (temp / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'Main', '--interp',
+                *HAXE_COMMAND, '-cp', folder, '-main', 'Main', '--interp',
             ], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('rating runtime ok', result.stdout)

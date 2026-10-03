@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -14,10 +16,10 @@ class GuyAssetsTest(unittest.TestCase):
             for namespace, marker in [('alpha', 'alpha'), ('beta', 'beta')]:
                 shader = fixture_root / 'assets' / 'imported_mods' / namespace / 'shaders'
                 shader.mkdir(parents=True)
-                (shader / 'vignette.frag').write_text(marker)
+                (shader / 'vignette.frag').write_text(marker, newline='\n')
             native = fixture_root / 'assets' / 'shaders'
             native.mkdir(parents=True)
-            (native / 'legacy.frag').write_text('native')
+            (native / 'legacy.frag').write_text('native', newline='\n')
             fixture = f'''import haxe.io.Path;
 class FNFAssets {{
  static var root:String = {json.dumps(str(fixture_root))};
@@ -35,10 +37,10 @@ class ShaderNamespaceTest {{
 }}
 '''
             path = Path(folder)
-            (path / 'ShaderNamespaceTest.hx').write_text(fixture)
-            (path / 'ShaderPaths.hx').write_text(source.replace('FNFAssets.', 'ShaderNamespaceTest.FNFAssets.'))
+            (path / 'ShaderNamespaceTest.hx').write_text(fixture, newline='\n')
+            (path / 'ShaderPaths.hx').write_text(source.replace('FNFAssets.', 'ShaderNamespaceTest.FNFAssets.'), newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(path), '-main', 'ShaderNamespaceTest', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(path), '-main', 'ShaderNamespaceTest', '--interp'],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -81,9 +83,9 @@ class GuyAssetsTest {
 '''
         with tempfile.TemporaryDirectory() as folder:
             p=Path(folder)
-            (p/'GuyAssetsTest.hx').write_text(fixture)
-            (p/'ShaderPaths.hx').write_text((ROOT/'source/ShaderPaths.hx').read_text().replace('FNFAssets.', 'GuyAssetsTest.FNFAssets.'))
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',folder,'-main','GuyAssetsTest','--interp'],cwd=ROOT,capture_output=True,text=True)
+            (p/'GuyAssetsTest.hx').write_text(fixture, newline='\n')
+            (p/'ShaderPaths.hx').write_text((ROOT/'source/ShaderPaths.hx').read_text().replace('FNFAssets.', 'GuyAssetsTest.FNFAssets.'), newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',folder,'-main','GuyAssetsTest','--interp'],cwd=ROOT,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_ourple_layout_positions_both_icons(self):
@@ -101,8 +103,8 @@ class GuyAssetsTest {
         fixture=fixture.replace("  Reflect.callMethod(null,i.variables.get('beatHit'),[1]);", '')
         fixture=fixture.replace("  if(!state.iconOverride", "  var p1:UISprite=vars.get('iconP1');var p2:UISprite=vars.get('iconP2');\n  if(p1.x!=855||p2.x!=275||p1.y!=575||p2.y!=575)throw 'Incorrect icon positions';\n  if(!state.iconOverride")
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder)/'PostalLayoutTest.hx').write_text(fixture)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',folder,'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-main','PostalLayoutTest','--interp'],cwd=ROOT,capture_output=True,text=True)
+            (Path(folder)/'PostalLayoutTest.hx').write_text(fixture, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',folder,'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-main','PostalLayoutTest','--interp'],cwd=ROOT,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_endohead_switch_only_shows_active_opponent(self):
@@ -121,6 +123,6 @@ class GuyAssetsTest {
  }
 }'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder)/'Test.hx').write_text(fixture)
-            p=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',folder,'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-main','Test','--interp'],cwd=ROOT,capture_output=True,text=True)
+            (Path(folder)/'Test.hx').write_text(fixture, newline='\n')
+            p=subprocess.run([*HAXE_COMMAND,'-cp',folder,'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-main','Test','--interp'],cwd=ROOT,capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stdout+p.stderr)

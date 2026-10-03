@@ -1,6 +1,8 @@
 """Focused source/Haxe coverage for the reusable Round 23 native HXC models."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -93,9 +95,9 @@ class Test {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "Test.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--main", "Test", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "--main", "Test", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

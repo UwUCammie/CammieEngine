@@ -1,5 +1,7 @@
 """Codename song audio callbacks use the live Flixel music sound."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -15,7 +17,7 @@ class CodenameInstrumentalFacadeTest(unittest.TestCase):
             flxg.parent.mkdir(parents=True)
             flxg.write_text('''package flixel;
 class FlxG { public static var sound:Dynamic={music:null}; }
-''')
+''', newline='\n')
             (base / 'Main.hx').write_text('''import flixel.FlxG;
 class Main {
  static function main():Void {
@@ -31,9 +33,9 @@ class Main {
   facade.release();
   if(facade.complete() || calls!=1) throw "released callback survived";
  }
-}''')
+}''', newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                *HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                 '-cp', work, '--run', 'Main'
             ], cwd=ROOT, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

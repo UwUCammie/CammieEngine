@@ -1,9 +1,12 @@
 """Filesystem integration coverage for per-source foreign script isolation."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -11,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def install_directory_listing_helper(folder: str | Path) -> None:
     helper = ROOT / "source/ImportDirectoryListing.hx"
-    (Path(folder) / helper.name).write_text(helper.read_text())
+    (Path(folder) / helper.name).write_text(helper.read_text(), newline='\n')
 
 
 def extract_method(source: str, marker: str) -> str:
@@ -147,53 +150,54 @@ class CopyFixture {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "CompatScriptManifest.hx").write_text(manifest)
-            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
+            (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
+            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameStrumlineLayout"):
-                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text())
-            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
+                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
+            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
             (temp / "PsychLuaScriptDependencies.hx").write_text(
-                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text())
-            (temp / "CopyFixture.hx").write_text(fixture)
+                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text(), newline='\n')
+            (temp / "CopyFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             donor.mkdir()
-            (donor / "pack.json").write_text('{"name":"Source Pack"}')
+            (donor / "pack.json").write_text('{"name":"Source Pack"}', newline='\n')
             (donor / "scripts").mkdir(parents=True)
-            (donor / "scripts/global.lua").write_text("addLuaScript('epicScripts/first')")
+            (donor / "scripts/global.lua").write_text("addLuaScript('epicScripts/first')", newline='\n')
             (donor / "epicScripts").mkdir()
-            (donor / "epicScripts/first.lua").write_text("addLuaScript('epicScripts/second')")
-            (donor / "epicScripts/second.lua").write_text("function onUpdate() end")
+            (donor / "epicScripts/first.lua").write_text("addLuaScript('epicScripts/second')", newline='\n')
+            (donor / "epicScripts/second.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "stages").mkdir()
-            (donor / "stages/facility.json").write_text("{}")
-            (donor / "stages/facility.lua").write_text("function onCreate() end")
+            (donor / "stages/facility.json").write_text("{}", newline='\n')
+            (donor / "stages/facility.lua").write_text("function onCreate() end", newline='\n')
             (donor / "assets/stages").mkdir(parents=True)
-            (donor / "assets/stages/packaged-stage.json").write_text('{"defaultZoom":0.73}')
+            (donor / "assets/stages/packaged-stage.json").write_text('{"defaultZoom":0.73}', newline='\n')
             (donor / "assets/shared/stages").mkdir(parents=True)
-            (donor / "assets/shared/stages/shared-stage.json").write_text('{"defaultZoom":0.81}')
+            (donor / "assets/shared/stages/shared-stage.json").write_text('{"defaultZoom":0.81}', newline='\n')
             (donor / "shared/scripts").mkdir(parents=True)
-            (donor / "shared/scripts/shared.lua").write_text("function onUpdate() end")
+            (donor / "shared/scripts/shared.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "data/characters").mkdir(parents=True)
-            (donor / "data/characters/vampire.hxc").write_text("class Vampire {}")
+            (donor / "data/characters/vampire.hxc").write_text("class Vampire {}", newline='\n')
             (donor / "data/notestyles").mkdir(parents=True)
-            (donor / "data/notestyles/fixture.json").write_text("style metadata")
-            (donor / "data/package-lines.txt").write_text("owned sidecar")
+            (donor / "data/notestyles/fixture.json").write_text("style metadata", newline='\n')
+            (donor / "data/package-lines.txt").write_text("owned sidecar", newline='\n')
             (temp / "assets").mkdir()
             mod_plus = temp / "mod-plus"
             (mod_plus / "images/custom_stages/tank2").mkdir(parents=True)
-            (mod_plus / "images/custom_stages/custom_stages.json").write_text('{"tank2":"tank"}')
-            (mod_plus / "images/custom_stages/tank.hscript").write_text("donor tank")
-            (mod_plus / "images/custom_stages/tank2/sky.png").write_text("donor sky")
+            (mod_plus / "images/custom_stages/custom_stages.json").write_text('{"tank2":"tank"}', newline='\n')
+            (mod_plus / "images/custom_stages/tank.hscript").write_text("donor tank", newline='\n')
+            (mod_plus / "images/custom_stages/tank2/sky.png").write_text("donor sky", newline='\n')
             (mod_plus / "images/custom_cutscenes/monster").mkdir(parents=True)
-            (mod_plus / "images/custom_cutscenes/cutscenes.json").write_text('{"monster":"owned-monster"}')
-            (mod_plus / "images/custom_cutscenes/owned-monster.hscript").write_text("donor monster")
-            (mod_plus / "images/custom_cutscenes/monster/room.png").write_text("donor room")
+            (mod_plus / "images/custom_cutscenes/cutscenes.json").write_text('{"monster":"owned-monster"}', newline='\n')
+            (mod_plus / "images/custom_cutscenes/owned-monster.hscript").write_text("donor monster", newline='\n')
+            (mod_plus / "images/custom_cutscenes/monster/room.png").write_text("donor room", newline='\n')
             (temp / "assets/images/custom_stages").mkdir(parents=True)
-            (temp / "assets/images/custom_stages/tank.hscript").write_text("native tank")
+            (temp / "assets/images/custom_stages/tank.hscript").write_text("native tank", newline='\n')
             (temp / "assets/images/custom_cutscenes").mkdir(parents=True)
-            (temp / "assets/images/custom_cutscenes/monster.hscript").write_text("native monster")
+            (temp / "assets/images/custom_cutscenes/monster.hscript").write_text("native monster", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "CopyFixture", str(donor), str(mod_plus)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "CopyFixture", str(donor), str(mod_plus)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -256,16 +260,17 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "RepairFixture.hx").write_text(fixture)
+            (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             (temp / "assets/songs/Repair-Key").mkdir(parents=True)
             (temp / "assets/songs/Repair-Key/Inst.ogg").write_bytes(b"existing-audio")
             (temp / "donor").mkdir()
             (temp / "donor/repair-key.json").write_text(
                 '{"song":{"song":"repair-key","player1":"bf","player2":"dad","notes":[]}}'
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "RepairFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RepairFixture"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -368,28 +373,29 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "CompatScriptManifest.hx").write_text(manifest)
-            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
+            (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
+            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameModCatalog", "CodenameStrumlineLayout"):
-                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text())
-            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
+                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
+            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
             (temp / "PsychLuaScriptDependencies.hx").write_text(
-                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text())
-            (temp / "RepairFixture.hx").write_text(fixture)
+                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text(), newline='\n')
+            (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "scripts").mkdir(parents=True)
             # An entry rejected by the destination path policy must be skipped;
             # it must not stop verification of later, valid executable files.
-            (donor / "scripts/00:invalid.lua").write_text("function ignored() end")
-            (donor / "scripts/global.lua").write_text("addLuaScript('epicScripts/first')")
-            (donor / "scripts/second.lua").write_text("function onUpdate() end")
+            (donor / "scripts/00:invalid.lua").write_text("function ignored() end", newline='\n')
+            (donor / "scripts/global.lua").write_text("addLuaScript('epicScripts/first')", newline='\n')
+            (donor / "scripts/second.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "epicScripts").mkdir()
-            (donor / "epicScripts/first.lua").write_text("function onUpdate() end")
+            (donor / "epicScripts/first.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "data/notestyles").mkdir(parents=True)
-            (donor / "data/notestyles/fixture.json").write_text("style metadata")
+            (donor / "data/notestyles/fixture.json").write_text("style metadata", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "RepairFixture", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RepairFixture", str(donor)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -438,8 +444,9 @@ class LookupFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "LookupFixture.hx").write_text(fixture)
+            (temp / "LookupFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "IMAGES/Stage/TB").mkdir(parents=True)
             (donor / "IMAGES/Stage/TB/Teto_Idle.PNG").write_bytes(b"png")
@@ -452,7 +459,7 @@ class LookupFixture {{
             (donor / "Shared/Music/breakfast-doki").mkdir(parents=True)
             (donor / "Shared/Music/breakfast-doki/breakfast-doki.ogg").write_bytes(b"ogg")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "LookupFixture", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "LookupFixture", str(donor)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -543,27 +550,28 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "CompatScriptManifest.hx").write_text(manifest)
-            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
+            (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
+            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in ("CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack", "CodenameStagePlacement", "CodenameModCatalog", "CodenameStrumlineLayout"):
-                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text())
-            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
+                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
+            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
             (temp / "PsychLuaScriptDependencies.hx").write_text(
-                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text())
-            (temp / "RepairFixture.hx").write_text(fixture)
+                (ROOT / "source/PsychLuaScriptDependencies.hx").read_text(), newline='\n')
+            (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "assets/scripts").mkdir(parents=True)
-            (donor / "assets/scripts/global.lua").write_text("function onCreate() end")
+            (donor / "assets/scripts/global.lua").write_text("function onCreate() end", newline='\n')
             (donor / "data").mkdir()
-            (donor / "data/metadata.txt").write_text("direct metadata")
+            (donor / "data/metadata.txt").write_text("direct metadata", newline='\n')
             data_only = temp / "data-only-donor"
             (data_only / "data/song").mkdir(parents=True)
-            (data_only / "data/song/script.lua").write_text("addLuaScript('epicScripts/only')")
+            (data_only / "data/song/script.lua").write_text("addLuaScript('epicScripts/only')", newline='\n')
             (data_only / "epicScripts").mkdir()
-            (data_only / "epicScripts/only.lua").write_text("function onUpdate() end")
+            (data_only / "epicScripts/only.lua").write_text("function onUpdate() end", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "RepairFixture", str(donor), str(data_only)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RepairFixture", str(donor), str(data_only)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -851,39 +859,40 @@ class RepairFixture {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
-            (temp / "CompatScriptManifest.hx").write_text(manifest)
-            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text())
+            (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
+            (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in (
                 "CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack",
                 "CodenameStagePlacement", "CodenameModCatalog", "CodenameStrumlineLayout",
             ):
-                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text())
+                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
             for helper in ("ImportEngine", "PsychLuaScriptDependencies", "NightmareVisionAssetCollector"):
-                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text())
-            (temp / "RepairFixture.hx").write_text(fixture)
+                (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
+            (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "scripts").mkdir(parents=True)
-            (donor / "scripts/global.hx").write_text("function onLoad() {}")
+            (donor / "scripts/global.hx").write_text("function onLoad() {}", newline='\n')
             (donor / "data/stages").mkdir(parents=True)
-            (donor / "data/stages/stage.hx").write_text("function create() {}")
+            (donor / "data/stages/stage.hx").write_text("function create() {}", newline='\n')
             (donor / "data/stages/nested").mkdir(parents=True)
-            (donor / "data/stages/nested/extra.hscript").write_text("function create() {}")
+            (donor / "data/stages/nested/extra.hscript").write_text("function create() {}", newline='\n')
             (donor / "data/notetypes").mkdir(parents=True)
-            (donor / "data/notetypes/custom.hxs").write_text("function onNote() {}")
+            (donor / "data/notetypes/custom.hxs").write_text("function onNote() {}", newline='\n')
             (donor / "events").mkdir()
-            (donor / "events/flash.hscript").write_text("function onEvent() {}")
+            (donor / "events/flash.hscript").write_text("function onEvent() {}", newline='\n')
             (donor / "characters").mkdir()
-            (donor / "characters/vampire.hscript").write_text("function onLoad() {}")
+            (donor / "characters/vampire.hscript").write_text("function onLoad() {}", newline='\n')
             (donor / "songs/title/scripts/nested").mkdir(parents=True)
-            (donor / "songs/title/events.hx").write_text("function onEvent() {}")
-            (donor / "songs/title/scripts/modchart.hxs").write_text("function onCreate() {}")
-            (donor / "songs/title/scripts/nested/not-direct.hx").write_text("function onCreate() {}")
+            (donor / "songs/title/events.hx").write_text("function onEvent() {}", newline='\n')
+            (donor / "songs/title/scripts/modchart.hxs").write_text("function onCreate() {}", newline='\n')
+            (donor / "songs/title/scripts/nested/not-direct.hx").write_text("function onCreate() {}", newline='\n')
             (donor / "songs/title/audio").mkdir()
-            (donor / "songs/title/audio/Inst.ogg").write_text("audio")
-            (donor / "songs/title/chart.json").write_text("{{}}")
+            (donor / "songs/title/audio/Inst.ogg").write_text("audio", newline='\n')
+            (donor / "songs/title/chart.json").write_text("{{}}", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "RepairFixture", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RepairFixture", str(donor)],
                 cwd=folder,
                 capture_output=True,
                 text=True,

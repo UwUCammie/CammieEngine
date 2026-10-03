@@ -1,5 +1,7 @@
 """Execute icon metadata selection with independent menu and gameplay owners."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -53,9 +55,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch) / "Main.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", scratch, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", scratch, "-main", "Main", "--interp"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -92,9 +94,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch) / "Main.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", scratch, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", scratch, "-main", "Main", "--interp"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -136,8 +138,8 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(path),
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(path),
                                      "-main", "Main", "--interp"], cwd=ROOT,
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -188,8 +190,8 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(path),
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(path),
                                      "-main", "Main", "--interp"], cwd=ROOT,
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -216,8 +218,8 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(path),
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(path),
                                      "--run", "Main"], cwd=ROOT, text=True,
                                     capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -248,8 +250,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(path),
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(path),
                                      "--run", "Main", str(registry.parents[3])],
                                     cwd=ROOT, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -300,8 +302,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             path = Path(scratch)
-            (path / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(path), "--run", "Main"],
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(path), "--run", "Main"],
                                     cwd=ROOT, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

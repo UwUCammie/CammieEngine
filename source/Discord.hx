@@ -87,4 +87,23 @@ class DiscordClient {
         #end
 		// trace('Discord RPC Updated. Arguments: $details, $state, $smallImageKey, $hasStartTimestamp, $endTimestamp');
 	}
+
+	/** Nightmare Vision supplies separate small and large image keys. */
+	public static function changePresenceWithImages(details:String, state:Null<String>, smallImageKey:Null<String>,
+			hasStartTimestamp:Bool, endTimestamp:Null<Float>, largeImageKey:String):Void {
+		#if cpp
+		var startTimestamp:Float = hasStartTimestamp ? Date.now().getTime() : 0;
+		var finishTimestamp:Float = endTimestamp == null ? 0 : endTimestamp;
+		if (finishTimestamp > 0) finishTimestamp += startTimestamp;
+		DiscordRpc.presence({
+			details: details,
+			state: state,
+			smallImageKey: smallImageKey,
+			largeImageKey: largeImageKey == null ? 'icon' : largeImageKey,
+			largeImageText: 'CammieEngine',
+			startTimestamp: Std.int(startTimestamp / 1000),
+			endTimestamp: Std.int(finishTimestamp / 1000)
+		});
+		#end
+	}
 }

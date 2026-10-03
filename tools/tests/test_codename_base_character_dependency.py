@@ -1,5 +1,7 @@
 """Pin the owner-scoped Codename installation-character dependency."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -47,9 +49,9 @@ class Main {
             for path, contents in preserved.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(contents)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(donor)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(donor)],
                 cwd=work,
                 env={**os.environ, "TMPDIR": str(work)},
                 capture_output=True,
@@ -146,9 +148,9 @@ class Main {
             (work / "outside").mkdir()
             (work / "assets" / "imported_mods").mkdir(parents=True)
             os.symlink(work / "outside", work / "assets" / "imported_mods" / "linked-owner")
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(work)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(work)],
                 cwd=work,
                 env={**os.environ, "TMPDIR": str(work)},
                 capture_output=True,

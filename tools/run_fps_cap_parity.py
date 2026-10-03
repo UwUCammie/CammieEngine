@@ -11,7 +11,10 @@ pass any imported chart and its expected due-event count.
 from __future__ import annotations
 
 import argparse
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import json
 from pathlib import Path
 import statistics

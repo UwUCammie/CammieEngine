@@ -1,6 +1,7 @@
 """Pin shared 3D view sizing and once-only native resource teardown."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]

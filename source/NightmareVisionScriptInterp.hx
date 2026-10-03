@@ -17,12 +17,17 @@ class NightmareVisionScriptInterp extends Interp {
 	public var importBindings(default, null):Map<String, Dynamic> = new Map();
 	var usingBindings:Map<String, UsingCall> = new Map();
 	var boundUsings:Map<String, Bool> = new Map();
+	/** Camera API bridge supplied only by the native gameplay host. Keeping it
+	 * dynamic leaves the owner-local Iris interpreter usable in headless tools. */
+	public var cameraShaders:Dynamic;
 	/** Optional state object exposed as bare script identifiers. */
 	public var parentFields:Array<String> = [];
 	/** Cross-script values declared with Nightmare Vision's `public` syntax. */
 	public var sharedFields:Map<String, Dynamic>;
 	/** Save adapter owned by this interpreter's selected imported root. */
 	public var ownerSave(default, null):Null<NightmareVisionSaveFacade>;
+	/** Asset resolver captured by this interpreter's source-shaped factories. */
+	public var ownerPaths(default, null):Dynamic;
 	public var parent(default, set):Dynamic;
 
 	public function new(?parent:Dynamic, ?sharedFields:Map<String, Dynamic>) {
@@ -32,6 +37,14 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	public function bindImport(path:String, value:Dynamic):Void importBindings.set(path, value);
+
+	/** Bind constructors to the same owner as Paths for this script only. */
+	public function bindOwnerPaths(paths:Dynamic):Void {
+		if (paths == null) throw '[nightmare-vision-asset] Missing interpreter owner paths';
+		if (ownerPaths != null && Reflect.field(ownerPaths, 'root') != Reflect.field(paths, 'root'))
+			throw '[nightmare-vision-asset] Cannot switch an interpreter to another owner';
+		ownerPaths = paths;
+	}
 
 	/** Create a script-local facade over the selected owner's private storage.
 	 * The host should seed `FlxG` with `new NightmareVisionFlxGView(FlxG, facade)`
@@ -78,12 +91,17 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Break all interpreter-owned references at the end of a script lifetime. */
 	public function release():Void {
 		var saveError:Dynamic = null;
+		if (cameraShaders != null) {
+			cameraShaders.release();
+			cameraShaders = null;
+		}
 		if (ownerSave != null) {
 			try ownerSave.release() catch (error:Dynamic) saveError = error;
 			ownerSave = null;
 		}
 		parent = null;
 		sharedFields = null;
+		ownerPaths = null;
 		parentFields = [];
 		imports.clear();
 		importBindings.clear();
@@ -97,6 +115,41 @@ class NightmareVisionScriptInterp extends Interp {
 		depth = 0;
 		inTry = false;
 		if (saveError != null) throw saveError;
+	}
+
+	/** Keep NMV source constructors owner-local without changing FlxSprite's
+	 * process-global loader or appending hidden arguments to script calls. */
+	override function cnew(cl:String, args:Array<Dynamic>):Dynamic {
+		if (ownerPaths != null) {
+			var className = cl == null ? '' : cl.substr(cl.lastIndexOf('.') + 1);
+			switch (className) {
+				case 'FlxSprite':
+					var spriteType = Type.resolveClass('NightmareVisionFlxSprite');
+					if (spriteType != null) return Type.createInstance(spriteType, [argumentFloat(args, 0, 0),
+						argumentFloat(args, 1, 0), argument(args, 2), ownerPaths]);
+				case 'Bopper':
+					var bopperType = Type.resolveClass('NightmareVisionBopper');
+					if (bopperType != null) return Type.createInstance(bopperType, [argumentFloat(args, 0, 0),
+							argumentFloat(args, 1, 0), Std.int(argumentFloat(args, 2, 2)), ownerPaths]);
+				case 'BGSprite':
+					var bgType = Type.resolveClass('NightmareVisionBGSprite');
+					if (bgType != null) return Type.createInstance(bgType, [argument(args, 0),
+						argumentFloat(args, 1, 0), argumentFloat(args, 2, 0),
+						argumentFloat(args, 3, 1), argumentFloat(args, 4, 1),
+						argument(args, 5), argument(args, 6) == true, ownerPaths]);
+			}
+		}
+		return super.cnew(cl, args);
+	}
+
+	static function argument(args:Array<Dynamic>, index:Int):Dynamic
+		return args != null && index >= 0 && index < args.length ? args[index] : null;
+
+	static function argumentFloat(args:Array<Dynamic>, index:Int, fallback:Float):Float {
+		var value = argument(args, index);
+		if (value == null) return fallback;
+		var parsed = Std.parseFloat(Std.string(value));
+		return Math.isNaN(parsed) ? fallback : parsed;
 	}
 
 	function setTo(id:String, value:Dynamic, canDefine:Bool = false):Dynamic {
@@ -229,6 +282,25 @@ class NightmareVisionScriptInterp extends Interp {
 	 * Keep reads and writes on the same owner-aware compatibility side table used
 	 * by HXC and V-Slice scripts. */
 	override function get(object:Dynamic, field:String):Dynamic {
+		if (object == null)
+			throw '[nightmare-vision-script-null-access] Cannot read ' + field + ' on null';
+		#if flixel
+		if ((field == 'audio' || field == 'vocals') && Std.isOfType(object, NightmareVisionPlayableSongOwner))
+			return (cast object:NightmareVisionPlayableSongOwner).nightmareVisionAudioView();
+		// NMV Bopper signals carry animation names; the legacy Character finish
+		// signal deliberately has no arguments, so preserve both APIs.
+		if (Std.isOfType(object, Character)) {
+			var actor:Character = cast object;
+			switch (field) {
+				case 'onAnimationFrameChange': return actor.animation.onFrameChange;
+				case 'onAnimationFinish': return actor.animation.onFinish;
+				case 'onAnimationLoop': return actor.animation.onLoop;
+				default:
+			}
+		}
+		#end
+		if (Std.isOfType(object, PsychBaseStageActorGroupCompat) && field == 'zIndex')
+			return Reflect.getProperty(object, field);
 		if (object != null && field == 'zIndex') return HxcCompatRuntime.getZIndex(object);
 		if (Std.isOfType(object, NightmareVisionFlxGView))
 			return (cast object:NightmareVisionFlxGView).getField(field);
@@ -240,6 +312,12 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
+		if (object == null)
+			throw '[nightmare-vision-script-null-access] Cannot write ' + field + ' on null';
+		if (Std.isOfType(object, PsychBaseStageActorGroupCompat) && field == 'zIndex') {
+			Reflect.setProperty(object, field, value);
+			return value;
+		}
 		if (object != null && field == 'zIndex') return HxcCompatRuntime.setZIndex(object, value);
 		if (Std.isOfType(object, NightmareVisionFlxGView))
 			return (cast object:NightmareVisionFlxGView).setField(field, value);
@@ -254,6 +332,19 @@ class NightmareVisionScriptInterp extends Interp {
 		switch (Tools.expr(left)) {
 			case EIdent(id):
 				return setTo(id, expr(right), true);
+			case EArray(collectionExpr, indexExpr):
+				// Iris evaluates the assigned value before evaluating the indexed
+				// receiver and index. Keep that order, but fail before native array
+				// plumbing dereferences a null receiver.
+				var value = expr(right);
+				var collection:Dynamic = expr(collectionExpr);
+				var index:Dynamic = expr(indexExpr);
+				requireIndexedCollection(collection, 'write');
+				if (isMap(collection))
+					setMapValue(collection, index, value);
+				else
+					collection[index] = value;
+				return value;
 			default:
 				return super.assign(left, right);
 		}
@@ -264,6 +355,19 @@ class NightmareVisionScriptInterp extends Interp {
 		switch (Tools.expr(left)) {
 			case EIdent(id):
 				return setTo(id, operation(expr(left), expr(right)));
+			case EArray(collectionExpr, indexExpr):
+				// Iris reads the old value before evaluating the right-hand side.
+				var collection:Dynamic = expr(collectionExpr);
+				var index:Dynamic = expr(indexExpr);
+				requireIndexedCollection(collection, 'update');
+				var oldValue:Dynamic = isMap(collection)
+					? getMapValue(collection, index) : collection[index];
+				var value:Dynamic = operation(oldValue, expr(right));
+				if (isMap(collection))
+					setMapValue(collection, index, value);
+				else
+					collection[index] = value;
+				return value;
 			default:
 				return super.evalAssignOp(op, operation, left, right);
 		}
@@ -279,9 +383,27 @@ class NightmareVisionScriptInterp extends Interp {
 				var updated:Dynamic = previous + delta;
 				setTo(id, updated);
 			return prefix ? updated : previous;
+			case EArray(collectionExpr, indexExpr):
+				var collection:Dynamic = expr(collectionExpr);
+				var index:Dynamic = expr(indexExpr);
+				requireIndexedCollection(collection, delta > 0 ? 'increment' : 'decrement');
+				var previous:Dynamic = isMap(collection)
+					? getMapValue(collection, index) : collection[index];
+				var updated:Dynamic = previous + delta;
+				if (isMap(collection))
+					setMapValue(collection, index, updated);
+				else
+					collection[index] = updated;
+				return prefix ? updated : previous;
 			default:
 				return super.increment(expression, prefix, delta);
 		}
+	}
+
+	function requireIndexedCollection(collection:Dynamic, operation:String):Void {
+		if (collection == null)
+			throw '[nightmare-vision-script-null-access] Cannot ' + operation
+				+ ' an indexed value because its collection evaluated to null; initialize it or guard the access first';
 	}
 
 	override function makeIterator(value:Dynamic):Iterator<Dynamic> {
@@ -293,16 +415,45 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	override function fcall(object:Dynamic, field:String, args:Array<Dynamic>):Dynamic {
+		if ((field == 'addShader' || field == 'removeShader') && cameraShaders != null
+			&& cameraShaders.isCamera(object)) {
+			switch (field) {
+				case 'addShader':
+					cameraShaders.add(object, args.length > 0 ? args[0] : null);
+					return null;
+				case 'removeShader':
+					return cameraShaders.remove(object, args.length > 0 ? args[0] : null);
+				default:
+			}
+		}
 		for (extension in usings) {
 			var result = extension.call(object, field, args);
 			if (result != null) return result;
 		}
 		var method = get(object, field);
 		if (method == null) {
-			crowplexus.iris.Iris.error('Unknown function: ' + field, posInfos());
+			var details = isStringMethod(field) ? stringReceiverDetails(object) : '';
+			crowplexus.iris.Iris.error('Unknown function: ' + field + details, posInfos());
 			return null;
 		}
 		return call(object, method, args);
+	}
+
+	/** Add evidence for the common String-call failure without changing lookup
+	 * or coercing a non-String receiver into one. */
+	static function isStringMethod(field:String):Bool {
+		return switch (field) {
+			case 'charAt' | 'charCodeAt' | 'indexOf' | 'lastIndexOf' | 'split'
+				| 'substr' | 'substring' | 'toLowerCase' | 'toUpperCase' | 'toString': true;
+			default: false;
+		};
+	}
+
+	static function stringReceiverDetails(object:Dynamic):String {
+		var isString = Std.isOfType(object, String);
+		var value = isString ? (cast object:String) : '<non-string>';
+		return ' (receiverType=' + Std.string(Type.typeof(object))
+			+ ', isString=' + isString + ', value=' + value + ')';
 	}
 
 	function makeKeyValueIterator(value:Dynamic):KeyValueIterator<Dynamic, Dynamic> {
@@ -393,6 +544,13 @@ class NightmareVisionScriptInterp extends Interp {
 					default:
 						return expr(wrapped);
 				}
+			case EArray(collectionExpr, indexExpr):
+				// Evaluate both operands once and in Iris order, then guard before
+				// direct array access. Keep native bounds behavior unchanged.
+				var collection:Dynamic = expr(collectionExpr);
+				var index:Dynamic = expr(indexExpr);
+				requireIndexedCollection(collection, 'read');
+				return isMap(collection) ? getMapValue(collection, index) : collection[index];
 			default:
 				return super.expr(expression);
 		}

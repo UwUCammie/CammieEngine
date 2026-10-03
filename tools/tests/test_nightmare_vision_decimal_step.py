@@ -1,6 +1,8 @@
 """NMV decimal-step calculation across countdowns, tempo changes and frame rates."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -111,9 +113,10 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
+                 "-cp", str(ROOT / ".haxelib/flixel/6,1,2"), "-cp", str(work),
                  "--main", "Main", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=30,
             )

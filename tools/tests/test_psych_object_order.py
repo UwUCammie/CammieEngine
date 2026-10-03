@@ -1,6 +1,8 @@
 """Psych setObjectOrder removes, then inserts at the requested final index."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -57,9 +59,9 @@ class Main {
         fixture = fixture.replace("function compatGetObjectOrder(",
                                   "public function compatGetObjectOrder(", 1)
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Main.hx").write_text(fixture)
+            (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", tmp,
+                *HAXE_COMMAND, "-cp", tmp,
                 "-main", "Main", "--interp",
             ], cwd=ROOT, text=True, capture_output=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

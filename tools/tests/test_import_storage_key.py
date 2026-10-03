@@ -1,6 +1,8 @@
 """Regression coverage for display-name versus storage-key imports."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -76,8 +78,8 @@ class ImportCompat {{
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "ImportCompat.hx").write_text(fixture)
-            result = subprocess.run([str(HAXE), "-cp", folder, "--run", "ImportCompat"],
+            (Path(folder) / "ImportCompat.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                                     cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -107,9 +109,9 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCompat.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "ImportCompat"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

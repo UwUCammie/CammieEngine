@@ -1,6 +1,8 @@
 """Native stage role metadata survives fresh HXC actor construction and old imports."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -28,11 +30,11 @@ class VSliceStageCharacterPresentationTest(unittest.TestCase):
     def run_haxe(self, fixture: str) -> None:
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = folder
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
             )

@@ -62,7 +62,7 @@ def audit_characters(assets, donor_assets):
             if name.endswith('-dead'):
                 name = name[:-5]
             if character_problems(assets, registry, name):
-                references.setdefault(name, []).append({'chart': str(path.relative_to(assets)), 'role': role})
+                references.setdefault(name, []).append({'chart': path.relative_to(assets).as_posix(), 'role': role})
     return [dict(character=name, problems=character_problems(assets, registry, name),
                  donor_problems=character_problems(donor_assets, donor_registry, name),
                  references=references[name]) for name in sorted(references)]

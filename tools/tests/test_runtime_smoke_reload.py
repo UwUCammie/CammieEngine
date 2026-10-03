@@ -1,5 +1,7 @@
 """Execute the two-visit smoke state machine without a native display."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -50,9 +52,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                *HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": work}, capture_output=True,
                 text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -78,10 +80,13 @@ class FlxG {
  public static function switchState(_:Dynamic):Void switches++;
 }
 class PlayState {public static var instance:Dynamic=null;}
-class RuntimeSmokeVisuals {public static function character(_:String,_:Dynamic):Dynamic return {};}
+class RuntimeSmokeVisuals {
+ public static function character(_:String,_:Dynamic):Dynamic return {};
+ public static function stage(_:Dynamic):Dynamic return {memberCount:0,members:[]};
+}
 class Main {
  static var cfg:Dynamic={playstateVisits:2,durationMs:1000,frameStats:false,tracePlayerHits:false,
-  requireEndHandoff:false,
+  requireEndHandoff:false,requireSongEnd:false,gameOverAfterMs:-1,
   freeplay:false,freeplayAcceptSong:""};
  static var started=true; static var finished=false;
  static var naturalSongEndObserved=false; static var naturalSongEndAt:Float=0;
@@ -94,7 +99,11 @@ class Main {
  static var playStateLoadStartedAt:Float=0;
  static var deadline:Float=0; static var playDeadline:Float=0; static var visitDeadline:Float=0;
  static var watchdogDeadline:Float=0; static var elapsedMs:Float=0;
+ static var ratingPopupPairs:Map<String,Bool> = new Map();
+ static var ratingPopupPairCount:Int = 0;
  static var visualNoteKinds:Map<String,Bool>=new Map();
+ static var nightmareVisionVisualKinds:Map<String,Bool>=new Map();
+ static var nightmareVisionSplashSeen:Map<Int,Bool>=new Map();
  static var liveVisualNoteKinds:Map<String,Bool>=new Map();
  static var psychSkinDiagnosticPhase:String="";
  static var pendingPlayerHitProbes:Array<Dynamic>=[];
@@ -108,8 +117,10 @@ class Main {
  static function applyWindowResize():Void {}
  static function applySongRate():Void {}
  static function installFrameStats():Void {}
+ static function installGameOverClock():Void {}
  static function installSongEndCompletionWatch():Void {}
  static function markEndHandoff():Void {}
+ static function missingRequiredSongEnd(required:Bool, observed:Bool):Bool return required && !observed;
  static function markReceptorLayout(_:String):Void {}
  // The reload sequence fixture has no seek request; smoke seek is tested separately.
  static function maybeRunSeek():Void {}
@@ -145,11 +156,18 @@ class Main {
   catch(e:Dynamic) inconsistent=Std.string(e).indexOf("reload-sequence")>=0;
   check(inconsistent,"destroy summary must match validated teardown");
   markPlayStateDestroyed({owned:2,borrowed:1,destroyCalls:2,remainingBindings:0,cleanupErrors:[]});
+  naturalSongEndObserved=true;
   markPlayStateStart({song:"example"});
+  check(!naturalSongEndObserved,"first song end leaked into the second visit");
   markPlayStateReady({song:"example"});
   check(visitsStarted==2 && visitsReady==2 && visitsDestroyed==1 && !transitionPending,
    "second visit begins only after destroy");
   visitDeadline=Sys.time()-1;
+  cfg.requireSongEnd=true;
+  var unfinished=false;
+  try tick(0.016) catch(e:Dynamic) unfinished=Std.string(e).indexOf("song-end-timeout")>=0;
+  check(unfinished,"first ending cannot satisfy second visit's completion requirement");
+  cfg.requireSongEnd=false;
   check(!tick(0.016) && success && FlxG.switches==1,"second deadline succeeds");
   check(events.indexOf("playstate_destroyed:1")>=0,"destroy marker recorded");
   finished=false;
@@ -188,9 +206,9 @@ class Main {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                *HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": work}, capture_output=True,
                 text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -210,9 +228,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                *HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": work}, capture_output=True,
                 text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

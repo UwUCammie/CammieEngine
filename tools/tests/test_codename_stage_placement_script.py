@@ -1,5 +1,7 @@
 """Run importer-generated placement HScript against live actor/slot boundaries."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -132,9 +134,9 @@ class StageHarness {
             assets.mkdir(parents=True)
             for name in ("back", "mid", "front"):
                 (assets / f"{name}.png").write_bytes(b"fixture")
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", str(path), "--run", "Main",
                  str(path)],
                 cwd=ROOT, text=True, capture_output=True, timeout=30)
@@ -223,9 +225,9 @@ class StageHarness {
             assets.mkdir(parents=True)
             for name in ("back", "mid", "front"):
                 (assets / f"{name}.png").write_bytes(b"fixture")
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", str(path), "--run", "Main",
                  str(path)], cwd=ROOT, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

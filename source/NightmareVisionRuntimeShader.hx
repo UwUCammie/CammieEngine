@@ -11,7 +11,11 @@ class NightmareVisionRuntimeShader extends FlxRuntimeShader {
 	final vertexPath:String;
 
 	public function new(?fragmentSource:String, ?vertexSource:String, ?fragmentPath:String, ?vertexPath:String) {
-		super(fragmentSource, vertexSource);
+		// OpenFL's GLSL 1.00 path rejects mixed int/float arithmetic that the
+		// source shader dialect accepts. Keep the asset text intact and normalize
+		// only the strings passed to the shared runtime compiler.
+		super(fragmentSource == null ? null : CodenameShaderSource.normalizeOpenFL(fragmentSource),
+			vertexSource == null ? null : CodenameShaderSource.normalizeOpenFL(vertexSource));
 		this.fragmentPath = fragmentPath;
 		this.vertexPath = vertexPath;
 	}

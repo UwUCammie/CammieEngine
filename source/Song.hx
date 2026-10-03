@@ -549,6 +549,39 @@ class Song {
 				+ '" cannot resolve because its imported manifest root is invalid.';
 			return invalid;
 		}
+		if (ownerEngine != null && ownerEngine.toLowerCase() == ImportEngine.NIGHTMARE_VISION.toLowerCase()) {
+			var definition = NightmareVisionCharacterData.load(cleanRoot, name);
+			var imageRoot = definition == null ? null
+				: NightmareVisionCharacterData.imageRoot(cleanRoot, definition);
+			if (definition != null && imageRoot != null) {
+				var owned = resolveCharacterVisualFromData(name, null,
+					function(_path:String):Bool return false, cleanRoot + '/images/characters/');
+				owned.registryName = name;
+				owned.selectedRegistryName = name;
+				owned.implementationName = name;
+				owned.assetName = name;
+				owned.implementationPath = NightmareVisionCharacterData.definitionPath(cleanRoot, name);
+				owned.assetPath = imageRoot;
+				owned.assetRootPath = imageRoot;
+				owned.complete = true;
+				owned.diagnosticCode = '';
+				owned.diagnostic = '';
+				return owned;
+			}
+			// Source base actors may come from the bundled core. A missing custom
+			// actor must never borrow the same id from another imported package.
+			if (definition == null && allowNativeFallback
+				&& (name == 'bf' || name == 'dad' || name == 'gf'))
+				return resolveCharacterVisual(name);
+			var missing = resolveCharacterVisualFromData(name, null,
+				function(_path:String):Bool return false, cleanRoot + '/images/characters/');
+			missing.complete = false;
+			missing.diagnosticCode = definition == null ? 'nightmare-vision-character-missing'
+				: 'nightmare-vision-character-image-missing';
+			missing.diagnostic = 'Nightmare Vision character "' + name
+				+ '" is missing its owner definition or image atlas in ' + cleanRoot + '.';
+			return missing;
+		}
 
 		var characterRoot = cleanRoot + '/images/custom_chars/';
 		var registry:Dynamic = readCharacterRegistryInManifest(cleanRoot);
@@ -650,6 +683,7 @@ class Song {
 					var supportedOwnerEngine = engine == ImportEngine.PSYCH.toLowerCase()
 						|| engine == ImportEngine.CODENAME.toLowerCase()
 						|| engine == ImportEngine.MODDING_PLUS.toLowerCase()
+						|| engine == ImportEngine.NIGHTMARE_VISION.toLowerCase()
 						|| engine == ImportEngine.V_SLICE.toLowerCase();
 					if (supportedOwnerEngine
 						&& (requiredEngine == null || engine == requiredEngine.toLowerCase()))
@@ -713,6 +747,9 @@ class Song {
 	public static function characterVisualRegistryEntryForCurrentSong(name:String):Dynamic {
 		var root = currentCharacterRoot();
 		if (root != '') {
+			if (characterOwnerEngineForSong(storageFolder(PlayState.SONG)).toLowerCase()
+				== ImportEngine.NIGHTMARE_VISION.toLowerCase())
+				return NightmareVisionCharacterData.load(root, name);
 			var scoped = characterVisualRegistryEntryInManifest(name, root);
 			if (scoped != null)
 				return scoped;
@@ -1012,7 +1049,10 @@ class Song {
 	static function chartVisualValidity(folder:String, requested:Dynamic, fallbackCharts:Array<Dynamic>,
 		baseChart:Dynamic):Map<String, Bool> {
 		var validity:Map<String, Bool> = new Map<String, Bool>();
-		var ownedCharacters = readCharacterRegistryInManifest(characterRootForSong(folder));
+		var ownerRoot = characterRootForSong(folder);
+		var nightmareVisionOwner = characterOwnerEngineForSong(folder).toLowerCase()
+			== ImportEngine.NIGHTMARE_VISION.toLowerCase();
+		var ownedCharacters = readCharacterRegistryInManifest(ownerRoot);
 		var candidates:Array<Dynamic> = [];
 		if (requested != null)
 			candidates.push(requested);
@@ -1033,8 +1073,15 @@ class Song {
 				// is incomplete; Character reports that dependency at resolution.
 				if (['player1', 'player2', 'gf'].indexOf(field) >= 0
 					&& registryKey(ownedCharacters, Std.string(value)) != null) valid = true;
+				if (!valid && nightmareVisionOwner && ['player1', 'player2', 'gf'].indexOf(field) >= 0
+					&& NightmareVisionCharacterData.load(ownerRoot, Std.string(value)) != null) valid = true;
 				if (field == 'stage' && ownedStageEntry(folder, Std.string(value)) != null)
 					valid = true;
+				if (!valid && nightmareVisionOwner && field == 'stage') {
+					try valid = NightmareVisionStageData.getStageFile(ownerRoot, Std.string(value)) != null
+					catch (error:Dynamic)
+						trace('[nightmare-vision-stage-data-error] ' + Std.string(value) + ': ' + Std.string(error));
+				}
 				if (field == 'cutsceneType' && ownedCutsceneEntry(folder, Std.string(value)) != null)
 					valid = true;
 				if (!valid && field == 'stage' && mayUseImportedStage)
@@ -1250,7 +1297,9 @@ class Song {
 		var validity = chartVisualValidity(folderLower, requestedJson, fallbackCharts, baseChart);
 		var preserveAuthoredGraphics = false;
 		#if sys
-		preserveAuthoredGraphics = compatibilityEngine(folderLower, requestedJson).toLowerCase().indexOf('psych') >= 0;
+		var compatibility = compatibilityEngine(folderLower, requestedJson).toLowerCase();
+		preserveAuthoredGraphics = compatibility.indexOf('psych') >= 0
+			|| compatibility == ImportEngine.NIGHTMARE_VISION.toLowerCase();
 		#end
 		var parsedJson:Dynamic = resolveChartData(requestedJson, fallbackCharts, baseChart,
 			validity, preserveAuthoredGraphics);
@@ -1305,8 +1354,11 @@ class Song {
 				parsedJson.isCheer = true;
 		}
 
-		var ownedGirlfriend = characterVisualRegistryEntryInManifest(Std.string(parsedJson.gf),
-			characterRootForSong(folderLower)) != null;
+		var ownerRoot = characterRootForSong(folderLower);
+		var ownedGirlfriend = characterVisualRegistryEntryInManifest(Std.string(parsedJson.gf), ownerRoot) != null;
+		if (!ownedGirlfriend && characterOwnerEngineForSong(folderLower).toLowerCase()
+			== ImportEngine.NIGHTMARE_VISION.toLowerCase())
+			ownedGirlfriend = NightmareVisionCharacterData.load(ownerRoot, Std.string(parsedJson.gf)) != null;
 		if (!ownedGirlfriend && !isValidVisualValue('gf', parsedJson.gf)
 			&& !(preserveAuthoredGraphics && chartHasValue(requestedJson, 'gf'))) {
 			switch (parsedJson.stage) {
@@ -1423,8 +1475,14 @@ class Song {
 		// note-data block. Resolve that legacy marker only on the in-memory chart;
 		// imported/source JSON retains its original fifth value for chart tools and
 		// repair diagnostics.
-		EngineCompat.normalizeLegacyNoteRows(parsedJson,
-			parsedJson.preferredNoteAmount == null ? 4 : Std.int(parsedJson.preferredNoteAmount));
+		// The fifth row value is a lift marker in Modding Plus. Other source
+		// engines may store their own metadata there, so only apply this ABI
+		// conversion to Modding Plus or charts with no declared provenance.
+		#if sys
+		if (compatibility == '' || compatibility == ImportEngine.MODDING_PLUS.toLowerCase())
+		#end
+			EngineCompat.normalizeLegacyNoteRows(parsedJson,
+				parsedJson.preferredNoteAmount == null ? 4 : Std.int(parsedJson.preferredNoteAmount));
 		Reflect.setField(parsedJson, 'compatStorageFolder', folderLower);
 		Reflect.setField(parsedJson, 'compatChartFileName', inputLower);
 		attachCompatChartAccessors(parsedJson, folderLower, diffName);

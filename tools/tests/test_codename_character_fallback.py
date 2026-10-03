@@ -1,5 +1,7 @@
 """Pin Codename's owner-scoped DEFAULT_CHARACTER runtime fallback."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -58,8 +60,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
-            (work / "Main.hx").write_text(fixture)
-            result = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work),
+            (work / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
                                      "--run", "Main"], cwd=ROOT,
                                     env={**os.environ, "TMPDIR": str(work)},
                                     capture_output=True, text=True, timeout=30)

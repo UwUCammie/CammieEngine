@@ -1,5 +1,7 @@
 """Exercise source directional hooks, fallback and cancellation on actual methods."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -51,15 +53,15 @@ public function codenamePlayAnim(name:String, force:Null<Bool>, context:Dynamic,
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp', prefix='directional-') as temp:
             folder = Path(temp)
-            (folder / 'Character.hx').write_text(actor)
+            (folder / 'Character.hx').write_text(actor, newline='\n')
             (folder / 'Hooks.hx').write_text('''class Hooks {
 public var calls:Array<String>=[];public var callback:String->CodenameDirectionAnimEvent->Void;
 public function new() {}
 public function event(name:String,e:CodenameDirectionAnimEvent) {calls.push(name);if(callback!=null)callback(name,e);}
-}''')
-            (folder / 'Animations.hx').write_text('class Animations {public function new(){} public function exists(s:String) return s=="singUP-alt";}')
+}''', newline='\n')
+            (folder / 'Animations.hx').write_text('class Animations {public function new(){} public function exists(s:String) return s=="singUP-alt";}', newline='\n')
             for name in ('CodenameGameEvent', 'CodenameDirectionAnimEvent'):
-                (folder / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text())
-            (folder / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', temp, '-main', 'Main', '--interp'], cwd=ROOT, capture_output=True, text=True)
+                (folder / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
+            (folder / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', temp, '-main', 'Main', '--interp'], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

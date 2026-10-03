@@ -1,5 +1,7 @@
 """Empty/event-only charts must not dereference a nonexistent first note."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -37,8 +39,8 @@ class Main {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(source)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder),
+            (folder / "Main.hx").write_text(source, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(folder),
                                      "--run", "Main"], cwd=ROOT, text=True,
                                     capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

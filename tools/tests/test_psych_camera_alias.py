@@ -1,6 +1,8 @@
 """Regression coverage for Psych's separate camHUD and camOther layers."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -69,9 +71,9 @@ class PsychCameraLayerCompat {
 """.replace("{layer}", layer).replace("{camera}", camera)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychCameraLayerCompat.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychCameraLayerCompat", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychCameraLayerCompat", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -145,9 +147,9 @@ class PsychCameraSetterFixture {
 }'''.replace("__LAYER__", layer).replace("__CAMERA__", camera).replace("__SETTER__", setter)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychCameraSetterFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychCameraSetterFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychCameraSetterFixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

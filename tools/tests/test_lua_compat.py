@@ -1,7 +1,10 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,9 +16,9 @@ WHITTY_4CHAN = Path("/run/media/cammie/External Storage/FNF-Example-Mods/psych/v
 class LuaCompatibilityTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "LuaCompatTest.hx").write_text(source)
+            (Path(folder) / "LuaCompatTest.hx").write_text(source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(HAXESCRIPT), "-main", "LuaCompatTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
 
@@ -311,6 +314,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/psych/PERFEXION Demo1').is_dir(), 'mounted Lua corpus is unavailable')
     def test_representative_donor_scripts_produce_parseable_partial_hscript(self):
         fixture = r'''
 class LuaCompatTest {
@@ -346,6 +350,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/psych/PERFEXION Demo1').is_dir(), 'mounted Lua corpus is unavailable')
     def test_donor_dynamic_globals_route_exact_supported_surface(self):
         fixture = r'''
 class LuaCompatTest {
@@ -616,6 +621,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/psych/PERFEXION Demo1').is_dir(), 'mounted Lua corpus is unavailable')
     def test_reverse_glitch_donor_has_no_unrouted_runhaxe_sites(self):
         fixture = r'''
 class LuaCompatTest {
@@ -638,6 +644,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/psych/PERFEXION Demo1').is_dir(), 'mounted Lua corpus is unavailable')
     def test_donor_has_lua_callbacks_and_engine_calls(self):
         donor = Path("/run/media/cammie/External Storage/FNF-Example-Mods")
         files = list(donor.rglob("*.lua"))
@@ -724,6 +731,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not Path('/run/media/cammie/External Storage/FNF-Example-Mods/psych/PERFEXION Demo1').is_dir(), 'mounted Lua corpus is unavailable')
     def test_last_two_corpus_edges_have_bounded_routes_and_parseable_output(self):
         fixture = r'''
 import hscript.Parser;

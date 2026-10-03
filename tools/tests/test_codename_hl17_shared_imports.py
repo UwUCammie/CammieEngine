@@ -1,6 +1,8 @@
 """Exercise standard Flixel imports used by owner-scoped Codename scripts."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,9 +47,9 @@ class Main {
    "HLTypeText constructor does not receive selected-owner asset paths");
  }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
@@ -72,7 +74,7 @@ class FlxRect {
   this.x=x; this.y=y; this.width=width; this.height=height;
  }
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text('''import flixel.math.FlxRect;
 import hscript.Interp;
 class Main {
@@ -103,9 +105,9 @@ class Main {
    "Math, Reflect or FlxRect import semantics changed: " + actual);
  }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
@@ -160,9 +162,9 @@ class Main {
    && unsafe.diagnostics[0].message.indexOf('Sys') >= 0,
    "Sys import must be explicitly rejected");
  }}
-}}''')
+}}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,

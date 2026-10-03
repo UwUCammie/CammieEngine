@@ -6,12 +6,14 @@ a donor idle authored as the pair plays both halves in order and holds a
 finished half until the next tick.  Replaying one fixed animation instead
 looped a single half mid-swing, which read as too fast / cut off.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
@@ -29,10 +31,10 @@ class VSliceCharacterDanceTest(unittest.TestCase):
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/pairhero.png").write_bytes(b"png")
-            (fixture / "images/characters/pairhero.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/pairhero.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-pairhero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             output_path = fixture / "out.txt"
             main = f'''import haxe.Json;
 class Main {{
@@ -44,9 +46,9 @@ class Main {{
 }}
 '''
             with tempfile.TemporaryDirectory() as build:
-                Path(build, "Main.hx").write_text(main)
+                Path(build, "Main.hx").write_text(main, newline='\n')
                 result = subprocess.run(
-                    [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                    [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                      "-cp", build, "-main", "Main", "--interp"],
                     cwd=ROOT, capture_output=True, text=True, timeout=300)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -54,7 +56,7 @@ class Main {{
 
     def run_interpreted(self, generated_tail: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
-            Path(folder, "Generated.hscript").write_text(generated_tail)
+            Path(folder, "Generated.hscript").write_text(generated_tail, newline='\n')
             Path(folder, "Main.hx").write_text(f'''class MockChar {{
   public function new() {{}}
   public var calls:Array<Dynamic> = [];
@@ -88,9 +90,9 @@ class Main {{
     trace("dance ticks OK");
   }}
 }}
-''')
+''', newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
 
     def test_dance_pair_alternates_halves_like_donor(self):

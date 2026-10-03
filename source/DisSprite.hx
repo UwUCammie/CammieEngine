@@ -17,11 +17,17 @@ import flixel.FlxCamera;
  * A fancy sprite with graphic loading shortcuts and FlxSpriteGroup-type parenting
  */
 class DisSprite extends FlxAnimate {
+    /** Nightmare Vision's Bopper API exposes the backing Animate sprite as a
+     * self-reference. Character extends DisSprite, so source scripts can use
+     * character.animateAtlas for the same FlxAnimate controls. */
+    @:keep public var animateAtlas:FlxAnimate;
+
     public var children:Array<FlxSprite>; // the children tied to this sprite
     public var parentPos:Int = -1; // the z-index of the parent relative to the positions of the children array
 
 	public function new(x:Float = 0, y:Float = 0) {
 		super(x, y);
+        animateAtlas = this;
 	}
 
     // loading sprite stuff

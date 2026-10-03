@@ -1,6 +1,8 @@
 """Owner-scoped compiled Psych stage lifecycle adapter fixture."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -35,7 +37,7 @@ class PsychCompiledStageRuntimeTest(unittest.TestCase):
             module.write_text(
                 "package demo; import flixel.FlxSprite; class SceneSprite extends FlxSprite { public function new() super(); public function dance() {} }\n",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 """import flixel.FlxBasic;
 import flixel.FlxSprite;
@@ -61,9 +63,9 @@ class Main {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "Main", str(owner)],
@@ -85,7 +87,7 @@ class IndexedSprite extends FlxSprite {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "GroupProbe.hx").write_text(
                 """package demo;
 import flixel.FlxBasic;
@@ -109,7 +111,7 @@ class GroupProbe extends FlxSprite {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "PsychNativeGroupIndexProbe.hx").write_text(
                 r'''import flixel.FlxBasic;
 import flixel.FlxSprite;
@@ -157,9 +159,9 @@ class PsychNativeGroupIndexProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "PsychNativeGroupIndexProbe", str(owner)],
@@ -178,11 +180,11 @@ class PsychNativeGroupIndexProbe {
             background.write_text(
                 "package objects; class Background { public var value:Int = 7; public function new() {} public function ping():Int return value; }\n",
                 encoding="utf-8",
-            )
+             newline='\n')
             child.write_text(
                 "package states.stages.objects; class Child extends Background { public function new() { super(); } }\n",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 """class Main {
  static function main():Void {
@@ -198,9 +200,9 @@ class PsychNativeGroupIndexProbe {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "Main", str(owner)],
@@ -229,7 +231,7 @@ class VizInterpolationStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "CodenameScriptInterp.hx").write_text(
                 """class CodenameScriptInterp {
 	public var variables:Map<String,Dynamic>=new Map();
@@ -237,7 +239,7 @@ class VizInterpolationStage extends BaseStage {
 	public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 r"""class Main {
  static function main():Void {
@@ -268,9 +270,9 @@ class VizInterpolationStage extends BaseStage {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "Main", str(owner)],
@@ -312,7 +314,7 @@ class CompiledStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             package_relative = owner / "source/states/stages/PackageRelativeStage.hx"
             package_relative.parent.mkdir(parents=True)
             package_relative.write_text(
@@ -322,7 +324,7 @@ class PackageRelativeStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "CodenameScriptInterp.hx").write_text(
                 """class CodenameScriptInterp {
 	public var variables:Map<String,Dynamic>=new Map();
@@ -330,7 +332,7 @@ class PackageRelativeStage extends BaseStage {
 	public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 r"""class Main {
  static function main():Void {
@@ -384,9 +386,9 @@ class PackageRelativeStage extends BaseStage {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp",
                 str(ROOT / "source"),
                 "-cp",
@@ -439,7 +441,7 @@ class GroupStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "PsychActorGroupProbe.hx").write_text(
                 r"""import flixel.FlxBasic;
 class PsychActorGroupProbe {
@@ -484,9 +486,9 @@ class PsychActorGroupProbe {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "PsychActorGroupProbe", str(owner)],
@@ -498,6 +500,7 @@ class PsychActorGroupProbe {
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not (ROOT.parent / 'FNF-Example-Mods/misc/psych_source_code/source/states/stages/StageWeek1.hx').is_file(), 'mounted Psych StageWeek1 fixture is unavailable')
     def test_mounted_stageweek1_source_loads_through_the_production_owner_loader(self):
         owner = ROOT / "tmp/psych-archive-source/FNF-PsychEngine-main"
         self.assertTrue((owner / "source/states/stages/StageWeek1.hx").is_file())
@@ -543,9 +546,9 @@ class PsychActorGroupProbe {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "PsychArchiveStageLoadProbe.hx").write_text(fixture)
+            (Path(folder) / "PsychArchiveStageLoadProbe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS, "--run",
                  "PsychArchiveStageLoadProbe", str(owner)],
@@ -599,7 +602,7 @@ class RainShader extends FlxShader {
 }
 ''',
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "demo/FilterStage.hx").write_text(
                 '''package demo;
 import backend.BaseStage;
@@ -621,7 +624,7 @@ class FilterStage extends BaseStage {
 }
 ''',
                 encoding="utf-8",
-            )
+             newline='\n')
             fixture = r'''import flixel.FlxCamera;
 import flixel.FlxG;
 import openfl.filters.ShaderFilter;
@@ -686,9 +689,9 @@ class PsychCompiledShaderBridgeProbe {
   runtime.destroy();
  }
 }'''
-            (base / "PsychCompiledShaderBridgeProbe.hx").write_text(fixture, encoding="utf-8")
+            (base / "PsychCompiledShaderBridgeProbe.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "PsychCompiledShaderBridgeProbe", str(owner)],
@@ -718,7 +721,7 @@ class SceneStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (owner / "source/demo/SceneSprite.hx").write_text(
                 """package demo;
 import flixel.FlxBasic;
@@ -727,7 +730,7 @@ class SceneSprite extends FlxBasic {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "Main.hx").write_text(
                 r"""import flixel.FlxBasic;
 class Main {
@@ -755,9 +758,9 @@ class Main {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                 "--run", "Main", str(owner),
@@ -795,7 +798,7 @@ class GroupProbe extends FlxSpriteGroup {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "NestedSprite.hx").write_text(
                 """package demo;
 import demo.ScriptSpriteParent;
@@ -804,7 +807,7 @@ class NestedSprite extends ScriptSpriteParent {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "ScriptSpriteParent.hx").write_text(
                 """package demo;
 import flixel.FlxSprite;
@@ -813,7 +816,7 @@ class ScriptSpriteParent extends FlxSprite {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             fixture = r'''import flixel.FlxBasic;
 import flixel.FlxSprite;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
@@ -838,9 +841,9 @@ class PsychNativeGroupBridgeProbe {
   loaded.scope.release();
  }
 }'''
-            (base / "PsychNativeGroupBridgeProbe.hx").write_text(fixture, encoding="utf-8")
+            (base / "PsychNativeGroupBridgeProbe.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "PsychNativeGroupBridgeProbe", str(owner)],
@@ -866,7 +869,7 @@ class TweenSprite extends FlxSprite {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "TweenStage.hx").write_text(
                 """package demo;
 import backend.BaseStage;
@@ -881,7 +884,7 @@ class TweenStage extends BaseStage {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (source / "ForeignSprite.hx").write_text(
                 """package demo;
 import flixel.FlxSprite;
@@ -890,7 +893,7 @@ class ForeignSprite extends FlxSprite {
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             fixture = r'''import flixel.FlxBasic;
 import flixel.FlxSprite;
 import flixel.tweens.FlxTween;
@@ -960,9 +963,9 @@ class PsychNativeTweenBridgeProbe {
   runtime.destroy();
  }
 }'''
-            (base / "PsychNativeTweenBridgeProbe.hx").write_text(fixture, encoding="utf-8")
+            (base / "PsychNativeTweenBridgeProbe.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), *FLIXEL_ARGS,
                  "--run", "PsychNativeTweenBridgeProbe", str(owner)],

@@ -1,6 +1,8 @@
 """Codename lifecycle stays scoped and keeps its callback ABI separate."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import re
@@ -141,9 +143,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
-            (Path(work) / "Main.hx").write_text(fixture)
+            (Path(work) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", work, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", work, "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -272,9 +274,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             work = Path(work)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", work, "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )
@@ -418,7 +420,7 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             work = Path(work)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             # This fixture extracts production lifecycle helpers without
             # Flixel. The newly instrumented callback path only needs inert
             # profiling hooks, so resolve this local shim before the project
@@ -426,9 +428,9 @@ class Main {
             (work / "RuntimeSmokeHarness.hx").write_text('''class RuntimeSmokeHarness {
  public static function profileEnabled():Bool return false;
  public static function profileSection(_name:String,_seconds:Float):Void {}
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", work, "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True,
             )

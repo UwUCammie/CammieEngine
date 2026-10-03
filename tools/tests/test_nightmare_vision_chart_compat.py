@@ -1,6 +1,8 @@
 """NMV chart normalization follows the bundled generic engine schema."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -14,9 +16,9 @@ class NightmareVisionChartCompatTest(unittest.TestCase):
     def run_haxe(self, body):
         main = "class Main { static function main() {\n" + body + "\n} }\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
-            (Path(temp) / "Main.hx").write_text(main)
+            (Path(temp) / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", temp, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", temp, "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -91,12 +93,22 @@ if (result.supported) throw "unsupported format/lanes were accepted";
 var joined = result.diagnostics.join(";");
 for (code in ["nightmare-vision-unsupported-chart-format",
   "nightmare-vision-unsupported-chart-lanes",
-  "nightmare-vision-unsupported-arrow-skins",
   "nightmare-vision-unsupported-track-swap"])
   if (joined.indexOf("[" + code + "]") < 0) throw "missing diagnostic " + code;
 if (chart.song.format != "codenameChart") throw "unsupported chart was rewritten";
 if (chart.song.notes[0].sectionNotes[0][1] != 8)
   throw "unsupported third-field note lane was reassigned";
+''')
+
+    def test_authored_per_field_skins_are_retained(self):
+        self.run_haxe(r'''var chart:Dynamic = {song:{format:"nmv2", keys:4, lanes:2,
+  arrowSkins:["first", "second"], notes:[]}};
+var result = NightmareVisionChartCompat.convert(chart, "skins.json");
+if (!result.supported || chart.song.arrowSkins.join(",") != "first,second")
+  throw "source playfield note skins were not retained";
+for (diagnostic in result.diagnostics)
+  if (diagnostic.indexOf("unsupported-arrow-skins") >= 0)
+    throw "supported source skins were diagnosed as unsupported";
 ''')
 
 

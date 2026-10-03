@@ -1,6 +1,8 @@
 """Freeplay labels imported rows from their exact destination provenance."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import shutil
 import tempfile
@@ -76,10 +78,10 @@ class FreeplaySourceDisplayFixture {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             shutil.copy2(ROOT / "source/FreeplaySourceDisplay.hx", folder)
-            (Path(folder) / "ImportSongOwnership.hx").write_text(ownership_stub)
-            (Path(folder) / "FreeplaySourceDisplayFixture.hx").write_text(fixture)
+            (Path(folder) / "ImportSongOwnership.hx").write_text(ownership_stub, newline='\n')
+            (Path(folder) / "FreeplaySourceDisplayFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "--run", "FreeplaySourceDisplayFixture"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

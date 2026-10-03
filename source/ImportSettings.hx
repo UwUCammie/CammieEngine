@@ -2,7 +2,7 @@ package;
 
 import haxe.io.Path;
 #if sys
-import sys.FileSystem;
+import ImportFileSystem as FileSystem;
 #end
 
 /**

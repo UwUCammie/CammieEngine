@@ -8,6 +8,7 @@ engine-wide so a future chart importer change cannot silently discard it.
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

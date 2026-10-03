@@ -1,9 +1,12 @@
 """Psych source Haxe stage classes are identified for unsupported-behavior diagnostics."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,20 +48,21 @@ class PsychSourceStageCompatProbe {
                 "  case 'phillyStreets': new PhillyStreets();\n"
                 "  case 'other': new OtherStage();\n"
                 "}\n"
-            )
-            (stage_dir / "PhillyStreets.hx").write_text("class PhillyStreets {}\n")
-            (stage_dir / "notDispatched.hx").write_text("class notDispatched {}\n")
+            , newline='\n')
+            (stage_dir / "PhillyStreets.hx").write_text("class PhillyStreets {}\n", newline='\n')
+            (stage_dir / "notDispatched.hx").write_text("class notDispatched {}\n", newline='\n')
             probe = source_root / "PsychSourceStageCompatProbe.hx"
-            probe.write_text(fixture)
+            probe.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
-                 "--run", "PsychSourceStageCompatProbe", folder],
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
+                 "--run", "PsychSourceStageCompatProbe", str(source_root)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(not (ROOT / 'tmp/psych-archive-source/FNF-PsychEngine-main/source/states/PlayState.hx').is_file(), 'private Psych archive fixture is unavailable')
     def test_real_psych_archive_dispatch_resolves_philly_streets_class(self):
         archive = ROOT / "tmp/psych-archive-source/FNF-PsychEngine-main"
         self.assertTrue((archive / "source/states/PlayState.hx").is_file())
@@ -75,9 +79,9 @@ class PsychSourceArchiveProbe {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "PsychSourceArchiveProbe.hx").write_text(fixture)
+            (Path(folder) / "PsychSourceArchiveProbe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "PsychSourceArchiveProbe", str(archive)],
                 cwd=ROOT,
                 capture_output=True,
@@ -109,16 +113,16 @@ class PsychStageImplementationProbe {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder)
-            (fixture_path / "PsychStageImplementationProbe.hx").write_text(fixture)
+            (fixture_path / "PsychStageImplementationProbe.hx").write_text(fixture, newline='\n')
             stage_root = fixture_path / "donor/stages"
             stage_root.mkdir(parents=True)
             (stage_root / "phillyStreets.json").write_text(
                 '{"defaultZoom":0.77,"boyfriend":[1330,450]}'
-            )
-            (stage_root / "custom.lua").write_text("function onCreate() end")
-            (stage_root / "native.hscript").write_text("function start() {}")
+            , newline='\n')
+            (stage_root / "custom.lua").write_text("function onCreate() end", newline='\n')
+            (stage_root / "native.hscript").write_text("function start() {}", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "PsychStageImplementationProbe", str(stage_root.parent)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "PsychStageImplementationProbe", str(stage_root.parent)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -181,11 +185,11 @@ class DependencyProbe {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder)
-            (fixture_path / "DependencyProbe.hx").write_text(fixture)
+            (fixture_path / "DependencyProbe.hx").write_text(fixture, newline='\n')
             candidate = fixture_path / "philly-streets.hscript"
-            candidate.write_text("function start() {}")
+            candidate.write_text("function start() {}", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "DependencyProbe", str(candidate)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "DependencyProbe", str(candidate)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

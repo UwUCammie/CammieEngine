@@ -1,6 +1,7 @@
 """Guard scoped cleanup of generated note registries on base songs."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import importlib.util
 import json
 import tempfile
@@ -21,23 +22,23 @@ class GeneratedNoteSubsetTest(unittest.TestCase):
             root = Path(directory)
             old, qualified, source = (root / name for name in
                                       ("old.json", "qualified.json", "source.json"))
-            old.write_text(json.dumps([{"id": "a"}]))
-            qualified.write_text(json.dumps([{"id": "a"}, {"id": "b"}]))
+            old.write_text(json.dumps([{"id": "a"}]), newline='\n')
+            qualified.write_text(json.dumps([{"id": "a"}, {"id": "b"}]), newline='\n')
             self.assertTrue(REPAIR.generated_note_subset(old, qualified, source))
-            source.write_text("[]")
+            source.write_text("[]", newline='\n')
             self.assertFalse(REPAIR.generated_note_subset(old, qualified, source))
             source.unlink()
-            old.write_text(json.dumps([{"id": "other"}]))
+            old.write_text(json.dumps([{"id": "other"}]), newline='\n')
             self.assertFalse(REPAIR.generated_note_subset(old, qualified, source))
             old.write_text(json.dumps([{"id": "codename:GF:0",
-                                        "sourceEngine": "Codename Engine", "sourceKind": "GF"}]))
+                                        "sourceEngine": "Codename Engine", "sourceKind": "GF"}]), newline='\n')
             qualified.write_text(json.dumps([{"id": "codename:GF:2",
-                                              "sourceEngine": "Codename Engine", "sourceKind": "GF"}]))
+                                              "sourceEngine": "Codename Engine", "sourceKind": "GF"}]), newline='\n')
             self.assertTrue(REPAIR.generated_note_subset(old, qualified, source))
             qualified.write_text(json.dumps([{"id": "codename:GF:2",
-                                              "sourceEngine": "Codename Engine", "sourceKind": "Other"}]))
+                                              "sourceEngine": "Codename Engine", "sourceKind": "Other"}]), newline='\n')
             self.assertFalse(REPAIR.generated_note_subset(old, qualified, source))
-            old.write_text("not json")
+            old.write_text("not json", newline='\n')
             self.assertFalse(REPAIR.generated_note_subset(old, qualified, source))
 
 

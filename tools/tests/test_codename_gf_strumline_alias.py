@@ -1,5 +1,7 @@
 """Keep Codename's actor globals tied to their authored source strumlines."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -237,9 +239,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(fixture)
+            main.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,

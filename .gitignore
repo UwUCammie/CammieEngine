@@ -15,6 +15,7 @@
 /assets/imported_mods/*
 !/assets/imported_mods/bundled-vslice-results/
 /mods/
+/import-cache/
 
 # Editor, assistant and machine-local configuration
 /.vscode/

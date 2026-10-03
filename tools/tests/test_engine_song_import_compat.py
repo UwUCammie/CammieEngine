@@ -1,6 +1,8 @@
 """Synthetic coverage for descriptor-aware legacy/Psych song discovery."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import os
 import tempfile
@@ -343,15 +345,15 @@ class ImportCompat {{
             temp_path = Path(folder)
             (temp_path / "NightmareVisionChartCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
-            )
+            , newline='\n')
             fixture_path = temp_path / "ImportCompat.hx"
-            fixture_path.write_text(with_kade_parser(fixture))
+            fixture_path.write_text(with_kade_parser(fixture), newline='\n')
             root = temp_path / "fixture"
             shared_data = root / "assets/shared/data/shared-demo"
             shared_songs = root / "assets/songs/shared-demo"
@@ -387,24 +389,24 @@ class ImportCompat {{
                 path.mkdir(parents=True)
 
             chart = '{"song":{"song":"shared-demo","player1":"bf","player2":"dad","notes":[]}}'
-            (shared_data / "shared-demo.json").write_text(chart)
-            (shared_data / "events.json").write_text('{"events":[]}')
+            (shared_data / "shared-demo.json").write_text(chart, newline='\n')
+            (shared_data / "events.json").write_text('{"events":[]}', newline='\n')
             # A song-shaped event backup is still a sidecar, not a playable
             # chart.  Discovery must use the native notes payload rather than
             # a filename-specific exclusion.
-            (shared_data / "events-backup.json").write_text('{"song":{"events":[]}}')
+            (shared_data / "events-backup.json").write_text('{"song":{"events":[]}}', newline='\n')
             (shared_songs / "Shared-Demo-Inst.ogg").write_bytes(b"inst")
             (shared_songs / "Shared-Demo-Voices.ogg").write_bytes(b"voices")
 
             native_chart = '{"song":{"song":"native-demo","player1":"bf","player2":"dad","notes":[]}}'
-            (nested_data / "native-demo.json").write_text(native_chart)
-            (nested_data / "native-demo-hard.json").write_text(native_chart)
-            (nested_data / "native-demo-expert.json").write_text(native_chart)
+            (nested_data / "native-demo.json").write_text(native_chart, newline='\n')
+            (nested_data / "native-demo-hard.json").write_text(native_chart, newline='\n')
+            (nested_data / "native-demo-expert.json").write_text(native_chart, newline='\n')
             (nested_songs / "Native-Demo-Inst.ogg").write_bytes(b"inst")
-            (flat_data / "flat-demo.json").write_text('{"song":{"song":"flat-demo","notes":[]}}')
+            (flat_data / "flat-demo.json").write_text('{"song":{"song":"flat-demo","notes":[]}}', newline='\n')
             (flat_songs / "Flat-Demo-Inst.ogg").write_bytes(b"inst")
             (flat_songs / "Flat-DemoVoicesTogether.ogg").write_bytes(b"together")
-            (split_data / "split-demo.json").write_text('{"song":{"song":"split-demo","notes":[]}}')
+            (split_data / "split-demo.json").write_text('{"song":{"song":"split-demo","notes":[]}}', newline='\n')
             (split_songs / "Inst.ogg").write_bytes(b"inst")
             (split_songs / "Voices-Player.ogg").write_bytes(b"player")
             (split_songs / "Voices-Opponent.ogg").write_bytes(b"opponent")
@@ -412,54 +414,54 @@ class ImportCompat {{
             together_songs = root / "together/songs/together-demo"
             (together_data / "together-demo.json").write_text(
                 '{"song":{"song":"together-demo","player1":"bf","player2":"dad","notes":[]}}'
-            )
+            , newline='\n')
             (together_data / "dialogue.json").write_text(
                 '{"dialogue":[{"portraits":["dadPort"],"text":"Converted line","box":"normal"}]}'
-            )
+            , newline='\n')
             (together_data / "cutscene.json").write_text(
                 '{"startCutscene":{"name":"TogetherIntro","storyOnly":true,"playOnce":true}}'
-            )
+            , newline='\n')
             (together_songs / "Inst.ogg").write_bytes(b"inst")
             (together_songs / "VoicesTogether.ogg").write_bytes(b"together")
 
             (psych_data / "stress-song.json").write_text(
                 '{"song":{"song":"stress-song","player1":"bf","player2":"dad","notes":[]}}'
-            )
-            (psych_data / "events.json").write_text('{"events":[]}')
+            , newline='\n')
+            (psych_data / "events.json").write_text('{"events":[]}', newline='\n')
             (psych_songs / "Inst.ogg").write_bytes(b"inst")
             (psych_songs / "Voices.ogg").write_bytes(b"voices")
 
             nested_nmv_chart = (
                 '{"song":{"song":"Displayed NMV Song","player1":"bf","player2":"dad","notes":[]}}'
             )
-            (nested_nmv_data / "easy.json").write_text(nested_nmv_chart)
-            (nested_nmv_data / "normal.json").write_text(nested_nmv_chart)
+            (nested_nmv_data / "easy.json").write_text(nested_nmv_chart, newline='\n')
+            (nested_nmv_data / "normal.json").write_text(nested_nmv_chart, newline='\n')
             (nested_nmv_audio / "Inst.ogg").write_bytes(b"inst")
             (nested_nmv_audio / "Voices.ogg").write_bytes(b"voices")
             (incomplete_nmv_song / "data/normal.json").write_text(
                 '{"song":{"song":"Must Not Borrow Base Audio","notes":[]}}'
-            )
+            , newline='\n')
             (nested_nmv_root / "assets/songs/missing-inst_Inst.ogg").write_bytes(b"unrelated base audio")
             (direct_audio_song / "data/normal.json").write_text(
                 '{"song":{"song":"Direct Audio Song","notes":[]}}'
-            )
+            , newline='\n')
             (direct_audio_song / "Inst.ogg").write_bytes(b"inst")
             (lane_three_data / "data/monster-three-lane.json").write_text(
                 '{"song":{"song":"monster","format":"nmv2","keys":4,"lanes":3,'
                 '"notes":[{"mustHitSection":false,"sectionNotes":[[0,8,0]]}]}}'
-            )
+            , newline='\n')
             (lane_three_data / "audio/Inst.ogg").write_bytes(b"inst")
             (collision_root / "assets/data/monster/monster.json").write_text(
                 '{"song":{"song":"monster","notes":[]}}'
-            )
+            , newline='\n')
             (collision_root / "assets/songs/monster/Inst.ogg").write_bytes(b"base inst")
             (collision_pack_song / "data/normal.json").write_text(
                 '{"song":{"song":"monster","notes":[]}}'
-            )
+            , newline='\n')
             (collision_pack_song / "audio/Inst.ogg").write_bytes(b"pack inst")
 
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat", str(root)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat", str(root)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -514,9 +516,9 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCompat.hx"
-            fixture_path.write_text(with_kade_parser(fixture))
+            fixture_path.write_text(with_kade_parser(fixture), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat", folder],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat", folder],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -549,9 +551,9 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCompat.hx"
-            fixture_path.write_text(with_kade_parser(fixture))
+            fixture_path.write_text(with_kade_parser(fixture), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -614,9 +616,9 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCompat.hx"
-            fixture_path.write_text(with_kade_parser(fixture))
+            fixture_path.write_text(with_kade_parser(fixture), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -680,9 +682,9 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCompat.hx"
-            fixture_path.write_text(with_kade_parser(fixture))
+            fixture_path.write_text(with_kade_parser(fixture), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -858,23 +860,23 @@ class ImportCompat {{
             temp_path = Path(folder)
             (temp_path / "NightmareVisionChartCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "ImportCompat.hx").write_text(fixture + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "")
             .replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "")
-            .replace("import sys.io.File;", "") + "\n" + directory_listing_source())
+            .replace("import sys.io.File;", "") + "\n" + directory_listing_source(), newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
-            )
+            , newline='\n')
             # The mounted donor set changes as mods are added and removed.
             roots = [entry for entry in roots
                      if (Path("/run/media/cammie/External Storage/FNF-Example-Mods") / entry[0]).exists()]
             self.assertGreater(len(roots), 0, "no mounted legacy donor roots")
             for data, audio, music in roots:
                 args = [
-                    str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                    *HAXE_COMMAND, "-cp", folder,
                     "--run", "ImportCompat",
                     str(Path("/run/media/cammie/External Storage/FNF-Example-Mods") / data),
                     str(Path("/run/media/cammie/External Storage/FNF-Example-Mods") / audio),

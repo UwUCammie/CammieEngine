@@ -1,6 +1,8 @@
 """Regression coverage for Psych's live ``curBpm``/``stepCrochet`` globals."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -29,10 +31,10 @@ class PsychTimingGlobalsTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychTimingCompat.hx"
-            path.write_text(source)
+            path.write_text(source, newline='\n')
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

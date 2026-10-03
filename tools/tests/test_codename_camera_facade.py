@@ -1,6 +1,8 @@
 """Run scoped Codename camera mutations against a pinned-shape Flixel stub."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -248,10 +250,10 @@ class Main {
             for name, content in stubs.items():
                 path = base / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
-            (base / "Main.hx").write_text(fixture)
+                path.write_text(content, newline='\n')
+            (base / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", work,
                  "--run", "Main"], cwd=ROOT, text=True, capture_output=True,
             )

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -17,11 +18,11 @@ class ImportedNotesTest(unittest.TestCase):
             source, target = Path(folder) / 'source', Path(folder) / 'target'
             original = source / 'data/Smoked/noteinfo.json'
             original.parent.mkdir(parents=True)
-            original.write_text('[{}]')
+            original.write_text('[{}]', newline='\n')
             destination = target / 'data/smoked/noteInfo.json'
             destination.parent.mkdir(parents=True)
             self.assertEqual(list(repair.missing_assets(source, target)), [(original, destination)])
-            destination.write_text('[{"id":"edited"}]')
+            destination.write_text('[{"id":"edited"}]', newline='\n')
             self.assertEqual(list(repair.missing_assets(source, target)), [])
             self.assertEqual(json.loads(destination.read_text()), [{'id': 'edited'}])
 
@@ -38,7 +39,7 @@ class ImportedNotesTest(unittest.TestCase):
             }.items():
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(text)
+                path.write_text(text, newline='\n')
             destinations = {str(d.relative_to(target)) for _, d in repair.missing_assets(source, target)}
             self.assertEqual(destinations, {'images/custom_ui/ui_layouts/postal.hscript',
                                            'images/custom_chars/char.json', 'data/song/events.json'})

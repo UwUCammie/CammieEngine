@@ -1,6 +1,7 @@
 """Pin the source-accurate Away3D-to-Flixel snapshot bridge."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

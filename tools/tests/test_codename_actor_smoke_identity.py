@@ -1,5 +1,7 @@
 """Native smoke actor tokens must identify instances even across state reuse."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -49,8 +51,8 @@ class Main {
 }
 '''.replace('__METHOD__', method)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as tmp:
-            Path(tmp, 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', tmp,
+            Path(tmp, 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp,
                                      '-main', 'Main', '--interp'],
                                     capture_output=True, text=True, cwd=ROOT)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

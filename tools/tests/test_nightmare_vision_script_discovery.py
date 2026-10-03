@@ -1,5 +1,7 @@
 """Direct NMV gameplay script inventory must reflect source scopes and ownership."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -25,18 +27,18 @@ class NightmareVisionScriptDiscoveryTest(unittest.TestCase):
   var plan=NightmareVisionScriptDiscovery.discover(args[0], "wrong-folder", chart, null, function(text:String) return tjson.TJSON.parse(text));
   Sys.println(haxe.Json.stringify({plan:plan, diagnostics:NightmareVisionScriptDiscovery.unsupportedDiagnostics(plan)}));
  }
-}''')
+}''', newline='\n')
 
     def write(self, root, relative, value='function onLoad() {}'):
         p = root / relative
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(value)
-        return str(p)
+        p.write_text(value, newline='\n')
+        return p.as_posix()
 
     def discover(self, song, root=None):
         chart = self.work / 'chart.json'
-        chart.write_text(json.dumps(song))
-        result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+        chart.write_text(json.dumps(song), newline='\n')
+        result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                  '-cp', str(self.work), '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), '--run', 'Main', str(root or self.owner), str(chart)],
                                 cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -55,7 +57,7 @@ class NightmareVisionScriptDiscoveryTest(unittest.TestCase):
                          ['__nmv_core/scripts/shared.hx', 'scripts/shared.hx'])
         stage = next(entry for entry in result['scripts'] if entry['scope'] == 'stage')
         self.assertEqual(stage['relative'], '__nmv_core/data/stages/demo/script.hx')
-        self.assertEqual(result['baseAssetsRoot'], str(core))
+        self.assertEqual(result['baseAssetsRoot'], core.as_posix())
 
     def test_owner_base_overlay_extensions_and_all_direct_scopes(self):
         stage = self.write(self.base, 'data/stages/demo/script.hx')

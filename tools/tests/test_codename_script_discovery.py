@@ -1,6 +1,8 @@
 """Parse-free Codename companion discovery stays within the selected source root."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import hashlib
 import subprocess
@@ -12,24 +14,25 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class CodenameScriptDiscoveryTest(unittest.TestCase):
+    @unittest.skipIf(__import__("os").name == "nt", "fixture requires case-sensitive note type names")
     def test_selected_chart_note_types_resolve_same_owner_scripts_and_packs(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             base = Path(work)
             owner = base / "owner"
             notes = owner / "data/notes"
             notes.mkdir(parents=True)
-            (notes / "Water.hx").write_text("hx has source precedence")
-            (notes / "Water.hscript").write_text("lower priority source")
+            (notes / "Water.hx").write_text("hx has source precedence", newline='\n')
+            (notes / "Water.hscript").write_text("lower priority source", newline='\n')
             (notes / "Packed.pack").write_text(
                 "Packed.hx________PACKSEP________function noteHit(e) {}"
                 "________PACKSEP________unused schema________PACKSEP________"
-            )
+            , newline='\n')
             outside = base / "outside.hx"
-            outside.write_text("foreign")
+            outside.write_text("foreign", newline='\n')
             try:
                 (notes / "Escape.hx").symlink_to(outside)
-            except OSError:
-                pass
+            except OSError as error:
+                self.skipTest(f"symlink fixture unavailable: {error}")
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var root=Sys.args()[0];
@@ -49,8 +52,8 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
     || found.diagnostics[1].indexOf("../unsafe")<0)
    throw "unsafe note paths were not diagnosed: " + found.diagnostics.join(";");
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -63,12 +66,12 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
             owner = base / "owner"
             defs = owner / "data/characters"
             defs.mkdir(parents=True)
-            (defs / "chart.xml").write_text("<char/>")
-            (defs / "scripted.xml").write_text("<char/>")
-            (defs / "scripted.hx").write_text("// companion")
-            (defs / "only-script.hx").write_text("// source class")
+            (defs / "chart.xml").write_text("<char/>", newline='\n')
+            (defs / "scripted.xml").write_text("<char/>", newline='\n')
+            (defs / "scripted.hx").write_text("// companion", newline='\n')
+            (defs / "only-script.hx").write_text("// source class", newline='\n')
             foreign = base / "foreign.xml"
-            foreign.write_text("<char/>")
+            foreign.write_text("<char/>", newline='\n')
             (defs / "escape.xml").symlink_to(foreign)
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
@@ -82,8 +85,8 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
    || names.indexOf("data/characters/scripted.hx")<0)
    throw names.join(",");
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -110,9 +113,9 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
                 for relative, contents in files.items():
                     path = root / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(root.name + ":" + contents)
+                    path.write_text(root.name + ":" + contents, newline='\n')
             escaped = base / "escaped.hx"
-            escaped.write_text("foreign")
+            escaped.write_text("foreign", newline='\n')
             (owner / "data/states/Escape.hx").symlink_to(escaped)
             (owner / "source/Escape.hx").symlink_to(escaped)
             (base / "Main.hx").write_text('''class Main {
@@ -136,8 +139,8 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
     || gameplay[0].family!="global-song" || gameplay[1].relative!="songs/demo/hud.hx"
     || gameplay[1].family!="hud") throw haxe.Json.stringify(gameplay);
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -158,7 +161,7 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
             }.items():
                 path = assets / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             for relative, content in {
                 "data/global.hx": "owner global",
                 "data/scripts/pause.hx": "owner pause",
@@ -167,17 +170,17 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
             }.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             outside = base / "outside.frag"
-            outside.write_text("outside")
+            outside.write_text("outside", newline='\n')
             try:
                 (owner / "shaders/escape.frag").unlink()
                 (owner / "shaders/escape.frag").symlink_to(outside)
-            except OSError:
-                pass
+            except OSError as error:
+                self.skipTest(f"symlink fixture unavailable: {error}")
             unrelated_assets = base / "unrelated/assets"
             (unrelated_assets / "shaders").mkdir(parents=True)
-            (unrelated_assets / "shaders/foreign.frag").write_text("foreign")
+            (unrelated_assets / "shaders/foreign.frag").write_text("foreign", newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var owner=Sys.args()[0];
@@ -203,8 +206,8 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
   if(CodenameInstallationAssetOverlay.installationAssetsForOwner(owner)!=assets)
     throw "structural installation root not resolved";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner), str(assets), str(unrelated_assets)],
                                cwd=ROOT, text=True, capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -221,18 +224,18 @@ class CodenameScriptDiscoveryTest(unittest.TestCase):
   frames = Paths.getSparrowAtlas(char);
   return this;
  }
-}''')
+}''', newline='\n')
             script = owner / "songs/demo/scripts/script.hx"
             script.parent.mkdir(parents=True)
             script.write_text('''import Bopper;
 function create() {
  var prop = new Bopper(0, 0).setCharacter('characters/huggyteen/Banban');
  prop.setCharacter(runtimeCharacter);
-}''')
+}''', newline='\n')
             for suffix, content in (("png", "png"), ("xml", "xml")):
                 atlas = owner / f"images/characters/huggyteen/Banban.{suffix}"
                 atlas.parent.mkdir(parents=True, exist_ok=True)
-                atlas.write_text(content)
+                atlas.write_text(content, newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var root=Sys.args()[0];
@@ -261,8 +264,8 @@ function create() {
     || atlas.files[1].relative!="images/characters/huggyteen/Banban.xml")
    throw "atlas assets were not resolved within the selected owner";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -285,9 +288,9 @@ function create() {
                              "characters/room.xml"):
                 path = data / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(relative)
+                path.write_text(relative, newline='\n')
             escaped = base / "escaped.xml"
-            escaped.write_text("foreign")
+            escaped.write_text("foreign", newline='\n')
             (data / "characters/Escape.xml").symlink_to(escaped)
             (base / "Main.hx").write_text('''import haxe.io.Path;
 class Main {
@@ -309,8 +312,8 @@ class Main {
    || Reflect.field(plan.difficulties.hard.nativeCharacters,id)!="native-hero")
    throw "nested authored identity lost";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(data)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -327,9 +330,9 @@ class Main {
                 ):
                     path = root / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(root.name)
+                    path.write_text(root.name, newline='\n')
             outside = base / "outside.hx"
-            outside.write_text("outside")
+            outside.write_text("outside", newline='\n')
             (owner / "data/characters/Escape.hx").symlink_to(outside)
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
@@ -356,8 +359,8 @@ class Main {
    || CodenameScriptDiscovery.safeRelativeName("team//Hero")
    || CodenameScriptDiscovery.safeRelativeName("team\\\\Hero")) throw "unsafe relative id";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -375,13 +378,13 @@ class Main {
                 ):
                     target = root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(root.name)
+                    target.write_text(root.name, newline='\n')
             escaped = base / "escaped.hx"
-            escaped.write_text("outside")
+            escaped.write_text("outside", newline='\n')
             try:
                 (owner / "songs/demo/scripts/escape.hx").symlink_to(escaped)
-            except OSError:
-                pass
+            except OSError as error:
+                self.skipTest(f"symlink fixture unavailable: {error}")
             (base / "Main.hx").write_text('''class Main {
   static function main() {
     var root = Sys.args()[0];
@@ -398,8 +401,8 @@ class Main {
       throw "unsafe name escaped root";
   }
 }
-''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -430,11 +433,11 @@ class Main {
             }.items():
                     path = root / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(content)
+                    path.write_text(content, newline='\n')
             outside = base / "outside.hx"
-            outside.write_text("escape")
+            outside.write_text("escape", newline='\n')
             (owner / "data/events/Escape.hx").symlink_to(outside)
-            (owner / "data/events/Escape.json").write_text('{"params":[]}')
+            (owner / "data/events/Escape.json").write_text('{"params":[]}', newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var root=Sys.args()[0];
@@ -462,8 +465,8 @@ class Main {
   for(i in 0...files.length) if(i<2 && sys.io.File.getContent(files[i].path)!="owner") throw "foreign root";
   if(sys.io.File.getContent(schemas[1].path).indexOf("aWNvbg==")<0) throw "original pack not retained";
 }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "--run", "Main", str(owner)], cwd=ROOT, text=True,
                                capture_output=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -507,8 +510,8 @@ class Main {
     || rejected.diagnostics[0].code!="unsupported-import")
    throw "unsupported import must remain explicit";
  }
-}''')
-            p = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+}''', newline='\n')
+            p = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                                 "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                                 "--run", "Main"], cwd=ROOT, text=True, capture_output=True)
@@ -646,7 +649,7 @@ class Main {
             }.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             installation_sound = installation / "assets/sounds/menu/scroll.ogg"
             installation_sound.parent.mkdir(parents=True, exist_ok=True)
             installation_sound.write_bytes(b"installation menu scroll bytes")
@@ -669,27 +672,27 @@ class Main {
             shared_scripts.mkdir(parents=True, exist_ok=True)
             (shared_scripts / "pixel.hx").write_text(
                 'var pixelShader = new CustomShader("pixelZoomShader");'
-            )
-            (shared_scripts / "pause.hx").write_text("base pause must not shadow owner")
+            , newline='\n')
+            (shared_scripts / "pause.hx").write_text("base pause must not shadow owner", newline='\n')
             shared_global = installation / "assets/data/global.hx"
             shared_global.parent.mkdir(parents=True, exist_ok=True)
-            shared_global.write_text("base global must not shadow owner")
+            shared_global.write_text("base global must not shadow owner", newline='\n')
             shared_state = installation / "assets/data/states/NotAnOwnerState.hx"
             shared_state.parent.mkdir(parents=True, exist_ok=True)
-            shared_state.write_text("function create() {}")
+            shared_state.write_text("function create() {}", newline='\n')
             pixel_shader = installation / "assets/shaders/pixelZoomShader.frag"
             pixel_shader.parent.mkdir(parents=True, exist_ok=True)
-            pixel_shader.write_text("#import <pixel/coords.glsl>\nvoid main() {}\n")
+            pixel_shader.write_text("#import <pixel/coords.glsl>\nvoid main() {}\n", newline='\n')
             pixel_shader_include = installation / "assets/shaders/pixel/coords.glsl"
             pixel_shader_include.parent.mkdir(parents=True, exist_ok=True)
-            pixel_shader_include.write_text("vec2 sharedCoord;\n")
+            pixel_shader_include.write_text("vec2 sharedCoord;\n", newline='\n')
             outside = base / "outside.png"
-            outside.write_text("outside image")
+            outside.write_text("outside image", newline='\n')
             try:
                 (owner / "images/game/escape.png").symlink_to(outside)
                 (owner / "sounds/stickersounds/keys/foreign.ogg").symlink_to(outside)
-            except OSError:
-                pass
+            except OSError as error:
+                self.skipTest(f"symlink fixture unavailable: {error}")
             (base / "Main.hx").write_text('''import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
@@ -1110,9 +1113,9 @@ class Main {
     }
   }
 }
-''')
+''', newline='\n')
             donor_root = (ROOT.parent / "FNF-Example-Mods/codename/D-Sides REDUX Codename Engine (Cancelled)/mods/D-Sides REDUX")
-            args = [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+            args = [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                     "--run", "Main", str(owner)]
             if donor_root.is_dir():
                 args.append(str(donor_root))
@@ -1132,4 +1135,4 @@ class Main {
                     item["sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
                 receipt = ROOT / "tmp/codename-default-atlas-import-preview-20260930.json"
                 receipt.parent.mkdir(parents=True, exist_ok=True)
-                receipt.write_text(json.dumps(preview, indent=2) + "\n")
+                receipt.write_text(json.dumps(preview, indent=2) + "\n", newline='\n')

@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -20,6 +21,10 @@ import sys
 import tempfile
 import time
 import uuid
+try:
+    from haxe_import_io_stubs import install_import_io_dependencies
+except ModuleNotFoundError:
+    from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +34,14 @@ HAXELIB = ROOT / ".tools/haxe/haxelib"
 DONOR = Path("/run/media/cammie/External Storage/FNF-Example-Mods")
 HXCPP_PACKAGE_VERSION = "4.3.2"
 HXCPP_PACKAGE_DIRECTORY = "4,3,2"
+
+
+def rewrite_diagnostic_filesystem_calls(source: str) -> str:
+    """Route plain FileSystem probes without rewriting qualified aliases."""
+    return re.sub(r"(?<![A-Za-z0-9_.])FileSystem\.isDirectory\(",
+        "DiagnosticFileSystem.isDirectory(", source)
+
+
 HXCPP_CAPTURE_SOURCE = Path("src/hx/gc/GcRegCapture.cpp")
 HXCPP_CAPTURE_SOURCE_SHA256 = "5efb58fd1956070beb4028b1c58b817838fc5f1750e36404bca91750fcc23204"
 HXCPP_IMMIX_SOURCE = Path("src/hx/gc/Immix.cpp")
@@ -1437,6 +1450,7 @@ def main() -> int:
         )
     with temp_context as folder:
         temp = Path(folder)
+        install_import_io_dependencies(temp)
         (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
         (temp / "ImportRootScanner.hx").write_text((ROOT / "source/ImportRootScanner.hx").read_text())
         (temp / "ImportDirectoryListing.hx").write_text(
@@ -1462,7 +1476,7 @@ def main() -> int:
         # classes because the tool only measured root/song discovery; that made
         # every HXC file look unsupported and inflated the diagnostic total even
         # though the in-game importer could generate a safe runtime adapter.
-        for module in ("EngineBranding.hx", "EngineCompat.hx", "CompatScriptManifest.hx", "ImportSongOwnership.hx", "HxcEventSpriteDescriptor.hx", "HxcCompatRuntime.hx", "HxcDynamicMap.hx", "HxcDeferredValue.hx", "HxcMenuSpec.hx", "HxcPauseSpec.hx", "HxcNoteTextSpec.hx", "HxcStoryMenuSpec.hx", "LuaCompat.hx", "HxcCutsceneTimeline.hx", "HxcCompat.hx", "PsychScriptDiscovery.hx", "PsychSourceStageCompat.hx", "KadeStageSource.hx", "NightmareVisionDifficultyCompat.hx", "NightmareVisionChartCompat.hx", "NightmareVisionScriptDiscovery.hx", "CodenameImporter.hx", "CodenameCharacterAtlas.hx", "CodenameEventMetadata.hx", "CodenameNoteMetadata.hx", "CodenameEventPack.hx", "CodenameStagePlacement.hx", "CodenameStrumlineLayout.hx", "CodenameScriptDiscovery.hx", "CodenameInstallationAssetOverlay.hx", "CodenameScriptPlan.hx", "CodenameSongMetadata.hx"):
+        for module in ("EngineBranding.hx", "EngineCompat.hx", "CompatScriptManifest.hx", "ImportSongOwnership.hx", "HxcEventSpriteDescriptor.hx", "HxcCompatRuntime.hx", "HxcDynamicMap.hx", "HxcDeferredValue.hx", "HxcMenuSpec.hx", "HxcPauseSpec.hx", "HxcNoteTextSpec.hx", "HxcStoryMenuSpec.hx", "LuaCompat.hx", "HxcCutsceneTimeline.hx", "HxcCompat.hx", "HxcScriptIdentity.hx", "HxcScriptDiscovery.hx", "PsychScriptDiscovery.hx", "PsychSourceStageCompat.hx", "KadeStageSource.hx", "NightmareVisionDifficultyCompat.hx", "NightmareVisionChartCompat.hx", "NightmareVisionScriptDiscovery.hx", "CodenameImporter.hx", "CodenameCharacterAtlas.hx", "CodenameEventMetadata.hx", "CodenameNoteMetadata.hx", "CodenameEventPack.hx", "CodenameStagePlacement.hx", "CodenameStrumlineLayout.hx", "CodenameScriptDiscovery.hx", "CodenameInstallationAssetOverlay.hx", "CodenameScriptPlan.hx", "CodenameSongMetadata.hx"):
             (temp / module).write_text((ROOT / "source" / module).read_text())
         # This count-only fixture compiles the real analyzer without the game
         # runtime's hxvlc/Flixel graph. The imported video host is a separate
@@ -1496,15 +1510,11 @@ def main() -> int:
         for module_path in temp.glob("*.hx"):
             if module_path.name == "DiagnosticFileSystem.hx":
                 continue
-            module_path.write_text(
-                module_path.read_text().replace(
-                    "FileSystem.isDirectory(", "DiagnosticFileSystem.isDirectory("
-                )
-            )
+            module_path.write_text(rewrite_diagnostic_filesystem_calls(module_path.read_text()))
         (temp / "DifficultyManager.hx").write_text('''class DifficultyManager {}
 ''')
         fixture = build_fixture(trace_codename_event_walk=args.codename_event_walk)
-        fixture = fixture.replace("FileSystem.isDirectory(", "DiagnosticFileSystem.isDirectory(")
+        fixture = rewrite_diagnostic_filesystem_calls(fixture)
         (temp / "Main.hx").write_text(fixture)
         # LuaCompat validates translated scripts with hscript.Parser.  Keep the
         # diagnostic harness on the repository's pinned hscript version rather

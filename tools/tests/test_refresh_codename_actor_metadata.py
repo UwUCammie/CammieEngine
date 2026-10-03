@@ -1,11 +1,13 @@
 """Actor metadata upgrades preserve edits and roll back interrupted writes."""
+from haxe_test_support import HAXE_COMMAND
 import copy
-import fcntl
+from tools import file_lock as fcntl
 import importlib.util
 import json
 import os
 import shutil
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import sys
 import tempfile
@@ -42,9 +44,9 @@ class Main { static function main() {
  File.saveContent(Sys.args()[0],CodenameScriptPlan.stringifyCamera(
   CodenameScriptPlan.createCamera("fixture",{hard:entry})));
 }}'''
-        (self.work / 'Main.hx').write_text(source)
+        (self.work / 'Main.hx').write_text(source, newline='\n')
         generated = self.work / 'fresh.json'
-        result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+        result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                  '-cp', str(self.work), '--run', 'Main', str(generated)],
                                 cwd=ROOT, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -57,31 +59,31 @@ class Main { static function main() {
             folder = root / 'assets/data/fixture'
             folder.mkdir(parents=True)
             (folder / 'compatScripts.json').write_text(json.dumps({'version':1,
-                'selectedRoot':self.owner, 'roots':[{'path':self.owner,'engine':'Codename Engine'}]}))
-            (folder / 'fixture-hard.json').write_text('{"song":{"notes":[[1,2,3]],"keep":true}}')
+                'selectedRoot':self.owner, 'roots':[{'path':self.owner,'engine':'Codename Engine'}]}), newline='\n')
+            (folder / 'fixture-hard.json').write_text('{"song":{"notes":[[1,2,3]],"keep":true}}', newline='\n')
             plan = root / self.owner / 'songs/fixture'
             plan.mkdir(parents=True)
             (plan / '__cammie_compat_scripts.json').write_text(json.dumps(
-                {'version':1,'song':'fixture','stages':{'hard':'stage'}}))
+                {'version':1,'song':'fixture','stages':{'hard':'stage'}}), newline='\n')
             target = plan / REFRESH.CAMERA
-            target.write_text(json.dumps(camera))
+            target.write_text(json.dumps(camera), newline='\n')
             self.targets.append(target)
             for relative, content in (('custom_chars/hero.hscript', 'function init(char) {}'),
                                       ('custom_chars/hero/char.png', 'fixture image'),
                                       ('custom_stages/stage.hscript', 'function start(song) {}')):
                 implementation = root / self.owner / 'images' / relative
                 implementation.parent.mkdir(parents=True, exist_ok=True)
-                implementation.write_text(content)
+                implementation.write_text(content, newline='\n')
         self.plan_path = self.work / 'plan.json'
 
     def plan(self):
         plan = REFRESH.make_plan(self.runtime, self.preview)
-        self.plan_path.write_text(json.dumps(plan))
+        self.plan_path.write_text(json.dumps(plan), newline='\n')
         return plan
 
     def test_reviewed_after_image_is_stable_across_python_processes(self):
         request = self.work / 'upgrade-input.json'
-        request.write_text(json.dumps([self.old, self.fresh]))
+        request.write_text(json.dumps([self.old, self.fresh]), newline='\n')
         script = ('import json,sys; import refresh_codename_actor_metadata as r; '
                   'old,fresh=json.load(open(sys.argv[1])); '
                   'print(json.dumps(r.additive_upgrade(old,fresh),ensure_ascii=False,indent=2))')
@@ -115,7 +117,7 @@ class Main { static function main() {
         ):
             current = copy.deepcopy(self.old)
             mutate(current)
-            self.targets[0].write_text(json.dumps(current))
+            self.targets[0].write_text(json.dumps(current), newline='\n')
             before = self.targets[0].read_bytes()
             self.assertEqual(self.plan()['candidates'], [])
             self.assertEqual(self.targets[0].read_bytes(), before)
@@ -166,7 +168,7 @@ class Main { static function main() {
             for name in (REFRESH.CAMERA, '__cammie_compat_scripts.json'):
                 data = json.loads((second / name).read_text())
                 data['song'] = 'second'
-                (second / name).write_text(json.dumps(data))
+                (second / name).write_text(json.dumps(data), newline='\n')
         plan = self.plan()
         self.assertEqual(len(plan['candidates']), 2)
         before = self.targets[0].read_bytes()
@@ -216,11 +218,11 @@ class Main { static function main() {
         current['difficulties']['hard']['stagePlacement'] = stage
         for key in REFRESH.LINE_ADDITIONS:
             current['difficulties']['hard']['lines'][0].pop(key, None)
-        self.targets[0].write_text(json.dumps(current))
+        self.targets[0].write_text(json.dumps(current), newline='\n')
         implementation = self.runtime / self.owner / 'images/custom_chars/hero.hscript'
-        implementation.write_text('custom implementation')
+        implementation.write_text('custom implementation', newline='\n')
         plan = REFRESH.make_plan(self.runtime, self.preview, line_only=True)
-        self.plan_path.write_text(json.dumps(plan))
+        self.plan_path.write_text(json.dumps(plan), newline='\n')
         self.assertEqual(len(plan['candidates']), 1, plan['skipped'])
         self.assertTrue(plan['lineOnly'])
         backup = REFRESH.apply_plan(plan, self.plan_path)
@@ -233,27 +235,27 @@ class Main { static function main() {
 
     def test_new_difficulty_requires_identical_installed_chart(self):
         current = copy.deepcopy(self.old)
-        self.targets[0].write_text(json.dumps(current))
+        self.targets[0].write_text(json.dumps(current), newline='\n')
         generated = copy.deepcopy(self.fresh)
         generated['difficulties']['easy'] = copy.deepcopy(generated['difficulties']['hard'])
-        self.targets[1].write_text(json.dumps(generated))
+        self.targets[1].write_text(json.dumps(generated), newline='\n')
         for root in (self.runtime, self.preview):
             (root / 'assets/data/fixture/fixture-easy.json').write_text(
-                '{"song":{"notes":[[1,2,3]],"keep":true}}')
+                '{"song":{"notes":[[1,2,3]],"keep":true}}', newline='\n')
         before = self.targets[0].read_bytes()
         plan = REFRESH.make_plan(self.runtime, self.preview, line_only=True)
         self.assertEqual(plan['candidates'], [])
         plan = REFRESH.make_plan(self.runtime, self.preview, line_only=True,
                                  include_new_difficulties=True)
         self.assertEqual(len(plan['candidates']), 1, plan['skipped'])
-        self.plan_path.write_text(json.dumps(plan))
+        self.plan_path.write_text(json.dumps(plan), newline='\n')
         REFRESH.apply_plan(plan, self.plan_path)
         after = json.loads(self.targets[0].read_text())
         self.assertEqual(after['difficulties']['easy'], generated['difficulties']['easy'])
         self.assertEqual(after['difficulties']['hard']['stage'], current['difficulties']['hard']['stage'])
         self.targets[0].write_bytes(before)
         (self.preview / 'assets/data/fixture/fixture-easy.json').write_text(
-            '{"song":{"notes":[[9,9,9]],"keep":true}}')
+            '{"song":{"notes":[[9,9,9]],"keep":true}}', newline='\n')
         refused = REFRESH.make_plan(self.runtime, self.preview, line_only=True,
                                     include_new_difficulties=True)
         self.assertEqual(refused['candidates'], [])

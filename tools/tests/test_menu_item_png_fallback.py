@@ -1,9 +1,11 @@
 """Regression coverage for campaign week images that have no Sparrow XML."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,9 +56,9 @@ class Main {{
 }}'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(temp), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

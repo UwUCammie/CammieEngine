@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import importlib.util
 import json

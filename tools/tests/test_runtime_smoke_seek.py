@@ -1,7 +1,9 @@
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import importlib.util
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import sys
 import tempfile
@@ -362,9 +364,9 @@ class SeekIntegrationTest {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             for name, contents in fixture.items():
-                (Path(folder) / name).write_text(contents, encoding="utf-8")
+                (Path(folder) / name).write_text(contents, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "SeekIntegrationTest", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "SeekIntegrationTest", "--interp"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

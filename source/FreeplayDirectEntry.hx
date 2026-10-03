@@ -1,9 +1,9 @@
 package;
 
 /** Resolve a direct FreeplayState launch which did not pass through the native
-	category chooser. An active import sees only its registered songs; a native
-	launch uses the first populated category. The caller supplies provenance so
-	this selection can be tested without filesystem or game-state side effects. */
+	category chooser. An explicitly scoped imported entry sees only its registered
+	songs; an unscoped launch uses the first populated category. The caller supplies
+	provenance so this selection can be tested without filesystem or game-state side effects. */
 class FreeplayDirectEntry {
 	public static function select(categories:Array<Dynamic>, ownerRoot:String,
 		ownerForSong:String->String):Array<Dynamic> {

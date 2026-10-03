@@ -1,6 +1,8 @@
 """Imported Psych stage GameOverSubstate writes reach native per-song settings."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -61,12 +63,12 @@ class PsychGameOverClassProbe {
    invalid = Std.string(error).indexOf("finite nonnegative number") >= 0;
   check(invalid, "negative death delay was accepted");
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             env = dict(os.environ)
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             env["LD_LIBRARY_PATH"] = str(ROOT / ".tools/neko")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(path), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "--run", "PsychGameOverClassProbe"],
                 cwd=ROOT, env=env, text=True, capture_output=True, timeout=60,

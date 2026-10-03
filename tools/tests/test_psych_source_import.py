@@ -1,6 +1,8 @@
 """Psych compiled source is retained under its imported owner namespace."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -99,18 +101,18 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp", prefix="psych-source-import-") as folder:
             work = Path(folder)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             donor = work / "psych-donor"
             source_root = donor / "source"
             (source_root / "states/stages").mkdir(parents=True)
             (source_root / "backend").mkdir()
-            (source_root / "states/stages/StageWeek1.hx").write_text("class StageWeek1 {}")
-            (source_root / "backend/WeekData.hx").write_text("class WeekData {}")
-            (source_root / "backend/BaseStage.hx").write_text("class BaseStage {}")
-            (source_root / "CannotOpen.hx").write_text("class CannotOpen {}")
+            (source_root / "states/stages/StageWeek1.hx").write_text("class StageWeek1 {}", newline='\n')
+            (source_root / "backend/WeekData.hx").write_text("class WeekData {}", newline='\n')
+            (source_root / "backend/BaseStage.hx").write_text("class BaseStage {}", newline='\n')
+            (source_root / "CannotOpen.hx").write_text("class CannotOpen {}", newline='\n')
             fifo_supported = False
             if hasattr(os, "mkfifo"):
                 try:
@@ -118,11 +120,11 @@ class Main {
                     fifo_supported = True
                 except OSError:
                     pass
-            (source_root / "README.md").write_text("source notes")
+            (source_root / "README.md").write_text("source notes", newline='\n')
             (source_root / "Oversized.hx").write_bytes(b"x" * (4 * 1024 * 1024 + 1))
             outside = work / "outside-source"
             outside.mkdir()
-            (outside / "External.hx").write_text("class External {}")
+            (outside / "External.hx").write_text("class External {}", newline='\n')
             try:
                 (source_root / "external-leak.hx").symlink_to(outside / "External.hx")
             except (OSError, NotImplementedError) as error:
@@ -130,15 +132,15 @@ class Main {
 
             owner_source = work / "assets/imported_mods/psych-owner/source"
             (owner_source / "backend").mkdir(parents=True)
-            (owner_source / "backend/BaseStage.hx").write_text("owner-edited BaseStage")
+            (owner_source / "backend/BaseStage.hx").write_text("owner-edited BaseStage", newline='\n')
             outside_destination = work / "outside-destination"
             outside_destination.mkdir()
             (owner_source / "External").symlink_to(outside_destination, target_is_directory=True)
             (source_root / "External").mkdir()
-            (source_root / "External/Hidden.hx").write_text("class Hidden {}")
+            (source_root / "External/Hidden.hx").write_text("class Hidden {}", newline='\n')
 
             result = subprocess.run(
-                [str(HAXE), "-cp", str(work), "--run", "Main", str(donor),
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Main", str(donor),
                  "fifo" if fifo_supported else "no-fifo"],
                 cwd=work,
                 capture_output=True,

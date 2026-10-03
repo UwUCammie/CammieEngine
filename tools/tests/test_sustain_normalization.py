@@ -1,6 +1,8 @@
 """Regression coverage for floating-point tap sustains in imported charts."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -84,9 +86,9 @@ class SustainNormalizationTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "SustainNormalizationTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "SustainNormalizationTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300,
             )

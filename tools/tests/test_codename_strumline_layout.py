@@ -1,5 +1,7 @@
 """Pin Codename line geometry to its native receptor placement formula."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -47,9 +49,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

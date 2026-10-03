@@ -8,6 +8,7 @@ import importlib.util
 from io import StringIO
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import sys
@@ -49,7 +50,7 @@ def _write_chart(root: Path, folder: str, chart: str) -> Path:
             }
         ),
         encoding="utf-8",
-    )
+     newline='\n')
     return path
 
 
@@ -152,6 +153,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
             )
             self.assertFalse(destination.exists())
 
+    @unittest.skipIf(os.name == 'nt', 'fixture uses the Linux /bin/true executable')
     def test_native_dry_run_builds_full_import_command_without_launch(self):
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             folder_path = Path(folder)
@@ -225,9 +227,9 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 song_dir = data_root / case.folder
                 song_dir.mkdir(parents=True)
@@ -236,11 +238,11 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                         {"song": {"player1": "bf", "player2": "dad", "gf": "gf", "stage": "stage", "uiType": "normal"}}
                     ),
                     encoding="utf-8",
-                )
+                 newline='\n')
                 if case.id == "family-vslice":
                     root = runtime / "assets" / "imported_mods" / case.id
                     root.mkdir(parents=True)
-                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8")
+                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8", newline='\n')
                     manifest = {"roots": [{"path": f"assets/imported_mods/{case.id}"}]}
                 else:
                     # Ordinary legacy representatives may legitimately have no
@@ -249,7 +251,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     manifest = {"roots": []}
                 (song_dir / "compatScripts.json").write_text(
                     json.dumps(manifest), encoding="utf-8"
-                )
+                , newline='\n')
             self.assertEqual(self.preparer._native_asset_diagnostics(runtime, self.matrix), [])
             marker = runtime / "assets" / "songs" / "dokidoggle" / "Inst.ogg"
             marker.parent.mkdir(parents=True)
@@ -272,9 +274,9 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 song_dir = data_root / case.folder
                 song_dir.mkdir(parents=True)
@@ -283,13 +285,13 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                         {"song": {"player1": "bf", "player2": "dad", "gf": "gf", "stage": "stage", "uiType": "normal"}}
                     ),
                     encoding="utf-8",
-                )
+                 newline='\n')
                 if case.id == "family-vslice":
                     # V-Slice is the selected HXC probe and must retain its
                     # generated executable adapter in the postflight gate.
                     root = runtime / "assets" / "imported_mods" / case.id
                     root.mkdir(parents=True)
-                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8")
+                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8", newline='\n')
                     manifest = {"roots": [{"path": f"assets/imported_mods/{case.id}"}]}
                 else:
                     # This is valid output when a legacy donor has no foreign
@@ -302,7 +304,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     }
                 (song_dir / "compatScripts.json").write_text(
                     json.dumps(manifest), encoding="utf-8"
-                )
+                , newline='\n')
             self.assertEqual(self.preparer._native_asset_diagnostics(runtime, self.matrix), [])
 
     def test_native_postflight_uses_native_stage_and_manifest_owned_hxc_visuals(self):
@@ -317,9 +319,9 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
 
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 song_dir = data_root / case.folder
@@ -345,13 +347,13 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     )
                 (song_dir / f"{case.chart}.json").write_text(
                     json.dumps(payload), encoding="utf-8"
-                )
+                , newline='\n')
                 if case.id == "family-vslice":
                     compat_root = runtime / "assets" / "imported_mods" / "vslice"
                     compat_root.mkdir(parents=True)
                     (compat_root / "adapter.hscript").write_text(
                         "function start() {}", encoding="utf-8"
-                    )
+                    , newline='\n')
                     manifest = {
                         "selectedRoot": "assets/imported_mods/vslice",
                         "roots": [
@@ -368,17 +370,17 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                         'class WhitBonkers extends CharacterInfoBase { '
                         'info.spritePath = "characters/WhittyCrazy"; }',
                         encoding="utf-8",
-                    )
+                     newline='\n')
                     (chars_root / "GfStandingScared.hxc").write_text(
                         'class GfStandingScared extends CharacterInfoBase { '
                         'info.spritePath = "characters/GF_Standing_Sway"; }',
                         encoding="utf-8",
-                    )
+                     newline='\n')
                     (stages_root / "alleyBalls.hxc").write_text(
                         "class alleyBalls extends BaseStage { "
                         "var bg = new BGSprite('alley/BallisticBackground'); }",
                         encoding="utf-8",
-                    )
+                     newline='\n')
                     manifest = {
                         "selectedRoot": "assets/imported_mods/fps",
                         "roots": [
@@ -401,12 +403,12 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     manifest = {"roots": []}
                 (song_dir / "compatScripts.json").write_text(
                     json.dumps(manifest), encoding="utf-8"
-                )
+                , newline='\n')
 
             psych_stages = runtime / "assets" / "stages"
             psych_stages.mkdir(parents=True)
-            (psych_stages / "Haven.lua").write_text("function onCreate() end", encoding="utf-8")
-            (psych_stages / "Haven.json").write_text("{}", encoding="utf-8")
+            (psych_stages / "Haven.lua").write_text("function onCreate() end", encoding="utf-8", newline='\n')
+            (psych_stages / "Haven.json").write_text("{}", encoding="utf-8", newline='\n')
             self.assertEqual(self.preparer._native_asset_diagnostics(runtime, self.matrix), [])
 
     def test_native_postflight_does_not_require_adapter_for_non_vslice_manifest(self):
@@ -421,9 +423,9 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 song_dir = data_root / case.folder
                 song_dir.mkdir(parents=True)
@@ -440,11 +442,11 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                         }
                     ),
                     encoding="utf-8",
-                )
+                 newline='\n')
                 if case.id == "family-vslice":
                     root = runtime / "assets" / "imported_mods" / "vslice"
                     root.mkdir(parents=True)
-                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8")
+                    (root / "adapter.hscript").write_text("function start() {}", encoding="utf-8", newline='\n')
                     manifest = {
                         "selectedRoot": "assets/imported_mods/vslice",
                         "roots": [{"engine": "V-Slice", "path": "assets/imported_mods/vslice"}],
@@ -454,7 +456,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     (root / "scripts" / "plugin_classes").mkdir(parents=True)
                     (root / "scripts" / "plugin_classes" / "RunningTankman.hx").write_text(
                         "class RunningTankman {}", encoding="utf-8"
-                    )
+                    , newline='\n')
                     manifest = {
                         "selectedRoot": "assets/imported_mods/modding-plus",
                         "roots": [
@@ -465,7 +467,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     manifest = {"roots": []}
                 (song_dir / "compatScripts.json").write_text(
                     json.dumps(manifest), encoding="utf-8"
-                )
+                , newline='\n')
             self.assertEqual(self.preparer._native_asset_diagnostics(runtime, self.matrix), [])
 
     def test_native_postflight_rejects_escaping_compat_namespace(self):
@@ -479,9 +481,9 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 song_dir = data_root / case.folder
                 song_dir.mkdir(parents=True)
@@ -490,11 +492,11 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                         {"song": {"player1": "bf", "player2": "dad", "gf": "gf", "stage": "stage", "uiType": "normal"}}
                     ),
                     encoding="utf-8",
-                )
+                 newline='\n')
                 (song_dir / "compatScripts.json").write_text(
                     json.dumps({"roots": [{"path": "../../outside"}]}),
                     encoding="utf-8",
-                )
+                 newline='\n')
             diagnostics = self.preparer._native_asset_diagnostics(runtime, self.matrix)
             self.assertTrue(any("escapes runtime" in item for item in diagnostics))
 
@@ -509,14 +511,14 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (chars / "custom_chars.jsonc").write_text(
                 '{"bf":{},"dad":{},"gf":{}}', encoding="utf-8"
-            )
-            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8")
-            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8")
+            , newline='\n')
+            (stages / "custom_stages.json").write_text('{"stage":"stage"}', encoding="utf-8", newline='\n')
+            (ui / "ui.json").write_text('{"normal":{}}', encoding="utf-8", newline='\n')
             for case in self.matrix.SMOKE_MATRIX[:6]:
                 chart = data_root / case.folder / f"{case.chart}.json"
                 chart.parent.mkdir(parents=True)
                 payload = [] if case.id == "family-vslice" else {"song": {}}
-                chart.write_text(json.dumps(payload), encoding="utf-8")
+                chart.write_text(json.dumps(payload), encoding="utf-8", newline='\n')
             diagnostics = self.preparer._native_asset_diagnostics(runtime, self.matrix)
             self.assertTrue(any("invalid representative chart object" in item for item in diagnostics))
 
@@ -531,7 +533,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
             for case in selected_cases:
                 chart = _write_chart(donor, case.folder, case.chart)
                 sidecar = chart.parent / "modchart.hscript"
-                sidecar.write_text("trace('fixture');\n", encoding="utf-8")
+                sidecar.write_text("trace('fixture');\n", encoding="utf-8", newline='\n')
                 source_files.extend([chart, sidecar])
             before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in source_files}
             copied, owners = self.preparer._copy_named_regressions(
@@ -577,7 +579,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     }
                 ),
                 encoding="utf-8",
-            )
+             newline='\n')
             roots = self.matrix.load_prepared_fixture(root)
             self.assertEqual(roots["family-vslice"], selected.resolve())
             self.assertEqual(roots["chaos"], regressions.resolve())
@@ -598,7 +600,7 @@ class RuntimeFixturePreparationTest(unittest.TestCase):
                     }
                 ),
                 encoding="utf-8",
-            )
+             newline='\n')
             with self.assertRaisesRegex(ValueError, "structural-only"):
                 self.matrix.load_prepared_fixture(root)
 

@@ -1,6 +1,8 @@
 """Owner-scoped V-Slice song sidecar import and HXC path resolution."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -58,15 +60,15 @@ class VSliceSongSidecarsTest(unittest.TestCase):
                 (song / "nested").mkdir(parents=True)
                 (song / "lyrics.txt").write_bytes(lyric)
                 (song / "nested/cues.txt").write_bytes(lyric + b" cue")
-                (song / "our-harmony-chart.json").write_text("{}")
-                (song / "our-harmony-metadata.json").write_text("{}")
-                (song / "our-harmony-chart-hard.jsonc").write_text("{}")
-                (song / "our-harmony-metadata-hard.jsonc").write_text("{}")
+                (song / "our-harmony-chart.json").write_text("{}", newline='\n')
+                (song / "our-harmony-metadata.json").write_text("{}", newline='\n')
+                (song / "our-harmony-chart-hard.jsonc").write_text("{}", newline='\n')
+                (song / "our-harmony-metadata-hard.jsonc").write_text("{}", newline='\n')
             owner_a.mkdir(parents=True)
             owner_b.mkdir(parents=True)
 
             escape = base / "outside-owner.txt"
-            escape.write_text("outside owner")
+            escape.write_text("outside owner", newline='\n')
             owner_song = owner_a / "data/songs/our-harmony"
             owner_song.mkdir(parents=True)
             (owner_song / "linked.txt").symlink_to(escape)
@@ -74,7 +76,7 @@ class VSliceSongSidecarsTest(unittest.TestCase):
             # A link that resolves outside the selected song folder must not be
             # imported, even when it remains inside the donor's broader root.
             (root_a / "data/songs/our-harmony/leak.txt").symlink_to(root_a / "outside.txt")
-            (root_a / "outside.txt").write_text("must not leak")
+            (root_a / "outside.txt").write_text("must not leak", newline='\n')
 
             fixture = '''import haxe.io.Path;
 import sys.FileSystem;
@@ -150,9 +152,9 @@ class Main {
             fixture = fixture.replace("__ROOT_B__", hx_string(root_b.as_posix()))
             fixture = fixture.replace("__OWNER_A__", hx_string(owner_a.as_posix()))
             fixture = fixture.replace("__OWNER_B__", hx_string(owner_b.as_posix()))
-            (base / "Main.hx").write_text(fixture)
+            (base / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )
@@ -192,9 +194,9 @@ class Main {
 }'''
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

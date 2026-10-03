@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 
@@ -37,14 +38,14 @@ class PsychSongTitleRefreshTest(unittest.TestCase):
                 for path, data in ((source_path, authored), (preview_path, fresh),
                                    (live_path, installed)):
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(json.dumps(data))
+                    path.write_text(json.dumps(data), newline='\n')
                 for path in (preview_path, live_path):
                     (path.parent / 'compatScripts.json').write_text(
-                        json.dumps({'selectedRoot': OWNER}))
-                (runtime / 'assets/data/options.json').write_text('{}')
+                        json.dumps({'selectedRoot': OWNER}), newline='\n')
+                (runtime / 'assets/data/options.json').write_text('{}', newline='\n')
                 matrix = root / 'matrix.json'
                 matrix.write_text(json.dumps({'rows': [
-                    {'package': 'fixture', 'runtimeChart': CHART}]}))
+                    {'package': 'fixture', 'runtimeChart': CHART}]}), newline='\n')
                 planned = refresh.plan(donor, preview, runtime, OWNER, matrix, 'fixture')
                 self.assertEqual(len(planned['charts']), 1)
                 self.assertTrue(planned['charts'][0]['changed'])
@@ -76,22 +77,22 @@ class PsychSongTitleRefreshTest(unittest.TestCase):
                 for target, data in ((donor / 'data/title-(hq)/title-(hq).json', source),
                                      (preview / CHART, imported), (runtime / CHART, imported)):
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(json.dumps(data))
+                    target.write_text(json.dumps(data), newline='\n')
                 for target in (preview / CHART, runtime / CHART):
                     (target.parent / 'compatScripts.json').write_text(
-                        json.dumps({'selectedRoot': OWNER}))
-                (runtime / 'assets/data/options.json').write_text('{}')
+                        json.dumps({'selectedRoot': OWNER}), newline='\n')
+                (runtime / 'assets/data/options.json').write_text('{}', newline='\n')
                 matrix = root / 'matrix.json'
                 matrix.write_text(json.dumps({'rows': [
-                    {'package': 'fixture', 'runtimeChart': CHART}]}))
+                    {'package': 'fixture', 'runtimeChart': CHART}]}), newline='\n')
                 (runtime / CHART).parent.joinpath('compatScripts.json').write_text(
-                    json.dumps({'selectedRoot': 'assets/imported_mods/foreign'}))
+                    json.dumps({'selectedRoot': 'assets/imported_mods/foreign'}), newline='\n')
                 with self.assertRaisesRegex(ValueError, 'owner mismatch'):
                     refresh.plan(donor, preview, runtime, OWNER, matrix, 'fixture')
                 (runtime / CHART).parent.joinpath('compatScripts.json').write_text(
-                    json.dumps({'selectedRoot': OWNER}))
+                    json.dumps({'selectedRoot': OWNER}), newline='\n')
                 source['song']['notes'] = [{'sectionNotes': [[1000, 1, 0]]}]
-                (donor / 'data/title-(hq)/title-(hq).json').write_text(json.dumps(source))
+                (donor / 'data/title-(hq)/title-(hq).json').write_text(json.dumps(source), newline='\n')
                 with self.assertRaisesRegex(ValueError, 'notes or events differ'):
                     refresh.plan(donor, preview, runtime, OWNER, matrix, 'fixture')
             finally:

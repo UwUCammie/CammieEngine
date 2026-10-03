@@ -5,6 +5,7 @@ chart and character sidecar are present, but their referenced stage/art/icon pay
 are not present under any case variant, and Xfracture has no alternate difficulty that
 could provide a generic fallback.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
@@ -12,6 +13,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 
@@ -160,11 +162,11 @@ class PerfexionFallbackTest {
 '''
         with tempfile.TemporaryDirectory(dir=Path(os.environ.get("TMPDIR", ROOT / "tmp"))) as folder:
             source = Path(folder) / "PerfexionFallbackTest.hx"
-            source.write_text(fixture)
+            source.write_text(fixture, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-cp", str(ROOT / "source"), "-main", "PerfexionFallbackTest", "--interp"],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=300,
             )

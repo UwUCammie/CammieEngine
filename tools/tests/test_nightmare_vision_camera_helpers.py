@@ -1,9 +1,12 @@
 """Execute NMV camera helpers extracted from both donor and local PlayState."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +29,7 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class NightmareVisionCameraHelpersTest(unittest.TestCase):
+    @unittest.skipIf(not DONOR.is_file(), 'mounted Nightmare Vision source fixture is unavailable')
     def test_helpers_match_donor_offsets_and_snap_lock_semantics(self):
         local_source = (ROOT / "source/PlayState.hx").read_text()
         donor_source = DONOR.read_text()
@@ -171,10 +175,10 @@ class Main {
             .replace("__LOCAL_OFFSET_METHODS__", local_offset_methods)
             .replace("__LOCAL_CAMERA_METHODS__", local_methods)
             .replace("__DONOR_CAMERA__", donor_camera)
-            .replace("__DONOR_SNAP__", donor_snap))
+            .replace("__DONOR_SNAP__", donor_snap), newline='\n')
 
         result = subprocess.run(
-            [str(HAXE), "-cp", str(work), "--run", "Main"],
+            [*HAXE_COMMAND, "-cp", str(work), "--run", "Main"],
             cwd=ROOT, capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,6 +1,8 @@
 """Asynchronous HScript timer callbacks retain and restore source context."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -93,9 +95,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture, encoding="utf-8")
+            (Path(folder) / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

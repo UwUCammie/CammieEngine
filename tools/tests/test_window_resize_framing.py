@@ -6,8 +6,10 @@ fit scale, and centers the letterbox.  The real vendored flixel scale mode
 sources are extracted and interpreted so the math (not a copy of it) is what
 gets pinned, and source contracts keep Main.hx wiring explicit.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -135,13 +137,13 @@ class WindowResizeFramingTest(unittest.TestCase):
             for name, text in STUB_FILES.items():
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(text)
+                target.write_text(text, newline='\n')
             shutil_copy(scale_mode_dir / "BaseScaleMode.hx", root / "flixel/system/scaleModes/BaseScaleMode.hx")
             shutil_copy(scale_mode_dir / "RatioScaleMode.hx", root / "flixel/system/scaleModes/RatioScaleMode.hx")
-            (root / "ScaleModeContractTest.hx").write_text(MAIN)
+            (root / "ScaleModeContractTest.hx").write_text(MAIN, newline='\n')
             result = subprocess.run(
                 [
-                    str(ROOT / ".tools/haxe/haxe"),
+                    *HAXE_COMMAND,
                     "-cp", str(root),
                     "-main", "ScaleModeContractTest",
                     "--interp",
@@ -155,7 +157,7 @@ class WindowResizeFramingTest(unittest.TestCase):
 
 def shutil_copy(src: Path, dst: Path):
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(src.read_text())
+    dst.write_text(src.read_text(), newline='\n')
 
 
 if __name__ == "__main__":

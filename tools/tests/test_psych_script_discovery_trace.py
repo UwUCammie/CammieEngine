@@ -1,7 +1,9 @@
 """The opt-in Psych chart trace identifies a failing mounted chart row."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -19,9 +21,9 @@ class PsychScriptDiscoveryTraceTest(unittest.TestCase):
             owner = work / "owner"
             owner.mkdir()
             (owner / "custom_events").mkdir()
-            (owner / "custom_events/Cheer.lua").write_text("-- custom event")
+            (owner / "custom_events/Cheer.lua").write_text("-- custom event", newline='\n')
             (owner / "custom_notetypes").mkdir()
-            (owner / "custom_notetypes/hurt.lua").write_text("-- custom note type")
+            (owner / "custom_notetypes/hurt.lua").write_text("-- custom note type", newline='\n')
             (work / "Main.hx").write_text('''class Main {
  static function main():Void {
   var eventRow:Array<Dynamic> = [100, -1, "Cheer", null];
@@ -38,9 +40,9 @@ class PsychScriptDiscoveryTraceTest(unittest.TestCase):
    || plan.scripts[1].name != "hurt")
    throw haxe.Json.stringify(plan.scripts);
  }
-}''')
+}''', newline='\n')
 
-            command = [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work),
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
                        "--run", "Main", str(owner)]
             env = os.environ.copy()
             env.pop(TRACE_ENV, None)

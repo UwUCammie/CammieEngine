@@ -10,6 +10,7 @@ script's gate and replay the cutscene forever.
 """
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

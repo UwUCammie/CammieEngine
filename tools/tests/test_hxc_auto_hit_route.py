@@ -1,9 +1,11 @@
 """Exercise the actual HXC dispatch used by an autonomous opponent note hit."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +18,9 @@ class HxcAutoHitRouteTest(unittest.TestCase):
         start = state.index("\tfunction dispatchHxcAutoNoteHit(")
         end = state.index("\n\tfunction goodNoteHit(", start)
         method = state[start:end]
+        pre_start = state.index("\tfunction dispatchNightmareVisionNoteHitPre(")
+        pre_end = state.index("\n\tfunction dispatchNightmareVisionNoteHit(", pre_start)
+        pre_method = state[pre_start:pre_end]
         main = r'''
 class Note {
   public var rating = "miss";
@@ -23,9 +28,46 @@ class Note {
   public var wasGoodHit = true;
   public var autoHitSuppressed = false;
   public var isSustainNote = false;
+  public var sourcePlayfieldIndex = 1;
+  public var sourceDirection = 0;
+  public var nightmareVisionTypeRuntime:Dynamic = {};
+  public var nightmareVisionSustainEnd = false;
+  public var nightmareVisionTailState:Dynamic;
   public var destroyed = false;
-  public function new() {}
+  public function new() nightmareVisionTailState = {active:false, missed:false, notes:[]};
   public function destroy():Void destroyed = true;
+}
+class FakeStrum {
+  public var ID:Int;
+  public var lastNote:Note;
+  public var playConfirms = 0;
+  public var resetAnim = 0.0;
+  public var coyoteTime = 0.0;
+  var order:Array<String>;
+  public function new(id:Int, order:Array<String>) { ID=id; this.order=order; }
+  public function playConfirm(sustain:Bool, force:Bool):Void {
+    playConfirms++;
+    order.push("confirm");
+  }
+}
+class FakeLine { public var members:Array<FakeStrum>; public function new(strum:FakeStrum) members=[strum]; }
+class FakeField {
+  public var ID:Int;
+  public var playerControls:Bool;
+  public var playAnims = true;
+  public var autoPlayed:Bool;
+  public var holdDropLeniency = 1 / 3;
+  public function new(id:Int, player:Bool, autoplay:Bool) {
+    ID=id; playerControls=player; autoPlayed=autoplay;
+  }
+}
+class FakeScripts {
+  public var calls:Array<String> = [];
+  var order:Array<String>;
+  public function new(order:Array<String>) this.order=order;
+  public function call(name:String, args:Array<Dynamic>):Dynamic {
+    calls.push(name); order.push("source:" + name); return null;
+  }
 }
 class FakeNotes {
   public var removed = 0;
@@ -43,12 +85,37 @@ class EngineCompat {
 class TestState {
   public var notes = new FakeNotes();
   public var methods:Array<String> = [];
+  public var order:Array<String> = [];
+  public var sourceScripts:FakeScripts;
+  public var nightmareVisionScripts:FakeScripts;
+  public var fields:Array<FakeField>;
+  public var lines:Array<FakeLine>;
+  public var playbackRate = 2.0;
   public var cancel = false;
   public var kill = false;
   public var textCues = 0;
-  public function new() {}
+  public function new() {
+    sourceScripts = new FakeScripts(order);
+    nightmareVisionScripts = sourceScripts;
+    fields = [new FakeField(0, true, false), new FakeField(1, false, true)];
+    lines = [new FakeLine(new FakeStrum(0, order)), new FakeLine(new FakeStrum(0, order))];
+  }
+  function getNightmareVisionField(id:Int):FakeField return fields[id];
+  function getNoteStrumline(note:Note):FakeLine return lines[note.sourcePlayfieldIndex];
+  function sustain2(strum:Int, spr:FakeStrum, note:Note):Void {
+    order.push("bookkeeping");
+    var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+    if (note.nightmareVisionTypeRuntime != null) {
+      if (field.autoPlayed) spr.resetAnim = (0.15
+        + (note.isSustainNote && !note.nightmareVisionSustainEnd ? 0.15 : 0)) / playbackRate;
+      if (note.isSustainNote) spr.coyoteTime = field.holdDropLeniency;
+      else if (note.nightmareVisionTailState != null) note.nightmareVisionTailState.active = true;
+    }
+  }
+''' + pre_method + r'''
   function callHxcNoteHScript(name:String, args:Array<Dynamic>):Void {
     methods.push(name);
+    order.push("hxc:" + name);
     if (name == "noteHit") {
       if (args[3].judgement == "perfect") textCues++;
       if (cancel) args[3].eventCanceled = true;
@@ -69,11 +136,22 @@ class Main {
       "autonomous hit must supply perfect judgement to module");
     check(state.methods.join(",") == "noteHit,opponentNoteHit",
       "opponent route must dispatch both HXC callbacks once");
+    check(state.sourceScripts.calls.join(",") == "opponentNoteHitPre",
+      "source Pre callback runs before an autonomous opponent hit");
+    var opponentStrum = state.lines[1].members[0];
+    check(opponentStrum.lastNote == note && opponentStrum.playConfirms == 1
+      && note.nightmareVisionTailState.active,
+      "source hit Pre applies receptor and tail bookkeeping");
+    check(state.order.join(",") == "source:opponentNoteHitPre,confirm,bookkeeping,hxc:noteHit,hxc:opponentNoteHit",
+      "source callback and receptor bookkeeping precede HXC hit callbacks");
     check(EngineCompat.applied == 1 && state.notes.removed == 0,
       "normal hit should apply mutable payload without early removal");
     var hold = new TestState(); var segment = new Note(); segment.isSustainNote = true;
     check(hold.fire(segment, false) && hold.methods.length == 0,
       "legacy sustain pieces must not duplicate V-Slice head hit callbacks");
+    check(hold.lines[1].members[0].coyoteTime == 1 / 3
+      && hold.lines[1].members[0].resetAnim == 0.15,
+      "source sustain Pre refreshes hold grace and playback-rate-adjusted reset time");
     var canceled = new TestState(); canceled.cancel = true;
     var canceledNote = new Note();
     check(!canceled.fire(canceledNote, false), "canceled hit must stop native branch");
@@ -97,9 +175,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(main)
+            Path(folder, "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -119,7 +197,7 @@ class Main {
 
     def test_manual_hit_skips_generated_sustain_segments(self):
         state = (ROOT / "source/PlayState.hx").read_text()
-        start = state.index("function goodNoteHit(note:Note, playerOne:Bool)")
+        start = state.index("function goodNoteHit(note:Note, playerOne:Bool")
         gate = state.index("// V-Slice's authored hold uses a separate SustainTrail.", start)
         body = state[gate:state.index("EngineCompat.hxcApplyNoteCallbackPayload(hxcHitEvent);", gate)]
         self.assertIn("if (!note.isSustainNote) {", body)

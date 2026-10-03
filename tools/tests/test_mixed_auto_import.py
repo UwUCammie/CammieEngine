@@ -4,13 +4,16 @@ The fixture deliberately combines the six layouts supported by the importer.
 It stops at the engine-neutral SongImport payload: no donor chart is edited and
 the destination writer is covered by the existing non-overwrite tests.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import shutil
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -427,24 +430,31 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
+            install_import_io_dependencies(temp_path)
             for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx"):
-                (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text())
+                (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline='\n')
             (temp_path / "NightmareVisionChartCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
-            )
+            , newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
-            )
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
-            (temp_path / "ImportRootScanner.hx").write_text(self.scanner)
+            , newline='\n')
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
+            (temp_path / "ImportRootScanner.hx").write_text(self.scanner, newline='\n')
             (temp_path / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
-            (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc)
-            (temp_path / "VSliceImporter.hx").write_text(self.vslice)
+            , newline='\n')
+            (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc, newline='\n')
+            (temp_path / "VSliceImporter.hx").write_text(self.vslice, newline='\n')
+            (temp_path / "HxcScriptIdentity.hx").write_text(
+                (ROOT / "source/HxcScriptIdentity.hx").read_text()
+            , newline='\n')
+            (temp_path / "HxcScriptDiscovery.hx").write_text(
+                (ROOT / "source/HxcScriptDiscovery.hx").read_text()
+            , newline='\n')
             # VSliceImporter bounds Codename character definitions through this
             # shared helper. The fixture exercises its filesystem boundary but
             # otherwise keeps the discovery implementation out of this extract.
@@ -464,7 +474,7 @@ class CodenameScriptDiscovery {
     }
   }
 }
-""")
+""", newline='\n')
             (temp_path / "NoteTypeCompat.hx").write_text("""class NoteTypeCompat {
   public static function isStringType(value:Dynamic):Bool return value != null && Std.isOfType(value, String);
   public static function applyVSliceKind(definition:Dynamic, value:Dynamic):Bool return false;
@@ -475,7 +485,7 @@ class CodenameScriptDiscovery {
     definitions.push({sourceNoteType:type}); return definitions.length - 1;
   }
 }
-""")
+""", newline='\n')
             (temp_path / "EngineCompat.hx").write_text("""class EngineCompat {
   public static function eventName(name:Dynamic):String {
     if (name == null) return "";
@@ -497,7 +507,7 @@ class CodenameScriptDiscovery {
   public static function legacyCutsceneScript(data:Dynamic):String return null;
   public static function legacyCutsceneBool(data:Dynamic, field:String, fallback:Bool):Bool return fallback;
 }
-""")
+""", newline='\n')
             (temp_path / "LuaCompat.hx").write_text("""typedef LuaCompatResult = {
   var hscript:String;
   var supported:Bool;
@@ -507,7 +517,7 @@ class LuaCompat {
   public static function translate(source:String, ?origin:String):LuaCompatResult
     return {hscript: source, supported: true, diagnostics: []};
 }
-""")
+""", newline='\n')
             (temp_path / "HxcCompat.hx").write_text("""typedef HxcCompatDiagnostic = { var code:String; var message:String; };
 typedef HxcCompatEventAdapter = { var sourceName:String; var canonicalName:String; var fields:Array<String>; };
 typedef HxcCompatCallbackAdapter = {
@@ -539,7 +549,7 @@ class HxcCompat {
       canonicalCallbacks: [], noteKinds: [], callbackAdapters: [], noteBehaviorPatterns: [], moduleDisabled: false,
       customEventKind: '', customEventBody: ''};
 }
-""")
+""", newline='\n')
             (temp_path / "DifficultyManager.hx").write_text("""import sys.FileSystem;
 class DifficultyManager {
   public static var supportedDiff:Map<String, Bool> = new Map<String, Bool>();
@@ -549,8 +559,8 @@ class DifficultyManager {
       supportedDiff.set(key, true);
   }
 }
-""")
-            (temp_path / "Main.hx").write_text(with_kade_parser(fixture))
+""", newline='\n')
+            (temp_path / "Main.hx").write_text(with_kade_parser(fixture), newline='\n')
             parent = temp_path / "mixed-parent"
             self._make_legacy_root(parent / "psych", "psych-song", direct=True,
                                     marker=("pack.json", "custom_events"))
@@ -559,13 +569,13 @@ class DifficultyManager {
                                     marker=("manifest/default.json", "Kade Engine.exe"))
             self._make_legacy_root(parent / "fps", "fps-song", nested=True,
                                     marker=("meta.json",))
-            (parent / "fps/meta.json").write_text('{{"description":"FPS Plus"}}')
+            (parent / "fps/meta.json").write_text('{{"description":"FPS Plus"}}', newline='\n')
             self._make_legacy_root(parent / "modplus", "mod-song", assets=True,
                                     marker=("images/custom_chars", "images/custom_stages"))
             self._make_legacy_root(parent / "legacy", "legacy-song", assets=True,
                                     marker=("manifest/default.json",))
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", str(parent)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(parent)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -589,7 +599,7 @@ class DifficultyManager {
         chart_dir.mkdir(parents=True)
         audio_dir.mkdir(parents=True)
         chart = {"song": {"song": song, "player1": "bf", "player2": "dad", "notes": []}}
-        (chart_dir / f"{song}.json").write_text(json.dumps(chart))
+        (chart_dir / f"{song}.json").write_text(json.dumps(chart), newline='\n')
         (audio_dir / "Inst.ogg").write_bytes(b"inst")
         if direct:
             for directory in ("images", "characters", "stages", "scripts"):
@@ -603,7 +613,7 @@ class DifficultyManager {
                 if path.name == "Kade Engine.exe":
                     path.write_bytes(b"KadeDev")
                 else:
-                    path.write_text("{}")
+                    path.write_text("{}", newline='\n')
             else:
                 path.mkdir(parents=True, exist_ok=True)
 
@@ -622,8 +632,8 @@ class DifficultyManager {
             "timeChanges": [{"t": 0, "bpm": 120}],
         }
         chart = {"version": "2.0.0", "notes": {"normal": [{"t": 100, "d": 0}]}}
-        (data / f"{song}-metadata.json").write_text(json.dumps(metadata))
-        (data / f"{song}-chart.json").write_text(json.dumps(chart))
+        (data / f"{song}-metadata.json").write_text(json.dumps(metadata), newline='\n')
+        (data / f"{song}-chart.json").write_text(json.dumps(chart), newline='\n')
         variation_metadata = {
             "version": "2.2.0", "songName": "VSlice Alt Display",
             "playData": {"difficulties": ["alt"], "songVariations": [], "characters": {
@@ -634,8 +644,8 @@ class DifficultyManager {
         }
         variation_chart = {"version": "2.0.0", "notes": {"alt": [{"t": 600, "d": 3}]},
                            "events": [{"t": 700, "e": "FocusCamera", "v": {"x": 5, "y": 7}}]}
-        (data / f"{song}-metadata-alt.json").write_text(json.dumps(variation_metadata))
-        (data / f"{song}-chart-alt.json").write_text(json.dumps(variation_chart))
+        (data / f"{song}-metadata-alt.json").write_text(json.dumps(variation_metadata), newline='\n')
+        (data / f"{song}-chart-alt.json").write_text(json.dumps(variation_chart), newline='\n')
         styles = root / "data/notestyles"
         styles.mkdir(parents=True)
         (styles / "TestStyle.json").write_text(json.dumps({
@@ -661,12 +671,12 @@ class DifficultyManager {
                     "down": {"assetPath": "shared:holdCovers/down", "start": {"prefix": "coverStartDown"}, "hold": {"prefix": "coverHoldDown"}, "end": {"prefix": "coverEndDown"}},
                     "up": {"assetPath": "shared:holdCovers/up", "start": {"prefix": "coverStartUp"}, "hold": {"prefix": "coverHoldUp"}, "end": {"prefix": "coverEndUp"}},
                     "right": {"assetPath": "shared:holdCovers/right", "start": {"prefix": "coverStartRight"}, "hold": {"prefix": "coverHoldRight"}, "end": {"prefix": "coverEndRight"}}}}
-            }}))
+            }}), newline='\n')
         for stem in ("notes/test", "receptors/test", "splashes/test"):
             asset = root / ("shared/images/" + stem)
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.with_suffix(".png").write_bytes(b"png")
-            asset.with_suffix(".xml").write_text("<TextureAtlas />")
+            asset.with_suffix(".xml").write_text("<TextureAtlas />", newline='\n')
         hold = root / "shared/images/holds/test.png"
         hold.parent.mkdir(parents=True, exist_ok=True)
         hold.write_bytes(b"png")
@@ -674,7 +684,7 @@ class DifficultyManager {
             cover = root / ("shared/images/holdCovers/" + direction + ".png")
             cover.parent.mkdir(parents=True, exist_ok=True)
             cover.write_bytes(b"png")
-            cover.with_suffix(".xml").write_text("<TextureAtlas />")
+            cover.with_suffix(".xml").write_text("<TextureAtlas />", newline='\n')
         (audio / "Inst.ogg").write_bytes(b"inst")
         (audio / "Inst-alt.ogg").write_bytes(b"alt-inst")
         (audio / "Voices-Zed.ogg").write_bytes(b"zed")
@@ -683,7 +693,7 @@ class DifficultyManager {
         (audio / "Voices-alt-opponent.ogg").write_bytes(b"alt-opponent")
         (audio / "Voices-alt-player.ogg").write_bytes(b"alt-player")
         (root / "shared").mkdir(exist_ok=True)
-        (root / "_polymod_meta.json").write_text("{}")
+        (root / "_polymod_meta.json").write_text("{}", newline='\n')
 
 
 if __name__ == "__main__":

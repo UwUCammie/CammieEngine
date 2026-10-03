@@ -1,9 +1,12 @@
 """A Modding Plus cutscene loads only from its selected chart owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,10 +57,11 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
-            (work / "Main.hx").write_text(fixture)
+            install_import_io_dependencies(work)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             for name in ("ImportedCutsceneRegistry", "CompatScriptManifest", "ImportSongOwnership", "ImportEngine"):
-                (work / f"{name}.hx").write_text((ROOT / "source" / f"{name}.hx").read_text())
-            process = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(work),
+                (work / f"{name}.hx").write_text((ROOT / "source" / f"{name}.hx").read_text(), newline='\n')
+            process = subprocess.run([*HAXE_COMMAND, "-cp", str(work),
                                       "--run", "Main"], cwd=ROOT, text=True,
                                      capture_output=True, timeout=45)
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)

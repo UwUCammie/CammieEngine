@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -38,9 +40,9 @@ class HxcOwnedPathTest(unittest.TestCase):
   check(HxcOwnedPath.scoped(root, 'linked.png'), null);
  }
 }'''.replace('__OWNER__', owner.as_posix())
-            (base / 'OwnedPathFixture.hx').write_text(fixture)
+            (base / 'OwnedPathFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', folder, '-main', 'OwnedPathFixture', '--interp'],
                 cwd=folder, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -83,9 +85,9 @@ class HxcOwnedPathTest(unittest.TestCase):
   check(error(owner, 'videos/clip.avi'), 'rejected');
  }
 }'''.replace('__OWNER__', owner.as_posix())
-            (base / 'OwnedVideoPathFixture.hx').write_text(fixture)
+            (base / 'OwnedVideoPathFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', folder, '-main', 'OwnedVideoPathFixture', '--interp'],
                 cwd=folder, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -125,9 +127,9 @@ class HxcOwnedPathTest(unittest.TestCase):
   check(HxcOwnedPath.scoped(owner, '../sibling/dokicon.png'), null);
  }
 }'''.replace('__OWNER__', owner.as_posix())
-            (base / 'OwnedWindowIconFixture.hx').write_text(fixture)
+            (base / 'OwnedWindowIconFixture.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', folder, '-main', 'OwnedWindowIconFixture', '--interp'],
                 cwd=folder, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,9 +1,12 @@
 """Psych owner metadata remains available alongside optional compiled stages."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +41,7 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class PsychStageJsonOnlyMetadataTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_finds_owner_json_and_executes_compiled_source_when_resolved(self):
         play = (ROOT / "source/PlayState.hx").read_text()
         method = extract_method(play, "function psychStageMetadataPath(")
@@ -87,10 +91,10 @@ class Probe {{
             owner = work / "owner"
             stage_root = owner / "shared/stages"
             stage_root.mkdir(parents=True)
-            (stage_root / "alphaStage.json").write_text('{"defaultZoom":0.77}')
-            (work / "Probe.hx").write_text(fixture)
+            (stage_root / "alphaStage.json").write_text('{"defaultZoom":0.77}', newline='\n')
+            (work / "Probe.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "Probe", str(owner)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Probe", str(owner)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

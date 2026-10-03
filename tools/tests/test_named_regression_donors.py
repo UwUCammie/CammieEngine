@@ -7,11 +7,13 @@ import-time rewrite.
 """
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,10 +47,10 @@ def sha256(path: Path) -> str:
 def run_haxe(fixture: str, *args: str) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(prefix="named-donor-", dir=ROOT / "tmp") as folder:
         path = Path(folder) / "NamedDonorRegressionTest.hx"
-        path.write_text(fixture, encoding="utf-8")
+        path.write_text(fixture, encoding="utf-8", newline='\n')
         return subprocess.run(
             [
-                str(HAXE),
+                *HAXE_COMMAND,
                 "-cp",
                 folder,
                 "-cp",

@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import hashlib
 import json
 import os
@@ -26,9 +28,9 @@ class SongEventFormatsTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "ModernPsychEventsFixture.hx").write_text(fixture)
+            (Path(folder) / "ModernPsychEventsFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "ModernPsychEventsFixture"],
                 cwd=ROOT, capture_output=True, text=True,
             )
@@ -55,9 +57,9 @@ class SongEventFormatsTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "LyricEventsFixture.hx").write_text(fixture)
+            (Path(folder) / "LyricEventsFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "LyricEventsFixture", str(donor)],
                 cwd=ROOT, capture_output=True, text=True,
             )
@@ -97,9 +99,9 @@ class SongEventFormatsTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "EventFormatsFixture.hx").write_text(fixture)
+            (Path(folder) / "EventFormatsFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "EventFormatsFixture", str(donor),
                  str(donor.parent.parent / "overhead/events.json")],
                 cwd=ROOT, capture_output=True, text=True,
@@ -161,11 +163,11 @@ class SongEventFormatsTest(unittest.TestCase):
         build_tmp = ROOT / "tmp"
         build_tmp.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=build_tmp) as folder:
-            (Path(folder) / "MountedFpsEventsFixture.hx").write_text(fixture)
+            (Path(folder) / "MountedFpsEventsFixture.hx").write_text(fixture, newline='\n')
             environment = os.environ.copy()
             environment["TMPDIR"] = str(build_tmp)
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "MountedFpsEventsFixture", *(str(path) for path in donors)],
                 cwd=ROOT, env=environment, capture_output=True, text=True,
             )
@@ -278,8 +280,8 @@ class SongEventFormatsTest(unittest.TestCase):
                     unique.add((group[0], event[0], *values))
             expected[path.parent.name] = len(unique)
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'EventFormatsTest.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-cp', str(ROOT / 'source'), '-main', 'EventFormatsTest', '--interp'], cwd=ROOT, capture_output=True, text=True)
+            (Path(folder) / 'EventFormatsTest.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-cp', str(ROOT / 'source'), '-main', 'EventFormatsTest', '--interp'], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             actual = {row['song']: row['count'] for row in json.loads(result.stdout)}
             self.assertEqual(actual, expected)

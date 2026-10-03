@@ -1,10 +1,12 @@
 """Streaming and transactional tests for the standalone Windows updater helper."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -69,6 +71,8 @@ class Main {
     "the user's settings were overwritten");
    check(File.getContent(installRoot + "/assets/imported_mods/user/chart.json") == "imported-chart",
     "the user's imported content was overwritten");
+   check(File.getContent(installRoot + "/import-cache/snapshot/source/mod.unknown") == "retained-source",
+    "the user's standalone raw-source cache was overwritten");
    check(File.getContent(installRoot + "/assets/data/engine-code.txt") == "new-engine-asset",
     "a new release asset was not installed");
    check(StringTools.trim(File.getContent(statusPath)) == "complete", "success status was not written");
@@ -85,6 +89,8 @@ class Main {
     "rollback changed user settings");
    check(File.getContent(installRoot + "/assets/imported_mods/user/chart.json") == "imported-chart",
     "rollback changed imported content");
+   check(File.getContent(installRoot + "/import-cache/snapshot/source/mod.unknown") == "retained-source",
+    "rollback changed the user's standalone raw-source cache");
    check(!FileSystem.exists(installRoot + "/assets/data/engine-code.txt"),
     "rollback left behind a newly installed file");
    check(StringTools.startsWith(StringTools.trim(File.getContent(statusPath)), "error:"),
@@ -106,13 +112,15 @@ class UpdaterHelperTest(unittest.TestCase):
         checksum_path = directory / "SHA256SUMS.txt"
         install_root = directory / "install"
         install_root.mkdir()
-        (install_root / "Funkin.exe").write_text("old-game")
-        (install_root / "CammieUpdateHelper.exe").write_text("old-helper")
-        (install_root / "RELEASE_TAG").write_text("v0.0.1-alpha.5\n")
+        (install_root / "Funkin.exe").write_text("old-game", newline='\n')
+        (install_root / "CammieUpdateHelper.exe").write_text("old-helper", newline='\n')
+        (install_root / "RELEASE_TAG").write_text("v0.0.1-alpha.5\n", newline='\n')
         (install_root / "assets/data").mkdir(parents=True)
-        (install_root / "assets/data/options.json").write_text("user-settings")
+        (install_root / "assets/data/options.json").write_text("user-settings", newline='\n')
         (install_root / "assets/imported_mods/user").mkdir(parents=True)
-        (install_root / "assets/imported_mods/user/chart.json").write_text("imported-chart")
+        (install_root / "assets/imported_mods/user/chart.json").write_text("imported-chart", newline='\n')
+        (install_root / "import-cache/snapshot/source").mkdir(parents=True)
+        (install_root / "import-cache/snapshot/source/mod.unknown").write_text("retained-source", newline='\n')
 
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as package:
             package.writestr(PREFIX + "Funkin.exe", "new-game")
@@ -124,7 +132,7 @@ class UpdaterHelperTest(unittest.TestCase):
             package.writestr(PREFIX + "RELEASE_TAG", tag + "\n")
 
         digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-        checksum_path.write_text(f"{digest} *{ARCHIVE_NAME}\n")
+        checksum_path.write_text(f"{digest} *{ARCHIVE_NAME}\n", newline='\n')
         status_path = directory / "status.txt"
         large_input = directory / "hash-input.bin"
         large_input.write_bytes((bytes(range(251)) * 9000) + b"sha256-stream-end")
@@ -144,9 +152,9 @@ class UpdaterHelperTest(unittest.TestCase):
             "UPDATER_TEST_ARGS": json.dumps(args),
         }
         fixture = directory / "Main.hx"
-        fixture.write_text(FIXTURE.replace("@ARCHIVE@", ARCHIVE_NAME).replace("@TAG@", tag))
+        fixture.write_text(FIXTURE.replace("@ARCHIVE@", ARCHIVE_NAME).replace("@TAG@", tag), newline='\n')
         result = subprocess.run(
-            [str(HAXE), "-D", "updater_test", "-cp", str(ROOT / "tools/updater"),
+            [*HAXE_COMMAND, "-D", "updater_test", "-cp", str(ROOT / "tools/updater"),
              "-cp", str(ROOT / "source"),
              "-cp", str(directory), "-main", "Main", "--interp"],
             cwd=ROOT, env=env, capture_output=True, text=True, timeout=90,

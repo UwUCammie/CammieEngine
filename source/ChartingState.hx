@@ -140,6 +140,8 @@ class ChartingState extends MusicBeatState {
 	var vocals:FlxSound;
 	var editorVocalTracks:VocalTracks;
 	var chartEditorSmokePending:Bool = false;
+	var chartEditorBrowseSmokePending:Bool = false;
+	var editorDestroyed:Bool = false;
 
 	function pauseEditorVocals():Void {
 		if (editorVocalTracks != null)
@@ -1228,10 +1230,19 @@ class ChartingState extends MusicBeatState {
 	}*/
 
 	override function update(elapsed:Float) {
+		var runChartEditorSmokeAfterFrame = false;
 		if (chartEditorSmokePending) {
 			chartEditorSmokePending = false;
-			runChartEditorRoundTripSmoke();
-			return;
+			if (RuntimeSmokeHarness.chartEditorReloadExpected()) {
+				runChartEditorRoundTripSmoke();
+				return;
+			}
+			doCharDropdown('bf');
+			RuntimeSmokeHarness.markChartEditorBrowse();
+			chartEditorBrowseSmokePending = true;
+		} else if (chartEditorBrowseSmokePending) {
+			chartEditorBrowseSmokePending = false;
+			runChartEditorSmokeAfterFrame = true;
 		}
 		curStep = recalculateSteps();
 
@@ -1506,6 +1517,10 @@ class ChartingState extends MusicBeatState {
 			+ '\ncurBeat: ' + Std.string(curBeat) 
 			+ '\ncurStep: ' + Std.string(curStep);
 		super.update(elapsed);
+		if (runChartEditorSmokeAfterFrame) {
+			runChartEditorRoundTripSmoke();
+			return;
+		}
 		RuntimeSmokeHarness.tick(elapsed);
 	}
 
@@ -2038,8 +2053,9 @@ class ChartingState extends MusicBeatState {
 
 	function psychEventsToHScript() {
 		var coolDialog = new FileDialog();
-		coolDialog.browse(FileDialogType.OPEN);
 		coolDialog.onSelect.add(function (path:String):Void {
+			if (editorDestroyed)
+				return;
 			var dajson:Dynamic = CoolUtil.parseJson(File.getContent(path));
 			var dasong = dajson.song;
 			var events:Array<Dynamic> = dasong.events;
@@ -2070,6 +2086,10 @@ class ChartingState extends MusicBeatState {
 			File.saveContent('assets/data/hscriptreadout.txt', hscriptlayout);
 			System.openFile('assets/data/hscriptreadout.txt');
 		});
+		// Native dialogs finish on a worker callback. Register before browse so
+		// a fast selection cannot arrive before this listener is installed.
+		if (!coolDialog.browse(FileDialogType.OPEN))
+			FlxG.log.add('Events-to-HScript file browsing is unavailable on this target.');
 	}
 
 	private var daSpacing:Float = 0.3;
@@ -2170,7 +2190,12 @@ class ChartingState extends MusicBeatState {
 	}
 
 	override public function destroy() {
+		editorDestroyed = true;
 		destroyEditorVocals();
+		if (charDropdown != null) {
+			charDropdown.destroy();
+			RuntimeSmokeHarness.markChartEditorBrowseDestroyed();
+		}
 		super.destroy();
 	}
 }

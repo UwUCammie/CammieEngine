@@ -2,6 +2,7 @@
 """Run independent unittest modules in parallel without scanning game media."""
 
 import argparse
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import re
 import subprocess
 import sys
 import time
+import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,18 +30,50 @@ def offscreen_test_environment(parent=None):
     for name in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET",
                  "XAUTHORITY", "XDG_RUNTIME_DIR"):
         environment.pop(name, None)
+    environment['PYTHONUTF8'] = '1'
+    environment['PYTHONIOENCODING'] = 'utf-8'
+    paths = [str(ROOT), str(ROOT / 'tools'), str(TESTS)]
+    if environment.get('PYTHONPATH'):
+        paths.append(environment['PYTHONPATH'])
+    environment['PYTHONPATH'] = os.pathsep.join(paths)
+    if os.name == 'nt':
+        # Haxe eval has MAX_PATH limits even though the game's patched hxcpp
+        # runtime supports long paths. Transaction fixtures need short roots.
+        key = hashlib.sha256(str(ROOT).encode('utf-8')).hexdigest()[:8]
+        short_tmp = Path(environment.get('CAMMIE_TEST_TMP', str(Path(ROOT.anchor) / 'tmp' / ('ce-' + key))))
+        short_tmp.mkdir(parents=True, exist_ok=True)
+        environment['CAMMIE_TEST_TMP'] = str(short_tmp)
     return environment
 
 
 def run_module(path):
     start = time.monotonic()
     result = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", str(TESTS),
-         "-p", path.name],
+        [sys.executable, '-X', 'utf8', str(ROOT / 'tools/run_tests.py'),
+         '--module', path.name],
         cwd=ROOT, text=True, capture_output=True,
         env=offscreen_test_environment(),
     )
     return path, result, time.monotonic() - start
+
+
+class FixtureResult(unittest.TextTestResult):
+    def addError(self, test, error):
+        # Skip only a missing Windows symlink-fixture capability. Other
+        # filesystem errors and all assertion failures remain failures.
+        if os.name == 'nt' and isinstance(error[1], OSError) and getattr(error[1], 'winerror', None) == 1314:
+            self.addSkip(test, 'symlink fixtures require Windows Developer Mode or elevation')
+            return
+        super().addError(test, error)
+
+
+def run_single_module(name):
+    sys.path[:0] = [str(ROOT), str(ROOT / 'tools'), str(TESTS)]
+    suite = unittest.defaultTestLoader.discover(str(TESTS), pattern=name)
+    result = unittest.TextTestRunner(resultclass=FixtureResult).run(suite)
+    for test, reason in result.skipped:
+        print(f'SKIP {test.id()}: {reason}')
+    return 0 if result.wasSuccessful() else 1
 
 
 def main():
@@ -48,7 +82,12 @@ def main():
                         help="test modules to run at once (default: 4)")
     parser.add_argument("--pattern", default="test_*.py",
                         help="module filename glob (default: test_*.py)")
+    parser.add_argument('--module', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.module:
+        if Path(args.module).name != args.module or not args.module.startswith('test_') or not args.module.endswith('.py'):
+            parser.error('--module must be a test module filename')
+        return run_single_module(args.module)
     if args.jobs < 1:
         parser.error("--jobs must be at least 1")
     modules = sorted(TESTS.glob(args.pattern))
@@ -77,6 +116,9 @@ def main():
                 print(result.stderr, end="", file=sys.stderr)
             else:
                 print(f"OK   {path.name} ({elapsed:.1f}s)", flush=True)
+                for line in result.stdout.splitlines():
+                    if line.startswith('SKIP '):
+                        print(line, flush=True)
     print(f"{tests_run} tests across {len(modules)} modules in "
           f"{time.monotonic() - start:.1f}s; {tests_skipped} skipped, "
           f"{len(failures)} failed")

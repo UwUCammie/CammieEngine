@@ -1,6 +1,8 @@
 """Focused coverage for cross-difficulty visual metadata fallback."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -33,7 +35,9 @@ class DifficultyVisualFallbackTest(unittest.TestCase):
             loader.index("normalizeVisualFields(parsedJson, folderLower);"),
             "normalizing auditorHell to auditorhell before checking the authored validity key discards the stage",
         )
-        self.assertIn("compatibilityEngine(folderLower, requestedJson).toLowerCase().indexOf('psych') >= 0", loader)
+        self.assertIn("compatibilityEngine(folderLower, requestedJson).toLowerCase()", loader)
+        self.assertIn("compatibility.indexOf('psych') >= 0", loader)
+        self.assertIn("compatibility == ImportEngine.NIGHTMARE_VISION.toLowerCase()", loader)
 
         fields_start = source.index("\tstatic var gameplayFields")
         fields_end = source.index("\tstatic var registryCache", fields_start)
@@ -115,9 +119,9 @@ class DifficultyVisualFallbackTest {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "DifficultyVisualFallbackTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "DifficultyVisualFallbackTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
@@ -161,9 +165,9 @@ class DifficultyVisualFallbackTest {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "DifficultyVisualFallbackTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "DifficultyVisualFallbackTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
@@ -236,9 +240,9 @@ class DifficultyVisualFallbackTest {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "DifficultyVisualFallbackTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "DifficultyVisualFallbackTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
@@ -327,9 +331,9 @@ class DifficultyVisualFallbackTest {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "DifficultyVisualFallbackTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "DifficultyVisualFallbackTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,

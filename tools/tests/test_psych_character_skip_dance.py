@@ -1,6 +1,8 @@
 """Psych-compatible dance suppression is a mutable Character runtime property."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -59,6 +61,7 @@ class PlayState {
 }
 class Character {
   public var skipDance:Bool = false;
+  public var nightmareVisionCharacterData:Dynamic = null;
   public var codenameLiveDefinition:Dynamic = null;
   var codenameVisualBuilding:Bool = false;
   public var codenameRuntime:FakeRuntime = new FakeRuntime();
@@ -84,6 +87,7 @@ class Character {
   }
   public function playAnim(name:String, _force:Bool = false, _reversed:Bool = false,
     _frame:Int = 0):Void plays.push(name);
+  function nightmareVisionNumber(_value:Dynamic, fallback:Float):Float return fallback;
   DANCE_METHOD
 }
 class Main {
@@ -129,9 +133,9 @@ class Main {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(work),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -4,10 +4,12 @@ The Haxe fixture runs the real standalone planner through the portable
 interpreter.  Mounted fixtures are read-only assertions: this suite never
 writes into FNF-Example-Mods.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -28,11 +30,11 @@ class ImportOverlayPlannerTest(unittest.TestCase):
     def run_fixture(self, main_source: str, *args: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main_path = Path(folder) / "Main.hx"
-            main_path.write_text(main_source)
+            main_path.write_text(main_source, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "--run", "Main", *args],
                 cwd=ROOT,
                 capture_output=True,
@@ -50,9 +52,10 @@ class ImportOverlayPlannerTest(unittest.TestCase):
             (root / "mods/beta/_merge/data").mkdir(parents=True)
             (root / "mods/modList.txt").write_text(
                 "# comments are inert\nalpha\n../escape\nbeta\nalpha\nmissing\n"
-            )
+            , newline='\n')
             (root / "mods/alpha/_append/data/intro.txt").write_bytes(b"tail\r\n")
-            (root / "mods/alpha/_append/data/bad:name.txt").write_bytes(b"bad")
+            if os.name != "nt":
+                (root / "mods/alpha/_append/data/bad:name.txt").write_bytes(b"bad")
             (root / "mods/alpha/_append/data/binary.bin").write_bytes(b"\x00\x01")
             (root / "mods/alpha/_replace/data/blob.bin").write_bytes(b"\x00\x01")
             (root / "mods/alpha/_merge/data/players.json").write_text(json.dumps([
@@ -60,13 +63,13 @@ class ImportOverlayPlannerTest(unittest.TestCase):
                 {"op": "add", "path": "/a~1b/~0key", "value": 2},
                 {"op": "replace", "path": "/name", "value": "new"},
                 {"op": "remove", "path": "/remove"},
-            ]))
+            ]), newline='\n')
             (root / "mods/beta/_merge/data/bad.json").write_text(
                 '[{"op":"copy","path":"/x","from":"/y"}]'
-            )
-            (root / "mods/beta/_merge/data/malformed.json").write_text("not-json")
-            (root / "mods/beta/_merge/data/object.json").write_text('{"op":"add"}')
-            (root / "mods/beta/_merge/data/type.json").write_text('[{"op":1,"path":"/x","value":1}]')
+            , newline='\n')
+            (root / "mods/beta/_merge/data/malformed.json").write_text("not-json", newline='\n')
+            (root / "mods/beta/_merge/data/object.json").write_text('{"op":"add"}', newline='\n')
+            (root / "mods/beta/_merge/data/type.json").write_text('[{"op":1,"path":"/x","value":1}]', newline='\n')
 
             main = r'''import haxe.Json;
 import haxe.io.Bytes;
@@ -92,7 +95,7 @@ class Main {
       fail("relative path traversal validator");
     if (!hasCode(plan, "unsafe-mod-name") || !hasCode(plan, "duplicate-mod")
       || !hasCode(plan, "missing-mod") || !hasCode(plan, "unsupported-overlay-operation")
-      || !hasCode(plan, "unsafe-overlay-path") || !hasCode(plan, "unsupported-append-type")
+      || (#if !windows !hasCode(plan, "unsafe-overlay-path") #else false #end) || !hasCode(plan, "unsupported-append-type")
       || !hasCode(plan, "unsupported-json-patch-op") || !hasCode(plan, "malformed-json-patch")
       || !hasCode(plan, "json-patch-not-array") || !hasCode(plan, "json-patch-op-type"))
       fail("diagnostics: " + [for (finding in plan.diagnostics) finding.code].join(","));

@@ -1,5 +1,7 @@
 """Direct imported Freeplay launches use installed chart ownership safely."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -12,11 +14,11 @@ class FreeplayDirectEntryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
             (base / "FreeplayDirectEntry.hx").write_text(
-                (ROOT / "source/FreeplayDirectEntry.hx").read_text())
+                (ROOT / "source/FreeplayDirectEntry.hx").read_text(), newline='\n')
             (base / "CompatScriptManifest.hx").write_text('''class CompatScriptManifest {
  public static function destinationKey(value:String):String
   return value == null ? '' : StringTools.trim(value).toLowerCase();
-}''')
+}''', newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var categories:Array<Dynamic> = [
@@ -42,9 +44,9 @@ class FreeplayDirectEntryTest(unittest.TestCase):
   if (FreeplayDirectEntry.select([], 'assets/imported_mods/owned', owner).length != 0)
    throw 'empty registry';
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(base),
                  "-main", "Main", "--interp"], cwd=ROOT,
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

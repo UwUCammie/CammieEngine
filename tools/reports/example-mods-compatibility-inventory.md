@@ -1612,3 +1612,260 @@ new evidence is `tmp/nmv-source-apis-native-20260930-release-facing/receipt.json
 It retains six unresolved diagnostics (including the donor's missing click sound)
 and does not establish song/difficulty parity. Inventory compatibility statuses
 remain unchanged; see the verification report for scope and current build hash.
+
+#### 2026-10-01 Nightmare Vision D-Sides follow-up
+
+The supplied `nightmare-vision/dsides_r_11_final` installation contains two
+packages: Redux (`content/new-dsides`, 28 song folders and 83 chart-shaped
+JSON files) and OG (`content/old-dsides`, 32 song folders and 97 playable or
+variant chart files, plus 14 event sidecars). Redux also supplies 20 stages,
+104 character JSON files, 70 HScript files across its scopes, and 11 videos.
+The 2026-09-29 private Auto-import receipt reports 60 imported song folders,
+zero import failures, and no remaining missing dependencies, but explicitly
+did not launch charts. Its original private runtime was removed; a retained
+mixed private fixture has only a selected subset of Redux and OG menu rows.
+
+The shared Nightmare Vision host now binds `funkin.api.DiscordClient` with the
+source's distinct small/large image argument positions, and
+`funkin.data.Chart` with owner-scoped reads and source legacy-chart
+normalization. Focused interpreter tests cover both APIs and reject a chart
+path outside the selected owner. The first offscreen native probe after the
+Discord fix reached `NMV_HOST_NATIVE|PASS|` and its normal success marker;
+the wrapper returned 1 at Xvfb teardown, so a clean process exit is not
+claimed. The same wrapper also returns 1 for `xvfb-run ... true` in this
+environment, independently of the game. That receipt is
+`tmp/nmv-source-apis-native-20260930-discord-20261001/receipt.json`.
+The composer script's two former `EUnknownVariable(DiscordClient)` failures
+are absent. The source click sound still uses the donor's own missing-sound
+fallback. The Chart binding is unit-tested but has not yet been exercised in
+a native song that invokes `Chart.fromPath`.
+
+Full source parity remains open. `funkin.objects.Bopper` and Character's
+related animation/signal API are missing; the native probe still reports its
+import warning. The current Discord wrapper does not expose the connected
+user identity, so the adapter exposes the source's `Unknown` fallback for
+`username`. Event and note-type script groups are not yet executed by
+the host. Third-playfield chart variants, stage-object rendering, and full
+song/difficulty playback remain unverified. These gaps must remain explicit
+instead of promoting any chart to complete compatibility.
+
+#### 2026-10-01 Redux Dusk candidate check
+
+The selected import has Dusk Easy, Normal, and Hard, and the donor supplies
+the Dusk stage, three character definitions with their authored atlases,
+audio stems, icon, and event sidecar. The shared Nightmare Vision visual
+resolver now selects those owner-local assets during gameplay. Offscreen
+Easy/Normal/Hard launches reached gameplay with stage `dusk`, opponent `dusk`,
+and girlfriend `gf-dusk`; a separate accelerated Normal run reached natural
+song end. The character and stage visual markers identify the authored atlas
+and background paths (`tmp/dusk-nmv-after-alias.log`). These checks establish
+asset selection and basic completion, not source-matched visual timing or
+behavior for all events and difficulties. Dusk remains **in progress**.
+
+The Dusk note-visual follow-up found complete, byte-identical imported
+`data/noteskins` definitions and `images/UI/game/notes` atlases. The source
+defaults both playfields to its `default` skin when `arrowSkins` is absent;
+the earlier destination drew the native note UI instead. The runtime now
+reads the selected owner's skin definition for each source playfield and
+applies its atlas, animation prefixes, scales, RGB colors, and authored
+receptor/splash offsets to taps, holds, receptors, and hit splashes. The
+chart loader also limits the Modding Plus fifth-column lift conversion to
+Modding Plus or unlabelled legacy charts. Nightmare Vision's fifth column
+was previously turning ordinary opponent notes into special-note lanes.
+Offscreen Easy, Normal, and Hard probes now each have a success marker and
+16 bounded tap/hold visual snapshots: only source fields 0 and 1, note
+values 0–7, and the selected owner's `NOTE_assets.png` on every snapshot
+(`tmp/dusk-nmv-note-final-{easy,normal,hard}.log`). A separate normal-speed
+hit probe emitted all four directions from the selected owner's
+`NoteSplash.png`, with the authored animation aliases and offsets
+(`tmp/dusk-nmv-note-splash-hit-final.log`). This verifies asset binding, lane
+preservation, and hit-splash selection; donor frame-by-frame comparison
+remains open.
+
+The Dusk Normal 55,615 ms `Play Animation`/`smug` event now retains BF's
+gesture until it finishes; an offscreen seek sampled `smug` at 56,020 and
+57,020 ms and a later sing at 58,040 ms. The later pink shader start/off
+events also completed offscreen without missing camera shader method errors.
+These are focused regression checks, not evidence of parity across every
+event or difficulty (`tmp/nmv-dusk-smug-visual.log`,
+`tmp/nmv-dusk-pink-shader.log`).
+
+
+Nightmare Vision screen-overlay follow-up: the adapter now uses shared
+StageHelper attachment once rather than also mounting its bookkeeping group.
+Dusk Normal's vignette retained its source overlay camera and full 1280×720
+logical dimensions in offscreen 1600×900 and 1024×768 runs; the red section
+and pink section were visually inspected. Native runs emitted `success`
+(`tmp/nmv-overlay-after-1600.log`, `tmp/nmv-overlay-after-1024.log`,
+`tmp/nmv-overlay-after-red.log`). This fixes camera reassignment and duplicate
+stage sprite scheduling generally. Full difficulty, source presentation and
+Windows/Wine parity remain unverified.
+
+## 2026-10-01 focused addition: Singstar Challenges PC
+
+`v-slice/singstarchallengespc_22f3d` was absent from the older four-package
+V-Slice inventory. Its `virgin-rage-chart.json` and metadata add a normal chart,
+83 authored events and Solid/Liquid/Kacey character definitions on stageSingstar.
+Character companions are stored beside the stage script; their declared actor
+IDs now select the shared HXC character lifecycle regardless of folder/filename.
+The guitar transition at 81 seconds and sustained guitar singing were verified
+in a normal-speed, offscreen 79–90 second replay with zero script errors.
+See `tmp/virgin-guitar-after.log` and its inspected screenshot, and the detailed
+verification report. The 50x native ending check passes for normal; accelerated
+camera/effect presentation is not treated as source parity.
+
+The mounted default V-Slice chart-pair total is now 59, with 3,125 events and
+44 event names. The supplementary `virgin-rage-remix.json` contains a legacy
+`liquid-remix` chart and is not selected by the V-Slice importer. That package
+format gap, Windows/Wine reruns and full normal-speed presentation remain open.
+The wider Example Mods completion criterion is still unmet.
+
+The corrected two-load native check reaches both natural endings with costume
+state reset between visits (`tmp/virgin-guitar-reload-verified.log`). Additional
+open package contracts: stage companion discovery does not yet match a declared
+constructor ID when its filename differs, and Solid's `getDeathQuote` is an
+explicitly unsupported return-valued hook without a native consumer. Normal
+completion and the guitar regression pass; full package compatibility does not.
+
+
+### Shared stage discovery follow-up
+
+The declared Stage-ID gap above is now fixed in runtime loading, HXC class
+selection and import dependency planning. A rebuilt offscreen replay loads the
+stage once with no script errors and retains both guitars at configured
+60/240/480 FPS caps; the higher caps were not reached by the offscreen renderer.
+The current inspected screenshot is `tmp/hxc-stage-id-240.png`. The stage-active
+50x check dispatches 82/82 runtime events and reaches the natural ending. This
+supersedes the prior stage-discovery gap. Two current stage-active visits also
+reach their natural endings without errors and record cleanup between loads
+(`tmp/hxc-stage-id-reload.log`). Full effect-leak, rendering/timing parity and
+Windows checks remain open. The death
+quote host was still open at this stage; the follow-up below supersedes that gap.
+Mutable strumline constants, source shadow judgement semantics,
+altAnim note kind and supplementary legacy remix format remain open. Detailed
+evidence and limitations are in the verification report.
+
+
+### Shared death-quote and costume game-over follow-up
+
+The return-valued `getDeathQuote` gap above now has a shared native consumer.
+The donor's declared V-Slice API 0.6.4 requires a query before initial death
+completion and a separate query at activation; both are preserved. Owner-local
+sound selection is verified by executable donor-script checks and offscreen
+native playback. Before and after the guitar transition, the death actor uses
+its authored death animation names and the quote completes, starting loop
+music at 0.2 and requesting the four-second fade to 1.0. The base-game BF
+no-quote case retains full-volume loop music. See
+`tmp/hxc-death-quote-{plain,guitar,fallback}.log` and their process logs.
+These are focused lifecycle checks; full normal-speed song/difficulty,
+Windows/Wine, mutable strumline constants, source shadow judgement semantics,
+`altAnim`, and the supplementary legacy remix remain open.
+
+
+The final current-build guitar death/quote check and quote-exit cleanup check
+also pass (`tmp/hxc-death-quote-guitar-completion-final.log` and
+`tmp/hxc-death-quote-cancel-after.log`); the costume death screenshot was inspected.
+The full automated invocation exercised all 523 modules; two fixtures were
+corrected and their focused rerun passed. The verification report retains the
+initial failures, exact test counts and absence of a single green full summary.
+This closes the death-quote host gap, not complete package compatibility.
+
+
+### 2 October — V-Slice character-owned note kinds and clean host suite
+
+The reviewed shared guitar/death-quote host passes a clean 1,730-test full
+suite (523 modules, 65 skipped, zero failed; 550.2 seconds). Receipt:
+`tmp/hxc-death-quote-corrected-full-tests.log`.
+
+The source audit closes the earlier **judgement translation** suspicion:
+manually scored notes retain their native scored judgement; automatic
+hits supply `perfect`, matching the source event contract. It also closes
+the **altAnim runtime callback** suspicion: the source character script
+handles that exact authored kind, and the generated callback executes its
+alt sing once and marks the animation handled. The shared importer now
+recognizes that active character by its declaration even in a stage folder,
+removing the false unsupported-kind diagnostic. All 1,366 mounted source
+notes survive conversion; the single custom row retains its original
+time, opponent lane, sustain and kind identity. Source files are unchanged.
+Receipts: `tmp/hxc-declared-note-companion-mounted.log`,
+`tmp/hxc-declared-note-companion-mounted-evidence.json`, and
+`tmp/hxc-declared-note-companion-callback-tests.log`. All 64 importer tests
+and eight focused callback/dispatch tests pass.
+
+The current build's ten-second normal-speed offscreen replay through the
+guitar transition passes with exit 0, no runtime diagnostics, and unchanged
+private options (`tmp/hxc-declared-note-companion-native-isolated-summary.json`).
+This supplements the earlier inspected guitar screenshots; it is not a new
+full-song visual comparison. Two earlier runs reached in-game success but
+failed Xvfb launcher cleanup and remain recorded as failed attempts.
+
+**Still open:** source group layout consumes mutable Constants before line
+creation; the host currently ignores the stage's changed X offset. Tagged
+0.6.4 source additionally establishes that group anchors, receptor render
+geometry, and tap/hold coordinate mapping need a coupled parity fix. The
+supplementary legacy remix, full package lifecycle/presentation parity,
+audible mix, and Windows/Wine remain unverified.
+
+The follow-up full run records five isolated-fixture dependency failures
+(1,733 tests, 524 modules, 65 skips). Its source-copy lists omitted the new
+HxcScriptDiscovery dependency; the fixture repair and final rerun are
+tracked in the verification report. Additional importer discovery layouts
+under shared/ and mixed multi-character class selection remain explicit
+open gaps; the directly tested layouts above do not establish those cases.
+
+
+The dependency-corrected full run exercises 1,733 tests across 524 modules,
+with 65 skips; its only failure is the stale raw warning expectation 47 rather
+than 46. Correctly discovered character note handling accounts for the one
+warning removed. The corrected exact-count mounted test passes separately in
+218.002 seconds, with unchanged phase limits and selected Codename count 23.
+Receipts: `tmp/hxc-declared-note-companion-corrected-full-tests.log` and
+`tmp/hxc-declared-note-companion-corrected-count-test.log`. This is full-run
+coverage plus a passing targeted correction, not a single green full-run
+summary or full package parity. Production-source and native binary hashes
+still match the successful current offscreen transition receipt.
+
+
+### 2 October — discovery owner and lexical fragment consistency
+
+Mixed character files now use the same filename/constructor-ID owner for
+lexical discovery and generated callbacks on POSIX and Windows path spellings.
+String or nested-comment text cannot replace the real declaration body.
+Conventional shared/direct character companion layouts are covered by importer
+fixtures, with active-ID and media-root exclusion controls. Details and failing
+negative controls are in the verification report's mixed-owner section.
+The current Linux build and bounded native transition check pass. Full-suite
+and periodic-animation capture evidence are pending; source geometry and
+Windows/Wine gameplay remain open, and this is not whole-package parity.
+
+
+The integration receipt is now green: 1,735 tests / 524 modules / 526.8 seconds,
+65 skipped. The final regex/comment correction made during that run separately
+passes the final-source focused HXC family (82 tests, one skip) and escaped-
+delimiter/flags fixture. Receipts: `tmp/hxc-lexical-owner-full-tests.log`,
+`tmp/hxc-lexical-owner-final-focused-family.log`, and
+`tmp/hxc-regex-flags-final.log`. The post-correction rebuild subsequently passed,
+and its periodic animation replay passed with exit 0, zero diagnostics and
+unchanged private options; both actors have live guitar animation samples
+(`tmp/hxc-lexical-owner-animation-native-summary.json`). The source strumline geometry contract is saved separately, including
+the intentional tap/hold center difference; geometry parity is still open.
+
+### 2 October — Nightmare Vision candidate coverage boundary
+
+Try Harder and Endless were each exercised in Easy/Normal/Hard using the
+selected Nightmare Vision owner `7a949ff139`, private defaults and offscreen
+muted execution. Fast natural-ending checks passed four combinations; Try
+Harder Easy failed with a null field and Hard with a shared RGB shader crash.
+A normal-speed cross-song replay reached 120 seconds per visit without script
+diagnostics but **failed visual review**: second-visit notes/receptors render
+as black quads. Missing shader initialization and BF orientation remain under
+investigation. Imports reaching gameplay do not count as compatible.
+See the 2 October shared script/note/switching section in
+`tools/reports/engine-discrepancies-verification.md` for receipts, source APIs,
+focused tests, full-suite failure/repair and all outstanding gates.
+
+### 2 October — latest NV feedback
+
+The engine-level chart-storage identity fix corrects Dusk BF orientation in native early and 48-second normal-difficulty samples, with Try Harder's initial normal actor also facing the opponent. That evidence does not certify later swaps or all difficulties. Accepted host-only `wayoff` popup image requests now cross a shared Psych source-rating projection; native ordinary-hit verification is pending.
+
+Endless NV Hard has a user-reported mid-song allocator abort plus intermittent black clock/rating graphics. SIGABRT PID 2806612 is retained as a core; its exact captured build ID is `e93b350cbb278fc10d614fbd381ffdf5ad9b4f09`, which matches none of the preserved ELF copies. Allocation detection was on the text bitmap clone path; no corruption source is proved. Darnell NV additionally crashes during loading with missing PolygonSpectogram / VISTYPE / SpectogramSprite.SPECDIRECTION import warnings. These remain open source API/native memory-safety gaps; the warnings alone are not proof of crash causation.

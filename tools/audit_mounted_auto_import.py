@@ -32,6 +32,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+try:
+    from haxe_import_io_stubs import install_import_io_dependencies
+except ModuleNotFoundError:
+    from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1215,6 +1219,7 @@ def main() -> int:
         prefix="disappointing-auto-audit-", dir=str(audit_tmp)
     ) as folder:
         temp = Path(folder)
+        install_import_io_dependencies(temp)
         # Compile the extracted fixture in an ephemeral workspace, but run it
         # with the retained output as cwd when requested.  This preserves the
         # production writer's relative ``assets/`` paths without leaving Haxe
@@ -1229,6 +1234,8 @@ def main() -> int:
             "ImportDirectoryListing.hx": (ROOT / "source/ImportDirectoryListing.hx").read_text(),
             "VSliceImporter.hx": vslice_source,
             "VSliceAstcAdapter.hx": astc_source,
+            "HxcScriptIdentity.hx": (ROOT / "source/HxcScriptIdentity.hx").read_text(),
+            "HxcScriptDiscovery.hx": (ROOT / "source/HxcScriptDiscovery.hx").read_text(),
             "CodenameImporter.hx": (
                 (ROOT / "source/CodenameImporter.hx").read_text()
                 .replace("EngineCompat.EngineCompatEventRoute", "CodenameEventRoute")

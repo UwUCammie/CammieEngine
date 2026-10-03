@@ -1,6 +1,8 @@
 """Codename menu chart loading stays in the selected imported owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -83,8 +85,8 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
-            completed = subprocess.run([str(HAXE), "-cp", scratch, "--run", "Main"],
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            completed = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                                        cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         create = source[source.index("override public function create() {", source.index("var uiSmelly:TUI;")):]
@@ -104,22 +106,22 @@ class Main {
             (canonical / "compatScripts.json").write_text(json.dumps({
                 "version": 1, "selectedRoot": foreign,
                 "roots": [{"engine": "Codename Engine", "path": foreign}],
-            }))
+            }), newline='\n')
             (qualified / "importProvenance.json").write_text(json.dumps({
                 "version": 1, "sourceFolder": "better-clone", "sourceEngine": "Codename Engine",
                 "sourceOwner": owner, "destinationFolder": qualified.name,
-            }))
+            }), newline='\n')
             (Path(scratch) / "Main.hx").write_text(r'''
 class Main {static function main():Void {
- var folder=CodenameSongLaunch.resolveStorageFolder("Better-Clone", "''' + owner + r'''", "''' + str(data_root) + r'''");
+ var folder=CodenameSongLaunch.resolveStorageFolder("Better-Clone", "''' + owner + r'''", "''' + data_root.as_posix() + r'''");
  if(folder!="better-clone--codename-fnas-1234567890") throw "did not select qualified owner folder: "+folder;
  var rejected=false;
- try CodenameSongLaunch.resolveStorageFolder("Better-Clone", "assets/imported_mods/codename-unrelated-9999999999", "''' + str(data_root) + r'''")
+ try CodenameSongLaunch.resolveStorageFolder("Better-Clone", "assets/imported_mods/codename-unrelated-9999999999", "''' + data_root.as_posix() + r'''")
  catch(_:Dynamic) rejected=true;
  if(!rejected) throw "foreign owner's canonical folder was accepted";
 }}
-''')
-            completed = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", scratch,
+''', newline='\n')
+            completed = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", scratch,
                                         "--run", "Main"], cwd=ROOT, capture_output=True,
                                        text=True, timeout=30)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)

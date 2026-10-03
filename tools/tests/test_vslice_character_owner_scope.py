@@ -1,5 +1,7 @@
 """V-Slice character IDs resolve through the selected package owner."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import os
 import subprocess
@@ -42,24 +44,24 @@ class VSliceCharacterOwnerScopeTest(unittest.TestCase):
             manifest.write_text(json.dumps({
                 "selectedRoot": owner,
                 "roots": [{"engine": "V-Slice", "path": owner}],
-            }))
+            }), newline='\n')
 
             (owner_chars / "our-harmony").mkdir(parents=True)
             (owner_chars / "our-harmony/char.png").write_bytes(b"selected atlas")
-            (owner_chars / "our-harmony.hscript").write_text("function init(char) {}")
+            (owner_chars / "our-harmony.hscript").write_text("function init(char) {}", newline='\n')
             (owner_chars / "custom_chars.jsonc").write_text(
                 '{"our-harmony":{"like":"our-harmony"}}'
-            )
+            , newline='\n')
 
             for name in ("our-harmony", "private-likely", "bf"):
                 (global_chars / name).mkdir(parents=True)
                 (global_chars / name / "char.png").write_bytes(b"global atlas")
-                (global_chars / (name + ".hscript")).write_text("function init(char) {}")
+                (global_chars / (name + ".hscript")).write_text("function init(char) {}", newline='\n')
             (global_chars / "custom_chars.jsonc").write_text(
                 '{"our-harmony":{"like":"our-harmony"},'
                 '"private-likely":{"like":"private-likely"},'
                 '"bf":{"like":"bf"}}'
-            )
+            , newline='\n')
 
             fixture = '''import haxe.Json;
 import haxe.io.Path;
@@ -76,6 +78,12 @@ typedef CharacterVisualResolution = {
 class ImportEngine {
   public static inline var V_SLICE="V-Slice"; public static inline var PSYCH="Psych Engine";
   public static inline var CODENAME="Codename Engine"; public static inline var MODDING_PLUS="Modding Plus";
+  public static inline var NIGHTMARE_VISION="Nightmare Vision";
+}
+class NightmareVisionCharacterData {
+  public static function load(_root:String, _name:String):Dynamic return null;
+  public static function imageRoot(_root:String, _definition:Dynamic):String return null;
+  public static function definitionPath(_root:String, _name:String):String return null;
 }
 class CompatScriptManifest {
   public static inline var FILE_NAME="compatScripts.json";
@@ -123,9 +131,9 @@ class Song {
   }
 }
 '''
-            (work / "Song.hx").write_text(fixture)
+            (work / "Song.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Song", str(work)],
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Song", str(work)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

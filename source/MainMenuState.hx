@@ -174,12 +174,18 @@ class MainMenuState extends MusicBeatState {
 		add(new UpdateProgressBar());
 		#end
 
+		#if sys
+		add(new ImportRefreshProgressBar());
+		#end
 		super.create();
 	}
 
 	var selectedSomethin:Bool = false;
 
 	override function update(elapsed:Float) {
+		#if sys
+		if (ImportRefreshManager.browseTick().busy) { super.update(elapsed); return; }
+		#end
 		if (FlxG.sound.music.volume < 0.8) {
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;
 		}

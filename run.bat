@@ -4,6 +4,9 @@ rem
 rem   run.bat                 build release and launch 64-bit Windows
 rem   run.bat debug            build debug and launch 64-bit Windows
 rem   run.bat build            build release, do not launch
+rem   run.bat test             build release and run the full test suite
+rem   run.bat package          build, test and package v0.0.9 alpha
+rem   run.bat setup            prepare portable tools and libraries only
 rem   run.bat rebuild          rebuild release, do not launch
 rem   run.bat build32          build 32-bit, do not launch
 rem   run.bat server           start the Haxe compilation server
@@ -37,6 +40,11 @@ set "ARCH=64"
 set "HAXE_DEBUG_FLAG="
 set "LIME_ARCH_FLAGS="
 set "HAXE_VERSION="
+set "LIME_COMPILER_FLAGS="
+set "HAXE_COMPILER_FLAGS="
+set "HXCPP_COMPILER_FLAGS="
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 :parse_args
 if "%~1"=="" goto args_done
@@ -53,6 +61,21 @@ if /I "!ARG!"=="release" (
 )
 if /I "!ARG!"=="build" (
 	set "MODE=build"
+	shift
+	goto parse_args
+)
+if /I "!ARG!"=="test" (
+	set "MODE=test"
+	shift
+	goto parse_args
+)
+if /I "!ARG!"=="package" (
+	set "MODE=package"
+	shift
+	goto parse_args
+)
+if /I "!ARG!"=="setup" (
+	set "MODE=setup"
 	shift
 	goto parse_args
 )
@@ -117,12 +140,13 @@ if errorlevel 1 exit /b 1
 call :ensure_asset_scaffolding
 if errorlevel 1 exit /b 1
 
+if /I "!MODE!"=="setup" exit /b 0
 if /I "!MODE!"=="server" goto start_server
 
 :do_build
 if /I "!MODE!"=="nobuild" goto launch
 if /I "!MODE!"=="server" goto start_server
-if /I not "!MODE!"=="release" if /I not "!MODE!"=="build" if /I not "!MODE!"=="rebuild" goto usage_error
+if /I not "!MODE!"=="release" if /I not "!MODE!"=="build" if /I not "!MODE!"=="rebuild" if /I not "!MODE!"=="test" if /I not "!MODE!"=="package" goto usage_error
 
 call :ensure_native_compiler
 if errorlevel 1 exit /b 1
@@ -135,7 +159,7 @@ if exist "!LIVE_OPTS!" (
 )
 
 echo ^>^> building Windows !ARCH!-bit (!MODE!!HAXE_DEBUG_FLAG!)...
-call haxelib run lime build windows !LIME_ARCH_FLAGS! !HAXE_DEBUG_FLAG!
+call haxelib run lime build windows !LIME_ARCH_FLAGS! !LIME_COMPILER_FLAGS! !HAXE_DEBUG_FLAG!
 set "BUILD_RESULT=!ERRORLEVEL!"
 
 if defined OPTS_BAK (
@@ -148,14 +172,36 @@ if not "!BUILD_RESULT!"=="0" (
 )
 call :sync_astc_decoder
 if errorlevel 1 exit /b 1
+call :sync_compiler_runtime
+if errorlevel 1 exit /b 1
+call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\sync_windows_audio.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin"
+if errorlevel 1 exit /b 1
 if "!ARCH!"=="64" (
 	call :build_update_helper
 	if errorlevel 1 exit /b 1
 )
 
+if /I "!MODE!"=="test" goto run_tests
+if /I "!MODE!"=="package" goto run_tests
 if /I "!MODE!"=="build" goto build_done
 if /I "!MODE!"=="rebuild" goto build_done
 goto launch
+
+:run_tests
+echo ^>^> running the full regression suite...
+call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\run_tests.py"
+if errorlevel 1 (
+	echo ERROR: Tests failed; no release package was created. 1>&2
+	exit /b 1
+)
+if /I not "!MODE!"=="package" goto build_done
+if not "!ARCH!"=="64" (
+	echo ERROR: Release packaging requires a 64-bit build. 1>&2
+	exit /b 2
+)
+call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\package_windows_release.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin" --output-dir "!ROOT!\dist" --tag v0.0.9
+if errorlevel 1 exit /b 1
+goto build_done
 
 :build_done
 if exist "!BIN!" (
@@ -198,11 +244,11 @@ exit /b !GAME_RESULT!
 :build_update_helper
 set "HELPER_CPP=!PROJECT_TMP!\windows-updater-cpp"
 echo ^>^> building standalone Windows update helper...
-call haxe -cp "!ROOT!\tools\updater" -cp "!ROOT!\source" -main CammieUpdateHelper -cpp "!HELPER_CPP!" -D HXCPP_M64 -D no-compilation
+call haxe -cp "!ROOT!\tools\updater" -cp "!ROOT!\source" -main CammieUpdateHelper -cpp "!HELPER_CPP!" -D HXCPP_M64 -D no-compilation !HAXE_COMPILER_FLAGS!
 if errorlevel 1 exit /b 1
 pushd "!HELPER_CPP!"
 if errorlevel 1 exit /b 1
-call haxelib run hxcpp Build.xml -DHXCPP_M64=1
+call haxelib run hxcpp Build.xml -DHXCPP_M64=1 !HXCPP_COMPILER_FLAGS!
 set "HELPER_RESULT=!ERRORLEVEL!"
 popd
 if not "!HELPER_RESULT!"=="0" exit /b !HELPER_RESULT!
@@ -220,6 +266,9 @@ set "HAXEPATH=!TOOLS!\haxe"
 set "NEKOPATH=!TOOLS!\neko"
 set "HAXELIB_PATH=!ROOT!\.haxelib"
 set "PATH=!HAXEPATH!;!NEKOPATH!;!PATH!"
+set "POWERSHELL_COMMAND=powershell.exe"
+where pwsh.exe >nul 2>&1
+if not errorlevel 1 set "POWERSHELL_COMMAND=pwsh.exe"
 where powershell.exe >nul 2>&1
 if errorlevel 1 (
 	echo ERROR: PowerShell is required to bootstrap the portable Windows Haxe/Neko archives. 1>&2
@@ -236,6 +285,12 @@ call :download_tool haxe "https://github.com/HaxeFoundation/haxe/releases/downlo
 if errorlevel 1 exit /b 1
 
 :haxe_ready
+rem Legacy test probes invoke this explicit extensionless path. Windows can
+rem execute PE files at that path too; keep it in sync with the native binary.
+copy /Y "!HAXEPATH!\haxe.exe" "!HAXEPATH!\haxe" >nul
+if errorlevel 1 exit /b 1
+copy /Y "!HAXEPATH!\haxelib.exe" "!HAXEPATH!\haxelib" >nul
+if errorlevel 1 exit /b 1
 where haxelib >nul 2>&1
 if errorlevel 1 (
 	echo ERROR: Portable Haxe archive did not provide haxelib. 1>&2
@@ -260,13 +315,43 @@ where cl.exe >nul 2>&1
 if not errorlevel 1 exit /b 0
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "!VSWHERE!" (
-	echo ERROR: MSVC was not found. Install the Visual Studio C++ workload and Windows SDK, then rerun. 1>&2
-	exit /b 1
+	goto portable_compiler
 )
 "!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | findstr /R /C:"." >nul
 if errorlevel 1 (
-	echo ERROR: Visual Studio is installed, but its C++ x86/x64 tools are missing. 1>&2
-	exit /b 1
+	goto portable_compiler
+)
+exit /b 0
+
+:portable_compiler
+rem A native Windows LLVM-MinGW fallback needs neither admin access nor VS.
+set "MINGW_ROOT=!TOOLS!\llvm-mingw-windows"
+if not exist "!MINGW_ROOT!\bin\clang.exe" (
+	echo ^>^> downloading portable Windows LLVM-MinGW ^(one time^)...
+	call :download_tool llvm-mingw "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-x86_64.zip" "!MINGW_ROOT!" bin\clang.exe e3ad77d117a4bea19a7a3b333341824d79a5a371004a10e25b8504e7b3047666
+	if errorlevel 1 exit /b 1
+)
+set "PATH=!MINGW_ROOT!\bin;!PATH!"
+set "MINGW_TRIPLET=x86_64-w64-mingw32"
+if "!ARCH!"=="32" set "MINGW_TRIPLET=i686-w64-mingw32"
+set "HXCPP_MINGW_EXE=!MINGW_TRIPLET!-clang++.exe"
+set "HXCPP_AR=llvm-ar.exe"
+set "HXCPP_RANLIB=llvm-ranlib.exe"
+set "HXCPP_STRIP=llvm-strip.exe"
+set "HXCPP_RC=llvm-windres.exe"
+set "LIME_COMPILER_FLAGS=-mingw -DHXCPP_MINGW -DHXCPP_RC=llvm-windres.exe"
+set "HAXE_COMPILER_FLAGS=-D HXCPP_MINGW -D HXCPP_RC=llvm-windres.exe"
+set "HXCPP_COMPILER_FLAGS=-DHXCPP_MINGW=1 -DHXCPP_RC=llvm-windres.exe"
+call :run_python_script tools\patch_windows_mingw.py
+if errorlevel 1 exit /b 1
+echo ^>^> using portable Windows LLVM-MinGW
+exit /b 0
+
+:sync_compiler_runtime
+if not defined MINGW_TRIPLET exit /b 0
+for %%F in (libc++.dll libunwind.dll libwinpthread-1.dll) do (
+	copy /Y "!MINGW_ROOT!\!MINGW_TRIPLET!\bin\%%F" "!ROOT!\!BUILD_ROOT!\windows\bin\%%F" >nul
+	if errorlevel 1 exit /b 1
 )
 exit /b 0
 
@@ -275,16 +360,12 @@ set "TOOL_NAME=%~1"
 set "TOOL_URL=%~2"
 set "TOOL_DEST=%~3"
 set "TOOL_REQUIRED=%~4"
-set "TOOL_TEMP=%TEMP%\disappointing-plus-!TOOL_NAME!-!RANDOM!"
-set "DP_TOOL_TEMP=!TOOL_TEMP!"
 set "DP_TOOL_URL=!TOOL_URL!"
 set "DP_TOOL_DEST=!TOOL_DEST!"
 set "DP_TOOL_REQUIRED=!TOOL_REQUIRED!"
 set "DP_TOOL_SHA256=%~5"
-if not exist "!TOOL_TEMP!" mkdir "!TOOL_TEMP!"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $zip=Join-Path $env:DP_TOOL_TEMP 'tool.zip'; Invoke-WebRequest -UseBasicParsing -Uri $env:DP_TOOL_URL -OutFile $zip; if ($env:DP_TOOL_SHA256) { $actual=(Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant(); if ($actual -ne $env:DP_TOOL_SHA256.ToLowerInvariant()) { throw ('Archive checksum mismatch: expected ' + $env:DP_TOOL_SHA256 + ', found ' + $actual) } }; $unpack=Join-Path $env:DP_TOOL_TEMP 'unpack'; Expand-Archive -Force $zip $unpack; $item=Get-ChildItem -Path $unpack -Filter $env:DP_TOOL_REQUIRED -File -Recurse | Select-Object -First 1; if ($null -eq $item) { throw ('Archive did not contain ' + $env:DP_TOOL_REQUIRED) }; if (Test-Path $env:DP_TOOL_DEST) { Remove-Item -Recurse -Force $env:DP_TOOL_DEST }; New-Item -ItemType Directory -Force $env:DP_TOOL_DEST | Out-Null; Copy-Item -Recurse -Force (Join-Path $item.Directory.FullName '*') $env:DP_TOOL_DEST"
+"!POWERSHELL_COMMAND!" -NoProfile -ExecutionPolicy Bypass -File "!ROOT!\tools\download_windows_tool.ps1" -Url "!TOOL_URL!" -Destination "!TOOL_DEST!" -Required "!TOOL_REQUIRED!" -Sha256 "%~5"
 set "TOOL_RESULT=!ERRORLEVEL!"
-rmdir /S /Q "!TOOL_TEMP!" >nul 2>&1
 if not "!TOOL_RESULT!"=="0" (
 	echo ERROR: Could not download or unpack !TOOL_NAME!. Check network access and the URL in run.bat. 1>&2
 	exit /b !TOOL_RESULT!
@@ -364,6 +445,12 @@ exit /b 0
 rem Match the source-safe setup used by run.sh before compiling on Windows.
 call :ensure_python
 if errorlevel 1 exit /b 1
+call :run_python_script tools\patch_tjson_unicode.py
+if errorlevel 1 exit /b 1
+call :run_python_script tools\patch_hxcpp_windows_full_path.py
+if errorlevel 1 exit /b 1
+call :run_python_script tools\patch_hxcpp_windows_read_directory.py
+if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_hxcpp_large_free.py
 if errorlevel 1 exit /b 1
 call :run_python_script tools\install_codename_3d.py
@@ -372,6 +459,8 @@ call :run_python_script tools\patch_openfl_context3d_readback.py
 if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_openfl_shader_version.py
 if errorlevel 1 exit /b 1
+call :run_python_script tools\patch_openfl_blend_restore.py
+if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_hscript_compat.py
 if errorlevel 1 exit /b 1
 call :run_python_script tools\patch_hscript_ex_owner_scope.py
@@ -379,18 +468,41 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :ensure_python
+if exist "!TOOLS!\python\python.exe" (
+	set PYTHON_COMMAND="!TOOLS!\python\python.exe"
+	exit /b 0
+)
 where py.exe >nul 2>&1
 if not errorlevel 1 (
-	set "PYTHON_COMMAND=py -3"
-	exit /b 0
+	py -3 -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>&1
+	if not errorlevel 1 (
+		set "PYTHON_COMMAND=py -3"
+		exit /b 0
+	)
 )
 where python.exe >nul 2>&1
 if not errorlevel 1 (
-	set "PYTHON_COMMAND=python"
-	exit /b 0
+	python -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>&1
+	if not errorlevel 1 (
+		set "PYTHON_COMMAND=python"
+		exit /b 0
+	)
 )
-echo ERROR: Python 3 is required to apply the pinned shared library patches. 1>&2
-exit /b 1
+echo ^>^> downloading portable Python 3.12.10 ^(one time^)...
+call :download_tool python "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip" "!TOOLS!\python" python.exe
+if errorlevel 1 exit /b 1
+rem Embeddable Python uses an explicit import search path, including our
+rem repository and unittest modules. No global Python installation is needed.
+>"!TOOLS!\python\python312._pth" (
+	echo python312.zip
+	echo .
+	echo ../..
+	echo ../../tools
+	echo ../../tools/tests
+	echo import site
+)
+set PYTHON_COMMAND="!TOOLS!\python\python.exe"
+exit /b 0
 
 :run_python_script
 call !PYTHON_COMMAND! "!ROOT!\%~1"
@@ -475,10 +587,12 @@ call :usage 1>&2
 exit /b 2
 
 :usage
-echo Usage: run.bat [debug^|release^|build^|rebuild^|nobuild^|server^|build32^|rebuild32]
+echo Usage: run.bat [test^|package^|setup^|debug^|release^|build^|rebuild^|nobuild^|server^|build32^|rebuild32]
 echo.
+echo In PowerShell: .\run.bat test builds Windows x64 and runs all tests.
+echo .\run.bat package also creates the v0.0.9 ZIP and SHA256SUMS.txt in dist.
 echo Default builds and launches a 64-bit release Windows executable.
 echo Native Windows requires Haxe 4.3.x, the pinned haxelibs, and a Visual
-echo Studio C++ toolchain supported by hxcpp. Portable Haxe and Neko are
-echo downloaded into .tools; no Wine cross-compiler is used.
+echo Studio C++ toolchain or the automatic portable LLVM-MinGW fallback.
+echo Haxe, Neko, Python and the fallback compiler are downloaded into .tools.
 exit /b 0

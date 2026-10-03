@@ -1,6 +1,7 @@
 """Keep native smoke diagnostics around global Psych sprite setup bounded."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

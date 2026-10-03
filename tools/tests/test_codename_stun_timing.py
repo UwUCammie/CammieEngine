@@ -1,5 +1,7 @@
 """Source stun uses actor elapsed time and resets when reassigned, without timers."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -51,6 +53,6 @@ class Main {
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp', prefix='stun-') as folder:
-            (Path(folder) / 'Main.hx').write_text(main)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'Main', '--interp'], cwd=ROOT, capture_output=True, text=True)
+            (Path(folder) / 'Main.hx').write_text(main, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'Main', '--interp'], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

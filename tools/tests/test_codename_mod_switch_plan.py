@@ -1,6 +1,8 @@
 """Owner switch rows collapse launchable states to one validated package row."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -18,16 +20,16 @@ class CodenameModSwitchPlanTest(unittest.TestCase):
             states = owner / "data/states"
             states.mkdir(parents=True)
             (global_only / "data").mkdir(parents=True)
-            (global_only / "data/global.hx").write_text("function update(elapsed) {}")
+            (global_only / "data/global.hx").write_text("function update(elapsed) {}", newline='\n')
             for name in ("Menu", "Freeplay"):
-                (states / f"{name}.hx").write_text("function create() {}")
+                (states / f"{name}.hx").write_text("function create() {}", newline='\n')
             (base / "catalog.json").write_text('''
 {"version":1,"entries":[
  {"root":"assets/imported_mods/missing-owner","label":"Missing","states":["data/states/Gone.hx"]},
  {"root":"assets/imported_mods/alpha-owner","label":"Alpha","states":["data/states/Menu.hx","data/states/Freeplay.hx"]},
  {"root":"assets/imported_mods/global-only-owner","label":"Global only","states":[]}
 ]}
-''')
+''', newline='\n')
             (base / "Main.hx").write_text('''
 class Main {
  static function main():Void {
@@ -45,9 +47,9 @@ class Main {
   if (!disabled.entries[0].active || disabled.entries[1].active) throw "disable mark";
   if (active.diagnostics.length!=0) throw "stale owner emitted a diagnostic";
  }
-}''')
+}''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
                  "assets/imported_mods/alpha-owner"],
                 cwd=base, text=True, capture_output=True,
             )

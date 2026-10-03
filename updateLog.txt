@@ -1,12 +1,59 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-0.0.1 alpha — CammieEngine
+0.0.9 alpha — CammieEngine
+	- Add one Windows 11 command, .\run.bat test, to build Windows x64 and run the full regression suite
+	- Bootstrap portable Windows tools and a verified LLVM-MinGW compiler when Visual Studio is unavailable; preserve copied toolchains
+	- Add .\run.bat package to build, test and create the v0.0.9 alpha ZIP and checksum after successful validation
+	- Copy bundled Windows audio incrementally and reject release packages with missing song audio
+	- Keep imported package identities and default results animations working with native Windows path spellings
+	- Retain new imports' source packages without native executables/libraries and automatically rebuild outdated imports after importer revisions change
+	- Stage import conversion privately, merge only each import's shared registry contribution, and back up owned outputs before publication
+	- Preserve local edits and prior imports on failed/cancelled conversions, incomplete scans or damaged source caches; show menu refresh progress
+	- Preserve Unicode registry labels and keys through the shared tolerant JSON parser, including emoji and escaped surrogate pairs
+	- Normalize Windows snapshot path comparisons and resolve/enumerate long filesystem paths without fixed-buffer truncation or null directory results
+	- Keep Nightmare Vision note retirement timing synchronized with live song-speed changes
+	- Nightmare Vision character and stage actor timed animation requests now use source animation-gate and timer behavior.
+	- Imported Nightmare Vision character preloads retain the source character cache, fixing actors disappearing after cached transitions.
+	- Nightmare Vision chart character events now reuse the same cached actor groups as source scripts.
+	- Nightmare Vision frame callbacks use the source default 60 Hz cadence independently of rendering FPS, with latched keyboard input.
+	- Preserve imported cached character groups inside stage boundaries when actors change, keeping song overlays above the stage
+	- Reuse shared GLSL scalar normalization for Nightmare Vision shaders and expose source animation pause/resume helpers
+	- Shared Nightmare Vision HUD sorting now reaches the actual draw list, preserving zIndex ordering between text, shadows and overlays.
+	- Nightmare Vision popup presentation now adapts accepted host-only wayoff/miss judgements to the shared Psych source rating set; authored custom rating objects and image names remain intact.
+	- Imported character metadata and mapped animations now use the selected chart storage identity, preventing same-named songs in different imports from sharing orientation or animation data.
+	- Keep Chart Editor Browse usable when registered characters lack icon files, with independent thumbnail loads and safe picker teardown
+	- Keep ordinary Freeplay unfiltered after returning from imported gameplay, while preserving explicitly opened package menus
+	- Include imported source subtitles in Freeplay search
+	- Support legacy Nightmare Vision shared rating/digit prefixes alongside newer cores with separate combo paths
+	- Apply Nightmare Vision's registered note modifiers and easing to live notes and receptors, including source sustain stretch and clipping
+	- Preserve Nightmare Vision note-type setup, spawn, hit and miss callback order, source sustain segmentation and per-object RGB state
+	- Reuse shared Psych character caches and RGB mapping while retaining Nightmare Vision's distinct popup lifecycle
+	- Reuse Psych player-slot orientation for Nightmare Vision characters and cached swaps
+	- Refresh character HUD icons and health colors on swaps without resetting unchanged icons, preserving source Nightmare Vision icon defaults
+	- Diagnose missing RGB shader bindings before assigning draw defaults
+	- Expose owner-scoped Nightmare Vision note-type script calls to stage, event and dynamic modules
+	- Accept UTF-8 BOM text assets without changing imported donor files or binary data
+	- Parse HXC class bodies from lexical declaration spans, preserving nested comments and excluding quoted declarations from executable ownership
+	- Recognize character-owned note handlers in shared and direct stage/character script layouts
+	- Keep V-Slice mixed-file character discovery and generated callbacks on the same declared owner, including Windows path separators
+	- V-Slice import diagnostics now recognize active character note handlers declared in stage/script folders, while preserving authored custom note identity.
+	- Preserve V-Slice costume death animations and authored death quotes through the shared character/game-over adapters, including quote cancellation and music fades
+	- Match V-Slice stage scripts by declared IDs across loading and import asset planning, preserving character script fields and opponent vocal-group callbacks
+	- Discover V-Slice character scripts by declared type and constructor identity across source folders, retaining costume animations during singing and authored effect layers
+	- Use shared stage attachment for Nightmare Vision props once, preserving their authored screen overlay cameras and update cadence
+	- Restore Nightmare Vision camera addShader/removeShader callbacks with source filter ordering and script lifetime cleanup
+	- Keep Nightmare Vision event-triggered character animations playing through their final frame even when notes share the event time
+	- Render Nightmare Vision notes, sustains, receptors, and hit splashes from each imported playfield's selected source note skin
+	- Apply Modding Plus lift-note row conversion only to Modding Plus or unlabelled legacy charts, preserving other engines' note lanes
+	- Load Nightmare Vision character definitions, animation atlases and stage sprites from each selected import, including source Bopper and animateAtlas APIs
+	- Dispatch Nightmare Vision event scripts through their matching owner-scoped event group
+	- Bind Nightmare Vision's Discord presence and owner-scoped Chart APIs so source scripts keep their argument order and chart normalization
 	- Package case-only duplicate audio paths once for Windows, and reject conflicting files before publishing an update
 	- Show persistent download progress in Settings, Main Menu, and Freeplay while the Windows updater prepares an install
 	- Discover newly imported chart difficulties before Freeplay selects them, including in the same session as import
 	- Exercise import-to-All-Freeplay selection without restarting in the offscreen smoke harness
-	- Show the full alpha release suffix in the menu and use the installed release tag for future version labels
+	- Show the full installed release version in the menu and use the installed release tag for future version labels
 	- Bundle a self-updating Windows installer helper that runs under Wine without PowerShell
 	- Use Windows HTTPS certificate validation for both update checks and downloads so Wine can install releases
 	- Guard optional importer source-directory listings when Windows returns null; verify the HL17 scan under Wine
@@ -18,7 +65,7 @@ Earlier Disappointing Plus development history is retained below.
 	- Add owner-scoped Nightmare Vision mod/difficulty context, live timing/window helpers and source-defined missing-sound fallback diagnostics
 	- Refresh release credits, notices and player guide; unify visible CammieEngine branding and application-version reporting
 	- Prepare the first CammieEngine alpha with concise setup and compatibility documentation
-	- Show CammieEngine v0.0.1 on the main menu
+	- Show CammieEngine's current version on the main menu
 	- Add an opt-in Windows updater that verifies release downloads and preserves settings and imported content
 	- Hide character-picker entries without their own installed visual in clean release builds, and refresh the picker after imports
 	- Fix Windows build bootstrap parsing and the Flixel fallback patch script

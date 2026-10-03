@@ -1,5 +1,7 @@
 """Default results use declared animation families and a deterministic BF fallback."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -17,13 +19,13 @@ class ResultsCharacterCompatTest(unittest.TestCase):
                 atlas = owner / 'images' / ('results-' + family)
                 atlas.mkdir(parents=True)
                 (atlas / 'idle.png').write_bytes(b'fixture')
-                (atlas / 'idle.xml').write_text('<TextureAtlas/>')
+                (atlas / 'idle.xml').write_text('<TextureAtlas/>', newline='\n')
             (owner / 'images/extra.png').write_bytes(b'fixture')
             (owner / 'pack.json').write_text(json.dumps({'resultsCharacterFamilies': {
                 'nene': {'characterIds': ['nene', 'custom-player'], 'requiredAssets': ['images/extra.png']},
                 'missing': {'characterIds': ['bad-assets'], 'requiredAssets': ['images/missing.png']},
                 'escape': {'characterIds': ['escape'], 'requiredAssets': ['../outside.png']},
-            }}))
+            }}), newline='\n')
             (work / 'Main.hx').write_text(r'''
 class Main {
  static function check(actual:String, expected:String) {
@@ -44,8 +46,8 @@ class Main {
   check(new ResultsCharacterCompat(owner).resolve('pico'),'bf');
  }
 }
-''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(work), '--run', 'Main', str(owner)],
                                     cwd=ROOT, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

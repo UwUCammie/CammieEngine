@@ -1,4 +1,5 @@
 """Tests for conservative, in-memory recovery of legacy chart JSON."""
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,10 +27,10 @@ def run_fixture(body: str) -> subprocess.CompletedProcess:
     fixture = "class ImportJsonRepairTest {\n" + repair_method() + body + "\n}\n"
     with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
         path = Path(folder) / "ImportJsonRepairTest.hx"
-        path.write_text(fixture, encoding="utf-8")
+        path.write_text(fixture, encoding="utf-8", newline='\n')
         return subprocess.run(
             [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp",
                 folder,
                 "-main",

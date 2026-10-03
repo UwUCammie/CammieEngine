@@ -205,6 +205,9 @@ inst hscript 2.5.0
 inst hscript-iris 1.1.3
 inst hxvlc 2.3.1
 inst tjson
+python3 tools/patch_tjson_unicode.py
+python3 tools/patch_hxcpp_windows_full_path.py
+python3 tools/patch_hxcpp_windows_read_directory.py
 gitinst hscript-ex https://github.com/ianharrigan/hscript-ex
 gitinst discord_rpc https://github.com/Aidan63/linc_discord-rpc
 
@@ -226,6 +229,9 @@ python3 tools/patch_openfl_context3d_readback.py
 # any source #version directive ahead of that prefix so newer core syntax can
 # compile on desktop GL drivers.
 python3 tools/patch_openfl_shader_version.py
+
+# Child camera/filter caches share the GL context; restore parent blend state.
+python3 tools/patch_openfl_blend_restore.py
 
 # Keep imported Codename class modules isolated by owner. This tracked patch
 # extends only the selected hscript-ex implementation in .haxelib; the source
@@ -468,9 +474,19 @@ if [[ "$MODE" != "nobuild" ]]; then
     # output tree, then merge back only runtime-only files. Moving the tree
     # away made Lime recopy the entire media library on every rebuild.
     RUNTIME_ASSETS="$BUILD_DIR/linux/bin/assets"
+    # Import snapshots live beside assets at bin/import-cache. Preserve that
+    # standalone user data with a same-filesystem rename; never traverse or
+    # copy the cache as part of the build asset merge.
+    RUNTIME_IMPORT_CACHE="$BUILD_DIR/linux/bin/import-cache"
+    IMPORT_CACHE_HOLD="$BUILD_DIR/linux/.import-cache-preserve-$$"
+    IMPORT_CACHE_HELD=0
     ASSETS_BAK="$BUILD_DIR/linux/bin/.assets-preserve-$$"
     if [ -e "$ASSETS_BAK" ]; then
         echo "!! temporary runtime asset path already exists: $ASSETS_BAK" >&2
+        exit 1
+    fi
+    if [ -e "$IMPORT_CACHE_HOLD" ] || [ -L "$IMPORT_CACHE_HOLD" ]; then
+        echo "!! temporary import cache path already exists: $IMPORT_CACHE_HOLD" >&2
         exit 1
     fi
     RUNTIME_REGISTRIES="
@@ -539,6 +555,17 @@ if [[ "$MODE" != "nobuild" ]]; then
             OPTS_BAK=""
         fi
     }
+    restore_import_cache() {
+        if [ "$IMPORT_CACHE_HELD" != "1" ]; then
+            return
+        fi
+        if [ -e "$RUNTIME_IMPORT_CACHE" ] || [ -L "$RUNTIME_IMPORT_CACHE" ]; then
+            echo "!! build created a new import-cache path; original cache remains at $IMPORT_CACHE_HOLD" >&2
+            return 1
+        fi
+        mv -- "$IMPORT_CACHE_HOLD" "$RUNTIME_IMPORT_CACHE"
+        IMPORT_CACHE_HELD=0
+    }
     restore_runtime_assets() {
         if [ -z "$ASSETS_BAK" ] || [ ! -d "$ASSETS_BAK" ]; then
             return
@@ -558,8 +585,13 @@ if [[ "$MODE" != "nobuild" ]]; then
         restore_runtime_assets
         restore_registries
         restore_options
+        restore_import_cache
     }
     trap finish_build EXIT
+    if [ -e "$RUNTIME_IMPORT_CACHE" ] || [ -L "$RUNTIME_IMPORT_CACHE" ]; then
+        mv -- "$RUNTIME_IMPORT_CACHE" "$IMPORT_CACHE_HOLD"
+        IMPORT_CACHE_HELD=1
+    fi
     BUILD_INPUTS="$(python3 tools/launch_cache.py capture "$BUILD_DIR")"
     if [ -n "$CONNECT" ]; then
         # The persistent server can retain stale type state after Project.xml

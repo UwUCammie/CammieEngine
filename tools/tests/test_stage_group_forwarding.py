@@ -1,6 +1,8 @@
 """A detached StageHelper group must forward owned members to PlayState once."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -38,14 +40,14 @@ class StageGroupForwardingTest(unittest.TestCase):
                 "\tpublic function refresh()",
                 "\tpublic function clearStage(",
             )
-        ).replace("FlxSprite", "FakeSprite").replace("PlayState", "FakeState").replace("flixel.FlxCamera", "Dynamic")
+        ).replace("FlxSprite", "FakeSprite").replace("FlxBasic", "FakeSprite").replace("PlayState", "FakeState").replace("flixel.FlxCamera", "Dynamic")
         state_methods = "\n".join(
             extract_method(play, marker)
             for marker in (
                 "\tpublic function attachStageMember(",
                 "\tpublic function detachStageMember(",
             )
-        ).replace("FlxSprite", "FakeSprite")
+        ).replace("FlxSprite", "FakeSprite").replace("FlxBasic", "FakeSprite")
         fixture = """
 class FakeSprite {
   public var z:Int;
@@ -99,6 +101,9 @@ class FakeStage extends FakeGroup {
 class FakeState {
   public static var instance:FakeState;
   public var curStage:FakeStage;
+  public var nightmareVisionScripts:Dynamic = null;
+  function nightmareVisionStageGroups():Array<PsychSceneGroupOrdering.PsychSceneGroup<FakeSprite>> return [];
+  public function insert(index:Int, sprite:FakeSprite):FakeSprite {members.insert(index, sprite); return sprite;}
   public var members:Array<FakeSprite> = [];
   public var stageSprites:Array<FakeSprite> = [];
   public var camGame:Dynamic = 'game';
@@ -160,9 +165,10 @@ class FakeState {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "FakeState.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
+            Path(folder, "PsychSceneGroupOrdering.hx").write_text((ROOT / "source/PsychSceneGroupOrdering.hx").read_text(), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "FakeState", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
                 env={**os.environ, "TMPDIR": folder},

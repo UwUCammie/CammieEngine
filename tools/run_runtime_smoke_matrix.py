@@ -193,6 +193,29 @@ def _file_snapshot(path: Path) -> Optional[bytes]:
         return None
 
 
+def _selected_codename_owner(runtime_root: Path, case: SmokeCase) -> str:
+    """Resolve the chart's selected Codename owner for a return-to-Freeplay run."""
+    manifest_path = runtime_root / "assets" / "data" / case.folder.lower() / "compatScripts.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Codename return smoke requires a chart manifest: {manifest_path}: {error}") from error
+    selected = manifest.get("selectedRoot", "") if isinstance(manifest, dict) else ""
+    roots = manifest.get("roots", []) if isinstance(manifest, dict) else []
+    if not isinstance(selected, str) or not selected.strip():
+        selected = next((root.get("path", "") for root in roots
+                         if isinstance(root, dict) and isinstance(root.get("path"), str)), "")
+    selected = selected.strip().replace("\\", "/")
+    selected_entry = next((root for root in roots if isinstance(root, dict)
+                           and str(root.get("path", "")).replace("\\", "/").strip().lower()
+                           == selected.lower()), None)
+    engine = str(selected_entry.get("engine", "")) if selected_entry else ""
+    if (not selected.startswith("assets/imported_mods/")
+            or "codename" not in engine.lower()):
+        raise ValueError("selected chart owner is not a Codename Engine import")
+    return selected
+
+
 def _prepare_case_overlay(source_root: Path, overlay_root: Path, case: Optional[SmokeCase] = None,
                           next_case: Optional[SmokeCase] = None) -> Path:
     """Link read-only content, but own the data directory and default options."""
@@ -334,7 +357,9 @@ def runtime_diagnostics(output: str) -> list[str]:
             if not line.startswith("RUNTIME_SMOKE|") and (
                 any(prefix in line for prefix in failures)
                 or re.search(r"\b(?:hscript|lua(?: script)?|hxc(?: script)?) error\b|"
-                             r"EUnknownVariable\(|uncaught exception", line, re.IGNORECASE)
+                             r"EUnknownVariable\(|uncaught exception|\[(?:ERROR|FATAL)(?::[^]]*)?\]|"
+                             r"\[openfl\.display\.Shader\] ERROR|^\d+:\d+(?:\(\d+\))?: error:",
+                             line, re.IGNORECASE)
             or any("error" in tag or "unsupported" in tag
                    for tag in re.findall(r"\[([a-z][a-z0-9_-]+)\]", line)))]
 
@@ -431,11 +456,37 @@ def run_case(
     post_delay_seconds: float = 4.0,
     strict_diagnostics: bool = False,
     chart_editor: bool = False,
+    return_freeplay: bool = False,
+    owner_root: Optional[str] = None,
 ) -> dict:
     """Run one case against an isolated disposable copy of its runtime root."""
 
     binary = binary.resolve()
     source_root = (runtime_root or binary.parent).resolve()
+    return_owner = owner_root
+    if return_freeplay:
+        try:
+            if (next_case is not None or chart_editor or input_key is not None
+                    or followup_key is not None or repeat_key is not None):
+                raise ValueError("return-Freeplay smoke only supports post-song results confirmation input")
+            if post_key is not None and (post_key != "Return" or post_trigger != "song_end"):
+                raise ValueError("return-Freeplay confirmation is limited to Return after song_end")
+            if not return_owner:
+                return_owner = _selected_codename_owner(source_root, case)
+            return_owner = return_owner.strip().replace("\\", "/")
+            if not return_owner.startswith("assets/imported_mods/"):
+                raise ValueError("return-Freeplay owner must be below assets/imported_mods")
+        except ValueError as error:
+            return {
+                "id": case.id,
+                "family": case.family,
+                "folder": case.folder,
+                "chart": case.chart,
+                "difficulty": case.difficulty,
+                "runtime_root": str(source_root),
+                "status": "failed",
+                "reason": str(error),
+            }
     SMOKE_ROOT.mkdir(parents=True, exist_ok=True)
     directory = tempfile.TemporaryDirectory(prefix=f"case-{case.id}-", dir=SMOKE_ROOT)
     overlay_root = Path(directory.name)
@@ -472,7 +523,9 @@ def run_case(
             result = _run_case_in_overlay(
                 binary, case, duration_ms, overlay_root, source_root,
                 timeout_seconds=timeout_seconds, wine=wine,
-                extra_flags=extra_flags + (("--smoke-playstate-visits", "2",
+                extra_flags=extra_flags + (("--smoke-return-freeplay", "--smoke-owner-root", return_owner,
+                    "--smoke-botplay", "--smoke-song-rate", "50") if return_freeplay else ())
+                    + (("--smoke-playstate-visits", "2",
                     "--smoke-next-song", next_case.folder,
                     "--smoke-next-chart", next_case.chart,
                     "--smoke-next-difficulty", next_case.difficulty) if next_case is not None else ()),
@@ -490,6 +543,7 @@ def run_case(
                 post_delay_seconds=post_delay_seconds,
                 strict_diagnostics=strict_diagnostics,
                 chart_editor=chart_editor,
+                return_freeplay=return_freeplay,
             )
     finally:
         try:
@@ -543,6 +597,7 @@ def _run_case_in_overlay(
     post_delay_seconds: float = 4.0,
     strict_diagnostics: bool = False,
     chart_editor: bool = False,
+    return_freeplay: bool = False,
 ) -> dict:
     """Launch with the owned options file and private OpenFL save directory."""
 
@@ -597,7 +652,7 @@ def _run_case_in_overlay(
             "status": "failed",
             "reason": str(error),
         }
-    timeout = timeout_seconds if timeout_seconds is not None else case.timeout_seconds
+    timeout = timeout_seconds if timeout_seconds is not None else (180.0 if return_freeplay else case.timeout_seconds)
 
     result: dict = {
         "id": case.id,
@@ -665,7 +720,10 @@ def _run_case_in_overlay(
     required = ({"startup", "chart_editor_loaded", "chart_editor_edited",
                  "chart_editor_quicksave", "chart_editor_reloaded",
                  "chart_editor_runtime_collection", "chart_editor_sidecar_unchanged", "success"}
+                | {"chart_editor_browse", "chart_editor_browse_destroyed"}
                 if chart_editor else {"startup", "playstate_start", "playstate_ready", "success"})
+    if return_freeplay:
+        required |= {"song_end", "end_handoff", "freeplay_start", "freeplay_return"}
     reasons: list[str] = []
     if timed_out:
         reasons.append(f"timeout after {timeout:g}s")
@@ -693,6 +751,18 @@ def _run_case_in_overlay(
             if not any(marker.get("event") == event and marker.get("visit") == visit
                        for marker in markers):
                 reasons.append(f"missing cross-song marker: {event} visit {visit}")
+    if return_freeplay:
+        return_marker = next((marker for marker in markers
+                              if marker.get("event") == "freeplay_return"), None)
+        if return_marker is not None:
+            if return_marker.get("directOwnerRoot") != "":
+                reasons.append("returned Freeplay retained a direct imported owner filter")
+            if return_marker.get("activeOwnerRoot") != "":
+                reasons.append("returned Freeplay retained the active Codename owner")
+            if int(return_marker.get("baseRows", 0) or 0) <= 0:
+                reasons.append("returned Freeplay has no base-game rows")
+            if int(return_marker.get("importedRows", 0) or 0) <= 0:
+                reasons.append("returned Freeplay has no imported rows")
     if chart_editor and not any(
         marker.get("event") == "chart_editor_reloaded"
         and marker.get("storageFolder") == case.folder.lower()
@@ -828,6 +898,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help="fail on tagged script errors and unsupported APIs even after success")
     parser.add_argument("--case", action="append", help="run only this case id (repeatable)")
     parser.add_argument("--next-case", help="switch to this case on the second PlayState visit")
+    parser.add_argument("--return-freeplay", action="store_true",
+                        help="after an imported Codename chart ends, optionally confirm results and require unscoped base-plus-imported Freeplay")
+    parser.add_argument("--owner-root",
+                        help="selected assets/imported_mods root; defaults to the case chart's Codename manifest")
+    parser.add_argument("--post-key", choices=("e", "Return", "Escape", "space"),
+                        help="post-trigger key; return-Freeplay accepts Return only to confirm results after song_end")
+    parser.add_argument("--post-trigger", default="song_end",
+                        help="marker that triggers --post-key (default: song_end)")
+    parser.add_argument("--post-delay-seconds", type=float, default=4.0,
+                        help="delay after the post-trigger before sending --post-key")
     parser.add_argument("--list", action="store_true", help="print the matrix and exit")
     args = parser.parse_args(argv)
     selected = _case_selection(args.case)
@@ -841,6 +921,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         if len(selected) != 1:
             parser.error("--next-case requires exactly one --case")
         next_case = _case_selection([args.next_case])[0]
+    if args.return_freeplay:
+        if len(selected) != 1:
+            parser.error("--return-freeplay requires exactly one --case")
+        if next_case is not None:
+            parser.error("--return-freeplay cannot be combined with --next-case")
+    if args.post_key is not None:
+        if not args.return_freeplay:
+            parser.error("--post-key is only supported with --return-freeplay")
+        if args.post_key != "Return" or args.post_trigger != "song_end":
+            parser.error("--return-freeplay post input is limited to Return after song_end")
+        if not 0 <= args.post_delay_seconds <= 30:
+            parser.error("--post-delay-seconds must be between 0 and 30")
 
     if sum(
         value is not None
@@ -876,7 +968,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         result = run_case(
             args.binary.resolve(),
             case,
-            args.duration_ms,
+            max(args.duration_ms, 30000) if args.return_freeplay else args.duration_ms,
             timeout_seconds=args.timeout_seconds,
             wine=args.wine,
             runtime_root=(
@@ -886,6 +978,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             ),
             next_case=next_case,
             strict_diagnostics=args.strict_diagnostics,
+            return_freeplay=args.return_freeplay,
+            owner_root=args.owner_root,
+            post_key=args.post_key,
+            post_trigger=args.post_trigger,
+            post_delay_seconds=args.post_delay_seconds,
         )
         results.append(result)
         print(json.dumps(result, sort_keys=True))

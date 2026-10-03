@@ -25,6 +25,8 @@ typedef NightmareVisionHUDAdapterConfig = {
 	@:optional var ratingPrefix:String;
 	/** Optional bridge into the native judgement image resolver. */
 	@:optional var applyRatingPrefix:String->Void;
+	/** Source popup objects, attached once by the PlayState owner. */
+	@:optional var ratingPresentation:Dynamic;
 	@:optional var songTitle:String;
 	@:optional var timeBarType:String;
 	@:optional var showTime:Bool;
@@ -37,6 +39,8 @@ typedef NightmareVisionHUDAdapterConfig = {
 	@:optional var addDisplay:Dynamic->Dynamic;
 	@:optional var removeDisplay:Dynamic->Bool->Dynamic;
 	@:optional var insertDisplay:Int->Dynamic->Dynamic;
+	/** Reuse PlayState's live-character icon selection and health-color refresh. */
+	@:optional var refreshCharacterPresentation:Void->Void;
 }
 
 /** A PsychHUD Bar-shaped view over two native HUD objects.
@@ -341,6 +345,15 @@ class NightmareVisionHUDAdapter {
 	public var scoreTxt:Dynamic;
 	public var timeTxt:Dynamic;
 	public var ratingPrefix(get, set):String;
+	public var ratingSuffix(get, set):String;
+	public var comboPrefix(get, set):String;
+	public var comboTween(get, set):Bool;
+	public var comboOffsets(get, set):Array<Int>;
+	public var ratingGraphic(get, never):Dynamic;
+	public var ratingNumGroup(get, never):Dynamic;
+	public var showRating(get, set):Bool;
+	public var showRatingNum(get, set):Bool;
+	public var showCombo(get, set):Bool;
 	/** Native HUD objects, already owned and displayed by PlayState. */
 	public var members(default, null):Array<Dynamic> = [];
 	public var curStep(get, never):Int;
@@ -359,9 +372,11 @@ class NightmareVisionHUDAdapter {
 	var addDisplay:Null<Dynamic->Dynamic>;
 	var removeDisplay:Null<Dynamic->Bool->Dynamic>;
 	var insertDisplay:Null<Int->Dynamic->Dynamic>;
+	var refreshCharacterPresentation:Null<Void->Void>;
 	var groupX:Float = 0;
 	var groupY:Float = 0;
 	var ratingPrefixValue:String = '';
+	var ratingPresentation:Dynamic;
 	var applyRatingPrefix:Null<String->Void>;
 	var alphaValue:Float = 1;
 	var visibleValue:Bool = true;
@@ -392,7 +407,9 @@ class NightmareVisionHUDAdapter {
 		addDisplay = config.addDisplay;
 		removeDisplay = config.removeDisplay;
 		insertDisplay = config.insertDisplay;
+		refreshCharacterPresentation = config.refreshCharacterPresentation;
 		applyRatingPrefix = config.applyRatingPrefix;
+		ratingPresentation = config.ratingPresentation;
 
 		var healthValue = config.healthValue == null
 			? function():Float return number(parent, 'health')
@@ -409,6 +426,10 @@ class NightmareVisionHUDAdapter {
 
 		members = [config.healthBackground, config.healthFill, iconP1, iconP2,
 			scoreTxt, config.songBackground, config.songFill, timeTxt];
+		if (ratingPresentation != null) {
+			members.push(ratingGraphic);
+			members.push(ratingNumGroup);
+		}
 		timeBar.visible = showTime;
 		Reflect.setProperty(timeTxt, 'visible', showTime);
 		if (timeBarType == 'Song Name' && config.songTitle != null)
@@ -478,11 +499,39 @@ class NightmareVisionHUDAdapter {
 	}
 
 	/** Keep the source variable live and report when the native popup path cannot use it. */
-	function get_ratingPrefix():String return ratingPrefixValue;
+	function get_ratingPrefix():String return ratingPresentation == null ? ratingPrefixValue
+		: Reflect.getProperty(ratingPresentation, 'ratingPrefix');
+	function get_ratingSuffix():String return popupField('ratingSuffix');
+	function set_ratingSuffix(value:String):String return popupSet('ratingSuffix', value);
+	function get_comboPrefix():String return popupField('comboPrefix');
+	function set_comboPrefix(value:String):String return popupSet('comboPrefix', value);
+	function get_comboTween():Bool return popupField('comboTween');
+	function set_comboTween(value:Bool):Bool return popupSet('comboTween', value);
+	function get_comboOffsets():Array<Int> return popupField('comboOffsets');
+	function set_comboOffsets(value:Array<Int>):Array<Int> return popupSet('comboOffsets', value);
+	function get_ratingGraphic():Dynamic return popupField('ratingGraphic');
+	function get_ratingNumGroup():Dynamic return popupField('ratingNumGroup');
+	function get_showRating():Bool return popupField('showRating');
+	function set_showRating(value:Bool):Bool return popupSet('showRating', value);
+	function get_showRatingNum():Bool return popupField('showRatingNum');
+	function set_showRatingNum(value:Bool):Bool return popupSet('showRatingNum', value);
+	function get_showCombo():Bool return popupField('showCombo');
+	function set_showCombo(value:Bool):Bool return popupSet('showCombo', value);
+	function popupField(field:String):Dynamic {
+		ensureAlive();
+		if (ratingPresentation == null) return unsupported('PsychHUD.' + field + ' requires its rating presentation');
+		return Reflect.getProperty(ratingPresentation, field);
+	}
+	function popupSet(field:String, value:Dynamic):Dynamic {
+		popupField(field);
+		Reflect.setProperty(ratingPresentation, field, value);
+		return value;
+	}
 	function set_ratingPrefix(value:String):String {
 		ensureAlive();
 		ratingPrefixValue = value == null ? '' : value;
-		if (applyRatingPrefix != null) applyRatingPrefix(ratingPrefixValue);
+		if (ratingPresentation != null) Reflect.setProperty(ratingPresentation, 'ratingPrefix', ratingPrefixValue);
+		else if (applyRatingPrefix != null) applyRatingPrefix(ratingPrefixValue);
 		else if (reportUnsupported != null)
 			reportUnsupported('[nightmare-vision-hud-unsupported] ratingPrefix is stored, but the native rating popup renderer is not connected');
 		return ratingPrefixValue;
@@ -492,6 +541,8 @@ class NightmareVisionHUDAdapter {
 	public function add(object:Dynamic):Dynamic {
 		ensureAlive();
 		if (addDisplay == null) unsupported('playHUD.add requires a PlayState display-owner callback');
+		if (object == null) return null;
+		if (members.indexOf(object) >= 0) return object;
 		var result = addDisplay(object);
 		if (members.indexOf(object) < 0) members.push(object);
 		return result;
@@ -500,6 +551,17 @@ class NightmareVisionHUDAdapter {
 	public function remove(object:Dynamic, splice:Bool = false):Dynamic {
 		ensureAlive();
 		if (removeDisplay == null) unsupported('playHUD.remove requires a PlayState display-owner callback');
+		if (object == null) return null;
+		// A source Bar is a display group. Our Bar view forwards to two native
+		// pieces, and must never be cast into a FlxBasic container member.
+		if (Std.isOfType(object, NightmareVisionHUDBarView)) {
+			var bar:NightmareVisionHUDBarView = cast object;
+			var found = members.indexOf(bar.bg) >= 0 || members.indexOf(bar.fill) >= 0;
+			remove(bar.bg, splice);
+			remove(bar.fill, splice);
+			return found ? object : null;
+		}
+		if (members.indexOf(object) < 0) return null;
 		var result = removeDisplay(object, splice);
 		members.remove(object);
 		return result;
@@ -513,18 +575,47 @@ class NightmareVisionHUDAdapter {
 		return result;
 	}
 
+	/** Source HUDs are groups, while this adapter borrows objects in the
+	 * state's draw list. Reorder those same slots so sorting reaches rendering
+	 * without moving unrelated stage objects or taking ownership of sprites. */
+	public function sort(compare:Int->Dynamic->Dynamic->Int, order:Int = -1):Void {
+		ensureAlive();
+		var display:Dynamic = Reflect.getProperty(parent, 'members');
+		if (!Std.isOfType(display, Array))
+			unsupported('playHUD.sort requires its live display-owner members');
+		var slots:Array<Int> = [];
+		var objects:Array<Dynamic> = [];
+		var live:Array<Dynamic> = cast display;
+		for (index in 0...live.length) {
+			var object = live[index];
+			if (object != null && members.indexOf(object) >= 0) {
+				slots.push(index);
+				objects.push(object);
+			}
+		}
+		objects.sort(function(a, b) return compare(order, a, b));
+		for (index in 0...slots.length) live[slots[index]] = objects[index];
+		members.sort(function(a, b) return compare(order, a, b));
+	}
+
 	/** Explicit diagnostic for BaseHUD methods not backed by native behavior. */
 	public function onUpdateScore(score:Int = 0, accuracy:Float = 0, misses:Int = 0, missed:Bool = false):Void
 		unsupported('PsychHUD.onUpdateScore has no source-equivalent score formatter in this host');
 
-	public function popUpScore(rating:Dynamic, combo:Int, note:Dynamic):Void
-		unsupported('PsychHUD.popUpScore requires its source-owned rating sprites and cache');
+	public function popUpScore(rating:Dynamic, combo:Int, note:Dynamic):Void {
+		if (ratingPresentation == null) unsupported('PsychHUD.popUpScore requires its source-owned rating sprites and cache');
+		call(ratingPresentation, 'popUpScore', [rating, combo, note]);
+	}
 
 	public function onEvent(eventName:String, v1:String, v2:String, strumTime:Float):Void
 		unsupported('PsychHUD.onEvent is not implemented by the shared HUD host');
 
-	public function onCharacterChange():Void
-		unsupported('PsychHUD.onCharacterChange needs a host character/color refresh callback');
+	public function onCharacterChange():Void {
+		ensureAlive();
+		if (refreshCharacterPresentation == null)
+			unsupported('PsychHUD.onCharacterChange needs a host character/color refresh callback');
+		refreshCharacterPresentation();
+	}
 
 	public function stepHit():Void
 		unsupported('BaseHUD.stepHit is not implemented by the shared HUD host');
@@ -532,8 +623,10 @@ class NightmareVisionHUDAdapter {
 	public function sectionHit():Void
 		unsupported('BaseHUD.sectionHit is not implemented by the shared HUD host');
 
-	public function cachePopUpScore():Void
-		unsupported('PsychHUD.cachePopUpScore requires its source-owned rating sprites and cache');
+	public function cachePopUpScore():Void {
+		if (ratingPresentation == null) unsupported('PsychHUD.cachePopUpScore requires its source-owned rating sprites and cache');
+		call(ratingPresentation, 'cachePopUpScore', []);
+	}
 
 	/** Release the bridge only; PlayState remains the sole owner of its sprites. */
 	public function release():Void {
@@ -541,6 +634,8 @@ class NightmareVisionHUDAdapter {
 		released = true;
 		if (healthBar != null) healthBar.release();
 		if (timeBar != null) timeBar.release();
+		if (ratingPresentation != null) call(ratingPresentation, 'release', []);
+		ratingPresentation = null;
 		healthBar = null;
 		timeBar = null;
 		iconP1 = null;
@@ -554,6 +649,7 @@ class NightmareVisionHUDAdapter {
 		addDisplay = null;
 		removeDisplay = null;
 		insertDisplay = null;
+		refreshCharacterPresentation = null;
 		applyRatingPrefix = null;
 	}
 
@@ -569,7 +665,7 @@ class NightmareVisionHUDAdapter {
 	function set_alpha(value:Float):Float {
 		ensureAlive();
 		alphaValue = Math.max(0, Math.min(value, 1));
-		for (object in members) if (object != null)
+		for (object in members) if (object != null && Reflect.getProperty(object, 'alpha') != null)
 			Reflect.setProperty(object, 'alpha', alphaValue);
 		return alphaValue;
 	}

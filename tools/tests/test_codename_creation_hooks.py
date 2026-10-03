@@ -1,5 +1,7 @@
 """Exercise Codename note/receptor creation mutations and frame ownership."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -18,9 +20,20 @@ def method(source: str, name: str) -> str:
     depth = 0
     quote = None
     escaped = False
-    for index in range(brace, len(source)):
+    line_comment = False
+    block_comment = False
+    index = brace
+    while index < len(source):
         char = source[index]
-        if quote is not None:
+        following = source[index + 1] if index + 1 < len(source) else ""
+        if line_comment:
+            if char == "\n":
+                line_comment = False
+        elif block_comment:
+            if char == "*" and following == "/":
+                block_comment = False
+                index += 1
+        elif quote is not None:
             if escaped:
                 escaped = False
             elif char == "\\":
@@ -29,12 +42,19 @@ def method(source: str, name: str) -> str:
                 quote = None
         elif char in "'\"":
             quote = char
+        elif char == "/" and following == "/":
+            line_comment = True
+            index += 1
+        elif char == "/" and following == "*":
+            block_comment = True
+            index += 1
         elif char == "{":
             depth += 1
         elif char == "}":
             depth -= 1
             if depth == 0:
                 return source[start:index + 1]
+        index += 1
     raise AssertionError(f"unclosed method {name}")
 
 
@@ -137,6 +157,9 @@ class FakeAnimation {
             "Note.hx": r'''import flixel.math.FlxPoint;
 class Note extends flixel.FlxSprite {
  public var codenameFrameOffset:FlxPoint=null;public var codenameFrameOffsetOwned:Bool=false;
+ public var nightmareVisionTypeRuntime:Dynamic=null;public var nightmareVisionRenderer:Dynamic=null;
+ public var nightmareVisionTailState:Dynamic=null;public var nightmareVisionRGB:Dynamic=null;
+ public var nightmareVisionBaseScalePoint:FlxPoint=null;
  public var frameOffset(get,set):FlxPoint;
 ''',
             "CodenameGameEvent.hx": (ROOT / "source/CodenameGameEvent.hx").read_text(),
@@ -241,10 +264,10 @@ class Main {
             for name, body in stubs.items():
                 file = temp / name
                 file.parent.mkdir(parents=True, exist_ok=True)
-                file.write_text(body)
-            (temp / "CodenameCreationVisual.hx").write_text(helper)
-            (temp / "CodenameNoteCreationEvent.hx").write_text(event)
-            result = subprocess.run([str(HAXE), "-cp", str(temp), "-main", "Main", "--interp"],
+                file.write_text(body, newline='\n')
+            (temp / "CodenameCreationVisual.hx").write_text(helper, newline='\n')
+            (temp / "CodenameNoteCreationEvent.hx").write_text(event, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(temp), "-main", "Main", "--interp"],
                                     cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("creation hooks ok", result.stdout)

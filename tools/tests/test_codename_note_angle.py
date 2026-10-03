@@ -1,10 +1,12 @@
 """Focused Codename strum and note travel-angle compatibility coverage."""
+from haxe_test_support import HAXE_COMMAND
 
 import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -131,9 +133,9 @@ class Main {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main_file = Path(folder) / "Main.hx"
-            main_file.write_text(main)
+            main_file.write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

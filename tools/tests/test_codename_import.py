@@ -5,13 +5,17 @@ meta.json/charts converter, the XML character/stage converters, discovery into
 the native SongImport payload, and the real bully-mod donor (skipped gracefully
 when the mounted donor is absent).
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import shutil
 import subprocess
 import tempfile
 import unittest
+import os
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,12 +53,12 @@ class CodenameImportTest(unittest.TestCase):
             for name, content in (files or {}).items():
                 target = temp_path / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content)
-            (temp_path / "Main.hx").write_text(main_source)
+                target.write_text(content, newline='\n')
+            (temp_path / "Main.hx").write_text(main_source, newline='\n')
             # The fixture class path comes last so fixture stubs shadow the real
             # repo modules (including its flixel Main.hx).  --run interprets the
             # module and forwards the remaining arguments to Sys.args().
-            command = [str(HAXE), "-cp", str(ROOT / "source")]
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source")]
             for cp in extra_cps or []:
                 command += ["-cp", str(cp)]
             command += ["-cp", str(temp_path), "--run", "Main"] + [str(a) for a in (args or [])]
@@ -69,8 +73,8 @@ class CodenameImportTest(unittest.TestCase):
             root = Path(work)
             atlas = root / "images/characters/team/Hero"
             atlas.parent.mkdir(parents=True)
-            atlas.with_suffix(".png").write_text("png")
-            atlas.with_suffix(".xml").write_text("<TextureAtlas/>")
+            atlas.with_suffix(".png").write_text("png", newline='\n')
+            atlas.with_suffix(".xml").write_text("<TextureAtlas/>", newline='\n')
             main = f'''class Main {{
  static function main():Void {{
   var converted=CodenameImporter.parseCharacterXml(
@@ -96,16 +100,16 @@ class CodenameImportTest(unittest.TestCase):
                            root / "images/icons/mod-id", root / "images/icons/gf",
                            package / "assets/images/icons/base-id"):
                 folder.mkdir(parents=True, exist_ok=True)
-            (animate / "Animation.json").write_text('{"AN":{"SD":["spritemap1"]}}')
-            (animate / "spritemap1.json").write_text('{"ATFD":[]}')
+            (animate / "Animation.json").write_text('{"AN":{"SD":["spritemap1"]}}', newline='\n')
+            (animate / "spritemap1.json").write_text('{"ATFD":[]}', newline='\n')
             (animate / "spritemap1.png").write_bytes(b"animate page")
             for page in (1, 2):
                 (pages / f"{page}.png").write_bytes(f"page {page}".encode())
-                (pages / f"{page}.xml").write_text("<TextureAtlas/>")
+                (pages / f"{page}.xml").write_text("<TextureAtlas/>", newline='\n')
             (unique / "lilasheet.png").write_bytes(b"unique")
-            (unique / "lilasheet.xml").write_text("<TextureAtlas/>")
+            (unique / "lilasheet.xml").write_text("<TextureAtlas/>", newline='\n')
             (case_variant / "Grunt_GF.png").write_bytes(b"case")
-            (case_variant / "Grunt_GF.xml").write_text("<TextureAtlas/>")
+            (case_variant / "Grunt_GF.xml").write_text("<TextureAtlas/>", newline='\n')
             (root / "images/icons/mod-id/icon.png").write_bytes(b"mod icon")
             (root / "images/icons/gf/icon.png").write_bytes(b"nested gf icon")
             (package / "assets/images/icons/base-id/icon.png").write_bytes(b"base icon")
@@ -337,8 +341,8 @@ class Main {
         }
 
         def fixture_dir(folder: Path):
-            (folder / "meta.json").write_text(json.dumps(meta))
-            (folder / "hard.json").write_text(json.dumps(chart))
+            (folder / "meta.json").write_text(json.dumps(meta), newline='\n')
+            (folder / "hard.json").write_text(json.dumps(chart), newline='\n')
 
         with tempfile.TemporaryDirectory() as folder:
             fixture = Path(folder)
@@ -409,7 +413,7 @@ class Main {{
         }
         with tempfile.TemporaryDirectory() as folder:
             fixture = Path(folder)
-            (fixture / "events.json").write_text(json.dumps(sidecar))
+            (fixture / "events.json").write_text(json.dumps(sidecar), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -550,8 +554,8 @@ class Main {
         }
         with tempfile.TemporaryDirectory() as folder:
             fixture = Path(folder)
-            (fixture / "meta.json").write_text(json.dumps(meta))
-            (fixture / "normal.json").write_text(json.dumps(chart))
+            (fixture / "meta.json").write_text(json.dumps(meta), newline='\n')
+            (fixture / "normal.json").write_text(json.dumps(chart), newline='\n')
             main = f'''import haxe.Json;
 class Main {{
   static function fail(value:String):Void throw value;
@@ -850,12 +854,12 @@ class Main {
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/stages").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
-            (fixture / "images/characters/jimmy.png").write_text("png")
-            (fixture / "images/characters/jimmy.xml").write_text("<xml/>")
-            (fixture / "images/stages/dorm.png").write_text("png")
-            (fixture / "images/icons/icon-bald-fuck.png").write_text("png")
-            (fixture / "char.xml").write_text(character_xml)
-            (fixture / "stage.xml").write_text(stage_xml)
+            (fixture / "images/characters/jimmy.png").write_text("png", newline='\n')
+            (fixture / "images/characters/jimmy.xml").write_text("<xml/>", newline='\n')
+            (fixture / "images/stages/dorm.png").write_text("png", newline='\n')
+            (fixture / "images/icons/icon-bald-fuck.png").write_text("png", newline='\n')
+            (fixture / "char.xml").write_text(character_xml, newline='\n')
+            (fixture / "stage.xml").write_text(stage_xml, newline='\n')
             main = f'''import haxe.Json;
 import sys.FileSystem;
 import sys.io.File;
@@ -934,6 +938,8 @@ class Main {{
     # VSliceImporter/ImportRootScanner sources type-check without flixel.
     SCANNER_STUBS = {
         "ImportDirectoryListing.hx": (ROOT / "source/ImportDirectoryListing.hx").read_text(),
+        "HxcScriptIdentity.hx": (ROOT / "source/HxcScriptIdentity.hx").read_text(),
+        "HxcScriptDiscovery.hx": (ROOT / "source/HxcScriptDiscovery.hx").read_text(),
         "CoolUtil.hx": '''class CoolUtil {
   public static function parseJson(raw:String):Dynamic return haxe.Json.parse(raw);
   public static function stringifyJson(value:Dynamic):String return haxe.Json.stringify(value);
@@ -1011,14 +1017,14 @@ class HxcCompat {
         (root / "data/stages").mkdir(parents=True)
         (root / "data/config").mkdir(parents=True)
         (root / "songs/hopkins/meta.json").write_text(json.dumps(
-            {"difficulties": ["hard"], "bpm": 98, "stepsPerBeat": 4, "displayName": "Hopkins"}))
+            {"difficulties": ["hard"], "bpm": 98, "stepsPerBeat": 4, "displayName": "Hopkins"}), newline='\n')
         (root / "songs/hopkins/charts/hard.json").write_text(json.dumps(
-            {"codenameChart": True, "scrollSpeed": 2.8, "stage": "dorm", "strumLines": []}))
+            {"codenameChart": True, "scrollSpeed": 2.8, "stage": "dorm", "strumLines": []}), newline='\n')
         (root / "data/characters/jimmy-hopkins.xml").write_text(
-            '<!DOCTYPE codename-engine-character>\n<character icon="bald-fuck"/>\n')
+            '<!DOCTYPE codename-engine-character>\n<character icon="bald-fuck"/>\n', newline='\n')
         (root / "data/stages/dorm.xml").write_text(
-            '<!DOCTYPE codename-engine-stage>\n<stage name="dorm"/>\n')
-        (root / "data/config/modpack.ini").write_text("[mod]\n")
+            '<!DOCTYPE codename-engine-stage>\n<stage name="dorm"/>\n', newline='\n')
+        (root / "data/config/modpack.ini").write_text("[mod]\n", newline='\n')
         return root
 
     def make_compiled_release_root(self, parent: Path) -> Path:
@@ -1030,11 +1036,11 @@ class HxcCompat {
         (root / "assets/data").mkdir(parents=True)
         (root / "assets/songs").mkdir(parents=True)
         (root / "mods/HL17/songs/gordon/meta.json").write_text(json.dumps(
-            {"difficulties": ["BUCK"], "bpm": 172, "stepsPerBeat": 4, "displayName": "Gordon"}))
+            {"difficulties": ["BUCK"], "bpm": 172, "stepsPerBeat": 4, "displayName": "Gordon"}), newline='\n')
         (root / "mods/HL17/songs/gordon/charts/buck.json").write_text(json.dumps(
-            {"codenameChart": True, "scrollSpeed": 2, "stage": "stage", "strumLines": []}))
-        (root / "mods/HL17/data/config/modpack.ini").write_text("[mod]\n")
-        (root / "Engine.exe").write_text("MZ fake bytecode")
+            {"codenameChart": True, "scrollSpeed": 2, "stage": "stage", "strumLines": []}), newline='\n')
+        (root / "mods/HL17/data/config/modpack.ini").write_text("[mod]\n", newline='\n')
+        (root / "Engine.exe").write_text("MZ fake bytecode", newline='\n')
         return root
 
     def test_classification_source_mod_and_compiled_release(self):
@@ -1105,6 +1111,7 @@ class Main {
     # Discovery + importSong end-to-end on a synthetic donor
     # ------------------------------------------------------------------
 
+    @unittest.skipIf(os.name == 'nt', 'fixture includes filenames forbidden by Windows')
     def test_discovery_imports_native_song_audio_and_registries(self):
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
         engine = (ROOT / "source/ImportEngine.hx").read_text()
@@ -1572,29 +1579,30 @@ class Main {
 '''
         with tempfile.TemporaryDirectory() as folder:
             workdir = Path(folder)
+            install_import_io_dependencies(workdir)
             donor = self.make_codename_source_root(workdir / "donor")
             (donor / "data/characters/event-only.xml").write_text(
-                '<character><anim name="idle" anim="idle"/></character>')
+                '<character><anim name="idle" anim="idle"/></character>', newline='\n')
             (donor / "images/characters").mkdir(parents=True, exist_ok=True)
             (donor / "images/characters/event-only.png").write_bytes(b"event-only-atlas")
-            (donor / "images/characters/event-only.xml").write_text("<TextureAtlas/>")
+            (donor / "images/characters/event-only.xml").write_text("<TextureAtlas/>", newline='\n')
             (donor / "songs/hopkins/events.json").write_text(json.dumps({"events": [
                 {"time": 1000, "name": "Change Character",
                  "params": [True, 1, 0, "event-only", 0, 0]}
-            ]}))
-            (donor / "songs/hopkins/song/Inst.ogg").write_text("inst-bytes")
-            (donor / "songs/hopkins/song/Voices-Player.ogg").write_text("player-bytes")
-            (donor / "songs/hopkins/song/Voices-Opponent.ogg").write_text("opp-bytes")
+            ]}), newline='\n')
+            (donor / "songs/hopkins/song/Inst.ogg").write_text("inst-bytes", newline='\n')
+            (donor / "songs/hopkins/song/Voices-Player.ogg").write_text("player-bytes", newline='\n')
+            (donor / "songs/hopkins/song/Voices-Opponent.ogg").write_text("opp-bytes", newline='\n')
             (donor / "songs/hopkins/meta.json").write_text(json.dumps(
                 {"difficulties": ["hard", "hard-alt", "normal", "missing", "special"], "bpm": 98, "stepsPerBeat": 4,
                  "displayName": "Hopkins", "variants": ["pico"],
-                 "customValues": {"chapter": 7}}))
-            (donor / "flags.ini").write_text("chartDefaultBPM=101\n")
+                 "customValues": {"chapter": 7}}), newline='\n')
+            (donor / "flags.ini").write_text("chartDefaultBPM=101\n", newline='\n')
             (donor / "data/config").mkdir(parents=True, exist_ok=True)
             (donor / "data/config/modpack.ini").write_text(
-                "[Common]\nNAME=Fixture\n[Flags]\nDEFAULT_COLOR=0xFF112233\nDEFAULT_CHARACTER=owner-default\n")
+                "[Common]\nNAME=Fixture\n[Flags]\nDEFAULT_COLOR=0xFF112233\nDEFAULT_CHARACTER=owner-default\n", newline='\n')
             (donor / "songs/hopkins/meta-hard.json").write_text(json.dumps(
-                {"bpm": 123, "stepsPerBeat": 4, "customValues": {"chapter": 9}}))
+                {"bpm": 123, "stepsPerBeat": 4, "customValues": {"chapter": 9}}), newline='\n')
             (donor / "songs/hopkins/charts/hard.json").write_text(json.dumps(
                 {"chartVersion": "1.6.0", "codenameChart": True, "scrollSpeed": 2.8, "stage": "dorm",
                  "meta": {"bpm": 130, "displayName": "Inline Title", "icon": None},
@@ -1608,7 +1616,7 @@ class Main {
                       "notes": [{"id": 3, "time": 3061.22, "sLen": 204.08, "type": 0}]},
                      {"type": 3, "position": "extra", "keyCount": 4,
                       "characters": ["camera extra", "ghost", "ALICE"], "notes": []},
-                 ]}))
+                 ]}), newline='\n')
             (donor / "songs/hopkins/charts/hard-alt.json").write_text(json.dumps(
                 {"chartVersion": "1.6.0", "codenameChart": True, "scrollSpeed": 2.8,
                  "stage": "dorm", "noteTypes": [], "events": [],
@@ -1617,11 +1625,11 @@ class Main {
                       "characters": ["jimmy-hopkins"], "notes": []},
                      {"type": 1, "position": "dad", "keyCount": 4,
                       "characters": ["boyfriend"], "notes": []},
-                ]}))
+                ]}), newline='\n')
             (donor / "songs/hopkins/charts/events.json").write_text(json.dumps(
-                {"song": {"events": []}}))
+                {"song": {"events": []}}), newline='\n')
             (donor / "songs/hopkins/charts/metadata.json").write_text(json.dumps(
-                {"composer": "Fixture Composer"}))
+                {"composer": "Fixture Composer"}), newline='\n')
             (donor / "songs/hopkins/charts/normal.json").write_text(json.dumps(
                 {"chartVersion": "1.6.0", "codenameChart": True, "scrollSpeed": 2.8,
                  "stage": "Dorm", "noteTypes": [], "events": [],
@@ -1630,7 +1638,7 @@ class Main {
                       "characters": ["jimmy-hopkins", "normal-only"], "notes": []},
                      {"type": 1, "position": "boyfriend", "keyCount": 4,
                       "characters": ["alice"], "notes": []},
-                 ]}))
+                 ]}), newline='\n')
             (donor / "songs/hopkins/charts/missing.json").write_text(json.dumps(
                 {"chartVersion": "1.6.0", "codenameChart": True, "scrollSpeed": 2.8,
                  "stage": "missing-stage", "noteTypes": [], "events": [],
@@ -1639,77 +1647,77 @@ class Main {
                       "characters": ["jimmy-hopkins"], "notes": []},
                      {"type": 1, "position": "boyfriend", "keyCount": 4,
                       "characters": ["boyfriend"], "notes": []},
-                ]}))
+                ]}), newline='\n')
             (donor / "songs/hopkins/charts/special.json").write_text(json.dumps(
                 {"song": {"song": "Hopkins", "player1": "alice", "player2": "jimmy-hopkins",
                           "gfVersion": "alice", "stage": "Dorm", "bpm": 140, "speed": 2.3,
                           "events": [[0, [["Hey!", "", ""]]]],
                           "notes": [{"sectionBeats": 3, "mustHitSection": False,
                                      "changeBPM": True, "bpm": 150,
-                                     "sectionNotes": [[100, 4, 250, "Special Note", True]]}]}}))
+                                     "sectionNotes": [[100, 4, 250, "Special Note", True]]}]}}), newline='\n')
             (donor / "songs/hopkins/scripts").mkdir()
-            (donor / "songs/hopkins/scripts/script.hx").write_text("function create() {}\n")
+            (donor / "songs/hopkins/scripts/script.hx").write_text("function create() {}\n", newline='\n')
             (donor / "images/characters").mkdir(parents=True, exist_ok=True)
-            (donor / "images/characters/jimmy-hopkins.png").write_text("png")
+            (donor / "images/characters/jimmy-hopkins.png").write_text("png", newline='\n')
             (donor / "images/characters/jimmy-hopkins.xml").write_text(
-                '<TextureAtlas><SubTexture name="jimmy-hopkins idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
+                '<TextureAtlas><SubTexture name="jimmy-hopkins idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
             (donor / "data/characters/jimmy-hopkins.xml").write_text(
                 '<!DOCTYPE codename-engine-character>\n'
                 '<character x="-250" y="-260" icon="bald-fuck" color="#F89B62">\n'
-                '<anim name="idle" anim="jimmy-hopkins idle"/>\n</character>\n')
-            (donor / "images/characters/boyfriend.png").write_text("boyfriend png")
+                '<anim name="idle" anim="jimmy-hopkins idle"/>\n</character>\n', newline='\n')
+            (donor / "images/characters/boyfriend.png").write_text("boyfriend png", newline='\n')
             (donor / "images/characters/boyfriend.xml").write_text(
-                '<TextureAtlas><SubTexture name="boyfriend idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
+                '<TextureAtlas><SubTexture name="boyfriend idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
             (donor / "data/characters/boyfriend.xml").write_text(
-                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="boyfriend idle"/></character>\n')
-            (donor / "images/characters/owner-default.png").write_text("fallback png")
+                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="boyfriend idle"/></character>\n', newline='\n')
+            (donor / "images/characters/owner-default.png").write_text("fallback png", newline='\n')
             (donor / "images/characters/owner-default.xml").write_text(
-                '<TextureAtlas><SubTexture name="fallback idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
+                '<TextureAtlas><SubTexture name="fallback idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
             (donor / "data/characters/owner-default.xml").write_text(
-                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="fallback idle"/></character>\n')
+                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="fallback idle"/></character>\n', newline='\n')
             for id in ("standin", "Alice", "alice", "camera-extra", "normal-only"):
-                (donor / f"images/characters/{id}.png").write_text(f"owned:{id}")
+                (donor / f"images/characters/{id}.png").write_text(f"owned:{id}", newline='\n')
                 (donor / f"images/characters/{id}.xml").write_text(
-                    f'<TextureAtlas><SubTexture name="{id} idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
+                    f'<TextureAtlas><SubTexture name="{id} idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
                 definition_id = "camera extra" if id == "camera-extra" else id
                 sprite_attr = ' sprite="camera-extra"' if id == "camera-extra" else ""
                 (donor / f"data/characters/{definition_id}.xml").write_text(
-                    f'<!DOCTYPE codename-engine-character>\n<character{sprite_attr}><anim name="idle" anim="{id} idle"/></character>\n')
+                    f'<!DOCTYPE codename-engine-character>\n<character{sprite_attr}><anim name="idle" anim="{id} idle"/></character>\n', newline='\n')
             (donor / "data/stages/dorm.xml").write_text(
                 '<!DOCTYPE codename-engine-stage>\n<stage folder="stages/" name="dorm" zoom="1">\n'
                 '<sprite x="0" sprite="dorm" y="0" name="dorm"/>\n'
-                '<dad/>\n<girlfriend x="173" y="-30"/>\n<boyfriend x="900"/>\n</stage>\n')
+                '<dad/>\n<girlfriend x="173" y="-30"/>\n<boyfriend x="900"/>\n</stage>\n', newline='\n')
             (donor / "data/stages/dorm.hx").write_text(
-                "function postCreate() { overlay.updateHitbox(); FlxG.camera.zoom = 1.25; }\n")
+                "function postCreate() { overlay.updateHitbox(); FlxG.camera.zoom = 1.25; }\n", newline='\n')
             (donor / "data/stages/Dorm.xml").write_text(
                 '<!DOCTYPE codename-engine-stage>\n<stage folder="stages/" name="Dorm" zoom="1">\n'
                 '<sprite x="5" sprite="Dorm" y="7" name="prop"/>\n'
-                '<dad/>\n<boyfriend/>\n</stage>\n')
+                '<dad/>\n<boyfriend/>\n</stage>\n', newline='\n')
             (donor / "images/stages").mkdir(parents=True)
-            (donor / "images/stages/dorm.png").write_text("png")
-            (donor / "images/stages/Dorm.png").write_text("case-distinct png")
+            (donor / "images/stages/dorm.png").write_text("png", newline='\n')
+            (donor / "images/stages/Dorm.png").write_text("case-distinct png", newline='\n')
             # Two authored stage IDs can collapse through the converter's
             # safeStem. The whole candidate must be rejected before either
             # owned registry row could make the other difficulty borrow it.
             (donor / "songs/collision/charts").mkdir(parents=True)
             (donor / "songs/collision/song").mkdir()
-            (donor / "songs/collision/song/Inst.ogg").write_text("inst")
+            (donor / "songs/collision/song/Inst.ogg").write_text("inst", newline='\n')
             (donor / "songs/collision/meta.json").write_text(json.dumps(
-                {"difficulties": ["hard", "normal"], "bpm": 100, "stepsPerBeat": 4}))
+                {"difficulties": ["hard", "normal"], "bpm": 100, "stepsPerBeat": 4}), newline='\n')
             for diff, stage in (("hard", "a?"), ("normal", "a")):
                 (donor / f"songs/collision/charts/{diff}.json").write_text(json.dumps(
                     {"codenameChart": True, "scrollSpeed": 1, "stage": stage,
                      "strumLines": [{"type": 0, "position": "dad", "keyCount": 4,
                                      "characters": ["dad"], "notes": []},
                                     {"type": 1, "position": "boyfriend", "keyCount": 4,
-                                     "characters": ["bf"], "notes": []}]}))
+                                     "characters": ["bf"], "notes": []}]}), newline='\n')
                 (donor / f"data/stages/{stage}.xml").write_text(
-                    f'<!DOCTYPE codename-engine-stage>\n<stage name="{stage}"/>\n')
+                    f'<!DOCTYPE codename-engine-stage>\n<stage name="{stage}"/>\n', newline='\n')
             (donor / "songs/character-collision/charts").mkdir(parents=True)
             (donor / "songs/character-collision/song").mkdir()
-            (donor / "songs/character-collision/song/Inst.ogg").write_text("inst")
+            (donor / "songs/character-collision/song/Inst.ogg").write_text("inst", newline='\n')
             (donor / "songs/character-collision/meta.json").write_text(json.dumps(
-                {"difficulties": ["hard"], "bpm": 100, "stepsPerBeat": 4}))
+                {"difficulties": ["hard"], "bpm": 100, "stepsPerBeat": 4}), newline='\n')
             (donor / "songs/character-collision/charts/hard.json").write_text(json.dumps(
                 {"codenameChart": True, "scrollSpeed": 1, "stage": "stage",
                  "strumLines": [{"type": 0, "position": "dad", "keyCount": 4,
@@ -1717,19 +1725,19 @@ class Main {
                                 {"type": 1, "position": "boyfriend", "keyCount": 4,
                                  "characters": ["bf"], "notes": []},
                                 {"type": 3, "position": "extra", "keyCount": 4,
-                                 "characters": ["X?", "X"], "notes": []}]}))
+                                 "characters": ["X?", "X"], "notes": []}]}), newline='\n')
             (donor / "data/characters/X?.xml").write_text(
-                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="X idle"/></character>\n')
+                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="X idle"/></character>\n', newline='\n')
             (donor / "data/characters/X.xml").write_text(
-                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="X idle"/></character>\n')
-            (donor / "images/characters/X?.png").write_text("owned X")
+                '<!DOCTYPE codename-engine-character>\n<character><anim name="idle" anim="X idle"/></character>\n', newline='\n')
+            (donor / "images/characters/X?.png").write_text("owned X", newline='\n')
             (donor / "images/characters/X?.xml").write_text(
-                '<TextureAtlas><SubTexture name="X idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
-            (donor / "images/characters/X.png").write_text("owned X")
+                '<TextureAtlas><SubTexture name="X idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
+            (donor / "images/characters/X.png").write_text("owned X", newline='\n')
             (donor / "images/characters/X.xml").write_text(
-                '<TextureAtlas><SubTexture name="X idle" x="0" y="0" width="10" height="10"/></TextureAtlas>')
+                '<TextureAtlas><SubTexture name="X idle" x="0" y="0" width="10" height="10"/></TextureAtlas>', newline='\n')
             (donor / "images/icons").mkdir(parents=True)
-            (donor / "images/icons/bald-fuck.png").write_text("png")
+            (donor / "images/icons/bald-fuck.png").write_text("png", newline='\n')
             # Materialize the fixture module beside the donor.  The import writes
             # are relative to the compile/run cwd, so the freeplay seed sits at
             # workdir/assets/data like a real runtime.
@@ -1739,12 +1747,12 @@ class Main {
             for name, content in files.items():
                 if name == "freeplaySongJson.jsonc":
                     continue
-                (workdir / name).write_text(content)
+                (workdir / name).write_text(content, newline='\n')
             (workdir / "assets/data").mkdir(parents=True, exist_ok=True)
             (workdir / "assets/data/freeplaySongJson.jsonc").write_text(
-                json.dumps([{"name": "Imported", "songs": []}]))
+                json.dumps([{"name": "Imported", "songs": []}]), newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(workdir), "--run", "Main", str(donor)],
+                [*HAXE_COMMAND, "-cp", str(workdir), "--run", "Main", str(donor)],
                 cwd=workdir, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("CODENAME_IMPORT_OK", result.stdout)
@@ -1836,9 +1844,9 @@ typedef ImportAssetMergeResult = {
             for name, content in files.items():
                 target = work / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content)
+                target.write_text(content, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(work)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", str(work)],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

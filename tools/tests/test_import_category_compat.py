@@ -1,6 +1,8 @@
 """Regression coverage for donor-local Freeplay categories during imports."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -116,9 +118,9 @@ class ImportCategoryFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportCategoryFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "ImportCategoryFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCategoryFixture"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -182,9 +184,9 @@ class StageRegistryFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "StageRegistryFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "StageRegistryFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "StageRegistryFixture"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

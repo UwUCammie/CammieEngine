@@ -1,5 +1,7 @@
 """Execute structured Codename callbacks with actual HScript and native routing."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -85,9 +87,9 @@ class CodenameEventDispatchTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             p = Path(work)
-            (p / 'Main.hx').write_text(fixture)
+            (p / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', str(p),
                  '--run', 'Main'], cwd=ROOT, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -104,6 +106,7 @@ class CodenameEventDispatchTest(unittest.TestCase):
             raise AssertionError(name)
         helpers='\n'.join(method(name) for name in ('callCodenameEvent','executeCodenameEvent','fireSongEvent'))
         fixture=r'''class Main {
+ var nightmareVisionScripts:Dynamic=null;
  var codenameScriptScopes:Array<Dynamic>=[];
  var codenameCharacterScopes:Array<Dynamic>=[];
  var codenameEventDiagnostics:Map<String,Bool>=[];
@@ -185,8 +188,8 @@ class CodenameEventDispatchTest(unittest.TestCase):
  static function main():Void new Main().run();
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as work:
-            p=Path(work);(p/'Main.hx').write_text(fixture)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
+            p=Path(work);(p/'Main.hx').write_text(fixture, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_payload_mutation_cancellation_and_replay(self):
@@ -259,8 +262,8 @@ class CodenameEventDispatchTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as work:
-            p=Path(work); (p/'Main.hx').write_text(fixture)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
+            p=Path(work); (p/'Main.hx').write_text(fixture, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__ == '__main__':

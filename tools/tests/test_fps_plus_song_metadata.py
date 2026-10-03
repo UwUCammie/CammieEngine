@@ -1,10 +1,12 @@
 """FPS Plus song-meta.json mapping and mounted donor immutability coverage."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -154,10 +156,10 @@ class MetaFixture {{
 }}
 '''
     path = folder / "MetaFixture.hx"
-    path.write_text(source + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "").replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "").replace("import sys.io.File;", ""))
+    path.write_text(source + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "").replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "").replace("import sys.io.File;", ""), newline='\n')
     (folder / "ImportDirectoryListing.hx").write_text(
         (ROOT / "source/ImportDirectoryListing.hx").read_text()
-    )
+    , newline='\n')
     return path
 
 
@@ -171,7 +173,7 @@ class FpsPlusSongMetadataTest(unittest.TestCase):
             folder_path = Path(folder)
             make_fixture(self.module, folder_path)
             result = subprocess.run(
-                [str(HAXE), "-cp", str(folder_path), "--run", "MetaFixture", str(root)],
+                [*HAXE_COMMAND, "-cp", str(folder_path), "--run", "MetaFixture", str(root)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -217,9 +219,9 @@ class SongMetadataInheritanceTest {
 """
         with tempfile.TemporaryDirectory(prefix="fps-meta-song-", dir=ROOT / "tmp") as folder:
             path = Path(folder) / "SongMetadataInheritanceTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "SongMetadataInheritanceTest", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "SongMetadataInheritanceTest", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -233,11 +235,11 @@ class SongMetadataInheritanceTest {
                 "name": "Synthetic Display", "artist": "Synthetic Artist",
                 "album": "Synthetic Album", "difficulties": [1, 2.5, 4],
                 "futureKey": {"preserve": [True, False]},
-            }))
+            }), newline='\n')
             chart = {"song": {"song": "synthetic", "notes": [], "bpm": 120,
                                "player1": "bf", "player2": "dad", "gf": "gf",
                                "stage": "stage"}}
-            (root / "synthetic.json").write_text(json.dumps(chart))
+            (root / "synthetic.json").write_text(json.dumps(chart), newline='\n')
             (root / "Inst.ogg").write_bytes(b"fixture")
             parsed = self.run_fixture(root)
             self.assertEqual(parsed["display"], "Synthetic Display")
@@ -255,7 +257,7 @@ class SongMetadataInheritanceTest {
             self.assertIn("futureKey", parsed["rawFields"])
             self.assertEqual(parsed["diagnostics"], [])
 
-            (root / "meta.json").write_text('{"name":"Safe", "artist":"A", "album":"B", "difficulties":["bad"], "future":7}')
+            (root / "meta.json").write_text('{"name":"Safe", "artist":"A", "album":"B", "difficulties":["bad"], "future":7}', newline='\n')
             malformed = self.run_fixture(root)
             self.assertEqual(malformed["display"], "Safe")
             self.assertEqual(malformed["artist"], "A")
@@ -263,7 +265,7 @@ class SongMetadataInheritanceTest {
             self.assertIsNone(malformed["materializedRatings"])
             self.assertTrue(any("[fps-meta-invalid]" in item for item in malformed["diagnostics"]))
 
-            (root / "meta.json").write_text('[]')
+            (root / "meta.json").write_text('[]', newline='\n')
             non_object = self.run_fixture(root)
             self.assertEqual(non_object["display"], "null")
             self.assertIsNone(non_object["artist"])

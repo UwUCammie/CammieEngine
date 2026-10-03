@@ -1,6 +1,8 @@
 """Validate the shared owner-script URL opener without launching a browser."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -75,9 +77,9 @@ class Main {
    'private browser suppression bypassed URL validation');
   Sys.putEnv('FNF_COMPAT_TEST_NO_BROWSER', '');
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import threading
@@ -26,11 +27,11 @@ class ChartEditorMatrixTest(unittest.TestCase):
         owner_folder = root / "assets" / "imported_mods" / "sample-owner"
         data_folder.mkdir(parents=True)
         owner_folder.mkdir(parents=True)
-        (data_folder / f"{chart}.json").write_text('{"song":{}}', encoding="utf-8")
+        (data_folder / f"{chart}.json").write_text('{"song":{}}', encoding="utf-8", newline='\n')
         (data_folder / "compatScripts.json").write_text(json.dumps({
             "selectedRoot": "assets/imported_mods/sample-owner",
             "roots": [{"path": "assets/imported_mods/sample-owner"}],
-        }), encoding="utf-8")
+        }), encoding="utf-8", newline='\n')
         row = {
             "group": "Psych Engine",
             "package": "sample-pack",
@@ -101,7 +102,7 @@ class ChartEditorMatrixTest(unittest.TestCase):
             manifest_path.write_text(json.dumps({
                 "selectedRoot": "assets/imported_mods/another-owner",
                 "roots": [{"path": "assets/imported_mods/sample-owner"}],
-            }), encoding="utf-8")
+            }), encoding="utf-8", newline='\n')
             selected_mismatch = matrix_runner.inspect_row(11, row, runtime)
             self.assertEqual(selected_mismatch["status"], "failed")
             self.assertIn("selectedRoot", selected_mismatch["reason"])
@@ -119,7 +120,7 @@ class ChartEditorMatrixTest(unittest.TestCase):
             source_root = temp_root / "runtime"
             source_song = source_root / "assets" / "data" / folder_name
             source_song.mkdir(parents=True)
-            (source_song / f"{chart_name}.json").write_text('{"song":{}}', encoding="utf-8")
+            (source_song / f"{chart_name}.json").write_text('{"song":{}}', encoding="utf-8", newline='\n')
             (source_root / "assets" / "imported_mods").mkdir()
             overlay_root = temp_root / "overlay"
             overlay_root.mkdir()
@@ -235,7 +236,7 @@ class ChartEditorMatrixTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             root = Path(folder)
             matrix_path = root / "matrix.json"
-            matrix_path.write_text('{"schema":1,"rows":[]}', encoding="utf-8")
+            matrix_path.write_text('{"schema":1,"rows":[]}', encoding="utf-8", newline='\n')
             digest = "a" * 64
             report = matrix_runner.MatrixReport(root / "report.json", matrix_path, digest)
             report.upsert({"row_index": 1, "status": "passed"})

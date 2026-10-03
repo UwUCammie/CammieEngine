@@ -1,5 +1,7 @@
 """NMV source-shaped path calls keep package and engine-core assets isolated."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -24,6 +26,15 @@ public function new(kind:String,image:flixel.graphics.FlxGraphic,text:String){th
 public static function fromSparrow(i:flixel.graphics.FlxGraphic,t:String)return new FlxAtlasFrames('xml',i,t);
 public static function fromAseprite(i:flixel.graphics.FlxGraphic,t:String)return new FlxAtlasFrames('json',i,t);
 public static function fromSpriteSheetPacker(i:flixel.graphics.FlxGraphic,t:String)return new FlxAtlasFrames('txt',i,t);}''',
+                'animate/FlxAnimateFrames.hx': '''package animate;
+import flixel.graphics.frames.FlxAtlasFrames;
+typedef SpritemapInput = {source:Dynamic, json:String}
+class FlxAnimateFrames extends FlxAtlasFrames {
+public static var lastInput:String;public static var lastMetadata:String;public static var lastKey:String;public static var lastMaps:Array<SpritemapInput>;
+public function new(path:String)super('animate',new flixel.graphics.FlxGraphic(path),path);
+public static function fromAnimate(input:String,maps:Array<SpritemapInput>,?metadata:String,?key:String):FlxAnimateFrames {
+lastInput=input;lastMaps=maps;lastMetadata=metadata;lastKey=key;return new FlxAnimateFrames(key);
+}}''',
                 'openfl/media/Sound.hx': '''package openfl.media;
 class Sound {public var path:String; public function new(path:String)this.path=path;}''',
                 'flixel/system/FlxAssets.hx': '''package flixel.system;
@@ -38,41 +49,111 @@ public static function getSound(path:String)return new openfl.media.Sound(path);
             for name, content in stubs.items():
                 p = work / name
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(content)
+                p.write_text(content, newline='\n')
             owner = work / 'assets/imported_mods/owner'
             foreign = work / 'assets/imported_mods/foreign'
             files = {
                 'images/sheet.png':'owner', 'images/sheet.xml':'owner-xml',
                 'images/sheet.json':'owner-json', 'images/sheet.txt':'owner-txt',
+                'images/animate/Animation.json':'owner-animation',
+                'images/animate/metadata.json':'owner-metadata',
+                'images/animate/spritemap1.json':'owner-map-json',
+                'images/animate/spritemap1.png':'owner-map-image',
                 'sounds/noise.wav':'wav', 'sounds/noise.ogg':'ogg',
                 'sounds/keys/keyClick5.ogg':'owner-key-click',
                 'locale/data/info.txt':'localized', 'songs/chart.json':'{}',
                 'shaders/effect.frag':'owner-frag', 'shaders/effect.vert':'owner-vert',
                 'noteskins/skin.json':'skin',
+                'data/scripts/loader.hxs':'owner-loader',
+                '__nmv_core/data/scripts/loader.hx':'core-loader',
+                'data/scripts/second.hx':'owner-second',
+                '__nmv_core/data/scripts/core.hscript':'core-script',
                 '__nmv_core/shaders/effect.frag':'core-frag',
                 '__nmv_core/shaders/core.frag':'core-only',
                 '__nmv_core/sounds/noise.ogg':'core-ogg',
                 '__nmv_core/images/core.png':'core',
                 '__nmv_core/images/core.xml':'core-xml',
+                'images/custom/num0.png':'explicit owner digit',
             }
             for name, content in files.items():
-                p = owner / name; p.parent.mkdir(parents=True, exist_ok=True);p.write_text(content)
+                p = owner / name; p.parent.mkdir(parents=True, exist_ok=True);p.write_text(content, newline='\n')
+
+            legacy = work / 'assets/imported_mods/legacy/__nmv_core/images'
+            split = work / 'assets/imported_mods/split/__nmv_core/images/UI/combo'
+            partial_core = work / 'assets/imported_mods/partial/__nmv_core/images'
+            for digit in range(10):
+                p = legacy / f'num{digit}.png'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('legacy', newline='\n')
+                p = split / f'num{digit}.png'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('split', newline='\n')
+            for digit in range(9):
+                p = partial_core / f'num{digit}.png'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('partial legacy', newline='\n')
+                p = partial_core / 'UI/combo' / f'num{digit}.png'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('partial split', newline='\n')
+
             foreign.mkdir(parents=True)
-            (foreign / 'secret.txt').write_text('foreign')
+            (foreign / 'secret.txt').write_text('foreign', newline='\n')
             (owner / 'escape').symlink_to(foreign, target_is_directory=True)
             (owner / 'foreignCore').symlink_to(foreign, target_is_directory=True)
             (owner / 'images/atlasFolder').mkdir()
             (work / 'Main.hx').write_text(r'''
+import animate.FlxAnimateFrames;
 class Main {
  static function check(ok:Bool, why:String)if(!ok)throw why;
  static function rejected(f:Void->Dynamic):Bool{try{f();return false;}catch(_:Dynamic)return true;}
  static function main(){
   var p=new NightmareVisionPaths('assets/imported_mods/owner');
   var root=p.root;
+  check(p.hudProfile.name=='unknown-split-default' && !p.hudProfile.detected
+   && p.hudProfile.splitDigitCount==0 && p.hudProfile.legacyDigitCount==0,
+   'an owner with no complete core digit set remains undetected');
+  check(!p.usesSharedRatingPrefix && p.COMBO_PREFIX=='UI/combo/'
+   && p.RATINGS_PREFIX=='UI/ratings/' && p.COUNTDOWN_PREFIX=='UI/countdown/' && p.UI_PREFIX=='UI/',
+   'undetected layout preserves current split defaults');
+  check(p.image('custom/num0').key==root+'/images/custom/num0.png',
+   'explicit owner HUD path stays exact');
+  check(p.getPath('images/UI/combo/num0.png',null,true)==root+'/__nmv_core/images/UI/combo/num0.png'
+   && !p.fileExists('images/UI/combo/num0.png',null,true),
+   'missing explicit split path does not alias another digit path');
+
+  var legacyPaths=new NightmareVisionPaths('assets/imported_mods/legacy');
+  check(legacyPaths.hudProfile.name=='legacy-shared' && legacyPaths.usesSharedRatingPrefix
+   && legacyPaths.COMBO_PREFIX=='' && legacyPaths.RATINGS_PREFIX==''
+   && legacyPaths.COUNTDOWN_PREFIX=='UI/countdown/' && legacyPaths.UI_PREFIX=='UI/',
+   'complete flat core selects the legacy shared rating/digit prefix without inventing other old constants');
+  check(legacyPaths.fileExists('images/num0.png',null,false)
+   && !legacyPaths.fileExists('images/UI/combo/num0.png',null,false),
+   'legacy profile detects capabilities without adding path aliases');
+
+  var splitPaths=new NightmareVisionPaths('assets/imported_mods/split');
+  check(splitPaths.hudProfile.name=='split' && splitPaths.hudProfile.detected
+   && !splitPaths.usesSharedRatingPrefix && splitPaths.COMBO_PREFIX=='UI/combo/'
+   && splitPaths.RATINGS_PREFIX=='UI/ratings/' && splitPaths.COUNTDOWN_PREFIX=='UI/countdown/'
+   && splitPaths.UI_PREFIX=='UI/',
+   'complete split core selects newer independent-prefix defaults');
+
+  var partialPaths=new NightmareVisionPaths('assets/imported_mods/partial');
+  check(partialPaths.hudProfile.name=='unknown-split-default' && !partialPaths.usesSharedRatingPrefix
+   && partialPaths.hudProfile.splitDigitCount==9 && partialPaths.hudProfile.legacyDigitCount==9,
+   'partial flat and split layouts do not imply a legacy API');
+  check(partialPaths.getPath('images/UI/combo/num9.png',null,true)
+   =='assets/imported_mods/partial/__nmv_core/images/UI/combo/num9.png'
+   && !partialPaths.fileExists('images/UI/combo/num9.png',null,true),
+   'incomplete explicit split asset remains missing at its requested path');
+  var missingHudPath='';
+  try partialPaths.image('UI/combo/num9') catch (error:Dynamic) missingHudPath=Std.string(error);
+  check(missingHudPath.indexOf('assets/imported_mods/partial/__nmv_core/images/UI/combo/num9.png')>=0,
+   'unsupported explicit HUD asset reports its exact missing path without fallback');
+
   check(p.fragment('effect')==root+'/shaders/effect.frag','owner shader');
   check(p.fragment('effect',false)==root+'/__nmv_core/shaders/effect.frag','core-only shader');
   check(p.fragment('core')==root+'/__nmv_core/shaders/core.frag','explicit core fallback');
   check(p.vertex('effect')==root+'/shaders/effect.vert','vertex');
+  check(p.resolveScript('data/scripts/loader').relative=='__nmv_core/data/scripts/loader.hx','extension precedence before layer');
+  check(p.resolveScript('data/scripts/second').path==root+'/data/scripts/second.hx','owner dynamic script');
+  check(p.resolveScript(root+'/data/scripts/second').relative=='data/scripts/second.hx','owned resolved script path');
+  check(p.resolveScript('data/scripts/core').relative=='__nmv_core/data/scripts/core.hscript','core dynamic script');
+  check(p.resolveScript('data/scripts/missing')==null,'missing script');
+  check(rejected(()->p.resolveScript('../foreign')),'traversal script');
+  check(rejected(()->p.resolveScript('assets/imported_mods/foreign/script')),'foreign script');
+  check(rejected(()->p.resolveScript('escape/secret')),'symlink script');
   check(!p.fileExists('shaders/Effect.frag'),'exact case');
   check(!p.fileExists('secret.txt'),'no foreign fallback');
   check(p.getPath('shaders/effect.frag')==root+'/__nmv_core/shaders/effect.frag','getPath defaults to core');
@@ -97,6 +178,15 @@ class Main {
   check(rejected(function()return ownerAssets.exists(root+'/escape/secret.txt')),'FunkinAssets symlink escape');
   var atlas=p.getAtlasFrames('sheet');
   check(atlas.kind=='xml'&&atlas.text=='owner-xml'&&atlas.image.key==root+'/images/sheet.png','atlas precedence and owner');
+  var animateAtlas=p.getTextureAtlas('animate');
+  check(animateAtlas.kind=='animate'&&animateAtlas.text==root+'/images/animate','Animate atlas cache key escaped owner');
+  check(FlxAnimateFrames.lastInput=='owner-animation'&&FlxAnimateFrames.lastMetadata=='owner-metadata'
+   && FlxAnimateFrames.lastKey==root+'/images/animate','Animate owner manifest/metadata were not passed directly');
+  check(FlxAnimateFrames.lastMaps.length==1
+   && FlxAnimateFrames.lastMaps[0].json=='owner-map-json'
+   && FlxAnimateFrames.lastMaps[0].source==root+'/images/animate/spritemap1.png',
+   'Animate owner spritemap files were not read from the selected package');
+  check(p.getTextureAtlas('sheet').kind=='xml','non-Animate texture atlas fallback');
   check(p.getSparrowAtlas('core').image.key==root+'/__nmv_core/images/core.png','core atlas');
   check(p.getPackerAtlas('sheet').kind=='txt','packer');
   check(rejected(function()return p.image('missing')),'missing image diagnosed');
@@ -108,8 +198,8 @@ class Main {
   check(rejected(function()return new NightmareVisionPaths(root,'assets/imported_mods/foreign')),'foreign core rejected');
   check(rejected(function()return new NightmareVisionPaths(root,root+'/foreignCore').getCorePath('secret.txt')),'symlink core rejected');
  }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(work), '--run', 'Main'], cwd=work,
                                     text=True, capture_output=True, timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

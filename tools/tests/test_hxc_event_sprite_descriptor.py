@@ -1,5 +1,7 @@
+from haxe_test_support import HAXE_COMMAND
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -26,9 +28,9 @@ class HxcEventSpriteDescriptorTest {{
 }}
 '''
         with tempfile.TemporaryDirectory() as directory:
-            (Path(directory) / "HxcEventSpriteDescriptorTest.hx").write_text(fixture)
+            (Path(directory) / "HxcEventSpriteDescriptorTest.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", directory, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", directory, "-cp", str(ROOT / "source"),
                  "-main", "HxcEventSpriteDescriptorTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )

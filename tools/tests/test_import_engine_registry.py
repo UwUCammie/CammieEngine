@@ -4,8 +4,10 @@ The detector is deliberately exercised through the portable Haxe interpreter:
 this catches Haxe typing/target regressions while keeping the fixture small and
 avoiding any dependency on the user's multi-gigabyte asset tree.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -50,10 +52,10 @@ class ImportEngineRegistryTest(unittest.TestCase):
         cls.settings = (ROOT / "source/ImportSettings.hx").read_text()
 
     def write_scanner(self, folder: Path) -> None:
-        (folder / "ImportRootScanner.hx").write_text(self.scanner)
+        (folder / "ImportRootScanner.hx").write_text(self.scanner, newline='\n')
         (folder / "ImportDirectoryListing.hx").write_text(
             (ROOT / "source/ImportDirectoryListing.hx").read_text()
-        )
+        , newline='\n')
 
     def test_labels_are_stable_and_do_not_claim_unsupported_kate_engine(self):
         for label in (
@@ -113,9 +115,9 @@ class ImportSettings {
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportSettings.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "ImportSettings"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportSettings"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -146,9 +148,9 @@ class ImportRootScanner {
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportRootScanner.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "ImportRootScanner", folder],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportRootScanner", folder],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -188,12 +190,12 @@ class ImportRootScanner {
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportRootScanner.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             (Path(folder) / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "ImportRootScanner"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportRootScanner"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -212,25 +214,25 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             parent = temp_path / "source"
 
             # V-Slice: modern metadata/chart pairs and a Polymod marker.
             vs = parent / "vslice"
             (vs / "data/songs/demo").mkdir(parents=True)
-            (vs / "data/songs/demo/demo-metadata.json").write_text("{}")
-            (vs / "data/songs/demo/demo-chart.json").write_text("{}")
+            (vs / "data/songs/demo/demo-metadata.json").write_text("{}", newline='\n')
+            (vs / "data/songs/demo/demo-chart.json").write_text("{}", newline='\n')
             for folder in ("images", "shared", "scripts"):
                 (vs / folder).mkdir()
-            (vs / "_polymod_meta.json").write_text("{}")
+            (vs / "_polymod_meta.json").write_text("{}", newline='\n')
 
             # Kade: executable marker plus the classic assets layout.
             kade = parent / "kade"
             for folder in ("data/demo", "songs/demo", "images"):
                 (kade / "assets" / folder).mkdir(parents=True)
-            (kade / "assets/data/demo/demo.json").write_text("{}")
+            (kade / "assets/data/demo/demo.json").write_text("{}", newline='\n')
             (kade / "assets/songs/demo/Inst.ogg").write_bytes(b"x")
             (kade / "Kade Engine.exe").write_bytes(b"x")
 
@@ -239,54 +241,54 @@ class ImportRootScanner {
             modplus = parent / "modplus"
             for folder in ("data/demo", "songs/demo", "images/custom_chars", "images/custom_stages", "images/custom_ui"):
                 (modplus / "assets" / folder).mkdir(parents=True)
-            (modplus / "assets/data/demo/demo.json").write_text("{}")
+            (modplus / "assets/data/demo/demo.json").write_text("{}", newline='\n')
             (modplus / "assets/songs/demo/Inst.ogg").write_bytes(b"x")
 
             # Psych: direct pack/data/songs/images/characters/stages/scripts.
             psych = parent / "psych"
             for folder in ("data/demo", "songs/demo", "images", "characters", "stages", "scripts", "custom_events"):
                 (psych / folder).mkdir(parents=True)
-            (psych / "data/demo/demo-hard.json").write_text("{}")
+            (psych / "data/demo/demo-hard.json").write_text("{}", newline='\n')
             (psych / "songs/demo/Inst.ogg").write_bytes(b"x")
-            (psych / "pack.json").write_text("{}")
-            (psych / "scripts/demo.lua").write_text("return 0")
+            (psych / "pack.json").write_text("{}", newline='\n')
+            (psych / "scripts/demo.lua").write_text("return 0", newline='\n')
 
             # A chart-free Psych global pack may have no data, audio or image
             # directories. Its pack marker and scripts tree are still a valid
             # import root in Auto mode.
             global_pack = parent / "psych-global-pack"
             (global_pack / "scripts").mkdir(parents=True)
-            (global_pack / "pack.json").write_text('{"runsGlobally":true}')
-            (global_pack / "scripts/results.lua").write_text("return 0")
+            (global_pack / "pack.json").write_text('{"runsGlobally":true}', newline='\n')
+            (global_pack / "scripts/results.lua").write_text("return 0", newline='\n')
 
             # FPS Plus: the port metadata names its underlying engine.
             fps = parent / "fps"
             for folder in ("data/songs/demo", "songs/demo", "images"):
                 (fps / folder).mkdir(parents=True)
-            (fps / "data/songs/demo/demo.json").write_text("{}")
+            (fps / "data/songs/demo/demo.json").write_text("{}", newline='\n')
             (fps / "songs/demo/Inst.ogg").write_bytes(b"x")
-            (fps / "meta.json").write_text('{"description":"Ported to FPS Plus"}')
+            (fps / "meta.json").write_text('{"description":"Ported to FPS Plus"}', newline='\n')
 
             # Legacy FNF/Polymod: an asset manifest without the modern
             # metadata pair (the detector must not call this V-Slice).
             legacy = parent / "legacy"
             for folder in ("assets/data/demo", "assets/songs/demo", "assets/images"):
                 (legacy / folder).mkdir(parents=True)
-            (legacy / "assets/data/demo/demo.json").write_text("{}")
+            (legacy / "assets/data/demo/demo.json").write_text("{}", newline='\n')
             (legacy / "assets/songs/demo/Inst.ogg").write_bytes(b"x")
             (legacy / "manifest/default.json").parent.mkdir()
-            (legacy / "manifest/default.json").write_text("{}")
+            (legacy / "manifest/default.json").write_text("{}", newline='\n')
 
             # A media/build subtree is intentionally shaped like a root; it
             # must not be discovered while scanning the parent.
             skipped = parent / "unrelated" / "images" / "fake"
             skipped.mkdir(parents=True)
-            (skipped / "pack.json").write_text("{}")
+            (skipped / "pack.json").write_text("{}", newline='\n')
             (skipped / "data").mkdir()
             (skipped / "songs").mkdir()
 
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(parent)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (parent).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -324,14 +326,14 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             root = temp_path / "root"
             (root / "one").mkdir(parents=True)
             (root / "two").mkdir()
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (root).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -360,15 +362,15 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             root = temp_path / "root"
             root.mkdir()
             for index in range(4):
                 (root / f"candidate-{index}").mkdir()
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (root).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -392,13 +394,13 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             root = temp_path / "root"
             root.mkdir()
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (root).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -419,9 +421,9 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
 
             # Keep the real pair after both old probe limits: the chart folder
             # sorts after 32 placeholders, and its pair sorts after 64 files.
@@ -434,12 +436,12 @@ class ImportRootScanner {
             late = songs / "late-song"
             late.mkdir()
             for index in range(64):
-                (late / f"000-noise-{index:02d}.txt").write_text("")
-            (late / "late-song-metadata.json").write_text("{}")
-            (late / "late-song-chart.json").write_text("{}")
+                (late / f"000-noise-{index:02d}.txt").write_text("", newline='\n')
+            (late / "late-song-metadata.json").write_text("{}", newline='\n')
+            (late / "late-song-chart.json").write_text("{}", newline='\n')
 
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(root)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (root).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -457,11 +459,11 @@ class ImportRootScanner {
         (assets / "data/demo").mkdir(parents=True)
         (assets / "songs/demo").mkdir(parents=True)
         (assets / "images").mkdir(parents=True)
-        (assets / "data/demo/demo.json").write_text('{"song":{"notes":[]}}')
+        (assets / "data/demo/demo.json").write_text('{"song":{"notes":[]}}', newline='\n')
         (assets / "songs/demo/Inst.ogg").write_bytes(b"x")
         (base / "source").mkdir()
-        (base / "source/PlayState.hx").write_text("class PlayState {}")
-        (base / "Project.xml").write_text("<project/>")
+        (base / "source/PlayState.hx").write_text("class PlayState {}", newline='\n')
+        (base / "Project.xml").write_text("<project/>", newline='\n')
 
     def test_haxe_source_releases_classify_as_kade_and_incomplete_ones_are_diagnosed(self):
         main = """class Main {
@@ -480,9 +482,9 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
 
             parent = temp_path / "source"
             classic = parent / "kade-source"
@@ -494,8 +496,8 @@ class ImportRootScanner {
             # source/ and no assets/data.  Never a root, never a crash.
             incomplete = parent / "incomplete-download"
             (incomplete / "art").mkdir(parents=True)
-            (incomplete / "Project.xml").write_text("<project/>")
-            (incomplete / "Preloader.hx").write_text("class Preloader {}")
+            (incomplete / "Project.xml").write_text("<project/>", newline='\n')
+            (incomplete / "Preloader.hx").write_text("class Preloader {}", newline='\n')
 
             # A source checkout that lost its manifest still wins over the
             # generic legacy layout instead of misclassifying.
@@ -504,7 +506,7 @@ class ImportRootScanner {
             (bare / "Project.xml").unlink()
 
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(parent), str(incomplete)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (parent).as_posix(), (incomplete).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -512,18 +514,18 @@ class ImportRootScanner {
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
 
-            self.assertIn("ROOT|Kade Engine|" + str(classic), output)
-            self.assertIn("ROOT|Kade Engine|" + str(preload), output)
-            self.assertIn("ROOT|Kade Engine|" + str(bare), output)
+            self.assertIn("ROOT|Kade Engine|" + (classic).as_posix(), output)
+            self.assertIn("ROOT|Kade Engine|" + (preload).as_posix(), output)
+            self.assertIn("ROOT|Kade Engine|" + (bare).as_posix(), output)
             self.assertEqual(output.count("Haxe source release: Project.xml + source/*.hx"), 2)
             self.assertIn("Haxe source modules: source/*.hx", output)
             # Charts resolve for both layouts; audio follows the same library.
-            self.assertIn("|data=" + str(classic / "assets/data") + "|", output)
-            self.assertIn("|data=" + str(preload / "assets/preload/data") + "|", output)
-            self.assertIn("|audio=" + str(preload / "assets/preload/songs") + "|", output)
+            self.assertIn("|data=" + (classic / "assets/data").as_posix() + "|", output)
+            self.assertIn("|data=" + (preload / "assets/preload/data").as_posix() + "|", output)
+            self.assertIn("|audio=" + (preload / "assets/preload/songs").as_posix() + "|", output)
             # The incomplete tree is skipped with an actionable diagnostic.
             self.assertIn("INCOMPLETE=null", output)
-            self.assertNotIn(str(incomplete), output)
+            self.assertNotIn((incomplete).as_posix(), output)
             self.assertIn(
                 "DIAG|warning|source-release-incomplete|[source-release-incomplete] incomplete-download: "
                 "Haxe source project detected but source/ or assets/data is missing",
@@ -547,11 +549,11 @@ class ImportRootScanner {
         fixture = EXAMPLE_ROOT / "trickster-master"
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(fixture)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (fixture).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -560,7 +562,7 @@ class ImportRootScanner {
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
             self.assertIn("ENGINE=Kade Engine|", output)
-            self.assertIn("DATA=" + str(fixture / "assets/preload/data"), output)
+            self.assertIn("DATA=" + (fixture / "assets/preload/data").as_posix(), output)
             self.assertIn(SOURCE_RELEASE_EVIDENCE, output)
 
     @unittest.skipUnless(EXAMPLE_ROOT.is_dir(), "the external example-mod fixture is not mounted")
@@ -588,11 +590,11 @@ class ImportRootScanner {
         ]
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", *(str(path) for path in paths)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", *((path).as_posix() for path in paths)],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -618,7 +620,7 @@ class ImportRootScanner {
             # verify every donor that is actually present classifies exactly.
             checked = 0
             for name, engine in expected.items():
-                mounted = any(str(path).find(name) >= 0 for path in paths if path.exists())
+                mounted = any((path).as_posix().find(name) >= 0 for path in paths if path.exists())
                 if not mounted:
                     continue
                 self.assertIn(name + "=" + engine + "|", output)
@@ -638,11 +640,11 @@ class ImportRootScanner {
 """
         with tempfile.TemporaryDirectory() as temp:
             temp_path = Path(temp)
-            (temp_path / "ImportEngine.hx").write_text(self.engine)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
             self.write_scanner(temp_path)
-            (temp_path / "Main.hx").write_text(main)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", str(EXAMPLE_ROOT)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", (EXAMPLE_ROOT).as_posix()],
                 cwd=temp,
                 capture_output=True,
                 text=True,

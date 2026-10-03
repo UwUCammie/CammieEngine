@@ -416,7 +416,14 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 
 	public function doSplash(c:Int = 0) {
 		var newsplash = noteSplashes.recycle(NoteSplash, () -> new NoteSplash(0, 0, 0, type));
+		var playState = PlayState.instance;
+		newsplash.nightmareVisionSkin = playState == null ? null
+			: playState.nightmareVisionSkinForStrumline(this);
 		newsplash.setupNoteSplash(members[c].x, members[c].y, c);
+		RuntimeSmokeHarness.markNightmareVisionSplashVisual(newsplash);
+		if (newsplash.nightmareVisionSkin != null)
+			newsplash.setPosition(members[c].x + (members[c].width - newsplash.width) * 0.5,
+				members[c].y + (members[c].height - newsplash.height) * 0.5);
 		newsplash.sourceStrumline = this;
 		noteSplashes.add(newsplash);
 		return newsplash;
@@ -515,6 +522,15 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 }
 
 class StrumNote extends FlxSprite {
+	/** Authored Nightmare Vision receptor offsets and colors for each animation. */
+	public var nightmareVisionOffsets:Map<String, Array<Float>> = null;
+	public var nightmareVisionPalette:PsychRGBPalette = null;
+	public var nightmareVisionRGB:NightmareVisionRGBGraphics = null;
+	@:keep public var resetAnim:Float = 0;
+	@:keep public var coyoteTime:Float = 0;
+	@:keep public var lastNote:Note;
+	@:keep public var holding:Bool = false;
+	@:keep public var sustainReduce:Bool = true;
 	/** Codename receptor scripts inspect the live animation name. */
 	public function getAnim():String
 		return animation.curAnim == null ? null : animation.curAnim.name;
@@ -785,6 +801,15 @@ class StrumNote extends FlxSprite {
 			confirmationGeneration++;
 		animation.play(anim, force, reversed, frame);
 		refreshPsychRGB();
+		if (nightmareVisionOffsets != null) {
+			centerOffsets();
+			centerOrigin();
+			var authored = nightmareVisionOffsets.get(anim);
+			if (authored != null) offset.set(offset.x + authored[0], offset.y + authored[1]);
+			shader = nightmareVisionPalette != null && anim != 'static'
+				? nightmareVisionPalette.shader : null;
+			return;
+		}
 		if (psychSkinOwner != null) {
 			centerOffsets();
 			centerOrigin();
@@ -811,6 +836,13 @@ class StrumNote extends FlxSprite {
 	 * frame. The play call itself may not install its first frame until update. */
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
+		if (nightmareVisionOffsets != null) {
+			if (coyoteTime > 0 && !holding) coyoteTime = Math.max(0, coyoteTime - elapsed);
+			if (resetAnim > 0) {
+				resetAnim -= elapsed;
+				if (resetAnim <= 0) { resetAnim = 0; playAnim('static'); }
+			}
+		}
 		if (usesVSliceGeometry) {
 			alignVSliceFrame();
 			markReceptorVisual();

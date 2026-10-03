@@ -1,11 +1,13 @@
 """Source-level coverage for the post-build native runtime smoke gate."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import importlib.util
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import sys
 import tempfile
@@ -54,6 +56,26 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         cls.import_state = (SOURCE / "RuntimeImportSmokeState.hx").read_text()
         cls.matrix = load_matrix_module()
 
+    def test_end_handoff_rejects_multiple_visits(self):
+        source = self.harness
+        start = source.index("public static function unsupportedEndHandoffVisits(")
+        end = source.index(";", start) + 1
+        method = source[start:end]
+        self.assertIn("unsupportedEndHandoffVisits(result.requireEndHandoff, result.playstateVisits)", source)
+        fixture = "class Main { " + method + """
+ static function main() {
+  if (unsupportedEndHandoffVisits(true, 1)) throw 'single handoff rejected';
+  if (!unsupportedEndHandoffVisits(true, 2)) throw 'reload handoff silently accepted';
+  if (unsupportedEndHandoffVisits(false, 2)) throw 'ordinary reload rejected';
+ }
+} """
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
+            path = Path(work)
+            (path / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", work, "--run", "Main"],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_native_entry_point_is_opt_in_and_playstate_hooks_are_bounded(self):
         self.assertIn("RuntimeSmokeHarness.enabled()", self.main)
         self.assertIn("initialState = RuntimeSmokeState", self.main)
@@ -65,6 +87,167 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         self.assertIn("Sys.exit(1)", self.harness)
         self.assertIn("--smoke-runtime-root", self.harness)
         self.assertNotIn("OptionsHandler.options =", self.harness + self.state)
+
+    @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
+    def test_return_freeplay_scope_requires_base_and_imported_rows_without_owner_filter(self):
+        population = extract_haxe_method(
+            self.harness, "public static function freeplayReturnPopulation("
+        )
+        scope = extract_haxe_method(
+            self.harness, "public static function freeplayReturnScopeValid("
+        )
+        fixture = r'''class Main {
+''' + population + "\n" + scope + r'''
+ static function check(ok:Bool,message:String):Void if(!ok) throw message;
+ static function main():Void {
+  var rows:Array<Dynamic>=[{name:"base"},{name:"owned"},{songName:"other"}];
+  var ownerForSong=function(name:String):String return switch(name) {
+   case "owned": "assets/imported_mods/current";
+   case "other": "assets/imported_mods/another";
+   default: "";
+  };
+  var population=freeplayReturnPopulation(rows,ownerForSong);
+  check(population.baseRows==1 && population.importedRows==2,
+   "population must count base and imported identities, including songName rows");
+  check(freeplayReturnScopeValid("","",population),
+   "unscoped base-plus-imported Freeplay was rejected");
+  check(!freeplayReturnScopeValid("assets/imported_mods/current","",population),
+   "direct owner filter passed the return gate");
+  check(!freeplayReturnScopeValid("","assets/imported_mods/current",population),
+   "active gameplay owner passed the return gate");
+  check(!freeplayReturnScopeValid("","",{baseRows:0,importedRows:2}),
+   "imported-only Freeplay passed the return gate");
+  check(!freeplayReturnScopeValid("","",{baseRows:2,importedRows:0}),
+   "base-only Freeplay passed the return gate");
+  Sys.println("return-freeplay-scope-ok");
+ }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
+                cwd=folder, capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("return-freeplay-scope-ok", result.stdout)
+        self.assertIn("case '--smoke-return-freeplay'", self.harness)
+        self.assertIn("freeplayReturnScopeValid('', '', population)", self.state)
+        self.assertIn("config().returnFreeplay", self.main)
+
+    def test_return_freeplay_mode_requires_natural_handoff_and_scope_marker(self):
+        self.assertIn("result.requireSongEnd = true", self.harness)
+        self.assertIn("result.requireEndHandoff = true", self.harness)
+        self.assertIn("if (config().returnFreeplay && !freeplaySeen)", self.harness)
+        self.assertIn("emit('freeplay_return'", self.harness)
+        self.assertIn("if (cfg.returnFreeplay)\n\t\t\treturn;", self.harness)
+        self.assertIn("config().returnFreeplay)", self.harness)
+
+    @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
+    def test_player_hit_delay_parser_and_getter_are_opt_in_and_uncapped(self):
+        parser = extract_haxe_method(self.harness, "static function parseSmokeFloat(")
+        allowed = extract_haxe_method(
+            self.harness, "public static function playerHitDelayAllowed("
+        )
+        hit_enabled = extract_haxe_method(
+            self.harness, "public static function playerHitsEnabled()"
+        )
+        getter = extract_haxe_method(
+            self.harness, "public static function playerHitDelayMs()"
+        )
+        fixture = """class Main {
+ static var active=true;
+ static var cfg:Dynamic={playerHits:false,playerHitDelayMs:0.0};
+ static function enabled():Bool return active;
+ static function config():Dynamic return cfg;
+""" + parser + "\n" + allowed + "\n" + hit_enabled + "\n" + getter + r'''
+ static function check(ok:Bool,message:String):Void if(!ok) throw message;
+ static function main():Void {
+  check(parseSmokeFloat("0")==0,"zero delay did not parse");
+  check(parseSmokeFloat("12.75")==12.75,"fractional delay did not parse");
+  check(playerHitDelayAllowed(false,0,false),"default zero requires player-hit mode");
+  check(!playerHitDelayAllowed(true,0,false),"explicit delay accepted without player-hit mode");
+  check(playerHitDelayAllowed(true,0,true),"explicit zero delay rejected in player-hit mode");
+  check(playerHitDelayAllowed(true,12.75,true),"finite fractional delay rejected");
+  check(playerHitDelayAllowed(true,1e300,true),"finite delay was capped without source basis");
+  check(!playerHitDelayAllowed(true,-1,true),"negative delay accepted");
+  check(!playerHitDelayAllowed(true,Math.NaN,true),"NaN delay accepted");
+  check(!playerHitDelayAllowed(true,Math.POSITIVE_INFINITY,true),"infinite delay accepted");
+  check(playerHitDelayMs()==0,"disabled player-hit smoke exposed a delay");
+  cfg.playerHits=true; cfg.playerHitDelayMs=12.75;
+  check(playerHitDelayMs()==12.75,"enabled player-hit smoke lost the configured delay");
+  active=false;
+  check(playerHitDelayMs()==0,"disabled smoke harness exposed a gameplay delay");
+  Sys.println("player-hit-delay-ok");
+ }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
+                cwd=folder, capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("player-hit-delay-ok", result.stdout)
+        self.assertIn("case '--smoke-player-hit-delay-ms'", self.harness)
+        self.assertIn("playerHitDelayProvided = true", self.harness)
+        self.assertIn("playerHitDelayMs: 0", self.harness)
+
+    @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
+    def test_player_hit_rating_projection_markers_are_distinct_bounded_and_gated(self):
+        marker = extract_haxe_method(
+            self.harness, "public static function markRatingPopup("
+        )
+        hit_enabled = extract_haxe_method(
+            self.harness, "public static function playerHitsEnabled()"
+        )
+        bounded = extract_haxe_method(self.harness, "static function boundedSmokeText(")
+        fixture = r'''class Main {
+ static var active=true;
+ static var cfg:Dynamic={playerHits:false};
+ static var finished=false;
+ static var ratingPopupPairs:Map<String,Bool>=new Map();
+ static var ratingPopupPairCount=0;
+ static var events:Array<Dynamic>=[];
+ static function enabled():Bool return active;
+ static function config():Dynamic return cfg;
+ static function emit(name:String,payload:Dynamic):Void events.push({name:name,payload:payload});
+''' + hit_enabled + "\n" + bounded + "\n" + marker + r'''
+ static function check(ok:Bool,message:String):Void if(!ok) throw message;
+ static function main():Void {
+  markRatingPopup("wayoff",{name:"shit",image:"shit"});
+  check(events.length==0,"marker emitted outside player-hit smoke");
+  cfg.playerHits=true;
+  markRatingPopup("wayoff",{name:"shit",image:"shit"});
+  markRatingPopup("wayoff",{name:"shit",image:"alternate"});
+  check(events.length==1 && ratingPopupPairCount==1,
+   "same host/source pair was emitted more than once");
+  check(events[0].name=="rating_popup" && events[0].payload.host=="wayoff"
+   && events[0].payload.source=="shit" && events[0].payload.image=="shit",
+   "popup marker lost the host/source/image projection");
+  for (index in 1...16)
+   markRatingPopup("host"+index,{name:"source"+index,image:"image"+index});
+  markRatingPopup("host-over-cap",{name:"source-over-cap",image:"image"});
+  check(events.length==16 && ratingPopupPairCount==16,
+   "marker did not stop at sixteen distinct pairs");
+  active=false;
+  markRatingPopup("disabled",{name:"disabled",image:"disabled"});
+  check(events.length==16,"marker ignored the smoke opt-in gate");
+  Sys.println("rating-popup-marker-ok");
+ }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
+                cwd=folder, capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("rating-popup-marker-ok", result.stdout)
+        self.assertIn("ratingPopupPairs = new Map();", self.harness)
+        self.assertIn("ratingPopupPairCount = 0;", self.harness)
 
     def test_markers_are_machine_readable_and_required_runtime_setup_is_present(self):
         for marker in ("startup", "playstate_start", "playstate_ready", "success", "failure"):
@@ -94,7 +277,7 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         fixture = r'''class FlxG { public static var state:Dynamic; }
 class PlayState {}
 class Main {
- static var cfg:Dynamic={requireEndHandoff:false};
+ static var cfg:Dynamic={requireEndHandoff:false,playstateVisits:1};
  static var finished=false;
  static var naturalSongEndObserved=true;
  static var handoffObserved=false;
@@ -119,14 +302,17 @@ class Main {
   check(successCount==1 && handoffCount==1,"strict run did not record the handoff before settling");
   observeSongEndCompletion(false,true);
   check(successCount==2 && handoffCount==1,"strict run did not succeed after settling exactly one handoff");
+  finished=false; cfg.playstateVisits=2;
+  observeSongEndCompletion(false,true);
+  check(successCount==2,"first ending falsely completed a multi-visit reload wrapper");
  }
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "Main.hx"
-            fixture_path.write_text(fixture, encoding="utf-8")
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(folder), "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--interp", "-main", "Main"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -243,9 +429,9 @@ class Main {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "Main.hx"
-            fixture_path.write_text(fixture, encoding="utf-8")
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(folder), "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--interp", "-main", "Main"],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -269,7 +455,8 @@ class Main {
     def test_gameplay_frame_profiler_is_opt_in_and_records_song_time(self):
         self.assertIn("case '--smoke-frame-stats'", self.harness)
         self.assertIn("frameStats: false", self.harness)
-        self.assertIn("if (config().frameStats)\n\t\t\tinstallFrameStats();", self.harness)
+        self.assertIn("if (config().frameStats || config().returnFreeplay)\n\t\t\tinstallFrameStats();",
+                      self.harness)
         self.assertIn("songPosition: playStateReady ? Conductor.songPosition : null", self.harness)
 
     def test_character_swap_probe_is_smoke_only_and_measures_elapsed_time(self):
@@ -385,6 +572,7 @@ class Main {
             self.assertIn(token, readme)
         self.assertIn("native runtime smoke matrix", update_log)
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_native_smoke_launches_only_on_isolated_display(self):
         command = self.matrix.offscreen_command(["/build/Funkin", "--smoke-song", "test"], "/usr/bin/xvfb-run")
         self.assertEqual(command[:4], ["/usr/bin/xvfb-run", "-a", "-s", "-screen 0 1280x720x24"])
@@ -402,6 +590,7 @@ class Main {
         )
         self.assertEqual([marker["event"] for marker in markers], ["startup", "success"])
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_strict_diagnostics_rejects_script_errors_after_success(self):
         case = self.matrix.SmokeCase("strict-errors", "test", "strict", "strict")
         output = "\n".join(
@@ -423,7 +612,7 @@ class Main {
             binary = base / "Funkin"
             binary.write_bytes(b"placeholder")
             (base / "assets" / "data").mkdir(parents=True)
-            (base / "assets" / "data" / "options.json").write_text("{}")
+            (base / "assets" / "data" / "options.json").write_text("{}", newline='\n')
             with patch.object(self.matrix, "LOG_ROOT", base / "logs"), patch.object(
                 self.matrix, "offscreen_command", side_effect=lambda command: command
             ), patch.object(self.matrix.subprocess, "Popen", side_effect=FakeProcess):
@@ -461,6 +650,17 @@ class Main {
              '[hscript-null-iterator] for-in used a null value',
              'source/HxcWindowCompat.hx:33: [hxc-window] missing icon: assets/dokicon.png'])
 
+    def test_strict_diagnostics_rejects_iris_and_glsl_errors(self):
+        failures = [
+            '[ERROR:hscript:0]: Unknown function: toLowerCase',
+            '[FATAL:Iris]: script failed',
+            '[nightmare-vision-shader-compile] fragment=owned/shaders/effect.frag: [openfl.display.Shader] ERROR: Error compiling fragment shader',
+            '0:52(28): error: could not implicitly convert operands to arithmetic operator',
+        ]
+        self.assertEqual(self.matrix.runtime_diagnostics("\n".join(failures)), failures)
+        self.assertEqual(self.matrix.runtime_diagnostics('[WARN:Iris]: ordinary warning\n'), [])
+
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_timeout_output_handles_bytes_then_text_without_losing_diagnostics(self):
         class TimedOutProcess:
             returncode = -9
@@ -502,6 +702,7 @@ class Main {
         runner = MATRIX_PATH.read_text()
         self.assertIn('"TMPDIR": str(overlay_root / "scratch")', runner)
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_each_case_uses_default_options_and_private_save_overlay(self):
         case = self.matrix.SMOKE_MATRIX[0]
         markers = "\n".join(
@@ -542,18 +743,18 @@ class Main {
             selected = source / "assets" / "imported_mods" / "selected"
             (selected / "stages").mkdir(parents=True)
             (selected / "images").mkdir()
-            (selected / "stages" / "Haven.lua").write_text("function onCreate() end")
+            (selected / "stages" / "Haven.lua").write_text("function onCreate() end", newline='\n')
             (selected / "images" / "large.png").write_bytes(b"media")
             provider = source / "assets" / "imported_mods" / "global-provider"
             (provider / "scripts").mkdir(parents=True)
-            (provider / "scripts" / "results.lua").write_text("function onEndSong() end")
+            (provider / "scripts" / "results.lua").write_text("function onEndSong() end", newline='\n')
             (source / "assets" / "imported_mods" / "globalResultsProvider.json").write_text(
                 json.dumps({"version": 1, "defaultOwner": "assets/imported_mods/global-provider"})
-            )
+            , newline='\n')
             (source / "assets" / "data" / case.folder).mkdir()
             (source / "assets" / "data" / case.folder / "compatScripts.json").write_text(
                 json.dumps({"roots": [{"path": "assets/imported_mods/selected"}]})
-            )
+            , newline='\n')
             (source / "assets" / "data" / "options.json").write_bytes(b'{"offset":251}')
             binary = source / "Funkin"
             binary.write_bytes(b"placeholder")
@@ -578,6 +779,7 @@ class Main {
         self.assertIn("--smoke-runtime-root", command)
         self.assertEqual(command[command.index("--smoke-runtime-root") + 1], str(cwd))
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_cross_song_switch_copies_both_owner_scripts(self):
         first = self.matrix.SmokeCase("switch-first", "test", "first", "first")
         second = self.matrix.SmokeCase("switch-second", "test", "second", "second-hard", "hard")
@@ -613,10 +815,10 @@ class Main {
                 data = source / "assets" / "data" / case.folder
                 data.mkdir(parents=True)
                 (data / "compatScripts.json").write_text(json.dumps({
-                    "roots": [{"path": f"assets/imported_mods/{owner}"}]}))
+                    "roots": [{"path": f"assets/imported_mods/{owner}"}]}), newline='\n')
                 script = source / "assets" / "imported_mods" / owner / "scripts" / "test.lua"
                 script.parent.mkdir(parents=True)
-                script.write_text("function onCreate() end")
+                script.write_text("function onCreate() end", newline='\n')
             binary = source / "Funkin"
             binary.write_bytes(b"placeholder")
             with patch.object(self.matrix, "LOG_ROOT", Path(folder) / "logs"), patch.object(
@@ -630,6 +832,136 @@ class Main {
         self.assertEqual(command[command.index("--smoke-next-song") + 1], "second")
         self.assertEqual(command[command.index("--smoke-next-chart") + 1], "second-hard")
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
+    def test_return_freeplay_runner_requires_scoped_chart_and_global_menu_markers(self):
+        case = self.matrix.SmokeCase("codename-return", "test", "song", "song")
+        commands = []
+
+        class FakeProcess:
+            returncode = 0
+
+            def __init__(self, command, **_kwargs):
+                commands.append(command)
+
+            def communicate(self, timeout=None):
+                markers = [
+                    {"event": event} for event in (
+                        "startup", "playstate_start", "playstate_ready", "song_end",
+                        "end_handoff", "freeplay_start",
+                    )
+                ]
+                markers.append({"event": "freeplay_return", "directOwnerRoot": "",
+                    "activeOwnerRoot": "", "baseRows": 4, "importedRows": 2})
+                markers.append({"event": "success"})
+                return "\n".join("RUNTIME_SMOKE|" + json.dumps(marker)
+                    for marker in markers), None
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            temp = Path(folder)
+            source = temp / "source"
+            chart = source / "assets" / "data" / case.folder
+            chart.mkdir(parents=True)
+            owner = "assets/imported_mods/codename-owner"
+            (chart / "compatScripts.json").write_text(json.dumps({
+                "version": 1,
+                "selectedRoot": owner,
+                "roots": [{"engine": "Codename Engine", "path": owner}],
+            }), newline='\n')
+            (source / "assets" / "data" / "options.json").write_text("{}", newline='\n')
+            (source / "assets" / "imported_mods" / "codename-owner").mkdir(parents=True)
+            binary = source / "Funkin"
+            binary.write_bytes(b"placeholder")
+            with patch.object(self.matrix, "SMOKE_ROOT", temp / "smoke"), patch.object(
+                self.matrix, "LOG_ROOT", temp / "logs"), patch.object(
+                self.matrix, "offscreen_command", side_effect=lambda command: command
+            ), patch.object(self.matrix.subprocess, "Popen", side_effect=FakeProcess):
+                result = self.matrix.run_case(binary, case, duration_ms=30000,
+                    runtime_root=source, return_freeplay=True)
+                self.assertEqual(result["status"], "passed", result)
+                default_command = commands[0]
+                self.assertNotIn(str(ROOT / "tools" / "drive_offscreen_input.py"), default_command)
+                self.assertNotIn("--post-key", default_command)
+
+                result = self.matrix.run_case(binary, case, duration_ms=30000,
+                    runtime_root=source, return_freeplay=True, post_key="Return")
+                self.assertEqual(result["status"], "passed", result)
+                confirm_command = commands[1]
+                self.assertIn(str(ROOT / "tools" / "drive_offscreen_input.py"), confirm_command)
+                self.assertEqual(confirm_command[confirm_command.index("--post-key") + 1], "Return")
+                self.assertEqual(confirm_command[confirm_command.index("--post-trigger") + 1], "song_end")
+                self.assertEqual(confirm_command[confirm_command.index("--post-delay-seconds") + 1], "4.0")
+
+                for invalid in (
+                    {"post_key": "Escape"},
+                    {"post_key": "Return", "post_trigger": "freeplay_start"},
+                ):
+                    rejected = self.matrix.run_case(binary, case, duration_ms=30000,
+                        runtime_root=source, return_freeplay=True, **invalid)
+                    self.assertEqual(rejected["status"], "failed")
+                    self.assertIn("limited to Return after song_end", rejected["reason"])
+                self.assertEqual(len(commands), 2, "invalid confirmation input launched a process")
+
+        command = confirm_command
+        for flag in ("--smoke-return-freeplay", "--smoke-owner-root",
+                     "--smoke-botplay", "--smoke-song-rate"):
+            self.assertIn(flag, command)
+        self.assertEqual(command[command.index("--smoke-owner-root") + 1], owner)
+        self.assertEqual(command[command.index("--smoke-song-rate") + 1], "50")
+
+    def test_return_freeplay_cli_forwards_only_post_song_return_confirmation(self):
+        case = self.matrix.SMOKE_MATRIX[0]
+        captured = {}
+
+        def fake_run_case(binary, selected_case, duration_ms, **kwargs):
+            captured.update(kwargs)
+            captured["duration_ms"] = duration_ms
+            captured["case"] = selected_case
+            return {"id": selected_case.id, "status": "passed"}
+
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            with patch.object(self.matrix, "LOG_ROOT", Path(folder) / "logs"), patch.object(
+                self.matrix, "run_case", side_effect=fake_run_case
+            ):
+                status = self.matrix.main([
+                    "--case", case.id,
+                    "--return-freeplay",
+                    "--post-key", "Return",
+                    "--post-trigger", "song_end",
+                    "--post-delay-seconds", "1.25",
+                ])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(captured["post_key"], "Return")
+        self.assertEqual(captured["post_trigger"], "song_end")
+        self.assertEqual(captured["post_delay_seconds"], 1.25)
+        self.assertTrue(captured["return_freeplay"])
+        self.assertGreaterEqual(captured["duration_ms"], 30000)
+
+    def test_return_freeplay_cli_rejects_non_results_input(self):
+        case = self.matrix.SMOKE_MATRIX[0]
+        for args in (
+            ["--case", case.id, "--return-freeplay", "--post-key", "Escape"],
+            ["--case", case.id, "--return-freeplay", "--post-key", "Return",
+             "--post-trigger", "freeplay_start"],
+            ["--case", case.id, "--post-key", "Return"],
+        ):
+            with self.subTest(args=args), self.assertRaises(SystemExit) as raised:
+                self.matrix.main(args)
+            self.assertEqual(raised.exception.code, 2)
+
+    def test_return_freeplay_owner_discovery_rejects_non_codename_chart(self):
+        case = self.matrix.SmokeCase("not-codename", "test", "song", "song")
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            chart = Path(folder) / "assets" / "data" / case.folder
+            chart.mkdir(parents=True)
+            (chart / "compatScripts.json").write_text(json.dumps({
+                "selectedRoot": "assets/imported_mods/psych-owner",
+                "roots": [{"engine": "Psych Engine", "path": "assets/imported_mods/psych-owner"}],
+            }), newline='\n')
+            with self.assertRaisesRegex(ValueError, "not a Codename Engine import"):
+                self.matrix._selected_codename_owner(Path(folder), case)
+
+    @unittest.skipIf(os.name == 'nt', 'requires Linux Xvfb/symlink offscreen runtime fixtures')
     def test_changed_disposable_options_fail_without_touching_source(self):
         case = self.matrix.SMOKE_MATRIX[0]
         overlays = []
@@ -715,9 +1047,9 @@ class Main {
     || details[19].length != 500) throw "bounded error marker";
 ''' + "}\n}\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture, encoding="utf-8")
+            (Path(folder) / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
                 cwd=folder, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -733,9 +1065,9 @@ class Main {
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "Main.hx"
-            fixture_path.write_text(fixture, encoding="utf-8")
+            fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(SOURCE), "-cp", str(folder), "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(folder), "--interp", "-main", "Main"],
                 cwd=folder,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,
@@ -804,9 +1136,9 @@ class ImportWorkflow {
             for relative, contents in files.items():
                 path = Path(folder) / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(contents, encoding="utf-8")
+                path.write_text(contents, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(SOURCE), "-cp", str(folder), "--interp", "-main", "CompileMain"],
+                [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(folder), "--interp", "-main", "CompileMain"],
                 cwd=folder,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

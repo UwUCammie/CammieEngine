@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 
@@ -30,7 +31,7 @@ class RefreshPsychStageMetadataTest(unittest.TestCase):
     }
     return stage;
   }
-}""", encoding='utf-8')
+}""", encoding='utf-8', newline='\n')
 
             owner = refresh.render(donor, [])['owner']
             source_folder = donor / 'assets/base_game/shared/data/spookeez'
@@ -84,48 +85,48 @@ class RefreshPsychStageMetadataTest(unittest.TestCase):
                 },
             }
             for name, value in source_charts.items():
-                (source_folder / name).write_text(json.dumps(value), encoding='utf-8')
+                (source_folder / name).write_text(json.dumps(value), encoding='utf-8', newline='\n')
             original_bytes = {}
             for name, value in installed.items():
                 path = live_folder / name
-                path.write_text(json.dumps(value), encoding='utf-8')
+                path.write_text(json.dumps(value), encoding='utf-8', newline='\n')
                 original_bytes[name] = path.read_bytes()
             qualified_chart = qualified_folder / f'{qualified_name}-spookeez-easy.json'
             qualified_chart.write_text(json.dumps(installed['spookeez-easy.json']),
-                                       encoding='utf-8')
+                                       encoding='utf-8', newline='\n')
             provenance_chart = provenance_folder / (
                 f'{provenance_folder.name}-spookeez-easy.json')
             provenance_chart.write_text(json.dumps(installed['spookeez-easy.json']),
-                                        encoding='utf-8')
+                                        encoding='utf-8', newline='\n')
             (live_folder / 'compatScripts.json').write_text(json.dumps({
                 'version': 1, 'selectedRoot': owner,
                 'roots': [{'engine': 'Psych Engine', 'path': owner}],
-            }), encoding='utf-8')
+            }), encoding='utf-8', newline='\n')
             for folder in (qualified_folder, provenance_folder):
                 (folder / 'compatScripts.json').write_text(json.dumps({
                     'version': 1, 'selectedRoot': owner,
                     'roots': [{'engine': 'Psych Engine', 'path': owner}],
-                }), encoding='utf-8')
+                }), encoding='utf-8', newline='\n')
             (provenance_folder / 'importProvenance.json').write_text(json.dumps({
                 'version': 1, 'sourceOwner': owner, 'sourceEngine': 'Psych Engine',
                 'sourceFolder': 'spookeez', 'destinationFolder': provenance_folder.name,
-            }), encoding='utf-8')
+            }), encoding='utf-8', newline='\n')
             for name in ('events.json', 'preload.json'):
-                (live_folder / name).write_text('[]', encoding='utf-8')
-            (runtime / 'assets/data/options.json').write_text('{"volume":0.75}', encoding='utf-8')
+                (live_folder / name).write_text('[]', encoding='utf-8', newline='\n')
+            (runtime / 'assets/data/options.json').write_text('{"volume":0.75}', encoding='utf-8', newline='\n')
 
             foreign = runtime / 'assets/data/foreign-song'
             foreign.mkdir()
             foreign_chart = foreign / 'foreign-song.json'
             foreign_chart.write_text(json.dumps({'song': {
                 'song': 'Foreign', 'stage': 'stage', 'notes': [], 'events': []}}),
-                encoding='utf-8')
+                encoding='utf-8', newline='\n')
             foreign_original = foreign_chart.read_bytes()
             foreign_owner = 'assets/imported_mods/another-source'
             (foreign / 'compatScripts.json').write_text(json.dumps({
                 'version': 1, 'selectedRoot': foreign_owner,
                 'roots': [{'engine': 'Psych Engine', 'path': foreign_owner}],
-            }), encoding='utf-8')
+            }), encoding='utf-8', newline='\n')
             options = runtime / 'assets/data/options.json'
             original_options = options.read_bytes()
 

@@ -1,5 +1,7 @@
 """Compile and exercise the source-compatible Codename rating manager."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -47,9 +49,9 @@ class Main {
 	}
 }'''
         with tempfile.TemporaryDirectory(prefix="codename-rating-script-", dir=ROOT / "tmp") as temp:
-            (Path(temp) / "Main.hx").write_text(main)
+            (Path(temp) / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", temp, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
                  "-main", "Main", "--interp"],
@@ -139,9 +141,9 @@ class Main {
 
         with tempfile.TemporaryDirectory(prefix="codename-rating-", dir=ROOT / "tmp") as temp:
             base = Path(temp)
-            (base / "Main.hx").write_text(main)
+            (base / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", temp,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", temp,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
             )

@@ -41,13 +41,15 @@ class RuntimeSmokeVisuals {
 		var current = field(animation, 'curAnim');
 		var x = number(field(note, 'x'));
 		var width = number(field(note, 'width'));
+		var frameWidth = number(field(note, 'frameWidth'));
 		var originX = number(field(field(note, 'origin'), 'x'));
 		var offsetX = number(field(field(note, 'offset'), 'x'));
 		var offsetY = number(field(field(note, 'offset'), 'y'));
 		var scaleX = number(field(field(note, 'scale'), 'x'));
-		var renderCenterX:Null<Float> = x == null || width == null || originX == null
-			|| offsetX == null || scaleX == null ? null
-			: x + originX - offsetX - originX * scaleX + width / 2;
+		var scaleY = number(field(field(note, 'scale'), 'y'));
+		var renderCenterX:Null<Float> = x == null || originX == null
+			|| offsetX == null || scaleX == null || frameWidth == null ? null
+			: x + originX - offsetX - originX * scaleX + frameWidth * scaleX / 2;
 		return {
 			sourceKind: field(note, 'sourceKind'),
 			noteType: field(note, 'noteType'),
@@ -70,10 +72,14 @@ class RuntimeSmokeVisuals {
 			mustPress: field(note, 'mustPress'),
 			autoHitAllowed: call(note, 'canAutoHit', []),
 			autoControlled: call(note, 'isAutoPlayed', []),
+			isSustainNote: field(note, 'isSustainNote'),
 			wasGoodHit: field(note, 'wasGoodHit'),
 			x: x,
 			width: width,
+			frameWidth: frameWidth,
+			originX: originX,
 			scaleX: scaleX,
+			scaleY: scaleY,
 			offsetX: offsetX,
 			offsetY: offsetY,
 			renderCenterX: renderCenterX,
@@ -165,8 +171,17 @@ class RuntimeSmokeVisuals {
 		dance.sort(function(a, b) return Reflect.compare(a.name, b.name));
 		return {
 			role: role,
+			isPlayer: field(actor, 'isPlayer'),
+			flipX: field(actor, 'flipX'),
+			flipY: field(actor, 'flipY'),
+			stageBaseFlipX: field(actor, 'stageBaseFlipX'),
+			animationFlipX: field(current, 'flipX'),
+			frameFlipX: field(field(actor, 'frame'), 'flipX'),
+			libraryScaleX: field(field(field(actor, 'library'), 'matrix'), 'a'),
+			libraryScaleY: field(field(field(actor, 'library'), 'matrix'), 'd'),
 			requestedCharacter: field(actor, 'requestedCharacter'),
 			resolvedCharacter: field(actor, 'resolvedCharacter'),
+			resolvedAssetRoot: field(actor, 'resolvedAssetRoot'),
 			imageFile: field(actor, 'imageFile'),
 			graphicKey: graphicKey(actor),
 			atlasFrames: count(field(field(actor, 'frames'), 'frames')),
@@ -180,6 +195,55 @@ class RuntimeSmokeVisuals {
 			geometry: characterGeometry(actor),
 			dance: dance
 		};
+	}
+
+	/** Bounded source-stage inventory for an opt-in native smoke. It records
+	 * the actual render members after stage scripts have finished loading. */
+	public static function stage(stage:Dynamic):Dynamic {
+		var raw = field(stage, 'members');
+		var members:Array<Dynamic> = Std.isOfType(raw, Array) ? cast raw : [];
+		var visuals:Array<Dynamic> = [];
+		for (member in members) {
+			if (member == null || visuals.length >= 128) continue;
+			var kind = Type.getClass(member);
+			var camera = field(member, 'camera');
+			visuals.push({
+				kind: kind == null ? '' : Type.getClassName(kind),
+				exists: field(member, 'exists'),
+				alive: field(member, 'alive'),
+				bitmapWidth: number(field(field(field(member, 'graphic'), 'bitmap'), 'width')),
+				bitmapHeight: number(field(field(field(member, 'graphic'), 'bitmap'), 'height')),
+				visible: field(member, 'visible'),
+				alpha: number(field(member, 'alpha')),
+				blend: field(member, 'blend'),
+				shader: field(field(member, 'shader'), 'fragmentPath'),
+				camera: camera == field(stage, 'camGame') ? 'game' : camera == field(stage, 'camHUD') ? 'hud' : camera == field(stage, 'camOther') ? 'other' : 'explicit',
+				ownerRoot: field(field(member, 'ownerPaths'), 'root'),
+				graphicKey: graphicKey(member),
+				atlasFrames: count(field(field(member, 'frames'), 'frames')),
+				animation: field(field(field(member, 'animation'), 'curAnim'), 'name'),
+				x: number(field(member, 'x')),
+				y: number(field(member, 'y')),
+				width: number(field(member, 'width')),
+				height: number(field(member, 'height')),
+				scaleX: number(field(field(member, 'scale'), 'x')),
+				scaleY: number(field(field(member, 'scale'), 'y')),
+				offsetX: number(field(field(member, 'offset'), 'x')),
+				offsetY: number(field(field(member, 'offset'), 'y')),
+				scrollFactorX: number(field(field(member, 'scrollFactor'), 'x')),
+				scrollFactorY: number(field(field(member, 'scrollFactor'), 'y')),
+				cameraWidth: number(field(camera, 'width')),
+				cameraHeight: number(field(camera, 'height')),
+				cameraZoom: number(field(camera, 'zoom')),
+				cameraAlpha: number(field(camera, 'alpha')),
+				cameraVisible: field(camera, 'visible'),
+				cameraFadeAlpha: number(field(camera, '_fxFadeAlpha')),
+				cameraScrollX: number(field(field(camera, 'scroll'), 'x')),
+				cameraScrollY: number(field(field(camera, 'scroll'), 'y')),
+				zIndex: field(member, 'zIndex')
+			});
+		}
+		return {memberCount: members.length, members: visuals};
 	}
 
 	/** Sample both the Bopper-equivalent base and the final HXC-routed draw point. */

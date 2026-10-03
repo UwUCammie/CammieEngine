@@ -1,6 +1,8 @@
 """HScript-ex method arguments stay local when a class field has the same name."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -40,7 +42,7 @@ class HscriptClassParameterShadowingTest(unittest.TestCase):
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             owner_script = base / "PhillyTrain.hx"
             owner_script.write_text(
                 """class PhillyTrain {
@@ -68,7 +70,7 @@ class HscriptClassParameterShadowingTest(unittest.TestCase):
 }
 """,
                 encoding="utf-8",
-            )
+             newline='\n')
             (base / "PsychClassParameterProbe.hx").write_text(
                 r'''import hscript.ParserEx;
 import hscript.ScriptClassScope;
@@ -93,9 +95,9 @@ class PsychClassParameterProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(base),
                 "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),

@@ -1,8 +1,11 @@
 """Execute the NMV owner-scoped FlxG.save bridge with real Iris scripts."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -169,12 +172,13 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(prefix='nmv-save-', dir=ROOT / 'tmp') as directory:
             work = Path(directory)
-            (work / 'Main.hx').write_text(fixture)
-            (work / 'HxcCompatRuntime.hx').write_text(runtime_stub)
+            write_flixel_point_stub(work)
+            (work / 'Main.hx').write_text(fixture, newline='\n')
+            (work / 'HxcCompatRuntime.hx').write_text(runtime_stub, newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                        [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                          '-cp', str(IRIS), '-cp', str(work)] + defines + ['--run', 'Main'],
                         cwd=ROOT, capture_output=True, text=True, timeout=60)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

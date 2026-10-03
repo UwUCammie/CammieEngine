@@ -1,6 +1,8 @@
 """NMV source menu difficulty declarations stay owner scoped."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -15,9 +17,9 @@ class NightmareVisionDifficultyCompatTest(unittest.TestCase):
         main = "class Main { static function main() {\n" + body + "\n} }\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             temp_path = Path(temp)
-            (temp_path / "Main.hx").write_text(main, encoding="utf-8")
+            (temp_path / "Main.hx").write_text(main, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", temp, "--run", "Main", *map(str, args)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", temp, "--run", "Main", *map(str, args)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

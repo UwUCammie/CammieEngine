@@ -1,6 +1,8 @@
 """Codename substate callbacks receive their source event without losing old zero-arg hooks."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -36,9 +38,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
-            (Path(directory) / "Main.hx").write_text(fixture)
+            (Path(directory) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run([
-                str(ROOT / ".tools/haxe/haxe"), "-cp", directory,
+                *HAXE_COMMAND, "-cp", directory,
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

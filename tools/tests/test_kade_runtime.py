@@ -1,6 +1,8 @@
 """Runtime-boundary coverage for the mounted HellBeats Kade modchart."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import os
 import subprocess
@@ -35,8 +37,8 @@ def extract_method(source: str, marker: str) -> str:
 def run_haxe(source: str, *, include_source: bool = True) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
         path = Path(folder) / "KadeRuntimeFixture.hx"
-        path.write_text(source)
-        command = [str(HAXE), "-cp", folder]
+        path.write_text(source, newline='\n')
+        command = [*HAXE_COMMAND, "-cp", folder]
         if include_source:
             command.extend(["-cp", str(ROOT / "source"), "-cp", str(HSCRIPT)])
         command.extend(["-main", "KadeRuntimeFixture", "--interp"])

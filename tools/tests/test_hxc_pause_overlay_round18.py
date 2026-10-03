@@ -1,10 +1,12 @@
 """Round 18: bounded native HXC pause-overlay specs and cleanup boundaries."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,9 +23,9 @@ class HxcPauseOverlayRound18Test(unittest.TestCase):
     def run_fixture(self, source: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             command = [
-                str(HAXE),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", folder,

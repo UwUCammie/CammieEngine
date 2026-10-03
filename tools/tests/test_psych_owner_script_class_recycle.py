@@ -1,6 +1,8 @@
 """Pin wildcard-imported owner classes passed to FlxTypedGroup.recycle."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -56,7 +58,7 @@ class Particle extends FlxBasic {
             for relative, content in modules.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             probe = base / "PsychOwnerScriptClassRecycleProbe.hx"
             probe.write_text(
@@ -107,9 +109,9 @@ class PsychOwnerScriptClassRecycleProbe {
  }
 }''',
                 encoding="utf-8",
-            )
+             newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp", str(base),
                 "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),

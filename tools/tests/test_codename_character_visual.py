@@ -1,9 +1,11 @@
 """Compile the production visual builder with lightweight actor/asset doubles."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +22,7 @@ package flixel.util;
 class FlxColor {
  public static function fromString(value:String):Int return 0x123456;
 }
-''')
+''', newline='\n')
             (folder / "Character.hx").write_text('''
 class Character {
  public var xml:CodenameXmlAccess;
@@ -81,7 +83,7 @@ class FakeAnimation {
  public function addBySymbolIndices(name:String, symbol:String, indices:Array<Int>, fps:Float, loop:Bool):Void
   calls.push("symbolIndices:"+name+":"+symbol+":"+indices.join(",")+":"+fps+":"+loop);
 }
-''')
+''', newline='\n')
             (folder / "CodenamePaths.hx").write_text('''
 class CodenamePaths {
  public var requests:Array<String> = [];
@@ -90,7 +92,7 @@ class CodenamePaths {
  public function animateAtlasPath(key:String):String return atlasPath;
  public function getFrames(key:String):Dynamic {requests.push(key);return key;}
 }
-''')
+''', newline='\n')
             (folder / "CodenameScriptDiscovery.hx").write_text('''
 class CodenameScriptDiscovery {
  public static function safeRelativeName(value:String):Bool {
@@ -99,10 +101,10 @@ class CodenameScriptDiscovery {
   return true;
  }
 }
-''')
-            (folder / "Main.hx").write_text(main_source)
+''', newline='\n')
+            (folder / "Main.hx").write_text(main_source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder),
                  "--run", "Main"], cwd=ROOT, capture_output=True, text=True)
 
     def test_live_mutated_xml_and_ordered_node_callbacks(self):

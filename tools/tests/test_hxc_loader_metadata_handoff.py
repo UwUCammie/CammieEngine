@@ -1,4 +1,5 @@
 """The HXC runtime loader reuses translation metadata for one script load."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,13 +82,13 @@ class Main {{
         task_tmp = ROOT / "tmp"
         task_tmp.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="hxc-metadata-handoff-", dir=task_tmp) as folder:
-            Path(folder, "Main.hx").write_text(fixture)
+            Path(folder, "Main.hx").write_text(fixture, newline='\n')
             environment = os.environ.copy()
             environment["TMPDIR"] = str(task_tmp)
             for name in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XAUTHORITY", "XDG_RUNTIME_DIR"):
                 environment.pop(name, None)
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 env=environment,

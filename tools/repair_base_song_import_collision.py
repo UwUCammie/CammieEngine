@@ -9,7 +9,10 @@ in its qualified destination. It defaults to a read-only plan.
 from __future__ import annotations
 
 import argparse
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 from pathlib import Path

@@ -11417,3 +11417,1077 @@ suite passed **1,693 tests across 510 modules, 65 skipped, zero failed**
 checksum check, contains `RELEASE_TAG=v0.0.1-alpha.7`, and is 1,186,010,548
 bytes with SHA-256
 `9ed0eb97b6ea5a1ab4cf3c0caed1a22d805d88bebaf542b3c36decfdc7b80e84`.
+
+### Nightmare Vision D-Sides API follow-up — 2026-10-01
+
+The shared host now binds the source `funkin.api.DiscordClient` calling
+convention (including distinct small and large image keys) and
+`funkin.data.Chart` with selected-owner reads and source legacy-chart
+normalization. The Chart/Difficulty/Mods bindings captured by persistent
+plugins now retain their owner context across song changes. No donor content
+or chart-specific behavior changed. The Linux `./run.sh build` succeeded and
+`python3 tools/run_tests.py` passed **1,697 tests across 510 modules, 65
+skipped, zero failed**.
+
+The focused script tests execute unchanged import syntax for both APIs. The
+offscreen native source-API probe on the retained private Redux import reached
+`NMV_HOST_NATIVE|PASS|` and emitted `success`; the former
+`EUnknownVariable(DiscordClient)` errors in the composer script were absent.
+Receipt: `tmp/nmv-source-apis-native-20260930-discord-20261001/receipt.json`.
+A separate 12-second Bopeebo Normal offscreen run reached `playstate_ready`
+and `success` with no script errors; its receipt is
+`tmp/nmv-bopeebo-native-20261001/receipt.json`. Both Xvfb wrappers returned
+exit code 1 during teardown despite these game markers. A control command,
+`xvfb-run -a -s '-screen 0 1280x720x24' true`, also returned 1 here with
+the same failed-kill message. The wrapper exit is therefore an environment
+artifact; a clean direct game-process exit remains unverified and is recorded
+separately from gameplay progress.
+
+The native runs still report the unresolved `funkin.objects.Bopper` import.
+The selected donor refers to a nonexistent `keyClick6` sound; the host emits
+the source-defined beep fallback diagnostic. `Chart.fromPath` has focused
+interpreter coverage but no native song-script invocation yet. Event and
+note-type script execution, Bopper and Character animation API semantics,
+the connected Discord `username`, third playfields, and full-song difficulty
+playback remain open; no D-Sides
+chart has been promoted to complete source parity.
+
+### Nightmare Vision Redux Dusk visual selection — 2026-10-01
+
+The retained private import contains Dusk Easy, Normal, and Hard plus its
+selected-owner stage, character JSON, Animate atlases, Sparrow sheets, icon,
+events, and audio. A pre-fix offscreen probe selected the fallback `stage` and
+`gf` and rendered the native opponent sheet. The shared chart loader now keeps
+the authored Nightmare Vision stage and character fields, validates their
+selected-owner definitions, and loads character animation metadata and stage
+sprites from that owner. The stage host supplies source-shaped `FlxSprite` and
+`Bopper` APIs, and Animate actors expose the source `animateAtlas` alias.
+These changes contain no song-name, chart-name, or mod-name branches and did
+not change donor files or installed imports.
+
+After the `animateAtlas` fix, an 8-second Normal offscreen Linux run reached
+`playstate_ready` and `success`. Its structured `character_visual` records
+show the selected owner's BF, Dusk, and GF-Dusk Animate roots; `stage_visual`
+records four Dusk Sparrow sheet sprites and the other authored stage members.
+The earlier `EInvalidAccess(useRenderTexture)` and its repeated
+`EUnknownVariable(mosaic)` follow-on errors were absent. Evidence:
+`tmp/dusk-nmv-after-alias.log` and `.process.log`. A 50× Normal botplay run
+reached the natural song end with no Nightmare Vision script errors
+(`tmp/dusk-nmv-normal-end.log`), and direct 5-second Easy and Hard runs each
+reached `playstate_ready` and `success` with the same authored stage and actors
+(`tmp/dusk-nmv-{easy,hard}-short.log`). The 50× run checks completion and
+failure recovery, not visual timing or source parity. The donor references a
+missing `keyClick6` sound, which follows its own beep fallback. Full-speed
+late-event visual comparison, repeated-load cleanup, editor and menu paths,
+and all-package completion remain open; Dusk is not marked fully compatible.
+
+The final event-group build also completed Normal at 50× with a natural
+`song_end` and zero Nightmare Vision script errors
+(`tmp/dusk-nmv-final-end.log`). Easy and Hard each reached gameplay and
+`success` with zero script errors on that build
+(`tmp/dusk-nmv-final-{easy,hard}.log`). Two consecutive Normal loads in one
+process reached `playstate_ready` and `success` without a script error
+(`tmp/dusk-nmv-final-reload.log`). A full-speed offscreen frame at 12 seconds
+shows the donor's U-Cream backdrop and character art
+(`tmp/dusk-nmv-visual-normal.png`); this is visual asset evidence, not a
+frame-by-frame comparison against the donor executable. The source event
+group now dispatches only the matching owner event module's `onTrigger`;
+focused host/discovery/group tests cover that path. No menu or editor parity
+claim follows from these probes.
+
+The All Freeplay browsing path selected this imported Dusk row and reached
+`playstate_ready` and `success` offscreen
+(`tmp/dusk-nmv-final-freeplay-fast.log`). Its first probe timed out before
+reaching the target because the smoke driver's default 400 ms scroll interval
+would require more than the 20-second window for this list; the rerun used a
+20 ms test-only scroll interval. Five additional isolated Normal launches
+each reached `playstate_ready` and `success`
+(`tmp/dusk-nmv-relaunch-{1..5}.log`). The earlier baseline build had an
+intermittent native crash during the unrelated global results script startup;
+it did not recur in these final-build launches, but its root cause is still
+unproven. `./run.sh build` passed, `git diff --check` was clean, and
+`python3 tools/run_tests.py` passed **1,704 tests across 515 modules, 65
+skipped, zero failed** (`tmp/dusk-nmv-full-tests-final.log`).
+
+A normal-rate seek from the opening into 110 seconds crossed 215 queued chart
+events, then dispatched the authored `Song Events: pink/start` at 112.079
+seconds with no Nightmare Vision script error. The offscreen frame shows the
+pink shader treatment over the selected stage and actors
+(`tmp/dusk-nmv-pink-seek.log`, `tmp/dusk-nmv-pink-seek.png`). This checks the
+seek and later-event path, while a donor-executable timing comparison remains
+outstanding.
+
+### 2026-10-01 Nightmare Vision source note skins and lane metadata
+
+The imported Redux Dusk owner has the same `data/noteskins/default.json`,
+`NOTE_assets` Sparrow atlas, and `NoteSplash` atlas as the donor. Its source
+Chart loader supplies `default` for both playfields when `arrowSkins` is
+absent. Previously, PlayState did not load those definitions and therefore
+drew the native UI-pack arrows. A shared `NightmareVisionNoteSkin` adapter now
+resolves the selected owner/core note skin per source playfield and applies
+authored tap, sustain, receptor, and splash animations, scale, antialiasing,
+RGB palette, and offsets. Missing metadata or atlas frames produce explicit
+`[nightmare-vision-note-skin]` diagnostics.
+
+A second shared loader defect mapped any truthy fifth note value to the
+Modding Plus lift block. The Nightmare Vision source generator ignores the
+fifth value on note rows, and Dusk uses it on 709 of 719 Normal rows. The
+loader now invokes that legacy conversion only for Modding Plus provenance
+or charts with no declared engine. No chart, mod, or song name controls this
+behavior, and no donor or installed import was modified.
+
+`./run.sh build` passed. Offscreen Easy, Normal, and Hard runs each emitted
+`success` and 16 `nightmare_vision_note_visual` snapshots. Every snapshot
+bound the selected owner's `UI/game/notes/NOTE_assets.png`, with only source
+playfields 0 and 1 and note data 0–7; no missing-skin diagnostics appeared
+(`tmp/dusk-nmv-note-final-{easy,normal,hard}.log` and `.process.log`). The
+receptor snapshots show the donor's `arrow static` atlas frames. The Normal
+seek PNG shows the imported stage, the source-style receptors, and colored
+scrolling arrows (`tmp/dusk-nmv-note-seek-visual.png`). A normal-speed player
+hit probe emitted all four `nightmare_vision_splash_visual` records bound to
+the selected owner's `NoteSplash.png`, each with its authored direction
+alias and offset (`tmp/dusk-nmv-note-splash-hit-final.log`). Source frame timing,
+note-type script rendering, and complete song-by-song parity remain open.
+Nightmare Vision's optional quant-color preference is still unverified; the
+current adapter does not apply its quant palette when that preference is on.
+The final `./run.sh build` passed, `git diff --check` was clean, and
+`python3 tools/run_tests.py` passed **1,709 tests across 517 modules, 65
+skipped, zero failed** (`tmp/dusk-nmv-note-full-tests-final.log`).
+After the last splash gate change, the rebuilt binary completed one more
+5-second offscreen Normal run with 16 owner-atlas tap/hold snapshots and no
+skin diagnostics (`tmp/dusk-nmv-note-final-binary.log`).
+The final normal-speed hit probe also completed and recorded the selected
+owner's splash atlas for all four directions
+(`tmp/dusk-nmv-note-splash-hit-final.log`).
+
+The next Dusk follow-up reproduced missing Nightmare Vision camera methods:
+the donor `FlxMacro.buildFlxCamera` appends one `ShaderFilter` per `addShader`
+and removes the first identical shader on `removeShader`. The shared
+Nightmare Vision interpreter now provides those methods on native cameras and
+releases its remaining filters with its script. An isolated Haxe test checks
+duplicate attachment, ordered removal, and cleanup that leaves foreign
+filters intact. The donor `Play Animation` event sets `specialAnim` after
+starting the requested animation. Cammie's shared Nightmare Vision event path
+now applies that lock, and its character dance resumes after the animation
+finishes. An offscreen Dusk Normal seek across 55,615 ms sampled BF `smug`
+at 56,020 and 57,020 ms, then a sing animation at 58,040 ms
+(`tmp/nmv-dusk-smug-visual.log`). A separate offscreen replay crossed the
+112,079 ms pink-start and 135,442 ms pink-off events without `addShader` or
+`removeShader` errors and emitted `success` (`tmp/nmv-dusk-pink-shader.log`).
+Full source-equivalent shader output and complete song playthrough parity
+remain to be verified.
+The final `./run.sh build` passed and `python3 tools/run_tests.py` passed
+**1,710 tests across 518 modules, 65 skipped, zero failed**
+(`tmp/nmv-dusk-shader-animation-tests-final.log`). `git diff --check` was
+clean. The offscreen runs used the private smoke runtime and dummy audio;
+they did not alter the desktop game or personal settings.
+
+
+### Nightmare Vision screen overlay camera ownership (2026-10-01)
+
+Compared the supplied Psych and Nightmare Vision source trees in `misc/`.
+The source stage sizes its vignette to the 1280×720 logical canvas and
+explicitly assigns `camOther`. Native tracing confirmed that the property
+assignment and `StageHelper.add` preserved that camera initially; reflection
+was not the defect. The adapter subsequently mounted `curStage` despite
+`StageHelper` already forwarding every child into PlayState. Gameplay camera
+binding assigned camGame to that group, whose Flixel setter propagated it
+to all children. This also scheduled duplicate sprite update/draw callbacks.
+
+Removed the second group attachment in the engine compatibility host. The
+existing shared direct stage attachment used by Psych keeps authored child
+cameras intact, and the Nightmare Vision STOP callback still gates actors.
+No donor scripts, charts, assets, dimensions, or timing were changed.
+
+The pre-fix native snapshot reports vignette zoom 1.4 and camera scroll
+(384.5, -372.25), despite width/height 1280×720
+(`tmp/nmv-overlay-before.log`). Rebuilt Linux offscreen checks at 1600×900
+and 1024×768 both retain overlay zoom 1 and scroll (0,0), with full logical
+canvas coverage; both emit `success`. Captures were inspected, including a
+separate red-vignette section at 80 seconds. Evidence:
+`tmp/nmv-overlay-after-1600.log`, `tmp/nmv-overlay-after-1024.log`,
+`tmp/nmv-overlay-after-red.log` and matching PNGs. Runs used a private Xvfb
+display, dummy audio and isolated settings. These focused seeks establish
+camera routing and screen coverage, not full-song presentation parity.
+
+`./run.sh build` passed (`tmp/nmv-overlay-fix-build.log`). Nine focused host,
+stage lifecycle and Psych camera tests passed, plus two smoke visual tests.
+The bounded read-only stage diagnostics now report actual sprite geometry
+and camera zoom/scroll for future regressions. Windows/Wine overlay rendering
+has not been rerun for this change.
+
+The Luna Max source review independently confirmed camera assignment itself
+works, stage-swap cleanup still owns all props, and the actor STOP gate is
+retained. No additional Psych-specific helper is needed: the affected scene
+ownership is already shared, whereas compiled Psych stage insertion ordering
+is a different contract.
+
+Automated coverage completed across all 518 modules (1,710 discovered tests),
+using the interrupted full run plus targeted reruns of its three unfinished
+modules. The V-Slice importer module passed 63 tests and mounted Auto audit
+passed six. The HXC module passed 74 tests and skipped one; its concurrent
+native scanner subprocess exited -11 once. The failed scanner check then
+passed alone in 188.9 seconds (`tmp/nmv-overlay-hxc-scan-serial.log`). This
+one concurrent scan crash remains an unexplained observation; the serial
+pass is not proof of a concurrency fix. The full invocation itself therefore
+did not produce a single green summary. Relevant outputs are
+`tmp/nmv-overlay-full-tests.log`, `tmp/nmv-overlay-hxc-tests.log`,
+`tmp/nmv-overlay-mounted-tests.log`, `tmp/nmv-overlay-vslice-tests.log`, and
+`tmp/nmv-overlay-hxc-scan-serial.log`. Final `git diff --check` passed.
+The disposable screenshot driver was removed; evidence logs/PNGs remain.
+
+## 2026-10-01 — V-Slice character costume callbacks (Virgin Rage)
+
+Source comparison found two MultiSparrowCharacter companion classes stored in
+`data/stages/`, with filenames different from their literal constructor IDs.
+The importer already retained both scripts and their combined Sparrow atlases.
+Path-only discovery classified the companions as stage scripts and never bound
+them to the live actors. The source changes costume suffixes on the authored
+`PlayAnimation` events at 81,000 and 81,454.545 ms.
+
+Shared HXC discovery now reads declared source identity, caches it by size/mtime,
+and uses the same constructor ID for selection, chart roles and actor scopes.
+Concrete stage/song owners keep precedence in mixed files; canonical character
+wrappers with nonliteral constructors retain filename matching. No chart, mod,
+asset or event-name branch was added, and donor content was not edited.
+
+Two additional shared runtime defects became visible once the scripts ran:
+seeded native singing helpers were replayed as overrides after a costume hook,
+and character-owned effect callbacks lost inherited offset/shader/antialiasing
+and zIndex receivers. Only authored method overrides are now dispatched, and
+these field operations retain their live actor and shared ordering adapters.
+
+Fresh isolated import succeeded (one song, 115 copied assets, zero errors):
+`tmp/virgin-guitar-current-import.log`. The pre-fix native replay retained plain
+singing after the costume events (`tmp/virgin-guitar-before.log`). A normal-speed
+79–90 second replay after the fixes shows transition, then guitar idle and
+singing for both actors, with zero script errors:
+`tmp/virgin-guitar-after.log`, `tmp/virgin-guitar-after.process.log` and the
+visually inspected `tmp/virgin-guitar-after.png`. Both guitar instruments are
+visible. The installed owner already contains the identical companion scripts
+and atlas metadata, so no installed charts or settings required refreshing.
+
+A 50x completion-only offscreen run reached the 185,818 ms audio ending and
+dispatched all 82 imported event rows without script errors
+(`tmp/virgin-guitar-completion.log`). The donor has 83 rows, including one exact
+duplicate ZoomCamera row at 77,818.1818 ms; the existing event merge collapses
+that identical row. Accelerated playback is crash/event evidence, not visual
+parity or performance evidence.
+
+Verification also found a false positive in the smoke harness: its global
+song-end observer completed a two-visit reload during the wrapper state, before
+visit two started. The initial `tmp/virgin-guitar-reload.log` therefore does not
+prove a second gameplay load. The observer now completes single-visit runs only;
+reload completion follows the visit/teardown state machine, resets end evidence
+per visit and requires each requested visit's natural ending. Extracted harness
+fixtures pin these conditions (`tmp/virgin-guitar-reload-harness-tests.log`).
+
+The earlier fixed event inventory covered 58 V-Slice chart pairs / 3,042 events.
+The newly inventoried Singstar Challenges package adds one pair / 83 events:
+59 pairs / 3,125 events / 44 event names. Its V-Slice chart exposes only normal;
+`virgin-rage-remix.json` is an additional legacy chart (`liquid-remix`) that the
+V-Slice package scan does not currently import. That mixed-format packaging gap
+remains explicit and is outside this focused normal-chart costume verification.
+Windows/Wine and a complete normal-speed song comparison remain unverified.
+
+The corrected two-visit completion run passes:
+`tmp/virgin-guitar-reload-verified.log` records two separate PlayState starts,
+ready markers and natural endings, with teardown between visits, guitar singing
+in both visits and zero script errors. Visit two starts with unsuffixed idle,
+so the prior costume state does not leak into the new character scope.
+
+The mounted-script audit also exposed a shared translator defect: multiline
+substate audio-suffix assignments were truncated at the first newline. The
+assignment adapter now captures the balanced expression through its statement
+terminator. A synthetic multiline/quoted-semicolon fixture and the complete
+mounted HXC generated-script parser check pass (`tmp/virgin-guitar-suffix-tests.log`,
+`tmp/virgin-guitar-corpus-rerun.log`).
+
+Separate source-backed package gaps remain: `singstarChallengeScenario.hxc`
+declares stage ID `stageSingstar`, but stage companion matching still uses the
+filename. That stage script is not selected at runtime. Solid's return-valued
+`getDeathQuote` hook has no native game-over consumer and is reported as
+unsupported. The exact mounted analyzer expectation now pins one such hook,
+with a dedicated donor fixture; it is not counted as compatible. These gaps,
+the supplementary legacy chart, full presentation parity and Windows checks
+remain unfinished. No installed import or donor files were changed.
+
+The final normal-speed guitar capture passes and was visually inspected. Two
+sandboxed screenshot retries could not establish an Xvfb listener
+(`tmp/virgin-guitar-xvfb-errors.log`); these are excluded from success evidence.
+The successful retry used an isolated Xvfb server with dummy audio and the
+shared runtime lock (`tmp/virgin-guitar-final-xvfb.log`).
+
+Independent Luna Max review found no chart/mod-specific branch. Its two
+additional shared edge cases were fixed: suffix comparisons are left as reads
+rather than rewritten as assignments, and the smoke harness rejects requesting
+an end-state handoff together with multiple visits (that check is only hosted
+for one visit). Executable fixtures pass in `tmp/virgin-guitar-review-tests.log`.
+The package also adds one `altAnim` note-kind diagnostic to the mounted scan;
+that remaining note behavior gap is not hidden by the costume regression pass.
+
+Final automated verification: the full repository invocation ran 1,715 tests
+across 519 modules with 65 skips. Its one failing module was the mounted HXC
+inventory expectation after adding Singstar (lifecycle scripts 167 → 170;
+note-kind diagnostics 46 → 47). After pinning the source-backed additions and
+the newly visible unsupported death-quote hook, the complete HXC module rerun
+passes all 79 tests with one skip (`tmp/virgin-guitar-final-hxc-tests.log`). The
+33 focused review/harness tests pass (`tmp/virgin-guitar-review-tests.log`),
+including the additional handoff configuration test added after the full run.
+Thus every test module was exercised, but there is no single all-green full-run
+summary for this change. The final `./run.sh build` and `git diff --check` pass.
+Disposable capture/analysis drivers were removed; logs, compact scan counts
+and the inspected screenshot are retained under repository `tmp`.
+
+
+## 2026-10-01 — V-Slice declared stage identity follow-up
+
+The costume regression also exposed a Stage wrapper whose constructor ID differs
+from its filename. Runtime selection and import dependency planning now match
+that declared ID, retaining filename aliases for older imports. The lexical
+identity reader and translator select the same Stage class in mixed files;
+other concrete Stage/Character declarations are not replayed as its helper
+modules. Source `scriptGet`/`scriptSet` operations reach live actor-owned script
+fields only. The source opponent vocal-group read resolves actual native stems.
+These are shared adapters; no song/mod branch or donor edit was added.
+
+The rebuilt Linux binary loaded the previously skipped stage companion once,
+with no script errors (`tmp/hxc-stage-id-native.process.log`). Normal-speed
+79–89 second replays at configured 60, 240 and 480 FPS caps each show both
+characters retaining guitar animation suffixes after the authored transition.
+Startup records confirm matching draw/update cap settings. The current frame
+`tmp/hxc-stage-id-240.png` was visually inspected and shows both guitars. The
+isolated options file was restored byte-for-byte; personal settings and installed
+imports were untouched. Logs and cap summaries are in `tmp/hxc-stage-id-{60,240,480}.log`
+and `tmp/hxc-stage-id-fps-summary.json`.
+
+This offscreen renderer sustained about 60 FPS at the 60 cap and roughly
+68–96 FPS during gameplay at the higher caps while the automated suite was
+running. These passes establish behavior under the configured caps, not actual
+240/480 FPS performance or a complete timing-parity claim.
+
+With the stage active, the 50x completion run reaches 185,818 ms and dispatches
+82/82 due runtime events without script errors (`tmp/hxc-stage-id-ending.log`
+and `.process.log`). This accelerated check establishes event execution and a
+natural ending, not visual/audio parity. The current stage-active two-visit check also passes: two distinct starts,
+readies, stage selections and natural endings, each dispatching 82/82 events
+without script errors (`tmp/hxc-stage-id-reload.log` and `.process.log`).
+The first visit records destruction with zero remaining bindings and no cleanup
+errors before the second load. This is not a complete stage-effect leak audit.
+Focused identity, asset planning, character field and vocal tests pass; the
+mounted inventory expectation rerun also passes after removing an accidental
+standalone-analyzer dependency (`tmp/hxc-stage-id-counts-tests.log`). The first
+full run recorded that dependency failure; it is retained as failed evidence in
+`tmp/hxc-stage-id-full-tests.log`, rather than presented as a green run.
+
+Remaining source contracts include consuming mutable source strumline constants,
+source judgement semantics for stage shadow callbacks, the `altAnim` note kind,
+the supplementary legacy remix chart, and the character `getDeathQuote` hook.
+The quote playback controller has executable unit coverage but is not yet wired
+to the native game-over host; that hook remains explicitly unsupported. Exact
+playback semantics were checked against the donor's declared API version, the
+[official V-Slice 0.6.4 game-over source](https://github.com/FunkinCrew/Funkin/blob/v0.6.4/source/funkin/play/GameOverSubState.hx).
+Windows/Wine and full normal-speed package parity remain unverified. Full
+Example Mods compatibility remains incomplete.
+
+
+The final full invocation discovered 1,720 tests across 521 modules with 65
+skips. All modules except HXC passed. HXC's mounted count scan hit its unchanged
+300-second runtime deadline (exit 124); the output contains no count assertion
+failure. This run is retained in `tmp/hxc-stage-id-final-full-tests.log`.
+The same scan had passed alone in 285.9 seconds before the full invocation.
+This difference is consistent with resource contention, but is not proof of its
+cause. No timeout was raised and no donor fixture was skipped to obtain a pass.
+The complete HXC module rerun passes 81 tests with one skip in 306.1 seconds
+(`tmp/hxc-stage-id-final-hxc-tests.log`). All test modules were exercised across
+the full run and this rerun; there is still no single green full-run summary.
+The disposable native/capture drivers were removed; logs and the inspected
+screenshot remain under repository `tmp`.
+
+
+Luna Max review found and corrected two additional generic initialization cases:
+recognized non-stage owners under a stage directory no longer inherit its stage
+filename alias, and character scope registration now precedes start/onCreate so
+script field reads/writes work on a pending actor before its role slot is assigned.
+The executable creation-window fixture proves field ownership, write persistence
+and removal of the temporary binding. Nineteen focused edge/runtime tests pass
+with one skip (`tmp/hxc-stage-id-review-edge-tests.log`). The reviewer found no
+song/mod-specific branch. A broader companion-family gate was considered but not
+applied: no concrete non-Module donor contract or regression justified it.
+
+
+After the review fixes, the final `./run.sh build` passes
+(`tmp/hxc-stage-id-final-build.log`). A fresh normal-speed 79–89 second replay on
+that binary passes with one declared stage selection, six guitar-animation
+samples for each actor, and no parser, HXC runtime or `hscript error in` messages
+(`tmp/hxc-stage-id-final-native.log` and `.process.log`). The final image
+`tmp/hxc-stage-id-final-native.png` was visually inspected and shows both guitars.
+Earlier cap/end/reload evidence above is from the main stage fix before these
+last generic review edges; the final replay validates the current creation path.
+The earlier process logs were also checked for `hscript error in` messages and
+contain none. The final capture driver was removed. Final `git diff --check`
+passes. The compatibility goal remains active and incomplete.
+
+
+## 2026-10-01 shared V-Slice death-quote and costume host
+
+The prior unsupported `getDeathQuote` finding is superseded by a shared native
+host and owner-scoped return-valued character query. Behavior follows the
+package's declared V-Slice 0.6.4 API and the official tagged game-over source
+linked above: query the original character before initial death completion;
+query it again at activation; retain a null second-query attempt without
+inventing playback; start loop music at 0.2, then a separate one-shot quote;
+request a four-second 0.2→1.0 fade only while that ending/music is still active.
+Void lifecycle returns remain excluded from native cancellation gates, while
+explicit character queries retain their values.
+
+The native death actor now uses the existing HXC role binding. Native sprite
+ownership stays in GameOverSubstate; authored animation overrides can therefore
+select the imported costume death atlases. No chart, mod, sound index or costume
+name drives the engine behavior. The original gameplay actor is temporarily
+bound only for its query, and the previous actor binding is restored afterward.
+
+Focused executable fixtures cover owner/closed/inactive/inherited scope
+selection, returned paths/null/invalid values, binding restoration, two-query
+RNG ordering, null-second-query latching, pre-super animation completion,
+normal fallback, cancellation, synchronous/reentrant completion and stale
+callbacks. Mounted donor translation also executes its authored getter and
+retains its authored random range and no-quote opponent branch.
+
+`./run.sh rebuild` passed (`tmp/hxc-death-quote-final-build.log`). Three silent,
+offscreen, normal-speed native runs passed with default isolated settings and
+unchanged source options:
+
+- `tmp/hxc-death-quote-plain.log`: initial death completed, an owner-local quote
+  played at loop volume 0.2, quote completion requested the four-second fade.
+- `tmp/hxc-death-quote-guitar.log`: forward seek through the transition followed
+  by native health-based death at 83,000 ms; `firstDeath-guitar` and
+  `deathLoop-guitar` were selected, then quote completion/fade occurred.
+- `tmp/hxc-death-quote-fallback.log`: native Tutorial/BF with no authored quote;
+  normal loop music remained at 1.0 with no quote activation.
+
+All three process exits were zero, with success markers, no runtime diagnostics
+and no options changes. Their `.process.log` companions, native summary JSON,
+and `tmp/hxc-death-quote-build-evidence.json` retain build/content evidence.
+Dummy audio establishes native path/decoder/completion behavior, not an audible
+mix comparison. These focused Linux checks do not establish Windows/Wine or
+complete normal-speed package presentation parity.
+
+The first exit check is deliberately retained as failed evidence:
+`tmp/hxc-death-quote-cancel.log` and `.process.log` show quote cancellation and
+substate destruction after Escape, with no later quote completion/fade, but the
+process hit its external 80-second deadline. The harness stopped advancing its
+bounded clock after returning to Freeplay. A dedicated opt-in post-update gate
+now advances it only after a requested death has left PlayState; gameplay and
+substates do not double-tick. The corrected native rerun and full automated
+results are recorded below when complete.
+
+
+Final review retained Codename custom-substate update-after-super ordering and
+uses the captured initial animation for its native completion gate. Ordinary
+V-Slice checks still run before super. A loop already advanced by Character is
+not replayed through the authored override, and the native missing-firstDeath
+2.1-second fallback remains a music-only action. The executable update fixture
+covers cancelled custom, active custom and ordinary native order, including the
+captured animation identity. The null-animation getter query is also retained.
+
+The reviewed `./run.sh build` passes (`tmp/hxc-death-quote-reviewed-build.log`).
+The final normal-speed guitar death run passes with quote completion and fade
+request, and its screenshot was visually inspected:
+`tmp/hxc-death-quote-guitar-completion-final.log`, `.process.log` and `.png`.
+The preceding final 20-second capture run also passed, but selected the donor's
+13.615-second quote after the transition/death sequence, so it did not establish
+quote completion within that window. The follow-up 40-second window is derived
+from the longest donor quote plus the transition, death and fade time; no engine
+behavior, RNG or playback speed changed to obtain completion. Both random query
+paths remain recorded. Build/source hashes are retained in
+`tmp/hxc-death-quote-final-build-evidence.json`.
+
+The corrected exit rerun `tmp/hxc-death-quote-cancel-after.log` and its process
+log pass: quote start, Escape, quote cancellation and substate destruction,
+then the bounded success marker after returning to Freeplay. No late quote
+completion/fade occurs. Both final native cases exit zero, with no diagnostics
+or options changes; disposable overlays are removed by the runner. The earlier
+host-only plain/fallback checks remain applicable because the review preserves
+those behaviors; their separate build evidence is retained rather than claimed
+to come from the final binary.
+
+The serial full invocation exercised 1,729 tests across 523 modules in 1,011.6
+seconds, with 65 skips and two failing modules
+(`tmp/hxc-death-quote-full-tests.log`). The mounted HXC module itself passed in
+338.9 seconds with the unchanged deadlines. The failures were the old Codename
+cancellation text assertion during the order regression review and a missing
+`installGameOverClock` stub in the extracted reload fixture. The custom ordering
+was restored, and that fixture now supplies the disabled clock dependency.
+Eighteen focused current-code tests pass
+(`tmp/hxc-death-quote-review-final-tests.log`), including both failed modules,
+quote ownership/scheduling/controller, game-over fallback and the clock gate.
+All test modules were exercised across the full run and focused corrections;
+there is no single green full-run summary for this milestone. No timeout was
+raised or mounted fixture omitted. These checks close the focused death-quote
+host gap; whole-package source parity and the full Example Mods goal remain
+incomplete. Native confirmation/retry, all 13 audio lines, audible mix parity
+and Windows/Wine were not established by these bounded runs.
+
+
+### 1 October — corrected full-suite result and versioned V-Slice source audit
+
+The unchanged reviewed death-quote/guitar host passes the clean full-suite
+rerun: **1,730 tests across 523 modules in 550.2 seconds, 65 skipped, zero
+failed** (`tmp/hxc-death-quote-corrected-full-tests.log`, runner exit 0).
+The mounted HXC module passed in 310.4 seconds with its existing time limits.
+This supersedes the earlier two-failure summary, whose fixes were previously
+checked only in focused tests. Skipped tests remain unverified; this result
+is not all-package native presentation coverage or a Windows/Wine pass.
+
+The exact declared upstream v0.6.4 reference files were fetched read-only
+from FunkinCrew/Funkin and saved as `tmp/vslice-v0.6.4-Constants.hx`,
+`tmp/vslice-v0.6.4-Strumline.hx`, and `tmp/vslice-v0.6.4-PlayState.hx`.
+The older `tmp/funkin` subset has no tag provenance and must not be used to
+claim version-matched layout behavior. The tagged source confirms default
+X/Y offsets 48/24, a 104px lane canvas with **112px pitch**, and stage
+initialization before strumline initialization. Its classic desktop formula
+has no later-version cutout term.
+
+The host's mutable HXC Constants view does not yet feed native strumline
+initialization. The source stage's X=96 write is therefore currently ignored.
+A native-92 baseline delta is not a source-accurate correction. The existing
+NoteStyleAlignment mapping also uses native lane coordinates; any layout
+fix must account for render offsets and source group bounds together,
+including downscroll and later script-assigned line positions. This remains
+an explicitly diagnosed shared compatibility gap; no guessed layout
+correction was applied during this audit.
+
+The note/judgement audit found no basis to translate manually scored
+`sick`/`good` hits into automatic `perfect` hits. The source character handles
+`altAnim` through an authored onNoteHit branch. Reclassifying that spelling
+as a built-in alternate row would discard its source kind and bypass the
+character branch; the existing custom identity must remain intact.
+
+
+### 2 October — declared character note-kind discovery follow-up
+
+A shared importer correction now uses HxcScriptDiscovery's declared identity
+and active character selection for companion-owned note kinds. It inspects
+script-bearing source/copy folders without enumerating package media trees.
+Synthetic probes cover both `data/stages` and `scripts/stages`, an unrelated
+file/class name, and an inactive character whose body mentions another kind.
+The old filename-only implementation fails the new test as expected
+(`tmp/hxc-declared-note-companion-negative.log`); the corrected importer
+passes all 64 importer tests in 103.575 seconds
+(`tmp/hxc-declared-note-companion-importer-suite.log`). Eight callback and
+dispatch tests independently pass in 0.736 seconds
+(`tmp/hxc-declared-note-companion-callback-tests.log`). The new mounted
+fixture executes actual generated Liquid HScript and the extracted handled/
+default-sing helpers; it does not stand in for whole-song native parity.
+
+Read-only conversion of the real mounted chart confirms 1,366 heads and one
+custom `altAnim` row, with original time/lane/sustain retained. The row keeps
+its custom kind rather than being rewritten into an alt selector; its
+sourceAdapter points to LiquidChrisCharInstructions, and the false generic
+diagnostic is absent. The three inspected donor metadata/chart/script
+SHA256 values are unchanged (`tmp/hxc-declared-note-companion-mounted.log`
+and `tmp/hxc-declared-note-companion-mounted-evidence.json`). No live import
+refresh was required: existing imported script behavior was already correct.
+
+`./run.sh build` passes (`tmp/hxc-declared-note-companion-build.log`). A
+10-second normal-speed seek/replay through the source guitar transition
+passes on this current build with native exit 0, no script/runtime diagnostics,
+and unchanged private default options. Receipt:
+`tmp/hxc-declared-note-companion-native-isolated-summary.json`; native log:
+`tmp/runtime-smoke/logs/hxc-declared-note-companion-native-isolated.log`.
+The source transition events at 81,000 and 81,454.545 ms execute normally.
+Earlier inspected guitar screenshots remain the visual evidence for the
+unchanged runtime animation route; this new check is execution/cleanup
+evidence, not a new screenshot comparison or complete song pass.
+
+Two sandbox launches reached the in-game success marker but returned failure
+from xvfb-run cleanup (`kill: (15) - No such process`). They remain failed
+receipts, `tmp/hxc-declared-note-companion-native[-after]-summary.json`. An
+automatic permission review timed out on the first retry request; the allowed
+single retry of the shorter saved probe was accepted. The isolated retry
+passed with an empty Xvfb error log. All runs used private Xvfb, dummy audio,
+private saves/default settings and the repository runtime lock. The disposable
+probe script was removed. Current source/binary fingerprints and evidence
+links: `tmp/hxc-declared-note-companion-build-evidence.json`.
+
+The version-matched geometry audit remains actionable: source receptor
+INITIAL_OFFSET affects X only, whereas the host Y frame adapter also applies
+it (-28.6px); the X adapter has a separate 6px source-center discrepancy.
+Correct public group coordinates must be retained for source scripts. Group
+layout and note/receptor/hold mapping must be corrected together; neither a
+hardcoded 92px baseline delta nor a public-coordinate compensation is an
+acceptable substitute. This follow-up does not certify those open contracts.
+
+
+#### Final-suite fixture dependency repair and review boundaries
+
+The first full run after adding importer declared-character discovery exercises
+1,733 tests across 524 modules in 300.0 seconds, with 65 skips and five failing
+modules (`tmp/hxc-declared-note-companion-full-tests.log`). All failures are
+compile-time omissions of the new real `HxcScriptDiscovery` dependency from
+the isolated importer/tool source-copy lists. The normal build, all 64
+production-classpath importer tests, and native transition check pass. The
+isolated source-copy lists must include the dependency before this full run
+can be counted as clean; those failures are retained rather than suppressed.
+
+Independent review confirms direct `data/stages` and `scripts/stages` identity
+selection and inactive-actor filtering. The current diagnostic helper does
+not yet cover runtime-visible `shared/` layouts. A pre-existing mixed-file
+class-selection disagreement also remains: lexical discovery may select a
+later character declaration matching the file/constructor, while HxcCompat
+can select the first character when a misplaced stage-folder file has no
+Stage declaration. These are explicit remaining discovery/translation gaps,
+not verified layouts. Discovery reads HXC source bodies only, but may still
+enumerate nested directories below the selected script folders; no package-
+wide media traversal or image/audio decoding is introduced by this helper.
+
+
+#### Full-suite rerun and exact diagnostic expectation
+
+After repairing isolated source-copy dependencies, the full runner exercises
+**1,733 tests across 524 modules in 516.5 seconds, 65 skipped**. All modules
+pass except one exact count assertion in `test_hxc_compat`:
+`tmp/hxc-declared-note-companion-corrected-full-tests.log` (runner exit 1).
+The mounted scan completed successfully within its unchanged phase limits.
+The raw `note-kind-generic` count is now 46 rather than 47 because the
+character companion in the stage folder supplies its authored custom-note
+callback. Selected Codename warnings remain exactly 23. The mounted 1,366-note
+conversion and executable generated callback tests establish this reduction;
+no warning filter, note-kind alias, skip, or timeout increase was introduced.
+The assertion now expects 46; its normal mounted rerun passes in 218.002
+seconds (`tmp/hxc-declared-note-companion-corrected-count-test.log`, exit 0).
+All modules were exercised in the full run and the sole failed assertion now
+passes. There is no single green full-run summary after this expectation edit;
+the failed full-run receipt remains recorded.
+
+Virgin Rage's mounted metadata and chart both declare only `normal`; its 83
+source events remain present. The earlier inspected guitar screenshot visibly
+shows guitars on both actors, and the latest successful native receipt still
+matches the current binary and production-source hashes. This verifies the
+reported transition on Linux, not the remaining geometry contracts or
+Windows/Wine behavior.
+
+
+### 2 October — mixed HXC owners, lexical fragments and shared companion layouts
+
+The previous discovery/translation disagreement is reproduced with synthetic
+multi-character files: a filename or constructor-ID match to the second actor
+selected the first actor in canonical character directories, and the first
+translated actor despite the second discovery owner in stage directories.
+`tmp/hxc-mixed-character-owner-before.log` records the failure. Discovery now
+records `characterClassName`; translation uses the same selected declaration.
+Unmatched files retain the first actor fallback, unrelated concrete actor
+callbacks are excluded, and existing Song/Event/Stage/Shader precedence is
+retained. Windows separators are normalized before directory selection. Four
+focused owner/discovery tests pass, plus two character/stage Windows path tests
+(`tmp/hxc-mixed-character-owner-after.log`,
+`tmp/hxc-mixed-owner-windows-paths.log`). The bounded HXC family run passes 81
+tests with one skip in 36.551 seconds, before the later lexical-body correction
+below; it does not substitute for the final integration run.
+
+Independent Luna Max review reproduced class-body substitution by quoted
+class-like text: discovery selected the real actor, while regex fragment
+extraction used a fake same-name declaration from a string and executed its
+return-valued callback. The failing receipt is
+`tmp/hxc-lexical-fragment-before.log`. Translation now extracts balanced
+lexical declaration spans for both candidate arrays and callback fragments.
+An expanded fixture also reproduced nested-comment leakage of a fake class
+and removal of a comment token separator; both are fixed by nested comment
+handling that retains token separation/newlines. Their failing and passing
+receipts are `tmp/hxc-nested-comment-fragment-before.log` and
+`tmp/hxc-nested-comment-fragment-after.log`. Executed callbacks now return the
+real owner's value; no donor files or chart-specific condition was changed.
+
+The importer lookup covers eight direct/shared character-bearing layouts,
+with inactive-actor and shared/images HXC exclusion controls, and unchanged
+source note time/lane/sustain/kind identity. Two focused importer tests pass
+in 5.069 seconds (`tmp/hxc-shared-character-companion.log`). The lookup begins
+in supported script/data families, not root image/audio trees; nested directory
+enumeration inside those families is still possible. This closes the tested
+shared companion diagnostic gap, not every conceivable misplaced source path.
+
+`./run.sh build` passes (`tmp/hxc-lexical-owner-build.log`). A current-build
+10-second normal-speed 79–89s offscreen transition replay passes with exit 0,
+zero diagnostics and unchanged private options
+(`tmp/hxc-lexical-owner-native-summary.json`). It uses private saves/defaults,
+muted audio and the shared runtime lock. Xvfb reports nonfatal keysym warnings;
+the process succeeds. A second run requested periodic live character samples,
+but stopped on the lock before launching because a desktop Funkin process had
+started. That is not animation-sample evidence. The full integration suite is
+running; its final receipt will be recorded below. The coupled source
+strumline/receptor/tap/hold geometry discrepancies remain uncorrected.
+
+
+Final independent review found a valid regex/comment adjacency edge in comment
+stripping: a regex closing slash immediately followed by // or /* lost its
+terminator, hiding later class declarations. The same delimiter/flag reader
+now owns both lexical tokenization and comment stripping. The executable owner
+fixture reproduces both spellings before the fix and passes afterwards:
+`tmp/hxc-regex-comment-fragment-before.log` and
+`tmp/hxc-regex-comment-fragment-after.log` (two tests, 0.684 seconds). Review
+found zero regex literals in the 231 mounted V-Slice HXC files; this is a
+shared-parser edge, not a mounted source root cause. The full integration run
+started before this last parser correction; its receipt must be paired with
+a final-source focused rerun rather than presented as a frozen final-source
+suite. The earlier native/build receipt likewise precedes this correction;
+current-build animation capture still awaits the desktop runtime lock.
+
+
+The versioned geometry follow-up now has a source fingerprinted contract in
+`tmp/vslice-064-layout-source-contract.json`. A crucial distinction for its
+future parity tests: source taps center at lane +50 (`104/2 - NUDGE`), whereas
+holds center at lane +52. Their authored 2px difference must be preserved;
+asserting identical tap/hold centers would replace source behavior. Receptor
+INITIAL_OFFSET is X-only, while tap/hold Y travel uses `-INITIAL_OFFSET`.
+The source group-height bounds explicitly ignore the background
+(Strumline 0.6.4 findMinYHelper/findMaxYHelper). Geometry has not been modified
+in this milestone; these source equations will guide the coupled correction.
+
+
+The integration runner finishes with **1,735 tests across 524 modules in 526.8
+seconds, 65 skipped, zero failed**, exit 0
+(`tmp/hxc-lexical-owner-full-tests.log`). Since the final regex/comment correction
+was made during that run, the final-source focused HXC family was rerun:
+**82 tests in 36.929 seconds, one skipped, zero failed**, exit 0
+(`tmp/hxc-lexical-owner-final-focused-family.log`). The escaped-regex-delimiter
+and flag variant passes its final executable fixture too
+(`tmp/hxc-regex-flags-final.log`, one test in 0.496 seconds). Independent Luna
+Max review found no actionable remaining issue in these changes. The full
+runner's mounted HXC module passes in 321.0 seconds and its importer audit
+passes with the original phase limits; 65 suite skips remain unverified.
+This is integration evidence plus a final-source correction rerun, not a
+single frozen final-source full-suite run or all-package gameplay parity.
+
+The post-correction `./run.sh build` subsequently passed after the desktop
+released the runtime lock (`tmp/hxc-lexical-owner-final-build.log`). The bounded
+normal-speed animation replay also passed with exit 0, zero diagnostics and
+unchanged private options (`tmp/hxc-lexical-owner-animation-native-summary.json`).
+Periodic live samples show both playable and opponent guitar animations during
+the captured transition. This verifies that transition on the Linux binary;
+source geometry and whole-package gameplay parity remain open. The preceding
+binary's evidence is retained separately in
+`tmp/hxc-lexical-owner-build-evidence.json`.
+
+### 2 October — Nightmare Vision shared script, note and switching checks
+
+Scope remains engine/compatibility/importer only. Nightmare Vision retains its
+source-specific dispatch and playfield extensions; identical palette mapping,
+character caching and actor group behavior reuse Psych helpers. Donor files,
+installed imports and personal options were not edited.
+
+The source-defined `callNoteTypeScript` and `callEventScript` APIs now select the
+registered module without broadcasting to unrelated modules. Event/note modules
+remain in the main lifecycle group, sharing the same instance with specialized
+lookup registries; registration precedes execution/onLoad, group replacement
+rebinding is preserved, and teardown invokes onDestroy once. Focused executable
+dispatch coverage passed (17 tests across the relevant fixtures).
+
+Notes expose the source `baseScale` point and historical `defScale` alias; point
+mutations remain live in modifier rendering, including sustain geometry. Four
+modifier core tests passed. This closes the reported unknown-field path, not
+all note-effect or manual-input parity. The visual smoke note-center diagnostic
+now measures scaled graphic frames instead of stale hitbox widths; its two
+executable tests include asymmetric origin/offset and sustain scaling.
+
+`./run.sh build` passed at the frozen checkpoint in
+`tmp/nmv-shared-api-build-evidence.json` /
+`tmp/nmv-shared-api-final-build.log`. The normal-speed two-song check used
+120 seconds per visit, isolated default options, muted audio and the repository
+runtime lock. It returned exit 0 and no script diagnostics, preserved options,
+and recorded first-visit teardown with no cleanup errors or remaining owned
+bindings (`tmp/nmv-shared-api-normal-switch-summary.json`). **Its visual gate
+failed:** the second visit showed opaque black note/receptor quads in
+`tmp/nmv-source-api-screenshots/visit-2-70000.png` and `visit-2-95000.png`.
+First-visit captures include the source-authored POV character swap and HUD
+visibility, but are not a full comparison against donor playback.
+
+The 50x completion matrix tested all three difficulties of the two candidates.
+Try Harder Normal and Endless Easy/Normal/Hard reached natural endings with
+exit 0, no diagnostics and unchanged private options. Try Harder Easy returned
+255 with `Invalid field:null` during note generation; Hard returned 139 in
+PsychRGBShader construction. These accelerated passes test crash/event/end
+progress only. Camera, timing, input, graphics and audio equivalence are not
+established by them. Receipts are `tmp/nmv-*-completion-summary.json`.
+
+The current Hard core and matching binary prove a null `u_alpha` parameter
+write in the shared Psych RGB constructor, also used by Nightmare Vision;
+all six custom parameter fields are absent although GLSL declarations remain
+intact. The manual init guard did not fix it. Evidence is retained in
+`tmp/nmv-current-core-backtrace.log`, `tmp/nmv-current-shader-fields.log`,
+`tmp/nmv-current-shader-sources.log` and
+`tmp/nmv-current-shader-fault-disassembly.log`. No shader-off fallback was added.
+The Easy GDB replay was unable to launch because this environment denied ptrace;
+that attempt provides no gameplay evidence. Constructor diagnostics and source
+initialization investigation are ongoing.
+
+The full-suite receipt `tmp/nmv-shared-api-final-full-suite.log` records
+1,758 tests across 536 modules in 498.4 seconds, 65 skips and one failed
+Codename fixture. The failed extractor/stub fixture was repaired and its
+focused test passed; a final integration rerun is still required after the
+remaining production changes. Full Nightmare Vision package coverage, native
+manual input, hold/splash parity, results, Windows and 60/240/480 FPS gates
+remain open. BF orientation in the new user screenshot is also under source
+audit. This package is not verified compatible.
+
+#### Source orientation and HUD review follow-up
+
+The supplied NV Character.loadFile applies `json.flip_x != isPlayer`, identical
+to the existing shared Psych orientation helper. Host NV character loading now
+uses that helper; the legacy slot-flip fallback remains suppressed for owned NV
+characters. Executable tests cover both authored booleans in both slots and
+cached swaps, with separate Psych/V-Slice orientation controls (four tests).
+
+The HUD character-change callback now reuses PlayState's shared icon/color
+refresh. All native/compatibility swaps, including StageHelper's switchToChar
+route, reach it. Character.healthIcon retains the character-ID fallback for
+non-NV actors; owned NV absent/null fields use the source template `face`,
+while authored strings are preserved. Invalid non-string fields emit an
+explicit diagnostic. Independent review also found and corrected reloading
+unchanged icons: shared refresh compares the actual selected icon ID before
+switching, so unchanged icons keep their bop/animation state. Four focused HUD
+tests cover defaults, swaps, unchanged state and no-GF/real-icon transitions.
+
+The integration receipt `tmp/nmv-orientation-hud-full-suite.log` records 1,763
+tests across 538 modules in 670.6 seconds, 65 skips and one failure. The failure
+was a standalone character fixture missing its new shared orientation dependency
+and role field. That fixture was repaired using the actual helper; its two
+tests pass in `tmp/nmv-character-runtime-fixture-final.log`. The whole suite
+is not recorded as green; later source changes still require a frozen rerun.
+
+Additional current-core inspection decoded ShaderData's actual native field
+map, retaining all 14 base uniforms/attributes but none of the six RGB/draw
+parameters (`tmp/nmv-current-core-uniform-map.log`). The source declarations
+are intact. This rules out the candidate explanation that custom parameters
+exist only in ShaderData but were not rebound to generated fields; the origin
+of the incomplete parse is still unresolved. No speculative dirty-toggle or
+shader-off workaround was adopted.
+
+The diagnostic build was stopped while linking at the user's request to free
+the runtime for personal testing. `tmp/nmv-shader-diagnostic-build.log` is an
+interrupted build receipt, not a successful build. The orientation, HUD and
+constructor diagnostic changes therefore have no new native evidence yet.
+The user subsequently rebuilt the executable while testing; the observed new
+SHA-256 is `bbe3ad06600ee1850001fbc3f30396eae1811c43c90277ae47289848d7603c28`
+(mtime 2026-10-02 03:25:15 UTC). No native parity receipt has been collected for
+that build. Earlier core symbol analysis remains tied to the earlier matching
+executable; decoding those cores using the replacement executable is invalid.
+
+
+#### Release HUD profile and Freeplay feedback (2 October)
+
+The installed NV release has a complete flat `__nmv_core/images/num0..9.png`
+set and no `UI/combo` set. Its script sets only the live `ratingPrefix`.
+The supplied source repository's historical commit `7242b92` has the corresponding
+PsychHUD API: both ratings and digits use `ratingPrefix`/`ratingSuffix`. The
+release PE string table exposes ratingPrefix but no comboPrefix, corroborating
+that API; its exact build commit is not established. Newer source instead has
+separate comboPrefix. The compatibility profile now selects only complete
+selected-core layouts, preserves exact owner paths, follows the live rating
+prefix for legacy digits, and honors an explicit combo override. Neither partial
+layouts nor unrelated imports become asset fallbacks. Focused tests exercise
+both layouts, incomplete-layout diagnostics, pixel suffixes, live prefix changes
+and explicit overrides. No donor media or scripts were edited.
+
+Ordinary Freeplay no longer inherits a filter from the last Codename gameplay
+owner. Explicit imported-state/package menu tokens retain their scope. Search
+now includes the cached source subtitle after checking the chart/display title.
+The delegated context and search check ran 21 passing tests. Root's additional
+menu/character check ran 23 tests with one existing skip; an extracted-character
+fixture dependency was updated before the passing rerun. Popup/profile/character
+and visual-snapshot checks ran nine passing tests. Receipts:
+`tmp/nmv-menu-character-integration-focused.log`,
+`tmp/nmv-latest-compat-focused.log`. These are source-level checks; current-build
+menu, popup and editor interaction checks remain required.
+
+The standalone exact-GLSL regex probe did not reproduce missing shader fields:
+interpreter 500 rounds/7,500 matches/5,500 parameter allocations; native hxcpp
+1,200 rounds/18,000 matches/13,200 allocations and 60 forced collections, with
+zero missing captures or fields. `tmp/nmv-ereg-native-probe/report.txt` records
+this negative evidence. It does not establish shader rendering correctness or
+justify a PCRE patch. Actual production shader construction remains under audit.
+The user still reproduces BF facing away from the opponent; the previously
+corrected modern constructor formula alone is insufficient evidence of a fix.
+Runtime visual snapshots now record slot and flip state for further diagnosis.
+
+
+#### Current feedback build and editor Browse check
+
+Canonical `./run.sh build` completed; executable SHA-256
+`5296f98d1e93c188dec827b8c4dba212f4ee9edfc622b13f55e6254a9c60367c`.
+Matching executable and source hashes are retained under
+`tmp/nmv-latest-feedback-build-evidence/`; live options hash matches its prebuild
+value. An interrupted older build snapshot was moved intact to
+`tmp/interrupted-build-assets-20261002`; live imports and options were not replaced.
+
+The full-suite receipt `tmp/nmv-latest-feedback-full-suite.log` records 1,769
+tests across 541 modules in 410.2 seconds, 65 skips and zero failures. The final
+Browse test refinement/smoke extension was additionally checked with eight
+focused passing tests; later behavior changes still invalidate affected evidence.
+
+Browse opens the character registry dropdown, rather than an OS file dialog.
+A registered character with no icon strip previously reached an unconditional
+bitmap load and threw; HealthIcon.loadIcon now uses the same missing-strip
+handling as switchAnim. Each asynchronous thumbnail request owns its own
+receiver and drops late completions after picker teardown. Executable fixtures
+check missing strips, independent button stamps and completion/error cleanup
+before and after teardown. The separate event-converter OS picker installs its
+listener before opening and rejects late results after editor destruction.
+
+The new native editor smoke opens the real Browse dropdown, updates it, then
+continues Quick Save/reload and checks picker destruction. The private Dusk
+normal owner case passed with exit 0, all required markers, no diagnostic errors
+and unchanged source chart, events sidecar and options:
+`tmp/nmv-editor-browse-current-summary.json`. Its first sandbox attempt reached
+all success markers but the Xvfb wrapper exited 1 during cleanup; this is recorded
+as a launcher failure, not a passing run. The repeat on a private host Xvfb
+display passed. No desktop window or audio was used. Native gameplay presentation
+and the BF-facing issue remain separate open checks.
+
+### Selected character ownership regression (2026-10-02)
+
+The previous ELF (`5296f98d1e93c188dec827b8c4dba212f4ee9edfc622b13f55e6254a9c60367c`) recorded NV Dusk's BF `flipX=true`, despite source `flip_x=true` XOR `isPlayer=true` requiring false. Character's Codename metadata lookup used `SONG.song` and therefore selected the other import's unqualified `assets/data/dusk/compatScripts.json`. The selected NV chart lives in `dusk--nightmare-vision-7a949ff139`. Character metadata and mapped animation reads now both use `Song.storageFolder`; no song-name branches or donor changes were added. The executable collision regression and four related character tests pass.
+
+Canonical `./run.sh build` passed; new ELF SHA256 is `7ef6cd45db7764a73b83db9fc32c69074bcb9bc39a1d3b1405f9ac3c9dc99b51`, preserved with source hashes in `tmp/nmv-owner-identity-build-evidence/receipt.json`. Live settings still hash `f8a66a8d7805df3cd892140eb3eb6003ca3bd57b96773261c0d0e71d5853a65c`. Private muted 22-second normal-speed Dusk and Try Harder native cases both exit 0 with clean strict logs. Dusk's BF is now false; Try Harder's initial Mobian BF remains false. The 12-second offscreen captures show the microphone toward the opponent in both sampled poses. These short startup/early scenes do not establish later swaps, all animations, or popup judgement correctness. Receipt: `tmp/nmv-owner-identity-native/receipt.json`.
+
+The new user report of missing `UI/game/ratings/wayoff.png` is separately reproducible from the code path: the host's `Ratings.CalculateRating` can produce `wayoff`, while NV's popup cache and donor assets use sick/good/bad/shit (and optionally epic). The host rating currently crosses the compatibility boundary unchanged. This remains open pending source-contract judgement correction; the digit-prefix fix alone does not resolve it.
+
+The same `7ef6cd45...` ELF also completed 65-second normal-speed Dusk and Try Harder normal-difficulty offscreen cases with strict logs, live note-transform markers, and repeated character animation samples (`tmp/nmv-owner-gameplay-gameplay/receipt.json`). The 48-second captures show loaded notes, sustains, HUDs, and BF facing the opponent. These runs used demo botplay: score is intentionally zero and no ordinary player popup was dispatched, so they **do not verify combo-digit or worst-rating asset loads**. Their frame timings were collected while the automated suite was running and are not performance comparison evidence. Neither these short cases nor the isolated shader constructor control establishes all-song, all-difficulty visual or lifecycle parity.
+
+### Accepted host popup judgement correction
+
+The shared Psych presentation helper now explicitly projects accepted host `wayoff` and `ignoreVile`-classified `miss` hits into the source default final `shit` rating before the NV popup call. This is an engine-family API boundary, not an asset-existence fallback: standard names remain stable, unknown strings retain their name, and the generic source wrapper preserves authored custom objects/image fields. Source NMV `Rating.judgeNote` and Psych default ratings both lack a `wayoff` row. Actual source misses call `noteMiss` without requesting a popup. The executable regression evaluates the production host rating calculation at every tier boundary, both ignoreVile settings, and the outside-window miss; it also proves custom objects/images and host Judge windows stay unchanged. Focused presenter/hit/splash set: 8 passing tests. Native verification on the new ELF is pending. Presentation projection does not correct host health/score/miss bookkeeping; complete source judgement parity remains a documented gap.
+
+The latest full automated run completed 1771 tests in 542 modules with 65 skips and one failed module: mounted Auto importer materialization exceeded its 240-second subprocess timeout while other tests/native probes ran. A subsequent isolated rerun of the same unchanged mounted-audit module passed all 6 tests in 163.886 seconds (`tmp/nmv-mounted-import-isolated-recheck.log`). The full run itself remains a failed invocation; all its other modules passed. Subsequent popup and smoke changes require their own focused checks.
+
+The real OpenFL/Flixel production shader constructor control passed five native runs of 768 palette copies with 12 full GCs and retained uniform checks, plus an interpreter control. Receipt and source hashes: `tmp/nmv-psych-rgb-cpp-probe/NATIVE_RECEIPT.md`. It uses temporary FlxAssets/FlxColor stubs and no GL context. Earlier broad static debug-icon startup crashes and instrumentation-sensitive intermediate failures are recorded as inconclusive. This control does not explain or resolve the prior game shader crashes or black note quads.
+
+### User Endless NV allocator abort (open)
+
+The desktop user reported `malloc(): unsorted double linked list corrupted` on Endless NV. Systemd recorded SIGABRT PID 2806612 at 2026-10-02 05:35:14 BST. The allocation detecting damage is hxcpp `GlobalAllocator::AllocLarge`, reached from `haxe.io.Bytes.alloc`, Lime `ImageBuffer.clone`, OpenFL `BitmapData.clone`, and `FlxText.regenGraphic/draw`. This is a detection stack, not a proved corruption source. The core is saved as `tmp/nmv-endless-user-abort.core` (4.4 GB), with info/dump logs beside it. The likely pre-popup-fix ELF is retained separately with SHA256 `7ef6cd45...` and build ID `9725aece0148f5613994e59d6176c9a2d06aab57`; matching to the core is still being verified. No speculative allocator, mod-specific, or donor-asset patch has been applied.
+
+Canonical popup/freeplay smoke build completed successfully; SHA256 `9648e6499c9b6653a27ecdf02d0245d73a0e6f1ecf2ffe4e698b3f3d7d7f1702`, retained with source hashes in `tmp/nmv-popup-freeplay-build-evidence/receipt.json`. Live settings remain unchanged. The new worst-rating native smoke was not launched because its exclusive runtime-lock check failed; this is not native verification evidence. Pending checks use normal-speed simulated player hits delayed 185 ms to exercise accepted host `wayoff` through real popup image loading, plus a fast Codename natural-end return-to-global-Freeplay smoke. These delays/speed controls are opt-in smoke instrumentation only and do not alter gameplay settings.
+
+The new ELF's Dusk normal worst-rating native check passed at 35 seconds, with real `--smoke-player-hits` delayed 185 ms. It emitted `rating_popup` host=`wayoff`, source=`shit`, image=`shit` after successful popup loading and 52 ordinary postroute player-hit markers; strict diagnostics were clean, exit 0, and source chart/sidecar/settings guards unchanged. Receipt: `tmp/nmv-rating-popup-native/receipt.json`; no demo mode was used. This verifies the reported asset crash at the presentation boundary, not complete source scoring parity.
+
+Exact Endless crash identity was extracted from the core's captured ELF-header page: Build ID `e93b350cbb278fc10d614fbd381ffdf5ad9b4f09` does **not** match saved owner-identity `9725aece...` or the current popup/freeplay `c7c8...` binary. No matching preserved ELF was found in the bounded artifact search. Do not decode the Endless core with either candidate. The user confirms Hard difficulty, a mid-song abort, and intermittent black clock/rating graphics. The journal's recorded native stack remains valid detection-point evidence; source-local corruption attribution and later rendering parity are unresolved.
+
+### Alpha 9 preparation: Darnell API fault and Endless HUD sorting (2026-10-02)
+
+- The Darnell user core matches the preserved popup/Freeplay build ELF exactly (GNU build ID `c7c8de934feed37a59d42a7851b71e0d98f45a1a`). The fault occurs during character `onLoad`, before visualizer construction: source Nene reads `gf.positionArray[0]`. The authored character contains `position: [590, 180]`, but the host retained only role offsets, not this shared Psych/NMV API field. Restoring the field is separate from implementing the later missing visualizer imports. Native verification of the repaired path is pending.
+- One complete normal-speed Endless NV Hard run on that checkpoint used ordinary player-hit dispatch, private defaults/save files, muted Xvfb and the repository runtime lock. `tmp/nmv-endless-hard-current-native/receipt.json` records exit 0; the song-end marker records all 430 authored events dispatched by 148273ms (audio length 148271ms). This run did not reproduce the allocator abort. A single clean run does not establish that the reported memory corruption is fixed.
+- The 18-second screenshot in that receipt reproduces black clock/rating text. Source HUD `refreshZ(playHUD)` previously found no `sort` on the borrowed HUD adapter and silently did nothing. The donor intentionally creates black shadows/panels after foreground text and uses zIndex to put them behind it. The new adapter sort reorders its owned subset of the actual state draw-list slots while preserving unrelated objects and holes; its executed contract test passes. Native visual verification is pending a new build.
+- The original Endless allocator core has a different GNU build ID (`e93b350cbb278fc10d614fbd381ffdf5ad9b4f09`), with no matching ELF currently recovered. Allocation detection in FlxText/BitmapData clone is not proof that text allocation caused the corruption. No allocator workaround was introduced from this unmatched trace.
+- The attempted Codename return-to-Freeplay check is still unverified: a previous invalid Normal selection was corrected to authored Hard; private X11 requires execution outside the sandbox. The corrected accelerated run entered game over before song end, so results confirmation was never sent. Its failure is retained rather than counted as a successful menu return. The smoke speed path is being aligned with the actual demo playback helper.
+- Release authorization: publish a locally built Windows `v0.0.1-alpha.9` ZIP only after these fixes are verified. GitHub Actions must not build this release.
+
+### Alpha 9 render investigation and verification corrections (2026-10-02)
+
+Release remains held for the reported Try Harder NV layer/black-rectangle/fog defects and unresolved Endless failures. All implementation changes are shared compatibility/runtime APIs; donor files and installed imports were preserved.
+
+- Source character banks retain their position inside the stage when a cached actor changes. The shared flat-host group-order helper now keeps the stage block, cached role groups, and top-level song overlays separate, with native `insert` used for late actors so FlxGroup length/signals stay valid. An executable synthetic group test covers stable same-depth groups, late props/cache additions, overlays, holes, and native length bookkeeping.
+- Canonical build `tmp/nmv-alpha9-stage-build-evidence/Funkin` (SHA256 `b27544e82ee44b711df5bce0cebffc9067c89861272967ee4b24ecbaa9bf5833`) loaded Darnell for 22 seconds without the missing `positionArray` or visualizer-import errors; its 16-second screenshot shows the real spectrogram. This is bounded loading/visualizer evidence, not a full-song parity result. Endless failed during note generation with `Invalid field:null`. A GDB probe first stopped at an expected caught FlxRuntimeShader reflection exception; a later null-field conditional probe did not reproduce the fatal failure. Neither establishes an allocator fix.
+- A normal-speed Try Harder run reached 265 seconds and exited zero but did **not** emit a confirmed natural-song-end marker. Its runner initially marked it passed because the strict classifier missed `[ERROR:hscript:0]` and GLSL compile errors. Those runs must not count as compatibility passes. The classifier now rejects Iris ERROR/FATAL tags, OpenFL shader compile errors, and GLSL compiler error lines; executed regression checks pass.
+- The source family's missing `Character.pauseAnim/resumeAnim` APIs now forward to the animation controller. NMV runtime shader construction reuses the existing shared scalar-aware GLSL normalizer, preserving authored files and integer loop/index syntax. The factory-path test checks both fragment and vertex inputs, plus unchanged fixture bytes.
+- Canonical diagnostic build SHA256 `e1c0136b85a0c779e3f2a7535070a6705d1730a30bf5f5e5ce09edf321c6ec7c` has source/settings receipts at `tmp/nmv-alpha9-fog-build-evidence/receipt.json`. Its normal 210-second private/muted Try Harder replay (`tmp/nmv-alpha9-fog-native/receipt.json`) exits zero but correctly fails strict diagnostics: missing `.toLowerCase()` receivers are **FlxText**, not String. It has no `pauseAnim` or snowfall compile errors. At ~137 seconds the world is still black; at ~197 seconds the central black rectangle remains. Live snapshots show `blackFG.alpha == 0`, the first-person stage sprites hidden, and fog shaders using authored ADD (`blend == 0`). Thus neither successful loading nor those property values prove visual parity.
+- The first full suite after these changes completed 1787 tests across 548 modules in 332.3 seconds, 65 skipped, five failed modules. The failures were stale README-version assertions and incomplete extracted fixture declarations/signatures after API changes. The affected fixtures were corrected and their focused reruns pass; a new complete suite is still required after final source changes.
+- The fog sprites in the supplied release are finite FlxSprites with fixed per-`onUpdate` increments and no authored wrapping. The user chose source-default 60 Hz script timing independent of rendering FPS. A reusable fixed-step script clock and input-edge preservation are being implemented; no synthetic wrapping or chart-specific speed was added. Native 60/240/480 checks remain pending.
+
+
+#### Further alpha9 source and native evidence (2026-10-02)
+
+- ELF `64d9ca566f1fa4b12740dce340a9e6670ef51983293ec5712093835a24124edd` ran an ordinary-speed 210-second muted Xvfb Try Harder replay with no strict runtime diagnostics. This is bounded playback, not a full-song compatibility pass. The rectangle and missing GF remain visible at197 seconds. The log contains multiple appended runs; token `0.101` identifies this replay. Its complete scene trace contains88 objects.
+- A separate disposable-copy diagnostic hides one authored stage object at a time during196–204 seconds. Hiding the cloud shader object removes the central rectangle; hiding the foreground `orgh` overlay does not. These diagnostic edits are confined to temporary copied scripts and are not compatibility fixes or parity evidence. Images and receipts are under `tmp/nmv-alpha9-object-isolation`.
+- Donor native `Change Character` events and direct script changes both use CharacterGroup caches. The host native event was instead destroying actors through its legacy switch path, splitting ownership from the NV bank. Source now routes both paths through the shared cache, with NV's related-identity animation-frame carry. Executable fixtures verify mixed event/script reuse, hidden old actors, transferred alpha and frame carry; post-fix native verification is pending.
+- The fixed source clock/input fixtures pass. Full suite:1793 tests across552 modules,65 skips; two extraction/shape fixtures failed after the custom-pause post callback was added. Both were updated to verify the new paired post dispatch and their four focused cases pass. A fresh full run is underway.
+- Personal runtime options hash remains `f8a66a8d7805df3cd892140eb3eb6003ca3bd57b96773261c0d0e71d5853a65c`. No alpha9 release published.
+
+- Fresh full suite before the OpenFL patch integration: **1795 tests across553 modules,65 skipped,0 failed** (`tmp/nmv-alpha9-character-event-suite.log`,313.1s). The additional pinned blend-state patch and build-script checks pass22 focused tests. ELF `5be76b76266ea7e7a093cefe2cf4484761a57f326e6378addbb7a823c13843ac` includes the character-event/cache route and OpenFL blend restoration; fresh-log ordinary-speed native verification is underway.
+
+#### Retained character preload replay (2026-10-02)
+
+- The first post-blend replay restored the background/GF at 137 seconds but still omitted the opponent. This is explicitly not a successful opponent-visibility check.
+- Source NV event-push retains characters in its character groups. The host now uses that bank for native chart preloads and the script `addCharacterToList` API, preserving NV event-push aliases separately from shared Psych trigger aliases. No donor scripts or chart names are changed.
+- Canonical ELF SHA256 `974c54c1b5375ea3d71e9649ce8b4a9af4f65e2476ba88a75bf4d35461529a62`: ordinary-speed 210-second offscreen/muted replay exits zero with strict diagnostics passed and zero diagnostics. Receipt: `tmp/nmv-alpha9-retained-preload-native/receipt.json`. At 137 seconds the opponent, GF and background are visibly present; at 197 seconds the opponent/GF are visible and the central black rectangle is absent. Captures: `tmp/nmv-alpha9-retained-preload-native/try-harder/137000.png` and `197000.png`. This is bounded transition evidence, not full-song completion or Windows parity.
+- Live snapshots additionally verify retained actors have live 8119x3603 bitmaps, existing/alive flags and the expected hidden/active alpha transfer. Six focused cache/preload tests pass. Endless/Darnell native verification, the final full suite and Windows release checks are still pending; no alpha9 release published.
+
+- Follow-up on the same ELF: Endless fails at loading (exit255, before `playstate_ready`) with `[psych-rgb-shader-bindings] Missing generated parameters`; its correct 1679-character fragment declares all six palette uniforms, but the live data contains only built-in parameters. This remains unresolved and is not counted as an allocator fix. Darnell runs the bounded250 seconds without native crash, but strict verification fails seven `Unknown function: playAnimForDuration` errors. Follow-up receipt: `tmp/nmv-alpha9-followup-native-native/receipt.json`. These failures continue to hold the release gate.
+- Windows packaging now requires the complete dynamically enumerated bundled-results source file set to exist in the runtime, in addition to validating each asset hash. Eleven focused release-package tests pass, including missing/extra results assets and source symlink exclusion.
+
+- Full suite for retained-preload/input-cache build sources: **1799 tests across555 modules,65 skipped,0 failures**,404.1s (`tmp/nmv-alpha9-retained-preload-suite.log`). Subsequent results-package completeness additions pass11 focused tests; timed-animation API work is still in progress.
+
+- Added source-exact NV `playAnimForDuration` on native Character and the Bopper adapter: animation gate, shared timer restart, and callback semantics including the donor non-forced-during-forced edge are retained. Actor teardown cancels/destroys the timer. Ten adjacent/API tests pass; native rebuilt verification is pending. This helper does not exist in the supplied Psych source, so it remains an NV extension.
+
+- Canonical animation-API ELF `d9a07aefad412bd45cefbd1c5dc75f98e9f9660e38f7ca60037ae5ba15c9d91a`: private/muted20-second 50x demo Darnell check passes strict diagnostics with zero errors (`tmp/nmv-alpha9-duration-api-native/receipt.json`), last sampled chart position170738ms. This is accelerated API/crash evidence only, not a natural ending or source visual parity claim. The first disposable launch wrapper attempt failed on an empty capture list; that wrapper was corrected and the successful run uses fresh logs.
+
+- Extended Darnell50x check on ELF `d9a07a...` passes strict diagnostics and reaches natural `song_end` at170738ms, dispatching all381/381 due events, followed by success (`tmp/nmv-alpha9-duration-api-full-native/receipt.json`,40-second wall-time budget). This is complete accelerated crash/API/event/ending coverage for that difficulty; it makes no graphics/FPS parity claim.
+- Shader isolation: actual PsychRGBShader/OpenFL/Flixel macro native constructor probe passes five3,000-constructor runs with small transient allocations and explicit full GC every16 constructors. It has no renderer, so this is a non-reproduction that narrows the game-only failure; it does not close Endless or allocator gates.
+
+- Current ELF `d9a07a...` ordinary-speed Endless Hard replay reaches120883ms then crashesSIGSEGV (exit245 from Xvfb runner). This reproduces the mid-song gate. CorePID2940234, extraction and backtrace are under `tmp/nmv-alpha9-endless-current-core-*`; top stack is OpenFL ShaderBuffer.update → Graphics.beginShaderFill → FlxDrawQuadsItem.render. The fault dereferences an invalid float-parameter value-array pointer while copying uniforms. This localizes the failing render access; it does not identify the earlier memory corruption or justify a null guard. Alpha9 remains held.
+
+### Alpha 9 Endless follow-up: accelerated crash localization
+
+The same d9a07aef native binary also failed the isolated 50x crash-only Endless Hard replay near 120 seconds of chart time (process exit 245, SIGSEGV, PID 2951485). Receipt: `tmp/nmv-alpha9-endless-accelerated-native/receipt.json`; process/log: `tmp/runtime-smoke/logs/nmv-alpha9-endless-accelerated-endless{,.process}.log`. This is failure localization, not visual or timing parity evidence. Alpha 9 remains unpublished. The constructor-pressure experiment is not a stable reproduction: the latest exact probe binary passed 50 repeated pressure runs; older probe crashes lack matching saved executables, so their fault phases cannot be asserted.
+
+Further core inspection: the accelerated failure is in `FlxObject.update` while calling `Note.last.set`, with the point vtable overwritten (`0x0101010101010101`), rather than the earlier shader copy site. The normal-speed core has the same invalid RGB parameter pointer in the shader field, its parameter array, and its dynamic data table; shader-buffer backing storage is separate. Thus a shader-only workaround is not justified. The Valgrind follow-up exited before game startup because this host loader executes an unsupported AVX-512 instruction; exclude that SIGILL from engine failure and gameplay coverage counts. Log: `tmp/nmv-alpha9-endless-valgrind-native/endless/valgrind.log`.
+
+Read-only current ELF audit (Build ID `a865d91fe3226421ada3a05b2f6da765d811ae42`, GCC 16.2.1): compiled `__Mark` routines load `FlxObject.last` at +0xa8, `ShaderParameter.value` at +0x28, and `PsychRGBShader.b` at +0x160; Note inherits the FlxSprite/FlxObject marking chain. These checks rule out a missing generated marker or the suspected stale member layout at these crash sites. They do not establish the corrupting write or justify a gameplay workaround.
+
+### 2026-10-02 — Collector diagnostic comparison; release gate remains open
+
+Temporary collector diagnostics were built with `HXCPP_GC_DEBUG_LEVEL=1 ./run.sh rebuild`, then the normal collector was restored with `./run.sh rebuild`. The first diagnostic build reused the old `Immix.o`; it is excluded from diagnostic evidence. Touching the unchanged pinned `Immix.cpp` and rebuilding forced the actual diagnostic collector compilation. The diagnostic ELF has no `GlobalAllocator::ThreadLoop` symbol; the normal rebuild restores the standard collector. No production source behavior or donor content was changed in this comparison.
+
+- Diagnostic ELF SHA256 `04c56b697d29b356934c4f3a191ab19246eb8162b15db6511469af5aaee37abd`: isolated, muted Endless Hard at 50x reached natural ending at 148271 ms with all 430 events dispatched, exit 0, zero strict diagnostics. Receipt: `tmp/nmv-alpha9-endless-gc-level1-native/receipt.json`.
+- Restored normal ELF SHA256 `50745ec50396476b90bca7703e70492469e4ac2520a7beda02820712dc0302e7`: the identical replay also reached the natural ending with all 430 events dispatched, exit 0, zero strict diagnostics. Receipt: `tmp/nmv-alpha9-endless-restored-normal-native/receipt.json`.
+- The preserved earlier ELF SHA256 `d9a07aefad412bd45cefbd1c5dc75f98e9f9660e38f7ca60037ae5ba15c9d91a` failed with SIGSEGV (245) after scene/countdown initialization on a subsequent replay. Its first relocation attempt failed before gameplay because the executable lacked its adjacent `manifest` directory; that attempt is excluded. The subsequent attempt provided a private manifest and canonical native library path. Receipt: `tmp/nmv-alpha9-endless-preserved-release-native/receipt.json`.
+
+The normal rebuilt collector machine instructions from `0x28443b0` to `0x2851800` match the preserved earlier ELF exactly (13,443 disassembly lines, SHA256 `5320cae7f6aeee8197674440968890d4d173b4ca368505478af57a7f4fe079be`). Both identify GCC 16.2.1. Therefore the successful normal rebuild is not evidence for a collector-code repair. This is intermittent failure evidence; neither the diagnostic run nor the normal rebuild establishes the causal writer or a permanent fix. Alpha9 publication remains held.
+
+Read-only audits found no concrete overflow in the current shader parameter packing, mesh construction, PCM view ownership, bitmap-cache cleanup, or GC work queues. Native Lime 8.3.2 sources were fetched from the official pinned tag into repository `tmp` for audit; decoder error-path/dimension concerns found there are not linked to any failing Endless asset and are not treated as the cause. No shader/effect disablement, palette pinning, caps, chart branches, or donor modifications were introduced.
+
+Personal runtime `assets/data/options.json` remains SHA256 `f8a66a8d7805df3cd892140eb3eb6003ca3bd57b96773261c0d0e71d5853a65c`.
+
+A further GDB-only comparison set `sgCheckInternalOffset` to 64 for the child process and reached normal exit with no strict diagnostics. Natural ending: `[{"positionMs": 148271, "songLengthMs": 148271, "totalEvents": 430, "dueEvents": 430, "dispatchedEvents": 430}]`. Receipt: `tmp/nmv-alpha9-endless-interior-roots-native/receipt.json`. Two preceding debugger attempts stopped before gameplay due to command/symbol syntax and are excluded. Since the restored default collector also passed, this diagnostic does not establish interior-pointer recognition as the cause; no production GC setting was changed.
+
+### Numeric alpha release version and further native evidence
+
+The user changed the alpha naming scheme: alpha 9 is `v0.0.9`, alpha 10 is `v0.0.10`. Current application metadata and Windows package defaults use `0.0.9`; historical receipt names and tags retain their original names. These releases remain GitHub prereleases. The historical `v0.0.1-alpha.8` updater and current updater source are byte-identical and already compare numeric SemVer fields before prerelease fields. Executed tests verify legacy alpha.8 → v0.0.9, v0.0.9 → v0.0.10, selection of numeric tags marked prerelease, and the ZIP/embedded tag/checksum names. Focused results: updater 3, build scripts 19, packaging 11; all passed. No updater behavior workaround was needed.
+
+Canonical ELF `50745ec5...` completed normal-speed Endless Hard at a private default-settings 60 FPS cap, ordinary simulated player hits, muted Xvfb, and the exclusive runtime lock. It reached natural ending at 148271 ms with all 430/430 authored events, zero strict diagnostics, exit 0; personal options were unchanged. Receipt: `tmp/nmv-009-endless-normal-60-native/receipt.json`. Captures at 18, 90 and 145 seconds show white clock/rating foregrounds, source assets and note effects. This passing run does not explain the earlier intermittent memory faults and does not close the release gate. Source timing, graphics, and interactions at 240/480 FPS still require their distinct checks.
+
+On the same ELF, normal-speed Try Harder Hard with the private 60 FPS cap also reached natural ending at 262065 ms (audio length 262022 ms), dispatching all 679/679 events, exit 0 and zero strict diagnostics. Receipt: `tmp/nmv-009-tryharder-normal-60-native/receipt.json`; captures include 30, 89, 137, 165, 197, 239 and 265 seconds. The 197-second screenshot shows the opponent in front of GF and the intact background with no central black rectangle. One preceding sandbox launch failed before the SDL window could initialize and is excluded from gameplay evidence; the successful run used the authorized private Xvfb display. The measured cap is a setting, not a sustained performance claim: gameplay frame-stat samples before 260 seconds have a median 41 FPS, and the results interval is slower. Performance and 240/480 rendering parity remain open.
+
+The private Xvfb renderer control identifies llvmpipe (LLVM 23.1.1, Mesa 26.2.4), with `Accelerated: no`. Those frame rates describe this software renderer, not the desktop GPU. Raising the cap does not prove that 240 or 480 frames are rendered each second.
+
+Further temporary collector instrumentation preserves the normal parallel collector and checks both unchecked row-mark paths before writes. Diagnostic ELF SHA256 `176c20bd1d9d291f1333056a020db9fbd54ff98ecc883425e7eb59c348472c99` fails one isolated 50x Endless replay during loading with `Invalid field:null` (exit 255), without a row-bounds trap. A subsequent replay adds a conditional debugger breakpoint on null field names and reaches the natural ending with zero strict diagnostics, normal exit, and neither breakpoint hit. Receipts: `tmp/nmv-009-endless-row-bounds-native/receipt.json` and `tmp/nmv-009-endless-null-field-native/receipt.json`. These differing outcomes continue to indicate an intermittent defect; they do not establish its writer or repair it. Instrumentation and its exact-hash bootstrap allowance are temporary and must be restored before production builds or publication.
+
+### Pre-write collector failure capture and live scroll-speed lifecycle
+
+On the same temporary parallel-collector ELF, a debugger captured the invalid row-mark request **before its write**. `MarkObjectAllocUnchecked` received a `NoteKeys.preset` reference with row start 249 and row count 255 in one replay, and row count 18 in a later replay; both extend past the 256-byte row-mark table into object storage. This establishes the mechanism for the earlier `0x01` object overwrite, but does not yet establish why the preset reference became invalid. The exact later core and ELF are preserved at `tmp/nmv-009-row-first-failure.core` and `tmp/nmv-009-row-bounds-build/Funkin-diagnostic`. Receipts: `tmp/nmv-009-endless-block-write-native/receipt.json` and `tmp/nmv-009-endless-block-write-core-3-native/receipt.json` (exit 245 denotes the deliberate debugger stop).
+
+Read-only core inspection finds a current-mark, valid `NoteKeys` allocation retained by a valid `Note.currentKey`. Its preset reference points inside a boxed string allocation; whether the original preset was reclaimed or the field changed has not been established. Its notes array is a valid managed allocation, despite its high virtual address. A later edge/null-field debugger replay passes without a breakpoint hit. Those passing replays do not close this intermittent defect. The temporary source instrumentation and bootstrap hash allowance were restored byte-for-byte to SHA256 `ecbd7484a8d96ed5632e9475bc673b2efce5d9896764d48eb328a521bce7c947` and `0b8fd4bbb8914ed4153baaa9fd143924f40ecfd864d184704e51d6bd5ca8251c`; the canonical executable still needs a normal rebuild before distribution.
+
+The supplied NV source also exposed a separate, reproducible lifecycle discrepancy: its public `songSpeed` setter recomputes `noteKillOffset` as `max(stepCrochet, 350 / songSpeed * playbackRate)`, including live scroll-speed changes. The shared host now exposes live `songSpeed`, routes property writes through the existing scroll-speed setter, and refreshes the NV retirement distance at initialization and tween updates. It preserves authored initialization overrides and does not rewrite chart metadata. Extracted behavior tests pass; native rebuilt verification is pending. This correction is not counted as a repair for the memory corruption.
+
+The baseline-glibc Valgrind attempt (`tmp/nmv-009-endless-valgrind-native/receipt.json`) exits 127 before game startup with “CPU ISA level is lower than required,” reporting zero allocations. It provides no gameplay or memory-safety verification. Private GPU/Xvfb controls fail to establish a usable accelerated renderer; software-renderer timing remains qualified accordingly. No user desktop or graphics settings were changed.
+
+Fresh full source suite after the scroll-speed work and updated extraction fixtures: **1806 tests across 557 modules, 65 skipped, 0 failed**, 445.5 seconds (`tmp/nmv-009-final-source-suite.log`). The fixture updates supply the real `canPlayAnimations = true` default and note-retirement fields; they retain their behavioral assertions. This suite does not substitute for the open native crash or Windows release gates.
+
+**User-directed stop:** further Endless crash investigation and its native/debugger probes were stopped on 2 October 2026. The register-capture findings remain unverified candidates, with no production change made for them. This issue must remain recorded as unresolved/unverified, not as a passing or fixed regression. Canonical `./run.sh rebuild` completed successfully after restoring the ordinary collector: ELF SHA256 `a6ff11356dc04e260c03a541c285fda28147fca988a187988e50e95c75c41b7e`. The executable contains the new live speed/retirement methods and the normal collector thread loop, and has no temporary row-diagnostic symbol. Personal runtime options retain SHA256 `f8a66a8d7805df3cd892140eb3eb6003ca3bd57b96773261c0d0e71d5853a65c`. Importer refresh work and other authorized compatibility work continue separately.
+
+
+### Retained-source imports and automatic importer revisions (2026-10-02)
+
+New imports capture the complete selected source in `import-cache/sources`, excluding native executables/libraries while retaining unknown assets, Wavefront meshes and Java classes. Common and per-engine importer revisions are independent of application versions. Browsing Main Menu, Freeplay or Settings queues outdated owners; gameplay/results do not initiate this work. Conversion is staged privately, registry contributions are reconciled against their recorded baselines, and only verified owned outputs are published with backups and recovery journals. Conflicting local edits, cancelled/failed conversion, incomplete scans and damaged retained sources preserve the installed import. Source labels, prompted names and namespaces survive regeneration.
+
+The shared TJSON parser now preserves literal astral characters and escaped Unicode. Windows snapshot comparisons follow platform case rules; the pinned Windows fullPath implementation no longer accepts a truncated fixed buffer as a resolved path. The Windows directory enumerator also accepts long drive/UNC paths instead of returning null above `MAX_PATH`, and rejects partial reads explicitly. These fixes apply throughout the shared layers, with no donor/chart edits or chart-name branches. Publication success remains success if disposal of its committed staging directory fails; that separate cleanup failure is reported.
+
+Evidence at this checkpoint:
+
+- Final full suite: **1,866 tests across 570 modules, 66 skipped, 0 failed**, 420.8 seconds (`tmp/import-refresh-source-suite-platform.log`). This includes the Windows path/enumeration corrections, Unicode preservation, source retention, ownership transactions, registry merging and cleanup regressions.
+- Focused manager tests: 15 passing; snapshot plus platform guard tests: 10 passing, 1 backend skip; pinned Windows fullPath tests: 2 passing; directory enumeration tests: 3 passing; null-list cleanup regression: 1 passing. Native mock tests compile the production replacements and cover long Unicode paths, drive/UNC and relative paths, buffer growth, incomplete reads, and explicit failure handling.
+- Canonical Linux `./run.sh build` succeeded (`tmp/import-refresh-build-final-platform.log`). The Linux offscreen lifecycle check passed two separate real Psych imports followed by automatic refresh after deleting the first original donor. Both imports, an existing Unicode registry label, and unknown source files were preserved; the native executable was excluded and staging was cleaned after every operation. Receipt: `tmp/import-refresh-native-check/verification.json`, ELF SHA256 `94ca5d1246bb12ca5b2e32f109fc6e9dc5d40130fff2ff0b48f0afd73b714688`.
+- Local Windows release cross-build succeeded (`tmp/import-refresh-windows-build.log`). The same lifecycle check now passes on the release executable under Wine, including staging cleanup, both imports, automatic refresh, source filtering, and Unicode preservation. Receipt: `tmp/import-refresh-wine-native-check/verification.json`, PE SHA256 `2bb850130e19465ac09a44bafd9126f79249a1c781db9b9b7399825443138568`. The prior source-path comparison, fixed-buffer and null-directory failures are resolved on this fixture; earlier failed/timeout runs are excluded from passing evidence. The separate debug build located the failure at post-publication directory enumeration.
+- All game checks use isolated temporary runtimes, default settings, muted audio, private displays and the shared build lock. Disposable initial importer fixtures were removed; evidence logs remain. Personal Linux options remain SHA256 `f8a66a8d7805df3cd892140eb3eb6003ca3bd57b96773261c0d0e71d5853a65c`.
+
+Limitations: older imports have no trusted generated baseline and are preserved rather than automatically enrolled; a baseline-establishing migration workflow is still needed for them. Native Windows hardware has not verified this feature. FIFO rejection is skipped on the interpreter backend because its stat result omits file-type bits. Missing source dependencies remain explicit diagnostics. These checks establish importer lifecycle behavior on the described fixtures, not full source-matching gameplay for every package. The broader compatibility goal and release gates remain open; no `v0.0.9` release has been published, and the user-directed stop of the Endless crash audit remains in force.

@@ -1,6 +1,8 @@
 """Psych stage construction order on the native PlayState member list."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -68,10 +70,10 @@ class StageProbe {
   else if(name=='add') members.push(args[0]);
   return args[args.length-1];
  }
-""" + methods + "\n}\n", encoding="utf-8")
+""" + methods + "\n}\n", encoding="utf-8", newline='\n')
             env = dict(os.environ)
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

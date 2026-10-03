@@ -1,7 +1,9 @@
 """Regression coverage for Modding Plus's fifth note-row lift marker."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -18,6 +20,7 @@ class LegacyLiftCompatibilityTest(unittest.TestCase):
         song = (ROOT / "source/Song.hx").read_text()
         engine = (ROOT / "source/EngineCompat.hx").read_text()
         self.assertIn("EngineCompat.normalizeLegacyNoteRows(parsedJson", song)
+        self.assertIn("compatibility == ImportEngine.MODDING_PLUS.toLowerCase()", song)
         self.assertIn("public static function normalizeLegacyNoteRows", engine)
         self.assertIn("values[1] = lane + noteAmount * 4", engine)
 
@@ -52,9 +55,9 @@ class LegacyLiftCorpus {
         donor_bytes = CHART.read_bytes()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             source = Path(folder) / "LegacyLiftCorpus.hx"
-            source.write_text(fixture)
+            source.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "LegacyLiftCorpus", str(CHART)],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

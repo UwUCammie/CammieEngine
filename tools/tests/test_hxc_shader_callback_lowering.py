@@ -1,10 +1,12 @@
 """Bounded HXC shader callback and zero-duration camera compatibility."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,8 +24,8 @@ class HxcShaderCallbackLoweringTest(unittest.TestCase):
     def _run(self, main: str, *args: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(prefix="hxc-shader-callback-", dir=ROOT / "tmp") as folder:
             source = Path(folder) / "Main.hx"
-            source.write_text(main)
-            command = [str(HAXE), "-cp", str(ROOT / "source"),
+            source.write_text(main, newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", folder,
                        "--run", "Main", *args]
             return subprocess.run(command, cwd=ROOT, capture_output=True,

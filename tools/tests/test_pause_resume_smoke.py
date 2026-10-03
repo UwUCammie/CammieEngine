@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import unittest
@@ -38,7 +39,7 @@ class PauseResumeSmokeTest(unittest.TestCase):
             binary = isolated_root / "bin" / "Funkin"
             binary.parent.mkdir()
             output_path = isolated_root / "pause.json"
-            output_path.write_text("{}", encoding="utf-8")
+            output_path.write_text("{}", encoding="utf-8", newline='\n')
 
             def fake_run_case(*_args, **kwargs):
                 self.assertIs(kwargs.get("strict_diagnostics"), True)
@@ -51,7 +52,7 @@ class PauseResumeSmokeTest(unittest.TestCase):
                     'RUNTIME_SMOKE|{"event":"pause_open","musicPlaying":false,"musicTimeMs":5000}\n'
                     'RUNTIME_SMOKE|{"event":"pause_resume","musicPlaying":true,"musicTimeMs":5000}\n',
                     encoding="utf-8",
-                )
+                 newline='\n')
                 return {"status": "failed", "reason": "native script diagnostic"}
 
             with patch.object(runner, "ROOT", isolated_root), \

@@ -14,6 +14,7 @@ patched by the shared setup tool) under the portable interpreter, the same
 extract-and-interpret style as the other engine suites. Migration coverage
 uses the clean pinned-source fixture and invokes that tool through its CLI.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import shutil
@@ -22,6 +23,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,8 +54,8 @@ class HscriptNullIteratorTest(unittest.TestCase):
     def run_fixture(self, source: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
-            command = [str(HAXE),
+            main.write_text(source, newline='\n')
+            command = [*HAXE_COMMAND,
                        "-cp", str(ROOT / "source"),
                        "-cp", str(HSCRIPT_LIB),
                        "-cp", folder,
@@ -261,7 +263,7 @@ class Main {{
 \t\t#end
 \t}'''
             target.write_text(source[:current_start] + legacy + source[current_end:],
-                              encoding="utf-8")
+                              encoding="utf-8", newline='\n')
 
             first = subprocess.run(command, cwd=ROOT, capture_output=True,
                                    text=True, timeout=30)

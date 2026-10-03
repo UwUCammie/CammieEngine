@@ -1,6 +1,8 @@
 """Run the HL17 shared typewriter adapter against deterministic Flixel stubs."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -94,7 +96,7 @@ class CodenameHl17TypewriterTest(unittest.TestCase):
             for relative, content in STUBS.items():
                 target = base / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content)
+                target.write_text(content, newline='\n')
             (base / "Main.hx").write_text('''import flixel.FlxSprite;
 import flixel.text.FlxText;
 import flixel.tweens.FlxTween;
@@ -152,9 +154,9 @@ class Main {
    rejected = Std.string(error).indexOf("argument 0 must be numeric") >= 0;
   if (!rejected) fail("dynamic constructor argument validation");
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

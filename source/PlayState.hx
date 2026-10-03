@@ -1,5 +1,11 @@
 package;
 
+import nightmarevision.modchart.NightmareVisionModchartRenderer;
+import nightmarevision.modchart.NightmareVisionModchartTransform;
+import nightmarevision.modchart.NightmareVisionModchartContext;
+import nightmarevision.modchart.NightmareVisionModchartSkinOffsets;
+import nightmarevision.modchart.NightmareVisionModchartVisualState;
+
 #if web
 import js.lib.intl.RelativeTimeFormat.RelativeTimeUnit;
 #end
@@ -114,9 +120,19 @@ enum abstract DisplayLayer(Int) from Int to Int {
 	var BEHIND_DAD = 1 << 2;
 	var BEHIND_ALL = BEHIND_GF | BEHIND_BF | BEHIND_DAD;
 }
-class PlayState extends MusicBeatState implements CodenameGameplayAccess {
+class PlayState extends MusicBeatState implements CodenameGameplayAccess implements NightmareVisionPlayableSongOwner {
 	var nightmareVisionScripts:NightmareVisionGameplayScripts;
+	var compatScriptClock:CompatScriptClock = new CompatScriptClock();
 	var nightmareVisionPaths:NightmareVisionPaths;
+	var nightmareVisionAudioApi:NightmareVisionPlayableSongView;
+	var nightmareVisionNoteSkins:Map<String, NightmareVisionNoteSkin>;
+	var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime;
+	var nightmareVisionFields:Array<NightmareVisionPlayFieldView> = [];
+	var nightmareVisionRenderers:Map<Int, NightmareVisionModchartRenderer> = new Map();
+	@:keep public var holdSubdivisions:Int = 1;
+	@:keep public var noteKillOffset:Float = 350;
+	var nightmareVisionCharacterBanks:Map<Int, NightmareVisionCharacterBank>;
+	var nightmareVisionCharacterGroups:Map<Int, NightmareVisionCharacterGroupCompat> = new Map();
 	static var nightmareVisionActivePrefs:NightmareVisionClientPrefs;
 	var nightmareVisionPrefs:NightmareVisionClientPrefs;
 	var nightmareVisionPlugins:NightmareVisionPluginRuntime;
@@ -142,21 +158,55 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		return '';
 	}
 
+	@:keep public function getNightmareVisionField(id:Int):NightmareVisionPlayFieldView {
+		if (id < 0 || id >= 2) throw '[nightmare-vision-playfield] Source field ' + id + ' has no native bank';
+		if (nightmareVisionFields[id] == null) {
+			nightmareVisionFields[id] = new NightmareVisionPlayFieldView(id, function():Bool return id == 1 || demoMode);
+			nightmareVisionFields[id].owner = id == 0 ? boyfriend : dad;
+			nightmareVisionFields[id].noteSplashes = id == 0;
+		}
+		return nightmareVisionFields[id];
+	}
+
+	/** Owner-local PlayableSong view used by imported source visualizers. */
+	@:keep public function nightmareVisionAudioView():NightmareVisionPlayableSongView {
+		if (nightmareVisionAudioApi == null)
+			throw '[nightmare-vision-audio] PlayableSong view is unavailable before this owner initializes';
+		return nightmareVisionAudioApi;
+	}
+
 	function callNightmareVision(event:String, ?args:Array<Dynamic>):Dynamic {
 		return nightmareVisionScripts == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
 			: nightmareVisionScripts.call(event, args);
 	}
 
+	/** Nightmare Vision exposes selected note-type dispatch on the gameplay
+	 * state, including calls from stage and event modules. */
+	@:keep public function callNoteTypeScript(noteType:String, callback:String, args:Array<Dynamic>):Dynamic {
+		return nightmareVisionScripts == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
+			: nightmareVisionScripts.callNoteType(noteType, callback, args);
+	}
+
+	@:keep public function callEventScript(name:String, callback:String, args:Array<Dynamic>):Dynamic {
+		return nightmareVisionScripts == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
+			: nightmareVisionScripts.callEvent(name, callback, args);
+	}
+
 	static function seedNightmareVisionCommon(interp:NightmareVisionScriptInterp,
-		paths:NightmareVisionPaths, prefs:NightmareVisionClientPrefs, plugins:NightmareVisionPluginRuntime):Void {
+		paths:NightmareVisionPaths, prefs:NightmareVisionClientPrefs, plugins:NightmareVisionPluginRuntime,
+		mods:NightmareVisionModsContext, difficulty:NightmareVisionDifficultyAdapter,
+		?clock:CompatScriptClock):Void {
 		// Only matching native APIs are exposed. Missing engine classes remain
 		// attributable import/runtime errors rather than unrelated aliases.
 		var preset:Map<String, Dynamic> = [
 			'Std' => Std, 'Math' => Math, 'StringTools' => StringTools, 'Type' => Type,
-			'Reflect' => Reflect, 'FlxG' => new NightmareVisionFlxGView(FlxG, interp.bindOwnerSave(paths.root, new CodenameOwnerSaveData(paths.root))), 'FlxSprite' => FlxSprite,
+			'Reflect' => Reflect, 'FlxG' => new NightmareVisionFlxGView(FlxG, interp.bindOwnerSave(paths.root, new CodenameOwnerSaveData(paths.root)), clock),
+			'FlxSprite' => NightmareVisionFlxSprite, 'Bopper' => NightmareVisionBopper,
+			'BGSprite' => NightmareVisionBGSprite,
 			'StringMap' => haxe.ds.StringMap, 'IntMap' => haxe.ds.IntMap, 'ObjectMap' => haxe.ds.ObjectMap,
 			'FlxMath' => FlxMath, 'FlxTimer' => FlxTimer, 'FlxTween' => FlxTween,
 			'FlxEase' => FlxEase, 'FlxSound' => FlxSound, 'FlxText' => FlxText,
+			'FlxCamera' => FlxCamera, 'FlxAxes' => {X:FlxAxes.X, Y:FlxAxes.Y, XY:FlxAxes.XY},
 			'FlxColor' => NightmareVisionColor,
 			'FlxTextAlign' => {LEFT:FlxTextAlign.LEFT, CENTER:FlxTextAlign.CENTER,
 				RIGHT:FlxTextAlign.RIGHT, JUSTIFY:FlxTextAlign.JUSTIFY},
@@ -166,6 +216,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			'FlxPoint' => flixel.math.FlxPoint.FlxBasePoint,
 			'FlxTypedGroup' => FlxGroup, 'FlxSpriteGroup' => flixel.group.FlxSpriteGroup,
 			'CoolUtil' => CoolUtil, 'PlayState' => PlayState, 'Paths' => paths,
+			// FunkinScript seeds these source globals from the active chart.
+			// PlayState also owns a `songName` FlxText, so keep the source value in
+			// interpreter variables where it shadows reflected parent fields.
+			'bpm' => SONG.bpm, 'scrollSpeed' => SONG.speed, 'songName' => SONG.song,
 			'ClientPrefs' => prefs.view,
 			'Function_Continue' => NightmareVisionScriptGroup.CONTINUE_FUNC,
 			'Function_Stop' => NightmareVisionScriptGroup.STOP_FUNC,
@@ -173,7 +227,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			'curBpm' => Conductor.bpm, 'crotchet' => Conductor.crochet,
 			'stepCrotchet' => Conductor.stepCrochet
 		];
+		interp.bindOwnerPaths(paths);
+		interp.cameraShaders = new NightmareVisionCameraShaders();
 		for (name => value in preset) interp.variables.set(name, value);
+		interp.bindImport('flixel.FlxSprite', NightmareVisionFlxSprite);
+		interp.bindImport('funkin.objects.Bopper', NightmareVisionBopper);
+		interp.bindImport('funkin.objects.BGSprite', NightmareVisionBGSprite);
+		interp.bindImport('funkin.game.shaders.HSLColorSwap', NightmareVisionHSLColorSwap);
 		interp.bindImport('flixel.FlxG', preset.get('FlxG'));
 		interp.bindImport('flixel.text.FlxTextAlign', preset.get('FlxTextAlign'));
 		interp.bindImport('flixel.text.FlxTextBorderStyle', preset.get('FlxTextBorderStyle'));
@@ -190,13 +250,22 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		interp.bindImport('funkin.scripting.ScriptConstants', constants);
 		interp.bindImport('funkin.Paths', paths);
 		interp.bindImport('funkin.data.ClientPrefs', prefs.view);
-		interp.variables.set('Mods', nightmareVisionActiveMods);
-		interp.bindImport('funkin.Mods', nightmareVisionActiveMods);
-		interp.variables.set('Difficulty', nightmareVisionActiveDifficulty);
-		interp.bindImport('funkin.backend.Difficulty', nightmareVisionActiveDifficulty);
+		interp.variables.set('Mods', mods);
+		interp.bindImport('funkin.Mods', mods);
+		interp.variables.set('Difficulty', difficulty);
+		interp.bindImport('funkin.backend.Difficulty', difficulty);
 		var ownerAssets = new NightmareVisionFunkinAssets(paths);
 		interp.variables.set('FunkinAssets', ownerAssets);
 		interp.bindImport('funkin.FunkinAssets', ownerAssets);
+		var chartApi = new NightmareVisionChartApi(function(path:String):String {
+			var scoped = paths.scopeAssetPath(path);
+			return scoped != null && ownerAssets.exists(scoped) ? FNFAssets.getText(scoped) : null;
+		}, function(songName:String, difficultyIndex:Int):String {
+			return paths.json(paths.sanitize(songName) + '/charts/'
+				+ difficulty.getDifficultyFilePath(difficultyIndex));
+		});
+		interp.variables.set('Chart', chartApi);
+		interp.bindImport('funkin.data.Chart', chartApi);
 		interp.variables.set('Conductor', nightmareVisionConductor);
 		interp.bindImport('funkin.backend.Conductor', nightmareVisionConductor);
 		var cameraUtil = new NightmareVisionCameraUtil(function() return cast FlxG.cameras.list);
@@ -207,13 +276,28 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			function(x, y) return FlxPoint.weak(x, y));
 		interp.variables.set('WindowUtil', windowUtil);
 		interp.bindImport('funkin.utils.WindowUtil', windowUtil);
+		var discordClient = new NightmareVisionDiscordClient(function(details, state, smallImageKey, hasStartTimestamp, endTimestamp, largeImageKey) {
+			#if cpp
+			DiscordClient.changePresenceWithImages(details, state, smallImageKey, hasStartTimestamp, endTimestamp, largeImageKey);
+			#end
+		});
+		interp.variables.set('DiscordClient', discordClient);
+		interp.bindImport('funkin.api.DiscordClient', discordClient);
 		interp.bindImport('funkin.scripts.ScriptClasses.ScriptedFlxColor', NightmareVisionColor);
+		interp.bindImport('funkin.audio.visualize.PolygonSpectogram', NightmareVisionPolygonSpectogram);
+		interp.bindImport('funkin.audio.visualize.PolygonSpectogram.VISTYPE', NightmareVisionSpectogramEnums.VISTYPE);
+		interp.bindImport('funkin.audio.visualize.SpectogramSprite.SPECDIRECTION', NightmareVisionSpectogramEnums.SPECDIRECTION);
+		interp.bindImport('funkin.objects.MeshRender', NightmareVisionMeshRender);
 		interp.bindImport('openfl.display.BlendMode', preset.get('BlendMode'));
 		interp.variables.set('newShader', function(?fragFile:String, ?vertFile:String):Dynamic {
 			return NightmareVisionShaderFactory.fromPath(paths.root, fragFile, vertFile);
 		});
 		interp.bindImport('funkin.states.PlayState', PlayState);
 		interp.bindImport('funkin.utils.CoolUtil', CoolUtil);
+		interp.variables.set('MathUtil', NightmareVisionMathUtil);
+		interp.bindImport('funkin.utils.MathUtil', NightmareVisionMathUtil);
+		interp.variables.set('PlayerSettings', PlayerSettings);
+		interp.bindImport('funkin.backend.PlayerSettings', PlayerSettings);
 		interp.variables.set('PluginsManager', plugins);
 		interp.bindImport('funkin.scripting.PluginsManager', plugins);
 		interp.bindImport('funkin.backend.plugins.ModPlugin', {instance:plugins.scripts.parent});
@@ -221,10 +305,39 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 
 	function seedNightmareVision(interp:NightmareVisionScriptInterp,
 		entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry, actor:Dynamic):Void {
-		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins);
+		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins,
+			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock);
 		interp.variables.set('stage', curStage);
+		var audioView = nightmareVisionAudioView();
+		interp.variables.set('audio', audioView);
+		interp.variables.set('vocals', audioView);
 		interp.variables.set('isStoryMode', isStoryMode);
 		interp.variables.set('CallbackEvent', NightmareVisionModManager.callbackEventClass());
+		interp.variables.set('game', this);
+		interp.variables.set('getFieldFromID', getNightmareVisionField);
+		interp.variables.set('callNoteTypeScript', callNoteTypeScript);
+		interp.variables.set('callEventScript', callEventScript);
+		interp.variables.set('boyfriendGroup', nightmareVisionCharacterGroup(0));
+		interp.variables.set('dadGroup', nightmareVisionCharacterGroup(1));
+		interp.variables.set('gfGroup', nightmareVisionCharacterGroup(2));
+		interp.variables.set('refreshZ', function(?group:Dynamic):Void {
+			// StageHelper props and actors share the live state's draw list.
+			// Sort that actual list rather than its bookkeeping group alone.
+			if (group == null || group == curStage) refreshNightmareVisionStage();
+			else if (group == this) refresh();
+			else {
+				var sort = Reflect.field(group, 'sort');
+				if (Reflect.isFunction(sort)) Reflect.callMethod(group, sort,
+					[function(order:Int, a:Dynamic, b:Dynamic):Int
+						return flixel.util.FlxSort.byValues(order, HxcCompatRuntime.getZIndex(a), HxcCompatRuntime.getZIndex(b)), flixel.util.FlxSort.ASCENDING]);
+			}
+		});
+		interp.variables.set('addCharacterToList', function(name:String, type:Int):Void {
+			nightmareVisionCharacterBank(type == 2 && gf == null ? 1 : type).addToList(name);
+		});
+		interp.variables.set('changeCharacter', function(name:String, type:Int):Void {
+			nightmareVisionCharacterBank(type).change(name);
+		});
 	}
 
 	function initializeNightmareVisionScripts():Void {
@@ -270,13 +383,22 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		}
 		nightmareVisionPrefs = nightmareVisionActivePrefs;
 		nightmareVisionPaths = new NightmareVisionPaths(root);
-		modManager = new NightmareVisionModManager();
+		if (nightmareVisionAudioApi != null) nightmareVisionAudioApi.release();
+		nightmareVisionAudioApi = new NightmareVisionPlayableSongView(function() {
+			if (FlxG.state != this || startingSong) return null;
+			return FlxG.sound.music;
+		}, function() {
+			return inst == null ? 0 : (cast inst:Sound).length;
+		}, function() return vocalTracks);
+		modManager = new NightmareVisionModManager(null, Note.NOTE_AMOUNT, 2);
 		// Persistent plugin bindings capture only this owner's paths/preferences,
 		// never a PlayState that will be destroyed when another song loads.
 		var ownerPaths = nightmareVisionPaths;
 		var ownerPrefs = nightmareVisionPrefs;
+		var ownerMods = nightmareVisionActiveMods;
+		var ownerDifficulty = nightmareVisionActiveDifficulty;
 		nightmareVisionPlugins = NightmareVisionPluginHost.mount(root, function(interp, entry, plugins) {
-			seedNightmareVisionCommon(interp, ownerPaths, ownerPrefs, plugins);
+			seedNightmareVisionCommon(interp, ownerPaths, ownerPrefs, plugins, ownerMods, ownerDifficulty);
 		});
 		var plan = NightmareVisionScriptDiscovery.discover(root, SONG.song, SONG, null, CoolUtil.parseJson);
 		curStage = new StageHelper(SONG.stage);
@@ -298,15 +420,48 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				trace('[nightmare-vision-script-error] ' + root + '/' + name + '#' + phase + ': ' + Std.string(error));
 			}, function(interp, entry) {
 				if (entry.scope == 'stage') interp.variables.set('add', curStage.add);
-			});
+			}, nightmareVisionPaths.resolveScript);
+		// Seed the source default before onCreate can intentionally override it.
+		refreshNightmareVisionNoteKillOffset();
 		if (data.stageObjects != null && (cast data.stageObjects:Array<Dynamic>).length > 0)
 			trace('[nightmare-vision-unsupported-stage-objects] ' + root + ': ' + SONG.stage);
 		nightmareVisionScripts.loadScope('stage');
 		nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups', []) != NightmareVisionScriptGroup.STOP_FUNC;
-		if (nightmareVisionAddActors) add(curStage);
+		// StageHelper forwards every prop to the live state, as the shared
+		// Psych stage host does. Mounting its bookkeeping group too would draw
+		// and update props twice, and bindGameplayCameras would propagate the
+		// world camera over each child's explicitly authored HUD/overlay camera.
 		nightmareVisionScripts.loadScope('global');
+		nightmareVisionNoteTypes = new NightmareVisionNoteTypeRuntime(nightmareVisionScripts,
+			new NightmareVisionNoteTypeRuntime.NightmareVisionNoteApiBridge(
+				function(value) {
+					var note:Note = cast value;
+					return nightmareVisionSkinForField(note.sourcePlayfieldIndex).stringField('noteTexture', 'UI/notes/NOTE_assets');
+				}, function(value, atlas) {
+					var note:Note = cast value;
+					var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+					return skin.applyNote(note, note.sourceDirection,
+						nightmareVisionPaths.getSparrowAtlas(atlas));
+				}, function(value, enabled) {
+					var note:Note = cast value;
+					if (note.nightmareVisionRGB != null) {
+						note.nightmareVisionRGB.enabled = enabled;
+						note.nightmareVisionRGB.apply(note);
+					}
+				}, function(value, colors) {
+					var note:Note = cast value;
+					if (note.nightmareVisionRGB != null) {
+						if (colors == null) note.nightmareVisionRGB = new NightmareVisionRGBGraphics(nightmareVisionSkinForField(note.sourcePlayfieldIndex).palette(note.sourceDirection));
+						else note.nightmareVisionRGB.setColors(cast colors);
+						note.nightmareVisionRGB.apply(note);
+					}
+				}, function(value) {
+					var note:Note = cast value;
+					return note.nightmareVisionRGB != null && note.nightmareVisionRGB.enabled;
+				}));
+		nightmareVisionNoteTypes.loadBeforeNoteGeneration();
 		for (entry in plan.scripts)
-			if (entry.scope == 'event' || entry.scope == 'notetype' || entry.scope == 'character_event')
+			if (entry.scope == 'character_event')
 				trace('[nightmare-vision-unsupported-script] scope=' + entry.scope + ' path=' + entry.relative);
 		#end
 	}
@@ -316,13 +471,125 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			nightmareVisionScripts.loadScope('character', actor.requestedCharacter, actor);
 	}
 
+	var psychStageGroupCameras:Map<String, Array<FlxCamera>> = new Map();
+	@:keep public function setPsychStageGroupCameras(role:String, cameras:Array<Dynamic>):Void {
+		psychStageGroupCameras.set(role, cast cameras);
+		var actor = role == 'bf' ? boyfriend : role == 'dad' ? dad : gf;
+		if (actor != null) actor.cameras = cast cameras;
+	}
+
+	/** All interpreters see one source group per role, with state-owned children. */
+	function nightmareVisionCharacterGroup(type:Int):NightmareVisionCharacterGroupCompat {
+		var group = nightmareVisionCharacterGroups.get(type);
+		if (group != null) return group;
+		var role = type == 0 ? 'bf' : type == 1 ? 'dad' : 'gf';
+		group = new NightmareVisionCharacterGroupCompat(this, role, function() {
+			var actor = type == 0 ? boyfriend : type == 1 ? dad : gf;
+			return actor == null ? null : nightmareVisionCharacterBank(type);
+		}, function(value) {
+			var actor:Character = cast value;
+			if (actor == null) throw '[nightmare-vision-character-group] Child must be a native Character';
+			var placement = curStage.getInfo(role);
+			var characterRole = type == 0 ? 'boyfriend' : role;
+			actor.characterType = characterRole;
+			var offset = stageCharacterOffset(actor, characterRole);
+			actor.x += placement.x + offset[0]; actor.y += placement.y + offset[1];
+			if (members.indexOf(actor) < 0) add(actor);
+			loadNightmareVisionCharacter(actor);
+			return actor;
+		}, function(value) {
+			if (value != null && !Std.isOfType(value, Character))
+				throw '[nightmare-vision-character-group] Parent must be a native Character';
+			nightmareVisionCharacterBank(type).assignParentReference(value);
+			if (type == 0) boyfriend = cast value; else if (type == 1) dad = cast value; else gf = cast value;
+			return value;
+		});
+		group.attachSceneBridge(function(value, adding) {
+			if (Std.isOfType(value, PsychBaseStageActorGroupCompat)) return (cast value:PsychBaseStageActorGroupCompat).actor();
+			if (value != null && !Std.isOfType(value, FlxBasic))
+				throw '[nightmare-vision-character-group] Child has no native display object';
+			return value;
+		}, function(value) return add(cast value), function(index, value) return insert(index, cast value),
+			function(value, splice) return remove(cast value, splice));
+		nightmareVisionCharacterGroups.set(type, group);
+		var key = type == 0 ? 'bfZIndex' : type == 1 ? 'dadZIndex' : 'gfZIndex';
+		var depth:Dynamic = curStage == null ? null : Reflect.field(curStage.stageData, key);
+		group.zIndex = depth == null ? 0 : Std.int(depth);
+		return group;
+	}
+
+	function nightmareVisionCharacterBank(type:Int):NightmareVisionCharacterBank {
+		if (type < 0 || type > 2) throw '[nightmare-vision-character] Invalid role ' + type;
+		if (nightmareVisionCharacterBanks == null) nightmareVisionCharacterBanks = new Map();
+		var bank = nightmareVisionCharacterBanks.get(type);
+		if (bank != null) return bank;
+		var role = type == 0 ? 'boyfriend' : (type == 1 ? 'dad' : 'gf');
+		var initial:Character = type == 0 ? boyfriend : (type == 1 ? dad : gf);
+		bank = new NightmareVisionCharacterBank(initial, function(name) {
+			var placement = curStage.getInfo(role);
+			var actor = new Character(placement.x, placement.y, name, type == 0);
+			actor.characterType = role;
+			var position = stageCharacterOffset(actor, role);
+			actor.x += position[0]; actor.y += position[1];
+			if (type == 2) actor.scrollFactor.set(0.95, 0.95);
+			HxcCompatRuntime.setZIndex(actor, initial == null ? 0 : HxcCompatRuntime.getZIndex(initial));
+			actor.alpha = 0.00001;
+			var group = nightmareVisionCharacterGroups.get(type);
+			PsychSceneGroupOrdering.append(members, group == null ? [initial] : cast group.members, actor, function(index, member):Void { insert(index, member); });
+			loadNightmareVisionCharacter(actor);
+			return actor;
+		}, function(previous, next) {
+			var old:Character = cast previous;
+			var actor:Character = cast next;
+			for (field in nightmareVisionFields) if (field != null && field.owner == old) field.owner = actor;
+			var z = old == null ? HxcCompatRuntime.getZIndex(actor) : HxcCompatRuntime.getZIndex(old);
+			switchToChar(actor, role, false, true);
+			var cameraRole = role == 'boyfriend' ? 'bf' : role;
+			if (psychStageGroupCameras.exists(cameraRole)) actor.cameras = psychStageGroupCameras.get(cameraRole);
+			// Source CharacterGroup retains hidden actors and their animation state.
+			if (old != null && members.indexOf(old) < 0) add(old);
+			HxcCompatRuntime.setZIndex(actor, z);
+			// The source changes a parent inside its cached group. It does not
+			// re-sort the stage or move that group across top-level overlays.
+		});
+		nightmareVisionCharacterBanks.set(type, bank);
+		return bank;
+	}
+
+	/** A source stage is one outer group; each character bank is one child.
+	 * Sorting that group must not move song overlays or HUD members through it. */
+	function nightmareVisionStageGroups():Array<PsychSceneGroupOrdering.PsychSceneGroup<FlxBasic>> {
+		var groups:Array<PsychSceneGroupOrdering.PsychSceneGroup<FlxBasic>> = [];
+		if (curStage != null) for (sprite in curStage.members)
+			if (sprite != null) groups.push({members:[sprite], z:HxcCompatRuntime.getZIndex(sprite)});
+		for (type in [2, 1, 0]) {
+			var group = nightmareVisionCharacterGroup(type);
+			groups.push({members:cast group.members, z:group.zIndex});
+		}
+		return groups;
+	}
+
+	function refreshNightmareVisionStage():Void {
+		if (nightmareVisionScripts == null) return;
+		PsychSceneGroupOrdering.sort(members, nightmareVisionStageGroups());
+	}
+
 	function initializeNightmareVisionHUD():Void {
 		if (nightmareVisionScripts == null) return;
 		var prefs = nightmareVisionPrefs.view;
 		var showTime = prefs.timeBarType != 'Disabled';
 		for (object in [cast songPosBG, cast songPosBar, cast songName])
 			if (members.indexOf(object) < 0) add(object);
+		var ratings = new NightmareVisionRatingPresentation({
+			paths:nightmareVisionPaths, camera:camHUD,
+			addDisplay:function(object) return add(cast object),
+			callScript:callNightmareVision,
+			hideHud:function() return prefs.hideHud == true,
+			useEpicRankings:function() return prefs.useEpicRankings == true,
+			showRatings:prefs.showRatings == true, comboOffsets:cast prefs.comboOffset
+		});
 		playHUD = new NightmareVisionHUDAdapter({
+			ratingPresentation:ratings,
 			parent:this, healthFill:healthBar, healthBackground:healthBarBG,
 			iconP1:iconP1, iconP2:iconP2, scoreText:scoreTxt,
 			songFill:songPosBar, songBackground:songPosBG, timeText:songName,
@@ -331,16 +598,38 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			songTitle:SONG.song, timeBarType:prefs.timeBarType, showTime:showTime,
 			setHealthDirection:function(forward) healthBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
 			setSongDirection:function(forward) songPosBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
+			refreshCharacterPresentation:refreshCharacterIconsAndColors,
 			tweenAlpha:function(target, duration) FlxTween.tween(target, {alpha:1}, duration, {ease:FlxEase.circOut}),
 			addDisplay:function(object) return add(cast object),
 			removeDisplay:function(object, splice) return remove(cast object, splice),
 			insertDisplay:function(index, object) return insert(index, cast object)
 		});
 		if (prefs.hideHud) playHUD.visible = false;
-		modManager.keys = Note.NOTE_AMOUNT;
 		modManager.receptors = [cast playerStrums.members, cast enemyStrums.members];
-		modManager.lanes = modManager.receptors.length;
 	}
+
+	/** Shared PsychHUD character-change behavior over the existing PlayState HUD.
+	 * HealthIcon remains responsible for resolving the selected owner's icon art. */
+	function refreshCharacterIconsAndColors():Void {
+		if (iconP1 != null && boyfriend != null && iconP1.character != boyfriend.healthIcon)
+			iconP1.switchAnim(boyfriend.healthIcon);
+		if (iconP2 != null && dad != null && iconP2.character != dad.healthIcon)
+			iconP2.switchAnim(dad.healthIcon);
+		if (healthBar != null && boyfriend != null && dad != null) updateHealthColors();
+	}
+
+	function refreshCharacterHUD():Void {
+		if (playHUD != null) playHUD.onCharacterChange();
+		else refreshCharacterIconsAndColors();
+	}
+
+	// Reuse the Psych score contract rather than copying static script globals.
+	@:keep public var songMisses(get, never):Int;
+	function get_songMisses():Int return PlayState.misses;
+	@:keep public var ratingPercent(get, never):Float;
+	function get_ratingPercent():Float return compatGetProperty('ratingPercent');
+	@:keep public var ratingFC(get, never):String;
+	function get_ratingFC():String return compatGetProperty('ratingFC');
 
 	@:keep public var boyfriendCameraOffset(get, set):Array<Float>;
 	function get_boyfriendCameraOffset():Array<Float> return psychStageCameraBoyfriend;
@@ -1088,8 +1377,20 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 	function get_scrollSpeed():Float return daScrollSpeed;
 	function set_scrollSpeed(value:Float):Float {
 		daScrollSpeed = value;
+		refreshNightmareVisionNoteKillOffset();
 		return value;
 	}
+	/** Nightmare Vision's source PlayState names the live speed `songSpeed`. */
+	@:keep public var songSpeed(get, set):Float;
+	function get_songSpeed():Float return daScrollSpeed;
+	function set_songSpeed(value:Float):Float return scrollSpeed = value;
+
+	/** Keep Nightmare Vision's note retirement window in step with its source songSpeed setter. */
+	function refreshNightmareVisionNoteKillOffset():Void {
+		if (nightmareVisionScripts == null) return;
+		noteKillOffset = Math.max(Conductor.stepCrochet, 350 / effectiveScrollSpeed * playbackRate);
+	}
+
 	// Chart converters often subtract two beat-aligned timestamps and leave a
 	// tiny IEEE-754 remainder where the source chart meant a tap (the imported
 	// library contains values around 1e-13ms). Some older chart formats also
@@ -1831,8 +2132,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			// HXC lifecycle methods are Void in their donor ABI. HScript can
 			// expose an incidental last-expression value (for example a native
 			// tween helper returning true); only legacy/Psych callbacks use a
-			// Function_Stop return to cancel a native gate.
-			if (returnValues != null && hxcPayloadStates.get(usehaxe) != true)
+			// Function_Stop return to cancel a native gate. Explicit HXC queries
+			// retain their declared return values independently of those gates.
+			if (returnValues != null && (hxcPayloadStates.get(usehaxe) != true
+				|| func_name == 'getScreenPosition' || func_name == 'getDeathQuote'))
 				returnValues.push(returned);
 			HxcCompatRuntime.commitTallyCallback();
 			interp.variables.set('__compatDiagnosticCallback', previousDiagnosticCallback);
@@ -2433,8 +2736,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		registerStageSprite(sprite);
 		if (!hasExplicitCameras(sprite))
 			sprite.cameras = [camGame];
-		if (members.indexOf(sprite) < 0)
-			add(sprite);
+		if (members.indexOf(sprite) < 0) {
+			if (nightmareVisionScripts != null) {
+				var stageMembers:Array<FlxBasic> = [];
+				for (group in nightmareVisionStageGroups()) for (member in group.members) stageMembers.push(member);
+				PsychSceneGroupOrdering.append(members, stageMembers, cast sprite, function(index, member):Void { insert(index, member); });
+			} else add(sprite);
+		}
 	}
 
 	public function detachStageMember(sprite:FlxSprite):Void {
@@ -3161,7 +3469,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			default:
 		}
 		if (root.toLowerCase() == 'songspeed')
-			return SONG == null ? daScrollSpeed : SONG.speed;
+			return daScrollSpeed;
 		if (root.toLowerCase() == 'cpucontrolled' || root.toLowerCase() == 'cpusize')
 			return FlxG.save != null && FlxG.save.data != null ? FlxG.save.data.botplay : false;
 		if (root.toLowerCase() == 'shownotesplashes')
@@ -3228,9 +3536,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				return;
 			case 'songspeed':
 				var speed:Float = Std.parseFloat(Std.string(value));
-				daScrollSpeed = speed;
-				if (SONG != null)
-					SONG.speed = speed;
+				songSpeed = speed;
 				return;
 			case 'cpucontrolled' | 'cpusize':
 				if (FlxG.save != null && FlxG.save.data != null)
@@ -5988,7 +6294,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		var result:Array<String> = [];
 		if (scriptPath == null || SONG == null)
 			return result;
-		var stem = HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(scriptPath));
+		var stem = HxcScriptDiscovery.characterId(scriptPath);
 		if (stem == '')
 			return result;
 		if (HxcScriptDiscovery.normalizeToken(SONG.player1) == stem)
@@ -6004,7 +6310,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 	function registerHxcCharacterScope(scope:String, scriptPath:String, ?role:String):Void {
 		if (scope == null || StringTools.trim(scope) == '' || scriptPath == null)
 			return;
-		var name = HxcScriptDiscovery.normalizeToken(HxcScriptDiscovery.stem(scriptPath));
+		var name = HxcScriptDiscovery.characterId(scriptPath);
 		if (name == '')
 			return;
 		var roles = hxcCharacterRolesForPath(scriptPath);
@@ -6057,6 +6363,62 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		return false;
 	}
 
+	/** Read or write script-owned character state without touching sibling actors. */
+	public function hxcCharacterScriptField(actor:Character, fieldName:String,
+		write:Bool = false, ?value:Dynamic):Dynamic {
+		if (actor == null || fieldName == null || fieldName == '')
+			return null;
+		var scopes = [for (scope in hxcCharacterScopeNames.keys()) scope];
+		scopes.sort(Reflect.compare);
+		for (scope in scopes) {
+			if (!hxcCharacterScopeIsActive(scope)) continue;
+			if (hxcCharacterForScope(scope).indexOf(actor) < 0) continue;
+			var interp = hscriptStates.get(scope);
+			if (interp == null || interp.variables.get('__compatClosed') == true) continue;
+			if (write) interp.variables.set(fieldName, value);
+			else if (interp.variables.exists(fieldName)) return interp.variables.get(fieldName);
+		}
+		return write ? value : null;
+	}
+
+	/** Query the live actor's authored return-valued character companion. */
+	public function hxcCharacterDeathQuote(actor:Character):Null<String> {
+		if (actor == null) return null;
+		var role = actor == boyfriend ? 'boyfriend' : actor == dad ? 'dad'
+			: actor == gf ? 'gf' : actor == hxcCharacterCallbackActor ? hxcCharacterCallbackRole : '';
+		if (role == '') return null;
+		var previousActor = hxcCharacterCallbackActor;
+		var previousRole = hxcCharacterCallbackRole;
+		hxcCharacterCallbackActor = actor;
+		hxcCharacterCallbackRole = role;
+		var result:Null<String> = null;
+		try {
+			var scopes = [for (scope in hxcCharacterScopeNames.keys()) scope];
+			scopes.sort(Reflect.compare);
+			for (scope in scopes) {
+				var interp = hscriptStates.get(scope);
+				if (interp == null || interp.variables.get('__compatClosed') == true
+					|| !hxcCharacterScopeIsActive(scope)
+					|| hxcCharacterForScope(scope).indexOf(actor) < 0
+					|| !hxcCharacterMethodIsAuthored(interp, 'getDeathQuote')) continue;
+				var returned:Array<Dynamic> = [];
+				callHscript('getDeathQuote', [], scope, true, returned);
+				if (returned.length > 0) {
+					var value = returned[returned.length - 1];
+					if (value != null && !Std.isOfType(value, String))
+						throw 'getDeathQuote must return a sound path or null';
+					result = cast value;
+				}
+				break;
+			}
+		} catch (error:Dynamic) {
+			trace('[hxc-character-query-error] getDeathQuote: ' + Std.string(error));
+		}
+		hxcCharacterCallbackActor = previousActor;
+		hxcCharacterCallbackRole = previousRole;
+		return result;
+	}
+
 	/** Limit note callbacks to the character which actually performed the note. */
 	function hxcCharacterScopeOwnsNote(scope:String, args:Array<Dynamic>):Bool {
 		if (!hxcCharacterScopeNames.exists(scope))
@@ -6103,6 +6465,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 	}
 
 	/** Execute one generated character method only in the actor's active scopes. */
+	function hxcCharacterMethodIsAuthored(interp:Interp, methodName:String):Bool {
+		if (interp == null || !interp.variables.exists(methodName))
+			return false;
+		var nativeMethods:Map<String, Dynamic> = cast interp.variables.get('__hxcNativeCharacterMethods');
+		return nativeMethods == null || !nativeMethods.exists(methodName)
+			|| interp.variables.get(methodName) != nativeMethods.get(methodName);
+	}
+
 	public function dispatchHxcCharacterMethod(actor:Character, methodName:String, args:Array<Dynamic>):Void {
 		if (actor == null || methodName == null)
 			return;
@@ -6116,6 +6486,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			if (!hxcCharacterScopeNames.exists(scope))
 				continue;
 			if (!hxcCharacterScopeIsActive(scope))
+				continue;
+			// Seeded helpers remain callable by scripts, but are inherited native
+			// operations, not overrides. Replaying one here would reset an animation
+			// after an authored playAnimation override has applied its costume.
+			if (!hxcCharacterMethodIsAuthored(hscriptStates.get(scope), methodName))
 				continue;
 			var owns = false;
 			for (candidate in hxcCharacterForScope(scope))
@@ -6408,6 +6783,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				actor.playSingAnimation(direction, miss, suffix);
 			return actor;
 		});
+		interp.variables.set('__hxcNativeCharacterMethods', [
+			'playAnimation' => interp.variables.get('playAnimation'),
+			'playSingAnimation' => interp.variables.get('playSingAnimation')
+		]);
 	}
 	/**
 		Load the native HScript spelling first, then route a sibling Lua module
@@ -7638,6 +8017,93 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			if (line != null) line.setCenteredLayout(
 				NightmareVisionPlayfieldLayout.centerX(field, Note.NOTE_AMOUNT,
 					FlxG.width, Note.swagWidth), centerY);
+			var skin = nightmareVisionSkinForField(field);
+			if (line != null && skin != null)
+				for (strum in line.members)
+					if (strum != null) skin.applyReceptor(strum, strum.ID);
+			if (line != null && skin != null) line.resetStrums();
+		}
+	}
+
+	/** Source field zero is the player line; each field may select its own skin. */
+	public function nightmareVisionSkinForField(field:Int):NightmareVisionNoteSkin {
+		if (nightmareVisionPaths == null || SONG == null) return null;
+		var names = SONG.arrowSkins;
+		var name = names != null && field >= 0 && field < names.length
+			&& names[field] != null && StringTools.trim(names[field]) != ''
+			? names[field] : 'default';
+		if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
+		var skin = nightmareVisionNoteSkins.get(name);
+		if (skin == null) {
+			try {
+				skin = new NightmareVisionNoteSkin(nightmareVisionPaths, name);
+				nightmareVisionNoteSkins.set(name, skin);
+				trace('[nightmare-vision-note-skin] loaded owner=' + nightmareVisionPaths.root
+					+ ' field=' + field + ' skin=' + name
+					+ ' atlas=' + skin.stringField('noteTexture', 'UI/notes/NOTE_assets'));
+			} catch (error:Dynamic) {
+				trace('[nightmare-vision-note-skin] load failed owner=' + nightmareVisionPaths.root
+					+ ' field=' + field + ' skin=' + name + ': ' + Std.string(error));
+				return null;
+			}
+		}
+		return skin;
+	}
+
+	public function nightmareVisionSkinForStrumline(line:Strumline):NightmareVisionNoteSkin {
+		if (line == playerStrums) return nightmareVisionSkinForField(0);
+		if (line == enemyStrums) return nightmareVisionSkinForField(1);
+		return null;
+	}
+
+	function nightmareVisionRenderer(field:Int):NightmareVisionModchartRenderer {
+		var renderer = nightmareVisionRenderers.get(field);
+		if (renderer == null) {
+			var skin = nightmareVisionSkinForField(field);
+			if (skin == null || modManager == null) throw '[nightmare-vision-modchart] Missing source skin/manager for field ' + field;
+			renderer = new NightmareVisionModchartRenderer(new NightmareVisionModchartTransform(modManager.registry),
+				new NightmareVisionModchartSkinOffsets(Note.NOTE_AMOUNT, skin.data), function(sprite:Dynamic, state:NightmareVisionModchartVisualState):Void {
+					var graphic:NightmareVisionRGBGraphics = null;
+					var animationX:Float = 0, animationY:Float = 0;
+					if (Std.isOfType(sprite, Note)) graphic = (cast sprite:Note).nightmareVisionRGB;
+					else if (Std.isOfType(sprite, Strumline.StrumNote)) {
+						var strum:Strumline.StrumNote = cast sprite;
+						if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics(skin.palette(strum.ID));
+						graphic = strum.nightmareVisionRGB;
+						var name = strum.animation.curAnim == null ? 'static' : strum.animation.curAnim.name;
+						graphic.enabled = strum.nightmareVisionPalette != null && name != 'static';
+						var offsets = strum.nightmareVisionOffsets == null ? null : strum.nightmareVisionOffsets.get(name);
+						if (offsets != null) { animationX = offsets[0]; animationY = offsets[1]; }
+					}
+					if (graphic != null) {
+						graphic.alpha = state.alphaMod * state.rgbAlpha * getNightmareVisionField(field).baseAlpha;
+						graphic.flash = state.rgbFlash;
+						graphic.apply(cast sprite);
+					}
+					// FunkinSprite subtracts transformed sprite/animation offsets in screen coordinates.
+					var x = (state.spriteOffsetX + animationX) * sprite.scale.x / state.baseScaleX;
+					var y = (state.spriteOffsetY + animationY) * sprite.scale.y / state.baseScaleY;
+					var angle = sprite.angle * Math.PI / 180;
+					sprite.offset.x += x * Math.cos(angle) - y * Math.sin(angle);
+					sprite.offset.y += x * Math.sin(angle) + y * Math.cos(angle);
+				});
+			nightmareVisionRenderers.set(field, renderer);
+		}
+		return renderer;
+	}
+
+	function nightmareVisionRenderContext():NightmareVisionModchartContext {
+		return new NightmareVisionModchartContext(FlxG.width, FlxG.height, Note.NOTE_AMOUNT, Note.swagWidth,
+			Conductor.songPosition, curDecBeat, effectiveScrollSpeed, Conductor.crochet, downscroll, false);
+	}
+
+	function configureNightmareVisionNoteSkin(note:Note):Void {
+		if (note == null || note.sourcePlayfieldIndex < 0) return;
+		var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+		if (skin != null && skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData))
+			RuntimeSmokeHarness.markNightmareVisionNoteVisual(note);
+		if (nightmareVisionNoteTypes != null) {
+			note.nightmareVisionTypeRuntime = nightmareVisionNoteTypes;
 		}
 	}
 
@@ -9247,7 +9713,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				var scope = compatibleScriptKey('hxc_character');
 				makeHaxeState(scope, Path.directory(scriptPath) + '/', Path.withoutDirectory(scriptPath),
 					null, characterRole, characterOverride);
-				registerHxcCharacterScope(scope, scriptPath, characterRole);
 					var loadedActor = characterOverride == null
 						? hxcCharacterForRole(characterRole) : characterOverride;
 				// Donor CharacterData calls setScale while constructing its actor.
@@ -9349,7 +9814,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				// donor Module object is constructed.
 				registerHxcCompanionModules(scriptPath, scope, translatedCompat);
 				if (family == 'character') {
-					registerHxcCharacterScope(scope, scriptPath);
 					callHxcCharacterAdded(hxcCharacterForRole(hxcCharacterRoleForPath(scriptPath)),
 						hxcCharacterRoleForPath(scriptPath));
 				}
@@ -9421,7 +9885,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			return false;
 		for (scriptPath in plan.all) {
 			if (HxcScriptDiscovery.familyForPath(scriptPath) != 'stage'
-				|| !hxcScriptMatches(scriptPath, [SONG.stage]))
+				|| !HxcScriptDiscovery.stageMatches(scriptPath, [SONG.stage]))
 				continue;
 			try {
 				// Keep the converted/native stage in the canonical `stage` slot. The
@@ -9431,6 +9895,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 				var scope = 'stage-hxc-' + hxcStageScopeIndex++;
 				makeHaxeState(scope, Path.directory(scriptPath) + '/', Path.withoutDirectory(scriptPath));
 				hxcStageScopes.push(scope);
+				trace('[hxc-stage-loaded] id=' + HxcScriptDiscovery.stageId(scriptPath)
+					+ ' scope=' + scope + ' path=' + scriptPath);
 				// A stage with no converted/native registry entry still needs the
 				// StageHelper back-reference used by legacy stage helpers.  Native
 				// stages already own `curStage.interp`; never replace that canonical
@@ -10532,6 +10998,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		// callback owner even if authored HScript throws.
 		var bindCharacterStart = isHxcSource && characterRole != null
 			&& StringTools.trim(characterRole) != '';
+		// scriptGet/scriptSet may run inside start/onCreate. Register the already
+		// installed interpreter before that hook so the temporarily bound actor
+		// can reach its own fields while its live role slot is still being built.
+		if (bindCharacterStart)
+			registerHxcCharacterScope(usehaxe, path + filename, characterRole);
 		var previousStartActor = hxcCharacterCallbackActor;
 		var previousStartRole = hxcCharacterCallbackRole;
 		if (bindCharacterStart) {
@@ -11515,6 +11986,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 			nightmareVisionScripts.loadScope('song');
 			callNightmareVision('preNoteGeneration', []);
 			generateSong(SONG.song);
+			nightmareVisionScripts.loadScope('event');
 			RuntimeSmokeHarness.markLoadPhase('chart_generated');
 			preloadSwapCharacters();
 			RuntimeSmokeHarness.markLoadPhase('swap_characters_preloaded');
@@ -11551,6 +12023,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 		RuntimeSmokeHarness.markStep('playstate:create:intro-dispatch-returned');
 		RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');
 		callNightmareVision('onCreatePost', []);
+		refreshNightmareVisionStage();
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');
 		super.create();
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-complete');
@@ -12778,6 +13251,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess {
 
 		if (!paused)
 			FlxG.sound.playMusic(inst, 1, false);
+		if (nightmareVisionAudioApi != null)
+			nightmareVisionAudioApi.attachCurrentInstrumental(FlxG.sound.music);
 		songLength = FlxG.sound.music.length;
 		updateUV('songLength', songLength);
 
@@ -14806,7 +15281,11 @@ void main(void) {
 			}
 		}
 		fireNativeSongEvent(e);
-		if (e != null) callNightmareVision('onEvent', [e.name, e.v1, e.v2]);
+		if (e != null) {
+			callNightmareVision('onEvent', [e.name, e.v1, e.v2]);
+			if (nightmareVisionScripts != null)
+				nightmareVisionScripts.callEvent(e.name == null ? '' : Std.string(e.name), 'onTrigger', [e.v1, e.v2]);
+		}
 	}
 
 	function fireNativeSongEvent(e:Dynamic) {
@@ -15022,11 +15501,19 @@ void main(void) {
 				}
 			case 'Play Animation':
 				var t = charForEventTarget(e.v2);
-				if (t != null)
+				if (t != null) {
 					t.playAnim(e.v1, true);
+					// Nightmare Vision's event holds this animation through its last
+					// frame; native beat dancing and note singing consult specialAnim.
+					if (nightmareVisionScripts != null) t.specialAnim = true;
+				}
 			case 'Set Health Icon':
 				applyCompatHealthIcon(e.v1, e.v2, e.v3);
 			case 'Change Character':
+				if (nightmareVisionScripts != null) {
+					changeNightmareVisionCharacterEvent(e.v1, e.v2);
+					return;
+				}
 				var slot = switch (StringTools.trim(e.v1)) {
 					// Old Modding Plus charts left player1 blank. Terrible Fate
 					// uses this form for its bfdrowned/benbf swaps.
@@ -15855,6 +16342,9 @@ void main(void) {
 		return vocalTracks == null ? 1 : vocalTracks.getPlayerVolume();
 	}
 
+	@:keep public function hxcOpponentVocalTracks():Array<FlxSound>
+		return vocalTracks == null ? [] : vocalTracks.forRole('opponent');
+
 	private function getVocalsActualVolume():Float {
 		return vocalTracks == null ? (vocals == null ? 0 : vocals.getActualVolume()) : vocalTracks.getActualVolume();
 	}
@@ -15967,7 +16457,9 @@ void main(void) {
 				RuntimeSmokeHarness.markLoadPhase('notes_constructed_' + noteConstructionCount);
 		};
 
+		var nightmareHoldStep = Math.max(Conductor.stepCrochet / holdSubdivisions, 10);
 		for (section in noteData) {
+			if (nightmareVisionScripts != null && section.changeBPM) nightmareHoldStep = 15000 / section.bpm / holdSubdivisions;
 			var coolSection:Int = Std.int(section.lengthInSteps / 4);
 			var rowIndex:Int = 0;
 			for (songNotes in section.sectionNotes) {
@@ -16074,6 +16566,7 @@ void main(void) {
 							});
 					else
 						configurePsychNoteSkin(swagNote, psychSkinRoot);
+					configureNightmareVisionNoteSkin(swagNote);
 					if (traceNoteConstruction)
 						runSmokeNoteGenerationStep(daSection, authoredRowIndex, authoredTime, authoredLane,
 							authoredSustain, 'head', 0, 'head-smoke-visual', function():Dynamic {
@@ -16111,11 +16604,14 @@ void main(void) {
 				// Imported charts may serialize an intended zero as a floating-point
 				// remainder (or as a numeric string). Normalize once at the chart
 				// boundary so generation, rendering, and receptor timing agree.
-				swagNote.sustainLength = normalizeSustainLength(songNotes[2], Conductor.stepCrochet);
+				if (nightmareVisionScripts != null) swagNote.sustainLength = Math.max(0, songNotes[2]);
+				else swagNote.sustainLength = normalizeSustainLength(songNotes[2], Conductor.stepCrochet);
 					swagNote.scrollFactor.set();
 
 					var susLength:Float = swagNote.sustainLength;
+					if (nightmareVisionScripts != null) swagNote.nightmareVisionTailState = {missed:false, active:false, notes:[swagNote]};
 					var sustainSteps:Int = sustainStepCount(susLength, Conductor.stepCrochet);
+					if (nightmareVisionScripts != null) sustainSteps = NightmareVisionSustainLayout.segmentCount(susLength, nightmareHoldStep);
 
 				susLength = susLength / Conductor.stepCrochet;
 				unspawnNotes.push(swagNote);
@@ -16123,18 +16619,28 @@ void main(void) {
 					if (sustainSteps > 0 && !ModifierState.namedModifiers.nos.value) {
 						for (susNote in 0...sustainSteps) {
 						oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
-						if (susLength > susNote) {
+						if (nightmareVisionScripts != null || susLength > susNote) {
+							var segmentTime = nightmareVisionScripts != null
+								? NightmareVisionSustainLayout.segmentTime(daStrumTime, susNote, nightmareHoldStep)
+								: daStrumTime + Conductor.stepCrochet * (susNote + 1);
 							var sustainNote:Note;
 							if (traceNoteConstruction)
 								sustainNote = cast runSmokeNoteGenerationStep(daSection, authoredRowIndex,
 									authoredTime, authoredLane, authoredSustain, 'sustain', susNote, 'sustain-constructor',
-									function():Dynamic return new Note(daStrumTime + (Conductor.stepCrochet * susNote) + Conductor.stepCrochet,
+									function():Dynamic return new Note(segmentTime,
 										runtimeNoteData, oldNote, true, legacyAnimSuffix,
 										CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote));
 							else
-								sustainNote = new Note(daStrumTime + (Conductor.stepCrochet * susNote) + Conductor.stepCrochet,
+								sustainNote = new Note(segmentTime,
 									runtimeNoteData, oldNote, true, legacyAnimSuffix,
 									CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+							if (nightmareVisionScripts != null) {
+								sustainNote.nightmareVisionTailState = swagNote.nightmareVisionTailState;
+								swagNote.nightmareVisionTailState.notes.push(sustainNote);
+								sustainNote.sustainLength = nightmareHoldStep;
+								sustainNote.nightmareVisionSustainDuration = nightmareHoldStep;
+								sustainNote.nightmareVisionSustainEnd = susNote == sustainSteps - 1;
+							}
 							sustainNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
 							sustainNote.sourceDirection = chartAddress.direction;
 							sustainNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;
@@ -16156,6 +16662,7 @@ void main(void) {
 									});
 							else
 								configurePsychNoteSkin(sustainNote, psychSkinRoot);
+							configureNightmareVisionNoteSkin(sustainNote);
 							if (section.gfSection == true && !gottaHitNote)
 								sustainNote.forceGfSing = true;
 							sustainNote.duoMode = duoMode;
@@ -16813,10 +17320,14 @@ void main(void) {
 		if (!absolute)
 			scroll *= SONG.speed;
 
-		if (ease.toLowerCase() == 'instant' || duration <= 0)
+		if (ease.toLowerCase() == 'instant' || duration <= 0) {
 			daScrollSpeed = scroll;
-		else
-			FlxTween.tween(PlayState, {daScrollSpeed: scroll}, Conductor.stepsToTime(duration)/1000, {ease: Reflect.field(FlxEase, ease)});
+			refreshNightmareVisionNoteKillOffset();
+		} else
+			FlxTween.tween(PlayState, {daScrollSpeed: scroll}, Conductor.stepsToTime(duration)/1000, {
+				ease: Reflect.field(FlxEase, ease),
+				onUpdate: function(_) refreshNightmareVisionNoteKillOffset()
+			});
 	}
 
 	function healthChange(healthVar:Float = -69, additive:Bool = false) {
@@ -16853,10 +17364,31 @@ void main(void) {
 		} catch (_:Dynamic) {}
 	}
 
+	/** Source NV extends Psych's cached switch with related-identity animation carry. */
+	function changeNightmareVisionCharacterEvent(role:String, name:String):Void {
+		var type = PsychCharacterChangeEvent.role(role);
+		var previous:Character = type == 0 ? boyfriend : type == 1 ? dad : gf;
+		var anim = previous == null ? null : previous.animation.curAnim;
+		var carry = previous != null && name != null && previous.curCharacter != null
+			&& (name.startsWith(previous.curCharacter) || previous.curCharacter.startsWith(name));
+		var animationName = carry && anim != null ? anim.name : '';
+		var frame = carry && anim != null ? anim.curFrame : 0;
+		var next:Character = cast nightmareVisionCharacterBank(type).change(name);
+		if (type == 2 && next != null) next.danceEvery *= gfSpeed;
+		if (animationName != '' && next != null && next.animation.curAnim != null) {
+			next.playAnim(animationName, true);
+			next.animation.curAnim.curFrame = frame;
+		}
+	}
+
 	function switchCharacter(charTo:String, charState:String) { //the non sus version
 		if (charState == 'bf' || charState == 'player1') charState = 'boyfriend';
 		if (charState == 'opponent' || charState == 'player2') charState = 'dad';
 		if (charState == 'girlfriend' || charState == 'player3') charState = 'gf';
+		if (nightmareVisionScripts != null) {
+			nightmareVisionCharacterBank(PsychCharacterChangeEvent.role(charState)).change(charTo);
+			return;
+		}
 		var smokeSwapStartedAt = RuntimeSmokeHarness.beginCharacterSwap();
 		var previousStageActor:Character = null;
 		    switch(charState) {
@@ -16881,9 +17413,8 @@ void main(void) {
 				} else if (!dad.likeGf) {
 					gf.visible = true;
 				}*/
-				iconP1.switchAnim(charTo);
-				#if (windows && cpp)
-				iconRPC = charTo;
+					#if (windows && cpp)
+					iconRPC = charTo;
 				#end
 
 				// Layering nonsense
@@ -16921,9 +17452,7 @@ void main(void) {
 				} else if (!boyfriend.likeGf) {
 					gf.visible = true;
 				}*/
-				iconP2.switchAnim(charTo);
-
-				// Layering nonsense
+					// Layering nonsense
 				if (boyfriend.likeGf) {
 				    add(dad);
 				} else {
@@ -16977,7 +17506,7 @@ void main(void) {
 					curStage.refresh();
 			}
 		}
-		updateHealthColors();
+		refreshCharacterHUD();
 		RuntimeSmokeHarness.markCharacterSwap(smokeSwapStartedAt, charTo, charState);
 	}
 
@@ -17034,9 +17563,14 @@ void main(void) {
 	function compatAddCharacterToList(name:Dynamic, role:Dynamic):Void {
 		if (name == null) return;
 		var characterName = StringTools.trim(Std.string(name));
-		if (characterName == '' || !Character.characterExists(characterName)) return;
+		if (characterName == '') return;
+		if (nightmareVisionScripts != null) {
+			nightmareVisionCharacterBank(PsychCharacterChangeEvent.role(role == null ? null : Std.string(role))).addToList(characterName);
+			return;
+		}
+		if (!Character.characterExists(characterName)) return;
 		var side = role == null ? '' : StringTools.trim(Std.string(role)).toLowerCase();
-		warmCharacterAtlas(characterName, side == 'boyfriend' || side == 'bf' || side == 'player');
+		warmCharacterAtlas(characterName, side == '0' || side == 'boyfriend' || side == 'bf' || side == 'player');
 	}
 
 	function warmCharacterAtlas(name:String, ?isPlayer:Bool = false):Void {
@@ -17062,6 +17596,12 @@ void main(void) {
 		var names:Array<String> = [];
 		var playerNames:Map<String, Bool> = new Map();
 		for (e in songEvents) {
+			if (nightmareVisionScripts != null && e.name == 'Change Character' && e.v2 != null) {
+				// Source event-push retains an actor in its group, rather than
+				// constructing/destroying a separate atlas warm-up instance.
+				nightmareVisionCharacterBank(NightmareVisionCharacterEvent.preloadRole(e.v1)).addToList(Std.string(e.v2));
+				continue;
+			}
 			var authored = CodenameEventDispatch.fromNative(e);
 			if (authored != null) {
 				var authoredParams = codenameSwapPreloadParams(authored);
@@ -17111,7 +17651,7 @@ void main(void) {
 		return params;
 	}
 
-	public function switchToChar(daCharacter:Character, charState:String, destroy:Bool = false) {
+	public function switchToChar(daCharacter:Character, charState:String, destroy:Bool = false, preserveSceneGroup:Bool = false) {
 		if ((daCharacter is String))
 			daCharacter = curStage.getElement(cast daCharacter);
 		if (daCharacter == null) return;
@@ -17128,35 +17668,33 @@ void main(void) {
 		daCharacter.characterType = charState;
 		switch(charState) {
 			case 'boyfriend':
-				remove(boyfriend);
+				if (!preserveSceneGroup) remove(boyfriend);
 				if (destroy) boyfriend.destroy();
 				if (!opponentPlayer && !demoMode)
 					daCharacter.beingControlled = true;
 				boyfriend = daCharacter;
-				iconP1.switchAnim(daCharacter.curCharacter);
-				#if (windows && cpp)
-				iconRPC = daCharacter.curCharacter;
+					#if (windows && cpp)
+					iconRPC = daCharacter.curCharacter;
 				#end
-				add(boyfriend);
+				if (!preserveSceneGroup) add(boyfriend);
 				setAllHaxeVar('boyfriend', boyfriend);
 			case 'dad':
-				remove(dad);
+				if (!preserveSceneGroup) remove(dad);
 				if (destroy) dad.destroy();
 				if (duoMode || opponentPlayer || soloMode)
 					daCharacter.beingControlled = true;
 				dad = daCharacter;
-				iconP2.switchAnim(daCharacter.curCharacter);
-				add(dad);
+					if (!preserveSceneGroup) add(dad);
 				setAllHaxeVar('dad', dad);
 			case 'gf':
-				remove(gf);
+				if (!preserveSceneGroup) remove(gf);
 				if (destroy) gf.destroy();
 				gf = daCharacter;
-				remove(boyfriend);
-				remove(dad);
-				add(gf);
-				add(boyfriend);
-				add(dad);
+				if (!preserveSceneGroup) remove(boyfriend);
+				if (!preserveSceneGroup) remove(dad);
+				if (!preserveSceneGroup) add(gf);
+				if (!preserveSceneGroup) add(boyfriend);
+				if (!preserveSceneGroup) add(dad);
 				setAllHaxeVar('gf', gf);
 		}
 		rememberCodenameActor(daCharacter);
@@ -17167,10 +17705,10 @@ void main(void) {
 		// Keep the pending actor explicit through the lifecycle boundary too.  The
 		// assignment above normally makes the slot visible already, but passing the
 		// actor prevents an onAdd callback from observing a stale slot if a swap is
-		// dispatched while another character transition is still unwinding.
-		callHxcCharacterAdded(daCharacter, charState, daCharacter);
-		updateHealthColors();
-	}
+			// dispatched while another character transition is still unwinding.
+			callHxcCharacterAdded(daCharacter, charState, daCharacter);
+		refreshCharacterHUD();
+		}
 
 	override public function onFocus():Void {
 		super.onFocus();
@@ -17489,6 +18027,14 @@ void main(void) {
 		super.draw();
 	}
 
+	function dispatchNightmareVisionUpdatePost(batch:CompatScriptTickBatch):Void {
+		batch.dispatchUpdatePost(function(index, sourceElapsed) {
+			NightmareVisionFlxGView.runSourceTick(compatScriptClock, index, batch.tickCount,
+				function() callNightmareVision('onUpdatePost', [sourceElapsed]));
+		});
+		NightmareVisionFlxGView.finishSourceBatch(compatScriptClock, batch.tickCount);
+	}
+
 	override public function update(elapsed:Float) {
 		// FlxTimer's global plugin runs before state update, so a delayed death
 		// can finish here without advancing song callbacks or note processing.
@@ -17521,7 +18067,12 @@ void main(void) {
 		//setAllHaxeVar('camZooming', camZooming);
 		//setAllHaxeVar('gfSpeed', gfSpeed);
 		//setAllHaxeVar('health', health);
-		callNightmareVision('onUpdate', [elapsed]);
+		NightmareVisionFlxGView.captureSourceFrame(compatScriptClock);
+		var sourceBatch = compatScriptClock.advance(paused ? 0 : elapsed);
+		sourceBatch.dispatchUpdate(function(index, sourceElapsed) {
+			NightmareVisionFlxGView.runSourceTick(compatScriptClock, index, sourceBatch.tickCount,
+				function() callNightmareVision('onUpdate', [sourceElapsed]));
+		});
 		callAllHScript('update', [elapsed]);
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -17638,6 +18189,25 @@ void main(void) {
 				nightmareVisionPrefs.view.noteOffset, nightmareVisionPrefs.view.timeBarType,
 				startingSong, paused, endingSong, SONG.song);
 		}
+		if (nightmareVisionScripts != null && notes != null) {
+			for (note in notes.members) if (note != null && note.alive) {
+				var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+				note.autoHitSuppressed = !field.inControl;
+				note.sourcePlayfieldPlayerControlled = field.playerControls;
+				note.sourcePlayfieldAutoPlay = field.autoPlayed;
+			}
+			if (!paused && !inCutscene) {
+				var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
+				var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
+				for (id in 0...2) if (getNightmareVisionField(id).canInput()) {
+					var line = id == 0 ? playerStrums : enemyStrums;
+					if (line != null) for (strum in line.members) if (strum != null) {
+						if (pressed[strum.ID]) strum.holding = true;
+						if (released[strum.ID]) { strum.holding = false; strum.resetAnim = 0; }
+					}
+				}
+			}
+		}
 		super.update(elapsed);
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -17655,7 +18225,7 @@ void main(void) {
 				// angle-based travel above. This legacy pass only knows the two
 				// primary banks, so snapping them here would erase extra-line,
 				// authored-offset, and angled note geometry.
-				if (daNote.codenameInputLine != null)
+				if (daNote.codenameInputLine != null || nightmareVisionScripts != null)
 					return;
 				var noteData = daNote.noteData;
 				var strums = daNote.mustPress ? playerStrums : enemyStrums;
@@ -17733,7 +18303,10 @@ void main(void) {
 					persistentDraw = compatCustomSubstateOpen;
 					setAllHaxeVar("paused", paused);
 				}
-				if (compatCustomSubstateOpen) return;
+				if (compatCustomSubstateOpen) {
+					dispatchNightmareVisionUpdatePost(sourceBatch);
+					return;
+				}
 			} else {
 				CoolUtil.pauseTween(curCamPos);
 				CoolUtil.pauseTween(curCamZoom);
@@ -17982,7 +18555,7 @@ void main(void) {
 				RuntimeSmokeHarness.markStep('ending-input accept=true scriptProperty='
 					+ compatGetProperty('endingSong'));
 			callAllHScript('updatePost', [elapsed]);
-			callNightmareVision('onUpdatePost', [elapsed]);
+			dispatchNightmareVisionUpdatePost(sourceBatch);
 			callCodenameScripts('postUpdate', [elapsed]);
 			return;
 		}
@@ -18135,7 +18708,9 @@ void main(void) {
 				if (index >= 0)
 					unspawnNotes.splice(index, 1);
 
-				if (callNightmareVision('onSpawnNote', [dunceNote]) == NightmareVisionScriptGroup.STOP_FUNC) {
+				if (nightmareVisionNoteTypes != null) nightmareVisionNoteTypes.setupNote(dunceNote);
+				if ((nightmareVisionNoteTypes != null && nightmareVisionNoteTypes.spawnNote(dunceNote) == NightmareVisionScriptGroup.STOP_FUNC)
+					|| (nightmareVisionScripts != null && nightmareVisionScripts.call('onSpawnNote', [dunceNote], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(dunceNote)]) == NightmareVisionScriptGroup.STOP_FUNC)) {
 					dunceNote.kill();
 					dunceNote.destroy();
 					continue;
@@ -18160,20 +18735,60 @@ void main(void) {
 					dunceNote.destroy();
 				} else {
 					notes.add(dunceNote);
+					dunceNote.spawned = true;
+					var typeSpawnResult = nightmareVisionNoteTypes == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
+						: nightmareVisionNoteTypes.postSpawnNote(dunceNote);
+					if (nightmareVisionScripts != null && typeSpawnResult != NightmareVisionScriptGroup.STOP_FUNC)
+						nightmareVisionScripts.call('onSpawnNotePost', [dunceNote], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(dunceNote)]);
+					if (nightmareVisionScripts != null) {
+						dunceNote.nightmareVisionRenderer = nightmareVisionRenderer(dunceNote.sourcePlayfieldIndex);
+						dunceNote.nightmareVisionRenderer.configureNote(dunceNote);
+						if (dunceNote.isSustainNote) dunceNote.clipRect = new FlxRect(0, 0, dunceNote.frameWidth, dunceNote.frameHeight);
+					}
 					if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.spawn(dunceNote);
 					callAllHScript("noteLoaded", [dunceNote]);
-					callNightmareVision('onSpawnNotePost', [dunceNote]);
+
 				}
+		}
+
+		var nightmareContext = nightmareVisionScripts == null ? null : nightmareVisionRenderContext();
+		if (nightmareContext != null && !inCutscene) processNightmareVisionHolds();
+		if (nightmareContext != null) for (field in 0...2) {
+			var line = field == 0 ? playerStrums : enemyStrums;
+			if (line != null) for (strum in line.members) if (strum != null)
+				nightmareVisionRenderer(field).updateReceptor(nightmareContext, strum, field);
 		}
 
 		for (line in codenameInputLines) if (line != null) line.botplay = demoMode;
 		if (generatedMusic) {
 			notes.forEachAlive(function(daNote:Note) {
+				if (nightmareVisionScripts != null) {
+					var field = getNightmareVisionField(daNote.sourcePlayfieldIndex);
+					daNote.autoHitSuppressed = !field.inControl;
+					daNote.sourcePlayfieldPlayerControlled = field.playerControls;
+					daNote.sourcePlayfieldAutoPlay = field.autoPlayed;
+				}
 				daNote.updateAutoHit(Conductor.songPosition);
+				if (nightmareVisionScripts != null) {
+					var killOffset = noteKillOffset;
+					if (!daNote.wasGoodHit && daNote.tooLate && !daNote.nightmareVisionMissDispatched) {
+						daNote.nightmareVisionMissDispatched = true;
+						var line = getNoteStrumline(daNote);
+						var strum = line == null ? null : line.members[daNote.sourceDirection];
+						if (NightmareVisionSustainInput.shouldDispatchLateMiss(daNote.ignoreNote, daNote.canMiss,
+							daNote.nightmareVisionTailState != null && daNote.nightmareVisionTailState.missed,
+							daNote.isSustainNote, strum == null ? 0 : strum.coyoteTime, endingSong))
+							noteMiss(daNote.noteData, daNote.mustPress, daNote, false);
+					}
+					if ((daNote.tooLate && Conductor.songPosition >= killOffset + daNote.strumTime + daNote.sustainLength)
+						|| (daNote.wasGoodHit && daNote.nightmareVisionHitDispatched && Conductor.songPosition >= daNote.strumTime + daNote.sustainLength)) {
+						daNote.kill(); notes.remove(daNote, true); daNote.destroy(); return;
+					}
+				}
 				if (updateCodenameNoteLifetime(daNote)) return;
 				var sourceVisible = daNote.codenameInputLine == null
 					|| daNote.codenameInputLine.visible;
-				if (daNote.y > FlxG.height) {
+				if (nightmareContext == null && daNote.y > FlxG.height) {
 					daNote.active = false;
 					daNote.visible = false;
 				} else {
@@ -18193,6 +18808,7 @@ void main(void) {
 					: (daNoteStrums.hasScrollSpeedOverride() ? daNoteStrums.scrollSpeed
 						: effectiveScrollSpeed), 2);
 							
+				if (nightmareContext == null) {
 				if (downscroll) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y
 						+
@@ -18243,6 +18859,7 @@ void main(void) {
 						}
 					}
 				}
+				}
 					/*
 					if (downscroll) {
 						daNote.y = (strumLine.y + (Conductor.songPosition - daNote.strumTime) * (0.45 * noteScrollSpeed));
@@ -18267,7 +18884,7 @@ void main(void) {
 				
 				
 
-				if (!daNote.mustPress && daNote.wasGoodHit && (daNote.codenameInputLine != null
+				if (!daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null
 					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : daNote.isAutoPlayed())) {
 					if (daNote.codenameInputLine != null) {
 						if (!dispatchHxcAutoNoteHit(daNote, false)) return;
@@ -18338,7 +18955,7 @@ void main(void) {
 						if (daNote.codenameInputLine == null) singer.holdTimer = 0;
 					}
 
-					if (daNote.aiShouldHit || !daNote.dontStrum)
+					if (nightmareVisionScripts == null && (daNote.aiShouldHit || !daNote.dontStrum))
 						enemyStrums.forEachReceptor(function(spr:Strumline.StrumNote) {
 							if (Math.abs(daNote.noteData) == spr.ID) {
 								spr.playConfirm(daNote.isSustainNote, true);
@@ -18351,13 +18968,15 @@ void main(void) {
 
 					if (SONG.needsVoices)
 						setVocalsVolume(1);
+					dispatchNightmareVisionNoteHit(daNote);
+					if (nightmareVisionScripts != null && daNote.isSustainNote) return;
 
 					daNote.kill();
 					notes.remove(daNote, true);
 					daNote.destroy();
 					return; // This note is gone; do not position it or judge it again.
-				} else if (daNote.mustPress && daNote.wasGoodHit && (daNote.codenameInputLine != null
-					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : (opponentPlayer || demoMode))) {
+				} else if (daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null
+					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : (nightmareVisionScripts != null ? daNote.isAutoPlayed() : opponentPlayer || demoMode))) {
 					if (daNote.codenameInputLine != null) {
 						if (!dispatchHxcAutoNoteHit(daNote, true)) return;
 						hitCodenameNote(daNote, true);
@@ -18400,7 +19019,7 @@ void main(void) {
 						if (daNote.codenameInputLine == null) boyfriend.holdTimer = 0;
 					}
 
-					if (daNote.aiShouldHit || !daNote.dontStrum)
+					if (nightmareVisionScripts == null && (daNote.aiShouldHit || !daNote.dontStrum))
 						playerStrums.forEachReceptor(function(spr:Strumline.StrumNote) {
 							if (Math.abs(daNote.noteData) == spr.ID) {
 								spr.playConfirm(daNote.isSustainNote, true);
@@ -18413,12 +19032,15 @@ void main(void) {
 
 					if (SONG.needsVoices)
 						setVocalsVolume(1);
+					dispatchNightmareVisionNoteHit(daNote);
+					if (nightmareVisionScripts != null && daNote.isSustainNote) return;
 
 					daNote.kill();
 					notes.remove(daNote, true);
 					daNote.destroy();
 					return; // This note is gone; do not position it or judge it again.
 				}
+				if (nightmareContext == null) {
 				var neg = downscroll ? -1 : 1;
 				if (drunkNotes) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * ((Math.sin(songTime/400)/6)+0.5) * noteSpeed * noteScrollSpeed);
@@ -18434,11 +19056,23 @@ void main(void) {
 					else
 						daNote.x = snekNumber+(Note.swagWidth*daNote.noteData)+50;
 				}
+				} else {
+					var diff = daNote.strumTime - Conductor.songPosition;
+					var duration = daNote.nightmareVisionSustainDuration;
+					var futureBeat = nightmareVisionConductor.getBeat(nightmareVisionConductor.getBeat(Conductor.songPosition + duration));
+					var strum = daNoteStrums.members[daNote.sourceDirection];
+					daNote.nightmareVisionRenderer.updateNote(nightmareContext, daNote, daNote.sourcePlayfieldIndex,
+						0.45 * diff * effectiveScrollSpeed, diff, 0.45 * (diff + duration) * effectiveScrollSpeed,
+						diff + duration, futureBeat, strum, duration, daNote.nightmareVisionSustainEnd);
+				}
+
 				if (daNote.codenameInputLine != null) {
 					var travelDistance = (daNote.strumTime - Conductor.songPosition) * 0.45 * noteScrollSpeed;
 					applyCodenameNotePresentation(daNote, daNoteStrums, travelDistance);
 				}
 				RuntimeSmokeHarness.markLiveCustomNoteVisual(daNote,
+					daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))]);
+				RuntimeSmokeHarness.markLiveNightmareVisionNote(daNote,
 					daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))]);
 				// WIP interpolation shit? Need to fix the pause issue
 				// daNote.y = (strumLine.y - (songTime - daNote.strumTime) * (0.45 * PlayState.SONG.speed));
@@ -18449,7 +19083,7 @@ void main(void) {
 					daNote.noteStrum = null;
 				}
 
-				if ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll)) {
+				if (nightmareVisionScripts == null && ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll))) {
 					if (daNote.codenameInputLine != null) {
 						// Source line lifetime is decided above by the hit-sustain
 						// duration and tooLate branches, not by screen clipping.
@@ -18509,6 +19143,14 @@ void main(void) {
 			}
 		}
 
+		if (nightmareVisionScripts != null && !paused && !inCutscene) {
+			var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
+			var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
+			for (key in 0...pressed.length) {
+				if (pressed[key]) { callNightmareVision('onKeyPress', [key]); callNightmareVision('onInputPress', [key]); }
+				if (released[key]) { callNightmareVision('onKeyRelease', [key]); callNightmareVision('onInputRelease', [key]); }
+			}
+		}
 		updateHighwayDim();
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -18519,7 +19161,7 @@ void main(void) {
 		// it beside onUpdate lets the native icon pass overwrite donor layout
 		// in the same frame, so keep this as the actual post-update phase.
 		callAllHScript('updatePost', [elapsed]);
-		callNightmareVision('onUpdatePost', [elapsed]);
+		dispatchNightmareVisionUpdatePost(sourceBatch);
 		callCodenameScripts('postUpdate', [elapsed]);
 		if (smokeProfileAt > 0)
 			RuntimeSmokeHarness.profileSection('play-script-post-update', haxe.Timer.stamp() - smokeProfileAt);
@@ -18541,11 +19183,12 @@ void main(void) {
 	function runtimeSmokePlayerHits():Void {
 		if (startingSong || paused || !generatedMusic || notes == null)
 			return;
+		var hitDelay = RuntimeSmokeHarness.playerHitDelayMs();
 		// goodNoteHit removes notes, so take a snapshot before dispatching them.
 		for (note in notes.members.copy())
 			if (note != null && note.alive && note.mustPress && !note.wasGoodHit
 				&& note.canBeHit && !note.tooLate && note.canAutoHit()
-				&& note.strumTime <= Conductor.songPosition)
+				&& note.strumTime + hitDelay <= Conductor.songPosition)
 				goodNoteHit(note, true);
 	}
 
@@ -18583,7 +19226,37 @@ void main(void) {
 		health = Math.min(2, health + gain);
 	}
 
+	/** Source hold input is time-based; it does not use the legacy sick window. */
+	function processNightmareVisionHolds():Void {
+		var held = [controls.CTRLA, controls.CTRLB, controls.CTRLC, controls.CTRLD];
+		for (note in notes.members.copy()) {
+			if (note == null) continue;
+			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			if (!NightmareVisionSustainInput.shouldProcessHold(boyfriend.stunned, note.alive,
+				note.isSustainNote, note.blockHit, note.tooLate, field.autoPlayed,
+				field.inControl, field.playerControls)) continue;
+			var line = getNoteStrumline(note);
+			var strum = line == null ? null : line.members[note.sourceDirection];
+			if (strum == null) continue;
+			var holding = held[note.sourceDirection] == true;
+			if (NightmareVisionSustainInput.shouldHitHold(note.wasGoodHit, holding,
+				Conductor.songPosition, note.strumTime)) goodNoteHit(note, true, true);
+			else if (NightmareVisionSustainInput.shouldMissHold(note.wasGoodHit, holding,
+				note.ignoreNote, endingSong, strum.coyoteTime,
+				note.nightmareVisionTailState != null && note.nightmareVisionTailState.active == true,
+				note.nightmareVisionTailState != null && note.nightmareVisionTailState.missed))
+				noteMiss(note.noteData, true, note, false);
+		}
+	}
+
 	function sustain2(strum:Int, spr:Strumline.StrumNote, note:Note):Void {
+		if (note.nightmareVisionTypeRuntime != null) {
+			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			if (field.autoPlayed) spr.resetAnim = (0.15 + (note.isSustainNote && !note.nightmareVisionSustainEnd ? 0.15 : 0)) / playbackRate;
+			if (note.isSustainNote) spr.coyoteTime = field.holdDropLeniency;
+			else if (note.nightmareVisionTailState != null) note.nightmareVisionTailState.active = true;
+			return;
+		}
 		// Keep receptor timing on the same tap/hold boundary as note
 		// generation, including notes supplied by scripts or charting tools.
 		var length:Float = normalizeSustainLength(note.sustainLength, Conductor.stepCrochet);
@@ -19107,6 +19780,11 @@ void main(void) {
 		setAllHaxeVar('songScore', songScore);
 		setAllHaxeVar('songScoreDef', songScoreDef);
 
+		if (nightmareVisionScripts != null && playHUD != null) {
+			var sourcePopupRating = PsychRatingPresentationCommon.acceptedHostRating(daRating);
+			playHUD.popUpScore(sourcePopupRating, combo + 1, daNote);
+			RuntimeSmokeHarness.markRatingPopup(daRating, sourcePopupRating);
+		} else {
 		var pixelShitPart:String = '';
 		if (uiSmelly.isPixel)
 			pixelShitPart = '-pixel';
@@ -19237,6 +19915,8 @@ void main(void) {
 					remove(currentTimingShown);
 			}
 		});
+
+		}
 
 		if (daNote.nukeNote && daRating != 'miss') {
 			if (!playerOne)
@@ -19406,6 +20086,7 @@ void main(void) {
 		var coolControls = playerOne ? controls : controlsPlayerTwo;
 		if (sourceLine != null) coolControls = cast sourceLine.controls;
 		if (coolControls == null) return;
+		if (nightmareVisionScripts != null && !getNightmareVisionField(playerOne ? 0 : 1).canInput()) return;
 
 		var ctrlA = coolControls.CTRLA;
 		var ctrlB = coolControls.CTRLB;
@@ -19481,6 +20162,7 @@ void main(void) {
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
 				if (noteBelongsToInputLine(daNote, sourceLine) && daNote.canBeHit && coolShouldPress
+					&& (nightmareVisionScripts == null || !daNote.isSustainNote)
 					&& !(daNote.mustPress && daNote.blockHit)
 					&& !daNote.tooLate && !daNote.wasGoodHit && !daNote.isLiftNote) {
 					// the sorting probably doesn't need to be in here? who cares lol
@@ -19573,6 +20255,7 @@ void main(void) {
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
 				if (noteBelongsToInputLine(daNote, sourceLine) && daNote.canBeHit && coolShouldPress
+					&& (nightmareVisionScripts == null || !daNote.isSustainNote)
 					&& !(daNote.mustPress && daNote.blockHit)
 					&& !daNote.tooLate && !daNote.wasGoodHit && daNote.isLiftNote) {
 					// the sorting probably doesn't need to be in here? who cares lol
@@ -19633,7 +20316,7 @@ void main(void) {
 					mashViolations++;
 			}
 		}
-		if (holdArray.contains(true) && (sourceLine != null || !actingOn.stunned) && generatedMusic) {
+		if (nightmareVisionScripts == null && holdArray.contains(true) && (sourceLine != null || !actingOn.stunned) && generatedMusic) {
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
 				var daRating = Ratings.CalculateRating(Math.abs(daNote.strumTime - Conductor.songPosition));
@@ -19647,7 +20330,7 @@ void main(void) {
 				}
 			});
 		}
-		if (holdArray.contains(false) && generatedMusic) {
+		if (nightmareVisionScripts == null && holdArray.contains(false) && generatedMusic) {
 			notes.forEachAlive(function(daNote:Note) {
 				var coolShouldPress = playerOne ? daNote.mustPress : !daNote.mustPress;
 				var daRating = Ratings.CalculateRating(Math.abs(daNote.strumTime - Conductor.songPosition));
@@ -20038,6 +20721,7 @@ void main(void) {
 
 	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
 		?sourceLine:CodenameInputLine<Character>):Void {
+		if (note != null && note.canMiss && note.nightmareVisionTypeRuntime == null) return;
 		// A missed sustain segment can be several generated Note objects after
 		// the authored head. Strumline resolves it back to that head so an early
 		// release/miss ends the pooled V-Slice cover immediately.
@@ -20163,6 +20847,15 @@ void main(void) {
 			// Keep the live Note for native hooks, and append the raw direction so
 			// EngineCompat can expose Psych's (id, direction, noteType,
 			// isSustainNote) ABI even when a miss has no Note instance.
+			if (nightmareVisionNoteTypes != null && note != null) {
+				var result = nightmareVisionNoteTypes.noteMiss(note, note.sourcePlayfieldIndex);
+				if (result != NightmareVisionScriptGroup.STOP_FUNC)
+					nightmareVisionScripts.call('noteMiss', [note, note.sourcePlayfieldIndex], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+			}
+			if (note != null && note.nightmareVisionTailState != null && !note.canMiss) {
+				note.nightmareVisionTailState.missed = true;
+				for (piece in note.nightmareVisionTailState.notes) if (piece != null && piece.alive) piece.tooLate = true;
+			}
 			callAllHScript("noteMiss", [note, playerOne, direction, hxcMissEvent], true);
 			if (!playerOne)
 				callAllHScript("opponentNoteMiss", [note], true);
@@ -20214,6 +20907,7 @@ void main(void) {
 	function dispatchHxcAutoNoteHit(note:Note, playerOne:Bool):Bool {
 		if (note == null || !note.alive)
 			return false;
+		dispatchNightmareVisionNoteHitPre(note);
 		if (note.isSustainNote)
 			return true;
 		note.rating = 'sick';
@@ -20239,13 +20933,16 @@ void main(void) {
 		return true;
 	}
 
-	function goodNoteHit(note:Note, playerOne:Bool):Void {
+	function goodNoteHit(note:Note, playerOne:Bool, sourceHold:Bool = false):Void {
+		if (nightmareVisionScripts != null && note != null
+			&& (note.wasGoodHit || !getNightmareVisionField(note.sourcePlayfieldIndex).inControl)) return;
 		if (note != null && note.codenameInputLine != null && (!note.alive || note.wasGoodHit)) return;
 		var opponentSinger = note != null && note.forceGfSing && gf != null ? gf : getOpponentSinger();
 		var actingOn = playerOne ? boyfriend : opponentSinger;
 		var onActing = playerOne ? opponentSinger : boyfriend;
-		if (!note.canBeHit || note.tooLate)
+		if ((!note.canBeHit && !sourceHold) || note.tooLate)
 			return;
+		dispatchNightmareVisionNoteHitPre(note);
 		// HXC note callbacks run before popUpScore, including through the custom
 		// input path. Supply the same rating that the score will show below.
 		note.rating = noteRatingAtHit(note);
@@ -20378,12 +21075,12 @@ void main(void) {
 				
 			}
 
-			if (!note.dontStrum) {
+			if (!note.dontStrum && nightmareVisionScripts == null) {
 				final strums = getNoteStrumline(note);
 				if (strums == null) return;
 				strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 					if (Math.abs(note.noteData) == spr.ID)
-							spr.playConfirm(note.isSustainNote, true);
+						spr.playConfirm(note.isSustainNote, true);
 				});
 				// V-Slice styles can supply a separate hold-cover effect.  The
 				// chart head owns the sustain duration, so start the pooled cover
@@ -20412,6 +21109,10 @@ void main(void) {
 
 	/** Shared global and note-local gates for native and Psych note splashes. */
 	function shouldShowNoteSplash(note:Note):Bool {
+		if (note != null && note.sourcePlayfieldIndex >= 0) {
+			var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+			if (skin != null && !skin.boolField('splashesEnabled', true)) return false;
+		}
 		return note != null && !note.isSustainNote && !note.isNoteSplashDisabled()
 			&& useNoteSplashes && grpNoteSplashes != null
 			&& (codenameNoteSplashHandler == null || codenameNoteSplashHandler.exists);
@@ -20431,6 +21132,36 @@ void main(void) {
 		grpNoteSplashes.add(strums.doSplash(lane));
 	}
 
+	function dispatchNightmareVisionNoteHitPre(note:Note):Void {
+		if (nightmareVisionScripts == null) return;
+		var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+		var callback = field.playerControls ? 'goodNoteHitPre' : field.ID == 1 ? 'opponentNoteHitPre' : 'extraNoteHitPre';
+		// The source broadcasts Pre to the whole group and ignores its return.
+		nightmareVisionScripts.call(callback, [note, field.ID]);
+		// Source receptor/tail bookkeeping precedes scoring and note-type hooks,
+		// including hazards and notes that suppress legacy receptor visuals.
+		var line = getNoteStrumline(note);
+		var strum = line == null ? null : line.members[note.sourceDirection];
+		if (strum != null) {
+			strum.lastNote = note;
+			if (field.playAnims) strum.playConfirm(note.isSustainNote, true);
+			sustain2(strum.ID, strum, note);
+		}
+	}
+
+	function dispatchNightmareVisionNoteHit(note:Note):Void {
+		if (nightmareVisionNoteTypes == null || note == null || note.hitCausesMiss) return;
+		if (note.nightmareVisionHitDispatched) return;
+		note.nightmareVisionHitDispatched = true;
+		var id = note.sourcePlayfieldIndex;
+		var callback = note.isPlayerControlled() ? 'goodNoteHit' : 'opponentNoteHit';
+		nightmareVisionNoteTypes.hit(note, id);
+		var result = note.isPlayerControlled() ? nightmareVisionNoteTypes.goodNoteHit(note, id)
+			: nightmareVisionNoteTypes.opponentNoteHit(note, id);
+		if (result != NightmareVisionScriptGroup.STOP_FUNC)
+			nightmareVisionScripts.call(callback, [note, id], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+	}
+
 	/** Shared successful-hit callbacks and note retirement, including Psych
 	 * hazards whose miss judgement still counts as a hit callback. */
 	function finishGoodNoteHit(note:Note, playerOne:Bool, hxcHitEvent:Dynamic,
@@ -20445,6 +21176,7 @@ void main(void) {
 		else
 			player2GoodHitSignal.trigger(note);
 
+		dispatchNightmareVisionNoteHit(note);
 		dispatchPsychCompiledStage(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note]);
 		callAllHScript("noteHit", [playerOne, note, goodhit, hxcHitEvent], true);
 		callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true);
@@ -20456,6 +21188,7 @@ void main(void) {
 			callHscript(note.noteStrum, [], "modchart");
 			note.noteStrum = null;
 		}
+		if (nightmareVisionScripts != null && note.isSustainNote) return;
 		note.kill();
 		notes.remove(note, true);
 		note.destroy();
@@ -20682,6 +21415,17 @@ void main(void) {
 				trace('[nightmare-vision-script-release-error] ' + Std.string(error));
 			nightmareVisionScripts = null;
 		}
+		if (nightmareVisionAudioApi != null) {
+			nightmareVisionAudioApi.release();
+			nightmareVisionAudioApi = null;
+		}
+		if (nightmareVisionNoteTypes != null) {
+			nightmareVisionNoteTypes.destroy();
+			nightmareVisionNoteTypes = null;
+		}
+		for (renderer in nightmareVisionRenderers) renderer.destroy();
+		nightmareVisionRenderers.clear();
+		nightmareVisionFields = [];
 		if (modManager != null) {
 			modManager.destroy();
 			modManager = null;
@@ -20690,8 +21434,14 @@ void main(void) {
 			playHUD.release();
 			playHUD = null;
 		}
+		if (nightmareVisionCharacterBanks != null) {
+			for (bank in nightmareVisionCharacterBanks) bank.release();
+			nightmareVisionCharacterBanks = null;
+		}
+		nightmareVisionCharacterGroups.clear();
 		nightmareVisionPlugins = null;
 		nightmareVisionPaths = null;
+		nightmareVisionNoteSkins = null;
 		nightmareVisionPrefs = null;
 		callAllHScript('destroy', []);
 		HxcCompatRuntime.destroyFunkinVideos(this);

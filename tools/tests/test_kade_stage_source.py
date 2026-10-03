@@ -10,12 +10,14 @@ sprite declarations, loadGraphic + Sparrow props with animations,
 setGraphicSize/scrollFactor, alpha-0 exclusions, curStage-guarded adds,
 defaultCamZoom, and the curStage/player2 repositioning switches.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -218,15 +220,15 @@ class KadeStageSourceTest(unittest.TestCase):
     def build_source_tree(self, root: Path) -> None:
         source = root / "source"
         source.mkdir(parents=True)
-        (source / "PlayState.hx").write_text(PLAYSTATE)
-        (source / "Character.hx").write_text(CHARACTER_HX)
+        (source / "PlayState.hx").write_text(PLAYSTATE, newline='\n')
+        (source / "Character.hx").write_text(CHARACTER_HX, newline='\n')
         images = root / "assets" / "syn" / "images" / "synth"
         images.mkdir(parents=True)
         for name in ("bg", "wall", "terrain", "cover", "hole", "converHole",
                      "islandA", "islandB", "spike", "GF Ex Tied"):
             (images / f"{name}.png").write_bytes(b"png")
         for name in ("spike", "GF Ex Tied"):
-            (images / f"{name}.xml").write_text("<TextureAtlas/>")
+            (images / f"{name}.xml").write_text("<TextureAtlas/>", newline='\n')
 
     def run_probe(self, root: Path, song: str, player2: str) -> dict:
         fixture = f'''class KadeProbe {{
@@ -249,8 +251,8 @@ class KadeStageSourceTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory(prefix="kade-source-", dir=ROOT / "tmp") as folder:
             probe = Path(folder) / "KadeProbe.hx"
-            probe.write_text(fixture)
-            result = subprocess_run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+            probe.write_text(fixture, newline='\n')
+            result = subprocess_run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                                      "--run", "KadeProbe"])
         return result
 
@@ -283,11 +285,11 @@ class KadeNullDirectoryProbe {
 '''
         with tempfile.TemporaryDirectory(prefix="kade-null-listing-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "KadeStageSource.hx").write_text(parser)
-            (temp / "FileSystem.hx").write_text(filesystem)
-            (temp / "File.hx").write_text(file_stub)
-            (temp / "KadeNullDirectoryProbe.hx").write_text(fixture)
-            output = subprocess_run([str(HAXE), "-cp", folder, "--run", "KadeNullDirectoryProbe"])
+            (temp / "KadeStageSource.hx").write_text(parser, newline='\n')
+            (temp / "FileSystem.hx").write_text(filesystem, newline='\n')
+            (temp / "File.hx").write_text(file_stub, newline='\n')
+            (temp / "KadeNullDirectoryProbe.hx").write_text(fixture, newline='\n')
+            output = subprocess_run([*HAXE_COMMAND, "-cp", folder, "--run", "KadeNullDirectoryProbe"])
         self.assertIn("SOURCE_SAFE=true", output)
         self.assertIn("CHARACTER_SAFE=true", output)
 
@@ -343,8 +345,8 @@ class KadeNullDirectoryProbe {
     Sys.println(layout == null ? "LAYOUT NULL" : "LAYOUT FOUND");
   }}
 }}
-''')
-                result = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", probe_folder,
+''', newline='\n')
+                result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", probe_folder,
                                          "--run", "KadeProbe"], cwd=ROOT, capture_output=True, text=True, timeout=300)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("LAYOUT NULL", result.stdout)
@@ -392,8 +394,8 @@ class KadeNullDirectoryProbe {
 '''
         with tempfile.TemporaryDirectory(prefix="kade-char-", dir=ROOT / "tmp") as folder:
             probe = Path(folder) / "KadeProbe.hx"
-            probe.write_text(fixture)
-            return subprocess_run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+            probe.write_text(fixture, newline='\n')
+            return subprocess_run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                                    "--run", "KadeProbe"])
 
     def test_extracts_code_defined_characters_from_source(self):

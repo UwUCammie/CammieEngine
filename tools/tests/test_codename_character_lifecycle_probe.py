@@ -1,4 +1,5 @@
 """Offline checks for the disposable native character lifecycle probe."""
+from haxe_test_support import HAXE_COMMAND
 
 import importlib.util
 import json
@@ -6,11 +7,14 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
     "codename_character_lifecycle_probe", ROOT / "tmp/codename-character-lifecycle/run_probe.py")
+if not Path(SPEC.origin).is_file():
+    raise unittest.SkipTest("private lifecycle probe fixture is unavailable")
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
 
@@ -51,8 +55,8 @@ class LifecycleProbeTests(unittest.TestCase):
   }
  }
  static var SOURCES:Array<String> = '''
-                + json.dumps([probe.CHARACTER_SCRIPT, probe.SONG_SCRIPT]) + ';\n}\n')
-            command = [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                + json.dumps([probe.CHARACTER_SCRIPT, probe.SONG_SCRIPT]) + ';\n}\n', newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(folder), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                        "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"]
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)

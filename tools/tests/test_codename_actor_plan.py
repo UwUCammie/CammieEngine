@@ -1,5 +1,7 @@
 """Execute occurrence identity and the real initial actor-plan loader."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -318,9 +320,9 @@ class Main {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             command = [
-                str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                *HAXE_COMMAND, "-cp", str(ROOT / "source"),
                 "-cp", str(folder), "--run", "Main", str(folder)]
             command.append(str(MONSTER_STAGE) if MONSTER_STAGE.is_file() else "")
             if GHASTLY_STAGE.is_file():

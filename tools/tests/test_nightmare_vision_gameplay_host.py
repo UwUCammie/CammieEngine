@@ -1,9 +1,12 @@
 """Executed contracts for the NMV per-play-state gameplay script host."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +32,7 @@ class NightmareVisionGameplayHostTest(unittest.TestCase):
     def test_host_scopes_callbacks_errors_lifetime_and_owner_isolation(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / "Main.hx").write_text(r'''
 import NightmareVisionScriptDiscovery.NightmareVisionScriptEntry;
 import NightmareVisionScriptDiscovery.NightmareVisionScriptPlan;
@@ -241,11 +245,11 @@ class Main {
   hostB.destroy();
  }
 }
-''')
+''', newline='\n')
             for defines in ([], ["-D", "hscriptPos"]):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work)]
+                        [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work)]
                         + defines + ["--main", "Main", "--interp"],
                         cwd=work,
                         capture_output=True,
@@ -253,6 +257,100 @@ class Main {
                         timeout=45,
                     )
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_event_scripts_are_owner_scoped_and_receive_only_their_trigger(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
+            work = Path(directory)
+            write_flixel_point_stub(work)
+            (work / "Main.hx").write_text(r'''
+import NightmareVisionScriptDiscovery.NightmareVisionScriptEntry;
+import NightmareVisionScriptDiscovery.NightmareVisionScriptPlan;
+
+class HostState { public function new() {} }
+class Main {
+ static var sources:Map<String, String> = new Map();
+ static function fail(message:String):Void throw message;
+ static function eq(actual:Dynamic, expected:Dynamic):Void {
+  if (actual != expected) fail('expected ' + expected + ', got ' + actual);
+ }
+ static function entry(owner:String, scope:String, name:String, relative:String):NightmareVisionScriptEntry {
+  return {scope:scope, name:name, relative:relative, path:owner + '/' + relative};
+ }
+ static function main() {
+  var plan:NightmareVisionScriptPlan = {
+   root:'owner-A', baseAssetsRoot:'', song:'demo', stage:'stage', coverageNotes:[],
+   scripts:[
+    entry('owner-A', 'global', 'global', 'scripts/global.hx'),
+    entry('owner-A', 'event', 'Alpha', 'data/events/Alpha.hx'),
+    entry('owner-A', 'event', 'Beta', 'data/events/Beta.hx')
+   ]
+  };
+  sources.set('owner-A/scripts/global.hx', '
+   function onEvent(name, v1, v2) record("global:" + name + ":" + v1 + ":" + v2);
+   function onDestroy() record("global:destroy");
+  ');
+  sources.set('owner-A/data/events/Alpha.hx', '
+   function onLoad() record("alpha:load");
+   function onEvent(name, v1, v2) record("alpha:generic:" + name + ":" + v1 + ":" + v2);
+   function onTrigger(v1, v2) { record("alpha:trigger:" + v1 + ":" + v2); return 7; }
+   function onDestroy() record("alpha:destroy");
+  ');
+  sources.set('owner-A/data/events/Beta.hx', '
+   function onLoad() record("beta:load");
+   function onEvent(name, v1, v2) record("beta:generic:" + name + ":" + v1 + ":" + v2);
+   function onTrigger(v1, v2) record("beta:trigger:" + v1 + ":" + v2);
+   function onDestroy() record("beta:destroy");
+  ');
+  sources.set('owner-B/data/events/Alpha.hx', 'function onTrigger() record("foreign:trigger");');
+  var log:Array<String> = [];
+  var reads:Array<String> = [];
+  var host = new NightmareVisionGameplayScripts(new HostState(), plan,
+   function(path:String):String {
+    reads.push(path);
+    if (!sources.exists(path)) throw 'unexpected read: ' + path;
+    return sources.get(path);
+   },
+   function(interp:NightmareVisionScriptInterp, entry:NightmareVisionScriptEntry, actor:Dynamic):Void {
+    interp.variables.set('record', function(message:String):Void log.push(message));
+   },
+   function(name:String, phase:String, error:Dynamic):Void throw name + '#' + phase + ':' + Std.string(error));
+
+  // Event files are lazy, but once initialized they join the main group as in
+  // initFunkinScript and receive later ordinary callbacks in source order.
+  host.loadScope('global');
+  eq(reads.join(','), 'owner-A/scripts/global.hx');
+  host.call('onEvent', ['before', '1', '2']);
+  eq(log.join(','), 'global:before:1:2');
+
+  eq(host.callEvent('Alpha', 'onTrigger', ['a1', 'a2']), 7);
+  eq(log.join(','), 'global:before:1:2,alpha:load,alpha:trigger:a1:a2');
+  eq(reads.join(','), 'owner-A/scripts/global.hx,owner-A/data/events/Alpha.hx');
+  host.call('onEvent', ['after-alpha', '3', '4']);
+  eq(log.slice(-2).join(','), 'global:after-alpha:3:4,alpha:generic:after-alpha:3:4');
+
+  host.callEvent('Beta', 'onTrigger', ['b1', 'b2']);
+  host.callEvent('Alpha', 'onTrigger', ['a3', 'a4']);
+  eq(reads.filter(function(path:String):Bool return path.indexOf('/Alpha.hx') >= 0).length, 1);
+  eq(reads.filter(function(path:String):Bool return path.indexOf('/Beta.hx') >= 0).length, 1);
+  if (reads.join(',').indexOf('owner-B/') >= 0) fail('loaded a foreign same-named event: ' + reads.join(','));
+  eq(log.slice(-3).join(','), 'beta:load,beta:trigger:b1:b2,alpha:trigger:a3:a4');
+  eq(host.group.members.length, 3);
+  eq(host.eventGroup.members.length, 2);
+
+  host.destroy();
+  eq(log.slice(-3).join(','), 'global:destroy,alpha:destroy,beta:destroy');
+ }
+}
+''', newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work),
+                 "--main", "Main", "--interp"],
+                cwd=work,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_playstate_lifecycle_wiring_order(self):
         source = (ROOT / "source" / "PlayState.hx").read_text()
@@ -266,8 +364,14 @@ class Main {
         song_scope = source.index("nightmareVisionScripts.loadScope('song');")
         pre_generation = source.index("callNightmareVision('preNoteGeneration', []);", song_scope)
         generation = source.index("generateSong(SONG.song);", pre_generation)
+        note_type_load = source.index("nightmareVisionNoteTypes.loadBeforeNoteGeneration();")
         self.assertLess(song_scope, pre_generation)
         self.assertLess(pre_generation, generation)
+        self.assertLess(note_type_load, generation,
+                        "chart-selected note-type modules must load before note generation")
+        event_scope = source.index("nightmareVisionScripts.loadScope('event');", generation)
+        self.assertLess(generation, event_scope,
+                        "event modules should initialize after chart events are generated")
 
         create_post = source.index("callNightmareVision('onCreatePost', []);")
         super_create = source.index("super.create();", create_post)
@@ -276,6 +380,21 @@ class Main {
         event = extract_block(source, "function fireSongEvent(e:Dynamic)")
         self.assertLess(event.index("fireNativeSongEvent(e);"),
                         event.index("callNightmareVision('onEvent'"))
+        self.assertLess(event.index("callNightmareVision('onEvent'"),
+                        event.index("nightmareVisionScripts.callEvent("))
+        initialization = extract_block(source, "function initializeNightmareVisionScripts()")
+        self.assertNotIn("entry.scope == 'event'", initialization,
+                         "supported event scripts must not be diagnosed as unsupported")
+        self.assertIn("if (entry.scope == 'character_event')", initialization)
+        self.assertNotIn("entry.scope == 'notetype'", initialization,
+                         "notetype scripts are supported by NightmareVisionNoteTypeRuntime")
+
+        # Shared StageHelper owns props in the live state already. Mounting
+        # its sprite group again duplicates update/draw and propagates the
+        # gameplay camera over explicitly assigned overlay cameras.
+        self.assertIn("interp.variables.set('add', curStage.add)", initialization)
+        self.assertNotIn("add(curStage)", initialization)
+        self.assertIn("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'", initialization)
 
         pause_start = source.index("if (controls.PAUSE && startedCountdown && canPause")
         pause_end = source.index("var canShowKeys = true;", pause_start)

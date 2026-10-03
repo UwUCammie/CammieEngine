@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -52,12 +54,12 @@ class PsychLuaDependenciesTest(unittest.TestCase):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             source = Path(folder) / 'PsychLuaScriptDependencies.hx'
-            source.write_text((ROOT / 'source/PsychLuaScriptDependencies.hx').read_text())
+            source.write_text((ROOT / 'source/PsychLuaScriptDependencies.hx').read_text(), newline='\n')
             donor = Path(folder) / 'donor'
             donor.mkdir()
             (Path(folder) / 'DependencyTest.hx').write_text(
-                fixture.replace('__DONOR__', str(donor).replace('\\', '/')))
-            run = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                fixture.replace('__DONOR__', str(donor).replace('\\', '/')), newline='\n')
+            run = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                   '-main', 'DependencyTest', '--interp'],
                                  cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

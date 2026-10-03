@@ -1,6 +1,8 @@
 """Returned HXC screen positions must survive native/accessor field reflection."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -79,8 +81,8 @@ class Main {
    throw 'callback did not recover after failure';
  }
 }
-''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(work),
+''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(work),
                                      '--main', 'Main', '--interp'], cwd=work,
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

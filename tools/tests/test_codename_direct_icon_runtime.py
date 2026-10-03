@@ -1,6 +1,8 @@
 """Keep a script-selected Codename icon inside the active import owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -79,9 +81,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             path = Path(directory) / "Main.hx"
-            path.write_text(fixture, encoding="utf-8")
+            path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", directory,
+                [*HAXE_COMMAND, "-cp", directory,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

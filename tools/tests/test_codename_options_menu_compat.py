@@ -1,5 +1,7 @@
 """Exercise the shared Codename options menu's native settings adapter."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -20,16 +22,16 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
         model = (ROOT / "source/CodenameOptionsMenuModel.hx").read_text()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
-            (base / "CodenameOptionsMenuModel.hx").write_text(model)
+            (base / "CodenameOptionsMenuModel.hx").write_text(model, newline='\n')
             (base / "CodenameOptionsQualityCompat.hx").write_text(
                 (ROOT / "source/CodenameOptionsQualityCompat.hx").read_text()
-            )
+            , newline='\n')
             (base / "OptionsHandler.hx").write_text("""class OptionsHandler {
  public static inline var MAX_FPS_CAP:Int=480;
  public static inline var DYNAMIC_SCROLL_SPEED_MAX:Float=10;
  public static inline var DYNAMIC_SCROLL_SPEED_STEP:Float=0.5;
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
  static function check(ok:Bool, message:String):Void if (!ok) throw message;
  static function row(category:String, label:String):Dynamic {
@@ -125,9 +127,9 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
   check(CodenameOptionsMenuModel.valueText(work, downscroll) == "On",
    "toggle value was not rendered in source-like on/off form");
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", directory, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", directory, "-main", "Main", "--interp"],
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -136,20 +138,20 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
         helper = (ROOT / "source/CodenameOwnerOptionsCompat.hx").read_text()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
-            (base / "CodenameOwnerOptionsCompat.hx").write_text(helper)
+            (base / "CodenameOwnerOptionsCompat.hx").write_text(helper, newline='\n')
             (base / "CodenameScriptDiscovery.hx").write_text("""class CodenameScriptDiscovery {
  public static function resolveScopedRelative(root:String, relative:String):String return null;
 }
-""")
+""", newline='\n')
             (base / "CodenamePaths.hx").write_text("""class CodenamePaths {
  public function new(root:String) {}
  public function getFolderContent(path:String, addPath:Bool=false):Array<String> return [];
 }
-""")
+""", newline='\n')
             (base / "FNFAssets.hx").write_text("""class FNFAssets {
  public static function getText(path:String):String return "";
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(r'''class FakeOwnerSave {
  public var values:Map<String,Dynamic> = new Map();
  public var writes:Int=0;
@@ -196,9 +198,9 @@ class Main {
   check(!CodenameOwnerOptionsCompat.toggle(ownerA,{kind:'checkbox',id:'__proto__'}),
    'reserved checkbox id could be toggled through the adapter');
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", directory, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", directory, "-main", "Main", "--interp"],
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -236,10 +238,10 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
-            (base / "Main.hx").write_text(fixture)
-            (base / "PlayState.hx").write_text("class PlayState { public function new() {} }\n")
+            (base / "Main.hx").write_text(fixture, newline='\n')
+            (base / "PlayState.hx").write_text("class PlayState { public function new() {} }\n", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", directory, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )

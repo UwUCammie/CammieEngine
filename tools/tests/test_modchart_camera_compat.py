@@ -1,5 +1,7 @@
 """Modchart rendering must retain arrow cameras outside their native group draw."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +14,7 @@ class ModchartCameraCompatTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             work = Path(work)
             (work / 'flixel').mkdir()
-            (work / 'flixel/FlxCamera.hx').write_text('package flixel; class FlxCamera { public function new() {} }')
+            (work / 'flixel/FlxCamera.hx').write_text('package flixel; class FlxCamera { public function new() {} }', newline='\n')
             (work / 'flixel/FlxBasic.hx').write_text('''package flixel;
 class FlxBasic {
  var _cameras:Array<FlxCamera>;
@@ -23,7 +25,7 @@ class FlxBasic {
  public function getCameras():Array<FlxCamera> {
   throw "Global draw defaults must not be mistaken for an authored camera";
  }
-}''')
+}''', newline='\n')
             (work / 'Main.hx').write_text('''import flixel.FlxBasic;
 import flixel.FlxCamera;
 class Main {
@@ -51,8 +53,8 @@ class Main {
    "empty cameras retain upstream fallback behavior");
   check(ModchartCameraCompat.explicitCameras(null) == null, "null group has no camera");
  }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT/'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT/'source'),
                                      '-cp', str(work), '--run', 'Main'], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

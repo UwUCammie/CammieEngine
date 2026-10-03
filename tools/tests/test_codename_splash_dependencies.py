@@ -1,5 +1,7 @@
 """Selected-owner Codename splash XML and Sparrow atlas import closure."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -77,17 +79,17 @@ class Main {
                 for relative, content in entries.items():
                     path = root / relative
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(content)
+                    path.write_text(content, newline='\n')
             outside = base / "outside.png"
-            outside.write_text("outside owner")
+            outside.write_text("outside owner", newline='\n')
             escaped_atlas = selected / "images/game/splashes/leak.png"
             try:
                 escaped_atlas.symlink_to(outside)
             except OSError as error:
                 self.skipTest(f"symlink fixture unavailable: {error}")
-            (base / "Main.hx").write_text(fixture)
+            (base / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
                  str(selected), str(other)],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )
@@ -148,9 +150,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             base = Path(work)
-            (base / "Main.hx").write_text(fixture)
+            (base / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
                  str(DSIDES), str(FNAS)],
                 cwd=ROOT, text=True, capture_output=True, timeout=60,
             )

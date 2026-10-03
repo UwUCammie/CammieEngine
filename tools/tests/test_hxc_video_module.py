@@ -1,10 +1,12 @@
 """Focused coverage for the complete HXC video-module native boundary."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,8 +25,8 @@ class HxcVideoModuleTest(unittest.TestCase):
     def run_fixture(self, source: str, extra_cp=None):
         with tempfile.TemporaryDirectory() as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
-            command = [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder]
+            main.write_text(source, newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder]
             for classpath in extra_cp or []:
                 command.extend(["-cp", str(classpath)])
             command.extend(["-main", "Main", "--interp"])

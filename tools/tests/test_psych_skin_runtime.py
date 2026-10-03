@@ -1,6 +1,8 @@
 """Execute the real Psych skin reload and sprite texture methods with small Flixel doubles."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import shutil
 import subprocess
@@ -46,7 +48,7 @@ class PsychSkinRuntimeTest(unittest.TestCase):
 class FlxAtlasFrames {
   public var frames:Array<{name:String}> = [];
   public function new(names:Array<String>) for (name in names) frames.push({name:name});
-}''')
+}''', newline='\n')
             (work / 'DynamicSprite.hx').write_text('''class DynamicSprite {}
 class DynamicAtlasFrames {
   public static function fromSparrow(image:String, xml:String):flixel.graphics.frames.FlxAtlasFrames {
@@ -59,7 +61,7 @@ class DynamicAtlasFrames {
     }
     return new flixel.graphics.frames.FlxAtlasFrames(names);
   }
-}''')
+}''', newline='\n')
             (work / 'Sprite.hx').write_text('''class Sprite {
   public var animation = new Anim();
   public var scale = new Point(1, 1);
@@ -94,26 +96,26 @@ class Anim {
 class Bitmap {
   public var width:Int; public var height:Int;
   public function new(width:Int, height:Int) {this.width=width; this.height=height;}
-}''')
+}''', newline='\n')
             (work / 'FNFAssets.hx').write_text('''import Sprite.Bitmap;
 class FNFAssets {
   public static function getBitmapData(path:String):Bitmap
     return new Bitmap(40, StringTools.endsWith(path, "ENDS.png") ? 20 : 50);
   public static function getText(path:String):String return sys.io.File.getContent(path);
-}''')
-            (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6;}')
+}''', newline='\n')
+            (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6;}', newline='\n')
             (work / 'RuntimeSmokeHarness.hx').write_text('''class RuntimeSmokeHarness {
   public static var phase:String='';
   public static var steps:Array<String>=[];
   public static function enabled():Bool return true;
   public static function setPsychSkinDiagnosticPhase(value:String):Void phase=value;
   public static function markStep(value:String):Void steps.push(value);
-}''')
+}''', newline='\n')
             (work / 'PsychRGBShader.hx').write_text('''class PsychRGBShader {
   public var hurt:Bool = false;
   public var lane:Int=-1; public var pixel:Bool=false; public var paletteCalls:Int=0;
   public function new() {}
-}''')
+}''', newline='\n')
             (work / 'PsychRGBPalette.hx').write_text('''class PsychRGBPalette {
   public var shader:PsychRGBShader;
   public function new(lane:Int,pixel:Bool,hurt:Bool=false) {
@@ -122,7 +124,7 @@ class FNFAssets {
   }
   public static function defaultFor(lane:Int,pixel:Bool,hurt:Bool=false):PsychRGBPalette
     return new PsychRGBPalette(lane,pixel,hurt);
-}''')
+}''', newline='\n')
             (work / 'PsychRGBShaderReference.hx').write_text('''class PsychRGBShaderReference {
   public var parent:PsychRGBPalette;
   public var enabled:Bool=true;
@@ -133,7 +135,7 @@ class FNFAssets {
   public function usePalette(palette:PsychRGBPalette):Void {
     if (palette != parent) { parent=palette; if (enabled) owner.shader=palette.shader; }
   }
-}''')
+}''', newline='\n')
             note_source = (ROOT / 'source/Note.hx').read_text()
             self.assertRegex(note_source, r"else if \(Reflect.field\(thingie, 'sourceNoteType'\) != null\)[\s\S]*?sourceKind = Std.string\(Reflect.field\(thingie, 'sourceNoteType'\)\)")
             strum_source = (ROOT / 'source/Strumline.hx').read_text()
@@ -157,9 +159,11 @@ class FNFAssets {
   public var noteData:Int=0; public var isSustainNote:Bool=false;
   public var strumTime:Float=123; public var mineNote:Bool=false;
   public function new(sustain:Bool=false) {super(); isSustainNote=sustain;}
-''' + note_methods + '\n}')
+''' + note_methods + '\n}', newline='\n')
             (work / 'Strumline.hx').write_text('''class Strumline {public var noAnims:Bool=false; public function new() {}}
 class StrumNote extends Sprite {
+  public var nightmareVisionOffsets:Map<String,Array<Float>>=null;
+  public var nightmareVisionPalette:Dynamic=null;
   public var texture(get,set):String;
   var psychTexture:String=''; var psychSkinOwner:String=null; var psychChartSkin:String=null;
   var psychPixelSkin:Bool=false; var psychSkinPostfix:String='';
@@ -172,14 +176,14 @@ class StrumNote extends Sprite {
   public function alignVSliceFrame():Void {}
   public function markReceptorVisual():Void {}
   public function new() {super();}
-''' + strum_methods + '\n}')
+''' + strum_methods + '\n}', newline='\n')
             owner = work / 'assets/imported_mods/one/images'
             owner.mkdir(parents=True)
             for key in ('Later', 'Receptor', 'Receptor2'):
                 (owner / (key + '.png')).write_bytes(b'png')
-            (owner / 'Later.xml').write_text('<TextureAtlas><SubTexture name="purple0"/><SubTexture name="purple hold piece"/><SubTexture name="purple hold end"/><SubTexture name="red0"/><SubTexture name="red hold piece"/><SubTexture name="red hold end"/></TextureAtlas>')
+            (owner / 'Later.xml').write_text('<TextureAtlas><SubTexture name="purple0"/><SubTexture name="purple hold piece"/><SubTexture name="purple hold end"/><SubTexture name="red0"/><SubTexture name="red hold piece"/><SubTexture name="red hold end"/></TextureAtlas>', newline='\n')
             for key in ('Receptor', 'Receptor2'):
-                (owner / (key + '.xml')).write_text('<TextureAtlas><SubTexture name="arrowLEFT"/><SubTexture name="left press"/><SubTexture name="left confirm"/></TextureAtlas>')
+                (owner / (key + '.xml')).write_text('<TextureAtlas><SubTexture name="arrowLEFT"/><SubTexture name="left press"/><SubTexture name="left confirm"/></TextureAtlas>', newline='\n')
             (work / 'Probe.hx').write_text('''class Probe {
   static function check(ok:Bool, label:String):Void if (!ok) throw label;
   static function main():Void {
@@ -236,8 +240,8 @@ class StrumNote extends Sprite {
     check(disabled.texture == 'Receptor2' && disabled.useRGBShader && disabled.shader != null,
       'texture swap preserves explicit rgb enable');
   }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(work),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(work),
                                      '-main', 'Probe', '--interp'], cwd=work, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             self.assertEqual(result.returncode, 0, result.stdout)

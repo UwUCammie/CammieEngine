@@ -1,6 +1,8 @@
 """Psych source projects expose their mapped base-game and shared asset roots."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -104,18 +106,18 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
-            (work / "ImportEngine.hx").write_text(engine)
-            (work / "ImportRootScanner.hx").write_text(scanner)
+            (work / "ImportEngine.hx").write_text(engine, newline='\n')
+            (work / "ImportRootScanner.hx").write_text(scanner, newline='\n')
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             (work / "ImportSettings.hx").write_text(r'''import haxe.io.Path;
 using StringTools;
 class ImportSettings {
   public static function normalizeSourcePath(path:String):String
     return path == null ? "" : Path.normalize(StringTools.replace(StringTools.trim(path), "\\", "/"));
 }
-''')
+''', newline='\n')
             (work / "ModuleFunctions.hx").write_text(
                 """import haxe.io.Path;
 import sys.FileSystem;
@@ -140,17 +142,17 @@ class ModuleFunctions {
   public static function map(source:String, prefix:String, owner:String, engine:String):ImportAssetMergeResult
     return mergeMappedAssetRoot(source, prefix, owner, engine);
 }
-''')
-            (work / "Main.hx").write_text(fixture)
+''', newline='\n')
+            (work / "Main.hx").write_text(fixture, newline='\n')
 
             project = work / "psych-source"
             project.mkdir()
             (project / "Project.xml").write_text(
                 '<project><assets path="assets/base_game" rename="assets" />'
                 '<assets path="assets/shared" /></project>'
-            )
+            , newline='\n')
             (project / "source/psychlua").mkdir(parents=True)
-            (project / "source/psychlua/PsychLua.hx").write_text("class PsychLua {}")
+            (project / "source/psychlua/PsychLua.hx").write_text("class PsychLua {}", newline='\n')
             (project / "assets/base_game/shared/data/demo").mkdir(parents=True)
             (project / "assets/base_game/shared/images").mkdir(parents=True)
             (project / "assets/base_game/shared/characters").mkdir(parents=True)
@@ -159,13 +161,13 @@ class ModuleFunctions {
             (project / "assets/shared/images").mkdir(parents=True)
             (project / "assets/shared/data").mkdir()
             (project / "assets/shared/stages").mkdir()
-            (project / "assets/shared/images/conflict.png").write_text("supplemental")
-            (project / "assets/shared/images/extra.png").write_text("supplemental")
-            (project / "assets/shared/data/characterList.txt").write_text("characters")
-            (project / "assets/shared/stages/default.lua").write_text("function onCreate() end")
+            (project / "assets/shared/images/conflict.png").write_text("supplemental", newline='\n')
+            (project / "assets/shared/images/extra.png").write_text("supplemental", newline='\n')
+            (project / "assets/shared/data/characterList.txt").write_text("characters", newline='\n')
+            (project / "assets/shared/stages/default.lua").write_text("function onCreate() end", newline='\n')
 
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", str(project)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(project)],
                 cwd=folder,
                 capture_output=True,
                 text=True,

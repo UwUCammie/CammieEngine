@@ -1,5 +1,7 @@
 """Source ratio formatting and rating-only color range on the actual HUD helper."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -43,7 +45,7 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp', prefix='rating-hud-') as temp:
             base=Path(temp);(base/'flixel/text').mkdir(parents=True)
-            (base/'flixel/text/FlxTextFormat.hx').write_text('package flixel.text;class FlxTextFormat {public var color(default,null):Int;public function new(c:Int) color=c;}')
-            (base/'Main.hx').write_text(main)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',temp,'-main','Main','--interp'],cwd=ROOT,capture_output=True,text=True)
+            (base/'flixel/text/FlxTextFormat.hx').write_text('package flixel.text;class FlxTextFormat {public var color(default,null):Int;public function new(c:Int) color=c;}', newline='\n')
+            (base/'Main.hx').write_text(main, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',temp,'-main','Main','--interp'],cwd=ROOT,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

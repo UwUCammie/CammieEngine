@@ -178,11 +178,17 @@ class ImportSettingsState extends MusicBeatState {
 		refreshActionFocus();
 		refreshButtons();
 		refreshDetails();
+		#if sys
+		add(new ImportRefreshProgressBar());
+		#end
 		super.create();
 	}
 
 	override function update(elapsed:Float) {
 		super.update(elapsed);
+		#if sys
+		if (!hasJobHandle() && ImportRefreshManager.browseTick().busy) { refreshButtons(); return; }
+		#end
 		progressMotion += elapsed;
 
 		// A worker can finish between frames.  At that point hasActiveJob()
@@ -300,6 +306,9 @@ class ImportSettingsState extends MusicBeatState {
 
 	function refreshButtons():Void {
 		var busy = hasActiveJob();
+		#if sys
+		if (!hasJobHandle()) busy = busy || ImportRefreshManager.browseTick().busy;
+		#end
 		var sourceValid = sourcePathIsValid();
 		if (chooseSourceButton != null) {
 			chooseSourceButton.active = !busy;

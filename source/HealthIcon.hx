@@ -493,6 +493,14 @@ class HealthIcon extends FlxSprite {
 			daFrame = daJson.icons[0];
 
 		final charPath = daData.assetRoot + daData.path + '/';
+		// The chart editor builds its character picker from the full registry,
+		// including entries that intentionally have no health strip. Match
+		// switchAnim's established missing-icon fallback instead of starting a
+		// disk load that throws synchronously for those entries.
+		if (!FNFAssets.exists(charPath + "icons.png")) {
+			switchAnim(iconName);
+			return Future.withValue(this);
+		}
 		return FNFAssets.loadBitmapData(charPath + "icons.png")
 			.then(function(image) {
 				if (FNFAssets.exists(charPath + "icons.xml")) {

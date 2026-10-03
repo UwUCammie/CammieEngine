@@ -1,6 +1,7 @@
 """Mounted end-to-end coverage for Auto's isolated song writer audit."""
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import importlib.util
 import re
 import subprocess

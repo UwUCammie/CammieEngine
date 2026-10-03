@@ -1,4 +1,5 @@
 """Round 24 character resolution: preserve Popipo ids and choose complete aliases."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 from tools.character_dependencies import read_json
 
@@ -174,11 +176,11 @@ class Song {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             path = Path(folder) / 'Song.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             env = os.environ.copy()
             env['TMPDIR'] = str(ROOT / 'tmp')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', folder, '-main', 'Song', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'Song', '--interp'],
                 cwd=ROOT, env=env, capture_output=True, text=True,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -245,11 +247,11 @@ class Song {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             path = Path(folder) / 'Song.hx'
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             env = os.environ.copy()
             env['TMPDIR'] = str(ROOT / 'tmp')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                [*HAXE_COMMAND, '-cp', folder,
                  '-main', 'Song', '--interp'],
                 cwd=ROOT, env=env, capture_output=True, text=True,
             )

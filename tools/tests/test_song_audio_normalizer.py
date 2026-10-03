@@ -1,6 +1,8 @@
 """Portable contract tests for PCM song-audio normalization."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -212,9 +214,9 @@ class TestSongAudioNormalizer {
             for relative, contents in files.items():
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(contents)
+                target.write_text(contents, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", work, "-D", "lime",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", work, "-D", "lime",
                  "--main", "TestSongAudioNormalizer", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=60,
             )

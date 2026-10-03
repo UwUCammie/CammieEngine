@@ -1,4 +1,5 @@
 """Structural and runtime-boundary tests for bounded HXC note-text cues."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,7 +94,7 @@ class HxcNoteTextCueTest(unittest.TestCase):
     def run_fixture(self, source: str) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(prefix="hxc-note-text-") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             env = os.environ.copy()
             for name in (
                 "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XAUTHORITY", "XDG_RUNTIME_DIR"
@@ -100,7 +102,7 @@ class HxcNoteTextCueTest(unittest.TestCase):
                 env.pop(name, None)
             return subprocess.run(
                 [
-                    str(HAXE), "-cp", str(ROOT / "source"),
+                    *HAXE_COMMAND, "-cp", str(ROOT / "source"),
                     "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                     "-cp", folder, "-main", "Main", "--interp",
                 ],

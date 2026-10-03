@@ -1,5 +1,7 @@
 """Exercise Codename MusicBeatGroup owner classes through native Flixel hooks."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -131,11 +133,11 @@ class Main {
             for relative, content in stubs.items():
                 path = base / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             result = subprocess.run(
                 [
-                    str(ROOT / ".tools/haxe/haxe"),
+                    *HAXE_COMMAND,
                     "-D",
                     "flixel",
                     "-cp",

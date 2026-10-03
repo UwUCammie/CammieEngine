@@ -1,5 +1,7 @@
 """Exercise the production Codename judgement presenter with render boundary stubs."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -115,10 +117,10 @@ class Main {
             for name, body in stubs.items():
                 file = root / name
                 file.parent.mkdir(parents=True, exist_ok=True)
-                file.write_text(body)
+                file.write_text(body, newline='\n')
             (root / 'CodenameNotePresentation.hx').write_text(
-                (ROOT / 'source/CodenameNotePresentation.hx').read_text())
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(root),
+                (ROOT / 'source/CodenameNotePresentation.hx').read_text(), newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(root),
                                      '-main', 'Main', '--interp'], cwd=ROOT,
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -15,7 +16,7 @@ SPEC.loader.exec_module(refresh)
 
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, separators=(",", ":")) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(value, separators=(",", ":")) + "\n", encoding="utf-8", newline='\n')
 
 
 class VSliceVisualOwnerRefreshTest(unittest.TestCase):
@@ -52,7 +53,7 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
         self.other_owner = "assets/imported_mods/psych-fixture"
         owner_dir = self.runtime / self.owner / "images/custom_chars"
         owner_dir.mkdir(parents=True)
-        (owner_dir / "existing.json").write_text("keep owner bytes\n", encoding="utf-8")
+        (owner_dir / "existing.json").write_text("keep owner bytes\n", encoding="utf-8", newline='\n')
         self.source_songs = refresh._v_slice_source_pairs(
             self.source, self.source_content / "data/songs", self.source_content / "songs")
         self.fingerprint = refresh._source_fingerprint(self.source_songs)
@@ -61,7 +62,7 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
             folder = self.runtime / "assets/data" / name
             folder.mkdir(parents=True)
             chart = folder / (name + ".json")
-            chart.write_text('{"song":{"song":"' + name + '"}}\n', encoding="utf-8")
+            chart.write_text('{"song":{"song":"' + name + '"}}\n', encoding="utf-8", newline='\n')
             write_json(folder / "compatScripts.json", {
                 "version": 1, "selectedRoot": self.owner,
                 "roots": [
@@ -150,9 +151,9 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
             self.assertEqual(json.loads((self.runtime / "assets/data/options.json").read_text()),
                              {"testDefaults": True})
             owner_file = self.runtime / self.owner / "images/custom_chars/converted.json"
-            owner_file.write_text("converted visual\n", encoding="utf-8")
+            owner_file.write_text("converted visual\n", encoding="utf-8", newline='\n')
             (self.runtime / "assets/data/alpha/alpha.json").write_text("temporary chart mutation\n",
-                                                                          encoding="utf-8")
+                                                                          encoding="utf-8", newline='\n')
             (self.runtime / "assets/songs/alpha/Inst.ogg").write_bytes(b"temporary audio mutation")
             return {"status": "passed", "events": ["success"], "returncode": 0}
 
@@ -180,10 +181,10 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
             report_root.mkdir(parents=True)
             self.assertEqual(json.loads((self.runtime / "assets/data/options.json").read_text()),
                              {"testDefaults": True})
-            chart.write_text("mutated chart\n", encoding="utf-8")
-            owner_existing.write_text("mutated owner\n", encoding="utf-8")
+            chart.write_text("mutated chart\n", encoding="utf-8", newline='\n')
+            owner_existing.write_text("mutated owner\n", encoding="utf-8", newline='\n')
             ui_addition.parent.mkdir()
-            ui_addition.write_text("unexpected global output\n", encoding="utf-8")
+            ui_addition.write_text("unexpected global output\n", encoding="utf-8", newline='\n')
             return {"status": "passed", "events": ["success"], "returncode": 0}
 
         receipt = refresh.apply_plan(plan, plan_path, runner=fake_native)
@@ -215,10 +216,10 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
 
         def fake_native(_plan, report_root):
             report_root.mkdir(parents=True)
-            chart.write_text("modified chart before exception\n", encoding="utf-8")
+            chart.write_text("modified chart before exception\n", encoding="utf-8", newline='\n')
             (self.runtime / "assets/data/options.json").write_text("modified options before exception\n",
-                                                                     encoding="utf-8")
-            owner_file.write_text("new visual\n", encoding="utf-8")
+                                                                     encoding="utf-8", newline='\n')
+            owner_file.write_text("new visual\n", encoding="utf-8", newline='\n')
             return {"status": "passed", "events": ["success"], "returncode": 0}
 
         with patch.object(refresh, "_postflight", side_effect=failing_first_postflight):
@@ -260,7 +261,7 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
             # That must not invalidate the donor fingerprint check or survive the
             # backed-up visual-only refresh outside its selected owner namespace.
             write_json(provenance, {"sourceEngine": "V-Slice", "sourceFingerprint": self.fingerprint})
-            owner_file.write_text("converted visual\n", encoding="utf-8")
+            owner_file.write_text("converted visual\n", encoding="utf-8", newline='\n')
             return {
                 "status": "passed", "events": ["success"], "returncode": 0,
                 "markers": [{"event": "success", "errors": 3, "errorDetails": missing_assets}],
@@ -294,8 +295,8 @@ class VSliceVisualOwnerRefreshTest(unittest.TestCase):
             report_root.mkdir(parents=True)
             qualified_folder.mkdir()
             unrelated_folder.mkdir()
-            unrelated_marker.write_text("user content\n", encoding="utf-8")
-            owner_file.write_text("temporary conversion\n", encoding="utf-8")
+            unrelated_marker.write_text("user content\n", encoding="utf-8", newline='\n')
+            owner_file.write_text("temporary conversion\n", encoding="utf-8", newline='\n')
             return {"status": "passed", "events": ["success"], "returncode": 0}
 
         receipt = refresh.apply_plan(plan, plan_path, runner=fake_native)

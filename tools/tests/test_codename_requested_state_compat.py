@@ -1,5 +1,7 @@
 """Regression coverage for the legacy Codename requested-state view."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -16,7 +18,7 @@ class CodenameRequestedStateCompatTest(unittest.TestCase):
             (base / "flixel").mkdir()
             (base / "flixel/FlxState.hx").write_text("""package flixel;
 class FlxState { public function new() {} }
-""")
+""", newline='\n')
             (base / "flixel/FlxG.hx").write_text("""package flixel;
 class TestSignal {
  var listeners:Array<Void->Void> = [];
@@ -36,10 +38,10 @@ class FlxG {
  public static var state:FlxState;
  public static var signals:Dynamic = new TestSignals();
 }
-""")
+""", newline='\n')
             (base / "CodenameRequestedStateCompat.hx").write_text(
                 (ROOT / "source/CodenameRequestedStateCompat.hx").read_text()
-            )
+            , newline='\n')
             (base / "Main.hx").write_text(r'''import flixel.FlxG;
 import flixel.FlxState;
 
@@ -132,9 +134,9 @@ class Main {
   check(factoryCalls == 0, 'setter eagerly invoked an assigned factory');
   CodenameRequestedStateCompat.clear();
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

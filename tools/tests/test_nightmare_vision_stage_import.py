@@ -1,6 +1,8 @@
 """Owner-scoped retention and repair checks for NMV StageData JSON."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -146,14 +148,14 @@ class StageImportFixture {{
 def run_fixture(temp: Path, *args: str) -> subprocess.CompletedProcess[str]:
     (temp / "ImportDirectoryListing.hx").write_text(
         (ROOT / "source/ImportDirectoryListing.hx").read_text()
-    )
-    (temp / "StageImportFixture.hx").write_text(fixture_source())
-    (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text())
+    , newline='\n')
+    (temp / "StageImportFixture.hx").write_text(fixture_source(), newline='\n')
+    (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
     (temp / "NightmareVisionAssetCollector.hx").write_text(
         (ROOT / "source/NightmareVisionAssetCollector.hx").read_text()
-    )
+    , newline='\n')
     return subprocess.run(
-        [str(ROOT / ".tools/haxe/haxe"), "-cp", str(temp), "--run", "StageImportFixture", *args],
+        [*HAXE_COMMAND, "-cp", str(temp), "--run", "StageImportFixture", *args],
         cwd=temp,
         capture_output=True,
         text=True,
@@ -178,13 +180,13 @@ class NightmareVisionStageImportTest(unittest.TestCase):
             (content / "stages").mkdir(parents=True, exist_ok=True)
             (content / "data/stages/city/data.json").write_text(
                 '{ "defaultZoom" : 0.73, // authored spacing\n "hide_girlfriend": true }'
-            )
-            (content / "data/stages/flat.json").write_text('{"flat":1}')
-            (content / "data/stages/nested/id.json").write_text('{"nested":2}')
-            (content / "stages/fallback/room/data.json").write_text('{"fallback":3}')
-            (content / "stages/root-stage.json").write_text('{"root":4}')
-            (deep / "data.json").write_text('{"deep":12}')
-            (content / "data/stages/nope.jsonc").write_text("ignored JSONC")
+            , newline='\n')
+            (content / "data/stages/flat.json").write_text('{"flat":1}', newline='\n')
+            (content / "data/stages/nested/id.json").write_text('{"nested":2}', newline='\n')
+            (content / "stages/fallback/room/data.json").write_text('{"fallback":3}', newline='\n')
+            (content / "stages/root-stage.json").write_text('{"root":4}', newline='\n')
+            (deep / "data.json").write_text('{"deep":12}', newline='\n')
+            (content / "data/stages/nope.jsonc").write_text("ignored JSONC", newline='\n')
             (content / "stages/ignored.png").write_bytes(b"not JSON")
             (content / "images").mkdir()
             (content / "images/collision.png").write_bytes(b"owner image")

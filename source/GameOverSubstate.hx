@@ -4,6 +4,8 @@ import flixel.FlxG;
 import flixel.FlxObject;
 import flixel.FlxSprite;
 import flixel.FlxSubState;
+import flixel.sound.FlxSound;
+import flixel.animation.FlxAnimation;
 import flixel.math.FlxPoint;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
@@ -38,6 +40,10 @@ class GameOverSubstate extends MusicBeatSubstate {
 	var bf:Character;
 	var camFollow:FlxObject;
 	var gameoverStarted:Bool = false;
+	var quoteCharacter:Character;
+	var deathQuotePlayback:HxcDeathQuotePlayback;
+	var deathQuoteAttempted:Bool = false;
+	var gameoverLoopMusic:FlxSound;
 	/**
 		Handles returned to imported HXC death hooks.  The substate owns this
 		collection so generated scripts cannot add arbitrary native objects or
@@ -50,6 +56,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 
 	public function new(player:Character) {
 		instance = this;
+		quoteCharacter = player;
 		var psychCharacter = PlayState.instance == null ? null
 			: PlayState.instance.psychGameOverCharacterName();
 		var daBf:String = psychCharacter == null ? player.curCharacter + '-dead' : psychCharacter;
@@ -81,6 +88,10 @@ class GameOverSubstate extends MusicBeatSubstate {
 			bf.visible = false;
 			return;
 		}
+		// Keep native display ownership while routing authored animation
+		// overrides (including costume death atlases) to this death actor.
+		HxcCompatRuntime.bindGameOverCharacter(bf);
+		initDeathQuotePlayback();
 		if (bf.deathCameraZoom > 0)
 			FlxG.camera.zoom = bf.deathCameraZoom;
 		var psychDeathSound = PlayState.instance == null ? null
@@ -104,7 +115,12 @@ class GameOverSubstate extends MusicBeatSubstate {
 			bf.playAnim('firstDeath');
 		else { // backup if the player character has no death animation
 			new FlxTimer().start(0.6, function(tmr:FlxTimer) { FlxG.camera.follow(camFollow, LOCKON, 0.01); });
-			new FlxTimer().start(2.1, function(tmr:FlxTimer) { playGameoverMusic(); });
+			new FlxTimer().start(2.1, function(tmr:FlxTimer) {
+				if (!isEnding && !gameoverStarted) {
+					gameoverStarted = true;
+					playGameoverMusic();
+				}
+			});
 		}
 	}
 
@@ -326,11 +342,64 @@ class GameOverSubstate extends MusicBeatSubstate {
 		mustNotExit = false;
 	}
 
+	/** Keep the quote and its completion callback owned by this substate. */
+	function initDeathQuotePlayback():Void {
+		deathQuotePlayback = new HxcDeathQuotePlayback({
+			startLoopMusic: function(volume:Float) {
+				gameoverStarted = true;
+				playGameoverMusic(volume);
+			},
+			playDeathLoop: function() { playDeathAnimation('deathLoop'); },
+			playQuote: function(path:String, done:Void->Void):Dynamic {
+				RuntimeSmokeHarness.markGameOverPhase('quote_start', {path: path,
+					musicVolume: gameoverLoopMusic == null ? null : gameoverLoopMusic.volume,
+					animation: Character.animationName(bf)});
+				if (!FNFAssets.exists(path)) {
+					trace('[hxc-death-quote-error] Missing sound: ' + path);
+					return null;
+				}
+				return FlxG.sound.play(FNFAssets.getSound(path), 1, false, null, true, function() {
+					RuntimeSmokeHarness.markGameOverPhase('quote_complete', {path: path});
+					done();
+				});
+			},
+			canFadeLoopMusic: function() return !isEnding && gameoverLoopMusic != null
+				&& FlxG.sound.music == gameoverLoopMusic,
+			fadeLoopMusic: function(duration:Float, from:Float, to:Float) {
+				gameoverLoopMusic.fadeIn(duration, from, to);
+				RuntimeSmokeHarness.markGameOverPhase('quote_music_fade',
+					{duration: duration, from: from, to: to});
+			},
+			stopQuote: function(handle:Dynamic) {
+				var sound:FlxSound = cast handle;
+				sound.onComplete = null;
+				sound.stop();
+				FlxG.sound.list.remove(sound, true);
+				sound.destroy();
+			}
+		});
+		RuntimeSmokeHarness.markGameOverPhase('created', {character: quoteCharacter.curCharacter});
+	}
+
+	function playDeathAnimation(name:String):Void {
+		// A post-super custom substate may already have advanced the initial
+		// death to its loop. Avoid replaying the actor's authored override.
+		if (!StringTools.startsWith(Character.animationName(bf), name))
+			bf.playAnim(name);
+	}
+
+	function cancelDeathQuote():Void {
+		if (deathQuotePlayback != null) deathQuotePlayback.cancel();
+		RuntimeSmokeHarness.markGameOverPhase('quote_cancel', {});
+	}
+
 	override function update(elapsed:Float) {
-		super.update(elapsed);
-		// Opening a substate pauses the parent state, which also stops the
-		// smoke gate's bounded-window clock. Keep the clock running through a
-		// game-over so a demo death still produces a clean success marker.
+		var currentAnim = bf.animation != null ? bf.animation.curAnim : null;
+		// Imported Codename substates retain their update-after-super ABI.
+		// Preserve the animation snapshot if Character advances it in that call.
+		if (codenameGameOverRuntime != null)
+			super.update(elapsed);
+		// The parent is paused; keep the isolated smoke window's clock running.
 		RuntimeSmokeHarness.tick(elapsed);
 		if (codenameGameOverRuntime != null)
 			codenameGameOverRuntime.update(elapsed);
@@ -341,28 +410,52 @@ class GameOverSubstate extends MusicBeatSubstate {
 			endBullshit();
 
 		if (controls.BACK) {
+			isEnding = true;
+			cancelDeathQuote();
 			hxcClearDeathOverlays();
 			HxcCompatRuntime.clearGameOverCharacter(bf);
-			FlxG.sound.music.stop();
+			if (FlxG.sound.music != null) FlxG.sound.music.stop();
 
 			if (PlayState.isStoryMode)
 				LoadingState.loadAndSwitchState(new StoryMenuState());
 			else
 				LoadingState.loadAndSwitchState(new FreeplayState());
+			return;
 		}
 
-		var currentAnim = bf.animation != null ? bf.animation.curAnim : null;
-		if (currentAnim == null)
+		// V-Slice checks before super.update: Character.update may replace the
+		// completed firstDeath animation with deathLoop during that call.
+		updateGameoverAnimation(currentAnim);
+		if (codenameGameOverRuntime == null)
+			super.update(elapsed);
+		if (FlxG.sound.music != null && FlxG.sound.music.playing)
+			Conductor.songPosition = FlxG.sound.music.time;
+	}
+
+	function updateGameoverAnimation(currentAnim:FlxAnimation):Void {
+		if (isEnding || gameoverStarted) return;
+		// The source queries even when no initial death animation is available.
+		var quote = quoteCharacter == null ? null : quoteCharacter.getDeathQuote();
+		if (currentAnim == null) {
 			startGameoverLoop();
-		else if (currentAnim.name == 'firstDeath') {
+			return;
+		}
+		// Preserve the source's query before animation completion, and its
+		// separate second query when playback begins (the getter may use RNG).
+		if (StringTools.startsWith(currentAnim.name, 'firstDeath')) {
 			if (currentAnim.curFrame == 12)
 				FlxG.camera.follow(camFollow, LOCKON, 0.01);
-			else if (currentAnim.finished)
-				playGameoverMusic();
+			if (currentAnim.finished) {
+				if (quote != null) {
+					if (!deathQuoteAttempted && deathQuotePlayback != null) {
+						deathQuoteAttempted = true;
+						RuntimeSmokeHarness.markGameOverPhase('first_death_complete',
+							{animation: currentAnim.name, gatePath: quote});
+						deathQuotePlayback.start(true, quoteCharacter.getDeathQuote());
+					}
+				} else startGameoverLoop();
+			}
 		}
-
-		if (FlxG.sound.music.playing)
-			Conductor.songPosition = FlxG.sound.music.time;
 	}
 
 	function startGameoverLoop() {
@@ -370,20 +463,24 @@ class GameOverSubstate extends MusicBeatSubstate {
 		gameoverStarted = true;
 		FlxG.camera.follow(camFollow, LOCKON, 0.01);
 		playGameoverMusic();
+		if (StringTools.startsWith(Character.animationName(bf), 'firstDeath'))
+			playDeathAnimation('deathLoop');
+		RuntimeSmokeHarness.markGameOverPhase('no_quote_loop', {musicVolume: gameoverLoopMusic.volume});
 	}
 
-	function playGameoverMusic() {
+	function playGameoverMusic(volume:Float = 1) {
 		var psychLoopSound = PlayState.instance == null ? null
 			: PlayState.instance.psychGameOverSoundPath('loopSoundName', false);
-		if (psychLoopSound != null) {
-			FlxG.sound.playMusic(FNFAssets.getSound(psychLoopSound));
-			return;
+		if (psychLoopSound != null)
+			FlxG.sound.playMusic(FNFAssets.getSound(psychLoopSound), volume);
+		else {
+			if (!FNFAssets.exists('assets/music/${bf.gameoverMusic}'))
+				bf.gameoverMusic = 'gameOver.ogg';
+			bf.gameoverMusic = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusic,
+				'assets/music', bf.isPixel);
+			FlxG.sound.playMusic(FNFAssets.getSound('assets/music/' + bf.gameoverMusic), volume);
 		}
-		if (!FNFAssets.exists('assets/music/${bf.gameoverMusic}'))
-			bf.gameoverMusic = 'gameOver.ogg';
-		bf.gameoverMusic = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusic,
-			'assets/music', bf.isPixel);
-		FlxG.sound.playMusic(FNFAssets.getSound('assets/music/' + bf.gameoverMusic));
+		gameoverLoopMusic = FlxG.sound.music;
 	}
 
 	override function beatHit() {
@@ -397,9 +494,10 @@ class GameOverSubstate extends MusicBeatSubstate {
 	function endBullshit():Void {
 		if (!isEnding) {
 			isEnding = true;
+			cancelDeathQuote();
 			bf.playAnim('deathConfirm', true);
 
-			FlxG.sound.music.stop();
+			if (FlxG.sound.music != null) FlxG.sound.music.stop();
 			var psychEndSound = PlayState.instance == null ? null
 				: PlayState.instance.psychGameOverSoundPath('endSoundName', false);
 			if (psychEndSound != null)
@@ -423,6 +521,12 @@ class GameOverSubstate extends MusicBeatSubstate {
 	}
 
 	override public function destroy():Void {
+		if (deathQuotePlayback != null) {
+			deathQuotePlayback.destroy();
+			deathQuotePlayback = null;
+		}
+		quoteCharacter = null;
+		RuntimeSmokeHarness.markGameOverPhase('destroy', {});
 		if (codenameGameOverRuntime != null) {
 			codenameGameOverRuntime.destroy();
 			codenameGameOverRuntime = null;

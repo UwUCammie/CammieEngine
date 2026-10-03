@@ -1,6 +1,7 @@
 """Importer reports missing characters, not merely missing copy candidates."""
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 from tools.character_dependencies import audit_characters, character_problems
@@ -14,7 +15,7 @@ class CharacterDependenciesTest(unittest.TestCase):
             (folder / 'hero').mkdir(parents=True)
             registry = {'hero': {'like': 'shared'}}
             self.assertEqual(character_problems(assets, registry, 'hero'), ['missing animation implementation'])
-            (folder / 'shared.hscript').write_text('function init(char) {}')
+            (folder / 'shared.hscript').write_text('function init(char) {}', newline='\n')
             self.assertEqual(character_problems(assets, registry, 'hero'), [])
             self.assertIn('missing character folder', character_problems(assets, {'icon': {'like': 'shared'}}, 'icon'))
             (folder / 'shared').mkdir()
@@ -27,12 +28,12 @@ class CharacterDependenciesTest(unittest.TestCase):
             for root in (target, donor):
                 folder = root / 'images/custom_chars'
                 folder.mkdir(parents=True)
-                (folder / 'custom_chars.jsonc').write_text(json.dumps({'hero': {'like': 'hero'}}))
+                (folder / 'custom_chars.jsonc').write_text(json.dumps({'hero': {'like': 'hero'}}), newline='\n')
             (donor / 'images/custom_chars/hero').mkdir()
-            (donor / 'images/custom_chars/hero.hscript').write_text('function init(char) {}')
+            (donor / 'images/custom_chars/hero.hscript').write_text('function init(char) {}', newline='\n')
             charts = target / 'data/song'
             charts.mkdir(parents=True)
-            (charts / 'song-hard.json').write_text(json.dumps({'song': {'notes': [], 'player1': 'hero', 'player2': 'absent'}}))
+            (charts / 'song-hard.json').write_text(json.dumps({'song': {'notes': [], 'player1': 'hero', 'player2': 'absent'}}), newline='\n')
             result = {item['character']: item for item in audit_characters(target, donor)}
             self.assertEqual(result['hero']['donor_problems'], [])
             self.assertTrue(result['absent']['donor_problems'])

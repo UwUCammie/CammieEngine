@@ -1,12 +1,10 @@
 package;
 
 import NightmareVisionCallbackTimeline.NightmareVisionCallbackErrorReporter;
+import nightmarevision.modchart.NightmareVisionModifierRegistry;
+import nightmarevision.modchart.NightmareVisionModchartTimeline;
 
-/**
- * Shared per-PlayState callback timeline for Nightmare Vision scripts.
- * Modifier value/ease evaluation is a separate subsystem and is not faked by
- * this callback scheduler; calls to those APIs fail with an explicit message.
- */
+/** Shared source modifier values and event timelines for one PlayState. */
 class NightmareVisionModManager {
 	public static inline var CALLBACK_EVENT_BINDING:String = 'CallbackEvent';
 
@@ -15,21 +13,22 @@ class NightmareVisionModManager {
 
 	/** Supplied ModManager surface that this callback-focused adapter does not implement. */
 	public static function unimplementedModifierApis():Array<String> return [
-		'get', 'getPercent', 'getValue', 'setPercent', 'setValue',
-		'queueSet', 'queueSetP', 'queueEase', 'queueEaseP',
-		'quickRegister', 'registerMod', 'registerEssentialModifiers',
-		'registerDefaultModifiers', 'registerScriptedModifiers', 'update',
-		'updateObject', 'getPos', 'getBaseX', 'getCenterX', 'getStrumX',
-		'getBaseY', 'getBaseVisPosD', 'getVisPos'
+		'quickRegister', 'registerMod', 'registerScriptedModifiers'
 	];
 
-	public var lanes:Int = 2;
-	public var keys:Int = 4;
+	public var lanes(default, null):Int = 2;
+	public var keys(default, null):Int = 4;
+	public var registry(default, null):NightmareVisionModifierRegistry;
+	public var modifierTimeline(default, null):NightmareVisionModchartTimeline;
 	public var receptors:Array<Array<Dynamic>> = [];
 	public var timeline(default, null):NightmareVisionCallbackTimeline;
 	public var destroyed(default, null):Bool = false;
 
-	public function new(?reportError:NightmareVisionCallbackErrorReporter) {
+	public function new(?reportError:NightmareVisionCallbackErrorReporter, keys:Int = 4, lanes:Int = 2) {
+		this.keys = keys;
+		this.lanes = lanes;
+		registry = new NightmareVisionModifierRegistry(keys, lanes);
+		modifierTimeline = new NightmareVisionModchartTimeline(registry);
 		timeline = new NightmareVisionCallbackTimeline(reportError);
 	}
 
@@ -47,7 +46,10 @@ class NightmareVisionModManager {
 
 	/** Called from the owning PlayState once per update with its decimal song step. */
 	public function updateTimeline(currentStep:Float):Void {
-		if (!destroyed) timeline.update(currentStep);
+		if (!destroyed) {
+			modifierTimeline.update(currentStep);
+			timeline.update(currentStep);
+		}
 	}
 
 	/** Pending callbacks capture script interpreters; release them with the state. */
@@ -55,6 +57,7 @@ class NightmareVisionModManager {
 		if (destroyed) return;
 		destroyed = true;
 		timeline.destroy();
+		modifierTimeline.destroy();
 		receptors = [];
 	}
 
@@ -74,17 +77,37 @@ class NightmareVisionModManager {
 		return null;
 	}
 
-	// These are present in the supplied source ModManager and retained D-Sides
-	// scripts, but require the separate modifier registry/evaluation pipeline.
-	// Explicit failures keep partial support visible instead of silently lying.
-	public function setValue(name:Dynamic, value:Dynamic, player:Dynamic = -1):Dynamic return unsupportedModifierApi('setValue');
-	public function setPercent(name:Dynamic, value:Dynamic, player:Dynamic = -1):Dynamic return unsupportedModifierApi('setPercent');
-	public function queueSet(step:Dynamic, name:Dynamic, value:Dynamic, player:Dynamic = -1):Dynamic return unsupportedModifierApi('queueSet');
-	public function queueSetP(step:Dynamic, name:Dynamic, value:Dynamic, player:Dynamic = -1):Dynamic return unsupportedModifierApi('queueSetP');
-	public function queueEase(step:Dynamic, endStep:Dynamic, name:Dynamic, value:Dynamic,
-		style:Dynamic = 'linear', player:Dynamic = -1, startValue:Dynamic = null):Dynamic
-		return unsupportedModifierApi('queueEase');
-	public function queueEaseP(step:Dynamic, endStep:Dynamic, name:Dynamic, value:Dynamic,
-		style:Dynamic = 'linear', player:Dynamic = -1, startValue:Dynamic = null):Dynamic
-		return unsupportedModifierApi('queueEaseP');
+	public function getValue(name:String, player:Int):Float return registry.value(name, player);
+	public function getPercent(name:String, player:Int):Float return registry.percent(name, player);
+	public function get(name:String):Dynamic {
+		if (!registry.isRegistered(name)) return null;
+		return {
+			getName:function():String return name,
+			getValue:function(player:Int):Float return registry.value(name, player),
+			getPercent:function(player:Int):Float return registry.percent(name, player),
+			getSubmodValue:function(sub:String, player:Int):Float return registry.getSubmodValue(name, sub, player),
+			setValue:function(value:Float, player:Int):Void registry.setValue(name, value, player),
+			setPercent:function(value:Float, player:Int):Void registry.setPercent(name, value, player)
+		};
+	}
+	public function setValue(name:String, value:Float, player:Int = -1):Void {
+		ensureAlive(); registry.setValue(name, value, player);
+	}
+	public function setPercent(name:String, value:Float, player:Int = -1):Void {
+		ensureAlive(); registry.setPercent(name, value, player);
+	}
+	public function queueSet(step:Float, name:String, value:Float, player:Int = -1):Void {
+		ensureAlive(); modifierTimeline.queueSet(step, name, value, player);
+	}
+	public function queueSetP(step:Float, name:String, value:Float, player:Int = -1):Void {
+		ensureAlive(); modifierTimeline.queueSetP(step, name, value, player);
+	}
+	public function queueEase(step:Float, endStep:Float, name:String, value:Float,
+		style:Dynamic = 'linear', player:Int = -1, ?startValue:Float):Void {
+		ensureAlive(); modifierTimeline.queueEase(step, endStep, name, value, style, player, startValue);
+	}
+	public function queueEaseP(step:Float, endStep:Float, name:String, value:Float,
+		style:Dynamic = 'linear', player:Int = -1, ?startValue:Float):Void {
+		ensureAlive(); modifierTimeline.queueEaseP(step, endStep, name, value, style, player, startValue);
+	}
 }

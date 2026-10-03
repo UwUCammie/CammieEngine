@@ -11,7 +11,10 @@ donor is read-only, and all chart bytes outside song.notes are preserved.
 import argparse
 import base64
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import math

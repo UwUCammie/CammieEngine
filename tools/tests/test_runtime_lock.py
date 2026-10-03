@@ -1,12 +1,15 @@
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class RuntimeLockTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'Linux shell/flock runtime lock test')
     def test_build_waits_until_execed_game_exits(self):
         with tempfile.TemporaryDirectory() as folder:
             args = [str(ROOT / 'tools/runtime_lock.sh'), str(Path(folder) / 'runtime.lock')]

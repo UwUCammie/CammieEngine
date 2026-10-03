@@ -1,8 +1,10 @@
 """Selected Modding Plus characters remain tied to their importing owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from hashlib import sha256
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -72,7 +74,13 @@ class ImportEngine {{
   public static inline var PSYCH:String = 'Psych Engine';
   public static inline var CODENAME:String = 'Codename Engine';
   public static inline var MODDING_PLUS:String = 'Modding Plus';
+  public static inline var NIGHTMARE_VISION:String = 'Nightmare Vision';
   public static inline var V_SLICE:String = 'V-Slice';
+}}
+class NightmareVisionCharacterData {{
+  public static function load(_root:String, _name:String):Dynamic return null;
+  public static function imageRoot(_root:String, _definition:Dynamic):String return null;
+  public static function definitionPath(_root:String, _name:String):String return null;
 }}
 class EngineCompat {{ public static function isVSliceBaseCharacterId(value:String):Bool return value == 'bf'; }}
 class CompatScriptManifest {{
@@ -225,7 +233,7 @@ class ModPlusCharacterOwnerScopeTest(unittest.TestCase):
             work = Path(folder)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             alternate = work / "alternate-donor"
             alternate_chars = alternate / "images/custom_chars"
             (alternate_chars / "bf-dark").mkdir(parents=True)
@@ -234,10 +242,10 @@ class ModPlusCharacterOwnerScopeTest(unittest.TestCase):
             (alternate_chars / "gf-dark/char.png").write_bytes(b"alternate GF atlas")
             (alternate_chars / "bf-dark/char.xml").write_text(
                 '<TextureAtlas><SubTexture name="alternate BF idle0000"/></TextureAtlas>'
-            )
+            , newline='\n')
             (alternate_chars / "gf-dark/char.xml").write_text(
                 '<TextureAtlas><SubTexture name="alternate GF dance0000"/></TextureAtlas>'
-            )
+            , newline='\n')
             (alternate_chars / "custom_chars.jsonc").write_text(
                 json.dumps(
                     {
@@ -245,9 +253,9 @@ class ModPlusCharacterOwnerScopeTest(unittest.TestCase):
                         "gf-dark": {"like": "gf", "icons": [0, 0, 1], "colors": ["#445566"]},
                     }
                 )
-            )
-            (alternate_chars / "bf.hscript").write_text("// alternate bf implementation\n")
-            (alternate_chars / "gf.hscript").write_text("// alternate gf implementation\n")
+            , newline='\n')
+            (alternate_chars / "bf.hscript").write_text("// alternate bf implementation\n", newline='\n')
+            (alternate_chars / "gf.hscript").write_text("// alternate gf implementation\n", newline='\n')
 
             global_chars = work / "assets/images/custom_chars"
             (global_chars / "bf-dark").mkdir(parents=True)
@@ -263,13 +271,13 @@ class ModPlusCharacterOwnerScopeTest(unittest.TestCase):
             }
 
             fixture = _importer_fixture(module_source, song_source)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             (work / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
-            )
+            , newline='\n')
             result = subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     str(work),
                     "--run",

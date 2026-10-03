@@ -1,7 +1,9 @@
 """Executable coverage for Modding Plus's extended note-row ABI."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -128,10 +130,10 @@ class LegacyExtendedRowsCorpus {
         donor_bytes = CHART.read_bytes()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             source = Path(folder) / "LegacyExtendedRowsCorpus.hx"
-            source.write_text(fixture)
+            source.write_text(fixture, newline='\n')
             result = subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

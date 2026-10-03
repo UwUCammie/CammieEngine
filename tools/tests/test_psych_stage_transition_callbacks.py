@@ -1,6 +1,8 @@
 """Psych source stage start/end hooks retain native transition semantics."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -78,9 +80,9 @@ class StageHost {
  public function new() {}
  public function startCountdown():Void countdowns++;
  public function endForReal():Void { endings++;psychStageCutsceneEnding=false; }
-""" + methods + "\n}\n", encoding="utf-8")
+""" + methods + "\n}\n", encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

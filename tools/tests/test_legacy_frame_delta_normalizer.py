@@ -1,10 +1,12 @@
 """Generic elapsed-time normalization for legacy HScript update hooks."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -19,9 +21,9 @@ DONOR = Path("/run/media/cammie/External Storage/modding-plus-fnf")
 def run_haxe(fixture: str, *args: str) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(prefix="legacy-frame-delta-", dir=ROOT / "tmp") as folder:
         path = Path(folder) / "LegacyFrameDeltaTest.hx"
-        path.write_text(fixture)
+        path.write_text(fixture, newline='\n')
         return subprocess.run(
-            [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(HScript),
+            [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(HScript),
              "--run", "LegacyFrameDeltaTest", *args],
             cwd=ROOT,
             capture_output=True,

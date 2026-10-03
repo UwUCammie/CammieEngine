@@ -1,5 +1,7 @@
 """Legacy Psych character animation callback preserves upstream role routing."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -37,7 +39,7 @@ class Main {
 }
 """.replace('METHOD',method)
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
-            (Path(folder)/'Main.hx').write_text(fixture)
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',folder,'--main','Main','--interp'],
+            (Path(folder)/'Main.hx').write_text(fixture, newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',folder,'--main','Main','--interp'],
                                   cwd=ROOT,capture_output=True,text=True,timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)

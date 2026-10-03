@@ -1,6 +1,8 @@
 """Regression coverage for the V-Slice mayPauseGame compatibility alias."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -59,9 +61,9 @@ class HxcMayPauseGameAliasTest {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "HxcMayPauseGameAliasTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", folder,
                  "-main", "HxcMayPauseGameAliasTest", "--interp"],
                 capture_output=True, text=True, cwd=ROOT, timeout=300,
             )

@@ -1,8 +1,11 @@
 """Execute NMV constant bindings, dynamic state lookup and group stop semantics."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -11,6 +14,7 @@ class NightmareVisionScriptConstantsTest(unittest.TestCase):
     def test_constants_import_state_lookup_and_return_values(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(r'''
 class Main {
  static function check(ok:Bool, why:String) if (!ok) throw why;
@@ -50,10 +54,10 @@ class Main {
   group.destroy();
  }
 }
-''')
+''', newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 result = subprocess.run([
-                    str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                    *HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                     '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'),
                     '-cp', str(work), *defines, '--run', 'Main'],
                     cwd=ROOT, text=True, capture_output=True, timeout=45)

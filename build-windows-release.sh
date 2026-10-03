@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-TAG="${1:-local-linux-cross}"
+TAG="${1:-v0.0.9}"
 if [[ "$TAG" == "-h" || "$TAG" == "--help" ]]; then
 	cat <<'EOF'
 Usage: ./build-windows-release.sh [release-tag] [--wine-smoke]

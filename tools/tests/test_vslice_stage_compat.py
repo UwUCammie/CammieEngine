@@ -1,6 +1,8 @@
 """Old generated V-Slice stage props gain the donor hitbox rule at runtime."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -111,9 +113,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Main.hx").write_text(source)
+            (Path(folder) / "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
             )

@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -82,7 +84,7 @@ class HookTest {
 '''
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder)/'HookTest.hx').write_text(fixture)
-            p=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',folder,'-cp',str(ROOT/'source'),
+            (Path(folder)/'HookTest.hx').write_text(fixture, newline='\n')
+            p=subprocess.run([*HAXE_COMMAND,'-cp',folder,'-cp',str(ROOT/'source'),
                 '-cp',str(ROOT/'.haxelib/hscript/2,5,0'),'-main','HookTest','--interp'],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stdout+p.stderr)

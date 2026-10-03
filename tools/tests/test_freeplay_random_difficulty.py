@@ -1,6 +1,8 @@
 """Tests for difficulty fallback when Freeplay's random entry chooses a song."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -58,9 +60,9 @@ class Main {{
   }}
 }}'''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

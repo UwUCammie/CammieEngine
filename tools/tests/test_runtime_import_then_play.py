@@ -1,8 +1,10 @@
 """Focused contract tests for same-process import-to-chart smoke runs."""
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -104,9 +106,9 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "Main.hx"
-            path.write_text(fixture, encoding="utf-8")
+            path.write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
                 cwd=folder,
                 capture_output=True,
                 text=True,

@@ -1,10 +1,12 @@
 """Focused coverage for shared HXC module pixel and mutable-state adapters."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,11 +29,19 @@ class PixelColors extends Module {
     var iconColorCache = new StringMap();
     var inPlay = false;
     function new() { super("pixel-colors"); }
+    function onCreate(event) { inPlay = true; }
     function dominantColor(sprite, ?scale:Float = 1.0) {
         if (sprite == null || !inPlay) return 0;
-        return sprite.pixels.getPixel32(0.8 * scale, 0.2 * scale);
+        var color = 0;
+        for (y in 0...sprite.frameHeight) {
+            for (x in 0...sprite.frameWidth) {
+                var sample = sprite.pixels.getPixel32(x * scale, y * scale);
+                if (color == 0) color = sample;
+            }
+        }
+        return color;
     }
-    function getIconColor(sprite) {
+    function getIconColor(sprite, ?scale:Float = 1.0, ?force:Bool = false) {
         var cached = iconColorCache.get(sprite.characterId);
         if (cached != null) return cached;
         var color = dominantColor(sprite);
@@ -56,9 +66,9 @@ class HxcModulePixelStateRuntimeTest(unittest.TestCase):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="hxc-module-pixels-", dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,

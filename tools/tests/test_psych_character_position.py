@@ -1,6 +1,8 @@
 """Psych stage points include character JSON position, even for base actors."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import os
 import subprocess
@@ -48,26 +50,26 @@ class PsychCharacterPositionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'PsychCharacterPosition.hx').write_text(
-                (ROOT / 'source/PsychCharacterPosition.hx').read_text())
+                (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
             (work / 'assets/data/psych_base_character_positions.json').write_text(
-                (ROOT / 'assets/data/psych_base_character_positions.json').read_text())
+                (ROOT / 'assets/data/psych_base_character_positions.json').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
-            (work / 'scope/characters/bf.json').write_text('{"position":[12,-5]}')
-            (work / 'scope/characters/dad.json').write_text('{"position":[0,0]}')
+            (work / 'scope/characters/bf.json').write_text('{"position":[12,-5]}', newline='\n')
+            (work / 'scope/characters/dad.json').write_text('{"position":[0,0]}', newline='\n')
             (work / 'scope2/characters').mkdir(parents=True)
-            (work / 'scope2/characters/bf.json').write_text('{"position":[20,40]}')
+            (work / 'scope2/characters/bf.json').write_text('{"position":[20,40]}', newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
-''')
+''', newline='\n')
             (work / 'CoolUtil.hx').write_text('''
 class CoolUtil {
   public static function parseJson(source:String):Dynamic return haxe.Json.parse(source);
 }
-''')
+''', newline='\n')
             (work / 'Probe.hx').write_text('''
 class Probe {
   static function eq(actual:Array<Float>, x:Float, y:Float):Void
@@ -85,9 +87,9 @@ class Probe {
     eq([749 + offset[0], 100 + offset[1]], 749, 450);
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, env={**os.environ, 'TMPDIR': str(TMP)}, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -96,23 +98,23 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'PsychCharacterPosition.hx').write_text(
-                (ROOT / 'source/PsychCharacterPosition.hx').read_text())
+                (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
             (work / 'scope/shared/characters').mkdir(parents=True)
-            (work / 'scope/characters/bf.json').write_text('{"camera_position":[12,-5]}')
-            (work / 'scope/characters/dad.json').write_text('{"camera_position":[-2,8]}')
-            (work / 'scope/shared/characters/gf.json').write_text('{"camera_position":[30,4]}')
+            (work / 'scope/characters/bf.json').write_text('{"camera_position":[12,-5]}', newline='\n')
+            (work / 'scope/characters/dad.json').write_text('{"camera_position":[-2,8]}', newline='\n')
+            (work / 'scope/shared/characters/gf.json').write_text('{"camera_position":[30,4]}', newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
-''')
+''', newline='\n')
             (work / 'CoolUtil.hx').write_text('''
 class CoolUtil {
   public static function parseJson(source:String):Dynamic return haxe.Json.parse(source);
 }
-''')
+''', newline='\n')
             (work / 'Probe.hx').write_text('''
 class Probe {
   static function eq(actual:Array<Float>, x:Float, y:Float, label:String):Void
@@ -136,9 +138,9 @@ class Probe {
       'missing Psych metadata must stay neutral');
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, env={**os.environ, 'TMPDIR': str(TMP)}, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -162,23 +164,23 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'PsychCharacterPosition.hx').write_text(
-                (ROOT / 'source/PsychCharacterPosition.hx').read_text())
+                (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
             (work / 'assets/data/psych_base_character_positions.json').write_text(
-                (ROOT / 'assets/data/psych_base_character_positions.json').read_text())
+                (ROOT / 'assets/data/psych_base_character_positions.json').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
-            (work / 'scope/characters/guest.json').write_text('{"position":[25,-9]}')
+            (work / 'scope/characters/guest.json').write_text('{"position":[25,-9]}', newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
-''')
+''', newline='\n')
             (work / 'CoolUtil.hx').write_text('''
 class CoolUtil {
   public static function parseJson(source:String):Dynamic return haxe.Json.parse(source);
 }
-''')
+''', newline='\n')
             (work / 'Character.hx').write_text('''
 class Character {
   public var curCharacter:String;
@@ -191,7 +193,7 @@ class Character {
   public var gfOffsetY:Int = 0;
   public function new(id:String) curCharacter = id;
 }
-''')
+''', newline='\n')
             (work / 'Probe.hx').write_text('''
 class StageInfo { public var x:Float = 0; public var y:Float = 0; public function new() {} }
 class Stage {
@@ -241,9 +243,9 @@ class Probe {
     eq(state.stageCharacterOffset(bf, 'boyfriend'), 0, 0);
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, env={**os.environ, 'TMPDIR': str(TMP)}, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -388,21 +390,21 @@ class Probe {
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / 'PsychCharacterPosition.hx').write_text(
-                (ROOT / 'source/PsychCharacterPosition.hx').read_text())
+                (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }
-''')
+''', newline='\n')
             (work / 'CoolUtil.hx').write_text('''
 class CoolUtil {
   public static function parseJson(source:String):Dynamic return haxe.Json.parse(source);
 }
-''')
-            (work / 'Probe.hx').write_text(fixture)
+''', newline='\n')
+            (work / 'Probe.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, env={**os.environ, 'TMPDIR': str(TMP)}, capture_output=True, text=True,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

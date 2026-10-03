@@ -1,4 +1,5 @@
 """Static-reference planning and native HXC visual-asset scope regressions."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,12 +33,12 @@ class HxcVisualAssetPlannerTest(unittest.TestCase):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="hxc-visual-assets-", dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp", str(ROOT / "source"),
                     "-cp", folder,
                     "-main", "Main", "--interp",
@@ -386,7 +388,7 @@ class Main {
                 "Paths.getSparrowAtlas('mainmenu/PleaseKrillMe');\n"
                 "Paths.image('freeplay/freeplayCapsule/takeoverweektypes');\n"
                 "Paths.getFrames('main/sonic');"
-            )
+            , newline='\n')
             # A media file with no HXC reference is intentionally irrelevant to
             # the plan; the importer copies only the references later.
             (donor / "images/unreferenced/never.png").write_bytes(b"not planned")
@@ -421,17 +423,21 @@ class Main {
                 "data/stages/hall.hxc": "Paths.image('stage/data-hall-missing');",
                 "scripts/modules/menu.hxc": "Paths.image('menu/needed');",
                 "scripts/notes/custom.hxc": "Paths.image('notes/needed');",
+                "data/stages/OffName.hxc": "class Renamed extends Stage { function new() { super('clubroom'); } function onCreate() { Paths.image('stage/renamed-needed'); } }",
+                "scripts/stages/ActorName.hxc": "class Actor extends MultiSparrowCharacter { function new() { super('actor'); } function onCreate() { Paths.image('actor/needed'); } }",
             }
             for relative, content in fixtures.items():
                 path = donor / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
+                path.write_text(content, newline='\n')
             source = r'''class Main {
   static function main() {
     var filtered = HxcAssetPlanner.plan(__DONOR__, ['clubroom']);
     var filteredKeys = [];
     for (reference in filtered.references) filteredKeys.push(reference.key);
-    if (filtered.scripts.length != 3
+    if (filtered.scripts.length != 5
+      || filteredKeys.indexOf('stage/renamed-needed') < 0
+      || filteredKeys.indexOf('actor/needed') < 0
       || filteredKeys.indexOf('stage/clubroom-needed') < 0
       || filteredKeys.indexOf('menu/needed') < 0
       || filteredKeys.indexOf('notes/needed') < 0
@@ -441,12 +447,14 @@ class Main {
       throw 'stage selection filtered the wrong HXC surface: '
         + filtered.scripts.length + '/' + filteredKeys.join(',');
     var all = HxcAssetPlanner.plan(__DONOR__);
-    if (all.scripts.length != 6 || all.references.length != 6)
+    if (all.scripts.length != 8 || all.references.length != 8)
       throw 'default plan must retain every script and reference';
     var none = HxcAssetPlanner.plan(__DONOR__, []);
-    if (none.scripts.length != 2 || none.references.length != 2
-      || none.references[0].key == 'stage/clubroom-needed'
-      || none.references[1].key == 'stage/clubroom-needed')
+    var noneKeys = [for (reference in none.references) reference.key];
+    if (none.scripts.length != 3 || none.references.length != 3
+      || noneKeys.indexOf('actor/needed') < 0
+      || noneKeys.indexOf('stage/renamed-needed') >= 0
+      || noneKeys.indexOf('stage/clubroom-needed') >= 0)
       throw 'empty stage selection must keep non-stage families only';
     Sys.println('hxc-visual-planner-selected-stages-ok');
   }

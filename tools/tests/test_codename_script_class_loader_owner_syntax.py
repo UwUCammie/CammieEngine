@@ -1,6 +1,8 @@
 """Focused owner-class module loading and safe syntax normalization."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -23,7 +25,7 @@ def haxe_fixture_env():
 
 def haxe_fixture_command(base, *arguments, with_flixel=False):
     command = [
-        str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+        *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
         "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
         "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),
     ]
@@ -42,7 +44,7 @@ def write_loader_interp_stub(base):
 	public var variables:Map<String,Dynamic>=new Map();
 	public function new() {}
 	public function bindScriptClassScope(_scope:hscript.ScriptClassScope):Void {}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
 
 class CodenameScriptClassLoaderSyntaxTest(unittest.TestCase):
@@ -53,17 +55,17 @@ class CodenameScriptClassLoaderSyntaxTest(unittest.TestCase):
             owner = base / "owner"
             (owner / "source/demo").mkdir(parents=True)
             (owner / "source/import.hx").write_text(
-                "#if !macro\nusing StringTools;\n#end\n", encoding="utf-8")
+                "#if !macro\nusing StringTools;\n#end\n", encoding="utf-8", newline='\n')
             (owner / "source/demo/Mall.hx").write_text('''package demo;
 class Mall {
  public function new() {}
  public function eventCalled(value1:String):String return value1.toLowerCase().trim();
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (owner / "source/demo/BadUsing.hx").write_text('''package demo;
 class BadUsing {
  public function new() {}
  public function read(value:Dynamic):String return value.trim();
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (owner / "source/demo/NativeContains.hx").write_text('''package demo;
 class NativeContains {
  public function new() {}
@@ -71,7 +73,7 @@ class NativeContains {
   var noteTypes:Array<String> = ["special"];
   return noteTypes.contains("special");
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
  static function main():Void {
   var root=Sys.args()[0];
@@ -92,7 +94,7 @@ class NativeContains {
    throw "Array.contains was wrongly rewritten as StringTools.contains";
   dynamicOwner.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -117,7 +119,7 @@ class FieldActor {
  public function assign(changed:Dynamic):Void { snd = changed; }
  public function defaults():Array<Dynamic> { return [snd, enabled, count, volume]; }
  public function readSnd():Dynamic { return snd; }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text('''class Main {
  static function main():Void {
   var loaded=CodenameScriptClassLoader.load(Sys.args()[0],['demo.FieldActor'],new Map(),new Map());
@@ -131,7 +133,7 @@ class FieldActor {
   if(read!='music') throw 'declared field write failed after construction';
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -178,14 +180,14 @@ import openfl.filters.ShaderFilter;
 class ShaderFilterStage {
 	public function new() {}
 	public function wrap(shader:Dynamic):Dynamic { return new ShaderFilter(shader); }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             filter_module = base / "openfl/filters/ShaderFilter.hx"
             filter_module.parent.mkdir(parents=True)
             filter_module.write_text('''package openfl.filters;
 class ShaderFilter {
 	public var shader:Dynamic;
 	public function new(shader:Dynamic) { this.shader = shader; }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import hscript.AbstractScriptClass;
 import openfl.filters.ShaderFilter;
 class Main {
@@ -202,7 +204,7 @@ class Main {
    throw "the bound ShaderFilter constructor did not retain its shader";
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -244,7 +246,7 @@ class PayloadEnum {}''',
             for relative, content in modules.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             (base / "Main.hx").write_text(r'''import hscript.AbstractScriptClass;
 class Main {
@@ -269,7 +271,7 @@ class Main {
    throw "payload enum was not rejected with a bounded diagnostic: "+payload.diagnostics;
   payload.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -466,7 +468,7 @@ class ShadowAlias {
             for relative, content in modules.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
 
             (base / "Main.hx").write_text(r'''import haxe.Json;
 import hscript.AbstractScriptClass;
@@ -586,7 +588,7 @@ class Main {
    throw "untyped cast without an operand was silently erased: "+missingCast.diagnostics;
   missingCast.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -645,14 +647,14 @@ class NotSprite {
             for relative, content in modules.items():
                 path = owner / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline='\n')
             flx_sprite = base / "flixel/FlxSprite.hx"
             flx_sprite.parent.mkdir(parents=True)
             flx_sprite.write_text('''package flixel;
 class FlxSprite {
 	public var animation:Dynamic;
 	public function new() { animation = {curAnim:{name:"danceend", frameRate:24}}; }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import flixel.FlxSprite;
 class Main {
  public static var cwd:String;
@@ -688,7 +690,7 @@ class Main {
    throw "a non-native FlxSprite binding was treated as a typed String receiver: "+fake.diagnostics;
   fake.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner)),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,
@@ -716,7 +718,7 @@ class Main {
 import flixel.animation.FlxAnimationController;
 class PsychAnimationController extends FlxAnimationController {
 	public function new() {}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             sort_user = owner / "source/demo/SortUser.hx"
             sort_user.write_text('''package demo;
 import flixel.util.FlxDestroyUtil;
@@ -727,7 +729,7 @@ class SortUser {
 		FlxDestroyUtil.destroy(null);
 		return FlxSort.byValues(-1, 1, 2);
 	}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (base / "Main.hx").write_text(r'''import flixel.animation.FlxAnimationController;
 import flixel.util.FlxDestroyUtil;
 import flixel.util.FlxSort;
@@ -764,7 +766,7 @@ class Main {
    throw "owner HScript could not use the explicitly bound FlxSort class";
   loaded.scope.release();
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             result = subprocess.run(
                 haxe_fixture_command(base, "--run", "Main", str(owner), with_flixel=True),
                 cwd=ROOT, env=haxe_fixture_env(), text=True, capture_output=True, timeout=60,

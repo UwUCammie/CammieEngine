@@ -1,9 +1,12 @@
 """Source NMV ScriptGroup ordering, cancellation, and lifecycle contracts."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -18,6 +21,7 @@ class NightmareVisionScriptGroupTest(unittest.TestCase):
             'public function call(', 1)[1].split('\n\t/**', 1)[0]
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(r'''
 class ScriptConstants {
  public static var CONTINUE_FUNC = 0;
@@ -73,11 +77,11 @@ class Main {
   if (cases != 2048) throw 'missing return-flow cases';
  }
 }
-''')
+''', newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                        [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                          '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'), '-cp', str(work)]
                         + defines + ['--main', 'Main', '--interp'], cwd=work,
                         capture_output=True, text=True, timeout=30)
@@ -86,6 +90,7 @@ class Main {
     def test_executed_callbacks_lifecycle_cancellation_and_failure_recovery(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(r'''
 import crowplexus.hscript.Parser;
 class Parent {
@@ -247,11 +252,11 @@ class Main {
   g.destroy(); other.destroy();
  }
 }
-''')
+''', newline='\n')
             for defines in ([], ['-D', 'hscriptPos']):
                 with self.subTest(defines=defines):
                     result = subprocess.run(
-                        [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                        [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                          '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'), '-cp', str(work)]
                         + defines + ['--main', 'Main', '--interp'], cwd=work,
                         capture_output=True, text=True, timeout=30)

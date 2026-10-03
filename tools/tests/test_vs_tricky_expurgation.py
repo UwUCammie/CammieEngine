@@ -20,6 +20,7 @@ Covers the reported gameplay regressions on the mounted Vs Tricky donor:
 
 The fixtures never launch the game and never write to the mounted donor tree.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -27,6 +28,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,12 +61,12 @@ class VsTrickyExpurgationTest(unittest.TestCase):
             self.skipTest("mounted Vs Tricky donor is unavailable")
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="vs-tricky-expurgation-", dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(source)
+            (Path(folder) / "Main.hx").write_text(source, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             return subprocess.run(
                 [
-                    str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                    *HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                     "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                     "-main", "Main", "--interp",
                 ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=300,
@@ -905,6 +907,7 @@ class Main {{
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("expurgation-gremlin-follow-contract-ok", result.stdout)
 
+    @unittest.skipUnless(IMPORTED_SIGN_SHEET.is_file(), "imported Tricky atlas fixture is unavailable")
     def test_sparrow_frame_size_semantics_match_donor(self):
         """FunkinSprite.createSparrow and the native createFunkinSpriteSparrow
         both end in flixel's set_frames: sprite.width becomes the first

@@ -45,6 +45,13 @@ class VocalTracks {
 			roles[index] = role == null ? "player" : role.toLowerCase();
 	}
 
+	/** Source vocal groups expose the actual stems belonging to each role. */
+	public function forRole(role:String):Array<FlxSound> {
+		var wanted = role == null ? '' : role.toLowerCase();
+		return [for (index in 0...tracks.length)
+			if (tracks[index] != null && roles[index] == wanted) tracks[index]];
+	}
+
 	public function play():Void {
 		for (sound in tracks)
 			if (sound != null)

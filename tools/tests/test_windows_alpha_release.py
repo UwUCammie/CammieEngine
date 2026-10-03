@@ -1,7 +1,9 @@
 """Windows x64 alpha release packaging and workflow contracts."""
 
 from hashlib import sha256
+import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import importlib.util
 import json
 import subprocess
@@ -40,6 +42,8 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         write(runtime / "plugins/codec/libdemo_plugin.dll", b"VLC plugin")
         write(runtime / "manifest/libvlc.json", b"generated VLC library manifest")
         write(runtime / "manifest/default.json", b"generated Lime asset manifest")
+        write(runtime / "import-cache/snapshot/receipt.json", b"raw-source receipt")
+        write(runtime / "import-cache/snapshot/project/source.unknown", b"retained donor source")
         write(runtime / "assets/data/song/chart.json", b"chart")
         write(runtime / "assets/data/private-flat-song/chart.json", b"untracked local chart")
         write(runtime / "assets/data/options.json", b'{"personal":true}')
@@ -70,12 +74,25 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                         "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
         return runtime, repo
 
+    def test_missing_or_truncated_bundled_audio_prevents_packaging(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            relative = 'assets/songs/tutorial/Inst.ogg'
+            write(repo / relative, b'bundled audio')
+            subprocess.run(['git', '-C', str(repo), 'add', '-f', relative], check=True)
+            for contents in (None, b'truncated'):
+                if contents is not None:
+                    write(runtime / relative, contents)
+                with self.assertRaisesRegex(ValueError, 'audio is missing or incomplete'):
+                    PACKAGE.make_package(runtime, root / 'dist', 'test', repo)
+
     def test_package_contains_runtime_not_personal_options_or_imports(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             root = Path(temp)
             runtime, repo = self.make_package_fixture(root)
             output = root / "dist"
-            archive, checksum = PACKAGE.make_package(runtime, output, "alpha-test.1", repo)
+            archive, checksum = PACKAGE.make_package(runtime, output, PACKAGE.DEFAULT_RELEASE_TAG, repo)
 
             with zipfile.ZipFile(archive) as package:
                 names = set(package.namelist())
@@ -90,10 +107,12 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 self.assertIn(prefix + "plugins/codec/libdemo_plugin.dll", names)
                 self.assertIn(prefix + "manifest/libvlc.json", names)
                 self.assertIn(prefix + "manifest/default.json", names)
+                self.assertFalse(any(name.startswith(prefix + "import-cache/") for name in names),
+                                 "standalone user source snapshots must not ship in release ZIPs")
                 self.assertIn(prefix + "tools/astcenc.exe", names)
                 self.assertIn(prefix + "tools/astcenc-LICENSE.txt", names)
                 self.assertIn(prefix + "assets/data/song/chart.json", names)
-                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"alpha-test.1\n")
+                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"v0.0.9\n")
                 self.assertEqual(package.read(prefix + "updateLog.txt"), b"release notes")
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/pack.json", names)
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/scripts/results.lua", names)
@@ -113,7 +132,11 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
 
             expected = sha256(archive.read_bytes()).hexdigest()
             self.assertEqual(checksum.read_text(encoding="ascii"), f"{expected}  {archive.name}\n")
-            self.assertTrue(archive.name.startswith("CammieEngine-alpha-test.1-windows-x64"))
+            self.assertEqual(archive.name, "CammieEngine-v0.0.9-windows-x64.zip")
+            self.assertEqual(
+                checksum.read_text(encoding="ascii"),
+                f"{expected}  CammieEngine-v0.0.9-windows-x64.zip\n",
+            )
 
     def test_package_requires_runtime_and_license_inputs(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
@@ -138,6 +161,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "required release notice"):
                 PACKAGE.make_package(runtime, root / "dist2", "alpha-test", repo)
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux shell or case-sensitive filesystem fixtures')
     def test_case_only_runtime_mirrors_are_safe_for_windows_updater(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             root = Path(temp)
@@ -185,6 +209,40 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "bundled results asset differs"):
                 PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
 
+    def test_requires_every_regular_bundled_results_source_file_in_runtime(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            (runtime / "assets/imported_mods/bundled-vslice-results/images/results.png").unlink()
+            with self.assertRaisesRegex(
+                    ValueError, "missing runtime files: images/results.png"):
+                PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+
+    def test_rejects_extra_regular_bundled_results_runtime_file(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            write(runtime / "assets/imported_mods/bundled-vslice-results/images/local-only.png")
+            with self.assertRaisesRegex(
+                    ValueError, "unexpected runtime files: images/local-only.png"):
+                PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+
+    def test_bundled_results_source_enumeration_ignores_symlinks(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            bundle = repo / "assets/imported_mods/bundled-vslice-results"
+            (bundle / "images/results-alias.png").symlink_to(bundle / "images/results.png")
+            outside = repo / "outside-results"
+            write(outside / "outside.png")
+            (bundle / "linked-directory").symlink_to(outside, target_is_directory=True)
+
+            archive, _ = PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+            with zipfile.ZipFile(archive) as package:
+                names = package.namelist()
+                self.assertFalse(any("results-alias.png" in name for name in names))
+                self.assertFalse(any("linked-directory" in name for name in names))
+
     def test_canonical_windows_build_has_linux_shared_pins_and_patches(self):
         batch = (ROOT / "run.bat").read_text(encoding="utf-8")
         for required in (
@@ -201,6 +259,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         ):
             self.assertIn(required, batch)
 
+    @unittest.skipIf(os.name == 'nt', 'requires Linux shell or case-sensitive filesystem fixtures')
     def test_one_command_linux_cross_release_includes_results_source(self):
         script = ROOT / "build-windows-release.sh"
         subprocess.run(["bash", "-n", str(script)], check=True)

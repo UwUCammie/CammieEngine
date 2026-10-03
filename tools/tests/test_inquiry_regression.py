@@ -4,12 +4,14 @@ Inquiry's hard chart intentionally contains gameplay data of its own, but some
 of its visual metadata is absent.  These tests exercise the generic resolver
 and the stage script without changing any chart data.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,10 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 def run_haxe(fixture: str) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory() as folder:
         path = Path(folder) / "InquiryRegressionTest.hx"
-        path.write_text(fixture)
+        path.write_text(fixture, newline='\n')
         return subprocess.run(
             [
-                str(ROOT / ".tools/haxe/haxe"),
+                *HAXE_COMMAND,
                 "-cp",
                 folder,
                 "-cp",

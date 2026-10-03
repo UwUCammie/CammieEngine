@@ -1,6 +1,8 @@
 """Codename note placement must survive the legacy primary-bank snap pass."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -42,11 +44,14 @@ class CodenameSnapGeometryTest(unittest.TestCase):
         strumline = (ROOT / "source/Strumline.hx").read_text()
 
         snap = block(play, "\t\tif (snapToStrumline) {")
-        codename_skip = snap.index("if (daNote.codenameInputLine != null)")
+        engine_owned_skip = snap.index(
+            "if (daNote.codenameInputLine != null || nightmareVisionScripts != null)")
         legacy_x_write = snap.index("daNote.x = strums.members[noteData].x;")
-        self.assertLess(codename_skip, legacy_x_write)
-        self.assertIn("\n\t\t\t\t\treturn;", snap[codename_skip:legacy_x_write])
-        snap_reassignment = snap[codename_skip:snap.index(";", legacy_x_write) + 1]
+        self.assertLess(engine_owned_skip, legacy_x_write)
+        self.assertIn("daNote.codenameInputLine != null", snap[engine_owned_skip:legacy_x_write])
+        self.assertIn("nightmareVisionScripts != null", snap[engine_owned_skip:legacy_x_write])
+        self.assertIn("\n\t\t\t\t\treturn;", snap[engine_owned_skip:legacy_x_write])
+        snap_reassignment = snap[engine_owned_skip:snap.index(";", legacy_x_write) + 1]
 
         lane = method(play, "codenameNoteLane").replace(
             "function codenameNoteLane", "static function codenameNoteLane")
@@ -102,6 +107,7 @@ class TestReceptor {
 class TestLine { public var members:Array<TestReceptor>; public function new(m:Array<TestReceptor>) members=m; }
 class Main {
   public var downscroll:Bool=false;
+  public var nightmareVisionScripts:Dynamic=null;
   public var playerStrums:TestLine;
   public var enemyStrums:TestLine;
   public function new() {}
@@ -141,9 +147,9 @@ SNAP_REASSIGNMENT
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "Main.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

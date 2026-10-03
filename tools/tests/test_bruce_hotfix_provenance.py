@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import unittest
@@ -29,8 +30,8 @@ class BruceHotfixProvenanceTest(unittest.TestCase):
             "notes": [{"sectionNotes": [[0, 0, 0], [250, 1, 0]]}],
         }
         runtime_song = {**source_song, "song": self.song.lower(), "stageID": "nullspace"}
-        self.source_chart.write_text(json.dumps({"song": source_song}), encoding="utf-8")
-        self.runtime_chart.write_text(json.dumps({"song": runtime_song}), encoding="utf-8")
+        self.source_chart.write_text(json.dumps({"song": source_song}), encoding="utf-8", newline='\n')
+        self.runtime_chart.write_text(json.dumps({"song": runtime_song}), encoding="utf-8", newline='\n')
 
         source_audio = self.source / "songs" / self.song
         runtime_audio = self.runtime / "assets" / "songs" / self.song.lower()
@@ -43,11 +44,11 @@ class BruceHotfixProvenanceTest(unittest.TestCase):
         self.owner = namespace_for(self.source, "Psych Engine")
         manifest = {"selectedRoot": self.owner,
                     "roots": [{"engine": "Psych Engine", "path": self.owner}]}
-        (self.runtime_chart.parent / "compatScripts.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (self.runtime_chart.parent / "compatScripts.json").write_text(json.dumps(manifest), encoding="utf-8", newline='\n')
         (self.source / "stages").mkdir(parents=True)
         (self.source / "stages" / "nullspace.json").write_text(
-            json.dumps({"defaultZoom": 0.9, "opponent": [100, 100]}), encoding="utf-8")
-        (self.source / "stages" / "nullspace.lua").write_text("function onCreate() close(true); end\n", encoding="utf-8")
+            json.dumps({"defaultZoom": 0.9, "opponent": [100, 100]}), encoding="utf-8", newline='\n')
+        (self.source / "stages" / "nullspace.lua").write_text("function onCreate() close(true); end\n", encoding="utf-8", newline='\n')
         owner_root = self.runtime / self.owner
         (owner_root / "stages").mkdir(parents=True)
         for name in ("nullspace.json", "nullspace.lua"):
@@ -75,7 +76,7 @@ class BruceHotfixProvenanceTest(unittest.TestCase):
         manifest_path.write_text(json.dumps({
             "selectedRoot": wrong,
             "roots": [{"engine": "Psych Engine", "path": wrong}],
-        }), encoding="utf-8")
+        }), encoding="utf-8", newline='\n')
         result = audit_row(self.row, self.source, self.runtime, self.owner)
         self.assertFalse(result["ownerManifestExact"])
         self.assertFalse(result["ownerProvenanceVerified"])
@@ -83,7 +84,7 @@ class BruceHotfixProvenanceTest(unittest.TestCase):
     def test_equal_row_count_with_changed_source_notes_is_not_provenance(self):
         chart = json.loads(self.runtime_chart.read_text(encoding="utf-8"))
         chart["song"]["notes"][0]["sectionNotes"][0][1] = 3
-        self.runtime_chart.write_text(json.dumps(chart), encoding="utf-8")
+        self.runtime_chart.write_text(json.dumps(chart), encoding="utf-8", newline='\n')
         result = audit_row(self.row, self.source, self.runtime, self.owner)
         self.assertEqual(result["sourceNoteRows"], result["runtimeNoteRows"])
         self.assertFalse(result["sourceNotePayloadMatch"])

@@ -1,5 +1,7 @@
 """Exercise the real script substate lifecycle with a small Flixel clock stub."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -74,9 +76,9 @@ class Main {
             for name, data in files.items():
                 target = folder / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(data)
+                target.write_text(data, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'), '-cp', str(folder), '--run', 'Main'],
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(folder), '--run', 'Main'],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -87,7 +89,7 @@ class Main {
         self.assertIn("callAllHScript('customSubstateUpdatePost', [state.customName, elapsed])", source)
         self.assertNotIn("callAllHScript('customSubstateUpdate', [compatCustomSubstateName", source)
         self.assertIn("case 'oncustomsubstateupdatepost' | 'customsubstateupdatepost'", bridge)
-        self.assertIn('if (compatCustomSubstateOpen) return;', source)
+        self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
         self.assertIn('super.openSubState(null);', source)
 

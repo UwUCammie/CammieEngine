@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import sys
 import tempfile
 import unittest
@@ -20,9 +21,9 @@ class RefreshPsychGirlfriendFieldsTest(unittest.TestCase):
             source, preview, runtime = (root / name for name in ('source', 'tmp/preview', 'runtime'))
             owner = 'assets/imported_mods/psych-fixture'
             (root / 'assets/data').mkdir(parents=True)
-            (root / 'assets/data/options.json').write_text('{}')
+            (root / 'assets/data/options.json').write_text('{}', newline='\n')
             (runtime / 'assets/data').mkdir(parents=True)
-            (runtime / 'assets/data/options.json').write_text('{}')
+            (runtime / 'assets/data/options.json').write_text('{}', newline='\n')
             rows = []
             for stem, source_gf, preview_gf in (
                     ('normal', 'gf_JUICY', 'gf_JUICY'), ('easy', None, None)):
@@ -39,11 +40,11 @@ class RefreshPsychGirlfriendFieldsTest(unittest.TestCase):
                 for target_root, payload in ((source, authored), (preview, fresh), (runtime, live)):
                     path = target_root / (f'data/example/example-{stem}.json' if target_root == source else relative)
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(json.dumps({'song': payload}))
+                    path.write_text(json.dumps({'song': payload}), newline='\n')
                     if target_root != source:
-                        (path.parent / 'compatScripts.json').write_text(json.dumps({'selectedRoot': owner}))
+                        (path.parent / 'compatScripts.json').write_text(json.dumps({'selectedRoot': owner}), newline='\n')
             matrix = root / 'matrix.json'
-            matrix.write_text(json.dumps({'rows': rows}))
+            matrix.write_text(json.dumps({'rows': rows}), newline='\n')
             with patch.object(refresh, 'ROOT', root), patch.object(refresh, 'TMP', root / 'tmp'):
                 planned = refresh.plan(source, preview, runtime, owner, matrix, 'fixture')
                 self.assertEqual(sum(row['changed'] for row in planned['charts']), 2)
@@ -57,14 +58,14 @@ class RefreshPsychGirlfriendFieldsTest(unittest.TestCase):
                 self.assertEqual(normal['notes'], [{'sectionNotes': []}])
                 self.assertTrue(receipt['optionsUnchanged'])
                 (runtime / 'assets/data/example/compatScripts.json').write_text(
-                    json.dumps({'selectedRoot': 'assets/imported_mods/other'}))
+                    json.dumps({'selectedRoot': 'assets/imported_mods/other'}), newline='\n')
                 with self.assertRaisesRegex(ValueError, 'selected owner mismatch'):
                     refresh.plan(source, preview, runtime, owner, matrix, 'fixture')
                 (runtime / 'assets/data/example/compatScripts.json').write_text(
-                    json.dumps({'selectedRoot': owner}))
+                    json.dumps({'selectedRoot': owner}), newline='\n')
                 wrong = refresh.chart(preview / rows[0]['runtimeChart'])
                 wrong['song']['stage'] = 'another-stage'
-                (preview / rows[0]['runtimeChart']).write_text(json.dumps(wrong))
+                (preview / rows[0]['runtimeChart']).write_text(json.dumps(wrong), newline='\n')
                 with self.assertRaisesRegex(ValueError, 'source actor or stage metadata differs'):
                     refresh.plan(source, preview, runtime, owner, matrix, 'fixture')
 

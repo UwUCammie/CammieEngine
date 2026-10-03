@@ -1029,6 +1029,14 @@ class HxcCompatRuntime {
 		catch (_:Dynamic) return 1;
 	}
 
+	public static function opponentVocalTracks(state:Dynamic):Array<Dynamic> {
+		var owner = state == null ? resolveActiveState() : state;
+		var method = runtimeField(owner, 'hxcOpponentVocalTracks');
+		if (method == null || !Reflect.isFunction(method)) return [];
+		var tracks:Dynamic = Reflect.callMethod(owner, method, []);
+		return Std.isOfType(tracks, Array) ? cast tracks : [];
+	}
+
 	/**
 		Optional native boundary for a menu module's BACK handling.  The imported
 		callback supplies only its bounded Freeplay view, save bag, and event; it
@@ -2892,7 +2900,7 @@ class HxcCompatRuntime {
 			return character;
 		copyDefaultCharacterPosition(character, replacement);
 		if (Reflect.hasField(replacement, 'isPlayer'))
-			Reflect.setField(replacement, 'isPlayer', slot == 'boyfriend');
+			Reflect.setProperty(replacement, 'isPlayer', slot == 'boyfriend');
 		// Rebind the existing wrapper scope before switchToChar calls its onAdd;
 		// otherwise the new native id would look dormant for one lifecycle pass.
 		rebindCharacterScopes(state, character, replacement);
@@ -2967,7 +2975,7 @@ class HxcCompatRuntime {
 			copyDefaultCharacterPosition(previous, character);
 
 		if (Reflect.hasField(character, 'isPlayer'))
-			Reflect.setField(character, 'isPlayer', slot == 'boyfriend');
+			Reflect.setProperty(character, 'isPlayer', slot == 'boyfriend');
 		// PlayState.switchToChar is the canonical native replacement path. It
 		// updates the real slot, icon, control flags, HXC character scope,
 		// health colours, and layer order in one place. Keep the reflective call

@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -105,9 +107,9 @@ class PsychModSettingCompatTest {
             global_owner = (owner_dir / "global-owner").relative_to(ROOT).as_posix()
             with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
                 (Path(folder) / "PsychModSettingCompatTest.hx").write_text(
-                    fixture.replace("OWNER_ROOT", owner).replace("GLOBAL_ROOT", global_owner))
+                    fixture.replace("OWNER_ROOT", owner).replace("GLOBAL_ROOT", global_owner), newline='\n')
                 result = subprocess.run(
-                    [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(TJSON),
+                    [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"), "-cp", str(TJSON),
                      "-main", "PsychModSettingCompatTest", "--interp"],
                     cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

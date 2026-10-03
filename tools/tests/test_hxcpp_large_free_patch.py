@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import tempfile
 import unittest
 

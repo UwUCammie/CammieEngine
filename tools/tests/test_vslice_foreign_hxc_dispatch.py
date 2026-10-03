@@ -6,6 +6,7 @@ legacy value-one slot.  This fixture feeds that exact representation through
 small fake runtime objects.  It intentionally does not build or launch the
 game and never writes to the mounted donor tree.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -13,6 +14,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,9 +95,9 @@ class VSliceForeignHxcDispatchTest(unittest.TestCase):
         main = self._fixture_source(stage_sources, module_source, events)
         with tempfile.TemporaryDirectory(prefix="foreign-hxc-dispatch-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "Main", "--interp"],
                 cwd=ROOT,

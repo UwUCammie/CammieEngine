@@ -1,6 +1,8 @@
 """Owner-scoped source planning for Codename Paths.getFrames references."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -23,15 +25,15 @@ class CodenameFrameAtlasAssetsTest(unittest.TestCase):
             (owner / "images/broken").mkdir(parents=True)
             (other / "images").mkdir(parents=True)
             (owner / "images/main/sonic.png").write_bytes(b"owner image")
-            (owner / "images/main/sonic.xml").write_text("<TextureAtlas/>")
+            (owner / "images/main/sonic.xml").write_text("<TextureAtlas/>", newline='\n')
             for page in (1, 2):
                 (owner / f"images/sheets/{page}.png").write_bytes(f"page {page}".encode())
-                (owner / f"images/sheets/{page}.xml").write_text(f"<TextureAtlas page='{page}'/>")
+                (owner / f"images/sheets/{page}.xml").write_text(f"<TextureAtlas page='{page}'/>", newline='\n')
             (owner / "images/packed.png").write_bytes(b"packed")
-            (owner / "images/packed.txt").write_text("frame rect\n")
-            (owner / "images/animated/Animation.json").write_text("{}")
+            (owner / "images/packed.txt").write_text("frame rect\n", newline='\n')
+            (owner / "images/animated/Animation.json").write_text("{}", newline='\n')
             (owner / "images/animated/spritemap1.png").write_bytes(b"animate page")
-            (owner / "images/animated/nested/spritemap1.json").write_text("{}")
+            (owner / "images/animated/nested/spritemap1.json").write_text("{}", newline='\n')
             (owner / "images/broken/1.png").write_bytes(b"incomplete page")
             (other / "images/escape.png").write_bytes(b"foreign image")
             try:
@@ -73,9 +75,9 @@ class CodenameFrameAtlasAssetsTest(unittest.TestCase):
   if (symlink.files.length != 0) throw "symlink asset escaped source root";
  }
 }"""
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main", str(owner)],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main", str(owner)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

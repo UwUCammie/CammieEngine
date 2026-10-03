@@ -1,6 +1,8 @@
 """Execute the authored Codename camera metadata parser in portable Haxe."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -138,11 +140,11 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             donor = folder / "donor"
             donor.mkdir()
-            (donor / "script.hx").write_text("authored script")
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+            (donor / "script.hx").write_text("authored script", newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                                      "-cp", str(folder), "--run", "Main", str(donor)], cwd=folder,
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -262,8 +264,8 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(source)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+            (folder / "Main.hx").write_text(source, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                                      "-cp", str(folder), "--run", "Main"], cwd=ROOT,
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

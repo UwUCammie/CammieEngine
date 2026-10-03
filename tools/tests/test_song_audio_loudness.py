@@ -1,5 +1,7 @@
 """Exercise the PCM loudness analyzer with the portable Haxe interpreter."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -124,9 +126,9 @@ class SongAudioLoudnessTestMain {
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "SongAudioLoudnessTestMain.hx").write_text(fixture)
+            (temp / "SongAudioLoudnessTestMain.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "SongAudioLoudnessTestMain", "--interp"],
                 cwd=ROOT,
                 capture_output=True,

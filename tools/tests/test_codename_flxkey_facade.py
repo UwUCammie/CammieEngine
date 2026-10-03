@@ -1,7 +1,9 @@
 """Codename's runtime FlxKey values match Flixel's enum abstract."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -21,7 +23,7 @@ class CodenameFlxKeyFacadeTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Fixture.hx").write_text(source)
+            (Path(folder) / "Fixture.hx").write_text(source, newline='\n')
             env = os.environ.copy()
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             env["PATH"] = os.pathsep.join((str(ROOT / ".tools/haxe"),
@@ -29,7 +31,7 @@ class CodenameFlxKeyFacadeTest(unittest.TestCase):
             env["LD_LIBRARY_PATH"] = os.pathsep.join((str(ROOT / ".tools/neko"),
                                                         env.get("LD_LIBRARY_PATH", "")))
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-cp", str(ROOT / "source"), "-lib", "flixel", "--run", "Fixture"],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=45,
             )

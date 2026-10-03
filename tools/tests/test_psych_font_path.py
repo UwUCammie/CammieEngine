@@ -1,6 +1,8 @@
 """Psych setTextFont resolves through Paths.font and import ownership."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -17,7 +19,7 @@ class PsychFontPathTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             work = Path(folder)
             (work / 'PsychFontPath.hx').write_text(
-                (ROOT / 'source/PsychFontPath.hx').read_text())
+                (ROOT / 'source/PsychFontPath.hx').read_text(), newline='\n')
             for root in ('first', 'second'):
                 (work / f'assets/imported_mods/{root}/fonts').mkdir(parents=True)
             (work / 'assets/imported_mods/first/fonts/Custom.ttf').write_bytes(b'first')
@@ -28,7 +30,7 @@ class PsychFontPathTest(unittest.TestCase):
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
 }
-''')
+''', newline='\n')
             (work / 'Probe.hx').write_text('''
 class Probe {
   static function eq(actual:String, wanted:String):Void
@@ -47,9 +49,9 @@ class Probe {
     eq(PsychFontPath.resolve(null, ''), null);
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

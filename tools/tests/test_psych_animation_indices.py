@@ -1,6 +1,8 @@
 """Psych numeric atlas animations must not dereference unnamed frames."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -76,9 +78,9 @@ class PsychAnimationIndicesFixture {{
 """
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "PsychAnimationIndicesFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "PsychAnimationIndicesFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "PsychAnimationIndicesFixture"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -150,9 +152,9 @@ class PsychAnimationCallSequenceFixture {{
 """
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "PsychAnimationCallSequenceFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "PsychAnimationCallSequenceFixture"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "PsychAnimationCallSequenceFixture"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

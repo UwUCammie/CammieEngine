@@ -1,9 +1,11 @@
 """Destination-side tests for the bounded Polymod overlay transaction."""
+from haxe_test_support import HAXE_COMMAND
 
 import hashlib
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -65,7 +67,7 @@ class Main {
     var contentRoot = mode == "takeover" ? root : Path.join([root, "assets"]);
     var mount = ImportOverlayRuntime.mount(root, contentRoot, "fixture", plan);
     if (mode == "rollback") {
-      var second = FileSystem.fullPath("assets") + "/data/second.txt";
+      var second = StringTools.replace(FileSystem.fullPath("assets"), "\\", "/") + "/data/second.txt";
       var collision = second + ".overlay-" + Md5.encode(second).substr(0, 12) + ".tmp";
       if (!FileSystem.exists(collision)) fail("collision not visible: " + collision);
     }
@@ -126,13 +128,13 @@ class ImportOverlayRuntimeTest(unittest.TestCase):
         TMP_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             folder_path = Path(folder)
-            (folder_path / "Main.hx").write_text(RUNTIME_FIXTURE)
+            (folder_path / "Main.hx").write_text(RUNTIME_FIXTURE, newline='\n')
             if prepare is not None:
                 prepare(folder_path)
             env = os.environ.copy()
             env["TMPDIR"] = str(TMP_ROOT)
             return subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder_path),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder_path),
                  "--run", "Main", mode, str(root)],
                 cwd=folder_path,
                 capture_output=True,
@@ -157,14 +159,14 @@ class ImportOverlayRuntimeTest(unittest.TestCase):
             (root / "mods/fixture/_append/data").mkdir(parents=True)
             (root / "mods/fixture/_replace/data").mkdir(parents=True)
             (root / "mods/fixture/_merge/data").mkdir(parents=True)
-            (root / "mods/modList.txt").write_text("fixture\n")
+            (root / "mods/modList.txt").write_text("fixture\n", newline='\n')
             (root / "assets/data/intro.txt").write_bytes(b"base\n")
-            (root / "assets/data/config.json").write_text('{"ownedChars":["bf"]}')
+            (root / "assets/data/config.json").write_text('{"ownedChars":["bf"]}', newline='\n')
             (root / "mods/fixture/_append/data/intro.txt").write_bytes(b"+tail")
             (root / "mods/fixture/_replace/data/replaced.bin").write_bytes(b"replacement")
             (root / "mods/fixture/_merge/data/config.json").write_text(
                 '[{"op":"add","path":"/ownedChars/-","value":"pico-doki"}]'
-            )
+            , newline='\n')
             before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
             result = self.run_fixture("synthetic", root)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -174,14 +176,14 @@ class ImportOverlayRuntimeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             root = Path(folder) / "donor"
             (root / "_replace/data").mkdir(parents=True)
-            (root / "_replace/data/first.txt").write_text("first")
-            (root / "_replace/data/second.txt").write_text("second")
+            (root / "_replace/data/first.txt").write_text("first", newline='\n')
+            (root / "_replace/data/second.txt").write_text("second", newline='\n')
 
             def prepare(workspace: Path):
                 destination = workspace / "assets/data/second.txt"
                 destination.parent.mkdir(parents=True)
                 digest = hashlib.md5(str(destination.resolve()).encode()).hexdigest()[:12]
-                (destination.parent / (destination.name + ".overlay-" + digest + ".tmp")).write_text("collision")
+                (destination.parent / (destination.name + ".overlay-" + digest + ".tmp")).write_text("collision", newline='\n')
 
             result = self.run_fixture("rollback", root, prepare)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -190,7 +192,7 @@ class ImportOverlayRuntimeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             root = Path(folder) / "donor"
             (root / "_replace").mkdir(parents=True)
-            (root / "_replace/outside.txt").write_text("outside")
+            (root / "_replace/outside.txt").write_text("outside", newline='\n')
             result = self.run_fixture("traversal", root)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -224,11 +226,11 @@ class ImportOverlayRuntimeTest(unittest.TestCase):
         # aggregate read-only audit.
         with tempfile.TemporaryDirectory(dir=TMP_ROOT) as folder:
             folder_path = Path(folder)
-            (folder_path / "Main.hx").write_text(RUNTIME_FIXTURE)
+            (folder_path / "Main.hx").write_text(RUNTIME_FIXTURE, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(TMP_ROOT)
             aggregate = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder_path),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder_path),
                  "--run", "Main", "aggregate", *(str(root) for root in roots)],
                 cwd=folder_path,
                 capture_output=True,

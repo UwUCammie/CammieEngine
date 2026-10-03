@@ -1,4 +1,5 @@
 """Focused HXC character death-overlay compatibility coverage."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,12 +28,12 @@ class HxcDeathOverlayTest(unittest.TestCase):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="hxc-death-overlay-", dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = str(ROOT / "tmp")
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp", str(ROOT / "source"),
                     "-cp", str(folder),
                     "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),

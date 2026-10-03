@@ -9,7 +9,10 @@ generated scripts whose source, destination and media hashes still match.
 import argparse
 import base64
 import difflib
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os

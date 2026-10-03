@@ -263,10 +263,16 @@ class SaveDataState extends MusicBeatState {
 		changeSelection();
 		if (curOptions.allowEditOptions)
 			swapMenus();
+		#if sys
+		add(new ImportRefreshProgressBar());
+		#end
 		super.create();
 	}
 	override function update(elapsed:Float) {
 		super.update(elapsed);
+		#if sys
+		if (ImportRefreshManager.browseTick().busy) return;
+		#end
 		#if (sys && windows)
 		pollUpdateCheck();
 		pollUpdateInstall();

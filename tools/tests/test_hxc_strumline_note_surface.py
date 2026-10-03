@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -38,9 +40,9 @@ class HxcStrumlineNoteSurfaceTest(unittest.TestCase):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             for name, body in files.items():
-                (Path(folder) / name).write_text(body)
+                (Path(folder) / name).write_text(body, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', folder,
                  '-main', 'Main', '--interp'], cwd=folder,
                 capture_output=True, text=True, timeout=30)
@@ -115,9 +117,9 @@ class HxcStrumlineNoteSurfaceTest(unittest.TestCase):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             for name, body in files.items():
-                (Path(folder) / name).write_text(body)
+                (Path(folder) / name).write_text(body, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', folder, '-main', 'Main', '--interp'],
                 cwd=folder, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

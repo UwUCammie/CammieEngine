@@ -6,6 +6,7 @@ pure discovery and translation classes are exercised by their own Haxe tests.
 """
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 

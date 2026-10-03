@@ -1,6 +1,8 @@
 """Psych mapped media stays with each selected compiled-stage owner."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -45,7 +47,7 @@ class PsychOwnerMediaImportTest(unittest.TestCase):
             work = Path(folder)
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
+            , newline='\n')
             donor_a = work / "donor-a/assets/base_game"
             donor_b = work / "donor-b/assets/base_game"
             shared_a = work / "donor-a/assets/shared"
@@ -55,7 +57,7 @@ class PsychOwnerMediaImportTest(unittest.TestCase):
             def write(root: Path, relative: str, value: str) -> Path:
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(value, encoding="utf-8")
+                path.write_text(value, encoding="utf-8", newline='\n')
                 return path
 
             source_a = write(donor_a, "weekend1/images/philly/Animation.json", "owner-a-stage")
@@ -131,17 +133,17 @@ class Main {
   check(repeat.failed == expectedEscapeRejects && repeat.copied == 0 && repeat.skipped >= 6,
    "repeat import must skip existing owner media");
  }
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
             (work / "CompatScriptManifest.hx").write_text(r'''class CompatScriptManifest {
  public static inline var ROOT_PREFIX:String = "assets/imported_mods";
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (work / "ImportSettings.hx").write_text(r'''import haxe.io.Path;
 using StringTools;
 class ImportSettings {
  public static function normalizeSourcePath(path:String):String
   return path == null ? "" : Path.normalize(StringTools.replace(StringTools.trim(path), "\\", "/"));
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
             (work / "ModuleFunctions.hx").write_text(r'''import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
@@ -159,10 +161,10 @@ class ModuleFunctions {
  static function importWorkCancelled():Bool return false;
  static function reportImportProgress(phase:String, current:String, completed:Int = 0, total:Int = 0,
      copied:Int = 0, skipped:Int = 0, failed:Int = 0, work:Int = 0):Void {}
-}''', encoding="utf-8")
+}''', encoding="utf-8", newline='\n')
 
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(work), "--run", "Main",
                  str(donor_a), str(donor_b), str(shared_a), "1" if has_escape_link else "0"],
                 cwd=work, capture_output=True, text=True, timeout=60,
             )

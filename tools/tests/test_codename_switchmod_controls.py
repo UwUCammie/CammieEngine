@@ -1,5 +1,7 @@
 """Pin Codename Switch Mod defaults, user remaps, and source input dispatch."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -17,7 +19,7 @@ class CodenameSwitchModControlsTest(unittest.TestCase):
  public var SWITCHMOD:Bool;
  public function new(value:Bool) SWITCHMOD=value;
 }
-""")
+""", newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
  static function check(ok:Bool,message:String):Void if(!ok) throw message;
  static function main():Void {
@@ -45,10 +47,10 @@ class CodenameSwitchModControlsTest(unittest.TestCase):
   check(!CodenameControlsCompat.saveSwitchModKeyboardBindings(null,[71]),
    "missing save data should fail without mutation");
  }
-}''')
-            (base / "CodenameControlsCompat.hx").write_text(source)
+}''', newline='\n')
+            (base / "CodenameControlsCompat.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", directory, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", directory, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

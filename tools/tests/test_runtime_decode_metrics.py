@@ -1,6 +1,8 @@
 """Smoke-only bitmap timing retains cache semantics and bounded output."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import subprocess
 import tempfile
@@ -80,9 +82,9 @@ class Main {
             temporary = Path(folder)
             for name in ("RuntimeDecodeMetrics.hx", "DiskBitmapCache.hx"):
                 shutil.copy(ROOT / "source" / name, temporary / name)
-            (temporary / "Main.hx").write_text(fixture)
+            (temporary / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -184,9 +186,9 @@ class Main {
 }
 """
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=folder, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -1,5 +1,7 @@
 """Execute scoped path resolution with lightweight rendering boundary stubs."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -18,39 +20,39 @@ class CodenamePathsTest(unittest.TestCase):
             for folder in (own, other):
                 (folder / 'images').mkdir(parents=True)
                 (folder / 'assets/shared/data').mkdir(parents=True)
-            (own / 'assets/shared/data/chart.json').write_text('owner A chart')
-            (other / 'assets/shared/data/chart.json').write_text('owner B chart')
+            (own / 'assets/shared/data/chart.json').write_text('owner A chart', newline='\n')
+            (other / 'assets/shared/data/chart.json').write_text('owner B chart', newline='\n')
             (own / 'assets/shared/escape').symlink_to(other / 'assets/shared')
             (own / 'videos').mkdir()
             (own / 'fonts').mkdir()
             (own / 'fonts/aller.ttf').write_bytes(b'font fixture')
             (own / 'videos/clip.mp4').write_bytes(b'video fixture')
             (own / 'songs/tutorial').mkdir(parents=True)
-            (own / 'songs/tutorial/lyrics.json').write_text('{"stuff":[]}')
+            (own / 'songs/tutorial/lyrics.json').write_text('{"stuff":[]}', newline='\n')
             (own / 'videos/escape.mp4').symlink_to(other / 'images/missing.png')
             (own / 'models').mkdir()
-            (own / 'models/plane.obj').write_text('o plane\n')
+            (own / 'models/plane.obj').write_text('o plane\n', newline='\n')
             (own / 'shaders/base').mkdir(parents=True)
-            (own / 'shaders/base/postprocess.frag').write_text('uniform vec4 uCameraBounds;')
-            (own / 'shaders/rain.frag').write_text('varying vec2 screenCoord;')
-            (own / 'shaders/rain.vert').write_text('varying vec2 screenCoord; void main() {}')
-            (own / 'shaders/plain.frag').write_text('void main() {}')
+            (own / 'shaders/base/postprocess.frag').write_text('uniform vec4 uCameraBounds;', newline='\n')
+            (own / 'shaders/rain.frag').write_text('varying vec2 screenCoord;', newline='\n')
+            (own / 'shaders/rain.vert').write_text('varying vec2 screenCoord; void main() {}', newline='\n')
+            (own / 'shaders/plain.frag').write_text('void main() {}', newline='\n')
             (own / 'sounds/stickersounds/keys').mkdir(parents=True)
             (own / 'sounds/stickersounds/keys/pop.ogg').write_bytes(b'owned sound')
             (own / 'sounds/stickersounds/escape').symlink_to(other / 'images')
             (own / 'sounds/stickersounds/keys/foreign.ogg').symlink_to(other / 'images/missing.png')
             (other / 'shaders').mkdir()
-            (other / 'shaders/plain.vert').write_text('foreign vertex')
+            (other / 'shaders/plain.vert').write_text('foreign vertex', newline='\n')
             (own / 'shaders/plain.vert').symlink_to(other / 'shaders/plain.vert')
             for name in ('plain.png', 'sparrow.png', 'sparrow.xml', 'packer.png', 'packer.txt'):
-                (own / 'images' / name).write_text(name)
-            (other / 'images/missing.png').write_text('other owner')
+                (own / 'images' / name).write_text(name, newline='\n')
+            (other / 'images/missing.png').write_text('other owner', newline='\n')
             (own / 'images/escape.png').symlink_to(other / 'images/missing.png')
-            (own / 'images/ambiguous.png').write_text('lowercase match')
-            (own / 'images/Ambiguous.PNG').write_text('mixed-case match')
+            (own / 'images/ambiguous.png').write_text('lowercase match', newline='\n')
+            (own / 'images/Ambiguous.PNG').write_text('mixed-case match', newline='\n')
             (own / 'images/animate').mkdir()
-            (own / 'images/animate/Animation.json').write_text('{}')
-            (own / 'images/animate/spritemap1.json').write_text('{}')
+            (own / 'images/animate/Animation.json').write_text('{}', newline='\n')
+            (own / 'images/animate/spritemap1.json').write_text('{}', newline='\n')
             (own / 'images/animate/spritemap1.png').write_bytes(b'animate page')
             # A complete authored atlas lives under BF/, while a partial
             # lowercase bf/ tree exists. Full-path case lookup must backtrack
@@ -59,16 +61,16 @@ class CodenamePathsTest(unittest.TestCase):
             ice_upper = own / 'images/characters/BF/wolf'
             ice_upper.mkdir(parents=True)
             (ice_upper / 'BF_Ice.png').write_bytes(b'ice image')
-            (ice_upper / 'BF_Ice.xml').write_text('<TextureAtlas>ice</TextureAtlas>')
+            (ice_upper / 'BF_Ice.xml').write_text('<TextureAtlas>ice</TextureAtlas>', newline='\n')
             ice_lower = own / 'images/characters/bf/wolf'
             ice_lower.mkdir(parents=True)
-            (ice_lower / 'partial.xml').write_text('<TextureAtlas/>')
+            (ice_lower / 'partial.xml').write_text('<TextureAtlas/>', newline='\n')
             (own / 'images/stages/tricky').mkdir(parents=True)
             (own / 'images/stages/tricky/tricky_fog.png').write_bytes(b'tricky fog')
             for page in range(1, 18):
                 (own / f'images/pages/{page}.png').parent.mkdir(parents=True, exist_ok=True)
                 (own / f'images/pages/{page}.png').write_bytes(f'page {page}'.encode())
-                (own / f'images/pages/{page}.xml').write_text('<TextureAtlas/>')
+                (own / f'images/pages/{page}.xml').write_text('<TextureAtlas/>', newline='\n')
             stubs = {
                 'FNFAssets.hx': '''class FNFAssets {
  public static function exists(p:String):Bool return sys.FileSystem.exists(p);
@@ -117,7 +119,7 @@ class FlxImageFrame { public static function fromImage(image:Dynamic):FlxFramesC
             for name, source in stubs.items():
                 dest = base / name
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(source)
+                dest.write_text(source, newline='\n')
             (base / 'Main.hx').write_text('''class Main {
  static function rejects(f:Void->Dynamic, part:String):Void {
   var error = '';
@@ -208,8 +210,8 @@ class FlxImageFrame { public static function fromImage(image:Dynamic):FlxFramesC
    throw 'exact-case full path must take precedence';
   rejects(function() return paths.file('images/Characters/BF/Wolf/BF_Ice.xml'), 'Ambiguous selected-owner asset');
  }
-}'''.replace('OWN', json.dumps(str(own))).replace('OTHER', json.dumps(str(other))))
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+}'''.replace('OWN', json.dumps(str(own))).replace('OTHER', json.dumps(str(other))), newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(base), '--run', 'Main'], cwd=ROOT,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

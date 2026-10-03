@@ -1,9 +1,11 @@
 """Virtual reads apply retained Polymod overlays without touching files."""
+from haxe_test_support import HAXE_COMMAND
 
 import base64
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -99,11 +101,11 @@ class ImportOverlayResolverTest(unittest.TestCase):
     def run_fixture(self, workspace: Path, *args: str) -> subprocess.CompletedProcess:
         folder = workspace / "fixture"
         folder.mkdir(exist_ok=True)
-        (folder / "Main.hx").write_text(FIXTURE)
+        (folder / "Main.hx").write_text(FIXTURE, newline='\n')
         env = os.environ.copy()
         env["TMPDIR"] = str(TMP_ROOT)
         return subprocess.run(
-            [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder), "--run", "Main", *args],
+            [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder), "--run", "Main", *args],
             cwd=workspace,
             capture_output=True,
             text=True,
@@ -115,7 +117,7 @@ class ImportOverlayResolverTest(unittest.TestCase):
     def write_manifest(workspace: Path, overlays):
         path = workspace / "assets/imported_mods/compatOverlays.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"version": 1, "roots": [], "overlays": overlays}))
+        path.write_text(json.dumps({"version": 1, "roots": [], "overlays": overlays}), newline='\n')
         return path
 
     @staticmethod
@@ -138,10 +140,10 @@ class ImportOverlayResolverTest(unittest.TestCase):
     def make_workspace(self):
         workspace = Path(tempfile.mkdtemp(dir=TMP_ROOT))
         (workspace / "assets/data").mkdir(parents=True)
-        (workspace / "assets/data/introText.txt").write_text("base\n")
+        (workspace / "assets/data/introText.txt").write_text("base\n", newline='\n')
         (workspace / "assets/data/replaced.bin").write_bytes(b"old")
-        (workspace / "assets/data/config.json").write_text('{"ownedChars":["bf"]}')
-        (workspace / "assets/data/other.txt").write_text("other")
+        (workspace / "assets/data/config.json").write_text('{"ownedChars":["bf"]}', newline='\n')
+        (workspace / "assets/data/other.txt").write_text("other", newline='\n')
         return workspace
 
     def test_existing_targets_apply_append_replace_merge_and_deduplicate(self):
@@ -175,7 +177,7 @@ class ImportOverlayResolverTest(unittest.TestCase):
         workspace = self.make_workspace()
         path = workspace / "assets/imported_mods/compatOverlays.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("{not-json")
+        path.write_text("{not-json", newline='\n')
         result = self.run_fixture(workspace, "malformed")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("overlay-manifest-invalid", result.stdout + result.stderr)
@@ -198,7 +200,7 @@ class ImportOverlayResolverTest(unittest.TestCase):
         self.write_manifest(workspace, [
             self.record("_append", "textAppend", "data/introText.txt", "+old", "cache/_append/old")
         ])
-        (workspace / "assets/data/introText.txt").write_text("base\n")
+        (workspace / "assets/data/introText.txt").write_text("base\n", newline='\n')
         self.write_manifest(workspace, [
             self.record("_append", "textAppend", "data/introText.txt", "+old", "cache/_append/old")
         ])
@@ -215,7 +217,7 @@ class ImportOverlayResolverTest(unittest.TestCase):
 
     def test_explicit_plan_order_wins_for_noncommutative_operations(self):
         workspace = self.make_workspace()
-        (workspace / "assets/data/introText.txt").write_text("base\n")
+        (workspace / "assets/data/introText.txt").write_text("base\n", newline='\n')
         self.write_manifest(workspace, [
             # Deliberately reverse provenance order: the ordinal is the source
             # planner order and must produce replacement, then first, then

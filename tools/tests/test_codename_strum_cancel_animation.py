@@ -1,5 +1,7 @@
 """Pin Codename's cancellable receptor entrance animation behavior."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -53,8 +55,8 @@ class CodenameStrumCancelAnimationTest(unittest.TestCase):
             scratch = Path(temp)
             (scratch / "CodenameGameEvent.hx").write_text(
                 (ROOT / "source/CodenameGameEvent.hx").read_text()
-            )
-            (scratch / "CodenameStrumCreationEvent.hx").write_text(event_source)
+            , newline='\n')
+            (scratch / "CodenameStrumCreationEvent.hx").write_text(event_source, newline='\n')
             (scratch / "Strumline.hx").write_text(
                 """import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
@@ -71,7 +73,7 @@ class Strumline {
                 " @:keep public function cancelCodenameIntroAnimation():Void "
                 "codenameIntroAnimationCancelled=true;\n"
                 "}\n"
-            )
+            , newline='\n')
             (scratch / "flixel/tweens").mkdir(parents=True)
             (scratch / "flixel/tweens/FlxTween.hx").write_text(
                 """package flixel.tweens;
@@ -83,10 +85,10 @@ class FlxTween {
  }
 }
 """
-            )
+            , newline='\n')
             (scratch / "flixel/tweens/FlxEase.hx").write_text(
                 "package flixel.tweens; class FlxEase { public static var circOut:Dynamic={}; }\n"
-            )
+            , newline='\n')
             (scratch / "Main.hx").write_text(
                 """import flixel.tweens.FlxTween;
 class Main {
@@ -115,9 +117,9 @@ class Main {
  }
 }
 """
-            )
+            , newline='\n')
             subprocess.run(
-                [str(HAXE), "-cp", str(scratch), "--interp", "-main", "Main"],
+                [*HAXE_COMMAND, "-cp", str(scratch), "--interp", "-main", "Main"],
                 cwd=ROOT,
                 check=True,
                 text=True,

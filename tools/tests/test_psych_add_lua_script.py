@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -172,8 +174,8 @@ class PsychAddLuaScriptTest(unittest.TestCase):
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             for name, source in files.items():
-                (Path(folder) / name).write_text(source)
-            run = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+                (Path(folder) / name).write_text(source, newline='\n')
+            run = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                   '-main', 'PsychLoadTest', '--interp'], cwd=ROOT,
                                  capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

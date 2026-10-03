@@ -5,7 +5,9 @@ were dispatched every frame (Hedgehog Stew piled camera zoom until the view was
 unusable) and the Image Flash overlay was screen-sized, so it only covered the
 screen at zoom == 1 (2k22's white flash vanished while defaultCamZoom was < 1).
 """
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -83,8 +85,8 @@ class Probe {
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / 'Probe.hx').write_text(fixture)
-            result = subprocess.run([str(HAXE), '-cp', tmp, '--main', 'Probe', '--interp'],
+            (Path(tmp) / 'Probe.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp, '--main', 'Probe', '--interp'],
                                     cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -150,8 +152,8 @@ class Test {
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / 'Test.hx').write_text(fixture)
-            result = subprocess.run([str(HAXE), '-cp', tmp, '--main', 'Test', '--interp'],
+            (Path(tmp) / 'Test.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp, '--main', 'Test', '--interp'],
                                     cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

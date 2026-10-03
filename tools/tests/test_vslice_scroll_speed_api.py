@@ -1,6 +1,8 @@
 """Exercise the production V-Slice strumline speed methods without launching audio."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -50,9 +52,9 @@ __SETTER__
 '''.replace("__GETTER__", getter).replace("__SETTER__", setter)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -123,9 +125,9 @@ __TWEEN__
 '''.replace("__STRUM_METHODS__", methods).replace("__CANCEL__", cancel).replace("__TWEEN__", tween)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "PlayState.hx").write_text(fixture)
+            (folder / "PlayState.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "PlayState"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--run", "PlayState"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -175,9 +177,9 @@ __ZOOM__
 '''.replace("__ZOOM__", zoom)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

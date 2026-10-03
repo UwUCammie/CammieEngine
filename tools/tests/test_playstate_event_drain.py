@@ -1,5 +1,7 @@
 """Pin chart-event delivery at audio completion and across callback re-entry."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -119,9 +121,9 @@ class Main {
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             directory = Path(work)
-            (directory / 'Main.hx').write_text(fixture)
+            (directory / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(directory),
+                [*HAXE_COMMAND, '-cp', str(directory),
                  '--run', 'Main'], cwd=ROOT, text=True, capture_output=True,
                 timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

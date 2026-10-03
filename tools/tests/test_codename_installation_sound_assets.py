@@ -1,15 +1,19 @@
 """Selected-owner Codename sound fallback is bounded to its own installation."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class CodenameInstallationSoundAssetsTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'fixture requires distinct case-only filenames')
     def test_owner_precedence_installation_fallback_and_rejections(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             base = Path(work)
@@ -71,9 +75,9 @@ class Main {
   var unsupported = CodenameInstallationSoundAssets.resolve(Sys.args()[1], "menu/scroll");
   require(unsupported.status == "unsupported-layout", "installation fallback requires a mods/<owner> layout");
  }
-}''')
+}''', newline='\n')
             p = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
                  str(owner), str(loose_owner)],
                 cwd=ROOT,
                 text=True,

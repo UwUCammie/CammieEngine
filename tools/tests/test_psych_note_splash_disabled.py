@@ -1,6 +1,8 @@
 """Psych per-note splash data gates the shared native splash routes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -69,6 +71,7 @@ class Note {
   public var noteSplashData:Dynamic = {disabled: false};
   public var isSustainNote = false;
   public var noteData = 2;
+  public var sourcePlayfieldIndex = -1;
   public var hitHealth:Null<Float> = null;
   public var missHealth:Null<Float> = null;
   public function new() {}
@@ -101,6 +104,7 @@ class PsychNoteSplashFixture {
 __PROPERTY_METHODS__
 __SHOULD_SHOW__
   function getNoteStrumline(note:Note):FakeStrumline return strums;
+  function nightmareVisionSkinForField(field:Int):Dynamic return null;
 __HAZARD_SPLASH__
   static function main():Void {
     var state = new PsychNoteSplashFixture();
@@ -153,9 +157,9 @@ __HAZARD_SPLASH__
             "__HAZARD_SPLASH__", hazard_splash
         )
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychNoteSplashFixture.hx").write_text(fixture)
+            Path(folder, "PsychNoteSplashFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "PsychNoteSplashFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychNoteSplashFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True, text=True,
             )

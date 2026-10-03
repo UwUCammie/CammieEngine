@@ -37,6 +37,8 @@ class Main extends Sprite {
 		#if sys
 		if (RuntimeImportSmokeHarness.enabled())
 			initialState = RuntimeImportSmokeState;
+		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().returnFreeplay)
+			initialState = RuntimeSmokeState;
 		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().chartEditor)
 			initialState = RuntimeSmokeChartingState;
 		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().freeplay)

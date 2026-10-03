@@ -1,6 +1,8 @@
 """Psych skin imports retain selected-owner sheets and existing destination bytes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -85,8 +87,8 @@ class SkinImportFixture {
       if (diagnostic.indexOf('sheet not found') >= 0) throw 'false missing sibling diagnostic';
   }
 }
-''')
-            command = [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+''', newline='\n')
+            command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(fixture), "-main", "SkinImportFixture", "--interp"]
             result = subprocess.run(command, cwd=fixture, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

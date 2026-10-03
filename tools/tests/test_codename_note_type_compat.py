@@ -1,6 +1,8 @@
 """Codename's built-in no-animation note behavior remains engine-level."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -43,10 +45,10 @@ class CodenameNoteTypeCompatTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "CodenameNoteTypeCompat.hx").write_text(adapter)
-            (temp / "Main.hx").write_text(main)
+            (temp / "CodenameNoteTypeCompat.hx").write_text(adapter, newline='\n')
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

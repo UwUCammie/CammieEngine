@@ -1,6 +1,8 @@
 """Psych character trails use the atlas of the selected native visual."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -17,12 +19,12 @@ class PsychCharacterImageTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             work = Path(folder)
             (work / 'PsychCharacterImage.hx').write_text(
-                (ROOT / 'source/PsychCharacterImage.hx').read_text())
+                (ROOT / 'source/PsychCharacterImage.hx').read_text(), newline='\n')
             for name in ('first', 'second', 'actual'):
                 atlas = work / 'assets/images/custom_chars' / name
                 atlas.mkdir(parents=True)
                 (atlas / 'char.png').write_bytes(b'png')
-                (atlas / 'char.xml').write_text('<TextureAtlas/>')
+                (atlas / 'char.xml').write_text('<TextureAtlas/>', newline='\n')
             missing_xml = work / 'assets/images/custom_chars/missing_xml'
             missing_xml.mkdir(parents=True)
             (missing_xml / 'char.png').write_bytes(b'png')
@@ -30,7 +32,7 @@ class PsychCharacterImageTest(unittest.TestCase):
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);
 }
-''')
+''', newline='\n')
             (work / 'Probe.hx').write_text('''
 class Probe {
   static function eq(actual:String, wanted:String):Void
@@ -48,9 +50,9 @@ class Probe {
     eq(PsychCharacterImage.resolve(null, ''), '');
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(work), '-main', 'Probe', '--interp'],
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Probe', '--interp'],
                 cwd=work, capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

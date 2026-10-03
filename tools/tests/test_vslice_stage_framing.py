@@ -21,9 +21,11 @@ constants stacked on top of the authored ones.
 """
 
 from __future__ import annotations
+from haxe_test_support import HAXE_COMMAND
 
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -45,10 +47,10 @@ class VSliceStageFramingTest(unittest.TestCase):
             (fixture / "images/characters").mkdir(parents=True)
             (fixture / "images/icons").mkdir(parents=True)
             (fixture / "images/characters/framehero.png").write_bytes(b"png")
-            (fixture / "images/characters/framehero.xml").write_text("<TextureAtlas/>")
+            (fixture / "images/characters/framehero.xml").write_text("<TextureAtlas/>", newline='\n')
             (fixture / "images/icons/icon-framehero.png").write_bytes(b"icon")
             character_path = fixture / "character.json"
-            character_path.write_text(json.dumps(character))
+            character_path.write_text(json.dumps(character), newline='\n')
             output_path = fixture / "out.txt"
             main = f'''import haxe.Json;
 class Main {{
@@ -60,9 +62,9 @@ class Main {{
 }}
 '''
             with tempfile.TemporaryDirectory() as build:
-                Path(build, "Main.hx").write_text(main)
+                Path(build, "Main.hx").write_text(main, newline='\n')
                 result = subprocess.run(
-                    [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                    [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                      "-cp", build, "-main", "Main", "--interp"],
                     cwd=ROOT, capture_output=True, text=True, timeout=300)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -76,7 +78,7 @@ class Main {{
                 asset.parent.mkdir(parents=True, exist_ok=True)
                 asset.write_bytes(content)
             stage_path = fixture / "stage.json"
-            stage_path.write_text(json.dumps(stage))
+            stage_path.write_text(json.dumps(stage), newline='\n')
             output_path = fixture / "out.txt"
             main = f'''import haxe.Json;
 class Main {{
@@ -88,9 +90,9 @@ class Main {{
 }}
 '''
             with tempfile.TemporaryDirectory() as build:
-                Path(build, "Main.hx").write_text(main)
+                Path(build, "Main.hx").write_text(main, newline='\n')
                 result = subprocess.run(
-                    [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
+                    [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(HSCRIPT),
                      "-cp", build, "-main", "Main", "--interp"],
                     cwd=ROOT, capture_output=True, text=True, timeout=300)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -171,9 +173,9 @@ class Main {
 '''.replace("SCRIPT0", haxe_string(snippets[0])).replace("SCRIPT1", haxe_string(snippets[1]))
         source = source.replace("NAME0", names[0]).replace("NAME1", names[1])
         with tempfile.TemporaryDirectory() as build:
-            Path(build, "Main.hx").write_text(source)
+            Path(build, "Main.hx").write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(HSCRIPT), "-cp", build, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", build, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

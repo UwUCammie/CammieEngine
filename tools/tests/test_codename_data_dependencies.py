@@ -1,5 +1,7 @@
 """Bounded Codename font/data dependency preservation without a media-tree scan."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -19,8 +21,8 @@ class CodenameDataDependenciesTest(unittest.TestCase):
   if (keys.indexOf('stages/tricky/tricky_fog') < 0) throw Std.string(keys);
   if (keys.indexOf('/absolute') < 0) throw 'absolute key was hidden from safety check';
  }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(base), '--run', 'Main'], cwd=ROOT,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -39,8 +41,8 @@ class CodenameDataDependenciesTest(unittest.TestCase):
   if (seen.get('font') != 'face.ttf' || seen.get('json') != 'events/timing'
       || seen.get('xml') != 'layout' || seen.get('txt') != 'credits') throw 'literal paths';
  }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(base), '--run', 'Main'], cwd=ROOT,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -56,8 +58,8 @@ class CodenameDataDependenciesTest(unittest.TestCase):
   if (fonts.length != 2 || fonts.indexOf('Technology.ttf') < 0
       || fonts.indexOf('851MkPOP.ttf') < 0) throw Std.string(fonts);
  }
-}''')
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+}''', newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(base), '--run', 'Main'], cwd=ROOT,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

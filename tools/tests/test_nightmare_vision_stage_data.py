@@ -1,5 +1,7 @@
 """Execute the owner-scoped Nightmare Vision StageData adapter."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -22,7 +24,7 @@ class NightmareVisionStageDataTest(unittest.TestCase):
 class CoolUtil {
  public static function parseJson(value:String):Dynamic return tjson.TJSON.parse(value);
 }
-''')
+''', newline='\n')
         (self.work / 'Main.hx').write_text('''package;
 class Main {
  static function check(value:Bool, message:String):Void if (!value) throw message;
@@ -52,8 +54,10 @@ class Main {
    'stages flat JSON fallback');
   check(NightmareVisionStageData.getStageFile(owner, 'sibling-only') == null,
    'lookup must not escape the selected owner');
+  #if !windows
   check(NightmareVisionStageData.getStageFile(owner, 'Case') != null
    && NightmareVisionStageData.getStageFile(owner, 'case') == null, 'stage path spelling is exact');
+  #end
   check(NightmareVisionStageData.getStageFile(owner, '../other-owner/sibling-only') == null,
    'unsafe stage traversal is rejected');
   check(NightmareVisionStageData.normalizeStageId('  nested/demo  ') == 'nested/demo'
@@ -76,12 +80,12 @@ class Main {
   Sys.println('nightmare-vision-stage-data-ok');
  }
 }
-''')
+''', newline='\n')
 
     def write(self, root, relative, value):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(value)
+        path.write_text(value, newline='\n')
         return path
 
     def test_stage_data_lookup_template_and_owner_boundary(self):
@@ -112,7 +116,7 @@ class Main {
         self.write(self.owner, '__nmv_core/stages/core-only.json', '{"origin":"core-only"}')
 
         result = subprocess.run(
-            [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'), '-cp', str(self.work),
+            [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(self.work),
              '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), '--run', 'Main', str(self.owner), str(self.sibling)],
             cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

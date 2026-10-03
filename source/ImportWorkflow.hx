@@ -17,8 +17,8 @@ import PsychSourceStageCompat.PsychCompiledStageSource;
 using StringTools;
 
 #if sys
-import sys.FileSystem;
-import sys.io.File;
+import ImportFileSystem as FileSystem;
+import ImportFile as File;
 import sys.thread.Thread;
 import sys.thread.Mutex;
 #end
@@ -188,6 +188,18 @@ class ImportWorkflow {
 		?packageNames:Map<String, String>):ImportImportJob {
 		return beginImport(sourcePath, scan, importType, packageNames);
 	}
+
+	#if sys
+	/** Conversion is shared by manual imports and retained-source refreshes. */
+	public static function convertRetainedSource(source:String, scan:ImportScanResult,
+		names:Map<String,String>):SongImportBatchResult {
+		if (scan != null && scan.songsFound == 0 && scan.globalPacksToImport != null
+			&& scan.globalPacksToImport > 0)
+			return ImportImportJob.importChartFreePsychGlobalPacks(scan);
+		return ModuleFunctions.importSongsFromPath(source, scan == null ? ImportEngine.AUTO : scan.importType,
+			scan == null ? null : scan.overlayMounts, names);
+	}
+	#end
 
 	public static function scanNow(sourcePath:String, ?importType:String):ImportScanResult {
 		#if sys
@@ -2958,12 +2970,8 @@ class ImportImportJob {
 					return isCancelRequested();
 				});
 			try {
-				if (scan != null && scan.songsFound == 0 && scan.globalPacksToImport != null
-					&& scan.globalPacksToImport > 0)
-					imported = importChartFreePsychGlobalPacks();
-				else
-					imported = ModuleFunctions.importSongsFromPath(this.sourcePath, this.importType,
-						scan == null ? null : scan.overlayMounts, this.packageNames);
+				imported = ImportRefreshManager.importOnce(this.sourcePath, this.importType, this.scan,
+					this.packageNames, ImportWorkflow.convertRetainedSource, isCancelRequested, acceptProgress);
 			} catch (caught:Dynamic) {
 				failure = Std.string(caught);
 			}
@@ -2993,7 +3001,7 @@ class ImportImportJob {
 	}
 
 	#if sys
-	function importChartFreePsychGlobalPacks():SongImportBatchResult {
+	public static function importChartFreePsychGlobalPacks(scan:ImportScanResult):SongImportBatchResult {
 		var result:SongImportBatchResult = {
 			found:0,
 			imported:0,
@@ -3019,10 +3027,10 @@ class ImportImportJob {
 		}
 		var packIndex = 0;
 		for (root in candidates) {
-			if (isCancelRequested())
+			if (ModuleFunctions.importWorkCancelled())
 				break;
 			packIndex++;
-			acceptProgress({phase:'psych-global-pack', current:root.path,
+			ModuleFunctions.reportImportProgressPayload({phase:'psych-global-pack', current:root.path,
 				completed:packIndex - 1, total:candidates.length, copied:0, skipped:0, failed:0, work:0});
 			var importedPack = PsychGlobalPackImporter.importPack(root.root, root.contentRoot);
 			if (!importedPack.eligible) {
@@ -3032,7 +3040,7 @@ class ImportImportJob {
 				if (importedPack.errors != null)
 					for (message in importedPack.errors)
 						result.errors.push(message);
-				acceptProgress({phase:'psych-global-pack', current:root.path,
+				ModuleFunctions.reportImportProgressPayload({phase:'psych-global-pack', current:root.path,
 					completed:packIndex, total:candidates.length, copied:0, skipped:0, failed:1, work:1});
 				continue;
 			}
@@ -3045,7 +3053,7 @@ class ImportImportJob {
 			if (importedPack.errors != null)
 				for (message in importedPack.errors)
 					result.errors.push(message);
-			acceptProgress({phase:'psych-global-pack', current:root.path,
+			ModuleFunctions.reportImportProgressPayload({phase:'psych-global-pack', current:root.path,
 				completed:packIndex, total:candidates.length,
 				copied:importedPack.copied, skipped:importedPack.skipped,
 				failed:importedPack.failed, work:1});

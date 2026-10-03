@@ -77,7 +77,8 @@ class ResultsCharacterCompat {
 
 	#if sys
 	static function within(path:String, owner:String):Bool {
-		try return FileSystem.fullPath(path).startsWith(FileSystem.fullPath(owner) + '/')
+		try return StringTools.replace(FileSystem.fullPath(path), '\\', '/')
+			.startsWith(StringTools.replace(FileSystem.fullPath(owner), '\\', '/') + '/')
 		catch (_:Dynamic) return false;
 	}
 

@@ -1,17 +1,21 @@
 """The Imported Mods catalog exposes only owner-scoped state scripts."""
+from haxe_test_support import HAXE_COMMAND
 
 import ast
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
+import os
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class CodenameModLaunchPlanTest(unittest.TestCase):
+    @unittest.skipIf(not (ROOT / 'tmp/fnas-owner-ui-preview/run_owner_menu.py').is_file(), 'private FNAS runner fixture is unavailable')
     def test_private_fnas_runner_holds_keys_across_input_polls(self):
         runner = (ROOT / "tmp/fnas-owner-ui-preview/run_owner_menu.py").read_text()
         tree = ast.parse(runner)
@@ -39,6 +43,7 @@ class CodenameModLaunchPlanTest(unittest.TestCase):
         self.assertEqual(calls[1][0][-1], "shift+i")
         self.assertEqual(sleeps, [.25])
 
+    @unittest.skipIf(not (ROOT / 'tmp/fnas-owner-ui-preview/run_owner_menu.py').is_file(), 'private FNAS runner fixture is unavailable')
     def test_private_fnas_runner_uses_flattened_launch_plan_order(self):
         runner = (ROOT / "tmp/fnas-owner-ui-preview/run_owner_menu.py").read_text()
         tree = ast.parse(runner)
@@ -54,7 +59,7 @@ class CodenameModLaunchPlanTest(unittest.TestCase):
                 states = runtime / "assets/imported_mods" / owner / "data/states"
                 states.mkdir(parents=True)
                 for script in scripts:
-                    (states / f"{script}.hx").write_text("function create() {}")
+                    (states / f"{script}.hx").write_text("function create() {}", newline='\n')
             rows = namespace["launch_rows"]({"entries": [
                 {"root": "assets/imported_mods/missing", "label": "Absent", "states": [
                     "data/states/Hidden.hx"]},
@@ -70,6 +75,7 @@ class CodenameModLaunchPlanTest(unittest.TestCase):
                     and row["relativePath"] == "data/states/FnasMainState.hx"]
         self.assertEqual(selected, [0])
 
+    @unittest.skipIf(not (ROOT / 'tmp/fnas-owner-ui-preview/run_owner_menu.py').is_file(), 'private FNAS runner fixture is unavailable')
     def test_private_fnas_runner_waits_for_visible_title_flash_and_menu_labels(self):
         runner = (ROOT / "tmp/fnas-owner-ui-preview/run_owner_menu.py").read_text()
         tree = ast.parse(runner)
@@ -113,8 +119,8 @@ class CodenameModLaunchPlanTest(unittest.TestCase):
                 for name in names:
                     path = base / "assets/imported_mods" / root / "data/states" / (name + ".hx")
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text("function create() {}")
-            (base / "assets/imported_mods/alpha/data/states/not-script.txt").write_text("ignored")
+                    path.write_text("function create() {}", newline='\n')
+            (base / "assets/imported_mods/alpha/data/states/not-script.txt").write_text("ignored", newline='\n')
             catalog = {
                 "version": 1,
                 "entries": [
@@ -126,7 +132,7 @@ class CodenameModLaunchPlanTest(unittest.TestCase):
             }
             import json
 
-            (base / "catalog.json").write_text(json.dumps(catalog))
+            (base / "catalog.json").write_text(json.dumps(catalog), newline='\n')
             (base / "Main.hx").write_text('''
 class Main {
  static function main():Void {
@@ -138,9 +144,9 @@ class Main {
   if (plan.diagnostics.length!=1 || plan.diagnostics[0].indexOf("Missing.hx")<0
       || plan.diagnostics[0].indexOf("missing")<0) throw "missing-state diagnostic";
  }
-}''')
+}''', newline='\n')
             process = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main"],
                 cwd=base,
                 text=True,
                 capture_output=True,

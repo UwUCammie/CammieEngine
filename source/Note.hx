@@ -316,7 +316,64 @@ class Note extends DynamicSprite {
 	public var crossFade:Bool = false;
 	public var altNum:Int = 0;
 	public var isPixel:Bool = false;
+	/** Authored NMV type behavior remains separate from Psych ignoreNote. */
+	@:keep public var spawned:Bool = false;
+	public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool};
+	public var nightmareVisionHitDispatched:Bool = false;
+	public var nightmareVisionMissDispatched:Bool = false;
+	public var nightmareVisionSustainDuration:Float = 0;
+	public var nightmareVisionSustainEnd:Bool = false;
+	public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
+	public var nightmareVisionRenderer:nightmarevision.modchart.NightmareVisionModchartRenderer;
+	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+	@:keep public var canMiss(get, set):Bool;
+	function get_canMiss():Bool return nightmareVisionTypeRuntime != null && nightmareVisionTypeRuntime.api.canMiss(this);
+	function set_canMiss(value:Bool):Bool {
+		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
+		return nightmareVisionTypeRuntime.api.setCanMiss(this, value);
+	}
+	@:keep public var rgbEnabled(get, set):Bool;
+	function get_rgbEnabled():Bool return nightmareVisionTypeRuntime == null
+		? nightmareVisionRGB != null && nightmareVisionRGB.enabled : nightmareVisionTypeRuntime.api.getRgbEnabled(this);
+	function set_rgbEnabled(value:Bool):Bool {
+		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
+		return nightmareVisionTypeRuntime.api.setRgbEnabled(this, value);
+	}
+	@:keep public var rgbGraphics(get, never):NightmareVisionRGBGraphics;
+	function get_rgbGraphics():NightmareVisionRGBGraphics return nightmareVisionRGB;
+	@:keep public function setCustomColor(colors:Array<Dynamic>):Void {
+		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
+		nightmareVisionTypeRuntime.api.setCustomColor(this, colors);
+	}
+	@:keep public function reloadNote(prefix:String = '', texture:String = '', suffix:String = ''):Void {
+		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
+		nightmareVisionTypeRuntime.reloadNote(this, prefix, texture, suffix);
+	}
 	public var normalSize:Float = 0.7;
+	// Historical Nightmare Vision note types use `defScale`; the current source
+	// exposes the same mutable baseline as `baseScale`. Keep one point behind
+	// both names so post-skin note scripts and the modchart renderer share it.
+	var nightmareVisionBaseScalePoint:FlxPoint;
+	@:keep public var baseScale(get, never):FlxPoint;
+	@:keep public var defScale(get, set):FlxPoint;
+	function get_baseScale():FlxPoint {
+		if (nightmareVisionBaseScalePoint == null) {
+			var currentScale = scale;
+			nightmareVisionBaseScalePoint = FlxPoint.get(
+				currentScale == null ? 1 : currentScale.x,
+				currentScale == null ? 1 : currentScale.y);
+		}
+		return nightmareVisionBaseScalePoint;
+	}
+	function set_defScale(value:FlxPoint):FlxPoint {
+		if (value == null) throw 'Nightmare Vision baseScale cannot be null';
+		var point = get_baseScale();
+		if (value != point) point.set(value.x, value.y);
+		return point;
+	}
+	function get_defScale():FlxPoint {
+		return get_baseScale();
+	}
 	public static var swagWidth:Float = 160 * 0.7;
 	public static var NOTE_AMOUNT:Int = 4;
 	public static var specialNoteJson:Null<Array<NoteInfo>>;
@@ -1168,6 +1225,17 @@ class Note extends DynamicSprite {
 	}
 
 	override public function destroy():Void {
+		if (nightmareVisionTypeRuntime != null) nightmareVisionTypeRuntime.releaseNote(this);
+		nightmareVisionTypeRuntime = null;
+		if (nightmareVisionRenderer != null) nightmareVisionRenderer.release(this);
+		nightmareVisionRenderer = null;
+		if (nightmareVisionTailState != null) nightmareVisionTailState.notes.remove(this);
+		nightmareVisionTailState = null;
+		nightmareVisionRGB = null;
+		// FunkinSprite does not pool its baseScale point in destroy(). Scripts
+		// may retain the point, so do not return it to FlxPoint's pool.
+		nightmareVisionBaseScalePoint = null;
+
 		if (codenameFrameOffset != null && codenameFrameOffsetOwned) {
 			codenameFrameOffset.put();
 		}
@@ -1444,6 +1512,7 @@ class Note extends DynamicSprite {
 	public inline function isAutoPlayed():Bool {
 		if (codenameInputLine != null)
 			return funnyMode || codenameInputLine.cpu || codenameInputLine.botplay;
+		if (nightmareVisionTypeRuntime != null) return sourcePlayfieldAutoPlay;
 		return funnyMode || sourcePlayfieldAutoPlay || (!duoMode && (mustPress ? oppMode : !oppMode));
 	}
 
@@ -1452,9 +1521,11 @@ class Note extends DynamicSprite {
 		return sourcePlayfieldPlayerControlled == null ? mustPress : sourcePlayfieldPlayerControlled;
 
 	public function canAutoHit():Bool {
+		if (nightmareVisionTypeRuntime != null)
+			return !ignoreNote && (!isPlayerControlled() || (!canMiss && !hitCausesMiss));
 		// The opponent may opt into hazard animations; BF must still avoid them.
 		if (mustPress)
-			return !ignoreNote && !blockHit && !hitCausesMiss && !avoidAutoHit && !dontCountNote
+			return !canMiss && !ignoreNote && !blockHit && !hitCausesMiss && !avoidAutoHit && !dontCountNote
 				&& !mineNote && !nukeNote && getHealth('sick') >= 0;
 		return !dontCountNote || aiShouldHit;
 	}
@@ -1470,6 +1541,7 @@ class Note extends DynamicSprite {
 
 	override function update(elapsed:Float) {
 		super.update(elapsed);
+		if (nightmareVisionTypeRuntime != null) nightmareVisionTypeRuntime.update(this, elapsed);
 		// if we are player one and it's bf's note or we are duo mode or we are player two and it's p2's note
 		// and it isn't demo mode
 		if (!isAutoPlayed()) {

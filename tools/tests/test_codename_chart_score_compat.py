@@ -1,5 +1,7 @@
 """Codename Chart.parse, score records, and aliased import compatibility."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -12,9 +14,9 @@ HAXE = ROOT / ".tools/haxe/haxe"
 def run_haxe(source: str) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
         main = Path(folder) / "Main.hx"
-        main.write_text(source)
+        main.write_text(source, newline='\n')
         return subprocess.run(
-            [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+            [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
              "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
              "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "--run", "Main"],
             cwd=ROOT, capture_output=True, text=True, timeout=30)

@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -20,9 +22,9 @@ def set_property_switch_body():
 class SetPropertyTest(unittest.TestCase):
     def _run(self, fixture: str):
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'SetPropertyFixture.hx').write_text(fixture)
+            (Path(folder) / 'SetPropertyFixture.hx').write_text(fixture, newline='\n')
             return subprocess.run(
-                [str(HAXE), '-cp', folder, '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
+                [*HAXE_COMMAND, '-cp', folder, '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                  '-main', 'SetPropertyFixture', '--interp'],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
 

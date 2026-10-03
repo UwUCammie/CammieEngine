@@ -1,5 +1,7 @@
 """Codename's static PlayState view stays live inside HScript."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -25,10 +27,10 @@ class CodenamePlayStateFacadeTest(unittest.TestCase):
  public static function __loadSong(song:String,?difficulty:String):Void loaded=song+":"+difficulty;
  public function codenameCharterIdentity():Dynamic return {variation:null};
  public function new() {}
-}''')
+}''', newline='\n')
             (base / 'CodenameSongView.hx').write_text('''class CodenameSongView {
  public var name:String; public function new(name:String) this.name=name;
-}''')
+}''', newline='\n')
             (base / 'Main.hx').write_text('''class Main {
  static function main():Void {
   var song=new CodenameSongView("first");
@@ -44,9 +46,9 @@ class CodenamePlayStateFacadeTest(unittest.TestCase):
   interp.execute(parser.parseString("if (PlayState.SONG.name != 'replacement') throw 'stale song'; PlayState.resetSongInfos();"));
   if(PlayState.isStoryMode || PlayState.resets!=1) throw "story completion reset";
  }
-}''')
+}''', newline='\n')
             result = subprocess.run([
-                str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                *HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                 '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', work,
                 '--run', 'Main'
             ], cwd=ROOT, text=True, capture_output=True)

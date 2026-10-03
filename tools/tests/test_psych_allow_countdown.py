@@ -1,6 +1,8 @@
 """Regression coverage for Psych countdown defaults and script-local gates."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -21,10 +23,10 @@ class PsychAllowCountdownTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PsychAllowCountdownCompat.hx"
-            path.write_text(source)
+            path.write_text(source, newline='\n')
             return subprocess.run(
                 [
-                    str(HAXE),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-cp",

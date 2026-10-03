@@ -1,4 +1,5 @@
 """Psych v1 absolute note lanes stay separate from legacy section-relative lanes."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import subprocess
@@ -6,6 +7,7 @@ import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 from zipfile import ZipFile
 
 
@@ -111,7 +113,7 @@ class ChartNoteOwnershipTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             directory = Path(folder)
-            (directory / 'ChartNoteOwnershipFixture.hx').write_text(fixture)
+            (directory / 'ChartNoteOwnershipFixture.hx').write_text(fixture, newline='\n')
             paths = []
             source = dict(source_charts())
             if source:
@@ -122,7 +124,7 @@ class ChartNoteOwnershipTest(unittest.TestCase):
                         'FNF-PsychEngine-main/assets/base_game/shared/data/ugh/' + name])
                     paths.append(str(path))
             result = subprocess.run(
-                [str(HAXE), '-cp', str(directory), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(directory), '-cp', str(ROOT / 'source'),
                  '--run', 'ChartNoteOwnershipFixture', *paths],
                 cwd=directory, capture_output=True, text=True, timeout=30,
             )
@@ -185,9 +187,9 @@ class ChartNoteOwnershipTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'NoteFormatMerge.hx').write_text(fixture)
+            (Path(folder) / 'NoteFormatMerge.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', folder, '-main', 'NoteFormatMerge', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'NoteFormatMerge', '--interp'],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

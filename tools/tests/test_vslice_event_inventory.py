@@ -9,6 +9,7 @@ import json
 import unittest
 from collections import Counter
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,13 +17,13 @@ DONOR = Path("/run/media/cammie/External Storage/FNF-Example-Mods")
 
 
 EXPECTED_COUNTS = {
-    "FocusCamera": 1664,
+    "FocusCamera": 1710,
     "Zoom Rabbit": 443,
-    "ZoomCamera": 390,
+    "ZoomCamera": 403,
     "lightsBeat": 118,
     "ChangeCharacterCL": 74,
     "AddCamZoomPsych": 67,
-    "PlayAnimation": 47,
+    "PlayAnimation": 63,
     "EyePopup": 43,
     "SetCameraBop": 37,
     "spotlight": 30,
@@ -56,6 +57,12 @@ EXPECTED_COUNTS = {
     # Vs Tricky joined the mounted corpus with its own event vocabulary.
     "tricky.ExpurgationGremlinEvent": 1,
     "tricky.ExpurgationSignEvent": 47,
+    # Singstar Challenges PC joined the mounted corpus with Virgin Rage.
+    "redMenaceAlpha": 1,
+    "redMenaceAlphaOut": 1,
+    "screenShake": 2,
+    "setSuffix": 1,
+    "zoomCameraPsych": 3,
 }
 
 
@@ -101,7 +108,7 @@ class VSliceEventInventoryTest(unittest.TestCase):
         if not pairs:
             self.skipTest("mounted V-Slice corpus is unavailable")
 
-        self.assertEqual(len(pairs), 58)
+        self.assertEqual(len(pairs), 59)
         counts = Counter()
         payload_keys = {}
         for chart_path, _metadata_path in pairs:
@@ -111,9 +118,9 @@ class VSliceEventInventoryTest(unittest.TestCase):
                 counts[name] += 1
                 payload_keys.setdefault(name, set()).update((event.get("v") or {}).keys())
 
-        self.assertEqual(sum(counts.values()), 3042)
+        self.assertEqual(sum(counts.values()), 3125)
         self.assertEqual(dict(counts), EXPECTED_COUNTS)
-        self.assertEqual(len(counts), 39)
+        self.assertEqual(len(counts), 44)
 
         foreign_names = set().union(*STAGE_HXC_ONLY.values())
         self.assertEqual(len(foreign_names), 16)
@@ -125,9 +132,11 @@ class VSliceEventInventoryTest(unittest.TestCase):
             "extra-events-addLyricsEvent", "ScrollSpeed", "SetHealthIcon",
             "PlayVideo", "Flash Camera", "extra-events-cameraFadeEvent",
             "tricky.ExpurgationGremlinEvent", "tricky.ExpurgationSignEvent",
+            "redMenaceAlpha", "redMenaceAlphaOut", "screenShake", "setSuffix",
+            "zoomCameraPsych",
         })
         self.assertEqual(sum(counts[name] for name in foreign_names), 172)
-        self.assertEqual(sum(counts.values()) - sum(counts[name] for name in foreign_names), 2870)
+        self.assertEqual(sum(counts.values()) - sum(counts[name] for name in foreign_names), 2953)
 
         for name in foreign_names:
             self.assertEqual(payload_keys[name], {"value1", "value2"}, name)

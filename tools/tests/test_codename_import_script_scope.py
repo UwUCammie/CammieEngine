@@ -1,6 +1,8 @@
 """Imported Codename HScript must retain the caller's classless field scope."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -42,9 +44,9 @@ class CodenameImportScriptScopeTest(unittest.TestCase):
                 " if (update == null || update() != false || check == null || check() != 7)\n"
                 "  throw 'nested import lost caller or imported fields';\n"
                 "}}\n"
-            )
+            , newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"), "-cp", str(base), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
             )

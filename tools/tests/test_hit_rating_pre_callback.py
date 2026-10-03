@@ -1,6 +1,8 @@
 """Native note judgement is ready before imported pre-hit callbacks run."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -32,6 +34,10 @@ class Note {
  public function canAutoHit():Bool return autoHit;
 }
 class Conductor { public static var songPosition:Float = 100; }
+class RuntimeSmokeHarness {
+ public static var delay:Float = 0;
+ public static function playerHitDelayMs():Float return delay;
+}
 class SmokeHitFixture {
  var startingSong:Bool = false;
  var paused:Bool = false;
@@ -58,13 +64,23 @@ class SmokeHitFixture {
   state.paused = false; state.runtimeSmokePlayerHits();
   if (state.hits.length != 2 || state.hits[0] != first || state.hits[1] != second)
    throw 'smoke hit filtering or mutation snapshot failed';
+  state.notes.members = [new Note()];
+  RuntimeSmokeHarness.delay = 185;
+  state.runtimeSmokePlayerHits();
+  if (state.hits.length != 2) throw 'delayed hit fired immediately';
+  Conductor.songPosition = 284.999;
+  state.runtimeSmokePlayerHits();
+  if (state.hits.length != 2) throw 'delayed hit fired before due time';
+  Conductor.songPosition = 285;
+  state.runtimeSmokePlayerHits();
+  if (state.hits.length != 3) throw 'delayed hit did not reach the normal route';
  }
 }
 '''
-        with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "SmokeHitFixture.hx").write_text(fixture)
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            (Path(folder) / "SmokeHitFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "SmokeHitFixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
             )
@@ -112,11 +128,11 @@ class HitRatingFixture {
  }
 }
 '''
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "HitRatingFixture.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "HitRatingFixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True,
             )

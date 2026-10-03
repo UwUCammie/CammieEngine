@@ -1,4 +1,5 @@
 """Synthetic semantic coverage for the HXC/native song-event owner boundary."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -6,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +16,7 @@ DONOR = Path("/run/media/cammie/External Storage/FNF-Example-Mods")
 
 
 class VSliceEventOwnershipTest(unittest.TestCase):
+    @unittest.skipIf(not (DONOR / 'v-slice/HatsuneMiku-ProjectFunkin-V-Slice/scripts/events/Zoom Rabbit.hxc').is_file(), 'mounted event donor fixtures are unavailable')
     def test_authored_zoom_event_runs_through_generic_hxc_handler(self):
         if not HAXE.is_file():
             self.skipTest("portable Haxe interpreter is unavailable")
@@ -76,9 +79,9 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-zoom-owner-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "Main", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
@@ -87,6 +90,7 @@ class Main {{
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("authored-zoom-event-ok", result.stdout)
 
+    @unittest.skipIf(not (DONOR / 'v-slice/HatsuneMiku-ProjectFunkin-V-Slice/scripts/events/Zoom Rabbit.hxc').is_file(), 'mounted event donor fixtures are unavailable')
     def test_mounted_overlap_audit_identifies_only_direct_flash_as_native_duplicate(self):
         concert = (DONOR / "v-slice/HatsuneMiku-ProjectFunkin-V-Slice/scripts/stages/concert.hxc").read_text()
         miku = (DONOR / "v-slice/HatsuneMiku-ProjectFunkin-V-Slice/scripts/stages/miku.hxc").read_text()
@@ -160,9 +164,9 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory(prefix="hxc-event-owner-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            (temp / "Main.hx").write_text(main)
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-main", "Main", "--interp"],
                 cwd=ROOT,

@@ -1,6 +1,8 @@
 """Codename indexed `for` loops retain array and map key/value semantics."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -22,16 +24,16 @@ class CodenameIndexedLoopTest(unittest.TestCase):
  public static var SONG:Dynamic;
  public function new() {}
  public function codenameCharterIdentity():Dynamic return null;
-}''')
+}''', newline='\n')
             (base / 'ChartingState.hx').write_text('''class ChartingState {
  public function new() {}
  public function create():Void {}
  public function destroy():Void {}
-}''')
-            (base / 'Conductor.hx').write_text('''class Conductor { public static var songPosition:Float=0; }''')
+}''', newline='\n')
+            (base / 'Conductor.hx').write_text('''class Conductor { public static var songPosition:Float=0; }''', newline='\n')
             flxg = base / 'flixel/FlxG.hx'
             flxg.parent.mkdir(parents=True)
-            flxg.write_text('''package flixel; class FlxG { public static var state:Dynamic; }''')
+            flxg.write_text('''package flixel; class FlxG { public static var state:Dynamic; }''', newline='\n')
             (base / 'Main.hx').write_text('''import sys.io.File;
 class Main {
  static function main():Void {
@@ -44,9 +46,9 @@ class Main {
    throw 'source map iteration was not preserved';
  }
 }
-''')
+''', newline='\n')
             process = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(base), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                  '-cp', str(ROOT / '.haxelib/hscript-ex/git/src'), '--run',
                  'Main', str(DONOR_DEBUG)], cwd=ROOT, text=True,
@@ -92,9 +94,9 @@ class Main {
    throw 'unbraced expression was silently accepted';
  }
 }
-''')
+''', newline='\n')
             process = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                  '-cp', str(base), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                  '-cp', str(ROOT / '.haxelib/hscript-ex/git/src'), '--run', 'Main'],
                 cwd=ROOT, text=True, capture_output=True, timeout=30)

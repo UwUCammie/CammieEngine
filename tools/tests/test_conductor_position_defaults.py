@@ -1,6 +1,8 @@
 """Psych song-position reads stay numeric before chart playback initializes."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -36,9 +38,9 @@ class Fixture {
 """.replace("__SONG_POSITION__", declaration)
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Fixture.hx").write_text(fixture)
+            (Path(folder) / "Fixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "Fixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Fixture", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

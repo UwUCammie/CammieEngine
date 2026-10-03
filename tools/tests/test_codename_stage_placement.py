@@ -1,6 +1,8 @@
 """Execute Codename's pure stage placement model against upstream cases."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -367,8 +369,8 @@ class Main {
     def _run(self, source):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             path = Path(work)
-            (path / "Main.hx").write_text(source)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+            (path / "Main.hx").write_text(source, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                                      "-cp", str(path), "--run", "Main"], cwd=ROOT,
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

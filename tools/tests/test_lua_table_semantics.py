@@ -1,6 +1,8 @@
 """Translated Lua keeps Lua table/truth rules without changing native HScript."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -16,9 +18,9 @@ HSCRIPT = ROOT / ".haxelib/hscript/2,5,0"
 class LuaTableSemanticsTest(unittest.TestCase):
     def run_haxe(self, source):
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Fixture.hx").write_text(source)
+            (Path(folder) / "Fixture.hx").write_text(source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(HSCRIPT), "-main", "Fixture", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
             )
@@ -245,9 +247,9 @@ class Fixture {
         # Sys.args is passed after --interp, so keep the donor path outside the
         # temporary class and use Haxe's --run entry point below.
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "Fixture.hx").write_text(fixture)
+            (Path(folder) / "Fixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(HSCRIPT), "--run", "Fixture", str(source_path)],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
             )

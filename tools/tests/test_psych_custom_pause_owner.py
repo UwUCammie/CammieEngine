@@ -1,5 +1,7 @@
 """Execute production custom-pause owner methods with deferred substate opens."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -31,6 +33,8 @@ class Main {
  var curCamPos:Dynamic;var curCamZoom:Dynamic;var camHUD:Dynamic;var boyfriend=new Actor();
  var vSliceScrollTweens:Array<Dynamic>=[];
  var behavior=0;var nativeOpens=0;var nmvStop=false;
+ var sourceBatch:Dynamic = {};var postDispatches=0;
+ function dispatchNightmareVisionUpdatePost(batch:Dynamic){postDispatches++;}
  function callNightmareVision(name:String,args:Array<Dynamic>):Int return nmvStop ? 1 : 0;
  public function new(){}
  function setAllHaxeVar(s:String,v:Dynamic){}
@@ -48,14 +52,14 @@ class Main {
   var s=new Main();s.nmvStop=true;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate,'NMV cancellation changed pause state');
   s=new Main();s.run();check(s.nativeOpens==1&&s.paused&&!s.persistentUpdate,'native pause');
   s=new Main();s.behavior=1;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate,'consumed press');
-  s=new Main();s.behavior=2;s.run();check(s.nativeOpens==0&&s.paused&&!s.persistentUpdate&&s.persistentDraw,'custom pause overwritten');
-  s=new Main();s.behavior=3;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate&&s.persistentDraw,'nonpausing overlay hidden');
+  s=new Main();s.behavior=2;s.run();check(s.nativeOpens==0&&s.paused&&!s.persistentUpdate&&s.persistentDraw,'custom pause overwritten');check(s.postDispatches==1,'custom pause lost paired source post');
+  s=new Main();s.behavior=3;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate&&s.persistentDraw,'nonpausing overlay hidden');check(s.postDispatches==1,'overlay lost paired source post');
  }
 }
 '''.replace('GATE', gate)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '--run', 'Main'], cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -143,8 +147,8 @@ class Main extends HostBase {
 }
 '''.replace('METHODS', methods)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'Main.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '--run', 'Main'], cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

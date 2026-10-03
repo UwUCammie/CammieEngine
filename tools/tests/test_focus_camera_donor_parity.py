@@ -8,7 +8,9 @@ Constants.DEFAULT_CAMERA_FOLLOW_RATE (0.04). At this song's event cadence the
 old behavior left the framing up to ~200 screen pixels away from the donor at
 matched moments - characters appeared pushed aside relative to the stage.
 """
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -87,9 +89,9 @@ class Test {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / 'Test.hx').write_text(fixture)
+            (Path(folder) / 'Test.hx').write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), '-cp', folder, '-main', 'Test', '--interp'],
+                [*HAXE_COMMAND, '-cp', folder, '-main', 'Test', '--interp'],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

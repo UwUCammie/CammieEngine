@@ -1,5 +1,7 @@
 """Exercise the real camera adapter's automatic-follow and explicit-snap gates."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -22,7 +24,7 @@ class FlxCamera {
  public function update(elapsed:Float):Void if(target!=null){updateFollow();updateLerp(elapsed);}
  public function snapToTarget():Void {updateFollow();snaps++;}
 }
-''')
+''', newline='\n')
             (p/'Main.hx').write_text('''class Main {
  static function check(ok:Bool,label:String):Void if(!ok)throw label;
  static function main():Void {
@@ -40,8 +42,8 @@ class FlxCamera {
   check(camera.follows==3 && camera.lerps==2 && camera.scroll==70 && camera.target==other,"script retarget lost");
  }
 }
-''')
-            result=subprocess.run([str(ROOT/'.tools/haxe/haxe'),'-cp',str(ROOT/'source'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
+''', newline='\n')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(p),'--run','Main'],cwd=ROOT,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,8 @@
 """Centered source receptors retain geometry through resize and reset."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -77,9 +79,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:
             root = Path(temporary)
-            (root / "Main.hx").write_text(fixture)
+            (root / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"), "-cp", str(root),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(root),
                  "--run", "Main"], cwd=ROOT, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

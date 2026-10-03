@@ -1,6 +1,8 @@
 """Distinct same-name packages survive while duplicate source views collapse."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -152,10 +154,10 @@ class Main {{
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
             fixture_path = temp_path / "Main.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             donor = temp_path / "donor"
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(donor)],
                 cwd=folder,
                 capture_output=True,
                 text=True,

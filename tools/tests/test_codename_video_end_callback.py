@@ -1,6 +1,8 @@
 """Exercise owner-scoped HScript video completion with a synthetic event."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -94,9 +96,9 @@ class Main {
   check(gameCamera.visible && !intro.visible && intro.destroyed,
    'video completion callback must hide and destroy the intro before restoring gameplay camera');
  }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib" / "hscript" / "2,5,0"),
                  "-cp", str(ROOT / ".haxelib" / "hscript-ex" / "git" / "src"),
                  "--run", "Main"],

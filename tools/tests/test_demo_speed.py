@@ -1,5 +1,7 @@
 """Run the production demo controls and note-spawning loop with renderer stubs."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -41,6 +43,10 @@ class FNFAssets {
 }
 class Note {
  public var strumTime:Float; public var alive:Bool=true; public var active:Bool=true; public var visible:Bool=true;
+ public var spawned:Bool=false;
+ public var sourcePlayfieldIndex:Int=0; public var isSustainNote:Bool=false;
+ public var frameWidth:Float=10; public var frameHeight:Float=10; public var clipRect:Dynamic=null;
+ public var nightmareVisionRenderer:Dynamic=null;
  public function new(t:Float) {strumTime=t;}
  public function kill():Void alive=false;
  public function destroy():Void {}
@@ -56,6 +62,10 @@ class NightmareVisionScriptGroup {
  public static inline var CONTINUE_FUNC:Int=1;
  public static inline var STOP_FUNC:Int=2;
 }
+class NightmareVisionNoteTypeRuntime {
+ public static function noteTypeOf(_note:Dynamic):Dynamic return null;
+}
+class FlxRect {public function new(_x:Float,_y:Float,_width:Float,_height:Float) {}}
 // PlayState's production runtime smoke hook is intentionally inert in this
 // renderer-free extraction fixture. Keep the call in the extracted update
 // loop so the fixture continues to pin the real production method body.
@@ -69,6 +79,7 @@ class Group {
  public function new() {}
  public function add(note:Note) {members.push(note);}
 }
+class StrumGroup {public var members:Array<Dynamic>=[]; public function new() {}}
 class DemoTest {
  var demoMode=true; var demoPlaybackRate:Float=1;
  var demoSpeedTxt={text:""}; var vocals=new Audio();
@@ -84,6 +95,8 @@ class DemoTest {
  var noteSpawnLookahead:Float=1500;
  var compatCustomSubstateName:String=''; var compatCustomSubstateOpen:Bool=false;
  var legacyOffsetDiagnosticEmitted:Bool=false;
+ var nightmareVisionNoteTypes:Dynamic=null; var nightmareVisionScripts:Dynamic=null;
+ var nightmareContext:Dynamic=null; var playerStrums:StrumGroup=new StrumGroup(); var enemyStrums:StrumGroup=new StrumGroup();
  var SONG:SongStub=null;
  var haxeVars:Map<String,Dynamic>=new Map();
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
@@ -95,7 +108,10 @@ class DemoTest {
  // the production group's default continue result.
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
   return NightmareVisionScriptGroup.CONTINUE_FUNC;
+ function processNightmareVisionHolds():Void {}
  function currentSongDataPath(fileName:String):String return 'assets/data/demo/' + fileName;
+ function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
+ function nightmareVisionRenderContext():Dynamic return null;
  public function new() {}
 ''' + methods + controls + '\nfunction spawn() {\n' + spawn + '''\n}
  static function check(ok:Bool, message:String) {if(!ok) throw message;}
@@ -172,8 +188,8 @@ class DemoTest {
 '''
         (ROOT / 'tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
-            (Path(folder) / 'DemoTest.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (Path(folder) / 'DemoTest.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-main', 'DemoTest', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

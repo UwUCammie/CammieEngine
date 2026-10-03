@@ -1,9 +1,12 @@
 """Source-level coverage for isolated imported-script provenance."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,15 +72,16 @@ class CompatScriptManifestTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             (temp / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
-            )
+            , newline='\n')
             (temp / "ImportSongOwnership.hx").write_text(
                 (ROOT / "source/ImportSongOwnership.hx").read_text()
-            )
-            (temp / "Main.hx").write_text(main)
+            , newline='\n')
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -108,15 +112,16 @@ class CompatScriptManifestTest(unittest.TestCase):
 }'''
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             (temp / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
-            )
+            , newline='\n')
             (temp / "ImportSongOwnership.hx").write_text(
                 (ROOT / "source/ImportSongOwnership.hx").read_text()
-            )
-            (temp / "Main.hx").write_text(main)
+            , newline='\n')
+            (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(temp), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],
                 cwd=temp,
                 capture_output=True,
                 text=True,

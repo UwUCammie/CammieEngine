@@ -1,6 +1,8 @@
 """The imported-owner chooser shortcut remains reachable under HXC menus."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -70,9 +72,9 @@ class Main {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder)
-            (path / "Main.hx").write_text(fixture)
+            (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=folder, capture_output=True, text=True,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

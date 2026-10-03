@@ -1,6 +1,8 @@
 """Keep Psych direction labels and named offsets intact for imported characters."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import shutil
 import subprocess
@@ -31,22 +33,23 @@ class PsychCharacterOrientationTest(unittest.TestCase):
         self.assertIn("PsychCharacterOrientation.authoredFlipX(curCharacter", character_source)
         self.assertIn("flipX = PsychCharacterOrientation.flipX(psychAuthoredFlipX, isPlayer);",
                       character_source)
-        # The legacy direction swap is skipped only when a Psych owner definition
-        # was found; non-Psych custom characters retain the existing behavior.
+        # Legacy direction swapping is skipped when either a Psych or Nightmare
+        # Vision owner definition supplies its own authored orientation.
         self.assertIn(
-            "if (codenameCharacterMeta == null && psychAuthoredFlipX == null && isPlayer && !noFlip)",
+            "if (codenameCharacterMeta == null && psychAuthoredFlipX == null\n"
+            "\t\t\t&& !nightmareVisionCharacterOwned && isPlayer && !noFlip)",
             character_source,
         )
 
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
             (work / "PsychCharacterOrientation.hx").write_text(
-                (ROOT / "source/PsychCharacterOrientation.hx").read_text())
+                (ROOT / "source/PsychCharacterOrientation.hx").read_text(), newline='\n')
             psych_json = work / "scope/shared/characters/bf.json"
             psych_json.parent.mkdir(parents=True)
             shutil.copyfile(PSYCH_BF, psych_json)
             (work / "scope/characters/native.json").parent.mkdir(parents=True)
-            (work / "scope/characters/native.json").write_text('{"flip_x":false}')
+            (work / "scope/characters/native.json").write_text('{"flip_x":false}', newline='\n')
             (work / "PsychCharacterOrientationProbe.hx").write_text(r'''import PsychCharacterOrientation;
 import sys.io.File;
 class PsychCharacterOrientationProbe {
@@ -85,9 +88,9 @@ class PsychCharacterOrientationProbe {
         "Psych source " + name + " offsets changed while resolving orientation");
     }
   }
-}''')
+}''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work), "--run",
+                [*HAXE_COMMAND, "-cp", str(work), "--run",
                  "PsychCharacterOrientationProbe"],
                 cwd=work, env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True, text=True, timeout=30,

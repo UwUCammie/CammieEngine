@@ -1,6 +1,8 @@
 """Regression coverage for the two-phase, non-blocking song importer."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -109,12 +111,12 @@ class HscriptPathFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "HscriptPathFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             donor = Path(folder) / "donor"
             (donor / "images/custom_stages/tank").mkdir(parents=True)
             (donor / "images/custom_stages/tank/tankSky.png").write_bytes(b"png")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "HscriptPathFixture", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "HscriptPathFixture", str(donor)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -169,9 +171,9 @@ class ImportWorkflow {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ImportWorkflow.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportWorkflow", folder],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportWorkflow", folder],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -250,24 +252,24 @@ class DependencyFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "DependencyFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             donor = Path(folder) / "donor"
             (donor / "characters").mkdir(parents=True)
             (donor / "characters/Boyfriend-Vampire.json").write_text(
                 '{"image":"characters/boyfriend/vampire_boyfriend"}'
-            )
+            , newline='\n')
             (donor / "shared/images/characters/boyfriend").mkdir(parents=True)
             (donor / "shared/images/characters/boyfriend/vampire_boyfriend.PNG").write_bytes(b"png")
             (donor / "shared/characters").mkdir(parents=True)
             (donor / "shared/characters/gf-week2.json").write_text(
                 '{"image":"characters/girlfriend/gf_week2"}'
-            )
+            , newline='\n')
             (donor / "shared/images/characters/girlfriend/gf_week2").mkdir(parents=True)
-            (donor / "shared/images/characters/girlfriend/gf_week2/Animation.json").write_text('{}')
+            (donor / "shared/images/characters/girlfriend/gf_week2/Animation.json").write_text('{}', newline='\n')
             (donor / "data/stages").mkdir(parents=True)
             (donor / "data/stages/facility.HXC").write_bytes(b"hxc")
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "DependencyFixture", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "DependencyFixture", str(donor)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -319,9 +321,9 @@ class KeyedCandidateFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "KeyedCandidateFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "--run", "KeyedCandidateFixture", folder],
                 cwd=ROOT,
                 capture_output=True,
@@ -329,6 +331,7 @@ class KeyedCandidateFixture {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_mixed_case_parent_and_registry_paths_resolve_on_linux(self):
         """Windows-authored directory casing must not hide importer dependencies."""
         source = self.source
@@ -385,9 +388,9 @@ class MixedCaseFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "MixedCaseFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "--run", "MixedCaseFixture", folder],
                 cwd=ROOT,
                 capture_output=True,
@@ -535,9 +538,9 @@ class MixedCaseFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ScanHandoffFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "ScanHandoffFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "ScanHandoffFixture", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -592,9 +595,9 @@ class ScanDiagnosticLabelFixture {{
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "ScanDiagnosticLabelFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", folder,
                  "-main", "ScanDiagnosticLabelFixture", "--interp"],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
@@ -741,9 +744,9 @@ class ScopedDependencyFixture {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             fixture_path = Path(folder) / "ScopedDependencyFixture.hx"
-            fixture_path.write_text(fixture)
+            fixture_path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", "ScopedDependencyFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "ScopedDependencyFixture", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
@@ -983,29 +986,29 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
-            (temp_path / "ImportCompat.hx").write_text(fixture)
+            (temp_path / "ImportCompat.hx").write_text(fixture, newline='\n')
             donor = temp_path / "donor/assets"
             for character in ("bf", "dad", "gf"):
                 (temp_path / f"assets/images/custom_chars/{character}").mkdir(parents=True)
                 (temp_path / f"assets/images/custom_chars/{character}/char.png").write_bytes(b"png")
-                (temp_path / f"assets/images/custom_chars/{character}.hscript").write_text("function init(char) {}")
+                (temp_path / f"assets/images/custom_chars/{character}.hscript").write_text("function init(char) {}", newline='\n')
             (temp_path / "assets/images/custom_chars/custom_chars.jsonc").write_text(
                 '{"bf":{"like":"bf"},"dad":{"like":"dad"},"gf":{"like":"gf"}}'
-            )
+            , newline='\n')
             (temp_path / "assets/images/custom_stages").mkdir(parents=True)
-            (temp_path / "assets/images/custom_stages/custom_stages.json").write_text('{"stage":"stage"}')
-            (temp_path / "assets/images/custom_stages/stage.hscript").write_text("function start() {}")
+            (temp_path / "assets/images/custom_stages/custom_stages.json").write_text('{"stage":"stage"}', newline='\n')
+            (temp_path / "assets/images/custom_stages/stage.hscript").write_text("function start() {}", newline='\n')
             (temp_path / "assets/images/custom_ui/ui_packs/normal").mkdir(parents=True)
             (temp_path / "assets/images/custom_ui/ui_packs/ui.json").write_text(
                 '{"normal":{"uses":"normal"}}'
-            )
+            , newline='\n')
             (temp_path / "assets/images/custom_ui/ui_packs/normal/NOTE_assets.png").write_bytes(b"png")
             donor.mkdir(parents=True)
             chart = donor / "chart.json"
             original = '{"song":{"player1":"boyfriend","player2":"daddy","gf":"girlfriend"}}'
-            chart.write_text(original)
+            chart.write_text(original, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "ImportCompat", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat", str(donor)],
                 cwd=folder,
                 capture_output=True,
                 text=True,
@@ -1069,19 +1072,19 @@ class AtlasFallbackCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
-            (temp_path / "AtlasFallbackCompat.hx").write_text(fixture)
+            (temp_path / "AtlasFallbackCompat.hx").write_text(fixture, newline='\n')
             donor = temp_path / "donor"
             (donor / "images/custom_chars/mom-car").mkdir(parents=True)
             (donor / "data/characters").mkdir(parents=True)
             (donor / "images/custom_chars/custom_chars.jsonc").write_text(
                 '{{"Freddy":{{"like":"mom-car"}},"Golden-freddy":{{"like":"mom-car"}}}}'
-            )
+            , newline='\n')
             (donor / "images/custom_chars/mom-car/char.png").write_bytes(b"png")
-            (donor / "images/custom_chars/mom-car/char.xml").write_text("<TextureAtlas/>")
-            (donor / "images/custom_chars/mom-car.hscript").write_text("")
-            (donor / "data/characters/Whitty.hxc").write_text("return null;")
+            (donor / "images/custom_chars/mom-car/char.xml").write_text("<TextureAtlas/>", newline='\n')
+            (donor / "images/custom_chars/mom-car.hscript").write_text("", newline='\n')
+            (donor / "data/characters/Whitty.hxc").write_text("return null;", newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "--run", "AtlasFallbackCompat", str(donor)],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "AtlasFallbackCompat", str(donor)],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

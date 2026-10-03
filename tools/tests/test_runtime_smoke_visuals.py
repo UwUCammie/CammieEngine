@@ -1,9 +1,11 @@
 """Offscreen probes for the smoke-only native visual binding snapshots."""
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +50,8 @@ class FakeSprite {
   public var animation = new FakeController();
   public var graphic = {key: "selected-root/NOTE_death.png"};
   public var frames = {frames: [0, 1, 2, 3]};
+  public var blend = 0;
+  public var shader = {fragmentPath:"owned/shaders/fog.frag"};
   public var sourceKind = "danger";
   public var coolId = "vslice:danger:0";
   public var trueNoteData = 40;
@@ -57,8 +61,12 @@ class FakeSprite {
   public var x = 300.0;
   public var y = 200.0;
   public var width = 444.5;
+	public var height = 630.0;
+	public var scrollFactor = {x:1.0, y:1.0};
+	public var camera = {width:1280, height:720, zoom:1.0, scroll:{x:0.0, y:0.0}};
   public var frameWidth = 500.0;
   public var frameHeight = 600.0;
+  public var isSustainNote = true;
   public var frame = {offset: {x: 4.0, y: 9.0}};
   public var origin = {x: 317.5, y: 45.0};
   public var scale = {x: 0.7, y: 1.05};
@@ -68,6 +76,10 @@ class FakeSprite {
   public var requestedCharacter = "actor";
   public var resolvedCharacter = "actor";
   public var imageFile = "selected-root/actor";
+  public var isPlayer = true;
+  public var flipX = false;
+  public var flipY = false;
+  public var stageBaseFlipX = false;
   public function new() {}
   public function getCurrentAnimationOffset(index:Int):Float return index == 0 ? 3 : -4;
   public function hxcBaseScreenPosition(_result:Dynamic, _camera:Dynamic):FakePoint
@@ -84,10 +96,22 @@ class Main {
       || note.graphicKey != "selected-root/NOTE_death.png"
       || note.atlasFrames != 4 || note.scrollFrames != 3
       || note.currentAnimation != "danceRight" || note.currentFrame != 2
-      || Math.abs(note.centerErrorX) > 0.00001 || note.offsetY != 90)
+      || note.isSustainNote != true || note.width != 444.5 || note.frameWidth != 500
+      || note.originX != 317.5 || note.scaleX != 0.7 || note.scaleY != 1.05
+      || Math.abs(note.renderCenterX - 308.75) > 0.00001
+      || Math.abs(note.centerErrorX - (-47.25)) > 0.00001 || note.offsetY != 90)
       fail("note snapshot did not read actual native binding");
     var actor:Dynamic = RuntimeSmokeVisuals.character("girlfriend", sprite);
+	var stage:Dynamic = RuntimeSmokeVisuals.stage({members:[sprite]});
+	var prop:Dynamic = stage.members[0];
+	if (stage.memberCount != 1 || prop.width != 444.5 || prop.height != 630
+	  || prop.scaleX != 0.7 || prop.offsetX != 261.5 || prop.scrollFactorX != 1
+	  || prop.cameraWidth != 1280 || prop.cameraHeight != 720
+	  || prop.cameraZoom != 1 || prop.cameraScrollX != 0 || prop.cameraScrollY != 0
+      || prop.blend != 0 || prop.shader != "owned/shaders/fog.frag")
+	  fail("stage overlay geometry or camera routing snapshot missing");
     if (actor.role != "girlfriend" || actor.graphicKey != "selected-root/NOTE_death.png"
+      || actor.isPlayer != true || actor.flipX != false || actor.stageBaseFlipX != false
       || actor.currentAnimation != "danceRight" || actor.currentLength != 3
       || actor.currentLooped != true || actor.currentFinished != false
       || actor.dance.length != 2)
@@ -112,9 +136,9 @@ class Main {
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "Main.hx").write_text(main)
+            Path(folder, "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )

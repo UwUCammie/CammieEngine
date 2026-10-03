@@ -1,6 +1,8 @@
 """Source-level contracts for V-Slice split-vocal imports and playback."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -83,9 +85,9 @@ class VSliceSplitVocalsTest(unittest.TestCase):
     }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(main)
+            (Path(folder) / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -133,6 +135,13 @@ class Main {
         group.setRole(first, "opponent");
         group.setRole(second, "player");
         group.setRole(third, "opponent");
+        var opponents = group.forRole("OPPONENT");
+        if (opponents.length != 2 || opponents[0] != first || opponents[1] != third)
+            fail("role stem inventory");
+        opponents.pop();
+        if (group.forRole("opponent").length != 2 || group.tracks.length != 3)
+            fail("role query exposed mutable group membership");
+        if (group.forRole("missing").length != 0) fail("unknown role invented stems");
         group.setPlayerVolume(0.8);
         if (first.volume != 0.25 || second.volume != 0.8 || third.volume != 0.25)
             fail("player bus changed opponent stems");
@@ -158,11 +167,11 @@ class Main {
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / "flixel/sound").mkdir(parents=True)
-            (root / "flixel/sound/FlxSound.hx").write_text(stub)
-            (root / "VocalTracks.hx").write_text(self.tracks)
-            (root / "Main.hx").write_text(main)
+            (root / "flixel/sound/FlxSound.hx").write_text(stub, newline='\n')
+            (root / "VocalTracks.hx").write_text(self.tracks, newline='\n')
+            (root / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

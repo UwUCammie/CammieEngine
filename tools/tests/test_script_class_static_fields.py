@@ -1,9 +1,12 @@
 """Owner-scoped HScript-ex source-class static storage fixture."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -38,10 +41,10 @@ class ScriptClassStaticFieldsTest(unittest.TestCase):
                     ["git", "-C", str(upstream), "show", f"HEAD:src/hscript/{filename}"],
                     cwd=ROOT, check=True, capture_output=True, text=True,
                 ).stdout
-                (hscript_ex / "hscript" / filename).write_text(original, encoding="utf-8")
+                (hscript_ex / "hscript" / filename).write_text(original, encoding="utf-8", newline='\n')
             for index in range(2):
                 patch_result = subprocess.run(
-                    ["python3", str(ROOT / "tools/patch_hscript_ex_owner_scope.py"),
+                    [sys.executable, str(ROOT / "tools/patch_hscript_ex_owner_scope.py"),
                      str(hscript_ex / "hscript")],
                     cwd=ROOT, check=True, capture_output=True, text=True,
                 )
@@ -62,7 +65,7 @@ class TankmenBG {
 }
 """,
                     encoding="utf-8",
-                )
+                 newline='\n')
                 (source / "StaticProbe.hx").write_text(
                     """package demo;
 import demo.TankmenBG;
@@ -75,7 +78,7 @@ class StaticProbe {
 }
 """,
                     encoding="utf-8",
-                )
+                 newline='\n')
                 owners.append(owner)
 
             (base / "StaticFieldMain.hx").write_text(
@@ -118,9 +121,9 @@ class StaticFieldMain {
  }
 }""",
                 encoding="utf-8",
-            )
+             newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(base),
+                [*HAXE_COMMAND, "-cp", str(base),
                  "-cp", str(ROOT / "source"), "-cp", str(hscript_ex),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  *FLIXEL_ARGS, "--run", "StaticFieldMain", *(str(owner) for owner in owners)],

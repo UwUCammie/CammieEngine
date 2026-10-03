@@ -5,6 +5,8 @@ import flixel.FlxG;
 import flixel.graphics.FlxGraphic;
 import flixel.graphics.frames.FlxAtlasFrames;
 import flixel.system.FlxAssets;
+import animate.FlxAnimateFrames;
+import animate.FlxAnimateFrames.SpritemapInput;
 import openfl.media.Sound;
 #if sys
 import sys.FileSystem;
@@ -19,17 +21,25 @@ class NightmareVisionPaths {
 	static var missingSoundDiagnostics:Map<String, Bool> = new Map();
 	public final root:String;
 	public final CORE_DIRECTORY:String;
+	public final hudProfile:NightmareVisionHUDProfile;
+	public var usesSharedRatingPrefix(default, null):Bool;
 	public var DEFAULT_FONT:String = 'vcr.ttf';
-	public var COMBO_PREFIX:String = 'UI/combo/';
-	public var RATINGS_PREFIX:String = 'UI/ratings/';
-	public var COUNTDOWN_PREFIX:String = 'UI/countdown/';
-	public var UI_PREFIX:String = 'UI/';
+	public var COMBO_PREFIX:String;
+	public var RATINGS_PREFIX:String;
+	public var COUNTDOWN_PREFIX:String;
+	public var UI_PREFIX:String;
 
 	public function new(root:String, ?baseRoot:String) {
 		this.root = checkedRoot(root);
 		CORE_DIRECTORY = checkedRoot(baseRoot == null ? this.root + '/' + CORE_SUBTREE : baseRoot);
 		if (!CORE_DIRECTORY.startsWith(this.root + '/'))
 			throw '[nightmare-vision-asset] Core dependency must belong to the selected owner';
+		hudProfile = NightmareVisionHUDProfile.detect(this);
+		usesSharedRatingPrefix = hudProfile.usesSharedRatingPrefix;
+		COMBO_PREFIX = hudProfile.comboPrefix;
+		RATINGS_PREFIX = hudProfile.ratingsPrefix;
+		COUNTDOWN_PREFIX = hudProfile.countdownPrefix;
+		UI_PREFIX = hudProfile.uiPrefix;
 	}
 
 	static function checkedRoot(value:String):String {
@@ -95,6 +105,26 @@ class NightmareVisionPaths {
 	}
 
 	public function getCorePath(file:String = ''):String return scopedPath(CORE_DIRECTORY, file);
+
+	/** FunkinScript.getPath extension precedence within this owner/core. */
+	public function resolveScript(path:String):NightmareVisionScriptDiscovery.NightmareVisionScriptEntry {
+		if (path == null || path == '') return null;
+		var clean = path.replace('\\', '/');
+		if (clean.startsWith(root + '/')) {
+			var scoped = scopeAssetPath(clean);
+			if (scoped == null) return null;
+			clean = scoped.substr(root.length + 1);
+		}
+		// Reject parent traversal and foreign owner paths before existence checks.
+		if (!safeRelative(clean) || clean.startsWith('assets/'))
+			throw '[nightmare-vision-script-path] Invalid owner script: ' + path;
+		for (extension in ['hx', 'hxs', 'hscript']) {
+			var selected = getPath(clean + '.' + extension, null, true);
+			if (exists(selected)) return {scope:'dynamic', name:clean, path:selected,
+				relative:selected.substr(root.length + 1)};
+		}
+		return null;
+	}
 
 	/** The selected content package is already mounted at root. This source API
 	 * addresses mod content directly; it must not silently select engine core. */
@@ -199,5 +229,56 @@ class NightmareVisionPaths {
 		var json = getPath('images/' + key + '.json', parentFolder, checkMods);
 		if (exists(json)) return FlxAtlasFrames.fromAseprite(image(key, parentFolder, allowGPU, checkMods), FNFAssets.getText(json));
 		return getPackerAtlas(key, parentFolder, allowGPU, checkMods);
+	}
+
+	/** Load an Animate texture atlas from this owner, with the same ordinary
+	 * Sparrow/Aseprite/Packer fallback used by Bopper when no Animate atlas exists. */
+	public function getTextureAtlas(key:String, ?parentFolder:String, allowGPU:Bool = true,
+		checkMods:Bool = true):FlxAtlasFrames {
+		var clean = key != null && key.toLowerCase().endsWith('.png') ? key.substr(0, key.length - 4) : key;
+		var manifest = getPath('images/' + clean + '/Animation.json', parentFolder, checkMods);
+		if (!exists(manifest))
+			return getAtlasFrames(clean, parentFolder, allowGPU, checkMods);
+		var atlasPath = Path.directory(manifest);
+		var atlas:FlxAnimateFrames;
+		#if sys
+		// fromAnimate(folder) enumerates through FlxAnimateAssets' global library
+		// index, which cannot see a newly imported owner directory. Pass the
+		// already validated owner's manifest, sprite maps, and bitmap contents
+		// directly so neither path lookup nor cache identity depends on a global
+		// mod/working-directory switch.
+		if (!FileSystem.isDirectory(atlasPath))
+			throw '[nightmare-vision-asset] Expected owner atlas directory: ' + atlasPath;
+		var names = FileSystem.readDirectory(atlasPath);
+		names.sort(Reflect.compare);
+		var spritemaps:Array<SpritemapInput> = [];
+		for (name in names) {
+			if (!name.toLowerCase().startsWith('spritemap') || !name.toLowerCase().endsWith('.json')) continue;
+			var stem = Path.withoutExtension(name);
+			var imageName:String = null;
+			for (candidate in names)
+				if (Path.withoutExtension(candidate) == stem && !candidate.toLowerCase().endsWith('.json')) {
+					imageName = candidate;
+					break;
+				}
+			if (imageName == null)
+				throw '[nightmare-vision-asset] Missing owner spritemap image for ' + name;
+			var jsonPath = scopeAssetPath(Path.join([atlasPath, name]));
+			var imagePath = scopeAssetPath(Path.join([atlasPath, imageName]));
+			if (jsonPath == null || imagePath == null)
+				throw '[nightmare-vision-asset] Atlas file escaped its selected owner: ' + atlasPath;
+			spritemaps.push({source:FNFAssets.getBitmapData(imagePath), json:FNFAssets.getText(jsonPath)});
+		}
+		if (spritemaps.length == 0)
+			throw '[nightmare-vision-asset] No owner spritemaps found in ' + atlasPath;
+		var metadataPath = scopeAssetPath(Path.join([atlasPath, 'metadata.json']));
+		var metadata = metadataPath != null && exists(metadataPath) ? FNFAssets.getText(metadataPath) : null;
+		atlas = FlxAnimateFrames.fromAnimate(FNFAssets.getText(manifest), spritemaps, metadata, atlasPath);
+		#else
+		atlas = FlxAnimateFrames.fromAnimate(atlasPath);
+		#end
+		if (atlas == null)
+			throw '[nightmare-vision-asset] Could not load owner texture atlas: ' + atlasPath;
+		return atlas;
 	}
 }

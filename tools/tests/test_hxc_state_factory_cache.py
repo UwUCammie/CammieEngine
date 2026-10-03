@@ -11,11 +11,13 @@ This suite extracts the real cache-bearing members of source/HxcStateFactory.hx
 interpreter against a throwaway manifest root, with the real HxcCompat
 analyzer classifying the fixture scripts.
 """
+from haxe_test_support import HAXE_COMMAND
 
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -76,20 +78,20 @@ def extract_factory_module() -> str:
 def run_fixture(main: str, cwd: Path) -> subprocess.CompletedProcess:
     with tempfile.TemporaryDirectory(prefix="hxc-factory-cache-") as folder:
         temp = Path(folder)
-        (temp / "Main.hx").write_text(main)
-        (temp / "HxcStateFactory.hx").write_text(extract_factory_module())
+        (temp / "Main.hx").write_text(main, newline='\n')
+        (temp / "HxcStateFactory.hx").write_text(extract_factory_module(), newline='\n')
         state_dir = temp / "assets/imported_mods/cacheprobe/scripts/states"
         substate_dir = temp / "assets/imported_mods/cacheprobe/scripts/substates"
         other_dir = temp / "assets/imported_mods/otherprobe/scripts/states"
         state_dir.mkdir(parents=True)
         substate_dir.mkdir(parents=True)
         other_dir.mkdir(parents=True)
-        (state_dir / "CacheProbeState.hxc").write_text(STATE_HXC)
-        (substate_dir / "CacheProbePopup.hxc").write_text(SUBSTATE_HXC)
-        (other_dir / "CacheProbeState.hxc").write_text(STATE_HXC)
+        (state_dir / "CacheProbeState.hxc").write_text(STATE_HXC, newline='\n')
+        (substate_dir / "CacheProbePopup.hxc").write_text(SUBSTATE_HXC, newline='\n')
+        (other_dir / "CacheProbeState.hxc").write_text(STATE_HXC, newline='\n')
         return subprocess.run(
             [
-                str(HAXE),
+                *HAXE_COMMAND,
                 "-cp", str(ROOT / "source"),
                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                 "-cp", str(temp),

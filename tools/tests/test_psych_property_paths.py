@@ -1,6 +1,8 @@
 """Regression coverage for indexed Psych/Kade property paths and colours."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
@@ -30,9 +32,9 @@ class PsychPropertyPathTest(unittest.TestCase):
     def run_haxe(self, source: str, name: str) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / f"{name}.hx"
-            path.write_text(source)
+            path.write_text(source, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-main", name, "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", name, "--interp"],
                 cwd=ROOT,
                 env={**__import__("os").environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

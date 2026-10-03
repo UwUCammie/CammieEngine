@@ -1,4 +1,5 @@
 """Focused fixtures for the read-only HXC compatibility adapter."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
@@ -7,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,14 +24,170 @@ def hx_string(value: str) -> str:
 
 
 class HxcCompatibilityTest(unittest.TestCase):
+    def test_declared_character_type_owns_callbacks_in_unrelated_directory(self):
+        result = self.run_fixture(r'''class Main {
+ static function main() {
+  var source = "class UnrelatedName extends MultiSparrowCharacter { function new() { super('actor'); } var suffix=''; override function playAnimation(name:String,restart:Bool,ignoreOther:Bool,reversed:Bool):Void { super.playAnimation(name+suffix,restart,ignoreOther,reversed); suffix='-costume'; } }";
+  for (path in ['assets/data/stages/UnrelatedName.hxc', 'scripts/songs/UnrelatedName.hxc']) {
+   var result = HxcCompat.analyze(source, path);
+   if (result.kind != 'character' || result.identifier != 'actor') throw 'character declaration lost its source lifecycle';
+   if (result.generatedHscript.indexOf('HxcCompatRuntime.playAnimation(hxcCharacter(),') < 0) throw 'character super dispatch was not retained';
+  }
+  var mixed = HxcCompat.analyze("class Helper extends Module { function new() { super('helper'); } } " + source, 'scripts/stages/UnrelatedName.hxc');
+  if (mixed.kind != 'character' || mixed.identifier != 'actor') throw 'helper class contaminated character identity';
+  var stage = HxcCompat.analyze("class Owner extends Stage { function new() { super('scene'); } } " + source, 'scripts/stages/Owner.hxc');
+  if (stage.kind != 'stage' || stage.identifier != 'scene') throw 'character helper displaced stage owner';
+ }
+}''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_stage_translation_uses_same_owner_as_declared_identity(self):
+        result=self.run_fixture(r'''class Main {
+ static function main() {
+  var source="class Helper extends Stage { function new() { super('helper'); } function onCreate() { trace('helper-only'); } } class FileOwner extends Stage { function new() { super('scene'); } function onCreate() { trace('owner-only'); } }";
+  for(path in ['scripts/stages/FileOwner.hxc','scripts/stages/scene.hxc', 'scripts\\stages\\FileOwner.hxc']) {
+   var result=HxcCompat.analyze(source,path);
+   if(result.identifier!='scene' || result.generatedHscript.indexOf('owner-only')<0
+    || result.generatedHscript.indexOf('helper-only')>=0)
+    throw 'discovery and generated owner differ: '+result.generatedHscript;
+  }
+ }
+}''')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_character_translation_and_discovery_select_same_mixed_file_owner(self):
+        result = self.run_fixture(r'''import hscript.Parser;
+import hscript.Interp;
+class Main {
+ static function main() {
+  var source = "class HelperActor extends Character { function new() { super('helper-id'); } override function getDeathQuote():Null<String> { return 'helper-quote'; } } class PreferredActor extends MultiSparrowCharacter { function new() { super('actor-id'); } override function getDeathQuote():Null<String> { return 'owner-quote'; } }";
+  for (directory in ['scripts/characters/', 'scripts/stages/', 'data/stages/', 'shared/scripts/stages/', 'scripts\\characters\\', 'scripts\\stages\\']) {
+   for (filename in ['PreferredActor', 'actor-id', 'unmatched']) {
+    var path = directory + filename + '.hxc';
+    var expected = filename == 'unmatched' ? 'helper-id' : 'actor-id';
+    var identity = HxcScriptIdentity.inspect(source,
+     StringTools.replace(directory, '\\', '/').indexOf('characters/') >= 0 ? 'character' : 'stage', filename);
+    var result = HxcCompat.analyze(source, path);
+    if (identity.characterId != expected || result.identifier != expected || result.kind != 'character')
+     throw 'mixed character owner differs: ' + path + ': ' + identity.characterId + '/' + result.identifier;
+    var interp = new Interp();
+    interp.execute(new Parser().parseString(result.generatedHscript));
+    var query:Void->Dynamic = cast interp.variables.get('getDeathQuote');
+    if (query() != (filename == 'unmatched' ? 'helper-quote' : 'owner-quote'))
+     throw 'wrong actor callback executed: ' + path;
+    if (result.generatedHscript.indexOf(filename == 'unmatched' ? 'owner-quote' : 'helper-quote') >= 0)
+     throw 'sibling actor callback merged into owner';
+   }
+  }
+ }
+}''', [ROOT / '.haxelib/hscript/2,5,0'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_class_text_in_literals_cannot_replace_selected_owner_fragment(self):
+        result = self.run_fixture(r'''import hscript.Parser;
+import hscript.Interp;
+class Main {
+ static function main() {
+  var realClasses = "class HelperActor extends Character { function new() { super('helper-id'); } } class PreferredActor extends Character { function new() { super('actor-id'); } override function getDeathQuote():Null<String> { return 'owner-quote'; } }";
+  var fakeClass = "class PreferredActor extends Character { function new() { super('fake-id'); } override function getDeathQuote():Null<String> { return 'fake-quote'; } }";
+  var sources = [
+   "class Banner extends Module { var text = \"" + fakeClass + "\"; } " + realClasses,
+   "/* outer /* nested */ " + fakeClass + " */ " + realClasses,
+   "class Banner extends Module { var pattern = ~/class FakeActor extends Character/// adjacent comment\n; } " + realClasses,
+   "class Banner extends Module { var pattern = ~/class FakeActor extends Character//* adjacent block */; } " + realClasses,
+   "class Banner extends Module { var pattern = ~/class FakeActor extends Character \\/value/gi// escaped delimiter and flags\n; } " + realClasses,
+   "class/* separator */PreferredActor extends Character { function new() { super('actor-id'); } override function getDeathQuote():Null<String> { return 'owner-quote'; } }"
+  ];
+  for (source in sources) for (path in ['scripts/characters/actor-id.hxc', 'scripts/stages/PreferredActor.hxc']) {
+   var result = HxcCompat.analyze(source, path);
+   if (result.kind != 'character' || result.className != 'PreferredActor' || result.identifier != 'actor-id')
+    throw 'quoted declaration replaced real constructor: ' + result.identifier;
+   var interp = new Interp();
+   interp.execute(new Parser().parseString(result.generatedHscript));
+   var query:Void->Dynamic = cast interp.variables.get('getDeathQuote');
+   if (query() != 'owner-quote') throw 'quoted callback executed instead of owner';
+  }
+ }
+}''', [ROOT / '.haxelib/hscript/2,5,0'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_stage_vocal_role_read_uses_native_stem_group(self):
+        result = self.run_fixture(r'''import hscript.Parser;
+class Main {
+ static function main() {
+  var source="class RenamedStage extends Stage { function new() { super('scene'); } override function onNoteHit(ev) { if (PlayState.instance.vocals.opponentVoices.length == 0) trace('no-opponent'); } }";
+  var result=HxcCompat.analyze(source,'scripts/stages/RenamedStage.hxc');
+  if(result.generatedHscript.indexOf('HxcCompatRuntime.opponentVocalTracks(PlayState.instance).length')<0)
+   throw 'native vocal role read lost: '+result.generatedHscript;
+  new Parser().parseString(result.generatedHscript);
+ }
+}''',[ROOT / '.haxelib/hscript/2,5,0'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_multiline_substate_suffix_assignments_keep_balanced_expression(self):
+        result = self.run_fixture(r'''import hscript.Parser;
+class Main {
+ static function main() {
+  var source = "class Costume extends Character { function new() { super('actor'); } override function onCreate() { GameOverSubState.blueBallSuffix = flag\n ? choose('semi;colon')\n : '-fallback'; PauseSubState.musicSuffix = '-pause'; if (GameOverSubState.blueBallSuffix == '-pause') trace('comparison'); } }";
+  var result = HxcCompat.analyze(source, 'scripts/characters/Costume.hxc');
+  var generated = result.generatedHscript;
+  if (generated.indexOf("HxcCompatRuntime.setGameOverBlueBallSuffix(flag") < 0
+   || generated.indexOf("choose('semi;colon')") < 0
+   || generated.indexOf("'-fallback')") < 0
+   || generated.indexOf("HxcCompatRuntime.setPauseMusicSuffix('-pause')") < 0
+   || generated.indexOf("HxcCompatRuntime.gameOverBlueBallSuffix == '-pause'") < 0)
+   throw 'suffix statement was truncated: ' + generated;
+  new Parser().parseString(generated);
+ }
+}''', [ROOT / ".haxelib/hscript/2,5,0"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_mounted_return_valued_death_quote_uses_scoped_sound_path(self):
+        path = DONOR / "v-slice/singstarchallengespc_22f3d/data/stages/SolidChrisCharInstructions.hxc"
+        if not path.exists():
+            self.skipTest("Singstar character donor is not mounted")
+        result = self.run_fixture(f'''import hscript.Parser;
+import hscript.Interp;
+class Main {{
+ static function main() {{
+  var result = HxcCompat.analyze({hx_string(path.read_text())}, {hx_string(path)});
+  if (result.kind != 'character' || result.characterHookGaps.length != 0)
+   throw 'return-valued character hook rejected: ' + result.characterHookGaps;
+  var dad:Dynamic={{characterId:'liquid'}};
+  var state:Dynamic={{curStage:{{getDad:function() return dad}}}};
+  var draws=0;
+  var interp=new Interp();
+  interp.variables.set('PlayState',{{instance:state}});
+  interp.variables.set('Paths',{{sound:function(p:String) return 'owner/sounds/'+p+'.ogg'}});
+  interp.variables.set('FlxG',{{random:{{int:function(lo:Int,hi:Int) {{
+   if(lo!=1 || hi!=13) throw 'authored random range changed';return ++draws;
+  }}}}}});
+  interp.execute(new Parser().parseString(result.generatedHscript));
+  var fn:Void->Dynamic=cast interp.variables.get('getDeathQuote');
+  if(fn()!='owner/sounds/liquid/liquid1.ogg' || fn()!='owner/sounds/liquid/liquid2.ogg')
+   throw 'query lost return or scoped path';
+  dad.characterId='other';if(fn()!=null || draws!=2) throw 'null source branch changed';
+ }}
+}}''', [ROOT / '.haxelib/hscript/2,5,0'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_death_quote_does_not_admit_other_unmapped_paths_operations(self):
+        result=self.run_fixture(r'''class Main {
+ static function main() {
+  var result=HxcCompat.analyze("class Actor extends Character { function new() {super('actor');} override function getDeathQuote():Null<String> { return Paths.image('unmapped'); } }",'scripts/characters/Actor.hxc');
+  if(result.characterHookGaps.indexOf('getDeathQuote')<0) throw 'unmapped asset getter silently admitted';
+ }
+}''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def run_fixture(self, source: str, extra_cp=None) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as folder:
             main = Path(folder) / "Main.hx"
-            main.write_text(source)
+            main.write_text(source, newline='\n')
             classpaths = [str(ROOT / "source"), folder]
             if extra_cp:
                 classpaths.extend(str(path) for path in extra_cp)
-            command = [str(HAXE)]
+            command = [*HAXE_COMMAND]
             for classpath in classpaths:
                 command.extend(["-cp", classpath])
             command.extend(["-main", "Main", "--interp"])
@@ -109,6 +267,9 @@ class Main {{
     this.x -= 3;
     this.y += 4;
     this.playSingAnimation(2, false, 'alt');
+    glow.offset.set(this.offset.x, this.offset.y);
+    glow.shader = this.shader;
+    glow.antialiasing = this.antialiasing;
   }
   override private function getScreenPosition(?result:FlxPoint, ?camera:FlxCamera):FlxPoint {
     var output:FlxPoint = super.getScreenPosition(result, camera);
@@ -129,11 +290,15 @@ class Main {{
    || generated.indexOf("hxcCharacter().characterOrigin.x") < 0
    || generated.indexOf("hxcCharacter().resetPosition()") < 0
    || generated.indexOf("hxcCharacter().playSingAnimation(2, false, 'alt')") < 0
+   || generated.indexOf("hxcCharacter().offset.x") < 0
+   || generated.indexOf("hxcCharacter().shader") < 0
+   || generated.indexOf("hxcCharacter().antialiasing") < 0
    || generated.indexOf("hxcCharacter().isPixel") < 0)
    throw generated;
   var program = new Parser().parseString(generated);
   var actor:Dynamic = {{x: 10., y: 20., idleSuffix: '', isPixel: true,
-    originalPosition: {{x: 10., y: 20.}}, characterOrigin: {{x: 5., y: 6.}}, singCalls: 0}};
+    originalPosition: {{x: 10., y: 20.}}, characterOrigin: {{x: 5., y: 6.}}, singCalls: 0,
+    offset: {{x: 7., y: 8.}}, shader: null, antialiasing: true}};
   Reflect.setField(actor, 'resetPosition', function() {{
     actor.x = actor.originalPosition.x; actor.y = actor.originalPosition.y;
   }});
@@ -143,11 +308,16 @@ class Main {{
   }});
   var interp = new Interp();
   interp.variables.set('hxcCharacter', function() return actor);
+  var glow:Dynamic = {{offset: {{x: 0., y: 0.}}, shader: 'old', antialiasing: false}};
+  Reflect.setField(glow.offset, 'set', function(x:Float, y:Float) {{ glow.offset.x = x; glow.offset.y = y; }});
+  interp.variables.set('glow', glow);
   interp.execute(program);
   var onAdd:Dynamic = interp.variables.get('onAdd');
   onAdd();
   if (actor.x != 92 || actor.y != 48 || actor.idleSuffix != '-alt' || actor.singCalls != 1)
    throw 'actor fields were not updated through the native receiver';
+  if (glow.offset.x != 7 || glow.offset.y != 8 || glow.shader != null || !glow.antialiasing)
+   throw 'inherited sprite fields lost their actor receiver';
  }}
 }}'''
         result = self.run_fixture(main, [ROOT / ".haxelib/hscript/2,5,0"])
@@ -286,6 +456,12 @@ class Main {{
     if (generated.indexOf(".zIndex") >= 0)
       fail("native HScript still exposes donor zIndex: " + generated);
     new Parser().parseString(generated);
+    var actor = HxcCompat.analyze("class Actor extends MultiSparrowCharacter {{ function new() {{ super('actor'); }} function onUpdate(event) {{ glow.zIndex = this.zIndex + 1; this.zIndex += 2; }} }}", "scripts/stages/Actor.hxc");
+    if (actor.generatedHscript.indexOf("HxcCompatRuntime.getZIndex(hxcCharacter())") < 0
+      || actor.generatedHscript.indexOf("HxcCompatRuntime.setZIndex(hxcCharacter(), 2") < 0
+      || actor.generatedHscript.indexOf(".zIndex") >= 0)
+      fail("actor layer lost its native receiver: " + actor.generatedHscript);
+    new Parser().parseString(actor.generatedHscript);
   }}
 }}'''
         result = self.run_fixture(main, [ROOT / ".haxelib/hscript/2,5,0"])
@@ -3587,14 +3763,17 @@ class Main {{
             # discovery when this override is absent.
             env["DISAPPOINTINGPLUS_ASTCENC"] = str(decoder)
         result = subprocess.run(
-            ["python3", str(ROOT / "tools/diagnose_example_auto_import.py"), "--counts-only"],
-            # The diagnostic separately bounds a cold native build and the
-            # scan to 300 seconds each. Let it report either phase's failure
-            # instead of killing a healthy scan after a successful cold build.
-            cwd=ROOT, capture_output=True, text=True, timeout=620, env=env,
+            ["python3", str(ROOT / "tools/diagnose_example_auto_import.py"),
+             "--counts-only", "--scan-timeout-seconds", "600"],
+            # Allow for donor-tree IO contention when other corpus tests run
+            # concurrently. The diagnostic retains its own 300s cold-build
+            # deadline; the longer scan window only prevents a healthy exact-
+            # count scan from returning 124 under the parallel suite.
+            cwd=ROOT, capture_output=True, text=True, timeout=920, env=env,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         output = result.stdout + result.stderr
+        (ROOT / "tmp/virgin-guitar-mounted-counts.txt").write_text(output, newline='\n')
 
         def count(code: str, required: bool = True) -> int:
             match = re.search(r"DIAGNOSTIC_COUNT\|" + re.escape(code) + r"\|count=(\d+)", output)
@@ -3632,11 +3811,14 @@ class Main {{
         self.assertEqual(count("hxc-unsupported-hxc-shader-callback", required=False), 0)
         self.assertEqual(count("unsupported-hxc-script", required=False), 3)
         self.assertEqual(count("hxc-unsupported-hxc-character-base", required=False), 0)
-        # The scoped texture warm-up and suffix bridge also cover the mounted
-        # bfhell onCreate hook; no direct character hook remains donor-only.
+        # Declared type discovery now correctly identifies the misplaced
+        # Singstar character companion; its return-valued death quote is now
+        # consumed by the shared native game-over host.
         self.assertEqual(count("hxc-unsupported-hxc-character-hook", required=False), 0)
         self.assertEqual(count("hxc-hxc-module-adapter"), 45)
-        self.assertEqual(count("hxc-hxc-lifecycle-adapter"), 167)
+        # The newly mounted Singstar package contributes one stage companion
+        # and two declared character companions to the prior 167-script audit.
+        self.assertEqual(count("hxc-hxc-lifecycle-adapter"), 170)
         self.assertEqual(count("hxc-hxc-menu-overlay-adapter"), 2)
         self.assertEqual(count("hxc-hxc-pause-overlay-adapter"), 1)
         self.assertEqual(count("hxc-hxc-menu-state-materialized"), 1)
@@ -3650,6 +3832,8 @@ class Main {{
         # hit/miss behavior adapter. Keep both the raw inventory and selected
         # owner count explicit so a new source note behavior cannot be hidden by
         # successful chart conversion.
+        # Declared character companions under data/stages now route the authored
+        # altAnim kind; only the remaining unadapted candidate records count.
         self.assertEqual(count("note-kind-generic", required=False), 46)
         # The compact counts-only selector groups by the same physical chart
         # origin as the production selector. The full summary scan currently

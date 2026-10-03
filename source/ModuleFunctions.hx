@@ -13,11 +13,11 @@ import ImportOverlayPlanner.ImportOverlaySummary;
 import ImportOverlayRuntime;
 import PsychStageInference;
 #if sys
-import sys.io.File;
+import ImportFile as File;
 import haxe.io.Path;
 import openfl.utils.ByteArray;
 import lime.media.AudioBuffer;
-import sys.FileSystem;
+import ImportFileSystem as FileSystem;
 import flash.media.Sound;
 #end
 using StringTools;
@@ -453,6 +453,12 @@ class ModuleFunctions {
 				DifficultyManager.addSongSupport(songName);
 			} catch (error:Dynamic) {}
 		}
+	}
+
+	public static function reportImportProgressPayload(payload:Dynamic):Void {
+		if (payload == null) return;
+		reportImportProgress(payload.phase, payload.current, payload.completed, payload.total,
+			payload.copied, payload.skipped, payload.failed, payload.work);
 	}
 
 		public static function reportImportProgress(phase:String, current:String, completed:Int = 0, total:Int = 0,
@@ -4455,10 +4461,11 @@ class ModuleFunctions {
 				for (entry in entries) {
 					if (!entry.toLowerCase().endsWith('.hxc'))
 						continue;
-					var name = Path.withoutExtension(entry).toLowerCase();
-					if (stageNames != null && !stageNames.exists(name))
-						continue;
 					var path = Path.join([folder, entry]);
+					if (HxcScriptDiscovery.familyForPath(path) != 'stage'
+						|| (stageNames != null && !HxcScriptDiscovery.stageMatches(path,
+							[for (name in stageNames.keys()) name])))
+						continue;
 					if (scripts.indexOf(path) < 0)
 						scripts.push(path);
 				}

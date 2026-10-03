@@ -1,8 +1,11 @@
 """Pin the Flixel 6.1.2 UV adapter and the isolated haxelib source patch."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -121,7 +124,7 @@ class Main {
             patched_path = Path(work) / "ModchartUtil.hx"
             shutil.copyfile(MODCHART_UTIL, patched_path)
             first = subprocess.run(
-                ["python3", str(PATCHER), str(patched_path)], cwd=ROOT,
+                [sys.executable, str(PATCHER), str(patched_path)], cwd=ROOT,
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
             once = patched_path.read_text(encoding="utf-8")
@@ -137,7 +140,7 @@ class Main {
             self.assertEqual(patched_bytes.count(b"\n"), patched_bytes.count(b"\r\n"))
 
             second = subprocess.run(
-                ["python3", str(PATCHER), str(patched_path)], cwd=ROOT,
+                [sys.executable, str(PATCHER), str(patched_path)], cwd=ROOT,
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
             self.assertEqual(patched_path.read_text(encoding="utf-8"), once)
@@ -150,9 +153,9 @@ class Main {
     def run_haxe_fixture(self, fixture):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
-            (folder / "Main.hx").write_text(fixture, encoding="utf-8")
+            (folder / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(folder), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(folder), "-main", "Main", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": work},
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

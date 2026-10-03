@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
@@ -20,9 +22,9 @@ WEINER_STAGE = DONOR / "psych/Hey kid do you wanna weiner/stages/weiner.lua"
 class PsychStageCompatibilityTest(unittest.TestCase):
     def run_fixture(self, source: str):
         with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "PsychStageCompatTest.hx").write_text(source)
+            (Path(folder) / "PsychStageCompatTest.hx").write_text(source, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-cp", str(HAXESCRIPT), "-main", "PsychStageCompatTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
 

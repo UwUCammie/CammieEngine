@@ -1,10 +1,13 @@
 """Nightmare Vision has a distinct, bounded import identity from Psych."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import json
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,14 +50,14 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp)
-            (work / "ImportEngine.hx").write_text(self.engine)
-            (work / "ImportRootScanner.hx").write_text(self.scanner)
+            (work / "ImportEngine.hx").write_text(self.engine, newline='\n')
+            (work / "ImportRootScanner.hx").write_text(self.scanner, newline='\n')
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
-            )
-            (work / "Main.hx").write_text(main)
+            , newline='\n')
+            (work / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "Main", *(str(path) for path in paths)],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main", *((path).as_posix() for path in paths)],
                 cwd=temp,
                 capture_output=True,
                 text=True,
@@ -68,11 +71,11 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             project = Path(temp) / "nmv-source"
             (project / "source/psychlua").mkdir(parents=True)
-            (project / "source/psychlua/FunkinLua.hx").write_text("class FunkinLua {}")
+            (project / "source/psychlua/FunkinLua.hx").write_text("class FunkinLua {}", newline='\n')
             (project / "Project.xml").write_text(
                 '<project><app packageName="com.nmvTeam.nightmareEngine" '
                 'package="com.nmvTeam.nightmareEngine" /></project>'
-            )
+            , newline='\n')
             output = self.run_scan(project)
 
         self.assertIn("ROOT|Nightmare Vision|", output)
@@ -86,7 +89,7 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             (root / "assets/songs/demo").mkdir(parents=True)
             (chart_folder / "normal.json").write_text(
                 json.dumps({"song": {"format": "nmv2", "notes": []}})
-            )
+            , newline='\n')
             output = self.run_scan(root)
 
         self.assertIn("ROOT|Nightmare Vision|", output)
@@ -98,14 +101,14 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             game.mkdir()
             (game / "Project.xml").write_text(
                 '<project><app packageName="com.nmvTeam.nightmareEngine" /></project>'
-            )
+            , newline='\n')
             package = game / "content/unbranded-package"
             song = package / "songs/authored-id"
             (song / "data").mkdir(parents=True)
             (song / "audio").mkdir()
             (song / "data/normal.json").write_text(
                 json.dumps({"song": {"song": "Display Name", "notes": []}})
-            )
+            , newline='\n')
             (song / "audio/Inst.ogg").write_bytes(b"inst")
             output = self.run_scan(package)
 
@@ -124,7 +127,7 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             chart = package / "songs/authored-id/data/normal.json"
             chart.parent.mkdir(parents=True)
             (package / "songs/authored-id/audio").mkdir()
-            chart.write_text(json.dumps({"song": {"format": "nmv2", "notes": []}}))
+            chart.write_text(json.dumps({"song": {"format": "nmv2", "notes": []}}), newline='\n')
             output = self.run_scan(package)
 
         self.assertIn(f"ROOT|Nightmare Vision|{package}|DATA={package / 'songs'}|", output)
@@ -143,8 +146,8 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             (audio_folder / "Inst.ogg").write_bytes(b"audio")
             (chart_folder / "all-stars.json").write_text(
                 json.dumps({"song": {"song": "All-Stars", "bpm": 128, "notes": []}})
-            )
-            (chart_folder / "script.lua").write_text("function onCreate() end")
+            , newline='\n')
+            (chart_folder / "script.lua").write_text("function onCreate() end", newline='\n')
             output = self.run_scan(root)
 
         self.assertIn("ROOT|Psych Engine|", output)
@@ -178,9 +181,10 @@ class CompatScriptManifest {
 '''
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp)
-            (work / "CompatScriptManifest.hx").write_text(fixture)
+            install_import_io_dependencies(work)
+            (work / "CompatScriptManifest.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", temp, "--run", "CompatScriptManifest"],
+                [*HAXE_COMMAND, "-cp", temp, "--run", "CompatScriptManifest"],
                 cwd=temp,
                 capture_output=True,
                 text=True,

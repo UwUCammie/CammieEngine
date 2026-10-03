@@ -1,5 +1,7 @@
 """Missing imported characters must not bypass fallback on the victory screen."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -84,8 +86,8 @@ class FlxColor {public static var CYAN=0;}
             p = Path(folder)
             for name in ['dad', 'valid', 'broken']:
                 (p / 'assets/images/custom_chars' / name).mkdir(parents=True)
-            (p / 'Character.hx').write_text(fixture)
-            result = subprocess.run([str(ROOT / '.tools/haxe/haxe'), '-cp', folder,
+            (p / 'Character.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                                      '-main', 'Character', '--interp'], cwd=folder,
                                     env={**os.environ, 'TMPDIR': str(ROOT / 'tmp')},

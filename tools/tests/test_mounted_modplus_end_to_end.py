@@ -6,15 +6,18 @@ tree merge methods, then runs them in a project-local temporary destination.
 This keeps the test independent of a game build while exercising the same
 native materialization boundaries used by ``importSongsFromPath``.
 """
+from haxe_test_support import HAXE_COMMAND
 
 from hashlib import sha256
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import re
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -320,6 +323,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
         fixture = _fixture(module_source)
         with tempfile.TemporaryDirectory(prefix="modplus-e2e-", dir=ROOT / "tmp") as folder:
             temp = Path(folder)
+            install_import_io_dependencies(temp)
             for name in (
                 "ImportSongOwnership.hx",
                 "PsychLuaScriptDependencies.hx",
@@ -327,6 +331,8 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "ImportRootScanner.hx",
                 "VSliceImporter.hx",
                 "VSliceAstcAdapter.hx",
+                "HxcScriptIdentity.hx",
+                "HxcScriptDiscovery.hx",
                 "CodenameEventMetadata.hx",
                 "CodenameNoteMetadata.hx",
                 "CodenameEventPack.hx",
@@ -341,7 +347,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "NightmareVisionAssetCollector.hx",
                 "ImportDirectoryListing.hx",
             ):
-                (temp / name).write_text((ROOT / "source" / name).read_text())
+                (temp / name).write_text((ROOT / "source" / name).read_text(), newline='\n')
             codename_importer = (ROOT / "source/CodenameImporter.hx").read_text()
             codename_importer = codename_importer.replace(
                 "EngineCompat.EngineCompatEventRoute", "CodenameEventRoute"
@@ -350,13 +356,13 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "using StringTools;\ntypedef CodenameEventRoute = { var name:String; var v1:String; var v2:String; var v3:String; };",
                 1,
             )
-            (temp / "CodenameImporter.hx").write_text(codename_importer)
+            (temp / "CodenameImporter.hx").write_text(codename_importer, newline='\n')
             (temp / "CodenameCharacterAtlas.hx").write_text(
                 (ROOT / "source/CodenameCharacterAtlas.hx").read_text()
-            )
+            , newline='\n')
             (temp / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
-            )
+            , newline='\n')
             (temp / "NoteTypeCompat.hx").write_text(
                 """class NoteTypeCompat {
   public static function isStringType(value:Dynamic):Bool return value != null && Std.isOfType(value, String);
@@ -366,7 +372,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
   }
 }
 """
-            )
+            , newline='\n')
             (temp / "EngineCompat.hx").write_text(
                 """class EngineCompat {
   public static function eventName(name:Dynamic):String {
@@ -390,13 +396,13 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
   public static function legacyCutsceneBool(data:Dynamic,field:String,fallback:Bool):Bool return fallback;
 }
 """
-            )
+            , newline='\n')
             (temp / "LuaCompat.hx").write_text(
                 """typedef LuaCompatResult = { var hscript:String; var supported:Bool; var diagnostics:Array<String>; };
 class LuaCompat { public static function translate(source:String,?origin:String):LuaCompatResult
   return {hscript:source,supported:true,diagnostics:[]}; }
 """
-            )
+            , newline='\n')
             (temp / "HxcCompat.hx").write_text(
                 """typedef HxcCompatDiagnostic = { var code:String; var message:String; };
 typedef HxcCompatEventAdapter = { var sourceName:String; var canonicalName:String; var fields:Array<String>; };
@@ -409,17 +415,17 @@ class HxcCompat {
   public static function noteKindAvoidsHits(source:String):Bool return false; public static function analyze(source:String,?path:String):HxcCompatResult
   return {kind:'',generatedHscript:'',diagnostics:[],eventAdapters:[],nativeNoteDefinitions:[],className:'',canonicalCallbacks:[],noteKinds:[],callbackAdapters:[],noteBehaviorPatterns:[],moduleDisabled:false,customEventKind:'',customEventBody:''}; }
 """
-            )
+            , newline='\n')
             (temp / "DifficultyManager.hx").write_text(
                 """import haxe.io.Path; import sys.FileSystem;
 class DifficultyManager { public static var supportedDiff:Map<String,Bool>=new Map<String,Bool>();
   public static function addSongSupport(song:String):Void { var key=song.toLowerCase();
     if (FileSystem.exists(Path.join(["assets","data",key,key+".json"]))) supportedDiff.set(key,true); } }
 """
-            )
-            (temp / "Main.hx").write_text(fixture)
+            , newline='\n')
+            (temp / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", str(temp),
+                [*HAXE_COMMAND, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "-cp", str(temp),
                  "--run", "Main", str(DONOR_ROOT)],
                 cwd=temp,
                 capture_output=True,

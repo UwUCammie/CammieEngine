@@ -1,8 +1,10 @@
 """Kade/FPS anonymous death-note conversion stays engine-level."""
+from haxe_test_support import HAXE_COMMAND
 
 import json
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -22,13 +24,13 @@ class KadeNoteConversionTest(unittest.TestCase):
             folder_path = Path(folder)
             (folder_path / "EngineCompat.hx").write_text(
                 (ROOT / "source/EngineCompat.hx").read_text()
-            )
+            , newline='\n')
             (folder_path / "NoteTypeCompat.hx").write_text(
                 (ROOT / "source/NoteTypeCompat.hx").read_text()
-            )
+            , newline='\n')
             (folder_path / "HxcEventSpriteDescriptor.hx").write_text(
                 (ROOT / "source/HxcEventSpriteDescriptor.hx").read_text()
-            )
+            , newline='\n')
             (folder_path / "HxcCompatRuntime.hx").write_text(
                 """class HxcCompatRuntime {
   public static function beginActiveSong():Void {}
@@ -36,16 +38,16 @@ class KadeNoteConversionTest(unittest.TestCase):
   public static function observeIncoming(value:Dynamic):Void {}
 }
 """
-            )
+            , newline='\n')
             (folder_path / "CompatScriptManifest.hx").write_text(
                 """class CompatScriptManifest {
   public static inline var ROOT_PREFIX:String = 'assets/imported_mods';
 }
 """
-            )
-            (folder_path / "Main.hx").write_text(body)
+            , newline='\n')
+            (folder_path / "Main.hx").write_text(body, newline='\n')
             return subprocess.run(
-                [str(HAXE), "-cp", folder, "--run", "Main", *args],
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main", *args],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

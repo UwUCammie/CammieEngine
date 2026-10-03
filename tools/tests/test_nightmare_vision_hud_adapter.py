@@ -1,6 +1,8 @@
 """Executed contract for the NMV PsychHUD bridge over live PlayState HUD objects."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -58,12 +60,29 @@ class FakePlayState {
  public var songPositionBar:Float = 0.25;
  public var curStep:Int = 21; public var curBeat:Int = 5; public var curSection:Int = 2;
  public var display:Array<Dynamic> = [];
+ public var members(get,never):Array<Dynamic>;
+ function get_members():Array<Dynamic> return display;
  public function new() {}
  public function add(object:Dynamic):Dynamic { display.push(object); return object; }
  public function remove(object:Dynamic, splice:Bool = false):Dynamic { display.remove(object); return object; }
  public function insert(position:Int, object:Dynamic):Dynamic { display.insert(position, object); return object; }
 }
 
+class FakeRatings {
+ public var ratingPrefix:String = 'source/ratings/';
+ public var ratingSuffix:String = '';
+ public var comboPrefix:String = 'source/combo/';
+ public var comboTween:Bool = true;
+ public var comboOffsets:Array<Int> = [0,0,0,0];
+ public var ratingGraphic:FakeObject = new FakeObject();
+ public var ratingNumGroup:FakeObject = new FakeObject();
+ public var showRating:Bool = true; public var showRatingNum:Bool = true; public var showCombo:Bool = true;
+ public var calls:Array<Dynamic> = []; public var cached:Int = 0; public var released:Bool = false;
+ public function new() {}
+ public function popUpScore(rating:Dynamic,combo:Int,note:Dynamic):Void calls=[rating,combo,note];
+ public function cachePopUpScore():Void cached++;
+ public function release():Void released=true;
+}
 class Main {
  static function fail(message:String):Void throw message;
  static function check(value:Bool, message:String):Void if (!value) fail(message);
@@ -84,6 +103,7 @@ class Main {
   var errors:Array<String> = [];
   var tweenTargets:Array<Dynamic> = [];
   var tweenDurations:Array<Float> = [];
+  var characterRefreshes:Int = 0;
   var adapter = new NightmareVisionHUDAdapter({
    parent:state, healthFill:healthFill, healthBackground:healthBG,
    iconP1:iconP1, iconP2:iconP2, scoreText:score,
@@ -95,6 +115,7 @@ class Main {
     healthFill.fillDirection=leftToRight ? 'LEFT_TO_RIGHT' : 'RIGHT_TO_LEFT',
    setSongDirection:function(leftToRight:Bool):Void
     songFill.fillDirection=leftToRight ? 'LEFT_TO_RIGHT' : 'RIGHT_TO_LEFT',
+   refreshCharacterPresentation:function():Void characterRefreshes++,
    tweenAlpha:function(target:Dynamic, duration:Float):Void {
     tweenTargets.push(target); tweenDurations.push(duration);
     Reflect.setProperty(target, 'alpha', 1);
@@ -215,6 +236,8 @@ class Main {
   adapter.beatHit();
   eq(iconP1.bumps, 1, 'beat callback bops player icon');
   eq(iconP2.bumps, 1, 'beat callback bops opponent icon');
+  adapter.onCharacterChange();
+  eq(characterRefreshes, 1, 'character change delegates to shared live-icon/color refresh');
   adapter.flipBar();
   eq(healthFill.fillDirection, 'LEFT_TO_RIGHT', 'flipBar changes fill direction');
   eq(iconP1.flipX, true, 'flipBar mirrors player icon');
@@ -233,6 +256,41 @@ class Main {
   check(state.display.indexOf(extra) < 0 && adapter.members.indexOf(extra) < 0,
    'remove updates real owner and facade view');
 
+  eq(adapter.remove(null), null, 'null removal stays outside the native display container');
+
+  // Source refreshZ must reorder the actual draw list, including opaque
+  // shadows added after foreground text. Unrelated stage slots stay fixed.
+  var background:Dynamic = {z:990};
+  var foreground:Dynamic = {z:997};
+  var shadow:Dynamic = {z:995};
+  var outside:Dynamic = {z:-100};
+  state.display = [outside, foreground, null, shadow, background];
+  adapter.members.resize(0);
+  for (object in [foreground,shadow,background]) adapter.members.push(object);
+  adapter.sort(function(order:Int, a:Dynamic, b:Dynamic):Int
+   return a.z < b.z ? order : (a.z > b.z ? -order : 0), -1);
+  eq(state.display[0], outside, 'HUD sort preserves unrelated stage slot');
+  eq(state.display[2], null, 'HUD sort preserves vacant stage slot');
+  eq(state.display[1], background, 'background is behind HUD text in live draw list');
+  eq(state.display[3], shadow, 'shadow renders before foreground');
+  eq(state.display[4], foreground, 'white text renders over its black shadow');
+  eq(adapter.members[2], foreground, 'logical HUD order matches rendering');
+  adapter.sort(function(order:Int, a:Dynamic, b:Dynamic):Int
+   return a.z < b.z ? order : (a.z > b.z ? -order : 0), 1);
+  eq(state.display[1], foreground, 'descending source sort is honored');
+  // Restore the existing test's borrowed membership and display targets.
+  adapter.members.resize(0);
+  var restored:Array<Dynamic> = [healthBG,healthFill,iconP1,iconP2,score,songBG,songFill,timeText];
+  for (object in restored) adapter.members.push(object);
+  state.display = [score];
+
+  eq(adapter.remove(new FakeObject()), null, 'nonmember removal follows source null result');
+  state.add(songBG); state.add(songFill);
+  eq(adapter.remove(adapter.timeBar), adapter.timeBar, 'source bar removal returns the view');
+  check(state.display.indexOf(songBG) < 0 && state.display.indexOf(songFill) < 0,
+   'bar removal removes both physical pieces without adding the view to FlxBasic');
+  eq(adapter.remove(adapter.timeBar), null, 'repeated bar removal is safe');
+
   var prefixErrors = errors.length;
   adapter.ratingPrefix = 'custom/ratings/';
   eq(adapter.ratingPrefix, 'custom/ratings/', 'ratingPrefix is mutable');
@@ -244,6 +302,42 @@ class Main {
    unsupported = Std.string(error).indexOf('PsychHUD.popUpScore') >= 0;
   }
   check(unsupported, 'unsupported popup is an error, not a silent no-op');
+
+  var presentation = new FakeRatings();
+  var popupAdapter = new NightmareVisionHUDAdapter({
+   parent:state, healthFill:healthFill, healthBackground:healthBG,
+   iconP1:iconP1, iconP2:iconP2, scoreText:score,
+   songFill:songFill, songBackground:songBG, timeText:timeText,
+   ratingPresentation:presentation,
+   removeDisplay:function(object:Dynamic, splice:Bool):Dynamic return state.remove(object, splice)
+  });
+  eq(popupAdapter.ratingGraphic, presentation.ratingGraphic, 'popup exposes real sprite identity');
+  eq(popupAdapter.ratingNumGroup, presentation.ratingNumGroup, 'popup exposes actual digit group');
+  popupAdapter.showRating=false; popupAdapter.showRatingNum=false; popupAdapter.showCombo=false;
+  check(!presentation.showRating && !presentation.showRatingNum && !presentation.showCombo,
+   'popup flags forward to the live renderer');
+  popupAdapter.ratingPrefix='authored/';
+  eq(presentation.ratingPrefix, 'authored/', 'owner prefix reaches live renderer');
+  popupAdapter.ratingSuffix='-pixel';
+  popupAdapter.comboPrefix='digits/';
+  popupAdapter.comboTween=false;
+  var offsets=[1,2,3,4];
+  popupAdapter.comboOffsets=offsets;
+  check(presentation.ratingSuffix=='-pixel' && popupAdapter.ratingSuffix=='-pixel'
+   && presentation.comboPrefix=='digits/' && popupAdapter.comboPrefix=='digits/'
+   && !presentation.comboTween && !popupAdapter.comboTween
+   && presentation.comboOffsets==offsets && popupAdapter.comboOffsets==offsets,
+   'all source popup API properties forward to the actual renderer');
+  var rating={name:'sick',image:'sick'}, note=new FakeObject();
+  popupAdapter.popUpScore(rating, 234, note);
+  eq(presentation.calls[0], rating, 'source rating identity preserved');
+  eq(presentation.calls[1], 234, 'source combo preserved');
+  eq(presentation.calls[2], note, 'source note identity preserved');
+  popupAdapter.cachePopUpScore(); eq(presentation.cached, 1, 'source cache dispatch');
+  popupAdapter.visible=false;
+  check(!presentation.ratingGraphic.visible && !presentation.ratingNumGroup.visible,
+   'HUD hiding reaches actual popup roots');
+  popupAdapter.release(); check(presentation.released, 'popup tween cleanup reaches presentation');
 
   adapter.release();
   eq(adapter.parent, null, 'release clears parent reference');
@@ -258,9 +352,9 @@ class Main {
 '''
 
         with tempfile.TemporaryDirectory(prefix="nmv-hud-", dir=ROOT / "tmp") as scratch:
-            (Path(scratch) / "Main.hx").write_text(fixture)
+            (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", scratch,
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", scratch,
                  "--main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )

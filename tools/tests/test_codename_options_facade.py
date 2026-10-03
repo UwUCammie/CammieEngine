@@ -1,6 +1,8 @@
 """Exercise the shared Codename Options import facade without the game target."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -34,7 +36,7 @@ class CodenameOptionsFacadeTest(unittest.TestCase):
             base = Path(directory)
             (base / "CodenameOptionsQualityCompat.hx").write_text(
                 (ROOT / "source/CodenameOptionsQualityCompat.hx").read_text()
-            )
+            , newline='\n')
             (base / "OptionsHandler.hx").write_text("""class OptionsHandler {
  public static var options:Dynamic = {
  downscroll:true, useCustomInput:false, offset:12.5, zoomCamera:true,
@@ -50,7 +52,7 @@ class CodenameOptionsFacadeTest(unittest.TestCase):
   flixel.FlxG.sound.defaultSoundGroup.volume=opt.volumeSFX;
  }
 }
-""")
+""", newline='\n')
             (base / "Controls.hx").write_text("""class Controls {
  public var bindings:Map<String,Array<Int>> = new Map();
  public function new(seed:Map<String,Array<Int>>) {
@@ -62,7 +64,7 @@ class CodenameOptionsFacadeTest(unittest.TestCase):
  public function setKeyboardBindingsByName(name:String,keys:Array<Int>):Void
   bindings.set(name,keys.copy());
 }
-""")
+""", newline='\n')
             (base / "PlayerSettings.hx").write_text("""class PlayerSettings {
  public static var player1:PlayerSettings = new PlayerSettings(makeControls());
  public static var player2:PlayerSettings = new PlayerSettings(makeControls());
@@ -76,41 +78,41 @@ class CodenameOptionsFacadeTest(unittest.TestCase):
   return new Controls(keys);
  }
 }
-""")
+""", newline='\n')
             (base / "flixel/input/keyboard/FlxKey.hx").parent.mkdir(parents=True, exist_ok=True)
             (base / "flixel/input/keyboard/FlxKey.hx").write_text("""package flixel.input.keyboard;
 class FlxKey { public static var toStringMap:Map<Int,String>=[65=>'A',37=>'LEFT']; }
-""")
+""", newline='\n')
             (base / "flixel/Save.hx").write_text("""package flixel;
 class Save { public var data:Dynamic={keys:{left:[65,37]}};public var flushes:Int=0;
  public function new(){} public function flush():Bool {flushes++;return true;} }
-""")
+""", newline='\n')
             (base / "flixel/FlxG.hx").write_text("""package flixel;
 class FlxG { public static var save:Save=new Save();public static var autoPause:Bool=true;
  public static var updateFramerate:Int=60;public static var drawFramerate:Int=60;
  public static var sound:Dynamic={defaultMusicGroup:{volume:1.0},defaultSoundGroup:{volume:1.0}}; }
-""")
+""", newline='\n')
             (base / "flixel/FlxSprite.hx").write_text("""package flixel;
 class FlxSprite { public static var defaultAntialiasing:Bool=false;
  public var antialiasing:Bool=defaultAntialiasing; public function new(){} }
-""")
+""", newline='\n')
             (base / "flixel/FlxBasic.hx").write_text("""package flixel;
 class FlxBasic {}
-""")
+""", newline='\n')
             (base / "flixel/group/FlxGroup.hx").parent.mkdir(parents=True, exist_ok=True)
             (base / "flixel/group/FlxGroup.hx").write_text("""package flixel.group;
 class FlxGroup {}
 class FlxTypedGroup<T> {}
-""")
+""", newline='\n')
             (base / "flixel/group/FlxSpriteGroup.hx").write_text("""package flixel.group;
 class FlxSpriteGroup {}
 class FlxTypedSpriteGroup<T> {}
-""")
+""", newline='\n')
             (base / "flixel/tweens/FlxTween.hx").parent.mkdir(parents=True, exist_ok=True)
             (base / "flixel/tweens/FlxTween.hx").write_text("""package flixel.tweens;
 class FlxTween {}
-""")
-            (base / "Conductor.hx").write_text("""class Conductor { public static var songOffset:Float=0; }""")
+""", newline='\n')
+            (base / "Conductor.hx").write_text("""class Conductor { public static var songOffset:Float=0; }""", newline='\n')
             (base / "Main.hx").write_text('''import hscript.Interp;
 class Main {
  static function check(ok:Bool, message:String):Void if (!ok) throw message;
@@ -251,9 +253,9 @@ class Main {
    "successful control saves and retry should flush exactly six times");
  }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", str(base),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "-cp", str(ROOT / ".haxelib/hscript-ex/git/src"),

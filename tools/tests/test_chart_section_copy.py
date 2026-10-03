@@ -1,7 +1,9 @@
 """The chart editor copies full JSON note rows when duplicating sections."""
+from haxe_test_support import HAXE_COMMAND
 
 import os
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -59,9 +61,9 @@ class ChartSectionCopyTest(unittest.TestCase):
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "ChartSectionCopyFixture.hx").write_text(fixture)
+            (Path(folder) / "ChartSectionCopyFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "--run", "ChartSectionCopyFixture"],
                 cwd=ROOT,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

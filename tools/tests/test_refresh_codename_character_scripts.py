@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import shutil
 import sys
 import tempfile
@@ -79,8 +80,8 @@ class CodenameCharacterScriptRefreshTest(unittest.TestCase):
             (assets / "compatScripts.json").write_text(json.dumps({
                 "version": 1, "selectedRoot": OWNER,
                 "roots": [{"path": OWNER, "engine": "Codename Engine"}],
-            }))
-            (assets / "fixture-hard.json").write_text('{"song":{"keep":true}}')
+            }), newline='\n')
+            (assets / "fixture-hard.json").write_text('{"song":{"keep":true}}', newline='\n')
         self._pair("hero", old_script(), animate_script(), "animate")
         self._pair("pages", old_script("pages"), multipage_script(), "pages")
         self._pair("custom", b"function init(char) { char.x = 1; }\n",
@@ -103,19 +104,19 @@ class CodenameCharacterScriptRefreshTest(unittest.TestCase):
             if asset_mode == "animate":
                 atlas = folder / "char"
                 atlas.mkdir(parents=True)
-                (atlas / "Animation.json").write_text('{"name":"fixture"}')
-                (atlas / "spritemap1.json").write_text('{"width":1}')
+                (atlas / "Animation.json").write_text('{"name":"fixture"}', newline='\n')
+                (atlas / "spritemap1.json").write_text('{"width":1}', newline='\n')
                 (atlas / "spritemap1.png").write_bytes(b"identical sprite page")
             else:
                 atlas = folder / "char"
                 atlas.mkdir(parents=True)
                 for page in (1, 2):
                     (atlas / f"{page}.png").write_bytes(f"page-{page}".encode())
-                    (atlas / f"{page}.xml").write_text(f"<TextureAtlas page='{page}'/>")
+                    (atlas / f"{page}.xml").write_text(f"<TextureAtlas page='{page}'/>", newline='\n')
 
     def plan(self):
         plan = REFRESH.make_plan(self.runtime, self.preview, OWNER)
-        self.plan_path.write_text(json.dumps(plan))
+        self.plan_path.write_text(json.dumps(plan), newline='\n')
         return plan
 
     def test_only_exact_generated_transforms_with_matching_owner_assets_are_planned(self):
@@ -164,7 +165,7 @@ class CodenameCharacterScriptRefreshTest(unittest.TestCase):
     def test_owner_must_be_selected_by_both_runtimes(self):
         manifest = self.preview / "assets/data/fixture/compatScripts.json"
         manifest.write_text(json.dumps({"version": 1, "selectedRoot": "assets/imported_mods/other-123",
-            "roots": [{"path": "assets/imported_mods/other-123", "engine": "Codename Engine"}]}))
+            "roots": [{"path": "assets/imported_mods/other-123", "engine": "Codename Engine"}]}), newline='\n')
         with self.assertRaisesRegex(ValueError, "no selected Codename songs"):
             REFRESH.make_plan(self.runtime, self.preview, OWNER)
 
@@ -173,7 +174,7 @@ class CodenameCharacterScriptRefreshTest(unittest.TestCase):
         targets = [self.runtime / OWNER / item["id"] for item in plan["candidates"]]
         before = [path.read_bytes() for path in targets]
         with (self.locks / "runtime-0.lock").open("a+") as lock:
-            import fcntl
+            from tools import file_lock as fcntl
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             with self.assertRaises(BlockingIOError):
                 REFRESH.apply_plan(plan, self.plan_path)

@@ -1,6 +1,8 @@
 """Check the source Psych event values forwarded to compiled stages."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -54,11 +56,11 @@ __EVENT_FLOAT__
    .replace("__EVENT_FLOAT__", method(play, "function psychCompiledStageEventFloat2(name:String"))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             (folder / "PsychHeyEventCompat.hx").write_text(
-                (ROOT / "source/PsychHeyEventCompat.hx").read_text())
+                (ROOT / "source/PsychHeyEventCompat.hx").read_text(), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(folder), "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT, text=True, capture_output=True, timeout=30,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

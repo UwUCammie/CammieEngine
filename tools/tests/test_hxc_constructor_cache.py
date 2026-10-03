@@ -1,6 +1,8 @@
 """Offscreen constructor sound cache boundary, with a stub native decoder."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -34,7 +36,7 @@ class HxcConstructorCacheTest(unittest.TestCase):
     return {path: path};
   }
 }
-''')
+''', newline='\n')
             (work / "DynamicSound.hx").write_text('''class DynamicSound {
   public var embedded:Dynamic;
   public var volume:Float = 1;
@@ -44,7 +46,7 @@ class HxcConstructorCacheTest(unittest.TestCase):
     return this;
   }
 }
-''')
+''', newline='\n')
             (work / "flixel").mkdir()
             (work / "flixel/FlxG.hx").write_text('''package flixel;
 class FlxG {
@@ -58,7 +60,7 @@ class SoundSystem {
     return value;
   }
 }
-''')
+''', newline='\n')
             (work / "CacheProbe.hx").write_text('''class CacheProbe {
   static function fail(message:String):Void throw message;
   static function main() {
@@ -98,9 +100,9 @@ class SoundSystem {
       fail("image prewarm decoded a sound or used a fallback asset");
   }
 }
-''')
+''', newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
                  "-main", "CacheProbe", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=60,
             )

@@ -1,15 +1,19 @@
 """Psych source stage enum-abstract blend-mode bindings."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class PsychCompiledStageBlendModesTest(unittest.TestCase):
+    @unittest.skipIf(not (ROOT / 'tmp/psych-archive-source/FNF-PsychEngine-main/source/states/stages/PhillyBlazin.hx').is_file(), 'private Psych archive fixture is unavailable')
     def test_unqualified_blend_abstract_constants_are_bound_for_hscript(self):
         bindings = (ROOT / "source/PsychCompiledStageBindings.hx").read_text()
         self.assertIn("for (constant in Reflect.fields(blendModes))", bindings)
@@ -40,9 +44,9 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
-            (work / "Main.hx").write_text(fixture)
+            (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(work),
+                [*HAXE_COMMAND, "-cp", str(work),
                  "-cp", str(ROOT / ".haxelib/hscript/2,5,0"), "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True,
             )

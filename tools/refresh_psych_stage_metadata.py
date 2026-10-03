@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import fcntl
+try:
+    from tools import file_lock as fcntl
+except ModuleNotFoundError:
+    import file_lock as fcntl  # Direct python tools/<script>.py invocation.
 import hashlib
 import json
 import os
@@ -261,7 +264,7 @@ def locate_source_chart(donor: Path, relative: str,
     unique = sorted(set(matches))
     if len(unique) > 1:
         return None, 'ambiguous donor chart match: ' + ', '.join(
-            str(path.relative_to(donor)) for path in unique)
+            path.relative_to(donor).as_posix() for path in unique)
     if not unique:
         return None, 'matching donor chart was not found'
     return unique[0], None
@@ -355,7 +358,7 @@ def replace_stage(text: str, stage: str) -> str:
 
 
 def tool_fingerprints() -> dict[str, str]:
-    return {str(path.relative_to(ROOT)): file_digest(path) for path in TOOL_INPUTS}
+    return {path.relative_to(ROOT).as_posix(): file_digest(path) for path in TOOL_INPUTS}
 
 
 def stage_data_fingerprints(donor: Path) -> dict[str, str]:
@@ -372,13 +375,13 @@ def stage_data_fingerprints(donor: Path) -> dict[str, str]:
 def render(donor: Path, charts: list[dict]) -> dict:
     if not HAXE.is_file():
         raise ValueError(f'portable Haxe interpreter is missing: {HAXE}')
-    request = {'donorRoot': str(donor.resolve()), 'charts': charts}
+    request = {'donorRoot': donor.resolve().as_posix(), 'charts': charts}
     TMP.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='psych-stage-refresh-', dir=TMP) as work:
         request_path = Path(work) / 'request.json'
         request_path.write_text(json.dumps(request), encoding='utf-8')
         run = subprocess.run(
-            [str(HAXE), '-cp', str(ROOT / 'source'), '-cp', str(ROOT / 'tools'),
+            [HAXE.as_posix(), '-cp', (ROOT / 'source').as_posix(), '-cp', (ROOT / 'tools').as_posix(),
              '--run', 'PsychStageRefreshRender', str(request_path)],
             cwd=ROOT, capture_output=True, text=True, timeout=120)
         if run.returncode:
@@ -465,7 +468,7 @@ def make_plan(donor_root: Path, runtime_root: Path, old_default: str = OLD_DEFAU
         request_id = f'{relative}::{len(pending)}'
         pending.append({'id': request_id, 'relative': relative,
                         'installedSha256': file_digest(installed_path),
-                        'donorChart': str(source_path),
+                        'donorChart': source_path.as_posix(),
                         'donorSha256': file_digest(source_path),
                         'song': song_name, 'oldStage': installed_stage})
         inference_inputs.append({'id': request_id, 'song': song_name})
@@ -503,7 +506,7 @@ def make_plan(donor_root: Path, runtime_root: Path, old_default: str = OLD_DEFAU
             issues.append({'chart': item['relative'], 'reason': 'stage patch altered notes/events'})
             continue
         candidates.append({
-            'chart': item['relative'], 'donorChart': str(Path(item['donorChart']).relative_to(donor)),
+            'chart': item['relative'], 'donorChart': Path(item['donorChart']).relative_to(donor).as_posix(),
             'donorChartSha256': item['donorSha256'], 'installedSha256': digest(before),
             'afterSha256': digest(patched), 'oldStage': item['oldStage'], 'newStage': stage,
         })
@@ -514,8 +517,8 @@ def make_plan(donor_root: Path, runtime_root: Path, old_default: str = OLD_DEFAU
     options_sha = file_digest(options) if options.is_file() and not options.is_symlink() else None
     return {
         'version': 1,
-        'donorRoot': str(donor),
-        'runtimeRoot': str(runtime),
+        'donorRoot': donor.as_posix(),
+        'runtimeRoot': runtime.as_posix(),
         'selectedRoot': owner,
         'oldDefault': old_default,
         'toolInputsSha256': tool_fingerprints(),
@@ -590,7 +593,7 @@ def apply_plan(saved: dict, receipt_path: Path) -> dict:
         raise
 
     receipt = {'version': 1, 'status': 'applied', 'selectedRoot': saved['selectedRoot'],
-               'backup': str(backup), 'changed': len(replaced), 'charts': saved['charts'],
+               'backup': backup.as_posix(), 'changed': len(replaced), 'charts': saved['charts'],
                'skipped': saved['skipped'], 'runtimeOptionsUnchanged': True}
     write_new_json(receipt_path, receipt)
     return receipt
@@ -642,7 +645,7 @@ def main() -> int:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             receipt = apply_plan(saved, receipt_path)
         print(json.dumps({'status': receipt['status'], 'changed': receipt['changed'],
-                          'backup': receipt['backup'], 'receipt': str(receipt_path.resolve())}))
+                          'backup': receipt['backup'], 'receipt': receipt_path.resolve().as_posix()}))
         return 0
 
     if args.plan is not None or args.donor_root is None or args.runtime_root is None:
@@ -656,7 +659,7 @@ def main() -> int:
     write_new_json(receipt_path, plan)
     print(json.dumps({'status': 'planned', 'selectedRoot': plan['selectedRoot'],
                       'changed': len(plan['charts']), 'skipped': len(plan['skipped']),
-                      'receipt': str(receipt_path.resolve())}))
+                      'receipt': receipt_path.resolve().as_posix()}))
     return 0
 
 

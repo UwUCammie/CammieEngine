@@ -1,6 +1,8 @@
 """Focused native-adapter contract tests without launching the game."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -31,9 +33,9 @@ def extract_method(source: str, marker: str) -> str:
 class CodenameFunkinSpriteTest(unittest.TestCase):
     def compile_probe(self, source: str, main: str = "Main") -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
-            Path(folder, "Main.hx").write_text(textwrap.dedent(source))
+            Path(folder, "Main.hx").write_text(textwrap.dedent(source), newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-main", main, "--interp"],
+                [*HAXE_COMMAND, "-cp", folder, "-main", main, "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(TMP)},
                 capture_output=True, text=True, timeout=90,
             )

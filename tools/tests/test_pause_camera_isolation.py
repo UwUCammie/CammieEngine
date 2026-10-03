@@ -1,5 +1,7 @@
 """Pause UI owns a camera even when authored HUD state is hidden/transformed."""
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -50,8 +52,8 @@ class Main {
 """.replace("SETUP", setup).replace("CLEANUP", cleanup)
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(main)
-            result = subprocess.run([str(ROOT / ".tools/haxe/haxe"), "-cp", folder,
+            (Path(folder) / "Main.hx").write_text(main, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", folder,
                                      "--main", "Main", "--interp"], cwd=ROOT,
                                     capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

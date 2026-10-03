@@ -1,6 +1,8 @@
 """Execute the character render path against V-Slice's scaled offset convention."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -62,9 +64,9 @@ class Main {
 '''.replace('CAPTURE', capture)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(folder), '--run', 'Main'],
+                [*HAXE_COMMAND, '-cp', str(folder), '--run', 'Main'],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -112,9 +114,9 @@ class Main {
 '''.replace('__OPENING__', opening)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             folder = Path(scratch)
-            (folder / "Main.hx").write_text(fixture)
+            (folder / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / '.tools/haxe/haxe'), '-cp', str(ROOT / 'source'), '-cp', str(folder),
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(folder),
                  '--run', 'Main'], cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -192,6 +194,7 @@ class FakeSprite {
 class Character extends FakeSprite {
   public var vSliceBaseFrames:Dynamic;
   public var animation:FakeAnimation = new FakeAnimation();
+  public var canPlayAnimations:Bool = true;
   public var animOffsets:Map<String, Array<Dynamic>> = [];
   public var playerOffsetX:Int = 12;
   public var playerOffsetY:Int = -8;
@@ -287,11 +290,11 @@ class Main {
 """
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            (Path(folder) / "Main.hx").write_text(fixture)
+            (Path(folder) / "Main.hx").write_text(fixture, newline='\n')
             env = os.environ.copy()
             env["TMPDIR"] = folder
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=60,
             )

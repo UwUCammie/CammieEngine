@@ -1,6 +1,8 @@
 """Regression coverage for the imported-stage graphic-size compatibility API."""
+from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
@@ -54,9 +56,9 @@ class ExactGraphicSizeMain {{
 """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "ExactGraphicSizeMain.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(HAXE), "-cp", directory, "-main", "ExactGraphicSizeMain", "--interp"],
+                [*HAXE_COMMAND, "-cp", directory, "-main", "ExactGraphicSizeMain", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,

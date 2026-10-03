@@ -1,5 +1,6 @@
 """Beat animation handling tolerates imported characters with no active animation."""
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]

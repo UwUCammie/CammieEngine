@@ -1,4 +1,6 @@
+from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from haxe_test_support import FixturePath as Path
 import os
 import subprocess
 import tempfile
@@ -80,9 +82,9 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 """
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             path = Path(folder) / "PsychStageCameraCompatibilityTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
-                [str(ROOT / ".tools/haxe/haxe"), "-cp", folder, "-cp", str(ROOT / "source"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
                  "-main", "PsychStageCameraCompatibilityTest", "--interp"],
                 capture_output=True, text=True, cwd=ROOT, timeout=300,
                 env={**os.environ, "TMPDIR": str(TMP)})
@@ -179,10 +181,10 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 """
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             path = Path(folder) / "CameraZoomCompatibilityTest.hx"
-            path.write_text(fixture)
+            path.write_text(fixture, newline='\n')
             result = subprocess.run(
                 [
-                    str(ROOT / ".tools/haxe/haxe"),
+                    *HAXE_COMMAND,
                     "-cp",
                     folder,
                     "-main",
