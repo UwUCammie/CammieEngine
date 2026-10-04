@@ -1,4 +1,4 @@
-# CammieEngine v0.0.10
+# CammieEngine v0.0.11
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -44,17 +44,29 @@ the Windows x64 game and run the full regression suite:
 .\run.bat test
 ```
 
-The first run downloads portable Haxe, Neko and Python as needed. It uses
+The first run downloads portable Haxe, Neko, Python and Git as needed. It uses
 Visual Studio's C++ tools when installed, or downloads a portable LLVM-MinGW
 compiler automatically. No administrator access is needed for the portable
-tools. Internet access and Git for Windows are needed for initial setup.
-Close the game before building. Failed builds or tests return a nonzero exit
-code. Tests requiring Linux-only tools or unavailable donor packages report
+tools. Internet access is needed for initial setup; missing Git is bootstrapped
+as project-local MinGit. Double-clicking `run.bat` keeps its console open until
+you press a key, while PowerShell and command-line runs return normally.
+Close a game running from the selected build output before rebuilding it. A
+separately extracted install can stay open during builds; close it before
+replacing its executable. Successful Windows builds are cached by input
+metadata; unchanged runs reuse the executable and still run every test. Use
+`.\run.bat rebuild` to force a build. Automated gameplay checks are muted.
+Failed builds or tests return a nonzero exit code. Tests requiring Linux-only tools or unavailable donor packages report
 their skips explicitly.
+
+Unlimited FPS uses a small native scheduler patch to the pinned Lime 8.3.2.
+The first build fetches its exact source revision and compiles that library;
+later builds reuse the verified cached binary. It requires no GitHub login.
+Linux source builds also need Lime's native development dependencies, including
+OpenGL, ALSA, X11/Xext/Xi/Xrandr/Xinerama and PulseAudio headers.
 
 Use `.\run.bat` to build and play, `.\run.bat nobuild` to play the existing
 build, or `.\run.bat test debug` to build and test with debug symbols.
-To build, test and package the v0.0.10 alpha for release:
+To build, test and package the v0.0.11 alpha for release:
 
 ```powershell
 .\run.bat package
@@ -65,7 +77,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.10
+./build-windows-release.sh v0.0.11
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set
@@ -90,15 +102,24 @@ runtime files stay local and are excluded from Git automatically—including
 future imports. Deliberate new engine assets in ignored folders require
 `git add -f`; ordinary source-code changes do not.
 
-New imports retain the selected source package in `import-cache/` beside the
-game, including Windows `.exe` files used to identify the source engine. Shared
-libraries and other native payloads are excluded. When an engine update changes
+New imports retain regular source files in `import-cache/` beside the game,
+including executables, shared libraries and unknown formats. Only recognized
+Apple `.DS_Store` metadata is excluded; ambiguous files are retained. Copies
+are independent of the original folder and use bounded parallel workers with
+integrity checks. When an engine update changes
 the importer revision, outdated imports rebuild automatically while browsing
 menus or Settings. Progress is shown there. The original folder is no longer
 needed for those refreshes; keep the cache with the installation. Retaining
 source uses additional disk space. Conflicting local edits stop a refresh and
 leave the installed import intact. Imports created before source retention need
 an initial migration; they are never silently overwritten.
+
+Show FPS Counter displays the current FPS and a five-second rolling average,
+with the average refreshed every half second. Unlimited FPS
+removes the native frame cap; turning it off restores the selected finite cap.
+Action input follows actual input updates even when several occur in one
+millisecond. Existing compatibility script callbacks keep their 60 Hz clock.
+In either options menu, Shift + Left/Right adjusts note offset by 20 ms.
 
 ## Verification
 

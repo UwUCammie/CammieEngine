@@ -1090,6 +1090,66 @@ class ModuleFunctions {
 		return stems;
 	}
 
+	/** Nightmare Vision names its two authored buses Voices-player/Voices-opp.
+	 * Store those source IDs as explicit native roles so imported chart metadata
+	 * and the PlayableSong vocal groups agree. */
+	static function normalizeNightmareVisionVocalRoles(songData:SongImport):Void {
+		if (songData == null || songData.vocalStems == null)
+			return;
+		for (stem in songData.vocalStems)
+			if (stem != null)
+				stem.role = NightmareVisionVocalRole.resolve(stem.id, stem.role);
+	}
+
+	static function vocalStemMetadataMatches(expected:Dynamic, existing:Dynamic):Bool {
+		if (expected == null || existing == null || !Std.isOfType(expected, Array)
+			|| !Std.isOfType(existing, Array))
+			return false;
+		var expectedStems:Array<Dynamic> = cast expected;
+		var existingStems:Array<Dynamic> = cast existing;
+		if (expectedStems.length != existingStems.length)
+			return false;
+		for (index in 0...expectedStems.length) {
+			var planned = expectedStems[index];
+			var stored = existingStems[index];
+			if (planned == null || stored == null)
+				return false;
+			var plannedFile:Dynamic = Reflect.field(planned, 'file');
+			if (plannedFile == null)
+				plannedFile = Reflect.field(planned, 'destination');
+			var storedFile:Dynamic = Std.isOfType(stored, String) ? stored : Reflect.field(stored, 'file');
+			if (storedFile == null && !Std.isOfType(stored, String))
+				storedFile = Reflect.field(stored, 'destination');
+			if (plannedFile == null || storedFile == null || Std.string(plannedFile) != Std.string(storedFile))
+				return false;
+			var plannedId:Dynamic = Reflect.field(planned, 'id');
+			var storedId:Dynamic = Std.isOfType(stored, String) ? null : Reflect.field(stored, 'id');
+			var plannedRole:Dynamic = Reflect.field(planned, 'role');
+			var storedRole:Dynamic = Std.isOfType(stored, String) ? null : Reflect.field(stored, 'role');
+			if (plannedId != null && (storedId == null || Std.string(plannedId) != Std.string(storedId)))
+				return false;
+			if (plannedRole != null && (storedRole == null || Std.string(plannedRole) != Std.string(storedRole)))
+				return false;
+		}
+		return true;
+	}
+
+	/** Repair only vocal metadata on an existing chart, preserving its notes and edits. */
+	static function updateChartVocalStemMetadata(chart:Dynamic, expected:Array<Dynamic>):Bool {
+		if (chart == null || expected == null || expected.length == 0)
+			return false;
+		var song:Dynamic = Reflect.field(chart, 'song');
+		if (song == null)
+			return false;
+		var existing:Dynamic = Reflect.field(song, 'vocalStems');
+		if (vocalStemMetadataMatches(expected, existing))
+			return false;
+		Reflect.setField(song, 'vocalStems', expected);
+		Reflect.setField(song, 'needsVoices', true);
+		Reflect.setField(chart, 'song', song);
+		return true;
+	}
+
 	/** Read a JSON sidecar without making malformed optional metadata fatal. */
 	static function readImportJson(path:String):Dynamic {
 		if (path == null || !isImportFile(path))
@@ -1209,6 +1269,10 @@ class ModuleFunctions {
 	}
 
 	static function findImportChart(basePath:String, difficulty:String, folderName:String):String {
+		return findImportFile(basePath, importChartNames(difficulty, folderName));
+	}
+
+	static function importChartNames(difficulty:String, folderName:String):Array<String> {
 		var names:Array<String> = [];
 		for (extension in ['.json', '.jsonc'])
 			names.push(difficulty + extension);
@@ -1221,7 +1285,25 @@ class ModuleFunctions {
 		} else
 			for (extension in ['.json', '.jsonc'])
 				names.push(folderName + '-' + difficulty + extension);
-		return findImportFile(basePath, names);
+		return names;
+	}
+
+	/** Resolve chart candidates from the directory snapshot already used by the
+	 * song collector, keeping findImportFile's case and extension priority. */
+	static function findImportChartInEntries(basePath:String, difficulty:String, folderName:String,
+		entries:Array<String>):String {
+		if (entries == null)
+			return null;
+		for (wanted in importChartNames(difficulty, folderName)) {
+			var wantedName = normalizedImportFileName(wanted);
+			for (entry in entries)
+				if (normalizedImportFileName(entry) == wantedName) {
+					var path = Path.join([basePath, entry]);
+					if (isImportFile(path))
+						return path;
+				}
+		}
+		return null;
 	}
 
 	/** Metadata and event sidecars can be JSON documents without being a
@@ -1243,28 +1325,18 @@ class ModuleFunctions {
 			|| name == 'importprovenance';
 	}
 
-	static function collectImportCharts(basePath:String):Array<String> {
-		return collectAssetCharts(basePath, Path.withoutDirectory(Path.normalize(basePath)));
+	static function collectImportCharts(basePath:String, ?collectedNoteDefinitions:Array<Dynamic>):Array<String> {
+		return collectAssetCharts(basePath, Path.withoutDirectory(Path.normalize(basePath)), collectedNoteDefinitions);
 	}
 
 	/** Collect the configured difficulty slots and any additional native chart
 	 * files shipped by the source engine.  The old importer only looked at the
 	 * destination's easy/normal/hard names, so packs with an `expert`, `mania`
 	 * or engine-specific chart were silently reduced to zero/partial charts. */
-	static function collectAssetCharts(dataPath:String, folderName:String):Array<String> {
+	static function collectAssetCharts(dataPath:String, folderName:String,
+		?collectedNoteDefinitions:Array<Dynamic>):Array<String> {
 		var charts:Array<String> = [];
 		var seen:Map<String, Bool> = new Map<String, Bool>();
-		var addKnown = function(path:String):Void {
-			if (path == null || readSongChart(path) == null)
-				return;
-			var key = Path.normalize(path).toLowerCase();
-			if (!seen.exists(key)) {
-				seen.set(key, true);
-				charts.push(path);
-			}
-		};
-		for (difficulty in getImportDifficultyNames())
-			addKnown(findImportChart(dataPath, difficulty, folderName));
 		if (dataPath == null || !FileSystem.isDirectory(dataPath))
 			return charts;
 		var entries:Array<String>;
@@ -1277,14 +1349,38 @@ class ModuleFunctions {
 			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 			return lower == 0 ? Reflect.compare(a, b) : lower;
 		});
+		var addParsed = function(path:String, chart:Dynamic):Void {
+			if (path == null || chart == null)
+				return;
+			var key = Path.normalize(path).toLowerCase();
+			if (seen.exists(key))
+				return;
+			seen.set(key, true);
+			charts.push(path);
+			if (collectedNoteDefinitions != null)
+				collectSongNoteDefinitions(chart, collectedNoteDefinitions);
+		};
+		var addKnown = function(path:String):Void {
+			if (path == null)
+				return;
+			var key = Path.normalize(path).toLowerCase();
+			if (seen.exists(key))
+				return;
+			addParsed(path, readSongChart(path));
+		};
+		for (difficulty in getImportDifficultyNames())
+			addKnown(findImportChartInEntries(dataPath, difficulty, folderName, entries));
 		for (entry in entries) {
 			var lower = entry.toLowerCase();
 			if ((!lower.endsWith('.json') && !lower.endsWith('.jsonc')) || isImportChartSidecar(entry))
 				continue;
 			var path = Path.join([dataPath, entry]);
-			if (!isImportFile(path) || readSongChart(path) == null)
+			if (!isImportFile(path))
 				continue;
-			addKnown(path);
+			var key = Path.normalize(path).toLowerCase();
+			if (seen.exists(key))
+				continue;
+			addParsed(path, readSongChart(path));
 		}
 		return charts;
 	}
@@ -1379,6 +1475,39 @@ class ModuleFunctions {
 			}
 		}
 
+		// Build one case-insensitive child-directory index per root. The old
+		// per-song findNamedDirectory calls reread and sort the same songs/ trees
+		// for every chart, which made large imports quadratic in directory size.
+		// Callers pass entries in findNamedDirectory's deterministic sort order so
+		// case-colliding names keep resolving to the same first directory.
+		var indexNamedDirectories = function(parent:String, names:Array<String>):Map<String, String> {
+			var indexed = new Map<String, String>();
+			if (parent == null || !FileSystem.isDirectory(parent) || names == null)
+				return indexed;
+			for (entry in names) {
+				if (entry == null)
+					continue;
+				var candidate = Path.join([parent, entry]);
+				if (!FileSystem.isDirectory(candidate))
+					continue;
+				var key = entry.toLowerCase();
+				if (!indexed.exists(key))
+					indexed.set(key, candidate);
+			}
+			return indexed;
+		};
+		var audioSongFolders = new Map<String, String>();
+		if (audioRoot != null && FileSystem.isDirectory(audioRoot)) {
+			try {
+				var audioFolderNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(audioRoot));
+				audioFolderNames.sort(function(a:String, b:String):Int {
+					var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+					return lower == 0 ? Reflect.compare(a, b) : lower;
+				});
+				audioSongFolders = indexNamedDirectories(audioRoot, audioFolderNames);
+			} catch (_:Dynamic) {}
+		}
+
 		for (chartsRoot in dataRoots) {
 			var songFolderNames:Array<String>;
 			try {
@@ -1390,10 +1519,11 @@ class ModuleFunctions {
 				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 				return lower == 0 ? Reflect.compare(a, b) : lower;
 			});
+			var chartSongFolders = indexNamedDirectories(chartsRoot, songFolderNames);
 			for (songFolderName in songFolderNames) {
 				if (importWorkCancelled())
 					return;
-				var dataFolder = findNamedDirectory(chartsRoot, songFolderName);
+				var dataFolder = chartSongFolders.get(StringTools.trim(songFolderName).toLowerCase());
 				if (dataFolder == null || !FileSystem.isDirectory(dataFolder))
 					continue;
 
@@ -1415,7 +1545,7 @@ class ModuleFunctions {
 				}
 				if (songFolder == null && !isNestedNmvPackageSong
 					&& audioRoot != null && FileSystem.isDirectory(audioRoot))
-					songFolder = findNamedDirectory(audioRoot, songFolderName);
+					songFolder = audioSongFolders.get(StringTools.trim(songFolderName).toLowerCase());
 				if (sourceSongFolder == null)
 					sourceSongFolder = songFolder;
 				// A songs/ root is a folder-per-song tree.  A music/ root is a
@@ -1426,6 +1556,8 @@ class ModuleFunctions {
 					flatMusicRoot = audioRoot;
 
 				var songData = songImportFromAssetFolders(songFolder, chartDataFolder, songFolderName, flatMusicRoot);
+				if (songData != null && engine == ImportEngine.NIGHTMARE_VISION)
+					normalizeNightmareVisionVocalRoles(songData);
 				// songImportFromRoots normally derives the destination folder from the
 				// chart directory name. For the nested NMV layout that directory is
 				// literally `data`; retain the authored songs/<song> key instead.
@@ -3973,7 +4105,8 @@ class ModuleFunctions {
 	/** Detailed sibling used by ImportWorkflow so bounded package discovery can
 	 * reach the scan report without process-global state. */
 	static public function discoverSongImportsDetailed(selectedPath:String,
-		?sourcePaths:Map<String, SongImportSource>, ?importType:String):SongImportDiscoveryResult {
+		?sourcePaths:Map<String, SongImportSource>, ?importType:String,
+		?preScannedRoots:Array<ImportRootScanner.ImportRoot>):SongImportDiscoveryResult {
 		var result:Array<SongImport> = [];
 		var rejectionCollector = newSongImportRejectionCollector();
 		var packageDiscovery:SongPackageDiscoveryResult = {
@@ -3987,13 +4120,13 @@ class ModuleFunctions {
 				rejectedSongs: rejectionCollector.entries, rejectedSongCount: rejectionCollector.total,
 				rejectedSongsTruncated: rejectionCollector.truncated};
 		var selected = ImportSettings.normalizeType(importType);
-		var roots = ImportRootScanner.scan(selectedPath, selected, {
+		var roots = preScannedRoots == null ? ImportRootScanner.scan(selectedPath, selected, {
 			onProgress: function(progress):Void {
 				reportImportProgress(progress.phase, progress.current, progress.completed, progress.total);
 				yieldImportWork();
 			},
 			isCancelled: function():Bool return importWorkCancelled()
-		});
+		}) : preScannedRoots.copy();
 		var usableRoots:Array<ImportRootScanner.ImportRoot> = [];
 		for (root in roots)
 			if (!isCurrentGameImportRoot(root))
@@ -5276,8 +5409,9 @@ class ModuleFunctions {
 	static public function songImportFromFolder(basePath:String, ?rename:String):SongImport {
 		#if sys
 		var folderName = Path.withoutDirectory(Path.normalize(basePath));
-		var charts = collectImportCharts(basePath);
-		return songImportFromRoots(basePath, basePath, folderName, charts, rename);
+		var noteDefinitions:Array<Dynamic> = [];
+		var charts = collectImportCharts(basePath, noteDefinitions);
+		return songImportFromRoots(basePath, basePath, folderName, charts, rename, noteDefinitions);
 		#else
 		return null;
 		#end
@@ -5424,7 +5558,8 @@ class ModuleFunctions {
 		}
 	}
 
-	static function songImportFromRoots(audioRoot:String, chartRoot:String, fallbackName:String, charts:Array<String>, ?rename:String):SongImport {
+	static function songImportFromRoots(audioRoot:String, chartRoot:String, fallbackName:String, charts:Array<String>,
+		?rename:String, ?collectedNoteDefinitions:Array<Dynamic>):SongImport {
 		var info = processInfo(Path.join([chartRoot, 'info.txt']));
 		var primaryChart:Dynamic = null;
 		for (chartPath in charts) {
@@ -5592,7 +5727,10 @@ class ModuleFunctions {
 			// Collect source names during the read-only plan so repair scans know when
 			// noteInfo.json is required. The authored row remains unchanged; the
 			// runtime adapter resolves it when Note objects are created.
-			prepareSongNoteDefinitions(result);
+			if (collectedNoteDefinitions == null)
+				prepareSongNoteDefinitions(result);
+			else
+				result.noteDefinitions = collectedNoteDefinitions.length == 0 ? null : collectedNoteDefinitions;
 			applyKadeSourceStageCompatibility(result, chartRoot, chartSong);
 			applyKadeSourceCharacterCompatibility(result, chartRoot, chartSong);
 		return result;
@@ -5612,8 +5750,9 @@ class ModuleFunctions {
 	}
 
 	static function songImportFromAssetFolders(songPath:String, dataPath:String, folderName:String, ?musicPath:String):SongImport {
-		var charts = collectAssetCharts(dataPath, folderName);
-		var songData = songImportFromRoots(songPath, dataPath, folderName, charts);
+		var noteDefinitions:Array<Dynamic> = [];
+		var charts = collectAssetCharts(dataPath, folderName, noteDefinitions);
+		var songData = songImportFromRoots(songPath, dataPath, folderName, charts, null, noteDefinitions);
 		if (songData != null && songData.inst == null)
 			songData.inst = findLegacyMusicAudio(musicPath, folderName);
 		if (songData != null && songData.voices == null)
@@ -6289,25 +6428,8 @@ class ModuleFunctions {
 						var existingChart = readSongChart(existingChartPath);
 						var existingStems:Dynamic = existingChart == null || existingChart.song == null
 							? null : Reflect.field(existingChart.song, 'vocalStems');
-						if (existingStems == null || !Std.isOfType(existingStems, Array)
-							|| (cast existingStems:Array<Dynamic>).length != (cast expectedStems:Array<Dynamic>).length)
+						if (!vocalStemMetadataMatches(expectedStems, existingStems))
 							return true;
-						var expectedStemList:Array<Dynamic> = cast expectedStems;
-						var existingStemList:Array<Dynamic> = cast existingStems;
-						for (stemIndex in 0...expectedStemList.length) {
-							var expectedStem = expectedStemList[stemIndex];
-							var existingStem = existingStemList[stemIndex];
-							var expectedFile:Dynamic = expectedStem == null ? null : Reflect.field(expectedStem, 'file');
-							if (expectedFile == null && expectedStem != null)
-								expectedFile = Reflect.field(expectedStem, 'destination');
-							var existingFile:Dynamic = existingStem == null ? null : (Std.isOfType(existingStem, String)
-								? existingStem : Reflect.field(existingStem, 'file'));
-							if (existingFile == null && existingStem != null && !Std.isOfType(existingStem, String))
-								existingFile = Reflect.field(existingStem, 'destination');
-							if (expectedFile == null || existingFile == null
-								|| Std.string(expectedFile) != Std.string(existingFile))
-								return true;
-						}
 					}
 				}
 		} else if (songData.diffFiles != null) {
@@ -6316,8 +6438,18 @@ class ModuleFunctions {
 				if (!validImportPath(chartPath) || readSongChart(chartPath) == null)
 					continue;
 				var fileName = importedChartFileName(targetFolder, chartPath, index);
-				if (!FileSystem.exists(existingImportChild(dataFolder, fileName)))
+				var existingChartPath = existingImportChild(dataFolder, fileName);
+				if (!FileSystem.exists(existingChartPath))
 					return true;
+				var expectedStems:Dynamic = Reflect.field(songData, 'vocalStems');
+				if (expectedStems != null && Std.isOfType(expectedStems, Array)
+					&& (cast expectedStems:Array<Dynamic>).length > 0) {
+					var existingChart = readSongChart(existingChartPath);
+					var existingStems:Dynamic = existingChart == null || existingChart.song == null
+						? null : Reflect.field(existingChart.song, 'vocalStems');
+					if (!vocalStemMetadataMatches(expectedStems, existingStems))
+						return true;
+				}
 			}
 		}
 		if (songData.noteDefinitions != null && songData.noteDefinitions.length > 0
@@ -8343,6 +8475,7 @@ class ModuleFunctions {
 		var destination = Path.join([dataFolder, 'importProvenance.json']);
 		var existingProvenance = existingImportChild(dataFolder, 'importProvenance.json');
 		if (FileSystem.exists(existingProvenance)) {
+			var provenanceUpdated = false;
 			if (songData.engine == ImportEngine.NIGHTMARE_VISION
 				&& songData.sourceSelectableDifficulties != null
 				&& songData.sourceUnsupportedDifficulties != null) {
@@ -8351,7 +8484,7 @@ class ModuleFunctions {
 					Path.join(['tmp', 'nmv-import-provenance-backups']), expectedOwner, folder,
 					songData.sourceSelectableDifficulties, songData.sourceUnsupportedDifficulties);
 				if (upgrade.status == 'upgraded') {
-					result.copied++;
+					provenanceUpdated = true;
 					if (upgrade.diagnostic != null)
 						result.errors = [upgrade.diagnostic + ' (' + upgrade.backup + ')'];
 					reportImportProgress('import-provenance-upgrade', existingProvenance, 0, 0, 1, 0, 0, 1);
@@ -8360,9 +8493,34 @@ class ModuleFunctions {
 					if (upgrade.diagnostic != null)
 						result.errors = [upgrade.diagnostic + (upgrade.backup == null ? '' : ' (' + upgrade.backup + ')')];
 					reportImportProgress('import-provenance-upgrade', existingProvenance, 0, 0, 0, 0, 1, 1);
-				} else {
-					result.skipped++;
+					return result;
 				}
+			}
+			// Retained-source refreshes may correct package display metadata while
+			// leaving the imported charts and owner identity untouched. In-memory
+			// source roots resolve through ImportIO to the installed owner, so this
+			// same check works when the donor has since been removed.
+			var existingRecord:Dynamic = null;
+			try {
+				if (FileSystem.stat(existingProvenance).size <= 131072)
+					existingRecord = haxe.Json.parse(File.getContent(existingProvenance));
+			} catch (_:Dynamic) {}
+			var expectedOwner = CompatScriptManifest.destinationRoot(songData.sourceRoot, songData.engine);
+			if (existingRecord != null && ImportSongOwnership.refreshDisplayMetadata(existingRecord,
+				songData.engine, expectedOwner, folder, songData.sourceModName, songData.sourceModNameSource)) {
+				try {
+					File.saveContent(existingProvenance, CoolUtil.stringifyJson(existingRecord));
+					provenanceUpdated = true;
+				} catch (_:Dynamic) {
+					result.failed++;
+					result.errors = ['Could not refresh package display metadata in ' + existingProvenance];
+					reportImportProgress('import-provenance-display-refresh', existingProvenance, 0, 0, 0, 0, 1, 1);
+					return result;
+				}
+			}
+			if (provenanceUpdated) {
+				result.copied++;
+				reportImportProgress('import-provenance-display-refresh', existingProvenance, 0, 0, 1, 0, 0, 1);
 			} else {
 				result.skipped++;
 			}
@@ -12744,8 +12902,6 @@ class ModuleFunctions {
 						// destination chart; donor charts and all unrelated user edits stay
 						// untouched.
 						var existingChart = readSongChart(existingChartPath);
-						var existingSong = existingChart == null ? null : Reflect.field(existingChart, 'song');
-						var existingStems:Dynamic = existingSong == null ? null : Reflect.field(existingSong, 'vocalStems');
 						var metadata:Array<Dynamic> = [];
 						for (stem in (cast importedVocalStems:Array<Dynamic>)) {
 							if (stem == null)
@@ -12761,25 +12917,8 @@ class ModuleFunctions {
 								file: Std.string(file)
 							});
 						}
-						var metadataMismatch = existingStems == null || !Std.isOfType(existingStems, Array)
-							|| (cast existingStems:Array<Dynamic>).length != metadata.length;
-						if (!metadataMismatch && Std.isOfType(existingStems, Array)) {
-							var existingMetadata:Array<Dynamic> = cast existingStems;
-							for (stemIndex in 0...metadata.length) {
-								var existingEntry = existingMetadata[stemIndex];
-								var existingFile:Dynamic = existingEntry == null ? null
-									: (Std.isOfType(existingEntry, String) ? existingEntry : Reflect.field(existingEntry, 'file'));
-								if (existingFile == null || Std.string(existingFile) != Std.string(metadata[stemIndex].file)) {
-									metadataMismatch = true;
-									break;
-								}
-							}
-						}
-						if (metadataMismatch && existingSong != null && metadata.length > 0) {
-							Reflect.setField(existingSong, 'vocalStems', metadata);
-							Reflect.setField(existingSong, 'needsVoices', true);
+						if (metadata.length > 0 && updateChartVocalStemMetadata(existingChart, metadata))
 							File.saveContent(existingChartPath, CoolUtil.stringifyJson(existingChart));
-						}
 					} else {
 						// A prior import from a narrower engine root may have written
 						// this chart before a V-Slice root supplied converted events
@@ -12851,13 +12990,20 @@ class ModuleFunctions {
 				coolSong.song = coolSongSong;
 				var fileName = importedChartFileName(targetFolder, chartPath, i);
 				var chartDestination = Path.join([dataFolder, fileName]);
-				if (!FileSystem.exists(existingImportChild(dataFolder, fileName))) {
+				var existingChartPath = existingImportChild(dataFolder, fileName);
+				if (!FileSystem.exists(existingChartPath)) {
 					trace('[import-chart-serialize-start] source=' + chartPath
 						+ ' destination=' + chartDestination);
 					reportImportProgress('chart-serialize-start', chartPath + ' -> ' + chartDestination,
 						i, songData.diffFiles.length);
 					File.saveContent(chartDestination, CoolUtil.stringifyJson(coolSong));
 					reportImportProgress('charts', chartDestination, i + 1, songData.diffFiles.length, 1, 0, 0);
+				} else if (importedVocalStemCount > 0) {
+					var existingChart = readSongChart(existingChartPath);
+					var expectedVocalMetadata:Dynamic = Reflect.field(coolSongSong, 'vocalStems');
+					if (Std.isOfType(expectedVocalMetadata, Array)
+						&& updateChartVocalStemMetadata(existingChart, cast expectedVocalMetadata))
+						File.saveContent(existingChartPath, CoolUtil.stringifyJson(existingChart));
 				}
 				requireChartMaterialized(chartDestination);
 				writtenCharts++;

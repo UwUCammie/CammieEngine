@@ -17,6 +17,8 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 	static inline var ROW_HEIGHT:Float = 47;
 	static inline var FIRST_ROW_Y:Float = 118;
 	static inline var VISIBLE_ROWS:Int = 10;
+	static inline var ROW_SCALE:Float = 0.85;
+	static inline var ROW_MOTION_RATE:Float = 2;
 
 	var categoryIndex:Int = 0;
 	var rowIndex:Int = 0;
@@ -32,6 +34,9 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 	var heading:FlxText;
 	var help:FlxText;
 	var rowGroup:FlxTypedGroup<FlxText>;
+	var rowMotionTargetYs:Array<Float> = [];
+	var rowMotionActive:Bool = false;
+	var rowMotionDirection:Int = 0;
 
 	public function new(?onExitCallback:Dynamic, categoryIndex:Int = 0, rowIndex:Int = 0,
 		?returnOwnerRoot:String, ?returnScriptPath:String) {
@@ -81,6 +86,7 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
+		updateRowMotion(elapsed);
 		if (controls.BACK || FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE) {
 			if (inCategory) {
 				inCategory = false;
@@ -98,7 +104,7 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 			var count = inCategory ? currentRows().length : menuLabels().length;
 			if (count > 0)
 				rowIndex = up ? (rowIndex <= 0 ? count - 1 : rowIndex - 1) : (rowIndex + 1) % count;
-			refreshRows();
+			refreshRows(up ? -1 : 1);
 			return;
 		}
 
@@ -121,10 +127,7 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 			if (!isOwnerOptionsCategory() && currentCategory() == 'Controls') {
 				// ControlsState normally returns to SaveDataState. Pass a concrete
 				// options screen so this nested Codename route returns to its caller.
-				commitOptions();
-				var returnState:FlxState = new CodenameOptionsMenuCompat(onExitCallback,
-					categoryIndex, rowIndex, returnOwnerRoot, returnScriptPath);
-				LoadingState.loadAndSwitchState(new ControlsState(returnState));
+				openControls();
 				return;
 			}
 			inCategory = true;
@@ -136,8 +139,20 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 		var rows = currentRows();
 		if (rowIndex < 0 || rowIndex >= rows.length) return;
 		var row = rows[rowIndex];
+		if (!isOwnerOptionsCategory() && Reflect.field(row, 'kind') == 'action'
+			&& Reflect.field(row, 'field') == 'controls') {
+			openControls();
+			return;
+		}
 		if (isOwnerOptionsCategory()) toggleOwnerOption(row);
 		else if (Reflect.field(row, 'kind') == 'toggle') adjustSelected(1);
+	}
+
+	function openControls():Void {
+		commitOptions();
+		var returnState:FlxState = new CodenameOptionsMenuCompat(onExitCallback,
+			categoryIndex, rowIndex, returnOwnerRoot, returnScriptPath);
+		LoadingState.loadAndSwitchState(new ControlsState(returnState));
 	}
 
 	function adjustSelected(direction:Int):Void {
@@ -147,7 +162,7 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 			toggleOwnerOption(rows[rowIndex]);
 			return;
 		}
-		if (CodenameOptionsMenuModel.adjust(workingOptions, rows[rowIndex], direction)) {
+		if (CodenameOptionsMenuModel.adjust(workingOptions, rows[rowIndex], direction, FlxG.keys.pressed.SHIFT)) {
 			optionsDirty = true;
 			refreshRows();
 		}
@@ -180,8 +195,11 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 		return Std.isOfType(rows, Array) ? cast rows : [];
 	}
 
-	function refreshRows():Void {
+	function refreshRows(motionDirection:Int = 0):Void {
 		if (heading == null || rowGroup == null) return;
+		rowMotionDirection = motionDirection;
+		rowMotionTargetYs.resize(0);
+		rowMotionActive = false;
 		for (oldRow in rowGroup.members)
 			if (oldRow != null) oldRow.destroy();
 		rowGroup.clear();
@@ -216,7 +234,10 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 			help.text = (description == 'null' ? '' : description + '   ')
 				+ 'Up/Down: choose   Left/Right or Enter: toggle   Backspace: categories';
 		} else help.text = 'Up/Down: choose   Left/Right: change   Enter: toggle   Backspace: categories'
-			+ (category == 'Appearance' ? '   Quality locks advanced choices unless CUSTOM.' : '');
+			+ ((category == 'Appearance' || category == 'Graphics & Performance')
+				? '   Quality locks advanced choices unless CUSTOM.' : '')
+			+ ((category == 'Gameplay' || category == 'Controls & Timing')
+				? '   Offset: Shift + Left/Right changes 20 ms.' : '');
 	}
 
 	function loadOwnerOptions():Void {
@@ -240,12 +261,43 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 	}
 
 	function addRow(text:String, selected:Bool, visibleIndex:Int, locked:Bool = false):Void {
-		var row = new FlxText(78, FIRST_ROW_Y + visibleIndex * ROW_HEIGHT,
+		var targetY = FIRST_ROW_Y + visibleIndex * ROW_HEIGHT;
+		var startOffset = selected ? rowMotionDirection * ROW_HEIGHT * 0.3 : 0;
+		var row = new FlxText(78, targetY + startOffset,
 			FlxG.width - 156, text, 22);
 		row.setFormat(null, 22, selected ? FlxColor.YELLOW : (locked ? 0xFFAAAAAA : FlxColor.WHITE),
 			LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		row.scale.set(ROW_SCALE, ROW_SCALE);
 		row.scrollFactor.set();
 		rowGroup.add(row);
+		rowMotionTargetYs.push(targetY);
+		if (startOffset != 0)
+			rowMotionActive = true;
+	}
+
+	/** Move only the newly selected row; the shared host otherwise keeps its
+		existing immediate refresh behavior for value and category changes. */
+	function updateRowMotion(elapsed:Float):Void {
+		if (!rowMotionActive || rowGroup == null) return;
+		var amount = CoolUtil.timeAdjustedLerpAlpha(0.16, elapsed * ROW_MOTION_RATE);
+		var stillMoving = false;
+		var members = rowGroup.members;
+		var index = 0;
+		while (index < members.length) {
+			var row = members[index];
+			if (row != null && index < rowMotionTargetYs.length) {
+				var targetY = rowMotionTargetYs[index];
+				var distance = targetY - row.y;
+				if (Math.abs(distance) < 0.1)
+					row.y = targetY;
+				else {
+					row.y += distance * amount;
+					stillMoving = true;
+				}
+			}
+			index++;
+		}
+		rowMotionActive = stillMoving;
 	}
 
 	function commitOptions():Void {
@@ -254,11 +306,6 @@ class CodenameOptionsMenuCompat extends MusicBeatState {
 		OptionsHandler.applyDisplayOptions(cast workingOptions);
 		if (Main.fpsCounter != null) Main.fpsCounter.visible = Reflect.field(workingOptions, 'showFPS') == true;
 		if (Main.memoryCounter != null) Main.memoryCounter.visible = Reflect.field(workingOptions, 'showMemory') == true;
-		var fps:Dynamic = Reflect.field(workingOptions, 'fpsCap');
-		if (fps != null) {
-			FlxG.updateFramerate = Std.int(fps);
-			FlxG.drawFramerate = Std.int(fps);
-		}
 		FlxG.autoPause = Reflect.field(workingOptions, 'autoPause') == true;
 		optionsDirty = false;
 	}

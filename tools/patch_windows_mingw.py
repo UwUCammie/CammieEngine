@@ -6,6 +6,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def patch_source(text: str) -> str:
+    if 'dp-llvm-mingw-dll-auto-import' not in text:
+        old = '<flag value="--enable-auto-import"/>'
+        if text.count(old) != 1:
+            raise ValueError('Pinned hxcpp DLL auto-import flag was not unique')
+        text = text.replace(old, '<!-- dp-llvm-mingw-dll-auto-import -->\n'
+                            '  <flag value="-Wl,--enable-auto-import"/>', 1)
     if "dp-llvm-mingw-resource-compiler" not in text:
         if text.count('</compiler>') != 1:
             raise ValueError('Pinned hxcpp MinGW compiler section was not unique')

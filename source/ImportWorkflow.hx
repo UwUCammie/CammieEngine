@@ -294,18 +294,53 @@ class ImportScanJob {
 	static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
 	static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
 	static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+	static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+	static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
 	static var chartCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+	static var dependencyCandidateCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+	static var luaDiagnosticCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+	static var luaDiagnosticCacheKnown:Map<String, Bool> = new Map<String, Bool>();
 
 	static function clearResolutionCaches():Void {
 		caseInsensitivePathCache = new Map<String, String>();
 		caseInsensitiveFileCache = new Map<String, String>();
 		registryValueCache = new Map<String, Dynamic>();
 		registryValueCacheKnown = new Map<String, Bool>();
+		registryDocumentCache = new Map<String, Dynamic>();
+		registryDocumentCacheKnown = new Map<String, Bool>();
 		chartCache = new Map<String, Dynamic>();
+		dependencyCandidateCache = new Map<String, Array<String>>();
+		luaDiagnosticCache = new Map<String, Array<String>>();
+		luaDiagnosticCacheKnown = new Map<String, Bool>();
 	}
 
 	static function resolutionCacheKey(value:String):String {
 		return StringTools.replace(value == null ? '' : value, '\\', '/');
+	}
+
+	/** Candidate paths are stable for one scan, but many charts share the same
+	 * character, stage, UI, and cutscene references. Cache the completed lookup
+	 * per ordered owner-root set and return copies because callers may append
+	 * atlas fallbacks to a character's list. */
+	static function dependencyCandidateCacheKey(kind:String, roots:Array<String>, reference:String):String {
+		var rootKeys:Array<String> = [];
+		if (roots != null)
+			for (root in roots)
+				rootKeys.push(pathKey(root));
+		return kind + '\u0000' + rootKeys.join('\u0001') + '\u0000'
+			+ (reference == null ? '<null>' : reference);
+	}
+
+	static function cachedDependencyCandidates(kind:String, roots:Array<String>, reference:String):Array<String> {
+		var key = dependencyCandidateCacheKey(kind, roots, reference);
+		return dependencyCandidateCache.exists(key) ? dependencyCandidateCache.get(key).copy() : null;
+	}
+
+	static function rememberDependencyCandidates(kind:String, roots:Array<String>, reference:String,
+		candidates:Array<String>):Array<String> {
+		var value = candidates == null ? [] : candidates;
+		dependencyCandidateCache.set(dependencyCandidateCacheKey(kind, roots, reference), value.copy());
+		return value;
 	}
 	#end
 
@@ -965,17 +1000,34 @@ class ImportScanJob {
 		var registry = caseInsensitivePath(Path.join([root, relative]));
 		if (!file(registry))
 			return false;
-		try {
-			var parsed:Dynamic = CoolUtil.parseJson(File.getContent(registry));
-			if (parsed == null)
-				return false;
-			if (Reflect.hasField(parsed, name))
+		var parsed = registryDocument(registry);
+		if (parsed == null)
+			return false;
+		if (Reflect.hasField(parsed, name))
+			return true;
+		for (key in Reflect.fields(parsed))
+			if (key.toLowerCase() == name.toLowerCase())
 				return true;
-			for (key in Reflect.fields(parsed))
-				if (key.toLowerCase() == name.toLowerCase())
-					return true;
-		} catch (_:Dynamic) {}
 		return false;
+	}
+
+	/** Parse each registry at most once during a scan. Distinct chart references
+		usually query the same large custom-character registry, so caching only
+		individual key results still rereads and reparses that document for every
+		character. Both positive and failed parses are scoped to perform(). */
+	static function registryDocument(path:String):Dynamic {
+		if (path == null || StringTools.trim(path) == '')
+			return null;
+		var cacheKey = resolutionCacheKey(path);
+		if (registryDocumentCacheKnown.exists(cacheKey))
+			return registryDocumentCache.get(cacheKey);
+		var parsed:Dynamic = null;
+		try {
+			parsed = CoolUtil.parseJson(File.getContent(path));
+		} catch (_:Dynamic) {}
+		registryDocumentCacheKnown.set(cacheKey, true);
+		registryDocumentCache.set(cacheKey, parsed);
+		return parsed;
 	}
 
 	/** Read a registry value without treating the key itself as proof that its
@@ -991,20 +1043,18 @@ class ImportScanJob {
 		if (registryValueCacheKnown.exists(cacheKey))
 			return registryValueCache.get(cacheKey);
 		var cached:Dynamic = null;
-		try {
-			var parsed:Dynamic = CoolUtil.parseJson(File.getContent(registry));
-			if (parsed != null) {
-				var direct:Dynamic = Reflect.field(parsed, name);
-				if (direct != null)
-					cached = direct;
-				else
-					for (key in Reflect.fields(parsed))
-						if (key.toLowerCase() == name.toLowerCase()) {
-							cached = Reflect.field(parsed, key);
-							break;
-						}
-			}
-		} catch (_:Dynamic) {}
+		var parsed = registryDocument(registry);
+		if (parsed != null) {
+			var direct:Dynamic = Reflect.field(parsed, name);
+			if (direct != null)
+				cached = direct;
+			else
+				for (key in Reflect.fields(parsed))
+					if (key.toLowerCase() == name.toLowerCase()) {
+						cached = Reflect.field(parsed, key);
+						break;
+					}
+		}
 		registryValueCacheKnown.set(cacheKey, true);
 		registryValueCache.set(cacheKey, cached);
 		return cached;
@@ -1336,6 +1386,9 @@ class ImportScanJob {
 	}
 
 	static function charCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
+		var cached = cachedDependencyCandidates('character', sourceRoots, reference);
+		if (cached != null)
+			return cached;
 		var result:Array<String> = [];
 		var resultKeys:Map<String, Bool> = new Map();
 		for (root in sourceRoots) {
@@ -1405,10 +1458,13 @@ class ImportScanJob {
 				} catch (_:Dynamic) {}
 			}
 		}
-		return result;
+		return rememberDependencyCandidates('character', sourceRoots, reference, result);
 	}
 
 	static function stageCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
+		var cached = cachedDependencyCandidates('stage', sourceRoots, reference);
+		if (cached != null)
+			return cached;
 		var result:Array<String> = [];
 		for (root in sourceRoots) {
 			var implementations:Array<String> = [];
@@ -1439,10 +1495,13 @@ class ImportScanJob {
 				uniquePush(result, caseInsensitiveFile(Path.join([root, 'stages']), requested + '.hxc'));
 			}
 		}
-		return result;
+		return rememberDependencyCandidates('stage', sourceRoots, reference, result);
 	}
 
 	static function uiCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
+		var cached = cachedDependencyCandidates('ui', sourceRoots, reference);
+		if (cached != null)
+			return cached;
 		var result:Array<String> = [];
 		for (root in sourceRoots) {
 			var base = Path.join([root, 'images', 'custom_ui']);
@@ -1470,10 +1529,13 @@ class ImportScanJob {
 					for (extension in ['.json', '.jsonc'])
 						uniquePush(result, Path.join([styleBase, style + extension]));
 		}
-		return result;
+		return rememberDependencyCandidates('ui', sourceRoots, reference, result);
 	}
 
 	static function cutsceneCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
+		var cached = cachedDependencyCandidates('cutscene', sourceRoots, reference);
+		if (cached != null)
+			return cached;
 		var result:Array<String> = [];
 		for (root in sourceRoots) {
 			var base = Path.join([root, 'images', 'custom_cutscenes']);
@@ -1485,17 +1547,20 @@ class ImportScanJob {
 				for (suffix in ['/' + implementation + '.hscript'])
 					uniquePush(result, base + suffix);
 		}
-		return result;
+		return rememberDependencyCandidates('cutscene', sourceRoots, reference, result);
 	}
 
 	static function layoutCandidates(sourceRoots:Array<String>, reference:String):Array<String> {
+		var cached = cachedDependencyCandidates('layout', sourceRoots, reference);
+		if (cached != null)
+			return cached;
 		var result:Array<String> = [];
 		for (root in sourceRoots) {
 			var base = Path.join([root, 'images', 'custom_ui', 'ui_layouts', reference]);
 			for (suffix in ['/' + reference + '.hscript', '.hscript'])
 				uniquePush(result, base + suffix);
 		}
-		return result;
+		return rememberDependencyCandidates('layout', sourceRoots, reference, result);
 	}
 
 	static function extractQuotedAfter(line:String, token:String):String {
@@ -1821,15 +1886,24 @@ class ImportScanJob {
 				if (seen.exists(key))
 					continue;
 				seen.set(key, true);
-				try {
-					var translated = LuaCompat.translate(File.getContent(entry.path), entry.path);
-					if (translated.diagnostics != null)
-						for (diagnostic in translated.diagnostics)
-							addSongDiagnostic(scanSong, diagnostic);
-				} catch (error:Dynamic) {
-					addSongDiagnostic(scanSong,
-						'[lua-translate-error] ' + entry.path + ': ' + Std.string(error));
+				var diagnostics:Array<String> = luaDiagnosticCacheKnown.exists(key)
+					? luaDiagnosticCache.get(key).copy() : null;
+				if (diagnostics == null) {
+					diagnostics = [];
+					try {
+						var translated = LuaCompat.translate(File.getContent(entry.path), entry.path);
+						if (translated.diagnostics != null)
+							for (diagnostic in translated.diagnostics)
+								if (diagnostic != null)
+								diagnostics.push(Std.string(diagnostic));
+					} catch (error:Dynamic) {
+						diagnostics.push('[lua-translate-error] ' + entry.path + ': ' + Std.string(error));
+					}
+					luaDiagnosticCacheKnown.set(key, true);
+					luaDiagnosticCache.set(key, diagnostics.copy());
 				}
+				for (diagnostic in diagnostics)
+					addSongDiagnostic(scanSong, diagnostic);
 			}
 		}
 		#end
@@ -2679,7 +2753,8 @@ class ImportScanJob {
 		}
 		var discovered:Array<Dynamic>;
 		try {
-			var discovery:SongImportDiscoveryResult = ModuleFunctions.discoverSongImportsDetailed(source, null, selectedType);
+			var discovery:SongImportDiscoveryResult = ModuleFunctions.discoverSongImportsDetailed(source, null,
+				selectedType, descriptors);
 			discovered = discovery == null || discovery.songs == null ? [] : cast discovery.songs;
 			var packageScan = discovery == null ? null : discovery.packageDiscovery;
 			if (discovery != null) {
@@ -2830,9 +2905,12 @@ class ImportScanJob {
 			else
 				result.songsToImport++;
 				var countBefore:Map<String, Bool> = new Map<String, Bool>();
-				for (chart in inspectionCharts) {
-					inspectChart(result, scanSong, chart.path, descriptors, chart.chart,
-						convertedPeers.length == 0 ? null : convertedPeers, songData);
+			for (chart in inspectionCharts) {
+				// Keep the scan-wide song fraction stable while showing the exact
+				// chart currently undergoing potentially expensive dependency scans.
+				ModuleFunctions.reportImportProgress('scan-songs', chart.path, discoveredIndex, discovered.length);
+				inspectChart(result, scanSong, chart.path, descriptors, chart.chart,
+					convertedPeers.length == 0 ? null : convertedPeers, songData);
 				ModuleFunctions.yieldImportWork(true);
 			}
 			for (item in scanSong.dependencies) {

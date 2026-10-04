@@ -11,15 +11,30 @@ Friday Night Funkin' **Disappointing Plus**: a HaxeFlixel 6.1.2 fork of Modding 
 ### Build and test (Windows 11)
 
 From PowerShell in the repository, ` .\run.bat test` builds Windows x64 and
-runs the full regression suite. ` .\run.bat package` also packages the v0.0.10
+runs the full regression suite. ` .\run.bat package` also packages the v0.0.11
 alpha ZIP and checksum in `dist/`, after successful tests. ` .\run.bat` builds
 and plays; ` .\run.bat nobuild` plays the current build. Add `debug` for a debug
-build. Close the game before building.
+build. Unchanged Windows builds reuse a metadata cache; ` .\run.bat rebuild`
+forces recompilation. Tests always run; their module scheduling uses up to 16
+workers (bounded by logical CPU count), using previous durations without
+skipping cases. Automated gameplay smoke checks are muted. Close a game running
+from the selected `export/.../windows/bin`
+before rebuilding that output; a separately extracted install can stay open
+during builds and must close only before its executable is replaced.
 
 Portable Haxe 4.3.6, Neko 2.3.0 and Python are bootstrapped into `.tools/`.
 MSVC is preferred when installed; otherwise a checksum-verified native
 Windows LLVM-MinGW compiler is downloaded without administrator access.
-Git for Windows is required for initial git-backed haxelib setup. Batch files
+The first native build compiles the pinned Lime 8.3.2 scheduler patch from
+its exact source revision; `tools/ensure_lime_uncapped.py` verifies and reuses
+the cached library afterward. Linux native builds additionally require the
+development headers listed in README.md. Do not substitute an unpatched Lime
+native binary: its zero frame rate means one update per second.
+The launchers also patch pinned Flixel action caching to use an input-update
+serial instead of millisecond ticks, which can repeat at uncapped frame rates.
+Git-backed haxelib setup uses system Git when available; otherwise the launcher
+bootstraps checksum-verified MinGit into `.tools/git/`. Explorer double-clicks
+keep the console open until a keypress; command-line runs return normally. Batch files
 must use CRLF (enforced by `.gitattributes`). Extensionless native Haxe/haxelib
 copies keep the existing interpreter probes compatible with Windows.
 

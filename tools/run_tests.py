@@ -3,6 +3,8 @@
 
 import argparse
 import hashlib
+import json
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from pathlib import Path
@@ -76,10 +78,55 @@ def run_single_module(name):
     return 0 if result.wasSuccessful() else 1
 
 
+def default_jobs():
+    # Each module keeps its own interpreter for fixture/global-state isolation.
+    # Cap fanout so large workstations do not spawn an unbounded compiler herd.
+    return min(16, max(1, os.cpu_count() or 1))
+
+
+def timing_path():
+    return ROOT / '.tools' / 'test-module-times.json'
+
+
+def load_timings():
+    try:
+        data = json.loads(timing_path().read_text())
+        return {name: float(seconds) for name, seconds in data.items()
+                if isinstance(seconds, (int, float)) and 0 <= seconds < 86400}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def schedule_modules(modules, timings):
+    # Start expensive probes first, preventing a single late native compile
+    # from holding up the completed suite. Timings never skip tests.
+    return sorted(modules, key=lambda path: (-timings.get(path.name, 0), path.name))
+
+
+def save_timings(timings):
+    path = timing_path()
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as handle:
+            temporary = handle.name
+            json.dump(timings, handle)
+        os.replace(temporary, path)
+    except OSError:
+        # Performance hints must never determine suite success.
+        pass
+    finally:
+        if temporary:
+            try:
+                Path(temporary).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jobs", type=int, default=4,
-                        help="test modules to run at once (default: 4)")
+    parser.add_argument("--jobs", type=int, default=default_jobs(),
+                        help="modules at once (default: up to 16, limited by logical CPUs)")
     parser.add_argument("--pattern", default="test_*.py",
                         help="module filename glob (default: test_*.py)")
     parser.add_argument('--module', help=argparse.SUPPRESS)
@@ -93,6 +140,8 @@ def main():
     modules = sorted(TESTS.glob(args.pattern))
     if not modules:
         parser.error("no test modules match --pattern")
+    timings = load_timings()
+    modules = schedule_modules(modules, timings)
     start = time.monotonic()
     failures = []
     tests_run = 0
@@ -101,6 +150,7 @@ def main():
         pending = {pool.submit(run_module, path): path for path in modules}
         for future in as_completed(pending):
             path, result, elapsed = future.result()
+            timings[path.name] = elapsed
             match = re.search(r"Ran (\d+) tests? in", result.stderr)
             module_tests = int(match.group(1)) if match else 0
             tests_run += module_tests
@@ -119,6 +169,7 @@ def main():
                 for line in result.stdout.splitlines():
                     if line.startswith('SKIP '):
                         print(line, flush=True)
+    save_timings(timings)
     print(f"{tests_run} tests across {len(modules)} modules in "
           f"{time.monotonic() - start:.1f}s; {tests_skipped} skipped, "
           f"{len(failures)} failed")

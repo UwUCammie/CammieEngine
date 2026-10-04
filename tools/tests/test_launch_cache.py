@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('cache', ROOT / 'tools/launch_cache.py')
@@ -102,6 +103,55 @@ class LaunchCacheTest(unittest.TestCase):
     def test_debug_build_has_separate_cache(self):
         self.record()
         self.assertFalse(cache.fresh(self.root, self.root / 'export/debug'))
+
+    def make_windows_runtime(self):
+        for name in ('Funkin.exe', 'lime.ndll', 'CammieUpdateHelper.exe', 'tools/astcenc.exe',
+                     'manifest/default.json', 'manifest/libvlc.json'):
+            self.write('export/release/windows/bin/' + name, 'native fixture')
+        (self.build / 'windows/bin/assets').mkdir(parents=True, exist_ok=True)
+
+    def test_windows_tracks_tools_outputs_and_platform_independently(self):
+        self.make_windows_runtime()
+        before = cache.capture(self.root, self.build, 'windows')
+        cache.record(self.root, self.build, before, 'windows')
+        self.assertTrue(cache.fresh(self.root, self.build, 'windows'))
+        self.assertFalse(cache.fresh(self.root, self.build, 'linux'))
+        self.write('export/release/windows/bin/assets/data/options.json', '{"volume":0}')
+        self.assertTrue(cache.fresh(self.root, self.build, 'windows'))
+        for changed in ('run.bat', 'tools/updater/CammieUpdateHelper.hx',
+                        'tools/patch_windows_mingw.py', 'tools/is_explorer_parent.ps1',
+                        '.tools/git/cmd/git.exe', '.tools/astcenc/astcenc.exe'):
+            before = cache.capture(self.root, self.build, 'windows')
+            cache.record(self.root, self.build, before, 'windows')
+            self.write(changed, 'changed')
+            self.assertFalse(cache.fresh(self.root, self.build, 'windows'), changed)
+        before = cache.capture(self.root, self.build, 'windows')
+        cache.record(self.root, self.build, before, 'windows')
+        (self.build / 'windows/bin/CammieUpdateHelper.exe').unlink()
+        self.assertFalse(cache.fresh(self.root, self.build, 'windows'))
+
+    def test_windows_missing_asset_manifest_invalidates_build(self):
+        self.make_windows_runtime()
+        before = cache.capture(self.root, self.build, 'windows')
+        cache.record(self.root, self.build, before, 'windows')
+        (self.build / 'windows/bin/manifest/default.json').unlink()
+        self.assertFalse(cache.fresh(self.root, self.build, 'windows'))
+
+    def test_windows_debug_and_arch_flags_invalidate_shared_output(self):
+        self.make_windows_runtime()
+        before = cache.capture(self.root, self.build, 'windows')
+        cache.record(self.root, self.build, before, 'windows')
+        for key, value in (('HAXE_DEBUG_FLAG', '-debug'), ('LIME_ARCH_FLAGS', '-D32bit -32')):
+            with patch.dict(os.environ, {key: value}):
+                self.assertFalse(cache.fresh(self.root, self.build, 'windows'))
+
+    def test_windows_concurrent_input_edits_are_never_cached(self):
+        self.make_windows_runtime()
+        before = cache.capture(self.root, self.build, 'windows')
+        self.write('source/Main.hx', 'changed during native build')
+        with contextlib.redirect_stdout(io.StringIO()):
+            cache.record(self.root, self.build, before, 'windows')
+        self.assertFalse(cache.fresh(self.root, self.build, 'windows'))
 
     def run_launcher(self, *args):
         return subprocess.run(['bash', 'run.sh', *args], cwd=self.root,

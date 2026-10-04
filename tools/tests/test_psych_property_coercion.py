@@ -64,6 +64,10 @@ class Note {{
   public var missHealth:Null<Float> = null;
   public function new() {{}}
 }}
+class TypedZoom {{
+  public var zoom:Float = 1.0;
+  public function new() {{}}
+}}
 class PropertyCoercionCompat {{
 {methods}
   static var boyfriend:Dynamic;
@@ -72,6 +76,9 @@ class PropertyCoercionCompat {{
   static var iconP1:Dynamic;
   static var iconP2:Dynamic;
   static function main() {{
+    var typed = new TypedZoom();
+    compatWritePathPart(typed, "zoom", "0.6");
+    if (typed.zoom != 0.6) throw "declared Float must retain fractional string zoom";
     var target:Dynamic = {{
       defaultCamZoom: 1.25,
       color: 0xFFFFFFFF,
@@ -83,6 +90,14 @@ class PropertyCoercionCompat {{
     if (!compatWritePathPart(target, "defaultCamZoom", "0.875")
         || target.defaultCamZoom != 0.875)
       throw "numeric event string was not coerced";
+    for (initial in [0.0, 1.0, 2.0]) {{
+      target.defaultCamZoom = initial;
+      for (zoom in ["0.6", "1", "0.45", "1.4", "0.7"]) {{
+        compatWritePathPart(target, "defaultCamZoom", zoom);
+        if (target.defaultCamZoom != Std.parseFloat(zoom))
+          throw "integral Float value must not truncate a fractional write";
+      }}
+    }}
     if (!compatWritePathPart(target, "visible", "false") || target.visible != false)
       throw "false event string was not coerced";
     if (!compatWritePathPart(target, "visible", "1") || target.visible != true)

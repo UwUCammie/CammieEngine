@@ -399,6 +399,11 @@ else:
 PYEOF
 fi
 
+# FlxAction caches results by FlxGame.ticks, whose millisecond resolution
+# aliases several update frames when Lime's native loop is uncapped. Key that
+# memoization to Flixel's per-update serial instead.
+python3 tools/patch_flixel_input_frame_cache.py
+
 # funkin-modchart 1.2.5 reads FlxUVRect.right/top using the pre-6.1.1
 # coordinate order and its rotated hold path advances UVs with an 8-float
 # stride despite emitting 12 floats per subdivision. Its camera lookup also
@@ -459,6 +464,9 @@ fi
 if [[ "$SETUP_ONLY" == "1" ]]; then
     echo ">> project setup complete (no Linux build or launch)"
     exit 0
+fi
+if [[ "$MODE" != "nobuild" ]]; then
+    python3 tools/ensure_lime_uncapped.py --platform linux --arch 64
 fi
 # reuse the compilation server when it's up - skips re-typechecking
 CONNECT=""

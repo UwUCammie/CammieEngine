@@ -63,6 +63,7 @@ class FlxAssets {
 class FNFAssets {
  public static function getText(path:String):String return sys.io.File.getContent(path);
  public static function getBitmapData(path:String):Dynamic return path;
+ public static function getFlxGraphic(path:String):flixel.graphics.FlxGraphic return new flixel.graphics.FlxGraphic(path);
  public static function getSound(path:String):openfl.media.Sound return new openfl.media.Sound();
 }
 ''')

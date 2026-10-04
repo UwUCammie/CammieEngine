@@ -203,6 +203,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			'Reflect' => Reflect, 'FlxG' => new NightmareVisionFlxGView(FlxG, interp.bindOwnerSave(paths.root, new CodenameOwnerSaveData(paths.root)), clock),
 			'FlxSprite' => NightmareVisionFlxSprite, 'Bopper' => NightmareVisionBopper,
 			'BGSprite' => NightmareVisionBGSprite,
+			'FunkinVideoSprite' => NightmareVisionVideoSprite,
 			'StringMap' => haxe.ds.StringMap, 'IntMap' => haxe.ds.IntMap, 'ObjectMap' => haxe.ds.ObjectMap,
 			'FlxMath' => FlxMath, 'FlxTimer' => FlxTimer, 'FlxTween' => FlxTween,
 			'FlxEase' => FlxEase, 'FlxSound' => FlxSound, 'FlxText' => FlxText,
@@ -233,6 +234,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('flixel.FlxSprite', NightmareVisionFlxSprite);
 		interp.bindImport('funkin.objects.Bopper', NightmareVisionBopper);
 		interp.bindImport('funkin.objects.BGSprite', NightmareVisionBGSprite);
+		interp.bindImport('funkin.video.FunkinVideoSprite', NightmareVisionVideoSprite);
 		interp.bindImport('funkin.game.shaders.HSLColorSwap', NightmareVisionHSLColorSwap);
 		interp.bindImport('flixel.FlxG', preset.get('FlxG'));
 		interp.bindImport('flixel.text.FlxTextAlign', preset.get('FlxTextAlign'));
@@ -815,6 +817,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	// imports add the other split stems to this group so every transport and
 	// volume operation reaches them together.
 	private var vocalTracks:VocalTracks;
+	private var nightmareVisionVocalPcmSmokeComplete:Bool = false;
+	private var nightmareVisionVocalPcmSmokeAttempts:Int = 0;
+	private var nightmareVisionVocalPcmSmokeFrames:Int = 0;
 	// use old bf
 	private var oldMode:Bool = false;
 	public var dad:Character;
@@ -1635,6 +1640,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return durationSeconds != null ? durationSeconds : durationMilliseconds / 1000;
 	}
 
+	/** Preserve the stock 60 Hz zoom return at every rendering frame rate. */
+	public static function cameraZoomDecayRetention(elapsed:Float, decay:Float):Float {
+		return Math.pow(0.95, Math.max(0, decay) * Math.max(0, elapsed) * 60);
+	}
+
 	/**
 	 * Returns whether a script already supplied the camera zoom for this beat.
 	 * A number of imported Modding Plus charts implement their own beat bump
@@ -1901,6 +1911,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	// the flashing-lights preference mute its visual callback without dropping
 	// unrelated event callbacks from other interpreters.
 	var psychFlashEventScopes:Map<String, Bool> = [];
+	var psychCustomEventScopes:Map<String, String> = [];
 	// HXC ModuleHandler calls resolve to generated interpreter scopes. The map
 	// contains only imported module callbacks; donor classes are never
 	// instantiated by the compatibility layer.
@@ -2679,6 +2690,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		compatScriptScopes.clear();
 		loadingPsychLuaScriptPaths.clear();
 		psychFlashEventScopes.clear();
+		psychCustomEventScopes.clear();
 		psychCompatScriptsLoaded = false;
 		hxcCompatScriptsLoaded = false;
 		psychCompatScriptIndex = 0;
@@ -3141,6 +3153,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 		}
 	}
+	inline function dispatchNoteStrumCallback(note:Note):Void {
+		if (note.noteStrum == null) return;
+		var strumY:Float = getHaxeActor('0').y;
+		if (note.y >= strumY - 20 && note.y <= strumY + 20) {
+			callHscript(note.noteStrum, [], "modchart");
+			note.noteStrum = null;
+		}
+	}
+
 	function getHaxeActor(who:Dynamic):Dynamic {
 		switch (Std.string(who)) {
 			case "boyfriend" | "bf":
@@ -3362,7 +3383,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var numberText = StringTools.trim(Std.string(value));
 			var parsedNumber = Std.parseFloat(numberText);
 			if (!Math.isNaN(parsedNumber))
-				return Std.isOfType(current, Int) ? Std.int(parsedNumber) : parsedNumber;
+				// Integral-valued Floats also satisfy isOfType(Int). Inferring a
+				// field's declared type from its current value truncates later
+				// fractional writes (including a zoom changing from 1 to 0.6).
+				// Let the reflected destination perform its own typed assignment.
+				return parsedNumber;
 		}
 		return value;
 	}
@@ -9404,6 +9429,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				makeHaxeState(scriptScope, Path.directory(entry.path) + '/',
 					Path.withoutDirectory(entry.path));
 				if (entry.scope == PsychScriptDiscovery.CUSTOM_EVENT
+					&& hscriptStates.exists(scriptScope)
+					&& hscriptStates.get(scriptScope).variables.exists('onEvent'))
+					psychCustomEventScopes.set(scriptScope,
+						StringTools.trim(Path.withoutExtension(Path.withoutDirectory(entry.path))).toLowerCase());
+				if (entry.scope == PsychScriptDiscovery.CUSTOM_EVENT
 					&& StringTools.trim(Path.withoutExtension(Path.withoutDirectory(entry.path))).toLowerCase() == 'flash'
 					&& hscriptStates.exists(scriptScope)
 					&& hscriptStates.get(scriptScope).variables.exists('onEvent'))
@@ -12994,6 +13024,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		hxcCountdownHookDispatching = true;
 		try {
 			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-begin');
+			// Nightmare Vision stage scripts use Psych's onStartCountdown name.
+			// They live in a separate owner group from the HScript callbacks below,
+			// so dispatch them explicitly and preserve Function_Stop for authored
+			// intros that request the countdown again when they finish.
+			countdownResults.push(callNightmareVision('onStartCountdown', []));
 			callAllHScript('startCountdown', [], false, countdownResults);
 			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-complete');
 		} catch (error:Dynamic) {
@@ -15288,6 +15323,18 @@ void main(void) {
 		}
 	}
 
+	function psychCustomEventHasCallback(name:Dynamic):Bool {
+		if (name == null) return false;
+		var key = StringTools.trim(Std.string(name)).toLowerCase();
+		for (scope in psychCustomEventScopes.keys()) {
+			if (psychCustomEventScopes.get(scope) != key) continue;
+			var interp = hscriptStates.get(scope);
+			if (interp != null && interp.variables.get('__compatClosed') != true
+				&& Reflect.isFunction(interp.variables.get('onEvent'))) return true;
+		}
+		return false;
+	}
+
 	function fireNativeSongEvent(e:Dynamic) {
 		var psychStageEvent:Dynamic = e;
 		var eventNameLower = e == null || e.name == null ? ''
@@ -15338,6 +15385,14 @@ void main(void) {
 		// canonical `Camera Flash` rows continue through the native event switch.
 		if (EngineCompat.psychFlashScriptOwnsLegacyEvent(e.name,
 			psychFlashEventScopes.keys().hasNext())) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+		// Source custom events own their effects. Our legacy native aliases are
+		// fallbacks when that event script is absent, while Psych's built-in
+		// events still run alongside observational onEvent callbacks.
+		if (EngineCompat.psychCustomEventOwnsNativeFallback(e.name,
+			psychCustomEventHasCallback(e.name))) {
 			dispatchPsychCompiledStageEvent(psychStageEvent);
 			return;
 		}
@@ -16174,13 +16229,92 @@ void main(void) {
 		return Path.join([currentSongAudioFolder(), Path.withoutDirectory(clean)]);
 	}
 
-	private function loadVocalTrack(path:String):FlxSound {
+	private function resolveImportedVocalStemRole(entry:Dynamic):String {
+		var authoredRole:Dynamic = entry == null || Std.isOfType(entry, String)
+			? null : Reflect.field(entry, 'role');
+		var authoredId:Dynamic = entry == null || Std.isOfType(entry, String)
+			? null : Reflect.field(entry, 'id');
+		var format = SONG == null || SONG.format == null ? '' : StringTools.trim(SONG.format).toLowerCase();
+		if (format == 'nmv2')
+			return NightmareVisionVocalRole.resolve(authoredId, authoredRole);
+		return authoredRole == null ? 'player' : Std.string(authoredRole);
+	}
+
+	private function resolvePreferredVocalStemRole(currentRole:String, entry:Dynamic):String {
+		var authoredRole:Dynamic = entry == null || Std.isOfType(entry, String)
+			? null : Reflect.field(entry, 'role');
+		var format = SONG == null || SONG.format == null ? '' : StringTools.trim(SONG.format).toLowerCase();
+		if (format != 'nmv2' && authoredRole == null)
+			return currentRole;
+		return resolveImportedVocalStemRole(entry);
+	}
+
+	private function markNightmareVisionVocalGroupSmoke():Void {
+		if (!RuntimeSmokeHarness.enabled() || SONG == null || SONG.format == null
+			|| StringTools.trim(SONG.format).toLowerCase() != 'nmv2' || vocalTracks == null)
+			return;
+		var player = nightmareVisionAudioApi == null ? vocalTracks.forRole('player')
+			: nightmareVisionAudioApi.roleSounds('player');
+		var opponent = nightmareVisionAudioApi == null ? vocalTracks.forRole('opponent')
+			: nightmareVisionAudioApi.roleSounds('opponent');
+		RuntimeSmokeHarness.markStep('nmv-vocal-groups:api=' + (nightmareVisionAudioApi == null ? 0 : 1)
+			+ ':player=' + player.length + ':opponent=' + opponent.length
+			+ ':tracks=' + vocalTracks.tracks.length);
+	}
+
+	/** Confirm the live PCM route PolygonSpectogram reads, independent of playback volume. */
+	private function markNightmareVisionVocalPcmSmoke():Void {
+		if (nightmareVisionVocalPcmSmokeComplete || !RuntimeSmokeHarness.enabled()
+			|| SONG == null || SONG.format == null || StringTools.trim(SONG.format).toLowerCase() != 'nmv2'
+			|| vocalTracks == null || nightmareVisionAudioApi == null)
+			return;
+		var player = nightmareVisionAudioApi.roleSounds('player');
+		var opponent = nightmareVisionAudioApi.roleSounds('opponent');
+		if (player.length == 0 || opponent.length == 0 || !player[0].playing || !opponent[0].playing)
+			return;
+		if (nightmareVisionVocalPcmSmokeAttempts > 0) {
+			nightmareVisionVocalPcmSmokeFrames++;
+			if (nightmareVisionVocalPcmSmokeFrames < 15)
+				return;
+			nightmareVisionVocalPcmSmokeFrames = 0;
+		}
+		nightmareVisionVocalPcmSmokeAttempts++;
+		var playerPcm:NightmareVisionSpectogramAudioData = null;
+		var opponentPcm:NightmareVisionSpectogramAudioData = null;
+		try {
+			// This uses the same live-channel accessor as the imported visualizer.
+			playerPcm = new NightmareVisionSpectogramAudioData(player[0]);
+			playerPcm.checkAndSetBuffer();
+			opponentPcm = new NightmareVisionSpectogramAudioData(opponent[0]);
+			opponentPcm.checkAndSetBuffer();
+			if (playerPcm.audioData == null || playerPcm.numSamples <= 0
+				|| opponentPcm.audioData == null || opponentPcm.numSamples <= 0)
+				throw 'PCM sample view was empty';
+			RuntimeSmokeHarness.markStep('nmv-vocal-pcm:player=' + playerPcm.numSamples + '@'
+				+ playerPcm.sampleRate + ':opponent=' + opponentPcm.numSamples + '@'
+				+ opponentPcm.sampleRate);
+			nightmareVisionVocalPcmSmokeComplete = true;
+		} catch (error:Dynamic) {
+			if (nightmareVisionVocalPcmSmokeAttempts == 1 || nightmareVisionVocalPcmSmokeAttempts >= 8) {
+				var detail = StringTools.replace(StringTools.replace(Std.string(error), '\n', ' '), '\r', ' ');
+				RuntimeSmokeHarness.markStep('nmv-vocal-pcm-unavailable:attempt='
+					+ nightmareVisionVocalPcmSmokeAttempts + ':' + detail);
+			}
+			if (nightmareVisionVocalPcmSmokeAttempts >= 8)
+				nightmareVisionVocalPcmSmokeComplete = true;
+		}
+		if (playerPcm != null) playerPcm.release();
+		if (opponentPcm != null) opponentPcm.release();
+	}
+
+	private function loadVocalTrack(path:String, ?prefetchedSound:Sound):FlxSound {
 		if (path == null || !FNFAssets.exists(path))
 			return null;
 		try {
 			#if sys
 			return new FlxSound().loadEmbedded(SongAudioNormalizer.prepare(
-				FNFAssets.getSound(path), path, OptionsHandler.options.normalizeSongAudio));
+				prefetchedSound == null ? FNFAssets.getSound(path) : prefetchedSound,
+				path, OptionsHandler.options.normalizeSongAudio));
 			#else
 			return new FlxSound().loadEmbedded(path);
 			#end
@@ -16203,6 +16337,7 @@ void main(void) {
 				var path = resolveNativeVocalStem(file == null ? null : Std.string(file));
 				if (path == null || !FNFAssets.exists(path))
 					continue;
+				var sourceRole = resolveImportedVocalStemRole(entry);
 				var duplicate = false;
 				for (existing in splitPaths)
 					if (VocalStemSelection.sameStem(existing.path, path)) {
@@ -16210,18 +16345,14 @@ void main(void) {
 						// stem. Native playback selects its supported encoding once.
 						if (VocalStemSelection.prefer(path, existing.path, TitleState.soundExt)) {
 							existing.path = path;
-							var preferredRole:Dynamic = entry == null || Std.isOfType(entry, String)
-								? null : Reflect.field(entry, 'role');
-							if (preferredRole != null) existing.role = Std.string(preferredRole);
+							existing.role = resolvePreferredVocalStemRole(existing.role, entry);
 						}
 						duplicate = true;
 						break;
-					}
+				}
 				if (!duplicate) {
-					var sourceRole:Dynamic = entry == null || Std.isOfType(entry, String)
-						? null : Reflect.field(entry, 'role');
 					splitPaths.push({path: path,
-						role: sourceRole == null ? "player" : Std.string(sourceRole)});
+						role: sourceRole});
 				}
 			}
 		}
@@ -16231,8 +16362,49 @@ void main(void) {
 		// previews or older imports, but playing it in addition to every stem would
 		// double the vocals.
 		if (splitPaths.length > 0) {
-			for (entry in splitPaths) {
-				var sound = loadVocalTrack(entry.path);
+			var prefetchedSounds:Array<Sound> = null;
+			#if (sys && cpp && target.threaded && lime_cffi)
+			// Decode the two common split stems independently. All asset resolution,
+			// existence checks, wrappers, normalization and Flixel objects stay on
+			// this thread; the worker only receives real in-scope Ogg/WAV filenames.
+			if (splitPaths.length == 2 && ImportIO.current() == null) {
+				var decodePaths:Array<String> = [];
+				var runtimeRoot = Path.normalize(FileSystem.absolutePath(
+					Main.cwd == null ? Sys.getCwd() : Main.cwd));
+				for (entry in splitPaths) {
+					var diskPath = FNFAssets.resolveCaseInsensitivePath(entry.path);
+					if (diskPath == null) {
+						decodePaths = [];
+						break;
+					}
+					var absolutePath = Path.normalize(FileSystem.absolutePath(diskPath));
+					var extension = Path.extension(diskPath).toLowerCase();
+					if ((absolutePath != runtimeRoot && !absolutePath.startsWith(runtimeRoot + '/'))
+						|| !FileSystem.exists(absolutePath) || FileSystem.isDirectory(absolutePath)
+						|| (extension != 'ogg' && extension != 'wav')) {
+						decodePaths = [];
+						break;
+					}
+					decodePaths.push(diskPath);
+				}
+				if (decodePaths.length == 2) {
+					var decoded = SongAudioDecodeBatch.decodePair(decodePaths[0], decodePaths[1]);
+					RuntimeSmokeHarness.markStep('song-vocal-decode:parallel=1-worker:success='
+						+ (decoded != null && decoded.length == 2 ? '1' : '0'));
+					if (decoded != null && decoded.length == 2) {
+						try {
+							prefetchedSounds = [Sound.fromAudioBuffer(decoded[0]), Sound.fromAudioBuffer(decoded[1])];
+						} catch (_:Dynamic) {
+							prefetchedSounds = null;
+						}
+					}
+				}
+			}
+			#end
+			for (index in 0...splitPaths.length) {
+				var entry = splitPaths[index];
+				var prefetchedSound = prefetchedSounds == null ? null : prefetchedSounds[index];
+				var sound = loadVocalTrack(entry.path, prefetchedSound);
 				if (sound != null)
 					sounds.push({sound: sound, role: entry.role});
 			}
@@ -16263,6 +16435,7 @@ void main(void) {
 			sound.looped = false;
 			FlxG.sound.list.add(sound);
 		}
+		markNightmareVisionVocalGroupSmoke();
 	}
 
 	private function syncVocalTrackState():Void {
@@ -18057,6 +18230,7 @@ void main(void) {
 		syncLegacyKadeGlobals();
 		syncPsychTimingGlobals();
 		syncVocalTrackState();
+		markNightmareVisionVocalPcmSmoke();
 		if (missesTxt != null)
 			missesTxt.text = (comboBreaks ? 'Combo Breaks: ' : 'Misses: ') + misses;
 		if (smokeProfileAt > 0) {
@@ -18073,6 +18247,11 @@ void main(void) {
 			NightmareVisionFlxGView.runSourceTick(compatScriptClock, index, sourceBatch.tickCount,
 				function() callNightmareVision('onUpdate', [sourceElapsed]));
 		});
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-nmv-source-update', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		callAllHScript('update', [elapsed]);
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -18647,8 +18826,8 @@ void main(void) {
 		// cutscene is still running.
 		if (camZooming && !inCutscene) {
 			ensureGameplayCameraBinding();
-			camGame.zoom = FlxMath.lerp(gameplayZoomBase(), camGame.zoom, Math.pow(0.95, camZoomDecay));
-			camHUD.zoom = FlxMath.lerp(defaultHudZoom, camHUD.zoom, Math.pow(0.95, camZoomDecay));
+			camGame.zoom = FlxMath.lerp(gameplayZoomBase(), camGame.zoom, cameraZoomDecayRetention(elapsed, camZoomDecay));
+			camHUD.zoom = FlxMath.lerp(defaultHudZoom, camHUD.zoom, cameraZoomDecayRetention(elapsed, camZoomDecay));
 		}
 		// Beat decay runs after MusicBeatState.update(), which is also where
 		// note hooks may change zoom. Target-style intro events must survive that
@@ -18697,6 +18876,11 @@ void main(void) {
 				practiceDied = true;
 				practiceDieIcon.visible = true;
 			}
+		}
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-post-flixel-setup', now - smokeProfileAt);
+			smokeProfileAt = now;
 		}
 		if (modManager != null) modManager.updateTimeline(curDecStep);
 		// Drain the ready queue: at high playback rates a single frame can
@@ -18751,6 +18935,11 @@ void main(void) {
 				}
 		}
 
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-note-spawn', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		var nightmareContext = nightmareVisionScripts == null ? null : nightmareVisionRenderContext();
 		if (nightmareContext != null && !inCutscene) processNightmareVisionHolds();
 		if (nightmareContext != null) for (field in 0...2) {
@@ -19078,10 +19267,7 @@ void main(void) {
 				// daNote.y = (strumLine.y - (songTime - daNote.strumTime) * (0.45 * PlayState.SONG.speed));
 
 				// this is not work well >:(
-				if ((daNote.y >= getHaxeActor('0').y - 20 && daNote.y <= getHaxeActor('0').y + 20) && daNote.noteStrum != null) {
-					callHscript(daNote.noteStrum, [], "modchart");
-					daNote.noteStrum = null;
-				}
+				dispatchNoteStrumCallback(daNote);
 
 				if (nightmareVisionScripts == null && ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll))) {
 					if (daNote.codenameInputLine != null) {
@@ -19121,6 +19307,11 @@ void main(void) {
 			});
 		}
 
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-active-note-processing', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		if (!inCutscene && !demoMode && !disableKeys
 			&& !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			// is that why it was crashing
@@ -19154,17 +19345,27 @@ void main(void) {
 		updateHighwayDim();
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
-			RuntimeSmokeHarness.profileSection('play-post-super', now - smokeProfileAt);
+			RuntimeSmokeHarness.profileSection('play-input-and-highway', now - smokeProfileAt);
 			smokeProfileAt = now;
 		}
 		// Psych's onUpdatePost runs after native note/HUD positioning. Running
 		// it beside onUpdate lets the native icon pass overwrite donor layout
 		// in the same frame, so keep this as the actual post-update phase.
 		callAllHScript('updatePost', [elapsed]);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-hscript-update-post', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		dispatchNightmareVisionUpdatePost(sourceBatch);
+		if (smokeProfileAt > 0) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('play-nmv-source-update-post', now - smokeProfileAt);
+			smokeProfileAt = now;
+		}
 		callCodenameScripts('postUpdate', [elapsed]);
 		if (smokeProfileAt > 0)
-			RuntimeSmokeHarness.profileSection('play-script-post-update', haxe.Timer.stamp() - smokeProfileAt);
+			RuntimeSmokeHarness.profileSection('play-codename-post-update', haxe.Timer.stamp() - smokeProfileAt);
 		if (demoSongFinished && !endingSong) {
 			demoSongFinished = false;
 			RuntimeSmokeHarness.markNaturalSongEnd(SONG == null ? '' : SONG.song,
@@ -19536,8 +19737,10 @@ void main(void) {
 		hxcClearRuntimeShaderBindings();
 		hxcClearSongCredits();
 		#if !switch
+		RuntimeSmokeHarness.markScoreSaveDecision(SONG, songScore, storyDifficulty,
+			ModifierState.scoreMultiplier, demoMode);
 		if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)
-			Highscore.saveScore(SONG.song, songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge);
+			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge);
 		#end
 		controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 		if (isStoryMode) {

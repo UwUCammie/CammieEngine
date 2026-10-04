@@ -51,6 +51,9 @@ class RuntimeSmokeVisuals {
 			|| offsetX == null || scaleX == null || frameWidth == null ? null
 			: x + originX - offsetX - originX * scaleX + frameWidth * scaleX / 2;
 		return {
+			visible: field(note, 'visible'),
+			alpha: number(field(note, 'alpha')),
+			camera: camera(field(note, 'camera')),
 			sourceKind: field(note, 'sourceKind'),
 			noteType: field(note, 'noteType'),
 			id: field(note, 'coolId'),
@@ -86,6 +89,18 @@ class RuntimeSmokeVisuals {
 			laneCenterX: x == null ? null : x + laneWidth / 2,
 			centerErrorX: renderCenterX == null || x == null
 				? null : renderCenterX - (x + laneWidth / 2)
+		};
+	}
+
+	public static function camera(value:Dynamic):Dynamic {
+		return {
+			visible: field(value, 'visible'), alpha: number(field(value, 'alpha')),
+			zoom: number(field(value, 'zoom')), angle: number(field(value, 'angle')),
+			x: number(field(value, 'x')), y: number(field(value, 'y')),
+			width: number(field(value, 'width')), height: number(field(value, 'height')),
+			scrollX: number(field(field(value, 'scroll'), 'x')),
+			scrollY: number(field(field(value, 'scroll'), 'y')),
+			fadeAlpha: number(field(value, '_fxFadeAlpha'))
 		};
 	}
 

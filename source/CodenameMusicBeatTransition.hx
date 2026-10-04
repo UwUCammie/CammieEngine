@@ -363,7 +363,7 @@ class CodenameMusicBeatTransition extends MusicBeatSubstate {
 		resizeDefaultSprites();
 		transitionCamera.scroll.y = transitionCamera.height;
 		transitionTween = FlxTween.tween(transitionCamera.scroll,
-			{y: -transitionCamera.height}, 2 / 3, {
+			{y: -transitionCamera.height}, SceneTransitionTiming.sceneDuration(2 / 3), {
 				ease: FlxEase.sineOut,
 				onComplete: function(_) finish()
 			});

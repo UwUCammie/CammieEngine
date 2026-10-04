@@ -48,7 +48,18 @@ class NightmareVisionModchartTransform {
 	*/
 	public function getPosition(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject,
 		visualDiff:Float, timeDiff:Float, beat:Float):NightmareVisionModchartVector {
-		var pos = new NightmareVisionModchartVector();
+		return getPositionInto(context, object, visualDiff, timeDiff, beat,
+			new NightmareVisionModchartVector());
+	}
+
+	/** Fill caller-owned output storage. The result is the same object supplied by
+	 * the caller; unlike getPosition(), this method does not transfer ownership. */
+	public function getPositionInto(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject,
+		visualDiff:Float, timeDiff:Float, beat:Float, pos:NightmareVisionModchartVector):NightmareVisionModchartVector {
+		if (pos == null) throw 'Nightmare Vision position output cannot be null';
+		pos.x = 0;
+		pos.y = 0;
+		pos.z = 0;
 		if (object == null || !object.active) return pos;
 		pos.x = baseX(context, object.data, object.player);
 		pos.y = baseY(context.noteWidth) + visualDiff;
@@ -283,10 +294,9 @@ class NightmareVisionModchartTransform {
 			if (clamped >= start && clamped <= end) {
 				var segmentDistance = start - end;
 				var alpha = (start - progress) / segmentDistance;
-				var interpolated = current.lerp(next, alpha);
-				pos.x = lerp(pos.x, interpolated.x, value);
-				pos.y = lerp(pos.y, interpolated.y, value);
-				pos.z = lerp(pos.z, interpolated.z, value);
+				pos.x = lerp(pos.x, current.x + (next.x - current.x) * alpha, value);
+				pos.y = lerp(pos.y, current.y + (next.y - current.y) * alpha, value);
+				pos.z = lerp(pos.z, current.z + (next.z - current.z) * alpha, value);
 				return;
 			}
 		}
@@ -353,16 +363,24 @@ class NightmareVisionModchartTransform {
 		prefix:String, centered:Bool):Void {
 		var originX = centered ? context.width * 0.5 : baseX(context, object.data, object.player);
 		var originY = context.height * 0.5;
-		var diff = new NightmareVisionModchartVector(pos.x - originX, pos.y - originY, pos.z);
-		diff.z *= context.height;
-		var angles = [get(prefix == '' ? 'rotateX' : prefix + 'rotateX', object.player),
-			sub(prefix == '' ? 'rotateX' : prefix + 'rotateX', prefix + 'rotateY', object.player),
-			sub(prefix == '' ? 'rotateX' : prefix + 'rotateX', prefix + 'rotateZ', object.player)];
-		var out = rotateVector(diff, angles[0], angles[1], angles[2]);
-		out.z /= context.height;
-		pos.x = originX + out.x;
-		pos.y = originY + out.y;
-		pos.z = out.z;
+		var root = prefix == '' ? 'rotateX' : prefix + 'rotateX';
+		var yName = prefix + 'rotateY';
+		var zName = prefix + 'rotateZ';
+		var xAngle = get(root, object.player);
+		var yAngle = sub(root, yName, object.player);
+		var zAngle = sub(root, zName, object.player);
+		var x = pos.x - originX;
+		var y = pos.y - originY;
+		var z = pos.z * context.height;
+		var x1 = x * Math.cos(zAngle) - y * Math.sin(zAngle);
+		var y1 = x * Math.sin(zAngle) + y * Math.cos(zAngle);
+		var x2 = z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
+		var y2 = z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
+		var x3 = x1 * Math.cos(yAngle) - x2 * Math.sin(yAngle);
+		var z3 = x1 * Math.sin(yAngle) + x2 * Math.cos(yAngle);
+		pos.x = originX + x3;
+		pos.y = originY + y2;
+		pos.z = z3 / context.height;
 	}
 
 	function applyLocalRotate(context:NightmareVisionModchartContext,
@@ -374,29 +392,24 @@ class NightmareVisionModchartTransform {
 		}
 		var originX = x;
 		var originY = context.height * 0.5;
-		var diff = new NightmareVisionModchartVector(pos.x - originX, pos.y - originY, pos.z);
-		diff.z *= context.height;
 		var root = 'localrotateX';
-		var angles = [get(root, object.player) + sub(root, 'localrotate' + object.data + 'X', object.player),
-			sub(root, 'localrotateY', object.player) + sub(root, 'localrotate' + object.data + 'Y', object.player),
-			sub(root, 'localrotateZ', object.player) + sub(root, 'localrotate' + object.data + 'Z', object.player)];
-		var out = rotateVector(diff, angles[0], angles[1], angles[2]);
-		out.z /= context.height;
-		pos.x = originX + out.x;
-		pos.y = originY + out.y;
-		pos.z = out.z;
-	}
-
-	function rotateVector(vec:NightmareVisionModchartVector, xAngle:Float, yAngle:Float,
-		zAngle:Float):NightmareVisionModchartVector {
-		// Exact axis order and coordinate assignments from both donor Rotate classes.
-		var x1 = vec.x * Math.cos(zAngle) - vec.y * Math.sin(zAngle);
-		var y1 = vec.x * Math.sin(zAngle) + vec.y * Math.cos(zAngle);
-		var x2 = vec.z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
-		var y2 = vec.z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
+		var xAngle = get(root, object.player) + sub(root, 'localrotate' + object.data + 'X', object.player);
+		var yAngle = sub(root, 'localrotateY', object.player)
+			+ sub(root, 'localrotate' + object.data + 'Y', object.player);
+		var zAngle = sub(root, 'localrotateZ', object.player)
+			+ sub(root, 'localrotate' + object.data + 'Z', object.player);
+		var x = pos.x - originX;
+		var y = pos.y - originY;
+		var z = pos.z * context.height;
+		var x1 = x * Math.cos(zAngle) - y * Math.sin(zAngle);
+		var y1 = x * Math.sin(zAngle) + y * Math.cos(zAngle);
+		var x2 = z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
+		var y2 = z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
 		var x3 = x1 * Math.cos(yAngle) - x2 * Math.sin(yAngle);
 		var z3 = x1 * Math.sin(yAngle) + x2 * Math.cos(yAngle);
-		return new NightmareVisionModchartVector(x3, y2, z3);
+		pos.x = originX + x3;
+		pos.y = originY + y2;
+		pos.z = z3 / context.height;
 	}
 
 	function applyPerspective(context:NightmareVisionModchartContext,

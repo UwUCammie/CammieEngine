@@ -113,6 +113,13 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
         self.assertIn("psychFlashEventScopes.exists(usehaxe)", source)
         self.assertIn("psychFlashEventScopes.clear();", source)
 
+    def test_gameplay_and_hud_decay_use_elapsed_time(self):
+        source = (ROOT / "source/PlayState.hx").read_text()
+        start = source.index("if (camZooming && !inCutscene)")
+        update = source[start:source.index("holdCameraZoomTargets();", start)]
+        self.assertEqual(update.count("cameraZoomDecayRetention(elapsed, camZoomDecay)"), 2)
+        self.assertNotIn("Math.pow(0.95, camZoomDecay)", update)
+
     def test_legacy_zoom_multiplier_and_visible_note_offset(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         helper_start = source.index("\tpublic static function cameraNoteOffset(")
@@ -124,6 +131,16 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 		return Math.abs(a - b) < 0.000001;
 	}
 	static function main() {
+		for (fps in [30, 60, 144, 480, 2400]) {
+			var zoom = 1.0;
+			for (_ in 0...fps * 5)
+				zoom = 0.6 + (zoom - 0.6) * cameraZoomDecayRetention(1.0 / fps, 1);
+			var expected = 0.6 + 0.4 * Math.pow(0.95, 300);
+			if (!close(zoom, expected) || zoom < 0.6)
+				throw "zoom return must converge to its target independently of FPS";
+		}
+		if (cameraZoomDecayRetention(0, 1) != 1 || cameraZoomDecayRetention(1, 0) != 1)
+			throw "paused or disabled decay must preserve the current zoom";
 		if (!close(legacyStageZoom(2.85, 0.9), 2.565))
 			throw "Golden baseline zoom must remain relative to its stage";
 		if (!close(legacyStageZoom(2.85, 1.4), 3.99))

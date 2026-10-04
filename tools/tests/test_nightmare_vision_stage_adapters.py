@@ -74,7 +74,8 @@ import flixel.animation.FlxAnimationController;
 import flixel.system.FlxAssets.FlxGraphicAsset;
 class Scale {public var x:Float=1;public var y:Float=1;public function new(){} public function set(x:Float=1,y:Float=1):Void{this.x=x;this.y=y;}}
 class FlxSprite {
- public var x:Float; public var y:Float; public var active:Bool=true;
+ public var x:Float; public var y:Float; public var active:Bool=true; public var exists:Bool=true;
+ public var camera:Dynamic; public var cameras:Array<Dynamic>;
  public var scale:Scale=new Scale(); public var graphic:Dynamic; public var hitboxUpdates:Int=0;
  public var animation:FlxAnimationController = new FlxAnimationController();
  public var frames(default,set):FlxAtlasFrames;
@@ -121,6 +122,7 @@ class FlxAnimate extends flixel.FlxSprite {
   return animate.FlxAnimateFrames.fromAnimate(root+'/images/'+path);
  public function image(key:String,?parentFolder:String,allowGPU:Bool=true,checkMods:Bool=true):Dynamic
   return root+'/images/'+key+'.png';
+ public function video(key:String):String return root+'/videos/'+key+'.mp4';
 }''',
             "NightmareVisionSaveFacade.hx": r'''class NightmareVisionSaveFacade {public function new(ownerRoot:String,storage:Dynamic){} public function release():Void{}}''',
             "NightmareVisionFlxGView.hx": r'''class NightmareVisionFlxGView {public function new(){} public function getField(field:String):Dynamic return null; public function setField(field:String,value:Dynamic):Dynamic return value;}''',
@@ -188,6 +190,24 @@ class TestMain {
    && (cast next.variables.get('uber'):NightmareVisionBopper).frames.path.indexOf('owner-b')>=0,
    'a later script used asset paths captured from the previous owner');
   next.release();
+
+  var videoInterp=new NightmareVisionScriptInterp();
+  videoInterp.bindOwnerPaths(pathsA);
+  var camera={visible:false};
+  var endState={count:0};
+  videoInterp.variables.set('camera',camera);
+  videoInterp.variables.set('Paths',pathsA);
+  videoInterp.variables.set('endState',endState);
+  videoInterp.execute(parser.parseString('video=new FunkinVideoSprite(12,34,false); '
+   + 'video.onEnd(function(){camera.visible=true; endState.count++;}); '
+   + 'loaded=video.load(Paths.video("RETROSLALA")); if(loaded) video.delayAndStart();'));
+  var video:NightmareVisionVideoSprite=cast videoInterp.variables.get('video');
+  check(video!=null && video.ownerRoot==pathsA.root
+   && video.x==12 && video.y==34,'FunkinVideoSprite did not use the selected owner constructor');
+  check(videoInterp.variables.get('loaded')==false,'unsupported video load did not preserve its failure Bool');
+  check(camera.visible && endState.count==1,'video load failure did not dispatch onEnd to restore camera visibility');
+  check(video.exists,'oneTimeUse=false destroyed the scripted video sprite after completion');
+  videoInterp.release(); video.destroy();
  }
 }'''
 

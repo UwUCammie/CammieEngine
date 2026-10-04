@@ -47,6 +47,8 @@ class FakePoint {
   public function put():Void released++;
 }
 class FakeSprite {
+	public var visible = true;
+	public var alpha = 0.8;
   public var animation = new FakeController();
   public var graphic = {key: "selected-root/NOTE_death.png"};
   public var frames = {frames: [0, 1, 2, 3]};
@@ -63,7 +65,8 @@ class FakeSprite {
   public var width = 444.5;
 	public var height = 630.0;
 	public var scrollFactor = {x:1.0, y:1.0};
-	public var camera = {width:1280, height:720, zoom:1.0, scroll:{x:0.0, y:0.0}};
+	public var camera = {visible:true, alpha:0.6, _fxFadeAlpha:0.2,
+	  width:1280, height:720, zoom:1.2, scroll:{x:12.0, y:24.0}};
   public var frameWidth = 500.0;
   public var frameHeight = 600.0;
   public var isSustainNote = true;
@@ -92,6 +95,10 @@ class Main {
   static function main() {
     var sprite = new FakeSprite();
     var note:Dynamic = RuntimeSmokeVisuals.note(sprite, 112);
+	if (note.visible != true || note.alpha != 0.8 || note.camera.alpha != 0.6
+	  || note.camera.zoom != 1.2 || note.camera.fadeAlpha != 0.2
+	  || note.camera.scrollX != 12 || note.camera.scrollY != 24)
+	  fail("live note camera opacity, fade, zoom or scroll missing");
     if (note.sourceKind != "danger" || note.customNotePath != "selected-root/NOTE_death"
       || note.graphicKey != "selected-root/NOTE_death.png"
       || note.atlasFrames != 4 || note.scrollFrames != 3
@@ -107,7 +114,7 @@ class Main {
 	if (stage.memberCount != 1 || prop.width != 444.5 || prop.height != 630
 	  || prop.scaleX != 0.7 || prop.offsetX != 261.5 || prop.scrollFactorX != 1
 	  || prop.cameraWidth != 1280 || prop.cameraHeight != 720
-	  || prop.cameraZoom != 1 || prop.cameraScrollX != 0 || prop.cameraScrollY != 0
+	  || prop.cameraZoom != 1.2 || prop.cameraScrollX != 12 || prop.cameraScrollY != 24
       || prop.blend != 0 || prop.shader != "owned/shaders/fog.frag")
 	  fail("stage overlay geometry or camera routing snapshot missing");
     if (actor.role != "girlfriend" || actor.graphicKey != "selected-root/NOTE_death.png"

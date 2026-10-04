@@ -18,6 +18,12 @@ SPEC = importlib.util.spec_from_file_location("windows_release_package", PACKAGE
 PACKAGE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(PACKAGE)
+SHARED_REGISTRY_FIXTURES = {
+    "assets/data/freeplaySongJson.jsonc": b'{"songs":["committed-freeplay"]}\n',
+    "assets/data/storySonglist.json": b'{"songs":["committed-story"]}\n',
+    "assets/images/custom_chars/custom_chars.jsonc": b'{"characters":["committed-custom"]}\n',
+    "assets/imported_mods/globalResultsProvider.json": b'{"providers":["committed-provider"]}\n',
+}
 
 
 def write(path: Path, data: bytes = b"fixture") -> None:
@@ -65,6 +71,8 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         write(repo / "CHANGELOG.md", b"history")
         write(repo / "assets/data/options.json", b'{"fpsCap":60,"normalizeSongAudio":false}')
         write(repo / "assets/data/song/chart.json", b"tracked chart")
+        for relative, contents in SHARED_REGISTRY_FIXTURES.items():
+            write(repo / relative, contents)
         write(repo / "assets/imported_mods/bundled-vslice-results/pack.json", b'{"runsGlobally":true}')
         write(repo / "assets/imported_mods/bundled-vslice-results/scripts/results.lua", b"onEndSong = function() end")
         write(repo / "assets/imported_mods/bundled-vslice-results/images/results.png", b"bundled results image")
@@ -73,6 +81,12 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
         subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c",
                         "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
         return runtime, repo
+
+    def test_root_diagnostic_logs_and_screenshots_are_excluded(self):
+        self.assertTrue(PACKAGE.excluded_runtime_path(Path("startup-observe.log")))
+        self.assertTrue(PACKAGE.excluded_runtime_path(Path("title-menu.png")))
+        self.assertFalse(PACKAGE.excluded_runtime_path(Path("assets/images/title.png")))
+        self.assertFalse(PACKAGE.excluded_runtime_path(Path("icon.ico")))
 
     def test_missing_or_truncated_bundled_audio_prevents_packaging(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as temp:
@@ -112,7 +126,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 self.assertIn(prefix + "tools/astcenc.exe", names)
                 self.assertIn(prefix + "tools/astcenc-LICENSE.txt", names)
                 self.assertIn(prefix + "assets/data/song/chart.json", names)
-                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"v0.0.10\n")
+                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"v0.0.11\n")
                 self.assertEqual(package.read(prefix + "updateLog.txt"), b"release notes")
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/pack.json", names)
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/scripts/results.lua", names)
@@ -132,10 +146,10 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
 
             expected = sha256(archive.read_bytes()).hexdigest()
             self.assertEqual(checksum.read_text(encoding="ascii"), f"{expected}  {archive.name}\n")
-            self.assertEqual(archive.name, "CammieEngine-v0.0.10-windows-x64.zip")
+            self.assertEqual(archive.name, "CammieEngine-v0.0.11-windows-x64.zip")
             self.assertEqual(
                 checksum.read_text(encoding="ascii"),
-                f"{expected}  CammieEngine-v0.0.10-windows-x64.zip\n",
+                f"{expected}  CammieEngine-v0.0.11-windows-x64.zip\n",
             )
 
     def test_package_requires_runtime_and_license_inputs(self):
@@ -198,8 +212,31 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             with zipfile.ZipFile(archive) as package:
                 names = package.namelist()
                 self.assertFalse(any("/imported_mods/owner/" in name for name in names))
-                self.assertFalse(any(name.endswith("globalResultsProvider.json") for name in names))
+                provider = "CammieEngine-windows-x64/assets/imported_mods/globalResultsProvider.json"
+                self.assertIn(provider, names)
+                self.assertEqual(package.read(provider), SHARED_REGISTRY_FIXTURES[
+                    "assets/imported_mods/globalResultsProvider.json"])
             self.assertEqual((runtime / "assets/imported_mods/owner/owner.json").read_bytes(), b"local owner")
+            self.assertEqual((runtime / "assets/imported_mods/globalResultsProvider.json").read_bytes(),
+                             b"personal provider")
+
+    def test_tracked_shared_registries_ship_committed_bytes_not_dev_runtime_entries(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp)
+            runtime, repo = self.make_package_fixture(root)
+            runtime_bytes = b'{"songs":["runtime-personal-import"]}\n'
+            working_tree_bytes = b'{"songs":["uncommitted-dev-import"]}\n'
+            for relative in SHARED_REGISTRY_FIXTURES:
+                write(runtime / relative, runtime_bytes)
+                write(repo / relative, working_tree_bytes)
+
+            archive, _ = PACKAGE.make_package(runtime, root / "dist", "alpha-test", repo)
+
+            with zipfile.ZipFile(archive) as package:
+                for relative, committed in SHARED_REGISTRY_FIXTURES.items():
+                    self.assertEqual(package.read(f"CammieEngine-windows-x64/{relative}"), committed, relative)
+                    self.assertEqual((runtime / relative).read_bytes(), runtime_bytes, relative)
+                    self.assertEqual((repo / relative).read_bytes(), working_tree_bytes, relative)
 
     def test_refuses_modified_bundled_results_media(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
@@ -245,6 +282,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
 
     def test_canonical_windows_build_has_linux_shared_pins_and_patches(self):
         batch = (ROOT / "run.bat").read_text(encoding="utf-8")
+        linux_setup = (ROOT / "run.sh").read_text(encoding="utf-8")
         for required in (
             '"4.3.6"',
             "call :ensure_lib funkin-modchart 1.2.5",
@@ -258,6 +296,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
             ":build_update_helper",
         ):
             self.assertIn(required, batch)
+        self.assertIn("tools/patch_flixel_input_frame_cache.py", linux_setup)
 
     @unittest.skipIf(os.name == 'nt', 'requires Linux shell or case-sensitive filesystem fixtures')
     def test_one_command_linux_cross_release_includes_results_source(self):

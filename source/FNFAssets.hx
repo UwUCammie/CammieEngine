@@ -12,6 +12,7 @@ import openfl.display.BitmapData;
 import openfl.media.Sound;
 import haxe.io.Path;
 import flixel.FlxG;
+import flixel.graphics.FlxGraphic;
 import flash.net.FileReference;
 import flash.events.Event;
 import openfl.events.IOErrorEvent;
@@ -363,6 +364,16 @@ class FNFAssets {
             return Assets.getBitmapData(id, useCache);
         #end
     }
+
+	/** Return the cache's canonical graphic for a bitmap loaded from disk.
+	 * FlxG.bitmap.add(bitmap, ..., customKey) can create a second FlxGraphic
+	 * that owns the same BitmapData. Destroying either cache entry then disposes
+	 * pixels still referenced by the other entry, so disk-backed graphics must
+	 * retain the key chosen by getBitmapData's cache registration. */
+	public static function getFlxGraphic(id:String, ?useCache:Bool=true):FlxGraphic {
+		var bitmap = getBitmapData(id, useCache);
+		return bitmap == null ? null : FlxG.bitmap.add(bitmap);
+	}
 
 	/**
      * Get bitmap data of a file, asychronously.

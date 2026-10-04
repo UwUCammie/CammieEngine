@@ -18,6 +18,7 @@ class RuntimeSmokeFreeplayState extends FlxState {
 		super.create();
 		// Freeplay windows may never receive desktop focus under Xvfb.
 		FlxG.autoPause = false;
+		FlxG.sound.muted = true;
 		RuntimeSmokeHarness.installUncaughtErrorHandler();
 		RuntimeSmokeHarness.start();
 		RuntimeSmokeHarness.installFrameStats();

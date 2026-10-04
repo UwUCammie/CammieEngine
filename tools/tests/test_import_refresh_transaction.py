@@ -18,6 +18,8 @@ OWNER = "Psych Engine|fixture-package"
 
 
 FIXTURE = r'''import haxe.Json;
+import haxe.crypto.Sha256;
+import haxe.io.Bytes;
 import ImportRefreshTransaction.ImportRefreshConflict;
 import ImportRefreshTransaction.ImportRefreshManifestFile;
 import ImportRefreshTransaction.ImportRefreshResult;
@@ -42,9 +44,9 @@ class ImportRefreshTransactionFixture {
     return result;
   }
 
-  static function apply(names:Array<String>, ?cancel:Void->Bool):ImportRefreshResult {
+  static function apply(names:Array<String>, ?cancel:Void->Bool, ?progress:Dynamic->Void):ImportRefreshResult {
     return ImportRefreshTransaction.apply(root, staging, state, owner, owned, outputs(names),
-      {commonRevision: 1, engineRevision: 1}, cancel);
+      {commonRevision: 1, engineRevision: 1}, cancel, null, progress);
   }
 
   static function applyWithBaselines(names:Array<String>):ImportRefreshResult {
@@ -82,12 +84,58 @@ class ImportRefreshTransactionFixture {
         reportResult(apply(["registry.json"]));
       case "baseline-registry":
         reportResult(applyWithBaselines(["registry.json"]));
+      case "stale-registry-baseline":
+        var baselines:Array<ImportRefreshManifestFile> = [{
+          path: owned[0] + "/registry.json",
+          sha256: Sha256.make(Bytes.ofString("{\"base\":true,\"new\":1}\n")).toHex(),
+          owner: owner
+        }];
+        var result = ImportRefreshTransaction.apply(root, staging, state, owner, owned,
+          outputs(["registry.json"]), {commonRevision: 1, engineRevision: 1}, null, baselines);
+        reportResult(result);
       case "first-registry-baseline":
         reportResult(applyWithBaselines(["registry.json"]));
       case "refresh-registry":
         reportResult(apply(["registry.json"]));
       case "refresh":
         var result = apply(["a.txt"]);
+        reportResult(result);
+      case "unchanged-progress":
+        var events:Array<Dynamic> = [];
+        var result = apply(["a.txt", "obsolete.txt"], null, function(event) events.push(event));
+        Sys.println(Json.stringify({status: result.status, events: events}));
+      case "staged-drift":
+        var changed = false;
+        var staged = staging + "/a.txt.stage";
+        var result = apply(["a.txt"], function() {
+          if (!changed) {
+            changed = true;
+            File.saveContent(staged, "mutated after preflight");
+          }
+          return false;
+        });
+        reportResult(result);
+      case "unchanged-live-drift":
+        var changed = false;
+        var target = root + "/" + owned[0] + "/a.txt";
+        var result = apply(["a.txt", "obsolete.txt"], function() {
+          if (!changed) {
+            changed = true;
+            File.saveContent(target, "local edit after preflight");
+          }
+          return false;
+        });
+        reportResult(result);
+      case "unchanged-staged-drift":
+        var changed = false;
+        var staged = staging + "/a.txt.stage";
+        var result = apply(["a.txt", "obsolete.txt"], function() {
+          if (!changed) {
+            changed = true;
+            File.saveContent(staged, "mutated after preflight");
+          }
+          return false;
+        });
         reportResult(result);
       case "two-outputs":
         var result = apply(["a.txt", "user-added.txt"]);
@@ -144,7 +192,12 @@ class ImportRefreshTransactionTest(unittest.TestCase):
 
     def setUp(self):
         (ROOT / "tmp").mkdir(exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
+        # Keep Haxe's Windows interpreter fixture below MAX_PATH. The parallel
+        # test runner supplies a short CAMMIE_TEST_TMP because it redirects TEMP
+        # to the repository; standalone unittest runs can use the OS temp root.
+        temp_root = (str(TEST_TMP) if os.environ.get("CAMMIE_TEST_TMP")
+                     else (os.environ.get("TEMP") if os.name == "nt" else str(TEST_TMP)))
+        self.temp = tempfile.TemporaryDirectory(dir=temp_root)
         self.addCleanup(self.temp.cleanup)
         self.scratch = Path(self.temp.name)
         self.install = self.scratch / "install"
@@ -206,9 +259,124 @@ class ImportRefreshTransactionTest(unittest.TestCase):
         self.assertEqual(manifest["ownedRoots"], [OWNED])
         self.assertTrue(Path(result["receiptPath"]).is_file())
         transaction = Path(result["transactionPath"])
-        backups = list((transaction / "backups/files").glob("*.bak"))
-        self.assertEqual(len(backups), 3)
-        self.assertTrue(all(len(path.stem) == 64 for path in backups))
+        self.assertFalse((transaction / "backups").exists(), "committed rollback copies should be reclaimed")
+
+    def test_unchanged_outputs_keep_their_timestamp_and_report_transaction_progress(self):
+        self.seed_initial_import()
+        unchanged = self.destination / "a.txt"
+        fixed_time_ns = 1_600_000_000_123_456_789
+        os.utime(unchanged, ns=(fixed_time_ns, fixed_time_ns))
+        before = unchanged.stat().st_mtime_ns
+
+        result = json.loads(self.run_fixture("unchanged-progress").stdout.strip())
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(unchanged.read_bytes(), b"original a")
+        self.assertEqual(unchanged.stat().st_mtime_ns, before,
+                         "unchanged owned output should not be backed up and replaced")
+        events = result["events"]
+        phases = [event["phase"] for event in events]
+        self.assertEqual(list(dict.fromkeys(phases)), [
+            "checking-output", "checking-installed", "backing-up-import", "publishing-import"])
+        expected_totals = {
+            "checking-output": 2,
+            "checking-installed": 2,
+            "backing-up-import": 1,  # The prior manifest is backed up; unchanged files are not.
+            "publishing-import": 4,  # Two guards, the manifest, and its commit receipt.
+        }
+        for phase, total in expected_totals.items():
+            phase_events = [event for event in events if event["phase"] == phase]
+            self.assertTrue(phase_events)
+            self.assertTrue(all(event["total"] == total for event in phase_events), phase)
+            self.assertEqual(phase_events[-1]["completed"], total, phase)
+            self.assertTrue(all(event["current"] for event in phase_events if total > 0), phase)
+
+    def test_owned_file_already_equal_to_new_output_is_accepted_without_rewrite(self):
+        self.seed_initial_import()
+        target = self.destination / "a.txt"
+        target.write_bytes(b"repaired output")
+        fixed_time_ns = 1_600_000_000_123_456_789
+        os.utime(target, ns=(fixed_time_ns, fixed_time_ns))
+        before = target.stat().st_mtime_ns
+        self.stage("a.txt", b"repaired output")
+
+        result = self.report(self.run_fixture("refresh"))
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(target.read_bytes(), b"repaired output")
+        self.assertEqual(target.stat().st_mtime_ns, before,
+                         "already-correct owned output should be retained in place")
+
+    def test_stale_registry_baseline_still_rejects_output_equal_to_live_bytes(self):
+        registry = self.destination / "registry.json"
+        registry.write_bytes(b'{"base":true}\n')
+        self.stage("registry.json", b'{"base":true,"new":1}\n')
+        self.assertEqual(self.report(self.run_fixture("first-registry-baseline"))["status"], "applied")
+        prior_manifest = json.loads(self.run_fixture("manifest").stdout.strip())
+        registry.write_bytes(b'{"base":true,"new":2}\n')
+        self.stage("registry.json", b'{"base":true,"new":2}\n')
+
+        result = self.report(self.run_fixture("stale-registry-baseline"))
+
+        self.assertEqual(result["status"], "conflict")
+        self.assertIn("merge baseline was captured", result["conflicts"][0]["reason"])
+        self.assertEqual(registry.read_bytes(), b'{"base":true,"new":2}\n')
+        self.assertEqual(json.loads(self.run_fixture("manifest").stdout.strip())["transactionId"],
+                         prior_manifest["transactionId"])
+
+    def test_staged_output_changed_after_preflight_is_rejected(self):
+        self.seed_initial_import()
+        prior_manifest = json.loads(self.run_fixture("manifest").stdout.strip())
+        self.stage("a.txt", b"updated a")
+
+        failed = self.run_fixture("staged-drift", expected=1)
+
+        self.assertIn("Staged output changed while copying", failed.stderr)
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"original a")
+        self.assertEqual(json.loads(self.run_fixture("manifest").stdout.strip())["transactionId"],
+                         prior_manifest["transactionId"])
+
+    def test_unchanged_live_edit_after_preflight_is_preserved_and_aborts_commit(self):
+        self.seed_initial_import()
+        prior_manifest = json.loads(self.run_fixture("manifest").stdout.strip())
+
+        failed = self.run_fixture("unchanged-live-drift", expected=1)
+
+        self.assertIn("Installed file changed before manifest commit", failed.stderr)
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"local edit after preflight")
+        self.assertEqual((self.destination / "obsolete.txt").read_bytes(), b"obsolete")
+        self.assertEqual(json.loads(self.run_fixture("manifest").stdout.strip())["transactionId"],
+                         prior_manifest["transactionId"])
+
+    def test_unchanged_staged_output_changed_after_preflight_aborts_commit(self):
+        self.seed_initial_import()
+        prior_manifest = json.loads(self.run_fixture("manifest").stdout.strip())
+
+        failed = self.run_fixture("unchanged-staged-drift", expected=1)
+
+        self.assertIn("Staged output changed before manifest commit", failed.stderr)
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"original a")
+        self.assertEqual((self.destination / "obsolete.txt").read_bytes(), b"obsolete")
+        self.assertEqual(json.loads(self.run_fixture("manifest").stdout.strip())["transactionId"],
+                         prior_manifest["transactionId"])
+
+    def test_recover_reclaims_legacy_backups_after_valid_commit_receipt(self):
+        self.seed_initial_import()
+        self.stage("a.txt", b"updated a")
+        result = self.report(self.run_fixture("refresh"))
+        transaction = Path(result["transactionPath"])
+        journals = sorted(transaction.glob("journal-*.json"))
+        journal = json.loads(journals[-1].read_text(encoding="utf-8"))
+        operation = next(item for item in journal["operations"] if item["path"] == OWNED + "/a.txt")
+        backup = transaction / operation["backupPath"]
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        backup.write_bytes(b"legacy committed backup")
+
+        recovered = self.report(self.run_fixture("recover"))
+
+        self.assertEqual(recovered["conflicts"], [])
+        self.assertTrue(Path(result["receiptPath"]).is_file())
+        self.assertFalse(backup.exists(), "valid committed receipt makes the old rollback copy unnecessary")
 
     def test_local_edits_and_unowned_destinations_return_conflicts_before_writes(self):
         self.seed_initial_import()
@@ -294,7 +462,7 @@ class ImportRefreshTransactionTest(unittest.TestCase):
         self.run_fixture("crash", expected=44, state=state)
         self.assertEqual((self.destination / "a.txt").read_bytes(), b"updated a")
 
-        relocated = self.scratch / "relocated-install"
+        relocated = self.scratch / "r"
         self.install.rename(relocated)
         relocated_state = relocated / "import-cache/state"
         recovered = self.report(self.run_fixture("recover", install=relocated, state=relocated_state))

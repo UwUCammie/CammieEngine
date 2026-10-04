@@ -28,6 +28,42 @@ class Highscore {
 
 	static var saveCategories = ['best-score', 'recent', 'best-accuracy', 'best-fullcombo', 'best'];
 
+	/**
+	 * Resolve the score identity for a loaded chart. Imported charts can keep an
+	 * authored title such as "Darnell" while their selected folder has a unique
+	 * owner-qualified id. Freeplay stores and reads scores by that folder id.
+	 * Keep the legacy title key when folder and title identify the same song, and
+	 * fall back to the title for charts loaded before storage-folder metadata was
+	 * added.
+	 */
+	public static function scoreSongIdForChart(chart:Dynamic):String {
+		if (chart == null)
+			return '';
+		var songValue:Dynamic = Reflect.field(chart, 'song');
+		var song = songValue == null ? '' : Std.string(songValue);
+		var storage = Song.storageFolder(chart);
+		var selectedValue:Dynamic = Reflect.field(chart, 'compatScoreSongId');
+		if (selectedValue != null && storage != '') {
+			var selected = StringTools.trim(Std.string(selectedValue));
+			if (selected != '' && selected.toLowerCase() == storage.toLowerCase())
+				return selected;
+		}
+		var storedValue:Dynamic = Reflect.field(chart, 'compatStorageFolder');
+		if (storedValue == null)
+			return song;
+		var stored = StringTools.trim(Std.string(storedValue)).toLowerCase();
+		if (stored == '')
+			return song;
+		// Song.storageFolder validates the transient field against path-shaped
+		// values. Only adopt it when that validated result is the field itself.
+		if (storage == '' || storage != stored)
+			return song;
+		// Preserve existing title-keyed scores for ordinary songs such as Darnell.
+		if (storage == song.toLowerCase())
+			return song;
+		return storage;
+	}
+
 	public static function saveScore(song:String, score:Int = 0, ?diff:Int = 0, ?accuracy:Float = 0, ?rating:FCLevel, ?judge:Jury):Void {
 		// we don't need the current options or modifiers as we can assume they haven't changed
 		var daSong:String = formatSong(song, diff, "best-score");

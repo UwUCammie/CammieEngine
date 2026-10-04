@@ -28,17 +28,18 @@ class NumberDisplay extends FlxText {
 		text = "" + value;
         return value;
     }
-    public function changeAmount(increase:Bool) {
+    public function changeAmount(increase:Bool, ?amount:Float) {
+        var step = amount == null ? precision : amount;
         if (increase) {
-            value += precision;
+            value += step;
             if (value > upperBound) {
-                value -= precision;
+                value -= step;
                 return;
             }
         } else {
-            value -= precision;
+            value -= step;
             if (value < lowerBound) {
-                value += precision;
+                value += step;
                 return;
             }
         }

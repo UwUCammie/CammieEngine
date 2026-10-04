@@ -97,6 +97,7 @@ class Main {
  static var validatedTeardown:Dynamic=null;
  static var transitionPending=false;
  static var playStateLoadStartedAt:Float=0;
+ static var introRenderHeldAt:Float=-1;
  static var deadline:Float=0; static var playDeadline:Float=0; static var visitDeadline:Float=0;
  static var watchdogDeadline:Float=0; static var elapsedMs:Float=0;
  static var ratingPopupPairs:Map<String,Bool> = new Map();
@@ -117,6 +118,7 @@ class Main {
  static function applyWindowResize():Void {}
  static function applySongRate():Void {}
  static function installFrameStats():Void {}
+ static function installNoteRenderReadback():Void {}
  static function installGameOverClock():Void {}
  static function installSongEndCompletionWatch():Void {}
  static function markEndHandoff():Void {}

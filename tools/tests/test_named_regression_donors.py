@@ -140,6 +140,9 @@ class NamedDonorRegressionTest {
         manager = (ROOT / "source/DifficultyManager.hx").read_text(encoding="utf-8")
         suffix_method = extract_method(manager, "public static function difficultySuffixFromChartFile(")
         discover_method = extract_method(manager, "static function discoverSongDifficulties(")
+        read_and_discover_method = extract_method(manager, "static function readAndDiscoverSongDifficulties(")
+        rules_method = extract_method(manager, "static function readSourceDifficultyRules(")
+        names_method = extract_method(manager, "static function sourceDifficultyNames(")
         selectable_method = extract_method(manager, "static function readSourceSelectableDifficulties(")
         unsupported_method = extract_method(manager, "static function readSourceUnsupportedDifficulties(")
         ensure_method = extract_method(manager, "static function ensureDifficultyDefinition(")
@@ -164,6 +167,7 @@ class CoolUtil {
 class ImportEngine {
 	public static inline var NIGHTMARE_VISION:String = 'Nightmare Vision';
 }
+typedef SourceDifficultyRules = { var selectable:Array<String>; var unsupported:Array<String>; }
 
 class NamedDonorRegressionTest {
 	static var diffJson:Dynamic = {
@@ -177,6 +181,7 @@ class NamedDonorRegressionTest {
 	static var supportedDiff:Map<String, Array<Int>> = new Map<String, Array<Int>>();
         """
             + "\n".join((suffix_method, discover_method, selectable_method,
+                          read_and_discover_method, rules_method, names_method,
                           unsupported_method, ensure_method, add_support_method, ending_method))
             + r'''
 	static function check(value:Bool, message:String):Void {

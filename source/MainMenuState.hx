@@ -62,6 +62,7 @@ class MainMenuState extends MusicBeatState {
 	var importedModsHint:FlxText;
 	public static var version:String = 'v' + EngineBranding.version();
 	override function create() {
+		RuntimeStartupProbe.mark('main_menu_enter');
 		#if windows
 		// Updating Discord Rich Presence
 		var customPrecence = TitleState.discordStuff.mainmenu;
@@ -170,6 +171,7 @@ class MainMenuState extends MusicBeatState {
 		}
 
 		changeItem();
+		RuntimeStartupProbe.mark('main_menu_graphics_ready');
 		#if (sys && windows)
 		add(new UpdateProgressBar());
 		#end
@@ -178,13 +180,18 @@ class MainMenuState extends MusicBeatState {
 		add(new ImportRefreshProgressBar());
 		#end
 		super.create();
+		RuntimeStartupProbe.mark('main_menu_ready');
 	}
 
 	var selectedSomethin:Bool = false;
+	var startupImportCheckMarked:Bool = false;
 
 	override function update(elapsed:Float) {
 		#if sys
-		if (ImportRefreshManager.browseTick().busy) { super.update(elapsed); return; }
+		if (!startupImportCheckMarked) RuntimeStartupProbe.mark('main_menu_import_check_enter');
+		var refresh = ImportRefreshManager.browseTick();
+		if (!startupImportCheckMarked) { RuntimeStartupProbe.mark('main_menu_import_check_ready'); startupImportCheckMarked = true; }
+		if (refresh.busy) { super.update(elapsed); return; }
 		#end
 		if (FlxG.sound.music.volume < 0.8) {
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;

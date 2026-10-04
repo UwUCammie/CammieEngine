@@ -86,8 +86,12 @@ class SpectrumTestMain {
 	check(near(first.left, 1000/32767), 'left channel or 32767 normalization changed');
 	check(near(first.right, 3000/32767), 'source stereo stride changed');
 	check(near(first.balanced, 2000/32767), 'source stereo averaging changed');
+	check(near(NightmareVisionSpectogramAudioData.getBalanced(pcmView.audioData, 0), first.balanced),
+	   'allocation-free waveform sample diverged from source stereo averaging');
   var last=NightmareVisionSpectogramAudioData.getCurAud(pcmView.audioData, 999);
   check(near(last.right, 8000/32767), 'final stereo sample pair was not bounded to the view');
+	check(near(NightmareVisionSpectogramAudioData.getBalanced(pcmView.audioData, 999), last.balanced),
+	   'allocation-free waveform sample did not clamp the final stereo pair');
 
   var badBits=sound(1000, data, 8, 2, 4); badBits.playing=true;
   expectError(function() new NightmareVisionSpectogramAudioData(badBits).checkAndSetBuffer(), '16-bit stereo');

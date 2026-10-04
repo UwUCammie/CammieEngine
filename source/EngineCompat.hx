@@ -3023,6 +3023,33 @@ class EngineCompat {
 			&& StringTools.trim(Std.string(name)).toLowerCase() == 'flash';
 	}
 
+	/**
+		A referenced Psych custom-event script owns its non-built-in event when
+		present; otherwise PlayState may run its native legacy fallback. Keep the
+		exact built-in spellings from Psych 0.6.3 and 0.7.3 triggerEvent switches
+		native so onEvent remains observational for those events. Compare before
+		alias routing so a custom script named for a legacy alias can own it.
+		Sources:
+		https://github.com/ShadowMario/FNF-PsychEngine/blob/0.6.3/source/PlayState.hx#L3184-L3538
+		https://github.com/ShadowMario/FNF-PsychEngine/blob/0.7.3/source/states/PlayState.hx#L1824-L2046
+	*/
+	public static function psychCustomEventOwnsNativeFallback(name:Dynamic,
+		customScriptLoaded:Bool):Bool {
+		if (!customScriptLoaded || name == null)
+			return false;
+
+		return switch (StringTools.trim(Std.string(name))) {
+			case 'Dadbattle Spotlight' | 'Hey!' | 'Set GF Speed' | 'Philly Glow'
+				| 'Kill Henchmen' | 'Add Camera Zoom' | 'Trigger BG Ghouls'
+				| 'Play Animation' | 'Camera Follow Pos' | 'Alt Idle Animation'
+				| 'Screen Shake' | 'Change Character' | 'BG Freaks Expression'
+				| 'Change Scroll Speed' | 'Set Property' | 'Play Sound':
+				false;
+			default:
+				true;
+		};
+	}
+
 public static function lyricActor(value:Dynamic):String {
 		if (value == null)
 			return '';

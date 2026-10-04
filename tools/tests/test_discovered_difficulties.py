@@ -77,7 +77,7 @@ class DifficultySuffixTest {
     def test_runtime_discovers_suffixes_before_support_maps(self):
         source = (ROOT / "source/DifficultyManager.hx").read_text(encoding="utf-8")
         add_support = extract_method(source, "public static function addSongSupport(")
-        discover = add_support.index("discoverSongDifficulties(key);")
+        discover = add_support.index("readAndDiscoverSongDifficulties(key);")
         support = add_support.index("supportedDiff.set(key, []);")
         self.assertLess(discover, support)
         self.assertIn("ensureDifficultyDefinition(suffix);", source)
@@ -88,9 +88,12 @@ class DifficultySuffixTest {
             extract_method(source, marker)
             for marker in (
                 "public static function difficultySuffixFromChartFile(",
+                "static function readSourceDifficultyRules(",
+                "static function sourceDifficultyNames(",
                 "static function readSourceSelectableDifficulties(",
                 "static function readSourceUnsupportedDifficulties(",
                 "static function discoverSongDifficulties(",
+                "static function readAndDiscoverSongDifficulties(",
                 "static function ensureDifficultyDefinition(",
                 "public static function addSongSupport(",
                 "public static function getDiffEnding(",
@@ -101,11 +104,15 @@ import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
 using StringTools;
+typedef SourceDifficultyRules = { var selectable:Array<String>; var unsupported:Array<String>; };
 class FNFAssets {
   public static function exists(path:String):Bool return FileSystem.exists(path);
   public static function getText(path:String):String return File.getContent(path);
 }
-class CoolUtil { public static function parseJson(raw:String):Dynamic return Json.parse(raw); }
+class CoolUtil {
+  public static var parseCalls:Int = 0;
+  public static function parseJson(raw:String):Dynamic { parseCalls++; return Json.parse(raw); }
+}
 class DifficultyFilterTest {
   static var diffJson:Dynamic;
   static var supportedDiff:Map<String,Array<Int>> = new Map();
@@ -134,7 +141,11 @@ class DifficultyFilterTest {
     discoverSongDifficulties("beta");
     if (diffJson.difficulties.length != 4 || diffJson.difficulties[3].name != "mania")
       fail("beta owner menu declaration was not used");
+    if (CoolUtil.parseCalls != 2)
+      fail("one directory scan parsed its provenance more than once");
     addSongSupport("alpha"); addSongSupport("beta");
+    if (CoolUtil.parseCalls != 4)
+      fail("one support build parsed its provenance more than once");
     if (supportedDiff.get("alpha").indexOf(3) >= 0)
       fail("unselectable crowd chart appeared in Freeplay support");
     if (supportedDiff.get("alpha").indexOf(2) >= 0)
@@ -143,6 +154,15 @@ class DifficultyFilterTest {
       fail("owner-declared mania chart was hidden");
     if (!FileSystem.exists("assets/data/alpha/alpha-crowd.json"))
       fail("source chart was removed instead of retained");
+    // Do not retain owner rules across calls: imports can update this metadata
+    // while the game remains open, and the next support build must see it.
+    File.saveContent("assets/data/alpha/importProvenance.json", Json.stringify({
+      sourceEngine:"Nightmare Vision", sourceSelectableDifficulties:["easy", "normal", "hard"],
+      sourceUnsupportedDifficulties:[]
+    }));
+    addSongSupport("alpha");
+    if (supportedDiff.get("alpha").indexOf(2) < 0 || CoolUtil.parseCalls != 5)
+      fail("a later support build did not reread updated owner rules once");
     // This song appears after the startup registry scan. The import callback
     // must add its new suffix before Freeplay asks for supported difficulties.
     chart("gamma", "gamma-buck");
@@ -151,6 +171,8 @@ class DifficultyFilterTest {
       fail("late import did not define its authored difficulty");
     if (supportedDiff.get("gamma").length != 1 || supportedDiff.get("gamma")[0] != 4)
       fail("late import could not select its only chart difficulty");
+    if (CoolUtil.parseCalls != 5)
+      fail("missing provenance file was parsed");
   }
 }
 '''
@@ -194,9 +216,12 @@ class DifficultyFilterTest {
             for marker in (
                 "public static function difficultySuffixFromChartFile(",
                 "public static function addSongSupport(",
+                "static function readSourceDifficultyRules(",
+                "static function sourceDifficultyNames(",
                 "static function readSourceSelectableDifficulties(",
                 "static function readSourceUnsupportedDifficulties(",
                 "static function discoverSongDifficulties(",
+                "static function readAndDiscoverSongDifficulties(",
                 "static function ensureDifficultyDefinition(",
                 "public static function getSupportedDiffs(",
                 "public static function getDiffEnding(",
@@ -209,6 +234,7 @@ import haxe.io.Path;
 import sys.FileSystem;
 
 typedef DiffInfo = { var difficulty:Int; var text:String; };
+typedef SourceDifficultyRules = { var selectable:Array<String>; var unsupported:Array<String>; };
 
 class FNFAssets {
   public static function exists(path:String):Bool return false;

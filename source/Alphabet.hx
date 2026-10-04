@@ -19,8 +19,13 @@ class Alphabet extends FlxSpriteGroup {
 	// for menu shit
 	public var targetY:Float = 0;
 	public var isMenuItem:Bool = false;
+	/** Per-row multiplier for elapsed-time menu motion; ordinary menus keep the default pace. */
+	public var menuMotionRate:Float = 1;
+	/** Distance between list rows; other menus retain their existing spacing. */
+	public var menuRowSpacing:Float = 156;
 	public var itemType:String = "Classic";
 	public var text:String = "";
+	var menuTextScale:Float = 1;
 
 	var _finalText:String = "";
 	var _curText:String = "";
@@ -120,7 +125,9 @@ class Alphabet extends FlxSpriteGroup {
 				// if (AlphaCharacter.alphabet.contains(character.toLowerCase()))
 			{
 				if (lastSprite != null)
-					xPos = lastSprite.x + lastSprite.width;
+					// Group children already include this row's screen position.
+					// The next glyph is added in local coordinates.
+					xPos = lastSprite.x - x + lastSprite.width;
 
 				if (lastWasSpace) {
 					xPos += 40;
@@ -146,6 +153,46 @@ class Alphabet extends FlxSpriteGroup {
 
 	function doSplitWords():Void {
 		splitWords = _finalText.split("");
+	}
+
+	/** Scale the row's glyphs and their spacing around its origin. FlxSpriteGroup's
+		native scale only reaches child sprites, so it leaves Alphabet layout gaps
+		and the group's measured width unchanged. */
+	public function setMenuTextScale(scale:Float):Void {
+		if (!Math.isFinite(scale) || scale <= 0)
+			return;
+		var ratio = scale / menuTextScale;
+		if (ratio == 1)
+			return;
+		for (sprite in members) {
+			if (sprite == null)
+				continue;
+			sprite.x = x + (sprite.x - x) * ratio;
+			sprite.y = y + (sprite.y - y) * ratio;
+			sprite.scale.set(sprite.scale.x * ratio, sprite.scale.y * ratio);
+			sprite.updateHitbox();
+		}
+		menuTextScale = scale;
+	}
+
+	function menuLerpAlpha(elapsed:Float):Float {
+		return CoolUtil.timeAdjustedLerpAlpha(0.16, elapsed * menuMotionRate);
+	}
+
+	function menuTargetY(alignment:Float):Float
+		return targetY * menuRowSpacing + FlxG.height * alignment;
+
+	function updateCShapeX(scaledY:Float, elapsed:Float, menuLerp:Float):Void {
+		var firstTarget = Math.exp(scaledY * 0.8) * 70 + (FlxG.width * 0.1);
+		if (scaledY < 0) {
+			var secondTarget = Math.exp(scaledY * -0.8) * 70 + (FlxG.width * 0.1);
+			x = CoolUtil.timeAdjustedTwoTargetLerp(x, firstTarget, secondTarget, 0.16, elapsed * menuMotionRate);
+		} else {
+			x = FlxMath.lerp(x, firstTarget, menuLerp);
+		}
+
+		if (x > FlxG.width + 30)
+			x = FlxG.width + 30;
 	}
 
 	public var personTalking:String = 'gf';
@@ -234,13 +281,14 @@ class Alphabet extends FlxSpriteGroup {
 	override function update(elapsed:Float) {
 		if (isMenuItem) {
 			var scaledY = FlxMath.remapToRange(targetY, 0, 1, 0, 1.3);
+			var menuLerp = menuLerpAlpha(elapsed);
 
 			switch (itemType) {
 				case "Classic":
-					x = FlxMath.lerp(x, (targetY * 20) + groupX, 0.16 / (CoolUtil.fps / 60));
-					y = FlxMath.lerp(y, (scaledY * 120) + (FlxG.height * groupY), 0.16 / (CoolUtil.fps / 60));
+					x = FlxMath.lerp(x, (targetY * 20) + groupX, menuLerp);
+					y = FlxMath.lerp(y, menuTargetY(groupY), menuLerp);
 				case "Vertical":
-					y = FlxMath.lerp(y, (scaledY * 120) + (FlxG.height * 0.5), 0.16 / (CoolUtil.fps / 60));
+					y = FlxMath.lerp(y, menuTargetY(0.5), menuLerp);
 					// x = FlxMath.lerp(x, (targetY * 0) + 308, 0.16 / 2);
 				case "C-Shape":
 					// not actually a wheel, just trying to imitate mic'd up
@@ -253,19 +301,13 @@ class Alphabet extends FlxSpriteGroup {
 					// I'm going to add instead and see how that works.
 
 					// :grief: i give up time to steal code
-					y = FlxMath.lerp(y, (scaledY * 65) + (FlxG.height * 0.39), 0.16 / (CoolUtil.fps / 60));
-
-					x = FlxMath.lerp(x, Math.exp(scaledY * 0.8) * 70 + (FlxG.width * 0.1), 0.16 / (CoolUtil.fps / 60));
-					if (scaledY < 0)
-						x = FlxMath.lerp(x, Math.exp(scaledY * -0.8) * 70 + (FlxG.width * 0.1), 0.16 / (CoolUtil.fps / 60));
-
-					if (x > FlxG.width + 30)
-						x = FlxG.width + 30;
+					y = FlxMath.lerp(y, (scaledY * 65) + (FlxG.height * 0.39), menuLerp);
+					updateCShapeX(scaledY, elapsed, menuLerp);
 
 				case "D-Shape":
-					y = FlxMath.lerp(y, (scaledY * 90) + (FlxG.height * 0.45), 0.16 / (CoolUtil.fps / 60));
+					y = FlxMath.lerp(y, (scaledY * 90) + (FlxG.height * 0.45), menuLerp);
 
-					x = FlxMath.lerp(x, Math.exp(Math.abs(scaledY * 0.8)) * -70 + (FlxG.width * 0.35), 0.16 / (CoolUtil.fps / 60));
+					x = FlxMath.lerp(x, Math.exp(Math.abs(scaledY * 0.8)) * -70 + (FlxG.width * 0.35), menuLerp);
 
 					if (x < -900)
 						x = -900;

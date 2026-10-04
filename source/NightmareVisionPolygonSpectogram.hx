@@ -2,7 +2,6 @@ package;
 
 import flixel.FlxG;
 import flixel.math.FlxMath;
-import flixel.math.FlxPoint;
 import flixel.util.FlxColor;
 import lime.utils.Int16Array;
 import NightmareVisionSpectogramEnums.SPECDIRECTION;
@@ -43,9 +42,15 @@ class NightmareVisionPolygonSpectogram extends NightmareVisionMeshRender {
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
-		switch (visType) {
-			case UPDATED: realtimeVis();
-			default:
+		if (visType == UPDATED) {
+			#if cpp
+			var smokeProfileAt = RuntimeSmokeHarness.profileEnabled() ? haxe.Timer.stamp() : 0.0;
+			#end
+			realtimeVis();
+			#if cpp
+			if (smokeProfileAt > 0)
+				RuntimeSmokeHarness.profileSection('nmv-spectrum-update', haxe.Timer.stamp() - smokeProfileAt);
+			#end
 		}
 	}
 
@@ -62,28 +67,30 @@ class NightmareVisionPolygonSpectogram extends NightmareVisionMeshRender {
 		if (samplesToGen <= 0 || startSample + samplesToGen > numSamples)
 			samplesToGen = numSamples - startSample;
 
-		var prevPoint:FlxPoint = new FlxPoint();
+		var prevX:Float = 0;
+		var prevY:Float = 0;
 		var funnyPixels:Int = Std.int(daHeight * detail);
 		if (funnyPixels <= 0) return;
 		for (i in 0...funnyPixels) {
 			var sampleApprox:Int = Std.int(FlxMath.remapToRange(i, 0, funnyPixels,
 				startSample, startSample + samplesToGen));
-			var curAud = NightmareVisionSpectogramAudioData.getCurAud(audioData, sampleApprox);
-			var coolPoint:FlxPoint = new FlxPoint();
-			var posX = curAud.balanced * waveAmplitude;
+			var balanced = NightmareVisionSpectogramAudioData.getBalanced(audioData, sampleApprox);
+			var posX = balanced * waveAmplitude;
 			var posY = i / funnyPixels * daHeight;
+			var currentX:Float;
+			var currentY:Float;
 			switch (direction) {
 				case VERTICAL:
-					coolPoint.x = posX;
-					coolPoint.y = posY;
+					currentX = posX;
+					currentY = posY;
 				case HORIZONTAL:
-					coolPoint.x = posY;
-					coolPoint.y = posX;
+					currentX = posY;
+					currentY = posX;
 			}
-			build_quad(prevPoint.x, prevPoint.y, prevPoint.x + thickness, prevPoint.y,
-				coolPoint.x, coolPoint.y, coolPoint.x + thickness, coolPoint.y + thickness);
-			prevPoint.x = coolPoint.x;
-			prevPoint.y = coolPoint.y;
+			build_quad(prevX, prevY, prevX + thickness, prevY,
+				currentX, currentY, currentX + thickness, currentY + thickness);
+			prevX = currentX;
+			prevY = currentY;
 		}
 	}
 

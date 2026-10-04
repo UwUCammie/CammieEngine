@@ -183,7 +183,7 @@ class NightmareVisionPaths {
 	}
 	public function image(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxGraphic {
 		var path = requireFile(getPath('images/' + key + '.png', parentFolder, checkMods));
-		return FlxG.bitmap.add(FNFAssets.getBitmapData(path), false, path);
+		return FNFAssets.getFlxGraphic(path);
 	}
 	public function sound(key:String, ?parentFolder:String, checkMods:Bool = true):Sound
 		return sourceSound(findFileWithExts('sounds/' + key, ['ogg', 'wav'], parentFolder, checkMods));

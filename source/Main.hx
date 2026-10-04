@@ -3,7 +3,6 @@ package;
 import flixel.FlxG;
 import flixel.FlxGame;
 import flixel.FlxState;
-import openfl.display.FPS;
 import openfl.display.Sprite;
 #if typebuild
 import plugins.ExamplePlugin;
@@ -14,7 +13,7 @@ class Main extends Sprite {
 	public static var cwd:String;
 	#end
 	public static var distray:DisSoundTray;
-	public static var fpsCounter:FPS;
+	public static var fpsCounter:AverageFPSCounter;
 	public static var memoryCounter:MemoryCounter;
 	/** Root display used by owner-scoped Codename scripts that add native
 	 * overlays to the game window. */
@@ -28,6 +27,7 @@ class Main extends Sprite {
 			ExampleCharPlugin;
 		#end
 		super();
+		RuntimeStartupProbe.begin();
 		instance = this;
 		#if sys
 		RuntimeSmokeHarness.applyRuntimeRoot();
@@ -60,10 +60,15 @@ class Main extends Sprite {
 		// FlxGame constructs its initial state before addChild returns. Imported
 		// owner globals may inspect the live FPS counter during that state load.
 		#if !mobile
-		fpsCounter = new FPS(10, 3, 0xFFFFFF);
-		fpsCounter.visible = false;
+		fpsCounter = new AverageFPSCounter(10, 3, 0xFFFFFF);
+		fpsCounter.visible = OptionsHandler.options.showFPS;
 		#end
-		addChild(new FlxGame(1280, 720, initialState, OptionsHandler.options.fpsCap, OptionsHandler.options.fpsCap, true));
+		var initialOptions = OptionsHandler.options;
+		addChild(new FlxGame(1280, 720, initialState, initialOptions.fpsCap, initialOptions.fpsCap, true));
+		FramerateOptionsCompat.apply(initialOptions);
+		RuntimeInputProbe.install();
+		RuntimeMenuTimingProbe.install();
+		RuntimeStartupProbe.install();
 		FlxG.scaleMode = new flixel.system.scaleModes.RatioScaleMode();
 
 		// the donor engine dropped its asset cache between states; the fork

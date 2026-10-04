@@ -17,8 +17,26 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
-DEFAULT_RELEASE_TAG = "v0.0.10"
+DEFAULT_RELEASE_TAG = "v0.0.11"
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
+# Keep this list in sync with ImportIO.isRegistry. These tracked registries are
+# mutable in a developer runtime, so releases must source their bytes from HEAD.
+SHARED_REGISTRY_PATHS = frozenset(path.casefold() for path in (
+    "assets/data/freeplaySongJson.jsonc",
+    "assets/data/freeplaySongJson.json",
+    "assets/images/freeplaySongJson.jsonc",
+    "assets/images/freeplaySongJson.json",
+    "assets/data/storySonglist.json",
+    "assets/data/codenameMods.json",
+    "assets/imported_mods/compatOverlays.json",
+    "assets/imported_mods/globalResultsProvider.json",
+    "assets/images/custom_chars/custom_chars.jsonc",
+    "assets/images/custom_chars/icon_only_chars.json",
+    "assets/images/custom_stages/custom_stages.json",
+    "assets/images/custom_cutscenes/cutscenes.json",
+    "assets/images/custom_difficulties/difficulties.json",
+    "assets/images/custom_ui/ui_packs/ui.json",
+))
 REQUIRED_RUNTIME_PATHS = (
     "Funkin.exe",
     "CammieUpdateHelper.exe",
@@ -85,6 +103,10 @@ def safe_tag(tag: str) -> str:
 
 def excluded_runtime_path(relative: Path) -> bool:
     parts = tuple(part.casefold() for part in relative.parts)
+    # Opt-in runtime probes write logs/screenshots beside the executable.
+    # They are development output, while authored media lives under assets/.
+    if len(parts) == 1 and relative.suffix.casefold() in {".log", ".png"}:
+        return True
     if parts and parts[0] in STANDALONE_USER_STATE_ROOTS:
         return True
     if "imported_mods" in parts and parts[:3] != BUNDLED_RESULTS_ROOT \
@@ -193,6 +215,23 @@ def tracked_runtime_content(repository: Path) -> dict[str, str]:
     return result
 
 
+def committed_shared_registries(repository: Path) -> dict[str, str]:
+    """Map known mutable shared registries to their exact committed source paths."""
+    tracked = git_output(repository, "ls-tree", "-r", "--name-only", "-z", "HEAD")
+    result: dict[str, str] = {}
+    for source in tracked.decode("utf-8", errors="strict").split("\0"):
+        if not source:
+            continue
+        key = source.casefold()
+        if key not in SHARED_REGISTRY_PATHS:
+            continue
+        previous = result.get(key)
+        if previous is not None and previous != source:
+            raise ValueError(f"case-colliding committed shared registries: {previous} and {source}")
+        result[key] = source
+    return result
+
+
 def committed_file(repository: Path, relative: str) -> bytes:
     """Read only the committed source file, never a runtime/user copy."""
     return git_output(repository, "show", f"HEAD:{relative}")
@@ -225,6 +264,7 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
             raise ValueError(f"required release notice is missing: {repository / relative}")
 
     tracked_content = tracked_runtime_content(repository)
+    shared_registries = committed_shared_registries(repository)
     for target, original in tracked_content.items():
         if target.startswith(('assets/songs/', 'assets/music/')):
             source = repository / original
@@ -287,6 +327,12 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
             continue
         unique_files[key] = (source, relative)
 
+    # Include each tracked shared registry even when its runtime path was
+    # excluded with imported_mods, and use its committed spelling in the ZIP.
+    for key, original in shared_registries.items():
+        relative = Path(*PurePosixPath(original).parts)
+        unique_files[key] = (repository / original, relative)
+
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"CammieEngine-{label}-windows-x64.zip"
     checksum_path = output_dir / "SHA256SUMS.txt"
@@ -300,7 +346,11 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
                 if relative.as_posix().casefold() in {"release_tag", "updatelog.txt"}:
                     continue
                 archive_name = str(PurePosixPath(ARCHIVE_ROOT, *relative.parts))
-                archive.write(source, archive_name)
+                committed_registry = shared_registries.get(relative.as_posix().casefold())
+                if committed_registry is None:
+                    archive.write(source, archive_name)
+                else:
+                    archive.writestr(archive_name, committed_file(repository, committed_registry))
                 archive_names.add(archive_name.casefold())
 
             release_log_name = f"{ARCHIVE_ROOT}/updateLog.txt"

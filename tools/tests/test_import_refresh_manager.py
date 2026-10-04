@@ -117,7 +117,8 @@ class ImportRefreshManagerFixture {
  static function scan(source:String):ImportScanResult return ImportWorkflow.scanNow(source,"Psych Engine");
 
  static function converter(useNextSongs:Bool, failAfterWrite:Bool=false,
-  cancelAfterWriteRequested:Bool=false, mutateRegistryAfterWrite:Bool=false):((String,ImportScanResult,Map<String,String>)->SongImportBatchResult) {
+  cancelAfterWriteRequested:Bool=false, mutateRegistryAfterWrite:Bool=false,
+  mutateOwnedRegistryAfterWrite:Bool=false):((String,ImportScanResult,Map<String,String>)->SongImportBatchResult) {
   return function(source:String,scan:ImportScanResult,names:Map<String,String>):SongImportBatchResult {
    var spec:Dynamic=Json.parse(File.getContent(Path.join([source,"package.json"])));
    var songNames:Array<String>=cast (useNextSongs ? spec.nextSongs : spec.initialSongs);
@@ -131,6 +132,26 @@ class ImportRefreshManagerFixture {
    var owners:Dynamic=Reflect.field(registry,"owners");
    Reflect.setField(owners,Std.string(spec.ownerKey),version);
    Reflect.setField(registry,"owners",owners);
+   var labels:Dynamic=Reflect.field(registry,"labels");
+   if(labels==null) labels={};
+   Reflect.setField(labels,Std.string(spec.ownerKey),"stable-"+Std.string(spec.ownerKey));
+   Reflect.setField(registry,"labels",labels);
+   var groups:Array<Dynamic>=cast Reflect.field(registry,"groups");
+   if(groups==null) groups=[];
+   var sharedGroup:Dynamic=null;
+   for(group in groups) if(Reflect.field(group,"name")=="shared-group") sharedGroup=group;
+   if(sharedGroup==null) {
+    sharedGroup={name:"shared-group",title:"Shared group",songs:[]};
+    groups.push(sharedGroup);
+   }
+   var sharedSongs:Array<Dynamic>=cast Reflect.field(sharedGroup,"songs");
+   if(sharedSongs==null) sharedSongs=[];
+   var ownerSong:Dynamic=null;
+   for(song in sharedSongs) if(Reflect.field(song,"name")==Std.string(spec.ownerKey)) ownerSong=song;
+   if(ownerSong==null) sharedSongs.push({name:Std.string(spec.ownerKey),version:version});
+   else Reflect.setField(ownerSong,"version",version);
+   Reflect.setField(sharedGroup,"songs",sharedSongs);
+   Reflect.setField(registry,"groups",groups);
    ImportFile.saveContent(REGISTRY,Json.stringify(registry));
 
    for(song in songNames) {
@@ -142,6 +163,22 @@ class ImportRefreshManagerFixture {
     var livePath=Path.join([Sys.getCwd(),REGISTRY]);
     var live:Dynamic=Json.parse(File.getContent(livePath));
     Reflect.setField(live,"concurrentEdit","keep during conversion");
+    var liveOwners:Dynamic=Reflect.field(live,"owners");
+    Reflect.setField(liveOwners,"concurrent-owner","keep concurrent owner");
+    Reflect.setField(live,"owners",liveOwners);
+    var liveGroups:Array<Dynamic>=cast Reflect.field(live,"groups");
+    var liveSongs:Array<Dynamic>=cast Reflect.field(liveGroups[0],"songs");
+    liveSongs.push({name:"concurrent-song",version:"keep nested owner row"});
+    Reflect.setField(liveGroups[0],"songs",liveSongs);
+    Reflect.setField(live,"groups",liveGroups);
+    File.saveContent(livePath,Json.stringify(live));
+   }
+   if(mutateOwnedRegistryAfterWrite) {
+    var livePath=Path.join([Sys.getCwd(),REGISTRY]);
+    var live:Dynamic=Json.parse(File.getContent(livePath));
+    var liveOwners:Dynamic=Reflect.field(live,"owners");
+    Reflect.setField(liveOwners,Std.string(spec.ownerKey),"concurrent manual edit");
+    Reflect.setField(live,"owners",liveOwners);
     File.saveContent(livePath,Json.stringify(live));
    }
    if(cancelAfterWriteRequested) cancelAfterWrite=true;
@@ -196,7 +233,8 @@ class ImportRefreshManagerFixture {
     var first=importPackage(args[2],false);
     var second=importPackage(args[3],false);
     report({failed:first.failed+second.failed, records:ImportRefreshManager.cachedRecords(install)});
-   case "refresh", "refresh-fail", "refresh-cancel", "refresh-concurrent-registry", "refresh-scan-errors":
+   case "refresh", "refresh-fail", "refresh-cancel", "refresh-concurrent-registry",
+    "refresh-concurrent-owned", "refresh-scan-errors":
     var id=args[2];
     var record=findRecord(id);
     if(mode=="refresh-scan-errors") ImportWorkflow.scanErrors=["fixture: chart could not be parsed"];
@@ -207,7 +245,8 @@ class ImportRefreshManagerFixture {
     cancelAfterWrite=false;
     try {
      var result=ImportRefreshManager.refreshNow(install,record,
-      converter(true,mode=="refresh-fail",mode=="refresh-cancel",mode=="refresh-concurrent-registry"),noCancel,progress);
+      converter(true,mode=="refresh-fail",mode=="refresh-cancel",mode=="refresh-concurrent-registry",
+       mode=="refresh-concurrent-owned"),noCancel,progress);
      report({status:"ok",failed:result.failed, importedSongs:result.importedSongs,
       files:manifest.files.length, records:ImportRefreshManager.cachedRecords(install)});
     } catch(error:Dynamic) {
@@ -329,13 +368,13 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout.strip().splitlines()[-1])
 
-    def mark_record_stale(self, record: dict) -> None:
+    def mark_record_stale(self, record: dict, common_revision: int = 0) -> None:
         owner = "retained-import:" + record["id"]
         owner_hash = hashlib.sha256(owner.encode()).hexdigest()
         scope = self.install / "import-cache/state" / owner_hash
         manifest_path = scope / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["revision"]["importRecord"]["revisions"][0]["commonRevision"] = 0
+        manifest["revision"]["importRecord"]["revisions"][0]["commonRevision"] = common_revision
         manifest_bytes = (json.dumps(manifest, separators=(",", ":")) + "\n").encode()
         manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
         manifest_path.write_bytes(manifest_bytes)
@@ -364,7 +403,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         record = self.initial_import(donor)
         self.assertEqual((self.install / "assets/songs/alpha/Inst.ogg").read_text(), "v1-donor-a:retained:donor-a")
         shutil_rmtree(donor)
-        self.mark_record_stale(record)
+        self.mark_record_stale(record, common_revision=2)
 
         refreshed = self.run_fixture("refresh", record["id"])
 
@@ -372,7 +411,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual((self.install / "assets/songs/alpha/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertEqual((self.install / "assets/songs/beta/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertTrue((self.install / "assets/data/beta/beta.json").is_file())
-        self.assertTrue(any(stamp["commonRevision"] == 2 for stamp in refreshed["records"][0]["revisions"]))
+        self.assertTrue(any(stamp["commonRevision"] == 3 for stamp in refreshed["records"][0]["revisions"]))
         self.assertFalse(donor.exists())
 
     @unittest.skipIf(os.name == 'nt', 'Windows eval worker can stall under parallel probes; covered by native Windows refresh test')
@@ -380,7 +419,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         donor = self.make_source("donor-auto", initial_songs=["auto-song"], next_songs=["auto-song", "auto-new"])
         record = self.initial_import(donor)
         shutil_rmtree(donor)
-        self.mark_record_stale(record)
+        self.mark_record_stale(record, common_revision=2)
 
         result = self.run_fixture("auto-refresh")
 
@@ -475,7 +514,153 @@ class ImportRefreshManagerTest(unittest.TestCase):
         registry = json.loads((self.install / REGISTRY).read_text(encoding="utf-8"))
         self.assertEqual(registry["concurrentEdit"], "keep during conversion")
         self.assertEqual(registry["owners"]["donor-concurrent-registry"], "v2-donor-concurrent-registry")
+        self.assertEqual(registry["owners"]["concurrent-owner"], "keep concurrent owner")
+        group = next(group for group in registry["groups"] if group["name"] == "shared-group")
+        self.assertIn({"name": "concurrent-song", "version": "keep nested owner row"}, group["songs"])
         self.assertTrue((self.install / "assets/songs/new/Inst.ogg").is_file())
+
+    def test_already_regenerated_registry_value_is_accepted_and_other_owners_survive(self):
+        donor = self.make_source("donor-registry-already-fresh", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        # The source label output is already at the exact value this conversion
+        # will produce, even though the retained manifest still records v1.
+        registry["owners"]["donor-registry-already-fresh"] = "v2-donor-registry-already-fresh"
+        registry["owners"]["other-owner"] = "v1-other-owner"
+        registry["labels"]["other-owner"] = "stable-other-owner"
+        registry["base"]["display"] = "local display edit"
+        registry["localSetting"] = {"keep": True}
+        registry_path.write_text(json.dumps(registry), encoding="utf-8", newline='\n')
+
+        result = self.run_fixture("refresh", record["id"])
+
+        self.assertEqual(result["status"], "ok", result)
+        refreshed = json.loads(registry_path.read_text(encoding="utf-8"))
+        self.assertEqual(refreshed["owners"]["donor-registry-already-fresh"], "v2-donor-registry-already-fresh")
+        self.assertEqual(refreshed["owners"]["other-owner"], "v1-other-owner")
+        self.assertEqual(refreshed["labels"]["other-owner"], "stable-other-owner")
+        self.assertEqual(refreshed["base"]["display"], "local display edit")
+        self.assertEqual(refreshed["localSetting"], {"keep": True})
+        self.assertTrue((self.install / "assets/songs/new/Inst.ogg").is_file())
+
+    def test_divergent_changed_registry_value_rejects_refresh_and_keeps_live_edit(self):
+        donor = self.make_source("donor-registry-diverged", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["owners"]["donor-registry-diverged"] = "manual edit"
+        registry_path.write_text(json.dumps(registry), encoding="utf-8", newline='\n')
+        before_registry = registry_path.read_bytes()
+        before_manifest = self.manifest_bytes(record)
+
+        result = self.run_fixture("refresh", record["id"])
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertIn("registry", result["error"].lower())
+        self.assertEqual(registry_path.read_bytes(), before_registry)
+        self.assertEqual(self.manifest_bytes(record), before_manifest)
+        self.assertFalse((self.install / "assets/songs/new/Inst.ogg").exists())
+
+    def test_divergent_unchanged_generated_registry_value_rejects_refresh(self):
+        donor = self.make_source("donor-registry-unchanged-edit", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        # labels.<owner> is generated identically by both conversions. Generic
+        # merge treats it as unchanged, so final owner validation must catch it.
+        registry["labels"]["donor-registry-unchanged-edit"] = "manual stable-label edit"
+        registry_path.write_text(json.dumps(registry), encoding="utf-8", newline='\n')
+        before_registry = registry_path.read_bytes()
+        before_manifest = self.manifest_bytes(record)
+
+        result = self.run_fixture("refresh", record["id"])
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertIn("local registry edits preserved", result["error"].lower())
+        self.assertEqual(registry_path.read_bytes(), before_registry)
+        self.assertEqual(self.manifest_bytes(record), before_manifest)
+        self.assertFalse((self.install / "assets/songs/new/Inst.ogg").exists())
+
+    def test_concurrent_owned_registry_edit_is_preserved_and_blocks_refresh(self):
+        donor = self.make_source("donor-concurrent-owned", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        before_manifest = self.manifest_bytes(record)
+
+        result = self.run_fixture("refresh-concurrent-owned", record["id"])
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertIn("registry", result["error"].lower())
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        self.assertEqual(registry["owners"]["donor-concurrent-owned"], "concurrent manual edit")
+        self.assertEqual(self.manifest_bytes(record), before_manifest)
+        self.assertFalse((self.install / "assets/songs/new/Inst.ogg").exists())
+
+    def test_regenerated_refresh_preserves_unrelated_owner_added_during_conversion(self):
+        donor = self.make_source("donor-regenerated-concurrent-row", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        # Force the seed fallback with the already-regenerated owned value.
+        registry["owners"]["donor-regenerated-concurrent-row"] = "v2-donor-regenerated-concurrent-row"
+        registry_path.write_text(json.dumps(registry), encoding="utf-8", newline='\n')
+
+        result = self.run_fixture("refresh-concurrent-registry", record["id"])
+
+        self.assertEqual(result["status"], "ok", result)
+        refreshed = json.loads(registry_path.read_text(encoding="utf-8"))
+        self.assertEqual(refreshed["owners"]["donor-regenerated-concurrent-row"],
+                         "v2-donor-regenerated-concurrent-row")
+        self.assertEqual(refreshed["owners"]["concurrent-owner"], "keep concurrent owner")
+        self.assertEqual(refreshed["concurrentEdit"], "keep during conversion")
+        group = next(group for group in refreshed["groups"] if group["name"] == "shared-group")
+        self.assertIn({"name": "concurrent-song", "version": "keep nested owner row"}, group["songs"])
+        self.assertTrue((self.install / "assets/songs/new/Inst.ogg").is_file())
+
+    def test_regenerated_refresh_does_not_claim_or_later_remove_foreign_nested_row(self):
+        donor = self.make_source("donor-nested-owner-row", initial_songs=["stable"], next_songs=["stable", "new"])
+        record = self.initial_import(donor)
+        shutil_rmtree(donor)
+        self.mark_record_stale(record)
+
+        registry_path = self.install / REGISTRY
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["owners"]["donor-nested-owner-row"] = "v2-donor-nested-owner-row"
+        group = next(group for group in registry["groups"] if group["name"] == "shared-group")
+        group["songs"].append({"name": "foreign-song", "version": "foreign owner"})
+        registry_path.write_text(json.dumps(registry), encoding="utf-8", newline='\n')
+
+        first = self.run_fixture("refresh", record["id"])
+
+        self.assertEqual(first["status"], "ok", first)
+        first_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        first_group = next(group for group in first_registry["groups"] if group["name"] == "shared-group")
+        self.assertIn({"name": "foreign-song", "version": "foreign owner"}, first_group["songs"])
+
+        refreshed_record = first["records"][0]
+        self.mark_record_stale(refreshed_record)
+        second = self.run_fixture("refresh", refreshed_record["id"])
+
+        self.assertEqual(second["status"], "ok", second)
+        second_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        second_group = next(group for group in second_registry["groups"] if group["name"] == "shared-group")
+        self.assertIn({"name": "foreign-song", "version": "foreign owner"}, second_group["songs"])
 
     def test_unicode_shared_registry_baseline_survives_refresh(self):
         registry_path = self.install / REGISTRY

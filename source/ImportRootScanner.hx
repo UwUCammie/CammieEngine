@@ -173,6 +173,7 @@ class ImportRootScanner {
 		var queue:Array<{path:String, depth:Int}> = [{path:root, depth:0}];
 		var visited:Map<String, Bool> = new Map<String, Bool>();
 		var roots:Map<String, Bool> = new Map<String, Bool>();
+		var executableMarkerCache:Map<String, Array<String>> = new Map();
 		var cursor = 0;
 		var cancelledScan = false;
 
@@ -192,7 +193,11 @@ class ImportRootScanner {
 			scanned++;
 			report(callbacks, 'scan-roots', current, scanned, effectiveLimit);
 
-			var match = inspectRoot(current, selected);
+			// The directory listing is also needed to queue children below. Keep
+			// one sorted listing for this scan node and share it with classification
+			// instead of rereading the same directory for each engine candidate.
+			var entries = readDirectory(current);
+			var match = inspectRootWithEntries(current, selected, entries, executableMarkerCache);
 			if (match != null) {
 				// A compiled Codename release classifies as Codename through its
 				// mods/ content tree, but the expectation stays "import the mod
@@ -238,7 +243,6 @@ class ImportRootScanner {
 
 			if (item.depth >= MAX_DEPTH)
 				continue;
-			var entries = readDirectory(current);
 			// A Haxe project manifest without importable content is an incomplete
 			// download.  Explain it in the scan diagnostics and keep walking; the
 			// root itself is skipped because inspectRoot returned no match.
@@ -326,34 +330,46 @@ class ImportRootScanner {
 		var root = canonicalize(rootPath);
 		if (root == '' || !FileSystem.exists(root) || !FileSystem.isDirectory(root))
 			return null;
-		var layout = resolveLayout(root);
-		var rootEntries = readDirectory(root);
+		return inspectRootWithEntries(root, ImportEngine.normalize(requestedEngine), readDirectory(root), new Map());
+		#else
+		return null;
+		#end
+	}
+
+	#if sys
+	static function inspectRootWithEntries(root:String, requestedEngine:String, rootEntries:Array<String>,
+		executableMarkerCache:Map<String, Array<String>>):ImportRoot {
+		var layout = resolveLayout(root, rootEntries);
 		var nightmareVisionProject = hasNightmareVisionSourceProject(root, rootEntries);
-		var nestedNightmareVisionChart = hasNightmareVisionNestedSongChartFormat(root);
+		var nestedNightmareVisionChart = hasNightmareVisionNestedSongChartFormat(root, rootEntries);
 		var nightmareVisionChart = hasNightmareVisionChartFormat(layout.data) || nestedNightmareVisionChart;
-		var nestedNightmareVisionOwner = nightmareVisionContentOwner(root);
+		var nestedNightmareVisionOwner = nightmareVisionContentOwner(root, executableMarkerCache);
 		var nestedNightmareVisionSongs = nestedNightmareVisionOwner != ''
-			&& hasNightmareVisionNestedSongLayout(root);
+			&& hasNightmareVisionNestedSongLayout(root, rootEntries);
 		if ((nestedNightmareVisionSongs || nestedNightmareVisionChart)
 			&& (layout.data == null || layout.data == '')) {
 			var nestedSongsRoot = findDirectory(rootEntries, root, 'songs');
 			if (nestedSongsRoot != '')
 				layout.data = nestedSongsRoot;
 		}
-		if (!hasImportShape(root, layout) && !nightmareVisionProject && !nightmareVisionChart
+		if (!hasImportShape(root, layout, rootEntries) && !nightmareVisionProject && !nightmareVisionChart
 			&& !nestedNightmareVisionSongs)
 			return null;
-		var executableMarkers = probeExecutableMarkers(root, rootEntries);
+		var executableMarkers = probeExecutableMarkers(root, rootEntries, executableMarkerCache);
+		var lowerRootEntries:Array<String> = [for (entry in rootEntries) entry.toLowerCase()];
 		var selected = ImportEngine.normalize(requestedEngine);
 		var retainedEngine = retainedSourceEngine(root);
 		if (selected == ImportEngine.AUTO && retainedEngine != '')
 			selected = retainedEngine;
 		var evidenceByEngine:Map<String, Array<String>> = new Map<String, Array<String>>();
 		var scores:Map<String, Int> = new Map<String, Int>();
-		for (engine in [ImportEngine.V_SLICE, ImportEngine.KADE, ImportEngine.MODDING_PLUS,
+		var enginesToScore = [ImportEngine.V_SLICE, ImportEngine.KADE, ImportEngine.MODDING_PLUS,
 			ImportEngine.NIGHTMARE_VISION, ImportEngine.PSYCH, ImportEngine.FPS_PLUS, ImportEngine.CODENAME,
-			ImportEngine.LEGACY_POLYMOD]) {
-			var result = scoreEngine(root, layout, engine, executableMarkers);
+			ImportEngine.LEGACY_POLYMOD];
+		if (selected != ImportEngine.AUTO)
+			enginesToScore = [selected];
+		for (engine in enginesToScore) {
+			var result = scoreEngine(root, layout, engine, executableMarkers, rootEntries, lowerRootEntries);
 			scores.set(engine, result.score);
 			evidenceByEngine.set(engine, result.evidence);
 		}
@@ -412,10 +428,8 @@ class ImportRootScanner {
 				supplementalAssetRoots: layout.supplementalAssetRoots
 			}
 		};
-		#else
-		return null;
-		#end
 	}
+	#end
 
 	public static function detectEngine(rootPath:String):String {
 		var root = inspectRoot(rootPath, ImportEngine.AUTO);
@@ -447,11 +461,9 @@ class ImportRootScanner {
 
 	#if sys
 	static function scoreEngine(root:String, layout:Dynamic, engine:String,
-		executableMarkers:Array<String>):{score:Int, evidence:Array<String>} {
+		executableMarkers:Array<String>, entries:Array<String>, lowerEntries:Array<String>):{score:Int, evidence:Array<String>} {
 		var score = 0;
 		var evidence:Array<String> = [];
-		var entries = readDirectory(root);
-		var lowerEntries:Array<String> = [for (entry in entries) entry.toLowerCase()];
 		var hasAssets = hasDirectory(entries, 'assets');
 		var hasManifest = hasDirectory(entries, 'manifest') || hasFile(entries, 'manifest.json');
 		var hasPolymod = hasFile(entries, '_polymod_meta.json');
@@ -502,7 +514,7 @@ class ImportRootScanner {
 				if (hasHaxeProjectManifest(entries)) {
 					score += 90;
 					evidence.push('Haxe source release: Project.xml + source/*.hx');
-				} else if (hasHaxeSourceDirectory(root)) {
+				} else if (hasHaxeSourceDirectory(root, entries)) {
 					// A bare source checkout that lost its project manifest still
 					// outranks the generic legacy assets layout.
 					score += 40;
@@ -537,7 +549,7 @@ class ImportRootScanner {
 					score += 120;
 					evidence.push('Nightmare Vision chart metadata: format=nmv2');
 				}
-				if (hasNightmareVisionNestedSongChartFormat(root)) {
+				if (hasNightmareVisionNestedSongChartFormat(root, entries)) {
 					score += 120;
 					evidence.push('Nightmare Vision nested chart metadata: format=nmv2 in songs/<song>/data');
 				}
@@ -579,7 +591,7 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.FPS_PLUS:
-				if (hasMeta && metadataMentions(root, 'fps plus')) {
+				if (hasMeta && metadataMentions(root, 'fps plus', entries)) {
 					score += 85;
 					evidence.push('FPS Plus meta.json/api marker');
 				} else if (hasMeta) {
@@ -608,7 +620,7 @@ class ImportRootScanner {
 					score += 25;
 					evidence.push('Codename XML definitions: data/characters + data/stages');
 				}
-				if (hasFile(readDirectory(root), 'modpack.ini') || hasCodenameModpackIni(layout.data)) {
+				if (hasFile(entries, 'modpack.ini') || hasCodenameModpackIni(layout.data)) {
 					score += 15;
 					evidence.push('Codename modpack.ini marker');
 				}
@@ -617,7 +629,7 @@ class ImportRootScanner {
 				// folders.  Classify the release as Codename so the importer can
 				// recover the mods content and name the source-download
 				// expectation in its diagnostics.
-				if (hasCodenameModsContent(root)) {
+				if (hasCodenameModsContentWithEntries(root, entries)) {
 					score += 85;
 					evidence.push('Codename compiled release layout: mods/<name> with song meta.json');
 				}
@@ -639,8 +651,7 @@ class ImportRootScanner {
 		return {score:score, evidence:evidence};
 	}
 
-	static function hasImportShape(root:String, layout:Dynamic):Bool {
-		var entries = readDirectory(root);
+	static function hasImportShape(root:String, layout:Dynamic, entries:Array<String>):Bool {
 		var marker = hasFile(entries, '_polymod_meta.json') || hasFile(entries, 'pack.json')
 			|| hasFile(entries, 'meta.json') || hasDirectory(entries, 'manifest');
 		var contentCount = 0;
@@ -662,8 +673,7 @@ class ImportRootScanner {
 	}
 
 	/** A source/ (or src/) directory that really contains Haxe modules. */
-	static function hasHaxeSourceDirectory(root:String):Bool {
-		var entries = readDirectory(root);
+	static function hasHaxeSourceDirectory(root:String, entries:Array<String>):Bool {
 		var sourceDir = findDirectory(entries, root, 'source');
 		if (sourceDir == '')
 			sourceDir = findDirectory(entries, root, 'src');
@@ -697,7 +707,8 @@ class ImportRootScanner {
 	 * family comes from the executable/source project two levels above it:
 	 * <game>/content/<pack>. This reads only the known parent marker, never the
 	 * content name or chart names. */
-	static function nightmareVisionContentOwner(root:String):String {
+	static function nightmareVisionContentOwner(root:String,
+		executableMarkerCache:Map<String, Array<String>>):String {
 		var contentRoot = Path.directory(Path.normalize(root));
 		if (contentRoot == null || contentRoot == ''
 			|| Path.withoutDirectory(contentRoot).toLowerCase() != 'content')
@@ -710,7 +721,7 @@ class ImportRootScanner {
 		var ownerEntries = readDirectory(ownerRoot);
 		if (hasNightmareVisionSourceProject(ownerRoot, ownerEntries))
 			return ownerRoot;
-		var markers = probeExecutableMarkers(ownerRoot, ownerEntries);
+		var markers = probeExecutableMarkers(ownerRoot, ownerEntries, executableMarkerCache);
 		return hasMarker(markers, 'com.nmvteam.nightmareengine') ? ownerRoot : '';
 	}
 
@@ -747,8 +758,8 @@ class ImportRootScanner {
 	/** Recognize only the known package layout and inspect at most the configured
 	 * number of immediate song directories. No chart names or chart bytes are
 	 * needed to associate a package with its already-identified NMV parent. */
-	static function hasNightmareVisionNestedSongLayout(root:String):Bool {
-		var songs = findDirectory(readDirectory(root), root, 'songs');
+	static function hasNightmareVisionNestedSongLayout(root:String, rootEntries:Array<String>):Bool {
+		var songs = findDirectory(rootEntries, root, 'songs');
 		if (songs == '')
 			return false;
 		var checked = 0;
@@ -854,10 +865,10 @@ class ImportRootScanner {
 	 * songs/<song>/data/<difficulty>.json. Probe only that structural layout,
 	 * with the same song/chart/byte bounds as the conventional NMV marker check.
 	 * The NMV format field is engine metadata; package and chart names are ignored. */
-	static function hasNightmareVisionNestedSongChartFormat(root:String):Bool {
+	static function hasNightmareVisionNestedSongChartFormat(root:String, rootEntries:Array<String>):Bool {
 		if (root == null || root == '' || !FileSystem.isDirectory(root))
 			return false;
-		var songsRoot = findDirectory(readDirectory(root), root, 'songs');
+		var songsRoot = findDirectory(rootEntries, root, 'songs');
 		if (songsRoot == '')
 			return false;
 		var checkedDirectories = 0;
@@ -971,10 +982,10 @@ class ImportRootScanner {
 			+ missing.join(' or ') + ' is missing \u2014 re-download the complete source release.';
 	}
 
-	static function resolveLayout(root:String):Dynamic {
+	static function resolveLayout(root:String, ?knownRootEntries:Array<String>):Dynamic {
 		var contentRoot = root;
 		var supplementalAssetRoots:Array<ImportRootAssetSource> = [];
-		var rootEntries = readDirectory(root);
+		var rootEntries = knownRootEntries == null ? readDirectory(root) : knownRootEntries;
 		var assetsPath = findDirectory(rootEntries, root, 'assets');
 		if (assetsPath != '')
 			contentRoot = assetsPath;
@@ -1170,7 +1181,11 @@ class ImportRootScanner {
 		compiled release root has no importable songs itself; its mods folders
 		are the recovery source. */
 	public static function hasCodenameModsContent(rootPath:String):Bool {
-		var modsPath = findDirectory(readDirectory(rootPath), rootPath, 'mods');
+		return hasCodenameModsContentWithEntries(rootPath, readDirectory(rootPath));
+	}
+
+	static function hasCodenameModsContentWithEntries(rootPath:String, rootEntries:Array<String>):Bool {
+		var modsPath = findDirectory(rootEntries, rootPath, 'mods');
 		if (modsPath == '')
 			return false;
 		var checked = 0;
@@ -1225,8 +1240,8 @@ class ImportRootScanner {
 			|| hasDirectory(entries, 'custom_ui') || hasDirectory(entries, 'custom_difficulties');
 	}
 
-	static function metadataMentions(root:String, text:String):Bool {
-		var path = findFile(readDirectory(root), root, 'meta.json');
+	static function metadataMentions(root:String, text:String, entries:Array<String>):Bool {
+		var path = findFile(entries, root, 'meta.json');
 		if (path == '') return false;
 		try {
 			var content = File.getContent(path);
@@ -1294,8 +1309,11 @@ class ImportRootScanner {
 		from the compiled engine, so a filename alone can never identify Kade,
 		Psych, or Modding Plus.
 	*/
-	static function probeExecutableMarkers(root:String, entries:Array<String>):Array<String> {
+	static function probeExecutableMarkers(root:String, entries:Array<String>,
+		?cache:Map<String, Array<String>>):Array<String> {
 		var found:Array<String> = [];
+		if (cache == null)
+			cache = new Map();
 		var checked = 0;
 		for (entry in entries) {
 			if (checked >= MAX_EXECUTABLE_PROBES)
@@ -1305,17 +1323,26 @@ class ImportRootScanner {
 				continue;
 			var path = Path.join([root, entry]);
 			var size = 0;
+			var modified:Float = 0;
 			try {
 				if (FileSystem.isDirectory(path))
 					continue;
-				size = FileSystem.stat(path).size;
+				var stat = FileSystem.stat(path);
+				size = stat.size;
+				modified = stat.mtime.getTime();
 			} catch (_:Dynamic) {
 				continue;
 			}
 			if (size <= 0)
 				continue;
 			checked++;
-			for (marker in probeExecutable(path)) {
+			var cacheKey = identityKey(path) + "|" + size + "|" + modified;
+			var executableMarkers = cache.get(cacheKey);
+			if (executableMarkers == null) {
+				executableMarkers = probeExecutable(path);
+				cache.set(cacheKey, executableMarkers.copy());
+			}
+			for (marker in executableMarkers) {
 				if (!hasMarker(found, marker))
 					found.push(marker);
 			}

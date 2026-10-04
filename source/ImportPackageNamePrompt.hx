@@ -42,7 +42,7 @@ class ImportPackageNamePrompt {
 				continue;
 			seen.set(key, true);
 			var info = ImportSongOwnership.displayNameInfo(root);
-			if (info == null || info.authored)
+			if (info == null || info.authored || Reflect.field(info, 'template') == true)
 				continue;
 			requests.push({root:root, suggestedName:info.name});
 		}

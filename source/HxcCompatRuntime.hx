@@ -1955,15 +1955,15 @@ class HxcCompatRuntime {
 		}
 	}
 
-	/** Pause only HXC videos that were playing as this PlayState paused. */
+	/** Pause imported-source video sprites that were playing as PlayState paused. */
 	public static function pauseFunkinVideos(state:Dynamic):Void
 		callOwnedFunkinVideos('pauseForState', state);
 
-	/** Resume only HXC videos paused by the paired engine pause. */
+	/** Resume only imported-source videos paused by the paired engine pause. */
 	public static function resumeFunkinVideos(state:Dynamic):Void
 		callOwnedFunkinVideos('resumeForState', state);
 
-	/** Stop and detach HXC videos before a song/state releases its scripts. */
+	/** Stop and detach imported-source videos before a song/state releases scripts. */
 	public static function destroyFunkinVideos(state:Dynamic):Void
 		callOwnedFunkinVideos('destroyForState', state);
 
@@ -1976,6 +1976,13 @@ class HxcCompatRuntime {
 			}
 		} catch (error:Dynamic) {
 			trace('[hxc-video-lifecycle-error] ' + methodName + ': ' + Std.string(error));
+		}
+		try {
+			var host = Type.resolveClass('NightmareVisionVideoSprite');
+			var method = host == null ? null : runtimeField(host, methodName);
+			if (method != null) Reflect.callMethod(host, method, [state]);
+		} catch (error:Dynamic) {
+			trace('[nightmare-vision-video-lifecycle-error] ' + methodName + ': ' + Std.string(error));
 		}
 	}
 

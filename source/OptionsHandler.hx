@@ -45,6 +45,7 @@ typedef TOptions = {
     var useCharColor:Bool;
     var useMissStun:Bool;
     var offset:Float;
+    var fastSceneTransitions:Bool;
     var accuracyMode:AccuracyMode;
     var danceMode:Bool;
     var dontMuteMiss:Bool;
@@ -56,6 +57,7 @@ typedef TOptions = {
     var hitSounds:Bool;
     var titleToggle:Bool;
     var fpsCap:Int;
+    var unlimitedFPS:Bool;
     var showFPS:Bool;
     var showMemory:Bool;
     var ignoreVile:Bool;
@@ -119,15 +121,33 @@ class OptionsHandler {
     public static inline var DYNAMIC_SCROLL_SPEED_MIN:Float = 0;
     public static inline var DYNAMIC_SCROLL_SPEED_MAX:Float = 10;
     public static inline var DYNAMIC_SCROLL_SPEED_STEP:Float = 0.5;
-    public static inline var MAX_FPS_CAP:Int = 480;
+    // Flixel, Lime, and the save format all carry frame rates as signed Ints.
+    // The menu accepts the full positive range of that native value.
+    public static inline var MAX_FPS_CAP:Int = 2147483647;
 
     public static function sanitizeFpsCap(raw:Dynamic):Int {
         if (raw == null || !(Std.isOfType(raw, Float) || Std.isOfType(raw, Int)))
             return 60;
         var value:Float = raw;
-        if (!Math.isFinite(value))
+        if (!Math.isFinite(value) || value <= 0)
             return 60;
-        return Std.int(Math.max(10, Math.min(MAX_FPS_CAP, value)));
+        // Clamp before rounding so a huge saved Float cannot overflow Int.
+        value = Math.min(MAX_FPS_CAP, value);
+        var cap = Std.int(Math.floor(value + 0.5));
+        return cap < 1 ? 60 : cap;
+    }
+
+    public static function sanitizeOffset(raw:Dynamic):Float {
+        if (raw == null || !(Std.isOfType(raw, Float) || Std.isOfType(raw, Int)))
+            return 0;
+        var value:Float = raw;
+        if (!Math.isFinite(value))
+            return 0;
+        // Above this size Float cannot represent tenths; returning the original
+        // value avoids overflowing while scaling it for rounding.
+        if (Math.abs(value) >= 1e307)
+            return value;
+        return Math.floor(value * 10 + 0.5) / 10;
     }
 
     public static function sanitizeDynamicScrollSpeed(raw:Dynamic):Float {
@@ -158,6 +178,9 @@ class OptionsHandler {
         // triple must stay unlocked and retain its exact values.
         var quality = CodenameOptionsQualityCompat.infer(opt);
         opt.fpsCap = sanitizeFpsCap(Reflect.field(opt, "fpsCap"));
+        opt.offset = sanitizeOffset(Reflect.field(opt, "offset"));
+        opt.unlimitedFPS = sanitizeBool(Reflect.field(opt, "unlimitedFPS"), false);
+        opt.fastSceneTransitions = sanitizeBool(Reflect.field(opt, "fastSceneTransitions"), false);
         opt.dynamicScrollSpeed = sanitizeDynamicScrollSpeed(Reflect.field(opt, "dynamicScrollSpeed"));
         opt.antialiasing = sanitizeBool(Reflect.field(opt, "antialiasing"), true);
         opt.gameplayShaders = sanitizeBool(Reflect.field(opt, "gameplayShaders"), true);
@@ -260,6 +283,7 @@ class OptionsHandler {
             lastOptions.hitSounds = false;
             lastOptions.titleToggle = true;
             lastOptions.fpsCap = 60;
+            lastOptions.unlimitedFPS = false;
             lastOptions.scrollSpeed = 1;
             lastOptions.dynamicScrollSpeed = 0;
             lastOptions.camNotes = false;
@@ -290,6 +314,7 @@ class OptionsHandler {
         sanitizeOptions(opt);
         applyDisplayOptions(opt);
 		applyAudioOptions(opt);
+		FramerateOptionsCompat.apply(opt);
         #if sys
         needToRefresh = true;
         File.saveContent('assets/data/options.json', CoolUtil.stringifyJson(opt));

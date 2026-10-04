@@ -109,8 +109,7 @@ class NightmareVisionScriptGroup {
 		var result:Dynamic = CONTINUE_FUNC;
 		if (released) return result;
 		for (script in members) {
-			if (script == null || !script.exists(event)
-				|| (exclusions != null && exclusions.indexOf(script.name) >= 0)) continue;
+			if (script == null || (exclusions != null && exclusions.indexOf(script.name) >= 0)) continue;
 			var returned:Dynamic = script.call(event, args);
 			if (Std.isOfType(returned, Int)) {
 				if (returned == HALT_FUNC) {

@@ -98,12 +98,24 @@ class NightmareVisionSpectogramAudioData {
 		setBuffer = false;
 	}
 
-	public static function getCurAud(aud:Int16Array, index:Int):{var left:Float; var right:Float; var balanced:Float;} {
+	static inline function boundedSampleIndex(aud:Int16Array, index:Int):Int {
 		if (aud == null || aud.length < 3)
 			throw '[nightmare-vision-audio] Stereo visualizer needs at least three 16-bit samples';
 		// Keep the donor's stereo stride and normalization. Clamp only the final
 		// pair so a section ending on the last sample cannot read beyond the view.
-		var sampleIndex = Std.int(Math.max(0, Math.min(index, aud.length - 3)));
+		return Std.int(Math.max(0, Math.min(index, aud.length - 3)));
+	}
+
+	/** Balanced stereo value for the geometry loop, without a per-sample object. */
+	public static inline function getBalanced(aud:Int16Array, index:Int):Float {
+		var sampleIndex = boundedSampleIndex(aud, index);
+		var left = aud[sampleIndex] / 32767;
+		var right = aud[sampleIndex + 2] / 32767;
+		return (left + right) / 2;
+	}
+
+	public static function getCurAud(aud:Int16Array, index:Int):{var left:Float; var right:Float; var balanced:Float;} {
+		var sampleIndex = boundedSampleIndex(aud, index);
 		var left = aud[sampleIndex] / 32767;
 		var right = aud[sampleIndex + 2] / 32767;
 		var balanced = (left + right) / 2;

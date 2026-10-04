@@ -252,14 +252,12 @@ class CodenamePaths {
 	public function shaderImport(key:String):String return FNFAssets.getText(file('shaders/' + key));
 	public function video(key:String):String return asset('videos', key, '.mp4');
 	public function obj(key:String):String return asset('models', key, '.obj');
-	/** Load an owner-validated raster into Flixel's shared bitmap cache under
-	 * its absolute owner path. The path remains part of the key, so equal names
-	 * from different imports cannot alias one another. */
+	/** Load an owner-validated raster into Flixel's shared bitmap cache. The
+	 * FNFAssets disk key includes its absolute owner path, so equal names from
+	 * different imports cannot alias one another. */
 	public function graphic(path:String):FlxGraphic {
 		var resolved = getPath(path);
-		var bitmap = FNFAssets.getBitmapData(resolved);
-		if (bitmap == null) return null;
-		return FlxG.bitmap.add(bitmap, false, resolved);
+		return FNFAssets.getFlxGraphic(resolved);
 	}
 	/** Codename accepts both an owner-local relative key and a path already
 	 * returned by Paths. Resolve either through the selected namespace. */

@@ -77,6 +77,13 @@ class Main {
   scriptSources.set(prefix + 'data/stages/stage.hx', '
    record("stage:top:addBound=" + hasStageAdd());
    function onLoad() { record("stage:load:" + stage.stageData.defaultZoom + ":addBound=" + hasStageAdd()); add("from-onLoad"); }
+   var countdownAttempts = 0;
+   function onStartCountdown() {
+    countdownAttempts++;
+    record("stage:startCountdown:" + countdownAttempts);
+    if (countdownAttempts == 1) return Function_Stop;
+    return Function_Continue;
+   }
    function cancel() { record("stage:cancel"); return Function_Stop; }
    function onDestroy() record("stage:destroy");
   ');
@@ -185,6 +192,12 @@ class Main {
   eq(readCounts.get('owner-A/data/stages/stage.hx'), 1);
   if (readCounts.get('owner-A/scripts/bad.hx') != 1)
    fail('bad script reads=' + readCounts.get('owner-A/scripts/bad.hx'));
+
+  // Stage-owned intros can stop the first countdown and release it on their
+  // next authored startCountdown() handoff.
+  eq(host.call('onStartCountdown'), NightmareVisionScriptGroup.STOP_FUNC);
+  eq(host.call('onStartCountdown'), NightmareVisionScriptGroup.CONTINUE_FUNC);
+  eq(a.log.slice(-2).join(','), 'stage:startCountdown:1,stage:startCountdown:2');
 
   // Character `parent` is module-local and live; public fields cross scripts
   // inside this owner and retain the actual actor object.
@@ -400,6 +413,14 @@ class Main {
         pause_end = source.index("var canShowKeys = true;", pause_start)
         pause = source[pause_start:pause_end]
         self.assertLess(pause.index("callNightmareVision('onPause', [])"), pause.index("paused = true;"))
+
+        countdown = extract_block(source, "public function startCountdown():Void")
+        nmv_countdown = countdown.index("countdownResults.push(callNightmareVision('onStartCountdown', []));")
+        hscript_countdown = countdown.index("callAllHScript('startCountdown', [], false, countdownResults);")
+        self.assertLess(nmv_countdown, hscript_countdown)
+        self.assertLess(countdown.index("if (EngineCompat.anyFunctionStop(countdownResults))"),
+                        countdown.index("startedCountdown = true;"))
+        self.assertIn("hxcCountdownHookDispatching = true;", countdown[:nmv_countdown])
 
     def test_donor_character_onload_precedes_parent_assignment(self):
         donor = ROOT.parent / "FNF-Example-Mods" / "misc" / "nightmare_vision_source_code" / "source" / "funkin" / "states" / "PlayState.hx"

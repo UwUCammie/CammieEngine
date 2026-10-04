@@ -549,12 +549,17 @@ class StrumNote extends FlxSprite {
 	var psychPixelSkin:Bool = false;
 	var psychSkinPostfix:String = '';
 	var psychRGBDisabled:Bool = false;
+	@:allow(PsychSkinRuntime) public var psychSkinUsesNativeDefaultFallback(default, null):Bool = false;
+	var psychSkinConfigured:Bool = false;
+	var psychRGBExplicitlyEnabled:Bool = false;
 	var psychRGBShader:PsychRGBShaderReference = null;
 	@:keep public var rgbShader(get, never):PsychRGBShaderReference;
 	@:keep function get_rgbShader():PsychRGBShaderReference return psychRGBShader;
 	public var useRGBShader(default, set):Bool = true;
 	function set_useRGBShader(value:Bool):Bool {
 		useRGBShader = value;
+		if (psychSkinConfigured)
+			psychRGBExplicitlyEnabled = value;
 		refreshPsychRGB();
 		return value;
 	}
@@ -581,6 +586,8 @@ class StrumNote extends FlxSprite {
 
 	public function configurePsychSkin(ownerRoot:String, arrowSkin:String, disableNoteRGB:Bool,
 		pixel:Bool, ?postfix:String = ''):Bool {
+		psychSkinConfigured = false;
+		psychRGBExplicitlyEnabled = false;
 		psychSkinOwner = ownerRoot;
 		psychChartSkin = arrowSkin;
 		psychPixelSkin = pixel;
@@ -596,12 +603,16 @@ class StrumNote extends FlxSprite {
 		}
 		configurePsychRGBShader();
 		refreshPsychRGB();
+		psychSkinConfigured = true;
 		return true;
 	}
 
 	public function refreshPsychRGB():Void {
 		if (psychSkinOwner == null) return;
-		shader = psychRGBShader != null && psychRGBShader.enabled && useRGBShader
+		var hasExplicitRGB = psychRGBExplicitlyEnabled || psychRGBShader != null
+			&& (psychRGBShader.hasCustomPalette || psychRGBShader.explicitlyEnabled);
+		shader = (!psychSkinUsesNativeDefaultFallback || hasExplicitRGB)
+			&& psychRGBShader != null && psychRGBShader.enabled && useRGBShader
 			&& animation.curAnim != null && animation.curAnim.name != 'static'
 			? psychRGBShader.parent.shader : null;
 	}

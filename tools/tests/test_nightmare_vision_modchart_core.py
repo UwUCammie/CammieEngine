@@ -102,14 +102,89 @@ import nightmarevision.modchart.NightmareVisionModchartContext;
 import nightmarevision.modchart.NightmareVisionModchartObject;
 import nightmarevision.modchart.NightmareVisionModchartMath;
 import nightmarevision.modchart.NightmareVisionModchartTransform;
+import nightmarevision.modchart.NightmareVisionModchartVector;
 import flixel.tweens.FlxEase;
 
 class Main {
+ static var randomState:Float = 1234567;
  static function fail(message:String):Void throw message;
  static function check(value:Bool, message:String):Void if (!value) fail(message);
  static function near(actual:Float, expected:Float, message:String, epsilon:Float = 0.0001):Void
   if (Math.isNaN(actual) || Math.abs(actual - expected) > epsilon)
    fail(message + ': expected ' + expected + ', got ' + actual);
+
+ static function nextRandom():Float {
+  randomState = (randomState * 48271) % 2147483647;
+  return randomState / 2147483647;
+ }
+
+ static function referenceRotate(position:NightmareVisionModchartVector,
+  originX:Float, originY:Float, height:Float,
+  xAngle:Float, yAngle:Float, zAngle:Float):NightmareVisionModchartVector {
+  var x = position.x - originX;
+  var y = position.y - originY;
+  var z = position.z * height;
+  var x1 = x * Math.cos(zAngle) - y * Math.sin(zAngle);
+  var y1 = x * Math.sin(zAngle) + y * Math.cos(zAngle);
+  var x2 = z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
+  var y2 = z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
+  var x3 = x1 * Math.cos(yAngle) - x2 * Math.sin(yAngle);
+  var z3 = x1 * Math.sin(yAngle) + x2 * Math.cos(yAngle);
+  return new NightmareVisionModchartVector(originX + x3, originY + y2, z3 / height);
+ }
+
+ static function referencePerspective(position:NightmareVisionModchartVector,
+  width:Float, height:Float):Void {
+  if (Math.abs(position.z) < NightmareVisionModchartMath.EPSILON) return;
+  var tangent = NightmareVisionModchartMath.fastSin(Math.PI / 4)
+   / NightmareVisionModchartMath.fastCos(Math.PI / 4);
+  var clipped = position.z - 1;
+  if (clipped > 0) clipped = 0;
+  var z = -clipped;
+  position.x = (position.x - width / 2) / tangent / z + width / 2;
+  position.y = (position.y - height / 2) / tangent / z + height / 2;
+  position.z = z;
+ }
+
+ static function referenceRotation(registry:NightmareVisionModifierRegistry,
+  ctx:NightmareVisionModchartContext, data:Int, player:Int, visualDiff:Float,
+  rotationKind:Int):NightmareVisionModchartVector {
+  var xAngle:Float;
+  var yAngle:Float;
+  var zAngle:Float;
+  var originX = NightmareVisionModchartTransform.baseX(ctx, data, player);
+  if (rotationKind == 1) {
+   var root = 'centerrotateX';
+   xAngle = registry.value(root, player);
+   yAngle = registry.getSubmodValue(root, 'centerrotateY', player);
+   zAngle = registry.getSubmodValue(root, 'centerrotateZ', player);
+   originX = ctx.width * 0.5;
+  } else if (rotationKind == 2) {
+   var root = 'localrotateX';
+   xAngle = registry.value(root, player) + registry.getSubmodValue(root, 'localrotate' + data + 'X', player);
+   yAngle = registry.getSubmodValue(root, 'localrotateY', player)
+    + registry.getSubmodValue(root, 'localrotate' + data + 'Y', player);
+   zAngle = registry.getSubmodValue(root, 'localrotateZ', player)
+    + registry.getSubmodValue(root, 'localrotate' + data + 'Z', player);
+   originX = ctx.width * 0.5;
+   var laneOffset = ctx.width * 0.5 - ctx.noteWidth * (ctx.keys / 2) - 100;
+   originX += player == 0 ? laneOffset : -laneOffset;
+  } else {
+   var root = 'rotateX';
+   xAngle = registry.value(root, player);
+   yAngle = registry.getSubmodValue(root, 'rotateY', player);
+   zAngle = registry.getSubmodValue(root, 'rotateZ', player);
+  }
+  var start = new NightmareVisionModchartVector(
+   NightmareVisionModchartTransform.baseX(ctx, data, player),
+   NightmareVisionModchartTransform.baseY(ctx.noteWidth) + visualDiff, 0);
+  var rotationOriginX = rotationKind == 1 ? ctx.width * 0.5
+   : (rotationKind == 2 ? originX : NightmareVisionModchartTransform.baseX(ctx, data, player));
+  var result = referenceRotate(start, rotationOriginX, ctx.height * 0.5, ctx.height,
+   xAngle, yAngle, zAngle);
+  referencePerspective(result, ctx.width, ctx.height);
+  return result;
+ }
 
  static function main() {
   var registry = new NightmareVisionModifierRegistry(4);
@@ -122,6 +197,23 @@ class Main {
   near(registry.value('xmod', 1), 1, 'source xmod default');
   check(registry.activeFamilies(0).join(',') == 'mini,reverse,confusion,stealth,xmod,perspectiveDONTUSE',
    'always-executed roots or source order changed');
+  var playerZeroFamilies = registry.activeFamilies(0);
+  var playerOneFamilies = registry.activeFamilies(1);
+  check(playerZeroFamilies == registry.activeFamilies(0),
+   'stable active root list was rebuilt for the same player');
+  registry.setValue('drunk', 0.1, 0);
+  var activeDrunkFamilies = registry.activeFamilies(0);
+  check(activeDrunkFamilies != playerZeroFamilies && activeDrunkFamilies.indexOf('drunk') >= 0,
+   'root activation did not invalidate the cached family list');
+  registry.setValue('drunk', 0.25, 0);
+  check(registry.activeFamilies(0) == activeDrunkFamilies,
+   'continuous nonzero tween value rebuilt the active family list');
+  check(registry.activeFamilies(1) == playerOneFamilies && playerOneFamilies.indexOf('drunk') < 0,
+   'player-local activation invalidated another player list');
+  registry.setValue('drunk', 0, 0);
+  check(registry.activeFamilies(0) != activeDrunkFamilies
+   && registry.activeFamilies(0).indexOf('drunk') < 0,
+   'root deactivation did not invalidate the cached family list');
   var unsupported = false;
   try registry.setValue('madeUpMod', 1) catch (_:Dynamic) unsupported = true;
   check(unsupported, 'unsupported scripted modifier was accepted');
@@ -239,6 +331,86 @@ class Main {
   near(position.y, 300, 'rotate-Z source origin');
   registry.setValue('rotateZ', 0, 0);
 
+  // Compare the allocation-free rotate paths with the former vector-based
+  // equations over deterministic randomized inputs and all three origins.
+  for (iteration in 0...45) {
+   var rotationKind = iteration % 3;
+   var player = iteration % 2;
+   var data = iteration % 4;
+   var visualDiff = (nextRandom() - 0.5) * 900;
+   var xAngle = (nextRandom() - 0.5) * 5;
+   var yAngle = (nextRandom() - 0.5) * 5;
+   var zAngle = (nextRandom() - 0.5) * 5;
+   var laneX = (nextRandom() - 0.5) * 2;
+   var laneY = (nextRandom() - 0.5) * 2;
+   var laneZ = (nextRandom() - 0.5) * 2;
+   registry.setValue('rotateX', 0, player);
+   registry.setSubmodValue('rotateX', 'rotateY', 0, player);
+   registry.setSubmodValue('rotateX', 'rotateZ', 0, player);
+   registry.setValue('centerrotateX', 0, player);
+   registry.setSubmodValue('centerrotateX', 'centerrotateY', 0, player);
+   registry.setSubmodValue('centerrotateX', 'centerrotateZ', 0, player);
+   registry.setValue('localrotateX', 0, player);
+   registry.setSubmodValue('localrotateX', 'localrotateY', 0, player);
+   registry.setSubmodValue('localrotateX', 'localrotateZ', 0, player);
+   for (lane in 0...4) for (axis in ['X', 'Y', 'Z'])
+    registry.setSubmodValue('localrotateX', 'localrotate' + lane + axis, 0, player);
+   if (rotationKind == 0) {
+    registry.setValue('rotateX', xAngle, player);
+    registry.setSubmodValue('rotateX', 'rotateY', yAngle, player);
+    registry.setSubmodValue('rotateX', 'rotateZ', zAngle, player);
+   } else if (rotationKind == 1) {
+    registry.setValue('centerrotateX', xAngle, player);
+    registry.setSubmodValue('centerrotateX', 'centerrotateY', yAngle, player);
+    registry.setSubmodValue('centerrotateX', 'centerrotateZ', zAngle, player);
+   } else {
+    registry.setValue('localrotateX', xAngle, player);
+    registry.setSubmodValue('localrotateX', 'localrotate' + data + 'X', laneX, player);
+    registry.setSubmodValue('localrotateX', 'localrotateY', yAngle, player);
+    registry.setSubmodValue('localrotateX', 'localrotate' + data + 'Y', laneY, player);
+    registry.setSubmodValue('localrotateX', 'localrotateZ', zAngle, player);
+    registry.setSubmodValue('localrotateX', 'localrotate' + data + 'Z', laneZ, player);
+   }
+   note.player = player;
+   note.data = data;
+   var actual = transform.getPosition(ctx, note, visualDiff, 0, ctx.beat);
+   var expected = referenceRotation(registry, ctx, data, player, visualDiff, rotationKind);
+   near(actual.x, expected.x, 'randomized rotate X parity');
+   near(actual.y, expected.y, 'randomized rotate Y parity');
+   near(actual.z, expected.z, 'randomized rotate Z parity');
+  }
+  registry.setValue('rotateX', 0, 0);
+  registry.setSubmodValue('rotateX', 'rotateY', 0, 0);
+  registry.setSubmodValue('rotateX', 'rotateZ', 0, 0);
+  registry.setValue('centerrotateX', 0, 0);
+  registry.setSubmodValue('centerrotateX', 'centerrotateY', 0, 0);
+  registry.setSubmodValue('centerrotateX', 'centerrotateZ', 0, 0);
+  registry.setValue('localrotateX', 0, 0);
+  registry.setSubmodValue('localrotateX', 'localrotateY', 0, 0);
+  registry.setSubmodValue('localrotateX', 'localrotateZ', 0, 0);
+  for (lane in 0...4) for (axis in ['X', 'Y', 'Z'])
+   registry.setSubmodValue('localrotateX', 'localrotate' + lane + axis, 0, 0);
+  var ownedPosition = transform.getPosition(ctx, note, 0, 0, ctx.beat);
+  var ownedX = ownedPosition.x;
+  var scratchPosition = new NightmareVisionModchartVector(12, 34, 56);
+  var scratchResult = transform.getPositionInto(ctx, note, 0, 0, ctx.beat, scratchPosition);
+  check(scratchResult == scratchPosition, 'caller-owned position output was replaced');
+  check(transform.getPosition(ctx, note, 0, 0, ctx.beat) != ownedPosition,
+   'public getPosition no longer returns caller-owned storage');
+  var inactiveObject = new NightmareVisionModchartObject();
+  inactiveObject.active = false;
+  scratchPosition.x = 99;
+  scratchPosition.y = 88;
+  scratchPosition.z = 77;
+  transform.getPositionInto(ctx, inactiveObject, 0, 0, ctx.beat, scratchPosition);
+  near(scratchPosition.x, 0, 'inactive scratch X was not reset');
+  near(scratchPosition.y, 0, 'inactive scratch Y was not reset');
+  near(scratchPosition.z, 0, 'inactive scratch Z was not reset');
+  registry.setValue('flip', 0.25, 0);
+  transform.getPositionInto(ctx, note, 0, 0, ctx.beat, scratchPosition);
+  near(ownedPosition.x, ownedX, 'later scratch updates mutated a retained getPosition result');
+  registry.setValue('flip', 0, 0);
+
   registry.setSubmodValue('transformX', 'transformZ', 0.5, 0);
   position = transform.getPosition(ctx, note, 0, 0, 0);
   near(position.x, 210, 'perspective X projection');
@@ -292,10 +464,12 @@ class Main {
         fixture = r'''
 import nightmarevision.modchart.NightmareVisionModifierRegistry;
 import nightmarevision.modchart.NightmareVisionModchartContext;
+import nightmarevision.modchart.NightmareVisionModchartObject;
 import nightmarevision.modchart.NightmareVisionModchartTransform;
 import nightmarevision.modchart.NightmareVisionModchartRenderer;
 import nightmarevision.modchart.NightmareVisionModchartSkinOffsets;
 
+@:access(nightmarevision.modchart.NightmareVisionModchartRenderer)
 class Main {
  static function fail(message:String):Void throw message;
  static function check(value:Bool, message:String):Void if (!value) fail(message);
@@ -314,7 +488,7 @@ class Main {
    x:0.0, y:0.0, width:50.0, height:100.0, frameWidth:50.0, frameHeight:100.0,
    scale:{x:2.0, y:2.0}, baseScale:baseScale, defScale:baseScale,
    offset:{x:0.0, y:0.0}, origin:{x:0.0, y:0.0},
-   active:true, noteData:0, strumTime:900.0, multSpeed:1.0,
+   active:true, noteData:0, direction:2, ID:3, strumTime:900.0, multSpeed:1.0,
    isSustainNote:isHold, isSustainEnd:false, wasGoodHit:isHold,
    antialiasing:true, alpha:0.6, animation:{curAnim:{name:isHold ? 'hold' : 'Scroll'}},
    centerOrigin:function():Void {}, centerOffsets:function():Void {}
@@ -322,6 +496,22 @@ class Main {
  }
 
  static function main() {
+  check(NightmareVisionModchartRenderer.number(42, -1) == 42,
+   'native integer snapshot value changed');
+  var preciseFloat:Float = 0.12345678901234566;
+  check(NightmareVisionModchartRenderer.number(preciseFloat, -1) == preciseFloat,
+   'native float snapshot value lost precision');
+  near(NightmareVisionModchartRenderer.number('6.25', -1), 6.25,
+   'numeric string snapshot fallback');
+  near(NightmareVisionModchartRenderer.number(null, 7), 7,
+   'null snapshot fallback');
+  near(NightmareVisionModchartRenderer.number('invalid', -8), -8,
+   'malformed string snapshot fallback');
+  near(NightmareVisionModchartRenderer.number(Math.NaN, 9), 9,
+   'NaN snapshot fallback');
+  near(NightmareVisionModchartRenderer.number(Math.POSITIVE_INFINITY, 10), 10,
+   'infinite snapshot fallback');
+
   var registry = new NightmareVisionModifierRegistry(4);
   var transform = new NightmareVisionModchartTransform(registry);
   var skin = {
@@ -351,9 +541,53 @@ class Main {
   check(unsupported.length == 0, 'active visual bridge still reported unsupported glow');
   near(visual.spriteOffsetX, 3, 'tap note offsets exclude sustain offsets');
   near(visual.spriteOffsetY, 4, 'tap note Y offsets exclude sustain offsets');
+  near(visual.position.x, NightmareVisionModchartTransform.baseX(ctx, 0, 0),
+   'valid noteData zero did not precede direction and ID fallbacks');
+
+  var fallbackNote = fakeNote();
+  fallbackNote.noteData = 'invalid';
+  fallbackNote.direction = '0';
+  fallbackNote.offsetX = 'invalid';
+  fallbackNote.typeOffsetX = '7';
+  fallbackNote.offsetY = null;
+  fallbackNote.typeOffsetY = '-4.5';
+  renderer.configureNote(fallbackNote);
+  var fallbackVisual = renderer.updateNote(ctx, fallbackNote, 0, 0, 0, 0, 0, 0);
+  near(fallbackVisual.position.x, NightmareVisionModchartTransform.baseX(ctx, 0, 0),
+   'malformed primary lane did not fall through to numeric-string direction');
+  near(fallbackVisual.spriteOffsetX, 10, 'malformed offset did not use numeric-string fallback');
+  near(fallbackVisual.spriteOffsetY, -0.5, 'null offset did not use numeric-string fallback');
+  fallbackNote.noteData = null;
+  fallbackVisual = renderer.updateNote(ctx, fallbackNote, 0, 0, 0, 0, 0, 0);
+  near(fallbackVisual.position.x, NightmareVisionModchartTransform.baseX(ctx, 0, 0),
+   'null primary lane did not fall through to direction');
+  fallbackNote.offsetX = '6.25';
+  fallbackNote.offsetY = '2.5';
+  fallbackVisual = renderer.updateNote(ctx, fallbackNote, 0, 0, 0, 0, 0, 0);
+  near(fallbackVisual.spriteOffsetX, 9.25, 'numeric-string primary offset did not precede fallback');
+  near(fallbackVisual.spriteOffsetY, 6.5, 'numeric-string primary Y offset did not precede fallback');
+  renderer.release(fallbackNote);
+
+  var retainedPosition = visual.position;
+  var retainedPositionX = retainedPosition.x;
   renderer.updateNote(ctx, note, 0, 0, 0, 0, 0, 0);
   near(note.scale.x, 1, 'repeated frame compounded mini scale');
   near(note.scale.y, 1, 'repeated frame compounded mini Y scale');
+  registry.setValue('flip', 0.25, 0);
+  visual = renderer.updateNote(ctx, note, 0, 0, 0, 0, 0, 0);
+  check(visual.position != retainedPosition,
+   'renderer mutated a retained visual-state position instead of replacing its snapshot');
+  near(retainedPosition.x, retainedPositionX,
+   'later renderer updates mutated a retained visual-state position');
+  registry.setValue('flip', 0, 0);
+  registry.setValue('mini', 0, 0);
+  registry.setValue('stealth', 0, 0);
+  visual = renderer.updateNote(ctx, note, 0, 0, 0, 0, 0, 0);
+  near(visual.alphaMod, 1, 'reused render snapshot retained stale stealth alpha');
+  near(visual.rgbFlash, 0, 'reused render snapshot retained stale stealth glow');
+  near(note.scale.x, 2, 'reused render snapshot retained stale mini scale');
+  registry.setValue('mini', 0.5, 0);
+  registry.setValue('stealth', 0.4, 0);
 
   // Historical note scripts call defScale.set() before renderer setup. The
   // current source uses baseScale for the same mutable baseline, and scripts
@@ -387,6 +621,32 @@ class Main {
   registry.setValue('mini', 0, 0);
   registry.setValue('stealth', 0, 0);
   ctx = new NightmareVisionModchartContext(800, 600, 4, 112, 1000, 0, 1, 500, false, false);
+  registry.setValue('rotateX', 0.27, 0);
+  registry.setSubmodValue('rotateX', 'rotateY', -0.14, 0);
+  registry.setSubmodValue('rotateX', 'rotateZ', 0.31, 0);
+  var rotatedHold = fakeNote(true);
+  renderer.configureNote(rotatedHold);
+  var holdObject = new NightmareVisionModchartObject();
+  holdObject.player = 0;
+  holdObject.data = 0;
+  var expectedHead = transform.getPosition(ctx, holdObject, 15, 0, ctx.beat);
+  var expectedTail = transform.getPosition(ctx, holdObject, 145, 120, 0);
+  var expectedHoldAngle = Math.atan2(expectedTail.y - expectedHead.y,
+   expectedTail.x - expectedHead.x) * 180 / Math.PI - 90;
+  var expectedHoldDistance = Math.sqrt(Math.pow(expectedTail.x - expectedHead.x, 2)
+   + Math.pow(expectedTail.y - expectedHead.y, 2));
+  visual = renderer.updateNote(ctx, rotatedHold, 0, 15, 0, 145, 120, 0,
+   {x:250.0, y:100.0, width:112.0, height:100.0, sustainReduce:false}, 125, false);
+  near(visual.position.x, expectedHead.x, 'sustain scratch retained transformed head X');
+  near(visual.position.y, expectedHead.y, 'sustain scratch retained transformed head Y');
+  near(visual.holdAngle, expectedHoldAngle, 'sustain tail used its independent transformed endpoint');
+  near(visual.holdSegmentDistance, expectedHoldDistance,
+   'sustain geometry used both independently transformed endpoints');
+  renderer.release(rotatedHold);
+  registry.setValue('rotateX', 0, 0);
+  registry.setSubmodValue('rotateX', 'rotateY', 0, 0);
+  registry.setSubmodValue('rotateX', 'rotateZ', 0, 0);
+
   var hold = fakeNote(true);
   renderer.configureNote(hold);
   var strum = {x:250.0, y:100.0, width:112.0, height:100.0, sustainReduce:true};

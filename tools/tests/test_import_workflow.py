@@ -197,9 +197,13 @@ class ImportWorkflow {{
                 "static function uniquePush",
                 "static function uniquePushKeyed",
                 "static function field",
+                "static function registryDocument",
                 "static function registryValue",
                 "static function registryText",
                 "static function canonicalLegacyCharacter",
+                "static function dependencyCandidateCacheKey",
+                "static function cachedDependencyCandidates",
+                "static function rememberDependencyCandidates",
                 "static function charCandidates",
                 "static function stageCandidates",
             )
@@ -217,7 +221,11 @@ class ImportSettings {{
   }}
 }}
 class CoolUtil {{
-  public static function parseJson(raw:String):Dynamic return Json.parse(raw);
+  public static var parseCount:Int = 0;
+  public static function parseJson(raw:String):Dynamic {{
+    parseCount++;
+    return Json.parse(raw);
+  }}
 }}
 class EngineCompat {{
   public static function stageLookupNames(value:String):Array<String> return [value];
@@ -229,6 +237,9 @@ class DependencyFixture {{
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var dependencyCandidateCache:Map<String, Array<String>> = new Map<String, Array<String>>();
 {methods}
   static function main() {{
     var root = Sys.args()[0];
@@ -237,6 +248,13 @@ class DependencyFixture {{
     var charFound = false;
     for (candidate in chars) if (candidate.toLowerCase() == expectedChar.toLowerCase()) charFound = true;
     if (!charFound) throw 'Psych image field/shared asset was not resolved';
+    var parsedAfterFirstLookup = CoolUtil.parseCount;
+    chars.push('caller-mutation.png');
+    var cachedChars = charCandidates([root], 'Boyfriend-Vampire');
+    if (cachedChars.indexOf('caller-mutation.png') >= 0)
+      throw 'character candidate cache returned a mutable shared array';
+    if (CoolUtil.parseCount != parsedAfterFirstLookup)
+      throw 'repeated character lookup reparsed its definition';
     var animateChars = charCandidates([root], 'gf-week2');
     var expectedAnimate = Path.join([root, 'shared/images/characters/girlfriend/gf_week2/Animation.json']);
     var animateFound = false;
@@ -344,6 +362,7 @@ class KeyedCandidateFixture {{
                 "static function directory",
                 "static function caseInsensitivePath",
                 "static function caseInsensitiveFile",
+                "static function registryDocument",
                 "static function registryValue",
                 "static function registryText",
             )
@@ -363,6 +382,8 @@ class MixedCaseFixture {{
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
 {methods}
   static function main() {{
     var root = Sys.args()[0];
@@ -398,6 +419,154 @@ class MixedCaseFixture {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_registry_documents_parse_once_per_scan_and_refresh_between_scans(self):
+        methods = "\n".join(
+            extract_method(self.source, marker)
+            for marker in (
+                "static function resolutionCacheKey",
+                "static function clearResolutionCaches",
+                "static function registryDocument",
+                "static function registryValue",
+                "static function findRegistryEntry",
+            )
+        )
+        perform = extract_method(self.source, "public static function perform(sourcePath:String")
+        self.assertIn("clearResolutionCaches();", perform)
+        fixture = f'''import haxe.Json;
+import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+
+class CoolUtil {{
+  public static var parseCount:Int = 0;
+  public static function parseJson(raw:String):Dynamic {{
+    parseCount++;
+    return Json.parse(raw);
+  }}
+}}
+class RegistryCacheFixture {{
+  static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
+  static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var chartCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var dependencyCandidateCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+  static var luaDiagnosticCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+  static var luaDiagnosticCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static function caseInsensitivePath(path:String):String return path;
+  static function file(path:String):Bool return FileSystem.exists(path) && !FileSystem.isDirectory(path);
+{methods}
+  static function main() {{
+    var root = Sys.args()[0];
+    var registryPath = Path.join([root, 'custom_chars.jsonc']);
+    File.saveContent(registryPath, '{{"Alpha":{{"like":"one"}},"Beta":{{"like":"two"}}}}');
+    if (!findRegistryEntry(root, 'custom_chars.jsonc', 'alpha'))
+      throw 'case-insensitive registry key was not found';
+    var beta = registryValue(root, 'custom_chars.jsonc', 'Beta');
+    if (Reflect.field(beta, 'like') != 'two')
+      throw 'registry value lookup changed';
+    if (CoolUtil.parseCount != 1)
+      throw 'one scan parsed the same registry ' + CoolUtil.parseCount + ' times';
+
+    File.saveContent(registryPath, '{{"Gamma":{{"like":"three"}}}}');
+    clearResolutionCaches();
+    if (!findRegistryEntry(root, 'custom_chars.jsonc', 'gamma'))
+      throw 'next scan did not see the updated registry';
+    if (findRegistryEntry(root, 'custom_chars.jsonc', 'alpha'))
+      throw 'next scan retained a removed registry key';
+    if (CoolUtil.parseCount != 2)
+      throw 'updated scan did not parse the registry exactly once';
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "RegistryCacheFixture.hx"
+            fixture_path.write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--run", "RegistryCacheFixture", folder],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_dependency_candidate_cache_is_scan_scoped_and_returns_copies(self):
+        methods = "\n".join(
+            extract_method(self.source, marker)
+            for marker in (
+                "static function normalized",
+                "static function pathKey",
+                "static function resolutionCacheKey",
+                "static function clearResolutionCaches",
+                "static function dependencyCandidateCacheKey",
+                "static function cachedDependencyCandidates",
+                "static function rememberDependencyCandidates",
+            )
+        )
+        fixture = f'''import haxe.io.Path;
+import sys.FileSystem;
+using StringTools;
+
+class ImportSettings {{
+  public static function normalizeSourcePath(value:Dynamic):String {{
+    if (value == null) return '';
+    return Path.normalize(StringTools.replace(StringTools.trim(Std.string(value)), '\\\\', '/'));
+  }}
+}}
+class CandidateCacheFixture {{
+  static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
+  static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var chartCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var dependencyCandidateCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+  static var luaDiagnosticCache:Map<String, Array<String>> = new Map<String, Array<String>>();
+  static var luaDiagnosticCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+{methods}
+  static function main() {{
+    var root = Path.join([Sys.getCwd(), 'donor']);
+    var original = ['donor/images/custom_chars/bf/char.json'];
+    var remembered = rememberDependencyCandidates('character', [root], 'Boyfriend', original);
+    remembered.push('caller-only-atlas.png');
+    var firstRead = cachedDependencyCandidates('character', [root], 'Boyfriend');
+    if (firstRead == null || firstRead.length != 1
+      || firstRead[0] != 'donor/images/custom_chars/bf/char.json')
+      throw 'cached paths were changed by the caller';
+    firstRead.push('read-only-caller-mutation.png');
+    var secondRead = cachedDependencyCandidates('character', [root], 'Boyfriend');
+    if (secondRead == null || secondRead.length != 1)
+      throw 'cache returned a shared mutable path list';
+    if (cachedDependencyCandidates('character', [root], 'boyfriend') != null)
+      throw 'case-distinct query reused another query result';
+    if (cachedDependencyCandidates('stage', [root], 'Boyfriend') != null)
+      throw 'candidate kinds shared a cache entry';
+    clearResolutionCaches();
+    if (cachedDependencyCandidates('character', [root], 'Boyfriend') != null)
+      throw 'the next scan retained old candidate paths';
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "CandidateCacheFixture.hx"
+            fixture_path.write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--run", "CandidateCacheFixture"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        for kind in ("character", "stage", "ui", "cutscene", "layout"):
+            marker = f"cachedDependencyCandidates('{kind}', sourceRoots, reference)"
+            self.assertIn(marker, self.source)
+        self.assertIn("LuaCompat.translate(File.getContent(entry.path), entry.path)", self.source)
+        self.assertIn("luaDiagnosticCacheKnown", self.source)
+
     def test_hxc_data_families_copy_into_runtime_script_tree(self):
         """FPS Plus data modules enter the per-source compatibility namespace."""
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
@@ -414,7 +583,9 @@ class MixedCaseFixture {{
         scan_body = scan_body[:scan_body.index("class ImportImportJob")]
         self.assertNotIn("File.copy(", scan_body)
         self.assertNotIn("File.saveContent(", scan_body)
-        self.assertIn("ModuleFunctions.discoverSongImportsDetailed(source, null, selectedType)", scan_body)
+        self.assertIn("selectedType, descriptors);", scan_body)
+        self.assertIn("ModuleFunctions.discoverSongImportsDetailed(source, null,", scan_body)
+        self.assertIn("reportImportProgress('scan-songs', chart.path, discoveredIndex, discovered.length)", scan_body)
         self.assertIn("writeReport(result)", scan_body)
 
     def test_ui_facing_job_api_has_pollable_progress_and_background_worker(self):
@@ -442,7 +613,7 @@ class MixedCaseFixture {{
         self.assertIn("importType: importType", source)
         self.assertIn("detectedRoots:Array<ImportScanRoot>", source)
         self.assertIn("detectedEngines:Array<String>", source)
-        self.assertIn("ImportRootScanner.scan(source, selectedType, scannerCallbacks)", source)
+        self.assertIn("ImportRootScanner.scanDetailed(source, selectedType, scannerCallbacks)", source)
         self.assertIn("descriptor.contentRoot", source)
         self.assertIn("descriptor.data", source)
         self.assertIn("dependencyRootsForChart(descriptors, chartPath)", source)
@@ -845,6 +1016,26 @@ class ScopedDependencyFixture {{
         # The old implementation only returned package discovery when no
         # engine-shaped root was detected, losing valid songs in mixed parents.
         self.assertNotIn("roots.length == 0 && (selected == ImportEngine.AUTO", discovery)
+        self.assertIn("?preScannedRoots:Array<ImportRootScanner.ImportRoot>", module)
+        self.assertIn("preScannedRoots == null ? ImportRootScanner.scan", discovery)
+        self.assertIn("}) : preScannedRoots.copy()", discovery)
+
+    def test_asset_song_import_indexes_chart_and_audio_folders_once(self):
+        """Large per-song trees should not rescan each parent for every song."""
+        module = (ROOT / "source/ModuleFunctions.hx").read_text()
+        discovery = extract_method(module, "static function appendAssetSongImports")
+        self.assertIn(
+            "var indexNamedDirectories = function(parent:String, names:Array<String>):Map<String, String>",
+            discovery,
+        )
+        self.assertIn("if (!indexed.exists(key))", discovery)
+        self.assertIn("FileSystem.isDirectory(candidate)", discovery)
+        self.assertIn("audioSongFolders = indexNamedDirectories(audioRoot, audioFolderNames)", discovery)
+        self.assertIn("var chartSongFolders = indexNamedDirectories(chartsRoot, songFolderNames)", discovery)
+        self.assertIn("chartSongFolders.get(StringTools.trim(songFolderName).toLowerCase())", discovery)
+        self.assertIn("audioSongFolders.get(StringTools.trim(songFolderName).toLowerCase())", discovery)
+        self.assertNotIn("findNamedDirectory(chartsRoot, songFolderName)", discovery)
+        self.assertNotIn("findNamedDirectory(audioRoot, songFolderName)", discovery)
 
     def test_registry_keys_are_not_themselves_dependency_successes(self):
         source = self.source
@@ -894,6 +1085,7 @@ class ScopedDependencyFixture {{
                 "static function caseInsensitivePath",
                 "static function field(value",
                 "static function caseInsensitiveFile",
+                "static function registryDocument",
                 "static function registryValue",
                 "static function registryText",
                 "static function canonicalLegacyCharacter",
@@ -901,6 +1093,9 @@ class ScopedDependencyFixture {{
                 "static function destinationBuiltinDependency",
                 "static function characterImplementationFound",
                 "static function uniquePushKeyed",
+                "static function dependencyCandidateCacheKey",
+                "static function cachedDependencyCandidates",
+                "static function rememberDependencyCandidates",
                 "static function charCandidates",
                 "static function stageCandidates",
                 "static function uiCandidates",
@@ -942,6 +1137,9 @@ class ImportCompat {{
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var dependencyCandidateCache:Map<String, Array<String>> = new Map<String, Array<String>>();
 {methods}
   static function main() {{
     var donor = Sys.args()[0];
@@ -1030,6 +1228,7 @@ class ImportCompat {{
                 "static function file",
                 "static function directory",
                 "static function caseInsensitivePath",
+                "static function registryDocument",
                 "static function registryValue",
                 "static function registryText",
                 "static function canonicalLegacyCharacter",
@@ -1053,6 +1252,8 @@ class AtlasFallbackCompat {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
+  static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();
+  static var registryDocumentCacheKnown:Map<String, Bool> = new Map<String, Bool>();
 {methods}
   static function main() {{
     var root = Sys.args()[0];

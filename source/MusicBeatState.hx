@@ -48,6 +48,43 @@ class MusicBeatState extends FlxUIState {
 		return CodenameMusicBeatTransition.openForOwner(CodenameMusicBeatTransition.currentOwnerRoot(),
 			newState, skipSubStates, null);
 
+	/** Scale only the data Flixel snapshots into this scene's transition.
+		The state's original reference may be a global default shared by every
+		state, so restore it immediately after transition construction. */
+	override public function transitionIn():Void {
+		var original = transIn;
+		var scaled = SceneTransitionTiming.forStateTransition(original);
+		if (scaled == original) {
+			super.transitionIn();
+			return;
+		}
+		transIn = scaled;
+		try {
+			super.transitionIn();
+		} catch (error:Dynamic) {
+			if (transIn == scaled) transIn = original;
+			throw error;
+		}
+		if (transIn == scaled) transIn = original;
+	}
+
+	override public function transitionOut(?onExit:Void->Void):Void {
+		var original = transOut;
+		var scaled = SceneTransitionTiming.forStateTransition(original);
+		if (scaled == original) {
+			super.transitionOut(onExit);
+			return;
+		}
+		transOut = scaled;
+		try {
+			super.transitionOut(onExit);
+		} catch (error:Dynamic) {
+			if (transOut == scaled) transOut = original;
+			throw error;
+		}
+		if (transOut == scaled) transOut = original;
+	}
+
 	override public function startOutro(onOutroComplete:Void->Void):Void {
 		if (CodenameMusicBeatTransition.completeTransitionSwitch(this, onOutroComplete)) return;
 		if (CodenameMusicBeatTransition.startOwnerOutro(this, onOutroComplete)) return;

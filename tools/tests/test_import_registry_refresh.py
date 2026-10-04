@@ -22,6 +22,8 @@ class ImportRegistryRefreshFixture {
     var spec:Dynamic = Json.parse(File.getContent(Sys.args()[0]));
     var result = if (spec.mode == "prepare")
       ImportRegistryRefresh.prepare(spec.before, spec.generated, spec.live)
+    else if (spec.mode == "seed")
+      ImportRegistryRefresh.regenerationSeed(spec.before, spec.generated, spec.live)
     else
       ImportRegistryRefresh.merge(spec.before, spec.generated, spec.live);
     Sys.println(Json.stringify({text: result.text, conflicts: result.conflicts}));
@@ -84,6 +86,84 @@ class ImportRegistryRefreshTest(unittest.TestCase):
         self.assertEqual(merged["list"], ["base", "removed", "user-item"])
         self.assertEqual(merged["removeMe"], "baseline")
         self.assertEqual(merged["extra"], 9)
+
+    def test_regeneration_seed_resets_owned_edits_and_preserves_other_live_entries(self):
+        before = '''{
+          "entries": [{"name":"itemA","display":"Original","stable":"base"}],
+          "localSetting": "base"
+        }'''
+        previous = '''{
+          "entries": [
+            {"name":"itemA","display":"Generated old","stable":"base","ownerField":"old"},
+            {"name":"removedOwned","display":"Generated old"}
+          ],
+          "localSetting": "base"
+        }'''
+        # The live source already contains the converter's new display text.
+        # The seed must still reset it to the source baseline so conversion can
+        # run again, while retaining unrelated edits and another owner's row.
+        live = '''{
+          "entries": [
+            {"name":"itemA","display":"Generated current","stable":"base",
+             "ownerField":"current","userField":"keep"},
+            {"name":"removedOwned","display":"Locally changed"},
+            {"name":"userB","display":"Local row"}
+          ],
+          "localSetting": "local edit",
+          "userSetting": true
+        }'''
+
+        result = self.run_merge("seed", before, previous, live)
+
+        self.assertEqual(result["conflicts"], [])
+        merged = self.parsed(result["text"])
+        self.assertEqual(merged["entries"], [
+            {"name":"itemA", "display":"Original", "stable":"base", "userField":"keep"},
+            {"name":"userB", "display":"Local row"},
+        ])
+        self.assertEqual(merged["localSetting"], "local edit")
+        self.assertTrue(merged["userSetting"])
+
+    def test_regeneration_seed_keeps_foreign_nested_rows_when_removing_owned_container(self):
+        before = "[]"
+        previous = '''[{"name":"sharedGroup","title":"Generated title","songs":[
+          {"name":"ownerSong","version":"Generated old"}
+        ]}]'''
+        live = '''[{"name":"sharedGroup","title":"Local title","songs":[
+          {"name":"ownerSong","version":"Generated current"},
+          {"name":"foreignSong","version":"Other owner"}
+        ]}]'''
+
+        result = self.run_merge("seed", before, previous, live)
+
+        self.assertEqual(result["conflicts"], [])
+        self.assertEqual(self.parsed(result["text"]), [{
+            "name": "sharedGroup",
+            "songs": [{"name": "foreignSong", "version": "Other owner"}],
+        }])
+
+    def test_merge_accepts_already_regenerated_value_but_rejects_a_divergent_edit(self):
+        before = '''{"entries":[{"name":"itemA","display":"Original"}]}'''
+        previous = '''{"entries":[{"name":"itemA","display":"Generated old"}]}'''
+        generated = '''{"entries":[{"name":"itemA","display":"Generated current"}]}'''
+        already_regenerated = '''{"entries":[
+          {"name":"itemA","display":"Generated current"},
+          {"name":"userB","display":"Local row"}
+        ]}'''
+
+        accepted = self.run_merge("merge", previous, generated, already_regenerated)
+
+        self.assertEqual(accepted["conflicts"], [])
+        self.assertEqual(self.parsed(accepted["text"]), self.parsed(already_regenerated))
+
+        locally_edited = '''{"entries":[
+          {"name":"itemA","display":"Manual edit"},
+          {"name":"userB","display":"Local row"}
+        ]}'''
+        rejected = self.run_merge("merge", previous, generated, locally_edited)
+
+        self.assertTrue(any("display" in item for item in rejected["conflicts"]), rejected)
+        self.assertEqual(self.parsed(rejected["text"]), self.parsed(locally_edited))
 
     def test_prepare_preserves_and_reports_edited_imported_values_and_local_deletions(self):
         before = '{"nested":{"changed":"old"},"added":"baseline"}'
@@ -197,6 +277,26 @@ class ImportRegistryRefreshTest(unittest.TestCase):
         self.assertEqual(merged, [{
             "name": "Imported", "title": "Imported songs",
             "songs": [{"name": "song-b", "character": "gf"}],
+        }])
+
+    def test_prepare_removes_keyed_array_with_absent_baseline_and_keeps_foreign_nested_row(self):
+        before = '{"owners":{"other-owner":"stable"}}'
+        previous = '''{"owners":{"other-owner":"stable","import-owner":"v1"},
+          "groups":[{"name":"shared-group","title":"Shared","songs":[
+            {"name":"imported-song","version":"v1"}]}]}'''
+        live = '''{"owners":{"other-owner":"stable","import-owner":"v1"},
+          "groups":[{"name":"shared-group","title":"Shared","songs":[
+            {"name":"imported-song","version":"v1"},
+            {"name":"foreign-song","version":"other owner"}]}]}'''
+
+        result = self.run_merge("prepare", before, previous, live)
+
+        self.assertEqual(result["conflicts"], [])
+        merged = self.parsed(result["text"])
+        self.assertEqual(merged["owners"], {"other-owner": "stable"})
+        self.assertEqual(merged["groups"], [{
+            "name": "shared-group", "title": "Shared",
+            "songs": [{"name": "foreign-song", "version": "other owner"}],
         }])
 
     def test_prepare_reports_local_scalar_and_child_edits_in_removed_group(self):

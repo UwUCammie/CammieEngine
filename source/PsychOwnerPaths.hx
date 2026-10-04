@@ -222,9 +222,7 @@ class PsychOwnerPaths {
 
 	static function graphic(path:String):FlxGraphic {
 		if (path == null || path == '') return null;
-		var existing = FlxG.bitmap.get(path);
-		if (existing != null && !existing.isDestroyed) return existing;
-		return FlxG.bitmap.add(FNFAssets.getBitmapData(path), false, path);
+		return FNFAssets.getFlxGraphic(path);
 	}
 
 	static function loadAnimateAtlas(owner:String, sprite:Dynamic, key:Dynamic,

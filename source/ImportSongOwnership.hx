@@ -416,6 +416,28 @@ class ImportSongOwnership {
 		return fallback;
 	}
 
+	/** Psych's starter pack.json is copied with these literal template values.
+	 * Treat the pair as missing package metadata, while still allowing a real
+	 * package whose authored title happens to be "Name". */
+	static function isGenericPackageTemplateMetadata(data:Dynamic):Bool {
+		if (data == null || Std.isOfType(data, Array) || Std.isOfType(data, String)
+			|| Std.isOfType(data, Bool) || Std.isOfType(data, Int) || Std.isOfType(data, Float))
+			return false;
+		var displayName = '';
+		for (field in ['title', 'name', 'displayName']) {
+			var raw:Dynamic = Reflect.field(data, field);
+			if (raw != null && Std.isOfType(raw, String)) {
+				displayName = StringTools.trim(cast raw);
+				if (displayName != '')
+					break;
+			}
+		}
+		var rawDescription:Dynamic = Reflect.field(data, 'description');
+		var description = rawDescription != null && Std.isOfType(rawDescription, String)
+			? StringTools.trim(cast rawDescription) : '';
+		return displayName.toLowerCase() == 'name' && description.toLowerCase() == 'description';
+	}
+
 	static function cleanIdentityValue(value:String):String {
 		if (value == null) return '';
 		var clean = StringTools.trim(value);
@@ -532,9 +554,10 @@ class ImportSongOwnership {
 
 	/** `authored` is false when the only available label is a directory name.
 	 * Interactive importers can ask the user in that case. */
-	public static function displayNameInfo(sourceRoot:String):{name:String, authored:Bool} {
+	public static function displayNameInfo(sourceRoot:String):{name:String, authored:Bool, template:Bool} {
 		if (sourceRoot == null || StringTools.trim(sourceRoot) == '')
-			return {name:'', authored:false};
+			return {name:'', authored:false, template:false};
+		var skippedTemplateMetadata = false;
 		#if sys
 		var roots = [sourceRoot];
 		var innerMod:String = null;
@@ -558,12 +581,16 @@ class ImportSongOwnership {
 				try {
 					if (FileSystem.stat(path).size > 131072) continue;
 					var data:Dynamic = Json.parse(File.getContent(path));
+					if (isGenericPackageTemplateMetadata(data)) {
+						skippedTemplateMetadata = true;
+						continue;
+					}
 					for (field in ['title', 'name', 'displayName']) {
 						var raw:Dynamic = Reflect.field(data, field);
 						if (raw != null && Std.isOfType(raw, String)) {
 							var name = StringTools.trim(cast raw);
 							if (name != '' && name.toLowerCase() != 'null')
-								return {name:name, authored:true};
+								return {name:name, authored:true, template:false};
 						}
 					}
 				} catch (_:Dynamic) {}
@@ -583,14 +610,22 @@ class ImportSongOwnership {
 							var title = rawTitle == null ? '' : StringTools.trim(rawTitle);
 							if (title != '' && title.toLowerCase() != 'null'
 								&& title.indexOf('$') < 0)
-								return {name:title, authored:true};
+								return {name:title, authored:true, template:false};
 						}
 				}
 			} catch (_:Dynamic) {}
 		}
-		if (innerMod != null) return {name:innerMod, authored:false};
+		if (innerMod != null) return {name:innerMod, authored:false, template:skippedTemplateMetadata};
 		#end
-		return {name:Path.withoutDirectory(Path.normalize(sourceRoot)), authored:false};
+		var fallbackRoot = sourceRoot;
+		if (skippedTemplateMetadata
+			&& Path.withoutDirectory(Path.normalize(sourceRoot)).toLowerCase() == 'mods') {
+			var parentRoot = Path.directory(Path.normalize(sourceRoot));
+			if (parentRoot != null && StringTools.trim(parentRoot) != '' && parentRoot != '.')
+				fallbackRoot = parentRoot;
+		}
+		return {name:Path.withoutDirectory(Path.normalize(fallbackRoot)), authored:false,
+			template:skippedTemplateMetadata};
 	}
 
 	/** Destination-only import provenance for a selected source owner. */
@@ -626,6 +661,48 @@ class ImportSongOwnership {
 		if (nameSource != null && StringTools.trim(nameSource) != '')
 			Reflect.setField(result, 'nameSource', StringTools.trim(nameSource));
 		return result;
+	}
+
+	/** Update only the package subtitle fields on a receipt for this exact owner.
+	 * Ownership, source identity/fingerprint, song display, and extension fields
+	 * stay intact. A previously user-entered package label remains authoritative
+	 * unless the importer received another explicit user override. */
+	public static function refreshDisplayMetadata(record:Dynamic, engine:String, sourceOwner:String,
+		destinationFolder:String, modName:String, nameSource:String):Bool {
+		if (record == null || Std.isOfType(record, Array) || Std.isOfType(record, String)
+			|| Std.isOfType(record, Bool) || Std.isOfType(record, Int) || Std.isOfType(record, Float)
+			|| engine == null || StringTools.trim(engine) == ''
+			|| destinationFolder == null || StringTools.trim(destinationFolder) == '')
+			return false;
+		if (Reflect.field(record, 'version') != 1
+			|| Reflect.field(record, 'destinationFolder') != destinationFolder)
+			return false;
+		var rawEngine:Dynamic = Reflect.field(record, 'sourceEngine');
+		var rawOwner:Dynamic = Reflect.field(record, 'sourceOwner');
+		if (rawEngine == null || !Std.isOfType(rawEngine, String)
+			|| StringTools.trim(cast rawEngine).toLowerCase() != StringTools.trim(engine).toLowerCase()
+			|| rawOwner == null || !Std.isOfType(rawOwner, String)
+			|| validOwnerNamespace(sourceOwner) == '' || validOwnerNamespace(cast rawOwner) == ''
+			|| CompatScriptManifest.destinationKey(cast rawOwner)
+				!= CompatScriptManifest.destinationKey(sourceOwner))
+			return false;
+		var cleanName = cleanIdentityValue(modName);
+		var cleanSource = nameSource == null ? '' : StringTools.trim(nameSource).toLowerCase();
+		if (cleanName == '' || (cleanSource != 'user' && cleanSource != 'metadata' && cleanSource != 'inferred'))
+			return false;
+		var oldSource:Dynamic = Reflect.field(record, 'nameSource');
+		if (oldSource != null && Std.isOfType(oldSource, String)
+			&& StringTools.trim(cast oldSource).toLowerCase() == 'user' && cleanSource != 'user')
+			return false;
+		var oldName:Dynamic = Reflect.field(record, 'modName');
+		if (oldName != null && Std.isOfType(oldName, String)
+			&& StringTools.trim(cast oldName) == cleanName
+			&& oldSource != null && Std.isOfType(oldSource, String)
+			&& StringTools.trim(cast oldSource).toLowerCase() == cleanSource)
+			return false;
+		Reflect.setField(record, 'modName', cleanName);
+		Reflect.setField(record, 'nameSource', cleanSource);
+		return true;
 	}
 
 	/** Plan a destination when the canonical chart folder is already owned by

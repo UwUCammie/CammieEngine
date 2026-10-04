@@ -51,7 +51,7 @@ class FreeplayState extends MusicBeatState {
 	var soundTestSong:Song.SwagSong;
 	var scoreText:FlxText;
 	var diffText:FlxText;
-	var lerpScore:Int = 0;
+	var lerpScore:Float = 0;
 	var intendedScore:Int = 0;
 	var intendedAccuracy:Float = 0;
 	var lerpAccuracy:Float = 0;
@@ -89,6 +89,8 @@ class FreeplayState extends MusicBeatState {
 	// A dozen rows on either side covers the viewport plus SHIFT's zoomed-out
 	// view while keeping the live Alphabet/character sprite count bounded.
 	public static inline var ROW_WINDOW_RADIUS:Int = 12;
+	static inline var SONG_ROW_SCALE:Float = 0.85;
+	static inline var SONG_ROW_MOTION_RATE:Float = 2;
 	// camera zoom while SHIFT is held in freeplay (hold to see more songs at once)
 	public static inline var SHIFT_ZOOM:Float = 0.65;
 	var previewSound:FlxSound;
@@ -274,6 +276,7 @@ class FreeplayState extends MusicBeatState {
 			curDifficulty = DifficultyIcons.getDefaultDiffFP();
 		}
 		PlayState.SONG = Song.loadFromJson(chartName, songName.toLowerCase());
+		Song.attachFreeplayScoreSongId(PlayState.SONG, songName);
 		PlayState.isStoryMode = false;
 		PlayState.balls = 0;
 		PlayState.watchedCutscene = false;
@@ -722,11 +725,11 @@ class FreeplayState extends MusicBeatState {
 		}
 
 		// why the fuck does this exist
-		lerpScore = Math.floor(FlxMath.lerp(lerpScore, intendedScore, 0.4));
+		lerpScore = FlxMath.lerp(lerpScore, intendedScore, CoolUtil.timeAdjustedLerpAlpha(0.4, elapsed));
 		lerpAccuracy = Math.round(intendedAccuracy * 100) / 100;
 		if (Math.abs(lerpScore - intendedScore) <= 10) lerpScore = intendedScore;
 		if (!soundTest)
-			scoreText.text = "PERSONAL BEST:" + lerpScore + ", " + lerpAccuracy + "%";
+			scoreText.text = "PERSONAL BEST:" + Math.floor(lerpScore) + ", " + lerpAccuracy + "%";
 		else
 			scoreText.text = "Sound Test";
 
@@ -950,6 +953,7 @@ class FreeplayState extends MusicBeatState {
 					curDifficulty = DifficultyIcons.getDefaultDiffFP();
 				}
 				PlayState.SONG = Song.loadFromJson(poop, songs[daSelection].songName.toLowerCase());
+				Song.attachFreeplayScoreSongId(PlayState.SONG, songs[daSelection].songName);
 
 				PlayState.isStoryMode = false;
 				PlayState.balls = 0;
@@ -1169,8 +1173,8 @@ class FreeplayState extends MusicBeatState {
 			var source = sourceRows[index];
 			if (row == null || source == null)
 				continue;
-			source.x = row.x + 10;
-			source.y = row.y + 65;
+			source.x = row.x + 10 * SONG_ROW_SCALE;
+			source.y = row.y + 65 * SONG_ROW_SCALE;
 			source.visible = row.visible;
 			source.alpha = row.alpha;
 		}
@@ -1236,6 +1240,8 @@ class FreeplayState extends MusicBeatState {
 				sourceDisplayFor(songs[index]);
 				row = new Alphabet(0, (70 * index) + 30, songs[index].displayTitle,
 					true, false, false, null, null, null, true);
+				row.setMenuTextScale(SONG_ROW_SCALE);
+				row.menuMotionRate = SONG_ROW_MOTION_RATE;
 				if (!OptionsHandler.options.style)
 					row.itemType = "Classic";
 				row.isMenuItem = true;
@@ -1246,6 +1252,7 @@ class FreeplayState extends MusicBeatState {
 						'(' + songs[index].sourceLabel + ')', 18);
 					source.setFormat('assets/fonts/vcr.ttf', 18, FlxColor.WHITE, LEFT,
 						OUTLINE, FlxColor.BLACK);
+					source.scale.set(SONG_ROW_SCALE, SONG_ROW_SCALE);
 					source.wordWrap = false;
 					sourceRows[index] = source;
 					grpSongSources.add(source);

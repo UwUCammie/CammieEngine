@@ -355,11 +355,7 @@ class CodenameOptionsFacade {
 		antialiasing = readBool(options, 'antialiasing', antialiasing);
 		gameplayShaders = readBool(options, 'gameplayShaders', gameplayShaders);
 		lowMemoryMode = readBool(options, 'lowMemoryMode', lowMemoryMode);
-		var fps:Dynamic = Reflect.field(options, 'fpsCap');
-		if (fps != null) {
-			FlxG.updateFramerate = Std.int(fps);
-			FlxG.drawFramerate = Std.int(fps);
-		}
+		FramerateOptionsCompat.apply(options);
 		OptionsHandler.applyDisplayOptions(cast options);
 		OptionsHandler.applyAudioOptions(cast options);
 		FlxG.autoPause = autoPause == true;

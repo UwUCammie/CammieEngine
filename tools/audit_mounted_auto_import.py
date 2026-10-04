@@ -105,6 +105,7 @@ METHODS = (
     "static function findImportFile",
     "static function findImportAudio",
     "static function findImportVocalStems",
+    "static function normalizeNightmareVisionVocalRoles",
     "static function readImportJson",
     "static function convertImportDialogue",
     "static function importCutsceneScript",
@@ -1262,6 +1263,7 @@ def main() -> int:
             "NightmareVisionChartCompat.hx": (ROOT / "source/NightmareVisionChartCompat.hx").read_text(),
             "NightmareVisionScriptDiscovery.hx": (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text(),
             "NightmareVisionDifficultyCompat.hx": (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text(),
+            "NightmareVisionVocalRole.hx": (ROOT / "source/NightmareVisionVocalRole.hx").read_text(),
         }.items():
             (temp / name).write_text(fixture_source)
         # The converter only needs these narrow interfaces for the audit.  The

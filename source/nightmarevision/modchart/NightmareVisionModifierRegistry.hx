@@ -32,6 +32,9 @@ class NightmareVisionModifierRegistry {
 	var byName:Map<String, NightmareVisionModifierDefinition> = new Map();
 	var children:Map<String, Array<String>> = new Map();
 	var values:Map<String, Array<Float>> = new Map();
+	var activeFamilyCache:Array<Array<String>> = [];
+	var activeFamilyCacheRevision:Array<Int> = [];
+	var activeFamilyRevision:Array<Int> = [];
 	var nextOrder:Int = 0;
 	var essentialsRegistered:Bool = false;
 	var defaultsRegistered:Bool = false;
@@ -39,6 +42,11 @@ class NightmareVisionModifierRegistry {
 	public function new(keys:Int, players:Int = 2, registerBuiltins:Bool = true) {
 		this.keys = keys < 1 ? 1 : keys;
 		this.players = players < 1 ? 1 : players;
+		for (_ in 0...this.players) {
+			activeFamilyCache.push([]);
+			activeFamilyCacheRevision.push(-1);
+			activeFamilyRevision.push(0);
+		}
 		if (registerBuiltins) {
 			registerEssentialModifiers();
 			registerDefaultModifiers();
@@ -134,10 +142,10 @@ class NightmareVisionModifierRegistry {
 	public function setValue(name:String, value:Float, player:Int = -1):Void {
 		var row = requireValues(name);
 		if (player == -1) {
-			for (index in 0...players) row[index] = value;
+			for (index in 0...players) setPlayerValue(row, index, value);
 		} else {
 			checkPlayer(player);
-			row[player] = value;
+			setPlayerValue(row, player, value);
 		}
 	}
 
@@ -157,9 +165,13 @@ class NightmareVisionModifierRegistry {
 		setValue(name, value, player);
 	}
 
-	/** Active family roots in source order; child submods do not add a second pass. */
+	/** Active family roots in source order; child submods do not add a second pass.
+	 * The returned per-player array is cached and must be treated as read-only. */
 	public function activeFamilies(player:Int):Array<String> {
 		checkPlayer(player);
+		if (activeFamilyCacheRevision[player] == activeFamilyRevision[player])
+			return activeFamilyCache[player];
+
 		var active:Array<NightmareVisionModifierDefinition> = [];
 		for (name in families) {
 			var def = byName.get(name);
@@ -180,7 +192,21 @@ class NightmareVisionModifierRegistry {
 			if (a.order > b.order) return 1;
 			return a.registrationOrder - b.registrationOrder;
 		});
-		return [for (def in active) def.name];
+		var result = [for (def in active) def.name];
+		activeFamilyCache[player] = result;
+		activeFamilyCacheRevision[player] = activeFamilyRevision[player];
+		return result;
+	}
+
+	function setPlayerValue(row:Array<Float>, player:Int, value:Float):Void {
+		var previous = row[player];
+		if (previous == value) return;
+		row[player] = value;
+		// The active root list depends only on whether each root/submodifier is
+		// zero. Tweens that change one active value on every render frame do not
+		// need to rebuild and sort the same family list for every live note.
+		if ((previous == 0) != (value == 0))
+			activeFamilyRevision[player]++;
 	}
 
 	function addFamily(name:String, order:Int, noteModifier:Bool, alwaysExecute:Bool, submods:Array<String>):Void {
@@ -193,6 +219,8 @@ class NightmareVisionModifierRegistry {
 			children.get(name).push(submod);
 			addDefinition(submod, name, LAST, noteModifier, false);
 		}
+		for (player in 0...players)
+			activeFamilyRevision[player]++;
 	}
 
 	function addDefinition(name:String, parent:Null<String>, order:Int, noteModifier:Bool, alwaysExecute:Bool):Void {

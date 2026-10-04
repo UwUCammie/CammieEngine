@@ -566,6 +566,85 @@ class Main {
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_generic_pack_template_uses_parent_folder_and_keeps_package_identity(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
+            fixture = Path(tmp) / "Main.hx"
+            fixture.write_text(r'''import sys.FileSystem;
+import sys.io.File;
+class Main {
+ static function main() {
+  FileSystem.createDirectory("SEGATENDO COLLECTION");
+  FileSystem.createDirectory("SEGATENDO COLLECTION/mods");
+  File.saveContent("SEGATENDO COLLECTION/mods/pack.json",
+    '{"name":"Name","description":"Description"}');
+  var template = ImportSongOwnership.displayNameInfo("SEGATENDO COLLECTION/mods");
+  if (template.name != "SEGATENDO COLLECTION" || template.authored || !template.template)
+    throw "generic Psych package template did not use its parent directory label";
+  var originalRoot = ImportSongOwnership.displayNameInfo("SEGATENDO COLLECTION");
+  if (originalRoot.name != "SEGATENDO COLLECTION" || originalRoot.authored || !originalRoot.template)
+    throw "generic Psych package template changed the selected parent folder fallback";
+  if (ImportSongOwnership.stableIdentity("SEGATENDO COLLECTION/mods", "Psych Engine")
+    != "psych engine|package-name|name")
+    throw "template recognition changed stable source identity";
+  FileSystem.createDirectory("legitimate-name");
+  File.saveContent("legitimate-name/pack.json",
+    '{"name":"Name","description":"A real package named Name"}');
+  var legitimate = ImportSongOwnership.displayNameInfo("legitimate-name");
+  if (legitimate.name != "Name" || !legitimate.authored || legitimate.template)
+    throw "legitimate package title Name was treated as a template";
+ }
+}''', encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                cwd=tmp, capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_existing_package_display_refresh_preserves_owner_and_user_identity(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
+            fixture = Path(tmp) / "Main.hx"
+            fixture.write_text(r'''class Main {
+ static function main() {
+  var owner = "assets/imported_mods/psych-engine-mods-51a38873d6";
+  var record:Dynamic = {
+    version:1, sourceEngine:"Psych Engine", sourceOwner:owner,
+    destinationFolder:"segatendo-song", display:"Authored Song Title",
+    sourceFolder:"segatendo-song", sourceIdentity:"psych engine|package-name|name",
+    sourceFingerprint:"retained-fingerprint", modName:"Name", nameSource:"metadata",
+    extension:{keep:true}
+  };
+  if (!ImportSongOwnership.refreshDisplayMetadata(record, "Psych Engine", owner,
+    "segatendo-song", "SEGATENDO COLLECTION", "inferred"))
+    throw "retained package display metadata was not refreshed";
+  if (record.modName != "SEGATENDO COLLECTION" || record.nameSource != "inferred")
+    throw "new package fallback was not saved";
+  if (record.sourceIdentity != "psych engine|package-name|name"
+    || record.sourceFingerprint != "retained-fingerprint" || record.sourceOwner != owner
+    || record.destinationFolder != "segatendo-song" || record.display != "Authored Song Title"
+    || record.sourceFolder != "segatendo-song" || record.extension.keep != true)
+    throw "display refresh changed source, owner, score, or extension identity";
+
+  var userRecord:Dynamic = {
+    version:1, sourceEngine:"Psych Engine", sourceOwner:owner,
+    destinationFolder:"segatendo-song", modName:"My Label", nameSource:"user"
+  };
+  if (ImportSongOwnership.refreshDisplayMetadata(userRecord, "Psych Engine", owner,
+    "segatendo-song", "SEGATENDO COLLECTION", "inferred")
+    || userRecord.modName != "My Label")
+    throw "retained-source refresh replaced an explicit user label";
+  var wrongOwner = owner + "-other";
+  if (ImportSongOwnership.refreshDisplayMetadata(record, "Psych Engine", wrongOwner,
+    "segatendo-song", "Wrong Owner", "inferred")
+    || record.modName != "SEGATENDO COLLECTION")
+    throw "display refresh modified a receipt owned by another source";
+ }
+}''', encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                cwd=tmp, capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_ambiguous_package_identity_does_not_merge_existing_owners(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
             path = Path(tmp)

@@ -9,6 +9,7 @@ using StringTools;
 #if sys
 import haxe.io.Path;
 import haxe.io.Bytes;
+import lime.app.Application;
 import sys.FileSystem;
 import sys.io.File;
 #end
@@ -84,6 +85,14 @@ typedef RuntimeSmokeOptions = {
 	/** Exercise the engine's actual demo/botplay route without saving modifiers. */
 	var botplay:Bool;
 	var frameStats:Bool;
+	/** Keep pacing probes free of full scene/bitmap diagnostic allocations. */
+	var ?pacingOnly:Bool;
+	/** Capture one muted native framebuffer after an imported chart's note is visible. */
+	var noteRenderReadback:Bool;
+	/** PNG destination for --smoke-note-render-readback. */
+	var noteRenderPath:String;
+	/** Minimum song position before capturing the note framebuffer. */
+	var noteRenderAfterMs:Float;
 	/** Optional forward seek after audio starts, used only by the native seek smoke. */
 	var seekAfterMs:Float;
 	var seekToMs:Float;
@@ -104,6 +113,7 @@ class RuntimeSmokeHarness {
 	static var started:Bool = false;
 	static var playStateStarted:Bool = false;
 	static var playStateReady:Bool = false;
+	static var refreshReadbackCount:Int = 0;
 	static var finished:Bool = false;
 	static var elapsedMs:Float = 0;
 	static var deadline:Float = 0;
@@ -122,6 +132,11 @@ class RuntimeSmokeHarness {
 	static var runtimeRootError:String = '';
 	static var configurationError:String = '';
 	static var playStateLoadStartedAt:Float = 0;
+	static var noteRenderReadbackInstalled:Bool = false;
+	static var noteRenderReadbackCaptures:Int = 0;
+	static var noteRenderReadbackVisits:Map<Int, Bool> = new Map();
+	static var introRenderHeldAt:Float = -1;
+	static var introRenderReadbackVisits:Map<Int, Bool> = new Map();
 	/** Most recent shared Psych note-skin operation, attached only to a smoke failure. */
 	static var psychSkinDiagnosticPhase:String = '';
 	static var naturalSongEndObserved:Bool = false;
@@ -190,6 +205,9 @@ class RuntimeSmokeHarness {
 			playerHitDelayMs: 0,
 			botplay: false,
 			frameStats: false,
+			noteRenderReadback: false,
+			noteRenderPath: 'tmp/note-render-readback.png',
+			noteRenderAfterMs: 5000,
 			seekAfterMs: -1,
 			seekToMs: -1,
 			playstateVisits: 1,
@@ -311,6 +329,23 @@ class RuntimeSmokeHarness {
 				case '--smoke-frame-stats':
 					smokeArgumentsSeen = true;
 					result.frameStats = true;
+				case '--smoke-pacing-only':
+					smokeArgumentsSeen = true;
+					result.frameStats = true;
+					result.pacingOnly = true;
+				case '--smoke-note-render-readback':
+					smokeArgumentsSeen = true;
+					result.noteRenderReadback = true;
+				case '--smoke-note-render-path':
+					smokeArgumentsSeen = true;
+					result.noteRenderPath = value == null ? '' : StringTools.trim(value);
+					if (result.noteRenderPath == '')
+						configurationError = 'invalid --smoke-note-render-path';
+				case '--smoke-note-render-after-ms':
+					smokeArgumentsSeen = true;
+					result.noteRenderAfterMs = parseSmokeTime(value);
+					if (result.noteRenderAfterMs < 0)
+						configurationError = 'invalid --smoke-note-render-after-ms';
 				case '--smoke-seek-after-ms':
 					smokeArgumentsSeen = true;
 					result.seekAfterMs = parseSmokeTime(value);
@@ -649,6 +684,9 @@ class RuntimeSmokeHarness {
 			return;
 		started = true;
 		elapsedMs = 0;
+		noteRenderReadbackCaptures = 0;
+		noteRenderReadbackVisits = new Map();
+		introRenderReadbackVisits = new Map();
 		runToken = Std.string(haxe.Timer.stamp());
 		#if sys
 		deadline = Sys.time() + config().durationMs / 1000.0;
@@ -669,7 +707,10 @@ class RuntimeSmokeHarness {
 			playstateVisits: config().playstateVisits,
 			nextSongFolder: config().nextSongFolder,
 			nextChart: config().nextChart,
-			nextDifficulty: config().nextDifficulty
+			nextDifficulty: config().nextDifficulty,
+			noteRenderReadback: config().noteRenderReadback,
+			noteRenderPath: config().noteRenderPath,
+			noteRenderAfterMs: config().noteRenderAfterMs
 		});
 	}
 
@@ -685,6 +726,7 @@ class RuntimeSmokeHarness {
 			visitsStarted++;
 			transitionPending = false;
 		} else visitsStarted = 1;
+		introRenderHeldAt = -1;
 		naturalSongEndObserved = false;
 		naturalSongEndAt = 0;
 		config().gameOverTriggered = false;
@@ -786,6 +828,8 @@ class RuntimeSmokeHarness {
 		}
 		if (config().frameStats || config().returnFreeplay)
 			installFrameStats();
+		if (config().noteRenderReadback)
+			installNoteRenderReadback();
 		if (config().gameOverAfterMs >= 0)
 			installGameOverClock();
 		if (config().requireSongEnd || config().requireEndHandoff)
@@ -1402,6 +1446,9 @@ class RuntimeSmokeHarness {
 				like: actor == null ? '' : actor.like,
 				animation: current == null ? '' : Reflect.field(current, 'name'),
 				frame: current == null ? -1 : Reflect.field(current, 'curFrame'),
+				cameraFollow: {x: gameState.camFollow.x, y: gameState.camFollow.y},
+				gameCamera: RuntimeSmokeVisuals.camera(gameState.camGame),
+				hudCamera: RuntimeSmokeVisuals.camera(gameState.camHUD),
 				geometry: RuntimeSmokeVisuals.characterGeometry(actor)
 			});
 		}
@@ -1600,6 +1647,10 @@ class RuntimeSmokeHarness {
 	public static function succeed():Void {
 		if (!enabled() || finished)
 			return;
+		if (config().noteRenderReadback && noteRenderReadbackCaptures < config().playstateVisits) {
+			fail('note-render-readback-timeout', 'Not every PlayState visit produced a visible-note framebuffer capture');
+			return;
+		}
 		if (missingRequiredGameOver(config().gameOverAfterMs, config().gameOverTriggered)) {
 			fail('gameover-timeout', 'Configured game-over position did not trigger before the smoke window ended');
 			return;
@@ -1641,6 +1692,10 @@ class RuntimeSmokeHarness {
 	static var deltas:Array<Float> = [];
 	static var windowHitches:Int = 0;
 	static var totalFrames:Int = 0;
+	static var frameDelta:Float = 0;
+	static var frameSlowestSection:String = '';
+	static var frameSlowestSectionMs:Float = 0;
+	static var pacingCountersConfigured:Bool = false;
 	static var freeplaySeen:Bool = false;
 	static var freeplaySeenAt:Float = 0;
 	static var leftFreeplay:Bool = false;
@@ -1658,6 +1713,10 @@ class RuntimeSmokeHarness {
 	public static function markStep(step:String):Void {
 		if (!enabled())
 			return;
+		if (config().noteRenderReadback && introRenderHeldAt < 0
+			&& (step.indexOf('countdown:stopped-by-') == 0
+				|| step.indexOf('countdown:cancelled-by-') == 0))
+			introRenderHeldAt = nowMs();
 		emit('step', {at: step, songPosition: playStateReady ? Conductor.songPosition : null});
 	}
 
@@ -1675,6 +1734,10 @@ class RuntimeSmokeHarness {
 		if (!profileEnabled())
 			return;
 		sectionMs[section] = (sectionMs.exists(section) ? sectionMs.get(section) : 0.0) + seconds * 1000;
+		if (seconds * 1000 > frameSlowestSectionMs) {
+			frameSlowestSection = section;
+			frameSlowestSectionMs = seconds * 1000;
+		}
 	}
 
 	static function nowMs():Float
@@ -1738,9 +1801,18 @@ class RuntimeSmokeHarness {
 	}
 
 	static function onFramePreUpdate():Void {
+		if (config().pacingOnly == true && !pacingCountersConfigured && Main.memoryCounter != null) {
+			// Direct smoke entry bypasses TitleState's display-setting setup.
+			Main.memoryCounter.visible = OptionsHandler.options.showMemory;
+			pacingCountersConfigured = true;
+		}
 		frameStart = nowMs();
+		frameSlowestSection = '';
+		frameSlowestSectionMs = 0;
+		frameDelta = 0;
 		if (lastFrameStart > 0) {
 			var delta = frameStart - lastFrameStart;
+			frameDelta = delta;
 			deltas.push(delta);
 			// a 60fps game missing even a 30fps budget is a user-visible hitch
 			if (delta > 33.4)
@@ -1761,6 +1833,11 @@ class RuntimeSmokeHarness {
 		var now = nowMs();
 		costs.push(now - frameStart);
 		drawCosts.push(now - drawStart);
+		if (config().pacingOnly == true && (frameDelta > 33.4 || now - frameStart > 33.4))
+			emit('frame_hitch', {songPosition: playStateReady ? Conductor.songPosition : null,
+				gapMs: frameDelta, updateDrawMs: now - frameStart,
+				slowestSection: frameSlowestSection, slowestSectionMs: frameSlowestSectionMs,
+				heap: frameHeapSnapshot()});
 		totalFrames++;
 		if (config() != null && config().freeplay)
 			freeplayFrame(now);
@@ -1768,6 +1845,194 @@ class RuntimeSmokeHarness {
 			lastSummaryAt = now;
 			emitFrameSummary();
 		}
+	}
+
+	/** Capture the fully drawn native window once an actual gameplay note is on screen. */
+	static function installNoteRenderReadback():Void {
+		if (noteRenderReadbackInstalled || !enabled() || !config().noteRenderReadback)
+			return;
+		noteRenderReadbackInstalled = true;
+		FlxG.signals.postDraw.add(onNoteRenderReadbackPostDraw);
+	}
+
+	static function onNoteRenderReadbackPostDraw():Void {
+		if (!finished && playStateReady && Std.isOfType(FlxG.state, PlayState)
+			&& !introRenderReadbackVisits.exists(visitsStarted) && introRenderHeldAt >= 0
+			&& !songStartObserved && !(cast FlxG.state:PlayState).startedCountdown
+			&& nowMs() - introRenderHeldAt >= 5000)
+			captureIntroRenderReadback(cast FlxG.state, visitsStarted);
+		if (noteRenderReadbackVisits.exists(visitsStarted) || finished || !playStateReady
+			|| !songStartObserved || Conductor.songPosition < config().noteRenderAfterMs
+			|| !Std.isOfType(FlxG.state, PlayState))
+			return;
+		var state:PlayState = cast FlxG.state;
+		if (state.notes == null || state.notes.members == null)
+			return;
+		for (note in state.notes.members) {
+			if (note == null || !note.exists || !note.visible || !note.active || note.alpha <= 0
+				|| note.isSustainNote || note.frames == null || !note.isOnScreen())
+				continue;
+			captureNoteRenderReadback(note, visitsStarted);
+			return;
+		}
+	}
+
+	/** Optional visual evidence while an authored script holds the countdown. */
+	static function captureIntroRenderReadback(state:PlayState, visit:Int):Void {
+		#if sys
+		try {
+			var window = Application.current == null ? null : Application.current.window;
+			var image = window == null ? null : window.readPixels();
+			if (image == null || image.width <= 0 || image.height <= 0)
+				throw 'intro framebuffer readback returned an empty image';
+			var encoded = image.encode();
+			if (encoded == null || encoded.length == 0)
+				throw 'intro framebuffer PNG encoding returned no bytes';
+			var path = noteRenderPathForVisit(config().noteRenderPath, visit, config().playstateVisits);
+			var extension = Path.extension(path);
+			var base = extension == '' ? path : path.substr(0, path.length - extension.length - 1);
+			path = base + '.intro.png';
+			ensureParent(path);
+			File.saveBytes(path, encoded);
+			introRenderReadbackVisits.set(visit, true);
+			emit('intro_render_readback', {
+				path: Path.normalize(path), visit: visit, heldMs: nowMs() - introRenderHeldAt,
+				startedCountdown: state.startedCountdown, songStarted: songStartObserved,
+				hudAlpha: state.camHUD.alpha, playerAlpha: state.boyfriend.alpha,
+				gameCameraVisible: state.camGame.visible, hudCameraVisible: state.camHUD.visible,
+				opponentAlpha: state.dad.alpha, muted: FlxG.sound.muted
+			});
+		} catch (error:Dynamic) {
+			fail('intro-render-readback', Std.string(error));
+		}
+		#end
+	}
+
+	static function captureNoteRenderReadback(note:Note, visit:Int):Void {
+		#if sys
+		try {
+			var app = Application.current;
+			var window = app == null ? null : app.window;
+			if (window == null)
+				throw 'native window is unavailable';
+			var image = window.readPixels();
+			if (image == null || image.width <= 0 || image.height <= 0)
+				throw 'native framebuffer readback returned an empty image';
+			var encoded = image.encode();
+			if (encoded == null || encoded.length == 0)
+				throw 'native framebuffer PNG encoding returned no bytes';
+			var outputPath = noteRenderPathForVisit(config().noteRenderPath,
+				visit, config().playstateVisits);
+			ensureParent(outputPath);
+			File.saveBytes(outputPath, encoded);
+			noteRenderReadbackVisits.set(visit, true);
+			noteRenderReadbackCaptures++;
+			if (noteRenderReadbackCaptures >= config().playstateVisits)
+				FlxG.signals.postDraw.remove(onNoteRenderReadbackPostDraw);
+			emit('note_render_readback', {
+				path: Path.normalize(outputPath),
+				visit: visit,
+				width: image.width,
+				height: image.height,
+				bytes: encoded.length,
+				songPosition: Conductor.songPosition,
+				gameCameraVisible: PlayState.instance.camGame.visible,
+				hudCameraVisible: PlayState.instance.camHUD.visible,
+				gameCamera: RuntimeSmokeVisuals.camera(PlayState.instance.camGame),
+				hudCamera: RuntimeSmokeVisuals.camera(PlayState.instance.camHUD),
+				cameraFollow: {x: PlayState.instance.camFollow.x, y: PlayState.instance.camFollow.y},
+				note: RuntimeSmokeVisuals.note(note, Note.swagWidth),
+				graphic: noteRenderGraphicDiagnostic(note),
+				shader: noteRenderShaderDiagnostic(note),
+				frameRate: {
+					unlimitedRequested: Reflect.field(OptionsHandler.options, 'unlimitedFPS') == true,
+					backendFrameRate: window.frameRate,
+					updateFramerate: FlxG.updateFramerate,
+					drawFramerate: FlxG.drawFramerate,
+					fixedTimestep: FlxG.fixedTimestep,
+					currentFPS: Main.fpsCounter == null ? null : Main.fpsCounter.currentFPS,
+					averageFPS: Main.fpsCounter == null ? null : Main.fpsCounter.averageFPS,
+					displayVisible: Main.fpsCounter != null && Main.fpsCounter.visible,
+					displayText: Main.fpsCounter == null ? null : Main.fpsCounter.text
+				}
+			});
+		} catch (error:Dynamic) {
+			FlxG.signals.postDraw.remove(onNoteRenderReadbackPostDraw);
+			fail('note-render-readback', Std.string(error));
+		}
+		#end
+	}
+
+	static function noteRenderPathForVisit(path:String, visit:Int, visits:Int):String {
+		if (visits <= 1)
+			return path;
+		var extension = Path.extension(path);
+		var base = extension == '' ? path : path.substr(0, path.length - extension.length - 1);
+		return base + '.visit-' + visit + (extension == '' ? '' : '.' + extension);
+	}
+
+	static function noteRenderShaderDiagnostic(note:Note):Dynamic {
+		var reference = note == null ? null : note.rgbShader;
+		var nightmareVision = note == null ? null : note.nightmareVisionRGB;
+		var palette = nightmareVision != null ? nightmareVision.palette
+			: (reference == null ? null : reference.parent);
+		var shader:Dynamic = note == null ? null : note.shader;
+		var shaderClass = shader == null ? null : Type.getClass(shader);
+		var bitmapInput:Dynamic = null;
+		if (shader != null) {
+			var shaderData:Dynamic = Reflect.getProperty(shader, 'data');
+			bitmapInput = shaderData == null ? null : Reflect.field(shaderData, 'bitmap');
+		}
+		return {
+			bound: shader != null,
+			shaderClass: shaderClass == null ? '' : Type.getClassName(shaderClass),
+			programReady: shader != null && Reflect.field(shader, 'glProgram') != null,
+			bitmapInput: bitmapInput == null ? null : {
+				name: Reflect.field(bitmapInput, 'name'), index: Reflect.field(bitmapInput, 'index')
+			},
+			referenceEnabled: reference == null ? null : reference.enabled,
+			nightmareVision: nightmareVision == null ? null : {
+				enabled: nightmareVision.enabled, alpha: nightmareVision.alpha,
+				flash: nightmareVision.flash
+			},
+			palette: palette == null ? null : {
+				r: Std.string(palette.r), g: Std.string(palette.g), b: Std.string(palette.b),
+				mult: palette.mult
+			},
+			uniforms: shader == null ? null : {
+				r: noteRenderShaderParameter(shader, 'r'),
+				g: noteRenderShaderParameter(shader, 'g'),
+				b: noteRenderShaderParameter(shader, 'b'),
+				mult: noteRenderShaderParameter(shader, 'mult'),
+				u_alpha: noteRenderShaderParameter(shader, 'u_alpha'),
+				u_flash: noteRenderShaderParameter(shader, 'u_flash')
+			}
+		};
+	}
+
+	static function noteRenderGraphicDiagnostic(note:Note):Dynamic {
+		var frames = note == null ? null : note.frames;
+		var graphic = frames == null ? null : frames.parent;
+		var bitmap = graphic == null ? null : graphic.bitmap;
+		return {
+			framesPresent: frames != null,
+			nativeDefaultFallback: note == null ? null : note.psychSkinUsesNativeDefaultFallback,
+			key: graphic == null ? null : graphic.key,
+			isDestroyed: graphic == null || graphic.isDestroyed,
+			isLoaded: graphic != null && graphic.isLoaded,
+			useCount: graphic == null ? null : graphic.useCount,
+			bitmap: bitmap == null ? null : {width: bitmap.width, height: bitmap.height}
+		};
+	}
+
+	static function noteRenderShaderParameter(shader:Dynamic, name:String):Dynamic {
+		var parameter = Reflect.field(shader, name);
+		if (parameter == null)
+			return null;
+		var value:Dynamic = Reflect.field(parameter, 'value');
+		var normalizedValue:Dynamic = Std.isOfType(value, Array) ? (cast value:Array<Dynamic>).copy()
+			: (value == null ? null : Std.string(value));
+		return {name: Reflect.field(parameter, 'name'), index: Reflect.field(parameter, 'index'), value: normalizedValue};
 	}
 
 	/** Drive scrolling/leaving and completion for --smoke-freeplay. */
@@ -1805,6 +2070,39 @@ class RuntimeSmokeHarness {
 				fail('timeout', 'FreeplayState was never entered');
 			return;
 		}
+		#if sys
+		if (inFreeplay && Sys.getEnv("CAMMIE_IMPORT_REFRESH_STOP_ON_COMPLETE") == "1") {
+			var refresh = ImportRefreshManager.browseTick();
+			if (!refresh.busy && refresh.blocked) {
+				fail("import-refresh", refresh.label);
+				return;
+			}
+			if (!refresh.busy && refresh.complete && refresh.changed && refresh.queueRemaining == 0) {
+				emitFrameSummary();
+				succeed();
+				return;
+			}
+		}
+		// Opt-in native refresh UI evidence. Keep screenshots off ordinary
+		// launches and default smoke/performance runs.
+		if (inFreeplay && refreshReadbackCount < 2
+			&& now - freeplaySeenAt >= (refreshReadbackCount == 0 ? 10000 : 45000)) {
+			var refreshReadbackPath = Sys.getEnv("CAMMIE_IMPORT_REFRESH_SCREENSHOT");
+			if (refreshReadbackPath != null && refreshReadbackPath != "") {
+				try {
+					var image = Application.current.window.readPixels();
+					if (image == null || image.width <= 0 || image.height <= 0) throw "Empty refresh UI framebuffer";
+					var path = refreshReadbackPath + "-" + Std.string(++refreshReadbackCount) + ".png";
+					ensureParent(path);
+					File.saveBytes(path, image.encode());
+					emit("refresh_render_readback", {path:path, refresh:ImportRefreshManager.browseTick()});
+				} catch (error:Dynamic) {
+					refreshReadbackCount = 2;
+					fail("refresh-render-readback", Std.string(error));
+				}
+			} else refreshReadbackCount = 2;
+		}
+		#end
 		// Return mode observes the real post-song menu without scrolling,
 		// accepting a row, leaving, or applying the standalone Freeplay deadline.
 		if (cfg.returnFreeplay)
@@ -2032,7 +2330,7 @@ class RuntimeSmokeHarness {
 		// Periodic live samples distinguish working dances from a valid atlas
 		// that never starts an animation. This runs only with smoke frame stats.
 		var visualState = PlayState.instance;
-		if (playStateReady && visualState != null && FlxG.state == visualState) {
+		if (config().pacingOnly != true && playStateReady && visualState != null && FlxG.state == visualState) {
 			var scene = RuntimeSmokeVisuals.stage(visualState);
 			Reflect.setField(scene, 'songPosition', Conductor.songPosition);
 			emit('scene_visual', scene);
@@ -2044,7 +2342,7 @@ class RuntimeSmokeHarness {
 				emit('character_animation_sample', visual);
 			}
 		}
-		var cache = bitmapCensus();
+		var cache = config().pacingOnly == true ? {count: 0, mb: 0.0, top: new Array<String>()} : bitmapCensus();
 		var stateName = FlxG.state == null ? '' : Type.getClassName(Type.getClass(FlxG.state));
 		var deltaFps:Float = 0;
 		var deltaSum:Float = 0;
@@ -2077,6 +2375,9 @@ class RuntimeSmokeHarness {
 			bitmapCount: cache.count,
 			bitmapMB: Math.round(cache.mb),
 			bitmapTop: cache.top,
+			heap: config().pacingOnly == true ? frameHeapSnapshot() : null,
+			currentFPS: Main.fpsCounter == null ? null : Main.fpsCounter.currentFPS,
+			averageFPS: Main.fpsCounter == null ? null : Main.fpsCounter.averageFPS,
 			sectionMs: sections
 		});
 		costs.resize(0);
@@ -2084,6 +2385,26 @@ class RuntimeSmokeHarness {
 		drawCosts.resize(0);
 		deltas.resize(0);
 		windowHitches = 0;
+	}
+
+	static function frameHeapSnapshot():Dynamic {
+		#if cpp
+		return {currentBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_CURRENT),
+			liveBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE),
+			reservedBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_RESERVED)};
+		#else
+		return null;
+		#end
+	}
+
+	/** Observe the ordinary ending's score key without writing player scores. */
+	public static function markScoreSaveDecision(chart:Dynamic, score:Int, difficulty:Int,
+		multiplier:Float, demo:Bool):Void {
+		if (!enabled()) return;
+		emit('score_save_decision', {songId: Highscore.scoreSongIdForChart(chart),
+			authoredTitle: chart == null ? '' : Reflect.field(chart, 'song'), score: score,
+			difficulty: difficulty, multiplier: multiplier, demo: demo,
+			eligibleOrdinaryPlay: !demo && multiplier > 0, smokeSuppressed: true});
 	}
 
 	static function percentile(samples:Array<Float>, fraction:Float):Float {

@@ -11,6 +11,10 @@ class PsychRGBShaderReference {
 	public var b(default, set):FlxColor;
 	public var mult(default, set):Float;
 	public var enabled(default, set):Bool = true;
+	/** A per-note palette edited through the Psych-facing RGB setters. */
+	public var hasCustomPalette(default, null):Bool = false;
+	/** A script explicitly toggled this reference after construction. */
+	public var explicitlyEnabled(default, null):Bool = false;
 	public var parent:PsychRGBPalette;
 	public var allowNew:Bool = true;
 
@@ -35,6 +39,7 @@ class PsychRGBShaderReference {
 		original = palette;
 		parent = palette;
 		allowNew = true;
+		hasCustomPalette = false;
 		r = palette.r;
 		g = palette.g;
 		b = palette.b;
@@ -44,30 +49,39 @@ class PsychRGBShaderReference {
 	}
 
 	function set_r(value:FlxColor):FlxColor {
-		if (allowNew && value != original.r)
-			cloneOriginal();
+		if (value != original.r) {
+			hasCustomPalette = true;
+			if (allowNew) cloneOriginal();
+		}
 		return (r = parent.r = value);
 	}
 
 	function set_g(value:FlxColor):FlxColor {
-		if (allowNew && value != original.g)
-			cloneOriginal();
+		if (value != original.g) {
+			hasCustomPalette = true;
+			if (allowNew) cloneOriginal();
+		}
 		return (g = parent.g = value);
 	}
 
 	function set_b(value:FlxColor):FlxColor {
-		if (allowNew && value != original.b)
-			cloneOriginal();
+		if (value != original.b) {
+			hasCustomPalette = true;
+			if (allowNew) cloneOriginal();
+		}
 		return (b = parent.b = value);
 	}
 
 	function set_mult(value:Float):Float {
-		if (allowNew && value != original.mult)
-			cloneOriginal();
+		if (value != original.mult) {
+			hasCustomPalette = true;
+			if (allowNew) cloneOriginal();
+		}
 		return (mult = parent.mult = value);
 	}
 
 	function set_enabled(value:Bool):Bool {
+		explicitlyEnabled = value;
 		owner.shader = value ? parent.shader : null;
 		return enabled = value;
 	}

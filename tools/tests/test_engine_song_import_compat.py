@@ -43,6 +43,81 @@ class EngineSongImportCompatTest(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (ROOT / "source/ModuleFunctions.hx").read_text()
 
+    def test_asset_chart_discovery_parses_each_chart_once(self):
+        methods = "\n".join(
+            extract_method(self.source, marker)
+            for marker in ("static function normalizedImportFileName", "static function importChartNames",
+                           "static function findImportChartInEntries", "static function collectAssetCharts",
+                           "static function isImportChartSidecar", "static function collectSongNoteDefinitions")
+        )
+        fixture = f'''import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+using StringTools;
+
+class ImportDirectoryListing {{
+  public static var normalizations:Int = 0;
+  public static function normalize(entries:Array<String>):Array<String> {{
+    normalizations++;
+    return entries;
+  }}
+}}
+
+class NoteTypeCompat {{
+  public static function isStringType(value:Dynamic):Bool return Std.isOfType(value, String);
+  public static function ensureDefinition(value:Dynamic, definitions:Array<Dynamic>):Int {{
+    var name = Std.string(value);
+    for (index in 0...definitions.length)
+      if (Reflect.field(definitions[index], "sourceNoteType") == name) return index;
+    definitions.push({{sourceNoteType:name}});
+    return definitions.length - 1;
+  }}
+}}
+
+class ImportCompat {{
+  static var reads:Map<String, Int> = new Map();
+  static function getImportDifficultyNames():Array<String> return ["easy", "normal", "hard"];
+  static function isImportFile(path:String):Bool return FileSystem.exists(path) && !FileSystem.isDirectory(path);
+  static function readSongChart(path:String):Dynamic {{
+    var key = Path.withoutDirectory(path).toLowerCase();
+    reads.set(key, reads.exists(key) ? reads.get(key) + 1 : 1);
+    var noteType = key == "song.json" ? "normal-note" : "expert-note";
+    var row:Array<Dynamic> = [0, 0, 0, noteType];
+    return File.getContent(path) == "chart"
+      ? {{song:{{notes:[{{sectionNotes:[row]}}]}}}} : null;
+  }}
+{methods}
+  static function main():Void {{
+    var root = Sys.args()[0];
+    File.saveContent(Path.join([root, "song.json"]), "chart");
+    File.saveContent(Path.join([root, "song-expert.json"]), "chart");
+    File.saveContent(Path.join([root, "events.json"]), "sidecar");
+    var definitions:Array<Dynamic> = [];
+    var charts = collectAssetCharts(root, "song", definitions);
+    if (charts.length != 2) throw 'expected two charts, got ${{charts.length}}';
+    if (reads.get("song.json") != 1) throw 'known chart parsed ${{reads.get("song.json")}} times';
+    if (reads.get("song-expert.json") != 1) throw 'custom chart parsed ${{reads.get("song-expert.json")}} times';
+    if (ImportDirectoryListing.normalizations != 1)
+      throw 'song directory was listed ${{ImportDirectoryListing.normalizations}} times';
+    if (reads.exists("events.json")) throw "chart sidecar should not be parsed";
+    if (definitions.length != 2
+        || Reflect.field(definitions[0], "sourceNoteType") != "normal-note"
+        || Reflect.field(definitions[1], "sourceNoteType") != "expert-note")
+      throw "source note definitions were not collected in chart order";
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "ImportCompat.hx"
+            fixture_path.write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--run", "ImportCompat", folder],
+                cwd=folder,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_descriptor_song_walk_handles_shared_data_and_native_nested_data(self):
         source = self.source
         methods = "\n".join(
@@ -58,12 +133,15 @@ class EngineSongImportCompatTest(unittest.TestCase):
                         "static function findImportFile",
                         "static function findImportAudio",
                         "static function findImportVocalStems",
+                        "static function normalizeNightmareVisionVocalRoles",
                         "static function readImportJson",
                         "static function convertImportDialogue",
                         "static function importCutsceneScript",
                         "static function importCutsceneBool",
                         "static function getImportDifficultyNames",
                         "static function findImportChart",
+                        "static function importChartNames",
+                        "static function findImportChartInEntries",
                         "static function isImportChartSidecar",
                         "static function collectAssetCharts",
                         "static function chartFieldString",
@@ -229,6 +307,9 @@ class ImportCompat {{
     if (splitResult[0].vocalStems[0].destination != 'Voices-Opponent.ogg'
         || splitResult[0].vocalStems[1].destination != 'Voices-Player.ogg')
       throw 'split vocal stems were not stably ordered';
+    if (splitResult[0].vocalStems[0].role != 'shared'
+        || splitResult[0].vocalStems[1].role != 'shared')
+      throw 'non-NMV split vocal role defaults changed';
     var togetherResult:Array<SongImport> = [];
     appendAssetSongImports(togetherResult, new Map<String, Bool>(), togetherData, togetherSongs, null, null);
     if (togetherResult.length != 1 || togetherResult[0].voices == null
@@ -275,8 +356,16 @@ class ImportCompat {{
     var nestedNmvSource:SongImportSource = nestedNmvSong.importSourceInfo;
     if (nestedNmvSong.diffFiles.length != 2
         || !nestedNmvSong.inst.toLowerCase().endsWith('/audio/inst.ogg')
-        || !nestedNmvSong.voices.toLowerCase().endsWith('/audio/voices.ogg'))
-      throw 'NMV nested data/audio charts or stems were not collected';
+        || nestedNmvSong.voices != null)
+      throw 'NMV nested split-vocal audio selection was not collected';
+    if (nestedNmvSong.vocalStems == null || nestedNmvSong.vocalStems.length != 2
+        || nestedNmvSong.vocalStems[0].id != 'opp'
+        || nestedNmvSong.vocalStems[0].role != 'opponent'
+        || nestedNmvSong.vocalStems[0].destination != 'Voices-opp.ogg'
+        || nestedNmvSong.vocalStems[1].id != 'player'
+        || nestedNmvSong.vocalStems[1].role != 'player'
+        || nestedNmvSong.vocalStems[1].destination != 'Voices-player.ogg')
+      throw 'NMV D-Sides player/opponent stem IDs did not become role-specific vocals';
     if (Reflect.field(nestedNmvSong, 'sourceFolder') != 'authored-id'
         || Reflect.field(nestedNmvSong, 'engine') != ImportEngine.NIGHTMARE_VISION
         || Reflect.field(nestedNmvSong, 'sourceRoot')
@@ -351,6 +440,9 @@ class ImportCompat {{
             , newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
+            , newline='\n')
+            (temp_path / "NightmareVisionVocalRole.hx").write_text(
+                (ROOT / "source/NightmareVisionVocalRole.hx").read_text()
             , newline='\n')
             fixture_path = temp_path / "ImportCompat.hx"
             fixture_path.write_text(with_kade_parser(fixture), newline='\n')
@@ -437,7 +529,8 @@ class ImportCompat {{
             (nested_nmv_data / "easy.json").write_text(nested_nmv_chart, newline='\n')
             (nested_nmv_data / "normal.json").write_text(nested_nmv_chart, newline='\n')
             (nested_nmv_audio / "Inst.ogg").write_bytes(b"inst")
-            (nested_nmv_audio / "Voices.ogg").write_bytes(b"voices")
+            (nested_nmv_audio / "Voices-player.ogg").write_bytes(b"player")
+            (nested_nmv_audio / "Voices-opp.ogg").write_bytes(b"opponent")
             (incomplete_nmv_song / "data/normal.json").write_text(
                 '{"song":{"song":"Must Not Borrow Base Audio","notes":[]}}'
             , newline='\n')
@@ -529,7 +622,8 @@ class ImportCompat {{
         source = self.source
         self.assertIn("static public function songNeedsRepair(songData:SongImport)", source)
         self.assertIn("static public function songIsRegistered(songName:String)", source)
-        self.assertIn("if (!FileSystem.exists(existingImportChild(dataFolder, fileName)))", source)
+        self.assertIn("var existingChartPath = existingImportChild(dataFolder, fileName)", source)
+        self.assertIn("if (!FileSystem.exists(existingChartPath))", source)
         self.assertIn("A crashed import may have left this media file behind", source)
         self.assertIn("var alreadyRegistered = freeplayRegistryHasSong", source)
         workflow = (ROOT / "source/ImportWorkflow.hx").read_text()
@@ -728,6 +822,8 @@ class ImportCompat {{
                         "static function importCutsceneBool",
                         "static function getImportDifficultyNames",
                         "static function findImportChart",
+                        "static function importChartNames",
+                        "static function findImportChartInEntries",
                         "static function isImportChartSidecar",
                         "static function collectAssetCharts",
                         "static function chartFieldString",

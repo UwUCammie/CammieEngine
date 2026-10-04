@@ -38,6 +38,8 @@ class ImportIO {
 	public var stageRoot(default, null):String;
 	var parent:ImportIO;
 	var masks:Map<String, Bool> = new Map();
+	var ownedAncestors:Map<String, Bool> = new Map();
+	var deferOwnedBaselines:Bool;
 	var touched:Map<String, Bool> = new Map();
 	var removed:Map<String, Bool> = new Map();
 	var baselineCache:Map<String, ImportIOBaseline> = new Map();
@@ -45,7 +47,8 @@ class ImportIO {
 	var namespaces:Map<String, String> = new Map();
 	var sourceLabels:Map<String, String> = new Map();
 
-	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>) {
+	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false) {
+		this.deferOwnedBaselines = deferOwnedBaselines;
 		if (installRoot == null || StringTools.trim(installRoot) == "")
 			throw "Import staging requires an install root.";
 		if (stageRoot == null || StringTools.trim(stageRoot) == "")
@@ -71,13 +74,21 @@ class ImportIO {
 		if (masked != null)
 			for (path in masked) {
 				var relative = outputRelative(path);
-				if (relative != null) masks.set(relative, true);
+				if (relative != null) {
+					masks.set(relative, true);
+					var ancestor = Path.directory(relative);
+					while (ancestor != null && ancestor != "" && ancestor != ".") {
+						if (ownedAncestors.exists(ancestor)) break;
+						ownedAncestors.set(ancestor, true);
+						ancestor = Path.directory(ancestor);
+					}
+				}
 			}
 	}
 
 	/** Start a virtual filesystem scope on this thread. Scopes may nest. */
-	public static function begin(installRoot:String, stageRoot:String, ?masked:Array<String>):ImportIO {
-		var context = new ImportIO(installRoot, stageRoot, masked);
+	public static function begin(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false):ImportIO {
+		var context = new ImportIO(installRoot, stageRoot, masked, deferOwnedBaselines);
 		context.parent = current();
 		setCurrent(context);
 		return context;
@@ -215,10 +226,9 @@ class ImportIO {
 	public function hasOwnedPath(path:String):Bool {
 		var relative = outputRelative(path);
 		if (relative == null) return false;
-		for (mask in masks.keys())
-			if (relative == mask || StringTools.startsWith(relative, mask + "/")
-				|| StringTools.startsWith(mask, relative + "/")) return true;
-		return false;
+		// The retained manifest can contain thousands of paths. Index their
+		// ancestors once instead of walking every mask for each asset lookup.
+		return ownedAncestors.exists(relative) || isMasked(relative);
 	}
 
 	public function setNamespace(sourceRoot:String, engine:String, namespace:String):Void {
@@ -394,7 +404,10 @@ class ImportIO {
 
 	function markTouched(relative:String):Void {
 		if (isTrackedOutput(relative) && !touched.exists(relative)) {
-			before(relative);
+			// The refresh transaction verifies owned files against the committed
+			// manifest itself. Its caller can avoid a redundant prewrite media hash;
+			// shared registry merge baselines and unowned paths still require one.
+			if (!deferOwnedBaselines || !masks.exists(relative) || isRegistry(relative)) before(relative);
 			touched.set(relative, true);
 		}
 	}

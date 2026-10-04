@@ -78,7 +78,8 @@ class ImportRefreshTransaction {
 	 */
 	public static function apply(installRoot:String, stagingRoot:String, stateRoot:String, owner:String,
 		ownedRoots:Array<String>, stagedOutputs:Array<ImportRefreshStagedOutput>, ?revision:Dynamic,
-		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>):ImportRefreshResult {
+		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>,
+		?progress:Dynamic->Void):ImportRefreshResult {
 		if (installRoot == null || stagingRoot == null || stateRoot == null)
 			throw "Import refresh requires install, staging, and state roots.";
 		if (owner == null || StringTools.trim(owner) == "")
@@ -103,9 +104,13 @@ class ImportRefreshTransaction {
 		var rootList = normalizeOwnedRoots(ownedRoots);
 		var outputByPath:Map<String, ImportRefreshStagedOutput> = new Map();
 		var caseFolded:Map<String, String> = new Map();
+		if (stagedOutputs.length == 0) reportProgress(progress, "checking-output", "", 0, 0);
+		var outputsChecked = 0;
+		var lastOutputPath = "";
 		for (output in stagedOutputs) {
 			if (output == null) throw "Import refresh output entry cannot be null.";
 			var relative = normalizeRelative(output.path);
+			reportProgress(progress, "checking-output", relative, outputsChecked, stagedOutputs.length);
 			if (!isWithinOwnedRoots(relative, rootList))
 				throw 'Output is outside caller-provided owned roots: $relative';
 			if (isProtectedSettingsPath(relative))
@@ -126,7 +131,11 @@ class ImportRefreshTransaction {
 				stagedPath: sourceRel,
 				sha256: output.sha256.toLowerCase()
 			});
+			outputsChecked++;
+			lastOutputPath = relative;
 		}
+		if (outputsChecked > 0)
+			reportProgress(progress, "checking-output", lastOutputPath, outputsChecked, stagedOutputs.length);
 
 		var baselineByPath:Map<String, ImportRefreshManifestFile> = new Map();
 		var baselineCaseFolded:Map<String, String> = new Map();
@@ -156,6 +165,7 @@ class ImportRefreshTransaction {
 
 		var conflicts:Array<ImportRefreshConflict> = [];
 		var operations:Array<Dynamic> = [];
+		var unchangedTargets:Array<Dynamic> = [];
 		var allPaths:Array<String> = [];
 		for (path in outputByPath.keys()) allPaths.push(path);
 		for (path in previousByPath.keys()) if (!outputByPath.exists(path)) allPaths.push(path);
@@ -169,13 +179,21 @@ class ImportRefreshTransaction {
 		var manifestText = Json.stringify(manifestAfter) + "\n";
 		var manifestAfterHash = digestText(manifestText);
 
+		var installedChecked = 0;
+		var lastInstalledPath = "";
+		if (allPaths.length == 0) reportProgress(progress, "checking-installed", "", 0, 0);
 		for (relative in allPaths) {
+			reportProgress(progress, "checking-installed", relative, installedChecked, allPaths.length);
 			if (!isWithinOwnedRoots(relative, rootList)) {
 				conflicts.push({path: relative, reason: "The prior manifest target is outside the caller-provided owned roots."});
+				installedChecked++;
+				lastInstalledPath = relative;
 				continue;
 			}
 			if (isProtectedSettingsPath(relative)) {
 				conflicts.push({path: relative, reason: "The user settings file is protected from import refresh."});
+				installedChecked++;
+				lastInstalledPath = relative;
 				continue;
 			}
 			var prior = previousByPath.get(relative);
@@ -187,40 +205,62 @@ class ImportRefreshTransaction {
 				assertNotInside(target, scope, relative);
 			} catch (error:Dynamic) {
 				conflicts.push({path: relative, reason: Std.string(error)});
+				installedChecked++;
+				lastInstalledPath = relative;
 				continue;
 			}
 			var exists = FileSystem.exists(target);
 			if (exists && !isRegularFile(target)) {
 				conflicts.push({path: relative, reason: "The destination is not a regular file."});
+				installedChecked++;
+				lastInstalledPath = relative;
 				continue;
 			}
 			if (output != null) {
 				if (exists) {
 					if (prior == null && baseline == null) {
 						conflicts.push({path: relative, reason: "An unowned or user-added file already exists at this destination."});
+						installedChecked++;
+						lastInstalledPath = relative;
 						continue;
 					}
 					if (prior != null && prior.owner != owner) {
 						conflicts.push({path: relative, reason: "The prior manifest assigns this destination to another owner."});
+						installedChecked++;
+						lastInstalledPath = relative;
 						continue;
 					}
 					var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE);
 					var matchesPrior = prior != null && actual == prior.sha256.toLowerCase();
 					var matchesBaseline = baseline != null && actual == baseline.sha256.toLowerCase();
+					var matchesDesired = prior != null && prior.owner == owner && actual == output.sha256;
 					if (baseline != null && !matchesBaseline) {
 						conflicts.push({path: relative, reason: "The live registry bytes changed after its merge baseline was captured."});
+						installedChecked++;
+						lastInstalledPath = relative;
 						continue;
 					}
-					if (!matchesPrior && !matchesBaseline) {
+					if (!matchesPrior && !matchesBaseline && !matchesDesired) {
 						conflicts.push({path: relative, reason: "Installed bytes differ from the prior manifest; local edits are preserved."});
+						installedChecked++;
+						lastInstalledPath = relative;
 						continue;
 					}
-					operations.push(makeOperation(relative, target, true, true, actual, output));
+					if (actual == output.sha256) {
+						unchangedTargets.push({path: relative, target: target, sha256: actual,
+							stagedPath: output.stagedPath, outputSha256: output.sha256});
+					} else {
+						operations.push(makeOperation(relative, target, true, true, actual, output));
+					}
 				} else if (prior != null) {
 					conflicts.push({path: relative, reason: "A previously owned file is missing; the local deletion is preserved."});
+					installedChecked++;
+					lastInstalledPath = relative;
 					continue;
 				} else if (baseline != null) {
 					conflicts.push({path: relative, reason: "A validated registry baseline is missing; the local deletion is preserved."});
+					installedChecked++;
+					lastInstalledPath = relative;
 					continue;
 				} else {
 					operations.push(makeOperation(relative, target, true, false, "", output));
@@ -228,16 +268,24 @@ class ImportRefreshTransaction {
 			} else if (prior != null && exists) {
 				if (prior.owner != owner) {
 					conflicts.push({path: relative, reason: "The prior manifest assigns this destination to another owner."});
+					installedChecked++;
+					lastInstalledPath = relative;
 					continue;
 				}
 				var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE);
 				if (actual != prior.sha256.toLowerCase()) {
 					conflicts.push({path: relative, reason: "Obsolete installed bytes were edited; the local file is preserved."});
+					installedChecked++;
+					lastInstalledPath = relative;
 					continue;
 				}
 				operations.push(makeOperation(relative, target, false, true, actual, null));
 			}
+			installedChecked++;
+			lastInstalledPath = relative;
 		}
+		if (installedChecked > 0)
+			reportProgress(progress, "checking-installed", lastInstalledPath, installedChecked, allPaths.length);
 
 		if (conflicts.length > 0)
 			return result(STATUS_CONFLICT, conflicts, manifestPath, "", "");
@@ -251,21 +299,34 @@ class ImportRefreshTransaction {
 		var backupFiles = Path.join([backupRoot, "files"]);
 		ensureDirectoryUnder(transactionPath, backupFiles);
 		try {
+			var backupTotal = (manifestBeforeExists ? 1 : 0);
+			for (operation in operations) if (operation.beforeExists) backupTotal++;
+			var backupsCompleted = 0;
+			var lastBackupPath = "";
+			if (backupTotal == 0) reportProgress(progress, "backing-up-import", "", 0, 0);
 			var manifestBackup = Path.join([backupFiles, digestText("manifest.json") + ".bak"]);
 			if (manifestBeforeExists) {
+				reportProgress(progress, "backing-up-import", "manifest.json", backupsCompleted, backupTotal);
 				var copiedManifestHash = copyAndHash(manifestPath, manifestBackup, cancelCheck);
 				if (copiedManifestHash != manifestBeforeHash)
 					throw "The current import manifest changed while its backup was being made.";
+				backupsCompleted++;
+				lastBackupPath = "manifest.json";
 			}
 			for (operation in operations) {
 				if (operation.beforeExists) {
+					reportProgress(progress, "backing-up-import", operation.path, backupsCompleted, backupTotal);
 					var backupPath = Path.join([backupFiles, digestText(operation.path) + ".bak"]);
 					var copiedHash = copyAndHash(operation.target, backupPath, cancelCheck);
 					if (copiedHash != operation.beforeSha256)
 						throw 'Installed bytes changed while backing up ${operation.path}.';
 					operation.backupPath = relativePathFrom(transactionPath, backupPath);
+					backupsCompleted++;
+					lastBackupPath = operation.path;
 				}
 			}
+			if (backupsCompleted > 0)
+				reportProgress(progress, "backing-up-import", lastBackupPath, backupsCompleted, backupTotal);
 
 			var journal:Dynamic = {
 				schemaVersion: MANIFEST_SCHEMA,
@@ -286,17 +347,51 @@ class ImportRefreshTransaction {
 			Reflect.setField(journal, "phase", "applying");
 			writeJournal(transactionPath, journal);
 
+			// Publication units are destination writes, unchanged-file rechecks,
+			// the manifest, and its commit receipt.
+			var publishTotal = operations.length + unchangedTargets.length + 2;
+			var published = 0;
+			var lastPublishedPath = "manifest.json";
 			for (operation in operations) {
 				if (checkCancelled(cancelCheck)) throw CANCEL_TOKEN;
+				reportProgress(progress, "publishing-import", operation.path, published, publishTotal);
 				applyOperation(install, staging, transactionPath, transactionId, operation, cancelCheck);
 				if (checkCancelled(cancelCheck)) throw CANCEL_TOKEN;
+				published++;
+				lastPublishedPath = operation.path;
+			}
+			reportProgress(progress, "publishing-import", lastPublishedPath, published, publishTotal);
+
+			// Unchanged owned files have no journaled write operation, so recheck
+			// their bytes after other publication work and immediately before the
+			// manifest commit. This retains the old preflight-to-commit protection.
+			for (unchanged in unchangedTargets) {
+				if (checkCancelled(cancelCheck)) throw CANCEL_TOKEN;
+				var unchangedPath = Std.string(Reflect.field(unchanged, "path"));
+				reportProgress(progress, "publishing-import", unchangedPath, published, publishTotal);
+				var unchangedTarget = safeChild(install, unchangedPath, false);
+				var unchangedHash = Std.string(Reflect.field(unchanged, "sha256"));
+				if (!FileSystem.exists(unchangedTarget) || !isRegularFile(unchangedTarget)
+					|| ImportSourceSnapshot.sha256File(unchangedTarget, CHUNK_SIZE) != unchangedHash)
+					throw 'Installed file changed before manifest commit: $unchangedPath';
+				var unchangedStageRel = Std.string(Reflect.field(unchanged, "stagedPath"));
+				var unchangedStage = safeChild(staging, unchangedStageRel, true);
+				var unchangedOutputHash = Std.string(Reflect.field(unchanged, "outputSha256"));
+				if (!isRegularFile(unchangedStage)
+					|| ImportSourceSnapshot.sha256File(unchangedStage, CHUNK_SIZE) != unchangedOutputHash)
+					throw 'Staged output changed before manifest commit: $unchangedStageRel';
+				if (checkCancelled(cancelCheck)) throw CANCEL_TOKEN;
+				published++;
+				lastPublishedPath = unchangedPath;
 			}
 
 			var currentManifestHash = FileSystem.exists(manifestPath)
 				? ImportSourceSnapshot.sha256File(manifestPath, CHUNK_SIZE) : "";
 			if (currentManifestHash != manifestBeforeHash)
 				throw "The current import manifest changed during the transaction.";
+			reportProgress(progress, "publishing-import", "manifest.json", published, publishTotal);
 			atomicReplaceText(manifestPath, manifestText, transactionId + "-manifest");
+			published++;
 			Reflect.setField(journal, "phase", "receipt-pending");
 			writeJournal(transactionPath, journal);
 
@@ -309,7 +404,12 @@ class ImportRefreshTransaction {
 				manifestSha256: manifestAfterHash,
 				fileCount: Reflect.field(manifestAfter, "files") == null ? 0 : (cast Reflect.field(manifestAfter, "files"):Array<Dynamic>).length
 			};
+			reportProgress(progress, "publishing-import", "receipt.json", published, publishTotal);
 			writeNewText(receiptPath, Json.stringify(receipt) + "\n", transactionId + "-receipt");
+			validateReceipt(receiptPath, journal);
+			cleanupCommittedBackups(transactionPath, journal);
+			published++;
+			reportProgress(progress, "publishing-import", "receipt.json", published, publishTotal);
 			return result(STATUS_APPLIED, [], manifestPath, receiptPath, transactionPath);
 		} catch (error:Dynamic) {
 			var rollbackErrors = rollback(transactionPath, install, state, owner);
@@ -357,7 +457,10 @@ class ImportRefreshTransaction {
 			}
 			var receiptPath = Path.join([transactionPath, "receipt.json"]);
 			if (FileSystem.exists(receiptPath)) {
-				try validateReceipt(receiptPath, journal) catch (error:Dynamic)
+				try {
+					validateReceipt(receiptPath, journal);
+					cleanupCommittedBackups(transactionPath, journal);
+				} catch (error:Dynamic)
 					conflicts.push({path: name, reason: Std.string(error)});
 				continue;
 			}
@@ -683,6 +786,54 @@ class ImportRefreshTransaction {
 			throw "Commit receipt does not match its transaction journal.";
 	}
 
+	/** Rollback copies are required until the commit receipt is valid. After
+	 * that point, the current installation and retained source snapshot are the
+	 * recoverable state; keeping a full prior copy for every refresh only grows
+	 * import-cache indefinitely. Remove only hash-named backups named by this
+	 * transaction's journal, leaving its small journal and receipt for audit. */
+	static function cleanupCommittedBackups(transactionPath:String, journal:Dynamic):Void {
+		try {
+			var backupPaths:Array<String> = [];
+			if (Reflect.field(journal, "manifestBeforeExists") == true) {
+				var expectedManifest = Path.join(["backups", "files", digestText("manifest.json") + ".bak"]);
+				var recordedManifest = Std.string(Reflect.field(journal, "manifestBackupPath"));
+				if (recordedManifest != expectedManifest) return;
+				backupPaths.push(expectedManifest);
+			}
+			var operations:Dynamic = Reflect.field(journal, "operations");
+			if (!Std.isOfType(operations, Array)) return;
+			for (operation in (cast operations:Array<Dynamic>)) {
+				if (operation == null || Reflect.field(operation, "beforeExists") != true)
+					continue;
+				var relative = Std.string(Reflect.field(operation, "path"));
+				var expected = Path.join(["backups", "files", digestText(relative) + ".bak"]);
+				var recorded = Std.string(Reflect.field(operation, "backupPath"));
+				if (recorded != expected) return;
+				backupPaths.push(expected);
+			}
+
+			var resolved:Array<String> = [];
+			for (relative in backupPaths) {
+				var path = safeChild(transactionPath, relative, false);
+				if (FileSystem.exists(path) && !isRegularFile(path)) return;
+				resolved.push(path);
+			}
+			for (path in resolved)
+				if (FileSystem.exists(path)) FileSystem.deleteFile(path);
+
+			for (relative in ["backups/files", "backups"]) {
+				var directory = safeChild(transactionPath, relative, false);
+				if (FileSystem.exists(directory) && FileSystem.isDirectory(directory)
+					&& FileSystem.readDirectory(directory).length == 0)
+					FileSystem.deleteDirectory(directory);
+			}
+		} catch (_:Dynamic) {
+			// Cleanup is storage maintenance after a committed import. A locked or
+			// unfamiliar backup remains available for diagnosis and must not turn a
+			// successful import into a reported failure.
+		}
+	}
+
 	static function normalizeOwnedRoots(values:Array<String>):Array<String> {
 		if (values == null || values.length == 0) throw "At least one owned root is required.";
 		var result:Array<String> = [];
@@ -843,6 +994,13 @@ class ImportRefreshTransaction {
 
 	static function checkCancelled(callback:Null<Void->Bool>):Bool {
 		return callback != null && callback();
+	}
+
+	static function reportProgress(callback:Null<Dynamic->Void>, phase:String, current:String,
+		completed:Int, total:Int):Void {
+		if (callback == null) return;
+		// Progress observers must not change import commit or rollback behavior.
+		try callback({phase: phase, current: current, completed: completed, total: total}) catch (_:Dynamic) {}
 	}
 
 	static function digestText(value:String):String {

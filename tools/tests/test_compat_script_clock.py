@@ -49,7 +49,9 @@ class Main {
    'source cadence is not 60 Hz');
   check(countAtRate(60, 20) == 1200
    && countAtRate(240, 20) == 1200
-   && countAtRate(480, 20) == 1200,
+   && countAtRate(480, 20) == 1200
+   && countAtRate(1440, 20) == 1200
+   && countAtRate(5000, 20) == 1200,
    'script tick count depended on host update rate');
 
   var clock = new CompatScriptClock();

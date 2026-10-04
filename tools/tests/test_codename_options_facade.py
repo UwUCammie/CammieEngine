@@ -37,14 +37,24 @@ class CodenameOptionsFacadeTest(unittest.TestCase):
             (base / "CodenameOptionsQualityCompat.hx").write_text(
                 (ROOT / "source/CodenameOptionsQualityCompat.hx").read_text()
             , newline='\n')
+            (base / "FramerateOptionsCompat.hx").write_text(
+                (ROOT / "source/FramerateOptionsCompat.hx").read_text(), newline='\n'
+            )
             (base / "OptionsHandler.hx").write_text("""class OptionsHandler {
  public static var options:Dynamic = {
  downscroll:true, useCustomInput:false, offset:12.5, zoomCamera:true,
-  fpsCap:120, flashingLights:true, autoPause:true, antialiasing:true,
+  fpsCap:120, unlimitedFPS:false, flashingLights:true, autoPause:true, antialiasing:true,
  quality:1, week6PixelPerfect:true,
   gameplayShaders:true, lowMemoryMode:false, gpuOnlyBitmaps:true,
   naughtyness:true, volumeMusic:0.8, volumeSFX:0.7, useCharColor:true, untouched:"keep"
  };
+ public static inline var MAX_FPS_CAP:Int=2147483647;
+ public static function sanitizeFpsCap(value:Dynamic):Int {
+  if (value==null || !(Std.isOfType(value, Int) || Std.isOfType(value, Float))) return 60;
+  var fps:Float=value;
+  if (!Math.isFinite(fps) || fps<=0) return 60;
+  return Std.int(Math.floor(Math.min(MAX_FPS_CAP, fps)+0.5));
+ }
  public static function applyDisplayOptions(opt:Dynamic):Void
   flixel.FlxSprite.defaultAntialiasing=opt.antialiasing;
  public static function applyAudioOptions(opt:Dynamic):Void {
@@ -90,7 +100,11 @@ class Save { public var data:Dynamic={keys:{left:[65,37]}};public var flushes:In
             (base / "flixel/FlxG.hx").write_text("""package flixel;
 class FlxG { public static var save:Save=new Save();public static var autoPause:Bool=true;
  public static var updateFramerate:Int=60;public static var drawFramerate:Int=60;
+ public static var fixedTimestep:Bool=true;public static var game:FlxGame=new FlxGame();
  public static var sound:Dynamic={defaultMusicGroup:{volume:1.0},defaultSoundGroup:{volume:1.0}}; }
+""", newline='\n')
+            (base / "flixel/FlxGame.hx").write_text("""package flixel;
+class FlxGame { var _maxAccumulation:Float=1; public function new() {} }
 """, newline='\n')
             (base / "flixel/FlxSprite.hx").write_text("""package flixel;
 class FlxSprite { public static var defaultAntialiasing:Bool=false;
@@ -203,7 +217,8 @@ class Main {
   check(flixel.FlxG.save.flushes == 4,
    "each explicitly saved key edit should flush the private save object");
   check(flixel.FlxG.autoPause == false && flixel.FlxG.updateFramerate == 144
-   && flixel.FlxG.drawFramerate == 144 && !flixel.FlxSprite.defaultAntialiasing
+   && flixel.FlxG.drawFramerate == 144 && !flixel.FlxG.fixedTimestep
+   && !flixel.FlxSprite.defaultAntialiasing
    && !new flixel.FlxSprite().antialiasing,
    "applySettings did not update native runtime equivalents and the default on new sprites");
   check(flixel.FlxG.sound.defaultMusicGroup.volume == 0.3

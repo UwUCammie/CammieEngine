@@ -98,6 +98,8 @@ class Probe {
     noteA.r=0xFF123456;
     check(noteA.parent != normal && noteA.parent.r == 0xFF123456,
       'first custom color clones and updates only the selected note palette');
+    check(noteA.hasCustomPalette && !noteB.hasCustomPalette,
+      'authored palette edits are tracked per note for native-fallback compatibility');
     check(ownerA.shader == noteA.parent.shader && ownerB.shader == normal.shader
       && normal.r == originalRed, 'copy-on-write leaves sibling notes unchanged');
     check(FlxShader.constructions == 6, 'one shader is created for the isolated palette');
@@ -108,16 +110,21 @@ class Probe {
     check(noteA.mult == 1.0 && noteA.parent.mult == 1.0, 'mix amount keeps Psych bounds');
 
     noteA.enabled=false;
-    check(ownerA.shader == null && ownerB.shader == normal.shader,
+    check(ownerA.shader == null && ownerB.shader == normal.shader && !noteA.explicitlyEnabled,
       'enabled is per note');
     noteA.usePalette(pixel);
-    check(noteA.parent == pixel && ownerA.shader == null,
+    check(noteA.parent == pixel && ownerA.shader == null && !noteA.hasCustomPalette,
       'palette changes rebind while preserving the enabled state');
     noteA.enabled=true;
-    check(ownerA.shader == pixel.shader, 're-enabled note attaches its selected palette');
+    check(ownerA.shader == pixel.shader && noteA.explicitlyEnabled,
+      'explicitly re-enabled note attaches its selected palette');
     noteB.usePalette(normal);
     check(noteB.parent == normal && ownerB.shader == normal.shader,
       'a note can continue using the original cached palette');
+    noteB.allowNew=false;
+    noteB.g=0xFF123456;
+    check(noteB.hasCustomPalette && noteB.parent == normal,
+      'explicit shared-palette edits must also survive native-fallback refresh');
   }
 }''', newline='\n')
 

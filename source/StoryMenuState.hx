@@ -326,9 +326,9 @@ class StoryMenuState extends MusicBeatState {
 	}
 
 	override function update(elapsed:Float) {
-		lerpScore = Math.floor(FlxMath.lerp(lerpScore, intendedScore, 0.5));
+		lerpScore = FlxMath.lerp(lerpScore, intendedScore, CoolUtil.timeAdjustedLerpAlpha(0.5, elapsed));
 
-		scoreText.text = "WEEK SCORE:" + lerpScore;
+		scoreText.text = "WEEK SCORE:" + Math.floor(lerpScore);
 
 		txtWeekTitle.text = weekTitles[curWeek].toUpperCase();
 		txtWeekTitle.x = FlxG.width - (txtWeekTitle.width + 10);
@@ -543,7 +543,7 @@ class StoryMenuState extends MusicBeatState {
 		FlxTween.tween(grpDifficulty.activeDiff, {y: leftArrow.y + 15, alpha: 1}, 0.07);
 	}
 
-	var lerpScore:Int = 0;
+	var lerpScore:Float = 0;
 	var intendedScore:Int = 0;
 	var intendedAccuracy:Float = 0;
 	var lerpAccuracy:Int = 0;

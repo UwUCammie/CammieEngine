@@ -37,7 +37,7 @@ class SortState extends MusicBeatState
 	var songs:Array<OneOfTwo<String, JsonMetadata>> = [];
 	var selector:FlxText;
 	var curSelected:Int = 0;
-	var lerpScore:Int = 0;
+	var lerpScore:Float = 0;
 	var intendedScore:Int = 0;
 	var somethingSelected:Bool = false;
 	var diffText:FlxText;
@@ -105,7 +105,7 @@ class SortState extends MusicBeatState
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;
 		}
 
-		lerpScore = Math.floor(FlxMath.lerp(lerpScore, intendedScore, 0.4));
+		lerpScore = FlxMath.lerp(lerpScore, intendedScore, CoolUtil.timeAdjustedLerpAlpha(0.4, elapsed));
 
 		if (Math.abs(lerpScore - intendedScore) <= 10)
 			lerpScore = intendedScore;

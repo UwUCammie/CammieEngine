@@ -29,6 +29,10 @@ class ImportIOFixture {
     var existing = install + "/assets/data/freeplaySongJson.jsonc";
     var output = install + "/assets/data/songs/new/chart.json";
     var ctx = ImportIO.begin(install, stage, ["assets/data/freeplaySongJson.jsonc", "assets/data/songs/old"]);
+    if (!ctx.hasOwnedPath("assets/data") || !ctx.hasOwnedPath("assets/data/songs/old"))
+      throw "owned ancestor or exact path lookup failed";
+    if (ctx.hasOwnedPath("assets/data/songs/older") || ctx.hasOwnedPath("assets/data/songs/new"))
+      throw "ownership prefix confused unrelated sibling paths";
     if (File.getContent(donor) != "donor-cache") throw "absolute cached donor read was redirected";
     if (FileSystem.exists(existing)) throw "masked registry leaked from install fallback";
     var hiddenReadFailed = false;
@@ -126,6 +130,45 @@ class ImportIOTest(unittest.TestCase):
     def setUpClass(cls):
         if not HAXE.is_file():
             raise unittest.SkipTest("portable Haxe interpreter is unavailable")
+
+    def test_owned_refresh_defer_preserves_registry_baselines_and_ownership_boundaries(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:
+            base = Path(temporary)
+            install = base / "install"
+            stage = install / "import-cache/staging/session"
+            (install / "assets/data").mkdir(parents=True)
+            stage.mkdir(parents=True)
+            (install / "assets/data/freeplaySongJson.json").write_text('{"old":1}', encoding="utf-8")
+            (install / "assets/data/owned.bin").write_bytes(b"old media")
+            (install / "assets/data/other.bin").write_bytes(b"unowned")
+            (base / "Main.hx").write_text(r'''import ImportFile as File;
+@:access(ImportIO)
+class Main {
+ static function check(value:Bool, message:String):Void if (!value) throw message;
+ static function main():Void {
+  var args = Sys.args();
+  var owned = "assets/data/owned.bin";
+  var registry = "assets/data/freeplaySongJson.json";
+  var io = ImportIO.begin(args[0], args[1], [owned,registry],true);
+  File.saveContent(owned,"new media");
+  File.saveContent(registry,"{}");
+  File.saveContent("assets/data/other.bin","new unowned");
+  check(!io.baselineChecked.exists(owned),"Owned media hash must be deferred to manifest validation");
+  check(io.before(registry).text == '{"old":1}',"Shared registry prewrite baseline must remain");
+  check(io.before("assets/data/other.bin").sha256 == haxe.crypto.Sha256.encode("unowned"),
+   "Unowned prewrite baseline must remain");
+  check(io.before(owned).sha256 == haxe.crypto.Sha256.encode("old media"),"Explicit baseline requests still hash live media");
+  check(io.hasOwnedPath("assets") && io.hasOwnedPath("assets/data") && io.hasOwnedPath(owned),"Owned path boundaries");
+  check(!io.hasOwnedPath("assets/dat") && !io.hasOwnedPath("assets/data/owned.bin2"),"Sibling prefixes must not become owned");
+  ImportIO.end();
+  Sys.println("OK");
+ }
+}''', encoding="utf-8")
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(base),
+                "--run", "Main", str(install), str(stage)], cwd=ROOT,
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("OK", result.stdout)
 
     def test_stages_outputs_masks_old_files_and_preserves_donor_reads(self):
         (ROOT / "tmp").mkdir(exist_ok=True)

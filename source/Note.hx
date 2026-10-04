@@ -180,6 +180,7 @@ class Note extends DynamicSprite {
 	var psychPixelSkin:Bool = false;
 	var psychSkinPostfix:String = '';
 	var psychRGBDisabled:Bool = false;
+	@:allow(PsychSkinRuntime) public var psychSkinUsesNativeDefaultFallback(default, null):Bool = false;
 	var psychRGBShader:PsychRGBShaderReference = null;
 	@:keep public var rgbShader(get, never):PsychRGBShaderReference;
 	@:keep function get_rgbShader():PsychRGBShaderReference return psychRGBShader;
@@ -265,7 +266,10 @@ class Note extends DynamicSprite {
 			RuntimeSmokeHarness.markStep('psych-note-skin:rgb-palette-complete count=' + psychSkinDiagnosticNoteIndex);
 		if (psychSkinDiagnosticsEnabled)
 			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:bind');
-		shader = psychRGBShader.enabled ? psychRGBShader.parent.shader : null;
+		var hasExplicitRGB = psychRGBShader != null
+			&& (psychRGBShader.hasCustomPalette || psychRGBShader.explicitlyEnabled);
+		shader = (!psychSkinUsesNativeDefaultFallback || hasExplicitRGB) && psychRGBShader.enabled
+			? psychRGBShader.parent.shader : null;
 		if (psychSkinDiagnosticsEnabled)
 			RuntimeSmokeHarness.setPsychSkinDiagnosticPhase('rgb:complete');
 	}

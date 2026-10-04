@@ -208,6 +208,9 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("haxe-4.3.6-win64.zip", self.run_bat)
         self.assertIn("neko-2.3.0-win64.zip", self.run_bat)
         self.assertIn("haxelib run lime build windows", self.run_bat)
+        self.assertIn(":ensure_git", self.run_bat)
+        self.assertIn("MinGit-2.56.0-64-bit.zip", self.run_bat)
+        self.assertIn("064b440ff870ed5198527e8f3a92cdf5bd2fd0fedf5e718af95e3fdaddeff718", self.run_bat)
         self.assertIn("Funkin.exe", self.run_bat)
         self.assertIn("-D32bit -32", self.run_bat)
         # The documented default/release path must actually compile before
@@ -219,6 +222,15 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("vswhere.exe", self.run_bat)
         self.assertIn(":patch_haxelibs", self.run_bat)
         self.assertIn("patch_flixel_fallback.ps1", self.run_bat)
+
+    def test_windows_cache_hit_skips_repeated_setup_but_keeps_full_test_suite(self):
+        cache_check = self.run_bat.index('tools\\launch_cache.py" check')
+        haxelib_setup = self.run_bat.index('call :ensure_haxelibs')
+        self.assertLess(cache_check, haxelib_setup)
+        self.assertIn('if /I "!MODE!"=="rebuild" goto prepare_build', self.run_bat)
+        self.assertIn(':cached_tests', self.run_bat)
+        self.assertIn('goto run_tests', self.run_bat)
+        self.assertIn('tools\\run_tests.py"', self.run_bat)
 
     def test_build_entry_points_use_project_local_scratch_space(self):
         self.assertIn('PROJECT_TMP="$PWD/tmp"', self.run_sh)
@@ -242,6 +254,16 @@ class BuildScriptTests(unittest.TestCase):
         self.assertIn("rapidjson", self.run_bat)
         self.assertIn("Linux/gcc-specific", self.run_bat)
 
+    def test_native_flixel_action_cache_uses_per_update_frames(self):
+        patcher = "tools/patch_flixel_input_frame_cache.py"
+        self.assertIn(patcher, self.run_sh)
+        self.assertIn("tools\\patch_flixel_input_frame_cache.py", self.run_bat)
+        self.assertIn("prepare_cross_project", self.build_sh)
+        self.assertIn('"$ROOT/run.sh" setup', self.build_sh)
+        self.assertIn('python3 "$ROOT/tools/patch_flixel_input_frame_cache.py"', self.build_sh)
+        from tools import launch_cache
+        self.assertIn(patcher, launch_cache.HELPERS)
+
     def test_desktop_runtime_trees_stay_on_disk(self):
         for asset in ("music", "songs", "module"):
             self.assertIn(
@@ -264,7 +286,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_readme_documents_native_targets_and_appimage_writes(self):
         for text in (
             "./build.sh appimage",
-            "./build-windows-release.sh v0.0.10",
+            "./build-windows-release.sh v0.0.11",
             ".\\run.bat test",
             "DISAPPOINTINGPLUS_RUNTIME_DIR",
             "APPIMAGE_EXTRACT_AND_RUN",
@@ -281,7 +303,7 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_current_release_version_is_used_by_branding_and_package_defaults(self):
         version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
-        self.assertEqual(version, "0.0.10")
+        self.assertEqual(version, "0.0.11")
         self.assertIn(f'version="{version}"', self.project_xml)
         self.assertIn(f"CammieEngine v{version}", self.readme)
         user_readme = (ROOT / "USER-README.txt").read_text(encoding="utf-8")

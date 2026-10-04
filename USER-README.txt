@@ -1,4 +1,4 @@
-CammieEngine v0.0.10 — alpha player guide
+CammieEngine v0.0.11 — alpha player guide
 
 PLAY
 Extract the complete release ZIP to a writable folder and run Funkin.exe.

@@ -56,7 +56,7 @@ class CodenameRuntimeSharedImportsTest(unittest.TestCase):
         main_source = (ROOT / "source/Main.hx").read_text()
         self.assertIn("public static var instance:Main;", main_source)
         self.assertIn("\t\tinstance = this;", main_source)
-        self.assertLess(main_source.index("fpsCounter = new FPS("),
+        self.assertLess(main_source.index("fpsCounter = new AverageFPSCounter("),
                         main_source.index("addChild(new FlxGame("),
                         "initial-state owner scripts need the counter before FlxGame creates the state")
         self.assertGreater(main_source.index("addChild(fpsCounter);"),

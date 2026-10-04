@@ -14,6 +14,10 @@ typedef CoolCategory = {
     var name:String;
     var songs:Array<JsonMetadata>;
 }
+typedef SourceDifficultyRules = {
+	var selectable:Array<String>;
+	var unsupported:Array<String>;
+}
 class DifficultyManager {
     static var diffJson:Dynamic;
     public static var supportedDiff:Map<String,Array<Int>> = [];
@@ -66,20 +70,21 @@ class DifficultyManager {
 		var key = StringTools.trim(song).toLowerCase();
 		// Imports can finish after init() has scanned Freeplay. Discover any new
 		// authored suffix before building support for the newly registered song.
+		var sourceRules:SourceDifficultyRules = null;
 		#if sys
-		discoverSongDifficulties(key);
+		sourceRules = readAndDiscoverSongDifficulties(key);
 		#end
+		if (sourceRules == null)
+			sourceRules = readSourceDifficultyRules(key);
 		supportedDiff.set(key, []);
 		if (diffJson == null || diffJson.difficulties == null)
 			return;
-		var sourceDifficulties = readSourceSelectableDifficulties(key);
-		var unsupportedDifficulties = readSourceUnsupportedDifficulties(key);
 		for (diff in 0...diffJson.difficulties.length) {
 			var difficultyName = Std.string(Reflect.field(diffJson.difficulties[diff], 'name'));
 			if (FNFAssets.exists('assets/data/${key}/${key + getDiffEnding(diff)}.json')
-				&& NightmareVisionDifficultyCompat.allows(sourceDifficulties, difficultyName)
-				&& (unsupportedDifficulties == null
-					|| !NightmareVisionDifficultyCompat.allows(unsupportedDifficulties, difficultyName))) {
+				&& NightmareVisionDifficultyCompat.allows(sourceRules.selectable, difficultyName)
+				&& (sourceRules.unsupported == null
+					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, difficultyName))) {
 				// : )
 				supportedDiff.get(key).push(diff);
 			}
@@ -88,52 +93,43 @@ class DifficultyManager {
 
 	/** NMV imports retain extra charts for source-script access, but only the
 	 * source owner's declared menu difficulties belong in Freeplay. */
-	static function readSourceSelectableDifficulties(song:String):Array<String> {
+	static function readSourceDifficultyRules(song:String):SourceDifficultyRules {
 		if (song == null || StringTools.trim(song) == '')
-			return null;
+			return {selectable: null, unsupported: null};
 		var path = 'assets/data/' + song.toLowerCase() + '/importProvenance.json';
 		if (!FNFAssets.exists(path))
-			return null;
+			return {selectable: null, unsupported: null};
 		try {
 			var metadata:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
 			if (metadata == null || Reflect.field(metadata, 'sourceEngine') != ImportEngine.NIGHTMARE_VISION)
-				return null;
-			var raw:Dynamic = Reflect.field(metadata, 'sourceSelectableDifficulties');
-			if (!Std.isOfType(raw, Array))
-				return null;
-			var result:Array<String> = [];
-			for (value in (cast raw:Array<Dynamic>))
-				if (value != null && StringTools.trim(Std.string(value)) != '')
-					result.push(StringTools.trim(Std.string(value)).toLowerCase());
-			return result.length == 0 ? null : result;
+				return {selectable: null, unsupported: null};
+			return {
+				selectable: sourceDifficultyNames(Reflect.field(metadata, 'sourceSelectableDifficulties')),
+				unsupported: sourceDifficultyNames(Reflect.field(metadata, 'sourceUnsupportedDifficulties'))
+			};
 		} catch (_:Dynamic) {
-			return null;
+			return {selectable: null, unsupported: null};
 		}
+	}
+
+	static function sourceDifficultyNames(raw:Dynamic):Array<String> {
+		if (!Std.isOfType(raw, Array))
+			return null;
+		var result:Array<String> = [];
+		for (value in (cast raw:Array<Dynamic>))
+			if (value != null && StringTools.trim(Std.string(value)) != '')
+				result.push(StringTools.trim(Std.string(value)).toLowerCase());
+		return result.length == 0 ? null : result;
+	}
+
+	static function readSourceSelectableDifficulties(song:String):Array<String> {
+		return readSourceDifficultyRules(song).selectable;
 	}
 
 	/** Imported NMV charts that fail the generic source-schema adapter remain
 	 * on disk for inspection, but must not be offered as playable difficulties. */
 	static function readSourceUnsupportedDifficulties(song:String):Array<String> {
-		if (song == null || StringTools.trim(song) == '')
-			return null;
-		var path = 'assets/data/' + song.toLowerCase() + '/importProvenance.json';
-		if (!FNFAssets.exists(path))
-			return null;
-		try {
-			var metadata:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
-			if (metadata == null || Reflect.field(metadata, 'sourceEngine') != ImportEngine.NIGHTMARE_VISION)
-				return null;
-			var raw:Dynamic = Reflect.field(metadata, 'sourceUnsupportedDifficulties');
-			if (!Std.isOfType(raw, Array))
-				return null;
-			var result:Array<String> = [];
-			for (value in (cast raw:Array<Dynamic>))
-				if (value != null && StringTools.trim(Std.string(value)) != '')
-					result.push(StringTools.trim(Std.string(value)).toLowerCase());
-			return result.length == 0 ? null : result;
-		} catch (_:Dynamic) {
-			return null;
-		}
+		return readSourceDifficultyRules(song).unsupported;
 	}
 
 	/** Return a stable, never-null support list. Imports can finish after the
@@ -184,28 +180,34 @@ class DifficultyManager {
 
 	#if sys
 	static function discoverSongDifficulties(song:String):Void {
+		readAndDiscoverSongDifficulties(song);
+	}
+
+	/** Read owner rules once while scanning a song, then share them with the
+	 * support-map builder. This remains per-call so completed imports are fresh. */
+	static function readAndDiscoverSongDifficulties(song:String):SourceDifficultyRules {
 		var directory = Path.join(['assets', 'data', song]);
 		if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
-			return;
+			return null;
 		var entries:Array<String>;
 		try {
 			entries = FileSystem.readDirectory(directory);
 		} catch (_:Dynamic) {
-			return;
+			return null;
 		}
 		if (entries == null)
-			return;
+			return null;
 		entries.sort(function(a:String, b:String):Int return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
-		var sourceDifficulties = readSourceSelectableDifficulties(song);
-		var unsupportedDifficulties = readSourceUnsupportedDifficulties(song);
+		var sourceRules = readSourceDifficultyRules(song);
 		for (entry in entries) {
 			var suffix = difficultySuffixFromChartFile(song, entry);
 			if (suffix != null && suffix != ''
-				&& NightmareVisionDifficultyCompat.allows(sourceDifficulties, suffix)
-				&& (unsupportedDifficulties == null
-					|| !NightmareVisionDifficultyCompat.allows(unsupportedDifficulties, suffix)))
+				&& NightmareVisionDifficultyCompat.allows(sourceRules.selectable, suffix)
+				&& (sourceRules.unsupported == null
+					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, suffix)))
 				ensureDifficultyDefinition(suffix);
 		}
+		return sourceRules;
 	}
 	#end
 

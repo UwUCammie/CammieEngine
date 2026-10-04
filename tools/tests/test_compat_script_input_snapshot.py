@@ -54,7 +54,7 @@ class Main {
  static function check(ok:Bool,message:String):Void if(!ok) throw '[input-test] '+message;
  static function run(interp:NightmareVisionScriptInterp,parser:Parser,script:String):Void
   interp.execute(parser.parseString(script));
- static function main():Void {
+ static function main():Void for (hostHz in [480, 1440, 4800]) {
   var clock=new CompatScriptClock();
   var native=new NativeFlxG();
   var interp=new NightmareVisionScriptInterp();
@@ -71,11 +71,12 @@ class Main {
   var pairedKeyboard:Dynamic=null;
 
   // A short key edge disappears from native justPressed before the first
-  // source tick at 480 Hz; the owner view must retain it until that tick.
+  // source tick at high host rates; the owner view must retain it until then.
   var sourceFrameCount=0;
+  var hostFrames=Std.int(hostHz/60);
   native.keysReads=0;
-  for (frame in 0...8) {
-   native.elapsed=1.0/480;
+  for (frame in 0...hostFrames) {
+   native.elapsed=1.0/hostHz;
    native.keyboard.justPressed.ENTER=(frame==2);
    native.keyboard.pressed.ENTER=(frame>=2);
    NightmareVisionFlxGView.captureSourceFrame(clock);
@@ -106,8 +107,8 @@ class Main {
   var pre:Array<Dynamic>=cast interp.variables.get('pre');
   var post:Array<Dynamic>=cast interp.variables.get('post');
   check(sourceFrameCount==1 && pre.length==1 && post.length==1,
-   '480 Hz render frames did not produce one paired source tick');
-  check(native.keysReads==8,
+   'render frames did not produce one paired source tick at '+hostHz+' Hz');
+  check(native.keysReads==hostFrames,
    'keyboard manager was fetched more than once per host frame for multiple script views');
   check(pre[0][0]==true && post[0][0]==true && pre[0][1]==true && post[0][1]==true,
    'latched press or held state was missing from the source tick pair');

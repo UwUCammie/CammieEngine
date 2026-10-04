@@ -68,6 +68,8 @@ typedef SwagSong = {
 	@:optional var getDifficulty:Dynamic;
 	/** Native data/audio folder; can differ from the authored song title when two imports share a title. */
 	@:optional var compatStorageFolder:String;
+	/** Runtime-only exact Freeplay row id used to save this selected chart's score. */
+	@:optional var compatScoreSongId:String;
 	/** Native chart filename selected by the loader, retained for editor reload/save. */
 	@:optional var compatChartFileName:String;
 	/** Runtime provenance only: the selected chart/default supplied a usable stage id. */
@@ -126,6 +128,19 @@ class Song {
 		var title:Dynamic = Reflect.field(chart, 'song');
 		candidate = title == null ? '' : StringTools.trim(Std.string(title)).toLowerCase();
 		return validStorageKey(candidate) ? candidate : '';
+	}
+
+	/** Attach the exact selected Freeplay row id only when it names this chart's folder. */
+	public static function attachFreeplayScoreSongId(chart:Dynamic, songId:String):Bool {
+		if (chart == null || songId == null)
+			return false;
+		var selected = StringTools.trim(songId);
+		var storage = storageFolder(chart);
+		if (!validStorageKey(selected.toLowerCase()) || storage == ''
+			|| selected.toLowerCase() != storage.toLowerCase())
+			return false;
+		Reflect.setField(chart, 'compatScoreSongId', selected);
+		return true;
 	}
 
 	static function validStorageKey(value:String):Bool {
@@ -1471,6 +1486,9 @@ class Song {
 		}
 		if (parsedJson.player1 == "bf-pixel" && OptionsHandler.options.stressTankmen)
 			parsedJson.player1 = "bulb-pixel";
+		// This id is attached only from the selected native Freeplay row. Treat a
+		// same-named donor field as untrusted chart data and discard it on load.
+		Reflect.deleteField(parsedJson, 'compatScoreSongId');
 		// Modding Plus keeps lift notes in sectionNotes[4] instead of the native
 		// note-data block. Resolve that legacy marker only on the in-memory chart;
 		// imported/source JSON retains its original fifth value for chart tools and

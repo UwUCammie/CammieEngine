@@ -99,6 +99,10 @@ class Probe {
     check(PsychSkinResolver.resolve('noteSkins/NOTE_assets', first, false).image ==
       'assets/images/custom_ui/ui_packs/normal/NOTE_assets.png',
       'missing source engine base skin must use the native base atlas');
+    check(PsychSkinResolver.resolveDetailed('noteSkins/NOTE_assets', first, false)
+      .descriptor.nativeDefaultFallback, 'native fallback is explicitly classified');
+    check(!PsychSkinResolver.resolveDetailed('noteSkins/Same', first, false)
+      .descriptor.nativeDefaultFallback, 'authored owner atlas keeps RGB enabled');
     for (bad in ['../escape', '/absolute', 'a//b', 'a/./b', 'a\\b', 'C:/drive',
       'a.png'])
       check(PsychSkinResolver.resolveDetailed(bad, first, false).reason.indexOf('unsafe') >= 0,

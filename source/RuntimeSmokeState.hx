@@ -11,6 +11,8 @@ class RuntimeSmokeState extends FlxState {
 		// launches several cases in succession.  Keep the bounded harness moving
 		// even when Flixel would otherwise pause the state on focus loss.
 		FlxG.autoPause = false;
+		// Automated runs remain silent without writing the user's saved volume.
+		FlxG.sound.muted = true;
 		RuntimeSmokeHarness.installUncaughtErrorHandler();
 		RuntimeSmokeHarness.start();
 		var request = RuntimeSmokeHarness.config();

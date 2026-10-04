@@ -4,6 +4,10 @@ import crowplexus.hscript.Expr;
 
 /** One NMV interpreter. The group owns registration and lifecycle ordering. */
 class NightmareVisionScriptModule {
+	// Reuse the no-argument list used by frequent lifecycle and update callbacks.
+	// Iris reads this array but does not mutate it for a zero-parameter callback.
+	static final noArguments:Array<Dynamic> = [];
+
 	public final name:String;
 	public var interp(default, null):NightmareVisionScriptInterp;
 	public var initialized(default, null):Bool = false;
@@ -40,21 +44,22 @@ class NightmareVisionScriptModule {
 		var receiverBound = receiver != null;
 		var hadPreviousThis = receiverBound && interp.variables.exists('this');
 		var previousThis:Dynamic = hadPreviousThis ? interp.variables.get('this') : null;
-		function restoreThis():Void {
-			if (!receiverBound) return;
-			if (hadPreviousThis) interp.variables.set('this', previousThis);
-			else interp.variables.remove('this');
-		}
 		try {
 			var method = interp.variables.get(callback);
 			if (method == null || !Reflect.isFunction(method))
 				throw 'Callback is not a function: ' + callback;
 			if (receiverBound) interp.variables.set('this', receiver);
-			var result = interp.callCallback(method, args == null ? [] : args);
-			restoreThis();
+			var result = interp.callCallback(method, args == null ? noArguments : args);
+			if (receiverBound) {
+				if (hadPreviousThis) interp.variables.set('this', previousThis);
+				else interp.variables.remove('this');
+			}
 			return result;
 		} catch (error:Dynamic) {
-			restoreThis();
+			if (receiverBound) {
+				if (hadPreviousThis) interp.variables.set('this', previousThis);
+				else interp.variables.remove('this');
+			}
 			report(name, callback, error);
 			return null;
 		}

@@ -13,6 +13,9 @@ typedef PsychSkinDescriptor = {
 	var metadata:String;
 	var endsImage:String;
 	var pixel:Bool;
+	/** Engine-owned colored NOTE_assets used when a loose legacy chart has no
+	 * selected-owner Psych skin. Unlike authored Psych skins, it needs no RGB. */
+	var nativeDefaultFallback:Bool;
 }
 
 typedef PsychSkinResolution = {
@@ -65,7 +68,7 @@ class PsychSkinResolver {
 		// that base skin; only this default key may cross the selected owner.
 		if (root != '' && !pixel && clean == 'noteSkins/NOTE_assets') {
 			var nativeDefault = candidate('assets/images/custom_ui/ui_packs/normal',
-				'NOTE_assets', clean, 'assets/images', false);
+				'NOTE_assets', clean, 'assets/images', false, null, true);
 			if (nativeDefault.descriptor != null)
 				return nativeDefault;
 			missing.push(nativeDefault.reason);
@@ -76,7 +79,7 @@ class PsychSkinResolver {
 
 	#if sys
 	static function candidate(directory:String, relative:String, key:String, owner:String,
-		pixel:Bool, ?pixelEndsRelative:String):PsychSkinResolution {
+		pixel:Bool, ?pixelEndsRelative:String, ?nativeDefaultFallback:Bool = false):PsychSkinResolution {
 		var stem = directory + '/' + relative;
 		var image = stem + '.png';
 		var metadata = pixel ? null : stem + '.xml';
@@ -94,7 +97,7 @@ class PsychSkinResolver {
 			return failure(missing.join(', '));
 		var descriptor:PsychSkinDescriptor = {
 			key:key, ownerRoot:owner, image:image, metadata:metadata,
-			endsImage:endsImage, pixel:pixel
+			endsImage:endsImage, pixel:pixel, nativeDefaultFallback:nativeDefaultFallback
 		};
 		return {descriptor:descriptor, reason:''};
 	}

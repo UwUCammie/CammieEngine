@@ -68,14 +68,29 @@ class FakePoint {
  public function new() {}
  public function set(x:Float, y:Float):Void { this.x=x; this.y=y; }
 }
-class FlxAtlasFrames { public function new() {} }
+class FlxAtlasFrames {
+ public var atlasKeys:Array<String> = [];
+ public function new(?key:String) {if(key!=null)atlasKeys.push(key);}
+ public function addAtlas(atlas:FlxAtlasFrames,?overwriteHash:Bool=false):FlxAtlasFrames {
+  atlasKeys=atlasKeys.concat(atlas.atlasKeys); return this;
+ }
+}
+class FlxAnimateFrames {
+ public static function combineAtlas(atlases:Array<FlxAtlasFrames>):FlxAtlasFrames {
+  if(atlases==null||atlases.length==0)return null;
+  var result=atlases[0];
+  for(i in 1...atlases.length) result.addAtlas(atlases[i]);
+  return result;
+ }
+}
 class NightmareVisionPaths {
  public var root:String;
  public static var lastKey:String='';
  public static var lastOwnerCheck:Bool=true;
+ public static var atlasCalls:Array<String>=[];
  public function new(root:String) this.root=root;
  public function getTextureAtlas(key:String,?parentFolder:String,allowGPU:Bool=true,checkMods:Bool=true):FlxAtlasFrames {
-  lastKey=key; lastOwnerCheck=checkMods; return new FlxAtlasFrames();
+  lastKey=key; lastOwnerCheck=checkMods; atlasCalls.push(key); return new FlxAtlasFrames(key);
  }
 }
 class FakeAnimation {
@@ -127,6 +142,8 @@ class Main {
   var args=Sys.args();
   var animatePath=args[0];
   var sparrowPath=args[1];
+  var multiPath=args[2];
+  var ownerRoot=args[3];
   var dusk:Dynamic={image:'characters/Dusk', scale:1.5, no_antialiasing:true, flip_x:false,
    camera_position:[-545,-141], sing_duration:6.1, dance_every:1, position:[450,10],
    animations:[
@@ -138,7 +155,7 @@ class Main {
      offsets:[0,0]}
    ]};
   var actor=new Character();
-  check(actor.loadNightmareVisionCharacterVisual(dusk,animatePath,args[2]),'Animate visual initialization');
+  check(actor.loadNightmareVisionCharacterVisual(dusk,animatePath,ownerRoot),'Animate visual initialization');
   check(actor.frames!=null && NightmareVisionPaths.lastKey=='characters/Dusk' && NightmareVisionPaths.lastOwnerCheck,
    'Animate atlas goes through owner-scoped paths');
   check(actor.animation.exists('singLEFT') && actor.animation.exists('danceLeft')
@@ -159,11 +176,22 @@ class Main {
 
   var sparrow:Dynamic={scale:1, animations:[{anim:'idle',name:'idle',indices:[],fps:12,loop:true,offsets:[2,3]}]};
   var sparrowActor=new Character();
-  check(sparrowActor.loadNightmareVisionCharacterVisual(sparrow,sparrowPath,args[2]),'Sparrow visual initialization');
+  check(sparrowActor.loadNightmareVisionCharacterVisual(sparrow,sparrowPath,ownerRoot),'Sparrow visual initialization');
   check(sparrowActor.frames!=null && NightmareVisionPaths.lastKey=='characters/Sparrow'
    && NightmareVisionPaths.lastOwnerCheck,'Sparrow atlas goes through owner-scoped paths');
   check(sparrowActor.animation.exists('idle') && sparrowActor.animOffsets.get('idle')[1]==3,
    'Sparrow animation registration and offsets');
+
+  var multi:Dynamic={animations:[{anim:'stomp',name:'Stomp/Loop',indices:[],fps:12,loop:true}]};
+  var multiActor=new Character();
+  NightmareVisionPaths.atlasCalls=[];
+  check(multiActor.loadNightmareVisionCharacterVisual(multi,multiPath,ownerRoot),
+   'multi-Sparrow visual initialization');
+  check(multiActor.frames!=null && multiActor.frames.atlasKeys.join('|')=='characters/Boy|characters/Stomp',
+   'comma-separated Sparrow atlases are combined into one character frame collection');
+  check(NightmareVisionPaths.atlasCalls.join('|')=='characters/Boy|characters/Stomp',
+   'every component is loaded through the selected owner Paths facade');
+  check(multiActor.animation.exists('stomp'),'multi-atlas character animation registration');
   Sys.println('nightmare-vision-character-runtime-ok');
  }
 }
@@ -183,9 +211,14 @@ class Main {
             sparrow.parent.mkdir(parents=True, exist_ok=True)
             Path(str(sparrow) + '.png').write_text('', newline='\n')
             Path(str(sparrow) + '.xml').write_text('<TextureAtlas/>', newline='\n')
+            for name in ('Boy', 'Stomp'):
+                atlas = owner / 'images/characters' / name
+                Path(str(atlas) + '.png').write_text('', newline='\n')
+                Path(str(atlas) + '.xml').write_text('<TextureAtlas/>', newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, '-cp', str(work), '--run', 'Main',
-                 owner_arg + '/images/characters/Dusk', owner_arg + '/images/characters/Sparrow', owner_arg],
+                 owner_arg + '/images/characters/Dusk', owner_arg + '/images/characters/Sparrow',
+                 owner_arg + '/images/characters/Boy,' + owner_arg + '/images/characters/Stomp', owner_arg],
                 cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('nightmare-vision-character-runtime-ok', result.stdout)

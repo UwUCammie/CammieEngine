@@ -44,6 +44,16 @@ class Main {
   var sparrow = NightmareVisionCharacterData.load(owner, 'sparrow');
   check(NightmareVisionCharacterData.imageRoot(owner, sparrow)
    == owner + '/images/characters/Sparrow', 'Sparrow prefix resolves');
+  var multi = NightmareVisionCharacterData.load(owner, 'multi');
+  check(NightmareVisionCharacterData.imageRoot(owner, multi)
+   == owner + '/images/characters/Boy,' + owner + '/images/characters/Stomp',
+   'every comma-separated Sparrow atlas resolves within the selected owner');
+  check(NightmareVisionCharacterData.imageRoot(owner,
+   {image:'characters/Boy,characters/Missing'}) == null,
+   'a missing component invalidates the entire multi-atlas visual');
+  check(NightmareVisionCharacterData.imageRoot(owner,
+   {image:'characters/Boy,characters/Foreign'}) == null,
+   'a multi-atlas visual cannot borrow a component from a sibling owner');
   var core = NightmareVisionCharacterData.load(owner, 'core-only');
   check(core != null && core.marker == 'core', 'installed core definition fallback');
   check(NightmareVisionCharacterData.definitionPath(owner, 'core-only')
@@ -90,6 +100,13 @@ class Main {
                    '{"image":"characters/Sparrow"}')
         self.write(self.owner, 'images/characters/Sparrow.png')
         self.write(self.owner, 'images/characters/Sparrow.xml', '<TextureAtlas/>')
+        self.write(self.owner, 'data/characters/multi.json',
+                   '{"image":"characters/Boy.png, images/characters/Stomp.xml"}')
+        for name in ('Boy', 'Stomp'):
+            self.write(self.owner, 'images/characters/' + name + '.png')
+            self.write(self.owner, 'images/characters/' + name + '.xml', '<TextureAtlas/>')
+        self.write(self.sibling, 'images/characters/Foreign.png')
+        self.write(self.sibling, 'images/characters/Foreign.xml', '<TextureAtlas/>')
 
         self.write(self.owner, '__nmv_core/data/characters/core-only.json',
                    '{"image":"characters/Core","marker":"core"}')

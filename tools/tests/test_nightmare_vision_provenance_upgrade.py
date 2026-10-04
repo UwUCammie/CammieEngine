@@ -123,6 +123,8 @@ if (failed.status != "failed" || sys.io.File.getContent(receipt) != legacy)
         writer = writer[:writer.index("\n\t/** Detect a missing/partial provenance write")]
         self.assertIn("tmp', 'nmv-import-provenance-backups", writer)
         self.assertIn("upgradeProvenance(existingProvenance", writer)
+        self.assertIn("ImportSongOwnership.refreshDisplayMetadata(existingRecord", writer)
+        self.assertIn("import-provenance-display-refresh", writer)
         self.assertIn("provenanceMerge.errors", source)
 
 

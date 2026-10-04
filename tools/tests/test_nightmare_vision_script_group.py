@@ -93,6 +93,22 @@ class Main {
             write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(r'''
 import crowplexus.hscript.Parser;
+class ProbeInterp extends NightmareVisionScriptInterp {
+ public var receivedArgs:Array<Array<Dynamic>> = [];
+ override public function callCallback(method:Dynamic, args:Array<Dynamic>):Dynamic {
+  receivedArgs.push(args);
+  return super.callCallback(method, args);
+ }
+}
+class ProbeModule extends NightmareVisionScriptModule {
+ public var existenceChecks:Int = 0;
+ public function new(name:String, interp:NightmareVisionScriptInterp,
+  report:String->String->Dynamic->Void) super(name, interp, report);
+ override public function exists(callback:String):Bool {
+  existenceChecks++;
+  return super.exists(callback);
+ }
+}
 class Parent {
  public var value:Int;
  public function new(value:Int) this.value = value;
@@ -222,6 +238,69 @@ class Main {
   g.destroy(); other.clear(false); other.destroy();
   eq(recovering.released, true);
   eq(errors.length, 0);
+
+  // Repeated no-argument callbacks reuse the private empty argument list.
+  // Explicit caller arrays pass through unchanged while script state mutates.
+  var probe = new ProbeInterp();
+  var probeScript = new NightmareVisionScriptModule('probe', probe,
+   function(name, phase, error):Void { throw 'unexpected probe error'; });
+  if (!probeScript.execute(parsed('
+   var calls = 0;
+   function tick() { calls++; return calls; }
+   function mutate(value) { value++; calls += value; return value; }
+  '))) fail('probe script failed to execute');
+  eq(probeScript.call('tick'), 1);
+  eq(probeScript.call('tick'), 2);
+  eq(probe.receivedArgs.length, 2);
+  eq(probe.receivedArgs[0].length, 0);
+  eq(probe.receivedArgs[0], probe.receivedArgs[1]);
+  var callerArgs:Array<Dynamic> = [4];
+  eq(probeScript.call('mutate', callerArgs), 5);
+  eq(callerArgs[0], 4);
+  eq(probe.receivedArgs[2], callerArgs);
+  eq(probeScript.call('tick'), 8);
+  eq(probe.receivedArgs[2], callerArgs);
+  probeScript.destroy();
+
+  // Source executeFunc receiver binding restores a previous `this` value on
+  // success and failure; ordinary callbacks leave that value untouched.
+  var receiverInterp = new ProbeInterp();
+  var previousThis:Dynamic = {label:'previous'};
+  var callReceiver:Dynamic = {label:'receiver'};
+  receiverInterp.variables.set('this', previousThis);
+  var receiverScript = new NightmareVisionScriptModule('receiver', receiverInterp,
+   function(name, callback, error):Void { errors.push(name + '#' + callback); });
+  if (!receiverScript.execute(parsed('
+   function inspectThis() return this.label;
+   function failThis() throw "receiver failure";
+  '))) fail('receiver script failed to execute');
+  eq(receiverScript.call('inspectThis', null, callReceiver), 'receiver');
+  eq(receiverInterp.variables.get('this'), previousThis);
+  eq(receiverScript.call('inspectThis'), 'previous');
+  eq(receiverInterp.variables.get('this'), previousThis);
+  eq(receiverScript.call('failThis', null, callReceiver), null);
+  eq(receiverInterp.variables.get('this'), previousThis);
+  eq(errors.pop(), 'receiver#failThis');
+  receiverScript.destroy();
+
+  // Group dispatch delegates callback presence to the module once and keeps
+  // resolving callback replacements dynamically.
+  var dispatchGroup = group();
+  var dispatchInterp = new ProbeInterp();
+  dispatchInterp.variables.set('tick', function():Int return 7);
+  var dispatchScript = new ProbeModule('dispatch', dispatchInterp,
+   function(name, phase, error):Void { throw 'unexpected dispatch error'; });
+  dispatchGroup.addScript(dispatchScript);
+  eq(dispatchGroup.call('missing'), 0);
+  eq(dispatchScript.existenceChecks, 1);
+  eq(errors.length, 0);
+  dispatchInterp.variables.set('tick', function():Int return 11);
+  eq(dispatchGroup.call('tick'), 11);
+  eq(dispatchScript.existenceChecks, 2);
+  dispatchScript.destroy();
+  eq(dispatchGroup.call('tick'), 0);
+  eq(dispatchScript.existenceChecks, 3);
+  dispatchGroup.destroy();
 
   // Parse NMV's public declarations without rewriting comments or literals.
   // Public values/functions share a group; plain module locals remain private.

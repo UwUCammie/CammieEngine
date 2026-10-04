@@ -1,6 +1,52 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+0.0.11 alpha — CammieEngine
+	- Package shared import registries from committed source rather than the developer runtime, keeping personal imports out of release downloads
+	- Show import refresh phases, remaining work, current file, elapsed time, approximate phase ETA and the time since progress changed; animate phases whose total is unknown
+	- Reuse scan roots, dependency candidates, script analysis and audio folder indexes within each scan; skip redundant owned media baselines and unchanged asset replacement while retaining source and validating publication
+	- Let loaded Psych custom events own their effects instead of replaying legacy native fallback aliases, preserving authored HUD fades
+	- Route quoted Psych camera reset calls through the shared native camera API so note-hit movement does not accumulate camera drift
+	- Ignore untouched package-name metadata templates when choosing imported display names, and refresh existing display metadata without changing ownership
+	- Support owner-scoped Nightmare Vision video sprites and multi-atlas character definitions; preserve authored cutscene callbacks and complete their handoff when media fails
+	- Tighten options row spacing and use the same scrolling Alphabet selection for option sections; restore section scroll, confirm and back sound effects
+	- Divide options into Gameplay, Controls & Timing, Graphics & Performance, Audio, Interface and Compatibility; preserve hidden settings and remove the Allow Donate Button row
+	- Accept any positive native integer FPS limit with ordinary one-FPS changes and Shift + Left/Right changes of 20; snap offsets to the nearest tenth of a millisecond
+	- Preserve real elapsed time in menus when starting with a high finite FPS limit, avoiding Flixel's fixed-step accumulator dropping time above 1,000 FPS
+	- Make options and Freeplay text 15 percent smaller and move selections twice as quickly, consistently across frame rates
+	- Add Fast Scene Transitions under Interface to shorten shared scene fades to one third of their normal duration
+	- Read imported difficulty provenance once per song discovery call, keeping subsequent import refreshes fresh
+	- Reuse private Nightmare Vision note-transform scratch storage and scalar rotation math while preserving geometry, sustain endpoints and returned position ownership
+	- Read native numeric sprite fields directly in Nightmare Vision transforms, retaining tolerant parsing for script strings and invalid inputs
+	- Avoid unused legacy strum callbacks and temporary interpreter callback objects in shared gameplay paths
+	- Decode two native split-vocal files with one bounded worker, keeping normalization, audio-device work and deterministic stem routing on the main thread
+	- Add an opt-in muted ordinary-startup timing probe for performance diagnosis
+	- Save scores under the selected Freeplay song identity, preserving authored titles and legacy base-song scores when imports share a title
+	- Reuse active Nightmare Vision modifier lists and remove temporary waveform sample objects from the shared TV visualizer path
+	- Sample the visible memory counter twice per second and skip hidden-counter heap queries
+	- Skip pinned-library setup on verified unchanged Windows builds; still run every regression test when requested
+	- Count rendered frames sharing a clock timestamp so the five-second average can exceed 1,000 FPS
+	- Keep menu navigation and score transitions consistent across finite and unlimited frame rates
+	- Repeat Ctrl-held numeric option changes by elapsed time instead of render count, preserving ordinary and Shift offset steps
+	- Cache action input by actual input updates so uncapped frames within one millisecond preserve press, hold and release behavior in menus and gameplay
+	- Average FPS uses the trailing five seconds and refreshes once every half second, independently of the current FPS display
+	- Show current and average FPS together with the existing Show FPS Counter toggle; add a persistent Unlimited FPS option alongside finite caps
+	- Build and cache a pinned native Lime scheduler patch for truly uncapped rendering, keeping finite caps and background event handling intact
+	- Change note offset by 20 ms with Shift + Left/Right in both options menus, preserving fine adjustments and existing bounds
+	- Retain regular source files, including native libraries and executables, for future import conversion without the original folder; exclude only recognizable OS metadata and keep older snapshots usable
+	- Copy and hash retained source files with bounded workers, preserving deterministic receipts, cancellation, integrity checks and atomic publication
+	- Parse each dependency registry once per import scan and clear cached documents before the next scan
+	- Bootstrap verified MinGit when Git is missing, and keep double-clicked Windows setup, build and test results visible without pausing command-line runs
+	- Expose Nightmare Vision's authored packed character healthColour to scripts and visualizers, preserving character colors and script overrides without per-mod patches
+	- Dispatch Nightmare Vision stage onStartCountdown hooks through the stop/resume gate so authored countdown intros play
+	- Reuse each imported texture's canonical Flixel graphic to prevent shared bitmap disposal from leaving live notes and sprites without pixels
+	- Route Nightmare Vision's Voices-player and Voices-opp stems to their authored buses, restoring both vocal TV visualizers on existing imports
+	- Preserve legacy Psych note colors when using the engine's precolored fallback atlas, while retaining modern owner-specific RGB palettes
+	- Read each song chart once during discovery, reuse per-song directory listings and collected note types, and reuse SHA-256 work buffers during source retention
+	- Remove committed refresh rollback copies after validating their receipt; preserve pending recovery data and retained source executables
+	- Reuse successful Windows builds when input/output metadata is unchanged; keep full tests running and allow .\run.bat rebuild to force compilation
+	- Schedule regression modules using previous durations with up to sixteen isolated workers; keep automated gameplay checks muted without changing saved sound settings
+
 0.0.10 alpha — CammieEngine
 	- Fix Windows imports with retained source paths longer than 259 characters, including D-Sides Redux; reuse cache owner pointers safely when retrying a failed import
 	- Preserve each source root's detected engine identity when rescanning retained sources, so excluded executable markers cannot switch Nightmare Vision imports to another engine

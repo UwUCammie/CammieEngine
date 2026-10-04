@@ -157,7 +157,7 @@ class OwnershipTest {
         # sprite is retained through the countdown, its one-shot hook fires
         # on the first opponent sing, and delayed cleanup removes it.
         handoff_start = source.index('\tfunction forgetCutsceneSprite(')
-        handoff_end = source.index('\n\tfunction getHaxeActor(', handoff_start)
+        handoff_end = source.index('\n\tinline function dispatchNoteStrumCallback(', handoff_start)
         handoff_helpers = source[handoff_start:handoff_end].replace('FlxBasic', 'FakeBasic').replace('FlxTimer', 'FakeTimer')
         handoff_fixture = '''
 class FakeBasic { public function new() {} }
@@ -428,6 +428,7 @@ class RegistryResetTest {
  var psychStageEndCallback:Dynamic = null;
  var psychStageCutsceneEnding:Bool = false;
  var psychFlashEventScopes:Map<String,Bool> = [];
+ var psychCustomEventScopes:Map<String,String> = ["custom" => "some event"];
  var hxcCutsceneTimelineRuntime:FakeTimeline = null;
  var compatCustomSubstateName:String = '';
  var compatCustomSubstateOpen:Bool = false;
@@ -460,6 +461,8 @@ class RegistryResetTest {
    throw 'Lua dependency recursion guard survived state cleanup';
   if (state.compatScriptScopes.exists('scripts/pending.lua'))
    throw 'Lua scope ownership survived state cleanup';
+  if (state.psychCustomEventScopes.keys().hasNext())
+   throw 'custom event ownership survived state cleanup';
  }
 }
 '''

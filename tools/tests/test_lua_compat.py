@@ -547,6 +547,48 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_quoted_runhaxe_move_camera_boolean_uses_safe_native_route(self):
+        fixture = r'''
+class LuaCompatTest {
+    static function main() {
+        var source = "function onUpdatePost()\n"
+            + "  runHaxeCode('PlayState.instance.moveCamera(' .. tostring(IsDad) .. ');')\n"
+            + "end";
+        var converted = LuaCompat.translate(source, "camera-follow.lua");
+        if (!converted.supported)
+            throw "quoted moveCamera route was diagnosed: " + converted.diagnostics.join(" | ");
+        if (converted.hscript.indexOf("currentPlayState.moveCamera(IsDad)") < 0)
+            throw "quoted moveCamera call was not lowered: " + converted.hscript;
+        if (converted.hscript.indexOf("runHaxeCode") >= 0)
+            throw "raw Haxe leaked into converted source";
+        new hscript.Parser().parseString(converted.hscript);
+
+        var observed:Array<Bool> = [];
+        var interp = new hscript.Interp();
+        interp.variables.set("currentPlayState", {moveCamera:function(isDad:Bool) observed.push(isDad)});
+        interp.variables.set("IsDad", true);
+        interp.execute(new hscript.Parser().parseString(converted.hscript));
+        var callback:Dynamic = interp.variables.get("onUpdatePost");
+        Reflect.callMethod(null, callback, []);
+        interp.variables.set("IsDad", false);
+        Reflect.callMethod(null, callback, []);
+        if (observed.length != 2 || observed[0] != true || observed[1] != false)
+            throw "moveCamera did not receive the Lua boolean: " + observed.join(",");
+
+        var nearMatch = LuaCompat.translate("function onUpdatePost()\n"
+            + "  runHaxeCode('PlayState.instance.moveCamera(' .. tostring(IsDad) .. '); trace(1);')\n"
+            + "end", "camera-follow-near-match.lua");
+        if (nearMatch.supported || nearMatch.hscript.indexOf("currentPlayState.moveCamera") >= 0)
+            throw "moveCamera near-match escaped the complete-call allowlist: " + nearMatch.hscript;
+        if (nearMatch.diagnostics.join(" | ").indexOf("lua-raw-haxe") < 0)
+            throw "moveCamera near-match was not diagnosed: " + nearMatch.diagnostics.join(" | ");
+        trace("OK");
+    }
+}
+'''
+        result = self.run_fixture(fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_reverse_glitch_shader_and_resize_blocks_use_whole_block_routes(self):
         fixture = r'''
 class LuaCompatTest {

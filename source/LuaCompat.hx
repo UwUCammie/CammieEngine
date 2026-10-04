@@ -1459,8 +1459,14 @@ class LuaCompat {
 			var longStart = open + 1;
 			while (longStart < source.length && isSpace(source.charAt(longStart))) longStart++;
 			if (longStart + 1 >= source.length || source.substr(longStart, 2) != '[[') {
-				output.add(source.substr(start, longStart - start));
-				cursor = longStart;
+				var moveCamera = rawQuotedMoveCameraCall(source, longStart);
+				if (moveCamera != null) {
+					output.add(moveCamera.replacement);
+					cursor = moveCamera.endIndex;
+				} else {
+					output.add(source.substr(start, longStart - start));
+					cursor = longStart;
+				}
 				continue;
 			}
 			var longEnd = findRunHaxeLongEnd(source, longStart + 2);
@@ -1479,6 +1485,59 @@ class LuaCompat {
 			cursor = close + 1;
 		}
 		return output.toString();
+	}
+
+	/**
+		Lower the common quoted Psych call that interpolates a Lua boolean into
+		PlayState.instance.moveCamera(...). Only the complete two-string
+		concatenation and a single identifier passed to tostring are accepted.
+	*/
+	static function rawQuotedMoveCameraCall(source:String, start:Int):Null<{endIndex:Int, replacement:String}> {
+		var first = readRawQuotedString(source, start);
+		if (first == null || StringTools.trim(first.value) != 'PlayState.instance.moveCamera(')
+			return null;
+		var cursor = skipRawRouteSpaces(source, first.endIndex);
+		if (source.substr(cursor, 2) != '..') return null;
+		cursor = skipRawRouteSpaces(source, cursor + 2);
+		if (source.substr(cursor, 8) != 'tostring') return null;
+		cursor = skipRawRouteSpaces(source, cursor + 8);
+		if (cursor >= source.length || source.charAt(cursor) != '(') return null;
+		cursor = skipRawRouteSpaces(source, cursor + 1);
+		if (cursor >= source.length || !isIdentifierStart(source.charAt(cursor))) return null;
+		var nameStart = cursor++;
+		while (cursor < source.length && isWord(source.charAt(cursor))) cursor++;
+		var booleanName = source.substr(nameStart, cursor - nameStart);
+		cursor = skipRawRouteSpaces(source, cursor);
+		if (cursor >= source.length || source.charAt(cursor) != ')') return null;
+		cursor = skipRawRouteSpaces(source, cursor + 1);
+		if (source.substr(cursor, 2) != '..') return null;
+		var tail = readRawQuotedString(source, skipRawRouteSpaces(source, cursor + 2));
+		if (tail == null || StringTools.trim(tail.value) != ');') return null;
+		cursor = skipRawRouteSpaces(source, tail.endIndex);
+		if (cursor >= source.length || source.charAt(cursor) != ')') return null;
+		return {endIndex:cursor + 1, replacement:'currentPlayState.moveCamera(' + booleanName + ');'};
+	}
+
+	static function readRawQuotedString(source:String, start:Int):Null<{value:String, endIndex:Int}> {
+		if (start >= source.length) return null;
+		var quote = source.charAt(start);
+		if (quote != '\'' && quote != '"') return null;
+		var value = new StringBuf();
+		var cursor = start + 1;
+		while (cursor < source.length) {
+			var character = source.charAt(cursor);
+			if (character == '\\') return null;
+			if (character == quote)
+				return {value:value.toString(), endIndex:cursor + 1};
+			value.add(character);
+			cursor++;
+		}
+		return null;
+	}
+
+	static function skipRawRouteSpaces(source:String, cursor:Int):Int {
+		while (cursor < source.length && isSpace(source.charAt(cursor))) cursor++;
+		return cursor;
 	}
 
 	/**

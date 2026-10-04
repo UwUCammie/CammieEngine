@@ -66,6 +66,98 @@ class Main {
         self.assertLess(custom_owner_check, native_route)
         self.assertIn("psychFlashEventScopes.keys().hasNext()", events)
 
+    def test_psych_custom_event_callback_owner_requires_live_matching_function(self):
+        source = (ROOT / "source/PlayState.hx").read_text()
+        method_start = source.index("function psychCustomEventHasCallback(")
+        method_end = source.index("\n\tfunction fireNativeSongEvent(", method_start)
+        method = source[method_start:method_end].strip()
+        compat = (ROOT / "source/EngineCompat.hx").read_text()
+        fallback_start = compat.index("public static function psychCustomEventOwnsNativeFallback(")
+        fallback_end = compat.index("\npublic static function lyricActor(", fallback_start)
+        fallback = compat[fallback_start:fallback_end].strip()
+        event_dispatch = source[source.index("function fireNativeSongEvent("):source.index(
+            "\n\tprivate function generateSong(", source.index("function fireNativeSongEvent(")
+        )]
+        script_dispatch = event_dispatch.index("callAllHScript('onEvent'")
+        custom_owner_check = event_dispatch.index("EngineCompat.psychCustomEventOwnsNativeFallback(")
+        native_route = event_dispatch.index("EngineCompat.routeLegacyEvent(")
+        self.assertLess(script_dispatch, custom_owner_check)
+        self.assertLess(custom_owner_check, native_route)
+        self.assertIn("psychCustomEventHasCallback(e.name)", event_dispatch)
+        fixture = f'''class MockInterp {{
+ public var variables:Map<String, Dynamic> = [];
+ public function new() {{}}
+}}
+class EngineCompat {{
+ {fallback}
+}}
+class Main {{
+ var psychCustomEventScopes:Map<String, String> = [];
+ var hscriptStates:Map<String, MockInterp> = [];
+ {method}
+ public function new() {{}}
+ static function fail(message:String):Void throw message;
+ static function main():Void {{
+  var builtinPsychEvents:Array<String> = ["Dadbattle Spotlight", "Hey!", "Set GF Speed",
+   "Philly Glow", "Kill Henchmen", "Add Camera Zoom", "Trigger BG Ghouls",
+   "Play Animation", "Camera Follow Pos", "Alt Idle Animation", "Screen Shake",
+   "Change Character", "BG Freaks Expression", "Change Scroll Speed", "Set Property", "Play Sound"];
+  for (eventName in builtinPsychEvents)
+   if (EngineCompat.psychCustomEventOwnsNativeFallback(eventName, true))
+    fail("canonical Psych event became custom-owned: " + eventName);
+  if (!EngineCompat.psychCustomEventOwnsNativeFallback("Custom Glow", true)
+   || EngineCompat.psychCustomEventOwnsNativeFallback("Custom Glow", false)
+   || !EngineCompat.psychCustomEventOwnsNativeFallback("Goodbye Hud", true)
+   || !EngineCompat.psychCustomEventOwnsNativeFallback("Flash", true))
+   fail("loaded non-built-in custom event did not own its native fallback");
+  if (!EngineCompat.psychCustomEventOwnsNativeFallback("Camera Follow Position", true)
+   || !EngineCompat.psychCustomEventOwnsNativeFallback("SetProperty", true)
+   || !EngineCompat.psychCustomEventOwnsNativeFallback("AddCamZoomPsych", true))
+   fail("a noncanonical legacy alias did not remain custom-owned");
+
+  var game = new Main();
+  var live = new MockInterp();
+  live.variables.set("onEvent", function() {{}});
+  game.psychCustomEventScopes.set("custom-event:goodbye hud", "goodbye hud");
+  game.hscriptStates.set("custom-event:goodbye hud", live);
+  if (!game.psychCustomEventHasCallback(" Goodbye Hud ")
+   || !game.psychCustomEventHasCallback("GOODBYE HUD"))
+   fail("same-named live function handler did not own event");
+
+  live.variables.set("__compatClosed", true);
+  if (game.psychCustomEventHasCallback("Goodbye Hud"))
+   fail("closed event interpreter still owned native fallback");
+  live.variables.remove("__compatClosed");
+
+  game.hscriptStates.remove("custom-event:goodbye hud");
+  if (game.psychCustomEventHasCallback("Goodbye Hud"))
+   fail("removed event interpreter still owned native fallback");
+
+  live.variables.set("onEvent", "not a callback");
+  game.hscriptStates.set("custom-event:goodbye hud", live);
+  if (game.psychCustomEventHasCallback("Goodbye Hud"))
+   fail("non-function event binding still owned native fallback");
+
+  live.variables.set("onEvent", function() {{}});
+  game.psychCustomEventScopes.clear();
+  game.psychCustomEventScopes.set("custom-event:flash", "flash");
+  if (game.psychCustomEventHasCallback("Goodbye Hud"))
+   fail("unrelated custom-event scope claimed another event");
+  if (game.psychCustomEventHasCallback(null))
+   fail("null event name matched a custom handler");
+  trace("psych-custom-event-callback-owner-ok");
+ }}
+}}'''
+        with tempfile.TemporaryDirectory(prefix="psych-event-owner-", dir=ROOT / "tmp") as folder:
+            temp = Path(folder)
+            (temp / "Main.hx").write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(temp),
+                 "-main", "Main", "--interp"],
+                cwd=ROOT, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("psych-custom-event-callback-owner-ok", result.stdout)
+
     def test_alias_table_compiles_and_routes_donor_spellings(self):
         fixture = r'''
 class EngineCompatTest {

@@ -80,6 +80,7 @@ class TitleState extends MusicBeatState {
 	var customMenuConfirm: Array<Array<String>>;
 	var customMenuScroll: Array<Array<String>>;
 	override public function create():Void {
+		RuntimeStartupProbe.mark('title_enter');
 		#if windows
 		DiscordClient.initialize();
 
@@ -91,9 +92,13 @@ class TitleState extends MusicBeatState {
 		Discord.DiscordClient.changePresence(customPrecence, null);
 		#end
 		
+		RuntimeStartupProbe.mark('discord_ready');
 		PluginManager.init();
+		RuntimeStartupProbe.mark('plugins_ready');
 		DifficultyManager.init();
+		RuntimeStartupProbe.mark('difficulties_ready');
 		ModifierState.init();
+		RuntimeStartupProbe.mark('modifiers_ready');
 		curWacky = FlxG.random.getObject(getIntroTextShit());
 		// DEBUG BULLSHIT
 		super.create();
@@ -122,6 +127,8 @@ class TitleState extends MusicBeatState {
 			FlxG.sound.volumeDownKeys = FlxG.save.data.keys.volDown;
 		}
 		FlxG.sound.soundTrayEnabled = false;
+		RuntimeStartupProbe.mute();
+		RuntimeStartupProbe.mark('save_ready');
 
 		#if FREEPLAY
 		LoadingState.loadAndSwitchState(new CategoryState());
@@ -201,6 +208,7 @@ class TitleState extends MusicBeatState {
 			skipIntro();
 		else
 			initialized = true;
+		RuntimeStartupProbe.titleIntroReady();
 	}
 
 	function makeBaseTitle(?path:String = 'assets/images/') {

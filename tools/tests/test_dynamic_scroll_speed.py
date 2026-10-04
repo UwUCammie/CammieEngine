@@ -36,11 +36,13 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         self.run_haxe('typedef TOptions = Dynamic;\nclass OptionTest {\n' + helpers + '''
  static function check(ok:Bool) {if (!ok) throw "option mismatch";}
  static function main() {
-  var old:TOptions = {scrollSpeed:2.7, offset:140.2};
+  var old:TOptions = {scrollSpeed:2.7, offset:140.26};
   sanitizeOptions(old);
-  check(old.dynamicScrollSpeed == 0 && old.scrollSpeed == 2.7 && old.offset == 140.2
+  check(old.dynamicScrollSpeed == 0 && old.scrollSpeed == 2.7 && old.offset == 140.3
    && old.normalizeSongAudio == false);
   check(old.fpsCap == 60);
+  check(old.unlimitedFPS == false);
+  check(old.fastSceneTransitions == false);
   check(old.quality == CodenameOptionsQualityCompat.HIGH && old.week6PixelPerfect == true);
   check(old.antialiasing == true && old.gameplayShaders == true
    && old.lowMemoryMode == false && old.gpuOnlyBitmaps == true);
@@ -81,11 +83,26 @@ class DynamicScrollSpeedTest(unittest.TestCase):
   var normalizeInvalid:TOptions = {normalizeSongAudio:"true"};
   sanitizeOptions(normalizeInvalid);
   check(normalizeInvalid.normalizeSongAudio == false);
-  for (fps in [60, 240, 480]) check(sanitizeFpsCap(fps) == fps);
-  check(sanitizeFpsCap(990) == 480 && sanitizeFpsCap(5) == 10);
+  for (fps in [1, 60, 240, 480, 500, 990, 5000])
+   check(sanitizeFpsCap(fps) == fps);
+  check(sanitizeFpsCap(144.49) == 144 && sanitizeFpsCap(144.5) == 145);
+  check(sanitizeFpsCap(0) == 60 && sanitizeFpsCap(-5) == 60
+   && sanitizeFpsCap(2147483648.0) == 2147483647);
   var invalidFps:Array<Dynamic> = [null, true, "bad", Math.NaN, Math.POSITIVE_INFINITY];
   for (bad in invalidFps)
    check(sanitizeFpsCap(bad) == 60);
+  var fpsToggle:TOptions = {unlimitedFPS:true};
+  check(sanitizeOptions(fpsToggle).unlimitedFPS == true);
+  var invalidFpsToggle:TOptions = {unlimitedFPS:"true"};
+  check(sanitizeOptions(invalidFpsToggle).unlimitedFPS == false);
+  var transitions:TOptions = {fastSceneTransitions:true};
+  check(sanitizeOptions(transitions).fastSceneTransitions == true);
+  var invalidTransitions:TOptions = {fastSceneTransitions:"true"};
+  check(sanitizeOptions(invalidTransitions).fastSceneTransitions == false);
+  var offsetValues:TOptions = {offset:-47.26};
+  check(sanitizeOptions(offsetValues).offset == -47.3);
+  var invalidOffset:TOptions = {offset:Math.NaN};
+  check(sanitizeOptions(invalidOffset).offset == 0);
   for (i in 0...21) check(sanitizeDynamicScrollSpeed(i * 0.5) == i * 0.5);
   check(sanitizeDynamicScrollSpeed(-1) == 0);
   check(sanitizeDynamicScrollSpeed(1e100) == 10);
@@ -153,6 +170,9 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         self.assertEqual(movement.count('* noteScrollSpeed)'), 2)
         fixture = '''
 class OptionsHandler {public static var options = {scrollSpeed:1.0, dynamicScrollSpeed:0.0};}
+class RuntimeSmokeHarness {
+ public static function profileSection(_section:String, _seconds:Float):Void {}
+}
 class Conductor {public static var songPosition:Float=0; public static var stepCrochet:Float=100;
  public static function stepsToTime(v:Float):Float return v * 100;}
 class FlxMath {public static function roundDecimal(v:Float,p:Int):Float return Math.round(v*100)/100;}
@@ -216,7 +236,7 @@ class PlayState {
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}
  function init() {
-''' + init + '\nnoteScrollSpeed = effectiveScrollSpeed;\n}\n' + tween + '\nfunction spawn() {\n' + queue + '''
+''' + init + '\nnoteScrollSpeed = effectiveScrollSpeed;\n}\n' + tween + '\nfunction spawn() {\nvar smokeProfileAt:Float = 0;\n' + queue + '''
  }
  function move(daNote:Dynamic) {
   noteScrollSpeed=resolveNoteScrollSpeed();

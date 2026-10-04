@@ -58,6 +58,8 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Preserve Iris's native-class fallback without consulting another
 	 * imported owner's process-global proxy table. */
 	override public function getOrImportClass(name:String):Dynamic {
+		if (name == 'FunkinVideoSprite' || name == 'funkin.video.FunkinVideoSprite')
+			return Type.resolveClass('NightmareVisionVideoSprite');
 		return importBindings.exists(name) ? importBindings.get(name) : Tools.getClass(name);
 	}
 
@@ -137,6 +139,11 @@ class NightmareVisionScriptInterp extends Interp {
 						argumentFloat(args, 1, 0), argumentFloat(args, 2, 0),
 						argumentFloat(args, 3, 1), argumentFloat(args, 4, 1),
 						argument(args, 5), argument(args, 6) == true, ownerPaths]);
+				case 'FunkinVideoSprite':
+					var videoType = Type.resolveClass('NightmareVisionVideoSprite');
+					if (videoType != null) return Type.createInstance(videoType, [parent, ownerPaths,
+						argumentFloat(args, 0, 0), argumentFloat(args, 1, 0),
+						argumentBool(args, 2, true), argumentBool(args, 3, false)]);
 			}
 		}
 		return super.cnew(cl, args);
@@ -150,6 +157,11 @@ class NightmareVisionScriptInterp extends Interp {
 		if (value == null) return fallback;
 		var parsed = Std.parseFloat(Std.string(value));
 		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	static function argumentBool(args:Array<Dynamic>, index:Int, fallback:Bool):Bool {
+		var value = argument(args, index);
+		return value == null ? fallback : value == true;
 	}
 
 	function setTo(id:String, value:Dynamic, canDefine:Bool = false):Dynamic {
@@ -273,6 +285,10 @@ class NightmareVisionScriptInterp extends Interp {
 		if (locals.exists(id)) return locals.get(id).r;
 		if (variables.exists(id)) return variables.get(id);
 		if (imports.exists(id)) return imports.get(id);
+		if (ownerPaths != null && id == 'FunkinVideoSprite') {
+			var videoType = Type.resolveClass('NightmareVisionVideoSprite');
+			if (videoType != null) return videoType;
+		}
 		if (hasParentReadField(id)) return Reflect.getProperty(parent, id);
 		if (sharedFields != null && sharedFields.exists(id)) return sharedFields.get(id);
 		return super.resolve(id);

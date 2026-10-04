@@ -1,11 +1,33 @@
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
+
+rem Keep Explorer double-clicks open so setup/build/test failures stay visible.
+rem PowerShell examines the cmd.exe parent; command-line callers never pause.
+if defined CAMMIE_RUNBAT_EXPLORER_WRAPPER goto run_bat_body
+set "RUN_BAT_EXPLORER_PARENT="
+for /f "delims=" %%P in ('powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0tools\is_explorer_parent.ps1" 2^>nul') do set "RUN_BAT_EXPLORER_PARENT=%%P"
+if not defined RUN_BAT_EXPLORER_PARENT goto run_bat_body
+set "CAMMIE_RUNBAT_EXPLORER_WRAPPER=1"
+call "%~f0" %*
+set "RUN_BAT_RESULT=!ERRORLEVEL!"
+echo.
+if "!RUN_BAT_RESULT!"=="0" (
+	echo run.bat completed successfully.
+) else (
+	echo run.bat failed with exit code !RUN_BAT_RESULT!.
+)
+echo Press any key to close this window...
+pause >nul
+exit /b !RUN_BAT_RESULT!
+
+:run_bat_body
 rem Native Windows build/run entry point for Disappointing Plus.
 rem
 rem   run.bat                 build release and launch 64-bit Windows
 rem   run.bat debug            build debug and launch 64-bit Windows
 rem   run.bat build            build release, do not launch
 rem   run.bat test             build release and run the full test suite
-rem   run.bat package          build, test and package v0.0.10 alpha
+rem   run.bat package          build, test and package v0.0.11 alpha
 rem   run.bat setup            prepare portable tools and libraries only
 rem   run.bat rebuild          rebuild release, do not launch
 rem   run.bat build32          build 32-bit, do not launch
@@ -14,13 +36,15 @@ rem   run.bat nobuild          launch an existing build
 rem
 rem This script intentionally uses a native Windows hxcpp/Visual Studio
 rem toolchain. It does not use Wine to cross-compile Windows binaries.
-setlocal EnableExtensions EnableDelayedExpansion
-
 rem %~dp0 is the directory containing this script, even when invoked from a
 rem different working directory. The game itself is later launched from its
 rem export bin directory because its assets and saves are cwd-relative.
 set "ROOT=%~dp0"
 if "!ROOT:~-1!"=="\" set "ROOT=!ROOT:~0,-1!"
+set "TOOLS=!ROOT!\.tools"
+set "POWERSHELL_COMMAND=powershell.exe"
+where pwsh.exe >nul 2>&1
+if not errorlevel 1 set "POWERSHELL_COMMAND=pwsh.exe"
 cd /d "!ROOT!"
 if errorlevel 1 (
 	echo ERROR: Could not change to the project directory: !ROOT! 1>&2
@@ -127,7 +151,25 @@ set "BIN=!ROOT!\!BUILD_ROOT!\windows\bin\Funkin.exe"
 rem nobuild is deliberately dependency-free, matching run.sh's contract.
 if /I "!MODE!"=="nobuild" goto launch
 
+rem Check the metadata cache before recurring library setup. Compiler selection
+rem must be known first because its flags are part of the cache fingerprint.
+set "TOOLS=!ROOT!\.tools"
+if /I "!MODE!"=="setup" goto prepare_build
+if /I "!MODE!"=="server" goto prepare_build
+if /I "!MODE!"=="rebuild" goto prepare_build
+call :ensure_python
+if errorlevel 1 exit /b 1
+call :probe_native_compiler
+if errorlevel 1 exit /b 1
+call :ensure_asset_scaffolding
+if errorlevel 1 exit /b 1
+call !PYTHON_COMMAND! "!ROOT!\tools\launch_cache.py" check "!BUILD_ROOT!" --platform windows >nul 2>&1
+if not errorlevel 1 goto cached_build
+
+:prepare_build
 call :ensure_toolchain
+if errorlevel 1 exit /b 1
+call :ensure_git
 if errorlevel 1 exit /b 1
 call :ensure_astc_decoder
 if errorlevel 1 exit /b 1
@@ -150,6 +192,20 @@ if /I not "!MODE!"=="release" if /I not "!MODE!"=="build" if /I not "!MODE!"=="r
 
 call :ensure_native_compiler
 if errorlevel 1 exit /b 1
+call :ensure_lime_uncapped
+if errorlevel 1 exit /b 1
+
+rem Validate successful input/output metadata before asking Lime to rebuild.
+rem Tests always run, even when the native executable is already current.
+if /I not "!MODE!"=="rebuild" (
+    call !PYTHON_COMMAND! "!ROOT!\tools\launch_cache.py" check "!BUILD_ROOT!" --platform windows >nul 2>&1
+    if not errorlevel 1 (
+        echo ^>^> build is up to date
+        goto after_build
+    )
+)
+set "BUILD_INPUTS="
+for /f "delims=" %%I in ('call !PYTHON_COMMAND! "!ROOT!\tools\launch_cache.py" capture "!BUILD_ROOT!" --platform windows') do set "BUILD_INPUTS=%%I"
 
 set "LIVE_OPTS=!ROOT!\!BUILD_ROOT!\windows\bin\assets\data\options.json"
 set "OPTS_BAK="
@@ -181,11 +237,31 @@ if "!ARCH!"=="64" (
 	if errorlevel 1 exit /b 1
 )
 
+if defined BUILD_INPUTS (
+    call !PYTHON_COMMAND! "!ROOT!\tools\launch_cache.py" record "!BUILD_ROOT!" "!BUILD_INPUTS!" --platform windows
+    if errorlevel 1 exit /b 1
+)
+
+:after_build
 if /I "!MODE!"=="test" goto run_tests
 if /I "!MODE!"=="package" goto run_tests
 if /I "!MODE!"=="build" goto build_done
 if /I "!MODE!"=="rebuild" goto build_done
 goto launch
+
+:cached_build
+echo ^>^> build is up to date
+if /I "!MODE!"=="test" goto cached_tests
+if /I "!MODE!"=="package" goto cached_tests
+if /I "!MODE!"=="build" goto build_done
+goto launch
+
+:cached_tests
+call :ensure_toolchain
+if errorlevel 1 exit /b 1
+call :ensure_git
+if errorlevel 1 exit /b 1
+goto run_tests
 
 :run_tests
 echo ^>^> running the full regression suite...
@@ -199,7 +275,7 @@ if not "!ARCH!"=="64" (
 	echo ERROR: Release packaging requires a 64-bit build. 1>&2
 	exit /b 2
 )
-call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\package_windows_release.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin" --output-dir "!ROOT!\dist" --tag v0.0.10
+call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\package_windows_release.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin" --output-dir "!ROOT!\dist" --tag v0.0.11
 if errorlevel 1 exit /b 1
 goto build_done
 
@@ -287,9 +363,11 @@ if errorlevel 1 exit /b 1
 :haxe_ready
 rem Legacy test probes invoke this explicit extensionless path. Windows can
 rem execute PE files at that path too; keep it in sync with the native binary.
-copy /Y "!HAXEPATH!\haxe.exe" "!HAXEPATH!\haxe" >nul
+fc /B "!HAXEPATH!\haxe.exe" "!HAXEPATH!\haxe" >nul 2>&1
+if errorlevel 1 copy /Y "!HAXEPATH!\haxe.exe" "!HAXEPATH!\haxe" >nul
 if errorlevel 1 exit /b 1
-copy /Y "!HAXEPATH!\haxelib.exe" "!HAXEPATH!\haxelib" >nul
+fc /B "!HAXEPATH!\haxelib.exe" "!HAXEPATH!\haxelib" >nul 2>&1
+if errorlevel 1 copy /Y "!HAXEPATH!\haxelib.exe" "!HAXEPATH!\haxelib" >nul
 if errorlevel 1 exit /b 1
 where haxelib >nul 2>&1
 if errorlevel 1 (
@@ -306,6 +384,29 @@ if not exist "!HAXELIB_PATH!" mkdir "!HAXELIB_PATH!"
 if not exist "%USERPROFILE%\.haxelib" (
 	>"%USERPROFILE%\.haxelib" echo !HAXELIB_PATH!
 )
+exit /b 0
+
+:ensure_git
+set "GIT_ROOT=!TOOLS!\git"
+where git.exe >nul 2>&1
+if not errorlevel 1 exit /b 0
+if not exist "!GIT_ROOT!\cmd\git.exe" (
+	echo ^>^> downloading portable MinGit 2.56.0 ^(one time^)...
+	call :download_tool git "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.1/MinGit-2.56.0-64-bit.zip" "!GIT_ROOT!" cmd\git.exe 064b440ff870ed5198527e8f3a92cdf5bd2fd0fedf5e718af95e3fdaddeff718
+	if errorlevel 1 exit /b 1
+)
+set "PATH=!GIT_ROOT!\cmd;!GIT_ROOT!\usr\bin;!PATH!"
+where git.exe >nul 2>&1
+if errorlevel 1 (
+	echo ERROR: Portable MinGit was not available after extraction. 1>&2
+	exit /b 1
+)
+git --version >nul 2>&1
+if errorlevel 1 (
+	echo ERROR: Portable MinGit could not start. 1>&2
+	exit /b 1
+)
+echo ^>^> using portable MinGit from !GIT_ROOT!
 exit /b 0
 
 :ensure_native_compiler
@@ -345,6 +446,40 @@ set "HXCPP_COMPILER_FLAGS=-DHXCPP_MINGW=1 -DHXCPP_RC=llvm-windres.exe"
 call :run_python_script tools\patch_windows_mingw.py
 if errorlevel 1 exit /b 1
 echo ^>^> using portable Windows LLVM-MinGW
+exit /b 0
+
+:probe_native_compiler
+rem Select the same compiler flags used by the native build without applying
+rem hxcpp patches or downloading tools before a cache hit is ruled out.
+set "MINGW_ROOT=!TOOLS!\llvm-mingw-windows"
+where cl.exe >nul 2>&1
+if not errorlevel 1 (
+	exit /b 0
+)
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+if exist "!VSWHERE!" (
+	"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | findstr /R /C:"." >nul
+	if not errorlevel 1 (
+		exit /b 0
+	)
+)
+if not exist "!MINGW_ROOT!\bin\clang.exe" exit /b 0
+call :configure_mingw_environment
+if errorlevel 1 exit /b 1
+exit /b 0
+
+:configure_mingw_environment
+set "PATH=!MINGW_ROOT!\bin;!PATH!"
+set "MINGW_TRIPLET=x86_64-w64-mingw32"
+if "!ARCH!"=="32" set "MINGW_TRIPLET=i686-w64-mingw32"
+set "HXCPP_MINGW_EXE=!MINGW_TRIPLET!-clang++.exe"
+set "HXCPP_AR=llvm-ar.exe"
+set "HXCPP_RANLIB=llvm-ranlib.exe"
+set "HXCPP_STRIP=llvm-strip.exe"
+set "HXCPP_RC=llvm-windres.exe"
+set "LIME_COMPILER_FLAGS=-mingw -DHXCPP_MINGW -DHXCPP_RC=llvm-windres.exe"
+set "HAXE_COMPILER_FLAGS=-D HXCPP_MINGW -D HXCPP_RC=llvm-windres.exe"
+set "HXCPP_COMPILER_FLAGS=-DHXCPP_MINGW=1 -DHXCPP_RC=llvm-windres.exe"
 exit /b 0
 
 :sync_compiler_runtime
@@ -514,6 +649,14 @@ if errorlevel 1 (
 )
 exit /b 0
 
+:ensure_lime_uncapped
+call !PYTHON_COMMAND! "!ROOT!\tools\ensure_lime_uncapped.py" --platform windows --arch !ARCH!
+if errorlevel 1 (
+	echo ERROR: Native Lime frame scheduler setup failed. 1>&2
+	exit /b 1
+)
+exit /b 0
+
 :ensure_lib
 set "LIB_NAME=%~1"
 set "LIB_VERSION=%~2"
@@ -564,6 +707,11 @@ if errorlevel 1 (
 	echo ERROR: Could not apply the flixel empty-frame fallback patch. 1>&2
 	exit /b 1
 )
+call !PYTHON_COMMAND! "!ROOT!\tools\patch_flixel_input_frame_cache.py"
+if errorlevel 1 (
+	echo ERROR: Could not apply the Flixel input-frame cache patch. 1>&2
+	exit /b 1
+)
 set "MODCHART_UTIL=!HAXELIB_PATH!\funkin-modchart\1,2,5\modchart\backend\util\ModchartUtil.hx"
 if not exist "!MODCHART_UTIL!" (
 	echo ERROR: Pinned funkin-modchart 1.2.5 source was not found at !MODCHART_UTIL!. 1>&2
@@ -592,7 +740,7 @@ exit /b 2
 echo Usage: run.bat [test^|package^|setup^|debug^|release^|build^|rebuild^|nobuild^|server^|build32^|rebuild32]
 echo.
 echo In PowerShell: .\run.bat test builds Windows x64 and runs all tests.
-echo .\run.bat package also creates the v0.0.10 ZIP and SHA256SUMS.txt in dist.
+echo .\run.bat package also creates the v0.0.11 ZIP and SHA256SUMS.txt in dist.
 echo Default builds and launches a 64-bit release Windows executable.
 echo Native Windows requires Haxe 4.3.x, the pinned haxelibs, and a Visual
 echo Studio C++ toolchain or the automatic portable LLVM-MinGW fallback.

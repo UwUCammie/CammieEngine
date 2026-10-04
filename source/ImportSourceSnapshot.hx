@@ -7,7 +7,11 @@ import sys.FileSystem;
 import sys.io.File;
 import sys.io.FileInput;
 import sys.io.FileOutput;
-import sys.io.FileSeek;
+#if target.threaded
+import sys.thread.Lock;
+import sys.thread.Mutex;
+import sys.thread.Thread;
+#end
 using StringTools;
 
 typedef ImportSourceSnapshotProgress = {
@@ -17,6 +21,7 @@ typedef ImportSourceSnapshotProgress = {
 	var filesTotal:Int;
 	var bytesCompleted:Float;
 	var bytesTotal:Float;
+	var activeWorkers:Int;
 }
 
 typedef ImportSourceSnapshotOptions = {
@@ -26,6 +31,8 @@ typedef ImportSourceSnapshotOptions = {
 	@:optional var maxBytes:Float;
 	/** Copy buffer size, clamped to 4 KiB..1 MiB. */
 	@:optional var chunkSize:Int;
+	/** Requested per-file copy/hash workers. Clamped to 1..8; defaults to 4. */
+	@:optional var workerCount:Int;
 	@:optional var cancelled:Void->Bool;
 	@:optional var onProgress:ImportSourceSnapshotProgress->Void;
 	/** Dependencies known by the caller to live outside the selected source. */
@@ -79,16 +86,17 @@ private typedef ImportSnapshotAncestry = {
 	can be retained for diagnosis but must not be treated as rebuildable.
 */
 class ImportSourceSnapshot {
-	public static inline var RECEIPT_SCHEMA_VERSION:Int = 1;
+	public static inline var RECEIPT_SCHEMA_VERSION:Int = 2;
 	public static inline var DEFAULT_CHUNK_SIZE:Int = 65536;
-	static inline var HEADER_PROBE_BYTES:Int = 4096;
+	public static inline var DEFAULT_WORKER_COUNT:Int = 4;
+	public static inline var MAX_WORKER_COUNT:Int = 8;
 
 	/**
-		Capture all selected source content, including files with unknown
-		extensions, Windows executables and empty directories. Shared libraries
-		and other native payloads are omitted by extension/header and described in the
-		receipt. Path escapes, loops, caller-declared external dependencies, and
-		bounded-walk omissions are also described and make the receipt incomplete.
+		Capture all selected source content, including native payloads, files with
+		unknown extensions, Windows executables and empty directories. The sole
+		recognized OS-metadata exclusion is a validated macOS .DS_Store file. Path
+		escapes, loops, external dependencies, special nodes, and bounded-walk
+		omissions are described and make the receipt incomplete.
 	*/
 	public static function capture(sourceRoot:String, cacheRoot:String, engine:String,
 		?applicationVersion:String, ?options:ImportSourceSnapshotOptions):ImportSourceSnapshotResult {
@@ -110,8 +118,11 @@ class ImportSourceSnapshot {
 			var maxEntries = options != null && options.maxEntries != null ? options.maxEntries : 0;
 			var maxBytes = options != null && options.maxBytes != null ? options.maxBytes : Math.POSITIVE_INFINITY;
 			var chunkSize = options != null && options.chunkSize != null ? options.chunkSize : DEFAULT_CHUNK_SIZE;
+			var workerCount = options != null && options.workerCount != null ? options.workerCount : DEFAULT_WORKER_COUNT;
 			if (maxEntries < 0) throw "Snapshot entry limit cannot be negative.";
 			if (maxBytes < 0) throw "Snapshot byte limit cannot be negative.";
+			if (workerCount < 1) workerCount = 1;
+			if (workerCount > MAX_WORKER_COUNT) workerCount = MAX_WORKER_COUNT;
 			if (chunkSize < 4096) chunkSize = 4096;
 			if (chunkSize > 1048576) chunkSize = 1048576;
 
@@ -192,20 +203,9 @@ class ImportSourceSnapshot {
 						stack.push({relativePath: relative, sourcePath: child, canonicalPath: resolved,
 							modified: stat.mtime.getTime(), ancestry: childAncestry});
 					} else {
-						var exclusionReason = nativeExtension(name);
-						var detectedHeader = "";
-						if (exclusionReason == "") {
-							try detectedHeader = nativeHeader(child, stat.size) catch (error:Dynamic) {
-								addOmission(omissions, incompleteReasons, relative, "unreadable-header", "The file header could not be read.");
-								continue;
-							}
-							// Keep Windows executables as source evidence. They can
-							// contain the only engine marker used by future rescans.
-							if (detectedHeader != "" && !name.toLowerCase().endsWith(".exe"))
-								exclusionReason = "native-header-" + detectedHeader;
-						}
-						if (exclusionReason != "") {
-							exclusions.push({path: relative, size: stat.size, reason: exclusionReason, detectedHeader: detectedHeader});
+						if (name == ".DS_Store" && isMacBuddyStore(child, stat.size)) {
+							exclusions.push({path: relative, size: stat.size,
+								reason: "recognized-os-metadata-ds-store", detectedHeader: "macos-buddy-store-v1"});
 						} else if (plannedBytes + stat.size > maxBytes) {
 							addOmission(omissions, incompleteReasons, relative, "byte-limit-exceeded", "The retained source exceeded the configured byte limit.");
 						} else {
@@ -236,59 +236,20 @@ class ImportSourceSnapshot {
 			FileSystem.createDirectory(contentStagePath);
 			var copied:Array<Dynamic> = [];
 			var copiedBytes:Float = 0;
-			var completedFiles = 0;
-			var buffer = Bytes.alloc(chunkSize);
 			for (directory in directories) {
 				if (isCancelled(options)) return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				createContainedDirectory(contentStagePath, directory.relativePath);
 			}
-			for (entry in entries) {
-				if (isCancelled(options)) return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
-				var currentCanonical = canonicalPath(entry.sourcePath);
-				if (!isWithin(currentCanonical, donor) || currentCanonical != entry.canonicalPath)
-					throw "Source path changed or escaped during snapshot capture: " + entry.relativePath;
-				var before = FileSystem.stat(entry.sourcePath);
-				if (!isRegularFileMode(before.mode))
-					throw "Source entry is no longer a regular file: " + entry.relativePath;
-				if (before.size != entry.size || before.mtime.getTime() != entry.modified)
-					throw "Source file changed after snapshot scanning: " + entry.relativePath;
-				var destination = joinFsRelative(contentStagePath, entry.relativePath);
-				createContainedDirectory(contentStagePath, relativeDirectory(entry.relativePath));
-				var input:FileInput = null;
-				var target:FileOutput = null;
-				var fileHash = new ImportSnapshotSha256();
-				var remaining = entry.size;
-				try {
-					input = File.read(entry.sourcePath, true);
-					target = File.write(destination, true);
-					while (remaining > 0) {
-						if (isCancelled(options)) throw new ImportSnapshotCancelled();
-						var count = remaining < buffer.length ? remaining : buffer.length;
-						var read = input.readBytes(buffer, 0, count);
-						if (read != count) throw "Short read while copying " + entry.relativePath;
-						target.writeBytes(buffer, 0, read);
-						fileHash.update(buffer, 0, read);
-						remaining -= read;
-						copiedBytes += read;
-						progress(options, "copy", entry.relativePath, completedFiles, entries.length, copiedBytes, plannedBytes);
-					}
-					input.close(); input = null;
-					target.close(); target = null;
-				} catch (error:Dynamic) {
-					if (input != null) try input.close() catch (_:Dynamic) {}
-					if (target != null) try target.close() catch (_:Dynamic) {}
-					if (Std.isOfType(error, ImportSnapshotCancelled))
-						return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
-					throw error;
-				}
-				var after = FileSystem.stat(entry.sourcePath);
-				if (after.size != entry.size || after.mtime.getTime() != entry.modified
-					|| canonicalPath(entry.sourcePath) != entry.canonicalPath)
-					throw "Source file changed while being copied: " + entry.relativePath;
-				copied.push({path: entry.relativePath, size: entry.size, sha256: fileHash.digestHex()});
-				completedFiles++;
-				progress(options, "copy", entry.relativePath, completedFiles, entries.length, copiedBytes, plannedBytes);
+			var copyResult:{files:Array<Dynamic>, bytes:Float};
+			try copyResult = copySnapshotFiles(entries, donor, contentStagePath, chunkSize, workerCount,
+				options, plannedBytes) catch (error:Dynamic) {
+				if (Std.isOfType(error, ImportSnapshotCancelled))
+					return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
+				throw error;
 			}
+			copied = copyResult.files;
+			copiedBytes = copyResult.bytes;
+			var completedFiles = copied.length;
 
 			// Directory timestamps catch additions/removals during the bounded walk.
 			for (directory in directories) {
@@ -383,6 +344,175 @@ class ImportSourceSnapshot {
 		}
 	}
 
+	static function copySnapshotFiles(entries:Array<ImportSnapshotEntry>, donor:String, contentRoot:String,
+		chunkSize:Int, requestedWorkers:Int, options:ImportSourceSnapshotOptions,
+		bytesTotal:Float):{files:Array<Dynamic>, bytes:Float} {
+		var jobs:Array<Dynamic> = [for (entry in entries) entry];
+		var mapped = mapSnapshotFiles(jobs, requestedWorkers,
+			function() return isCancelled(options),
+			function(completed, bytes, current, active) {
+				progress(options, "copy", current, completed, entries.length, bytes, bytesTotal, active);
+			},
+			function(job:Dynamic, reportBytes:Int->Void):Dynamic {
+				var entry:ImportSnapshotEntry = cast job;
+				var currentCanonical = canonicalPath(entry.sourcePath);
+				if (!isWithin(currentCanonical, donor) || currentCanonical != entry.canonicalPath)
+					throw "Source path changed or escaped during snapshot capture: " + entry.relativePath;
+				var before = FileSystem.stat(entry.sourcePath);
+				if (!isRegularFileMode(before.mode))
+					throw "Source entry is no longer a regular file: " + entry.relativePath;
+				if (before.size != entry.size || before.mtime.getTime() != entry.modified)
+					throw "Source file changed after snapshot scanning: " + entry.relativePath;
+				var destination = joinFsRelative(contentRoot, entry.relativePath);
+				var input:FileInput = null;
+				var target:FileOutput = null;
+				var fileHash = new ImportSnapshotSha256();
+				var buffer = Bytes.alloc(chunkSize);
+				var remaining = entry.size;
+				try {
+					input = File.read(entry.sourcePath, true);
+					target = File.write(destination, true);
+					while (remaining > 0) {
+						var count = remaining < buffer.length ? remaining : buffer.length;
+						var read = input.readBytes(buffer, 0, count);
+						if (read != count) throw "Short read while copying " + entry.relativePath;
+						target.writeBytes(buffer, 0, read);
+						fileHash.update(buffer, 0, read);
+						remaining -= read;
+						reportBytes(read);
+					}
+					input.close(); input = null;
+					target.close(); target = null;
+				} catch (error:Dynamic) {
+					if (input != null) try input.close() catch (_:Dynamic) {}
+					if (target != null) try target.close() catch (_:Dynamic) {}
+					throw error;
+				}
+				var after = FileSystem.stat(entry.sourcePath);
+				if (after.size != entry.size || after.mtime.getTime() != entry.modified
+					|| canonicalPath(entry.sourcePath) != entry.canonicalPath)
+					throw "Source file changed while being copied: " + entry.relativePath;
+				return {path: entry.relativePath, size: entry.size, sha256: fileHash.digestHex()};
+			});
+		return {files: mapped.values, bytes: mapped.bytes};
+	}
+
+	/** Maps independent files with bounded workers. Workers own their buffers and
+	 * hash state; only this coordinator invokes caller progress/cancel callbacks. */
+	static function mapSnapshotFiles(jobs:Array<Dynamic>, requestedWorkers:Int, cancelled:Void->Bool,
+		onProgress:(Int, Float, String, Int)->Void,
+		action:(Dynamic, Int->Void)->Dynamic):{values:Array<Dynamic>, bytes:Float} {
+		var count = requestedWorkers;
+		if (count < 1) count = 1;
+		if (count > MAX_WORKER_COUNT) count = MAX_WORKER_COUNT;
+		if (count > jobs.length) count = jobs.length;
+		if (count < 1) count = 1;
+		var values:Array<Dynamic> = [for (_ in 0...jobs.length) null];
+		var completed = 0;
+		var bytesCompleted:Float = 0;
+		var current = "";
+		var emit = function(active:Int):Void {
+			if (onProgress != null) try onProgress(completed, bytesCompleted, current, active) catch (_:Dynamic) {}
+		};
+		if (jobs.length == 0) {
+			emit(0);
+			if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+			return {values: values, bytes: 0};
+		}
+
+		#if target.threaded
+		if (count > 1) {
+			var state = new ImportSnapshotWorkerState(jobs, values, action);
+			emit(0);
+			if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+			var startedWorkers = 0;
+			for (_ in 0...count) {
+				try {
+					Thread.create(function() snapshotWorkerLoop(state));
+					startedWorkers++;
+				} catch (error:Dynamic) {
+					state.fail(error, false);
+					break;
+				}
+			}
+			emit(state.activeWorkers());
+			var workersFinished = 0;
+			while (workersFinished < startedWorkers) {
+				if (cancelled != null) {
+					try {
+						if (cancelled()) state.cancel();
+					} catch (error:Dynamic) {
+						// Preserve callback exceptions as failures, stop active file work,
+						// and keep draining completion tokens before returning to cleanup.
+						state.fail(error, false);
+						cancelled = null;
+					}
+				}
+				if (state.finished.wait(0.025)) workersFinished++;
+				var snapshot = state.snapshot();
+				completed = snapshot.completed;
+				bytesCompleted = snapshot.bytes;
+				current = snapshot.current;
+				emit(snapshot.active);
+			}
+			var error = state.errorValue();
+			if (error != null) throw error;
+			if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+			return {values: values, bytes: bytesCompleted};
+		}
+		#end
+
+		emit(0);
+		if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+		for (index in 0...jobs.length) {
+			if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+			var job = jobs[index];
+			var path = snapshotWorkPath(job);
+			current = path;
+			var value = action(job, function(amount:Int):Void {
+				if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+				bytesCompleted += amount;
+				emit(1);
+				if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+			});
+			values[index] = value;
+			completed++;
+			emit(0);
+		}
+		if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+		return {values: values, bytes: bytesCompleted};
+	}
+
+	#if target.threaded
+	static function snapshotWorkerLoop(state:ImportSnapshotWorkerState):Void {
+		try {
+			while (true) {
+				var index = state.claim();
+				if (index < 0) break;
+				var job = state.jobs[index];
+				var path = snapshotWorkPath(job);
+				try {
+					state.ensureRunning();
+					var value = state.action(job, function(amount:Int):Void state.addBytes(amount, path));
+					state.complete(index, value, path);
+				} catch (error:Dynamic) {
+					state.fail(error);
+					break;
+				}
+			}
+		} catch (error:Dynamic) {
+			state.fail(error);
+		}
+		state.finished.release();
+	}
+	#end
+
+	public static function snapshotWorkPath(job:Dynamic):String {
+		var path:Dynamic = Reflect.field(job, "relativePath");
+		if (path == null) path = Reflect.field(job, "path");
+		return path == null ? "" : Std.string(path);
+	}
+
 	/** Read a staged receipt and assess whether its importer semantics are
 	 * current. Receipts without an explicit revision remain unknown. */
 	public static function assessReceipt(receiptPath:String, engine:String):ImportRevisionAssessment {
@@ -397,7 +527,7 @@ class ImportSourceSnapshot {
 				unknown.reason = "The snapshot receipt uses a newer receipt schema.";
 				return unknown;
 			}
-			if (schema < RECEIPT_SCHEMA_VERSION) {
+			if (schema < 1) {
 				unknown.status = ImportRevision.OUTDATED;
 				unknown.reason = "The snapshot receipt predates the current receipt schema.";
 				return unknown;
@@ -438,7 +568,7 @@ class ImportSourceSnapshot {
 	/** Verify a retained snapshot before regeneration. This rechecks its receipt,
 	 * exact content tree, containment, and every retained file's size and hash. */
 	public static function verify(snapshotRoot:String, expectedId:String, ?cancel:Void->Bool,
-		?onProgress:ImportSourceSnapshotProgress->Void):Void {
+		?onProgress:ImportSourceSnapshotProgress->Void, ?workerCount:Int):Void {
 		if (snapshotRoot == null || StringTools.trim(snapshotRoot) == "")
 			throw "A snapshot root is required for verification.";
 		if (!isSha256(expectedId)) throw "Expected snapshot ID is invalid.";
@@ -461,8 +591,11 @@ class ImportSourceSnapshot {
 		var receipt:Dynamic;
 		try receipt = haxe.Json.parse(File.getContent(receiptPath)) catch (error:Dynamic)
 			throw "Snapshot receipt is invalid: " + Std.string(error);
-		if (Reflect.field(receipt, "snapshotSchemaVersion") != RECEIPT_SCHEMA_VERSION)
+		var schemaValue:Dynamic = Reflect.field(receipt, "snapshotSchemaVersion");
+		if (!Std.isOfType(schemaValue, Int) || (cast schemaValue:Int) < 1
+			|| (cast schemaValue:Int) > RECEIPT_SCHEMA_VERSION)
 			throw "Snapshot receipt uses an unsupported schema.";
+		var schema:Int = cast schemaValue;
 		if (Reflect.field(receipt, "snapshotId") != normalizedId)
 			throw "Snapshot receipt ID does not match the expected ID.";
 		if (Reflect.field(receipt, "contentRoot") != "content")
@@ -535,7 +668,7 @@ class ImportSourceSnapshot {
 		if (expectedBytes != (cast receiptBytes:Float))
 			throw "Snapshot receipt byte total does not match its file entries.";
 		var computedId = receiptSnapshotId(engine, directoryHashEntries, fileHashEntries,
-			exclusions, omissions, incompleteReasons);
+			exclusions, omissions, incompleteReasons, schema);
 		if (computedId != normalizedId)
 			throw "Snapshot receipt contents do not match the expected ID.";
 
@@ -547,9 +680,8 @@ class ImportSourceSnapshot {
 		var actualDirectories:Map<String, Bool> = new Map();
 		var directoryTimes:Map<String, Float> = new Map();
 		var pending:Array<String> = [""];
-		var filesCompleted = 0;
-		var bytesCompleted:Float = 0;
 		var totalBytes = expectedBytes;
+		var verifyJobs:Array<Dynamic> = [];
 		while (pending.length > 0) {
 			if (verificationCancelled(cancel)) throw "Snapshot verification was cancelled.";
 			var directory = pending.pop();
@@ -586,20 +718,45 @@ class ImportSourceSnapshot {
 				if (actualFiles.exists(key)) throw "Duplicate snapshot file path: " + relative;
 				var expected:Dynamic = expectedFiles.get(key);
 				if (stat.size != Reflect.field(expected, "size")) throw "Snapshot file size changed: " + relative;
-				var digest = verifyFileHash(path, relative, stat, cancel, onProgress,
-					filesCompleted, files.length, bytesCompleted, totalBytes);
-				if (digest != Reflect.field(expected, "sha256")) throw "Snapshot file hash changed: " + relative;
 				actualFiles.set(key, true);
-				filesCompleted++;
-				bytesCompleted += stat.size;
-				verificationProgress(onProgress, relative, filesCompleted, files.length, bytesCompleted, totalBytes);
+				verifyJobs.push({relativePath:relative, filePath:path, canonicalPath:canonical,
+					size:stat.size, modified:stat.mtime.getTime(), sha256:Reflect.field(expected, "sha256")});
 			}
-			var afterDirectory = FileSystem.stat(directoryPath);
-			if (afterDirectory.mtime.getTime() != directoryTimes.get(directory))
-				throw "Snapshot directory changed during verification: " + directory;
 		}
 		for (key in expectedFiles.keys()) if (!actualFiles.exists(key)) throw "Snapshot file is missing: " + Reflect.field(expectedFiles.get(key), "path");
 		for (key in expectedDirectories.keys()) if (!actualDirectories.exists(key)) throw "Snapshot directory is missing: " + expectedDirectories.get(key);
+		var selectedWorkers = workerCount == null ? DEFAULT_WORKER_COUNT : workerCount;
+		var verified = mapSnapshotFiles(verifyJobs, selectedWorkers,
+			function() return verificationCancelled(cancel),
+			function(completed, bytes, current, active) {
+				verificationProgress(onProgress, current, completed, verifyJobs.length, bytes, totalBytes, active);
+			},
+			function(job:Dynamic, reportBytes:Int->Void):Dynamic {
+				var path:String = Reflect.field(job, "filePath");
+				var relative:String = Reflect.field(job, "relativePath");
+				var expectedCanonical:String = Reflect.field(job, "canonicalPath");
+				var currentCanonical = canonicalPath(path);
+				if (currentCanonical != expectedCanonical || !isWithin(currentCanonical, contentRoot))
+					throw "Snapshot file escapes its content root: " + relative;
+				var before = FileSystem.stat(path);
+				if (!isRegularFileMode(before.mode) || before.size != Reflect.field(job, "size")
+					|| before.mtime.getTime() != Reflect.field(job, "modified"))
+					throw "Snapshot file changed before verification: " + relative;
+				var digest = verifyFileHash(path, relative, before, reportBytes);
+				if (digest != Reflect.field(job, "sha256")) throw "Snapshot file hash changed: " + relative;
+				if (canonicalPath(path) != expectedCanonical)
+					throw "Snapshot file escaped its content root during verification: " + relative;
+				return digest;
+			});
+		if (verified.values.length != verifyJobs.length) throw "Snapshot verification did not process every file.";
+		for (directory in directoryTimes.keys()) {
+			var directoryPath = directory == "" ? contentRoot : joinFsRelative(contentRoot, directory);
+			var directoryCanonical = canonicalPath(directoryPath);
+			var afterDirectory = FileSystem.stat(directoryPath);
+			if (directoryCanonical != normalizeAbsolute(directoryPath) || !isWithin(directoryCanonical, contentRoot)
+				|| !FileSystem.isDirectory(directoryPath) || afterDirectory.mtime.getTime() != directoryTimes.get(directory))
+				throw "Snapshot directory changed during verification: " + directory;
+		}
 	}
 
 	static function result(status:String):ImportSourceSnapshotResult return {
@@ -618,14 +775,15 @@ class ImportSourceSnapshot {
 
 	static function isCancelled(options:ImportSourceSnapshotOptions):Bool {
 		if (options == null || options.cancelled == null) return false;
-		try return options.cancelled() catch (_:Dynamic) return true;
+		return options.cancelled();
 	}
 
 	static function progress(options:ImportSourceSnapshotOptions, phase:String, current:String,
-		filesCompleted:Int, filesTotal:Int, bytesCompleted:Float, bytesTotal:Float):Void {
+		filesCompleted:Int, filesTotal:Int, bytesCompleted:Float, bytesTotal:Float, activeWorkers:Int = 0):Void {
 		if (options == null || options.onProgress == null) return;
 		try options.onProgress({phase: phase, current: current, filesCompleted: filesCompleted,
-			filesTotal: filesTotal, bytesCompleted: bytesCompleted, bytesTotal: bytesTotal}) catch (_:Dynamic) {}
+			filesTotal: filesTotal, bytesCompleted: bytesCompleted, bytesTotal: bytesTotal,
+			activeWorkers: activeWorkers}) catch (_:Dynamic) {}
 	}
 
 	static function canonicalPath(path:String):String {
@@ -776,9 +934,9 @@ class ImportSourceSnapshot {
 	}
 
 	static function receiptSnapshotId(engine:String, directories:Array<String>, files:Array<Dynamic>,
-		exclusions:Array<Dynamic>, omissions:Array<Dynamic>, incompleteReasons:Array<Dynamic>):String {
+		exclusions:Array<Dynamic>, omissions:Array<Dynamic>, incompleteReasons:Array<Dynamic>, schemaVersion:Int):String {
 		var hash = new ImportSnapshotSha256();
-		var header = Bytes.ofString("ImportSourceSnapshot\n" + RECEIPT_SCHEMA_VERSION + "\n" + engine + "\n");
+		var header = Bytes.ofString("ImportSourceSnapshot\n" + schemaVersion + "\n" + engine + "\n");
 		hash.update(header, 0, header.length);
 		for (directory in directories) hashRecord(hash, "D", directory);
 		for (file in files)
@@ -809,19 +967,20 @@ class ImportSourceSnapshot {
 
 	static function verificationCancelled(cancel:Void->Bool):Bool {
 		if (cancel == null) return false;
-		try return cancel() catch (_:Dynamic) return true;
+		return cancel();
 	}
 
 	static function verificationProgress(onProgress:ImportSourceSnapshotProgress->Void,
-		current:String, filesCompleted:Int, filesTotal:Int, bytesCompleted:Float, bytesTotal:Float):Void {
+		current:String, filesCompleted:Int, filesTotal:Int, bytesCompleted:Float, bytesTotal:Float,
+		activeWorkers:Int = 0):Void {
 		if (onProgress == null) return;
 		try onProgress({phase:"verify", current:current, filesCompleted:filesCompleted,
-			filesTotal:filesTotal, bytesCompleted:bytesCompleted, bytesTotal:bytesTotal}) catch (_:Dynamic) {}
+			filesTotal:filesTotal, bytesCompleted:bytesCompleted, bytesTotal:bytesTotal,
+			activeWorkers:activeWorkers}) catch (_:Dynamic) {}
 	}
 
 	static function verifyFileHash(path:String, relative:String, before:sys.FileStat,
-		cancel:Void->Bool, onProgress:ImportSourceSnapshotProgress->Void,
-		filesCompleted:Int, filesTotal:Int, bytesCompleted:Float, bytesTotal:Float):String {
+		reportBytes:Int->Void):String {
 		if (!isRegularFileMode(before.mode)) throw "Snapshot entry is not a regular file: " + relative;
 		var input:FileInput = null;
 		var hash = new ImportSnapshotSha256();
@@ -830,14 +989,12 @@ class ImportSourceSnapshot {
 		try {
 			input = File.read(path, true);
 			while (remaining > 0) {
-				if (verificationCancelled(cancel)) throw "Snapshot verification was cancelled.";
 				var count = remaining < buffer.length ? remaining : buffer.length;
 				var read = input.readBytes(buffer, 0, count);
 				if (read != count) throw "Short read while verifying snapshot file: " + relative;
 				hash.update(buffer, 0, read);
 				remaining -= read;
-				verificationProgress(onProgress, relative, filesCompleted, filesTotal,
-					bytesCompleted + before.size - remaining, bytesTotal);
+				reportBytes(read);
 			}
 			input.close(); input = null;
 		} catch (error:Dynamic) {
@@ -868,129 +1025,23 @@ class ImportSourceSnapshot {
 		return kind == 0 || kind == 0x8000;
 	}
 
-	static function nativeExtension(name:String):String {
-		var lower = name.toLowerCase();
-		if (lower.endsWith(".dll") || lower.endsWith(".ndll")
-			|| lower.endsWith(".dylib") || lower.endsWith(".so") || hasVersionedSoSuffix(lower)
-			|| lower.endsWith(".a") || lower.endsWith(".lib"))
-			return "native-extension";
-		return "";
-	}
-
-	static function hasVersionedSoSuffix(name:String):Bool {
-		var marker = name.lastIndexOf(".so.");
-		if (marker < 0) return false;
-		var version = name.substr(marker + 4);
-		if (version == "") return false;
-		for (index in 0...version.length) {
-			var code = version.charCodeAt(index);
-			if ((code < 48 || code > 57) && code != 46) return false;
-		}
-		return true;
-	}
-
-	static function nativeHeader(path:String, size:Int):String {
-		if (size < 4) return "";
-		var length = size < HEADER_PROBE_BYTES ? size : HEADER_PROBE_BYTES;
-		var input = File.read(path, true);
-		var bytes = Bytes.alloc(length);
-		try {
-			input.readBytes(bytes, 0, length);
-			input.close();
-		} catch (error:Dynamic) {
-			input.close();
-			throw error;
-		}
-		if (bytes.get(0) == 0x7F && bytes.get(1) == 0x45 && bytes.get(2) == 0x4C && bytes.get(3) == 0x46) return "elf";
-		if (starts(bytes, [0xFE, 0xED, 0xFA, 0xCE]) || starts(bytes, [0xCE, 0xFA, 0xED, 0xFE])
-			|| starts(bytes, [0xFE, 0xED, 0xFA, 0xCF]) || starts(bytes, [0xCF, 0xFA, 0xED, 0xFE])) return "mach-o";
-		if (isFatMachOHeader(path, bytes, size)) return "mach-o-fat";
-		if (size >= 8 && bytes.get(0) == 0x21 && bytes.get(1) == 0x3C && bytes.get(2) == 0x61
-			&& bytes.get(3) == 0x72 && bytes.get(4) == 0x63 && bytes.get(5) == 0x68
-			&& bytes.get(6) == 0x3E && bytes.get(7) == 0x0A) return "archive";
-		if (bytes.get(0) == 0x4D && bytes.get(1) == 0x5A && bytes.length >= 64) {
-			var offset = bytes.get(0x3C) | (bytes.get(0x3D) << 8) | (bytes.get(0x3E) << 16) | (bytes.get(0x3F) << 24);
-			if (offset >= 0 && offset + 4 <= bytes.length && startsAt(bytes, offset, [0x50, 0x45, 0, 0])) return "pe";
-		}
-		return "";
-	}
-
-	static function isFatMachOHeader(path:String, bytes:Bytes, size:Int):Bool {
-		var big32 = starts(bytes, [0xCA, 0xFE, 0xBA, 0xBE]);
-		var little32 = starts(bytes, [0xBE, 0xBA, 0xFE, 0xCA]);
-		var big64 = starts(bytes, [0xCA, 0xFE, 0xBA, 0xBF]);
-		var little64 = starts(bytes, [0xBF, 0xBA, 0xFE, 0xCA]);
-		if (!big32 && !little32 && !big64 && !little64) return false;
-		if (size < 8 || bytes.length < 8) return false;
-
-		var littleEndian = little32 || little64;
-		var entryWidth = big64 || little64 ? 32 : 20;
-		var architectureCount = readUInt32(bytes, 4, littleEndian);
-		var tableEnd = 8 + architectureCount * entryWidth;
-		if (architectureCount <= 0 || architectureCount > Math.floor((size - 8) / entryWidth)
-			|| tableEnd > bytes.length) return false;
-
+	static function isMacBuddyStore(path:String, size:Int):Bool {
+		if (size < 8) return false;
 		var input:FileInput = null;
 		try {
 			input = File.read(path, true);
-			var sliceMagic = Bytes.alloc(4);
-			var count = Std.int(architectureCount);
-			for (index in 0...count) {
-				var entryOffset = 8 + index * entryWidth;
-				var sliceOffset:Float;
-				var sliceSize:Float;
-				if (entryWidth == 20) {
-					sliceOffset = readUInt32(bytes, entryOffset + 8, littleEndian);
-					sliceSize = readUInt32(bytes, entryOffset + 12, littleEndian);
-				} else {
-					sliceOffset = readUInt64(bytes, entryOffset + 8, littleEndian);
-					sliceSize = readUInt64(bytes, entryOffset + 16, littleEndian);
-				}
-				if (sliceOffset < tableEnd || sliceSize < 4 || sliceOffset + sliceSize > size
-					|| sliceOffset > 2147483647.0) {
-					input.close();
-					return false;
-				}
-				input.seek(Std.int(sliceOffset), FileSeek.SeekBegin);
-				if (input.readBytes(sliceMagic, 0, 4) != 4 || !isThinMachOMagic(sliceMagic)) {
-					input.close();
-					return false;
-				}
+			var header = Bytes.alloc(8);
+			if (input.readBytes(header, 0, 8) != 8) {
+				input.close();
+				return false;
 			}
 			input.close();
-			return true;
+			return header.get(0) == 0 && header.get(1) == 0 && header.get(2) == 0 && header.get(3) == 1
+				&& header.get(4) == 0x42 && header.get(5) == 0x75 && header.get(6) == 0x64 && header.get(7) == 0x31;
 		} catch (_:Dynamic) {
 			if (input != null) try input.close() catch (_:Dynamic) {}
 			return false;
 		}
-	}
-
-	static function readUInt32(bytes:Bytes, offset:Int, littleEndian:Bool):Float {
-		if (offset < 0 || offset + 4 > bytes.length) return -1;
-		if (littleEndian)
-			return bytes.get(offset) + bytes.get(offset + 1) * 256.0
-				+ bytes.get(offset + 2) * 65536.0 + bytes.get(offset + 3) * 16777216.0;
-		return bytes.get(offset) * 16777216.0 + bytes.get(offset + 1) * 65536.0
-			+ bytes.get(offset + 2) * 256.0 + bytes.get(offset + 3);
-	}
-
-	static function readUInt64(bytes:Bytes, offset:Int, littleEndian:Bool):Float {
-		if (offset < 0 || offset + 8 > bytes.length) return -1;
-		var high = readUInt32(bytes, littleEndian ? offset + 4 : offset, littleEndian);
-		var low = readUInt32(bytes, littleEndian ? offset : offset + 4, littleEndian);
-		return high * 4294967296.0 + low;
-	}
-
-	static function isThinMachOMagic(bytes:Bytes):Bool {
-		return starts(bytes, [0xFE, 0xED, 0xFA, 0xCE]) || starts(bytes, [0xCE, 0xFA, 0xED, 0xFE])
-			|| starts(bytes, [0xFE, 0xED, 0xFA, 0xCF]) || starts(bytes, [0xCF, 0xFA, 0xED, 0xFE]);
-	}
-
-	static function starts(bytes:Bytes, header:Array<Int>):Bool return startsAt(bytes, 0, header);
-	static function startsAt(bytes:Bytes, offset:Int, header:Array<Int>):Bool {
-		if (offset < 0 || offset + header.length > bytes.length) return false;
-		for (index in 0...header.length) if (bytes.get(offset + index) != header[index]) return false;
-		return true;
 	}
 
 	static function uniqueStagePath(cache:String):String {
@@ -1071,6 +1122,108 @@ private class ImportSnapshotCancelled {
 	public function new() {}
 }
 
+#if target.threaded
+private class ImportSnapshotWorkerState {
+	public var jobs:Array<Dynamic>;
+	public var values:Array<Dynamic>;
+	public var action:(Dynamic, Int->Void)->Dynamic;
+	public var finished:Lock;
+	var mutex:Mutex;
+	var next:Int = 0;
+	var active:Int = 0;
+	var completed:Int = 0;
+	var bytes:Float = 0;
+	var current:String = "";
+	var stopped:Bool = false;
+	var error:Dynamic = null;
+
+	public function new(jobs:Array<Dynamic>, values:Array<Dynamic>, action:(Dynamic, Int->Void)->Dynamic) {
+		this.jobs = jobs;
+		this.values = values;
+		this.action = action;
+		mutex = new Mutex();
+		finished = new Lock();
+	}
+
+	public function claim():Int {
+		mutex.acquire();
+		var index = -1;
+		if (!stopped && next < jobs.length) {
+			index = next++;
+			active++;
+			current = ImportSourceSnapshot.snapshotWorkPath(jobs[index]);
+		}
+		mutex.release();
+		return index;
+	}
+
+	public function ensureRunning():Void {
+		mutex.acquire();
+		var shouldStop = stopped;
+		mutex.release();
+		if (shouldStop) throw new ImportSnapshotCancelled();
+	}
+
+	public function addBytes(amount:Int, path:String):Void {
+		mutex.acquire();
+		var shouldStop = stopped;
+		if (!shouldStop) {
+			bytes += amount;
+			current = path;
+		}
+		mutex.release();
+		if (shouldStop) throw new ImportSnapshotCancelled();
+	}
+
+	public function complete(index:Int, value:Dynamic, path:String):Void {
+		mutex.acquire();
+		values[index] = value;
+		completed++;
+		if (active > 0) active--;
+		current = path;
+		mutex.release();
+	}
+
+	public function fail(caught:Dynamic, activeJob:Bool = true):Void {
+		mutex.acquire();
+		if (error == null) error = caught;
+		stopped = true;
+		if (activeJob && active > 0) active--;
+		mutex.release();
+	}
+
+	public function cancel():Void {
+		mutex.acquire();
+		if (!stopped) {
+			stopped = true;
+			error = new ImportSnapshotCancelled();
+		}
+		mutex.release();
+	}
+
+	public function snapshot():{completed:Int, bytes:Float, current:String, active:Int} {
+		mutex.acquire();
+		var result = {completed:completed, bytes:bytes, current:current, active:active};
+		mutex.release();
+		return result;
+	}
+
+	public function activeWorkers():Int {
+		mutex.acquire();
+		var result = active;
+		mutex.release();
+		return result;
+	}
+
+	public function errorValue():Dynamic {
+		mutex.acquire();
+		var result = error;
+		mutex.release();
+		return result;
+	}
+}
+#end
+
 /** Independent streaming SHA-256 so snapshot capture does not depend on the
  * updater's private implementation or buffer full packages in memory. */
 class ImportSnapshotSha256 {
@@ -1086,6 +1239,10 @@ class ImportSnapshotSha256 {
 	];
 	var state:Array<Int> = [0x6A09E667,0xBB67AE85,0x3C6EF372,0xA54FF53A,0x510E527F,0x9B05688C,0x1F83D9AB,0x5BE0CD19];
 	var block:Bytes = Bytes.alloc(64);
+	// Reuse the message schedule for every 64-byte block. A retained source can
+	// contain billions of bytes, so allocating a fresh 64-word array per block
+	// creates millions of short-lived arrays during capture and verification.
+	var schedule:Array<Int> = [];
 	var buffered:Int = 0;
 	var totalBytes:Float = 0;
 	var finished:Bool = false;
@@ -1120,7 +1277,7 @@ class ImportSnapshotSha256 {
 		return out.toString();
 	}
 	function compress(bytes:Bytes):Void {
-		var words = new Array<Int>();
+		var words = schedule;
 		for (index in 0...16) { var p = index * 4; words[index] = (bytes.get(p) << 24) | (bytes.get(p + 1) << 16) | (bytes.get(p + 2) << 8) | bytes.get(p + 3); }
 		for (index in 16...64) words[index] = add4(sigma1(words[index - 2]), words[index - 7], sigma0(words[index - 15]), words[index - 16]);
 		var a=state[0]; var b=state[1]; var c=state[2]; var d=state[3]; var e=state[4]; var f=state[5]; var g=state[6]; var h=state[7];

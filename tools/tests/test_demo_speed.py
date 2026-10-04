@@ -104,6 +104,7 @@ class DemoTest {
  function setAllHaxeVar(name:String, value:Dynamic):Void haxeVars.set(name, value);
  function setVocalsPitch(pitch:Float):Void vocals.pitch = pitch;
  function syncVocalTrackState():Void {}
+ function markNightmareVisionVocalPcmSmoke():Void {}
  // The fixture runs without a selected NMV owner, so gameplay callbacks use
  // the production group's default continue result.
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
@@ -113,7 +114,7 @@ class DemoTest {
  function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
  function nightmareVisionRenderContext():Dynamic return null;
  public function new() {}
-''' + methods + controls + '\nfunction spawn() {\n' + spawn + '''\n}
+''' + methods + controls + '\nfunction spawn() {\nvar smokeProfileAt:Float = 0;\n' + spawn + '''\n}
  static function check(ok:Bool, message:String) {if(!ok) throw message;}
  static function main() {
   var state=new DemoTest();

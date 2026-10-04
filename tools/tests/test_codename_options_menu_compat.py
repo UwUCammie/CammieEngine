@@ -10,6 +10,20 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def extract_method(source: str, marker: str) -> str:
+    start = source.index(marker)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"unterminated method: {marker}")
+
+
 class CodenameOptionsMenuCompatTest(unittest.TestCase):
     def test_imported_caller_route_is_retained_through_controls_and_exit(self):
         source = (ROOT / "source/CodenameOptionsMenuCompat.hx").read_text()
@@ -18,18 +32,81 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
         self.assertIn("categoryIndex, rowIndex, returnOwnerRoot, returnScriptPath", source)
         self.assertIn("CodenameModRuntime.stateInit(returnOwnerRoot, returnScriptPath)", source)
 
+    def test_menu_row_motion_is_scaled_and_frame_rate_independent(self):
+        source = (ROOT / "source/CodenameOptionsMenuCompat.hx").read_text(encoding="utf-8")
+        self.assertIn("row.scale.set(ROW_SCALE, ROW_SCALE);", source)
+        self.assertIn("static inline var ROW_SCALE:Float = 0.85;", source)
+        self.assertIn("static inline var ROW_MOTION_RATE:Float = 2;", source)
+        self.assertIn("Reflect.field(row, 'kind') == 'action'", source)
+        self.assertIn("Reflect.field(row, 'field') == 'controls'", source)
+        helper = extract_method(
+            (ROOT / "source/CoolUtil.hx").read_text(encoding="utf-8"),
+            "public static function timeAdjustedLerpAlpha",
+        )
+        update_motion = extract_method(source, "function updateRowMotion")
+        fixture = f"""
+class CoolUtil {{
+{helper}
+}}
+class FakeText {{ public var y:Float; public function new(y:Float) this.y = y; }}
+class FakeGroup {{ public var members:Array<FakeText>; public function new(row:FakeText) members = [row]; }}
+class CodenameOptionsMenuCompat {{
+    static inline var ROW_MOTION_RATE:Float = 2;
+    var rowMotionTargetYs:Array<Float> = [118];
+    var rowMotionActive:Bool = true;
+    var rowGroup:FakeGroup;
+    public function new() rowGroup = new FakeGroup(new FakeText(132.1));
+{update_motion}
+    public function advance(elapsed:Float):Void updateRowMotion(elapsed);
+    public function rowY():Float return rowGroup.members[0].y;
+}}
+class MenuRowMotionMain {{
+    static function runAtRate(fps:Int, duration:Float):Float {{
+        var menu = new CodenameOptionsMenuCompat();
+        for (_ in 0...Std.int(fps * duration)) menu.advance(1.0 / fps);
+        return menu.rowY();
+    }}
+    static function main() {{
+        var expected = runAtRate(60, 0.05);
+        for (fps in [60, 480, 1440, 5000]) {{
+            var actual = runAtRate(fps, 0.05);
+            if (Math.abs(actual - expected) > 1e-8)
+                throw 'selection motion changed at ' + fps + ' fps';
+        }}
+        var twiceRate = 132.1 + (118 - 132.1) * CoolUtil.timeAdjustedLerpAlpha(0.16, 0.05 * 2);
+        if (Math.abs(expected - twiceRate) > 1e-8)
+            throw 'selection motion did not use the configured 2x rate';
+    }}
+}}
+"""
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
+            path = Path(directory) / "MenuRowMotionMain.hx"
+            path.write_text(fixture, encoding="utf-8", newline="\n")
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", directory, "-main", "MenuRowMotionMain", "--interp"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_model_navigation_values_and_private_settings_copy(self):
         model = (ROOT / "source/CodenameOptionsMenuModel.hx").read_text()
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
             (base / "CodenameOptionsMenuModel.hx").write_text(model, newline='\n')
+            (base / "OptionsCategories.hx").write_text(
+                (ROOT / "source/OptionsCategories.hx").read_text(), newline='\n')
             (base / "CodenameOptionsQualityCompat.hx").write_text(
                 (ROOT / "source/CodenameOptionsQualityCompat.hx").read_text()
             , newline='\n')
             (base / "OptionsHandler.hx").write_text("""class OptionsHandler {
- public static inline var MAX_FPS_CAP:Int=480;
+ public static inline var MAX_FPS_CAP:Int=2147483647;
  public static inline var DYNAMIC_SCROLL_SPEED_MAX:Float=10;
  public static inline var DYNAMIC_SCROLL_SPEED_STEP:Float=0.5;
+ public static function sanitizeOffset(value:Dynamic):Float {
+  var offset:Float=value; return Math.floor(offset*10+0.5)/10;
+ }
 }
 """, newline='\n')
             (base / "Main.hx").write_text(r'''class Main {
@@ -41,10 +118,27 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
  }
  static function main():Void {
   var categories = CodenameOptionsMenuModel.categories();
-  check(categories.join(",") == "Controls,Gameplay,Appearance,Miscellaneous",
+  check(categories.join(",") == "Gameplay,Controls & Timing,Graphics & Performance,Audio,Interface,Compatibility",
    "Codename options categories or source order changed");
-  check(CodenameOptionsMenuModel.rows("Controls").length == 0,
-   "Controls should open the native controls state rather than expose fake settings");
+  var controlsAction = row("Controls & Timing", "Controls...");
+  check(controlsAction != null && controlsAction.kind == "action"
+   && CodenameOptionsMenuModel.valueText({}, controlsAction) == ""
+   && row("Controls", "Controls...") != null,
+   "Controls action row or legacy category alias was not preserved");
+  check(CodenameOptionsMenuModel.rows("Compatibility").length > 0,
+   "Compatibility did not expose existing engine compatibility settings");
+  var sharedFields=["offset", "controls", "showTimings", "fpsCap", "unlimitedFPS",
+   "showFPS", "showMemory", "showNoteSplashes", "useCharColor", "lyricsEnabled", "zoomCamera",
+   "normalizeSongAudio", "ignoreUnlocks", "emuOsuLifts", "useKadeHealth", "fastSceneTransitions"];
+  for(field in sharedFields) {
+   var occurrences=0;
+   for(category in categories) for(item in CodenameOptionsMenuModel.rows(category))
+    if(item.field==field) {
+     occurrences++;
+     check(OptionsCategories.sectionFor(field)==category,"shared option changed sections: "+field);
+    }
+   check(occurrences==1,"shared option duplicated or missing: "+field);
+  }
   var native:Dynamic = {
    downscroll:false, midscroll:false, useCustomInput:true, naughtyness:true,
    volumeMusic:1.0, volumeSFX:1.0, useCharColor:true, scrollSpeed:1.0,
@@ -53,14 +147,19 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
            antialiasing:true, gameplayShaders:true, vignetteEffects:true, lyricsEnabled:true,
    week6PixelPerfect:true, quality:CodenameOptionsQualityCompat.HIGH,
    fpsCap:60, autoPause:true, lowMemoryMode:false, showFPS:false, showMemory:false,
-   alwaysDoCutscenes:false, skipVictoryScreen:false, unrelatedSaveField:"preserve"
+   alwaysDoCutscenes:false, skipVictoryScreen:false, fastSceneTransitions:false,
+   ignoreUnlocks:false, emuOsuLifts:false, useKadeHealth:false, unrelatedSaveField:"preserve"
   };
   var work = CodenameOptionsMenuModel.copyOptions(native);
+  var legacyHealth = row("Compatibility", "Use Kade Health");
+  check(CodenameOptionsMenuModel.adjust(work, legacyHealth, 1)
+   && work.useKadeHealth && !native.useKadeHealth,
+   "compatibility setting did not toggle only the private options copy");
   var downscroll = row("Gameplay", "Downscroll");
   check(CodenameOptionsMenuModel.adjust(work, downscroll, 1), "toggle did not change");
   check(work.downscroll == true && native.downscroll == false,
    "options editing mutated the cached settings before menu exit");
-  var normalize = row("Gameplay", "Normalize Song Audio");
+  var normalize = row("Audio", "Normalize Song Audio");
   check(normalize != null && normalize.field == "normalizeSongAudio"
    && CodenameOptionsMenuModel.valueText(work, normalize) == "Off",
    "Codename normalize-song-audio row did not read the saved toggle");
@@ -78,8 +177,8 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
   var naughty = row("Gameplay", "Naughtyness");
   check(CodenameOptionsMenuModel.adjust(work, naughty, 1) && work.naughtyness == false,
    "Codename naughtyness preference was not editable");
-  var musicVolume = row("Gameplay", "Music Volume");
-  var sfxVolume = row("Gameplay", "SFX Volume");
+  var musicVolume = row("Audio", "Music Volume");
+  var sfxVolume = row("Audio", "SFX Volume");
   check(CodenameOptionsMenuModel.adjust(work, musicVolume, -1) && work.volumeMusic == 0.9
    && CodenameOptionsMenuModel.adjust(work, sfxVolume, -1) && work.volumeSFX == 0.9,
    "music and SFX group volumes did not use bounded tenth steps");
@@ -115,13 +214,46 @@ class CodenameOptionsMenuCompatTest(unittest.TestCase):
   check(CodenameOptionsMenuModel.adjust(work, antialiasing, -1)
    && !work.antialiasing && native.antialiasing,
    "CUSTOM advanced settings did not edit only the private settings copy");
-  var offset = row("Gameplay", "Note Offset");
+  var offset = row("Controls & Timing", "Note Offset");
+  work.offset = 1.26;
+  check(CodenameOptionsMenuModel.valueText(work, offset) == "1.3 ms",
+   "note offset display did not round to the nearest tenth");
+  work.offset = 0;
   check(CodenameOptionsMenuModel.adjust(work, offset, -1) && work.offset == -0.1,
    "note offset did not preserve negative sub-millisecond adjustment");
-  var fps = row("Miscellaneous", "FPS Cap");
-  for (i in 0...100) CodenameOptionsMenuModel.adjust(work, fps, 1);
-  check(work.fpsCap == 480 && CodenameOptionsMenuModel.valueText(work, fps) == "480 FPS",
-   "FPS option did not honor the configured cap or show its units");
+  check(CodenameOptionsMenuModel.adjust(work, offset, 1, true) && work.offset == 19.9,
+   "Shift offset adjustment did not add exactly 20 ms while preserving the fraction");
+  check(CodenameOptionsMenuModel.adjust(work, offset, -1, true) && work.offset == -0.1,
+   "Shift offset adjustment did not subtract exactly 20 ms");
+  work.offset = 995.1;
+  check(CodenameOptionsMenuModel.adjust(work, offset, 1, true) && work.offset == 1000,
+   "Shift offset adjustment did not clamp to the upper limit");
+  work.offset = -995.1;
+  check(CodenameOptionsMenuModel.adjust(work, offset, -1, true) && work.offset == -1000,
+   "Shift offset adjustment did not clamp to the lower limit");
+  check(CodenameOptionsMenuModel.adjust(work, scroll, -1, true) && work.scrollSpeed == 9.9,
+   "Shift offset shortcut changed the increment for another numeric option");
+  var fps = row("Graphics & Performance", "FPS Cap");
+  check(fps.min == 1 && fps.step == 1 && fps.max == OptionsHandler.MAX_FPS_CAP && fps.integral,
+   "FPS option did not expose the full positive integer range");
+  check(row("Miscellaneous", "FPS Cap") != null
+   && row("Miscellaneous", "Always Show Cutscenes") != null,
+   "legacy Miscellaneous alias lost previously exposed rows");
+  for (i in 0...500) CodenameOptionsMenuModel.adjust(work, fps, 1);
+  check(work.fpsCap == 560 && CodenameOptionsMenuModel.valueText(work, fps) == "560 FPS",
+   "FPS option did not step by one above the old 480 cap or show its units");
+  check(CodenameOptionsMenuModel.adjust(work, fps, 1, true) && work.fpsCap == 580
+   && CodenameOptionsMenuModel.adjust(work, fps, -1, true) && work.fpsCap == 560,
+   "Shift FPS adjustment did not step by exactly 20");
+  work.fpsCap = OptionsHandler.MAX_FPS_CAP;
+  check(!CodenameOptionsMenuModel.adjust(work, fps, 1, true)
+   && work.fpsCap == OptionsHandler.MAX_FPS_CAP,
+   "FPS cap upper boundary overflowed the native Int range");
+  var fastTransitions = row("Interface", "Fast Scene Transitions");
+  check(fastTransitions != null && !work.fastSceneTransitions
+   && CodenameOptionsMenuModel.adjust(work, fastTransitions, 1)
+   && work.fastSceneTransitions && !native.fastSceneTransitions,
+   "fast scene transitions did not edit the isolated interface preference");
   check(work.unrelatedSaveField == "preserve" && native.fpsCap == 60,
    "editing supported settings overwrote unrelated or persisted settings");
   check(CodenameOptionsMenuModel.valueText(work, downscroll) == "On",

@@ -20,6 +20,15 @@ typedef ImportRefreshBrowseStatus = {
 	var complete:Bool;
 	var changed:Bool;
 	var blocked:Bool;
+	@:optional var phase:String;
+	@:optional var current:String;
+	@:optional var completed:Int;
+	@:optional var total:Int;
+	@:optional var elapsedSeconds:Float;
+	@:optional var activityAgeSeconds:Float;
+	@:optional var phaseElapsedSeconds:Float;
+	@:optional var etaSeconds:Float;
+	@:optional var queueRemaining:Int;
 }
 
 /** Retained source -> private conversion -> owned, recoverable publication.
@@ -37,6 +46,7 @@ class ImportRefreshManager {
 	static var handedOff:Bool = false;
 	static var pendingHandoff:Bool = false;
 	static var queue:Array<Dynamic> = [];
+	static var measurements:ImportRefreshProgress;
 	public static var generation(default,null):Int = 0;
 
 	/** Called by the existing native import worker. Its renderer stays on the
@@ -146,10 +156,15 @@ class ImportRefreshManager {
 		var previous:Dynamic = committedManifest(state,owner);
 		var oldMetadata:Dynamic = previous == null ? null : Reflect.field(previous,"revision");
 		var masked:Array<String> = [];
+		var maskedPaths:Map<String, Bool> = new Map();
 		if (previous != null) {
 			var files:Array<Dynamic> = cast Reflect.field(previous,"files");
 			if (files == null || Reflect.field(previous,"owner") != owner) throw "Invalid import ownership manifest.";
-			for (file in files) masked.push(Std.string(file.path));
+			for (file in files) {
+				var path = Std.string(file.path);
+				masked.push(path);
+				maskedPaths.set(path, true);
+			}
 		}
 		var source = contained(cache,Std.string(record.source));
 		if (!FileSystem.exists(source) || !FileSystem.isDirectory(source)) throw "Retained source is missing; import the original package once again.";
@@ -158,7 +173,7 @@ class ImportRefreshManager {
 		});
 		var stage = Path.join([cache,"staging",Std.string(record.id) + "-" + Std.string(Date.now().getTime())]);
 		FileSystem.createDirectory(stage);
-		var io = ImportIO.begin(install,stage,masked);
+		var io = ImportIO.begin(install,stage,masked,true);
 		var retainedEngines:Map<String, String> = new Map();
 		for (root in (cast record.roots:Array<Dynamic>))
 			retainedEngines.set(Path.join([source,Std.string(root.relative)]),Std.string(root.engine));
@@ -166,6 +181,7 @@ class ImportRefreshManager {
 		var ended = false;
 		try {
 			var registrySeeds:Map<String,String> = new Map();
+			var registryRegeneration:Map<String,Bool> = new Map();
 			var names:Map<String,String> = new Map();
 			for (root in (cast record.roots:Array<Dynamic>)) {
 				var path = Path.join([source,Std.string(root.relative)]);
@@ -183,11 +199,19 @@ class ImportRefreshManager {
 				var live = Path.join([install,path]);
 				if (!FileSystem.exists(live)) throw "Local registry deletion preserved: " + path;
 				var prepared = ImportRegistryRefresh.prepare(Std.string(registry.before),Std.string(registry.generated),File.getContent(live));
-				if (prepared.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + prepared.conflicts.join(", ");
+				if (prepared.conflicts.length > 0) {
+					// Calculate fresh output privately before deciding whether these
+					// values are already applied or are divergent user edits.
+					prepared = ImportRegistryRefresh.regenerationSeed(Std.string(registry.before),
+						Std.string(registry.generated),File.getContent(live));
+					if (prepared.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + prepared.conflicts.join(", ");
+					registryRegeneration.set(path,true);
+				}
 				registrySeeds.set(path,prepared.text);
 				ImportFile.saveContent(path,prepared.text);
 			}
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
+			progress({phase:"scanning-retained-source", current:source, completed:0, total:0});
 			var scan = ImportWorkflow.scanNow(source,Std.string(record.type));
 			if (scan == null || scan.rootScanTruncated == true || scan.packageScanTruncated == true)
 				throw "Import rescan was incomplete; installed content is unchanged.";
@@ -215,11 +239,14 @@ class ImportRefreshManager {
 			var outputs:Array<ImportRefreshStagedOutput> = [];
 			var baselines:Array<ImportRefreshManifestFile> = [];
 			var nextRegistries:Array<Dynamic> = [];
-			for (path in io.writtenPaths()) {
+			var written = io.writtenPaths();
+			var checkedOutputs = 0;
+			progress({phase:"preparing-output", current:"", completed:0, total:written.length});
+			for (path in written) {
 				if (!StringTools.startsWith(path,"assets/")) continue;
 				var staged = Path.join([stage,path]);
 				if (!FileSystem.exists(staged) || FileSystem.isDirectory(staged)) continue;
-				var before = io.before(path);
+				var before = isRegistry(path) || !maskedPaths.exists(path) ? io.before(path) : null;
 				if (isRegistry(path)) {
 					var live = Path.join([install,path]);
 					var current = FileSystem.exists(live) ? File.getContent(live) : "{}";
@@ -228,22 +255,39 @@ class ImportRefreshManager {
 					var seed = registrySeeds.exists(path) ? registrySeeds.get(path)
 						: before == null || before.text == null ? "{}" : before.text;
 					var liveBase = current;
+					var previousRegistry:Dynamic = null;
+					var reconcileGenerated = registryRegeneration.exists(path);
 					for (r in registries) if (Std.string(r.path) == path) {
+						previousRegistry = r;
 						var p = ImportRegistryRefresh.prepare(Std.string(r.before),Std.string(r.generated),current);
-						if (p.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + p.conflicts.join(", ");
+						if (p.conflicts.length > 0) {
+							reconcileGenerated = true;
+							p = ImportRegistryRefresh.regenerationSeed(Std.string(r.before),Std.string(r.generated),current);
+							if (p.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + p.conflicts.join(", ");
+						}
 						liveBase = p.text;
 					}
-					var merged = ImportRegistryRefresh.merge(seed,generated,liveBase);
+					var merged = reconcileGenerated && previousRegistry != null
+						? ImportRegistryRefresh.merge(Std.string(previousRegistry.generated),generated,current)
+						: ImportRegistryRefresh.merge(seed,generated,liveBase);
 					if (merged.conflicts.length > 0) throw "Concurrent registry edits preserved: " + path + " " + merged.conflicts.join(", ");
+					if (reconcileGenerated) {
+						// A merge leaves unchanged fields alone. Also validate all of
+						// this owner's regenerated contribution so unchanged importer
+						// values cannot silently accept divergent edits or deletions.
+						var validated = ImportRegistryRefresh.prepare(seed,generated,merged.text);
+						if (validated.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + validated.conflicts.join(", ");
+					}
 					File.saveContent(staged,merged.text);
 					nextRegistries.push({path:path,before:liveBase,generated:merged.text});
 					if (FileSystem.exists(live)) baselines.push({path:path,owner:owner,sha256:Sha256.make(haxe.io.Bytes.ofString(current)).toHex()});
-				} else if (before != null && masked.indexOf(path) < 0) {
+				} else if (before != null && !maskedPaths.exists(path)) {
 					// Legacy output has no trusted generated baseline. Do not claim it
 					// simply because the user selected the same source folder again.
 					throw "Existing untracked import file preserved: " + path;
 				}
 				outputs.push({path:path,stagedPath:path,sha256:ImportSourceSnapshot.sha256File(staged)});
+				progress({phase:"preparing-output", current:path, completed:++checkedOutputs, total:written.length});
 			}
 			ImportIO.end(); ended = true;
 			ImportRootScanner.setRetainedSourceEngines(previousEngines);
@@ -255,12 +299,13 @@ class ImportRefreshManager {
 			record.revisions = [for (engine in (cast record.engines:Array<String>)) ImportRevision.current(engine,EngineBranding.version())];
 			var metadata:Dynamic = {importRecord:record,registries:nextRegistries};
 			progress({phase:"publishing-import",current:Std.string(record.label),completed:0,total:1});
-			var applied = ImportRefreshTransaction.apply(install,stage,state,owner,["assets"],outputs,metadata,cancel,baselines);
+			var applied = ImportRefreshTransaction.apply(install,stage,state,owner,["assets"],outputs,metadata,cancel,baselines,progress);
 			if (applied.status != ImportRefreshTransaction.STATUS_APPLIED)
 				throw "Import refresh " + applied.status + ": " + [for (c in applied.conflicts) c.path + " (" + c.reason + ")"].join(", ");
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			// Publication is already committed. A disposable staging cleanup
 			// failure must not report that installed import as failed.
+			progress({phase:"cleaning-up-import", current:Std.string(record.label), completed:0, total:0});
 			try deleteStage(stage) catch (cleanup:Dynamic)
 				trace("[import-refresh-cleanup-error] " + Std.string(cleanup));
 			return imported;
@@ -278,11 +323,15 @@ class ImportRefreshManager {
 	/** Only browsing states call this. While refreshing, they gate actions which
 	 * could enter gameplay/editors or start a competing importer. */
 	public static function browseTick():ImportRefreshBrowseStatus {
-		if (!checked) { checked = true; loadQueue(); }
+		if (!checked) { checked = true; startQueueInspection(); }
 		if (!active && queue.length > 0) startNext();
 		mutex.acquire();
 		var value:ImportRefreshBrowseStatus = {busy:active,label:status.label,fraction:status.fraction,
 			complete:status.complete,changed:status.changed,blocked:status.blocked};
+		if (measurements != null) {
+			var measured = measurements.snapshot(haxe.Timer.stamp(), queue.length);
+			for (field in Reflect.fields(measured)) Reflect.setField(value, field, Reflect.field(measured, field));
+		}
 		var handoff = !active && !handedOff && pendingHandoff;
 		var names = handoff ? completedNames.copy() : [];
 		if (handoff) { handedOff = true; pendingHandoff = false; completedNames = []; }
@@ -291,16 +340,46 @@ class ImportRefreshManager {
 		return value;
 	}
 
-	static function loadQueue():Void {
-		var cache = Path.join([Sys.getCwd(),CACHE_ROOT]);
+	static function startQueueInspection():Void {
+		var install = Sys.getCwd();
+		mutex.acquire();
+		active = true;
+		status.busy = true;
+		status.label = "Checking saved imports";
+		measurements = new ImportRefreshProgress(haxe.Timer.stamp());
+		mutex.release();
+		// Receipt parsing and recoverable storage maintenance can inspect many
+		// thousands of paths. Never perform it inside a menu's first update.
+		Thread.create(function() {
+			try loadQueue(install) catch (error:Dynamic) {
+				mutex.acquire();
+				status.blocked = true;
+				status.label = Std.string(error);
+				mutex.release();
+			}
+			mutex.acquire();
+			active = false;
+			status.busy = false;
+			mutex.release();
+		});
+	}
+
+	static function loadQueue(install:String):Void {
+		var cache = Path.join([install,CACHE_ROOT]);
 		var records = Path.join([cache,"records"]);
 		if (!FileSystem.exists(records)) return;
-		for (name in FileSystem.readDirectory(records)) {
-			if (!~/^[a-f0-9]{64}\.json$/.match(name)) continue;
+		var recordNames = [for (name in FileSystem.readDirectory(records))
+			if (~/^[a-f0-9]{64}\.json$/.match(name)) name];
+		recordNames.sort(Reflect.compare);
+		var completed = 0;
+		for (name in recordNames) {
+			mutex.acquire();
+			measurements.update({phase:"checking-import-receipts",current:name,completed:completed,total:recordNames.length},haxe.Timer.stamp());
+			mutex.release();
 			var id = name.substr(0,64);
 			var owner = "retained-import:" + id;
 			try {
-				var conflicts = ImportRefreshTransaction.recover(Sys.getCwd(),Path.join([cache,"state"]),owner);
+				var conflicts = ImportRefreshTransaction.recover(install,Path.join([cache,"state"]),owner);
 				if (conflicts.length > 0) throw "Interrupted refresh needs attention; installed edits were preserved.";
 				var manifest = committedManifest(Path.join([cache,"state"]),owner);
 				if (manifest == null || manifest.owner != owner || manifest.revision == null) continue;
@@ -313,12 +392,16 @@ class ImportRefreshManager {
 						throw "Import receipt is newer or unrecognized; its files were preserved.";
 					if (assessment.status == ImportRevision.OUTDATED) stale = true;
 				}
-				if (stale) queue.push(record);
+				if (stale) { mutex.acquire(); queue.push(record); mutex.release(); }
 			} catch (error:Dynamic) {
 				trace("[import-refresh-error] " + Std.string(error));
-				status.blocked = true; status.label = Std.string(error);
+				mutex.acquire(); status.blocked = true; status.label = Std.string(error); mutex.release();
 			}
+			completed++;
 		}
+		mutex.acquire();
+		measurements.update({phase:"checking-import-receipts",current:"",completed:recordNames.length,total:recordNames.length},haxe.Timer.stamp());
+		mutex.release();
 	}
 
 	static function startNext():Void {
@@ -327,14 +410,30 @@ class ImportRefreshManager {
 		active = true; handedOff = false;
 		status.busy = true; status.complete = false; status.changed = false; status.fraction = 0;
 		status.label = "Refreshing import: " + Std.string(record.label);
+		measurements = new ImportRefreshProgress(haxe.Timer.stamp());
 		var install = Sys.getCwd();
 		Thread.create(function() {
 			ModuleFunctions.setImportBackgroundMode(true);
 			ModuleFunctions.setImportCancelCallback(function() return false);
+			var lastDiagnosticPhase = '';
+			var lastDiagnosticTime:Float = 0;
+			var diagnostics = Sys.getEnv('CAMMIE_IMPORT_REFRESH_TRACE') == '1';
 			var onProgress = function(payload:Dynamic) {
+				if (diagnostics) {
+					var phase = Std.string(payload.phase);
+					var now = Sys.time();
+					if (phase != lastDiagnosticPhase || now - lastDiagnosticTime >= 2) {
+						lastDiagnosticPhase = phase;
+						lastDiagnosticTime = now;
+						trace('[import-refresh-progress] ' + phase + ' ' + Std.string(payload.completed)
+							+ '/' + Std.string(payload.total) + ' ' + Std.string(payload.current));
+					}
+				}
 				mutex.acquire();
-				status.label = "Refreshing import: " + Std.string(record.label) + " — " + Std.string(payload.phase);
-				status.fraction = payload.total == null || payload.total <= 0 ? 0 : Math.min(0.99,payload.completed / payload.total);
+				status.label = Std.string(record.label);
+				measurements.update(payload, haxe.Timer.stamp());
+				status.fraction = measurements.total <= 0 ? 0
+					: Math.min(1, measurements.completed / measurements.total);
 				mutex.release();
 			};
 			ModuleFunctions.setImportProgressCallback(onProgress);

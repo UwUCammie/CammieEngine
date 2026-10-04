@@ -49,9 +49,9 @@ class NightmareVisionCharacterData {
 	}
 
 	/**
-		Resolve `definition.image` to a prefix accepted by Character.loadTextureAtlas
-		or Character.loadSparrow. The returned path remains relative to the game
-		working directory so FlxAnimateAssets and FNFAssets use the same owner path.
+		Resolve comma-separated `definition.image` atlas paths to prefixes accepted
+		by Character.loadTextureAtlas or Character.loadSparrow. The returned paths
+		remain relative to the game working directory and stay in this owner/core.
 	*/
 	public static function imageRoot(ownerRoot:String, definition:Dynamic):Null<String> {
 		if (definition == null)
@@ -59,32 +59,44 @@ class NightmareVisionCharacterData {
 		var image:Dynamic = Reflect.field(definition, 'image');
 		if (!Std.isOfType(image, String))
 			return null;
-		var relativeImage = StringTools.trim(Std.string(image));
-		if (relativeImage.startsWith('images/'))
-			relativeImage = relativeImage.substr('images/'.length);
-		var extension = Path.extension(relativeImage).toLowerCase();
-		if (['png', 'xml', 'json'].indexOf(extension) >= 0)
-			relativeImage = Path.withoutExtension(relativeImage);
-		var imagePath = normalizeRelative(relativeImage);
-		if (imagePath == '')
-			return null;
+		var prefixes:Array<String> = [];
+		for (authoredPart in Std.string(image).split(',')) {
+			var relativeImage = StringTools.trim(authoredPart);
+			if (relativeImage.startsWith('images/'))
+				relativeImage = relativeImage.substr('images/'.length);
+			var extension = Path.extension(relativeImage).toLowerCase();
+			if (['png', 'xml', 'json'].indexOf(extension) >= 0)
+				relativeImage = Path.withoutExtension(relativeImage);
+			var imagePath = normalizeRelative(relativeImage);
+			if (imagePath == '')
+				return null;
 
-		#if sys
-		var prefix = normalizeOwnerPath(ownerRoot, 'images/' + imagePath);
+			#if sys
+			var prefix = resolveImagePrefix(ownerRoot, imagePath);
+			if (prefix == null)
+				return null;
+			prefixes.push(prefix);
+			#end
+		}
+		return prefixes.length == 0 ? null : prefixes.join(',');
+	}
+
+	#if sys
+	static function resolveImagePrefix(ownerRoot:String, imagePath:String):Null<String> {
+		var ownerRelative = 'images/' + imagePath;
+		var prefix = normalizeOwnerPath(ownerRoot, ownerRelative);
 		if (prefix != null && hasAnimateAtlas(prefix))
 			return prefix;
-		var sparrowPrefix = resolveSparrowPrefix(ownerRoot, 'images/' + imagePath);
+		var sparrowPrefix = resolveSparrowPrefix(ownerRoot, ownerRelative);
 		if (sparrowPrefix != null)
 			return sparrowPrefix;
-		var corePrefix = normalizeOwnerPath(ownerRoot, '__nmv_core/images/' + imagePath);
+		var coreRelative = '__nmv_core/' + ownerRelative;
+		var corePrefix = normalizeOwnerPath(ownerRoot, coreRelative);
 		if (corePrefix != null && hasAnimateAtlas(corePrefix))
 			return corePrefix;
-		var coreSparrow = resolveSparrowPrefix(ownerRoot, '__nmv_core/images/' + imagePath);
-		if (coreSparrow != null)
-			return coreSparrow;
-		#end
-		return null;
+		return resolveSparrowPrefix(ownerRoot, coreRelative);
 	}
+	#end
 
 	static function resolveOwnerFile(ownerRoot:String, relative:String):Null<String> {
 		var ownerFile = resolveExactFile(ownerRoot, relative);

@@ -20,6 +20,7 @@ import flixel.FlxSprite;
 import flixel.animation.FlxBaseAnimation;
 import flixel.graphics.frames.FlxAtlasFrames;
 import flixel.graphics.frames.FlxFramesCollection;
+import animate.FlxAnimateFrames;
 import flash.display.BitmapData;
 import lime.utils.Assets;
 import flixel.FlxG;
@@ -194,6 +195,28 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var healthIcon(get, never):String;
 	function get_healthIcon():String
 		return nightmareVisionHealthIcon == null ? curCharacter : nightmareVisionHealthIcon;
+	/** NMV scripts use this packed color for character-owned health displays. */
+	@:keep public var healthColour(get, set):FlxColor;
+	var nightmareVisionHealthColour:Null<FlxColor> = null;
+	@:keep function get_healthColour():FlxColor {
+		if (nightmareVisionHealthColour != null)
+			return nightmareVisionHealthColour;
+		var fallback:FlxColor = isPlayer ? playerColor : enemyColor;
+		var authored:Dynamic = nightmareVisionCharacterData == null ? null
+			: Reflect.field(nightmareVisionCharacterData, 'healthbar_colour');
+		if (authored == null)
+			return fallback;
+		if (Std.isOfType(authored, String)) {
+			var parsed = FlxColor.fromString(Std.string(authored));
+			return parsed == null ? fallback : parsed;
+		}
+		var numeric = Std.parseFloat(Std.string(authored));
+		return !Math.isFinite(numeric) ? fallback : cast Std.int(numeric);
+	}
+	@:keep function set_healthColour(value:FlxColor):FlxColor {
+		nightmareVisionHealthColour = value;
+		return value;
+	}
 
 	static function nightmareVisionHealthIconFromDefinition(definition:Dynamic):Null<String> {
 		if (definition == null) return null;
@@ -814,23 +837,38 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		try {
 			var ownerImages = ownerRoot + '/images/';
 			var coreImages = ownerRoot + '/__nmv_core/images/';
-			var atlasKey:String;
-			var checkOwner:Bool;
-			if (StringTools.startsWith(imageRoot, ownerImages)) {
-				atlasKey = imageRoot.substr(ownerImages.length);
-				checkOwner = true;
-			} else if (StringTools.startsWith(imageRoot, coreImages)) {
-				atlasKey = imageRoot.substr(coreImages.length);
-				checkOwner = false;
-			} else
-				return false;
 			var ownerPaths = new NightmareVisionPaths(ownerRoot);
-			frames = ownerPaths.getTextureAtlas(atlasKey, null, true, checkOwner);
-			if (frames == null)
+			var atlasRoots = imageRoot.split(',');
+			var atlases:Array<FlxAtlasFrames> = [];
+			var animateAtlas = false;
+			for (authoredRoot in atlasRoots) {
+				var atlasRoot = StringTools.trim(authoredRoot);
+				var atlasKey:String;
+				var checkOwner:Bool;
+				if (StringTools.startsWith(atlasRoot, ownerImages)) {
+					atlasKey = atlasRoot.substr(ownerImages.length);
+					checkOwner = true;
+				} else if (StringTools.startsWith(atlasRoot, coreImages)) {
+					atlasKey = atlasRoot.substr(coreImages.length);
+					checkOwner = false;
+				} else
+					return false;
+
+				var atlas = ownerPaths.getTextureAtlas(atlasKey, null, true, checkOwner);
+				if (atlas == null)
+					return false;
+				var hasAnimateManifest = FileSystem.exists(atlasRoot + '/Animation.json');
+				var hasSparrowFiles = FileSystem.exists(atlasRoot + '.png')
+					&& FileSystem.exists(atlasRoot + '.xml');
+				if (!hasAnimateManifest && !hasSparrowFiles)
+					return false;
+				animateAtlas = animateAtlas || hasAnimateManifest;
+				atlases.push(atlas);
+			}
+			if (atlases.length == 0)
 				return false;
-			var animateAtlas = FileSystem.exists(imageRoot + '/Animation.json');
-			var sparrowAtlas = FileSystem.exists(imageRoot + '.png') && FileSystem.exists(imageRoot + '.xml');
-			if (!animateAtlas && !sparrowAtlas)
+			frames = atlases.length == 1 ? atlases[0] : FlxAnimateFrames.combineAtlas(atlases);
+			if (frames == null)
 				return false;
 
 			var authoredAnimations:Dynamic = Reflect.field(definition, 'animations');

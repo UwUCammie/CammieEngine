@@ -415,7 +415,8 @@ PYEOF
 prepare_cross_project() {
 	# run.sh owns the repository-wide preparation that must precede every Lime
 	# invocation: pinned tool bootstrap, lower-case chart/case mirrors,
-	# Project.xml disk mounts, and the patched flixel/rapidjson sources. Its
+	# Project.xml disk mounts, and the patched Flixel/rapidjson sources,
+	# including per-update action-cache compatibility for uncapped input. Its
 	# setup mode deliberately stops before launch_cache/build so this Windows
 	# path never performs an unrelated Linux build.
 	if [[ "$debug" == 1 ]]; then
@@ -423,6 +424,11 @@ prepare_cross_project() {
 	else
 		"$ROOT/run.sh" setup
 	fi
+	# Keep the cross-target entry point explicit about this Flixel compatibility
+	# patch as well; the patcher is idempotent after run.sh's shared setup.
+	python3 "$ROOT/tools/patch_flixel_input_frame_cache.py" \
+		"$ROOT/.haxelib/flixel/6,1,2/flixel" \
+		|| die "could not apply the Flixel input-frame cache patch"
 }
 
 ensure_windows_astc_decoder() {
@@ -754,6 +760,8 @@ case "$target_kind" in
 			fi
 			source "$ROOT/tools/runtime_lock.sh"
 			lock_runtime "$ROOT/.tools/runtime-$debug.lock"
+			python3 tools/patch_windows_mingw.py
+			python3 tools/ensure_lime_uncapped.py --platform windows --arch 64
 			ensure_windows_astc_decoder
 			# `-D...` supplies Haxe/hxcpp defines, but Lime also needs the
 			# target flag that selects its C++ cross-compilation path.  Without

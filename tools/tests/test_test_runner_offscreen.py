@@ -39,6 +39,25 @@ class TestRunnerOffscreen(unittest.TestCase):
             self.assertNotIn(name, environment)
         self.assertEqual(parent["DISPLAY"], ":0")
 
+    def test_timing_hints_reorder_without_omitting_new_modules(self):
+        modules = [Path('test_short.py'), Path('test_new.py'), Path('test_native.py')]
+        scheduled = RUN_TESTS.schedule_modules(modules, {'test_native.py': 60, 'test_short.py': 1})
+        self.assertEqual(scheduled, [modules[2], modules[0], modules[1]])
+        self.assertCountEqual(scheduled, modules)
+
+    def test_missing_corrupt_or_unwritable_timing_hints_do_not_fail_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hints = Path(directory) / 'timings.json'
+            with patch.object(RUN_TESTS, 'timing_path', return_value=hints):
+                self.assertEqual(RUN_TESTS.load_timings(), {})
+                hints.write_text('broken json')
+                self.assertEqual(RUN_TESTS.load_timings(), {})
+                RUN_TESTS.save_timings({'test_fixture.py': 3})
+                self.assertEqual(RUN_TESTS.load_timings(), {'test_fixture.py': 3})
+                with patch.object(RUN_TESTS.os, 'replace', side_effect=PermissionError):
+                    RUN_TESTS.save_timings({'test_fixture.py': 10})
+                self.assertEqual(RUN_TESTS.load_timings(), {'test_fixture.py': 3})
+
     def test_empty_test_module_fails_the_suite(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)

@@ -69,12 +69,17 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function findImportFile",
                 "static function findImportAudio",
                 "static function findImportVocalStems",
+                "static function normalizeNightmareVisionVocalRoles",
+                "static function vocalStemMetadataMatches",
+                "static function updateChartVocalStemMetadata",
                 "static function readImportJson",
                 "static function convertImportDialogue",
                 "static function importCutsceneScript",
                 "static function importCutsceneBool",
                 "static function getImportDifficultyNames",
                 "static function findImportChart",
+                "static function importChartNames",
+                "static function findImportChartInEntries",
                 "static function isImportChartSidecar",
                 "static function collectAssetCharts",
                 "static function chartFieldString",
@@ -188,6 +193,7 @@ typedef SongImport = {{
   var ui:String; var cutscene:String; var category:String; var isHey:Bool;
   var isCheer:Bool; var isMoody:Bool; var isSpooky:Bool; var stageID:Int; var week:Int;
   var char:String; var display:String; var inst:String; var voices:String; var dialog:String;
+  @:optional var vocalStems:Array<SongImportVocalStem>;
   @:optional var dialogueJson:String; @:optional var dialogueText:String;
   @:optional var cutsceneJson:String; @:optional var cutsceneScript:String;
   @:optional var events:String;
@@ -433,6 +439,9 @@ class Main {{
             install_import_io_dependencies(temp_path)
             for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx"):
                 (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline='\n')
+            (temp_path / "NightmareVisionVocalRole.hx").write_text(
+                (ROOT / "source/NightmareVisionVocalRole.hx").read_text(), newline='\n'
+            )
             (temp_path / "NightmareVisionChartCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
             , newline='\n')

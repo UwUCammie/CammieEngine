@@ -33,6 +33,7 @@ class PsychSkinRuntime {
 			trace('[psych-skin] incomplete note animations for ' + descriptor.key + ' in ' + descriptor.ownerRoot);
 			return false;
 		}
+		note.psychSkinUsesNativeDefaultFallback = descriptor.nativeDefaultFallback;
 		markDiagnostic(diagnostics, 'reload:read-current-visual');
 		var oldAnim = note.animation.curAnim == null ? null : note.animation.curAnim.name;
 		var oldScaleY = note.scale.y;
@@ -88,6 +89,7 @@ class PsychSkinRuntime {
 			trace('[psych-skin] incomplete receptor animations for ' + descriptor.key + ' in ' + descriptor.ownerRoot);
 			return false;
 		}
+		strum.psychSkinUsesNativeDefaultFallback = descriptor.nativeDefaultFallback;
 		var oldAnim = strum.animation.curAnim == null ? null : strum.animation.curAnim.name;
 		if (pixel) {
 			var bitmap = FNFAssets.getBitmapData(descriptor.image);

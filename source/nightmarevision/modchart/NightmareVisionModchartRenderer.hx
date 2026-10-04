@@ -10,6 +10,9 @@ private typedef NightmareVisionSpriteBaseline = {
 	var frameWidth:Float;
 	var frameHeight:Float;
 	var state:NightmareVisionModchartVisualState;
+	var object:NightmareVisionModchartObject;
+	var position:NightmareVisionModchartVector;
+	var tailPosition:Null<NightmareVisionModchartVector>;
 }
 
 /**
@@ -80,16 +83,23 @@ class NightmareVisionModchartRenderer {
 		var baseline = ensureBaseline(note);
 		if (baseline == null) return null;
 		syncLiveBaseScale(note, baseline);
-		var object = snapshot(note, NightmareVisionModchartObject.NOTE, player, baseline);
+		var object = snapshot(note, NightmareVisionModchartObject.NOTE, player, baseline, baseline.object);
 		if (segmentDuration != null) object.sustainLength = segmentDuration;
 		if (isSustainEnd != null) object.isSustainEnd = isSustainEnd;
-		var position = transform.getPosition(context, object, visualDiff, timeDiff, context.beat);
+		var position = transform.getPositionInto(context, object, visualDiff, timeDiff,
+			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
 		copySpriteResult(note, object, position, baseline, NightmareVisionModchartObject.NOTE);
 
 		var state = baseline.state;
 		if (object.isSustain) {
-			var tailPosition = transform.getPosition(context, object, endVisualDiff, endTimeDiff, endBeat);
+			var tailScratch = baseline.tailPosition;
+			if (tailScratch == null) {
+				tailScratch = new NightmareVisionModchartVector();
+				baseline.tailPosition = tailScratch;
+			}
+			var tailPosition = transform.getPositionInto(context, object, endVisualDiff, endTimeDiff,
+				endBeat, tailScratch);
 			var radians = Math.atan2(tailPosition.y - position.y, tailPosition.x - position.x);
 			var degrees = radians * 180 / Math.PI - 90;
 			state.holdAngle = degrees;
@@ -128,7 +138,7 @@ class NightmareVisionModchartRenderer {
 	public function updateReceptor(context:NightmareVisionModchartContext, receptor:Dynamic,
 		player:Int):NightmareVisionModchartVisualState
 		return updateSprite(context, receptor, NightmareVisionModchartObject.RECEPTOR, player,
-			intField(receptor, 'noteData', intField(receptor, 'ID', 0)), 0, 0);
+			intFieldWithFallbacks(receptor, 'noteData', 'ID', null), 0, 0);
 
 	public function updateSplash(context:NightmareVisionModchartContext, splash:Dynamic,
 		kind:String, player:Int, data:Int):NightmareVisionModchartVisualState {
@@ -142,9 +152,10 @@ class NightmareVisionModchartRenderer {
 		player:Int, data:Int, visualDiff:Float, timeDiff:Float):NightmareVisionModchartVisualState {
 		var baseline = ensureBaseline(sprite);
 		if (baseline == null) return null;
-		var object = snapshot(sprite, kind, player, baseline);
+		var object = snapshot(sprite, kind, player, baseline, baseline.object);
 		object.data = data;
-		var position = transform.getPosition(context, object, visualDiff, timeDiff, context.beat);
+		var position = transform.getPositionInto(context, object, visualDiff, timeDiff,
+			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
 		copySpriteResult(sprite, object, position, baseline, kind);
 		applyVisualResult(sprite, baseline.state);
@@ -162,7 +173,10 @@ class NightmareVisionModchartRenderer {
 			height:number(field(sprite, 'height')),
 			frameWidth:number(field(sprite, 'frameWidth')),
 			frameHeight:number(field(sprite, 'frameHeight')),
-			state:new NightmareVisionModchartVisualState()
+			state:new NightmareVisionModchartVisualState(),
+			object:new NightmareVisionModchartObject(),
+			position:new NightmareVisionModchartVector(),
+			tailPosition:null
 		};
 		baselines.set(sprite, baseline);
 		return baseline.state;
@@ -192,10 +206,19 @@ class NightmareVisionModchartRenderer {
 	}
 
 	function snapshot(sprite:Dynamic, kind:String, player:Int,
-		baseline:NightmareVisionSpriteBaseline):NightmareVisionModchartObject {
-		var object = new NightmareVisionModchartObject(kind);
+		baseline:NightmareVisionSpriteBaseline,
+		object:NightmareVisionModchartObject):NightmareVisionModchartObject {
+		object.kind = kind;
+		object.alphaMod = 1;
+		object.rgbFlash = 0;
+		object.rgbAlpha = 1;
+		object.angle = 0;
+		object.garbage = false;
+		object.spriteOffsetX = 0;
+		object.spriteOffsetY = 0;
+		object.centerOriginAndOffsets = false;
 		object.player = player;
-		object.data = intField(sprite, 'noteData', intField(sprite, 'direction', intField(sprite, 'ID', 0)));
+		object.data = intFieldWithFallbacks(sprite, 'noteData', 'direction', 'ID');
 		object.active = field(sprite, 'active') != false;
 		object.isSustain = field(sprite, 'isSustainNote') == true;
 		object.isSustainEnd = field(sprite, 'isSustainEnd') == true
@@ -213,8 +236,8 @@ class NightmareVisionModchartRenderer {
 		object.scaleY = baseline.scaleY;
 		object.x = number(field(sprite, 'x'));
 		object.y = number(field(sprite, 'y'));
-		object.typeOffsetX = number(field(sprite, 'offsetX'), number(field(sprite, 'typeOffsetX')));
-		object.typeOffsetY = number(field(sprite, 'offsetY'), number(field(sprite, 'typeOffsetY')));
+		object.typeOffsetX = numberFieldWithFallback(sprite, 'offsetX', 'typeOffsetX');
+		object.typeOffsetY = numberFieldWithFallback(sprite, 'offsetY', 'typeOffsetY');
 		return object;
 	}
 
@@ -351,13 +374,46 @@ class NightmareVisionModchartRenderer {
 
 	static function number(value:Dynamic, fallback:Float = 0):Float {
 		if (value == null) return fallback;
+		switch (Type.typeof(value)) {
+			case TInt:
+				return cast value;
+			case TFloat:
+				var numeric:Float = cast value;
+				return Math.isNaN(numeric) || !Math.isFinite(numeric) ? fallback : numeric;
+			default:
+		}
 		var parsed = Std.parseFloat(Std.string(value));
 		return Math.isNaN(parsed) || !Math.isFinite(parsed) ? fallback : parsed;
 	}
 
-	static function intField(value:Dynamic, name:String, fallback:Int):Int {
+	static function intFieldWithFallbacks(value:Dynamic, primary:String,
+		secondary:String, tertiary:Null<String>):Int {
+		var parsed = parsedIntField(value, primary);
+		if (parsed != null) return parsed;
+		parsed = parsedIntField(value, secondary);
+		if (parsed != null) return parsed;
+		if (tertiary != null) {
+			parsed = parsedIntField(value, tertiary);
+			if (parsed != null) return parsed;
+		}
+		return 0;
+	}
+
+	static function parsedIntField(value:Dynamic, name:String):Null<Int> {
 		var raw = field(value, name);
-		return raw == null ? fallback : Std.int(number(raw, fallback));
+		if (raw == null) return null;
+		var parsed = number(raw, Math.NaN);
+		return Math.isFinite(parsed) ? Std.int(parsed) : null;
+	}
+
+	static function numberFieldWithFallback(value:Dynamic,
+		primary:String, fallback:String):Float {
+		var raw = field(value, primary);
+		if (raw != null) {
+			var parsed = number(raw, Math.NaN);
+			if (Math.isFinite(parsed)) return parsed;
+		}
+		return number(field(value, fallback));
 	}
 
 	static function setField(target:Dynamic, name:String, value:Dynamic):Void {

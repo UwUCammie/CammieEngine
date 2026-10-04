@@ -2147,6 +2147,7 @@ class ChartingState extends MusicBeatState {
 	function editorSongData():Dynamic {
 		var data:Dynamic = Reflect.copy(_song);
 		Reflect.deleteField(data, 'compatStorageFolder');
+		Reflect.deleteField(data, 'compatScoreSongId');
 		Reflect.deleteField(data, 'compatChartFileName');
 		Reflect.deleteField(data, 'compatStageAuthored');
 		return data;

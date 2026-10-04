@@ -59,9 +59,11 @@ class ImportSettings {{
 
 class ImportSongOwnership {{
   public static function displayNameInfo(root:String):Dynamic {{
-    return root.indexOf('Authored') >= 0
-      ? {{name:'Authored Mod', authored:true}}
-      : {{name:Path.withoutDirectory(root), authored:false}};
+    return root.indexOf('Template') >= 0
+      ? {{name:'SEGATENDO COLLECTION', authored:false, template:true}}
+      : root.indexOf('Authored') >= 0
+        ? {{name:'Authored Mod', authored:true}}
+        : {{name:Path.withoutDirectory(root), authored:false}};
   }}
 }}
 
@@ -73,6 +75,7 @@ class ImportPackageNamePromptFixture {{
   static function main() {{
     var songs:Array<Dynamic> = [
       {{source:'/mods/Authored', willImport:true}},
+      {{source:'/mods/Template', willImport:true}},
       {{source:'/mods/old-pack', willImport:true}},
       {{source:'/mods/old-pack/', willImport:true}},
       {{source:'/mods/skipped', willImport:false}},
@@ -122,6 +125,7 @@ class ImportPackageNamePromptFixture {{
         self.assertIn("applyPackageDisplayNames(songs, packageNames)", module)
         self.assertIn("songData.sourceModNameSource = 'user'", module)
         self.assertIn("songData.sourceModNameSource = info.authored ? 'metadata' : 'inferred'", module)
+        self.assertIn("Reflect.field(info, 'template') == true", (ROOT / "source/ImportPackageNamePrompt.hx").read_text())
         self.assertIn("writeImportProvenance(importedSong)", module)
         self.assertIn("songData.sourceModName, songData.sourceModNameSource", module)
         scan_loop = workflow[workflow.index("for (songData in discovered)"):]

@@ -20,7 +20,19 @@ class ImportRegistryRefresh {
 	 * value is preserved and reported as a conflict.
 	 */
 	public static function prepare(beforeText:String, previousGenerated:String, live:String):ImportRegistryRefreshResult {
-		return reconcile(previousGenerated, beforeText, live, true);
+		return reconcile(previousGenerated, beforeText, live, true, false);
+	}
+
+	/**
+	 * Build a private converter input by resetting the previous owner's delta
+	 * to its original registry baseline. Diverged owned leaves are reset here
+	 * so the converter can calculate fresh output; this result must never be
+	 * published directly. Unchanged live values and unrelated keyed entries
+	 * remain in the seed.
+	 */
+	public static function regenerationSeed(beforeText:String, previousGenerated:String,
+		live:String):ImportRegistryRefreshResult {
+		return reconcile(previousGenerated, beforeText, live, false, true);
 	}
 
 	/**
@@ -29,11 +41,11 @@ class ImportRegistryRefresh {
 	 * generated values are already applied, and divergent live edits conflict.
 	 */
 	public static function merge(beforeText:String, generated:String, live:String):ImportRegistryRefreshResult {
-		return reconcile(beforeText, generated, live, false);
+		return reconcile(beforeText, generated, live, false, false);
 	}
 
 	static function reconcile(baseText:String, desiredText:String, liveText:String,
-		preparing:Bool):ImportRegistryRefreshResult {
+		preparing:Bool, forceOwned:Bool):ImportRegistryRefreshResult {
 		if (baseText == null || desiredText == null || liveText == null)
 			return {text: liveText == null ? "" : liveText, conflicts: ["$: registry text is missing"]};
 		var base:Dynamic;
@@ -48,7 +60,7 @@ class ImportRegistryRefresh {
 		}
 
 		var conflicts:Array<String> = [];
-		var result = reconcileValue(present(base), present(desired), present(live), "$", preparing, conflicts);
+		var result = reconcileValue(present(base), present(desired), present(live), "$", preparing, forceOwned, conflicts);
 		if (!result.exists)
 			return {text: liveText, conflicts: conflicts.length == 0 ? ["$: registry root cannot be removed"] : conflicts};
 		if (deepEqual(result.value, live)) return {text: liveText, conflicts: conflicts};
@@ -60,9 +72,9 @@ class ImportRegistryRefresh {
 	}
 
 	static function reconcileValue(base:ImportRegistryValue, desired:ImportRegistryValue, live:ImportRegistryValue,
-		path:String, preparing:Bool, conflicts:Array<String>):ImportRegistryValue {
+		path:String, preparing:Bool, forceOwned:Bool, conflicts:Array<String>):ImportRegistryValue {
 		if (valuesEqual(base, desired)) return cloneValue(live);
-		if (preparing && valuesEqual(live, desired)) {
+		if (!forceOwned && preparing && valuesEqual(live, desired)) {
 			conflicts.push(path + ": local deletion or reversion matches the original registry; preserving it");
 			return cloneValue(live);
 		}
@@ -71,10 +83,12 @@ class ImportRegistryRefresh {
 
 		if (isObjectPair(base, desired)) {
 			if (live.exists && !isObject(live.value)) {
+				if (forceOwned) return cloneValue(desired);
 				conflicts.push(path + ": live value changed type; preserving it");
 				return cloneValue(live);
 			}
 			if (!live.exists && base.exists && desired.exists) {
+				if (forceOwned) return cloneValue(desired);
 				conflicts.push(path + ": locally deleted object conflicts with importer changes; preserving deletion");
 				return cloneValue(live);
 			}
@@ -85,21 +99,57 @@ class ImportRegistryRefresh {
 				var desiredField = objectField(desired, key);
 				var liveField = objectField(live, key);
 				var merged = reconcileValue(beforeField, desiredField, liveField,
-					path == "$" ? key : path + "." + key, preparing, conflicts);
+					path == "$" ? key : path + "." + key, preparing, forceOwned, conflicts);
 				if (merged.exists) Reflect.setField(output, key, merged.value);
 			}
 			if (!desired.exists && Reflect.fields(output).length == 0) return absent();
 			return present(output);
 		}
 
-		if (base.exists && desired.exists && live.exists
-			&& isArray(base.value) && isArray(desired.value) && isArray(live.value)) {
-			if (isAppendRemoveArrayDelta(base.value, desired.value) && isPrimitiveUniqueArray(live.value))
-				return present(reconcilePrimitiveArray(base.value, desired.value, live.value, path, preparing, conflicts));
-			var identity = objectArrayIdentity(base.value, desired.value, live.value);
-			if (identity != null && !objectArrayWasReordered(base.value, desired.value, identity))
-				return present(reconcileObjectArray(base.value, desired.value, live.value, identity, path, preparing, conflicts));
+		// A regeneration seed is private converter input. Rebase owned array
+		// deltas item-by-item where their identities are clear, while retaining
+		// live additions from other owners. If the live value has the wrong type,
+		// reset just this changed owned value to the requested baseline.
+		if (forceOwned && (isArray(base.value) || isArray(desired.value))) {
+			if ((!base.exists || isArray(base.value)) && (!desired.exists || isArray(desired.value))) {
+				var baseArray:Array<Dynamic> = base.exists ? cast base.value : [];
+				var desiredArray:Array<Dynamic> = desired.exists ? cast desired.value : [];
+				if (!live.exists || !isArray(live.value)) return cloneValue(desired);
+				var liveArray:Array<Dynamic> = cast live.value;
+				if (isAppendRemoveArrayDelta(baseArray, desiredArray) && isPrimitiveUniqueArray(liveArray))
+					return present(reconcilePrimitiveArray(baseArray, desiredArray, liveArray, path, false, conflicts));
+				var identity = objectArrayIdentity(baseArray, desiredArray, liveArray);
+				if (identity != null && !objectArrayWasReordered(baseArray, desiredArray, identity))
+					return present(reconcileObjectArray(baseArray, desiredArray, liveArray, identity,
+						path, false, true, conflicts));
+				conflicts.push(path + ": cannot safely identify owned array changes; preserving live array for regeneration");
+				return cloneValue(live);
+			}
+			return cloneValue(desired);
 		}
+
+		// A registry field may have no baseline because the first importer
+		// introduced the array. Treat that side as an empty array so keyed live
+		// additions from other owners survive removing or refreshing the import.
+		if ((base.exists && isArray(base.value) || desired.exists && isArray(desired.value))
+			&& (!base.exists || isArray(base.value)) && (!desired.exists || isArray(desired.value))
+			&& live.exists && isArray(live.value)) {
+			var baseArray:Array<Dynamic> = base.exists ? cast base.value : [];
+			var desiredArray:Array<Dynamic> = desired.exists ? cast desired.value : [];
+			var liveArray:Array<Dynamic> = cast live.value;
+			if (isAppendRemoveArrayDelta(baseArray, desiredArray) && isPrimitiveUniqueArray(liveArray)) {
+				var merged = reconcilePrimitiveArray(baseArray, desiredArray, liveArray, path, preparing, conflicts);
+				return merged.length == 0 && !desired.exists ? absent() : present(merged);
+			}
+			var identity = objectArrayIdentity(baseArray, desiredArray, liveArray);
+			if (identity != null && !objectArrayWasReordered(baseArray, desiredArray, identity)) {
+				var merged = reconcileObjectArray(baseArray, desiredArray, liveArray, identity,
+					path, preparing, false, conflicts);
+				return merged.length == 0 && !desired.exists ? absent() : present(merged);
+			}
+		}
+
+		if (forceOwned) return cloneValue(desired);
 
 		conflicts.push(path + ": live value differs from both the baseline and generated value; preserving it");
 		return cloneValue(live);
@@ -129,7 +179,7 @@ class ImportRegistryRefresh {
 	}
 
 	static function reconcileObjectArray(base:Array<Dynamic>, desired:Array<Dynamic>, live:Array<Dynamic>, identity:String,
-		path:String, preparing:Bool, conflicts:Array<String>):Array<Dynamic> {
+		path:String, preparing:Bool, forceOwned:Bool, conflicts:Array<String>):Array<Dynamic> {
 		var output:Array<Dynamic> = [];
 		for (entry in live) output.push(cloneDynamic(entry));
 		var baseIds = objectArrayIds(base, identity);
@@ -141,9 +191,10 @@ class ImportRegistryRefresh {
 			var desiredIndex = indexOfIdentity(desired, identity, id);
 			if (desiredIndex < 0) {
 				if (baseIndex >= 0) {
-					if (preparing) {
+					if (forceOwned || preparing) {
 						var entryPath = path + "[" + identity + "=" + Std.string(id) + "]";
-						var remainder = subtractGeneratedEntry(baseEntry, output[baseIndex], entryPath, identity, conflicts);
+						var remainder = subtractGeneratedEntry(baseEntry, output[baseIndex], entryPath,
+							identity, forceOwned, conflicts);
 						if (remainder.exists) output[baseIndex] = remainder.value;
 						else output.splice(baseIndex, 1);
 					} else if (deepEqual(output[baseIndex], baseEntry)) output.splice(baseIndex, 1);
@@ -154,13 +205,15 @@ class ImportRegistryRefresh {
 
 			var desiredEntry = desired[desiredIndex];
 			if (baseIndex < 0) {
-				if (!deepEqual(baseEntry, desiredEntry))
+				if (forceOwned && !deepEqual(baseEntry, desiredEntry))
+					insertObjectByTargetOrder(output, desiredEntry, identity, desiredIds, baseIds);
+				else if (!deepEqual(baseEntry, desiredEntry))
 					conflicts.push(path + "[" + identity + "=" + Std.string(id) + "]: locally deleted changed entry; preserving deletion");
 				continue;
 			}
 			var entryPath = path + "[" + identity + "=" + Std.string(id) + "]";
 			var reconciled = reconcileValue(present(baseEntry), present(desiredEntry), present(output[baseIndex]),
-				entryPath, preparing, conflicts);
+				entryPath, preparing, forceOwned, conflicts);
 			if (reconciled.exists) output[baseIndex] = reconciled.value;
 			else output.splice(baseIndex, 1);
 		}
@@ -172,7 +225,7 @@ class ImportRegistryRefresh {
 			var entryPath = path + "[" + identity + "=" + Std.string(id) + "]";
 			if (liveIndex >= 0) {
 				var reconciled = reconcileValue(absent(), present(desiredEntry), present(output[liveIndex]),
-					entryPath, preparing, conflicts);
+					entryPath, preparing, forceOwned, conflicts);
 				if (reconciled.exists) output[liveIndex] = reconciled.value;
 				else output.splice(liveIndex, 1);
 			} else {
@@ -185,10 +238,11 @@ class ImportRegistryRefresh {
 	/**
 	 * Remove a generated keyed entry while preserving foreign nested additions.
 	 * Unchanged fields act as the container header and stay when another value
-	 * remains. Diverged fields are user edits, so keep them and report conflicts.
+	 * remains. Private regeneration seeds remove owned fields while retaining
+	 * live additions and foreign nested values.
 	 */
 	static function subtractGeneratedEntry(base:Dynamic, live:Dynamic, path:String, identity:Null<String>,
-		conflicts:Array<String>):ImportRegistryValue {
+		forceOwned:Bool, conflicts:Array<String>):ImportRegistryValue {
 		if (deepEqual(base, live)) return absent();
 
 		if (isObject(base) && isObject(live)) {
@@ -197,21 +251,23 @@ class ImportRegistryRefresh {
 			for (field in Reflect.fields(live)) {
 				if (!Reflect.hasField(base, field)) {
 					Reflect.setField(output, field, cloneDynamic(Reflect.field(live, field)));
-					conflicts.push(path + "." + field + ": locally added field under removed entry; preserving it");
+					if (!forceOwned)
+						conflicts.push(path + "." + field + ": locally added field under removed entry; preserving it");
 					continue;
 				}
 
 				var baseField = Reflect.field(base, field);
 				var liveField = Reflect.field(live, field);
 				if (deepEqual(baseField, liveField)) {
-					unchanged.push(field);
+					if (!forceOwned) unchanged.push(field);
 					continue;
 				}
 
 				if ((isObject(baseField) && isObject(liveField)) || (isArray(baseField) && isArray(liveField))) {
-					var remainder = subtractGeneratedValue(baseField, liveField, path + "." + field, null, conflicts);
+					var remainder = subtractGeneratedValue(baseField, liveField, path + "." + field,
+						null, forceOwned, conflicts);
 					if (remainder.exists) Reflect.setField(output, field, remainder.value);
-				} else {
+				} else if (!forceOwned) {
 					conflicts.push(path + "." + field + ": locally edited generated value; preserving it");
 					Reflect.setField(output, field, cloneDynamic(liveField));
 				}
@@ -225,12 +281,12 @@ class ImportRegistryRefresh {
 			return present(output);
 		}
 
-		var value = subtractGeneratedValue(base, live, path, identity, conflicts);
+		var value = subtractGeneratedValue(base, live, path, identity, forceOwned, conflicts);
 		return value;
 	}
 
 	static function subtractGeneratedValue(base:Dynamic, live:Dynamic, path:String, identity:Null<String>,
-		conflicts:Array<String>):ImportRegistryValue {
+		forceOwned:Bool, conflicts:Array<String>):ImportRegistryValue {
 		if (deepEqual(base, live)) return absent();
 
 		if (isArray(base) && isArray(live)) {
@@ -246,7 +302,8 @@ class ImportRegistryRefresh {
 					return present(cloneDynamic(liveArray));
 				}
 				for (item in baseArray) if (!containsValue(liveArray, item))
-					conflicts.push(path + ": locally deleted generated array item " + Std.string(item) + "; preserving deletion");
+					if (!forceOwned)
+						conflicts.push(path + ": locally deleted generated array item " + Std.string(item) + "; preserving deletion");
 				var remainder:Array<Dynamic> = [];
 				for (item in liveArray) if (!containsValue(baseArray, item)) remainder.push(cloneDynamic(item));
 				return remainder.length == 0 ? absent() : present(remainder);
@@ -266,19 +323,22 @@ class ImportRegistryRefresh {
 					continue;
 				}
 				var entryPath = path + "[" + arrayIdentity + "=" + Std.string(id) + "]";
-				var remainder = subtractGeneratedEntry(baseArray[baseIndex], liveEntry, entryPath, arrayIdentity, conflicts);
+				var remainder = subtractGeneratedEntry(baseArray[baseIndex], liveEntry, entryPath,
+					arrayIdentity, forceOwned, conflicts);
 				if (remainder.exists) output.push(remainder.value);
 			}
 			for (baseEntry in baseArray) {
 				var id = identityValue(baseEntry, arrayIdentity);
-				if (indexOfIdentity(liveArray, arrayIdentity, id) < 0)
+				if (!forceOwned && indexOfIdentity(liveArray, arrayIdentity, id) < 0)
 					conflicts.push(path + "[" + arrayIdentity + "=" + Std.string(id) + "]: locally deleted generated child; preserving deletion");
 			}
 			return output.length == 0 ? absent() : present(output);
 		}
 
 		if (isObject(base) && isObject(live))
-			return subtractGeneratedEntry(base, live, path, identity, conflicts);
+			return subtractGeneratedEntry(base, live, path, identity, forceOwned, conflicts);
+
+		if (forceOwned) return absent();
 
 		conflicts.push(path + ": locally edited generated value; preserving it");
 		return present(cloneDynamic(live));

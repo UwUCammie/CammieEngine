@@ -56,6 +56,18 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         cls.import_state = (SOURCE / "RuntimeImportSmokeState.hx").read_text()
         cls.matrix = load_matrix_module()
 
+    def test_pacing_probe_skips_expensive_visual_census_and_never_saves_scores(self):
+        summary = extract_haxe_method(self.harness, "static function emitFrameSummary(")
+        self.assertIn("config().pacingOnly != true && playStateReady", summary)
+        self.assertIn("config().pacingOnly == true ? {count: 0", summary)
+        self.assertIn("frameHeapSnapshot()", summary)
+        ending = extract_haxe_method(self.harness, "public static function markScoreSaveDecision(")
+        self.assertIn("if (!enabled()) return", ending)
+        self.assertIn("Highscore.scoreSongIdForChart(chart)", ending)
+        self.assertNotIn("Highscore.saveScore", ending)
+        self.assertIn("smokeSuppressed: true", ending)
+        self.assertIn("--smoke-pacing-only", self.harness)
+
     def test_end_handoff_rejects_multiple_visits(self):
         source = self.harness
         start = source.index("public static function unsupportedEndHandoffVisits(")
@@ -1081,6 +1093,7 @@ class Main {
             "flixel/FlxG.hx": """package flixel;
 class FlxG {
   public static var autoPause:Bool = true;
+  public static var sound:Dynamic = {muted:false};
   public static function switchState(value:Dynamic):Void {}
 }
 """,

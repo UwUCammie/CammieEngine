@@ -24,6 +24,19 @@ import flash.media.Sound;
 
 class CoolUtil {
 	public static var fps:Int = 60;
+
+	/** Convert a per-frame lerp amount into an equivalent elapsed-time amount. */
+	public static function timeAdjustedLerpAlpha(baseAlpha:Float, elapsed:Float, referenceFps:Float = 60):Float {
+		return 1 - Math.pow(1 - baseAlpha, elapsed * referenceFps);
+	}
+
+	/** Collapse two sequential, equal-alpha lerps into one time-adjusted lerp. */
+	public static function timeAdjustedTwoTargetLerp(current:Float, firstTarget:Float, secondTarget:Float, baseAlpha:Float, elapsed:Float, referenceFps:Float = 60):Float {
+		var resolvedTarget = ((1 - baseAlpha) * firstTarget + secondTarget) / (2 - baseAlpha);
+		var combinedAlpha = baseAlpha * (2 - baseAlpha);
+		return current + (resolvedTarget - current) * timeAdjustedLerpAlpha(combinedAlpha, elapsed, referenceFps);
+	}
+
 	// hxs, like kotlin's kts
 	public static final HSCRIPT_EXT:Array<String> = ['hscript', 'hxs'];
 	public static final JSON_EXT:Array<String> = ['json', 'jsonc'];

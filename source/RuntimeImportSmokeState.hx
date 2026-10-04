@@ -23,6 +23,8 @@ class RuntimeImportSmokeState extends FlxState {
 		// The automated importer window is not guaranteed to receive desktop
 		// focus, but its worker snapshots and timeout still need to be polled.
 		FlxG.autoPause = false;
+		// Automated runs remain silent without writing the user's saved volume.
+		FlxG.sound.muted = true;
 		RuntimeImportSmokeHarness.start();
 		var request = RuntimeImportSmokeHarness.config();
 		if (request == null) {
