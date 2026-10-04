@@ -62,9 +62,14 @@ class PsychStageCompatTest {
         gameover = (ROOT / 'source/GameOverSubstate.hx').read_text()
         self.assertIn("public function psychGameOverSoundPath", state)
         self.assertIn("public function psychGameOverCharacterName", state)
-        self.assertIn("PlayState.instance.psychGameOverCharacterName()", gameover)
+        self.assertIn("var activePlayState = PlayState.instance;", gameover)
+        self.assertIn("sourceOwner = activeSourceMode == 0 ? null : activePlayState;", gameover)
+        self.assertIn("var psychCharacter = activePlayState == null ? null : activePlayState.psychGameOverCharacterName();", gameover)
+        self.assertEqual(gameover.count("var playState = sourceOwner == null ? PlayState.instance : sourceOwner;"), 3,
+                         "death, loop, and end audio should use the retained song owner")
+        self.assertIn("playState.psychGameOverSoundPath('deathSoundName', true)", gameover)
         for key in ("deathSoundName", "loopSoundName", "endSoundName"):
-            self.assertIn(f"psychGameOverSoundPath('{key}'", gameover)
+            self.assertIn(f"playState.psychGameOverSoundPath('{key}'", gameover)
 
     def test_static_stage_sprite_alpha_retains_literal_and_diagnoses_dynamic_values(self):
         if not WHITTY_BETTER_HQR3.exists():

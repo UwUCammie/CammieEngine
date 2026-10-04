@@ -5,6 +5,12 @@ import crowplexus.hscript.Interp;
 import crowplexus.hscript.Tools;
 import crowplexus.iris.utils.UsingEntry.UsingCall;
 
+private typedef NightmareVisionConstructorBinding = {
+	var type:Dynamic;
+	var create:Array<Dynamic>->Dynamic;
+	var owner:Dynamic;
+}
+
 /**
 	The Nightmare Vision script-scope semantics layered on its namespaced,
 	pinned Iris interpreter. Parsing and engine bindings remain the caller's
@@ -15,8 +21,27 @@ import crowplexus.iris.utils.UsingEntry.UsingCall;
 class NightmareVisionScriptInterp extends Interp {
 	/** Fully qualified host adapters belonging to this interpreter's owner. */
 	public var importBindings(default, null):Map<String, Dynamic> = new Map();
+	/** Owner-local constructor factories keyed by the imported class identity. */
+	var constructorBindings:Array<NightmareVisionConstructorBinding> = [];
 	var usingBindings:Map<String, UsingCall> = new Map();
 	var boundUsings:Map<String, Bool> = new Map();
+	/** Imported scripts can address current-state fields through their state class.
+	 * Keep that fallback local to this script's live parent, with statics first. */
+	var classParents:Array<{type:Dynamic, fields:Array<String>}> = [];
+
+	public function bindClassParent(type:Dynamic):Void {
+		for (binding in classParents) if (binding.type == type) return;
+		classParents.push({type:type, fields:Type.getClassFields(type)});
+	}
+
+	function usesClassParent(object:Dynamic, field:String, write:Bool):Bool {
+		for (binding in classParents) if (object == binding.type) {
+			if (binding.fields.indexOf(field) >= 0 || binding.fields.indexOf('get_' + field) >= 0
+				|| binding.fields.indexOf('set_' + field) >= 0) return false;
+			return write ? hasParentWriteField(field) : hasParentReadField(field);
+		}
+		return false;
+	}
 	/** Camera API bridge supplied only by the native gameplay host. Keeping it
 	 * dynamic leaves the owner-local Iris interpreter usable in headless tools. */
 	public var cameraShaders:Dynamic;
@@ -37,6 +62,27 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	public function bindImport(path:String, value:Dynamic):Void importBindings.set(path, value);
+
+	/** Route construction for one exact imported value without intercepting a
+	 * different class that happens to use the same source name. */
+	public function bindConstructorFactory(type:Dynamic,
+		create:Array<Dynamic>->Dynamic, owner:Dynamic):Void {
+		if (type == null || create == null) throw '[nightmare-vision-script] Invalid constructor binding';
+		for (binding in constructorBindings) if (binding.type == type) {
+			binding.create = create;
+			binding.owner = owner;
+			return;
+		}
+		constructorBindings.push({type:type, create:create, owner:owner});
+	}
+
+	/** Remove one identity binding when its owner-local API is replaced. */
+	public function unbindConstructorFactory(type:Dynamic):Void {
+		for (index in 0...constructorBindings.length) if (constructorBindings[index].type == type) {
+			constructorBindings.splice(index, 1);
+			return;
+		}
+	}
 
 	/** Bind constructors to the same owner as Paths for this script only. */
 	public function bindOwnerPaths(paths:Dynamic):Void {
@@ -93,6 +139,15 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Break all interpreter-owned references at the end of a script lifetime. */
 	public function release():Void {
 		var saveError:Dynamic = null;
+		for (binding in constructorBindings) {
+			var releaseOwner:Dynamic = binding.owner == null ? null : Reflect.field(binding.owner, 'release');
+			if (Reflect.isFunction(releaseOwner)) {
+				try Reflect.callMethod(binding.owner, releaseOwner, []) catch (error:Dynamic) {
+					if (saveError == null) saveError = error;
+				}
+			}
+		}
+		constructorBindings.resize(0);
 		if (cameraShaders != null) {
 			cameraShaders.release();
 			cameraShaders = null;
@@ -107,6 +162,7 @@ class NightmareVisionScriptInterp extends Interp {
 		parentFields = [];
 		imports.clear();
 		importBindings.clear();
+		classParents.resize(0);
 		usingBindings.clear();
 		boundUsings.clear();
 		usings.resize(0);
@@ -122,6 +178,19 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Keep NMV source constructors owner-local without changing FlxSprite's
 	 * process-global loader or appending hidden arguments to script calls. */
 	override function cnew(cl:String, args:Array<Dynamic>):Dynamic {
+		// Follow Iris's normal constructor lookup first so script locals, seeded
+		// variables and imported aliases keep their ordinary shadowing behavior.
+		var requestedType:Dynamic = Type.resolveClass(cl);
+		if (requestedType == null) {
+			try requestedType = resolve(cl) catch (_:Dynamic) {}
+		}
+		// A direct fully-qualified source constructor may not have a compiled
+		// host class. In that case use this interpreter's exact imported value.
+		if (requestedType == null && cl != null && cl.indexOf('.') >= 0
+			&& importBindings.exists(cl)) requestedType = importBindings.get(cl);
+		if (requestedType != null) for (binding in constructorBindings)
+			if (binding.type == requestedType) return binding.create(args);
+
 		if (ownerPaths != null) {
 			var className = cl == null ? '' : cl.substr(cl.lastIndexOf('.') + 1);
 			switch (className) {
@@ -146,7 +215,22 @@ class NightmareVisionScriptInterp extends Interp {
 						argumentBool(args, 2, true), argumentBool(args, 3, false)]);
 			}
 		}
+		// A qualified import can name a real Haxe runtime class without a bare
+		// alias in Iris's `imports` map. Instantiate only an actual Class value;
+		// owner facades and other imported objects remain on their own APIs.
+		if (cl != null && cl.indexOf('.') >= 0 && importBindings.exists(cl)) {
+			var importedType = importBindings.get(cl);
+			if (isRuntimeClass(importedType)) return Type.createInstance(importedType, args);
+		}
 		return super.cnew(cl, args);
+	}
+
+	static function isRuntimeClass(value:Dynamic):Bool {
+		if (value == null) return false;
+		var name:String = null;
+		try name = Type.getClassName(cast value) catch (_:Dynamic) return false;
+		if (name == null || name == '') return false;
+		return Type.resolveClass(name) == value;
 	}
 
 	static function argument(args:Array<Dynamic>, index:Int):Dynamic
@@ -300,8 +384,10 @@ class NightmareVisionScriptInterp extends Interp {
 	override function get(object:Dynamic, field:String):Dynamic {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot read ' + field + ' on null';
+		if (usesClassParent(object, field, false)) return Reflect.getProperty(parent, field);
 		#if flixel
-		if ((field == 'audio' || field == 'vocals') && Std.isOfType(object, NightmareVisionPlayableSongOwner))
+		if (ownerPaths != null && (field == 'audio' || field == 'vocals')
+			&& Std.isOfType(object, NightmareVisionPlayableSongOwner))
 			return (cast object:NightmareVisionPlayableSongOwner).nightmareVisionAudioView();
 		// NMV Bopper signals carry animation names; the legacy Character finish
 		// signal deliberately has no arguments, so preserve both APIs.
@@ -330,6 +416,10 @@ class NightmareVisionScriptInterp extends Interp {
 	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot write ' + field + ' on null';
+		if (usesClassParent(object, field, true)) {
+			Reflect.setProperty(parent, field, value);
+			return value;
+		}
 		if (Std.isOfType(object, PsychBaseStageActorGroupCompat) && field == 'zIndex') {
 			Reflect.setProperty(object, field, value);
 			return value;

@@ -277,14 +277,17 @@ class SongEvents {
 		return [time, [event]];
 	}
 
-	/** Accept both song wrappers and bare song data, including legacy event rows. */
-	public static function fromSong(data:Dynamic):Array<Dynamic> {
-		if (data == null) return [];
+	/** Resolve either a song wrapper or a bare song payload once for all row readers. */
+	static function songData(data:Dynamic):Dynamic {
+		if (data == null) return null;
 		var song:Dynamic = Reflect.field(data, 'song');
-		if (song == null || Std.isOfType(song, String)) song = data;
-		var groups:Array<Dynamic> = [];
-		var events:Dynamic = Reflect.field(song, 'events');
-		appendEventGroups(groups, events);
+		return song == null || Std.isOfType(song, String) ? data : song;
+	}
+
+	/** Append legacy negative-type section rows as native event groups. */
+	static function appendLegacyEventGroups(groups:Array<Dynamic>, song:Dynamic,
+		preserveMissingValues:Bool = false, sourceKeys:Null<Int> = null):Void {
+		if (groups == null || song == null) return;
 		var sections:Dynamic = Reflect.field(song, 'notes');
 		if (Std.isOfType(sections, Array)) {
 			for (section in (cast sections:Array<Dynamic>)) {
@@ -292,17 +295,71 @@ class SongEvents {
 				var notes:Dynamic = Reflect.field(section, 'sectionNotes');
 				if (!Std.isOfType(notes, Array)) continue;
 				for (row in (cast notes:Array<Dynamic>)) {
-					if (!Std.isOfType(row, Array) || row.length < 3 || row[1] != -1 || !Std.isOfType(row[2], String)) continue;
+					if (!Std.isOfType(row, Array) || row.length < 3 || !Std.isOfType(row[2], String)) continue;
+					var legacy = false;
+					if (sourceKeys == null)
+						legacy = row[1] == -1;
+					else legacy = isNightmareVisionLegacyEventRow(row, cast sourceKeys);
+					if (!legacy) continue;
 					var event:Array<Dynamic> = [row[2]];
-					for (i in 3...6) event.push(row.length > i ? row[i] : '');
+					for (i in 3...6) {
+						if (row.length > i) event.push(row[i]);
+						else if (!preserveMissingValues) event.push('');
+					}
 					groups.push([row[0], [event]]);
 				}
 			}
 		}
+	}
+
+	/** Nightmare Vision stores an event note in a negative playfield. The donor
+	 * computes that playfield by integer-dividing note data by the chart's key
+	 * count, so small negative values can still belong to playfield zero. */
+	public static function isNightmareVisionLegacyEventRow(row:Dynamic, keys:Int):Bool {
+		if (!Std.isOfType(row, Array) || (cast row:Array<Dynamic>).length < 2 || keys <= 0)
+			return false;
+		var noteData = Std.parseFloat(Std.string((cast row:Array<Dynamic>)[1]));
+		return Math.isFinite(noteData) && Std.int(noteData / keys) < 0;
+	}
+
+	/** Accept both song wrappers and bare song data. Legacy section rows remain
+	 * included by default for native/editor callers; source event preparation can
+	 * request only the explicit event list and append legacy rows after merging. */
+	public static function fromSong(data:Dynamic, includeLegacy:Bool = true):Array<Dynamic> {
+		if (data == null) return [];
+		var song = songData(data);
+		var groups:Array<Dynamic> = [];
+		var events:Dynamic = Reflect.field(song, 'events');
+		appendEventGroups(groups, events);
+		if (includeLegacy) appendLegacyEventGroups(groups, song);
 		return groups;
 	}
 
-	public static function collect(embedded:Array<Dynamic>, companion:Array<Dynamic>):Array<Dynamic> {
+	/** Append legacy event notes only after direct and sidecar source events have
+	 * been collected. This intentionally performs no dedupe or sort: source hosts
+	 * keep every authored negative-type row and assign it order after direct rows. */
+	public static function appendLegacySourceEvents(result:Array<Dynamic>, data:Dynamic):Void {
+		if (result == null || data == null) return;
+		var song = songData(data);
+		var rawKeys:Dynamic = Reflect.field(song, 'keys');
+		// Nightmare Vision's chart loader defaults a missing key count to four.
+		// Preserve an authored key count so its legacy playfield test matches the donor.
+		var sourceKeys:Int = rawKeys == null ? 4 : Std.int(rawKeys);
+		var groups:Array<Dynamic> = [];
+		appendLegacyEventGroups(groups, song, true, sourceKeys);
+		var legacy = collect(groups, null, true);
+		for (event in legacy) {
+			Reflect.setField(event, 'order', result.length);
+			result.push(event);
+		}
+	}
+
+	/** Source engines visit the companion chart first, retain repeated authored
+	 * rows in Psych, and sort only after event preparation. NV removes copies
+	 * using its two-value/epsilon contract. Native/editor callers keep
+	 * their existing merge and chronological ordering by default. */
+	public static function collect(embedded:Array<Dynamic>, companion:Array<Dynamic>, sourceOrder:Bool = false,
+		nightmareVisionSource:Bool = false):Array<Dynamic> {
 		var result:Array<Dynamic> = [];
 		var seen = new Map<String, Bool>();
 		var suppressedCompanion = new Map<String, Bool>();
@@ -319,7 +376,8 @@ class SongEvents {
 						suppressedCompanion.set(sourceKey, true);
 				}
 			}
-		for (sourceIndex in 0...2) {
+		for (visit in 0...2) {
+			var sourceIndex = sourceOrder ? 1 - visit : visit;
 			var groups = sourceIndex == 0 ? embedded : companion;
 			if (groups == null) continue;
 			for (group in groups) {
@@ -329,6 +387,7 @@ class SongEvents {
 				for (event in (group[1]:Array<Dynamic>)) {
 					if (!Std.isOfType(event, Array) || event.length == 0 || event[0] == null) continue;
 					var row:Array<Dynamic> = cast event;
+					if (isEditorSidecarTombstone(row)) continue;
 					var key = eventSignature(row, time);
 					if (sourceIndex == 1 && suppressedCompanion.exists(key))
 						continue;
@@ -336,8 +395,22 @@ class SongEvents {
 					var name = Std.string(event[0]);
 					var v1 = event.length > 1 && event[1] != null ? Std.string(event[1]) : '';
 					var v2 = event.length > 2 && event[2] != null ? Std.string(event[2]) : '';
+					if (sourceOrder) {
+						if (event.length <= 1 || event[1] == null) v1 = null;
+						if (event.length <= 2 || event[2] == null) v2 = null;
+					}
 					var v3 = event.length > 3 && event[3] != null ? Std.string(event[3]) : '';
-					if (seen.exists(key)) continue;
+					if (!sourceOrder && seen.exists(key)) continue;
+					if (nightmareVisionSource) {
+						var copy = false;
+						for (existing in result)
+							if (Math.abs(existing.time - time) <= 0.0000001 && existing.name == name
+								&& existing.v1 == v1 && existing.v2 == v2) {
+								copy = true;
+								break;
+							}
+						if (copy) continue;
+					}
 					seen.set(key, true);
 					var nativeEvent:Dynamic = {time:time, name:name, v1:v1, v2:v2, v3:v3, order:result.length};
 					if (authored != null) Reflect.setField(nativeEvent, 'codename', authored);
@@ -345,7 +418,8 @@ class SongEvents {
 				}
 			}
 		}
-		result.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
+		if (!sourceOrder)
+			result.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
 		return result;
 	}
 }

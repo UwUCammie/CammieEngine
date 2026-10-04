@@ -57,7 +57,7 @@ class Main {
   eq(prefs.view.lowQuality, false, 'unsupported quality option keeps source default');
   eq(prefs.view.timeBarType, 'Time Left', 'unsupported time bar option keeps source default');
   eq(prefs.view.hideHud, false, 'unsupported hide HUD option keeps source default');
-  eq(prefs.view.noteOffset, 0, 'float native offset is not coerced to source integer');
+  eq(prefs.view.noteOffset, 47.5, 'native host offset seeds owner noteOffset without truncation');
   eq(prefs.view.framerate, 60, 'fps option does not rewrite source framerate');
   eq(prefs.getGameplaySetting('healthgain', 9), 1.0, 'source gameplay default');
   eq(prefs.getGameplaySetting('absent', false), false, 'missing gameplay default');
@@ -71,15 +71,20 @@ class Main {
   interp.execute(parser.parseString('import funkin.data.ClientPrefs;\n'
    + 'ClientPrefs.downScroll = false;\n'
    + 'ClientPrefs.gameplaySettings.set("botplay", true);\n'
+   + 'ClientPrefs.noteOffset = 17.75;\n'
    + 'ClientPrefs.showRatings = false;\n'
    + 'ClientPrefs.flush();'));
   eq(prefs.view.downScroll, false, 'script assignment is owner-local');
   eq(prefs.getGameplaySetting('botplay', false), true, 'script map write');
+  eq(prefs.view.noteOffset, 17.75, 'live source noteOffset assignment stays owner-local');
   eq(nativeOptions.downscroll, true, 'owner write did not mutate native downscroll');
+  eq(nativeOptions.offset, 47.5, 'owner noteOffset write did not mutate native host offset');
   eq(nativeOptions.showNoteSplashes, false, 'unrelated native setting untouched');
   eq(save.flushes, 1, 'owner record flushed');
   var saved = Reflect.field(save.values, NightmareVisionClientPrefs.SAVE_FIELD);
   eq(Reflect.field(saved, 'version'), NightmareVisionClientPrefs.VERSION, 'record version');
+  eq(Reflect.field(Reflect.field(saved, 'values'), 'noteOffset'), 17.75,
+   'live owner noteOffset is persisted in its save bucket');
   truth(Reflect.hasField(Reflect.field(saved, 'values'), 'keyBinds'), 'manual key bind flush kept owner-local');
 
   // JSON object maps are hydrated as StringMaps; false and zero overlay defaults.
@@ -96,7 +101,7 @@ class Main {
   var loaded = new NightmareVisionClientPrefs('assets/imported_mods/author-mod', loadedSave, nativeOptions);
   loaded.load();
   eq(loaded.view.flashing, false, 'saved false value');
-  eq(loaded.view.noteOffset, 0, 'saved zero value');
+  eq(loaded.view.noteOffset, 0, 'saved owner noteOffset overrides native host seed, including zero');
   eq(loaded.view.healthBarAlpha, 0.0, 'saved float zero');
   eq(loaded.view.showRatings, false, 'saved visual boolean');
   eq(loaded.view.fpsDisplayType, null, 'saved null value');
@@ -117,12 +122,16 @@ class Main {
   var other = new NightmareVisionClientPrefs('assets/imported_mods/other-mod', otherSave);
   loaded.view.comboOffset[0] = 99;
   loaded.view.gameplaySettings.set('healthgain', 3.0);
+  loaded.view.noteOffset = 23.25;
   loaded.flush();
   var persisted = Reflect.field(loadedSave.values, NightmareVisionClientPrefs.SAVE_FIELD);
   var persistedValues = Reflect.field(persisted, 'values');
   eq(Reflect.field(persistedValues, 'comboOffset')[0], 99, 'flush snapshots nested arrays');
   eq(Reflect.field(Reflect.field(persistedValues, 'gameplaySettings'), 'healthgain'), 3.0,
    'flush serializes StringMap as a JSON object');
+  eq(Reflect.field(persistedValues, 'noteOffset'), 23.25,
+   'live owner noteOffset change replaces saved value without changing native options');
+  eq(nativeOptions.offset, 47.5, 'saved/live owner noteOffset remains detached from native option');
   eq(other.view.gameplaySettings.get('healthgain'), 1.0, 'different owner has independent defaults');
   truth(!other.canReuseFor('assets/imported_mods/author-mod'), 'owner identity mismatch');
   truth(loaded.canReuseFor('assets/imported_mods/author-mod'), 'same owner can reuse preference view');

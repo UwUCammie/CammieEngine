@@ -46,6 +46,13 @@ class FakePoint {
   public function new(x:Float, y:Float) { this.x = x; this.y = y; }
   public function put():Void released++;
 }
+class FakeBlurFilter {
+ public var blurX:Float = 3.5;
+ public var blurY:Float = 2.25;
+ public var quality:Int = 1;
+ public var __numShaderPasses:Int = 2;
+ public function new() {}
+}
 class FakeSprite {
 	public var visible = true;
 	public var alpha = 0.8;
@@ -66,7 +73,8 @@ class FakeSprite {
 	public var height = 630.0;
 	public var scrollFactor = {x:1.0, y:1.0};
 	public var camera = {visible:true, alpha:0.6, _fxFadeAlpha:0.2,
-	  width:1280, height:720, zoom:1.2, scroll:{x:12.0, y:24.0}};
+	  width:1280, height:720, zoom:1.2, scroll:{x:12.0, y:24.0},
+	  filters:[new FakeBlurFilter(), null]};
   public var frameWidth = 500.0;
   public var frameHeight = 600.0;
   public var isSustainNote = true;
@@ -99,6 +107,18 @@ class Main {
 	  || note.camera.zoom != 1.2 || note.camera.fadeAlpha != 0.2
 	  || note.camera.scrollX != 12 || note.camera.scrollY != 24)
 	  fail("live note camera opacity, fade, zoom or scroll missing");
+    if (note.camera.filters.length != 1 || note.camera.filters[0].blurX != 3.5
+      || note.camera.filters[0].blurY != 2.25 || note.camera.filters[0].quality != 1
+      || note.camera.filters[0].shaderPasses != 2
+      || note.camera.filters[0].type.indexOf("FakeBlurFilter") < 0)
+      fail("live camera blur filter values missing");
+    sprite.camera.filters[0].blurX = 1.0;
+    var changed:Dynamic = RuntimeSmokeVisuals.camera(sprite.camera);
+    if (changed.filters[0].blurX != 1 || note.camera.filters[0].blurX != 3.5
+      || sprite.camera.filters.length != 2)
+      fail("filter probe altered live filters or retained mutable snapshot state");
+    if (RuntimeSmokeVisuals.camera({}).filters.length != 0)
+      fail("absent filters should yield an empty snapshot");
     if (note.sourceKind != "danger" || note.customNotePath != "selected-root/NOTE_death"
       || note.graphicKey != "selected-root/NOTE_death.png"
       || note.atlasFrames != 4 || note.scrollFrames != 3

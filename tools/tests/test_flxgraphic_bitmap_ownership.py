@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class FlxGraphicBitmapOwnershipTest(unittest.TestCase):
     def test_owner_path_facades_reuse_the_canonical_disk_graphic(self):
         callers = {
-            "NightmareVisionPaths.hx": ("public function image(key:String", "FNFAssets.getFlxGraphic(path)"),
+            "NightmareVisionPaths.hx": ("public function image(key:String", "ownedAssets().getGraphic(path, true, allowGPU)"),
             "CodenamePaths.hx": ("public function graphic(path:String", "FNFAssets.getFlxGraphic(resolved)"),
             "PsychOwnerPaths.hx": ("static function graphic(path:String", "FNFAssets.getFlxGraphic(path)"),
         }
@@ -26,6 +26,13 @@ class FlxGraphicBitmapOwnershipTest(unittest.TestCase):
             body = source[start:source.index("\n\t}", start) + 3]
             self.assertIn(helper_call, body, filename)
             self.assertNotIn("FlxG.bitmap.add(FNFAssets.getBitmapData", body, filename)
+
+        nv_assets = (ROOT / "source/NightmareVisionFunkinAssets.hx").read_text(encoding="utf-8")
+        start = nv_assets.index("public function getGraphicUnsafe(")
+        body = nv_assets[start:nv_assets.index("\n\t}", start) + 3]
+        self.assertIn("FNFAssets.getFlxGraphic(selected)", body)
+        self.assertIn("cache.trackGraphic(selected, graphic, allowGPU)", body)
+        self.assertNotIn("cache.cacheBitmap(selected, bitmap", body)
 
     def test_canonical_graphic_keeps_its_bitmap_alive_across_cache_sweep(self):
         source = (ROOT / "source/FNFAssets.hx").read_text(encoding="utf-8")

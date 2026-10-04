@@ -165,9 +165,12 @@ class FNFAssets {
   var psychSkinDiagnosticsEnabled:Bool=false;
   var offsetState:NoteOffsetState=new NoteOffsetState();
   public var sourceKind(default,set):Null<String>=null;
+  public var sourceTimingMode:Int=0;
+  public var hitPriority:Int=1;
   public var noAnimation:Bool=false; public var noMissAnimation:Bool=false;
   public var noteData:Int=0; public var isSustainNote:Bool=false;
   public var strumTime:Float=123; public var mineNote:Bool=false;
+  function applySourceHurtNoteSemantics():Void {}
   public function new(sustain:Bool=false) {super(); isSustainNote=sustain;}
 ''' + note_methods + '\n}', newline='\n')
             (work / 'Strumline.hx').write_text('''class Strumline {public var noAnims:Bool=false; public function new() {}}
@@ -214,7 +217,8 @@ class StrumNote extends Sprite {
     check(note.texture == '', 'failed default readback');
     note.texture='Later';
     check(note.texture == 'Later' && note.animation.curAnim.name == 'Scroll', 'retry texture');
-    check(note.strumTime == 123 && note.sourceKind == 'Hurt Note' && note.shader.hurt, 'type and timing');
+    check(note.strumTime == 123 && note.sourceKind == 'Hurt Note' && note.hitPriority == 0
+      && note.shader.hurt, 'type, priority, and timing');
     check(note.shader.lane == 3 && !note.shader.pixel && note.shader.paletteCalls > 0,
       'note palette must be applied after shader construction');
     check(note.offset.x == 5 && note.originCentered, 'note skin recenters relative to receptor');

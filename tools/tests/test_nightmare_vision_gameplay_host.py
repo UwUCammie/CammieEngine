@@ -382,9 +382,22 @@ class Main {
         self.assertLess(pre_generation, generation)
         self.assertLess(note_type_load, generation,
                         "chart-selected note-type modules must load before note generation")
-        event_scope = source.index("nightmareVisionScripts.loadScope('event');", generation)
-        self.assertLess(generation, event_scope,
-                        "event modules should initialize after chart events are generated")
+        generate_song = extract_block(source, "private function generateSong(")
+        event_prepare_call = generate_song.index("prepareNightmareVisionSourceEvents();")
+        self.assertLess(generate_song.index("generatedMusic = true;"), event_prepare_call,
+                        "event callbacks should run after the native event queue is generated")
+        event_prepare = extract_block(source, "function prepareNightmareVisionSourceEvents():Void")
+        self.assertIn("nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);", event_prepare)
+        self.assertIn("nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);", event_prepare)
+        self.assertNotIn("nightmareVisionScripts.loadScope('event');", source,
+                         "event modules should load lazily for authored event names")
+        event_dispatch = extract_block(
+            (ROOT / "source" / "NightmareVisionGameplayScripts.hx").read_text(),
+            "public function callEvent(name:String, callback:String",
+        )
+        self.assertLess(event_dispatch.index("loadScope('event', name);"),
+                        event_dispatch.index("eventGroup.getScript(selected.name)"),
+                        "a matching event module must load before its callback is selected")
 
         create_post = source.index("callNightmareVision('onCreatePost', []);")
         super_create = source.index("super.create();", create_post)
@@ -409,15 +422,18 @@ class Main {
         self.assertNotIn("add(curStage)", initialization)
         self.assertIn("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'", initialization)
 
-        pause_start = source.index("if (controls.PAUSE && startedCountdown && canPause")
+        pause_start = source.index("if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause")
         pause_end = source.index("var canShowKeys = true;", pause_start)
         pause = source[pause_start:pause_end]
         self.assertLess(pause.index("callNightmareVision('onPause', [])"), pause.index("paused = true;"))
 
         countdown = extract_block(source, "public function startCountdown():Void")
         nmv_countdown = countdown.index("countdownResults.push(callNightmareVision('onStartCountdown', []));")
-        hscript_countdown = countdown.index("callAllHScript('startCountdown', [], false, countdownResults);")
+        hscript_countdown = countdown.index("callAllHScript('startCountdown', [], false, countdownResults, null, true);")
+        psych_source_gate = countdown.index("if (PsychRuntimeBindings.dispatch(this, 'onStartCountdown', [])")
         self.assertLess(nmv_countdown, hscript_countdown)
+        self.assertLess(hscript_countdown, psych_source_gate)
+        self.assertLess(psych_source_gate, countdown.index("if (EngineCompat.anyFunctionStop(countdownResults))"))
         self.assertLess(countdown.index("if (EngineCompat.anyFunctionStop(countdownResults))"),
                         countdown.index("startedCountdown = true;"))
         self.assertIn("hxcCountdownHookDispatching = true;", countdown[:nmv_countdown])

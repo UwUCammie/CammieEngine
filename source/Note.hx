@@ -285,7 +285,7 @@ class Note extends DynamicSprite {
 	public static var getSpecialFrames:Bool = true;
 	static var specialFramesKey:Array<String> = [];
 	public static var gotSpecialFrames:Array<FlxAtlasFrames> = [];
-	public var mustPress:Bool = false;
+	@:keep public var mustPress:Bool = false;
 	public var noteData:Int = 0;
 	public var trueNoteData:Int = 0;
 	/** Source chart field identity, independent from the binary `mustPress`
@@ -298,10 +298,31 @@ class Note extends DynamicSprite {
 	public var sourcePlayfieldPlayerControlled:Null<Bool> = null;
 	/** Source fields can autoplay independently of the user's botplay setting. */
 	public var sourcePlayfieldAutoPlay:Bool = false;
-	public var canBeHit:Bool = false;
+	public var sourceTimingMode:Int = 0;
+	/** Nightmare Vision's independent note fade, retained across renderer updates. */
+	@:keep public var alphaMod:Float = 1;
+	public var hitbox:Float = Conductor.safeZoneOffset;
+	public var earlyHitMult:Float = 1;
+	public var lateHitMult:Float = 1;
+	public var noteDiff(get, never):Float;
+	function get_noteDiff():Float return strumTime - Conductor.songPosition;
+	var cachedCanBeHit:Bool = false;
+	public var canBeHit(get, set):Bool;
+	function get_canBeHit():Bool {
+		if (sourceTimingMode != 0 && missed) return false;
+		if (sourceTimingMode == 2 && nightmareVisionTailState != null && nightmareVisionTailState.missed) return false;
+		return sourceTimingMode == 2
+			? SourceNoteTiming.nightmareCanBeHit(strumTime, Conductor.songPosition, hitbox, earlyHitMult) : cachedCanBeHit;
+	}
+	function set_canBeHit(value:Bool):Bool return cachedCanBeHit = value;
+	public function isLate():Bool return SourceNoteTiming.isLate(strumTime, Conductor.songPosition, Conductor.safeZoneOffset, wasGoodHit);
 	public var tooLate:Bool = false;
 	public var wasGoodHit:Bool = false;
 	public var prevNote:Note;
+	/** Source note/hold views keep the authored chain available to scripts. */
+	@:keep public var parent:Note = null;
+	@:keep public var tail:Array<Note> = [];
+	@:keep public var missed:Bool = false;
 	/** The head owns a sustain's lane anchor even after it is judged. */
 	var sustainHead:Note = null;
 	var sustainHeadCenterX:Null<Float> = null;
@@ -324,10 +345,15 @@ class Note extends DynamicSprite {
 	@:keep public var spawned:Bool = false;
 	public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool};
 	public var nightmareVisionHitDispatched:Bool = false;
+	/** Psych sustains stay alive after their one successful notification. */
+	@:keep public var hitByOpponent:Bool = false;
+	public var psychHitDispatched:Bool = false;
+	public var psychHitCallbackArgs:Array<Dynamic>;
 	public var nightmareVisionMissDispatched:Bool = false;
 	public var nightmareVisionSustainDuration:Float = 0;
 	public var nightmareVisionSustainEnd:Bool = false;
-	public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
+	@:keep public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
+	var pendingSourceCanMiss:Bool = false;
 	public var nightmareVisionRenderer:nightmarevision.modchart.NightmareVisionModchartRenderer;
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
 	@:keep public var canMiss(get, set):Bool;
@@ -383,7 +409,7 @@ class Note extends DynamicSprite {
 	public static var specialNoteJson:Null<Array<NoteInfo>>;
 	public var damageAmount:Null<Float> = null;
 	public var healAmount:Null<Float> = null;
-	/** Explicit Psych Lua health overrides. Null keeps the native note judgement. */
+	/** Native notes keep null health overrides; source modes seed donor defaults. */
 	public var hitHealth:Null<Float> = null;
 	public var missHealth:Null<Float> = null;
 	public var hitCausesMiss:Bool = false;
@@ -395,7 +421,37 @@ class Note extends DynamicSprite {
 	public var noteSplashData:Dynamic = {disabled: false};
 	// pwease freeplay state don't edit me i already have special info :grief: :grief:
 	public var dontEdit:Bool = false;
-	public var rating = "miss";
+	/** Psych/native notes use a string; Nightmare Vision notes may carry their live
+	 * SourceRating descriptor here so scripts can inspect and edit its counters. */
+	@:keep public var rating:Dynamic = "miss";
+	/** Psych's ratingDisabled flag suppresses rating/accuracy bookkeeping without
+	 * changing dontCountNote's separate engine-specific behavior. */
+	@:keep public var ratingDisabled:Bool = false;
+	var storedRatingMod:Float = 0;
+	/** Native/Psych compatibility value; NMV reads this from its live descriptor. */
+	@:keep public var ratingMod(get, set):Float;
+	function get_ratingMod():Float {
+		if (nightmareVisionTypeRuntime == null) return storedRatingMod;
+		if (rating == null) return -1;
+		var raw:Dynamic = null;
+		try raw = Reflect.getProperty(rating, 'ratingMod') catch (_:Dynamic) return -1;
+		if (raw == null) return -1;
+		var value = Std.parseFloat(Std.string(raw));
+		return !Math.isFinite(value) || value == 9 ? -1 : value;
+	}
+	function set_ratingMod(value:Float):Float {
+		if (nightmareVisionTypeRuntime != null)
+			throw '[nightmare-vision-note] ratingMod is read-only; change rating.ratingMod instead';
+		storedRatingMod = value;
+		return value;
+	}
+	/** Restore the source note's fresh/recycled scoring defaults. Call after the
+	 * Nightmare Vision runtime is attached so its rating begins as null. */
+	@:keep public function resetSourceRatingState():Void {
+		ratingDisabled = false;
+		rating = nightmareVisionTypeRuntime == null ? 'miss' : null;
+		storedRatingMod = 0;
+	}
 	public var isLiftNote:Bool = false;
 	public var mineNote:Bool = false;
 	// like expurgation's notes; insta die lmao
@@ -439,9 +495,44 @@ class Note extends DynamicSprite {
 	public var sourceKind(default, set):Null<String> = null;
 	function set_sourceKind(value:Null<String>):Null<String> {
 		sourceKind = value;
+		// Match the source setter's special Hurt Note priority without overwriting
+		// a custom priority when a live note changes to another authored kind.
+		if (NoteTypeCompat.canonical(value) == 'Hurt Note') hitPriority = 0;
+		if (sourceTimingMode != 0 && NoteTypeCompat.canonical(value) == 'Hurt Note')
+			applySourceHurtNoteSemantics();
 		applyPsychNoteAnimationType(value);
 		refreshPsychNoteType();
 		return value;
+	}
+	@:keep public function applyPendingSourceNoteSemantics():Void {
+		if (nightmareVisionTypeRuntime != null && pendingSourceCanMiss) {
+			nightmareVisionTypeRuntime.api.setCanMiss(this, true);
+			pendingSourceCanMiss = false;
+		}
+	}
+	function applySourceHurtNoteSemantics():Void {
+		ignoreNote = mustPress;
+		lowPriority = true;
+		hitCausesMiss = true;
+		if (sourceTimingMode == 1) missHealth = isSustainNote ? 0.25 : 0.1;
+		else if (sourceTimingMode == 2) {
+			missHealth = isSustainNote ? 0.1 : 0.3;
+			// Nightmare Vision's canMiss value is owned by the type-runtime sidecar.
+			// Note kinds can be recovered in Note.new before that runtime is attached.
+			if (nightmareVisionTypeRuntime == null) pendingSourceCanMiss = true;
+			else nightmareVisionTypeRuntime.api.setCanMiss(this, true);
+		}
+	}
+	function initializeSourceHealthDefaults():Void {
+		switch (sourceTimingMode) {
+			case 1:
+				hitHealth = 0.02;
+				missHealth = 0.1;
+			case 2:
+				hitHealth = 0.023;
+				missHealth = 0.0475;
+			default:
+		}
 	}
 	function applyPsychNoteAnimationType(value:Null<String>):Void {
 		if (value == 'No Animation') {
@@ -522,6 +613,8 @@ class Note extends DynamicSprite {
 	@:keep public var noteTypeID:Int = 0;
 	/** Donor note views use this to lower incoming-note priority. */
 	public var lowPriority:Bool = false;
+	/** Nightmare Vision's source input prioritizes taps within each playfield. */
+	@:keep public var hitPriority:Int = 1;
 	public var animSuffix:Null<String> = null;
 	/** The Codename sing suffix before native note-skin naming rewrites animSuffix. */
 	public var codenameAuthoredAnimSuffix:Null<String> = null;
@@ -556,6 +649,10 @@ class Note extends DynamicSprite {
 
 		this.prevNote = prevNote;
 		isSustainNote = sustainNote;
+		if (PlayState.instance != null) sourceTimingMode = PlayState.instance.sourceNoteTimingMode();
+		initializeSourceHealthDefaults();
+		if (sourceTimingMode != 0 && authoredMustHit != null) mustPress = authoredMustHit;
+		if (sourceTimingMode == 1 && isSustainNote) earlyHitMult = 0;
 		if (isSustainNote) {
 			sustainHead = prevNote.isSustainNote ? prevNote.sustainHead : prevNote;
 			if (sustainHead != null)
@@ -1054,6 +1151,7 @@ class Note extends DynamicSprite {
 			isLiftNote = prevNote.isLiftNote;
 			drainNote = prevNote.drainNote;
 			dontCountNote = prevNote.dontCountNote;
+			ratingDisabled = prevNote.ratingDisabled;
 			dontStrum = prevNote.dontStrum;
 			aiShouldHit = prevNote.aiShouldHit;
 			avoidAutoHit = prevNote.avoidAutoHit;
@@ -1526,7 +1624,11 @@ class Note extends DynamicSprite {
 
 	public function canAutoHit():Bool {
 		if (nightmareVisionTypeRuntime != null)
-			return !ignoreNote && (!isPlayerControlled() || (!canMiss && !hitCausesMiss));
+			// Nightmare Vision's PlayField sends auto-play notes to noteHit even
+			// when a player-owned hazard or canMiss note makes that handler return
+			// early. Keep only its outer-loop ignoreNote filter here; PlayState's
+			// source-tick dispatcher owns the rest of that lifecycle.
+			return !ignoreNote;
 		// The opponent may opt into hazard animations; BF must still avoid them.
 		if (mustPress)
 			return !canMiss && !ignoreNote && !blockHit && !hitCausesMiss && !avoidAutoHit && !dontCountNote
@@ -1537,6 +1639,10 @@ class Note extends DynamicSprite {
 	// Called by PlayState as well as sprite updates. Rendering/activity must
 	// never decide whether a computer-controlled note gets hit.
 	public function updateAutoHit(songPosition:Float):Void {
+		// NV autoplay is admitted by PlayState once per source tick. Marking it
+		// here would couple source callback frequency to uncapped sprite updates
+		// and hide donor early-return behavior for hazards/canMiss notes.
+		if (nightmareVisionTypeRuntime != null) return;
 		if (!isAutoPlayed() || autoHitSuppressed) return;
 		canBeHit = false;
 		if (canAutoHit() && strumTime <= songPosition)
@@ -1560,6 +1666,11 @@ class Note extends DynamicSprite {
 				canBeHit = signedDiff < hitWindow * latePressWindow
 					&& signedDiff > -hitWindow * earlyPressWindow;
 				if (signedDiff > hitWindow && !wasGoodHit) tooLate = true;
+			} else if (sourceTimingMode != 0) {
+				if (sourceTimingMode == 1)
+					canBeHit = SourceNoteTiming.psychCanBeHit(strumTime, Conductor.songPosition,
+						Conductor.safeZoneOffset, earlyHitMult, lateHitMult);
+				if (isLate()) tooLate = true;
 			} else {
 				// The * 0.5 us so that its easier to hit them too late, instead of too early
 				if (noteDiff < Judge.wayoffJudge * timingMultiplier) {

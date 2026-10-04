@@ -304,6 +304,15 @@ class Conductor {
 class RuntimeSmokeHarness {
  public static function markStep(_phase:String):Void {}
 }
+class PsychRuntimeBindings {
+ public static var calls:Array<String> = [];
+ public static function dispatch(host:Dynamic, name:String, args:Array<Dynamic>,
+   family:String = 'Scripts', ignoreStops:Bool = false,
+   ?hscriptArgs:Array<Dynamic>):Dynamic {
+  calls.push(name);
+  return null;
+ }
+}
 class PlayState { public static var globalSprites:Map<String,FakeBasic> = []; }
 class EarlyHandoffTest {
  var stageSprites:Array<FakeBasic> = [];
@@ -319,6 +328,8 @@ class EarlyHandoffTest {
  var hxcCountdownStopRequested:Bool = false;
  var hxcCountdownHookDispatching:Bool = false;
  var codenameCountdownPreparationInProgress:Bool = false;
+ var sourceEventPreparationInProgress:Bool = false;
+ var psychSourceCreationReady:Bool = true;
  var startedCountdown:Bool = false;
  var startTimer:FakeTimer = null;
  var hxcCutsceneTimelineRuntime:FakeTimeline = null;
@@ -329,10 +340,15 @@ class EarlyHandoffTest {
  var SONG:Dynamic = {cutsceneType:'chaos'};
  var hscriptStates:Map<String,Dynamic> = [];
  var removed:Array<FakeBasic> = [];
+ var nightmareCalls:Array<String> = [];
  public function new() { hscriptStates.set('cutscene', {}); }
  function importedCutsceneScript():String return '';
  function diagnoseLegacyKadeOffset():Void {}
  function remove(sprite:Dynamic):Void removed.push(cast sprite);
+ function callNightmareVision(name:String, args:Array<Dynamic>):Dynamic {
+  nightmareCalls.push(name);
+  return null;
+ }
 ''' + helper + '''
  public function startCountdown():Void {
 ''' + countdown.replace('public function startCountdown():Void {\n', '') + '''
@@ -359,6 +375,42 @@ class EarlyHandoffTest {
    throw 'late cutscene addition escaped cleanup';
   if (PlayState.globalSprites.exists('first') || PlayState.globalSprites.exists('late'))
    throw 'cutscene globals survived handoff';
+
+  var creating = new EarlyHandoffTest();
+  creating.psychSourceCreationReady = false;
+  creating.inCutscene = true;
+  PsychRuntimeBindings.calls = [];
+  creating.startCountdown();
+  if (!creating.inCutscene || PsychRuntimeBindings.calls.length != 0
+    || creating.nightmareCalls.length != 0)
+   throw 'source creation should finish event/script preparation before countdown';
+
+  var preparing = new EarlyHandoffTest();
+  preparing.sourceEventPreparationInProgress = true;
+  preparing.inCutscene = true;
+  PsychRuntimeBindings.calls = [];
+  preparing.startCountdown();
+  if (!preparing.inCutscene || PsychRuntimeBindings.calls.length != 0
+    || preparing.nightmareCalls.length != 0)
+   throw 'event preparation re-entry should not start countdown or dispatch lifecycle callbacks';
+
+  var repeated = new EarlyHandoffTest();
+  repeated.startedCountdown = true;
+  repeated.inCutscene = true;
+  repeated.cutsceneSprites.push(first);
+  repeated.startTimer = new FakeTimer();
+  var timerBefore = repeated.startTimer;
+  Conductor.songPosition = 777;
+  PsychRuntimeBindings.calls = [];
+  repeated.startCountdown();
+  if (Conductor.songPosition != 777 || repeated.startTimer != timerBefore
+    || !repeated.startTimer.active || !repeated.inCutscene
+    || repeated.cutsceneSprites.length != 1 || repeated.removed.length != 0)
+   throw 'repeated started countdown rewound or handed off active state';
+  if (PsychRuntimeBindings.calls.join(',') != 'onStartCountdown'
+    || repeated.nightmareCalls.join(',') != 'onStartCountdown'
+    || repeated.hxcCountdownHookDispatching)
+   throw 'repeated started countdown must only re-notify its start gate';
  }
 }
 '''

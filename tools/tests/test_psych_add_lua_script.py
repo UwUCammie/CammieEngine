@@ -29,7 +29,7 @@ class PsychAddLuaScriptTest(unittest.TestCase):
         extracted = '\n'.join(method(play, signature) for signature in (
             'function compatibleScriptIdentity(path:String):String',
             'function compatibleScriptKey(scope:String):String',
-            'function resolvePsychLuaScriptPath(requested:String, ?callerPath:String):Null<String>',
+            'function resolvePsychLuaScriptPath(requested:String, ?callerPath:String, hscript:Bool = false):Null<String>',
             'function compatAddLuaScript(luaFile:String',
             'function compatScriptRunning(identity:String):Bool',
             'function compatRemoveLuaScript(luaFile:String',

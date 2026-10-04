@@ -37,6 +37,12 @@ class PsychBaseStageCompat {
 	public var game(get, never):Dynamic;
 	function get_game():Dynamic return stageHost;
 
+	@:keep public var controls(get, never):Dynamic;
+	function get_controls():Dynamic {
+		var sourceControls = readField('psychControls');
+		return sourceControls == null ? readField('controls') : sourceControls;
+	}
+
 	public var onPlayState(get, never):Bool;
 	function get_onPlayState():Bool return boolField('onPlayState', stageHost != null);
 

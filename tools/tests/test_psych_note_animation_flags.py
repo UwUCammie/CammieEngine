@@ -56,25 +56,32 @@ import hscript.Interp;
 import hscript.Parser;
 class PsychNoteAnimationProbe {
   public var sourceKind(default, set):Null<String> = null;
+  public var sourceTimingMode:Int = 0;
+  public var hitPriority:Int = 1;
   public var noAnimation:Bool = false;
   public var noMissAnimation:Bool = false;
   public var refreshes:Int = 0;
   public function new() {}
   function refreshPsychNoteType():Void refreshes++;
+  function applySourceHurtNoteSemantics():Void {}
 __METHODS__
   static function main():Void {
     var note = new PsychNoteAnimationProbe();
-    if (!note.allowsAnimation() || !note.allowsAnimation(true))
+    if (note.hitPriority != 1 || !note.allowsAnimation() || !note.allowsAnimation(true))
       throw 'ordinary notes should keep both animation paths';
     note.sourceKind = 'No Animation';
-    if (!note.noAnimation || !note.noMissAnimation
+    if (note.hitPriority != 1 || !note.noAnimation || !note.noMissAnimation
       || note.allowsAnimation() || note.allowsAnimation(true))
       throw 'Psych No Animation did not suppress both animation paths';
     note.noAnimation = false;
     if (!note.allowsAnimation() || note.allowsAnimation(true))
       throw 'hit and miss animation flags were not independent';
+    note.sourceKind = 'Hurt Note';
+    if (note.hitPriority != 0)
+      throw 'Hurt Note did not receive Nightmare Vision hit priority';
+    note.hitPriority = 7;
     note.sourceKind = 'Alt Animation';
-    if (note.noAnimation || !note.noMissAnimation || note.allowsAnimation(true))
+    if (note.hitPriority != 7 || note.noAnimation || !note.noMissAnimation || note.allowsAnimation(true))
       throw 'changing note type unexpectedly cleared an authored miss flag';
     var interp = new Interp();
     interp.variables.set('note', note);
@@ -89,7 +96,8 @@ __METHODS__
             env = dict(os.environ)
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
+                 "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
                  "--run", "PsychNoteAnimationProbe"],
                 cwd=ROOT,
                 env=env,

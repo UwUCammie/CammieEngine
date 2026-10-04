@@ -77,6 +77,11 @@ class DialogueBox extends FlxSpriteGroup {
 	var dropText:FlxText;
 
 	public var finishThing:Void->Void;
+	/** Enable the Psych accept/back progression for source-loaded dialogue only. */
+	public var psychInputMode:Bool = false;
+	public var nextDialogueThing:Void->Void = null;
+	public var skipDialogueThing:Void->Void = null;
+	var psychTextFinished:Bool = false;
 
 	var portrait:FlxSprite;
 
@@ -230,15 +235,17 @@ class DialogueBox extends FlxSpriteGroup {
 			startDialogue();
 			dialogueStarted = true;
 		}
-		if (PlayerSettings.player1.controls.SECONDARY) {
-			// skip all this shit
+		if (psychInputMode) {
+			updatePsychDialogueInput(PlayerSettings.player1.controls.ACCEPT, PlayerSettings.player1.controls.BACK);
+		} else if (PlayerSettings.player1.controls.SECONDARY) {
+			// Keep the native host's historical immediate end control.
 			if (!isEnding) {
 				endDialog();
 			}
 		} else if (FlxG.keys.justPressed.ANY && dialogueStarted == true) {
 			remove(dialogue);
 
-			FlxG.sound.play(FNFAssets.getSound('assets/images/custom_dialogs/dialogClicks/$clickSound.ogg'), 0.8);
+			playDialogueClick();
 
 			if (dialogueFile.info[1] == null && dialogueFile.info[0] != null) {
 				if (!isEnding) {
@@ -251,6 +258,29 @@ class DialogueBox extends FlxSpriteGroup {
 		}
 
 		super.update(elapsed);
+	}
+
+	/** Psych accepts fast-forward unfinished text, advances completed lines, and
+	 * uses BACK to end the dialogue at any point. Native input stays in update(). */
+	function updatePsychDialogueInput(accept:Bool, back:Bool):Void {
+		if (!psychInputMode || !dialogueStarted || isEnding || (!accept && !back))
+			return;
+
+		playDialogueClick();
+		if (!psychTextFinished && !back) {
+			swagDialogue.skip();
+			if (skipDialogueThing != null)
+				skipDialogueThing();
+		} else if (back || dialogueFile.info.length <= 1) {
+			endDialog();
+		} else {
+			dialogueFile.info.remove(dialogueFile.info[0]);
+			startDialogue();
+		}
+	}
+
+	function playDialogueClick():Void {
+		FlxG.sound.play(FNFAssets.getSound('assets/images/custom_dialogs/dialogClicks/$clickSound.ogg'), 0.8);
 	}
 	function endDialog():Void {
 		isEnding = true;
@@ -267,9 +297,22 @@ class DialogueBox extends FlxSpriteGroup {
 		}, fadeOutLoop);
 
 		new FlxTimer().start(fadeOutTime * (fadeOutLoop + 1), function(tmr:FlxTimer) {
-			finishThing();
-			kill();
+			finishDialogueLifetime();
 		});
+	}
+
+	function finishDialogueLifetime():Void {
+		var callback = finishThing;
+		finishThing = null;
+		nextDialogueThing = null;
+		skipDialogueThing = null;
+		psychInputMode = false;
+		psychTextFinished = false;
+		if (swagDialogue != null)
+			swagDialogue.completeCallback = null;
+		if (callback != null)
+			callback();
+		kill();
 	}
 	var isEnding:Bool = false;
 
@@ -432,7 +475,18 @@ class DialogueBox extends FlxSpriteGroup {
 			}, 1);
 		}
 
+		if (psychInputMode)
+			onPsychDialogueLineStarted();
 		swagDialogue.start(curSpeed, true);
+	}
+
+	function onPsychDialogueLineStarted():Void {
+		if (!psychInputMode)
+			return;
+		psychTextFinished = false;
+		swagDialogue.completeCallback = function():Void psychTextFinished = true;
+		if (nextDialogueThing != null)
+			nextDialogueThing();
 	}
 
 	function cleanDialog():Void {

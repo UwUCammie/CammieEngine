@@ -22,21 +22,37 @@ class NightmareVisionShaderFactoryTest(unittest.TestCase):
         self.write("flixel/FlxG.hx", '''
 package flixel;
 class FlxG {
- public static var bitmap={add:function(value:Dynamic,unique:Bool,key:String):flixel.graphics.FlxGraphic return new flixel.graphics.FlxGraphic(key)};
+ public static var bitmap:Dynamic={
+  add:function(value:Dynamic,?unique:Bool=false,?key:String):flixel.graphics.FlxGraphic
+   return new flixel.graphics.FlxGraphic(key == null ? Std.string(value) : key),
+  remove:function(graphic:flixel.graphics.FlxGraphic):Bool return true
+ };
  public static var random={int:function(min:Int,max:Int):Int return min};
 }
 ''')
         self.write("flixel/graphics/FlxGraphic.hx", '''
 package flixel.graphics;
-class FlxGraphic { public var key:String; public function new(key:String) this.key=key; }
+class FlxGraphic { public var key:String; public var bitmap:openfl.display.BitmapData; public var persist:Bool=false; public var destroyOnNoUse:Bool=true; public function new(key:String,?bitmap:openfl.display.BitmapData) {this.key=key;this.bitmap=bitmap==null?new openfl.display.BitmapData():bitmap;} }
+''')
+        self.write("openfl/display/BitmapData.hx", '''
+package openfl.display;
+class Texture {public function new(){} public function dispose():Void {}}
+class BitmapData { public var __texture:Texture=new Texture(); public static function fromBytes(bytes:haxe.io.Bytes):BitmapData return new BitmapData(); public function new(){} public function disposeImage():Void {} public function dispose():Void {} }
+''')
+        self.write("openfl/utils/Assets.hx", '''
+package openfl.utils;
+class AssetCache {public function new(){} public function clear(key:String):Void {}}
+class Assets {public static var cache:AssetCache=new AssetCache();}
 ''')
         self.write("flixel/graphics/frames/FlxAtlasFrames.hx", '''
 package flixel.graphics.frames;
 class FlxAtlasFrames {
- public function new() {}
- public static function fromSparrow(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
- public static function fromAseprite(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
- public static function fromSpriteSheetPacker(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames();
+ public var parent:flixel.graphics.FlxGraphic;
+ public function new(?parent:flixel.graphics.FlxGraphic) this.parent=parent;
+ public function addAtlas(other:FlxAtlasFrames, overwrite:Bool):Void {}
+ public static function fromSparrow(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames(image);
+ public static function fromAseprite(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames(image);
+ public static function fromSpriteSheetPacker(image:flixel.graphics.FlxGraphic, text:String):FlxAtlasFrames return new FlxAtlasFrames(image);
 }
 ''')
         self.write("animate/FlxAnimateFrames.hx", '''
@@ -61,10 +77,11 @@ class FlxAssets {
 ''')
         self.write("FNFAssets.hx", '''
 class FNFAssets {
+ public static function exists(path:String):Bool return sys.FileSystem.exists(path);
  public static function getText(path:String):String return sys.io.File.getContent(path);
- public static function getBitmapData(path:String):Dynamic return path;
- public static function getFlxGraphic(path:String):flixel.graphics.FlxGraphic return new flixel.graphics.FlxGraphic(path);
- public static function getSound(path:String):openfl.media.Sound return new openfl.media.Sound();
+ public static function getBitmapData(path:String,useCache:Bool=true):openfl.display.BitmapData return new openfl.display.BitmapData();
+ public static function getFlxGraphic(path:String,useCache:Bool=true):flixel.graphics.FlxGraphic return new flixel.graphics.FlxGraphic(path);
+ public static function getSound(path:String,useCache:Bool=true):openfl.media.Sound return new openfl.media.Sound();
 }
 ''')
         self.write("flixel/addons/display/FlxRuntimeShader.hx", '''

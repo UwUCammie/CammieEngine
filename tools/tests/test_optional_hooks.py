@@ -19,8 +19,17 @@ class OptionalHooksTest(unittest.TestCase):
         # discovered Flash scope. Keep this helper fixture independent of the
         # graphics-heavy OptionsHandler module; the preference behavior has a
         # separate focused adapter test.
-        methods=source[start:end].replace('OptionsHandler.options.flashingLights', 'true')
+        # Source lifecycle helpers have their own executable fixture; keep this
+        # broadcaster probe independent of PlayState/Note and the full runtime.
+        source_helpers=source.index('\n\t/** Psych spawn broadcasts', start)
+        hxc_dispatch=source.index('\n\t/** Dispatch a note lifecycle hook only to HXC interpreters', source_helpers)
+        methods=(source[start:source_helpers]+source[hxc_dispatch:end]).replace('OptionsHandler.options.flashingLights', 'true')
         fixture='''class FakeInterp {public var variables:Map<String,Dynamic>;public function new(v:Map<String,Dynamic>){variables=v;}}
+class SourceIrisBridge extends FakeInterp {
+ public function new(v:Map<String,Dynamic>) super(v);
+ public function callFunction(name:String,args:Array<Dynamic>):Dynamic
+  return Reflect.callMethod(null, variables.get(name), args);
+}
 class HookTest {
  var notes:{members:Array<Dynamic>}=null;
  var hscriptStates:Map<String,FakeInterp>=[];
@@ -32,6 +41,7 @@ class HookTest {
  public function new(){}
  static function psychFlashCallbackSuppressed(flashingLights:Bool,isFlashEventScript:Bool,eventName:String):Bool
   return !flashingLights && isFlashEventScript && eventName != null && StringTools.trim(eventName).toLowerCase() == 'flash';
+ function refreshPsychScoreGlobals(_interp:FakeInterp):Void {}
  function hxcCharacterScopeIsActive(_scope:String):Bool return true;
  function hxcCharacterScopeOwnsNote(_scope:String,_args:Array<Dynamic>):Bool return true;
  function hxcNoteKindScopeOwnsNote(_scope:String,_args:Array<Dynamic>):Bool return true;
@@ -79,6 +89,14 @@ class HookTest {
   hxc.set('onPause',function(event:Dynamic):Dynamic { event.cancel(); return true; });
   t.callAllHScript('onPause',[],false,results,[shared]);
   if(!shared.eventCanceled)throw 'explicit HXC event.cancel was lost';
+  var psychCalls=0;var nativeCalls=0;
+  stage.set('__psychScoreGlobals',true);
+  stage.set('gateProbe',function(){psychCalls++;});
+  empty.set('gateProbe',function(){nativeCalls++;});
+  t.callAllHScript('gateProbe',[],false,null,null,true);
+  if(psychCalls!=0 || nativeCalls!=1)throw 'source gate dispatch repeated Psych or skipped native scopes';
+  t.callAllHScript('gateProbe',[]);
+  if(psychCalls!=1 || nativeCalls!=2)throw 'default broadcast changed';
  }
 }
 '''

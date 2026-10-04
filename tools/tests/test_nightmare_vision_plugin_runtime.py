@@ -96,6 +96,10 @@ class Main {static function main() {
             work = Path(directory)
             write_flixel_point_stub(work)
             stubs = {
+                'NightmareVisionPaths.hx': '''class NightmareVisionPaths {
+public var released:Bool=false;public var releases:Int=0;public var order:Array<String>;
+public function new(order:Array<String>)this.order=order;public function releaseOwnerAssets():Void {
+if(released)throw 'double owner release';order.push('asset-release');released=true;releases++;}}''',
                 'flixel/FlxBasic.hx': '''package flixel; class FlxBasic {
 public var active:Bool=true;public function new(){} public function update(elapsed:Float):Void{} public function destroy():Void{}}''',
                 'flixel/group/FlxGroup.hx': '''package flixel.group; class FlxGroup extends flixel.FlxBasic {
@@ -130,8 +134,15 @@ class Main {
  }
  static function main(){
   var a='assets/imported_mods/a'; var b='assets/imported_mods/b';
-  var first=NightmareVisionPluginHost.mount(a,seed);
+  var lifetime:Array<String>=[];var assets=new NightmareVisionPaths(lifetime);
+  var first=NightmareVisionPluginHost.mount(a,seed,assets);
+  if(NightmareVisionPluginHost.activeHost.assetPaths!=assets)throw 'owner paths not retained';
   if(first!=NightmareVisionPluginHost.mount(a,seed)||log.length!=1)throw 'same owner reloaded';
+  if(assets.released||NightmareVisionPluginHost.activeHost.assetPaths!=assets)throw 'same owner assets released';
+  first.getPlugin('probe').interp.variables.set('inspectTeardown',function(){
+   if(assets.released)throw 'assets unavailable during script destroy';lifetime.push('script-destroy');
+  });
+  first.getPlugin('probe').interp.execute(new NightmareVisionScriptParser().parseString('function onDestroy(){record("destroy");inspectTeardown();}'));
   if(flixel.FlxG.plugins.list.length!=1)throw 'duplicate native plugin';
   flixel.FlxG.signals.preStateSwitch.dispatch();flixel.FlxG.state='second';
   flixel.FlxG.signals.postStateSwitch.dispatch();NightmareVisionPluginHost.activeHost.update(.1);
@@ -139,6 +150,7 @@ class Main {
   var second=NightmareVisionPluginHost.mount(b,seed);
   if(!first.released||second==first||flixel.FlxG.plugins.list.length!=1)throw 'owner handoff';
   if(log.slice(4).join(',')!=a+':destroy,'+b+':load')throw 'destroy before replacement';
+  if(!assets.released||assets.releases!=1||lifetime.join(',')!='script-destroy,asset-release')throw 'owner asset teardown order';
   NightmareVisionPluginHost.releaseOtherOwner('');
   var length=log.length;flixel.FlxG.signals.postStateSwitch.dispatch();
   if(!second.released||NightmareVisionPluginHost.activeHost!=null||flixel.FlxG.plugins.list.length!=0

@@ -286,7 +286,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_readme_documents_native_targets_and_appimage_writes(self):
         for text in (
             "./build.sh appimage",
-            "./build-windows-release.sh v0.0.11",
+            "./build-windows-release.sh v0.0.12",
             ".\\run.bat test",
             "DISAPPOINTINGPLUS_RUNTIME_DIR",
             "APPIMAGE_EXTRACT_AND_RUN",
@@ -303,7 +303,7 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_current_release_version_is_used_by_branding_and_package_defaults(self):
         version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
-        self.assertEqual(version, "0.0.11")
+        self.assertEqual(version, "0.0.12")
         self.assertIn(f'version="{version}"', self.project_xml)
         self.assertIn(f"CammieEngine v{version}", self.readme)
         user_readme = (ROOT / "USER-README.txt").read_text(encoding="utf-8")

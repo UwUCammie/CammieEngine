@@ -38,8 +38,20 @@ class GameOverSubstate extends MusicBeatSubstate {
 	public static var instance(default, null):GameOverSubstate;
 
 	var bf:Character;
-	var camFollow:FlxObject;
-	var gameoverStarted:Bool = false;
+	@:keep public var boyfriend(get, set):Character;
+	function get_boyfriend():Character return bf;
+	function set_boyfriend(value:Character):Character {
+		bf = value;
+		return value;
+	}
+	@:keep public var camFollow:FlxObject;
+	@:keep public var gameoverStarted:Bool = false;
+	@:keep public var startedDeath:Bool = false;
+	@:keep public var isEnding:Bool = false;
+	var sourceOwner:PlayState;
+	var sourceMode:Int = 0;
+	var sourceStartStopped:Bool = false;
+	var sourceDeathAnimNotified:Bool = false;
 	var quoteCharacter:Character;
 	var deathQuotePlayback:HxcDeathQuotePlayback;
 	var deathQuoteAttempted:Bool = false;
@@ -55,15 +67,23 @@ class GameOverSubstate extends MusicBeatSubstate {
 	var codenameGameOverCancelled:Bool = false;
 
 	public function new(player:Character) {
-		instance = this;
+		var activePlayState = PlayState.instance;
+		var activeSourceMode = activePlayState == null ? 0 : activePlayState.sourceGameOverMode();
+		if (activeSourceMode == 0) instance = this;
+		sourceOwner = activeSourceMode == 0 ? null : activePlayState;
+		sourceMode = activeSourceMode;
 		quoteCharacter = player;
-		var psychCharacter = PlayState.instance == null ? null
-			: PlayState.instance.psychGameOverCharacterName();
+		var psychCharacter = activePlayState == null ? null : activePlayState.psychGameOverCharacterName();
 		var daBf:String = psychCharacter == null ? player.curCharacter + '-dead' : psychCharacter;
 		trace(player.curCharacter);
-
 		super();
-		Conductor.songPosition = 0;
+		if (sourceMode != 0) return;
+		setupDefaultGameOver(player, daBf);
+	}
+
+	function setupDefaultGameOver(player:Character, daBf:String, resetSongPosition:Bool = true):Void {
+		if (resetSongPosition) Conductor.songPosition = 0;
+		var playState = sourceOwner == null ? PlayState.instance : sourceOwner;
 
 		// Imported characters may ship no usable death variant (missing sheet or
 		// a generated init that assumes one). A broken death actor must degrade
@@ -94,8 +114,8 @@ class GameOverSubstate extends MusicBeatSubstate {
 		initDeathQuotePlayback();
 		if (bf.deathCameraZoom > 0)
 			FlxG.camera.zoom = bf.deathCameraZoom;
-		var psychDeathSound = PlayState.instance == null ? null
-			: PlayState.instance.psychGameOverSoundPath('deathSoundName', true);
+		var psychDeathSound = playState == null ? null
+			: playState.psychGameOverSoundPath('deathSoundName', true);
 		if (psychDeathSound != null)
 			FlxG.sound.play(FNFAssets.getSound(psychDeathSound));
 		else {
@@ -108,7 +128,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 		}
 		Conductor.changeBPM(100);
 
-		FlxG.camera.focusOn(PlayState.instance.camFollow.getPosition());
+		FlxG.camera.focusOn(playState.camFollow.getPosition());
 		FlxG.camera.target = null;
 
 		if (bf.animation.exists('firstDeath'))
@@ -122,6 +142,36 @@ class GameOverSubstate extends MusicBeatSubstate {
 				}
 			});
 		}
+	}
+
+	override function create():Void {
+		if (sourceMode == 0) {
+			super.create();
+			return;
+		}
+
+		instance = this;
+		if (sourceMode == 2) {
+			sourceOwner.sourceGameOverSetInGameOver(true);
+			Conductor.songPosition = 0;
+			var startResult = sourceOwner.sourceGameOverCall('onGameOverStart', []);
+			sourceStartStopped = startResult == NightmareVisionScriptGroup.STOP_FUNC;
+			if (!sourceStartStopped)
+				setupDefaultGameOver(quoteCharacter, sourceDeathCharacterName(), false);
+			super.create();
+			sourceOwner.sourceGameOverCall('onGameOverPost', []);
+			return;
+		}
+
+		setupDefaultGameOver(quoteCharacter, sourceDeathCharacterName());
+		sourceOwner.sourceGameOverSetInGameOver(true);
+		sourceOwner.sourceGameOverCall('onGameOverStart', []);
+		super.create();
+	}
+
+	function sourceDeathCharacterName():String {
+		var psychCharacter = sourceOwner == null ? null : sourceOwner.psychGameOverCharacterName();
+		return psychCharacter == null ? quoteCharacter.curCharacter + '-dead' : psychCharacter;
 	}
 
 	/** Run only the game-over module belonging to the explicitly active owner. */
@@ -393,7 +443,94 @@ class GameOverSubstate extends MusicBeatSubstate {
 		RuntimeSmokeHarness.markGameOverPhase('quote_cancel', {});
 	}
 
+	function dispatchSourceGameOverUpdateBeforeSuper(elapsed:Float):Void {
+		if (sourceMode == 2 && sourceOwner != null)
+			sourceOwner.sourceGameOverCall('onUpdate', [elapsed]);
+	}
+
+	function dispatchSourceGameOverUpdateAfterSuper(elapsed:Float):Void {
+		if (sourceMode == 1 && sourceOwner != null)
+			sourceOwner.sourceGameOverCall('onUpdate', [elapsed]);
+	}
+
+	function dispatchSourceGameOverUpdatePost(elapsed:Float):Void {
+		if (sourceMode != 0 && sourceOwner != null)
+			sourceOwner.sourceGameOverCall('onUpdatePost', [elapsed]);
+	}
+
+	function notifySourceGameOverConfirmed():Void {
+		if (sourceMode != 0 && sourceOwner != null)
+			sourceOwner.sourceGameOverCall('onGameOverConfirm', [true]);
+	}
+
+	function sourceResultStops(result:Dynamic):Bool {
+		return sourceMode == 2 ? result == NightmareVisionScriptGroup.STOP_FUNC
+			: result == ScriptCallbackResult.STOP;
+	}
+
+	function updateSourceGameOverInput():Void {
+		if (sourceMode == 1) {
+			if (!isEnding) {
+				if (sourceOwner.sourceGameOverCheckControl('ACCEPT'))
+					endBullshit();
+				else if (sourceOwner.sourceGameOverCheckControl('BACK'))
+					sourceBackToMenu();
+			}
+			return;
+		}
+
+		if (sourceMode == 2) {
+			if (sourceOwner.sourceGameOverCheckControl('ACCEPT')) {
+				var result = sourceOwner.sourceGameOverCall('onGameOverConfirm', []);
+				if (!sourceResultStops(result)) endBullshit();
+			}
+			if (sourceOwner.sourceGameOverCheckControl('BACK')) {
+				var result = sourceOwner.sourceGameOverCall('onGameOverCancel', []);
+				if (!sourceResultStops(result)) sourceBackToMenu();
+			}
+		}
+	}
+
+	function sourceBackToMenu():Void {
+		isEnding = true;
+		var owner = sourceOwner;
+		cancelDeathQuote();
+		hxcClearDeathOverlays();
+		HxcCompatRuntime.clearGameOverCharacter(bf);
+		if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		owner.sourceGameOverResetForMenu();
+
+		if (PlayState.isStoryMode)
+			LoadingState.loadAndSwitchState(new StoryMenuState());
+		else
+			LoadingState.loadAndSwitchState(new FreeplayState());
+		FlxG.sound.playMusic(Paths.music('freakyMenu'));
+
+		// Psych's false confirmation is deliberately after the menu transition
+		// and its music, matching the donor's onGameOverConfirm([false]) timing.
+		if (sourceMode == 1)
+			owner.sourceGameOverCall('onGameOverConfirm', [false]);
+	}
+
 	override function update(elapsed:Float) {
+		if (sourceMode != 0) {
+			dispatchSourceGameOverUpdateBeforeSuper(elapsed);
+			super.update(elapsed);
+			dispatchSourceGameOverUpdateAfterSuper(elapsed);
+			var currentAnim = bf != null && bf.animation != null ? bf.animation.curAnim : null;
+			RuntimeSmokeHarness.tick(elapsed);
+			if (codenameGameOverRuntime != null)
+				codenameGameOverRuntime.update(elapsed);
+			if (!codenameGameOverCancelled) {
+				updateSourceGameOverInput();
+				if (bf != null) updateGameoverAnimation(currentAnim);
+			}
+			if (FlxG.sound.music != null && FlxG.sound.music.playing)
+				Conductor.songPosition = FlxG.sound.music.time;
+			dispatchSourceGameOverUpdatePost(elapsed);
+			return;
+		}
+
 		var currentAnim = bf.animation != null ? bf.animation.curAnim : null;
 		// Imported Codename substates retain their update-after-super ABI.
 		// Preserve the animation snapshot if Character advances it in that call.
@@ -461,6 +598,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 	function startGameoverLoop() {
 		if (gameoverStarted) return;
 		gameoverStarted = true;
+		startedDeath = true;
 		FlxG.camera.follow(camFollow, LOCKON, 0.01);
 		playGameoverMusic();
 		if (StringTools.startsWith(Character.animationName(bf), 'firstDeath'))
@@ -469,8 +607,9 @@ class GameOverSubstate extends MusicBeatSubstate {
 	}
 
 	function playGameoverMusic(volume:Float = 1) {
-		var psychLoopSound = PlayState.instance == null ? null
-			: PlayState.instance.psychGameOverSoundPath('loopSoundName', false);
+		var playState = sourceOwner == null ? PlayState.instance : sourceOwner;
+		var psychLoopSound = playState == null ? null
+			: playState.psychGameOverSoundPath('loopSoundName', false);
 		if (psychLoopSound != null)
 			FlxG.sound.playMusic(FNFAssets.getSound(psychLoopSound), volume);
 		else {
@@ -481,6 +620,11 @@ class GameOverSubstate extends MusicBeatSubstate {
 			FlxG.sound.playMusic(FNFAssets.getSound('assets/music/' + bf.gameoverMusic), volume);
 		}
 		gameoverLoopMusic = FlxG.sound.music;
+		if (sourceMode == 2 && !sourceDeathAnimNotified) {
+			sourceDeathAnimNotified = true;
+			startedDeath = true;
+			sourceOwner.sourceGameOverCall('deathAnimStart', [volume]);
+		}
 	}
 
 	override function beatHit() {
@@ -489,20 +633,19 @@ class GameOverSubstate extends MusicBeatSubstate {
 		FlxG.log.add('beat');
 	}
 
-	var isEnding:Bool = false;
-
 	function endBullshit():Void {
 		if (!isEnding) {
 			isEnding = true;
 			cancelDeathQuote();
-			bf.playAnim('deathConfirm', true);
+			if (bf != null) bf.playAnim('deathConfirm', true);
 
 			if (FlxG.sound.music != null) FlxG.sound.music.stop();
-			var psychEndSound = PlayState.instance == null ? null
-				: PlayState.instance.psychGameOverSoundPath('endSoundName', false);
+			var playState = sourceOwner == null ? PlayState.instance : sourceOwner;
+			var psychEndSound = playState == null ? null
+				: playState.psychGameOverSoundPath('endSoundName', false);
 			if (psychEndSound != null)
 				FlxG.sound.play(FNFAssets.getSound(psychEndSound));
-			else {
+			else if (bf != null) {
 				if (!FNFAssets.exists('assets/music/${bf.gameoverMusicEnd}'))
 					bf.gameoverMusicEnd = 'gameOverEnd.ogg';
 				bf.gameoverMusicEnd = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusicEnd,
@@ -517,6 +660,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 					LoadingState.loadAndSwitchState(new PlayState());
 				});
 			});
+			notifySourceGameOverConfirmed();
 		}
 	}
 

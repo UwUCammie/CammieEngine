@@ -37,28 +37,40 @@ class PsychNoteTypeAliasTest(unittest.TestCase):
         fixture = '''
 class PsychNoteTypeAliasFixture {
   public var sourceKind(default, set):Null<String> = null;
+  public var sourceTimingMode:Int = 0;
+  public var hitPriority:Int = 1;
   public var noAnimation:Bool = false;
   public var noMissAnimation:Bool = false;
   public var noteType(get, set):String;
   public var refreshes:Int = 0;
   public function new() {}
   function refreshPsychNoteType():Void refreshes++;
+  function applySourceHurtNoteSemantics():Void {}
 __METHODS__
   static function main():Void {
     var note = new PsychNoteTypeAliasFixture();
+    if (note.hitPriority != 1) throw 'ordinary note priority should default to 1';
     note.sourceKind = 'Hotdog_Note';
     if (Reflect.getProperty(note, 'noteType') != 'Hotdog_Note')
       throw 'Psych script cannot read the authored note label';
     Reflect.setProperty(note, 'noteType', 'Other_Note');
     if (note.sourceKind != 'Other_Note' || note.refreshes != 2)
       throw 'Psych note type write did not refresh the authored kind';
+    Reflect.setProperty(note, 'noteType', 'Hurt Note');
+    if (note.hitPriority != 0) throw 'Hurt Note should use Nightmare Vision hit priority 0';
+    note.sourceKind = 'Normal';
+    if (note.hitPriority != 0) throw 'live ordinary type changes should preserve source priority';
+    note.hitPriority = 7;
+    Reflect.setProperty(note, 'noteType', 'Other_Note');
+    if (note.hitPriority != 7) throw 'live authored type changes should preserve custom priority';
   }
 }
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             Path(folder, "PsychNoteTypeAliasFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", folder, "-main", "PsychNoteTypeAliasFixture", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
+                 "-main", "PsychNoteTypeAliasFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True, text=True,
             )

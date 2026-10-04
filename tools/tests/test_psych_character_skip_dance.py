@@ -26,7 +26,7 @@ class PsychCharacterSkipDanceTest(unittest.TestCase):
     def test_runtime_gate_is_shared_and_hscript_can_toggle_it(self):
         character_source = (ROOT / "source/Character.hx").read_text()
         module_source = (ROOT / "source/ModuleFunctions.hx").read_text()
-        dance = extract_method(character_source, "public function dance()")
+        dance = extract_method(character_source, "public function dance(forced:Bool = false)")
 
         self.assertIn("public var skipDance:Bool = false;", character_source)
         self.assertLess(dance.index("if (skipDance) return;"),

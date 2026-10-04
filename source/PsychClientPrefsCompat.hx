@@ -1,9 +1,8 @@
 package;
 
-/** Read-only Psych preference view for owner-scoped source modules.
-	Values with engine equivalents follow the current options. Psych's data
-	object stays detached so imported code cannot overwrite the user's options
-	by mutating ClientPrefs.data.
+/** Static source bridge to the selected Psych owner's mutable preferences.
+	Owner values live separately from native options; standalone source tools
+	use the small detached fallback without loading the entire gameplay graph.
 */
 class PsychClientPrefsCompat {
 	/** Exact nested fields advertised to CodenameScriptClassLoader's narrow
@@ -12,10 +11,22 @@ class PsychClientPrefsCompat {
 		'data.noteSkin', 'defaultData.noteSkin'
 	];
 
-	public static var data(get, never):Dynamic;
-	public static var defaultData(get, never):Dynamic;
+	public static var data(get, set):Dynamic;
+	public static var defaultData(get, set):Dynamic;
+	static var fallbackData:Dynamic;
+	static var fallbackDefaultData:Dynamic;
+
+	static function currentOwner():Dynamic {
+		var playClass = Type.resolveClass('PlayState');
+		if (playClass == null) return null;
+		var play:Dynamic = Reflect.getProperty(playClass, 'instance');
+		return play == null ? null : Reflect.getProperty(play, 'psychClientPrefs');
+	}
 
 	static function get_data():Dynamic {
+		var owner = currentOwner();
+		if (owner != null) return Reflect.getProperty(owner, 'data');
+		if (fallbackData != null) return fallbackData;
 		// Resolve lazily so standalone owner-class fixtures can compile this
 		// facade without importing the whole game's options and asset graph.
 		var options:Dynamic = null;
@@ -23,17 +34,38 @@ class PsychClientPrefsCompat {
 		if (optionClass != null) {
 			try options = Reflect.getProperty(optionClass, 'options') catch (_:Dynamic) {}
 		}
-		return {
+		fallbackData = {
 			noteSkin:'Default',
+			ratingOffset:0.0, sickWindow:45.0, goodWindow:90.0, badWindow:135.0, safeFrames:10.0,
 			// This engine has no lowQuality preference or matching quality mode.
 			lowQuality:false,
+			scoreZoom:true,
 			antialiasing:readBool(options, 'antialiasing', true),
 			shaders:readBool(options, 'gameplayShaders', true)
 		};
+		return fallbackData;
+	}
+
+	static function set_data(value:Dynamic):Dynamic {
+		var owner = currentOwner();
+		if (owner != null) Reflect.setProperty(owner, 'data', value);
+		else fallbackData = value;
+		return value;
 	}
 
 	static function get_defaultData():Dynamic {
-		return {noteSkin:'Default', lowQuality:false, antialiasing:true, shaders:true};
+		var owner = currentOwner();
+		if (owner != null) return Reflect.getProperty(owner, 'defaultData');
+		if (fallbackDefaultData == null)
+			fallbackDefaultData = {noteSkin:'Default', ratingOffset:0.0, sickWindow:45.0, goodWindow:90.0, badWindow:135.0, safeFrames:10.0, lowQuality:false, scoreZoom:true, antialiasing:true, shaders:true};
+		return fallbackDefaultData;
+	}
+
+	static function set_defaultData(value:Dynamic):Dynamic {
+		var owner = currentOwner();
+		if (owner != null) Reflect.setProperty(owner, 'defaultData', value);
+		else fallbackDefaultData = value;
+		return value;
 	}
 
 	static function readBool(options:Dynamic, field:String, fallback:Bool):Bool {

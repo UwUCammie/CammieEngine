@@ -564,7 +564,7 @@ class CandidateCacheFixture {{
         for kind in ("character", "stage", "ui", "cutscene", "layout"):
             marker = f"cachedDependencyCandidates('{kind}', sourceRoots, reference)"
             self.assertIn(marker, self.source)
-        self.assertIn("LuaCompat.translate(File.getContent(entry.path), entry.path)", self.source)
+        self.assertIn("LuaCompat.translate(File.getContent(entry.path), entry.path, true)", self.source)
         self.assertIn("luaDiagnosticCacheKnown", self.source)
 
     def test_hxc_data_families_copy_into_runtime_script_tree(self):
@@ -635,7 +635,7 @@ class CandidateCacheFixture {{
         self.assertIn("psychCompanionEvents(chartPath)", source)
         self.assertIn("inspectPsychLuaScripts(scanSong, chartPath, chart, roots)", source)
         self.assertIn("PsychScriptDiscovery.discover(root, songName, chart, companionEvents, chartPath)", source)
-        self.assertIn("LuaCompat.translate(File.getContent(entry.path), entry.path)", source)
+        self.assertIn("LuaCompat.translate(File.getContent(entry.path), entry.path, true)", source)
 
     def test_scan_worker_yields_reports_progress_and_supports_cooperative_cancel(self):
         source = self.source

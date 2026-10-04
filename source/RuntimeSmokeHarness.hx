@@ -1375,7 +1375,8 @@ class RuntimeSmokeHarness {
 			shouldBeSung: note.shouldBeSung,
 			isSustainNote: note.isSustainNote,
 			wasGoodHit: note.wasGoodHit,
-			soloMode: note.soloMode
+			soloMode: note.soloMode,
+			forceGfSing: note.forceGfSing
 		});
 	}
 
@@ -1428,9 +1429,12 @@ class RuntimeSmokeHarness {
 		if (gameState == null)
 			return;
 		for (probe in pending) {
-			var actor = probe.soloMode == true ? gameState.getOpponentSinger() : gameState.boyfriend;
+			var actor = probe.forceGfSing == true && gameState.playHUD != null && gameState.gf != null
+				? gameState.gf : (probe.soloMode == true ? gameState.getOpponentSinger() : gameState.boyfriend);
 			var current:Dynamic = actor == null || actor.animation == null
 				? null : actor.animation.curAnim;
+			var sourceActorCameraPosition = gameState.playHUD == null || actor == null
+				? null : gameState.getCharacterCameraPos(actor);
 			emit('player1_good_hit_postroute', {
 				signalOwner: probe.signalOwner,
 				noteTime: probe.noteTime,
@@ -1441,16 +1445,23 @@ class RuntimeSmokeHarness {
 				shouldBeSung: probe.shouldBeSung,
 				isSustainNote: probe.isSustainNote,
 				wasGoodHit: probe.wasGoodHit,
+				forceGfSing: probe.forceGfSing,
+				actorMatchesGf: actor == gameState.gf,
+				boyfriendAnimation: gameState.boyfriend.animation.curAnim == null ? '' : gameState.boyfriend.animation.curAnim.name,
 				actorMatchesBoyfriend: actor == gameState.boyfriend,
 				actor: actor == null ? '' : actor.curCharacter,
 				like: actor == null ? '' : actor.like,
 				animation: current == null ? '' : Reflect.field(current, 'name'),
 				frame: current == null ? -1 : Reflect.field(current, 'curFrame'),
+				sourceActorCameraPosition: sourceActorCameraPosition == null ? null
+					: {x:sourceActorCameraPosition.x, y:sourceActorCameraPosition.y},
+				sourceActorCameraDisplacement: sourceActorCameraPosition == null ? null : actor.camDisplacement,
 				cameraFollow: {x: gameState.camFollow.x, y: gameState.camFollow.y},
 				gameCamera: RuntimeSmokeVisuals.camera(gameState.camGame),
 				hudCamera: RuntimeSmokeVisuals.camera(gameState.camHUD),
 				geometry: RuntimeSmokeVisuals.characterGeometry(actor)
 			});
+			if (sourceActorCameraPosition != null) sourceActorCameraPosition.put();
 		}
 	}
 
@@ -1573,6 +1584,7 @@ class RuntimeSmokeHarness {
 		if (gameOverClockInstalled || !enabled() || config().gameOverAfterMs < 0)
 			return;
 		gameOverClockInstalled = true;
+		RuntimeSourceGameOverProbe.install();
 		FlxG.signals.postUpdate.add(onGameOverClockPostUpdate);
 	}
 
@@ -1851,11 +1863,16 @@ class RuntimeSmokeHarness {
 	static function installNoteRenderReadback():Void {
 		if (noteRenderReadbackInstalled || !enabled() || !config().noteRenderReadback)
 			return;
+		var window = Application.current == null ? null : Application.current.window;
+		if (window == null) return;
 		noteRenderReadbackInstalled = true;
-		FlxG.signals.postDraw.add(onNoteRenderReadbackPostDraw);
+		// Flixel postDraw finishes its draw queue before OpenFL composites the
+		// stage. Read after OpenFL's default-priority window render listener so
+		// filtered sprites cannot leave us sampling an intermediate framebuffer.
+		window.onRender.add(onNoteRenderReadbackRendered, false, -1000);
 	}
 
-	static function onNoteRenderReadbackPostDraw():Void {
+	static function onNoteRenderReadbackRendered(context:lime.graphics.RenderContext):Void {
 		if (!finished && playStateReady && Std.isOfType(FlxG.state, PlayState)
 			&& !introRenderReadbackVisits.exists(visitsStarted) && introRenderHeldAt >= 0
 			&& !songStartObserved && !(cast FlxG.state:PlayState).startedCountdown
@@ -1910,9 +1927,9 @@ class RuntimeSmokeHarness {
 
 	static function captureNoteRenderReadback(note:Note, visit:Int):Void {
 		#if sys
+		var app = Application.current;
+		var window = app == null ? null : app.window;
 		try {
-			var app = Application.current;
-			var window = app == null ? null : app.window;
 			if (window == null)
 				throw 'native window is unavailable';
 			var image = window.readPixels();
@@ -1928,7 +1945,7 @@ class RuntimeSmokeHarness {
 			noteRenderReadbackVisits.set(visit, true);
 			noteRenderReadbackCaptures++;
 			if (noteRenderReadbackCaptures >= config().playstateVisits)
-				FlxG.signals.postDraw.remove(onNoteRenderReadbackPostDraw);
+				window.onRender.remove(onNoteRenderReadbackRendered);
 			emit('note_render_readback', {
 				path: Path.normalize(outputPath),
 				visit: visit,
@@ -1957,7 +1974,7 @@ class RuntimeSmokeHarness {
 				}
 			});
 		} catch (error:Dynamic) {
-			FlxG.signals.postDraw.remove(onNoteRenderReadbackPostDraw);
+			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
 		#end

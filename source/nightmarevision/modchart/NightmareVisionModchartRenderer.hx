@@ -209,7 +209,10 @@ class NightmareVisionModchartRenderer {
 		baseline:NightmareVisionSpriteBaseline,
 		object:NightmareVisionModchartObject):NightmareVisionModchartObject {
 		object.kind = kind;
-		object.alphaMod = 1;
+		// NMV notes carry source-owned miss fades on alphaMod. Other sprite kinds
+		// have separate RGB alpha semantics and retain the source default of 1.
+		object.alphaMod = kind == NightmareVisionModchartObject.NOTE
+			? number(property(sprite, 'alphaMod'), 1) : 1;
 		object.rgbFlash = 0;
 		object.rgbAlpha = 1;
 		object.angle = 0;

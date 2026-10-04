@@ -199,7 +199,7 @@ class LuaCompatTest {
         var converted = LuaCompat.translate(source, "optional-arguments.lua");
         if (!converted.supported)
             throw "optional Lua parameters were diagnosed: " + converted.diagnostics.join(" | ");
-        if (converted.hscript.indexOf("function sprite(?tag, ?image, ?x, ?y, ?scale)") < 0)
+        if (converted.hscript.indexOf("var sprite; sprite = function(?tag, ?image, ?x, ?y, ?scale)") < 0)
             throw "translated parameters are still required: " + converted.hscript;
         var interp = new hscript.Interp();
         interp.variables.set("observedScale", "unset");
@@ -888,7 +888,7 @@ class LuaCompatTest {
         self.assertIn("LuaCompat.translate", module)
         self.assertIn("generatedModchart", module)
         self.assertIn("getCompatibleHscript", play_state)
-        self.assertIn("LuaCompat.translate(FNFAssets.getText(luaPath), luaPath)", play_state)
+        self.assertIn("LuaCompat.translate(FNFAssets.getText(luaPath), luaPath, compatPsychOwnerForScript(luaPath) != null)", play_state)
         self.assertIn("difficultyModchart + '.lua'", play_state)
 
 

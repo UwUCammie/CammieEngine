@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class PsychCustomPauseOwnerTest(unittest.TestCase):
     def test_cancelled_pause_preserves_script_opened_substate(self):
         source = (ROOT / 'source/PlayState.hx').read_text()
-        start = source.index('\t\tif (controls.PAUSE && startedCountdown && canPause')
+        start = source.index('\t\tif ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause')
         end = source.index('\n\t\tvar canShowKeys', start)
         gate = source[start:end]
         fixture = r'''
@@ -28,6 +28,7 @@ class PauseSubState {public function new(x:Int,y:Int,camera:Dynamic){}}
 class CodenameGameEvent {public function new(){}}
 class Main {
  var controls={PAUSE:true};var startedCountdown=true;var canPause=true;
+ var psychControls:Dynamic=null;
  var persistentUpdate=true;var persistentDraw=true;var paused=false;
  var compatCustomSubstateOpen=false;var compatCustomSubstatePausesGame=false;
  var curCamPos:Dynamic;var curCamZoom:Dynamic;var camHUD:Dynamic;var boyfriend=new Actor();
@@ -51,6 +52,8 @@ class Main {
  static function main(){
   var s=new Main();s.nmvStop=true;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate,'NMV cancellation changed pause state');
   s=new Main();s.run();check(s.nativeOpens==1&&s.paused&&!s.persistentUpdate,'native pause');
+  s=new Main();s.psychControls={PAUSE:false};s.run();check(s.nativeOpens==0&&!s.paused,'owner disabled pause should ignore native action');
+  s=new Main();s.controls.PAUSE=false;s.psychControls={PAUSE:true};s.run();check(s.nativeOpens==1&&s.paused,'owner pause should use source action');
   s=new Main();s.behavior=1;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate,'consumed press');
   s=new Main();s.behavior=2;s.run();check(s.nativeOpens==0&&s.paused&&!s.persistentUpdate&&s.persistentDraw,'custom pause overwritten');check(s.postDispatches==1,'custom pause lost paired source post');
   s=new Main();s.behavior=3;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate&&s.persistentDraw,'nonpausing overlay hidden');check(s.postDispatches==1,'overlay lost paired source post');

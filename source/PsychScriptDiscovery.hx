@@ -47,7 +47,10 @@ class PsychScriptDiscovery {
 	public static inline var CUSTOM_EVENT:String = 'custom_event';
 	public static inline var CUSTOM_NOTE_TYPE:String = 'custom_notetype';
 
-	static var scriptExtensions:Array<String> = ['.hscript', '.lua'];
+	// Psych mods use `.hx` for both plain HScript callbacks and compiled Haxe
+	// sources. Discovery selects both; PsychHscriptCompat classifies `.hx` before
+	// the runtime decides whether it can be executed as a callback.
+	static var scriptExtensions:Array<String> = ['.hscript', '.lua', '.hx'];
 
 	/** Build a deterministic read-only plan for one chart.  `companionEvents`
 	 * accepts a Psych/FPS `events.json` payload because many donor charts keep

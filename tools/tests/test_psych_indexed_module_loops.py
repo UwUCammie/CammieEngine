@@ -66,13 +66,16 @@ class Main {
 
     def test_psych_bindings_expose_pair_iteration_and_lime_assets(self):
         bindings = (ROOT / "source/PsychCompiledStageBindings.hx").read_text(encoding="utf-8")
-        self.assertIn("create(ownerRoot:String, ?initialLibrary:String)", bindings)
+        self.assertIn("create(ownerRoot:String, ?initialLibrary:String, ?prefs:Dynamic)", bindings)
         self.assertIn("var ownerPaths = PsychOwnerPaths.create(ownerRoot, initialLibrary);", bindings)
         self.assertIn("bind(bindings, 'Paths', ownerPaths);", bindings)
         self.assertIn("bind(bindings, 'backend.Paths', ownerPaths);", bindings)
         self.assertIn("bind(bindings, 'lime.utils.Assets', PsychOwnerLimeAssets.create(ownerRoot));", bindings)
         self.assertIn("var openFlAssets = PsychOwnerOpenFlAssets.create(ownerRoot);", bindings)
         self.assertIn("bind(bindings, 'openfl.utils.Assets', openFlAssets);", bindings)
+        self.assertIn("var ownerPrefs:Dynamic = prefs == null ? PsychClientPrefsCompat : prefs;", bindings)
+        self.assertIn("bind(bindings, 'backend.ClientPrefs', ownerPrefs);", bindings)
+        self.assertIn("bind(bindings, 'ClientPrefs', ownerPrefs);", bindings)
         self.assertIn("bindings.set('CodenameKeyValueIterator', CodenameKeyValueIterator.facade());", bindings)
         self.assertIn("bind(bindings, 'FlxPoint', PsychFlxPointCompat);", bindings)
         self.assertIn("bind(bindings, 'flixel.math.FlxPoint', PsychFlxPointCompat);", bindings)

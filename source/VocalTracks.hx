@@ -47,10 +47,37 @@ class VocalTracks {
 
 	/** Source vocal groups expose the actual stems belonging to each role. */
 	public function forRole(role:String):Array<FlxSound> {
-		var wanted = role == null ? '' : role.toLowerCase();
+		var wanted = normalizeRole(role);
 		return [for (index in 0...tracks.length)
 			if (tracks[index] != null && roles[index] == wanted) tracks[index]];
 	}
+
+	public function hasRole(role:String):Bool {
+		var wanted = normalizeRole(role);
+		for (index in 0...tracks.length)
+			if (tracks[index] != null && roles[index] == wanted)
+				return true;
+		return false;
+	}
+
+	/** Write one source-owned vocal bus, preserving every other track's volume.
+	 * Shared stems are used only when the caller explicitly allows fallback. */
+	public function setRoleVolume(role:String, volume:Float, fallbackShared:Bool = false):Bool {
+		var wanted = normalizeRole(role);
+		var selected = wanted;
+		if (!hasRole(selected) && fallbackShared && wanted != 'shared' && hasRole('shared'))
+			selected = 'shared';
+		if (!hasRole(selected)) return false;
+
+		for (index in 0...tracks.length)
+			if (tracks[index] != null && roles[index] == selected)
+				tracks[index].volume = volume;
+		if (primary != null)
+			lastPrimaryVolume = primary.volume;
+		return true;
+	}
+
+	static function normalizeRole(role:String):String return role == null ? '' : role.toLowerCase();
 
 	public function play():Void {
 		for (sound in tracks)
@@ -86,11 +113,7 @@ class VocalTracks {
 
 	/** V-Slice's player vocal bus can be restored without changing opponent stems. */
 	public function setPlayerVolume(volume:Float):Void {
-		var hasPlayer = roles.indexOf("player") >= 0;
-		for (index in 0...tracks.length)
-			if (tracks[index] != null && (roles[index] == "player"
-				|| (!hasPlayer && roles[index] == "shared")))
-				tracks[index].volume = volume;
+		setRoleVolume('player', volume, true);
 		if (primary != null)
 			lastPrimaryVolume = primary.volume;
 	}

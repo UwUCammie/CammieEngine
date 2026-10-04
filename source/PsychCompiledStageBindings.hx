@@ -33,7 +33,7 @@ import PsychFlxShaderCompat.PsychShaderParameterTypeCompat;
 	selected root; unsupported imported classes remain visible loader errors.
 */
 class PsychCompiledStageBindings {
-	public static function create(ownerRoot:String, ?initialLibrary:String):Map<String, Dynamic> {
+	public static function create(ownerRoot:String, ?initialLibrary:String, ?prefs:Dynamic):Map<String, Dynamic> {
 		var bindings:Map<String, Dynamic> = new Map();
 		// FlxColor and BlendMode are Haxe abstracts, so their type names do not
 		// exist as runtime values. Bind the same narrow facades used by the
@@ -155,8 +155,11 @@ class PsychCompiledStageBindings {
 		bind(bindings, 'objects.Character', Character);
 		bind(bindings, 'Note', Note);
 		bind(bindings, 'objects.Note', Note);
-		bind(bindings, 'backend.ClientPrefs', PsychClientPrefsCompat);
-		bind(bindings, 'ClientPrefs', PsychClientPrefsCompat);
+		var ownerPrefs:Dynamic = prefs == null ? PsychClientPrefsCompat : prefs;
+		bind(bindings, 'backend.ClientPrefs', ownerPrefs);
+		bind(bindings, 'ClientPrefs', ownerPrefs);
+		bind(bindings, 'backend.Rating', PsychRatingCompat);
+		bind(bindings, 'Rating', PsychRatingCompat);
 		bind(bindings, 'backend.BaseStage', PsychBaseStageCompat);
 		bind(bindings, 'BaseStage', PsychBaseStageCompat);
 		bind(bindings, 'backend.BaseStage.Countdown', PsychBaseStageCountdown);

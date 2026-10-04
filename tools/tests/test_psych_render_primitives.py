@@ -62,7 +62,7 @@ class FlxSprite {
  public var scale:FlxPoint = new FlxPoint(10,10);
  public var image:Bitmap;
  public function new(x:Float = 0, y:Float = 0) {}
- public function loadGraphic(value:Dynamic):FlxSprite {
+ public function loadGraphic(value:Dynamic, animated:Bool = false, frameWidth:Int = 0, frameHeight:Int = 0):FlxSprite {
   if (!Std.isOfType(value, Bitmap)) throw 'unregistered disk path passed to asset manifest';
   image = cast value; return this;
  }

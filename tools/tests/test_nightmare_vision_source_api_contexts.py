@@ -13,11 +13,11 @@ from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 IRIS = ROOT / ".haxelib/hscript-iris/1,1,3"
-DONOR = ROOT.parent / "FNF-Example-Mods/misc/nightmare_vision_source_code/source/funkin"
+DONOR = ROOT.parent / "fnf_sources/NightmareVision/source/funkin"
 
 
 class NightmareVisionSourceApiContextsTest(unittest.TestCase):
-    def run_haxe(self, body):
+    def run_haxe(self, body, fixture_files=None):
         if not HAXE.is_file():
             self.skipTest("portable Haxe interpreter is unavailable")
         fixture = r'''
@@ -36,6 +36,10 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
             write_flixel_point_stub(work)
+            for relative, content in (fixture_files or {}).items():
+                path = work / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8", newline="\n")
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(work),
@@ -125,8 +129,8 @@ check(switched, 'directory setter pretended to switch while the owner paths stay
 eq(first.currentModDirectory, 'new-dsides', 'failed selection changed the visible mounted owner');
 var unsupported = false;
 try first.updateModList('owner-b') catch (error:Dynamic)
-  unsupported = Std.string(error).indexOf('[nightmare-vision-mods-unsupported] funkin.Mods.updateModList') >= 0;
-check(unsupported, 'global Mods mutation silently succeeded');
+  unsupported = Std.string(error).indexOf('[nightmare-vision-mods-scope]') >= 0;
+check(unsupported, 'another owner mod list was accepted');
 ''')
 
     def test_source_directory_comes_from_retained_provenance(self):
@@ -184,34 +188,54 @@ eq(second.difficulties.join(','), 'Easy,Normal,Hard', 'reset crossed owner conte
 check(!first.canReuseFor(second.ownerRoot), 'difficulty adapter accepted another owner');
 ''')
 
-    def test_mods_method_surface_matches_donor_and_unsupported_calls_are_explicit(self):
+    def test_mods_method_surface_matches_donor_and_methods_are_implemented(self):
         if not (DONOR / "Mods.hx").is_file():
             self.skipTest("supplied Nightmare Vision Mods source unavailable")
         donor = (DONOR / "Mods.hx").read_text(encoding="utf-8")
         declared = set(re.findall(r"public static (?:inline )?function\s+(\w+)\s*\(", donor))
         adapter = (ROOT / "source/NightmareVisionModsContext.hx").read_text(encoding="utf-8")
         source_surface = re.search(r"sourceApiMethods\(\).*?return \[(.*?)\];", adapter, re.S)
-        unsupported_surface = re.search(r"unsupportedSourceApiMethods\(\).*?return sourceApiMethods\(\)\.copy\(\);", adapter, re.S)
+        unsupported_surface = re.search(r"unsupportedSourceApiMethods\(\).*?return \[\];", adapter, re.S)
         self.assertIsNotNone(source_surface)
         self.assertIsNotNone(unsupported_surface)
         exposed = set(re.findall(r"'([A-Za-z_]\w*)'", source_surface.group(1)))
         self.assertEqual(exposed, declared, "adapter inventory does not match source Mods methods")
 
+        self.assertIn("public function getModDirectories()", adapter)
+        self.assertNotIn("return cast unsupported(", adapter)
+        self.assertNotIn("return unsupported(", adapter)
+
+    def test_mods_files_and_pack_apis_are_owner_scoped(self):
         self.run_haxe(r'''
-var mods = new NightmareVisionModsContext('assets/imported_mods/owner');
-var failures = 0;
-for (name in NightmareVisionModsContext.unsupportedSourceApiMethods()) {
-  var method = Reflect.field(mods, name);
-  check(method != null && Reflect.isFunction(method), 'missing source method ' + name);
-  try Reflect.callMethod(mods, method, []) catch (error:Dynamic) {
-    if (Std.string(error).indexOf('[nightmare-vision-mods-unsupported] funkin.Mods.' + name) >= 0)
-      failures++;
-    else throw error;
-  }
-}
-eq(failures, NightmareVisionModsContext.sourceApiMethods().length,
-  'unsupported Mods calls were swallowed or lacked a diagnostic');
-''')
+var mods = new NightmareVisionModsContext('assets/imported_mods/owner-a', 'owner-a');
+eq(mods.getModDirectories().join(','), 'owner-a', 'selected owner directory');
+eq(mods.pushGlobalMods().join(','), 'owner-a', 'selected owner global flag');
+eq(mods.getPack().name, 'Owner Display', 'owner metadata read');
+eq(mods.getPack('other-owner'), null, 'foreign pack metadata read');
+eq(mods.getModName(''), 'Owner Display', 'meta display name');
+eq(mods.getModIcon(''), 'icons/icon', 'meta icon key');
+check(mods.getModFont('').indexOf('assets/imported_mods/owner-a/fonts/owner-font.ttf') >= 0,
+  'owner font path resolution');
+var matches = mods.directoriesWithFile('assets/data', 'values.txt');
+eq(matches.length, 2, 'core/owner text matches (' + matches.join(',') + ')');
+check(matches[0].indexOf('__nmv_core/data/values.txt') >= 0, 'core precedence');
+check(matches[1].indexOf('owner-a/values.txt') >= 0, 'owner match');
+eq(mods.mergeAllTextsNamed('values.txt', 'assets/data').join(','), 'core,same,owner',
+  'core-first text merge with duplicate removal');
+var withDuplicates = mods.mergeAllTextsNamed('values.txt', 'assets/data', true);
+eq(withDuplicates.join(','), 'core,same,owner,same', 'duplicate-preserving merge');
+var parsed = mods.parseList();
+eq(parsed.enabled.join(','), 'owner-a', 'owner-local list enabled');
+eq(mods.getListAsArray()[0].folder, 'owner-a', 'owner-local list row');
+mods.applyModConfig();
+eq(mods.currentModConfig.name, 'Owner Display', 'owner config applied locally');
+mods.loadTopMod();
+''', {
+            'assets/imported_mods/owner-a/meta.json': '{"name":"Owner Display","global":true,"iconFile":"icons/icon","defaultFont":"owner-font"}',
+            'assets/imported_mods/owner-a/fonts/owner-font.ttf': 'font',
+            'assets/imported_mods/owner-a/values.txt': 'owner\nsame\n',
+            'assets/imported_mods/owner-a/__nmv_core/data/values.txt': 'core\nsame\n',
+        })
 
 
 if __name__ == "__main__":

@@ -93,8 +93,8 @@ class Main {
         self.assertEqual(miss.count('singCodenameNoteActors('), 2,
             'both authored note miss branches need exact-line singers')
         self.assertEqual(hit.count('singCodenameNoteActors('), 1)
-        auto = source[source.index('if (!daNote.mustPress && daNote.wasGoodHit'):
-                      source.index('var neg = downscroll ?', source.index('if (!daNote.mustPress && daNote.wasGoodHit'))]
+        auto = source[source.index('if (!sourceScoreNightmare && !daNote.mustPress && daNote.wasGoodHit'):
+                      source.index('var neg = downscroll ?', source.index('if (!sourceScoreNightmare && !daNote.mustPress && daNote.wasGoodHit'))]
         self.assertEqual(auto.count('singCodenameNoteActors('), 2,
             'opponent and BF autoplay need exact-line singers')
         helper = method(source, 'singCodenameNoteActors')

@@ -148,14 +148,24 @@ class NightmareVisionClientPrefs {
 
 	function seedNativeEquivalents(options:Dynamic):Void {
 		if (options == null) return;
-		// These host fields carry the same option meaning and type as their NMV
-		// counterparts. The returned view is detached, so later writes stay owner-local.
+		// Exact boolean equivalents seed source defaults without binding this
+		// detached owner view back to the process-wide native options.
 		seedBool(options, 'autoPause', 'autoPause');
 		seedBool(options, 'globalAntialiasing', 'antialiasing');
 		seedBool(options, 'shaders', 'gameplayShaders');
 		seedBool(options, 'flashing', 'flashingLights');
 		seedBool(options, 'downScroll', 'downscroll');
 		seedBool(options, 'middleScroll', 'midscroll');
+		// The host offset is fractional; preserve its numeric value in the owner
+		// view until an owner save record overlays this source default.
+		seedNumber(options, 'noteOffset', 'offset');
+	}
+
+	function seedNumber(options:Dynamic, viewName:String, nativeName:String):Void {
+		var current:Dynamic = field(options, nativeName);
+		if (!Std.isOfType(current, Int) && !Std.isOfType(current, Float)) return;
+		var number:Float = current;
+		if (Math.isFinite(number)) Reflect.setField(view, viewName, number);
 	}
 
 	function seedBool(options:Dynamic, viewName:String, nativeName:String):Void {

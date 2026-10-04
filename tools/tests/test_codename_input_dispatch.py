@@ -40,7 +40,7 @@ class Note {
  public var codenameInputLine:CodenameInputLine<Character>;
  public var mustPress=true; public var canBeHit=true; public var tooLate=false;
  public var wasGoodHit=false; public var isLiftNote=false; public var isSustainNote=false;
- public var blockHit=false;
+ public var blockHit=false; public var ignoreNote=false;
  public var alive=true; public var destroyed=false; public var noteData=0;
  public var strumTime:Float=1000;
  public function new(line:CodenameInputLine<Character>,time:Float=1000) {codenameInputLine=line;strumTime=time;}
@@ -58,11 +58,15 @@ class Ratings { public static function CalculateRating(t:Float):String return 's
 class OptionsHandler { public static var options={useCustomInput:true,singYourHeartOut:false}; }
 class Main {
  var controls:Dynamic; var controlsPlayerTwo:Dynamic;
+ var psychControls:Dynamic=null; var keysArray:Array<Array<Int>>=[];
+ var psychClientPrefs:Dynamic=null;
  var codenameInputLines:Array<CodenameInputLine<Character>>=[];
  var nightmareVisionScripts:Dynamic=null;
  var boyfriend=new Character(); var dad=new Character();
  var notes=new Notes(); var soloMode=false; var generatedMusic=true; var demoMode=false;
+ var guitarHeroSustains=false;
  var mashViolations=0; var scoreTxt={color:0}; var useCustomInput=true; public var ghostTapping=true;
+ var strumsBlocked:Array<Bool>=[];
  var currentKey={getSing:function(i:Int):String return 'singLEFT'};
  var playerStrums=new Strumline(); var enemyStrums=new Strumline();
  var codenameStrumlines:Array<Strumline>=[];
@@ -75,6 +79,9 @@ class Main {
    Reflect.setField(controls,'CTRL'+letter+suffix,false);
   controlsPlayerTwo=controls;
  }
+ function usesPsychSourceInput():Bool return false;
+ function usesPsychOwnerControls(playerOne:Bool):Bool return false;
+ static function psychNoteAction(key:Int):String return 'note_left';
  function getOpponentSinger():Character return dad;
  function getNightmareVisionField(index:Int):Dynamic return {canInput:function() return true};
  function getCodenameLineStrumline(index:Int):Strumline

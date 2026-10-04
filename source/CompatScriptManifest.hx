@@ -100,6 +100,16 @@ class CompatScriptManifest {
 		#end
 	}
 
+	/** Dialects with their own loader must not enter legacy Psych discovery. */
+	public static function usesDedicatedScriptRuntime(data:CompatScriptManifestData, root:String):Bool {
+		if (data == null || data.roots == null) return false;
+		var key = destinationKey(root);
+		if (key == '') return false;
+		for (entry in data.roots) if (entry != null && destinationKey(entry.path) == key
+			&& (entry.engine == ImportEngine.NIGHTMARE_VISION || entry.engine == ImportEngine.CODENAME)) return true;
+		return false;
+	}
+
 	public static function create(sourceRoot:String, engine:String):CompatScriptManifestData {
 		var destination = destinationRoot(sourceRoot, engine);
 		return {

@@ -121,11 +121,16 @@ __METHODS__
         self.assertIn("&& useNoteSplashes && grpNoteSplashes != null", splash_gate)
         finish_method = extract_method(play_source, "function finishGoodNoteHit(")
         self.assertIn("if (restoreVocals)", finish_method)
+        self.assertIn("if (!sourceScoreNightmare) note.wasGoodHit = true;", method)
+        self.assertIn("if (sourceScoreNightmare) note.wasGoodHit = true;", method)
+        self.assertIn("if (!sourceScoreLedgerActive()) setVocalsVolume(0);", method)
+        self.assertIn("if (!sourceScoreNightmare) splashHitCausesMissNote(note);", method)
 
         fixture = '''
 class Note {
   public var hitCausesMiss = false;
   public var wasGoodHit = false;
+  public var psychHitDispatched:Bool = false;
   public var codenameInputLine:Dynamic = null;
   public var noteData = 2;
   public var isSustainNote = false;
@@ -147,20 +152,29 @@ class SplashGroup {
 }
 class PsychManualHazardFixture {
   public var misses:Array<Note> = [];
+  public var missWasGoodHit:Array<Bool> = [];
   public var vocalVolume:Float = 1;
+  public var sourceScoreNightmare:Bool = false;
+  public var sourceScoreActive:Bool = false;
   public var useNoteSplashes = true;
   public var grpNoteSplashes:SplashGroup = new SplashGroup();
   public var codenameNoteSplashHandler:Dynamic = null;
   public var strumline:Strumline = new Strumline();
   public function new() {}
+  function sourceScoreLedgerActive():Bool return sourceScoreActive;
   function setVocalsVolume(value:Float):Void vocalVolume = value;
   function getNoteStrumline(note:Note):Strumline return strumline;
   function nightmareVisionSkinForField(field:Int):Dynamic return null;
   function noteMiss(direction:Int, playerOne:Bool, note:Null<Note>,
       ?playMissSound:Bool = true, ?sourceLine:Dynamic):Void {
-    if (note == null || !note.wasGoodHit || !playerOne || direction != note.noteData)
-      throw 'miss route did not receive the marked player note';
+    if (note == null || !playerOne || direction != note.noteData)
+      throw 'miss route did not receive the player note';
+    if (sourceScoreNightmare && note.wasGoodHit)
+      throw 'Nightmare Vision note was marked hit before its miss callback';
+    if (!sourceScoreNightmare && !note.wasGoodHit)
+      throw 'Psych/native note was not marked hit before its miss callback';
     misses.push(note);
+    missWasGoodHit.push(note.wasGoodHit);
   }
 __METHOD__
 __SPLASH_GATE__
@@ -212,6 +226,36 @@ __SPLASH_METHOD__
     if (!state.dispatchHitCausesMiss(lineDisabled, true)
         || state.grpNoteSplashes.spawned.length != 1 || state.misses.length != 4)
       throw 'strumline splash option did not gate the hazard splash';
+
+    var psychSource = new PsychManualHazardFixture();
+    psychSource.sourceScoreActive = true;
+    var psychHazard = new Note();
+    psychHazard.hitCausesMiss = true;
+    if (!psychSource.dispatchHitCausesMiss(psychHazard, true)
+        || psychSource.missWasGoodHit.length != 1 || !psychSource.missWasGoodHit[0]
+        || psychSource.vocalVolume != 1 || psychSource.grpNoteSplashes.spawned.length != 1)
+      throw 'Psych source miss should preserve pre-callback hit marking and avoid blanket mute';
+
+    var pendingPsychHazard = new Note();
+    pendingPsychHazard.hitCausesMiss = true;
+    pendingPsychHazard.wasGoodHit = true;
+    if (!psychSource.dispatchHitCausesMiss(pendingPsychHazard, true)
+        || psychSource.misses.length != 2 || psychSource.misses[1] != pendingPsychHazard)
+      throw 'pending Psych post-hit hazard should still enter its miss route';
+    pendingPsychHazard.psychHitDispatched = true;
+    if (psychSource.dispatchHitCausesMiss(pendingPsychHazard, true) || psychSource.misses.length != 2)
+      throw 'already-dispatched Psych hazard miss was not deduplicated';
+
+    var nightmare = new PsychManualHazardFixture();
+    nightmare.sourceScoreActive = true;
+    nightmare.sourceScoreNightmare = true;
+    var nightmareHazard = new Note();
+    nightmareHazard.hitCausesMiss = true;
+    if (!nightmare.dispatchHitCausesMiss(nightmareHazard, true)
+        || !nightmareHazard.wasGoodHit || nightmare.missWasGoodHit.length != 1
+        || nightmare.missWasGoodHit[0] || nightmare.vocalVolume != 1
+        || nightmare.grpNoteSplashes.spawned.length != 0)
+      throw 'Nightmare Vision must expose the missed state before its callback without Psych mute or splash';
   }
 }
 '''.replace("__METHOD__", method).replace("__SPLASH_GATE__", splash_gate).replace(

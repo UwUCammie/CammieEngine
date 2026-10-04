@@ -13,14 +13,16 @@ class NoteAITest(unittest.TestCase):
     def test_ai_hits_hazards_but_human_players_still_take_damage(self):
         source = (ROOT / 'source/Note.hx').read_text()
         play = (ROOT / 'source/PlayState.hx').read_text()
-        self.assertIn('if (!daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null', play)
+        self.assertIn('if (!sourceScoreNightmare && !daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && !daNote.psychHitDispatched && (daNote.codenameInputLine != null', play)
         self.assertIn(': daNote.isAutoPlayed())) {', play)
         update = source[source.index('\tpublic inline function isAutoPlayed('):source.index('\t// inline because')]
         health = source[source.index('\tpublic function getHealth('):source.rfind('}')]
+        late_getter_start = source.index('\tpublic function isLate():Bool')
+        late_getter = source[late_getter_start:source.index(';', late_getter_start) + 1]
         # Keep production method bodies intact; stub only rendering and globals.
         fixture = '''
 class Base { public function new() {} public function update(elapsed:Float) {} }
-class Conductor { public static var songPosition:Float = 999; }
+class Conductor { public static var songPosition:Float = 999; public static var safeZoneOffset:Float = 166; }
 class Judge {
  public static var wayoffJudge:Float = 180;
  public static var badJudge:Float = 100;
@@ -41,6 +43,7 @@ class TestNote extends Base {
  public var sourcePlayfieldAutoPlay=false;
  public var codenameInputLine:Dynamic=null;
  public var earlyPressWindow:Float=1; public var latePressWindow:Float=1;
+ public var sourceTimingMode:Int=0; public var earlyHitMult:Float=1; public var lateHitMult:Float=1;
  public var funnyMode=false; public var dontCountNote=true; public var aiShouldHit=true;
  public var avoidAutoHit=false; public var autoHitSuppressed=false;
  public var canBeHit=false; public var wasGoodHit=false; public var tooLate=false;
@@ -53,7 +56,7 @@ class TestNote extends Base {
  public var healAmount:Null<Float>=-0.25; public var damageAmount:Null<Float>=0;
  public var healMultiplier:Float=1; public var damageMultiplier:Float=1;
  public var ignoreHealthMods=false;
-''' + update + health + '''
+''' + late_getter + update + health + '''
 }
 class TestNoteAI {
  static function check(ok:Bool, message:String) { if(!ok) throw message; }
@@ -117,13 +120,20 @@ class TestNoteAI {
   var nmvPlayerCanMiss = new TestNote(); nmvPlayerCanMiss.nightmareVisionTypeRuntime={};
   nmvPlayerCanMiss.mustPress=false; nmvPlayerCanMiss.sourcePlayfieldPlayerControlled=true;
   nmvPlayerCanMiss.canMiss=true;
-  check(!nmvPlayerCanMiss.canAutoHit(),
-   "NMV BF-owned field cannot autoplay a canMiss note despite native opponent ownership");
+  check(nmvPlayerCanMiss.canAutoHit(),
+   "NV canMiss still enters the field signal for Pre/receptor and later listener effects");
   var nmvPlayerHitCausesMiss = new TestNote(); nmvPlayerHitCausesMiss.nightmareVisionTypeRuntime={};
   nmvPlayerHitCausesMiss.mustPress=false; nmvPlayerHitCausesMiss.sourcePlayfieldPlayerControlled=true;
   nmvPlayerHitCausesMiss.hitCausesMiss=true;
-  check(!nmvPlayerHitCausesMiss.canAutoHit(),
-   "NMV BF-owned field cannot autoplay a hitCausesMiss note despite native opponent ownership");
+  check(nmvPlayerHitCausesMiss.canAutoHit(),
+   "NV hazards still enter the field signal before the source field rejects hit effects");
+  nmvPlayerHitCausesMiss.sourcePlayfieldAutoPlay=true;
+  nmvPlayerHitCausesMiss.updateAutoHit(5000);
+  check(!nmvPlayerHitCausesMiss.wasGoodHit,
+   "NV sprite updates leave hit flags pending for the source-clock field pipeline");
+  nmvCpuOverride.updateAutoHit(5000);
+  check(!nmvCpuOverride.wasGoodHit,
+   "Accepted NV autoplay is judged by the shared source pipeline, not render updates");
   var nmvOpponentHazard = new TestNote(); nmvOpponentHazard.nightmareVisionTypeRuntime={};
   nmvOpponentHazard.mustPress=true; nmvOpponentHazard.sourcePlayfieldPlayerControlled=false;
   nmvOpponentHazard.canMiss=true; nmvOpponentHazard.hitCausesMiss=true;
@@ -223,12 +233,22 @@ class TestNoteAI {
   Conductor.songPosition=1091; scaled.update(0);
   check(!scaled.canBeHit&&!scaled.tooLate,
    "Codename per-note late scale does not change miss threshold");
+
+  var sourcePsych = new TestNote(); sourcePsych.mustPress=true;
+  sourcePsych.sourceTimingMode=1; sourcePsych.strumTime=980;
+  Conductor.songPosition=1000; Conductor.safeZoneOffset=20;
+  sourcePsych.update(0);
+  check(!sourcePsych.canBeHit&&!sourcePsych.tooLate,
+   "Psych source window excludes the exact strict lower edge");
+  sourcePsych.strumTime=980.001; sourcePsych.update(0);
+  check(sourcePsych.canBeHit&&!sourcePsych.tooLate,
+   "Psych source update uses its live safe-zone helper just inside the lower edge");
  }
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'TestNoteAI.hx').write_text(fixture, newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', folder,
                                      '-main', 'TestNoteAI', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

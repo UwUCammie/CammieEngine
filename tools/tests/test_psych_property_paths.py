@@ -124,6 +124,8 @@ __METHODS__
         self.assertIn("resultType=' + psychClassPropertyProbeType(result)", play_state)
         methods = []
         for marker in (
+            "function compatSourceClientPrefs",
+            "function compatSourcePreferencePath",
             "function compatClassPropertyPath",
             "function compatGetPropertyFromClass",
             "function compatSetPropertyFromClass",
@@ -168,6 +170,9 @@ class Judge {
   public static var badJudge:Float = 135;
   public static var shitJudge:Float = 166;
 }
+class PsychClientPrefsCompat {
+  public static var data:Dynamic = {sickWindow:22.5, goodWindow:87.5, badWindow:111};
+}
 class OptionsHandler {
   public static var options:Dynamic = {showNoteSplashes: true};
 }
@@ -176,7 +181,16 @@ class RuntimeSmokeHarness {
 }
 class EngineCompat {
 __ENGINE_METHODS__
-  public static function legacyClassProperty(_className:String, _path:String):String return null;
+  public static function legacyClassProperty(className:String, path:String):String {
+    if (className == null || path == null) return '';
+    if (className.toLowerCase() != 'clientprefs' && className.toLowerCase() != 'backend.clientprefs') return '';
+    return switch (path.toLowerCase()) {
+      case 'sickwindow' | 'data.sickwindow': 'sickWindow';
+      case 'goodwindow' | 'data.goodwindow': 'goodWindow';
+      case 'badwindow' | 'data.badwindow': 'badWindow';
+      default: '';
+    };
+  }
   public static function psychHealthColorArray(_actor:Dynamic, _player:Dynamic,
       _opponent:Dynamic, _girlfriend:Dynamic, _playerIcon:Dynamic,
       _opponentIcon:Dynamic):Array<Int> return [255, 255, 255];
@@ -186,16 +200,21 @@ __METHODS__
   public function new() {}
   var psychGameOverDeathDelaySeconds:Float = 0;
   var psychGameOverOverrides:Map<String, Dynamic> = [];
+  var psychClientPrefs:Dynamic = null;
+  var nightmareVisionPrefs:Dynamic = null;
+  var sourceScoreNightmare:Bool = false;
   var boyfriend:Dynamic;
   var dad:Dynamic;
   var gf:Dynamic;
   var iconP1:Dynamic;
   var iconP2:Dynamic;
   var pixelUI:Bool = false;
+  var sourceLedger:Bool = false;
   var psychFlxGGameTicksProbeEmitted:Bool = false;
   public var lastWriteTarget:Dynamic;
   public var lastWritePath:String = '';
   function psychGameOverClassPropertyKey(_className:Dynamic, _path:Dynamic):String return null;
+  public function sourceScoreLedgerActive():Bool return sourceLedger;
   function compatResolveClass(name:Dynamic):Dynamic
     return name != null && Std.string(name).toLowerCase() == 'flixel.flxg' ? FlxG : null;
   function compatWritePath(target:Dynamic, path:String, _value:Dynamic):Bool {
@@ -216,11 +235,150 @@ __METHODS__
     compat.compatSetPropertyFromClass('flixel.FlxG', 'game.ticks', 654321);
     if (compat.lastWriteTarget != FlxG.game || compat.lastWritePath != 'ticks')
       throw 'Psych FlxG game.ticks write did not reach the live game object';
+
+    if (compat.compatGetPropertyFromClass('ClientPrefs', 'sickWindow') != Judge.sickJudge
+        || compat.compatGetPropertyFromClass('backend.ClientPrefs', 'goodWindow') != Judge.goodJudge
+        || compat.compatGetPropertyFromClass('ClientPrefs', 'badWindow') != Judge.badJudge)
+      throw 'native property window fallthrough changed';
+    compat.sourceLedger = true;
+    if (compat.compatGetPropertyFromClass('ClientPrefs', 'sickWindow') != 22.5
+        || compat.compatGetPropertyFromClass('backend.ClientPrefs', 'goodWindow') != 87.5
+        || compat.compatGetPropertyFromClass('ClientPrefs', 'badWindow') != 111)
+      throw 'source-owned property windows did not use Psych ClientPrefs values';
   }
 }
 """.replace("__METHODS__", "\n".join(methods)).replace(
             "__ENGINE_METHODS__", "\n".join(engine_methods))
         self.run_haxe(fixture, "PsychClassPathCompat")
+
+    def test_gameover_property_roots_follow_psych_owner_without_rebinding_hscript_game(self):
+        play_state = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
+        runtime = (ROOT / "source/PsychHscriptSourceBindings.hx").read_text(encoding="utf-8")
+        root_method = extract_method(play_state, "function compatPropertyRoot(name:String")
+        set_method = extract_method(play_state, "function compatSetProperty(path:Dynamic")
+        separator_method = extract_method(play_state, "function compatPropertySeparator(path:String")
+        mode_match = re.search(r"@:keep public function sourceGameOverMode\(\):Int[^\n]+", play_state)
+        self.assertIsNotNone(mode_match, "PlayState sourceGameOverMode contract is missing")
+        mode_method = mode_match.group().replace("@:keep ", "", 1)
+        self.assertIn("variables.set('game', host)", runtime,
+                      "Psych HScript must keep game bound to the owning PlayState")
+        fixture = """
+using StringTools;
+class GameOverSubstate { public static var instance:Dynamic; }
+class PlayState {
+  public static var globalSprites:Map<String, Dynamic> = new Map();
+  public static var misses:Int = 0;
+  public static var shits:Int = 0;
+  public static var bads:Int = 0;
+  public static var goods:Int = 0;
+  public static var sicks:Int = 0;
+}
+class FlxG { public static var save:Dynamic = {data: {botplay: false}}; }
+class Conductor { public static var songPosition:Float = 0; }
+class RuntimeSmokeHarness { public static function enabled():Bool return false; }
+class EngineCompat {
+  public static function propertyRoot(path:Dynamic):String return path == null ? '' : Std.string(path);
+  public static function propertyPath(path:Dynamic):String return path == null ? '' : Std.string(path);
+  public static function legacyCounterName(_root:String):String return '';
+}
+class GameOverPropertyProbe {
+__METHODS__
+  var sourceScoreOwner:Bool = false;
+  var sourceScoreNightmare:Bool = false;
+  var isDead:Bool = false;
+  var useNoteSplashes:Bool = true;
+  var psychScriptVariables:Map<String, Dynamic> = new Map();
+  var haxeSprites:Map<String, Dynamic> = new Map();
+  var boyfriend:Dynamic;
+  var dad:Dynamic;
+  var gf:Dynamic;
+  var iconP1:Dynamic;
+  var iconP2:Dynamic;
+  var camGame:Dynamic;
+  var camHUD:Dynamic;
+  var camOther:Dynamic;
+  var camFollow:Dynamic;
+  var psychControls:Dynamic;
+  var controls:Dynamic;
+  var enemyStrums:Dynamic;
+  var playerStrums:Dynamic;
+  var strumLineNotes:Dynamic;
+  var notes:Dynamic;
+  var unspawnNotes:Dynamic;
+  var SONG:Dynamic;
+  var songSpeed:Float = 1;
+  var demoMode:Bool = false;
+  var psychGlobalProviderFirstSprite:Dynamic = null;
+  public var lastWriteTarget:Dynamic;
+  public var lastWritePath:String = '';
+  public var lastWriteValue:Dynamic;
+
+  public function new() {}
+
+  function sourceScoreLedgerActive():Bool return sourceScoreOwner;
+  function setSourceCpuControlled(_value:Bool):Void {}
+  function markPsychGlobalProviderSpritePhase(_sprite:Dynamic, _phase:String, ?_detail:String):Void {}
+  function compatWritePath(target:Dynamic, path:String, value:Dynamic):Bool {
+    lastWriteTarget = target; lastWritePath = path; lastWriteValue = value;
+    if (target == null || path == null || path == '') return false;
+    Reflect.setProperty(target, path, value);
+    return true;
+  }
+
+  static function check(ok:Bool, message:String):Void if (!ok) throw message;
+  static function main():Void {
+    var playBoyfriend = {tag: 'play-bf'};
+    var playFollow = {x: 10};
+    var game = new GameOverPropertyProbe();
+    game.boyfriend = playBoyfriend;
+    game.camFollow = playFollow;
+    var subBoyfriend = {tag: 'dead-bf'};
+    var subFollow = {x: 20};
+    GameOverSubstate.instance = {boyfriend: subBoyfriend, camFollow: subFollow};
+
+    // A native or NV owner keeps its PlayState roots even if an unrelated
+    // GameOverSubstate singleton exists while the state is dead.
+    game.isDead = true;
+    check(game.compatPropertyRoot('boyfriend') == playBoyfriend, 'native root redirected to game over');
+    check(game.compatPropertyRoot('camFollow') == playFollow, 'native camFollow root redirected');
+    check(game.compatPropertyRoot('game') == game, 'native game root changed');
+    game.sourceScoreOwner = true;
+    game.sourceScoreNightmare = true;
+    check(game.compatPropertyRoot('boyfriend') == playBoyfriend, 'NV root redirected to Psych substate');
+    check(game.compatPropertyRoot('camFollow') == playFollow, 'NV camFollow root redirected');
+
+    // Only Psych death context uses GameOverSubstate roots. Script variables
+    // keep donor precedence over PlayState/global sprite fields.
+    game.sourceScoreNightmare = false;
+    check(game.compatPropertyRoot('boyfriend') == subBoyfriend, 'Psych dead boyfriend root missed substate');
+    check(game.compatPropertyRoot('camFollow') == subFollow, 'Psych dead camFollow root missed substate');
+    check(game.compatPropertyRoot('game') == game, 'Psych game alias must remain PlayState');
+    var scriptBoyfriend = {tag: 'script-bf'};
+    game.psychScriptVariables.set('boyfriend', scriptBoyfriend);
+    PlayState.globalSprites.set('boyfriend', {tag: 'global-sprite'});
+    game.haxeSprites.set('boyfriend', {tag: 'haxe-sprite'});
+    check(game.compatPropertyRoot('boyfriend') == scriptBoyfriend, 'Psych source variable lost donor precedence');
+    game.psychScriptVariables.remove('boyfriend');
+    check(game.compatPropertyRoot('boyfriend') == PlayState.globalSprites.get('boyfriend'), 'global sprite precedence changed');
+    PlayState.globalSprites.remove('boyfriend');
+    check(game.compatPropertyRoot('boyfriend') == game.haxeSprites.get('boyfriend'), 'Haxe sprite precedence changed');
+
+    game.compatSetProperty('camFollow.x', 77);
+    check(game.lastWriteTarget == subFollow && game.lastWritePath == 'x' && subFollow.x == 77,
+      'nested Psych setter did not target the same substate camFollow object');
+    game.sourceScoreNightmare = true;
+    game.compatSetProperty('camFollow.x', 88);
+    check(game.lastWriteTarget == playFollow && playFollow.x == 88,
+      'NV nested setter did not preserve its native PlayState root');
+  }
+}
+""".replace("__METHODS__", "\n".join((
+            mode_method,
+            root_method,
+            separator_method,
+            set_method,
+        )))
+        self.run_haxe(fixture, "GameOverPropertyProbe")
 
     def test_bare_psych_hex_text_colours_are_normalized(self):
         source = (ROOT / "source/PlayState.hx").read_text()

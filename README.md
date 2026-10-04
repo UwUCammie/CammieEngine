@@ -1,4 +1,4 @@
-# CammieEngine v0.0.11
+# CammieEngine v0.0.12
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -66,7 +66,7 @@ OpenGL, ALSA, X11/Xext/Xi/Xrandr/Xinerama and PulseAudio headers.
 
 Use `.\run.bat` to build and play, `.\run.bat nobuild` to play the existing
 build, or `.\run.bat test debug` to build and test with debug symbols.
-To build, test and package the v0.0.11 alpha for release:
+To build, test and package the v0.0.12 alpha for release:
 
 ```powershell
 .\run.bat package
@@ -77,7 +77,7 @@ On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.11
+./build-windows-release.sh v0.0.12
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set

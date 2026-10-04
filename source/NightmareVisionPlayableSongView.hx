@@ -103,7 +103,18 @@ class NightmareVisionPlayableSongView {
 	@:keep public function setTrackVolumeState(hasMissed:Bool = false):Void {
 		// Nightmare Vision's PlayableSong inherits VocalGroup: miss()/hit()
 		// mute/unmute only the player bus, leaving opponent voices untouched.
-		for (sound in roleSounds('player')) sound.volume = hasMissed ? 0 : 1;
+		setRoleVolume('player', hasMissed ? 0 : 1, true);
+	}
+
+	/** Write one role without letting legacy primary-volume mirroring touch its
+	 * siblings. The unsplit shared bus is the player fallback only. */
+	@:keep public function setRoleVolume(role:String, value:Float, fallbackShared:Bool = false):Bool {
+		if (released || vocalTracksProvider == null)
+			throw '[nightmare-vision-audio] PlayableSong view has been released';
+		var tracks = vocalTracksProvider();
+		if (tracks == null)
+			throw '[nightmare-vision-audio] Vocal tracks were not initialized before the source callback';
+		return tracks.setRoleVolume(role, value, fallbackShared);
 	}
 
 	/** Called after native startSong has installed the current music FlxSound. */
@@ -162,7 +173,7 @@ class NightmareVisionSoundGroupView {
 	function get_volume():Float return members.length == 0 ? 1 : members[0].volume;
 
 	function set_volume(value:Float):Float {
-		for (sound in members) sound.volume = value;
+		owner.setRoleVolume(role, value, role == 'player');
 		return value;
 	}
 

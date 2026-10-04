@@ -8,6 +8,8 @@ import flixel.group.FlxGroup;
 class NightmareVisionPluginHost extends FlxGroup {
 	public static var activeHost(default, null):NightmareVisionPluginHost;
 	public final runtime:NightmareVisionPluginRuntime;
+	/** Owner assets survive song changes together with persistent plugins. */
+	public var assetPaths(default, null):NightmareVisionPaths;
 	public var scripts(get, never):NightmareVisionScriptGroup;
 	function get_scripts():NightmareVisionScriptGroup return runtime.scripts;
 	var released:Bool = false;
@@ -25,10 +27,11 @@ class NightmareVisionPluginHost extends FlxGroup {
 	}
 
 	public static function mount(root:String,
-		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void):NightmareVisionPluginRuntime {
+		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void,
+		?assetPaths:NightmareVisionPaths):NightmareVisionPluginRuntime {
 		releaseOtherOwner(root);
 		if (activeHost == null) {
-			activeHost = new NightmareVisionPluginHost(root, configure);
+			activeHost = new NightmareVisionPluginHost(root, configure, assetPaths);
 			FlxG.plugins.addPlugin(activeHost);
 			activeHost.runtime.populate();
 		}
@@ -36,8 +39,10 @@ class NightmareVisionPluginHost extends FlxGroup {
 	}
 
 	function new(root:String,
-		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void) {
+		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void,
+		?assetPaths:NightmareVisionPaths) {
 		super();
+		this.assetPaths = assetPaths;
 		runtime = new NightmareVisionPluginRuntime(root, this,
 			function() return NightmareVisionScriptDiscovery.discoverPlugins(root),
 			sys.io.File.getContent, function(interp, entry) configure(interp, entry, runtime),
@@ -74,6 +79,13 @@ class NightmareVisionPluginHost extends FlxGroup {
 		FlxG.signals.postStateSwitch.remove(onStateSwitchPost);
 		try runtime.destroy() catch (error:Dynamic)
 			trace('[nightmare-vision-plugin-release-error] ' + runtime.ownerRoot + ': ' + Std.string(error));
+		// onDestroy callbacks and native plugin objects may still read assets.
+		// Release their cache only after those objects have finished teardown.
+		if (assetPaths != null) {
+			try assetPaths.releaseOwnerAssets() catch (error:Dynamic)
+				trace('[nightmare-vision-plugin-release-error] ' + runtime.ownerRoot + ': ' + Std.string(error));
+			assetPaths = null;
+		}
 		if (activeHost == this) activeHost = null;
 		super.destroy();
 	}

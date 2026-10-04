@@ -40,7 +40,7 @@ class FlxSprite {
  public var frames:Dynamic;
  public var bitmap:Bitmap;
  public function new(x:Float = 0, y:Float = 0) {}
- public function loadGraphic(value:Bitmap):Void bitmap = value;
+ public function loadGraphic(value:Bitmap, animated:Bool = false, frameWidth:Int = 0, frameHeight:Int = 0):Void bitmap = value;
 }
 class FlxAtlasFrames {
  public static function fromSparrow(bitmap:Bitmap, xml:String):Dynamic

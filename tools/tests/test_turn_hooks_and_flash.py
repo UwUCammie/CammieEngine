@@ -19,7 +19,7 @@ SOURCE = ROOT / 'source/PlayState.hx'
 
 def turn_dispatch_block(source):
     start = source.index('if (curSection != lastTurnSection)')
-    end = source.index('if (!PlayState.SONG.notes[curSection].mustHitSection)', start)
+    end = source.index('if (!sourceScoreLedgerActive() && !PlayState.SONG.notes[curSection].mustHitSection)', start)
     # Imported split stems and the compatibility Voices track now share this
     # centralized volume helper; the old direct FlxSound write was retired.
     end = source.index('\n', source.index('setVocalsVolume(1);', end)) + 1
@@ -54,11 +54,13 @@ class Probe {
 \tpublic var curSection:Int = 0;
 \tpublic var lastTurnSection:Int = -1;
 \tpublic var smokeFirstBfFocusCaptured:Bool = false;
+\tpublic var sourceActive:Bool = false;
 \tpublic var calls:Array<String> = [];
 \tpublic var vocals:Vocals = new Vocals();
 \tpublic function new() {}
 \tinline function callAllHScript(name:String, args:Array<Dynamic>) calls.push(name);
 \tinline function setVocalsVolume(value:Float) vocals.volume = value;
+\tinline function sourceScoreLedgerActive():Bool return sourceActive;
 \tinline function runtimeSmokeCameraSnapshot(phase:String) {}
 \tpublic function tick() {
 ''' + block + '''
@@ -81,6 +83,16 @@ class Probe {
 \t\t// staying on a section must not re-fire
 \t\tp.tick(); p.tick();
 \t\tif (p.calls.length != expected.length) throw 're-fired without a section change';
+\t\tif (p.vocals.volume != 1) throw 'native opponent section did not restore vocals';
+
+\t\tvar source = new Probe();
+\t\tsource.sourceActive = true;
+\t\tsource.curSection = 0;
+\t\tsource.tick();
+\t\tif (source.calls.length != 1 || source.calls[0] != 'playerTwoTurn')
+\t\t\tthrow 'source mode changed one-shot turn dispatch';
+\t\tif (source.vocals.volume != 0)
+\t\t\tthrow 'native per-section vocal restore overrode source role volume';
 \t}
 }
 '''

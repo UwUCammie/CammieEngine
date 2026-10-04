@@ -19,15 +19,20 @@ class HxcAutoHitRouteTest(unittest.TestCase):
         end = state.index("\n\tfunction goodNoteHit(", start)
         method = state[start:end]
         pre_start = state.index("\tfunction dispatchNightmareVisionNoteHitPre(")
-        pre_end = state.index("\n\tfunction dispatchNightmareVisionNoteHit(", pre_start)
+        pre_end = state.index("\n\tfunction prepareNightmareVisionHitSingers(", pre_start)
         pre_method = state[pre_start:pre_end]
         main = r'''
 class Note {
-  public var rating = "miss";
+  public static inline var NOTE_AMOUNT = 4;
+  public var noteData = 0;
+  public var rating:Dynamic = "miss";
   public var alive = true;
   public var wasGoodHit = true;
   public var autoHitSuppressed = false;
   public var isSustainNote = false;
+  public var ignoreNote = false;
+  public var hitCausesMiss = false;
+  public var canMiss = false;
   public var sourcePlayfieldIndex = 1;
   public var sourceDirection = 0;
   public var nightmareVisionTypeRuntime:Dynamic = {};
@@ -61,12 +66,16 @@ class FakeField {
     ID=id; playerControls=player; autoPlayed=autoplay;
   }
 }
+typedef NightmareVisionPlayFieldView = FakeField;
 class FakeScripts {
   public var calls:Array<String> = [];
+  public var preWasGoodHit:Array<Bool> = [];
   var order:Array<String>;
   public function new(order:Array<String>) this.order=order;
   public function call(name:String, args:Array<Dynamic>):Dynamic {
-    calls.push(name); order.push("source:" + name); return null;
+    calls.push(name);
+    if (name.indexOf("Pre") == name.length - 3) preWasGoodHit.push(args[0].wasGoodHit);
+    order.push("source:" + name); return null;
   }
 }
 class FakeNotes {
@@ -82,6 +91,11 @@ class EngineCompat {
   }
   public static function hxcApplyNoteCallbackPayload(event:Dynamic):Void applied++;
 }
+class PsychRuntimeBindings {
+  public static function hasScripts(host:Dynamic):Bool
+    return Reflect.field(host, "psychScriptsAvailable") == true;
+}
+class FakeSourceRating { public var name:String; public function new(name:String) this.name=name; }
 class TestState {
   public var notes = new FakeNotes();
   public var methods:Array<String> = [];
@@ -90,18 +104,39 @@ class TestState {
   public var nightmareVisionScripts:FakeScripts;
   public var fields:Array<FakeField>;
   public var lines:Array<FakeLine>;
+  public var playerStrums:FakeLine;
+  public var enemyStrums:FakeLine;
   public var playbackRate = 2.0;
+  public var demoMode = false;
   public var cancel = false;
   public var kill = false;
   public var textCues = 0;
+  public var psychScriptsAvailable = false;
+  public var psychPreAllows = true;
+  public var psychPreCalls = 0;
+  public var sourceLedger = false;
+  public var sourceScoreNightmare = false;
+  public var sourceRatingAssignments = 0;
+  public var sourceDescriptor = new FakeSourceRating("good");
   public function new() {
     sourceScripts = new FakeScripts(order);
     nightmareVisionScripts = sourceScripts;
     fields = [new FakeField(0, true, false), new FakeField(1, false, true)];
     lines = [new FakeLine(new FakeStrum(0, order)), new FakeLine(new FakeStrum(0, order))];
+    playerStrums = lines[0]; enemyStrums = lines[1];
   }
   function getNightmareVisionField(id:Int):FakeField return fields[id];
+  function sourceScoreLedgerActive():Bool return sourceLedger;
+  function judgeSourceNote(note:Note):FakeSourceRating {
+    sourceRatingAssignments++;
+    note.rating = sourceDescriptor;
+    return sourceDescriptor;
+  }
   function getNoteStrumline(note:Note):FakeLine return lines[note.sourcePlayfieldIndex];
+  function dispatchPsychNoteHitPre(_note:Note, _playerOne:Bool):Bool {
+    psychPreCalls++;
+    return psychPreAllows;
+  }
   function sustain2(strum:Int, spr:FakeStrum, note:Note):Void {
     order.push("bookkeeping");
     var field = getNightmareVisionField(note.sourcePlayfieldIndex);
@@ -138,11 +173,13 @@ class Main {
       "opponent route must dispatch both HXC callbacks once");
     check(state.sourceScripts.calls.join(",") == "opponentNoteHitPre",
       "source Pre callback runs before an autonomous opponent hit");
+    check(state.sourceScripts.preWasGoodHit.join(",") == "false",
+      "Nightmare Vision Pre sees an autonomous note before its hit is accepted");
     var opponentStrum = state.lines[1].members[0];
     check(opponentStrum.lastNote == note && opponentStrum.playConfirms == 1
       && note.nightmareVisionTailState.active,
       "source hit Pre applies receptor and tail bookkeeping");
-    check(state.order.join(",") == "source:opponentNoteHitPre,confirm,bookkeeping,hxc:noteHit,hxc:opponentNoteHit",
+    check(state.order.join(",") == "source:opponentNoteHitPre,confirm,hxc:noteHit,hxc:opponentNoteHit",
       "source callback and receptor bookkeeping precede HXC hit callbacks");
     check(EngineCompat.applied == 1 && state.notes.removed == 0,
       "normal hit should apply mutable payload without early removal");
@@ -164,6 +201,19 @@ class Main {
     check(!killed.fire(killedNote, false), "killed hit must stop native branch");
     check(killed.notes.removed == 1 && killedNote.destroyed,
       "script-killed note must be removed and destroyed");
+    var psychCanceled = new TestState();
+    psychCanceled.psychScriptsAvailable = true;
+    psychCanceled.psychPreAllows = false;
+    var retryNote = new Note();
+    check(!psychCanceled.fire(retryNote, false) && !retryNote.wasGoodHit
+      && !retryNote.autoHitSuppressed && psychCanceled.methods.length == 0
+      && psychCanceled.psychPreCalls == 1,
+      "canceled Psych Pre should leave the live note eligible for an autoplay retry");
+    psychCanceled.psychPreAllows = true;
+    check(psychCanceled.fire(retryNote, false) && retryNote.wasGoodHit
+      && psychCanceled.psychPreCalls == 2
+      && psychCanceled.methods.join(",") == "noteHit,opponentNoteHit",
+      "a later allowed Psych Pre should dispatch the retried autoplay hit");
     var ghost = new TestState();
     check(!ghost.fire(null, false) && ghost.methods.length == 0,
       "ghost input has no note-hit callback");
@@ -171,6 +221,18 @@ class Main {
     check(player.fire(new Note(), true)
       && player.methods.join(",") == "noteHit,goodNoteHit",
       "owner callback reflects actual note side");
+    var nv = new TestState();
+    nv.sourceLedger = true; nv.sourceScoreNightmare = true;
+    var opponentNV = new Note();
+    check(nv.fire(opponentNV, false) && opponentNV.rating == "miss"
+      && nv.sourceRatingAssignments == 0,
+      "NV descriptor is not assigned on an opponent-controlled field");
+    check(nv.sourceScripts.preWasGoodHit.join(",") == "false",
+      "NV opponent Pre also sees the pending hit state");
+    var playerNV = new Note(); playerNV.sourcePlayfieldIndex = 0;
+    check(nv.fire(playerNV, true) && playerNV.rating == nv.sourceDescriptor
+      && nv.sourceRatingAssignments == 1,
+      "NV descriptor is assigned when the note belongs to a player-controlled field");
   }
 }
 '''
@@ -184,12 +246,12 @@ class Main {
 
     def test_live_opponent_branch_uses_shared_route_before_removal(self):
         state = (ROOT / "source/PlayState.hx").read_text()
-        start = state.index("if (!daNote.mustPress && daNote.wasGoodHit")
-        end = state.index("} else if (daNote.mustPress && daNote.wasGoodHit", start)
+        start = state.index("if (!sourceScoreNightmare && !daNote.mustPress && daNote.wasGoodHit")
+        end = state.index("} else if (!sourceScoreNightmare && daNote.mustPress && daNote.wasGoodHit", start)
         opponent = state[start:end]
         self.assertLess(opponent.index("dispatchHxcAutoNoteHit(daNote, false)"),
                         opponent.index("daNote.kill()"))
-        player_start = state.index("} else if (daNote.mustPress && daNote.wasGoodHit", end)
+        player_start = state.index("} else if (!sourceScoreNightmare && daNote.mustPress && daNote.wasGoodHit", end)
         player_end = state.index("var neg = downscroll", player_start)
         player_bot = state[player_start:player_end]
         self.assertLess(player_bot.index("dispatchHxcAutoNoteHit(daNote, true)"),
@@ -202,7 +264,10 @@ class Main {
         body = state[gate:state.index("EngineCompat.hxcApplyNoteCallbackPayload(hxcHitEvent);", gate)]
         self.assertIn("if (!note.isSustainNote) {", body)
         self.assertIn('callHxcNoteHScript("noteHit"', body)
-        self.assertIn('callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true);', state)
+        self.assertIn(
+            'callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true, null, null, psychSource);',
+            state,
+        )
 
 
 if __name__ == "__main__":

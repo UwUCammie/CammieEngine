@@ -75,6 +75,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var xml:CodenameXmlAccess;
 	@:keep public var globalOffset:FlxPoint = FlxPoint.get();
 	@:keep public var cameraOffset:FlxPoint = FlxPoint.get();
+	/** Nightmare Vision's directional singing-camera distance in world pixels. */
+	@:keep public var camDisplacement:Float = 20;
 	@:keep public var frameOffset:FlxPoint = FlxPoint.get();
 	@:keep public var frameOffsetAngle:Null<Float> = null;
 	@:keep public var extraOffset:FlxPoint = FlxPoint.get();
@@ -198,6 +200,17 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	/** NMV scripts use this packed color for character-owned health displays. */
 	@:keep public var healthColour(get, set):FlxColor;
 	var nightmareVisionHealthColour:Null<FlxColor> = null;
+	/** Mutable source-compatible RGB triplet. Keep it behind accessors so the
+	 * Psych Lua property bridge can continue using its icon-aware fallback. */
+	@:keep public var healthColorArray(get, set):Array<Int>;
+	var nightmareVisionHealthColorArray:Array<Int> = [255, 0, 0];
+	@:keep function get_healthColorArray():Array<Int> {
+		return nightmareVisionHealthColorArray;
+	}
+	@:keep function set_healthColorArray(value:Array<Int>):Array<Int> {
+		nightmareVisionHealthColorArray = value;
+		return value;
+	}
 	@:keep function get_healthColour():FlxColor {
 		if (nightmareVisionHealthColour != null)
 			return nightmareVisionHealthColour;
@@ -216,6 +229,31 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep function set_healthColour(value:FlxColor):FlxColor {
 		nightmareVisionHealthColour = value;
 		return value;
+	}
+
+	static function nightmareVisionColorArrayFromPacked(value:FlxColor):Array<Int> {
+		var packed:Int = cast value;
+		return [(packed >> 16) & 0xFF, (packed >> 8) & 0xFF, packed & 0xFF];
+	}
+
+	/** Load both source health-color forms while retaining the authored mutable
+	 * array reference. The array triplet has precedence over the packed color. */
+	function loadNightmareVisionHealthColors(definition:Dynamic):Void {
+		nightmareVisionCharacterData = definition;
+		nightmareVisionHealthColour = null;
+		var authored:Dynamic = definition == null ? null : Reflect.field(definition, 'healthbar_colors');
+		if (Std.isOfType(authored, Array)) {
+			var components:Array<Dynamic> = cast authored;
+			if (components.length > 2) {
+				healthColorArray = cast authored;
+				nightmareVisionHealthColour = FlxColor.fromRGB(
+					Std.int(nightmareVisionNumber(components[0], 0)),
+					Std.int(nightmareVisionNumber(components[1], 0)),
+					Std.int(nightmareVisionNumber(components[2], 0)));
+				return;
+			}
+		}
+		healthColorArray = nightmareVisionColorArrayFromPacked(healthColour);
 	}
 
 	static function nightmareVisionHealthIconFromDefinition(definition:Dynamic):Null<String> {
@@ -432,6 +470,17 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	 * donor method names here lets translated character/stage callbacks share
 	 * one implementation instead of carrying chart-specific rewrites.
 	 */
+	/** Source-shaped pooled offset for the currently playing singing animation. */
+	@:keep public function getSingDisplacement():FlxPoint {
+		return switch (Character.animationName(this).substr(4).split('-')[0].toLowerCase()) {
+			case 'left': FlxPoint.weak(-camDisplacement, 0);
+			case 'down': FlxPoint.weak(0, camDisplacement);
+			case 'up': FlxPoint.weak(0, -camDisplacement);
+			case 'right': FlxPoint.weak(camDisplacement, 0);
+			default: FlxPoint.weak();
+		};
+	}
+
 	public function getCurrentAnimation():String {
 		return Character.animationName(this);
 	}
@@ -444,6 +493,19 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 	public function hasAnimation(name:String):Bool {
 		return name != null && animation != null && animation.exists(name);
+	}
+	/** Psych's source field is initialized from these exact animations, then
+	 * remains writable by scripts. A live default also sees late-added frames. */
+	var explicitHasMissAnimations:Null<Bool> = null;
+	@:keep public var hasMissAnimations(get, set):Bool;
+	@:keep function get_hasMissAnimations():Bool {
+		if (explicitHasMissAnimations != null) return explicitHasMissAnimations == true;
+		return hasAnimation('singLEFTmiss') || hasAnimation('singDOWNmiss')
+			|| hasAnimation('singUPmiss') || hasAnimation('singRIGHTmiss');
+	}
+	@:keep function set_hasMissAnimations(value:Bool):Bool {
+		explicitHasMissAnimations = value;
+		return value;
 	}
 
 	public function isSinging():Bool {
@@ -975,7 +1037,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			positionArray = [position[0], position[1]];
 			enemyOffsetX = playerOffsetX = gfOffsetX = Std.int(Math.round(position[0]));
 			enemyOffsetY = playerOffsetY = gfOffsetY = Std.int(Math.round(position[1]));
-			nightmareVisionCharacterData = definition;
+			loadNightmareVisionHealthColors(definition);
 			return true;
 		} catch (error:Dynamic) {
 			trace('[nightmare-vision-character-init-error] ' + curCharacter + ': ' + Std.string(error));
@@ -1035,6 +1097,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 		curCharacter = character;
 		this.isPlayer = isPlayer;
+		healthColorArray = nightmareVisionColorArrayFromPacked(healthColour);
 		characterType = isPlayer ? 'bf' : 'dad';
 		requestedCharacter = codename == null
 			? (curCharacter == null ? '' : curCharacter.trim()) : codename.authoredId;
@@ -1424,6 +1487,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			codenameUpdateAfterSuper(elapsed);
 			return;
 		}
+		updateNightmareVisionAnimationTimer(elapsed);
 		if (heyTimer > 0) {
 			var rate = PlayState.instance == null ? 1 : PlayState.instance.playbackRate;
 			heyTimer -= elapsed * rate;
@@ -1508,6 +1572,16 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		callInterp("update", [elapsed, this]);
 		super.update(elapsed);
 	}
+	function updateNightmareVisionAnimationTimer(elapsed:Float):Void {
+		if (nightmareVisionCharacterData == null || debugMode || animTimer <= 0
+			|| animation == null || animation.curAnim == null
+			|| StringTools.endsWith(animation.curAnim.name, '-return')) return;
+		animTimer -= elapsed;
+		if (animTimer <= 0) {
+			animTimer = 0;
+			dance(forceDance);
+		}
+	}
 	function codenameUpdateAfterSuper(elapsed:Float):Void {
 		codenameAdvanceLoop();
 		codenameRuntime.call('update', [elapsed]);
@@ -1526,6 +1600,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 	private var danced:Bool = false;
 	@:keep public var canSing:Bool = true;
+	/** Nightmare Vision note-miss timer and source Bopper forced-dance setting. */
+	@:keep public var animTimer:Float = 0;
+	@:keep public var forceDance:Bool = false;
 	/** Nightmare Vision's source Bopper/FunkinSprite animation lock. */
 	@:keep public var canPlayAnimations:Bool = true;
 	@:keep public var specialAnim:Bool = false;
@@ -1553,7 +1630,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		skipDance = !value;
 		return value;
 	}
-	public function dance() {
+	public function dance(forced:Bool = false) {
 		if (skipDance) return;
 		if (nightmareVisionCharacterData != null && specialAnim) return;
 		// A script can retain an actor after its visual is destroyed or fails to
@@ -1578,11 +1655,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			var right = 'danceRight' + idleSuffix;
 			if (animation.exists(left) && animation.exists(right)) {
 				danced = !danced;
-				playAnim(danced ? right : left);
+				playAnim(danced ? right : left, forced);
 			} else if (animation.exists('idle' + idleSuffix))
-				playAnim('idle' + idleSuffix);
+				playAnim('idle' + idleSuffix, forced);
 			else if (animation.exists('idle'))
-				playAnim('idle');
+				playAnim('idle', forced);
 			return;
 		}
 		if (!specialAnim && !debugMode && beNormal && !isDie && (animation.curAnim == null || !noDanceAnims.contains(animation.curAnim.name) || animation.curAnim.finished)) {

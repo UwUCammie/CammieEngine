@@ -202,7 +202,15 @@ class NightmareVisionNoteTypeRuntime {
  public static function noteTypeOf(_note:Dynamic):Dynamic return null;
 }
 class FlxRect {public function new(_x:Float,_y:Float,_width:Float,_height:Float) {}}
-class Group {public var members:Array<Note>=[]; public function new() {} public function add(n:Note) {members.push(n);}}
+class Group {
+ public var members:Array<Note>=[];
+ public function new() {}
+ public function add(n:Note) {members.push(n);}
+ public function insert(index:Int,n:Note) {members.insert(index,n);}
+}
+class PsychRuntimeBindings {
+ public static function hasScripts(_host:Dynamic):Bool return false;
+}
 class PlayState {
 ''' + fields + '''
  static var SONG={speed:1.0};
@@ -235,6 +243,7 @@ class PlayState {
  function tweenVSliceScrollSpeed(speed:Dynamic, duration:Dynamic, ease:Dynamic, lines:Dynamic):Void {}
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}
+ function dispatchPsychNoteSpawn(_note:Note):Void {}
  function init() {
 ''' + init + '\nnoteScrollSpeed = effectiveScrollSpeed;\n}\n' + tween + '\nfunction spawn() {\nvar smokeProfileAt:Float = 0;\n' + queue + '''
  }

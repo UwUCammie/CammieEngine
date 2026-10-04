@@ -42,8 +42,8 @@ class RuntimeNoteRenderReadbackTest(unittest.TestCase):
         self.assertIn("case '--smoke-note-render-path'", source)
 
         install = extract_method(source, "static function installNoteRenderReadback(")
-        self.assertIn("FlxG.signals.postDraw.add(onNoteRenderReadbackPostDraw)", install)
-        callback = extract_method(source, "static function onNoteRenderReadbackPostDraw(")
+        self.assertIn("window.onRender.add(onNoteRenderReadbackRendered, false, -1000)", install)
+        callback = extract_method(source, "static function onNoteRenderReadbackRendered(")
         self.assertIn("noteRenderReadbackVisits.exists(visitsStarted)", callback)
         self.assertIn("!songStartObserved", callback)
         self.assertIn("Conductor.songPosition < config().noteRenderAfterMs", callback)
@@ -88,7 +88,7 @@ class ReadbackPathTest {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_intro_capture_observes_a_held_countdown_without_releasing_it(self):
-        callback = extract_method(self.source, "static function onNoteRenderReadbackPostDraw(")
+        callback = extract_method(self.source, "static function onNoteRenderReadbackRendered(")
         self.assertIn("!songStartObserved", callback)
         self.assertIn(".startedCountdown", callback)
         self.assertIn("nowMs() - introRenderHeldAt >= 5000", callback)

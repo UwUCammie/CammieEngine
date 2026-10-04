@@ -40,8 +40,17 @@ class NightmareVisionNoteTypeRuntime {
 }
 class Note {
  public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
+ public var sourceSemanticsApplied:Int=0;
+ public function applyPendingSourceNoteSemantics():Void {
+  if (nightmareVisionTypeRuntime==null) throw "semantics before runtime attach";
+  sourceSemanticsApplied++;
+ }
  public var sourcePlayfieldIndex:Int; public var sourceDirection:Int; public var noteData:Int;
+ public var ratingDisabled:Bool=false; public var rating:Dynamic="miss"; public var ratingMod:Float=0;
  public function new(field:Int,lane:Int) {sourcePlayfieldIndex=field;sourceDirection=lane;noteData=lane;}
+ public function resetSourceRatingState():Void {
+  ratingDisabled=false; rating=nightmareVisionTypeRuntime==null ? "miss" : null; ratingMod=0;
+ }
 }
 class Strumline {public function new() {}}
 class RuntimeSmokeHarness {
@@ -65,8 +74,13 @@ class SkinWiring {
   if (first.paths.root!="owner-a" || second.paths.root!="owner-a") throw "owner lost";
   if (s.nightmareVisionSkinForStrumline(s.playerStrums)!=first
    || s.nightmareVisionSkinForStrumline(s.enemyStrums)!=second) throw "line routing wrong";
-  s.configureNightmareVisionNoteSkin(new Note(1,3));
+  var note=new Note(1,3); note.ratingDisabled=true; note.rating="good"; note.ratingMod=0.8;
+  s.nightmareVisionNoteTypes=new NightmareVisionNoteTypeRuntime();
+  s.configureNightmareVisionNoteSkin(note);
   if (second.applied.join(",")!="3" || RuntimeSmokeHarness.marks!=1) throw "note lane wrong";
+  if (note.nightmareVisionTypeRuntime!=s.nightmareVisionNoteTypes || note.rating!=null
+   || !note.ratingDisabled || note.ratingMod!=0) throw "type attach did not reset rating while preserving disabled flag";
+  if (note.sourceSemanticsApplied!=1) throw "source semantics not applied on attach";
   s.SONG={arrowSkins:[]};
   if (s.nightmareVisionSkinForField(0).name!="default") throw "missing skin has no source default";
  }

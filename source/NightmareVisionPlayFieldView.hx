@@ -9,6 +9,7 @@ class NightmareVisionPlayFieldView {
 	public var inControl:Bool = true;
 	public var playerControls:Bool;
 	public var playAnims:Bool = true;
+	public var showRatings:Bool = true;
 	public var noteSplashes:Bool = false;
 	public var baseAlpha:Float = 1;
 	public var holdDropLeniency:Float = 1 / 3;

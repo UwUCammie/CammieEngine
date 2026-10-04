@@ -1,5 +1,5 @@
 """Raw-source snapshots are bounded, isolated, and receipt-backed."""
-from haxe_test_support import HAXE_COMMAND
+from haxe_test_support import HAXE_COMMAND, TEST_TMP
 import hashlib
 import json
 import os
@@ -105,7 +105,8 @@ class HashMain {
 
 class ImportSourceSnapshotTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir=ROOT / "tmp")
+        TEST_TMP.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
         self.base = Path(self.temp.name)
         self.main = self.base / "Main.hx"
         self.main.write_text(MAIN, newline='\n')
@@ -277,6 +278,7 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         source_file = donor / "nested" / "payload.bin"
         source_file.write_bytes(b"authentic-payload")
         captured = self.run_capture(donor, cache)["capture"]
+        self.assertEqual(captured["status"], "complete", captured)
         snapshot = Path(captured["snapshotRoot"])
         content = snapshot / "content"
         payload = content / "nested" / "payload.bin"
@@ -595,6 +597,8 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         donor.mkdir()
         (donor / "package.unknown").write_bytes(b"source bytes")
         first = self.run_capture(donor, cache)["capture"]
+        self.assertEqual(first["status"], "complete", first)
+        self.assertTrue(first["receiptPath"], first)
         receipt_path = Path(first["receiptPath"])
         before = receipt_path.read_bytes()
         second = self.run_capture(donor, cache)["capture"]

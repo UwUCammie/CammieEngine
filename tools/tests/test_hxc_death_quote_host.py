@@ -105,10 +105,13 @@ class Main {
     def test_gameover_queries_twice_only_when_animation_finishes(self):
         source = (ROOT / 'source/GameOverSubstate.hx').read_text()
         constructor = extract_method(source, 'public function new(')
-        self.assertLess(constructor.index('if (codenameInitGameOverScript())'),
-                        constructor.index('HxcCompatRuntime.bindGameOverCharacter(bf);'))
-        self.assertLess(constructor.index('HxcCompatRuntime.bindGameOverCharacter(bf);'),
-                        constructor.index("bf.playAnim('firstDeath')"))
+        setup = extract_method(source, 'function setupDefaultGameOver(')
+        self.assertLess(constructor.index('if (sourceMode != 0) return;'),
+                        constructor.index('setupDefaultGameOver(player, daBf);'))
+        self.assertLess(setup.index('if (codenameInitGameOverScript())'),
+                        setup.index('HxcCompatRuntime.bindGameOverCharacter(bf);'))
+        self.assertLess(setup.index('HxcCompatRuntime.bindGameOverCharacter(bf);'),
+                        setup.index("bf.playAnim('firstDeath')"))
         method = extract_method(source, 'function updateGameoverAnimation(')
         update = extract_method(source, 'override function update(')
         self.assertLess(update.index('updateGameoverAnimation(currentAnim);'), update.rindex('super.update(elapsed);'))
@@ -184,6 +187,7 @@ class FreeplayState {public function new() {}}
 class LoadingState {public static function loadAndSwitchState(s:Dynamic):Void {}}
 class PlayState {public static var isStoryMode=false;}
 class Main extends Base {
+ var sourceMode:Int=0;
  var codenameGameOverRuntime:Dynamic;
  var codenameGameOverCancelled=false;var isEnding=false;
  var controls:Dynamic={ACCEPT:false,BACK:false};
@@ -195,6 +199,10 @@ class Main extends Base {
  function endBullshit():Void {}
  function cancelDeathQuote():Void {}
  function hxcClearDeathOverlays():Void {}
+ function dispatchSourceGameOverUpdateBeforeSuper(e:Float):Void {}
+ function dispatchSourceGameOverUpdateAfterSuper(e:Float):Void {}
+ function dispatchSourceGameOverUpdatePost(e:Float):Void {}
+ function updateSourceGameOverInput():Void {}
  function updateGameoverAnimation(a:FlxAnimation):Void {events.push('gate:'+a.name);}
 ''' + method + r'''
  static function main() {

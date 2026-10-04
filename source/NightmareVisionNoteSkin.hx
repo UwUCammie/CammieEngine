@@ -5,11 +5,15 @@ import Strumline.StrumNote;
 
 /** Owner-scoped Nightmare Vision note skin, shared by a source playfield. */
 class NightmareVisionNoteSkin {
+	public static inline var DEFAULT_SPLASH_TEXTURE:String = 'UI/notes/noteSplashes';
+	public static inline var DEFAULT_SUSTAIN_SPLASH_TEXTURE:String = 'UI/notes/sustainHold';
+
 	public final name:String;
 	public final data:Dynamic;
 	public final paths:NightmareVisionPaths;
 	var noteFrames:FlxAtlasFrames;
 	var splashFrames:FlxAtlasFrames;
+	var effectsPrecached:Bool = false;
 	var palettes:Array<PsychRGBPalette> = [];
 	var reported:Map<String, Bool> = new Map();
 
@@ -42,12 +46,41 @@ class NightmareVisionNoteSkin {
 		return value == null ? fallback : value == true;
 	}
 
+	/** NMV resolves absent effect textures to NoteUtil defaults before eventPushed warms them. */
+	public function precacheEffects():Void {
+		if (effectsPrecached) return;
+		if (splashFrames == null)
+			splashFrames = paths.getSparrowAtlas(effectTexture('splashTexture', DEFAULT_SPLASH_TEXTURE));
+		paths.getSparrowAtlas(effectTexture('sustainSplashTexture', DEFAULT_SUSTAIN_SPLASH_TEXTURE));
+		effectsPrecached = true;
+	}
+
+	/** Match donor `??=` semantics: an absent/null field gets the default, while an authored empty value stays empty. */
+	function effectTexture(key:String, fallback:String):String {
+		var value:Dynamic = Reflect.field(data, key);
+		return value == null ? fallback : Std.string(value);
+	}
+
 	static function laneItems(table:Dynamic, lane:Int):Array<Dynamic> {
 		if (!Std.isOfType(table, Array)) return [];
 		var rows:Array<Dynamic> = cast table;
 		if (rows.length == 0) return [];
-		var row = rows[((lane % rows.length) + rows.length) % rows.length];
+		var row = rows[laneIndex(rows.length, lane)];
 		return Std.isOfType(row, Array) ? cast row : [];
+	}
+
+	/** NMV animation IDs carry the selected direction as a trailing number. */
+	static function laneIndex(rowCount:Int, lane:Int):Int {
+		return rowCount <= 0 ? 0 : ((lane % rowCount) + rowCount) % rowCount;
+	}
+
+	/** Accept the native adapter spelling and NMV's direction-suffixed spelling. */
+	static function noteAnimationKind(name:String, direction:Int):Null<String> {
+		if (name == null) return null;
+		for (kind in ['scroll', 'hold', 'holdend']) {
+			if (name == kind || name == kind + direction) return kind;
+		}
+		return null;
 	}
 
 	static function prefixExists(frames:FlxAtlasFrames, prefix:String):Bool {
@@ -92,15 +125,19 @@ class NightmareVisionNoteSkin {
 
 	public function applyNote(note:Note, lane:Int, ?overrideFrames:FlxAtlasFrames):Bool {
 		var frames = overrideFrames == null ? noteFrames : overrideFrames;
-		var entries = laneItems(Reflect.field(data, 'noteAnimations'), lane);
+		var noteAnimations = Reflect.field(data, 'noteAnimations');
+		var direction = Std.isOfType(noteAnimations, Array)
+			? laneIndex((cast noteAnimations:Array<Dynamic>).length, lane) : lane;
+		var entries = laneItems(noteAnimations, lane);
 		var needed = note.isSustainNote ? ['hold', 'holdend'] : ['scroll'];
 		var selected:Map<String, Dynamic> = new Map();
 		for (entry in entries) {
-			var name = Std.string(Reflect.field(entry, 'anim'));
-			if (needed.indexOf(name) < 0) continue;
+			var sourceName:Dynamic = entry == null ? null : Reflect.field(entry, 'anim');
+			var name = noteAnimationKind(sourceName == null ? null : Std.string(sourceName), direction);
+			if (name == null || needed.indexOf(name) < 0) continue;
 			var prefix = Std.string(Reflect.field(entry, 'xmlName')) + '0';
 			if (!prefixExists(frames, prefix)) {
-				diagnose('note-' + lane + '-' + name, 'missing note animation ' + prefix);
+				diagnose('note-' + lane + '-' + sourceName, 'missing note animation ' + prefix);
 				return false;
 			}
 			selected.set(name, entry);
@@ -181,7 +218,7 @@ class NightmareVisionNoteSkin {
 	public function applySplash(splash:NoteSplash, lane:Int):Bool {
 		if (!boolField('splashesEnabled', true)) return false;
 		if (splashFrames == null) {
-			try splashFrames = paths.getSparrowAtlas(stringField('splashTexture', 'UI/notes/NoteSplash'))
+			try splashFrames = paths.getSparrowAtlas(stringField('splashTexture', DEFAULT_SPLASH_TEXTURE))
 			catch (error:Dynamic) {
 				diagnose('splash-atlas', 'missing splash atlas: ' + Std.string(error));
 				return false;

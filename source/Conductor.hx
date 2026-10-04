@@ -58,6 +58,10 @@ class Conductor {
 
 	public function new() {
 	}
+	/** Psych's caller-supplied rating list; judgement does not mutate the note. */
+	@:keep public static function judgeNote(arr:Array<SourceRating>, diff:Float = 0):SourceRating {
+		return SourceRating.judge(arr, diff);
+	}
 	/**
 	 * Map BPM changes of song.
 	 * @param song Song to map. 

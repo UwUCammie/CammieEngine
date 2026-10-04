@@ -95,7 +95,7 @@ class SmokeHitFixture {
         self.assertLess(good_hit.index("note.rating = noteRatingAtHit(note);"),
                         good_hit.index("EngineCompat.hxcNoteCallbackPayload("))
         score_start = source.index("\tprivate function popUpScore(")
-        score = source[score_start:score_start + 900]
+        score = source[score_start:source.index("\n\t\ttrace(daRating);", score_start)]
         self.assertIn("var noteDiff:Float = adjustedNoteDiff(daNote);", score)
         self.assertIn("daNote.rating = noteRatingAtHit(daNote);", score)
 

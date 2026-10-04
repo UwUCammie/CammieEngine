@@ -59,9 +59,26 @@ class NightmareVisionCharacterRuntimeTest(unittest.TestCase):
     def test_character_json_installs_animate_and_sparrow_animations(self):
         source = (ROOT / 'source/Character.hx').read_text()
         visual_builder = function_body(source, 'loadNightmareVisionCharacterVisual')
+        health_color_loader = function_body(source, 'loadNightmareVisionHealthColors')
+        health_color_array = function_body(source, 'nightmareVisionColorArrayFromPacked')
+        health_colour_getter = function_body(source, 'get_healthColour')
+        health_colour_setter = function_body(source, 'set_healthColour')
+        health_array_getter = function_body(source, 'get_healthColorArray')
+        health_array_setter = function_body(source, 'set_healthColorArray')
         number_helper = function_body(source, 'nightmareVisionNumber')
         pair_helper = function_body(source, 'nightmareVisionPair')
         fixture = '''import sys.FileSystem;
+abstract FlxColor(Int) from Int to Int {
+ public static function fromRGB(red:Int,green:Int,blue:Int,alpha:Int=255):FlxColor
+  return cast ((alpha<<24)|((red&255)<<16)|((green&255)<<8)|(blue&255));
+ public static function fromString(value:String):Null<FlxColor> {
+  var clean=StringTools.trim(value);
+  if(!StringTools.startsWith(clean,'#')&&!StringTools.startsWith(clean,'0x'))return null;
+  var hex=StringTools.startsWith(clean,'#')?clean.substr(1):clean.substr(2);
+  var parsed=Std.parseInt('0x'+hex);
+  return parsed==null?null:cast(hex.length==6?parsed|0xFF000000:parsed);
+ }
+}
 class FakePoint {
  public var x:Float = 1;
  public var y:Float = 1;
@@ -128,24 +145,32 @@ class Character {
  public var positionArray:Array<Float> = [0,0];
  public var enemyOffsetX:Int=0; public var playerOffsetX:Int=0; public var gfOffsetX:Int=0;
  public var enemyOffsetY:Int=0; public var playerOffsetY:Int=0; public var gfOffsetY:Int=0;
- public var antialiasing:Bool=true; public var flipX:Bool=false; public var isPlayer:Bool=false; public var holdTime:Float=4;
+ public var antialiasing:Bool=true; public var flipX:Bool=false; public var holdTime:Float=4;
  public var beatInterval:Int=2; public var danceEvery:Int=1; public var curCharacter:String='dusk';
  public var hitboxUpdates:Int=0;
+ public var isPlayer:Bool=false; public var playerColor:FlxColor=0xFF66FF33; public var enemyColor:FlxColor=0xFFFF0000;
  public var nightmareVisionCharacterData:Dynamic;
+ var nightmareVisionHealthColour:Null<FlxColor>=null;
+ var nightmareVisionHealthColorArray:Array<Int>=[255,0,0];
+ public var healthColour(get,set):FlxColor;
+ public var healthColorArray(get,set):Array<Int>;
  public function new() {}
  public function updateHitbox():Void hitboxUpdates++;
-''' + visual_builder.replace('function loadNightmareVisionCharacterVisual(', 'public function loadNightmareVisionCharacterVisual(') + '\n' + number_helper + '\n' + pair_helper + '''
+''' + visual_builder.replace('function loadNightmareVisionCharacterVisual(', 'public function loadNightmareVisionCharacterVisual(') + '\n' + health_color_loader + '\n' + health_color_array + '\n' + health_colour_getter + '\n' + health_colour_setter + '\n' + health_array_getter + '\n' + health_array_setter + '\n' + number_helper + '\n' + pair_helper + '''
 }
 class Main {
  static function check(value:Bool,message:String):Void if(!value) throw message;
+ static function packed(value:FlxColor):Int return cast value;
  static function main():Void {
   var args=Sys.args();
   var animatePath=args[0];
   var sparrowPath=args[1];
   var multiPath=args[2];
   var ownerRoot=args[3];
+  var authoredHealthColors:Array<Int>=[12,34,56];
   var dusk:Dynamic={image:'characters/Dusk', scale:1.5, no_antialiasing:true, flip_x:false,
    camera_position:[-545,-141], sing_duration:6.1, dance_every:1, position:[450,10],
+   healthbar_colors:authoredHealthColors, healthbar_colour:-8751940,
    animations:[
     {anim:'singLEFT', name:'Dusk/Left', indices:[0,1], fps:24, loop:false,
      offsets:[590,109], cameraOffset:[-30,0]},
@@ -173,14 +198,23 @@ class Main {
   check(actor.holdTime>6 && actor.beatInterval==1 && actor.danceEvery==1,'sing and dance timing preserved');
   check(actor.scale.x==1.5 && actor.hitboxUpdates==1 && !actor.antialiasing && !actor.flipX,
    'scale, antialiasing, and authored flip are applied');
+  check(actor.healthColorArray==authoredHealthColors
+   && packed(actor.healthColour)==0xFF0C2238,
+   'CharacterData healthbar_colors retains array identity and precedes packed healthbar_colour');
+  authoredHealthColors[0]=99;
+  check(actor.healthColorArray[0]==99,'mutated authored health RGB remains live on Character');
 
-  var sparrow:Dynamic={scale:1, animations:[{anim:'idle',name:'idle',indices:[],fps:12,loop:true,offsets:[2,3]}]};
+  var sparrow:Dynamic={scale:1, healthbar_colour:0xFF123456,
+   animations:[{anim:'idle',name:'idle',indices:[],fps:12,loop:true,offsets:[2,3]}]};
   var sparrowActor=new Character();
   check(sparrowActor.loadNightmareVisionCharacterVisual(sparrow,sparrowPath,ownerRoot),'Sparrow visual initialization');
   check(sparrowActor.frames!=null && NightmareVisionPaths.lastKey=='characters/Sparrow'
    && NightmareVisionPaths.lastOwnerCheck,'Sparrow atlas goes through owner-scoped paths');
   check(sparrowActor.animation.exists('idle') && sparrowActor.animOffsets.get('idle')[1]==3,
    'Sparrow animation registration and offsets');
+  check(sparrowActor.healthColorArray[0]==0x12 && sparrowActor.healthColorArray[1]==0x34
+   && sparrowActor.healthColorArray[2]==0x56,
+   'packed healthbar_colour initializes the Character RGB fallback');
 
   var multi:Dynamic={animations:[{anim:'stomp',name:'Stomp/Loop',indices:[],fps:12,loop:true}]};
   var multiActor=new Character();

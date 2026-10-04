@@ -66,8 +66,10 @@ class PsychGameOverClassCompat {
 	}
 
 	public var instance(get, never):Dynamic;
-	function get_instance():Dynamic
-		throw '[psych-gameover] Source GameOverSubstate.instance is not bridged to the native game-over state';
+	function get_instance():Dynamic {
+		var getter = host == null ? null : Reflect.field(host, 'sourceGameOverInstance');
+		return Reflect.isFunction(getter) ? Reflect.callMethod(host, getter, []) : null;
+	}
 
 	public function resetVariables():Void {
 		characterName = chartValue('gameOverChar', 'bf-dead');

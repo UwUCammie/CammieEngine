@@ -31,6 +31,19 @@ class CompatScriptManifestTest(unittest.TestCase):
     var absolute = CompatScriptManifest.destinationRoot(Sys.getCwd() + '/mods/Pack A', 'V-Slice');
     if (relative != absolute) throw 'relative and absolute roots diverged';
 
+    var dialects:CompatScriptManifest.CompatScriptManifestData = {version:1, roots:[
+      {engine:ImportEngine.NIGHTMARE_VISION, path:'assets/imported_mods/nv'},
+      {engine:ImportEngine.CODENAME, path:'assets/imported_mods/codename'},
+      {engine:ImportEngine.PSYCH, path:'assets/imported_mods/psych'},
+      {engine:ImportEngine.KADE, path:'assets/imported_mods/kade'}]};
+    if(!CompatScriptManifest.usesDedicatedScriptRuntime(dialects,'assets/imported_mods/nv')
+      || !CompatScriptManifest.usesDedicatedScriptRuntime(dialects,'assets/imported_mods/codename')
+      || CompatScriptManifest.usesDedicatedScriptRuntime(dialects,'assets/imported_mods/psych')
+      || CompatScriptManifest.usesDedicatedScriptRuntime(dialects,'assets/imported_mods/kade')
+      || CompatScriptManifest.usesDedicatedScriptRuntime(dialects,'assets')
+      || CompatScriptManifest.usesDedicatedScriptRuntime(null,'assets/imported_mods/nv'))
+      throw 'source dialect entered the wrong loader';
+
     var encoded = CompatScriptManifest.stringify(
       CompatScriptManifest.create('/mods/Pack A', 'V-Slice'));
     var parsed = CompatScriptManifest.parse(encoded);
@@ -73,6 +86,7 @@ class CompatScriptManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
             install_import_io_dependencies(temp)
+            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(encoding="utf-8"), encoding="utf-8")
             (temp / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
             , newline='\n')
@@ -113,6 +127,7 @@ class CompatScriptManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
             install_import_io_dependencies(temp)
+            (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(encoding="utf-8"), encoding="utf-8")
             (temp / "CompatScriptManifest.hx").write_text(
                 (ROOT / "source/CompatScriptManifest.hx").read_text()
             , newline='\n')

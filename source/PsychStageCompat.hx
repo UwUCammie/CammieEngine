@@ -1002,7 +1002,7 @@ class PsychStageCompat {
 	static function translateRuntimeCallback(callback:PsychStageCallback, path:String, output:Array<String>,
 		diagnostics:Array<PsychStageDiagnostic>, runtimeCallbacks:Array<String>):Void {
 		var snippet = 'function ' + callback.name + '(' + callback.args + ')\n' + callback.body + '\nend\n';
-		var translated = LuaCompat.translate(snippet, path + '#' + callback.name);
+		var translated = LuaCompat.translate(snippet, path + '#' + callback.name, true);
 		if (translated.hscript == null || StringTools.trim(translated.hscript) == '') {
 			diagnostics.push(makeDiagnostic('warning', 'unsupported-stage-runtime',
 				'Psych stage callback ' + callback.name + '() could not be converted by LuaCompat.',

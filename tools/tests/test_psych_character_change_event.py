@@ -6,6 +6,21 @@ import subprocess
 import tempfile
 import unittest
 ROOT = Path(__file__).resolve().parents[2]
+
+def extract_block(source, marker):
+    start = source.index(marker)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"Unclosed block: {marker}")
+
+
 class CharacterChangeEventTest(unittest.TestCase):
     def test_event_and_script_changes_reuse_the_same_live_bank(self):
         source = (ROOT/'source/PlayState.hx').read_text()
@@ -71,7 +86,10 @@ class Main {
             result = subprocess.run([str(haxe),'-cp',str(ROOT/'source'),'-cp',folder,'--main','Main','--interp'],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         source = (ROOT/'source/PlayState.hx').read_text()
-        event = source[source.index("case 'Change Character':"):source.index("case 'Change Stage':")]
+        native_dispatch = extract_block(source, 'function fireNativeSongEvent(e:Dynamic)')
+        event_start = native_dispatch.index("case 'Change Character':")
+        event_end = native_dispatch.index("case 'Change Stage':", event_start)
+        event = native_dispatch[event_start:event_end]
         self.assertLess(event.index('changeNightmareVisionCharacterEvent'), event.index('switchCharacter'))
         helper = source[source.index('function changeNightmareVisionCharacterEvent'):source.index('function switchCharacter')]
         self.assertIn('nightmareVisionCharacterBank(type).change(name)',helper)

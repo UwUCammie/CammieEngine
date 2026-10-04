@@ -56,7 +56,8 @@ class LuaCompat {
 	}
 
 	/** Translate the safe callback/table/control-flow subset used by imported Lua. */
-	public static function translate(source:String, ?origin:String):LuaCompatResult {
+	public static function translate(source:String, ?origin:String,
+		?allowEmbeddedHscript:Bool = false):LuaCompatResult {
 		var diagnostics:Array<String> = [];
 		collectionCounter = 0;
 		var name = origin == null || StringTools.trim(origin) == '' ? 'lua' : origin;
@@ -77,8 +78,11 @@ class LuaCompat {
 			};
 		}
 
-		var routed = routeKnownRawHaxe(source, name, diagnostics);
-		var masked = maskRawHaxe(routed, name, diagnostics);
+		var protectedHaxeLiterals:Array<{token:String, value:String, expression:Bool}> = [];
+		var routed = routeKnownRawHaxe(source, name, diagnostics, allowEmbeddedHscript);
+		if (allowEmbeddedHscript)
+			routed = routeEmbeddedHscript(routed, name, diagnostics, protectedHaxeLiterals);
+		var masked = allowEmbeddedHscript ? routed : maskRawHaxe(routed, name, diagnostics);
 		masked = stripComments(masked);
 		masked = maskLongStrings(masked, name, diagnostics);
 		// These standard-library definitions are shadowing declarations for
@@ -112,12 +116,20 @@ class LuaCompat {
 				output.push(part);
 		}
 		while (blocks.length > 0) {
-			blocks.pop();
+			var ended = blocks.pop();
+			if (ended == 'function')
+				output.push('return null;');
 			output.push('}');
 			addDiagnostic(diagnostics, name, 'lua-unclosed-block', 'Implicitly closed an unterminated Lua block.');
 		}
 
 		var generated = TRANSLATED_MARKER + '\n' + output.join('\n');
+		// Embedded Haxe literals are restored only after every Lua rewrite. A
+		// donor body containing e.g. `math.sin` or `string.format` must reach
+		// runHaxeCode byte-for-byte instead of being treated as Lua expression text.
+		for (literal in protectedHaxeLiterals)
+			generated = StringTools.replace(generated, literal.token, literal.expression
+				? literal.value : quoteHaxeString(literal.value));
 		// Never hand an invalid generated program to the runtime interpreter. The
 		// bridge is intentionally partial, but partial support must still fail as a
 		// precise diagnostic rather than as a song-load parser exception.
@@ -393,15 +405,20 @@ class LuaCompat {
 			return result;
 		}
 
-		// Lua permits a single statement after a block opener.  Expand the
-		// common `if ... then return ... end` shape before handling braces.
-		var oneLine = ~/^if\s+(.+)\s+then\s+(.+)\s+end\s*;?$/;
-		if (oneLine.match(text)) {
-			var condition = oneLine.matched(1);
-			var body = oneLine.matched(2);
-			result.push('if (' + convertExpression(condition, origin, diagnostics) + ') {');
-			result.push(convertStatement(body, origin, diagnostics));
-			result.push('}');
+		// Lua permits complete if/elseif/else blocks on one physical line. Parse
+		// their block keywords before converting the bodies so semicolons and an
+		// inline `else` do not leak into one HScript expression.
+		var inlineIf = translateInlineIf(text, blocks, origin, diagnostics);
+		if (inlineIf != null) {
+			for (part in inlineIf)
+				result.push(part);
+			return result;
+		}
+
+		var inlineFor = translateInlineFor(text, blocks, origin, diagnostics);
+		if (inlineFor != null) {
+			for (part in inlineFor)
+				result.push(part);
 			return result;
 		}
 
@@ -413,7 +430,19 @@ class LuaCompat {
 			var inlineName = inlineFunction.matched(1);
 			var inlineArgs = cleanArguments(inlineFunction.matched(2), origin, diagnostics);
 			var inlineBody = convertStatement(inlineFunction.matched(3), origin, diagnostics);
-			result.push(functionAssignment(inlineName, inlineArgs, inlineBody));
+			result.push(namedFunctionStatement(inlineName, inlineArgs, inlineBody,
+				isLocalNamedFunction(text), blocks));
+			return result;
+		}
+
+		// Lua semicolons separate statements. Preserve nested call/table syntax
+		// and only split at top level; this also handles compact local assignments
+		// that otherwise arrive at HScript as one invalid statement.
+		var semicolonStatements = splitLuaSemicolonStatements(text);
+		if (semicolonStatements.length > 1) {
+			for (statement in semicolonStatements)
+				for (converted in translateLine(statement, blocks, origin, diagnostics))
+					result.push(converted);
 			return result;
 		}
 
@@ -433,9 +462,8 @@ class LuaCompat {
 		if (functionMatch.match(text)) {
 			var functionName = functionMatch.matched(1);
 			var args = cleanArguments(functionMatch.matched(2), origin, diagnostics);
-			result.push(functionName.indexOf('.') >= 0
-				? functionAssignment(functionName, args, null)
-				: 'function ' + functionName + '(' + args + ') {');
+			result.push(namedFunctionStatement(functionName, args, null,
+				isLocalNamedFunction(text), blocks));
 			blocks.push('function');
 			return result;
 		}
@@ -552,6 +580,8 @@ class LuaCompat {
 				addDiagnostic(diagnostics, origin, 'lua-unbalanced-end', 'Lua end has no open block.');
 			else
 				blocks.pop();
+			if (ended == 'function')
+				result.push('return null;');
 			if (ended != null && StringTools.startsWith(ended, 'for-step:')) {
 				// Lua's numeric loop advances after each body execution. Without
 				// this update every non-unit step spins until the watchdog fires.
@@ -609,6 +639,255 @@ class LuaCompat {
 		return result;
 	}
 
+	/** Translate an inline Lua if-block only when its complete outer block is on this line. */
+	static function translateInlineIf(source:String, blocks:Array<String>, origin:String,
+		diagnostics:Array<String>):Null<Array<String>> {
+		if (source == null || source.length < 2 || source.substr(0, 2) != 'if'
+			|| (source.length > 2 && isWord(source.charAt(2))))
+			return null;
+		var thenToken = findLuaKeyword(source, 'then', 2);
+		if (thenToken == null)
+			return null;
+		var condition = StringTools.trim(source.substr(2, thenToken.startIndex - 2));
+		if (condition == '')
+			return null;
+
+		var branches:Array<{condition:Null<String>, body:String}> = [];
+		var currentCondition:Null<String> = condition;
+		var bodyStart = thenToken.endIndex;
+		var finished = false;
+		while (!finished) {
+			var boundary = findLuaInlineBoundary(source, bodyStart);
+			if (boundary == null)
+				return null;
+			branches.push({condition:currentCondition,
+				body:source.substr(bodyStart, boundary.startIndex - bodyStart)});
+			switch (boundary.word) {
+				case 'end':
+					var suffix = StringTools.trim(source.substr(boundary.endIndex));
+					if (suffix != '' && suffix != ';')
+						return null;
+					finished = true;
+				case 'elseif':
+					if (currentCondition == null)
+						return null;
+					var branchThen = findLuaKeyword(source, 'then', boundary.endIndex);
+					if (branchThen == null)
+						return null;
+					currentCondition = StringTools.trim(source.substr(boundary.endIndex,
+						branchThen.startIndex - boundary.endIndex));
+					if (currentCondition == '')
+						return null;
+					bodyStart = branchThen.endIndex;
+				case 'else':
+					if (currentCondition == null)
+						return null;
+					currentCondition = null;
+					bodyStart = boundary.endIndex;
+				default:
+					return null;
+			}
+		}
+
+		var output:Array<String> = [];
+		for (index in 0...branches.length) {
+			var branch = branches[index];
+			if (index == 0)
+				output.push('if (' + convertExpression(branch.condition, origin, diagnostics) + ') {');
+			else if (branch.condition == null)
+				output.push('} else {');
+			else
+				output.push('} else if (' + convertExpression(branch.condition, origin, diagnostics) + ') {');
+			for (statement in splitLuaSemicolonStatements(branch.body)) {
+				for (part in splitInlineStatements(statement)) {
+					for (converted in translateLine(part, blocks, origin, diagnostics))
+						output.push(converted);
+				}
+			}
+		}
+		output.push('}');
+		return output;
+	}
+
+	/** Translate a complete one-line numeric or collection Lua loop. */
+	static function translateInlineFor(source:String, blocks:Array<String>, origin:String,
+		diagnostics:Array<String>):Null<Array<String>> {
+		if (source == null || source.length < 4 || source.substr(0, 3) != 'for'
+			|| (source.length > 3 && isWord(source.charAt(3))))
+			return null;
+		var doToken = findLuaKeyword(source, 'do', 3);
+		if (doToken == null)
+			return null;
+		var boundary = findLuaInlineBoundary(source, doToken.endIndex);
+		if (boundary == null || boundary.word != 'end')
+			return null;
+		var suffix = StringTools.trim(source.substr(boundary.endIndex));
+		if (suffix != '' && suffix != ';')
+			return null;
+
+		var output:Array<String> = [];
+		var header = StringTools.trim(source.substr(0, doToken.endIndex));
+		for (part in translateLine(header, blocks, origin, diagnostics))
+			output.push(part);
+		var body = source.substr(doToken.endIndex, boundary.startIndex - doToken.endIndex);
+		for (statement in splitLuaSemicolonStatements(body)) {
+			for (part in translateLine(statement, blocks, origin, diagnostics))
+				output.push(part);
+		}
+		for (part in translateLine('end', blocks, origin, diagnostics))
+			output.push(part);
+		return output;
+	}
+
+	/** Find a Lua keyword without treating a quoted string as syntax. */
+	static function findLuaKeyword(source:String, wanted:String, from:Int):Null<{word:String,
+		startIndex:Int, endIndex:Int}> {
+		var cursor = from;
+		while (cursor < source.length) {
+			var token = nextLuaWord(source, cursor);
+			if (token == null)
+				return null;
+			if (token.word == wanted)
+				return token;
+			cursor = token.endIndex;
+		}
+		return null;
+	}
+
+	/** Locate an outer `elseif`, `else`, or `end`, skipping nested Lua blocks. */
+	static function findLuaInlineBoundary(source:String, from:Int):Null<{word:String,
+		startIndex:Int, endIndex:Int}> {
+		var nested:Array<String> = [];
+		var cursor = from;
+		while (cursor < source.length) {
+			var token = nextLuaWord(source, cursor);
+			if (token == null)
+				return null;
+			cursor = token.endIndex;
+			switch (token.word) {
+				case 'if' | 'function' | 'for' | 'while' | 'repeat':
+					nested.push(token.word);
+				case 'do':
+					if (nested.length == 0 || (nested[nested.length - 1] != 'for'
+						&& nested[nested.length - 1] != 'while'))
+						nested.push('do');
+				case 'end':
+					if (nested.length == 0)
+						return token;
+					nested.pop();
+				case 'until':
+					if (nested.length > 0 && nested[nested.length - 1] == 'repeat')
+						nested.pop();
+				case 'elseif' | 'else':
+					if (nested.length == 0)
+						return token;
+				default:
+			}
+		}
+		return null;
+	}
+
+	/** Return the next identifier-shaped word outside quoted strings. */
+	static function nextLuaWord(source:String, from:Int):Null<{word:String,
+		startIndex:Int, endIndex:Int}> {
+		var cursor = from;
+		while (cursor < source.length) {
+			var character = source.charAt(cursor);
+			if (character == '"' || character == "'") {
+				var quote = character;
+				cursor++;
+				while (cursor < source.length) {
+					if (source.charAt(cursor) == '\\') {
+						cursor += 2;
+						continue;
+					}
+					if (source.charAt(cursor) == quote) {
+						cursor++;
+						break;
+					}
+					cursor++;
+				}
+				continue;
+			}
+			if (isIdentifierStart(character)) {
+				var start = cursor++;
+				while (cursor < source.length && isWord(source.charAt(cursor)))
+					cursor++;
+				return {word:source.substr(start, cursor - start), startIndex:start, endIndex:cursor};
+			}
+			cursor++;
+		}
+		return null;
+	}
+
+	/** Split top-level semicolon statements while retaining any nested block body. */
+	static function splitLuaSemicolonStatements(value:String):Array<String> {
+		var result:Array<String> = [];
+		var start = 0;
+		var delimiters = 0;
+		var blocks:Array<String> = [];
+		var cursor = 0;
+		while (cursor < value.length) {
+			var character = value.charAt(cursor);
+			if (character == '"' || character == "'") {
+				var quote = character;
+				cursor++;
+				while (cursor < value.length) {
+					if (value.charAt(cursor) == '\\') {
+						cursor += 2;
+						continue;
+					}
+					if (value.charAt(cursor) == quote) {
+						cursor++;
+						break;
+					}
+					cursor++;
+				}
+				continue;
+			}
+			if (character == '(' || character == '[' || character == '{') {
+				delimiters++;
+				cursor++;
+				continue;
+			}
+			if (character == ')' || character == ']' || character == '}') {
+				delimiters--;
+				cursor++;
+				continue;
+			}
+			if (isIdentifierStart(character)) {
+				var wordStart = cursor++;
+				while (cursor < value.length && isWord(value.charAt(cursor)))
+					cursor++;
+				var word = value.substr(wordStart, cursor - wordStart);
+				switch (word) {
+					case 'if' | 'function' | 'for' | 'while' | 'repeat': blocks.push(word);
+					case 'do':
+						if (blocks.length == 0 || (blocks[blocks.length - 1] != 'for'
+							&& blocks[blocks.length - 1] != 'while'))
+							blocks.push('do');
+					case 'end': if (blocks.length > 0) blocks.pop();
+					case 'until':
+						if (blocks.length > 0 && blocks[blocks.length - 1] == 'repeat')
+							blocks.pop();
+					default:
+				}
+				continue;
+			}
+			if (character == ';' && delimiters == 0 && blocks.length == 0) {
+				var statement = StringTools.trim(value.substr(start, cursor - start));
+				if (statement != '') result.push(statement);
+				start = cursor + 1;
+			}
+			cursor++;
+		}
+		var tail = StringTools.trim(value.substr(start));
+		if (StringTools.endsWith(tail, ';'))
+			tail = StringTools.trim(tail.substr(0, tail.length - 1));
+		if (tail != '') result.push(tail);
+		return result.length == 0 ? [value] : result;
+	}
+
 	/** Lower the simple parallel assignments used by Lua matrix helpers. */
 	static function splitMultipleAssignment(text:String, origin:String, diagnostics:Array<String>):Null<Array<String>> {
 		var equal = topLevelEquals(text);
@@ -621,9 +900,33 @@ class LuaCompat {
 			lhs = StringTools.trim(lhs.substr(6));
 		}
 		var names = splitTopLevel(lhs, ',');
+		var right = StringTools.trim(text.substr(equal + 1));
+		var stringMatch = parseLuaStringMatch(right);
+		if (stringMatch != null) {
+			var matchResult:Array<String> = [];
+			var matchNames:Array<String> = [];
+			for (nameRaw in names) {
+				var name = StringTools.trim(nameRaw);
+				if (!~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(name))
+					return null;
+				matchNames.push(name);
+				matchResult.push((local ? 'var ' : '') + name + ' = null;');
+			}
+			var matchId = '__luaStringMatch' + collectionCounter++;
+			var patternLiteral = '"' + escapeHscriptString(stringMatch.regex) + '"';
+			var input = convertExpression(stringMatch.input, origin, diagnostics);
+			matchResult.push('var ' + matchId + ' = new EReg(' + patternLiteral + ', "");');
+			matchResult.push('if (' + matchId + '.match(' + input + ')) {');
+			for (index in 0...matchNames.length) {
+				var value = index < stringMatch.captures ? matchId + '.matched(' + (index + 1) + ')' : 'null';
+				matchResult.push(matchNames[index] + ' = ' + value + ';');
+			}
+			matchResult.push('}');
+			return matchResult;
+		}
 		if (names.length <= 1)
 			return null;
-		var values = splitTopLevel(StringTools.trim(text.substr(equal + 1)), ',');
+		var values = splitTopLevel(right, ',');
 		var result:Array<String> = [];
 		for (index in 0...names.length) {
 			var name = StringTools.trim(names[index]);
@@ -637,6 +940,95 @@ class LuaCompat {
 				result.push(name + ' = ' + convertedValue + ';');
 		}
 		return result;
+	}
+
+	/** Parse the literal-pattern capture subset of Lua string.match. */
+	static function parseLuaStringMatch(value:String):Null<{input:String, regex:String, captures:Int}> {
+		var text = StringTools.trim(value);
+		if (StringTools.endsWith(text, ';'))
+			text = StringTools.trim(text.substr(0, text.length - 1));
+		if (!StringTools.startsWith(text, 'string.match'))
+			return null;
+		var cursor = 'string.match'.length;
+		if (cursor < text.length && isWord(text.charAt(cursor)))
+			return null;
+		while (cursor < text.length && isSpace(text.charAt(cursor))) cursor++;
+		if (cursor >= text.length || text.charAt(cursor) != '(')
+			return null;
+		var close = matchingDelimiter(text, cursor, '(', ')');
+		if (close < 0 || StringTools.trim(text.substr(close + 1)) != '')
+			return null;
+		var args = splitTopLevel(text.substr(cursor + 1, close - cursor - 1), ',');
+		if (args.length != 2)
+			return null;
+		var pattern = literalStringValue(args[1]);
+		if (pattern == null)
+			return null;
+		var translated = luaCapturePattern(pattern);
+		if (translated == null)
+			return null;
+		return {input:StringTools.trim(args[0]), regex:translated.regex, captures:translated.captures};
+	}
+
+	/** Convert only Lua's portable single-line capture classes and quantifiers. */
+	static function luaCapturePattern(pattern:String):Null<{regex:String, captures:Int}> {
+		var output = new StringBuf();
+		var captures = 0;
+		var depth = 0;
+		var cursor = 0;
+		while (cursor < pattern.length) {
+			var character = pattern.charAt(cursor);
+			if (character == '%') {
+				cursor++;
+				if (cursor >= pattern.length)
+					return null;
+				var escaped = pattern.charAt(cursor);
+				switch (escaped) {
+					case 'a': output.add('[A-Za-z]');
+					case 'd': output.add('[0-9]');
+					case 's': output.add('\\s');
+					case 'w': output.add('[A-Za-z0-9_]');
+					case 'l': output.add('[a-z]');
+					case 'u': output.add('[A-Z]');
+					case 'A': output.add('[^A-Za-z]');
+					case 'D': output.add('[^0-9]');
+					case 'S': output.add('\\S');
+					case 'W': output.add('[^A-Za-z0-9_]');
+					case '%': output.add('%');
+					default: return null;
+				}
+				cursor++;
+				continue;
+			}
+			switch (character) {
+				case '(':
+					captures++;
+					depth++;
+					output.add('(');
+				case ')':
+					depth--;
+					if (depth < 0) return null;
+					output.add(')');
+				case '.' | '*' | '+' | '?' | '^' | '$': output.add(character);
+				case '-':
+					// Lua's non-greedy repetition follows an atom; Haxe's regular
+					// expression spelling is the same quantifier with a trailing ?.
+					if (output.toString().length == 0) return null;
+					output.add('*?');
+				default:
+					if ('\\[]{}|'.indexOf(character) >= 0)
+						output.add('\\');
+					output.add(character);
+			}
+			cursor++;
+		}
+		if (depth != 0 || captures == 0)
+			return null;
+		return {regex:output.toString(), captures:captures};
+	}
+
+	static function escapeHscriptString(value:String):String {
+		return StringTools.replace(StringTools.replace(value, '\\', '\\\\'), '"', '\\"');
 	}
 
 	static function splitInlineStatements(value:String):Array<String> {
@@ -663,7 +1055,10 @@ class LuaCompat {
 					var wordEnd = cursor;
 					while (wordEnd < value.length && isWord(value.charAt(wordEnd))) wordEnd++;
 					var word = value.substr(cursor, wordEnd - cursor);
-					if (word != '' && ['and', 'or', 'then', 'do', 'else', 'elseif'].indexOf(word) < 0) {
+					var functionReturn = word == 'return'
+						&& value.substr(start, cursor - start).indexOf('function') >= 0;
+					if (word != '' && !functionReturn
+						&& ['and', 'or', 'then', 'do', 'else', 'elseif'].indexOf(word) < 0) {
 						result.push(StringTools.trim(value.substr(start, cursor - start)));
 						start = cursor;
 						i = cursor;
@@ -674,7 +1069,8 @@ class LuaCompat {
 			i++;
 		}
 		var tail = StringTools.trim(value.substr(start));
-		if (StringTools.endsWith(tail, ' end') && !StringTools.startsWith(tail, 'if ')
+		if (StringTools.endsWith(tail, ' end') && tail.indexOf('function') < 0
+			&& !StringTools.startsWith(tail, 'if ')
 			&& !StringTools.startsWith(tail, 'while ') && !StringTools.startsWith(tail, 'for ')) {
 			result.push(StringTools.trim(tail.substr(0, tail.length - 4)));
 			result.push('end');
@@ -716,7 +1112,31 @@ class LuaCompat {
 	/** Emit a function value assignment for a Lua dotted declaration. */
 	static function functionAssignment(name:String, args:String, body:Null<String>):String {
 		var prefix = name + ' = function(' + args + ') {';
-		return body == null ? prefix : prefix + ' ' + body + ' }';
+		return body == null ? prefix : prefix + ' ' + body + ' return null; }';
+	}
+
+	/**
+		Lua's `function name()` is an assignment when nested inside a function.
+		Keep the top-level declaration form used by stage callback discovery, while
+		lowering nested non-local definitions to a scope-aware HScript assignment.
+	*/
+	static function namedFunctionStatement(name:String, args:String, body:Null<String>,
+		isLocal:Bool, blocks:Array<String>):String {
+		var nested = blocks != null && blocks.indexOf('function') >= 0;
+		// Lua local functions are lexically scoped even at chunk scope. HScript's
+		// named EFunction declaration writes to interpreter globals at depth zero,
+		// so declare a local slot first and assign the closure into it. The slot is
+		// captured by reference, which also preserves local-function recursion.
+		if (isLocal)
+			return 'var ' + name + '; ' + functionAssignment(name, args, body);
+		if (name.indexOf('.') >= 0 || (!isLocal && nested))
+			return functionAssignment(name, args, body);
+		var declaration = 'function ' + name + '(' + args + ') {';
+		return body == null ? declaration : declaration + ' ' + body + ' return null; }';
+	}
+
+	static function isLocalNamedFunction(source:String):Bool {
+		return source != null && ~/^local\s+function\s+/.match(source);
 	}
 
 	/** Lower the compact anonymous `function(args)return value end` form. */
@@ -1178,6 +1598,7 @@ class LuaCompat {
 			{from: 'math.pi', to: 'Math.PI'},
 			{from: 'math.sin', to: 'Math.sin'},
 			{from: 'math.cos', to: 'Math.cos'},
+			{from: 'math.asin', to: 'Math.asin'},
 			{from: 'math.tan', to: 'Math.tan'},
 			{from: 'math.sqrt', to: 'Math.sqrt'},
 			{from: 'math.exp', to: 'Math.exp'},
@@ -1187,6 +1608,10 @@ class LuaCompat {
 			{from: 'math.min', to: 'Math.min'},
 			{from: 'math.max', to: 'Math.max'},
 			{from: 'math.pow', to: 'Math.pow'},
+			// Psych mods commonly provide math.lerp from their Lua runtime. FlxMath
+			// is already exposed to every compatibility interpreter and has the
+			// same three-argument interpolation contract.
+			{from: 'math.lerp', to: 'FlxMath.lerp'},
 			// Lua's random() has three overloads (no args, max, min/max).  Route
 			// it through the runtime helper instead of assuming Psych's two-arg
 			// getRandomInt shape.
@@ -1197,10 +1622,55 @@ class LuaCompat {
 		];
 		for (entry in mappings)
 			text = replaceOutsideStrings(text, entry.from, entry.to);
-		if (text.indexOf('math.') >= 0) {
+		text = routeMathFmod(text, origin, diagnostics);
+		if (containsOutsideStrings(text, 'math.')) {
 			addDiagnostic(diagnostics, origin, 'lua-math', 'Unsupported Lua math helper remains in expression: ' + text);
 		}
 		return text;
+	}
+
+	/** Lower Lua's two-argument fmod through the translated scope's `%` operator. */
+	static function routeMathFmod(source:String, origin:String, diagnostics:Array<String>):String {
+		if (source == null || !containsOutsideStrings(source, 'math.fmod'))
+			return source;
+		var output = new StringBuf();
+		var cursor = 0;
+		while (cursor < source.length) {
+			var call = indexOutsideStrings(source, 'math.fmod', cursor);
+			if (call < 0) {
+				output.add(source.substr(cursor));
+				break;
+			}
+			var before = call == 0 ? '' : source.charAt(call - 1);
+			var afterName = call + 'math.fmod'.length;
+			if (isWord(before) || (afterName < source.length && isWord(source.charAt(afterName)))) {
+				output.add(source.substr(cursor, afterName - cursor));
+				cursor = afterName;
+				continue;
+			}
+			var open = afterName;
+			while (open < source.length && isSpace(source.charAt(open))) open++;
+			var close = open < source.length && source.charAt(open) == '('
+				? matchingDelimiter(source, open, '(', ')') : -1;
+			if (close < 0) {
+				output.add(source.substr(cursor, afterName - cursor));
+				cursor = afterName;
+				continue;
+			}
+			var args = splitTopLevel(source.substr(open + 1, close - open - 1), ',');
+			if (args.length != 2) {
+				output.add(source.substr(cursor, close + 1 - cursor));
+				addDiagnostic(diagnostics, origin, 'lua-math',
+					'math.fmod expects exactly two arguments: ' + source.substr(call, close + 1 - call));
+				cursor = close + 1;
+				continue;
+			}
+			output.add(source.substr(cursor, call - cursor));
+			output.add('(' + convertExpression(StringTools.trim(args[0]), origin, diagnostics)
+				+ ' % ' + convertExpression(StringTools.trim(args[1]), origin, diagnostics) + ')');
+			cursor = close + 1;
+		}
+		return output.toString();
 	}
 
 	/** Route the small Lua standard-library subset used by the donor corpus. */
@@ -1341,13 +1811,108 @@ class LuaCompat {
 	}
 
 	static function replaceTableHelpers(text:String, origin:String, diagnostics:Array<String>):String {
+		text = routeTableConcat(text, origin, diagnostics);
 		var insert = ~/table\.insert\s*\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*,\s*(.+)\)/g;
 		text = insert.replace(text, '$1.push($2)');
 		var remove = ~/table\.remove\s*\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*,\s*(.+)\)/g;
 		text = remove.replace(text, '$1.splice(($2) - 1, 1)');
-		if (text.indexOf('table.') >= 0)
+		if (containsOutsideStrings(text, 'table.'))
 			addDiagnostic(diagnostics, origin, 'lua-table-library', 'Unsupported Lua table helper remains in expression: ' + text);
 		return text;
+	}
+
+	/** Route Lua table.concat call syntax and the `table.concat{...}` shorthand. */
+	static function routeTableConcat(source:String, origin:String, diagnostics:Array<String>):String {
+		if (source == null || source.indexOf('table.concat') < 0)
+			return source;
+		var output = new StringBuf();
+		var cursor = 0;
+		var search = 0;
+		while (search < source.length) {
+			var character = source.charAt(search);
+			if (character == '"' || character == "'") {
+				var quote = character;
+				search++;
+				while (search < source.length) {
+					if (source.charAt(search) == '\\') { search += 2; continue; }
+					if (source.charAt(search) == quote) { search++; break; }
+					search++;
+				}
+				continue;
+			}
+			if (source.substr(search, 'table.concat'.length) != 'table.concat'
+				|| (search > 0 && isWord(source.charAt(search - 1)))
+				|| (search + 'table.concat'.length < source.length
+					&& isWord(source.charAt(search + 'table.concat'.length)))) {
+				search++;
+				continue;
+			}
+			var nameEnd = search + 'table.concat'.length;
+			var open = nameEnd;
+			while (open < source.length && isSpace(source.charAt(open))) open++;
+			var bracketShorthand = open < source.length && source.charAt(open) == '[';
+			var delimiter = bracketShorthand ? '[' : '(';
+			if (!bracketShorthand && (open >= source.length || source.charAt(open) != '(')) {
+				search = nameEnd;
+				continue;
+			}
+			var closing = bracketShorthand ? ']' : ')';
+			var close = matchingDelimiter(source, open, delimiter, closing);
+			if (close < 0) {
+				search = nameEnd;
+				continue;
+			}
+			var args = bracketShorthand ? ['[' + source.substr(open + 1, close - open - 1) + ']']
+				: splitTopLevel(source.substr(open + 1, close - open - 1), ',');
+			if (args.length < 1 || args.length > 2) {
+				search = close + 1;
+				continue;
+			}
+			var tableExpression = StringTools.trim(args[0]);
+			var separator = args.length == 2 ? StringTools.trim(args[1]) : "''";
+			var tableLiteral = tableExpression.length >= 2 && tableExpression.charAt(0) == '['
+				&& tableExpression.charAt(tableExpression.length - 1) == ']';
+			var replacement:String = null;
+			if (tableLiteral) {
+				var values = splitTopLevel(tableExpression.substr(1, tableExpression.length - 2), ',');
+				var parts:Array<String> = [];
+				for (value in values) {
+					var item = StringTools.trim(value);
+					if (item != '')
+						parts.push('luaString(' + convertExpression(item, origin, diagnostics) + ')');
+				}
+				var convertedSeparator = convertExpression(separator, origin, diagnostics);
+				replacement = parts.length == 0 ? "''"
+					: '(' + parts.join(' + ' + convertedSeparator + ' + ') + ')';
+			} else {
+				replacement = dynamicTableConcat(convertExpression(tableExpression, origin, diagnostics),
+					convertExpression(separator, origin, diagnostics));
+			}
+			output.add(source.substr(cursor, search - cursor));
+			output.add(replacement);
+			cursor = close + 1;
+			search = close + 1;
+		}
+		output.add(source.substr(cursor));
+		return output.toString();
+	}
+
+	/** Build an expression that traverses a runtime Lua sequence through shared helpers. */
+	static function dynamicTableConcat(tableExpression:String, separator:String):String {
+		var id = collectionCounter++;
+		var tableName = '__luaConcatTable' + id;
+		var separatorName = '__luaConcatSeparator' + id;
+		var indexName = '__luaConcatIndex' + id;
+		var valueName = '__luaConcatItem' + id;
+		var outputName = '__luaConcatOutput' + id;
+		return '(function(' + tableName + ', ' + separatorName + ') { var ' + outputName + ' = ""; '
+			+ 'var __luaConcatLength' + id + ' = luaSequenceLength(' + tableName + '); '
+			+ 'for (' + indexName + ' in makeRangeArray(__luaConcatLength' + id + ' + 1, 1)) { '
+			+ 'var ' + valueName + ' = luaTableValue(' + tableName + ', ' + indexName + '); '
+			+ 'if (' + valueName + ' == null) throw "table.concat received nil at index " + ' + indexName + '; '
+			+ 'if (' + indexName + ' > 1) ' + outputName + ' += ' + separatorName + '; '
+			+ outputName + ' += luaString(' + valueName + '); } return ' + outputName + '; })('
+			+ tableExpression + ', ' + separator + ')';
 	}
 
 	static function unsupportedLibrary(text:String):{code:String, message:String} {
@@ -1371,7 +1936,8 @@ class LuaCompat {
 			// tonumber/tostring and table.find/clear are rewritten by
 			// replaceLuaBuiltins before the generated statement is emitted.
 		]) {
-			if (text.indexOf(entry.prefix) >= 0)
+			if (text.indexOf(entry.prefix) >= 0
+				&& (entry.prefix != 'runHaxeCode' || containsOutsideStrings(text, entry.prefix)))
 				return {code: entry.code, message: entry.message + ' [' + text + ']'};
 		}
 		return null;
@@ -1437,13 +2003,15 @@ class LuaCompat {
 		runHaxeCode. The donor code only names Lua sprites whose shaders were
 		already created through the public compatibility API.
 	*/
-	static function routeKnownRawHaxe(source:String, origin:String, diagnostics:Array<String>):String {
+	static function routeKnownRawHaxe(source:String, origin:String, diagnostics:Array<String>,
+		lexical:Bool = false):String {
 		if (source == null || source.indexOf('runHaxeCode') < 0)
 			return source;
 		var output = new StringBuf();
 		var cursor = 0;
 		while (cursor < source.length) {
-			var start = source.indexOf('runHaxeCode', cursor);
+			var start = lexical ? indexRunHaxeCodeOutsideLua(source, cursor)
+				: source.indexOf('runHaxeCode', cursor);
 			if (start < 0) {
 				output.add(source.substr(cursor));
 				break;
@@ -1485,6 +2053,295 @@ class LuaCompat {
 			cursor = close + 1;
 		}
 		return output.toString();
+	}
+
+	/**
+		In the opt-in mode, find calls only in Lua code. Raw Haxe bodies, Lua
+		quoted strings, long strings and comments are skipped as opaque text so a
+		callback name written in prose cannot become executable code.
+	*/
+	static function indexRunHaxeCodeOutsideLua(source:String, from:Int):Int {
+		var i = from;
+		while (i < source.length) {
+			var ch = source.charAt(i);
+			if (ch == '"' || ch == "'") {
+				i = skipLuaQuotedString(source, i);
+				continue;
+			}
+			if (source.substr(i, 2) == '--') {
+				if (source.substr(i + 2, 2) == '[[') {
+					var end = source.indexOf(']]', i + 4);
+					i = end < 0 ? source.length : end + 2;
+				} else {
+					var end = source.indexOf('\n', i + 2);
+					i = end < 0 ? source.length : end + 1;
+				}
+				continue;
+			}
+			if (source.substr(i, 2) == '[[') {
+				var end = source.indexOf(']]', i + 2);
+				i = end < 0 ? source.length : end + 2;
+				continue;
+			}
+			if (source.substr(i, 'runHaxeCode'.length) == 'runHaxeCode'
+				&& (i == 0 || !isWord(source.charAt(i - 1)))
+				&& (i + 'runHaxeCode'.length >= source.length
+					|| !isWord(source.charAt(i + 'runHaxeCode'.length))))
+				return i;
+			i++;
+		}
+		return -1;
+	}
+
+	static function skipLuaQuotedString(source:String, start:Int):Int {
+		var quote = source.charAt(start);
+		var i = start + 1;
+		while (i < source.length) {
+			var ch = source.charAt(i);
+			if (ch == '\\') {
+				i += 2;
+				continue;
+			}
+			if (ch == quote) return i + 1;
+			i++;
+		}
+		return source.length;
+	}
+
+	/**
+		Replace embedded Psych calls with the host-seeded source alias. Literal
+		Haxe is protected with placeholders until Lua conversion is complete;
+		optional varsToBring/function arguments remain ordinary Lua expressions.
+	*/
+	static function routeEmbeddedHscript(source:String, origin:String, diagnostics:Array<String>,
+		protected:Array<{token:String, value:String, expression:Bool}>):String {
+		if (source == null || source.indexOf('runHaxeCode') < 0) return source;
+		var output = new StringBuf();
+		var cursor = 0;
+		var tokenCounter = 0;
+		while (cursor < source.length) {
+			var start = indexRunHaxeCodeOutsideLua(source, cursor);
+			if (start < 0) {
+				output.add(source.substr(cursor));
+				break;
+			}
+			var open = start + 'runHaxeCode'.length;
+			while (open < source.length && isSpace(source.charAt(open))) open++;
+			if (open >= source.length || source.charAt(open) != '(') {
+				output.add(source.substr(cursor, start - cursor));
+				output.add('sourceRunHaxeCode');
+				cursor = start + 'runHaxeCode'.length;
+				continue;
+			}
+			var bounds = findLuaCallBounds(source, open);
+			if (bounds == null) {
+				output.add(source.substr(cursor, start - cursor));
+				output.add('sourceRunHaxeCode');
+				cursor = start + 'runHaxeCode'.length;
+				continue;
+			}
+
+			var expression = renderEmbeddedHaxeArgument(source, open + 1, bounds.argumentEnd,
+				origin, diagnostics, protected, tokenCounter);
+			output.add(source.substr(cursor, start - cursor));
+			output.add('sourceRunHaxeCode(');
+			output.add(expression == null
+				? StringTools.trim(source.substring(open + 1, bounds.argumentEnd)) : expression);
+			output.add(source.substring(bounds.argumentEnd, bounds.callEnd + 1));
+			cursor = bounds.callEnd + 1;
+		}
+		return output.toString();
+	}
+
+	/** Locate the first argument and matching outer call close, skipping literals. */
+	static function findLuaCallBounds(source:String, open:Int):Null<{argumentEnd:Int, callEnd:Int}> {
+		var parens = 1;
+		var brackets = 0;
+		var braces = 0;
+		var argumentEnd = -1;
+		var i = open + 1;
+		while (i < source.length) {
+			var ch = source.charAt(i);
+			if (ch == '"' || ch == "'") {
+				i = skipLuaQuotedString(source, i);
+				continue;
+			}
+			if (source.substr(i, 2) == '[[') {
+				var end = source.indexOf(']]', i + 2);
+				if (end < 0) return null;
+				i = end + 2;
+				continue;
+			}
+			if (source.substr(i, 2) == '--') {
+				if (source.substr(i + 2, 2) == '[[') {
+					var end = source.indexOf(']]', i + 4);
+					if (end < 0) return null;
+					i = end + 2;
+				} else {
+					var end = source.indexOf('\n', i + 2);
+					i = end < 0 ? source.length : end + 1;
+				}
+				continue;
+			}
+			switch (ch) {
+				case '(':
+					parens++;
+				case ')':
+					parens--;
+					if (parens == 0) {
+						if (argumentEnd < 0) argumentEnd = i;
+					return {argumentEnd:argumentEnd, callEnd:i};
+					}
+				case '[': brackets++;
+				case ']': if (brackets > 0) brackets--;
+				case '{': braces++;
+				case '}': if (braces > 0) braces--;
+				case ',':
+					if (argumentEnd < 0 && parens == 1 && brackets == 0 && braces == 0)
+						argumentEnd = i;
+				default:
+			}
+			i++;
+		}
+		return null;
+	}
+
+	/**
+		Build a protected HScript string expression from Lua long/quoted string
+		pieces and normal Lua concatenation operands. A nonliteral argument remains
+		on the established Lua expression path.
+	*/
+	static function renderEmbeddedHaxeArgument(source:String, start:Int, end:Int,
+		origin:String, diagnostics:Array<String>, protected:Array<{token:String, value:String, expression:Bool}>,
+		tokenCounter:Int):Null<String> {
+		var cursor = start;
+		var terms:Array<String> = [];
+		var hasLiteral = false;
+		while (cursor < end) {
+			while (cursor < end && isSpace(source.charAt(cursor))) cursor++;
+			if (cursor >= end) break;
+			var ch = source.charAt(cursor);
+			if (source.substr(cursor, 2) == '[[') {
+				var close = source.indexOf(']]', cursor + 2);
+				if (close < 0 || close > end) return null;
+				terms.push(protectEmbeddedValue(source.substring(cursor + 2, close), false,
+					source, protected, tokenCounter++));
+				hasLiteral = true;
+				cursor = close + 2;
+				cursor = skipRawRouteSpaces(source, cursor);
+				if (cursor + 1 < end && source.substr(cursor, 2) == '..') cursor += 2;
+				continue;
+			}
+			if (ch == '"' || ch == "'") {
+				var literal = readEmbeddedLuaString(source, cursor, end);
+				if (literal == null) return null;
+				terms.push(protectEmbeddedValue(literal.value, false, source, protected, tokenCounter++));
+				hasLiteral = true;
+				cursor = literal.endIndex;
+				cursor = skipRawRouteSpaces(source, cursor);
+				if (cursor + 1 < end && source.substr(cursor, 2) == '..') cursor += 2;
+				continue;
+			}
+			var concatOperator = findLuaConcatOperator(source, cursor, end);
+			var termEnd = concatOperator < 0 ? end : concatOperator;
+			var term = StringTools.trim(source.substring(cursor, termEnd));
+			if (term == '') return null;
+			var converted = convertExpression(term, origin, diagnostics);
+			terms.push(protectEmbeddedValue('luaString(' + converted + ')', true,
+				source, protected, tokenCounter++));
+			cursor = termEnd;
+			if (concatOperator >= 0) cursor += 2;
+		}
+		if (!hasLiteral) return null;
+		return terms.join(' + ');
+	}
+
+	static function findLuaConcatOperator(source:String, start:Int, end:Int):Int {
+		var parens = 0;
+		var brackets = 0;
+		var braces = 0;
+		var i = start;
+		while (i + 1 < end) {
+			var ch = source.charAt(i);
+			if (ch == '"' || ch == "'") {
+				i = skipLuaQuotedString(source, i);
+				continue;
+			}
+			if (source.substr(i, 2) == '[[') {
+				var close = source.indexOf(']]', i + 2);
+				if (close < 0 || close >= end) return -1;
+				i = close + 2;
+				continue;
+			}
+			switch (ch) {
+				case '(': parens++;
+				case ')': if (parens > 0) parens--;
+				case '[': brackets++;
+				case ']': if (brackets > 0) brackets--;
+				case '{': braces++;
+				case '}': if (braces > 0) braces--;
+				case '.':
+					if (parens == 0 && brackets == 0 && braces == 0
+						&& source.charAt(i + 1) == '.') return i;
+				default:
+			}
+			i++;
+		}
+		return -1;
+	}
+
+	static function readEmbeddedLuaString(source:String, start:Int, end:Int):Null<{value:String, endIndex:Int}> {
+		var quote = source.charAt(start);
+		var value = new StringBuf();
+		var i = start + 1;
+		while (i < end) {
+			var ch = source.charAt(i);
+			if (ch == quote) return {value:value.toString(), endIndex:i + 1};
+			if (ch == '\\') {
+				i++;
+				if (i >= end) return null;
+				var escaped = source.charAt(i);
+				switch (escaped) {
+					case 'n': value.add('\n');
+					case 'r': value.add('\r');
+					case 't': value.add('\t');
+					case '\\': value.add('\\');
+					case '"': value.add('"');
+					case "'": value.add("'");
+					default: value.add(escaped);
+				}
+			} else {
+				value.add(ch);
+			}
+			i++;
+		}
+		return null;
+	}
+
+	static function protectEmbeddedValue(value:String, expression:Bool, source:String,
+		protected:Array<{token:String, value:String, expression:Bool}>, id:Int):String {
+		var token = '__sourceEmbeddedHaxe' + (id + protected.length) + '__';
+		while (source.indexOf(token) >= 0 || Lambda.exists(protected, function(entry) return entry.token == token))
+			token += '_';
+		protected.push({token:token, value:value, expression:expression});
+		return token;
+	}
+
+	static function quoteHaxeString(value:String):String {
+		var out = new StringBuf();
+		out.add('"');
+		for (i in 0...value.length) {
+			switch (value.charAt(i)) {
+				case '"': out.add('\\"');
+				case '\\': out.add('\\\\');
+				case '\n': out.add('\\n');
+				case '\r': out.add('\\r');
+				case '\t': out.add('\\t');
+				default: out.add(value.charAt(i));
+			}
+		}
+		out.add('"');
+		return out.toString();
 	}
 
 	/**
@@ -1573,7 +2430,10 @@ class LuaCompat {
 		behaviour while pretending it was supported.
 	*/
 	static function rawKnownHaxeRoute(body:String):Null<String> {
-		var replacement = rawRuntimeShaderStorageRoute(body);
+		var replacement = rawDualCameraRuntimeShaderRoute(body);
+		if (replacement != null)
+			return replacement;
+		replacement = rawRuntimeShaderStorageRoute(body);
 		if (replacement != null)
 			return replacement;
 		replacement = rawStoredShaderFilterRoute(body);
@@ -1601,6 +2461,57 @@ class LuaCompat {
 		if (replacement != null)
 			return replacement;
 		return rawCameraAngleRoute(body);
+	}
+
+	/**
+		Route the complete two-camera TV CRT shader setup used by Psych donors.
+		Every Haxe statement must match this shape, so unrelated runHaxeCode remains
+		behind the normal diagnostic boundary.
+	*/
+	static function rawDualCameraRuntimeShaderRoute(body:String):Null<String> {
+		if (body == null || body.indexOf('createRuntimeShader') < 0
+			|| body.indexOf('camGame.setFilters') < 0 || body.indexOf('camHUD.setFilters') < 0)
+			return null;
+		var clean = compactRawHaxe(body);
+		var cursor = 0;
+		var initializer = new EReg('^var([A-Za-z_][A-Za-z0-9_]*)="\\]\\] *\\.\\. *([A-Za-z_][A-Za-z0-9_]*) *\\.\\. *\\[\\[";', '');
+		if (!initializer.match(clean))
+			return null;
+		var shaderName = initializer.matched(2);
+		cursor = initializer.matchedPos().len;
+		var init = 'game.initLuaShader(' + shaderName + ');';
+		if (clean.substr(cursor, init.length) != init)
+			return null;
+		cursor += init.length;
+		var create = new EReg('^var([A-Za-z_][A-Za-z0-9_]*)=game\\.createRuntimeShader\\(([A-Za-z_][A-Za-z0-9_]*)\\);', '');
+		if (!create.match(clean.substr(cursor)) || create.matched(2) != shaderName)
+			return null;
+		var shaderVariable = create.matched(1);
+		cursor += create.matchedPos().len;
+		var gameFilters = 'game.camGame.setFilters([newShaderFilter(' + shaderVariable + ')]);';
+		if (clean.substr(cursor, gameFilters.length) != gameFilters)
+			return null;
+		cursor += gameFilters.length;
+		var spriteShader = new EReg('^game\\.getLuaObject\\((["\\\'])([^"\\\']+)\\1\\)\\.shader=([A-Za-z_][A-Za-z0-9_]*);', '');
+		if (!spriteShader.match(clean.substr(cursor)) || spriteShader.matched(3) != shaderVariable)
+			return null;
+		var quote = spriteShader.matched(1);
+		var tag = spriteShader.matched(2);
+		cursor += spriteShader.matchedPos().len;
+		var hudFilters = 'game.camHUD.setFilters([newShaderFilter(game.getLuaObject('
+			+ quote + tag + quote + ').shader)]);';
+		if (clean.substr(cursor, hudFilters.length) != hudFilters)
+			return null;
+		cursor += hudFilters.length;
+		if (clean.substr(cursor) == 'return;')
+			cursor += 'return;'.length;
+		if (cursor != clean.length)
+			return null;
+		var safeTag = escapeHscriptString(tag);
+		return 'createRuntimeShaderAndStore("' + safeTag + '", ' + shaderName
+			+ ', "__psychRunHaxeShader0"); '
+			+ 'setCameraShaderFiltersFromStored("camGame", "__psychRunHaxeShader0"); '
+			+ 'setCameraShaderFiltersFromStored("camHUD", "__psychRunHaxeShader0");';
 	}
 
 	/**
@@ -1649,14 +2560,18 @@ class LuaCompat {
 		var expected = 'resetCamCache=function(?spr){if(spr==null||spr.filters==null)return;spr.__cacheBitmap=null;spr.__cacheBitmapData=null;}'
 			+ 'fixShaderCoordFix=function(?_){resetCamCache(game.camGame.flashSprite);resetCamCache(game.camHUD.flashSprite);'
 			+ 'resetCamCache(game.camOther.flashSprite);}FlxG.signals.gameResized.add(fixShaderCoordFix);fixShaderCoordFix();';
-		if (clean != expected)
+		if (clean != expected && clean != expected + 'return;')
 			return null;
 		return 'installShaderCoordFix();';
 	}
 
 	/** Route only the named Reverse Glitch resize callback removal. */
 	static function rawShaderCoordFixRemoveRoute(body:String):Null<String> {
-		if (body == null || compactRawHaxe(body) != 'FlxG.signals.gameResized.remove(fixShaderCoordFix);')
+		if (body == null)
+			return null;
+		var clean = compactRawHaxe(body);
+		if (clean != 'FlxG.signals.gameResized.remove(fixShaderCoordFix);'
+			&& clean != 'FlxG.signals.gameResized.remove(fixShaderCoordFix);return;')
 			return null;
 		return 'removeShaderCoordFix();';
 	}
@@ -2116,8 +3031,15 @@ class LuaCompat {
 					keyed.push(key + ': ' + value);
 					hasKey = true;
 				} else if (key.length > 2 && key.charAt(0) == '[' && key.charAt(key.length - 1) == ']') {
-					keyed.push(key.substr(1, key.length - 2) + ': ' + value);
-					hasKey = true;
+					var bracketKey = StringTools.trim(key.substr(1, key.length - 2));
+					var stringKey = literalStringValue(bracketKey);
+					if (stringKey != null && ~/^[A-Za-z_][A-Za-z0-9_]*$/.match(stringKey)) {
+						keyed.push(stringKey + ': ' + value);
+						hasKey = true;
+					} else {
+						addDiagnostic(diagnostics, origin, 'lua-table-key', 'Only identifier-shaped literal string keys are routed: ' + key);
+						return '{}';
+					}
 				} else {
 					addDiagnostic(diagnostics, origin, 'lua-table-key', 'Unsupported Lua table key: ' + key);
 					return '{}';
@@ -2277,6 +3199,31 @@ class LuaCompat {
 				}
 				return i;
 			}
+			i++;
+		}
+		return -1;
+	}
+
+	static function containsOutsideStrings(value:String, needle:String):Bool {
+		return indexOutsideStrings(value, needle, 0) >= 0;
+	}
+
+	static function indexOutsideStrings(value:String, needle:String, from:Int):Int {
+		if (value == null || needle == null || needle == '')
+			return -1;
+		var quote = '';
+		var i = from < 0 ? 0 : from;
+		while (i < value.length) {
+			var c = value.charAt(i);
+			if (quote != '') {
+				if (c == '\\' && i + 1 < value.length) { i += 2; continue; }
+				if (c == quote) quote = '';
+				i++;
+				continue;
+			}
+			if (c == '"' || c == "'") { quote = c; i++; continue; }
+			if (value.substr(i, needle.length) == needle)
+				return i;
 			i++;
 		}
 		return -1;

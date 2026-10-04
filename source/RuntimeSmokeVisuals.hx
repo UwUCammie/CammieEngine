@@ -93,7 +93,17 @@ class RuntimeSmokeVisuals {
 	}
 
 	public static function camera(value:Dynamic):Dynamic {
+		var filters:Array<Dynamic> = [];
+		var live = field(value, 'filters');
+		if (Std.isOfType(live, Array)) for (filter in (cast live:Array<Dynamic>)) {
+			if (filter == null) continue;
+			filters.push({type:Type.getClassName(Type.getClass(filter)),
+				blurX:number(field(filter, 'blurX')), blurY:number(field(filter, 'blurY')),
+				quality:number(field(filter, 'quality')),
+				shaderPasses:number(field(filter, '__numShaderPasses'))});
+		}
 		return {
+			filters:filters,
 			visible: field(value, 'visible'), alpha: number(field(value, 'alpha')),
 			zoom: number(field(value, 'zoom')), angle: number(field(value, 'angle')),
 			x: number(field(value, 'x')), y: number(field(value, 'y')),

@@ -15,17 +15,27 @@ class HxcNoteKindDispatchTest(unittest.TestCase):
     def test_false_payload_scopes_use_legacy_arguments_and_stay_in_broadcast(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         start = source.index("\tfunction callAllHScript(")
-        end = source.index("\n\t/** A NoteKind interpreter", start)
+        end = source.index("\n\t/** Psych spawn broadcasts", start)
         dispatch = source[start:end]
         dispatch = dispatch.replace("function callAllHScript(", "public function callAllHScript(", 1)
-        dispatch = dispatch.replace("function callHxcNoteHScript(", "public function callHxcNoteHScript(", 1)
+        hxc_start = source.index("\tfunction callHxcNoteHScript(", end)
+        hxc_end = source.index("\n\t/** A NoteKind interpreter", hxc_start)
+        hxc_dispatch = source[hxc_start:hxc_end].replace(
+            "function callHxcNoteHScript(", "public function callHxcNoteHScript(", 1)
         self.assertIn("hxcPayloadStates.get(usehaxe) == true", source)
-        fixture = '''class EngineCompat {
+        fixture = '''class FakeInterp {
+  public var variables:Map<String,Dynamic> = []; public function new() {}
+}
+class LuaCompatInterp extends FakeInterp {}
+class ScriptCallbackResult {
+ public static var STOP_LUA = '##STOPLUA'; public static var STOP_HSCRIPT = '##STOPHSCRIPT'; public static var STOP_ALL = '##STOPALL';
+}
+class EngineCompat {
   public static function callbackArguments(name:String, selected:String,
       args:Array<Dynamic>, hxc:Bool):Array<Dynamic> return [hxc ? 'hxc' : 'legacy'];
 }
 class State {
-  public var hscriptStates:Map<String,Bool> = [];
+  public var hscriptStates:Map<String,FakeInterp> = [];
   public var hxcPayloadStates:Map<String,Bool> = [];
   public var defaultPsychGlobalScopes:Array<String> = [];
   public var hxcCharacterScopeNames:Map<String,String> = [];
@@ -41,13 +51,13 @@ class State {
       hxcPayloadStates.get(usehaxe) == true);
     received.push(usehaxe + ':' + callArgs[0]);
   }
-''' + dispatch + '''
+''' + dispatch + hxc_dispatch + '''
 }
 class Main {
   static function main() {
     var state = new State();
-    state.hscriptStates.set('psych', true);
-    state.hscriptStates.set('hxc', true);
+    state.hscriptStates.set('psych', new FakeInterp());
+    state.hscriptStates.set('hxc', new FakeInterp());
     state.hxcPayloadStates.set('psych', false);
     state.hxcPayloadStates.set('hxc', true);
     state.callAllHScript('noteMiss', [null], true);

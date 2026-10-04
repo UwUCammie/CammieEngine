@@ -266,19 +266,11 @@ class EngineCompat {
 		produced a callback result.
 	*/
 	public static function functionStop(value:Dynamic):Bool {
-		if (value == true)
-			return true;
-		if (value == null)
-			return false;
-		var text = StringTools.trim(Std.string(value)).toLowerCase();
-		return text == 'function_stop' || text == 'function stop' || text == 'stop';
+		return ScriptCallbackResult.stopsGate(value);
 	}
 
 	public static function functionContinue(value:Dynamic):Bool {
-		if (value == false || value == null)
-			return true;
-		var text = StringTools.trim(Std.string(value)).toLowerCase();
-		return text == 'function_continue' || text == 'function continue' || text == 'continue';
+		return ScriptCallbackResult.continues(value);
 	}
 
 	/** Return whether any callback in a broadcast requested a gate stop. */
@@ -1990,6 +1982,14 @@ class EngineCompat {
 		return [id, direction, noteType, sustain];
 	}
 
+	/** A Psych ghost miss has a direction but no live Note or note-miss ABI. */
+	public static function psychMissPressArguments(name:String, args:Array<Dynamic>):Null<Array<Dynamic>> {
+		if (canonicalCallback(name) != 'noteMiss' || args == null || args.length < 3
+			|| args[0] != null || !Std.isOfType(args[1], Bool)
+			|| (!Std.isOfType(args[2], Int) && !Std.isOfType(args[2], Float))) return null;
+		return [args[2]];
+	}
+
 	/** Return the native hook name represented by a donor lifecycle spelling. */
 	public static function canonicalCallback(name:String):String {
 		if (name == null)
@@ -2007,6 +2007,7 @@ class EngineCompat {
 			case 'oncountdownstep' | 'countdownstep': return 'countdownStep';
 			case 'oncountdownend' | 'countdownend': return 'countdownEnd';
 			case 'onstartcountdown' | 'startcountdown': return 'startCountdown';
+			case 'oncountdownstarted' | 'countdownstarted': return 'countdownStarted';
 			case 'oncountdownstart' | 'countdownstart': return 'countdownStart';
 			case 'oncustomsubstatecreate' | 'customsubstatecreate': return 'customSubstateCreate';
 			case 'oncustomsubstatecreatepost' | 'customsubstatecreatepost': return 'customSubstateCreatePost';
@@ -2018,6 +2019,8 @@ class EngineCompat {
 			case 'onnotehit' | 'notehit': return 'noteHit';
 			case 'onnoteincoming' | 'noteincoming': return 'noteIncoming';
 			case 'onnotemiss' | 'notemiss' | 'onmissnote' | 'missnote': return 'noteMiss';
+			case 'onnotemisspress' | 'notemisspress': return 'noteMissPress';
+			case 'onrecalculaterating' | 'recalculaterating': return 'recalculateRating';
 			case 'onopponentnotemiss' | 'opponentnotemiss': return 'opponentNoteMiss';
 			case 'onnoteghostmiss' | 'noteghostmiss': return 'noteGhostMiss';
 			case 'onsongend' | 'onendsong' | 'songend': return 'songEnd';
@@ -2099,6 +2102,8 @@ class EngineCompat {
 					appendName(result, 'onCountdownStep');
 			case 'startcountdown':
 				appendName(result, 'onStartCountdown');
+			case 'countdownstarted':
+				appendName(result, 'onCountdownStarted');
 			case 'goodnotehit':
 				appendName(result, 'onGoodNoteHit');
 			case 'opponentnotehit':
@@ -2106,6 +2111,10 @@ class EngineCompat {
 			case 'notemiss':
 				appendName(result, 'onNoteMiss');
 				appendName(result, 'onMissNote');
+			case 'notemisspress':
+				appendName(result, 'onNoteMissPress');
+			case 'recalculaterating':
+				appendName(result, 'onRecalculateRating');
 			case 'opponentnotemiss':
 				appendName(result, 'onOpponentNoteMiss');
 			case 'noteghostmiss':
@@ -2185,7 +2194,7 @@ class EngineCompat {
 		?livePsychNotes:Array<Dynamic>):Array<Dynamic> {
 		if (selected == 'onCreate' || selected == 'onCreatePost' || selected == 'onSongStart'
 			|| selected == 'onBeatHit' || selected == 'onStepHit' || selected == 'onSectionHit'
-			|| selected == 'onStartCountdown')
+			|| selected == 'onStartCountdown' || selected == 'onCountdownStarted')
 			return [];
 		if (selected == 'onCountdownTick')
 			return args == null || args.length == 0 ? [] : [args[0]];
@@ -3403,7 +3412,7 @@ public static function lyricActor(value:Dynamic):String {
 				| 'setobjectorder' | 'getobjectorder' | 'screencenter' | 'scaleobject' | 'setblendmode'
 				| 'setscrollfactor'
 				| 'setluaspritescrollfactor' | 'addluasprite' | 'removeluasprite'
-				| 'makeluasprite' | 'makeanimatedluasprite' | 'addanimationbyprefix'
+				| 'makeluasprite' | 'makeanimatedluasprite' | 'addanimation' | 'addanimationbyprefix'
 				| 'addanimationbyindices' | 'objectplayanimation' | 'makeluatext'
 				| 'addluatext' | 'getluaobject' | 'settextstring' | 'settextsize' | 'settextcolor'
 				| 'settextborder' | 'settextfont' | 'setgraphicsize' | 'updatehitbox'
@@ -3416,7 +3425,7 @@ public static function lyricActor(value:Dynamic):String {
 				| 'getcolorfromhex' | 'precacheimage' | 'precachesound' | 'triggerevent'
 					| 'camerashake' | 'swapstage' | 'changestage' | 'starttween'
 					| 'setactorx' | 'setactory' | 'tweencamerazoom' | 'scaleluasprite'
-					| 'settextalignment' | 'gettextfont' | 'getrandombool'
+					| 'settextalignment' | 'gettextfont' | 'gettextstring' | 'getrandombool'
 					| 'characterdance'
 					| 'getmousex' | 'getmousey' | 'getmouseclicked' | 'mouseclicked'
 					| 'playmusic' | 'loadsong' | 'exitsong' | 'restartsong' | 'endsong'

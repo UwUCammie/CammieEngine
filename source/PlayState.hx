@@ -67,6 +67,7 @@ import flixel.math.FlxPoint;
 import flixel.math.FlxRect;
 import flixel.sound.FlxSound;
 import flixel.text.FlxText;
+import flixel.text.FlxText.FlxTextFormat;
 import flixel.text.FlxText.FlxTextAlign;
 import flixel.text.FlxText.FlxTextBorderStyle;
 import flixel.tweens.FlxEase;
@@ -195,7 +196,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	static function seedNightmareVisionCommon(interp:NightmareVisionScriptInterp,
 		paths:NightmareVisionPaths, prefs:NightmareVisionClientPrefs, plugins:NightmareVisionPluginRuntime,
 		mods:NightmareVisionModsContext, difficulty:NightmareVisionDifficultyAdapter,
-		?clock:CompatScriptClock):Void {
+		?clock:CompatScriptClock, ?entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry):Void {
 		// Only matching native APIs are exposed. Missing engine classes remain
 		// attributable import/runtime errors rather than unrelated aliases.
 		var preset:Map<String, Dynamic> = [
@@ -217,10 +218,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			'FlxPoint' => flixel.math.FlxPoint.FlxBasePoint,
 			'FlxTypedGroup' => FlxGroup, 'FlxSpriteGroup' => flixel.group.FlxSpriteGroup,
 			'CoolUtil' => CoolUtil, 'PlayState' => PlayState, 'Paths' => paths,
-			// FunkinScript seeds these source globals from the active chart.
-			// PlayState also owns a `songName` FlxText, so keep the source value in
-			// interpreter variables where it shadows reflected parent fields.
-			'bpm' => SONG.bpm, 'scrollSpeed' => SONG.speed, 'songName' => SONG.song,
 			'ClientPrefs' => prefs.view,
 			'Function_Continue' => NightmareVisionScriptGroup.CONTINUE_FUNC,
 			'Function_Stop' => NightmareVisionScriptGroup.STOP_FUNC,
@@ -236,6 +233,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('funkin.objects.BGSprite', NightmareVisionBGSprite);
 		interp.bindImport('funkin.video.FunkinVideoSprite', NightmareVisionVideoSprite);
 		interp.bindImport('funkin.game.shaders.HSLColorSwap', NightmareVisionHSLColorSwap);
+		interp.bindImport('funkin.game.shaders.DropShadowShader', shaders.DropShadowShader);
 		interp.bindImport('flixel.FlxG', preset.get('FlxG'));
 		interp.bindImport('flixel.text.FlxTextAlign', preset.get('FlxTextAlign'));
 		interp.bindImport('flixel.text.FlxTextBorderStyle', preset.get('FlxTextBorderStyle'));
@@ -270,6 +268,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('funkin.data.Chart', chartApi);
 		interp.variables.set('Conductor', nightmareVisionConductor);
 		interp.bindImport('funkin.backend.Conductor', nightmareVisionConductor);
+		// Persistent plugins may survive a song. Capture only their owner key,
+		// and resolve a matching live scene when a Rating API is actually called.
+		var ratingOwner = paths.root;
+		SourceRatingBindings.installNightmare(interp, null, prefs.view, null, function():Dynamic {
+			var play = PlayState.instance;
+			return play != null && play.sourceRatingApiActive(ratingOwner) ? play : null;
+		});
 		var cameraUtil = new NightmareVisionCameraUtil(function() return cast FlxG.cameras.list);
 		interp.variables.set('CameraUtil', cameraUtil);
 		interp.bindImport('funkin.utils.CameraUtil', cameraUtil);
@@ -303,12 +308,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('PluginsManager', plugins);
 		interp.bindImport('funkin.scripting.PluginsManager', plugins);
 		interp.bindImport('funkin.backend.plugins.ModPlugin', {instance:plugins.scripts.parent});
+		// Core scripts have no donor modFolder. Imported owner scripts retain the
+		// source directory label rather than the generated installation ID.
+		var sourceFolder = entry == null || StringTools.startsWith(entry.relative, '__nmv_core/')
+			? '' : paths.getModFolder(paths.root + '/' + entry.relative, 'scripts');
+		NightmareVisionSourceBindings.bindOwner(interp, paths.root, sourceFolder);
 	}
 
 	function seedNightmareVision(interp:NightmareVisionScriptInterp,
 		entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry, actor:Dynamic):Void {
 		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins,
-			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock);
+			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock, entry);
+		interp.bindClassParent(PlayState);
+		interp.variables.set('GameOverSubstate', GameOverSubstate);
+		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
+		// These are chart-local source snapshots. Persistent plugins receive only
+		// the owner preset above and must not capture a song's destroyed state.
+		var firstSection = SONG.notes == null || SONG.notes.length == 0 ? null : SONG.notes[0];
+		var fields:Map<String, Dynamic> = [
+			'bpm' => SONG.bpm, 'scrollSpeed' => SONG.speed, 'songName' => SONG.song,
+			'isStoryMode' => isStoryMode,
+			'difficulty' => nightmareVisionActiveDifficulty.currentDifficultyIndex,
+			'difficultyName' => nightmareVisionActiveDifficulty.getCurrentDifficultyString(),
+			'seenCutscene' => watchedCutscene, 'songLength' => songLength,
+			'healthGainMult' => healthGainMultiplier, 'healthLossMult' => healthLossMultiplier,
+			'botPlay' => demoMode || compatGetProperty('cpuControlled') == true,
+			'practice' => practiceMode, 'startedCountdown' => startedCountdown,
+			'mustHitSection' => firstSection == null ? false : firstSection.mustHitSection
+		];
+		NightmareVisionSourceBindings.bindGameplay(interp, this, true, fields,
+			function(path:String):Dynamic return nightmareVisionScripts == null ? null : nightmareVisionScripts.loadDynamic(path));
 		interp.variables.set('stage', curStage);
 		var audioView = nightmareVisionAudioView();
 		interp.variables.set('audio', audioView);
@@ -384,7 +413,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActivePrefs.view.loadDefaultKeys();
 		}
 		nightmareVisionPrefs = nightmareVisionActivePrefs;
-		nightmareVisionPaths = new NightmareVisionPaths(root);
+		initializeSourceGameplayPreferences(nightmareVisionPrefs, true);
+		initializeSourceSafeZone(nightmareVisionPrefs.view);
+		initializeSourceRatings(nightmareVisionPrefs.view);
+		var pathSourceDirectory:String = null;
+		try pathSourceDirectory = nightmareVisionActiveMods.currentModDirectory catch (_:Dynamic) {}
+		var ownerHost = NightmareVisionPluginHost.activeHost;
+		nightmareVisionPaths = ownerHost != null && ownerHost.runtime.canReuseFor(root) && ownerHost.assetPaths != null
+			? ownerHost.assetPaths : new NightmareVisionPaths(root, null, nightmareVisionPrefs.view, pathSourceDirectory);
 		if (nightmareVisionAudioApi != null) nightmareVisionAudioApi.release();
 		nightmareVisionAudioApi = new NightmareVisionPlayableSongView(function() {
 			if (FlxG.state != this || startingSong) return null;
@@ -400,8 +436,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var ownerMods = nightmareVisionActiveMods;
 		var ownerDifficulty = nightmareVisionActiveDifficulty;
 		nightmareVisionPlugins = NightmareVisionPluginHost.mount(root, function(interp, entry, plugins) {
-			seedNightmareVisionCommon(interp, ownerPaths, ownerPrefs, plugins, ownerMods, ownerDifficulty);
-		});
+			seedNightmareVisionCommon(interp, ownerPaths, ownerPrefs, plugins, ownerMods, ownerDifficulty, null, entry);
+		}, ownerPaths);
 		var plan = NightmareVisionScriptDiscovery.discover(root, SONG.song, SONG, null, CoolUtil.parseJson);
 		curStage = new StageHelper(SONG.stage);
 		curStage.stageData = NightmareVisionStageData.load(root, SONG.stage);
@@ -580,7 +616,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionScripts == null) return;
 		var prefs = nightmareVisionPrefs.view;
 		var showTime = prefs.timeBarType != 'Disabled';
-		for (object in [cast songPosBG, cast songPosBar, cast songName])
+		for (object in [cast songPosBar, cast songPosBG, cast songName])
 			if (members.indexOf(object) < 0) add(object);
 		var ratings = new NightmareVisionRatingPresentation({
 			paths:nightmareVisionPaths, camera:camHUD,
@@ -590,10 +626,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			useEpicRankings:function() return prefs.useEpicRankings == true,
 			showRatings:prefs.showRatings == true, comboOffsets:cast prefs.comboOffset
 		});
+		var scoreFormat:FlxTextFormat = null;
+		var scoreFormatColor:Int = 0;
 		playHUD = new NightmareVisionHUDAdapter({
 			ratingPresentation:ratings,
 			parent:this, healthFill:healthBar, healthBackground:healthBarBG,
 			iconP1:iconP1, iconP2:iconP2, scoreText:scoreTxt,
+			updateIconPos:!iconOverride,
+			setIconPositionUpdates:function(enabled) iconOverride = !enabled,
 			songFill:songPosBar, songBackground:songPosBG, timeText:songName,
 			healthValue:function() return health, healthMin:0, healthMax:2,
 			songProgress:function() return songPositionBar,
@@ -602,6 +642,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			setSongDirection:function(forward) songPosBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
 			refreshCharacterPresentation:refreshCharacterIconsAndColors,
 			tweenAlpha:function(target, duration) FlxTween.tween(target, {alpha:1}, duration, {ease:FlxEase.circOut}),
+			tweenScoreScale:function(target, duration) return FlxTween.tween(target, {x:1.0, y:1.0}, duration),
+			applyScoreMarkup:function(target, color, start, end) {
+				var text:FlxText = cast target;
+				if (scoreFormat != null) text.removeFormat(scoreFormat);
+				if (scoreFormat == null || scoreFormatColor != color) {
+					scoreFormat = new FlxTextFormat(color);
+					scoreFormatColor = color;
+				}
+				text.addFormat(scoreFormat, start, end);
+			},
 			addDisplay:function(object) return add(cast object),
 			removeDisplay:function(object, splice) return remove(cast object, splice),
 			insertDisplay:function(index, object) return insert(index, cast object)
@@ -626,12 +676,135 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	// Reuse the Psych score contract rather than copying static script globals.
-	@:keep public var songMisses(get, never):Int;
+	@:keep public var songMisses(get, set):Int;
 	function get_songMisses():Int return PlayState.misses;
-	@:keep public var ratingPercent(get, never):Float;
-	function get_ratingPercent():Float return compatGetProperty('ratingPercent');
-	@:keep public var ratingFC(get, never):String;
-	function get_ratingFC():String return compatGetProperty('ratingFC');
+	function set_songMisses(value:Int):Int return PlayState.misses = value;
+	@:keep public var songHits(get, set):Int;
+	function get_songHits():Int return sourceAcceptedHits;
+	function set_songHits(value:Int):Int return sourceAcceptedHits = value;
+	@:keep public var ratingsData:Array<SourceRating> = [];
+	@:keep public var ratingStuff:Array<Dynamic> = [];
+	@:keep public var epics:Int = 0;
+	@:keep public var defaultScoreAddition:Bool = true;
+	var sourceAcceptedHits:Int = 0;
+	var sourceScoreOwner:Bool = false;
+	var sourceScoreNightmare:Bool = false;
+	@:keep public var ratingPercent(get, set):Float;
+	function get_ratingPercent():Float return sourceScoreSnapshot().rating;
+	function set_ratingPercent(value:Float):Float {
+		setPsychRatingValue('rating', value);
+		return value;
+	}
+	@:keep public var ratingName(get, set):String;
+	function get_ratingName():String return sourceScoreSnapshot().ratingName;
+	function set_ratingName(value:String):String {
+		setPsychRatingValue('ratingName', value);
+		return value;
+	}
+	@:keep public var ratingFC(get, set):String;
+	function get_ratingFC():String return sourceScoreSnapshot().ratingFC;
+	function set_ratingFC(value:String):String {
+		setPsychRatingValue('ratingFC', value);
+		return value;
+	}
+	@:keep public var cpuControlled(get, set):Bool;
+	function get_cpuControlled():Bool return compatGetProperty('cpuControlled') == true;
+	function set_cpuControlled(value:Bool):Bool {
+		compatSetProperty('cpuControlled', value);
+		return value;
+	}
+	@:keep public var instakillOnMiss:Bool = false;
+	@:keep public var healthGain:Float = 1;
+	@:keep public var healthLoss:Float = 1;
+	@:keep public var pressMissDamage:Float = 0.05;
+	@:keep public var guitarHeroSustains:Bool = false;
+	@:keep public var isDead:Bool = false;
+	@:keep public var gameOverTimer:FlxTimer;
+	@:keep public var canResync:Bool = true;
+	@:keep public var healthBounds:Dynamic = {min: 0.0, max: 2.0};
+	var sourceDeathBounds:Array<Float> = [0, 2];
+	@:keep public static var deathCounter(get, set):Int;
+	static function get_deathCounter():Int return balls;
+	static function set_deathCounter(value:Int):Int return balls = value;
+
+	/** The source gate runs before audio, counters, timers or scene mutation. */
+	@:keep public function doDeathCheck(skipHealthCheck:Bool = false):Bool {
+		if (!sourceScoreLedgerActive()) return false;
+		if (sourceScoreNightmare) {
+			sourceDeathBounds[0] = healthBounds.min;
+			sourceDeathBounds[1] = healthBounds.max;
+		}
+		if (!SourceDeathPolicy.eligible(sourceScoreNightmare, health, sourceDeathBounds,
+			skipHealthCheck, instakillOnMiss, practiceMode, isDead, gameOverTimer != null)) return false;
+		var result:Dynamic = sourceScoreNightmare ? cast callNightmareVision('onGameOver', [])
+			: PsychRuntimeBindings.dispatch(this, 'onGameOver', [], 'Scripts', true);
+		if (sourceScoreNightmare) {
+			if (result == NightmareVisionScriptGroup.STOP_FUNC) return false;
+		} else if (result == ScriptCallbackResult.STOP) return false;
+		var actor:Character = sourceScoreNightmare ? cast getNightmareVisionField(0).owner : boyfriend;
+		if (actor != null) actor.stunned = true;
+		balls++;
+		paused = true;
+		if (!sourceScoreNightmare) {
+			FlxG.animationTimeScale = 1;
+			canPause = false;
+			canResync = false;
+		} else {
+			stopVocals();
+			if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		}
+		#if cpp
+		stopCompatEventVideo();
+		#end
+		persistentUpdate = false;
+		persistentDraw = false;
+		FlxTimer.globalManager.clear();
+		FlxTween.globalManager.clear();
+		if (!sourceScoreNightmare && camGame != null) camGame.filters = [];
+		if (curCamPos != null) curCamPos.cancel();
+		psychGameOverTransitionPending = true;
+		var delay = sourceScoreNightmare ? 0 : psychGameOverDeathDelay();
+		if (delay > 0) {
+			gameOverTimer = new FlxTimer().start(delay, function(_:FlxTimer) {
+				openSourceGameOver(actor);
+				gameOverTimer = null;
+			});
+		} else openSourceGameOver(actor);
+		isDead = true;
+		setAllHaxeVar('paused', paused);
+		return true;
+	}
+
+	function openSourceGameOver(actor:Character):Void {
+		if (!sourceScoreNightmare) {
+			stopVocals();
+			if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		}
+		openSubState(new GameOverSubstate(actor));
+	}
+
+	function initializeSourceGameplayPreferences(owner:Dynamic, nightmare:Bool):Void {
+		var settings = SourceGameplayPreferences.snapshot(owner, nightmare);
+		healthGain = settings.healthGain;
+		healthLoss = settings.healthLoss;
+		instakillOnMiss = settings.instakillOnMiss;
+		guitarHeroSustains = settings.guitarHeroSustains;
+		// Retain explicitly chosen native modifiers and private smoke overrides.
+		practiceMode = practiceMode || settings.practiceMode;
+		setSourceCpuControlled(demoMode || settings.cpuControlled);
+	}
+
+	function setSourceCpuControlled(value:Bool):Void {
+		demoMode = value;
+		if (value) maxStepCatchUp = 0;
+		if (sourceScoreNightmare)
+			for (field in nightmareVisionFields) if (field != null && field.playerControls) field.autoPlayed = value;
+	}
+
+	function sourceLivePreference(name:String, fallback:Bool):Bool {
+		return SourceGameplayPreferences.liveBool(sourceScoreNightmare ? cast nightmareVisionPrefs : cast psychClientPrefs,
+			sourceScoreNightmare, name, fallback);
+	}
 
 	@:keep public var boyfriendCameraOffset(get, set):Array<Float>;
 	function get_boyfriendCameraOffset():Array<Float> return psychStageCameraBoyfriend;
@@ -642,6 +815,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var girlfriendCameraOffset(get, set):Array<Float>;
 	function get_girlfriendCameraOffset():Array<Float> return psychStageCameraGirlfriend;
 	function set_girlfriendCameraOffset(value:Array<Float>):Array<Float> return psychStageCameraGirlfriend = value;
+
+	/** Optional source character focus overrides the selected field owner. */
+	@:keep public var camCurTarget:Character = null;
 
 	/** NMV's explicit camera helper uses the actor's player flag, including
 	 * when a script requests a position for a character outside the active turn. */
@@ -1475,6 +1651,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** V-Slice's requested playtest/start offset, in milliseconds. This stays
 	 * fixed for this PlayState even after the one-shot launch value is consumed. */
 	@:keep public var startTimestamp:Float = 0.0;
+	// Source scripts query the pre-launch seek, which becomes zero at song start.
+	// Keep it separate from the native transport's fixed startTimestamp.
+	var nightmareVisionStartOnTime:Float = 0;
+	@:keep public var startOnTime(get, set):Float;
+	function get_startOnTime():Float {
+		return nightmareVisionStartOnTime;
+	}
+	function set_startOnTime(value:Float):Float {
+		var requested = Math.isFinite(value) ? Math.max(0, value) : 0;
+		startTimestamp = requested;
+		return nightmareVisionStartOnTime = requested;
+	}
 	public static var startingPosition:Float = 0;
 	public static var startPosSong = 'none';
 	static function consumeStartingPosition():Float {
@@ -1951,6 +2139,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** Temporary boyfriend binding while GameOverSubstate owns a replacement actor. */
 	var hxcGameOverCharacter:Character = null;
 	var psychCompatScriptsLoaded:Bool = false;
+	var psychGlobalScriptsLoaded:Bool = false;
+	var psychSourceEventsPrepared:Bool = false;
+	var psychSourceEventsFinalized:Bool = false;
+	var nightmareVisionSourceEventsPrepared:Bool = false;
+	var sourceEventPreparationInProgress:Bool = false;
+	var psychSourceCreationReady:Bool = true;
+	var sourceEventViews:Array<SourceEventNote> = [];
 	/** Psych's GameOverSubstate character and sound overrides belong to this song. */
 	var psychGameOverOverrides:Map<String, String> = new Map();
 	var psychGameOverDeathDelaySeconds:Float = 0;
@@ -2038,6 +2233,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var finishedHxcEventSprites:Array<FlxSprite> = [];
 	var exInterp:InterpEx = new InterpEx();
 	var haxeSprites:Map<String, FlxSprite> = [];
+	/** Per-scene variables shared by Psych Lua and HScript modules. */
+	public var psychScriptVariables:Map<String, Dynamic> = [];
+	var psychRuntimeBindings:Array<PsychRuntimeBindings> = [];
+	var psychSourceCallbacks = new PsychSourceCallbackRegistry();
+	public var variables(get, never):Map<String,Dynamic>;
+	function get_variables():Map<String,Dynamic> return psychScriptVariables;
+	public function getLuaObject(tag:String, text:Bool = true):Dynamic return compatFindObject(tag);
 	// Keep Sparrow names parsed from the source XML alongside each imported
 	// animated sprite. FlxAtlasFrames can reuse a native bitmap cache entry and
 	// expose a frame collection whose runtime names are unavailable on hxcpp;
@@ -2079,8 +2281,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// the converted Lua closure is gone.
 		var compatShaderCoordFixHandler:Null<Int->Int->Void> = null;
 	function callHscript(func_name:String, args:Array<Dynamic>, usehaxe:String, optional:Bool = false,
-		?returnValues:Array<Dynamic>):Bool {
+		?returnValues:Array<Dynamic>, sourceArguments:Bool = false):Bool {
 		var interp = hscriptStates.get(usehaxe);
+		if (interp != null) interp.variables.set('__compatLastResult', null);
+		// Psych has a separate empty-press callback; native/HXC noteMiss hooks
+		// retain their live-note ABI. The plain .hx marker identifies Psych scripts.
+		if (!sourceArguments && (Std.isOfType(interp, LuaCompatInterp)
+			|| (interp != null && interp.variables.get('__psychPlainHscript') == true))) {
+			var pressArgs = EngineCompat.psychMissPressArguments(func_name, args);
+			if (pressArgs != null) {
+				func_name = 'noteMissPress';
+				args = pressArgs;
+			}
+		}
 		// Psych removes a Lua script from its callback list after close(). Keep
 		// the interpreter alive until song teardown, but stop invoking its hooks.
 		if (interp != null && interp.variables.get('__compatClosed') == true)
@@ -2116,7 +2329,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return false;
 		}
 		var method = interp.variables.get(selectedName);
-		var callArgs = EngineCompat.callbackArguments(func_name, selectedName, args,
+		refreshPsychScoreGlobals(interp);
+		// Source broadcasters already prepared each family's donor ABI. Applying
+		// the legacy Note-to-Lua projection again would corrupt HScript objects.
+		var callArgs = sourceArguments ? (args == null ? [] : args) : EngineCompat.callbackArguments(func_name, selectedName, args,
 			hxcPayloadStates.get(usehaxe) == true,
 			Std.isOfType(interp, LuaCompatInterp) && notes != null ? cast notes.members : null);
 		// HXC's Highscore.tallies is a mutable plain-field view. Refresh its
@@ -2128,7 +2344,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('__compatDiagnosticCallback', selectedName);
 		try {
 			var returned:Dynamic = null;
-			switch(callArgs.length) {
+			if (Std.isOfType(interp, SourceIrisBridge))
+				returned = (cast interp:SourceIrisBridge).callFunction(selectedName, callArgs);
+			else switch(callArgs.length) {
 				case 0:
 					returned = method();
 				case 1:
@@ -2139,7 +2357,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					returned = method(callArgs[0], callArgs[1], callArgs[2]);
 				case 4:
 					returned = method(callArgs[0], callArgs[1], callArgs[2], callArgs[3]);
+				default: returned = Reflect.callMethod(null, method, callArgs);
 			}
+			interp.variables.set('__compatLastResult', returned);
 			// HXC lifecycle methods are Void in their donor ABI. HScript can
 			// expose an incidental last-expression value (for example a native
 			// tween helper returning true); only legacy/Psych callbacks use a
@@ -2164,13 +2384,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 	}
 	function callAllHScript(func_name:String, args:Array<Dynamic>, ?skipHxc:Bool = false,
-		?returnValues:Array<Dynamic>, ?hxcArgs:Array<Dynamic>) {
+		?returnValues:Array<Dynamic>, ?hxcArgs:Array<Dynamic>, ?skipPsych:Bool = false) {
 		// A character callback can synchronously swap actors, which may load a new
 		// companion interpreter. Iterate a stable key list so that adding/removing
 		// scopes during the broadcast cannot invalidate the map iterator.
 		var keys:Array<String> = [];
 		for (key in hscriptStates.keys())
 			keys.push(key);
+		var stopLua = false;
+		var stopHscript = false;
 		for (key in keys) {
 			if (!hscriptStates.exists(key))
 				continue;
@@ -2181,9 +2403,56 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				continue;
 			if (skipHxc && hxcPayloadStates.get(key) == true)
 				continue;
+			var target = hscriptStates.get(key);
+			var psych = target != null && target.variables.get('__psychScoreGlobals') == true
+				&& hxcPayloadStates.get(key) != true;
+			if (skipPsych && psych) continue;
+			var lua = Std.isOfType(target, LuaCompatInterp);
+			if (psych && (lua ? stopLua : stopHscript)) continue;
+			var values:Array<Dynamic> = returnValues;
 			callHscript(func_name, hxcArgs != null && hxcPayloadStates.get(key) == true ? hxcArgs : args,
-				key, true, returnValues);
+				key, true, values);
+			if (psych) {
+				var value = target.variables.get('__compatLastResult');
+				if (value == ScriptCallbackResult.STOP_LUA || value == ScriptCallbackResult.STOP_ALL) stopLua = true;
+				if (value == ScriptCallbackResult.STOP_HSCRIPT || value == ScriptCallbackResult.STOP_ALL) stopHscript = true;
+			}
 		}
+	}
+
+	/** Psych spawn broadcasts to both families, regardless of the Lua return.
+	 * Its Lua ABI includes the live group slot and timestamp; HScript gets Note. */
+	function dispatchPsychNoteSpawn(note:Note):Void {
+		if (!PsychRuntimeBindings.hasScripts(this)) return;
+		var args = EngineCompat.psychNoteCallbackArguments([note], cast notes.members);
+		args[1] = note.noteData;
+		args.push(note.strumTime);
+		PsychRuntimeBindings.dispatch(this, 'onSpawnNote', args, 'Luas');
+		PsychRuntimeBindings.dispatch(this, 'onSpawnNote', [note], 'HScript');
+	}
+
+	/** Pre-hit uses different fallback rules from callOnScripts: an ordinary Lua
+	 * value still permits HScript. Only Function_Stop cancels native judgement. */
+	function dispatchPsychNoteHitPre(note:Note, playerOne:Bool):Bool {
+		if (!PsychRuntimeBindings.hasScripts(this)) return true;
+		var callback = playerOne ? 'goodNoteHitPre' : 'opponentNoteHitPre';
+		var args = EngineCompat.psychNoteCallbackArguments([note], cast notes.members);
+		args[1] = playerOne ? Math.round(Math.abs(note.noteData)) : Math.abs(note.noteData);
+		if (sourceScoreLedgerActive() && !sourceScoreNightmare && playerOne) note.psychHitCallbackArgs = args.copy();
+		var result = PsychRuntimeBindings.dispatch(this, callback, args, 'Luas');
+		if (result != ScriptCallbackResult.STOP && result != ScriptCallbackResult.STOP_HSCRIPT
+			&& result != ScriptCallbackResult.STOP_ALL)
+			result = PsychRuntimeBindings.dispatch(this, callback, [note], 'HScript');
+		return result != ScriptCallbackResult.STOP;
+	}
+
+	/** Publish the started flag before the notification, after the gate and clock
+	 * setup. This is distinct from the cancellable onStartCountdown callback. */
+	function notifySourceCountdownStarted():Void {
+		setAllHaxeVar('startedCountdown', true);
+		if (nightmareVisionScripts != null) nightmareVisionScripts.group.set('startedCountdown', true);
+		PsychRuntimeBindings.dispatch(this, 'onCountdownStarted', []);
+		callNightmareVision('onCountdownStarted', []);
 	}
 	/** Dispatch a note lifecycle hook only to HXC interpreters.  Note hit/miss
 	 * cancellation must run before native scoring, while ordinary HScript/Psych
@@ -3190,6 +3459,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	*/
 	function compatPropertyRoot(name:String):Dynamic {
 		var root = EngineCompat.propertyRoot(name);
+		if (sourceGameOverMode() == 1 && isDead && GameOverSubstate.instance != null) {
+			if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
+			if (PlayState.globalSprites.exists(root)) return PlayState.globalSprites.get(root);
+			if (haxeSprites.exists(root)) return haxeSprites.get(root);
+			return root.toLowerCase() == 'game' || root.toLowerCase() == 'currentplaystate' ? this
+				: Reflect.getProperty(GameOverSubstate.instance, root);
+		}
 		switch (root.toLowerCase()) {
 			case 'game' | 'currentplaystate':
 				return this;
@@ -3203,6 +3479,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return camOther;
 			case 'camfollow':
 				return camFollow;
+			case 'controls':
+				return psychControls == null ? cast controls : psychControls;
 			case 'opponentstrums' | 'enemystrums':
 				return enemyStrums;
 			case 'playerstrums':
@@ -3222,6 +3500,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			case 'song' | 'songdata':
 				return SONG;
 			default:
+				if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
 				var value:Dynamic = null;
 				try value = Reflect.field(this, root) catch (_:Dynamic) {}
 				if (value == null && PlayState.globalSprites.exists(root))
@@ -3484,19 +3763,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// their units and full-combo labels aligned with Psych's source contract.
 		if (suffix == '') switch (root.toLowerCase()) {
 			case 'songmisses': return PlayState.misses;
-			case 'ratingpercent': return FlxMath.bound(accuracy / 100, 0, 1);
-			case 'ratingfc':
-				if (PlayState.misses > 0)
-					return PlayState.misses < 10 ? 'SDCB' : 'Clear';
-				if (PlayState.bads > 0 || PlayState.shits > 0) return 'FC';
-				if (PlayState.goods > 0) return 'GFC';
-				return PlayState.sicks > 0 ? 'SFC' : '';
+			case 'ratingpercent': return ratingPercent;
+			case 'ratingname': return ratingName;
+			case 'ratingfc': return ratingFC;
 			default:
 		}
 		if (root.toLowerCase() == 'songspeed')
 			return daScrollSpeed;
 		if (root.toLowerCase() == 'cpucontrolled' || root.toLowerCase() == 'cpusize')
-			return FlxG.save != null && FlxG.save.data != null ? FlxG.save.data.botplay : false;
+			return sourceScoreLedgerActive() ? demoMode : (FlxG.save != null && FlxG.save.data != null ? FlxG.save.data.botplay : false);
 		if (root.toLowerCase() == 'shownotesplashes')
 			return useNoteSplashes;
 		if (root.toLowerCase() == 'notesplashes' && suffix.toLowerCase() == 'length')
@@ -3564,6 +3839,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				songSpeed = speed;
 				return;
 			case 'cpucontrolled' | 'cpusize':
+				if (sourceScoreLedgerActive()) { setSourceCpuControlled(value == true); return; }
 				if (FlxG.save != null && FlxG.save.data != null)
 					FlxG.save.data.botplay = value;
 				return;
@@ -3580,7 +3856,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			markPsychGlobalProviderSpritePhase(psychGlobalProviderFirstSprite, 'property-begin',
 				'field=' + (suffix == '' ? root : suffix));
 		var wrote = dot < 0
-			? compatWritePath(this, root, value)
+			? compatWritePath(sourceGameOverMode() == 1 && isDead && GameOverSubstate.instance != null
+				? cast GameOverSubstate.instance : this, root, value)
 			: compatWritePath(compatPropertyRoot(root), suffix, value);
 		if (traceSprite)
 			markPsychGlobalProviderSpritePhase(psychGlobalProviderFirstSprite, 'property-complete',
@@ -3670,20 +3947,47 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (name == null)
 			return null;
 		var value = StringTools.trim(Std.string(name));
+		var sourcePrefs = compatSourceClientPrefs(value);
+		if (sourcePrefs != null) return sourcePrefs;
 		switch (value.toLowerCase()) {
 			case 'flixel.flxg':
 				return FlxG;
 			case 'backend.conductor' | 'conductor':
 				return Conductor;
+			case 'backend.controls':
+				return PsychControlsCompat;
+			case 'controls':
+				return psychControls == null ? cast Controls : PsychControlsCompat;
 			case 'backend.coolutil' | 'coolutil':
 				return CoolUtil;
 			case 'backend.highscore' | 'highscore':
 				return Highscore;
 			case 'states.playstate' | 'playstate':
 				return PlayState;
+			case 'gameoversubstate' | 'substates.gameoversubstate' | 'funkin.states.substates.gameoversubstate':
+				return GameOverSubstate;
 			default:
 				try return Type.resolveClass(value) catch (_:Dynamic) return null;
 		}
+	}
+
+	/** Class reflection uses the same owner preference object as source imports. */
+	function compatSourceClientPrefs(name:Dynamic):Dynamic {
+		if (name == null) return null;
+		var key = StringTools.trim(Std.string(name)).toLowerCase();
+		if (key != 'clientprefs' && key != 'backend.clientprefs' && key != 'funkin.data.clientprefs') return null;
+		if (sourceScoreNightmare && nightmareVisionPrefs != null) return nightmareVisionPrefs.view;
+		return psychClientPrefs;
+	}
+
+	function compatSourcePreferencePath(prefs:Dynamic, path:Dynamic):String {
+		var value = path == null ? '' : StringTools.replace(StringTools.trim(Std.string(path)), '\\', '.');
+		if (sourceScoreNightmare) return StringTools.startsWith(value, 'data.') ? value.substr(5) : value;
+		// Older Psych scripts address preference fields without the modern data root.
+		var separator = compatPropertySeparator(value);
+		var root = separator < 0 ? value : value.substr(0, separator);
+		if (Reflect.hasField(psychClientPrefs.data, root)) return 'data.' + value;
+		return value;
 	}
 
 	/** Native reflection does not consistently expose FlxG's static property
@@ -3721,6 +4025,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatGetPropertyFromClass(className:Dynamic, path:Dynamic):Dynamic {
+		var sourcePrefs = compatSourceClientPrefs(className);
+		if (sourcePrefs != null) return compatReadPath(sourcePrefs, compatSourcePreferencePath(sourcePrefs, path));
 		var gameOverKey = psychGameOverClassPropertyKey(className, path);
 		if (gameOverKey == 'deathdelay')
 			return psychGameOverDeathDelaySeconds;
@@ -3736,9 +4042,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				// Psych's ClientPrefs sickWindow is the judgement window in
 				// milliseconds. Judge.sickJudge is the native equivalent and tracks
 				// the selected judge option at runtime.
-				return Judge.sickJudge;
-			case 'goodWindow': return Judge.goodJudge;
-			case 'badWindow': return Judge.badJudge;
+				return sourceScoreLedgerActive() ? PsychClientPrefsCompat.data.sickWindow : Judge.sickJudge;
+			case 'goodWindow': return sourceScoreLedgerActive() ? PsychClientPrefsCompat.data.goodWindow : Judge.goodJudge;
+			case 'badWindow': return sourceScoreLedgerActive() ? PsychClientPrefsCompat.data.badWindow : Judge.badJudge;
 			case 'shitWindow': return Judge.shitJudge;
 			case 'splashAlpha':
 				// The native fork has a visibility gate rather than Psych's separate
@@ -3841,6 +4147,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetPropertyFromClass(className:Dynamic, path:Dynamic, value:Dynamic):Void {
+		var sourcePrefs = compatSourceClientPrefs(className);
+		if (sourcePrefs != null) {
+			compatWritePath(sourcePrefs, compatSourcePreferencePath(sourcePrefs, path), value);
+			return;
+		}
 		var gameOverKey = psychGameOverClassPropertyKey(className, path);
 		if (gameOverKey != null) {
 			if (gameOverKey == 'deathdelay') {
@@ -4526,6 +4837,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return result;
 	}
 
+	/** Psych's frame-number animation API also supports grid-based sprite sheets. */
+	function compatAddAnimation(name:Dynamic, animation:String, frames:Dynamic,
+		fps:Dynamic = 24, looped:Bool = true):Bool {
+		var object:Dynamic = compatFindObject(name);
+		if (object == null || object.animation == null) return false;
+		var indices = compatNormalizeAnimationIndices(frames);
+		if (indices.length == 0) return false;
+		var rate = Std.parseFloat(Std.string(fps));
+		object.animation.add(animation, indices, Math.isNaN(rate) ? 24 : rate, looped);
+		if (object.animation.curAnim == null) object.animation.play(animation, true);
+		return true;
+	}
+
 	function compatAddAnimationByIndices(name:Dynamic, animation:String, prefix:String,
 		indices:Dynamic, fps:Int = 24, looped:Bool = false):Void {
 		var object:Dynamic = compatFindObject(name);
@@ -4740,7 +5064,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			} catch (_:Dynamic) {}
 	}
 
-	function compatLoadGraphic(name:Dynamic, path:String):Void {
+	function compatLoadGraphic(name:Dynamic, path:String, gridX:Int = 0, gridY:Int = 0):Void {
 		var object:Dynamic = compatFindObject(name);
 		if (object == null || path == null)
 			return;
@@ -4752,13 +5076,30 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					'assets/' + clean + '.png'];
 					for (candidate in candidates)
 						if (FNFAssets.exists(candidate)) {
-							(cast object : FlxSprite).loadGraphic(FNFAssets.getBitmapData(candidate));
+							(cast object : FlxSprite).loadGraphic(FNFAssets.getBitmapData(candidate), gridX != 0 || gridY != 0, gridX, gridY);
 							haxeSpriteAtlasNames.remove(Std.string(name));
 							compatForgetSpriteAtlas(object);
 							break;
 						}
 			}
 		} catch (_:Dynamic) {}
+	}
+
+	function compatLoadGraphicForOwner(ownerRoot:String, name:Dynamic, path:String,
+		gridX:Int = 0, gridY:Int = 0):Void {
+		if (ownerRoot == null) {
+			compatLoadGraphic(name, path, gridX, gridY);
+			return;
+		}
+		if (path == null || StringTools.trim(path) == ''
+			|| !compatPsychOwnerFallbackAllowed(ownerRoot, path)) return;
+		var object:Dynamic = compatFindObject(name);
+		if (!Std.isOfType(object, FlxSprite)) return;
+		var graphic = compatPsychPathCall(ownerRoot, 'image', [compatPsychAssetKey(path, '.png')]);
+		if (graphic == null) return;
+		(cast object : FlxSprite).loadGraphic(cast graphic, gridX != 0 || gridY != 0, gridX, gridY);
+		haxeSpriteAtlasNames.remove(Std.string(name));
+		compatForgetSpriteAtlas(object);
 	}
 
 	function compatMakeGraphic(name:Dynamic, width:Int, height:Int, ?color:Dynamic):Void {
@@ -5107,8 +5448,22 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (doof.exists && members.indexOf(doof) >= 0)
 			return;
 		inCutscene = true;
+		preparePsychDialogue(doof);
 		doof.cameras = [camHUD];
 		add(doof);
+	}
+
+	@:keep public var dialogueCount:Int = 0;
+	function preparePsychDialogue(box:DialogueBox):Void {
+		if (box == null) return;
+		box.psychInputMode = true;
+		box.nextDialogueThing = function():Void {
+			dialogueCount++;
+			PsychRuntimeBindings.dispatch(this, 'onNextDialogue', [dialogueCount]);
+		};
+		box.skipDialogueThing = function():Void {
+			PsychRuntimeBindings.dispatch(this, 'onSkipDialogue', [dialogueCount]);
+		};
 	}
 
 	function compatSetSpriteShader(name:Dynamic, shaderName:String):Void {
@@ -5444,6 +5799,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var actor = getHaxeActor(name);
 		if (actor != null)
 			try actor.dance() catch (_:Dynamic) {}
+	}
+
+	/** Psych returns nil for an absent text tag, including optional pause labels. */
+	function compatGetTextString(name:Dynamic):Null<String> {
+		var object:Dynamic = compatFindObject(name);
+		if (!Std.isOfType(object, FlxText)) return null;
+		try return (cast object : FlxText).text catch (_:Dynamic) return null;
 	}
 
 	function compatGetTextFont(name:Dynamic):String {
@@ -5949,6 +6311,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				resultsObserver = true;
 			}
 		}
+		interp.variables.set('__psychScoreGlobals', psychScriptOwner != null || Std.isOfType(interp, LuaCompatInterp));
+		refreshPsychScoreGlobals(interp);
 		if (Std.isOfType(interp, LuaCompatInterp)) {
 			(cast interp : LuaCompatInterp).smokeDiagnosticsEnabled = RuntimeSmokeHarness.enabled();
 			// Psych exposes the authored song id as a string global. The native
@@ -5970,7 +6334,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// chart-side declarations; section/BPM values are refreshed from stepHit.
 		interp.variables.set('screenWidth', FlxG.width);
 		interp.variables.set('screenHeight', FlxG.height);
+		interp.variables.set('EReg', EReg);
 		interp.variables.set('crochet', Conductor.crochet);
+		interp.variables.set('playbackRate', playbackRate);
 		// Psych exposes this engine-owned countdown gate to onStartCountdown.
 		// The native startCountdown() call is the gate here, so imported scripts
 		// should observe the same permissive value before returning their own
@@ -6033,6 +6399,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// bridge rather than exposing a raw PlayState.remove() function.
 		interp.variables.set('removeObject', compatRemoveLuaSprite);
 		interp.variables.set('getLuaObject', compatFindObject);
+		interp.variables.set('addAnimation', compatAddAnimation);
 		interp.variables.set('addAnimationByPrefix', compatAddAnimationByPrefix);
 		interp.variables.set('addAnimationByIndices', compatAddAnimationByIndices);
 		interp.variables.set('addAnimationBySymbolIndices', compatAddAnimationBySymbolIndices);
@@ -6047,7 +6414,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('setTextFont', compatSetTextFont);
 		interp.variables.set('setGraphicSize', compatSetGraphicSize);
 		interp.variables.set('updateHitbox', compatUpdateHitbox);
-		interp.variables.set('loadGraphic', compatLoadGraphic);
+		interp.variables.set('loadGraphic', function(name:Dynamic, image:String, gridX:Int = 0, gridY:Int = 0)
+			compatLoadGraphicForOwner(psychScriptOwner, name, image, gridX, gridY));
 		interp.variables.set('makeGraphic', compatMakeGraphic);
 		interp.variables.set('doTweenX', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'x', value, duration, ease));
 		interp.variables.set('doTweenY', function(tag, object, value, duration, ?ease:String) compatDoTween(tag, object, 'y', value, duration, ease));
@@ -6068,6 +6436,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('scaleLuaSprite', compatScaleLuaSprite);
 		interp.variables.set('setTextAlignment', compatSetTextAlignment);
 		interp.variables.set('getTextFont', compatGetTextFont);
+		interp.variables.set('getTextString', compatGetTextString);
 		interp.variables.set('characterDance', compatCharacterDance);
 		interp.variables.set('runTimer', compatRunTimer);
 		interp.variables.set('cancelTimer', compatCancelTimer);
@@ -6211,6 +6580,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			pauseTweensOf: function(target:Dynamic) if (target != null) CoolUtil.pauseTweensOf(target),
 			resumeTweensOf: function(target:Dynamic) if (target != null) CoolUtil.resumeTweensOf(target)
 		});
+		if (!resultsObserver && (psychScriptOwner != null || Std.isOfType(interp, LuaCompatInterp)
+			|| interp.variables.get('__psychPlainHscript') == true)) {
+			if (psychScriptOwner != null) {
+				var sourceBindings = PsychCompiledStageBindings.create(psychScriptOwner, null, psychClientPrefs);
+				for (name => value in sourceBindings) if (name.indexOf('.') < 0) interp.variables.set(name, value);
+			}
+			interp.variables.set('Controls', PsychControlsCompat);
+			interp.variables.set('controls', psychControls == null ? cast controls : psychControls);
+			interp.variables.set('ClientPrefs', psychClientPrefs == null ? cast PsychClientPrefsCompat : psychClientPrefs);
+			interp.variables.set('Rating', PsychRatingCompat);
+			interp.variables.set('FlxBasic', FlxBasic);
+			interp.variables.set('FlxSpriteGroup', flixel.group.FlxSpriteGroup);
+			interp.variables.set('FlxPoint', PsychFlxPointCompat);
+			interp.variables.set('IntMap', haxe.ds.IntMap);
+			interp.variables.set('ObjectMap', haxe.ds.ObjectMap);
+			interp.variables.set('Type', Type);
+			interp.variables.set('Note', Note);
+			interp.variables.set('HealthIcon', HealthIcon);
+			interp.variables.set('Alphabet', Alphabet);
+			interp.variables.set('PlayState', PlayState);
+			interp.variables.set('MusicBeatState', MusicBeatState);
+			interp.variables.set('game', this);
+			interp.variables.set('variables', psychScriptVariables);
+			new PsychSourceBindings(this, psychScriptOwner).install(interp);
+			new PsychReflectionBindings(this, interp).install();
+			var runtime = new PsychRuntimeBindings(this, interp, origin);
+			runtime.install();
+			psychRuntimeBindings.push(runtime);
+		}
+
 	}
 
 	function hxcModuleNameKeys(scriptPath:String):Array<String> {
@@ -6828,8 +7227,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// path without an extension, so accept explicit native files here first.
 		if ((lower.endsWith('.hscript') || lower.endsWith('.hxs')) && FNFAssets.exists(normalized))
 			return FNFAssets.getText(normalized);
+		if (lower.endsWith('.hx') && FNFAssets.exists(normalized)
+			&& compatPsychOwnerForScript(normalized) != null) {
+			var converted = PsychHscriptCompat.normalize(FNFAssets.getText(normalized), true);
+			for (diagnostic in converted.diagnostics) trace(diagnostic + ' (' + normalized + ')');
+			// A rejected source must not count as a loaded stage or suppress a valid
+			// sibling Lua file. Callers already handle missing compatible modules.
+			return converted.supported ? converted.source : null;
+		}
 		if (lower.endsWith('.lua') && FNFAssets.exists(normalized)) {
-			var converted = LuaCompat.translate(FNFAssets.getText(normalized), normalized);
+			var converted = LuaCompat.translate(FNFAssets.getText(normalized), normalized, compatPsychOwnerForScript(normalized) != null);
 			for (diagnostic in converted.diagnostics)
 				trace(diagnostic);
 			return converted.hscript;
@@ -6863,7 +7270,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			luaPath += '.lua';
 		if (!FNFAssets.exists(luaPath))
 			return null;
-		var converted = LuaCompat.translate(FNFAssets.getText(luaPath), luaPath);
+		var converted = LuaCompat.translate(FNFAssets.getText(luaPath), luaPath, compatPsychOwnerForScript(luaPath) != null);
 		for (diagnostic in converted.diagnostics)
 			trace(diagnostic);
 		return converted.hscript;
@@ -8128,7 +8535,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (skin != null && skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData))
 			RuntimeSmokeHarness.markNightmareVisionNoteVisual(note);
 		if (nightmareVisionNoteTypes != null) {
-			note.nightmareVisionTypeRuntime = nightmareVisionNoteTypes;
+			if (note.nightmareVisionTypeRuntime != nightmareVisionNoteTypes) {
+				// Sustains may inherit this flag before their runtime is attached.
+				var disabled = note.ratingDisabled;
+				note.nightmareVisionTypeRuntime = nightmareVisionNoteTypes;
+				note.applyPendingSourceNoteSemantics();
+				note.resetSourceRatingState();
+				note.ratingDisabled = disabled;
+			}
 		}
 	}
 
@@ -9405,16 +9819,31 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		#end
 		return roots;
 	}
-	function loadPsychCompatScripts():Void {
-		if (psychCompatScriptsLoaded)
+	function loadPsychCompatScripts(globalsOnly:Bool = false):Void {
+		if (globalsOnly ? psychGlobalScriptsLoaded : psychCompatScriptsLoaded)
 			return;
-		psychCompatScriptsLoaded = true;
+		if (globalsOnly) psychGlobalScriptsLoaded = true;
+		else psychCompatScriptsLoaded = true;
 		#if sys
 		for (compatRoot in compatScriptRoots()) {
+			// Dedicated source runtimes already own these modules.
+			if (CompatScriptManifest.usesDedicatedScriptRuntime(getCompatScriptManifest(), compatRoot)) continue;
 			var plan = PsychScriptDiscovery.discover(compatRoot, Song.storageFolder(SONG), SONG, songEvents);
+			if (!globalsOnly && selectedPsychSkinRoot() != null)
+				plan.scripts.sort(function(a, b) {
+					var phase = function(scope:String):Int return switch (scope) {
+						case PsychScriptDiscovery.GLOBAL: 0;
+						case PsychScriptDiscovery.CUSTOM_NOTE_TYPE: 1;
+						case PsychScriptDiscovery.CUSTOM_EVENT: 2;
+						default: 3;
+					};
+					var difference = phase(a.scope) - phase(b.scope);
+					return difference != 0 ? difference : Reflect.compare(a.path, b.path);
+				});
 			for (entry in plan.scripts) {
 			if (entry == null || entry.path == null || entry.scope == PsychScriptDiscovery.STAGE)
 				continue;
+			if (globalsOnly && entry.scope != PsychScriptDiscovery.GLOBAL) continue;
 			var basename = Path.withoutDirectory(entry.path).toLowerCase();
 			// The native loader below chooses exactly one difficulty-aware modchart.
 			// Discovery sees every sibling, so never replay those as generic song
@@ -9479,7 +9908,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	/** Psych's addLuaScript resolves a relative Lua path inside this song's
 	 * declared compatibility roots, then the native asset tree. */
-	function resolvePsychLuaScriptPath(requested:String, ?callerPath:String):Null<String> {
+	function resolvePsychLuaScriptPath(requested:String, ?callerPath:String, hscript:Bool = false):Null<String> {
 		if (requested == null)
 			return null;
 		var clean = StringTools.replace(StringTools.trim(requested), '\\', '/');
@@ -9494,10 +9923,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return null;
 		if (clean.startsWith('imported_mods/'))
 			return null;
-		if (!clean.toLowerCase().endsWith('.lua')) {
+		if (!clean.toLowerCase().endsWith(hscript ? '.hx' : '.lua')) {
 			if (Path.extension(clean) != '')
 				return null;
-			clean += '.lua';
+			clean += hscript ? '.hx' : '.lua';
 		}
 		var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
 		var roots = selectedRoot == null || selectedRoot == ''
@@ -9524,8 +9953,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatAddLuaScript(luaFile:String, ?ignoreAlreadyRunning:Bool = false,
-		?callerPath:String):Bool {
-		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath);
+		?callerPath:String, hscript:Bool = false):Bool {
+		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath, hscript);
 		if (scriptPath == null) {
 			trace('[psych-add-lua-script-missing] ' + luaFile);
 			return false;
@@ -9564,7 +9993,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (hscriptStates.get(registration.scope) == registration.interp
 				&& registration.interp.variables.get('__compatClosed') != true) {
 				active.push(registration);
-				if (registration.path.endsWith('.lua'))
+				if (registration.path.endsWith('.lua') || registration.path.endsWith('.hx'))
 					runningLua = true;
 			}
 		if (active.length == 0) {
@@ -9578,8 +10007,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** Psych removes a Lua script's callbacks, but its already-created stage
 	 * objects remain. Resolve inside the caller's owned root just like add. */
-	function compatRemoveLuaScript(luaFile:String, ?callerPath:String):Bool {
-		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath);
+	function compatRemoveLuaScript(luaFile:String, ?callerPath:String, hscript:Bool = false):Bool {
+		var scriptPath = resolvePsychLuaScriptPath(luaFile, callerPath, hscript);
 		if (scriptPath == null)
 			return false;
 		for (root in compatForeignScriptRoots()) {
@@ -10141,13 +10570,60 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (index < 0) index = 0;
 		if (index >= SONG.notes.length || SONG.notes[index] == null) return;
 		var section = SONG.notes[index];
+		if (nightmareVisionScripts != null) {
+			if (gf != null && section.gfSection == true) {
+				var point = gf.getMidpoint();
+				camFollow.setPosition(point.x + gf.cameraPosition[0] + girlfriendCameraOffset[0],
+					point.y + gf.cameraPosition[1] + girlfriendCameraOffset[1]);
+				point.put();
+				applyNightmareVisionSingDisplacement(gf);
+				callNightmareVision('onMoveCamera', ['gf']);
+				nightmareVisionScripts.group.set('whosTurn', 'gf');
+			} else {
+				var isDad = section.mustHitSection != true;
+				moveCamera(isDad);
+				callNightmareVision('onMoveCamera', [isDad ? 'dad' : 'boyfriend']);
+			}
+			return;
+		}
 		if (gf != null && section.gfSection == true)
 			setCameraFollowActor(gf, 'gf');
 		else
 			moveCamera(section.mustHitSection != true);
+		if (psychCameraCompatibilityActive)
+			callAllHScript('onMoveCamera', [gf != null && section.gfSection == true
+				? 'gf' : (section.mustHitSection == true ? 'boyfriend' : 'dad')]);
+	}
+
+	/** Psych follows section changes; NMV follows its own fixed source ticks. */
+	function updatePsychSectionCamera():Void {
+		if (psychCameraCompatibilityActive && nightmareVisionScripts == null
+			&& generatedMusic && !endingSong && !isCameraOnForcedPos && !forceCamera)
+			moveCameraSection();
+	}
+
+	/** Apply the source animation offset to a fresh actor target each source tick. */
+	function applyNightmareVisionSingDisplacement(actor:Character):Void {
+		if (actor == null || nightmareVisionPrefs == null
+			|| nightmareVisionPrefs.view.camFollowsCharacters != true) return;
+		var displacement = actor.getSingDisplacement();
+		camFollow.x += displacement.x;
+		camFollow.y += displacement.y;
+		displacement.putWeak();
 	}
 
 	@:keep public function moveCamera(isDad:Bool):Void {
+		if (nightmareVisionScripts != null) {
+			var actor:Character = cast getNightmareVisionField(isDad ? 1 : 0).owner;
+			if (actor == null) actor = isDad ? dad : boyfriend;
+			if (camCurTarget != null) actor = camCurTarget;
+			var point = getCharacterCameraPos(actor);
+			camFollow.setPosition(point.x, point.y);
+			point.put();
+			applyNightmareVisionSingDisplacement(actor);
+			nightmareVisionScripts.group.set('whosTurn', isDad ? 'dad' : 'boyfriend');
+			return;
+		}
 		if (isDad)
 			setCameraFollowActor(dad, 'dad');
 		else
@@ -10299,7 +10775,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				// use the static adapter instead; otherwise a stage would quietly load
 				// with neither onCreate nor its preserved runtime callbacks.
 				var luaSource = FNFAssets.getText(entry.path);
-				var luaResult = LuaCompat.translate(luaSource, entry.path);
+				var luaResult = LuaCompat.translate(luaSource, entry.path, true);
 				runtimeSource = luaResult.hscript;
 				var hasCreationHook = runtimeSource != null
 					&& (new EReg('\\bfunction\\s+(?:onCreate|start)\\s*\\(', '').match(runtimeSource));
@@ -10431,7 +10907,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		psychCompiledStageRuntimeError = '';
 		psychCompiledStageDiagnosticsReported = 0;
 		psychCompiledStageRuntime = new PsychCompiledStageRuntime(ownerRoot, source.modulePath, this,
-			PsychCompiledStageBindings.create(ownerRoot, psychStageLibrary));
+			PsychCompiledStageBindings.create(ownerRoot, psychStageLibrary, psychClientPrefs));
 		if (!psychCompiledStageRuntime.create()) {
 			var diagnostics = psychCompiledStageRuntime.diagnostics;
 			psychCompiledStageRuntimeError = diagnostics.join('; ');
@@ -10444,7 +10920,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (RuntimeSmokeHarness.enabled())
 			trace('[psych-stage-callbacks] story=' + isStoryMode + ' songName=' + PsychSongNameCompat.format(SONG.song)
 				+ ' start=' + (psychStageStartCallback != null) + ' end=' + (psychStageEndCallback != null));
-		pushPsychCompiledStageEvents();
 		return psychCompiledStageRuntime != null && psychCompiledStageRuntime.active;
 	}
 
@@ -10534,34 +11009,163 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			time == null ? 0 : Std.parseFloat(Std.string(time))]);
 	}
 
-	function pushPsychCompiledStageEvents():Void {
-		if (psychCompiledStageRuntime == null || songEvents == null)
-			return;
+	/** Global/stage observers see pushes before event and song modules load.
+	 * Views are retained so stage edits and later offset callbacks share a row. */
+	function preparePsychSourceEvents():Void {
+		if (psychSourceEventsPrepared || nightmareVisionScripts != null || selectedPsychSkinRoot() == null) return;
+		psychSourceEventsPrepared = true;
 		var pushedNames:Map<String, Bool> = new Map();
-		for (event in songEvents) {
-			if (event == null)
-				continue;
-			var eventName = Reflect.field(event, 'name');
-			if (eventName == null)
-				continue;
-			var name = Std.string(eventName);
-			var value1:Dynamic = Reflect.field(event, 'v1');
-			var value2:Dynamic = Reflect.field(event, 'v2');
-			var time:Dynamic = Reflect.field(event, 'time');
-			var eventNote:Dynamic = {
-				strumTime:(time == null ? 0 : Std.parseFloat(Std.string(time))) + OptionsHandler.options.offset,
-				event:name,
-				value1:value1 == null ? '' : Std.string(value1),
-				value2:value2 == null ? '' : Std.string(value2)
-			};
-			dispatchPsychCompiledStage('eventPushedUnique', [eventNote]);
-			if (!pushedNames.exists(name)) {
-				pushedNames.set(name, true);
-				dispatchPsychCompiledStage('eventPushed', [eventNote]);
+		for (row in songEvents) {
+			var event = new SourceEventNote(row, OptionsHandler.options.offset);
+			sourceEventViews.push(event);
+			precachePsychSourceEvent(event);
+			dispatchPsychCompiledStage('eventPushedUnique', [event]);
+			if (!pushedNames.exists(event.event)) {
+				pushedNames.set(event.event, true);
+				dispatchPsychCompiledStage('eventPushed', [event]);
 			}
-			if (psychCompiledStageRuntime == null || !psychCompiledStageRuntime.active)
-				return;
+			PsychRuntimeBindings.dispatch(this, 'onEventPushed',
+				[event.event, event.value1 == null ? '' : event.value1, event.value2 == null ? '' : event.value2, event.strumTime]);
 		}
+	}
+
+	function precachePsychSourceEvent(event:SourceEventNote):Void {
+		if (event.event == 'Change Character') compatAddCharacterToList(event.value2, event.value1);
+		else if (event.event == 'Play Sound') compatPrecacheSoundForOwner(selectedPsychSkinRoot(), event.value1);
+	}
+
+	/** Offset callbacks run only once, after custom-event and song creation. */
+	function finalizePsychSourceEvents():Void {
+		if (psychSourceEventsFinalized || !psychSourceEventsPrepared) return;
+		psychSourceEventsFinalized = true;
+		for (event in sourceEventViews) {
+			var returned = PsychRuntimeBindings.dispatch(this, 'eventEarlyTrigger',
+				[event.event, event.value1, event.value2, event.strumTime], 'Scripts', true);
+			var early = sourceEventEarlyOffset(returned, event.event);
+			if (early == null || early == 0) early = event.event == 'Kill Henchmen' ? 280 : 0;
+			event.strumTime -= early;
+		}
+		sortSourceSongEvents();
+	}
+
+	function sourceEventEarlyOffset(value:Dynamic, eventName:String):Null<Float> {
+		if (value == null || value == ScriptCallbackResult.CONTINUE) return null;
+		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
+			var number:Float = value;
+			if (Math.isFinite(number)) return number;
+		}
+		trace('[compat-event-offset-error] ' + eventName + ': expected a finite millisecond offset, got '
+			+ Std.string(value) + ' (' + Std.string(Type.typeof(value)) + ')');
+		return null;
+	}
+
+	function sortSourceSongEvents():Void {
+		songEvents.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
+	}
+
+	function sourceChartNoteOffset():Float {
+		return nightmareVisionPrefs != null ? nightmareVisionPrefs.view.noteOffset
+			: psychClientPrefs != null ? psychClientPrefs.data.noteOffset : OptionsHandler.options.offset;
+	}
+
+	/** NV loads a module at its first authored occurrence, before early timing.
+	 * Preparation notifications never cancel insertion into the native queue. */
+	function prepareNightmareVisionSourceEvents():Void {
+		if (nightmareVisionSourceEventsPrepared || nightmareVisionScripts == null) return;
+		nightmareVisionSourceEventsPrepared = true;
+		sourceEventPreparationInProgress = true;
+		try {
+		var pushedNames:Map<String, Bool> = new Map();
+		for (row in songEvents) {
+			var event = new SourceEventNote(row, sourceChartNoteOffset());
+			sourceEventViews.push(event);
+			if (!pushedNames.exists(event.event)) {
+				var firstName = event.event;
+				nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);
+				pushedNames.set(firstName, true);
+			}
+			var returned = callNightmareVision('eventEarlyTrigger', [event.event, event.value1, event.value2]);
+			var early = sourceEventEarlyOffset(returned, event.event);
+			if (early == null || early == NightmareVisionScriptGroup.CONTINUE_FUNC)
+				early = sourceEventEarlyOffset(nightmareVisionScripts.callEvent(event.event, 'offsetStrumTime', [event]), event.event);
+			if (early == null || early == NightmareVisionScriptGroup.CONTINUE_FUNC)
+				early = event.event == 'Kill Henchmen' ? 280 : 0;
+			event.strumTime -= early;
+			if (!precacheNightmareVisionSourceEvent(event))
+				nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);
+			callNightmareVision('onEventPush', [event]);
+		}
+		sortSourceSongEvents();
+		} catch (error:Dynamic) {
+			sourceEventPreparationInProgress = false;
+			throw error;
+		}
+		sourceEventPreparationInProgress = false;
+	}
+
+	/** These source built-ins own preparation and do not call module onPush.
+	 * Unsupported SV behavior remains an explicit gap rather than invoking an
+	 * unrelated event script as a substitute. */
+	function precacheNightmareVisionSourceEvent(event:SourceEventNote):Bool {
+		switch (event.event) {
+			case 'Change Character':
+				var role = NightmareVisionCharacterEvent.preloadRole(event.value1);
+				nightmareVisionCharacterBank(role == 2 && gf == null ? 1 : role).addToList(event.value2);
+			case 'Change Noteskin':
+				try {
+					if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
+					var skin = nightmareVisionNoteSkins.get(event.value1);
+					if (skin == null) {
+						skin = new NightmareVisionNoteSkin(nightmareVisionPaths, event.value1);
+						nightmareVisionNoteSkins.set(event.value1, skin);
+					}
+					skin.precacheEffects();
+				} catch (error:Dynamic) trace('[nightmare-vision-event-precache-error] ' + event.event + ': ' + Std.string(error));
+			case 'Mult SV', 'Constant SV':
+				trace('[nightmare-vision-event-unsupported] ' + event.event + ': source scroll-velocity timeline is not implemented');
+			default: return false;
+		}
+		return true;
+	}
+
+	function loadPsychSourceGlobals():Void {
+		if (nightmareVisionScripts != null || selectedPsychSkinRoot() == null) return;
+		sourceEventPreparationInProgress = true;
+		try {
+			loadPsychCompatScripts(true);
+			loadDefaultPsychGlobalScripts();
+		} catch (error:Dynamic) {
+			sourceEventPreparationInProgress = false;
+			throw error;
+		}
+		sourceEventPreparationInProgress = false;
+	}
+
+	function loadCountdownModchart():Void {
+		var daDefault = DifficultyManager.getDefaultFromName(storyDifficultyText);
+		if (daDefault == '') daDefault = storyDifficultyText.toLowerCase();
+		var modchartRoot = currentSongDataFolder() + "/";
+		var difficultyModchart = modchartRoot + "modchart-" + daDefault;
+		var genericModchart = modchartRoot + "modchart";
+		if (FNFAssets.exists(difficultyModchart, Hscript) || FNFAssets.exists(difficultyModchart + '.lua'))
+			makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart-" + daDefault);
+		else if (FNFAssets.exists(genericModchart, Hscript) || FNFAssets.exists(genericModchart + '.lua'))
+			makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart");
+	}
+
+	function preparePsychSourceSongScripts():Void {
+		if (nightmareVisionScripts != null || selectedPsychSkinRoot() == null || psychSourceEventsFinalized) return;
+		sourceEventPreparationInProgress = true;
+		try {
+			preparePsychSourceEvents();
+			loadPsychCompatScripts();
+			loadCountdownModchart();
+			finalizePsychSourceEvents();
+		} catch (error:Dynamic) {
+			sourceEventPreparationInProgress = false;
+			throw error;
+		}
+		sourceEventPreparationInProgress = false;
 	}
 
 	function reportUnsupportedPsychCompiledStage(className:String):String {
@@ -10622,10 +11226,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				trace('[legacy-frame-' + diagnostic.code + '] ' + diagnostic.message + ' (' + path + filename + ':' + diagnostic.line + ')');
 			source = legacyFrameDelta.source;
 		}
-		var program = parser.parseString(source);
-		var interp:Interp = translatedLua
-			? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
+		var plainPsych = source.startsWith(PsychHscriptCompat.TRANSLATED_MARKER);
+		var program = plainPsych ? null : parser.parseString(source);
+		var interp:Interp = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
+			: translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
 		interp.variables.set('__compatDiagnosticSource', path + filename);
+		interp.variables.set('__psychPlainHscript', source.startsWith(PsychHscriptCompat.TRANSLATED_MARKER));
 		// set vars
 		interp.variables.set("BEHIND_GF", BEHIND_GF);
 		interp.variables.set("BEHIND_BF", BEHIND_BF);
@@ -10944,6 +11550,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set("soundPlaySafe", PlayState.hscriptSafePlay);
 		interp.variables.set("preloadSound", PlayState.preloadHscriptSound);
 		seedEngineCompat(interp, extraPsychOwnerRoot);
+		if (interp.variables.get('__psychPlainHscript') == true) {
+			interp.variables.set('game', this);
+			interp.variables.set('FlxRect', FlxRect);
+			interp.variables.set('Paths', PsychOwnerPaths.create(compatPsychOwnerForScript(path + filename)));
+		}
 		seedHxcCharacterCompat(interp, path + filename, characterRole);
 
 		//no sus here
@@ -10991,7 +11602,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// watermark for the imported-stage HUD clamp: everything this scope
 		// registers from here on is diffed against stageSprites afterwards
 		var hudPropWatermark:Int = stageSprites.length;
-		interp.execute(program);
+		if (plainPsych) (cast interp:SourceIrisBridge).evaluate(source, path + filename);
+		else interp.execute(program);
 		if (hxcStageBindings != null)
 			for (name in hxcStageBindings.keys())
 				interp.variables.set(name, hxcStageBindings.get(name));
@@ -11043,10 +11655,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var startSucceeded = false;
 		try {
 			startSucceeded = callHscript("start", [SONG.song], usehaxe, true);
-			// Psych/Kade split creation into onCreate and onCreatePost.  The former
-			// is routed by the start call above; dispatch the post phase once the
-			// canonical state has finished seeding its objects.
-			callHscript("createPost", [], usehaxe, true);
+			// Selected Psych scripts receive their post phase as one source-ordered
+			// broadcast after scene setup and the initial rating/display refresh.
+			// Native/Kade scopes retain their existing per-module post phase.
+			if (selectedPsychSkinRoot() == null || interp.variables.get('__psychScoreGlobals') != true)
+				callHscript("createPost", [], usehaxe, true);
 		} catch (error:Dynamic) {
 			if (bindCharacterStart) {
 				hxcCharacterCallbackActor = previousStartActor;
@@ -11141,9 +11754,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		for (diagnostic in legacyFrameDelta.diagnostics)
 			trace('[legacy-frame-' + diagnostic.code + '] ' + diagnostic.message + ' (' + path + filename + ':' + diagnostic.line + ')');
 		source = legacyFrameDelta.source;
-		var program = parser.parseString(source);
-		var interp:Interp = translatedLua
-			? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
+		var plainPsych = source.startsWith(PsychHscriptCompat.TRANSLATED_MARKER);
+		var program = plainPsych ? null : parser.parseString(source);
+		var interp:Interp = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
+			: translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
 		interp.variables.set('__compatDiagnosticSource', path + filename);
 		// set vars
 		interp.variables.set("difficulty", storyDifficulty);
@@ -11317,11 +11931,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// the owning state before HXC callbacks run, then clear the static scratch
 		// value so a later Freeplay/retry launch of the same song starts at zero.
 		startTimestamp = consumeStartingPosition();
+		nightmareVisionStartOnTime = Math.max(0, startTimestamp);
 		startPosSong = SONG.song;
 		var psychCameraRoot = Song.currentPsychCharacterRoot();
 		psychCameraCompatibilityActive = psychCameraRoot != null && StringTools.trim(psychCameraRoot) != '';
 		RuntimeSmokeHarness.markPlayStateStart(SONG);
 		clearScriptOwnership();
+		psychSourceCreationReady = selectedPsychSkinRoot() == null;
 		CodenameModRuntime.synchronizeChartOwner(codenameSelectedRoot());
 		// Imported HXC character callbacks may select game-over/pause audio for
 		// this song. Clear the previous song's bounded suffix view before native
@@ -11353,6 +11969,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		Judgement.uiJson = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_ui/ui_packs/ui.json'));
 		uiSmelly = Reflect.field(Judgement.uiJson, SONG.uiType);
 		misses = bads = goods = sicks = shits = 0;
+		initializeSourceScoreLedger(nightmareVisionSelectedRoot() != '');
 		ss = true;
 		// use current note amount
 		Note.NOTE_AMOUNT = SONG.preferredNoteAmount;
@@ -11483,6 +12100,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			demoMode = true;
 			maxStepCatchUp = 0;
 		}
+		if (psychClientPrefs != null) initializeSourceGameplayPreferences(psychClientPrefs, false);
 		player1GoodHitSignal = new Signal<Note>();
 		player2GoodHitSignal = new Signal<Note>();
 		// rebind always, to support multi-key
@@ -11654,6 +12272,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 
 		doof = new DialogueBox(false, goodDialog);
+		if (selectedPsychSkinRoot() != null) preparePsychDialogue(doof);
 		trace('doofensmiz');
 		// doof.x += 70;
 		// doof.y = FlxG.height * 0.5;
@@ -11715,6 +12334,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// startCountdown();
 		trace('before generate');
 		if (nightmareVisionScripts == null) {
+			loadPsychSourceGlobals();
 			generateSong(SONG.song);
 			RuntimeSmokeHarness.markLoadPhase('chart_generated');
 		} else {
@@ -11754,28 +12374,45 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		FlxG.fixedTimestep = false;
 		trace('gay');
-		songPosBG = new FlxSprite(0, 10).loadGraphic('assets/images/healthBar.png');
+		var sourceTimeHUD = nightmareVisionScripts != null;
+		var timeGraphic:Dynamic = sourceTimeHUD
+			? nightmareVisionPaths.image(nightmareVisionPaths.usesSharedRatingPrefix
+				? 'timeBar' : nightmareVisionPaths.UI_PREFIX + 'timeBar')
+			: 'assets/images/healthBar.png';
+		songPosBG = new FlxSprite(0, 10).loadGraphic(timeGraphic);
 		if (downscroll)
 			songPosBG.y = FlxG.height * 0.9 + 45;
 		songPosBG.screenCenter(X);
 		songPosBG.scrollFactor.set();
 		songPosBG.cameras = [camHUD];
 
-		songPosBar = new FlxBar(songPosBG.x + 4, songPosBG.y + 4, LEFT_TO_RIGHT, Std.int(songPosBG.width - 8), Std.int(songPosBG.height - 8), this,
+		var shownSongTitle = SONG.compatPreserveSongTitle == true ? SONG.song
+			: StringTools.replace(SONG.song, '-', ' ');
+		songName = new FlxText(sourceTimeHUD ? 0 : songPosBG.x,
+			sourceTimeHUD ? (downscroll ? FlxG.height - 44 : 19) : songPosBG.y,
+			sourceTimeHUD ? FlxG.width : songPosBG.width, shownSongTitle, sourceTimeHUD ? 32 : 16);
+		if (downscroll && !sourceTimeHUD)
+			songName.y -= 3;
+		songName.setFormat("assets/fonts/vcr.ttf", sourceTimeHUD ? 32 : 16,
+			FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
+		if (sourceTimeHUD) {
+			songName.borderSize = 2;
+			songPosBG.y = songName.y + songName.height / 4;
+		}
+		songName.scrollFactor.set();
+		songName.cameras = [camHUD];
+
+		// Source Bar geometry is derived from its time graphic, before a script
+		// swaps the decorative border. Its fills sit beneath that border.
+		var timeInset = sourceTimeHUD ? 3 : 4;
+		songPosBar = new FlxBar(songPosBG.x + timeInset, songPosBG.y + timeInset, LEFT_TO_RIGHT,
+			Std.int(songPosBG.width - timeInset * 2), Std.int(songPosBG.height - timeInset * 2), this,
 			'songPositionBar', 0, 1);
 		songPosBar.scrollFactor.set();
 		songPosBar.createFilledBar(FlxColor.GRAY, FlxColor.LIME);
 		songPosBar.numDivisions = 1000;
 		songPosBar.cameras = [camHUD];
 
-		var shownSongTitle = SONG.compatPreserveSongTitle == true ? SONG.song
-			: StringTools.replace(SONG.song, '-', ' ');
-		songName = new FlxText(songPosBG.x, songPosBG.y, songPosBG.width, shownSongTitle, 16);
-		if (downscroll)
-			songName.y -= 3;
-		songName.setFormat("assets/fonts/vcr.ttf", 16, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
-		songName.scrollFactor.set();
-		songName.cameras = [camHUD];
 		// old-engine global sprite names for the song progress UI
 		PlayState.globalSprites.set("timeBarBG", songPosBG);
 		PlayState.globalSprites.set("timeBar", songName);
@@ -11784,7 +12421,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		timeBarBG = songPosBG;
 		timeBar = songName;
 
-		if (useSongBar) {
+		if (useSongBar && !sourceTimeHUD) {
 			add(songPosBG);
 			add(songPosBar);
 			add(songName);
@@ -12011,15 +12648,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindGameplayCameras();
 		trace('ui done');
 		RuntimeSmokeHarness.markStep('playstate:create:ui-layout-complete');
+		psychSourceCreationReady = true;
+		preparePsychSourceSongScripts();
 
 		if (nightmareVisionScripts != null) {
 			nightmareVisionScripts.loadScope('song');
 			callNightmareVision('preNoteGeneration', []);
 			generateSong(SONG.song);
-			nightmareVisionScripts.loadScope('event');
 			RuntimeSmokeHarness.markLoadPhase('chart_generated');
 			preloadSwapCharacters();
 			RuntimeSmokeHarness.markLoadPhase('swap_characters_preloaded');
+			moveCameraSection();
+		} else {
+			updatePsychSectionCamera();
 		}
 
 		RuntimeSmokeHarness.markStep('playstate:create:intro-selection-begin');
@@ -12051,7 +12692,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 
 		RuntimeSmokeHarness.markStep('playstate:create:intro-dispatch-returned');
+		if (sourceScoreDisplayOwned()) {
+			RecalculateRating(false, false);
+			if (nightmareVisionScripts != null) updateScoreBar();
+		}
 		RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');
+		if (selectedPsychSkinRoot() != null) PsychRuntimeBindings.dispatch(this, 'onCreatePost', []);
 		callNightmareVision('onCreatePost', []);
 		refreshNightmareVisionStage();
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');
@@ -12624,6 +13270,38 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		returns either a native asset id or a selected imported namespace; reduce
 		both forms to an in-scope video file before handing it to the native class.
 	*/
+	public function psychStartVideo(ownerRoot:String, name:String, canSkip:Bool = true,
+		forMidSong:Bool = false, shouldLoop:Bool = false, playOnLoad:Bool = true):Bool {
+		if (ownerRoot == null || ownerRoot == '') return false;
+		var paths = PsychOwnerPaths.create(ownerRoot);
+		Reflect.setField(paths, 'root', ownerRoot);
+		Reflect.setField(paths, 'scopeAssetPath', function(path:String):String {
+			return PsychOwnerAssetPath.resolve(ownerRoot, path).path;
+		});
+		Reflect.setField(paths, 'exists', function(path:String):Bool return FNFAssets.exists(path));
+		var video = new NightmareVisionVideoSprite(this, paths, 0, 0, true, canSkip);
+		video.cameras = [camOther];
+		video.onFormat(function() {
+			video.setGraphicSize(FlxG.width, FlxG.height);
+			video.updateHitbox(); video.screenCenter();
+		});
+		var completed = false;
+		video.onEnd(function() {
+			if (completed) return;
+			completed = true;
+			remove(video, true);
+			if (!forMidSong) {
+				inCutscene = false;
+				if (endingSong) endForReal(); else startCountdown();
+			}
+		});
+		if (!forMidSong) inCutscene = true;
+		add(video);
+		var loaded = video.load(name, shouldLoop ? [NightmareVisionVideoSprite.looping] : []);
+		if (loaded && playOnLoad) video.delayAndStart();
+		return loaded;
+	}
+
 	@:keep public function hxcPlayImportedVideo(filename:Dynamic, ?ending:Bool = false):Bool {
 		var clean = hxcResolveImportedVideoPath(filename);
 		if (clean == null)
@@ -12878,8 +13556,26 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	public function startCountdown():Void {
 		RuntimeSmokeHarness.markStep('countdown:entry');
-		if (hxcCountdownHookDispatching || codenameCountdownPreparationInProgress) {
+		// Source stage/global creation callbacks can request a countdown before
+		// event modules and HUD construction are ready. The normal intro/start
+		// callback will hand off after this source preparation boundary.
+		if (!psychSourceCreationReady) return;
+		if (hxcCountdownHookDispatching || codenameCountdownPreparationInProgress || sourceEventPreparationInProgress) {
 			RuntimeSmokeHarness.markStep('countdown:guarded-return');
+			return;
+		}
+		// Source engines still notify the start gate on a repeated request, but
+		// never reset an already-running countdown or emit Started a second time.
+		if (startedCountdown) {
+			hxcCountdownHookDispatching = true;
+			try {
+				PsychRuntimeBindings.dispatch(this, 'onStartCountdown', []);
+				callNightmareVision('onStartCountdown', []);
+			} catch (error:Dynamic) {
+				hxcCountdownHookDispatching = false;
+				throw error;
+			}
+			hxcCountdownHookDispatching = false;
 			return;
 		}
 		#if cpp
@@ -12940,15 +13636,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (codenameGuardSet) codenameCountdownPreparationInProgress = true;
 		try {
 			RuntimeSmokeHarness.markStep('countdown:modchart-load-begin');
-			var daDefault = DifficultyManager.getDefaultFromName(storyDifficultyText);
-			if (daDefault == '') daDefault = storyDifficultyText.toLowerCase();
-			var modchartRoot = currentSongDataFolder() + "/";
-			var difficultyModchart = modchartRoot + "modchart-" + daDefault;
-			var genericModchart = modchartRoot + "modchart";
-			if (FNFAssets.exists(difficultyModchart, Hscript) || FNFAssets.exists(difficultyModchart + '.lua'))
-				makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart-" + daDefault);
-			else if (FNFAssets.exists(genericModchart, Hscript) || FNFAssets.exists(genericModchart + '.lua'))
-				makeHaxeState("modchart", currentSongDataFolder() + "/", "modchart");
+			if (!psychSourceEventsFinalized) loadCountdownModchart();
 			RuntimeSmokeHarness.markStep('countdown:modchart-load-complete');
 			// Psych/Kade allow multiple independent global, song, custom-event, and
 			// custom-note scripts. Load every script selected by the chart-aware plan;
@@ -13029,7 +13717,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// so dispatch them explicitly and preserve Function_Stop for authored
 			// intros that request the countdown again when they finish.
 			countdownResults.push(callNightmareVision('onStartCountdown', []));
-			callAllHScript('startCountdown', [], false, countdownResults);
+			callAllHScript('startCountdown', [], false, countdownResults, null, true);
+			if (PsychRuntimeBindings.dispatch(this, 'onStartCountdown', []) == ScriptCallbackResult.STOP)
+				countdownResults.push(ScriptCallbackResult.STOP);
 			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-complete');
 		} catch (error:Dynamic) {
 			hxcCountdownHookDispatching = false;
@@ -13050,10 +13740,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// it has no native cutsceneType metadata.
 		if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)
 			watchedCutscene = true;
-		Conductor.songPosition = 0;
+		Conductor.songPosition = -Conductor.crochet * 5;
+		notifySourceCountdownStarted();
+		if (skipCountdown) Conductor.songPosition = 0;
 		RuntimeSmokeHarness.markStep('countdown:timer-setup-begin');
 		if (!skipCountdown) {
-			Conductor.songPosition -= Conductor.crochet * 5;
 
 			var swagCounter:Int = 0;
 
@@ -13299,6 +13990,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			hxcCountdownEndDispatched = true;
 			callAllHScript('countdownEnd', [EngineCompat.hxcLifecyclePayload('countdownEnd', {countdownStep: 4})]);
 		}
+		nightmareVisionStartOnTime = 0;
 		if (playHUD != null) playHUD.onSongStart();
 		callNightmareVision('onSongStart', []);
 		callAllHScript('songStart', [SONG.song]);
@@ -16546,6 +17238,28 @@ void main(void) {
 		vocals = null;
 	}
 
+	/** NMV's gfSection selects a performer on the section's active authored field,
+	 * while chartAddress continues to decide who owns input and scoring. */
+	function nightmareVisionGfSectionNote(section:SwagSection, sourcePlayfieldIndex:Int):Bool {
+		return nightmareVisionScripts != null && gf != null && section != null
+			&& section.gfSection == true
+			&& sourcePlayfieldIndex == (section.mustHitSection ? 0 : 1);
+	}
+
+	/** Keep NMV's GF performer independent from the player/opponent side that
+	 * owns this note. Classic Psych GF Sing still only redirects opponent notes. */
+	function isNightmareVisionGfPerformer(note:Note, playerOne:Bool):Bool {
+		return nightmareVisionScripts != null && playerOne && note != null
+			&& note.forceGfSing && gf != null;
+	}
+
+	function noteSingerForSide(note:Note, playerOne:Bool):Character {
+		if (note != null && note.forceGfSing && gf != null
+			&& (!playerOne || nightmareVisionScripts != null))
+			return gf;
+		return playerOne ? boyfriend : getOpponentSinger();
+	}
+
 	private function generateSong(dataPath:String):Void {
 		var psychSkinRoot = selectedPsychSkinRoot();
 		preparePsychNoteDefinitions(psychSkinRoot);
@@ -16557,11 +17271,13 @@ void main(void) {
 		var eventPath = currentSongDataPath('events.json');
 		if (FNFAssets.exists(eventPath)) {
 			var eventData:Dynamic = CoolUtil.parseJson(FNFAssets.getText(eventPath));
-			companionEvents = SongEvents.fromSong(eventData);
+			companionEvents = SongEvents.fromSong(eventData, nightmareVisionScripts == null);
 		}
-		songEvents = SongEvents.collect(SongEvents.fromSong(songData), companionEvents);
-		for (i in 0...songEvents.length) songEvents[i].order = i;
-		songEvents.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
+		sourceEventViews = [];
+		psychSourceEventsPrepared = psychSourceEventsFinalized = nightmareVisionSourceEventsPrepared = false;
+		songEvents = SongEvents.collect(SongEvents.fromSong(songData, nightmareVisionScripts == null), companionEvents,
+			nightmareVisionScripts != null || selectedPsychSkinRoot() != null, nightmareVisionScripts != null);
+		if (nightmareVisionScripts != null) SongEvents.appendLegacySourceEvents(songEvents, songData);
 		RuntimeSmokeHarness.markLoadPhase('events_normalized');
 		initializeCodenameCameraModulo();
 
@@ -16640,13 +17356,15 @@ void main(void) {
 				// old-format chart events ([time, -1, name, v1, v2]) - not
 				// notes! collect for the event pump instead of spawning them
 				// Events from both formats are already collected before note generation.
-				if (songNotes.length >= 2 && songNotes[1] == -1)
+				if (nightmareVisionScripts != null
+					? SongEvents.isNightmareVisionLegacyEventRow(songNotes, songData.keys == null ? 4 : songData.keys)
+					: songNotes.length >= 2 && songNotes[1] == -1)
 					continue;
 
 				var authoredTime:Dynamic = traceNoteConstruction && songNotes.length > 0 ? songNotes[0] : null;
 				var authoredLane:Dynamic = traceNoteConstruction && songNotes.length > 1 ? songNotes[1] : null;
 				var authoredSustain:Dynamic = traceNoteConstruction && songNotes.length > 2 ? songNotes[2] : null;
-				var daStrumTime:Float = songNotes[0] + OptionsHandler.options.offset;
+				var daStrumTime:Float = songNotes[0] + sourceChartNoteOffset();
 				if (daStrumTime >= startTimestamp) {
 				var daNoteData:Int = Std.int(songNotes[1] % Note.NOTE_AMOUNT);
 				//var noteHeal:Float = songNotes[5] != null ? songNotes[5] : 1;
@@ -16748,7 +17466,10 @@ void main(void) {
 							});
 					else
 						RuntimeSmokeHarness.markCustomNoteVisual(swagNote);
-					if (section.gfSection == true && !gottaHitNote)
+					if (nightmareVisionScripts != null) {
+						if (nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex))
+							swagNote.forceGfSing = true;
+					} else if (section.gfSection == true && !gottaHitNote)
 						swagNote.forceGfSing = true;
 				// Crossfade is authored either on a note (legacy index 12) or on
 				// its section. Store the resolved side-specific value on every
@@ -16807,6 +17528,10 @@ void main(void) {
 								sustainNote = new Note(segmentTime,
 									runtimeNoteData, oldNote, true, legacyAnimSuffix,
 									CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+							if (sourceScoreLedgerActive()) {
+								sustainNote.parent = swagNote;
+								swagNote.tail.push(sustainNote);
+							}
 							if (nightmareVisionScripts != null) {
 								sustainNote.nightmareVisionTailState = swagNote.nightmareVisionTailState;
 								swagNote.nightmareVisionTailState.notes.push(sustainNote);
@@ -16836,7 +17561,10 @@ void main(void) {
 							else
 								configurePsychNoteSkin(sustainNote, psychSkinRoot);
 							configureNightmareVisionNoteSkin(sustainNote);
-							if (section.gfSection == true && !gottaHitNote)
+							if (nightmareVisionScripts != null) {
+								if (nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex))
+									sustainNote.forceGfSing = true;
+							} else if (section.gfSection == true && !gottaHitNote)
 								sustainNote.forceGfSing = true;
 							sustainNote.duoMode = duoMode;
 							sustainNote.oppMode = opponentPlayer;
@@ -16929,6 +17657,12 @@ void main(void) {
 			pendingCodenameNoteGeneration = generateChartNotes;
 		} else
 			generateChartNotes();
+		if (nightmareVisionScripts != null) {
+			// Source event modules load before generatedMusic becomes true.
+			generatedMusic = false;
+			prepareNightmareVisionSourceEvents();
+			generatedMusic = true;
+		}
 	}
 	/** Run a chart-note constructor or compatibility callback with an
 	 * authored-row diagnostic. Callers use this only in explicit smoke runs. */
@@ -17770,9 +18504,11 @@ void main(void) {
 		var playerNames:Map<String, Bool> = new Map();
 		for (e in songEvents) {
 			if (nightmareVisionScripts != null && e.name == 'Change Character' && e.v2 != null) {
+				if (nightmareVisionSourceEventsPrepared) continue;
 				// Source event-push retains an actor in its group, rather than
 				// constructing/destroying a separate atlas warm-up instance.
-				nightmareVisionCharacterBank(NightmareVisionCharacterEvent.preloadRole(e.v1)).addToList(Std.string(e.v2));
+				var role = NightmareVisionCharacterEvent.preloadRole(e.v1);
+				nightmareVisionCharacterBank(role == 2 && gf == null ? 1 : role).addToList(Std.string(e.v2));
 				continue;
 			}
 			var authored = CodenameEventDispatch.fromNative(e);
@@ -17926,6 +18662,7 @@ void main(void) {
 				startTimer.active = false;
 		}
 
+		callNightmareVision('onSubstateOpen', []);
 		super.openSubState(SubState);
 		// Codename substate open/close dispatch callbacks without synthesizing a
 		// state transition. Scripts may explicitly call startTransition; the
@@ -18015,6 +18752,7 @@ void main(void) {
 		}
 
 		callAllHScript('subStateCloseBegin', [EngineCompat.hxcLifecyclePayload('subStateCloseBegin', {targetState: this})]);
+		callNightmareVision('onSubstateClose', []);
 		super.closeSubState();
 		dispatchPsychCompiledStage('closeSubState', []);
 		if (closingNativePause) RuntimeSmokeHarness.markPauseTransition('pause_resume');
@@ -18028,6 +18766,7 @@ void main(void) {
 	}
 
 	function resyncVocals():Void {
+		if (sourceScoreLedgerActive() && !canResync) return;
 		pauseVocals();
 
 		FlxG.sound.music.play();
@@ -18245,7 +18984,13 @@ void main(void) {
 		var sourceBatch = compatScriptClock.advance(paused ? 0 : elapsed);
 		sourceBatch.dispatchUpdate(function(index, sourceElapsed) {
 			NightmareVisionFlxGView.runSourceTick(compatScriptClock, index, sourceBatch.tickCount,
-				function() callNightmareVision('onUpdate', [sourceElapsed]));
+				function() {
+					// Source following and its callback precede onUpdate. Keep them
+					// on the same 60 Hz clock so scripts can own the final target.
+					if (nightmareVisionScripts != null && generatedMusic && !endingSong
+						&& !isCameraOnForcedPos && !forceCamera) moveCameraSection();
+					callNightmareVision('onUpdate', [sourceElapsed]);
+				});
 		});
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -18446,7 +19191,7 @@ void main(void) {
 				accuracy = 0;
 		}*/
 		if (codenameRatingEnabled) syncCodenameAccuracyHud();
-		if (disableScoreChange == false)
+		if (disableScoreChange == false && !sourceScoreDisplayOwned())
 			scoreTxt.text = Ratings.CalculateRanking(songScore, songScoreDef, nps, accuracy);
 
 		if ((perfectMode && !Ratings.CalculateFullCombo(Sick)) ||
@@ -18461,7 +19206,7 @@ void main(void) {
 		else accuracyTxt.text = "Accuracy:" + accuracy + "%";
 		if (controls.SYNC_VOCALS)
 			resyncVocals();
-		if (controls.PAUSE && startedCountdown && canPause
+		if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause
 			&& callNightmareVision('onPause', []) != NightmareVisionScriptGroup.STOP_FUNC) {
 			persistentUpdate = false;
 			persistentDraw = true;
@@ -18742,6 +19487,9 @@ void main(void) {
 			setAllHaxeVar("mustHit", PlayState.SONG.notes[curSection].mustHitSection);
 			if (forceCamera || (psychCameraCompatibilityActive && isCameraOnForcedPos)) {
 				// the modchart is driving camFollow itself - don't fight it
+				} else if (nightmareVisionScripts != null) {
+					// Source ticks already followed before onUpdate; preserve the
+					// target and zoom that those callbacks authored afterward.
 				} else if (codenameCameraControlled) {
 					// A Codename position event leaves camFollow mutable by scripts;
 					// it must not be replaced by native section/animation following.
@@ -18789,7 +19537,7 @@ void main(void) {
 				smokeFirstBfFocusCaptured = true;
 				runtimeSmokeCameraSnapshot('first-bf-focus');
 			}
-			if (!PlayState.SONG.notes[curSection].mustHitSection)
+			if (!sourceScoreLedgerActive() && !PlayState.SONG.notes[curSection].mustHitSection)
 				setVocalsVolume(1);
 			var currentIconState = "";
 			if (opponentPlayer) {
@@ -18839,8 +19587,8 @@ void main(void) {
 		// better streaming of shit
 
 		// RESET = Quick Game Over Screen
-		if (controls.RESET && !duoMode && !inCutscene && !compatEventVideoControlsDisabled
-			&& !hxcVideoControlsDisabled) {
+		if ((psychControls == null ? controls.RESET : psychControls.RESET) && !duoMode && !inCutscene && !compatEventVideoControlsDisabled
+			&& !hxcVideoControlsDisabled && !sourceLivePreference('noReset', false)) {
 			if (opponentPlayer)
 				health = 2;
 			else
@@ -18854,7 +19602,9 @@ void main(void) {
 			trace("User is cheating!");
 		}
 
-		if ((health <= 0 && !opponentPlayer) || (health >= 2 && opponentPlayer)) {
+		if (sourceScoreLedgerActive()) {
+			if (doDeathCheck()) return;
+		} else if ((health <= 0 && !opponentPlayer) || (health >= 2 && opponentPlayer)) {
 			if (!practiceMode && !duoMode) {
 				boyfriend.stunned = true;
 				balls += 1;
@@ -18887,14 +19637,16 @@ void main(void) {
 		// cross several notes, chords, and sustain segments.
 		while (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead) {
 				var dunceNote:Note = unspawnNotes[0];
+				var psychSpawn = PsychRuntimeBindings.hasScripts(this);
 				bindCodenameNoteLine(dunceNote);
 				var index:Int = unspawnNotes.indexOf(dunceNote);
-				if (index >= 0)
+				if (!psychSpawn && index >= 0)
 					unspawnNotes.splice(index, 1);
 
 				if (nightmareVisionNoteTypes != null) nightmareVisionNoteTypes.setupNote(dunceNote);
 				if ((nightmareVisionNoteTypes != null && nightmareVisionNoteTypes.spawnNote(dunceNote) == NightmareVisionScriptGroup.STOP_FUNC)
 					|| (nightmareVisionScripts != null && nightmareVisionScripts.call('onSpawnNote', [dunceNote], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(dunceNote)]) == NightmareVisionScriptGroup.STOP_FUNC)) {
+					if (psychSpawn) unspawnNotes.remove(dunceNote);
 					dunceNote.kill();
 					dunceNote.destroy();
 					continue;
@@ -18918,8 +19670,10 @@ void main(void) {
 					dunceNote.visible = false;
 					dunceNote.destroy();
 				} else {
-					notes.add(dunceNote);
+					if (psychSpawn) notes.insert(0, dunceNote);
+					else notes.add(dunceNote);
 					dunceNote.spawned = true;
+					dispatchPsychNoteSpawn(dunceNote);
 					var typeSpawnResult = nightmareVisionNoteTypes == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
 						: nightmareVisionNoteTypes.postSpawnNote(dunceNote);
 					if (nightmareVisionScripts != null && typeSpawnResult != NightmareVisionScriptGroup.STOP_FUNC)
@@ -18933,6 +19687,9 @@ void main(void) {
 					callAllHScript("noteLoaded", [dunceNote]);
 
 				}
+				// Psych's spawn callback can inspect both the active slot and the
+				// unspawn queue. Remove by identity after callbacks may have edited it.
+				if (psychSpawn) unspawnNotes.remove(dunceNote);
 		}
 
 		if (smokeProfileAt > 0) {
@@ -18942,6 +19699,7 @@ void main(void) {
 		}
 		var nightmareContext = nightmareVisionScripts == null ? null : nightmareVisionRenderContext();
 		if (nightmareContext != null && !inCutscene) processNightmareVisionHolds();
+		if (nightmareContext != null) processNightmareVisionAutoHits(sourceBatch);
 		if (nightmareContext != null) for (field in 0...2) {
 			var line = field == 0 ? playerStrums : enemyStrums;
 			if (line != null) for (strum in line.members) if (strum != null)
@@ -19073,7 +19831,7 @@ void main(void) {
 				
 				
 
-				if (!daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null
+				if (!sourceScoreNightmare && !daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && !daNote.psychHitDispatched && (daNote.codenameInputLine != null
 					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : daNote.isAutoPlayed())) {
 					if (daNote.codenameInputLine != null) {
 						if (!dispatchHxcAutoNoteHit(daNote, false)) return;
@@ -19083,8 +19841,10 @@ void main(void) {
 					// Computer notes are still real note hits for imported HXC
 					// modules. Dispatch before native singing/removal, with the
 					// perfect judgement that autoplay produced.
+					if (sourceScoreLedgerActive() && !sourceScoreNightmare && daNote.ignoreNote) return;
 					if (!dispatchHxcAutoNoteHit(daNote, false))
 						return;
+					if (sourceScoreNightmare && getNightmareVisionField(daNote.sourcePlayfieldIndex).playerControls) scoreSourceAutoNote(daNote, false);
 					// Psych's GF Sing noteType is a note-local actor route.  Do not
 					// toggle the global GF-sing event flag: simultaneous charts can
 					// mix ordinary opponent notes and GF notes in one section.
@@ -19156,15 +19916,16 @@ void main(void) {
 						callHscript(daNote.noteHit, [daNote], "modchart");
 
 					if (SONG.needsVoices)
-						setVocalsVolume(1);
+						restoreSourceHitVocals(daNote, false);
 					dispatchNightmareVisionNoteHit(daNote);
-					if (nightmareVisionScripts != null && daNote.isSustainNote) return;
+					dispatchPsychNoteHit(daNote, false);
+					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) return;
 
 					daNote.kill();
 					notes.remove(daNote, true);
 					daNote.destroy();
 					return; // This note is gone; do not position it or judge it again.
-				} else if (daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && (daNote.codenameInputLine != null
+				} else if (!sourceScoreNightmare && daNote.mustPress && daNote.wasGoodHit && !daNote.nightmareVisionHitDispatched && !daNote.psychHitDispatched && (daNote.codenameInputLine != null
 					? daNote.isAutoPlayed() && !daNote.codenameHitDispatched : (nightmareVisionScripts != null ? daNote.isAutoPlayed() : opponentPlayer || demoMode))) {
 					if (daNote.codenameInputLine != null) {
 						if (!dispatchHxcAutoNoteHit(daNote, true)) return;
@@ -19173,9 +19934,16 @@ void main(void) {
 					}
 					if (!dispatchHxcAutoNoteHit(daNote, true))
 						return;
-					applyDemoHealth(daNote);
+					if (sourceScoreLedgerActive() && !sourceScoreNightmare && daNote.hitCausesMiss) {
+						dispatchHitCausesMiss(daNote, true);
+						finishGoodNoteHit(daNote, true, null, false);
+						return;
+					}
+					if (sourceScoreLedgerActive()) scoreSourceAutoNote(daNote, true);
+					else applyDemoHealth(daNote);
 					camZooming = true;
 					callAllHScript("playerOneSing", []);
+					var singer = noteSingerForSide(daNote, true);
 					if (daNote.aiShouldHit || daNote.shouldBeSung) {
 						final singAnim = currentKey.getSing(daNote.noteData % Note.NOTE_AMOUNT);
 						var singNum = -1;
@@ -19191,13 +19959,13 @@ void main(void) {
 						}
 
 						if (!singCodenameNoteActors(daNote, daNote.noteData, false, daNote.altNum)) {
-							if (!modernSustain || !daNote.isSustainNote || !Character.animationName(boyfriend).startsWith(singAnim)) {
+							if (!modernSustain || !daNote.isSustainNote || !Character.animationName(singer).startsWith(singAnim)) {
 								if (singNum == -1)
-									boyfriend.playAnim(singAnim, true);
+									singer.playAnim(singAnim, true);
 								else
-									boyfriend.sing(singNum, false, daNote.altNum);
+									singer.sing(singNum, false, daNote.altNum);
 							}
-							spawnCrossFade(boyfriend, daNote);
+							spawnCrossFade(singer, daNote);
 						}
 
 						if (daNote.codenameInputLine == null && daNote.oppntSing != null) {
@@ -19205,7 +19973,7 @@ void main(void) {
 							// don't strum it because there isn't actually a note
 						}
 
-						if (daNote.codenameInputLine == null) boyfriend.holdTimer = 0;
+						if (daNote.codenameInputLine == null) singer.holdTimer = 0;
 					}
 
 					if (nightmareVisionScripts == null && (daNote.aiShouldHit || !daNote.dontStrum))
@@ -19220,9 +19988,10 @@ void main(void) {
 						callHscript(daNote.noteHit, [daNote], "modchart");
 
 					if (SONG.needsVoices)
-						setVocalsVolume(1);
+						restoreSourceHitVocals(daNote, true);
 					dispatchNightmareVisionNoteHit(daNote);
-					if (nightmareVisionScripts != null && daNote.isSustainNote) return;
+					dispatchPsychNoteHit(daNote, true);
+					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) return;
 
 					daNote.kill();
 					notes.remove(daNote, true);
@@ -19279,7 +20048,7 @@ void main(void) {
 						&& (daNote.tooLate || !daNote.wasGoodHit)) {
 						// always show the graphic
 						noteMiss(daNote.noteData, daNote.mustPress, daNote, false);
-						if (!OptionsHandler.options.dontMuteMiss)
+						if (!sourceScoreLedgerActive() && !OptionsHandler.options.dontMuteMiss)
 							setVocalsVolume(0);
 						if (poisonPlus && poisonTimes < 3) {
 							poisonTimes += 1;
@@ -19312,6 +20081,7 @@ void main(void) {
 			RuntimeSmokeHarness.profileSection('play-active-note-processing', now - smokeProfileAt);
 			smokeProfileAt = now;
 		}
+		if (usesPsychSourceInput()) dispatchPsychInputEdges();
 		if (!inCutscene && !demoMode && !disableKeys
 			&& !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			// is that why it was crashing
@@ -19334,12 +20104,12 @@ void main(void) {
 			}
 		}
 
-		if (nightmareVisionScripts != null && !paused && !inCutscene) {
+		if (nightmareVisionScripts != null) {
 			var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
 			var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
 			for (key in 0...pressed.length) {
-				if (pressed[key]) { callNightmareVision('onKeyPress', [key]); callNightmareVision('onInputPress', [key]); }
-				if (released[key]) { callNightmareVision('onKeyRelease', [key]); callNightmareVision('onInputRelease', [key]); }
+				if (pressed[key]) nightmareVisionSourceKeyPressed(key);
+				if (released[key]) nightmareVisionSourceKeyReleased(key);
 			}
 		}
 		updateHighwayDim();
@@ -19447,6 +20217,28 @@ void main(void) {
 				note.nightmareVisionTailState != null && note.nightmareVisionTailState.active == true,
 				note.nightmareVisionTailState != null && note.nightmareVisionTailState.missed))
 				noteMiss(note.noteData, true, note, false);
+		}
+	}
+
+	/**
+	 * Nightmare Vision's PlayState loop dispatches each due, non-ignored
+	 * autoplay note through the same PlayField hit signal as manual input.
+	 * Drive this admission on the compatibility source clock so uncapped render
+	 * rates cannot repeat early-return hazard callbacks thousands of times.
+	 */
+	function processNightmareVisionAutoHits(batch:CompatScriptTickBatch):Void {
+		if (nightmareVisionScripts == null || batch == null || batch.tickCount <= 0
+			|| !generatedMusic || paused || endingSong || notes == null) return;
+		for (_ in 0...batch.tickCount) for (note in notes.members.copy()) {
+			if (note == null || !note.alive || note.nightmareVisionHitDispatched
+				|| note.sourcePlayfieldIndex < 0) continue;
+			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			note.sourcePlayfieldPlayerControlled = field.playerControls;
+			note.sourcePlayfieldAutoPlay = field.autoPlayed;
+			note.autoHitSuppressed = !field.inControl;
+			if (!field.inControl || !field.autoPlayed || note.wasGoodHit || note.ignoreNote
+				|| note.strumTime > Conductor.songPosition) continue;
+			hitNightmareVisionNote(note, field.playerControls, true);
 		}
 	}
 
@@ -19563,6 +20355,7 @@ void main(void) {
 	}
 
 	function endSong(?force:Bool = false):Void {
+		if (sourceScoreLedgerActive() && doDeathCheck()) return;
 		resetDemoPlaybackRate();
 		if (force) {
 			#if cpp
@@ -19721,6 +20514,7 @@ void main(void) {
 		// never play it if the file doesn't exist
 		if ((OptionsHandler.options.alwaysDoCutscenes || isStoryMode) && filename != null) {
 			doof = new DialogueBox(false, goodDialog);
+			if (selectedPsychSkinRoot() != null) preparePsychDialogue(doof);
 			doof.scrollFactor.set();
 			doof.finishThing = endForReal;
 
@@ -19844,20 +20638,27 @@ void main(void) {
 
 	var endingSong:Bool = false;
 	var timeShown:Int = 0;
-	private function popUpScore(strumtime:Float, daNote:Note, playerOne:Bool, forceMiss:Bool = false):Void {
+	private function popUpScore(strumtime:Float, daNote:Note, playerOne:Bool, forceMiss:Bool = false,
+		?sourceField:NightmareVisionPlayFieldView):Void {
+		var sourceLedger = sourceScoreLedgerActive();
+		if (sourceLedger && (daNote.isSustainNote || (sourceScoreNightmare && (daNote.hitCausesMiss || daNote.canMiss)))) return;
+		if (sourceScoreNightmare) setSourceVocalVolume('player', 1);
+		else setVocalsVolume(1);
+		// NV judges again at the later PlayState score listener, but the source
+		// leaves note.rating as the value callbacks observed before that listener.
+		var sourceRating = sourceLedger ? judgeSourceNote(daNote, !sourceScoreNightmare) : null;
 		var noteDiff:Float = adjustedNoteDiff(daNote);
 		var noteDiffSigned:Float = Conductor.songPosition - daNote.strumTime;
 		var wife:Float = HelperFunctions.wife3(noteDiffSigned, Conductor.timeScale);
-		setVocalsVolume(1);
-		camZooming = true;
+		if (!sourceScoreNightmare) camZooming = true;
 		var placement:String = Std.string(combo);
 		
 		var rating:FlxSprite = new FlxSprite();
 		var score:Int = 350;
 
 		var daRating:String = "sick";
-		daNote.rating = noteRatingAtHit(daNote);
-		daRating = daNote.rating;
+		if (!sourceLedger) daNote.rating = noteRatingAtHit(daNote);
+		daRating = sourceLedger ? sourceRating.name : daNote.rating;
 		trace(daRating);
 		var healthBonus = 0.0;
 		// you can't really control how you hit sustains so always make em sick
@@ -19865,12 +20666,21 @@ void main(void) {
 			daRating = 'sick';
 		if (forceMiss)
 			daRating = 'miss';
-		if (OptionsHandler.options.accuracyMode == Complex)
+		if (!sourceLedger && OptionsHandler.options.accuracyMode == Complex)
 			totalNotesHit += wife;
 		
 		// SHIT IS A COMBO BREAKER IN ETTERNA NERDS
 		// GIT GUD
 		var dontCountNote = daNote.dontCountNote;
+		if (sourceLedger) {
+			var fieldAuto = sourceScoreNightmare
+				&& (sourceField == null ? getNightmareVisionField(daNote.sourcePlayfieldIndex).autoPlayed : sourceField.autoPlayed);
+			applySourceScoredHit(daNote, sourceRating, fieldAuto);
+			if (!sourceScoreNightmare && sourceRating.noteSplash && shouldShowNoteSplash(daNote)) {
+				final strums = getNoteStrumline(daNote);
+				if (strums != null && strums.showNotesplash) grpNoteSplashes.add(strums.doSplash(daNote.noteData));
+			}
+		} else {
 		if (!daNote.mineNote) {
 			switch (daRating) {
 				case 'shit':
@@ -19979,13 +20789,15 @@ void main(void) {
 			trueScore += Math.round(ConvertScore.convertScore(noteDiff));
 		}
 		comboBreak(daNote.noteData % 4, playerOne, daRating);
+		}
 
 		setAllHaxeVar('songScore', songScore);
 		setAllHaxeVar('songScoreDef', songScoreDef);
+		if (!sourceLedger) notifyPsychRatingChange();
 
 		if (nightmareVisionScripts != null && playHUD != null) {
-			var sourcePopupRating = PsychRatingPresentationCommon.acceptedHostRating(daRating);
-			playHUD.popUpScore(sourcePopupRating, combo + 1, daNote);
+			var sourcePopupRating:Dynamic = sourceLedger ? sourceRating : PsychRatingPresentationCommon.acceptedHostRating(daRating);
+			playHUD.popUpScore(sourcePopupRating, sourceLedger ? combo : combo + 1, daNote);
 			RuntimeSmokeHarness.markRatingPopup(daRating, sourcePopupRating);
 		} else {
 		var pixelShitPart:String = '';
@@ -20128,6 +20940,426 @@ void main(void) {
 				health = -69;
 		}
 	}
+	/** The chart owner chooses a source ledger once, before creation callbacks. */
+	public var psychClientPrefs(default, null):PsychOwnerClientPrefs;
+	@:keep public var psychControls:PsychControlsCompat;
+	/** Psych captures note-key arrays at creation; later map replacement affects
+	 * Controls queries, while these keyboard edge bindings retain their arrays. */
+	@:keep public var keysArray:Array<Array<FlxKey>> = [];
+	@:keep public var keysPressed:Array<Int> = [];
+	static var activePsychClientPrefs:PsychOwnerClientPrefs;
+	var psychPreferenceVolumeKeys:PsychPreferenceVolumeKeys;
+	var sourcePreviousSafeZone:Null<Float>;
+
+	function initializePsychClientPrefs(ownerRoot:String):Void {
+		if (activePsychClientPrefs != null && (ownerRoot == null || !activePsychClientPrefs.canReuseFor(ownerRoot))) {
+			activePsychClientPrefs.release();
+			activePsychClientPrefs = null;
+		}
+		if (ownerRoot == null) {
+			psychClientPrefs = null;
+			psychControls = null;
+			return;
+		}
+		if (activePsychClientPrefs == null) {
+			activePsychClientPrefs = new PsychOwnerClientPrefs(ownerRoot, new CodenameOwnerSaveData(ownerRoot), OptionsHandler.options);
+			// Start with the user's native note keys, then overlay this mod owner's
+			// saved source bindings. Factory resetKeys defaults remain donor defaults.
+			var nativeKeys = Controls.getDeCtrls(Solo(4));
+			var actions = ['note_left', 'note_down', 'note_up', 'note_right'];
+			for (i in 0...actions.length) if (nativeKeys[i] != null)
+				activePsychClientPrefs.keyBinds.set(actions[i], nativeKeys[i].copy());
+			psychPreferenceVolumeKeys = new PsychPreferenceVolumeKeys(activePsychClientPrefs);
+			activePsychClientPrefs.loadPrefs();
+		} else {
+			psychPreferenceVolumeKeys = new PsychPreferenceVolumeKeys(activePsychClientPrefs);
+			activePsychClientPrefs.reloadVolumeKeys();
+		}
+		psychClientPrefs = activePsychClientPrefs;
+		psychControls = new PsychControlsCompat(null, psychClientPrefs);
+		keysArray = [for (name in ['note_left', 'note_down', 'note_up', 'note_right'])
+			cast psychClientPrefs.keyBinds.get(name)];
+		initializeSourceSafeZone(psychClientPrefs.data);
+	}
+
+	function initializeSourceSafeZone(prefs:Dynamic):Void {
+		if (sourcePreviousSafeZone == null) sourcePreviousSafeZone = Conductor.safeZoneOffset;
+		Conductor.safeZoneOffset = SourceNoteTiming.safeWindow(prefs.safeFrames, playbackRate);
+	}
+
+	function initializeSourceScoreLedger(nightmare:Bool):Void {
+		sourceScoreNightmare = nightmare;
+		sourceScoreOwner = nightmare || selectedPsychSkinRoot() != null;
+		initializePsychClientPrefs(nightmare ? null : selectedPsychSkinRoot());
+		sourceAcceptedHits = 0;
+		epics = 0;
+		initializeSourceRatings(PsychClientPrefsCompat.data);
+		var names = ['You Suck!', 'Shit', 'Bad', 'Bruh', 'Meh', 'Nice', 'Good', 'Great', 'Sick!', 'Perfect!!'];
+		var thresholds = [0.2, 0.4, 0.5, 0.6, 0.69, 0.7, 0.8, 0.9, 1.0, 1.0];
+		ratingStuff = [];
+		for (i in 0...names.length) {
+			if (nightmare) ratingStuff.push({name:names[i], percent:thresholds[i]});
+			else ratingStuff.push([names[i], thresholds[i]]);
+			// NV's source list has two Great rows; retain the authored array shape.
+			if (nightmare && i == 7) ratingStuff.push({name:names[i], percent:thresholds[i]});
+		}
+	}
+
+	function initializeSourceRatings(prefs:Dynamic):Void {
+		ratingsData = sourceScoreNightmare ? SourceRating.nightmareDefaults(prefs) : PsychRatingCompat.loadDefault();
+		if (sourceScoreNightmare) for (rating in ratingsData) rating.counterChanged = changeSourceRatingCounter;
+	}
+
+	/** Game-over scripts stay owned by the outgoing song until its state is destroyed. */
+	@:keep public function sourceGameOverMode():Int return !sourceScoreOwner ? 0 : sourceScoreNightmare ? 2 : 1;
+	@:keep public function sourceGameOverCall(callback:String, args:Array<Dynamic>):Dynamic {
+		if (!sourceScoreOwner) return null;
+		if (sourceScoreNightmare) {
+			if (callback == 'onUpdate') {
+				NightmareVisionFlxGView.captureSourceFrame(compatScriptClock);
+				sourceGameOverBatch = compatScriptClock.advance(cast args[0]);
+				sourceGameOverBatch.dispatchUpdate(function(index, sourceElapsed) {
+					NightmareVisionFlxGView.runSourceTick(compatScriptClock, index, sourceGameOverBatch.tickCount,
+						function() callNightmareVision(callback, [sourceElapsed]));
+				});
+				return null;
+			}
+			if (callback == 'onUpdatePost') {
+				if (sourceGameOverBatch != null) dispatchNightmareVisionUpdatePost(sourceGameOverBatch);
+				sourceGameOverBatch = null;
+				return null;
+			}
+			return callNightmareVision(callback, args);
+		}
+		// Installed host observers belong to the gameplay/results lifecycle;
+		// selected source scripts own this substate and its death-property context.
+		return PsychRuntimeBindings.dispatch(this, callback, args, 'Scripts', false,
+			null, defaultPsychGlobalScopes);
+	}
+	var sourceGameOverBatch:CompatScriptTickBatch;
+	@:keep public var inGameOver:Bool = false;
+	@:keep public function sourceGameOverSetInGameOver(value:Bool):Void {
+		inGameOver = value;
+		if (value && sourceScoreNightmare) compatScriptClock.reset();
+		if (sourceScoreNightmare && nightmareVisionScripts != null) nightmareVisionScripts.group.set('inGameOver', value);
+		else if (sourceScoreOwner) for (interp in hscriptStates)
+			if (interp.variables.get('__psychScoreGlobals') == true) interp.variables.set('inGameOver', value);
+	}
+	@:keep public function sourceGameOverInstance():Dynamic {
+		return sourceScoreOwner && isDead ? GameOverSubstate.instance : null;
+	}
+	@:keep public function sourceGameOverCheckControl(action:String):Bool {
+		var sourceControls = psychControls != null && sourceGameOverMode() == 1;
+		return action == 'ACCEPT' ? (sourceControls ? psychControls.ACCEPT : controls.ACCEPT)
+			: action == 'BACK' ? (sourceControls ? psychControls.BACK : controls.BACK) : false;
+	}
+	@:keep public function sourceGameOverResetForMenu():Void {
+		balls = 0;
+		watchedCutscene = false;
+	}
+
+	@:keep public function sourceScoreLedgerActive():Bool return sourceScoreOwner;
+	@:keep public function sourceNoteTimingMode():Int return !sourceScoreOwner ? 0 : sourceScoreNightmare ? 2 : 1;
+
+	var sourceRatingApiDisposed:Bool = false;
+	@:keep public function sourceRatingApiActive(ownerRoot:String):Bool {
+		return !sourceRatingApiDisposed && sourceScoreOwner && sourceScoreNightmare
+			&& ownerRoot == nightmareVisionSelectedRoot();
+	}
+
+	@:keep public function changeSourceRatingCounter(name:String, amount:Int):Void {
+		switch (name) {
+			case 'epics': epics += amount;
+			case 'sicks': sicks += amount;
+			case 'goods': goods += amount;
+			case 'bads': bads += amount;
+			case 'shits': shits += amount;
+			default:
+				var current:Dynamic = Reflect.getProperty(this, name);
+				Reflect.setProperty(this, name, (current == null ? 0 : Std.int(current)) + amount);
+		}
+	}
+
+	function judgeSourceNote(note:Note, assignToNote:Bool = true):SourceRating {
+		var prefs:Dynamic = sourceScoreNightmare && nightmareVisionPrefs != null ? nightmareVisionPrefs.view : PsychClientPrefsCompat.data;
+		var offset:Dynamic = Reflect.getProperty(prefs, 'ratingOffset');
+		var diff = SourceNoteTiming.ratingDiff(note.strumTime, Conductor.songPosition,
+			offset == null ? 0 : cast offset, playbackRate);
+		var rating = SourceRating.judge(ratingsData, diff);
+		if (rating == null) throw '[source-rating] ratingsData has no final judgement';
+		if (sourceScoreNightmare) {
+			if (assignToNote) note.rating = rating;
+		}
+		else {
+			note.rating = rating.name;
+			note.ratingMod = rating.ratingMod;
+		}
+		return rating;
+	}
+
+	function applySourceScoredHit(note:Note, rating:SourceRating, fieldAuto:Bool = false):Bool {
+		// Generated hold pieces carry ratings, but only authored heads enter accuracy.
+		if (note.isSustainNote || note.hitCausesMiss || (sourceScoreNightmare && note.canMiss)) return false;
+		var delta = SourceScoreLedger.hit(rating, note.ratingDisabled, demoMode,
+			sourceScoreNightmare, practiceMode, fieldAuto, defaultScoreAddition);
+		totalNotesHit += delta.weight;
+		if (delta.ratedCounter != 0) {
+			if (sourceScoreNightmare) {
+				rating.counterChanged = changeSourceRatingCounter;
+				rating.increase(delta.ratedCounter);
+			} else {
+				rating.hits += delta.ratedCounter;
+				changeSourceRatingCounter(rating.name + 's', delta.ratedCounter);
+			}
+		}
+		songScore += delta.score;
+		sourceAcceptedHits += delta.hits;
+		totalPlayed += delta.played;
+		if (delta.recalculate) {
+			refreshSourceAccuracy();
+			notifyPsychRatingChange();
+		}
+		return delta.recalculate;
+	}
+
+	function scoreSourceAutoNote(note:Note, playerOne:Bool):Void {
+		if (sourceScoreNightmare && !getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) return;
+		var show = !sourceScoreNightmare || getNightmareVisionField(note.sourcePlayfieldIndex).showRatings;
+		if (sourceScoreNightmare) applySourceHitHealth(note, playerOne);
+		if (show && !note.isSustainNote && !note.hitCausesMiss) {
+			combo = Std.int(Math.min(9999, combo + 1));
+			popUpScore(note.strumTime, note, playerOne);
+		}
+		if (!sourceScoreNightmare) applySourceHitHealth(note, playerOne);
+	}
+
+	function applySourceMiss():Void {
+		var delta = SourceScoreLedger.miss(sourceScoreNightmare, practiceMode, endingSong);
+		songScore += delta.score;
+		misses += delta.missDelta;
+		totalPlayed += delta.played;
+		refreshSourceAccuracy();
+	}
+
+	function refreshSourceAccuracy():Void {
+		accuracy = totalPlayed == 0 ? 0 : Math.max(0, Math.min(1, totalNotesHit / totalPlayed)) * 100;
+		setAllHaxeVar('accuracy', accuracy);
+	}
+
+	function sourceMissCounts(note:Note):Bool {
+		return !sourceScoreNightmare || note == null || (!note.canMiss && !note.blockHit
+			&& getNightmareVisionField(note.sourcePlayfieldIndex).playerControls);
+	}
+
+	function applySourceMissHealth(note:Note, playerOne:Bool, reaction:Bool):Void {
+		if (!reaction) return;
+		var amount = note == null
+			? SourceHealthDelta.pressMiss(healthLoss, sourceScoreNightmare ? null : pressMissDamage) * healthLossMultiplier
+			: SourceHealthDelta.miss(sourceScoreNightmare, note.missHealth, healthLoss, healthLossMultiplier,
+				note.isSustainNote, holdSubdivisions);
+		if (playerOne) health -= amount; else health += amount;
+	}
+
+	function applySourceHitHealth(note:Note, playerOne:Bool):Void {
+		if (sourceScoreNightmare && !getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) return;
+		var amount = SourceHealthDelta.hit(sourceScoreNightmare, note.hitHealth, healthGain, healthGainMultiplier,
+			note.isSustainNote, holdSubdivisions, guitarHeroSustains);
+		if (playerOne) health += amount; else health -= amount;
+	}
+
+	/** Score aliases belong to Psych interpreters, including translated stage callbacks. */
+	public var psychHitsAdjustment:Int = 0;
+	public var psychRatingOverrides:Map<String, Dynamic> = [];
+	var psychRatingRecalculating:Bool = false;
+	var psychRatingPrevious:Dynamic = null;
+	var psychScoreSnapshot:Dynamic = null;
+	var psychScoreLastValues:Array<Float> = [];
+	function sourceRatingHits(index:Int, fallback:Int):Int {
+		return sourceScoreLedgerActive() && !sourceScoreNightmare && index < ratingsData.length
+			&& ratingsData[index] != null ? ratingsData[index].hits : fallback;
+	}
+
+	function sourceScoreSnapshot():Dynamic {
+		// One snapshot per score change, shared by this scene's interpreters;
+		// uncapped render callbacks do not allocate a new score object each time.
+		var sourceSicks = sourceRatingHits(0, sicks);
+		var sourceGoods = sourceRatingHits(1, goods);
+		var sourceBads = sourceRatingHits(2, bads);
+		var sourceShits = sourceRatingHits(3, shits);
+		if (psychScoreSnapshot == null || psychScoreLastValues[0] != songScore
+			|| psychScoreLastValues[1] != misses || psychScoreLastValues[2] != sicks
+			|| psychScoreLastValues[3] != goods || psychScoreLastValues[4] != bads
+			|| psychScoreLastValues[5] != shits || psychScoreLastValues[6] != accuracy
+			|| psychScoreLastValues[7] != psychHitsAdjustment
+			|| psychScoreLastValues[8] != sourceAcceptedHits || psychScoreLastValues[9] != totalPlayed
+			|| psychScoreLastValues[10] != totalNotesHit || psychScoreLastValues[11] != epics
+			|| psychScoreLastValues[12] != sourceSicks || psychScoreLastValues[13] != sourceGoods
+			|| psychScoreLastValues[14] != sourceBads || psychScoreLastValues[15] != sourceShits) {
+			var snapshot = sourceScoreLedgerActive()
+				? SourceScoreLedger.snapshot(songScore, misses, sourceAcceptedHits, totalPlayed, totalNotesHit,
+					sourceSicks, sourceGoods, sourceBads, sourceShits, epics, ratingStuff)
+				: PsychScoreScriptGlobals.snapshot(songScore, misses, sicks, goods, bads, shits, accuracy);
+			psychScoreSnapshot = PsychScoreScriptGlobals.apply(snapshot,
+				sourceScoreLedgerActive() ? 0 : psychHitsAdjustment, psychRatingOverrides,
+				psychRatingRecalculating ? psychRatingPrevious : null);
+			psychScoreLastValues[0] = songScore;
+			psychScoreLastValues[1] = misses;
+			psychScoreLastValues[2] = sicks;
+			psychScoreLastValues[3] = goods;
+			psychScoreLastValues[4] = bads;
+			psychScoreLastValues[5] = shits;
+			psychScoreLastValues[6] = accuracy;
+			psychScoreLastValues[7] = psychHitsAdjustment;
+			psychScoreLastValues[8] = sourceAcceptedHits;
+			psychScoreLastValues[9] = totalPlayed;
+			psychScoreLastValues[10] = totalNotesHit;
+			psychScoreLastValues[11] = epics;
+			psychScoreLastValues[12] = sourceSicks;
+			psychScoreLastValues[13] = sourceGoods;
+			psychScoreLastValues[14] = sourceBads;
+			psychScoreLastValues[15] = sourceShits;
+		}
+		return psychScoreSnapshot;
+	}
+
+	function refreshPsychScoreGlobals(interp:Interp):Void {
+		if (interp == null || interp.variables.get('__psychScoreGlobals') != true) return;
+		sourceScoreSnapshot();
+		if (interp.variables.get('__psychScoreSnapshot') == psychScoreSnapshot) return;
+		for (name in Reflect.fields(psychScoreSnapshot))
+			interp.variables.set(name, Reflect.field(psychScoreSnapshot, name));
+		interp.variables.set('__psychScoreSnapshot', psychScoreSnapshot);
+	}
+
+	public function setPsychRatingValue(name:String, value:Dynamic):Void {
+		if (PsychScoreScriptGlobals.ratingFields.indexOf(name) < 0) return;
+		psychRatingOverrides.set(name, value);
+		psychScoreSnapshot = null;
+		for (interp in hscriptStates) refreshPsychScoreGlobals(interp);
+	}
+
+	public function psychScoreChanged():Void {
+		notifyPsychRatingChange();
+	}
+
+	function sourceScoreDisplayOwned():Bool {
+		return nightmareVisionScripts != null || selectedPsychSkinRoot() != null;
+	}
+
+	@:keep public function RecalculateRating(missed:Bool = false, scoreBop:Bool = true):Void {
+		notifyPsychRatingChange(missed, scoreBop);
+	}
+
+	/** These source hooks are dynamic so authored scripts can replace the FC rule. */
+	@:keep public dynamic function fullComboFunction():Void {
+		ratingFC = SourceScoreLedger.fullCombo(misses, sourceRatingHits(0, sicks),
+			sourceRatingHits(1, goods), sourceRatingHits(2, bads), sourceRatingHits(3, shits), 0, false);
+	}
+
+	@:keep public dynamic function updateRatingFC():Void {
+		ratingFC = SourceScoreLedger.fullCombo(misses, sicks, goods, bads, shits, epics, true);
+	}
+
+	/** Source display hooks own refresh frequency; the native renderer must not
+	 * replace their text again on the following render frame. */
+	@:keep public dynamic function updateScore(missed:Bool = false, scoreBop:Bool = true):Void {
+		var returned = PsychRuntimeBindings.dispatch(this, 'preUpdateScore', [missed], 'Scripts', true);
+		if (returned == ScriptCallbackResult.STOP) return;
+		updateScoreText();
+		if (!missed && !cpuControlled && scoreBop) doScoreBop();
+		PsychRuntimeBindings.dispatch(this, 'onUpdateScore', [missed]);
+	}
+
+	@:keep public dynamic function updateScoreText():Void {
+		if (scoreTxt == null) return;
+		var label = ratingName;
+		if (totalPlayed != 0) {
+			var percent = Math.floor(ratingPercent * 10000) / 100;
+			label += ' (' + percent + '%) - ' + ratingFC;
+		}
+		scoreTxt.text = 'Score: ' + songScore + (instakillOnMiss ? '' : ' | Misses: ' + misses) + ' | Rating: ' + label;
+	}
+
+	var sourceScoreTextTween:FlxTween;
+	@:keep public function doScoreBop():Void {
+		if (scoreTxt == null || PsychClientPrefsCompat.data.scoreZoom == false) return;
+		if (sourceScoreTextTween != null) sourceScoreTextTween.cancel();
+		scoreTxt.scale.set(1.075, 1.075);
+		sourceScoreTextTween = FlxTween.tween(scoreTxt.scale, {x:1.0, y:1.0}, 0.2);
+	}
+
+	@:keep public function updateScoreBar(missed:Bool = false):Void {
+		if (nightmareVisionScripts == null) {
+			updateScore(missed);
+			return;
+		}
+		if (callNightmareVision('onUpdateScore', [missed]) == NightmareVisionScriptGroup.STOP_FUNC) return;
+		if (playHUD != null) {
+			RuntimeSmokeHarness.markStep('source-score:hud-refresh-begin');
+			playHUD.onUpdateScore(songScore, Math.floor(ratingPercent * 10000) / 100, misses, missed);
+			RuntimeSmokeHarness.markStep('source-score:hud-refresh-complete');
+		}
+	}
+
+	function notifyPsychRatingChange(missed:Bool = false, scoreBop:Bool = true):Void {
+		if (psychRatingRecalculating) return;
+		var keys:Array<String> = [];
+		for (key in hscriptStates.keys()) {
+			var interp = hscriptStates.get(key);
+			if (interp != null && interp.variables.get('__psychScoreGlobals') == true) keys.push(key);
+		}
+		if (keys.length == 0 && !sourceScoreDisplayOwned()) return;
+		psychRatingPrevious = psychScoreSnapshot;
+		psychRatingRecalculating = true;
+		psychScoreSnapshot = null;
+		var returns:Array<Dynamic> = [];
+		var stopped = false;
+		if (nightmareVisionScripts != null)
+			stopped = callNightmareVision('onRecalculateRating', []) == NightmareVisionScriptGroup.STOP_FUNC;
+		else if (selectedPsychSkinRoot() != null)
+			stopped = PsychRuntimeBindings.dispatch(this, 'onRecalculateRating', [], 'Scripts', true) == ScriptCallbackResult.STOP;
+		else {
+			for (key in keys) callHscript('recalculateRating', [], key, true, returns);
+			stopped = EngineCompat.anyFunctionStop(returns);
+		}
+		// Psych publishes counters before the hook. A stopped recalculation
+		// retains the previous rating and any authored setRating* values.
+		if (stopped) {
+			if (psychRatingPrevious != null)
+				for (name in PsychScoreScriptGlobals.ratingFields)
+					if (!psychRatingOverrides.exists(name))
+						psychRatingOverrides.set(name, Reflect.field(psychRatingPrevious, name));
+		} else {
+			psychRatingOverrides.clear();
+			if (sourceScoreDisplayOwned() && totalPlayed == 0)
+				psychRatingOverrides.set('rating', psychRatingPrevious == null ? 0 : psychRatingPrevious.rating);
+			// The FC override sees the new percentage/name. Keep the recursion
+			// guard while releasing only the pre-hook's previous-rating view.
+			psychRatingPrevious = null;
+			psychScoreSnapshot = null;
+			try {
+				if (nightmareVisionScripts != null) updateRatingFC();
+				else if (selectedPsychSkinRoot() != null) fullComboFunction();
+			} catch (error:Dynamic) {
+				psychRatingRecalculating = false;
+				psychScoreSnapshot = null;
+				throw error;
+			}
+		}
+		psychRatingRecalculating = false;
+		psychRatingPrevious = null;
+		psychScoreSnapshot = null;
+		for (interp in hscriptStates) {
+			refreshPsychScoreGlobals(interp);
+			if (interp != null && interp.variables.get('__psychScoreGlobals') == true) {
+				interp.variables.set('totalPlayed', totalPlayed);
+				interp.variables.set('totalNotesHit', totalNotesHit);
+			}
+		}
+		if (nightmareVisionScripts != null) updateScoreBar(missed);
+		else if (selectedPsychSkinRoot() != null) updateScore(missed, scoreBop);
+	}
+
 	function updateAccuracy() {
 		totalPlayed += 1;
 		accuracy = Math.max(0, totalNotesHit / totalPlayed * 100);
@@ -20137,7 +21369,14 @@ void main(void) {
 	function updateHealthColors(poison:Bool = false) {
 		var leftSideFill = dad.enemyColor;
 		var rightSideFill = boyfriend.bfColor;
-		if (OptionsHandler.options.useCharColor) {
+		if (nightmareVisionScripts != null) {
+			leftSideFill = dad.healthColour;
+			rightSideFill = boyfriend.healthColour;
+			if (poison) {
+				if (opponentPlayer) leftSideFill = dad.poisonColorEnemy;
+				else rightSideFill = boyfriend.poisonColor;
+			}
+		} else if (OptionsHandler.options.useCharColor) {
 			leftSideFill = iconP2.healthColors[0];
 			rightSideFill = iconP1.healthColors[0];
 			if (poison) {
@@ -20284,12 +21523,188 @@ void main(void) {
 		return false;
 	}
 
+	/** Source input judges each pressed lane independently, unlike the native
+	 * mash guard. Keep the source pre/post hooks around the actual key action. */
+	@:keep public var strumsBlocked:Array<Bool> = [];
+
+	function usesPsychSourceInput():Bool {
+		return nightmareVisionScripts == null
+			&& (psychCameraCompatibilityActive || PsychRuntimeBindings.hasScripts(this));
+	}
+
+	function dispatchPsychInputEdges():Void {
+		if (disableKeys || compatEventVideoControlsDisabled || hxcVideoControlsDisabled) return;
+		if (usesPsychOwnerControls(true)) {
+			for (key in 0...4) {
+				var name = psychNoteAction(key);
+				var pressed = psychControls.queryKeyboard(keysArray[key], 'justPressed')
+					|| psychControls.queryGamepad(name, 'justPressed');
+				var released = psychControls.queryKeyboard(keysArray[key], 'justReleased')
+					|| psychControls.queryGamepad(name, 'justReleased');
+				if (pressed) psychSourceKeyPressed(key, true);
+				if (released) psychSourceKeyReleased(key, true);
+			}
+			return;
+		}
+		for (playerOne in [true, false]) {
+			if (playerOne ? opponentPlayer : !(duoMode || opponentPlayer)) continue;
+			var input = playerOne ? controls : controlsPlayerTwo;
+			if (input == null) continue;
+			var pressed = [input.CTRLA_P,input.CTRLB_P,input.CTRLC_P,input.CTRLD_P,input.CTRLE_P,
+				input.CTRLF_P,input.CTRLG_P,input.CTRLH_P,input.CTRLI_P];
+			var released = [input.CTRLA_R,input.CTRLB_R,input.CTRLC_R,input.CTRLD_R,input.CTRLE_R,
+				input.CTRLF_R,input.CTRLG_R,input.CTRLH_R,input.CTRLI_R];
+			for (key in 0...pressed.length) {
+				if (pressed[key]) psychSourceKeyPressed(key, playerOne);
+				if (released[key]) psychSourceKeyReleased(key, playerOne);
+			}
+		}
+	}
+
+	/** The pinned Psych contract has four lanes and one player bank. Extended
+	 * native mania/duo modes keep their existing action-set input path. */
+	function usesPsychOwnerControls(playerOne:Bool):Bool {
+		return playerOne && psychControls != null && Note.NOTE_AMOUNT == 4
+			&& !duoMode && !opponentPlayer;
+	}
+
+	static function psychNoteAction(key:Int):String {
+		return switch (key) {
+			case 0: 'note_left'; case 1: 'note_down'; case 2: 'note_up';
+			default: 'note_right';
+		};
+	}
+
+	/** Source methods remain callable from reflected Psych chart scripts. */
+	@:keep public function keyPressed(key:Int):Void psychSourceKeyPressed(key, true);
+	@:keep public function keyReleased(key:Int):Void psychSourceKeyReleased(key, true);
+
+	function invalidateSourceInputNote(note:Note):Void {
+		if (note == null || !note.alive) return;
+		note.kill();
+		notes.remove(note, true);
+		note.destroy();
+	}
+
+	function setSourceInputReceptor(key:Int, playerOne:Bool, released:Bool):Void {
+		var strums = getInputStrumline(null, playerOne);
+		if (strums == null) return;
+		strums.forEachReceptor(function(spr:Strumline.StrumNote) {
+			if (spr.ID != key) return;
+			var animation = spr.animation != null && spr.animation.curAnim != null
+				? spr.animation.curAnim.name : '';
+			if (released || (strumsBlocked[key] != true && animation != 'confirm')) {
+				spr.playAnim(released ? 'static' : 'pressed');
+				spr.resetAnim = 0;
+			}
+		});
+	}
+
+	function psychSourceKeyPressed(key:Int, playerOne:Bool):Void {
+		var actor = playerOne ? boyfriend : getOpponentSinger();
+		if (demoMode || paused || inCutscene || key < 0 || key >= Note.NOTE_AMOUNT
+			|| !generatedMusic || endingSong || actor == null || actor.stunned) return;
+		if (PsychRuntimeBindings.dispatch(this, 'onKeyPressPre', [key]) == ScriptCallbackResult.STOP) return;
+		var candidates = SourceInputNotes.psych(notes.members,
+			function(note:Note):Bool return note != null && note.alive && note.codenameInputLine == null
+				&& note.noteData == key && note.mustPress == playerOne && strumsBlocked[key] != true
+				&& note.canBeHit && !note.tooLate && !note.wasGoodHit && !note.blockHit,
+			function(note:Note):Bool return note.isSustainNote,
+			function(note:Note):Bool return note.isLiftNote,
+			function(note:Note):Bool return note.lowPriority,
+			function(note:Note):Float return note.strumTime);
+		if (candidates.length > 0) {
+			var note = candidates[0];
+			if (candidates.length > 1) {
+				if (Math.abs(candidates[1].strumTime - note.strumTime) < 1)
+					invalidateSourceInputNote(candidates[1]);
+				else if (candidates[1].strumTime < note.strumTime) note = candidates[1];
+			}
+			actor.holdTimer = 0;
+			goodNoteHit(note, playerOne);
+		} else if (sourceLivePreference('ghostTapping', ghostTapping))
+			PsychRuntimeBindings.dispatch(this, 'onGhostTap', [key]);
+		else noteMiss(key, playerOne, null, true);
+		if (!keysPressed.contains(key)) keysPressed.push(key);
+		setSourceInputReceptor(key, playerOne, false);
+		PsychRuntimeBindings.dispatch(this, 'onKeyPress', [key]);
+	}
+
+	function psychSourceKeyReleased(key:Int, playerOne:Bool):Void {
+		if (key < 0 || key >= Note.NOTE_AMOUNT) return;
+		// A physical release must end native hold effects even when a source hook
+		// cancels the receptor reset; it must not turn into a held key next frame.
+		var strums = getInputStrumline(null, playerOne);
+		if (strums != null) strums.endNoteHoldCoverAtLane(key);
+		if (demoMode || !startedCountdown || paused) return;
+		if (PsychRuntimeBindings.dispatch(this, 'onKeyReleasePre', [key]) == ScriptCallbackResult.STOP) return;
+		setSourceInputReceptor(key, playerOne, true);
+		PsychRuntimeBindings.dispatch(this, 'onKeyRelease', [key]);
+	}
+
+	function nightmareVisionSourceKeyPressed(key:Int):Void {
+		if (key < 0 || key >= 4) return;
+		if (!demoMode && !paused && startedCountdown && generatedMusic && !endingSong
+			&& !disableKeys && !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
+			var anyInput = false;
+			var ghostTapped = true;
+			for (id in 0...2) {
+				var field = getNightmareVisionField(id);
+				if (!field.canInput()) continue;
+				anyInput = true;
+				var selected = SourceInputNotes.nightmareVision(notes.members,
+					function(note:Note):Bool return note != null && note.alive && note.sourcePlayfieldIndex == id
+						&& note.noteData == key && note.canBeHit && !note.tooLate && !note.wasGoodHit,
+					function(note:Note):Bool return note.isSustainNote,
+					function(note:Note):Int return note.hitPriority,
+					function(note:Note):Float return note.strumTime);
+				if (selected.hasSustain) ghostTapped = false;
+				if (selected.top != null) {
+					goodNoteHit(selected.top, id != 1);
+					ghostTapped = false;
+				} else if (field.playAnims) setSourceInputReceptor(key, id != 1, false);
+				var strums = id == 1 ? enemyStrums : playerStrums;
+				if (strums != null) strums.forEachReceptor(function(spr:Strumline.StrumNote) {
+					if (spr.ID == key) spr.holding = true;
+				});
+			}
+			if (anyInput && ghostTapped) {
+				callNightmareVision('onGhostTap', [key]);
+				if (nightmareVisionPrefs.view.ghostTapping != true) {
+					for (id in 0...2) if (getNightmareVisionField(id).canInput()) noteMiss(key, id != 1, null, true);
+					callNightmareVision('noteMissPress', [key]);
+				}
+			}
+		}
+		callNightmareVision('onKeyPress', [key]);
+		callNightmareVision('onInputPress', [key]);
+	}
+
+	function nightmareVisionSourceKeyReleased(key:Int):Void {
+		if (key < 0 || key >= 4) return;
+		if (startedCountdown && !paused) for (id in 0...2) {
+			if (!getNightmareVisionField(id).canInput()) continue;
+			var strums = id == 1 ? enemyStrums : playerStrums;
+			if (strums != null) {
+				strums.endNoteHoldCoverAtLane(key);
+				strums.forEachReceptor(function(spr:Strumline.StrumNote) {
+					if (spr.ID == key) { spr.holding = false; spr.resetAnim = 0; }
+				});
+			}
+			setSourceInputReceptor(key, id != 1, true);
+		}
+		callNightmareVision('onKeyRelease', [key]);
+		callNightmareVision('onInputRelease', [key]);
+	}
+
 	private function keyShit(?playerOne:Bool = true, ?sourceLine:CodenameInputLine<Character>):Void {
 		// HOLDING
 		var coolControls = playerOne ? controls : controlsPlayerTwo;
 		if (sourceLine != null) coolControls = cast sourceLine.controls;
 		if (coolControls == null) return;
-		if (nightmareVisionScripts != null && !getNightmareVisionField(playerOne ? 0 : 1).canInput()) return;
+		// NV dispatches one input edge across its enabled fields below, rather
+		// than once for each native player bank.
+		if (nightmareVisionScripts != null && sourceLine == null) return;
 
 		var ctrlA = coolControls.CTRLA;
 		var ctrlB = coolControls.CTRLB;
@@ -20324,6 +21739,13 @@ void main(void) {
 		var holdArray = [ctrlA, ctrlB, ctrlC, ctrlD, ctrlE, ctrlF, ctrlG, ctrlH, ctrlI];
 		var releaseArray = [ctrlAR, ctrlBR, ctrlCR, ctrlDR, ctrlER, ctrlFR, ctrlGR, ctrlHR, ctrlIR];
 		var controlArray:Array<Bool> = [ctrlAP, ctrlBP, ctrlCP, ctrlDP, ctrlEP, ctrlFP, ctrlGP, ctrlHP, ctrlIP];
+		if (sourceLine == null && usesPsychOwnerControls(playerOne)) {
+			holdArray = [for (key in 0...4) psychControls.pressed(psychNoteAction(key))];
+			releaseArray = [for (key in 0...4) psychControls.queryKeyboard(keysArray[key], 'justReleased')
+				|| psychControls.queryGamepad(psychNoteAction(key), 'justReleased')];
+			controlArray = [for (key in 0...4) psychControls.queryKeyboard(keysArray[key], 'justPressed')
+				|| psychControls.queryGamepad(psychNoteAction(key), 'justPressed')];
+		}
 		if (sourceLine != null) {
 			holdArray = holdArray.slice(0, 4);
 			releaseArray = releaseArray.slice(0, 4);
@@ -20331,6 +21753,13 @@ void main(void) {
 		}
 		var rawReleaseArray = sourceLine == null ? releaseArray : releaseArray.copy();
 		var rawControlArray = sourceLine == null ? controlArray : controlArray.copy();
+		if (sourceLine == null && usesPsychSourceInput()) {
+			// Sustains still use the physical held state below. Tap/release judging
+			// and receptor notifications have already run through the source route.
+			controlArray = [for (_ in controlArray) false];
+			releaseArray = [for (_ in releaseArray) false];
+			for (key in 0...holdArray.length) if (strumsBlocked[key] == true) holdArray[key] = false;
+		}
 		if (sourceLine != null) {
 			var event = new CodenameInputEvent(holdArray, controlArray, releaseArray,
 				sourceLine, sourceLine.lineIndex);
@@ -20527,7 +21956,9 @@ void main(void) {
 				// changing it to sick :blush:
 				if (noteBelongsToInputLine(daNote, sourceLine) && (sourceLine == null || !daNote.wasGoodHit) && daNote.canBeHit
 					&& !(daNote.mustPress && daNote.blockHit)
-					&& coolShouldPress && daNote.isSustainNote && !daNote.isLiftNote && daRating == 'sick') {
+					&& coolShouldPress && daNote.isSustainNote && !daNote.isLiftNote
+					&& (psychClientPrefs == null ? daRating == 'sick' : !daNote.wasGoodHit && !daNote.tooLate
+						&& !daNote.ignoreNote && PsychSustainChain.canHitSustain(daNote, guitarHeroSustains))) {
 					if (holdArray[daNote.noteData])
 						goodNoteHit(daNote, playerOne);
 				}
@@ -20922,9 +22353,124 @@ void main(void) {
 		return true;
 	}
 
+	/** Source miss order belongs to the engine family, never the selected song. */
+	function sourceNoteMiss(direction:Int, playerOne:Bool, note:Null<Note>, actingOn:Character,
+		hxcMissEvent:Dynamic):Void {
+		if (!sourceScoreNightmare) {
+			for (duplicate in SourceMissDuplicates.select(note, cast notes.members, false))
+				invalidateSourceInputNote(cast duplicate);
+			if (PsychSustainChain.prepareMiss(note, guitarHeroSustains)) {
+				if (instakillOnMiss) {
+					setSourceVocalVolume('player', 0);
+					setSourceVocalVolume('opponent', 0);
+					doDeathCheck(true);
+				}
+				var previousCombo = combo;
+				combo = 0;
+				applySourceMissHealth(note, playerOne, true);
+				applySourceMiss();
+				notifyPsychRatingChange(true);
+				sourceMissAnimation(direction, note, actingOn);
+				var performer = sourceMissPerformer(note, actingOn);
+				if (performer != gf && previousCombo > 5 && gf != null && gf.hasAnimation('sad')) {
+					gf.playAnim('sad', true);
+					gf.specialAnim = true;
+				}
+				setSourceVocalVolume('player', 0);
+			}
+			if (note == null)
+				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
+			dispatchPsychCompiledStage(note == null ? 'noteMissPress' : 'noteMiss', note == null ? [direction] : [cast note]);
+			PsychMissCallbacks.dispatch(note, direction, note == null ? -1 : notes.members.indexOf(note),
+				function(name:String, args:Array<Dynamic>, family:String):Dynamic {
+					return PsychRuntimeBindings.dispatch(this, name, args, family);
+				});
+		} else {
+			// A field's local handler precedes PlayState's counted-miss listener.
+			var reacts = note != null || actingOn == null || !actingOn.stunned;
+			applySourceMissHealth(note, playerOne, reacts);
+			if (reacts) sourceMissAnimation(direction, note, actingOn);
+			if (note == null && reacts)
+				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
+			if (note != null) {
+				if (nightmareVisionNoteTypes != null) {
+					var result = nightmareVisionNoteTypes.noteMiss(note, note.sourcePlayfieldIndex);
+					if (result != NightmareVisionScriptGroup.STOP_FUNC)
+						nightmareVisionScripts.call('noteMiss', [note, note.sourcePlayfieldIndex], false,
+							[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+				}
+				if (!note.hitCausesMiss && !note.canMiss && note.nightmareVisionTailState != null) {
+					note.nightmareVisionTailState.missed = true;
+					for (piece in note.nightmareVisionTailState.notes) if (piece != null) piece.tooLate = true;
+				}
+				note.alphaMod *= 0.3;
+			}
+			if (sourceMissCounts(note)) {
+				if (combo > 5 && gf != null && gf.hasAnimation('sad')) gf.playAnimForDuration('sad', 1, true);
+				combo = 0;
+				setSourceVocalVolume('player', 0);
+				if (instakillOnMiss) doDeathCheck(true);
+				applySourceMiss();
+				notifyPsychRatingChange(true);
+			}
+			// NV's noteMissPress broadcast is owned by the key-input router once
+			// all affected fields have delivered their local handlers.
+		}
+		setAllHaxeVar('misses', misses);
+		setAllHaxeVar('combo', combo);
+		setAllHaxeVar('songScore', songScore);
+		if (note != null && note.noteMiss != null) callHscript(note.noteMiss, [note], 'modchart');
+		callAllHScript(playerOne ? 'playerOneMiss' : 'playerTwoMiss', [], false, null, null, true);
+		callAllHScript('noteMiss', [note, playerOne, direction, hxcMissEvent], true, null, null, true);
+		if (!playerOne) callAllHScript('opponentNoteMiss', [note], true, null, null, true);
+	}
+
+	function sourceMissAnimation(direction:Int, note:Null<Note>, actingOn:Character):Void {
+		if (note != null && note.noMissAnimation) return;
+		var actors:Array<Character> = [actingOn];
+		if (sourceScoreNightmare && note != null)
+			actors = cast getNightmareVisionField(note.sourcePlayfieldIndex).singers;
+		for (singer in actors) {
+			var actor = sourceMissPerformer(note, singer);
+			if (actor == null || (sourceScoreNightmare ? actor.animTimer > 0 : !actor.hasMissAnimations)) continue;
+			var animations:Array<String> = ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
+			if (sourceScoreNightmare && note != null) {
+				var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+				var names:Dynamic = skin == null ? null : Reflect.field(skin.data, 'singAnimations');
+				if (Std.isOfType(names, Array) && (cast names:Array<String>).length > 0) animations = cast names;
+			}
+			var lane = Std.int(Math.abs(Math.min(animations.length - 1, direction)));
+			var suffix = note == null ? '' : sourceScoreNightmare
+				? (note.noteType == 'Alt Animation' ? '-alt' : '') : note.animSuffix;
+			actor.playAnim(animations[lane] + 'miss' + suffix, true);
+			if (sourceScoreNightmare) actor.holdTimer = 0;
+		}
+	}
+
+	function sourceMissPerformer(note:Null<Note>, actor:Character):Character {
+		if (note != null && note.forceGfSing) return gf;
+		if (!sourceScoreNightmare && curSection >= 0 && curSection < SONG.notes.length
+			&& Reflect.field(SONG.notes[curSection], 'gfSection') == true) return gf;
+		return actor;
+	}
+
+	function setSourceVocalVolume(role:String, value:Float):Void {
+		if (vocalTracks != null) vocalTracks.setRoleVolume(role, value, role == 'player');
+		else if (role == 'player' && vocals != null) vocals.volume = value;
+	}
+
+	function restoreSourceHitVocals(note:Note, playerOne:Bool):Void {
+		if (!sourceScoreLedgerActive()) {setVocalsVolume(1); return;}
+		if (!sourceScoreNightmare) {setSourceVocalVolume(playerOne ? 'player' : 'opponent', 1); return;}
+		// With combined voices NV also restores the player bus on opponent hits.
+		if (getNightmareVisionField(note.sourcePlayfieldIndex).playerControls
+			|| vocalTracks == null || !vocalTracks.hasRole('opponent')) setSourceVocalVolume('player', 1);
+	}
+
 	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
 		?sourceLine:CodenameInputLine<Character>):Void {
-		if (note != null && note.canMiss && note.nightmareVisionTypeRuntime == null) return;
+		if (note != null && note.canMiss && !sourceScoreNightmare && note.nightmareVisionTypeRuntime == null) return;
+		if (note == null && sourceScoreLedgerActive() && sourceLivePreference('ghostTapping', ghostTapping)) return;
 		// A missed sustain segment can be several generated Note objects after
 		// the authored head. Strumline resolves it back to that head so an early
 		// release/miss ends the pooled V-Slice cover immediately.
@@ -20933,10 +22479,10 @@ void main(void) {
 			var noteStrums = getInputStrumline(authoredLine, playerOne);
 			if (noteStrums != null) noteStrums.endNoteHoldCover(note);
 		}
-		var opponentSinger = note != null && note.forceGfSing && gf != null ? gf : getOpponentSinger();
-		var actingOn = playerOne ? boyfriend : opponentSinger;
-		var onActing = playerOne ? opponentSinger : boyfriend;
-		if (authoredLine != null || !actingOn.stunned) {
+		var actingOn = noteSingerForSide(note, playerOne);
+		var onActing = playerOne ? getOpponentSinger() : boyfriend;
+		var nightmareVisionGfPerformer = isNightmareVisionGfPerformer(note, playerOne);
+		if (authoredLine != null || sourceScoreLedgerActive() || !actingOn.stunned) {
 			// HXC note callbacks receive one shared mutable event. Run them before
 			// native miss bookkeeping so cancelEvent() has the donor meaning.
 			if (note == null && playerOne) {
@@ -20960,78 +22506,90 @@ void main(void) {
 				|| hxcMissEvent.cancelled == true)) || (note != null && !note.alive))
 				return;
 			if (missCodenameNote(direction, note, playMissSound, authoredLine)) return;
+			if (sourceScoreLedgerActive()) {
+				sourceNoteMiss(direction, playerOne, note, actingOn, hxcMissEvent);
+				return;
+			}
 			if (note != null && hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.miss(note);
-			misses += 1;
-			setAllHaxeVar("misses", misses);
-			if (note != null && note.noteMiss != null)
-				callHscript(note.noteMiss, [note], "modchart");
+			var sourceCommon = !sourceScoreLedgerActive() || sourceScoreNightmare
+				|| PsychSustainChain.prepareMiss(note, guitarHeroSustains);
+			var countsMiss = !sourceScoreLedgerActive() || sourceMissCounts(note);
+			var missReaction = !(sourceScoreNightmare && note == null && actingOn.stunned);
+			if (sourceCommon) {
+				if (sourceScoreLedgerActive()) { if (countsMiss) applySourceMiss(); }
+				else misses += 1;
+				setAllHaxeVar("misses", misses);
+				if (note != null && note.noteMiss != null)
+					callHscript(note.noteMiss, [note], "modchart");
 
-			var healthBonus = -0.04 * healthLossMultiplier;
-			if (note != null)
-				healthBonus = note.getHealth('miss');
-			if (playerOne)
-				health += healthBonus;
-			else
-				health -= healthBonus;
-			if (combo > 5 && gf.gfEpicLevel >= EpicLevel.Level_Sadness)
-				gf.playAnim('sad');
-			updateAccuracy();
-			combo = 0;
-			setAllHaxeVar("combo", combo);
-			if (!practiceMode && !demoMode)
-				songScore -= 5;
-			setAllHaxeVar('songScore', songScore);
-			trueScore -= 5;
-			if (playMissSound)
-				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
-			// FlxG.sound.play('assets/sounds/missnote1' + TitleState.soundExt, 1, false);
-			// FlxG.log.add('played imss note');
+				if (sourceScoreLedgerActive()) applySourceMissHealth(note, playerOne, missReaction);
+				else {
+					var healthBonus = -0.04 * healthLossMultiplier;
+					if (note != null) healthBonus = note.getHealth('miss');
+					if (playerOne) health += healthBonus; else health -= healthBonus;
+				}
+				if (countsMiss && combo > 5 && gf.gfEpicLevel >= EpicLevel.Level_Sadness)
+					gf.playAnim('sad');
+				if (!sourceScoreLedgerActive()) updateAccuracy();
+				if (countsMiss) combo = 0;
+				setAllHaxeVar("combo", combo);
+				if (!sourceScoreLedgerActive() && !practiceMode && !demoMode)
+					songScore -= 5;
+				setAllHaxeVar('songScore', songScore);
+				if (countsMiss) trueScore -= 5;
+				if (instakillOnMiss && countsMiss) health = 0;
+				if (countsMiss) notifyPsychRatingChange(true);
+				if (playMissSound && missReaction)
+					FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
+				// FlxG.sound.play('assets/sounds/missnote1' + TitleState.soundExt, 1, false);
+				// FlxG.log.add('played imss note');
 
-			if (authoredLine != null) {
-				var stunned:Array<Character> = [];
-				for (actor in authoredLine.characters) if (actor != null && !stunned.contains(actor)) {
-					stunned.push(actor);
-					actor.stunned = true;
-					var missedActor = actor;
+				if (authoredLine != null) {
+					var stunned:Array<Character> = [];
+					for (actor in authoredLine.characters) if (actor != null && !stunned.contains(actor)) {
+						stunned.push(actor);
+						actor.stunned = true;
+						var missedActor = actor;
+						new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
+							missedActor.stunned = false;
+						});
+					}
+				} else if (!sourceScoreLedgerActive()) {
+					actingOn.stunned = true;
 					new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
-						missedActor.stunned = false;
+						actingOn.stunned = false;
 					});
 				}
-			} else {
-				actingOn.stunned = true;
-				new FlxTimer().start(5 / 60, function(tmr:FlxTimer) {
-					actingOn.stunned = false;
-				});
-			}
-			if (note == null || note.allowsAnimation(true)) {
-				if (note != null && note.shouldBeSung) {
-					var singAnim = currentKey.getSing(note.noteData);
-					var singNum = 0;
-					switch(singAnim) {
-						case 'singLEFT':
-							singNum = 0;
-						case 'singDOWN':
-							singNum = 1;
-						case 'singUP':
-							singNum = 2;
-						case 'singRIGHT':
-							singNum = 3;
+				if (missReaction && (note == null || note.allowsAnimation(true))) {
+					if (note != null && note.shouldBeSung) {
+						var singAnim = currentKey.getSing(note.noteData);
+						var singNum = 0;
+						switch(singAnim) {
+							case 'singLEFT':
+								singNum = 0;
+							case 'singDOWN':
+								singNum = 1;
+							case 'singUP':
+								singNum = 2;
+							case 'singRIGHT':
+								singNum = 3;
+						}
+						if (!singCodenameNoteActors(note, note.noteData, true)) {
+							var realActor = actingOn;
+							if (note.soloMode && !nightmareVisionGfPerformer)
+								realActor = onActing;
+							realActor.sing(singNum, true);
+						}
+						if (authoredLine == null && note.oppntSing != null)
+							onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
 					}
-					if (!singCodenameNoteActors(note, note.noteData, true)) {
-						var realActor = actingOn;
-						if (note.soloMode)
-							realActor = onActing;
-						realActor.sing(singNum, true);
-					}
-					if (authoredLine == null && note.oppntSing != null)
-						onActing.sing(note.oppntSing.direction, note.oppntSing.miss, note.oppntSing.alt);
-				}
-				else {
-					if (!singCodenameNoteActors(note, direction, true, 0, sourceLine)) {
-						var realActor = actingOn;
-						if (note != null && note.soloMode)
-							realActor = onActing;
-						realActor.sing(direction, true);
+					else {
+						if (!singCodenameNoteActors(note, direction, true, 0, sourceLine)) {
+							var realActor = actingOn;
+							if (note != null && note.soloMode && !nightmareVisionGfPerformer)
+								realActor = onActing;
+							realActor.sing(direction, true);
+						}
 					}
 				}
 			}
@@ -21085,7 +22643,7 @@ void main(void) {
 	}
 
 	function noteCheck(keyP:Bool, note:Note, playerOne:Bool):Void {
-		note.rating = noteRatingAtHit(note);
+		if (!sourceScoreLedgerActive()) note.rating = noteRatingAtHit(note);
 		if (keyP)
 			goodNoteHit(note,playerOne);
 		else
@@ -21110,10 +22668,37 @@ void main(void) {
 	function dispatchHxcAutoNoteHit(note:Note, playerOne:Bool):Bool {
 		if (note == null || !note.alive)
 			return false;
+		var controlledAuto = sourceScoreLedgerActive() && (sourceScoreNightmare
+			? getNightmareVisionField(note.sourcePlayfieldIndex).playerControls && getNightmareVisionField(note.sourcePlayfieldIndex).autoPlayed
+			: playerOne && demoMode);
+		if (controlledAuto && !sourceScoreNightmare && note.ignoreNote) {
+			note.wasGoodHit = false;
+			note.autoHitSuppressed = true;
+			return false;
+		}
+		if (PsychRuntimeBindings.hasScripts(this)) {
+			// Native autoplay marks hits before PlayState judges them. Source Pre
+			// observes a pending note and may cancel just this attempt; keep it
+			// eligible for a later attempt, as Psych does, rather than suppressing it.
+			if (playerOne || !sourceScoreLedgerActive() || sourceScoreNightmare) note.wasGoodHit = false;
+			if (!dispatchPsychNoteHitPre(note, playerOne)) return false;
+			if (!note.alive) return false;
+			note.wasGoodHit = true;
+		}
+		// NV Pre observes a pending note even when native autoplay found it first.
+		if (nightmareVisionScripts != null) note.wasGoodHit = false;
 		dispatchNightmareVisionNoteHitPre(note);
+		if (controlledAuto && sourceScoreNightmare && (note.ignoreNote || note.hitCausesMiss || note.canMiss)) {
+			note.wasGoodHit = false;
+			note.autoHitSuppressed = true;
+			return false;
+		}
+		if (nightmareVisionScripts != null) note.wasGoodHit = true;
+		if (sourceScoreLedgerActive() && (!sourceScoreNightmare
+			|| getNightmareVisionField(note.sourcePlayfieldIndex).playerControls)) judgeSourceNote(note);
 		if (note.isSustainNote)
 			return true;
-		note.rating = 'sick';
+		if (!sourceScoreLedgerActive()) note.rating = 'sick';
 		var event = EngineCompat.hxcNoteCallbackPayload([playerOne, note, false], 'noteHit');
 		// The V-Slice bot and opponent routes emit 'perfect', which is
 		// distinct from a manually scored player's 'sick'.
@@ -21137,18 +22722,27 @@ void main(void) {
 	}
 
 	function goodNoteHit(note:Note, playerOne:Bool, sourceHold:Bool = false):Void {
+		if (note == null) return;
+		if (sourceScoreNightmare && nightmareVisionScripts != null) {
+			hitNightmareVisionNote(note, playerOne, false, sourceHold);
+			return;
+		}
+		if (PsychRuntimeBindings.hasScripts(this) && note.wasGoodHit) return;
 		if (nightmareVisionScripts != null && note != null
 			&& (note.wasGoodHit || !getNightmareVisionField(note.sourcePlayfieldIndex).inControl)) return;
 		if (note != null && note.codenameInputLine != null && (!note.alive || note.wasGoodHit)) return;
-		var opponentSinger = note != null && note.forceGfSing && gf != null ? gf : getOpponentSinger();
-		var actingOn = playerOne ? boyfriend : opponentSinger;
-		var onActing = playerOne ? opponentSinger : boyfriend;
+		var actingOn = noteSingerForSide(note, playerOne);
+		var onActing = playerOne ? getOpponentSinger() : boyfriend;
+		var nightmareVisionGfPerformer = isNightmareVisionGfPerformer(note, playerOne);
 		if ((!note.canBeHit && !sourceHold) || note.tooLate)
 			return;
+		if (!dispatchPsychNoteHitPre(note, playerOne) || !note.alive) return;
 		dispatchNightmareVisionNoteHitPre(note);
 		// HXC note callbacks run before popUpScore, including through the custom
 		// input path. Supply the same rating that the score will show below.
-		note.rating = noteRatingAtHit(note);
+		if (sourceScoreLedgerActive()) {
+			if (!sourceScoreNightmare || getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) judgeSourceNote(note);
+		} else note.rating = noteRatingAtHit(note);
 		// Give HXC note kinds first refusal over the native judgement. The
 		// payload keeps the live Note separately, so generic cancellation and
 		// graphics writes can be observed without changing Psych's ABI.
@@ -21176,10 +22770,15 @@ void main(void) {
 		if (!note.isSustainNote && !hitCausesMiss)
 			notesHitArray.push(Date.now());
 		if (hitCausesMiss) {
+			if (sourceScoreNightmare) {
+				if (!note.isSustainNote) invalidateSourceInputNote(note);
+				return;
+			}
 			finishGoodNoteHit(note, playerOne, hxcHitEvent, false);
 			return;
 		}
 		if (!note.wasGoodHit) {
+			if (sourceScoreLedgerActive() && !sourceScoreNightmare) note.wasGoodHit = true;
 			trace("<3 was good hit");
 			if (note.codenameInputLine == null) {
 			actingOn.altAnim = "";
@@ -21208,9 +22807,15 @@ void main(void) {
 			trace("<3 pop up score");
 			if (!note.dontCountNote)
 				notesPassing += 1;
-			popUpScore(note.strumTime, note, playerOne);
+			var sourceLedger = sourceScoreLedgerActive();
+			var sourcePopup = !sourceScoreNightmare || (getNightmareVisionField(note.sourcePlayfieldIndex).playerControls
+				&& getNightmareVisionField(note.sourcePlayfieldIndex).showRatings);
+			if (sourceLedger && sourcePopup && !note.isSustainNote) combo = Std.int(Math.min(9999, combo + 1));
+			if (sourceLedger && sourceScoreNightmare) applySourceHitHealth(note, playerOne);
+			if (!sourceLedger || sourcePopup) popUpScore(note.strumTime, note, playerOne);
+			if (sourceLedger && !sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 			if (!note.isSustainNote) {
-				combo += 1;
+				if (!sourceLedger) combo += 1;
 				setAllHaxeVar("combo", combo);
 
 				if (combo == 50)
@@ -21246,7 +22851,7 @@ void main(void) {
 							singNum = -1;
 					}
 					var realActor = actingOn;
-					if (note.soloMode)
+					if (note.soloMode && !nightmareVisionGfPerformer)
 						realActor = onActing;
 					var codenameSang = singCodenameNoteActors(note, note.noteData, false, note.altNum);
 					if (!codenameSang) {
@@ -21300,20 +22905,23 @@ void main(void) {
 	 * applying the ordinary miss judgement. Authored Codename lines own their
 	 * separate note lifecycle and return through hitCodenameNote first. */
 	function dispatchHitCausesMiss(note:Note, playerOne:Bool):Bool {
-		if (note == null || !playerOne || !note.hitCausesMiss || note.wasGoodHit
+		if (note == null || !playerOne || !note.hitCausesMiss
+			|| (note.wasGoodHit && (!sourceScoreLedgerActive() || sourceScoreNightmare || note.psychHitDispatched))
 			|| note.codenameInputLine != null)
 			return false;
-		note.wasGoodHit = true;
+		if (!sourceScoreNightmare) note.wasGoodHit = true;
 		noteMiss(note.noteData, playerOne, note);
-		setVocalsVolume(0);
-		splashHitCausesMissNote(note);
+		if (sourceScoreNightmare) note.wasGoodHit = true;
+		if (!sourceScoreLedgerActive()) setVocalsVolume(0);
+		if (!sourceScoreNightmare) splashHitCausesMissNote(note);
 		return true;
 	}
 
 	/** Shared global and note-local gates for native and Psych note splashes. */
-	function shouldShowNoteSplash(note:Note):Bool {
-		if (note != null && note.sourcePlayfieldIndex >= 0) {
-			var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+	function shouldShowNoteSplash(note:Note, sourceField:Int = -1):Bool {
+		var fieldID = sourceField < 0 && note != null ? note.sourcePlayfieldIndex : sourceField;
+		if (note != null && fieldID >= 0) {
+			var skin = nightmareVisionSkinForField(fieldID);
 			if (skin != null && !skin.boolField('splashesEnabled', true)) return false;
 		}
 		return note != null && !note.isSustainNote && !note.isNoteSplashDisabled()
@@ -21335,34 +22943,236 @@ void main(void) {
 		grpNoteSplashes.add(strums.doSplash(lane));
 	}
 
-	function dispatchNightmareVisionNoteHitPre(note:Note):Void {
-		if (nightmareVisionScripts == null) return;
-		var field = getNightmareVisionField(note.sourcePlayfieldIndex);
-		var callback = field.playerControls ? 'goodNoteHitPre' : field.ID == 1 ? 'opponentNoteHitPre' : 'extraNoteHitPre';
+	/**
+	 * One Nightmare Vision hit route for manual taps, autoplay taps, and hold
+	 * segments. Source PlayField snapshots the field and callback family before
+	 * Pre, then reads that same live field object for each later phase.
+	 */
+	function hitNightmareVisionNote(note:Note, playerOne:Bool, autoAttempt:Bool = false,
+		sourceHold:Bool = false):Void {
+		if (note == null || !note.alive || nightmareVisionScripts == null || !sourceScoreNightmare
+			|| note.sourcePlayfieldIndex < 0) return;
+		var fieldID = note.sourcePlayfieldIndex;
+		var field = getNightmareVisionField(fieldID);
+		var callback = field.playerControls ? 'goodNoteHit'
+			: fieldID == 1 ? 'opponentNoteHit' : 'extraNoteHit';
+		if (!field.inControl || note.nightmareVisionHitDispatched) return;
+		if (autoAttempt) {
+			if (!field.autoPlayed || note.ignoreNote || note.wasGoodHit) return;
+		} else if (note.wasGoodHit || (!note.canBeHit && !sourceHold) || note.tooLate)
+			return;
+
+		// The admitting bank/line and the source callback ABI are selected before
+		// Pre. That hook may change sourcePlayfieldIndex or playerControls; the
+		// original bank and family still own this dispatch.
+		dispatchNightmareVisionNoteHitPre(note, field, fieldID, callback);
+
+		if (field.playerControls && (note.wasGoodHit
+			|| (field.autoPlayed && (note.ignoreNote || note.hitCausesMiss || note.canMiss)))) {
+			// PlayState's later onNoteHit listener still runs after PlayField's
+			// early return. Its popup guard, rather than the listener, rejects the
+			// hazard/canMiss score.
+			finishNightmareVisionExternalHit(note, playerOne, field, fieldID, false, autoAttempt);
+			return;
+		}
+
+		// The donor plays the hit sound after early-return checks and before its
+		// hit-causes-miss handling.
+		if (field.playerControls && OptionsHandler.options.hitSounds
+			&& Reflect.field(note, 'hitsoundDisabled') != true)
+			FlxG.sound.play(FNFAssets.getSound('assets/sounds/hitSound.ogg'));
+
+		if (field.playerControls && note.hitCausesMiss) {
+			dispatchHitCausesMiss(note, true);
+			note.nightmareVisionHitDispatched = true;
+			var hazardSustain = note.isSustainNote;
+			if (!hazardSustain) detachNightmareVisionTap(note);
+			finishNightmareVisionExternalHit(note, playerOne, field, fieldID, false, autoAttempt);
+			if (!hazardSustain) note.destroy();
+			return;
+		}
+
+		if (field.playerControls) {
+			var amount = SourceHealthDelta.hit(true, note.hitHealth, healthGain,
+				healthGainMultiplier, note.isSustainNote, holdSubdivisions, false);
+			health += amount;
+		}
+
+		prepareNightmareVisionHitSingers(note, field, fieldID);
+		note.wasGoodHit = true;
+		if (field.playerControls) judgeSourceNote(note);
+		prepareNightmareVisionHitSplash(note, field, fieldID);
+		dispatchNightmareVisionNoteHit(note, fieldID, callback);
+
+		var sustain = note.isSustainNote;
+		if (!sustain) detachNightmareVisionTap(note);
+		finishNightmareVisionExternalHit(note, playerOne, field, fieldID, true, autoAttempt);
+		if (!sustain) note.destroy();
+	}
+
+	function dispatchNightmareVisionNoteHitPre(note:Note, ?field:NightmareVisionPlayFieldView,
+		?fieldID:Int, ?callback:String):Void {
+		if (nightmareVisionScripts == null || note == null) return;
+		var activeField = field == null ? getNightmareVisionField(note.sourcePlayfieldIndex) : field;
+		var id = fieldID == null ? activeField.ID : fieldID;
+		var family = callback == null
+			? (activeField.playerControls ? 'goodNoteHit' : id == 1 ? 'opponentNoteHit' : 'extraNoteHit')
+			: callback;
+		var originalNoteData = note.noteData;
+		var line = id == 0 ? playerStrums : id == 1 ? enemyStrums : null;
 		// The source broadcasts Pre to the whole group and ignores its return.
-		nightmareVisionScripts.call(callback, [note, field.ID]);
-		// Source receptor/tail bookkeeping precedes scoring and note-type hooks,
-		// including hazards and notes that suppress legacy receptor visuals.
-		var line = getNoteStrumline(note);
-		var strum = line == null ? null : line.members[note.sourceDirection];
+		nightmareVisionScripts.call(family + 'Pre', [note, id]);
+		// The bank/family are admitted before Pre, but the donor indexes that
+		// bank with live note.noteData afterwards. Imported rows flatten fields into
+		// lane blocks, so remove the captured bank block while preserving host
+		// custom-note encodings that were not changed by the callback.
+		var direction = note.sourceDirection;
+		var lane = note.noteData;
+		var bankStart = id * Note.NOTE_AMOUNT;
+		if (lane >= bankStart && lane < bankStart + Note.NOTE_AMOUNT)
+			direction = lane - bankStart;
+		else if (lane >= 0 && lane < Note.NOTE_AMOUNT)
+			direction = lane;
+		else if (lane != originalNoteData)
+			direction = -1;
+		var strum = line == null || direction < 0 || direction >= line.members.length
+			? null : line.members[direction];
+		// Keep the admitting bank while using its live source direction.
 		if (strum != null) {
 			strum.lastNote = note;
-			if (field.playAnims) strum.playConfirm(note.isSustainNote, true);
-			sustain2(strum.ID, strum, note);
+			if (activeField.playAnims) strum.playConfirm(note.isSustainNote, true);
+			if (activeField.autoPlayed)
+				strum.resetAnim = (0.15 + (note.isSustainNote && !note.nightmareVisionSustainEnd ? 0.15 : 0)) / playbackRate;
+			if (note.isSustainNote) strum.coyoteTime = activeField.holdDropLeniency;
+			else if (note.nightmareVisionTailState != null) note.nightmareVisionTailState.active = true;
 		}
 	}
 
-	function dispatchNightmareVisionNoteHit(note:Note):Void {
-		if (nightmareVisionNoteTypes == null || note == null || note.hitCausesMiss) return;
-		if (note.nightmareVisionHitDispatched) return;
+	function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView,
+		fieldID:Int):Void {
+		var actors:Array<Dynamic> = note.forceGfSing ? [gf] : field.singers;
+		var owner:Dynamic = Reflect.getProperty(note, 'owner');
+		if (owner != null) actors = [owner];
+		var skin = nightmareVisionSkinForField(fieldID);
+		var authoredAnimations:Dynamic = skin == null ? null : Reflect.field(skin.data, 'singAnimations');
+		var animations:Array<String> = Std.isOfType(authoredAnimations, Array)
+			&& (cast authoredAnimations:Array<Dynamic>).length > 0
+			? cast authoredAnimations : ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
+		var lane = animations.length == 0 ? 0 : Std.int(Math.abs(note.noteData)) % animations.length;
+		var anim = animations[lane] + (note.animSuffix == null ? '' : note.animSuffix);
+		for (actorValue in actors) {
+			var actor:Character = cast actorValue;
+			if (actor == null || note.noAnimation) continue;
+			actor.holdTimer = 0;
+			if (NightmareVisionNoteTypeRuntime.noteTypeOf(note) == 'Hey!' && actor.animation.exists('hey')) {
+				actor.playAnimForDuration('hey', 0.6, true);
+				actor.specialAnim = true;
+				continue;
+			}
+			if (note.isSustainNote && !note.nightmareVisionSustainEnd
+				&& actor.animation.exists(anim + '-hold')) actor.playAnim(anim + '-hold', false);
+			else actor.playAnim(anim, true);
+		}
+	}
+
+	function prepareNightmareVisionHitSplash(note:Note, field:NightmareVisionPlayFieldView,
+		fieldID:Int):Void {
+		if (note == null || note.isSustainNote || !field.noteSplashes || note.hitCausesMiss
+			|| (field.playerControls && note.ratingMod < 1) || !shouldShowNoteSplash(note, fieldID)) return;
+		var line = fieldID == 0 ? playerStrums : fieldID == 1 ? enemyStrums : null;
+		var lane = Std.int(Math.abs(note.noteData));
+		if (line == null || !line.showNotesplash || lane < 0 || lane >= line.members.length) return;
+		var splash = line.doSplash(lane);
+		if (grpNoteSplashes != null) grpNoteSplashes.add(splash);
+		callNightmareVision('onSpawnNoteSplash', [splash, note]);
+	}
+
+	function detachNightmareVisionTap(note:Note):Void {
+		note.kill();
+		if (notes != null) notes.remove(note, true);
+	}
+
+	/** Later PlayState signal listeners run only after the source field callback. */
+	function finishNightmareVisionExternalHit(note:Note, playerOne:Bool,
+		field:NightmareVisionPlayFieldView, fieldID:Int, accepted:Bool, autoAttempt:Bool):Void {
+		if (fieldID == 1) camZooming = true;
+		var sharedVoice = vocalTracks == null || !vocalTracks.hasRole('opponent');
+		if (field.playerControls || sharedVoice) {
+			if (nightmareVisionAudioApi != null) nightmareVisionAudioApi.setTrackVolumeState();
+			else setSourceVocalVolume('player', 1);
+		}
+		if (field.playerControls && field.showRatings && !note.isSustainNote) {
+			combo = Std.int(Math.min(9999, combo + 1));
+			setAllHaxeVar('combo', combo);
+			popUpScore(note.strumTime, note, playerOne, false, field);
+		}
+		if (!accepted) return;
+
+		if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.hit(note);
+		var observerPlayer = field.playerControls;
+		if (observerPlayer) player1GoodHitSignal.trigger(note);
+		else player2GoodHitSignal.trigger(note);
+		dispatchPsychCompiledStage(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit', [note]);
+		var hxcEvent = EngineCompat.hxcNoteCallbackPayload([observerPlayer, note, false], 'noteHit');
+		if (!note.isSustainNote) {
+			callHxcNoteHScript('noteHit', [observerPlayer, note, false, hxcEvent]);
+			callHxcNoteHScript(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit',
+				[observerPlayer, note, false, hxcEvent]);
+			EngineCompat.hxcApplyNoteCallbackPayload(hxcEvent);
+		}
+		callAllHScript('noteHit', [observerPlayer, note, note.wasGoodHit, hxcEvent], true, null, null, false);
+		callAllHScript(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit',
+			[note, observerPlayer], true, null, null, false);
+		if (observerPlayer) callAllHScript('playerOneSing', []);
+		else {
+			callAllHScript('playerTwoSing', []);
+			callCutsceneOpponentSing();
+		}
+		if (note.noteHit != null) callHscript(note.noteHit, [note], 'modchart');
+		if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll)
+			|| (note.y > getHaxeActor('0').y + 20 && downscroll))) {
+			callHscript(note.noteStrum, [], 'modchart');
+			note.noteStrum = null;
+		}
+		if (!autoAttempt && !note.dontCountNote) notesPassing += 1;
+	}
+
+	function dispatchNightmareVisionNoteHit(note:Note, fieldID:Int = -1,
+		callback:String = null):Void {
+		if (note == null || note.nightmareVisionHitDispatched) return;
+		if (fieldID < 0) fieldID = note.sourcePlayfieldIndex;
+		if (callback == null) {
+			var field = getNightmareVisionField(fieldID);
+			callback = field.playerControls ? 'goodNoteHit' : fieldID == 1 ? 'opponentNoteHit' : 'extraNoteHit';
+		}
 		note.nightmareVisionHitDispatched = true;
-		var id = note.sourcePlayfieldIndex;
-		var callback = note.isPlayerControlled() ? 'goodNoteHit' : 'opponentNoteHit';
-		nightmareVisionNoteTypes.hit(note, id);
-		var result = note.isPlayerControlled() ? nightmareVisionNoteTypes.goodNoteHit(note, id)
-			: nightmareVisionNoteTypes.opponentNoteHit(note, id);
-		if (result != NightmareVisionScriptGroup.STOP_FUNC)
-			nightmareVisionScripts.call(callback, [note, id], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+		var result:Dynamic = NightmareVisionScriptGroup.CONTINUE_FUNC;
+		if (nightmareVisionNoteTypes != null) {
+			nightmareVisionNoteTypes.hit(note, fieldID);
+			result = switch (callback) {
+				case 'goodNoteHit': nightmareVisionNoteTypes.goodNoteHit(note, fieldID);
+				case 'opponentNoteHit': nightmareVisionNoteTypes.opponentNoteHit(note, fieldID);
+				default: nightmareVisionNoteTypes.extraNoteHit(note, fieldID);
+			};
+		}
+		if (result != NightmareVisionScriptGroup.STOP_FUNC && nightmareVisionScripts != null)
+			nightmareVisionScripts.call(callback, [note, fieldID], false,
+				[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+	}
+
+	/** Source post-hit notifications precede disposal and retain donor family ABIs. */
+	function dispatchPsychNoteHit(note:Note, playerOne:Bool):Void {
+		if (!sourceScoreLedgerActive() || sourceScoreNightmare || note.psychHitDispatched) return;
+		note.psychHitDispatched = true;
+		if (!playerOne) note.hitByOpponent = true;
+		var callback = playerOne ? 'goodNoteHit' : 'opponentNoteHit';
+		dispatchPsychCompiledStage(callback, [note]);
+		if (playerOne && note.psychHitCallbackArgs != null) note.psychHitCallbackArgs[0] = notes.members.indexOf(note);
+		PsychNoteCallbacks.dispatch(callback, note, notes.members.indexOf(note),
+			playerOne ? Math.round(Math.abs(note.noteData)) : Math.abs(note.noteData),
+			function(name, args, family) return PsychRuntimeBindings.dispatch(this, name, args, family),
+			playerOne ? note.psychHitCallbackArgs : null);
+		note.psychHitCallbackArgs = null;
 	}
 
 	/** Shared successful-hit callbacks and note retirement, including Psych
@@ -21373,16 +23183,18 @@ void main(void) {
 		if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.hit(note);
 		var goodhit = note.wasGoodHit;
 		if (restoreVocals)
-			setVocalsVolume(1);
+			restoreSourceHitVocals(note, playerOne);
 		if (playerOne)
 			player1GoodHitSignal.trigger(note);
 		else
 			player2GoodHitSignal.trigger(note);
 
 		dispatchNightmareVisionNoteHit(note);
-		dispatchPsychCompiledStage(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note]);
-		callAllHScript("noteHit", [playerOne, note, goodhit, hxcHitEvent], true);
-		callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true);
+		var psychSource = sourceScoreLedgerActive() && !sourceScoreNightmare;
+		if (psychSource) dispatchPsychNoteHit(note, playerOne);
+		else dispatchPsychCompiledStage(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note]);
+		callAllHScript("noteHit", [playerOne, note, goodhit, hxcHitEvent], true, null, null, psychSource);
+		callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true, null, null, psychSource);
 		if (note.noteHit != null)
 			callHscript(note.noteHit, [note], "modchart");
 
@@ -21391,7 +23203,7 @@ void main(void) {
 			callHscript(note.noteStrum, [], "modchart");
 			note.noteStrum = null;
 		}
-		if (nightmareVisionScripts != null && note.isSustainNote) return;
+		if ((nightmareVisionScripts != null || psychSource) && note.isSustainNote) return;
 		note.kill();
 		notes.remove(note, true);
 		note.destroy();
@@ -21442,6 +23254,7 @@ void main(void) {
 		}
 		setAllHaxeVar("crochet", Conductor.crochet);
 		if (curSection != previousSection) {
+			updatePsychSectionCamera();
 			NightmareVisionPluginHost.callActive('onSectionHit');
 			callNightmareVision('onSectionHit', []);
 			dispatchPsychCompiledStage('sectionHit', []);
@@ -21598,6 +23411,10 @@ void main(void) {
 	}
 
 	override public function destroy() {
+		if (sourceScoreTextTween != null) {
+			sourceScoreTextTween.cancel();
+			sourceScoreTextTween = null;
+		}
 		cancelVSliceScrollTweens();
 		vSliceScrollTargets.resize(0);
 		var codenameTransitionOwner = codenameSelectedRoot();
@@ -21643,10 +23460,19 @@ void main(void) {
 		}
 		nightmareVisionCharacterGroups.clear();
 		nightmareVisionPlugins = null;
+		// Persistent plugins and subsequent songs reuse this owner cache. The
+		// plugin host releases it on owner exit; only an unmounted facade is ours.
+		if (nightmareVisionPaths != null && (NightmareVisionPluginHost.activeHost == null
+			|| NightmareVisionPluginHost.activeHost.assetPaths != nightmareVisionPaths))
+			nightmareVisionPaths.releaseOwnerAssets();
 		nightmareVisionPaths = null;
 		nightmareVisionNoteSkins = null;
 		nightmareVisionPrefs = null;
 		callAllHScript('destroy', []);
+		for (runtime in psychRuntimeBindings) runtime.release();
+		psychRuntimeBindings.resize(0);
+		psychSourceCallbacks.release();
+		for (interp in hscriptStates) if (Std.isOfType(interp, SourceIrisBridge)) (cast interp:SourceIrisBridge).release();
 		HxcCompatRuntime.destroyFunkinVideos(this);
 		HxcCompatRuntime.clearFunkinCameras(this);
 		// The state still owns sprites queued by a finish callback when a script
@@ -21728,6 +23554,20 @@ void main(void) {
 			if (!Reflect.hasField(smokeActors, 'remainingBindings')) smokeActors.remainingBindings = 0;
 			if (!Reflect.hasField(smokeActors, 'cleanupErrors')) smokeActors.cleanupErrors = [];
 			RuntimeSmokeHarness.markCodenameActorTeardown(smokeActors);
+		}
+		sourceRatingApiDisposed = true;
+		if (psychPreferenceVolumeKeys != null) {
+			psychPreferenceVolumeKeys.release();
+			psychPreferenceVolumeKeys = null;
+		}
+		psychClientPrefs = null;
+		if (psychControls != null) psychControls.release();
+		psychControls = null;
+		keysArray = [];
+		keysPressed = [];
+		if (sourcePreviousSafeZone != null) {
+			Conductor.safeZoneOffset = sourcePreviousSafeZone;
+			sourcePreviousSafeZone = null;
 		}
 		super.destroy();
 		CodenameMusicBeatTransition.releaseChartOwner(codenameTransitionOwner);

@@ -30,10 +30,17 @@ typedef NightmareVisionHUDAdapterConfig = {
 	@:optional var songTitle:String;
 	@:optional var timeBarType:String;
 	@:optional var showTime:Bool;
+	/** Initial NMV `playHUD.updateIconPos` state and its native owner callback. */
+	@:optional var updateIconPos:Bool;
+	@:optional var setIconPositionUpdates:Bool->Void;
 	@:optional var setHealthDirection:Bool->Void;
 	@:optional var setSongDirection:Bool->Void;
 	/** Tween `target.alpha` to 1 over the given duration with circOut easing. */
 	@:optional var tweenAlpha:Dynamic->Float->Void;
+	/** Optional source score-text scale tween seam; otherwise FlxTween is resolved at runtime. */
+	@:optional var tweenScoreScale:Dynamic->Float->Dynamic;
+	/** Apply the PsychHUD rank-color range through typed host-owned FlxText APIs. */
+	@:optional var applyScoreMarkup:Dynamic->Int->Int->Int->Void;
 	@:optional var reportUnsupported:String->Void;
 	/** These callbacks must route to the actual PlayState display list. */
 	@:optional var addDisplay:Dynamic->Dynamic;
@@ -366,20 +373,30 @@ class NightmareVisionHUDAdapter {
 	public var cameras(get, set):Dynamic;
 	public var timeBarType:String;
 	public var showTime(default, null):Bool;
+	/** NMV controls whether PlayState may reposition its live health icons. */
+	public var updateIconPos(get, set):Bool;
 
 	var tweenAlpha:Null<Dynamic->Float->Void>;
+	var tweenScoreScale:Null<Dynamic->Float->Dynamic>;
+	var applyScoreMarkupCallback:Null<Dynamic->Int->Int->Int->Void>;
 	var reportUnsupported:Null<String->Void>;
 	var addDisplay:Null<Dynamic->Dynamic>;
 	var removeDisplay:Null<Dynamic->Bool->Dynamic>;
 	var insertDisplay:Null<Int->Dynamic->Dynamic>;
 	var refreshCharacterPresentation:Null<Void->Void>;
+	var setIconPositionUpdates:Null<Bool->Void>;
 	var groupX:Float = 0;
 	var groupY:Float = 0;
 	var ratingPrefixValue:String = '';
 	var ratingPresentation:Dynamic;
+	var scoreTextTween:Dynamic;
+	var markupEnabled:Bool = true;
 	var applyRatingPrefix:Null<String->Void>;
 	var alphaValue:Float = 1;
 	var visibleValue:Bool = true;
+	var updateIconPosValue:Bool = true;
+	/** The current FlxSpriteGroup camera assignment, inherited by new members. */
+	var cameraValue:Dynamic;
 	var released:Bool = false;
 
 	public function new(config:NightmareVisionHUDAdapterConfig) {
@@ -402,12 +419,16 @@ class NightmareVisionHUDAdapter {
 				&& Reflect.getProperty(config.timeText, 'visible') == true
 			: config.showTime;
 		if (timeBarType == 'Disabled') showTime = false;
+		updateIconPosValue = config.updateIconPos == null ? true : config.updateIconPos;
 		tweenAlpha = config.tweenAlpha;
+		tweenScoreScale = config.tweenScoreScale;
+		applyScoreMarkupCallback = config.applyScoreMarkup;
 		reportUnsupported = config.reportUnsupported;
 		addDisplay = config.addDisplay;
 		removeDisplay = config.removeDisplay;
 		insertDisplay = config.insertDisplay;
 		refreshCharacterPresentation = config.refreshCharacterPresentation;
+		setIconPositionUpdates = config.setIconPositionUpdates;
 		applyRatingPrefix = config.applyRatingPrefix;
 		ratingPresentation = config.ratingPresentation;
 
@@ -425,7 +446,10 @@ class NightmareVisionHUDAdapter {
 			true, config.setSongDirection, songProgress, 0, 1, reportUnsupported);
 
 		members = [config.healthBackground, config.healthFill, iconP1, iconP2,
-			scoreTxt, config.songBackground, config.songFill, timeTxt];
+			scoreTxt, config.songFill, config.songBackground, timeTxt];
+		// FlxSpriteGroup.add/insert copy the group's backing camera field into
+		// each incoming sprite. Seed the facade from the live HUD camera set.
+		cameraValue = Reflect.getProperty(config.healthBackground, 'cameras');
 		if (ratingPresentation != null) {
 			members.push(ratingGraphic);
 			members.push(ratingNumGroup);
@@ -438,6 +462,8 @@ class NightmareVisionHUDAdapter {
 		// onSongStart. This mutates the live display targets, not placeholders.
 		timeBar.alpha = 0;
 		Reflect.setProperty(timeTxt, 'alpha', 0);
+		if (setIconPositionUpdates != null)
+			setIconPositionUpdates(updateIconPosValue);
 	}
 
 	/** PsychHUD's source fade: tween the fill+background view and actual label. */
@@ -542,6 +568,7 @@ class NightmareVisionHUDAdapter {
 		ensureAlive();
 		if (addDisplay == null) unsupported('playHUD.add requires a PlayState display-owner callback');
 		if (object == null) return null;
+		Reflect.setProperty(object, 'cameras', cameraValue);
 		if (members.indexOf(object) >= 0) return object;
 		var result = addDisplay(object);
 		if (members.indexOf(object) < 0) members.push(object);
@@ -570,6 +597,8 @@ class NightmareVisionHUDAdapter {
 	public function insert(position:Int, object:Dynamic):Dynamic {
 		ensureAlive();
 		if (insertDisplay == null) unsupported('playHUD.insert requires a PlayState display-owner callback');
+		if (object == null) return null;
+		Reflect.setProperty(object, 'cameras', cameraValue);
 		var result = insertDisplay(position, object);
 		members.insert(position, object);
 		return result;
@@ -598,9 +627,68 @@ class NightmareVisionHUDAdapter {
 		members.sort(function(a, b) return compare(order, a, b));
 	}
 
-	/** Explicit diagnostic for BaseHUD methods not backed by native behavior. */
-	public function onUpdateScore(score:Int = 0, accuracy:Float = 0, misses:Int = 0, missed:Bool = false):Void
-		unsupported('PsychHUD.onUpdateScore has no source-equivalent score formatter in this host');
+	/** Match the source PsychHUD score label and its optional score zoom. */
+	public function onUpdateScore(score:Int = 0, accuracy:Float = 0, misses:Int = 0, missed:Bool = false):Void {
+		ensureAlive();
+		var summary = number(parent, 'totalPlayed') == 0 ? 'N/A'
+			: Std.string(accuracy) + '% [' + string(parent, 'ratingFC') + ']';
+		var text = 'Score: ' + formatMoney(score);
+		if (Reflect.getProperty(parent, 'instakillOnMiss') != true)
+			text += ' • Misses: ' + misses;
+		text += ' • Accuracy: ' + summary;
+
+		// PsychHUD bops before replacing the text and only for a judged hit.
+		if (!missed && Reflect.getProperty(parent, 'cpuControlled') != true)
+			doScoreBop();
+		Reflect.setProperty(scoreTxt, 'text', text + '\n');
+		if (markupEnabled) applyScoreMarkup();
+	}
+
+	/** Source PsychHUD exposes this through onUpdateScore rather than as a HUD API. */
+	function doScoreBop():Void {
+		if (!sourceScoreZoom()) return;
+		if (tweenScoreScale == null)
+			unsupported('PsychHUD.onUpdateScore requires the typed PlayState score-scale tween callback');
+		cancelScoreTextTween();
+		var scale:Dynamic = Reflect.getProperty(scoreTxt, 'scale');
+		if (scale == null) unsupported('PsychHUD.onUpdateScore requires the borrowed score text scale');
+		Reflect.setProperty(scale, 'x', 1.075);
+		Reflect.setProperty(scale, 'y', 1.075);
+		scoreTextTween = tweenScoreScale(scale, 0.2);
+	}
+
+	function sourceScoreZoom():Bool {
+		// Preferences are owner-scoped; a missing saved/default value follows the donor default.
+		var prefs:Dynamic = Reflect.field(parent, 'nightmareVisionPrefs');
+		var view:Dynamic = prefs == null ? null : Reflect.getProperty(prefs, 'view');
+		var enabled:Dynamic = view == null ? null : Reflect.getProperty(view, 'scoreZoom');
+		return enabled == null || enabled == true;
+	}
+
+	function cancelScoreTextTween():Void {
+		if (scoreTextTween == null) return;
+		var cancel:Dynamic = Reflect.field(scoreTextTween, 'cancel');
+		if (cancel != null) Reflect.callMethod(scoreTextTween, cancel, []);
+		scoreTextTween = null;
+	}
+
+	function applyScoreMarkup():Void {
+		if (applyScoreMarkupCallback == null)
+			unsupported('PsychHUD.onUpdateScore requires the typed FlxText markup callback');
+		var text = string(scoreTxt, 'text');
+		var rating = string(parent, 'ratingFC');
+		applyScoreMarkupCallback(scoreTxt, ratingColor(rating), text.indexOf(rating), text.length - 2);
+	}
+
+	static function ratingColor(rating:String):Int return switch (rating) {
+		case 'KFC': 0xFF54FF7C;
+		case 'SFC': 0xFFFFEE56;
+		case 'GFC': 0xFFFFC156;
+		case 'FC': 0xFFF16439;
+		case 'SDCB': 0xFFFF5959;
+		case 'Clear': 0xFFABFFF4;
+		default: 0xFFFFFFFF;
+	};
 
 	public function popUpScore(rating:Dynamic, combo:Int, note:Dynamic):Void {
 		if (ratingPresentation == null) unsupported('PsychHUD.popUpScore requires its source-owned rating sprites and cache');
@@ -632,6 +720,7 @@ class NightmareVisionHUDAdapter {
 	public function release():Void {
 		if (released) return;
 		released = true;
+		cancelScoreTextTween();
 		if (healthBar != null) healthBar.release();
 		if (timeBar != null) timeBar.release();
 		if (ratingPresentation != null) call(ratingPresentation, 'release', []);
@@ -645,12 +734,16 @@ class NightmareVisionHUDAdapter {
 		parent = null;
 		members.resize(0);
 		tweenAlpha = null;
+		tweenScoreScale = null;
+		applyScoreMarkupCallback = null;
 		reportUnsupported = null;
 		addDisplay = null;
 		removeDisplay = null;
 		insertDisplay = null;
 		refreshCharacterPresentation = null;
+		setIconPositionUpdates = null;
 		applyRatingPrefix = null;
+		cameraValue = null;
 	}
 
 	/** Native state teardown owns the component destruction; scripts cannot
@@ -677,6 +770,15 @@ class NightmareVisionHUDAdapter {
 			Reflect.setProperty(object, 'visible', value);
 		return value;
 	}
+	function get_updateIconPos():Bool return updateIconPosValue;
+	function set_updateIconPos(value:Bool):Bool {
+		ensureAlive();
+		if (setIconPositionUpdates == null)
+			unsupported('playHUD.updateIconPos requires the PlayState icon-position owner callback');
+		updateIconPosValue = value;
+		setIconPositionUpdates(value);
+		return value;
+	}
 	function get_x():Float return groupX;
 	function set_x(value:Float):Float {
 		ensureAlive();
@@ -699,9 +801,10 @@ class NightmareVisionHUDAdapter {
 			Reflect.setProperty(object, 'y', number(object, 'y') + delta);
 		return value;
 	}
-	function get_cameras():Dynamic return members.length == 0 ? null : Reflect.getProperty(members[0], 'cameras');
+	function get_cameras():Dynamic return cameraValue;
 	function set_cameras(value:Dynamic):Dynamic {
 		ensureAlive();
+		cameraValue = value;
 		for (object in members) if (object != null)
 			Reflect.setProperty(object, 'cameras', value);
 		return value;
@@ -727,6 +830,27 @@ class NightmareVisionHUDAdapter {
 	static function number(target:Dynamic, field:String):Float {
 		var value:Dynamic = target == null ? null : Reflect.getProperty(target, field);
 		return value == null ? 0 : value;
+	}
+
+	static function string(target:Dynamic, field:String):String {
+		var value:Dynamic = target == null ? null : Reflect.getProperty(target, field);
+		return value == null ? '' : Std.string(value);
+	}
+
+	/** FlxStringUtil.formatMoney(score, false) for the integer score input. */
+	static function formatMoney(value:Int):String {
+		var digits = Std.string(value);
+		var sign = '';
+		if (StringTools.startsWith(digits, '-')) {
+			sign = '-';
+			digits = digits.substr(1);
+		}
+		var grouped = '';
+		while (digits.length > 3) {
+			grouped = ',' + digits.substr(digits.length - 3) + grouped;
+			digits = digits.substr(0, digits.length - 3);
+		}
+		return sign + digits + grouped;
 	}
 
 	static function call(target:Dynamic, methodName:String, args:Array<Dynamic>):Dynamic {

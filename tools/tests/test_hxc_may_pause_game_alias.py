@@ -20,7 +20,7 @@ class HxcMayPauseGameAliasTest(unittest.TestCase):
 
     def test_alias_uses_the_native_pause_gate(self):
         source = self.play_state
-        self.assertTrue("if (controls.PAUSE && startedCountdown && canPause" in source,
+        self.assertTrue("if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause" in source,
                         "Configured pause action must respect countdown and canPause gates")
         self.assertIn("canPause = false;", source)
         start = source.index("\tpublic var mayPauseGame(get, set):Bool;")

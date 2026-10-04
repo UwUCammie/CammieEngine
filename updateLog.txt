@@ -1,6 +1,42 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.12 alpha — CammieEngine
+	- Share Nightmare Vision manual, autoplay and sustain hit routing; preserve source callback/score ordering, live field and lane edits, tap retirement and fixed-rate autoplay without changing mod files.
+	- Match Psych successful-hit Lua/HScript arguments and one-time callback routing; preserve source sustains and Hurt Note behavior, and keep translated Lua fallthrough returns nil without changing mod files.
+	- Route Psych/Nightmare Vision game-over lifecycle and retry/menu callbacks through their source owner; expose the live death substate to Psych properties and preserve NV cancellation and update timing without changing mod files.
+	- Match Psych/Nightmare Vision miss and cancellable game-over ordering, keep duplicate misses and hold fades source-correct, preserve independent vocal buses, and scope shared script audio lookups to the active engine dialect without changing mod files.
+	- Apply imported Psych/Nightmare Vision gameplay preferences to live health and botplay state; match their distinct note damage and hold rules, retain source parent/tail links, and keep native modifiers separate without changing mod files.
+	- Expose complete Psych held/pressed/released controls with owner keyboard/gamepad bindings and device mode; route ordinary four-lane gameplay through captured source keys and release the control view on scene exit without changing mod files.
+	- Share mutable imported Psych preferences across scripts and gameplay with owner-scoped saves and temporary volume shortcuts; match Psych/Nightmare Vision note hit windows and restore native timing on scene exit without changing mod files.
+	- Expose source Rating constructors and judgement APIs for Psych/Nightmare Vision; support authored full-combo overrides and keep persistent NV rating helpers scoped to the matching live mod owner.
+	- Use shared Psych/Nightmare Vision source score and rating rules for imported charts, including head-only accuracy, disabled-rating and practice/autoplay behavior, live rating descriptors, Epic rankings and score helpers; preserve native scoring and mod files.
+	- Match Psych dialogue progression and Psych/Nightmare Vision score-display callbacks, keep authored rating overrides, and use native-safe NV HUD formatting without changing mod files.
+	- Match Psych/Nightmare Vision event preparation, script loading and early offsets; preserve live event edits and native callback result types, share NV note/event offsets, and precache owner noteskin effects without changing mod files.
+	- Judge Psych input per lane with source pre/post key callbacks and exact cancellation; add sustain-aware Nightmare Vision ghost-tap notifications and source note priority selection without altering mod files.
+	- Add source-ordered Psych note-spawn, pre-hit and countdown notifications with Lua/HScript argument and cancellation rules; notify Nightmare Vision scripts before native substate opens and closes.
+	- Bind Nightmare Vision source presets to owner saves and live chart variables; preserve Psych script creation order and source callback results without reusing stale returns.
+	- Keep Nightmare Vision plugin assets alive across songs and release them on owner teardown; prevent fork scripts from being replayed by the legacy Psych loader.
+	- Route direct Psych HScript imports through the shared Iris resolver and add owner-scoped local/global callbacks, variable helpers, tagged sprite properties and note direction tweens.
+	- Add shared source-driven Psych/Nightmare Vision API adapters for reflection, callback results, owner-scoped math/files/assets, expanded Psych helpers and persistent Iris-backed HScript execution; full parity remains under validation.
+	- Add an implementation roadmap covering source compatibility, imported menu flows, freeplay/library management and performance without quality reductions.
+	- Add shared source-driven Psych/Nightmare Vision API adapters for reflection, callback results, owner-scoped math/files/assets, expanded Psych helpers and persistent Iris-backed HScript execution; full parity remains under validation.
+	- Add an implementation roadmap covering source compatibility, imported menu flows, freeplay/library management and performance without quality reductions.
+	- Support owner-scoped Psych sprite sheets and numeric-frame animations, including fractional animation speeds, and shared camera/sprite shader setup with resize-cache lifecycle handling.
+	- Expose Psych playbackRate and text-string reads so authored rating popups and optional pause-label animation gates execute correctly.
+	- Expand shared Psych Lua translation for inline control flow, common math and string helpers, table concatenation and nested callback scope; preserve source scripts while improving compatibility diagnostics.
+	- Restore Psych score globals and rating-change notifications for custom HUDs, and route empty key presses to noteMissPress without changing native scoring.
+	- Discover plain Psych .hx callback scripts and normalize supported imports at runtime; diagnose unsupported compiled classes and video dependencies explicitly.
+	- Restore Nightmare Vision's animation-driven directional camera displacement for player, opponent and GF follow targets, respecting source preferences, camera locks and scripted overrides at every frame rate.
+	- Resolve Nightmare Vision falling-note animation metadata with either shared names or lane-suffixed names, preserving custom skin artwork.
+	- Honor Nightmare Vision HUD icon-position ownership, added-sprite cameras, character icon metadata and packed/legacy health colors, allowing custom layouts to finish loading.
+	- Route Nightmare Vision GF-section heads and sustain notes to the authored performer while preserving field input, scoring and callbacks.
+	- Expose state-class instance API aliases and the source launch offset so shared composer intro cards load and use the correct camera layer.
+	- Expose the shared rim-light shader under Nightmare Vision's source import path so stage setup completes and animated HUD blur decays normally.
+	- Restore Psych's onMoveCamera callback at initial focus and section changes, with source-family and forced-camera guards.
+	- Restore Nightmare Vision camera-follow callbacks and source actor focus before script updates, preserving authored turn zooms and forced camera positions.
+	- Use Nightmare Vision's source timebar asset dimensions, fill inset, border layering and timer placement, preventing custom borders from being overrun by the native song progress fill
+
 0.0.11 alpha — CammieEngine
 	- Package shared import registries from committed source rather than the developer runtime, keeping personal imports out of release downloads
 	- Show import refresh phases, remaining work, current file, elapsed time, approximate phase ETA and the time since progress changed; animate phases whose total is unknown

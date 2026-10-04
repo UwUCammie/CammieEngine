@@ -78,6 +78,10 @@ class Group {
  public var members:Array<Note>=[];
  public function new() {}
  public function add(note:Note) {members.push(note);}
+ public function insert(index:Int,note:Note) {members.insert(index,note);}
+}
+class PsychRuntimeBindings {
+ public static function hasScripts(_host:Dynamic):Bool return false;
 }
 class StrumGroup {public var members:Array<Dynamic>=[]; public function new() {}}
 class DemoTest {
@@ -97,10 +101,12 @@ class DemoTest {
  var legacyOffsetDiagnosticEmitted:Bool=false;
  var nightmareVisionNoteTypes:Dynamic=null; var nightmareVisionScripts:Dynamic=null;
  var nightmareContext:Dynamic=null; var playerStrums:StrumGroup=new StrumGroup(); var enemyStrums:StrumGroup=new StrumGroup();
+ var sourceBatch:Dynamic=null;
  var SONG:SongStub=null;
  var haxeVars:Map<String,Dynamic>=new Map();
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}
+ function dispatchPsychNoteSpawn(_note:Note):Void {}
  function setAllHaxeVar(name:String, value:Dynamic):Void haxeVars.set(name, value);
  function setVocalsPitch(pitch:Float):Void vocals.pitch = pitch;
  function syncVocalTrackState():Void {}
@@ -110,6 +116,7 @@ class DemoTest {
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
   return NightmareVisionScriptGroup.CONTINUE_FUNC;
  function processNightmareVisionHolds():Void {}
+ function processNightmareVisionAutoHits(_batch:Dynamic):Void {}
  function currentSongDataPath(fileName:String):String return 'assets/data/demo/' + fileName;
  function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
  function nightmareVisionRenderContext():Dynamic return null;

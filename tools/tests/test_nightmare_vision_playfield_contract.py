@@ -15,7 +15,7 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 class NightmareVisionPlayFieldContractTest(unittest.TestCase):
     def test_checked_in_donor_has_the_pinned_field_and_grace_rules(self):
-        donor = ROOT.parent / "FNF-Example-Mods/misc/nightmare_vision_source_code/source/funkin"
+        donor = ROOT.parent / "fnf_sources/NightmareVision/source/funkin"
         if not donor.is_dir():
             self.skipTest("supplied Nightmare Vision source unavailable")
         play_field = (donor / "objects/note/PlayField.hx").read_text()
@@ -49,8 +49,10 @@ class Main {
   var defaultAutoplay = false;
   var player = new NightmareVisionPlayFieldView(0, function() return defaultAutoplay);
   check(player.ID == 0 && player.playerControls, 'field 0 is player-controlled');
-  check(player.playAnims && !player.noteSplashes && player.holdDropLeniency == 1 / 3,
+  check(player.playAnims && player.showRatings && !player.noteSplashes && player.holdDropLeniency == 1 / 3,
    'source field defaults changed');
+  player.showRatings = false;
+  check(!player.showRatings, 'showRatings should remain a live mutable field flag');
   check(player.canInput(), 'ordinary player field accepts input');
 
   var bf = {stunned:false};

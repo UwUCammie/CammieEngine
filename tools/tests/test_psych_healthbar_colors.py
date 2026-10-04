@@ -53,6 +53,7 @@ class FakeBar {
   public function updateBar():Void {}
 }
 class PsychHealthBarFixture {
+  var nightmareVisionScripts:Dynamic = null;
   var compatHealthBarLeft:Null<Int> = null;
   var compatHealthBarRight:Null<Int> = null;
   var barShowingPoison:Bool = false;

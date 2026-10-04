@@ -60,8 +60,11 @@ class NightmareVisionNoteTypeRuntime {
 	/** Reset sidecar values when a pooled native Note begins a fresh recycle.
 	 * Call after its chart-skin defaults are established and before note-type
 	 * behavior applies custom colors, flags, or a texture prefix. */
-	public function resetNote(note:Dynamic, rgbEnabled:Bool, canMiss:Bool = false):Void
+	public function resetNote(note:Dynamic, rgbEnabled:Bool, canMiss:Bool = false):Void {
 		api.resetNote(note, rgbEnabled, canMiss);
+		var reset = Reflect.field(note, 'resetSourceRatingState');
+		if (reset != null) Reflect.callMethod(note, reset, []);
+	}
 
 	/** Source calls this type-local gate after setupNote and before PlayField
 	 * insertion. STOP cancels this spawn in the caller. */

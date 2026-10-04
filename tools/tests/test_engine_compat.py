@@ -723,7 +723,7 @@ class NotePoint {
         source = (ROOT / "source/PlayState.hx").read_text()
         self.assertIn("EngineCompat.callbackNames(func_name)", source)
         self.assertIn("hxcCountdownHookDispatching", source)
-        self.assertIn("if (hxcCountdownHookDispatching || codenameCountdownPreparationInProgress)", source)
+        self.assertIn("if (hxcCountdownHookDispatching || codenameCountdownPreparationInProgress || sourceEventPreparationInProgress)", source)
         self.assertIn("EngineCompat.eventName(e.name)", source)
         self.assertIn("EngineCompat.routeLegacyEvent(e.name, e.v1, e.v2, e.v3)", source)
         self.assertIn("case 'Legacy Camera Zoom':", source)

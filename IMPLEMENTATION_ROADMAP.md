@@ -1,0 +1,351 @@
+# Psych and Nightmare Vision compatibility, imported menus, freeplay, and performance roadmap
+
+Reference date: 4 October 2026. This document is the implementation brief and acceptance checklist. A checked item requires evidence; an existing method name or successful build alone does not prove compatibility.
+
+## Objective and order
+
+Make CammieEngine run imported Psych Engine and Nightmare Vision content accurately, including the scripts and menus supplied by a mod. Then make the imported library practical to manage and browse. Finally optimize performance without reducing visual quality, gameplay behavior, or usability.
+
+Implementation order:
+
+1. Stabilize the current compatibility checkpoint and establish source-based coverage.
+2. Complete and verify Psych/Nightmare Vision gameplay and scripting compatibility.
+3. Support imported title screen → main menu → freeplay → gameplay flows.
+4. Overhaul host freeplay and add mod management, categories, favorites, and sorting.
+5. Optimize startup, scanning/importing/refreshing, loading, gameplay, and iteration time.
+
+Small profiling and instrumentation changes may accompany earlier phases. Larger performance changes follow the compatibility and menu milestones so benchmarks compare equivalent behavior. This roadmap specifies future work; it does not authorize release publication or claim that the listed features already work.
+
+The primary agent should work through one milestone at a time, make a reviewable implementation, update its evidence, and then continue. Keep unfinished requirements visible across sessions. Scope additions and unresolved source behavior belong in the backlog rather than disappearing behind a passing example.
+
+## Roadmap at a glance
+
+| Milestone | Deliverable | Completion evidence |
+|---|---|---|
+| Compatibility foundation, Phases 0–1 | A working checkpoint and a source-derived inventory of the Psych/NV scripting surface | Integrated build, regression results, muted native checks, and a classified API backlog |
+| Gameplay compatibility, Phase 2 | Shared implementations with explicit Psych/NV differences and accurate chart behavior | Contract tests and donor comparisons; notes, cameras, HUD, characters, effects, input and saves work at capped and unlimited FPS |
+| Imported mod sessions, Phase 3 | The mod's supported title/main/freeplay/gameplay flow through **I**, with scoped default freeplay where required | Custom and partial-menu flows, retry/return behavior, and consecutive owner switches |
+| Library management, Phase 4 | Safe mod deletion, reusable categories and persistent chart favorites | Restart/refresh/reinstall checks, shared-file ownership tests, and no duplicate content from category membership |
+| Freeplay and sorting, Phases 5–6 | A dense, polished browser with correct icons/stars and independent group/chart ordering | Visual review, keyboard/controller checks, large-library checks and stable sorting tests |
+| Performance, Phase 7 | Measured reductions in stalls, startup/load/import times and iteration cost | Comparable before/after measurements, unchanged visual/gameplay fidelity and stable repeated-session memory |
+
+These milestones are dependencies, not calendar promises. Record a baseline before estimating effort or performance gains. Source/API gaps discovered during menu or performance work return to the shared compatibility backlog rather than becoming local menu or chart workarounds.
+
+## Fixed requirements
+
+- All fixes belong in the engine, a compatibility adapter, or the importer. Never edit a donor chart, mod script, atlas, shader, or media file to make an example work. Generated import output may change through a general conversion rule while retained donor sources remain intact.
+- No production branches keyed to a mod name, song name, chart ID, or test fixture. Tests may identify concrete examples. Engine/version detection and structural feature detection are legitimate adapter boundaries.
+- Psych and Nightmare Vision share a compatibility foundation. Nightmare Vision is a Psych fork, but its newer APIs and scripting behavior are not automatically identical. Keep a shared implementation where semantics agree and small dialect adapters where they differ.
+- Use GPT-6 Luna sub-agents with maximum reasoning for implementation subtasks. Give them separate file ownership and clear interfaces; the primary agent integrates, reviews, builds, and verifies their work. Do not duplicate the same subsystem in parallel.
+- Test gameplay muted. Preserve user settings, saves, scores, favorites, and source packages. Close a game using the selected Windows build output before replacing locked files; a separately extracted installation can remain open during an isolated build.
+- Preserve rendering, shaders, animation, audio, chart timing, input responsiveness, and authored effects. No quality reduction disguised as optimization.
+- Do not publish a release, create a release tag, or push to GitHub unless separately requested.
+
+## Clarifications and default decisions
+
+These decisions fill gaps in the original brief. They are the implementation defaults unless the user changes them.
+
+| Original idea | Concrete requirement |
+|---|---|
+| “All methods charts could use” | Inventory and implement the scripting-facing contracts of the supplied Psych/NV revisions, including reflective access and source classes. Extend the inventory for additional detected versions; do not imply that one revision covers every historical fork. |
+| “Reasonably accurate” | Use the Phase 2 exit gate to begin menu work, while keeping full API parity as an unfinished requirement. Passing a handful of mods is insufficient. |
+| “X mods in Y category” | Any user-selected number of mods, with multiple category memberships per mod; categories reference installed content without copying it. |
+| Chart favorites | Favorite a song/chart entry independently of its available difficulties. Remember difficulty selection separately and distinguish favorite markers from difficulty stars. |
+| Selecting an icon | Highlighting/browsing keeps its normal frame; Enter confirms the entry and triggers the authored selection animation or the specified face fallback. |
+| Default sorting | Preserve the donor's authored week/freeplay order when known, otherwise a persistent discovery order. Refresh must not reshuffle unchanged entries. |
+| Imported mod menus | Run supported menu behavior inside CammieEngine using the selected mod's session context. A missing custom main menu leads directly to default freeplay containing only that mod's songs. |
+| Performance without downgrades | Improve measured work and resource lifetime while preserving rendering and authored behavior. Compare equivalent cold/warm runs; higher FPS alone is not proof of less stutter. |
+
+For planning, treat Phases 0–2 as the compatibility milestone, Phase 3 as the imported-menu milestone, Phases 4–6 as the library/freeplay milestone, and Phase 7 as the performance milestone. The detailed phase gates remain authoritative. Every implementation checkpoint should record its completed work, evidence, known gaps, and next work package, so another session can resume without guessing.
+
+## Sources and test material
+
+| Material | Location | Use |
+|---|---|---|
+| Engine checkout | `C:\Users\uwucammie\Documents\coding\FNF\Cammie-Engine` | Implementation, build, regression suite |
+| Upstream sources | `C:\Users\uwucammie\Documents\coding\FNF\fnf_sources` | Source semantics and version evidence |
+| Psych source | `fnf_sources\FNF-PsychEngine` | Primary compatibility target |
+| Nightmare Vision source | `fnf_sources\NightmareVision` | Primary compatibility target; compare against Psych |
+| Base/V-Slice source | `fnf_sources\Funkin` | Freeplay presentation and interaction reference |
+| Codename source | `fnf_sources\CodenameEngine` | Later compatibility work and regression reference; not the current porting priority |
+| Example mods | `C:\Users\uwucammie\Documents\coding\FNF\fnf_example_mods` | Real mod test corpus, including `psych` and `nightmare vision` subfolders |
+
+Pin the donor revisions used for each compatibility claim. At this reference date, Psych is Git tag `1.0.4`, revision `5c67ced49e5a98535298a6daa3f8f4ec79ac8399`; its inherited project app version says `0.2.8`. Nightmare Vision is revision `733165c42ca71eb0961a70e4173b2d81ba4a29ea`, described by Git as `V1-1120-g733165c`. Record both real source revision and any embedded version strings rather than using the latter as the sole identification.
+
+## Phase 0 — Establish a trustworthy checkpoint
+
+The working tree already contains compatibility work. Preserve it and review its integration before expanding scope.
+
+- [x] Run the Windows build and full regression suite on the current checkpoint. Resolve real failures and update fixtures when an intentional API change invalidates their test harness. Repeat this gate after subsequent implementation changes.
+- [ ] Verify recently added shared reflection, callback results, score/rating overrides, file/math helpers, Psych source bindings, and the Psych-to-Iris bridge.
+- [ ] Verify Nightmare Vision Paths, FunkinAssets/cache, and Mods context additions, including owner teardown and asset lifetime.
+- [ ] Record unverified behavior explicitly. Focused headless probes do not substitute for native rendering, video, audio, or save tests.
+- [x] Establish representative muted gameplay captures and timings before further changes. These are checkpoint evidence, not a comprehensive fidelity/performance baseline.
+
+Current additions are implementation in progress, not proof of full source parity. The recorded Windows checkpoint built successfully, and its full suite reported 2,032 tests across 620 modules in 95.2 seconds, with 349 skipped and zero failures. Evidence is in `tmp/psych-nv-source-checkpoint-build-2.log` and `tmp/psych-nv-source-checkpoint-tests.log`. This checkpoint does not certify later edits or untested native behavior. Keep the coverage report at `tools/reports/script-api-coverage.md` accurate and distinguish aliases, direct bindings, reflection, and behavioral verification.
+
+**Exit gate:** clean native build, passing required regression suite, representative muted smoke checks, and a reviewed list of remaining compatibility gaps.
+
+Later integrated checkpoint evidence (4 October 2026): `tmp/psych-nv-integrated-checkpoint-build-2.log` records a successful Windows build after fixing the FlxKey enum facade; `tmp/psych-nv-integrated-checkpoint-tests.log` records 2,048 tests across 626 modules in 92.0 seconds, with 349 skipped and zero failures before that final enum-fixture correction. The corrected getter/enum fixture also passed its focused test. The skipped fixtures are unavailable examples, not verified donor behavior. The final integrated suite at `tmp/psych-nv-integrated-checkpoint-tests-final.log` passed 2,050 tests across 626 modules in 90.4 seconds, with 349 skipped and zero failures. A subsequent focused audit run (`tmp/psych-nv-audit-final-focused.log`) also passed all 15 tests after its final evidence-gating refinement.
+
+Muted native captures under `tmp/compatibility-visual-check`:
+
+| Check | Capture/log stem | Evidence |
+|---|---|---|
+| Psych Swag Messiah, unlimited FPS | `psych-pass-swag-messiah-fe521ef6` | Exit 0; visible colored notes, stage and custom HUD; no detected script errors; 30.619 seconds including startup and the requested 20-second smoke window. |
+| NV Darnell, 60 FPS | `psych-pass-darnell--nightmare-vision-54e1fc6dd6-d5459bae` | Exit 0; intro/card and gameplay captures, visible notes/splashes, source HUD, green/pink TV traces; no detected script errors; 65.059 seconds including startup and the requested 55-second window. |
+| NV Darnell, unlimited FPS | `psych-pass-darnell--nightmare-vision-54e1fc6dd6-992f8cd0` | Exit 0; comparable gameplay rendering and intro behavior, visible notes and vocal traces; no detected script errors; 50.119 seconds including startup and the requested 40-second window. |
+| NV Darnell, two consecutive 60 FPS visits | `psych-pass-darnell--nightmare-vision-54e1fc6dd6-12f26732` | Exit 0; both visits captured visible notes/HUD, canonical note texture loaded and not destroyed; no detected script errors; 88.157 seconds for two 35-second windows plus startup/reload. |
+
+Options and user save bytes matched their pre-run SHA256 hashes after all four native runs. The captured unlimited Darnell overlay exceeded 1,000 FPS; this verifies no display ceiling in this example, not a general performance claim. The same-owner reload check supports persistent asset lifetime for this example. Switching between different mods, longer multi-song sessions, full source-class/API fidelity, native imported menu sessions, and broader corpus validation remain open. NV's full `script`/FunkinScript facade, source week metadata, instant-kill behavior, and mod-option menu callbacks need further implementation; the new basic preset bindings do not complete those contracts.
+
+
+Source-audit priorities to resume: Psych reflection aliases and direction tweens; HScript callback creation/presets; missing pre-note/input, event, countdown, dialogue and spawn hooks; NV source preset classes/globals and reflected chart-state parity. Also review the remaining NV Paths/cache contracts, live-reference retention during source cache sweeps, and wider owner-transition coverage. The integrated ownership/cache tests and native same-owner reload now pass, but do not certify every source cache operation. The persistent-plugin asset ownership issue belongs in this checkpoint, before adding further asset caching. Use the coverage report as an investigation list, not a runtime certification: dynamic dispatch may make a static “missing” entry a false negative.
+
+Source lifecycle checkpoint (4 October 2026): shared Psych dispatch now routes note-spawn, pre-hit and countdown-start notifications in source script order, preserving Lua scalar arguments, HScript live-note arguments, and distinct stop/cancellation rules. Nightmare Vision receives countdown-start and pre-native substate open/close notifications. The Windows build passed (`tmp/source-lifecycle-build.log`); the integrated suite passed 2,058 tests across 627 modules in 99.9 seconds, with 349 skipped and zero failures (`tmp/source-lifecycle-tests-final.log`). Muted native Lua/HScript probes passed at 60 FPS and unlimited FPS (`tmp/source-lifecycle-native-2.log`); the NV probe passed at unlimited FPS across Flixel's deferred substate boundary (`tmp/source-lifecycle-nv-native-2.log`) and with highway dim disabled for native visual inspection (`tmp/source-lifecycle-nv-native-undimmed.log`). Save and fixture-settings hashes remained unchanged. The refreshed source audit records static routes separately from behavioral evidence.
+
+Source input checkpoint (4 October 2026): Psych now judges each pressed lane independently and brackets it with source pre/post key callbacks; only exact Function_Stop cancels the key action. NV uses sustain-aware, enabled-field ghost detection and notifies before optional miss handling. Shared selectors preserve each donor's note priority rules, including custom priority on live type changes. The final Windows build passed (`tmp/source-input-build-verified.log`); the full suite passed 2,061 tests across 629 modules in 128.9 seconds, with 349 skipped and zero failures (`tmp/source-input-tests-final.log`). Native Lua/HScript cancellation and ghost probes passed at 60/unlimited FPS (`tmp/source-input-native.log`, `tmp/source-input-nv-native.log`). Keyboard checks against the final binary passed for both engines at unlimited FPS: 128 press/hold/release checks produced exactly 32 press and release callbacks (`tmp/source-input-edges-native-final.log`). Tests were muted with highway dim disabled; save/settings hashes remained unchanged. Evidence and final source/binary hashes are in `tmp/source-input-checkpoint.json`.
+
+Source event checkpoint (4 October 2026): Psych now separates global/stage push notifications from custom-event/song creation and final early offsets. NV lazily loads event modules in source order and preserves live event references, distinct direct/legacy duplicate rules, and shared note/event preference offsets. Shared dispatch preserves native numeric, boolean and object results; NV effect precaching uses owner-scoped donor defaults. The Windows build passed (`tmp/source-events-build-final-verified.log`); the full suite passed 2068 tests across 633 modules in 102.9 seconds, with 349 skipped and zero failures (`tmp/source-events-tests-complete.log`). Muted native callback/order/mutation/fractional-offset probes passed for Psych and NV at 60 and unlimited FPS (`tmp/source-events-native-final-verified.log`), with highway dim disabled and save/settings hashes unchanged. Final source/binary hashes and bounded evidence are in `tmp/source-events-checkpoint.json`. NV scroll-velocity timelines and runtime noteskin switching remain open.
+
+Source dialogue/score-display checkpoint (4 October 2026): Psych opening and ending dialogue boxes now share accept/back progression and next/skip callback counts. Shared score snapshots retain authored rating overrides; Psych/NV score hooks preserve their distinct cancellation and creation order. NV borrows the live label and uses typed native markup/tween bridges, fixing an access violation in reflective formatting. The Windows build passed (`tmp/source-dialogue-score-build-verified.log`); the full suite passed 2073 tests across 636 modules in 96.1 seconds, with 349 skipped and zero failures (`tmp/source-dialogue-score-tests-final.log`). Muted native score callback/cancellation probes passed for both engines at 60/unlimited FPS (`tmp/source-dialogue-score-native-final.log`), with highway dim disabled and save/settings hashes unchanged. The NV probe isolates the independently enabled results overlay in memory; normal overlay behavior is preserved. Dialogue evidence uses actual extracted methods, not native input/rendering. Source scoring still derives from native tallies and is not donor-math parity. Hashes and limits are in `tmp/source-dialogue-score-checkpoint.json`.
+
+Source scoring checkpoint (4 October 2026): selected Psych/NV owners now use shared stateless hit/miss deltas and live rating descriptors instead of native WIFE/segment tallies. Source windows, weights, scores, optional NV Epic ranks, head-only denominators, rating-disabled notes, practice/autoplay differences, score helpers, and Psych descriptor-based full-combo counters have focused donor/extracted-method coverage. Native charts retain their existing ledger. Source autoplay writes now reach gameplay, and NV auto Pre observes a pending note; NV opponent notes retain their unrated shape. The Windows build passed (`tmp/source-scoring-build-final-verified.log`); the full suite passed 2078 tests across 640 modules in 95.9 seconds, with 348 skipped and zero failures (`tmp/source-scoring-tests-final.log`). Four muted native probes passed at 60/unlimited FPS with highway dim disabled, real scored gameplay and per-frame denominator assertions (`tmp/source-ledger-scored-native-final.log`). The NV capture shows 37 Epic heads awarding 18,500 points and 100% KFC; the independently enabled results overlay is isolated in memory only. Save/settings hashes remained unchanged. Hashes, source revisions, scope and limitations are in `tmp/source-scoring-checkpoint.json`.
+
+Source Rating API checkpoint (4 October 2026): Psych now exposes its bare/list Rating constructors and caller-list Conductor.judgeNote; NV exposes owner-scoped Rating construction, judgement and counter updates. Shared Iris constructor routing follows imported class identity and preserves local shadowing, including qualified Psych imports. Persistent NV providers resolve only a matching live mod owner and release their scene references. Dynamic fullComboFunction/updateRatingFC hooks now run after rating defaults, including zero-play updates; exact STOP retains authored values while display refresh still runs. The final Windows build passed (`tmp/source-rating-api-build-final.log`); the full suite passed 2083 tests across 642 modules in 99.4 seconds, with 348 skipped and zero failures (`tmp/source-rating-api-tests-final.log`). Four muted native API/scored-gameplay probes passed at 60/unlimited FPS with highway dim disabled and save/settings hashes unchanged (`tmp/source-rating-api-native-final.log`). NV facade class introspection, configurable debug precision and broader mutable preferences remain open. Hashes, source revisions and exact scope/limits are in `tmp/source-rating-api-checkpoint.json`. These checks do not complete Phase 2.
+
+Source preference/input timing checkpoint (4 October 2026): imported Psych scripts now share an owner-local mutable ClientPrefs object with the full 1.0.4 data defaults, cloned versioned preference/control persistence, source key-map APIs and scene-owned volume shortcuts. Direct/compiled imports and modern/legacy class preference reads/writes address the same owner. Shared timing helpers now drive source notes: Psych uses strict asymmetric bounds and zero early sustain allowance; NV retains inclusive captured hitboxes with live getters, signed noteDiff and a strict global late cutoff. Source safeFrames are sampled at scene creation and the prior native safe zone is restored during teardown; ratingOffset remains a live judgement offset and noteOffset is applied once to chart times. The final Windows build passed (`tmp/source-preference-timing-build-final.log`); the full suite passed 2089 tests across 646 modules in 98.6 seconds, with 348 skipped and zero failures (`tmp/source-preference-timing-tests-final.log`). Four muted native preference/timing/scored-gameplay probes passed at 60/unlimited FPS with highway dim disabled and saves/settings unchanged (`tmp/source-preference-timing-native-final.log`). Complete preference consumers, gameplay control dispatch, variable-rate transport and class introspection remain open. Hashes, exact scope and limits are in `tmp/source-preference-timing-checkpoint.json`. These checks do not complete Phase 2.
+
+Psych owner Controls checkpoint (4 October 2026): imported Psych scripts now share a scene-owned Controls instance with live keyboard/gamepad maps, held/press/release getters, source action queries and device mode. Ordinary four-lane gameplay uses captured keyboard arrays, current gamepad bindings and live held actions; native keys seed new owners before saved source bindings overlay them. Script/property/class reflection and compiled BaseStage controls reach the owner view; unique keysPressed history is available and scene teardown releases map references. Native/extended mania/duo/opponent-player/Codename input paths retain their action sets. The final Windows build passed (`tmp/source-controls-build-final.log`); the full suite passed 2093 tests across 648 modules in 98.5 seconds, with 348 skipped and zero failures (`tmp/source-controls-tests-final.log`). Four muted native Psych/NV input runs passed at 60/unlimited FPS with highway dim disabled: each produced 128 input checks and exactly 32 press/release callbacks (`tmp/source-controls-native.log`); Psych also proved owner API/reflection identity and a temporary remapped key. Save/settings hashes stayed unchanged. Gamepad behavior is fixture-tested rather than physical-controller-tested. Hashes and limitations are in `tmp/source-controls-checkpoint.json`. These checks do not complete Phase 2.
+
+Source gameplay preferences and health checkpoint (4 October 2026): owner gameplay settings now initialize before source creation callbacks, compose with native modifiers, and drive live health/botplay behavior. Shared helpers retain the pinned donors' distinct note/Hurt Note damage, NV subdivision/counting/stunned-press rules, and Psych GH hold parent/tail eligibility and miss-chain early returns. The Windows build and 2,105 tests passed (654 modules; 348 skipped, none failed), followed by four muted Psych/NV native health/preference runs at configured 60/unlimited FPS with highway dim disabled and unchanged save/settings hashes. The API audit and its 17 focused checks passed. Evidence and exact limitations are in `tmp/source-health-checkpoint.json`; this does not complete Phase 2.
+
+Source miss/death checkpoint (4 October 2026): shared source routing now retains Psych bookkeeping-before-miss-callback order and NV field-callback-before-bookkeeping order, immediate cancellable death gates, Psych duplicate suppression, source animation fields and NV persistent miss fades. Vocal role writes preserve opponent stems, and the shared Iris runtime scopes NV audio aliases and preserves already-prepared source callback arguments. The Windows build and 2,126 tests passed (665 modules; 348 skipped, none failed), followed by four muted Psych/NV native runs at configured 60/unlimited FPS with highway dim disabled and unchanged save/settings hashes. Captures were inspected; the API audit and its 17 focused checks passed. Evidence and precise limitations are in `tmp/source-miss-checkpoint.json`. Native probes verify cancelled instakill gates; accepted death effects/delay use extracted Haxe tests. This does not complete Phase 2.
+
+Source successful-hit and game-over lifecycle checkpoint (4 October 2026): Psych hit callbacks now preserve Lua scalar/HScript live-note arguments, captured pre-hit fields, source flags, one-time dispatch, sustain retention and Hurt Note routing. Translated Lua functions return nil on fallthrough rather than leaking the last HScript statement result. Shared source game-over routing preserves the live Psych death-property context, source start/update/post/confirm rules, NV cancellation and fixed-rate update batches, and actual retry/menu handoffs. The Windows build and 2,138 tests passed (669 modules; 348 skipped, none failed), followed by all 19 focused audit checks; results, source hashes and precise limits are recorded in `tmp/source-hit-gameover-checkpoint.json`. Twelve muted native Psych/NV checks passed at configured 60/unlimited FPS with highway dim disabled, covering hits, retry and back; save/settings hashes stayed unchanged and gameplay captures were inspected. NV Start/default-setup suppression is extracted-Haxe-tested; native probes leave the default actor available. The Psych capture's cropped player remains a camera gap. This does not complete Phase 2 or certify full GameOver assets/camera parity.
+
+NV shared successful-hit checkpoint (5 October 2026): manual, autoplay and sustain hits now use one source-ordered route. The admitting field and callback family survive Pre mutations; receptor selection uses the live lane after Pre, and field settings remain live. Type/global callbacks precede external score/combo/audio work; tap removal precedes the external listener and destruction follows it, while sustains remain live. Autoplay admission uses the fixed 60 Hz source clock, and later popup judgement preserves authored note.rating. The Windows build and 2,141 tests passed (670 modules; 348 skipped, none failed), along with all 19 API audit checks and the extracted hit-order/cadence tests spanning 30–5,000 Hz. Four muted NV manual/botplay native runs and two Psych regression runs passed at configured 60/unlimited FPS with highway dim disabled; captures were inspected and save/settings hashes stayed unchanged. The earlier unlimited-botplay timeout remains recorded alongside the corrected final runs. Evidence, hashes and exact limits are in `tmp/nv-hit-order-checkpoint.json`. The extra callback family uses an extracted synthetic field; the native adapter still has two physical banks. Donor Ghost Note/onGhostAnim, holder/holding/lastHitTime behavior and sustain splashes remain open, and catch-up ticks sample the current song position. This does not complete Phase 2 or certify complete visual/timing parity.
+
+Next package: complete source GameOver defaults/statics, character metadata/reuse, asset selection and camera initialization through a shared owner-scoped settings adapter with explicit dialect differences (`tmp/source-gameover-defaults-next.md`); Psych overlays and charting/mod-context restoration remain open. NV trackSwap audio routing and duplicate chart-row normalization remain open, as do NV Controls action registry/InputSystem and wider reflected Note/counter parity. Include the unavailable script-facing `FlxG.stage` getter in the reflection backlog. Custom rating presentation, field-specific splash parity, dialogue JSON/assets/loading and native progression, remaining preference behavior, NV receptor/modifier generation, arbitrary paused/per-event input and source timestamp/latency behavior remain open. The current NV field adapter still exposes two native banks. These bounded probes do not complete Phase 2 or establish full countdown/input timing parity.
+
+## Phase 1 — Inventory everything chart scripts can reach
+
+Interpret “all methods charts could use” as the complete scripting-facing contract of the pinned donor engines: registered Lua functions, HScript presets/imports, callbacks, script-visible classes and constructors, and fields/methods reachable through supported reflection. Do not limit the audit to methods used by today's sample mods.
+
+For every API entry, record:
+
+- Donor engine/version, source file, signature, defaults, optional arguments, return value, units, and failure behavior.
+- Whether it mutates gameplay state, scene objects, audio, saves, preferences, or import-owned files.
+- Shared implementation or dialect override, plus known semantic differences.
+- Status: missing, implemented but unverified, behaviorally verified, or explicitly unsupported with a reason and diagnostic.
+- Tests and native evidence. A static source match must never be presented as verified support.
+
+Cover these families:
+
+| Family | Required scope |
+|---|---|
+| Script execution | Lua translation, plain HScript, embedded `runHaxeCode`, persistent functions/globals, imports, script discovery, add/remove/close/call, callback creation and broadcast |
+| Reflection and instances | Object/class/group/map properties, nested paths, method receivers, instance arguments, constructors, insertion/removal, nullable values |
+| Lifecycle | Creation/post-creation, countdown, song start/end, update/post-update, beats/steps/sections, events and early triggers, input, note spawn/hit/miss hooks, rating/score hooks, pause, substates, game over, destruction |
+| Scene and cameras | Sprites, text, atlases/grid/Animate animation, colors, ordering, character groups, camera position/follow/zoom, tweens, timers, transitions |
+| Gameplay and HUD | Note/receptor/splash skins, sustain rendering, character selection/animation, scroll speed, timing, health, score, hits/misses, ratings, health/time bars |
+| Effects and media | Shader creation and uniforms, camera filters, shader timing, sound/music/vocals, visualizers, video/cutscene lifecycle |
+| Input and utilities | Keyboard, configured controls, mouse/gamepad, math/random/string helpers, source constants and enum facades |
+| Assets and persistence | Owner Paths/Assets/cache, directory access, retained source reads, source-compatible save namespaces, preferences/mod settings |
+| NV extensions | Playfields, performers, note types, modifier/event systems, scripted source classes and utilities missing from the shared Psych surface |
+
+Use source extraction to discover APIs, then inspect dynamic aliases and reflection before classifying an entry as missing. Each entry needs its own contract test, or a shared test that explicitly covers its equivalent behavior. Add differential probes against donor behavior where practical and muted native captures for rendering, audio, video, input and persistence. The test corpus validates implementations; it must not define the boundary of the API inventory.
+
+For arbitrary compiled donor classes, distinguish a source-class loader from native HScript support. A filename ending in `.hx` does not prove that it is an executable callback script. Implement reachable compiled-class behavior through general source loading/adapters where feasible; do not silently substitute an unrelated class or pretend it is supported.
+
+**Exit gate:** reproducible source-derived inventory with no unclassified public scripting family, and an implementation backlog organized by shared API semantics. An explicitly unsupported entry is a recorded gap, not completed compatibility. The full source-parity target remains open while chart-visible APIs in the pinned targets are missing or unverified.
+
+## Phase 2 — Implement shared Psych/NV compatibility and validate fidelity
+
+Use one host-object model and shared helpers for common reflection, file access, math, callback results, asset ownership, and interpreter lifecycle. Reuse the existing Iris evaluator where it matches both source engines; avoid a second parallel interpreter. Keep Psych Lua rules and Nightmare Vision HScript-specific differences in their dialect adapters.
+
+| Layer | Responsibility |
+|---|---|
+| Shared compatibility core | Property and method access, maps and instances, scene objects, asset ownership, timers/tweens, common media helpers and testable lifecycle rules |
+| Psych adapter | Lua registrations and translation, Psych HScript presets, source callback signatures and cancellation rules, supported version differences |
+| Nightmare Vision adapter | Fork-specific presets, performers/playfields, modifier systems, script classes and changed callback/state semantics |
+| Importer | Discover engine features and dependencies, retain source, emit versioned general conversions and refresh them safely |
+| Host engine | Own native rendering, input, gameplay, menus, persistence and cleanup; expose source behavior through these adapters |
+
+Share behavior rather than merely sharing names. A class alias is valid only when constructors, fields, methods and lifecycle agree. For example, a donor camera subclass, custom substate or error-handled shader must receive an accurate adapter when the native constructor or update behavior differs. Empty stubs and unrelated aliases do not count as ported APIs.
+
+Implement in this order:
+
+1. Script loading/execution and source imports, with useful file/callback diagnostics.
+2. Reflection, shared variables, callback propagation and lifecycle ordering.
+3. Scene objects, animation, characters, camera behavior, and note/HUD rendering.
+4. Shaders, audio/visualizers, cutscenes/video, saves/preferences and remaining source helpers.
+5. NV-specific playfields, modifiers, source classes, and less common hooks.
+
+Behavioral requirements:
+
+- Preserve exact callback arguments, defaults, return values, cancellation and propagation rules. Stop-Lua, stop-HScript, stop-all, and gate cancellation must remain distinct where the source distinguishes them.
+- Preserve script persistence and teardown. Failed callbacks must not corrupt interpreter frames or leave subsequent callbacks broken. Callback registration must distinguish the current parent script from owner-wide callbacks that also reach future scripts.
+- Separate object lifetime into chart, mod session and application scopes. Persistent mod plugins may retain asset references across songs: leaving one PlayState must not dispose their textures or sound data. Release those resources when their owning session ends, while clearing chart-owned state at song exit.
+- Keep source assets scoped to the selected mod and its explicit shared dependencies. Different mods must not accidentally share mutable preferences, scripts, textures, or save namespaces.
+- Separate render rate from authored timing. At 60, 120, 240, and unlimited FPS, menu repeats, camera motion, shader clocks, tweens, input and gameplay must remain consistent with the donor's intended behavior.
+- Reimport/refresh must apply general importer changes from retained source without requiring the user to locate the original package again. Report migration failures instead of losing a usable import.
+- Support alternate versions through documented feature/version adapters. “Reasonably accurate” does not mean suppressing an error and leaving a missing visual.
+
+Use cross-mod tests plus targeted comparisons for existing reports: note colors and visibility; Darnell visualizers/cutscene; Soretro loading; Heartbeat HUD; dark-forest camera drift; Malediction zoom; Execution camera framing; Blammed note blur; Lore notes/performer/health bar/intro card; Dusk directional camera movement. These are regression examples, never production special cases.
+
+**Exit gate for starting imported menus:** supported corpus songs reach gameplay reliably; expected notes, characters, HUD, shaders, audio and cutscenes work; callbacks retain source timing at capped and uncapped FPS; scores persist; there are no unexplained script errors or missing gameplay essentials. Any remaining rare API gaps have explicit source evidence and do not block the next milestone. Starting menus does not complete the compatibility milestone. Full parity remains unfinished while any targeted chart-visible contract is missing, unverified, or explicitly unsupported. Documenting a limitation makes the gap visible; it does not satisfy the requirement to port it. Do not claim universal compatibility early.
+
+## Phase 3 — Imported title and menu flows
+
+Entry remains **I on CammieEngine's main menu → Imported Mods**.
+
+Selecting a mod should activate that mod's coherent menu flow:
+
+`Imported Mods → custom title, when present → custom main menu → custom freeplay → gameplay`
+
+General fallback rules:
+
+- A mod with no custom main menu opens the default CammieEngine freeplay filtered to that mod's songs directly, even if it has a standalone custom title screen. Retain that title source for future support; this fallback follows the requested direct-to-freeplay behavior.
+- A custom main menu without a title screen opens at its available main-menu entry.
+- A custom main menu without a custom freeplay uses the filtered default freeplay when its Freeplay action is selected.
+- An unsupported/broken custom menu must produce a useful diagnostic and offer a usable filtered fallback. Retain its source so support can improve later.
+- Detect entry points from source metadata, scripts and engine conventions; do not infer them from mod names. Never launch a donor executable as the menu implementation.
+
+Entry-point discovery should prefer an explicit declaration recognized by the detected engine/version, then that engine's supported registration mechanism, then a validated conventional entry point. Verify that the candidate exists and has a supported state contract. If multiple candidates remain equally valid or declarations conflict, record the candidates and offer the scoped freeplay fallback; do not choose whichever file happens to be enumerated first. Keep the result in the import manifest and invalidate it when relevant source metadata or adapter rules change.
+
+Create a mod-session context holding the selected owner, source engine/dialect, menu state, script globals, assets, audio and save namespace. That context must survive its menu→gameplay→menu transitions, then cleanly release when returning to Imported Mods. Menu compatibility includes script-driven states/substates, transitions, beat callbacks and menu-specific resources, not just copying background artwork. Source menus compiled as classes require the general class/adaptation work from Phase 2.
+
+Keep host preferences separate from temporary mod defaults. Respect authored choices during the mod session, then restore the host context on exit. A mod must not change another mod's controls, cache or save files accidentally. Diagnostics should identify the failed entry point and file; the fallback should be offered explicitly rather than silently presenting an incomplete custom menu as successful.
+
+Back/retry behavior must be predictable: gameplay returns to that mod's freeplay; backing out of the mod exits to Imported Mods; existing host navigation remains accessible. Preserve native title/menu animation, audio, shaders, input and transitions through the same compatibility foundations.
+
+**Exit gate:** one full custom flow for each target engine, all partial-menu fallback cases, multiple consecutive mod switches, and pause/retry/game-over/return checks without leaked objects, audio, or settings.
+
+## Phase 4 — Mod-library data and management
+
+Separate user library metadata from donor content and generated import output. Introduce stable mod and chart IDs that survive display-name changes, refreshes and reimports. A chart identity must include its owning mod so identically named songs in different mods never collide.
+
+Data model:
+
+- Every installed mod remains in **Imported**; it is the authoritative installed collection.
+- User categories contain references to mods. A mod may appear in multiple categories and still appears in Imported. Category membership does not duplicate files.
+- Adding/removing a mod to/from a category changes only membership. Renaming/deleting a category preserves its installed mods and their scores/favorites.
+- Favoriting a chart is independent of category membership and selected difficulty. A Favorites view opens the same chart with its available difficulties. Persist the user's last selected difficulty separately.
+- Favorites are visually distinct from difficulty/rating stars; neither indicator replaces the other.
+
+Management actions: create/rename/delete category; add/remove mods from categories; delete an installed mod; favorite/unfavorite a chart. The category can hold any number of mods—“X mods” means a user-selected set, not a fixed limit.
+
+Deletion must show the affected mod and managed content before confirmation. Remove its installed records and unneeded managed files atomically, using ownership/reference counts for shared assets. Do not delete external example folders or original source locations. Default to preserving archived scores/favorites for a later reinstall; expose an explicit separate action if the user wants saved history removed. Removing the managed retained-source snapshot is part of uninstall, never part of removing category membership.
+
+Implement uninstall as a recoverable transaction: check active ownership/file locks, stage only files exclusively owned by the mod, commit the library change, then finish managed cleanup. Journal enough information to restore or finish an interrupted operation on restart. If staging fails, keep the installed entry usable and report the failure; if final cleanup fails after commit, retain a pending-cleanup record rather than losing track of the files. A shared file must remain available to every surviving owner throughout the operation.
+
+Refresh/import/category actions must reconcile the metadata without duplicate rows or orphaned active selections. Provide a schema migration and recovery path for older saves/library records. Assign persistent identities independently of the installation path or current display label; retain a provenance mapping so moving a source folder or regenerating converted files does not create a new library entry. If two packages cannot be confidently matched, report the ambiguity instead of merging their scores.
+
+**Exit gate:** persistence across restart and refresh, duplicate-song-name isolation, many-to-many category tests, safe uninstall/shared-asset tests, and successful reinstall identity recovery.
+
+## Phase 5 — Freeplay overhaul and polish
+
+Use the local Funkin/V-Slice source as a design and behavior reference while keeping the engine's imported-library needs. Build a denser, readable layout with more visible entries, coherent spacing, clear selection, useful mod/subtitle metadata, difficulty indicators, search/filter controls, and consistent audio/transition feedback.
+
+Maintain existing keyboard/controller access and input behavior at unlimited FPS. Include chart previews only if they can load smoothly and release correctly. Opening the menu must not eagerly decode every mod's assets. Use reusable or virtualized rows so a large library does not require one active animated object per chart. Search should match song and mod labels; filters for category, engine and favorites compose with grouping and sorting. Keep mod management reachable from a clear action menu with keyboard/controller equivalents.
+
+For visual review, capture the existing screen and a proposed layout at the same window size before polishing. Favor readable density, aligned metadata and clear focus over copying V-Slice artwork literally. Empty results, long labels, missing icons, missing ratings and loading previews need deliberate states.
+
+Fix the known icon and difficulty-star defects generically:
+
+- Show one opponent icon per row; atlas frames must never appear as multiple separate faces.
+- Browsing/highlighting keeps the normal face. **Confirming with Enter** triggers the available selection animation. If it is absent, use the winning face, then the losing face if no winning face exists; if neither is available, retain the normal frame.
+- Bind animation availability to actual atlas metadata. Keep pixel and nonpixel icons crisp at their intended appearance.
+- Display authored difficulty stars for the corresponding chart difficulty wherever that data exists, including after changing song, difficulty, filters or sort order. Distinguish difficulty stars from achieved score/accuracy ratings and favorite markers. Unknown difficulty ratings remain clearly unknown; do not invent ratings to fill empty stars. Preserve any separate source-provided chart rating according to its own metadata.
+- Preserve song/difficulty selection, score/rating context and scroll position when returning from gameplay or management actions.
+
+**Exit gate:** user review of screenshots and interaction captures at typical window sizes, readable long names/large libraries, correct selected/confirmed icon states, stars across difficulty changes, and complete keyboard/controller navigation.
+
+## Phase 6 — Independent grouping and sorting
+
+Grouping determines the list structure; group sorting orders the groups; chart sorting orders charts within each group. Store these as separate preferences.
+
+| Control | Initial choices |
+|---|---|
+| Grouping | Flat list; by mod; by engine type |
+| Group order | Default/import-defined order; alphabetical ascending/descending; engine type; recently imported |
+| Chart order | Default/authored order; alphabetical ascending/descending; favorites first; recently played; score or difficulty/rating where meaningful metadata exists |
+
+With “by mod”, keep each mod's charts in one contiguous chunk and apply chart sorting inside that chunk. Engine-type sorting must use preserved provenance. In a flat list, chart sorting applies globally and group order is inactive. Category, engine, favorites and search filters remain separate controls and compose with any grouping. Filtering to a category includes songs belonging to its referenced mods; selecting multiple categories uses their union and shows each chart once, even if its mod belongs to several selected categories.
+
+Show separate controls for grouping, group order and chart order so a user can choose, for example, mod groups ordered alphabetically with their charts kept in authored order, or mod groups ordered by engine with their charts ordered alphabetically. Define default group order from the imported library/manifest and default chart order from the donor week/freeplay sequence when available, falling back to stable discovery order.
+
+Use stable ID tie-breakers so rows do not jump randomly. Give missing metadata a predictable final position. Never compare incompatible difficulty/rating scales as if they were equivalent. Apply sort changes without losing the selected chart/difficulty; clearly distinguish a filtered-out selection from a deleted chart.
+
+**Exit gate:** independent group/chart ordering tests, stable results with ties and missing metadata, and correct behavior across refresh, favorites, categories and menu return.
+
+## Phase 7 — Performance without fidelity loss
+
+Measure equivalent workload/settings before and after each optimization. Keep a small baseline corpus and repeatable runs; use Try Harder as a heavy-chart case alongside ordinary Psych/NV charts and the large segatendo import/refresh case when available.
+
+Measure startup-to-interactive time; initial scan/import/refresh time and storage growth; song loading time; average FPS; frame-time percentiles and worst recurring stalls; memory/cache lifetime; and unchanged/incremental build/test time. Average FPS uses the previous five seconds and updates every half second, without a hidden 1000-FPS ceiling.
+
+Also measure input-to-visible response time for navigation, selection and progress/cancel actions while scans, imports and refreshes run. Record whether a song load blocks input and whether the UI continues drawing useful progress. Performance improvements must preserve or improve these usability measurements; a higher FPS average cannot excuse delayed input or a frozen loading screen.
+
+Priorities:
+
+1. **Startup/menu:** avoid repeated library scans and eager decoding; load only visible/selected preview assets; cache metadata with reliable invalidation.
+2. **Imports/refresh:** reuse inventories and dependency analysis, process changed work only, use bounded worker pools for independent filesystem/parse jobs, keep graphics/audio/GPU operations on the appropriate thread, and avoid unnecessary duplicate copies. Retain everything that can plausibly support future conversions—including relevant executable/package metadata. Exclude only proven irrelevant junk under documented rules, not arbitrary extension bans.
+3. **Progress:** show phase, completed/total units and bytes where useful, elapsed time, recent throughput, estimated remaining time when credible, current item, and a heartbeat distinguishing active work from a stalled worker. Indeterminate phases should say so. Keep the UI responsive; cancellation leaves a consistent prior import.
+4. **Song loads:** reduce repeated parse/decode/upload work, prewarm predictable dependencies safely, and retain correct owner/cache eviction boundaries.
+5. **Gameplay:** profile recurring stutters, allocations, script dispatch, shader updates, note processing, audio analysis, cache churn and frame synchronization. Fix the measured cause while preserving step/event delivery and visual output.
+6. **Iteration:** reuse incremental/native/metadata build caches, run focused probes during development and the full suite at milestones, schedule tests in parallel, and isolate smoke output to avoid unnecessary rebuild locks. Never skip required validation because a cache claims inputs are unchanged.
+
+For each measurement, record the build, hardware, settings, FPS mode and workload, and distinguish cold-cache from warm-cache results. Run at least three comparable repetitions where practical and report typical results plus variation. Use frame-time percentiles (including the slowest one percent and 0.1 percent) and stall timestamps alongside average FPS; a higher average must not hide more frequent hitches. Set numerical improvement targets after recording the baseline rather than promising arbitrary gains.
+
+Treat retained sources as an immutable recovery input and generated import data as replaceable output. Use staged refreshes and atomic manifest replacement; interruption or cancellation must preserve the last working import. Cache fingerprints must include importer/adapter versions so new general fixes trigger regeneration even when donor files have not changed. Background workers publish progress safely without calling GPU APIs off their owning thread.
+
+No disabling/reducing shaders, textures, effects, animation, note density, audio quality, resolution or authored callbacks to inflate FPS. No timing drift, skipped events, or broken input under unlimited FPS. Lossless storage sharing and avoiding redundant work are acceptable when byte content and runtime behavior remain unchanged.
+
+**Exit gate:** published local before/after measurements for representative workloads, no visual/gameplay regressions, responsive long imports/refreshes, stable memory over repeated songs/mod switches, and passing required regression/native smoke checks.
+
+## Implementation work packages
+
+Use GPT-6 Luna at maximum reasoning for clearly bounded subtasks. A practical split is a shared Psych API implementation agent, an NV extension and ownership agent, and a source-inventory/test agent, with the primary agent integrating and validating. Respect available concurrency and reuse completed agents. Agree on public interfaces and file ownership before concurrent edits; agents must not independently build into the same output.
+
+Each work package should name its source contract, affected shared layer, deliverable, tests, native verification and remaining gaps. Build and test the integrated result before treating a package as complete. During later phases, repartition work around menu sessions, library data, freeplay presentation and profiling without duplicating core behavior.
+
+Use this initial sequence to turn the broad phases into implementation tasks. These are planned packages; their inclusion is not a claim of completion.
+
+| Package | Concrete output | Depends on |
+|---|---|---|
+| A. Verify the checkpoint | Review the existing changes and build evidence; reproduce the required checks against the current files; identify stale tests and unresolved native behavior | Existing working tree |
+| B. Complete the source inventory | A versioned contract matrix covering registrations, imports, reflection, callbacks and source classes, with a distinct behavioral verification status | A |
+| C. Script execution and lifecycle | Accurate discovery/imports, persistent globals, callback order/arguments/cancellation, frame recovery and teardown | B |
+| D. Gameplay and media fidelity | General adapters for scene objects, characters, notes, HUD, cameras, shaders, audio/video and NV extensions; regression comparisons for reported defects | C; may be divided into disjoint sub-agent assignments |
+| E. Compatibility acceptance | Full integration checks plus a review of every outstanding contract; demonstrate the Phase 2 gate before starting menu implementation | C–D |
+| F. Mod menu sessions | Entry-point detection, owner session lifecycle, custom menu flows and scoped fallback freeplay | E |
+| G. Persistent library model | Stable identities, metadata migration, categories, favorites and safe uninstall/reinstall | F |
+| H. Freeplay presentation | Dense rows, useful metadata, search/filter, management actions, correct icon states and difficulty stars | G |
+| I. Grouping and sorting | Independent preferences and stable ordering, preserving selected chart/difficulty across changes | H |
+| J. Performance improvements | Baselines, measured fixes, progress/ETA, reliable caches and bounded background work, with fidelity comparisons | Earlier milestone gates; profiling may begin sooner |
+
+For each package, use this handoff record:
+
+- **Requirement and source:** what behavior must match, and which donor revision/file establishes it.
+- **Shared rule and differences:** the engine rule being implemented and any genuine Psych/NV dialect difference.
+- **Ownership and interfaces:** files assigned to each agent and the agreed public interface. Keep concurrent edits disjoint; the primary agent owns integration.
+- **Acceptance checks:** focused contract tests, cross-mod regressions and the native checks required for this behavior.
+- **Result and remaining work:** implementation status, evidence paths, failures/skips, unresolved contracts and the next package.
+
+Treat static API exposure, behavioral verification, and full milestone completion as separate statuses. A stub, alias, silent error suppression or passing fixture is insufficient when the source contract requires behavior it does not exercise. If an API cannot yet be implemented, preserve its source evidence and a useful runtime diagnostic, then leave the requirement open.
+
+## Evidence, reporting, and release discipline
+
+For each milestone, report what changed, the general engine rule that changed, source revision/signature evidence, tests/native comparisons, and remaining gaps. Keep `updateLog.txt` current for user-visible changes. Update the coverage matrix as implementations become behaviorally verified.
+
+A milestone is complete only when its exit gate passes. An automated test skipped because a donor is unavailable is not a successful donor test; use the supplied Windows paths rather than silently relying on obsolete Linux fixture paths.
+
+Do not promise every historical Psych fork will work from one passing corpus. State the supported source versions, features and known limitations. Keep extending the source inventory until the complete targeted scripting surface has a verified implementation. Track explicit limitations as remaining work rather than treating them as completed parity.
+
+Release packaging/publishing is a separate, explicitly authorized final step after the user has tested the completed build.
+
+## Suggested instruction for the next implementation session
+
+> Follow `C:\Users\uwucammie\Documents\coding\FNF\Cammie-Engine\IMPLEMENTATION_ROADMAP.md` as the reference brief. Start at the first incomplete phase, preserve the existing working tree, and use GPT-6 Luna sub-agents at maximum reasoning with separate file ownership. Prioritize Psych and Nightmare Vision and share implementations where their source semantics agree. Make changes only in the engine, compatibility layer, or importer; never add mod/chart-specific runtime fixes or modify donor files. Test muted, keep coverage and updateLog accurate, and finish each phase's validation gate before moving on. Do not publish or push a release without my explicit instruction.

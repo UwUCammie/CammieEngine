@@ -164,6 +164,7 @@ class HealthIcon extends FlxSprite {
 	static var iconJson:Dynamic;
 	static var missingIconReference:String = '';
 	var iconOwnerRoot:Null<String> = null;
+	var iconOwnerEngine:String = '';
 	var deferMissingIconDiagnostic:Bool = false;
 	var deferredMissingIconDiagnostic:Dynamic = null;
 	public function new(char:String = 'bf', isPlayer:Bool = false, ?isnormal:Bool = false, ?loadAsync:Bool = false,
@@ -182,6 +183,7 @@ class HealthIcon extends FlxSprite {
 		// HUD icons bind to the chart storage folder before HXC loadCharacter()
 		// calls run, even though their legacy constructor omits ownerSong.
 		iconOwnerRoot = ownerRootForIcon(ownerSong, isnormal);
+		iconOwnerEngine = ownerEngineForIcon(ownerSong, isnormal);
 		antialiasing = true;
 		isNormal = isnormal;
 		switchAnim(char, loadAsync);
@@ -208,6 +210,47 @@ class HealthIcon extends FlxSprite {
 			selectedSong = Song.storageFolder(PlayState.SONG);
 		}
 		return characterOwnerRoot(selectedSong);
+	}
+
+	/** Resolve the same chart/menu owner used by the icon root. */
+	static function ownerEngineForIcon(ownerSong:String, gameplayIcon:Bool):String {
+		var selectedSong = ownerSong;
+		if (selectedSong == null || StringTools.trim(selectedSong) == '') {
+			if (!gameplayIcon || PlayState.SONG == null)
+				return '';
+			selectedSong = Song.storageFolder(PlayState.SONG);
+		}
+		return Song.characterOwnerEngineForSong(selectedSong);
+	}
+
+	/** NMV characters store a logical healthicon separate from their character id. */
+	static function nightmareVisionHealthIcon(char:String, ownerRoot:String,
+		ownerEngine:String):Null<String> {
+		if (ownerRoot == null || StringTools.trim(ownerRoot) == '' || ownerEngine == null
+			|| ownerEngine.toLowerCase() != ImportEngine.NIGHTMARE_VISION.toLowerCase())
+			return null;
+		var definition = NightmareVisionCharacterData.load(ownerRoot, char);
+		if (definition == null)
+			return null;
+		var authored:Dynamic = Reflect.field(definition, 'healthicon');
+		if (authored == null)
+			return 'face';
+		if (Std.isOfType(authored, String))
+			return cast authored;
+		trace('[nightmare-vision-character-data] healthicon must be a string; using template face icon');
+		return 'face';
+	}
+
+	/** Keep other engines' icon identities intact while NMV uses its source field. */
+	static function iconRequestForOwner(char:String, ownerRoot:String, ownerEngine:String,
+		gameplayIcon:Bool):Dynamic {
+		var request = iconRequestForCharacter(char, ownerRoot, gameplayIcon);
+		if (request.hidden)
+			return request;
+		var authored = nightmareVisionHealthIcon(char, ownerRoot, ownerEngine);
+		if (authored != null)
+			request.name = authored;
+		return request;
 	}
 
 	function clearDeferredIconDiagnostic():Void {
@@ -237,7 +280,7 @@ class HealthIcon extends FlxSprite {
 		autoUpdate = true;
 		var wasNoGirlfriend = isNormal && Character.isNoGirlfriend(curCharacter);
 		curCharacter = char == null ? 'bf' : char;
-		var iconRequest = iconRequestForCharacter(curCharacter, iconOwnerRoot, isNormal);
+		var iconRequest = iconRequestForOwner(curCharacter, iconOwnerRoot, iconOwnerEngine, isNormal);
 		var noGirlfriend = iconRequest.hidden;
 		// V-Slice 0.3.2 creates no opponent icon when this sentinel has no
 		// character definition. Keep a valid native icon for HUD bookkeeping,

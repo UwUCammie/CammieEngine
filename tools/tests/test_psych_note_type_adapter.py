@@ -86,7 +86,15 @@ class PsychNoteTypeAdapterTest(unittest.TestCase):
         section = (ROOT / "source/Section.hx").read_text()
         self.assertIn("@:optional var gfSection:Null<Bool>;", section)
         self.assertIn("swagNote.forceGfSing = true;", play_state)
-        self.assertIn("note.forceGfSing && gf != null ? gf : getOpponentSinger()", play_state)
+        helper_start = play_state.index("function noteSingerForSide(note:Note, playerOne:Bool):Character {")
+        helper_end = play_state.index("\n\tprivate function generateSong", helper_start)
+        singer_helper = play_state[helper_start:helper_end]
+        self.assertIn("note != null && note.forceGfSing && gf != null", singer_helper)
+        self.assertIn("(!playerOne || nightmareVisionScripts != null)", singer_helper,
+                      "GF Sing redirects player notes only in NMV, preserving classic Psych player ownership")
+        self.assertIn("return playerOne ? boyfriend : getOpponentSinger();", singer_helper,
+                      "ordinary player notes remain BF-owned and opponent GF Sing remains supported")
+        self.assertIn("noteSingerForSide(note, playerOne)", play_state)
         self.assertIn("PlayState.SONG.notes[curSection].gfSection == true", play_state)
 
 

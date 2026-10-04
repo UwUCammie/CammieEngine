@@ -1891,7 +1891,7 @@ class ImportScanJob {
 				if (diagnostics == null) {
 					diagnostics = [];
 					try {
-						var translated = LuaCompat.translate(File.getContent(entry.path), entry.path);
+						var translated = LuaCompat.translate(File.getContent(entry.path), entry.path, true);
 						if (translated.diagnostics != null)
 							for (diagnostic in translated.diagnostics)
 								if (diagnostic != null)

@@ -57,15 +57,22 @@ def function_body(source, name):
 
 
 class NightmareVisionRetainedPreloadTest(unittest.TestCase):
-    def run_haxe(self, fixture, *extra_sources):
+    def run_haxe(self, fixture, *extra_sources, desktop=False):
         (ROOT / "tmp").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
+            if "__PRELOAD_PATH__" in fixture:
+                preload_path = work / "preload.txt"
+                preload_path.write_text("explicit-preload\n", newline='\n')
+                fixture = fixture.replace("__PRELOAD_PATH__", str(preload_path))
             (work / "Main.hx").write_text(fixture, newline='\n')
             for name, source in extra_sources:
                 (work / name).write_text(source, newline='\n')
+            command = list(HAXE_COMMAND)
+            if desktop:
+                command.extend(["-D", "desktop"])
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
+                [*command, "-cp", str(ROOT / "source"),
                  "-cp", str(work), "--main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -123,6 +130,9 @@ class Main {
  var SONG:Dynamic={player1:'bf',player2:'dad',gf:'gf'};
  var warmed:Array<Actor>=[];
  var warmCalls:Array<String>=[];
+ var nightmareVisionSourceEventsPrepared:Bool=false;
+ var useExplicitPreloadFile:Bool=false;
+ var preloadFilePath:String='__PRELOAD_PATH__';
  function new() {
   boyfriend=new Actor('bf'); dad=new Actor('dad'); gf=new Actor('gf');
  }
@@ -141,7 +151,8 @@ class Main {
   var actor=new Actor(name); warmed.push(actor); actor.destroy();
  }
  function codenameSelectedRoot():String return '';
- function currentSongDataPath(name:String):String return name;
+ function currentSongDataPath(name:String):String
+  return useExplicitPreloadFile ? preloadFilePath : preloadFilePath+'.missing';
  function codenameSwapPreloadParams(event:Dynamic):Null<Array<Dynamic>> return null;
  __PRELOAD_BODY__
  __PSYCH_PRELOAD_BODY__
@@ -190,11 +201,29 @@ class Main {
   psychOnly.compatAddCharacterToList('ordinary','boyfriend');
   check(psychOnly.warmCalls.join(',')=='ordinary:true', 'ordinary preload behavior changed');
   check(psychOnly.warmed[0].destroyed, 'ordinary warm-up actor was not destroyed');
+
+  // Once NV source events have been prepared, their character bank already
+  // owns preload responsibility. Keep explicit preload.txt warming active.
+  var sourcePrepared=new Main();
+  sourcePrepared.nightmareVisionSourceEventsPrepared=true;
+  sourcePrepared.useExplicitPreloadFile=true;
+  sourcePrepared.songEvents=[{name:'Change Character',v1:'gf',v2:'already-prepared'}];
+  sourcePrepared.preloadSwapCharacters();
+  check(sourcePrepared.nightmareVisionCharacterBanks.get(2)==null,
+   'prepared NV events should not construct a duplicate retained character-bank actor');
+  check(sourcePrepared.warmCalls.join(',')=='explicit-preload:false',
+   'source-prepared early return should still process explicit preload.txt entries');
+  check(sourcePrepared.warmed.length==1 && sourcePrepared.warmed[0].destroyed,
+   'explicit preload.txt character should use and release the temporary atlas warmer');
  }
 }'''
         fixture = fixture.replace("__PRELOAD_BODY__", preload).replace(
             "__PSYCH_PRELOAD_BODY__", psych_preload)
-        self.run_haxe(fixture)
+        cool_util_stub = '''class CoolUtil {
+ public static function coolTextFile(path:String):Array<String>
+  return sys.io.File.getContent(path).split("\\n");
+}'''
+        self.run_haxe(fixture, ("CoolUtil.hx", cool_util_stub), desktop=True)
 
 
 if __name__ == "__main__":

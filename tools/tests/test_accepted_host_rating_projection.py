@@ -6,6 +6,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +60,11 @@ class Main {
     'source visual at '+diff+' expected '+source+' got '+projected.image);
   }
  }
+ static function popupRating(sourceLedger:Bool,sourceRating:Dynamic,daRating:String):Dynamic return __POPUP_PROJECTION__;
  static function main():Void {
+  var live={name:'good',image:'owner/good',ratingMod:0.7,score:200};
+  check(popupRating(true,live,'good')==live,'source ledger preserves the live descriptor');
+  check(popupRating(false,null,'wayoff').name=='shit','native fallback projects accepted host tiers');
   hit(0,false,'sick','sick');
   hit(45,false,'sick','sick');
   hit(45.001,false,'good','good');
@@ -102,11 +107,12 @@ class Main {
         popup_start = play_state.index("\tprivate function popUpScore(")
         popup_end = play_state.index("\n\tfunction ", popup_start + 1)
         popup = play_state[popup_start:popup_end]
-        self.assertIn(
-            "var sourcePopupRating = PsychRatingPresentationCommon.acceptedHostRating(daRating);",
-            popup,
-        )
-        self.assertIn("playHUD.popUpScore(sourcePopupRating, combo + 1, daNote);", popup)
+        projection = re.search(r"var sourcePopupRating:Dynamic = ([^;]+);", popup)
+        self.assertIsNotNone(projection)
+        fixture = fixture.replace("__POPUP_PROJECTION__", projection.group(1))
+        self.assertIn("sourceLedger ? sourceRating", projection.group(1))
+        self.assertIn("PsychRatingPresentationCommon.acceptedHostRating(daRating)", projection.group(1))
+        self.assertIn("playHUD.popUpScore(sourcePopupRating, sourceLedger ? combo : combo + 1, daNote);", popup)
         self.assertLess(popup.index("playHUD.popUpScore(sourcePopupRating,"),
                         popup.index("RuntimeSmokeHarness.markRatingPopup(daRating, sourcePopupRating);"))
         miss_start = play_state.index("\tfunction noteMiss(")

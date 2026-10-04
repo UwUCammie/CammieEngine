@@ -58,6 +58,7 @@ class FakeObject {
 class FakePlayState {
  public var health:Float = 1.8;
  public var songPositionBar:Float = 0.25;
+ public var iconOverride:Bool = false;
  public var curStep:Int = 21; public var curBeat:Int = 5; public var curSection:Int = 2;
  public var display:Array<Dynamic> = [];
  public var members(get,never):Array<Dynamic>;
@@ -100,10 +101,17 @@ class Main {
   var iconP2 = new FakeObject(); iconP2.x=510; iconP2.y=310;
   var score = new FakeObject(); score.x=0; score.y=450;
   var timeText = new FakeObject(); timeText.x=20; timeText.y=30; timeText.text='Native title';
+  var hudCamera:Dynamic = {name:'camHUD'};
+  var hudCameras:Array<Dynamic> = [hudCamera];
+  healthBG.cameras=hudCameras; healthFill.cameras=hudCameras;
+  iconP1.cameras=hudCameras; iconP2.cameras=hudCameras;
+  score.cameras=hudCameras; songFill.cameras=hudCameras;
+  songBG.cameras=hudCameras; timeText.cameras=hudCameras;
   var errors:Array<String> = [];
   var tweenTargets:Array<Dynamic> = [];
   var tweenDurations:Array<Float> = [];
   var characterRefreshes:Int = 0;
+  var iconPositionUpdates:Array<Bool> = [];
   var adapter = new NightmareVisionHUDAdapter({
    parent:state, healthFill:healthFill, healthBackground:healthBG,
    iconP1:iconP1, iconP2:iconP2, scoreText:score,
@@ -111,6 +119,11 @@ class Main {
    healthValue:function():Float return state.health,
    songProgress:function():Float return state.songPositionBar,
    ratingPrefix:'UI/ratings/', songTitle:'source-song', timeBarType:'Time Left', showTime:true,
+   updateIconPos:true,
+   setIconPositionUpdates:function(enabled:Bool):Void {
+    iconPositionUpdates.push(enabled);
+    state.iconOverride = !enabled;
+   },
    setHealthDirection:function(leftToRight:Bool):Void
     healthFill.fillDirection=leftToRight ? 'LEFT_TO_RIGHT' : 'RIGHT_TO_LEFT',
    setSongDirection:function(leftToRight:Bool):Void
@@ -141,10 +154,22 @@ class Main {
   eq(adapter.scoreTxt, score, 'score label identity');
   eq(adapter.members.length, 8, 'native HUD member count');
   eq(adapter.members[0], healthBG, 'member list holds native display objects');
+  check(adapter.cameras == hudCameras, 'group camera getter reflects the live HUD camera set');
   eq(state.display.length, 0, 'adapter constructor must not add a duplicate display owner');
   eq(adapter.curStep, 21, 'current step passthrough');
   eq(adapter.curBeat, 5, 'current beat passthrough');
   eq(adapter.curSection, 2, 'current section passthrough');
+  check(adapter.updateIconPos && !state.iconOverride
+   && iconPositionUpdates.length == 1 && iconPositionUpdates[0],
+   'initial updateIconPos state reaches the native icon-position owner');
+  adapter.updateIconPos = false;
+  check(!adapter.updateIconPos && state.iconOverride
+   && iconPositionUpdates.length == 2 && !iconPositionUpdates[1],
+   'disabling updateIconPos enables persistent manual icon placement');
+  adapter.updateIconPos = true;
+  check(adapter.updateIconPos && !state.iconOverride
+   && iconPositionUpdates.length == 3 && iconPositionUpdates[2],
+   'enabling updateIconPos restores native icon placement');
   eq(songFill.alpha, 0, 'source initial time bar fade');
   eq(songBG.alpha, 0, 'time background follows source group alpha');
   eq(timeText.alpha, 0, 'source initial time text fade');
@@ -247,13 +272,40 @@ class Main {
   eq(iconP2.flipX, false, 'second flip restores opponent icon');
 
   var extra = new FakeObject();
+  var memberCamera:Dynamic = {name:'member-camera'};
+  extra.cameras = [memberCamera];
   adapter.add(extra);
   eq(state.display[0], extra, 'add routes into real state display list');
   check(adapter.members.indexOf(extra) >= 0, 'added object appears in facade member view');
+  check(extra.cameras == hudCameras,
+   'add replaces a member camera with the active group camera like FlxSpriteGroup');
+
+  // An explicit group camera change updates existing members and becomes the
+  // camera inherited by both later adds and inserts.
+  var explicitGroupCameras:Array<Dynamic> = [{name:'explicit-group-camera'}];
+  adapter.cameras = explicitGroupCameras;
+  check(adapter.cameras == explicitGroupCameras
+   && healthBG.cameras == explicitGroupCameras && timeText.cameras == explicitGroupCameras,
+   'explicit group camera assignment remains applied to existing members');
+  var inserted = new FakeObject();
+  inserted.cameras = [memberCamera];
+  adapter.insert(0, inserted);
+  eq(state.display[0], inserted, 'insert routes into real state display list');
+  check(inserted.cameras == explicitGroupCameras,
+   'insert replaces a member camera with the explicit group camera');
+  var laterAdded = new FakeObject();
+  laterAdded.cameras = [hudCamera];
+  adapter.add(laterAdded);
+  check(laterAdded.cameras == explicitGroupCameras,
+   'add keeps inheriting an explicitly assigned group camera');
   adapter.insert(0, score);
   eq(state.display[0], score, 'insert routes through owner callback');
   adapter.remove(extra, true);
-  check(state.display.indexOf(extra) < 0 && adapter.members.indexOf(extra) < 0,
+  adapter.remove(inserted, true);
+  adapter.remove(laterAdded, true);
+  check(state.display.indexOf(extra) < 0 && adapter.members.indexOf(extra) < 0
+   && state.display.indexOf(inserted) < 0 && adapter.members.indexOf(inserted) < 0
+   && state.display.indexOf(laterAdded) < 0 && adapter.members.indexOf(laterAdded) < 0,
    'remove updates real owner and facade view');
 
   eq(adapter.remove(null), null, 'null removal stays outside the native display container');
@@ -311,6 +363,12 @@ class Main {
    ratingPresentation:presentation,
    removeDisplay:function(object:Dynamic, splice:Bool):Dynamic return state.remove(object, splice)
   });
+  var unsupportedIconPosition = false;
+  try popupAdapter.updateIconPos = false catch (error:Dynamic) {
+   unsupportedIconPosition = Std.string(error).indexOf('updateIconPos requires the PlayState icon-position owner callback') >= 0;
+  }
+  check(unsupportedIconPosition && popupAdapter.updateIconPos,
+   'an unwired updateIconPos setter reports unsupported behavior without changing state');
   eq(popupAdapter.ratingGraphic, presentation.ratingGraphic, 'popup exposes real sprite identity');
   eq(popupAdapter.ratingNumGroup, presentation.ratingNumGroup, 'popup exposes actual digit group');
   popupAdapter.showRating=false; popupAdapter.showRatingNum=false; popupAdapter.showCombo=false;
