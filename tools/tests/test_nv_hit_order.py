@@ -243,6 +243,7 @@ class Strumline {
  public function new(strums:Array<Strum>) members=strums;
 }
 class NightmareVisionPlayFieldView {
+ public var strumline:Strumline;
  public var ID:Int;
  public var inControl:Bool = true;
  public var playerControls:Bool;
@@ -338,6 +339,9 @@ class Main {
    new NightmareVisionPlayFieldView(1, false), new NightmareVisionPlayFieldView(2, false)];
   playerStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
   enemyStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
+  fields[0].strumline = playerStrums;
+  fields[1].strumline = enemyStrums;
+  fields[2].strumline = new Strumline([new Strum(0, events), new Strum(1, events)]);
   notes = new NoteGroup(events);
   FlxG.sound.events = events;
  }

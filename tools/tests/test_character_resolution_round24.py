@@ -188,7 +188,11 @@ class Song {
     def test_character_keeps_authored_id_and_reports_resolution(self):
         character = (ROOT / 'source/Character.hx').read_text()
         constructor = character[character.index('\tpublic function new('):character.index('\n\tpublic static function characterExists(')]
-        self.assertIn('Song.resolveCharacterVisualForCurrentSong(curCharacter)', constructor)
+        self.assertIn('Song.resolveCharacterVisualForCurrentSong(visualCharacterId)', constructor)
+        self.assertIn('var visualCharacterId = curCharacter;', constructor)
+        self.assertIn('curCharacter = character;', constructor)
+        self.assertIn('requestedCharacter = codename == null', constructor)
+        self.assertNotIn('curCharacter = visualCharacterId;', constructor)
         self.assertNotIn("curCharacter = 'dad'", constructor)
         self.assertIn('Character.reportResolution(visualResolution)', constructor)
         self.assertIn('!visualResolution.complete && !isDie && codenameLiveDefinition == null', constructor)

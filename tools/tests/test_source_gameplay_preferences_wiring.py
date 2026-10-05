@@ -76,6 +76,7 @@ class PlayState {
  public var sourceScoreNightmare:Bool = false;
  public var nightmareVisionPrefs:MockPrefs;
  public var psychClientPrefs:MockPrefs;
+ public var playFields:NightmareVisionPlayFields = new NightmareVisionPlayFields();
  public var nightmareVisionFields:Array<NightmareVisionPlayFieldView> = [null, null];
  public var boyfriend:Dynamic = {name:'bf'};
  public var dad:Dynamic = {name:'dad'};
@@ -141,7 +142,8 @@ class Main {
   var playerField = new NightmareVisionPlayFieldView(0, function():Bool return nvHost.demoMode);
   var nonPlayerField = new NightmareVisionPlayFieldView(1, function():Bool return nvHost.demoMode);
   nonPlayerField.autoPlayed = false;
-  nvHost.nightmareVisionFields = [playerField, nonPlayerField];
+  nvHost.playFields.members = [playerField, nonPlayerField];
+  nvHost.nightmareVisionFields = nvHost.playFields.members;
   nvHost.initializeSourceGameplayPreferences(nv, true);
   eq(nvHost.healthGain, 0.5, 'NV source gameplay health gain sampled');
   eq(nvHost.practiceMode, true, 'NV source practice flag is retained');
@@ -156,6 +158,10 @@ class Main {
   lateHost.nightmareVisionPrefs = nv;
   lateHost.nightmareVisionFields = [null, null];
   lateHost.initializeSourceGameplayPreferences(nv, true);
+  eq(lateHost.getNightmareVisionField(0), null, 'source fields remain empty before receptor generation');
+  lateHost.playFields.add(new NightmareVisionPlayFieldView(0, function():Bool return lateHost.demoMode));
+  lateHost.playFields.add(new NightmareVisionPlayFieldView(1, function():Bool return true));
+  lateHost.nightmareVisionFields = lateHost.playFields.members;
   var latePlayer = lateHost.getNightmareVisionField(0);
   eq(latePlayer.autoPlayed, true, 'late-created player field reads live demo state');
   lateHost.setSourceCpuControlled(false);
@@ -205,6 +211,7 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
+            (work / "Strumline.hx").write_text("class Strumline { public var members:Array<StrumNote> = []; public function new() {} } class StrumNote { public function new() {} }", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,

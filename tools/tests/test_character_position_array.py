@@ -82,7 +82,9 @@ class Probe {
     def test_psych_and_nightmare_vision_set_raw_alias_without_changing_offsets(self):
         source = (ROOT / 'source/Character.hx').read_text()
         self.assertIn('@:keep public var positionArray:Array<Float> = [0, 0];', source)
-        self.assertIn('positionArray = psychCharacterPositionArray(curCharacter, psychCameraRoot);', source)
+        self.assertIn('var visualCharacterId = curCharacter;', source)
+        self.assertIn('positionArray = psychCharacterPositionArray(visualCharacterId, psychCameraRoot);', source)
+        self.assertIn('curCharacter = character;', source)
         self.assertIn('positionArray = [position[0], position[1]];', source)
         self.assertIn('enemyOffsetX = playerOffsetX = gfOffsetX = Std.int(Math.round(position[0]));', source)
         self.assertIn('enemyOffsetY = playerOffsetY = gfOffsetY = Std.int(Math.round(position[1]));', source)

@@ -11,7 +11,7 @@ Friday Night Funkin' **Disappointing Plus**: a HaxeFlixel 6.1.2 fork of Modding 
 ### Build and test (Windows 11)
 
 From PowerShell in the repository, ` .\run.bat test` builds Windows x64 and
-runs the full regression suite. ` .\run.bat package` also packages the v0.0.12
+runs the full regression suite. ` .\run.bat package` also packages the v0.0.13
 alpha ZIP and checksum in `dist/`, after successful tests. ` .\run.bat` builds
 and plays; ` .\run.bat nobuild` plays the current build. Add `debug` for a debug
 build. Unchanged Windows builds reuse a metadata cache; ` .\run.bat rebuild`

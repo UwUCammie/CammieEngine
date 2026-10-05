@@ -3,7 +3,12 @@ package;
 /** Live source field flags over a native receptor bank. */
 @:keep
 class NightmareVisionPlayFieldView {
-	public final ID:Int;
+	/** Flixel source fields expose their mutable group ID to scripts. */
+	@:keep public var ID:Int;
+	/** The native line owns and updates the receptors; this view never copies them. */
+	@:keep public var strumline:Strumline;
+	/** Source PlayField.members is the live receptor array for this field. */
+	@:keep public var members(get, never):Array<Strumline.StrumNote>;
 	public var owner(default, set):Dynamic;
 	public var singers:Array<Dynamic> = [];
 	public var inControl:Bool = true;
@@ -23,11 +28,15 @@ class NightmareVisionPlayFieldView {
 		playerControls = id != 1;
 		this.defaultAuto = defaultAuto;
 	}
+	function get_members():Array<Strumline.StrumNote>
+		return strumline == null ? [] : strumline.members;
 	function set_owner(value:Dynamic):Dynamic {
 		owner = value;
 		if (singers == null) singers = [];
-		singers.remove(value);
-		singers.unshift(value);
+		if (value != null) {
+			singers.remove(value);
+			singers.unshift(value);
+		}
 		return value;
 	}
 	function get_autoPlayed():Bool return autoOverride == null ? defaultAuto() : autoOverride;

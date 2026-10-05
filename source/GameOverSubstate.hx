@@ -35,6 +35,44 @@ class GameOverSubstate extends MusicBeatSubstate {
 		return HxcCompatRuntime.gameOverBlueBallSuffix;
 	static function set_blueBallSuffix(value:String):String
 		return HxcCompatRuntime.setGameOverBlueBallSuffix(value);
+	/** Source GameOverSubstate statics resolve through the active song owner. */
+	@:keep public static var characterName(get, set):Null<String>;
+	static function get_characterName():Null<String>
+		return sourceSettingsForActiveOwner().characterName;
+	static function set_characterName(value:Null<String>):Null<String>
+		return cast sourceSettingsForActiveOwner().write('characterName', value);
+	@:keep public static var deathSoundName(get, set):Null<String>;
+	static function get_deathSoundName():Null<String>
+		return sourceSettingsForActiveOwner().deathSoundName;
+	static function set_deathSoundName(value:Null<String>):Null<String>
+		return cast sourceSettingsForActiveOwner().write('deathSoundName', value);
+	@:keep public static var loopSoundName(get, set):Null<String>;
+	static function get_loopSoundName():Null<String>
+		return sourceSettingsForActiveOwner().loopSoundName;
+	static function set_loopSoundName(value:Null<String>):Null<String>
+		return cast sourceSettingsForActiveOwner().write('loopSoundName', value);
+	@:keep public static var endSoundName(get, set):Null<String>;
+	static function get_endSoundName():Null<String>
+		return sourceSettingsForActiveOwner().endSoundName;
+	static function set_endSoundName(value:Null<String>):Null<String>
+		return cast sourceSettingsForActiveOwner().write('endSoundName', value);
+	@:keep public static var deathDelay(get, set):Float;
+	static function get_deathDelay():Float
+		return sourceSettingsForActiveOwner().deathDelay;
+	static function set_deathDelay(value:Float):Float
+		return cast sourceSettingsForActiveOwner().write('deathDelay', value);
+
+	public static function resetVariables():Void sourceSettingsForActiveOwner().resetVariables();
+
+	static function sourceSettingsForActiveOwner():SourceGameOverSettings {
+		var owner = PlayState.instance;
+		if (owner == null)
+			owner = instance == null ? null : instance.sourceOwner;
+		if (owner == null || owner.sourceGameOverMode() == 0 || owner.sourceGameOverSettings == null)
+			throw '[source-gameover] GameOverSubstate settings require an active source owner';
+		return owner.sourceGameOverSettings;
+	}
+
 	public static var instance(default, null):GameOverSubstate;
 
 	var bf:Character;
@@ -51,7 +89,14 @@ class GameOverSubstate extends MusicBeatSubstate {
 	var sourceOwner:PlayState;
 	var sourceMode:Int = 0;
 	var sourceStartStopped:Bool = false;
-	var sourceDeathAnimNotified:Bool = false;
+	var sourceSettings:SourceGameOverSettings;
+	var sourceReusedGameplayActor:Bool = false;
+	var psychLoopPreloaded:Bool = false;
+	var psychRetryOverlay:FlxSprite;
+	var psychNeneKnife:FlxSprite;
+	var psychRetryConfirmOffsets:FlxPoint = FlxPoint.get(250, 200);
+	var psychRetryAnimationCallback:String->Int->Int->Void;
+	var psychPreviousAnimationCallback:String->Int->Int->Void;
 	var quoteCharacter:Character;
 	var deathQuotePlayback:HxcDeathQuotePlayback;
 	var deathQuoteAttempted:Bool = false;
@@ -72,13 +117,23 @@ class GameOverSubstate extends MusicBeatSubstate {
 		if (activeSourceMode == 0) instance = this;
 		sourceOwner = activeSourceMode == 0 ? null : activePlayState;
 		sourceMode = activeSourceMode;
+		sourceSettings = sourceOwner == null ? null : sourceOwner.sourceGameOverSettings;
 		quoteCharacter = player;
+		if (sourceMode == SourceGameOverSettings.NIGHTMARE && sourceSettings != null)
+			sourceSettings.applyCharacter(player);
 		var psychCharacter = activePlayState == null ? null : activePlayState.psychGameOverCharacterName();
-		var daBf:String = psychCharacter == null ? player.curCharacter + '-dead' : psychCharacter;
+		var daBf:Null<String> = sourceSettings != null ? sourceSettings.characterName
+			: psychCharacter == null ? player.curCharacter + '-dead' : psychCharacter;
+		if (sourceMode != 0 && sourceSettings != null && player.curCharacter == sourceSettings.characterName) {
+			// The donor borrows the live gameplay BF when the configured death actor
+			// already is that character. The source owner remains responsible for it.
+			bf = player;
+			sourceReusedGameplayActor = true;
+		}
 		trace(player.curCharacter);
 		super();
 		if (sourceMode != 0) return;
-		setupDefaultGameOver(player, daBf);
+		setupDefaultGameOver(player, cast daBf);
 	}
 
 	function setupDefaultGameOver(player:Character, daBf:String, resetSongPosition:Bool = true):Void {
@@ -144,6 +199,154 @@ class GameOverSubstate extends MusicBeatSubstate {
 		}
 	}
 
+	/** Source-dialect actor, camera, and initial sound setup. Native/HXC game-over
+	 * retains setupDefaultGameOver unchanged. */
+	function setupSourceGameOver(player:Character, characterName:Null<String>,
+		resetSongPosition:Bool = true):Void {
+		if (resetSongPosition) Conductor.songPosition = 0;
+		if (bf == null) {
+			var playerScreenPosition = player.getScreenPosition();
+			var actorX = playerScreenPosition.x;
+			var actorY = playerScreenPosition.y;
+			playerScreenPosition.put();
+			try {
+				bf = new Character(actorX, actorY, cast characterName, true);
+			} catch (error:Dynamic) {
+				trace('[source-gameover-character] ' + Std.string(characterName) + ': ' + Std.string(error));
+				throw error;
+			}
+			var sourceX = sourcePositionValue(bf.positionArray, 0) - sourcePositionValue(player.positionArray, 0);
+			var sourceY = sourcePositionValue(bf.positionArray, 1) - sourcePositionValue(player.positionArray, 1);
+			bf.x += sourceX;
+			bf.y += sourceY;
+		}
+		bf.beingControlled = true;
+		bf.skipDance = true;
+		add(bf);
+		if (sourceMode == SourceGameOverSettings.NIGHTMARE) {
+			var midpoint = bf.getMidpoint();
+			camFollow = new FlxObject(midpoint.x - sourcePositionValue(bf.cameraPosition, 0) - 100,
+				midpoint.y + sourcePositionValue(bf.cameraPosition, 1) - 100, 1, 1);
+			midpoint.put();
+		}
+
+		var deathSound = sourceOwner.sourceGameOverSound('deathSoundName', true);
+		if (deathSound != null) FlxG.sound.play(deathSound);
+		FlxG.camera.scroll.set();
+		FlxG.camera.target = null;
+		bf.playAnim('firstDeath');
+
+		if (sourceMode == SourceGameOverSettings.PSYCH) {
+			var midpoint = bf.getGraphicMidpoint();
+			camFollow = new FlxObject(midpoint.x + sourcePositionValue(bf.cameraPosition, 0),
+				midpoint.y + sourcePositionValue(bf.cameraPosition, 1), 1, 1);
+			midpoint.put();
+			var screenCenter = FlxPoint.get(FlxG.camera.scroll.x + FlxG.camera.width / 2,
+				FlxG.camera.scroll.y + FlxG.camera.height / 2);
+			FlxG.camera.focusOn(screenCenter);
+			screenCenter.put();
+			FlxG.camera.follow(camFollow, LOCKON, 0.01);
+		} else {
+			FlxG.camera.follow(camFollow, LOCKON, 0);
+		}
+		add(camFollow);
+	}
+
+	static function sourcePositionValue(values:Array<Float>, index:Int):Float {
+		return values == null || index < 0 || index >= values.length ? 0 : values[index];
+	}
+
+	function preloadPsychGameOverLoop():Void {
+		if (sourceMode != SourceGameOverSettings.PSYCH) return;
+		var sound = sourceOwner.sourceGameOverSound('loopSoundName', false);
+		if (sound == null || FlxG.sound.music == null) return;
+		gameoverLoopMusic = FlxG.sound.music;
+		gameoverLoopMusic.loadEmbedded(sound, true);
+		psychLoopPreloaded = true;
+	}
+
+	function psychGameOverAntialiasing():Bool {
+		if (sourceOwner == null || sourceOwner.psychClientPrefs == null || sourceOwner.psychClientPrefs.data == null)
+			throw '[source-gameover] Psych owner preferences are unavailable for the retry overlay';
+		var value:Dynamic = Reflect.field(sourceOwner.psychClientPrefs.data, 'antialiasing');
+		if (value == null)
+			throw '[source-gameover] Psych owner antialiasing preference is unavailable';
+		return cast value;
+	}
+
+	function psychGameOverAtlas(key:String):Dynamic {
+		if (sourceOwner == null) throw '[source-gameover] Psych owner is unavailable for atlas ' + key;
+		var paths = sourceOwner.sourceGameOverPsychPaths();
+		var loader = Reflect.field(paths, 'getSparrowAtlas');
+		if (!Reflect.isFunction(loader))
+			throw '[source-gameover] Psych owner Sparrow atlas loader is unavailable';
+		var frames:Dynamic = Reflect.callMethod(paths, loader, [key]);
+		if (frames == null)
+			throw '[source-gameover] Psych game-over atlas is unavailable: ' + key;
+		return frames;
+	}
+
+	function psychGameOverSound(name:String):openfl.media.Sound {
+		if (sourceOwner == null) throw '[source-gameover] Psych owner is unavailable for sound ' + name;
+		var paths = sourceOwner.sourceGameOverPsychPaths();
+		var resolveSound = Reflect.field(paths, 'sound');
+		if (!Reflect.isFunction(resolveSound))
+			throw '[source-gameover] Psych owner sound resolver is unavailable';
+		var path:Dynamic = Reflect.callMethod(paths, resolveSound, [name]);
+		if (path == null || !FNFAssets.exists(Std.string(path))) {
+			trace('[source-gameover-missing-sound] ' + name + ' path=' + Std.string(path));
+			return flixel.system.FlxAssets.getSound('flixel/sounds/beep');
+		}
+		return FNFAssets.getSound(Std.string(path));
+	}
+
+	function playPsychTankGameOverVoice():Void {
+		var excluded:Array<Int> = [];
+		var voiceName = 'jeffGameover/jeffGameover-' + FlxG.random.int(1, 25, excluded);
+		FlxG.sound.play(psychGameOverSound(voiceName), 1, false, null, true, function() {
+			if (!isEnding && FlxG.sound.music != null)
+				FlxG.sound.music.fadeIn(0.2, 1, 4);
+		});
+	}
+
+	function setupPsychPicoOverlay():Void {
+		if (sourceMode != SourceGameOverSettings.PSYCH || sourceSettings.characterName != 'pico-dead') return;
+		psychRetryOverlay = new FlxSprite(bf.x + 205, bf.y - 80);
+		psychRetryOverlay.frames = psychGameOverAtlas('Pico_Death_Retry');
+		psychRetryOverlay.animation.addByPrefix('deathLoop', 'Retry Text Loop', 24, true);
+		psychRetryOverlay.animation.addByPrefix('deathConfirm', 'Retry Text Confirm', 24, false);
+		psychRetryOverlay.antialiasing = psychGameOverAntialiasing();
+		psychRetryOverlay.visible = false;
+		add(psychRetryOverlay);
+		psychPreviousAnimationCallback = bf.animation.callback;
+		psychRetryAnimationCallback = function(name:String, frameNumber:Int, frameIndex:Int):Void {
+			if (name == 'firstDeath' && frameNumber >= 35) {
+				if (psychRetryOverlay != null) {
+					psychRetryOverlay.visible = true;
+					psychRetryOverlay.animation.play('deathLoop');
+				}
+				restorePsychRetryAnimationCallback();
+			} else if (name != 'firstDeath') restorePsychRetryAnimationCallback();
+		};
+		bf.animation.callback = psychRetryAnimationCallback;
+
+		if (sourceOwner.gf != null && sourceOwner.gf.curCharacter == 'nene') {
+			psychNeneKnife = new FlxSprite(bf.x - 450, bf.y - 250);
+			psychNeneKnife.frames = psychGameOverAtlas('NeneKnifeToss');
+			psychNeneKnife.animation.addByPrefix('anim', 'knife toss', 24, false);
+			psychNeneKnife.antialiasing = psychGameOverAntialiasing();
+			psychNeneKnife.animation.finishCallback = function(_name:String):Void {
+				if (psychNeneKnife != null) {
+					remove(psychNeneKnife, true);
+					psychNeneKnife.destroy();
+					psychNeneKnife = null;
+				}
+			};
+			insert(0, psychNeneKnife);
+			psychNeneKnife.animation.play('anim', true);
+		}
+	}
+
 	override function create():Void {
 		if (sourceMode == 0) {
 			super.create();
@@ -157,21 +360,29 @@ class GameOverSubstate extends MusicBeatSubstate {
 			var startResult = sourceOwner.sourceGameOverCall('onGameOverStart', []);
 			sourceStartStopped = startResult == NightmareVisionScriptGroup.STOP_FUNC;
 			if (!sourceStartStopped)
-				setupDefaultGameOver(quoteCharacter, sourceDeathCharacterName(), false);
+				setupSourceGameOver(quoteCharacter, sourceDeathCharacterName(), false);
 			super.create();
 			sourceOwner.sourceGameOverCall('onGameOverPost', []);
 			return;
 		}
 
-		setupDefaultGameOver(quoteCharacter, sourceDeathCharacterName());
+		setupSourceGameOver(quoteCharacter, sourceDeathCharacterName());
 		sourceOwner.sourceGameOverSetInGameOver(true);
 		sourceOwner.sourceGameOverCall('onGameOverStart', []);
+		preloadPsychGameOverLoop();
+		setupPsychPicoOverlay();
 		super.create();
 	}
 
-	function sourceDeathCharacterName():String {
-		var psychCharacter = sourceOwner == null ? null : sourceOwner.psychGameOverCharacterName();
-		return psychCharacter == null ? quoteCharacter.curCharacter + '-dead' : psychCharacter;
+	function sourceDeathCharacterName():Null<String> {
+		return sourceSettings == null ? null : sourceSettings.characterName;
+	}
+
+	function restorePsychRetryAnimationCallback():Void {
+		if (bf != null && bf.animation != null && bf.animation.callback == psychRetryAnimationCallback)
+			bf.animation.callback = psychPreviousAnimationCallback;
+		psychRetryAnimationCallback = null;
+		psychPreviousAnimationCallback = null;
 	}
 
 	/** Run only the game-over module belonging to the explicitly active owner. */
@@ -497,6 +708,8 @@ class GameOverSubstate extends MusicBeatSubstate {
 		cancelDeathQuote();
 		hxcClearDeathOverlays();
 		HxcCompatRuntime.clearGameOverCharacter(bf);
+		if (sourceMode == SourceGameOverSettings.PSYCH && FlxG.camera != null)
+			FlxG.camera.visible = false;
 		if (FlxG.sound.music != null) FlxG.sound.music.stop();
 		owner.sourceGameOverResetForMenu();
 
@@ -523,7 +736,8 @@ class GameOverSubstate extends MusicBeatSubstate {
 				codenameGameOverRuntime.update(elapsed);
 			if (!codenameGameOverCancelled) {
 				updateSourceGameOverInput();
-				if (bf != null) updateGameoverAnimation(currentAnim);
+				if (bf != null && !(sourceMode == SourceGameOverSettings.NIGHTMARE && sourceStartStopped))
+					updateGameoverAnimation(currentAnim);
 			}
 			if (FlxG.sound.music != null && FlxG.sound.music.playing)
 				Conductor.songPosition = FlxG.sound.music.time;
@@ -570,9 +784,14 @@ class GameOverSubstate extends MusicBeatSubstate {
 	}
 
 	function updateGameoverAnimation(currentAnim:FlxAnimation):Void {
+		if (sourceMode == SourceGameOverSettings.NIGHTMARE && startedDeath && currentAnim != null
+			&& StringTools.startsWith(currentAnim.name, 'firstDeath') && currentAnim.finished) {
+			playDeathAnimation('deathLoop');
+			return;
+		}
 		if (isEnding || gameoverStarted) return;
 		// The source queries even when no initial death animation is available.
-		var quote = quoteCharacter == null ? null : quoteCharacter.getDeathQuote();
+		var quote = sourceMode != 0 || quoteCharacter == null ? null : quoteCharacter.getDeathQuote();
 		if (currentAnim == null) {
 			startGameoverLoop();
 			return;
@@ -580,8 +799,10 @@ class GameOverSubstate extends MusicBeatSubstate {
 		// Preserve the source's query before animation completion, and its
 		// separate second query when playback begins (the getter may use RNG).
 		if (StringTools.startsWith(currentAnim.name, 'firstDeath')) {
-			if (currentAnim.curFrame == 12)
-				FlxG.camera.follow(camFollow, LOCKON, 0.01);
+			if ((sourceMode == SourceGameOverSettings.NIGHTMARE && currentAnim.curFrame >= 12)
+				|| (sourceMode == 0 && currentAnim.curFrame == 12))
+				FlxG.camera.follow(camFollow, LOCKON,
+					sourceMode == SourceGameOverSettings.NIGHTMARE ? 0.02 : 0.01);
 			if (currentAnim.finished) {
 				if (quote != null) {
 					if (!deathQuoteAttempted && deathQuotePlayback != null) {
@@ -590,39 +811,65 @@ class GameOverSubstate extends MusicBeatSubstate {
 							{animation: currentAnim.name, gatePath: quote});
 						deathQuotePlayback.start(true, quoteCharacter.getDeathQuote());
 					}
-				} else startGameoverLoop();
+				} else {
+					var tankPsychDeath = sourceMode == SourceGameOverSettings.PSYCH && PlayState.SONG != null
+						&& PlayState.SONG.stage == 'tank';
+					startGameoverLoop(tankPsychDeath ? 0.2 : 1);
+					if (tankPsychDeath) playPsychTankGameOverVoice();
+				}
 			}
 		}
 	}
 
-	function startGameoverLoop() {
+	function startGameoverLoop(?volume:Float = 1) {
 		if (gameoverStarted) return;
 		gameoverStarted = true;
-		startedDeath = true;
-		FlxG.camera.follow(camFollow, LOCKON, 0.01);
-		playGameoverMusic();
-		if (StringTools.startsWith(Character.animationName(bf), 'firstDeath'))
+		if (sourceMode != SourceGameOverSettings.NIGHTMARE) startedDeath = true;
+		if (sourceMode == 0)
+			FlxG.camera.follow(camFollow, LOCKON, 0.01);
+		if (sourceMode != 0) coolStartDeath(volume);
+		else playGameoverMusic();
+		if (sourceMode == SourceGameOverSettings.NIGHTMARE) startedDeath = true;
+		if (sourceMode != SourceGameOverSettings.NIGHTMARE
+			&& StringTools.startsWith(Character.animationName(bf), 'firstDeath'))
 			playDeathAnimation('deathLoop');
-		RuntimeSmokeHarness.markGameOverPhase('no_quote_loop', {musicVolume: gameoverLoopMusic.volume});
+		RuntimeSmokeHarness.markGameOverPhase('no_quote_loop',
+			{musicVolume: gameoverLoopMusic == null ? null : gameoverLoopMusic.volume});
+	}
+
+	@:keep public function coolStartDeath(?volume:Float = 1):Void {
+		if (sourceMode != 0) playGameoverMusic(volume);
 	}
 
 	function playGameoverMusic(volume:Float = 1) {
 		var playState = sourceOwner == null ? PlayState.instance : sourceOwner;
-		var psychLoopSound = playState == null ? null
-			: playState.psychGameOverSoundPath('loopSoundName', false);
-		if (psychLoopSound != null)
-			FlxG.sound.playMusic(FNFAssets.getSound(psychLoopSound), volume);
-		else {
-			if (!FNFAssets.exists('assets/music/${bf.gameoverMusic}'))
-				bf.gameoverMusic = 'gameOver.ogg';
-			bf.gameoverMusic = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusic,
-				'assets/music', bf.isPixel);
-			FlxG.sound.playMusic(FNFAssets.getSound('assets/music/' + bf.gameoverMusic), volume);
+		if (sourceMode == SourceGameOverSettings.PSYCH) {
+			if (psychLoopPreloaded && gameoverLoopMusic != null) {
+				gameoverLoopMusic.play(true);
+				gameoverLoopMusic.volume = volume;
+			}
+		} else if (sourceMode == SourceGameOverSettings.NIGHTMARE) {
+			gameoverLoopMusic = null;
+			var sound = sourceOwner.sourceGameOverSound('loopSoundName', false);
+			if (sound != null) {
+				FlxG.sound.playMusic(sound, volume, true);
+				gameoverLoopMusic = FlxG.sound.music;
+			}
+		} else {
+			var psychLoopSound = playState == null ? null
+				: playState.psychGameOverSoundPath('loopSoundName', false);
+			if (psychLoopSound != null)
+				FlxG.sound.playMusic(FNFAssets.getSound(psychLoopSound), volume);
+			else {
+				if (!FNFAssets.exists('assets/music/${bf.gameoverMusic}'))
+					bf.gameoverMusic = 'gameOver.ogg';
+				bf.gameoverMusic = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusic,
+					'assets/music', bf.isPixel);
+				FlxG.sound.playMusic(FNFAssets.getSound('assets/music/' + bf.gameoverMusic), volume);
+			}
 		}
-		gameoverLoopMusic = FlxG.sound.music;
-		if (sourceMode == 2 && !sourceDeathAnimNotified) {
-			sourceDeathAnimNotified = true;
-			startedDeath = true;
+		if (sourceMode == 0 && FlxG.sound.music != null) gameoverLoopMusic = FlxG.sound.music;
+		if (sourceMode == SourceGameOverSettings.NIGHTMARE) {
 			sourceOwner.sourceGameOverCall('deathAnimStart', [volume]);
 		}
 	}
@@ -637,20 +884,36 @@ class GameOverSubstate extends MusicBeatSubstate {
 		if (!isEnding) {
 			isEnding = true;
 			cancelDeathQuote();
-			if (bf != null) bf.playAnim('deathConfirm', true);
+			if (bf != null) {
+				if (sourceMode == SourceGameOverSettings.PSYCH) {
+					if (bf.hasAnimation('deathConfirm')) bf.playAnim('deathConfirm', true);
+					else if (bf.hasAnimation('deathLoop')) bf.playAnim('deathLoop', true);
+				} else bf.playAnim('deathConfirm', true);
+			}
+			if (sourceMode == SourceGameOverSettings.PSYCH && psychRetryOverlay != null
+				&& psychRetryOverlay.animation.exists('deathConfirm')) {
+				psychRetryOverlay.visible = true;
+				psychRetryOverlay.animation.play('deathConfirm');
+				psychRetryOverlay.offset.set(psychRetryConfirmOffsets.x, psychRetryConfirmOffsets.y);
+			}
 
 			if (FlxG.sound.music != null) FlxG.sound.music.stop();
-			var playState = sourceOwner == null ? PlayState.instance : sourceOwner;
-			var psychEndSound = playState == null ? null
-				: playState.psychGameOverSoundPath('endSoundName', false);
-			if (psychEndSound != null)
-				FlxG.sound.play(FNFAssets.getSound(psychEndSound));
-			else if (bf != null) {
-				if (!FNFAssets.exists('assets/music/${bf.gameoverMusicEnd}'))
-					bf.gameoverMusicEnd = 'gameOverEnd.ogg';
-				bf.gameoverMusicEnd = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusicEnd,
-					'assets/music', bf.isPixel, true);
-				FlxG.sound.play(FNFAssets.getSound('assets/music/' + bf.gameoverMusicEnd));
+			if (sourceMode != 0) {
+				var endSound = sourceOwner.sourceGameOverSound('endSoundName', false);
+				if (endSound != null) FlxG.sound.play(endSound);
+			} else {
+				var playState = PlayState.instance;
+				var psychEndSound = playState == null ? null
+					: playState.psychGameOverSoundPath('endSoundName', false);
+				if (psychEndSound != null)
+					FlxG.sound.play(FNFAssets.getSound(psychEndSound));
+				else if (bf != null) {
+					if (!FNFAssets.exists('assets/music/${bf.gameoverMusicEnd}'))
+						bf.gameoverMusicEnd = 'gameOverEnd.ogg';
+					bf.gameoverMusicEnd = HxcCompatRuntime.resolveGameOverTrack(bf.gameoverMusicEnd,
+						'assets/music', bf.isPixel, true);
+					FlxG.sound.play(FNFAssets.getSound('assets/music/' + bf.gameoverMusicEnd));
+				}
 			}
 
 			new FlxTimer().start(0.7, function(tmr:FlxTimer) {
@@ -665,6 +928,26 @@ class GameOverSubstate extends MusicBeatSubstate {
 	}
 
 	override public function destroy():Void {
+		restorePsychRetryAnimationCallback();
+		if (psychRetryOverlay != null) {
+			remove(psychRetryOverlay, true);
+			psychRetryOverlay.destroy();
+			psychRetryOverlay = null;
+		}
+		if (psychNeneKnife != null) {
+			psychNeneKnife.animation.finishCallback = null;
+			remove(psychNeneKnife, true);
+			psychNeneKnife.destroy();
+			psychNeneKnife = null;
+		}
+		if (sourceReusedGameplayActor && bf != null) {
+			remove(bf, true);
+			sourceReusedGameplayActor = false;
+		}
+		if (psychRetryConfirmOffsets != null) {
+			psychRetryConfirmOffsets.put();
+			psychRetryConfirmOffsets = null;
+		}
 		if (deathQuotePlayback != null) {
 			deathQuotePlayback.destroy();
 			deathQuotePlayback = null;

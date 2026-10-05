@@ -355,6 +355,32 @@ class PauseSubState extends MusicBeatSubstate {
 		return HxcStateAssetScope.scopedAssetPath(root, clean);
 	}
 
+	function openPauseChartEditor():Void {
+		if (PlayState.instance != null && PlayState.psychChartingOwnerRoot() != '')
+			@:privateAccess PlayState.instance.openChartEditor();
+		else
+			LoadingState.loadAndSwitchState(new ChartingState());
+	}
+
+	function exitPauseToMenu():Void {
+		// State creation can select another chart owner. Capture this owner before
+		// switching, then clear its flag in the donor's post-switch order.
+		var chartingOwner = PlayState.psychChartingOwnerRoot();
+		if (chartingOwner != '') {
+			PlayState.balls = 0;
+			PlayState.watchedCutscene = false;
+			if (PlayState.instance != null) PlayState.instance.canResync = false;
+		}
+		if (PlayState.isStoryMode)
+			LoadingState.loadAndSwitchState(new StoryMenuState());
+		else
+			LoadingState.loadAndSwitchState(new FreeplayState());
+		if (chartingOwner != '') {
+			PsychOwnerChartingMode.clear(chartingOwner);
+			if (FlxG.camera != null) FlxG.camera.followLerp = 0;
+		}
+	}
+
 	override function update(elapsed:Float) {
 		if (pauseMusic.volume < 0.5)
 			pauseMusic.volume += 0.01 * elapsed;
@@ -387,12 +413,9 @@ class PauseSubState extends MusicBeatSubstate {
 						PlayState.watchedCutscene = false;
 						FlxG.resetState();
 					case "Charting":
-						LoadingState.loadAndSwitchState(new ChartingState());
+						openPauseChartEditor();
 					case "Exit to menu":
-						if (PlayState.isStoryMode)
-							LoadingState.loadAndSwitchState(new StoryMenuState());
-						else
-							LoadingState.loadAndSwitchState(new FreeplayState());
+						exitPauseToMenu();
 					case "Change Modifiers":
 						LoadingState.loadAndSwitchState(new ModifierState());
 					case "Change Options":

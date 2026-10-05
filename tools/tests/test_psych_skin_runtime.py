@@ -153,7 +153,8 @@ class FNFAssets {
                 'set_sourceKind', 'applyPsychNoteAnimationType', 'get_rgbShader'))
             strum_methods = '\n'.join(method(strum_source, name) for name in (
                 'get_texture', 'set_texture', 'configurePsychRGBShader', 'set_useRGBShader',
-                'configurePsychSkin', 'refreshPsychRGB', 'playAnim', 'get_rgbShader'))
+                'configurePsychSkin', 'refreshPsychRGB', 'playAnim', 'get_rgbShader',
+                'hasNightmareVisionRGB', 'getNightmareVisionRGB'))
             (work / 'Note.hx').write_text('''class Note extends Sprite {
   public var texture(get,set):String;
   var psychTexture:String=''; var psychSkinOwner:String=null; var psychChartSkin:String=null;
@@ -173,8 +174,11 @@ class FNFAssets {
   function applySourceHurtNoteSemantics():Void {}
   public function new(sustain:Bool=false) {super(); isSustainNote=sustain;}
 ''' + note_methods + '\n}', newline='\n')
+            (work / 'NightmareVisionRGBGraphics.hx').write_text('class NightmareVisionRGBGraphics {public function new(palette:Dynamic) {}}', newline='\n')
             (work / 'Strumline.hx').write_text('''class Strumline {public var noAnims:Bool=false; public function new() {}}
 class StrumNote extends Sprite {
+  public var nightmareVisionSource:Bool=false;
+  public var nightmareVisionRGB:NightmareVisionRGBGraphics=null;
   public var nightmareVisionOffsets:Map<String,Array<Float>>=null;
   public var nightmareVisionPalette:Dynamic=null;
   public var texture(get,set):String;
@@ -183,7 +187,7 @@ class StrumNote extends Sprite {
   var psychRGBDisabled:Bool=false; var psychRGBShader:PsychRGBShaderReference=null;
   public var psychSkinUsesNativeDefaultFallback:Bool=false;
   var psychSkinConfigured:Bool=false; var psychRGBExplicitlyEnabled:Bool=false;
-  public var rgbShader(get,never):PsychRGBShaderReference;
+  public var rgbShader(get,never):Dynamic;
   public var useRGBShader(default,set):Bool=true;
   public var confirmationGeneration:Int=0;
   public var ID:Int=0; public var isPixel:Bool=false; public var normalSize:Float=1;

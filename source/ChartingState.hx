@@ -1352,21 +1352,17 @@ class ChartingState extends MusicBeatState {
 		}
 
 		if (FlxG.keys.justPressed.ENTER && !chartEventInputsFocused()) {
-			lastSection = curSection;
+			beginTestPlay(FlxG.keys.pressed.SHIFT);
+		}
 
-			if (FlxG.keys.pressed.SHIFT)
-				PlayState.startingPosition = Conductor.songPosition;
-
-			if (charDropdown != null)
-				charDropdown.destroy();
-
-			PlayState.SONG = _song;
-			FlxG.sound.music.stop();
-			if (_song.needsVoices)
-				stopEditorVocals();
-			FlxG.mouse.visible = false;
-			autosaveSong();
-			LoadingState.loadAndSwitchState(new PlayState());
+		if (PlayState.psychChartingOwnerRoot() != '' && PlayState.chartingMode
+			&& FlxG.keys.justPressed.ESCAPE && !typingShit.hasFocus
+			&& !player1TextField.hasFocus && !player2TextField.hasFocus && !gfTextField.hasFocus
+			&& !stageTextField.hasFocus && !cutsceneTextField.hasFocus && !uiTextField.hasFocus
+			&& !layoutTextField.hasFocus && !chartEventInputsFocused()
+			&& (charDropdown == null || !charDropdown.searchBox.hasFocus)) {
+			exitPsychChartEditor();
+			return;
 		}
 
 		if (!typingShit.hasFocus && !player1TextField.hasFocus 
@@ -1517,6 +1513,7 @@ class ChartingState extends MusicBeatState {
 			+ '\ncurBeat: ' + Std.string(curBeat) 
 			+ '\ncurStep: ' + Std.string(curStep);
 		super.update(elapsed);
+		RuntimeSourceChartingProbe.updateEditor(this);
 		if (runChartEditorSmokeAfterFrame) {
 			runChartEditorRoundTripSmoke();
 			return;
@@ -1530,6 +1527,35 @@ class ChartingState extends MusicBeatState {
 			|| (chartEventValue1Field != null && chartEventValue1Field.hasFocus)
 			|| (chartEventValue2Field != null && chartEventValue2Field.hasFocus)
 			|| (chartEventValue3Field != null && chartEventValue3Field.hasFocus);
+	}
+
+	@:keep public function beginTestPlay(fromCurrentPosition:Bool = false):Void {
+		lastSection = curSection;
+		if (fromCurrentPosition)
+			PlayState.startingPosition = Conductor.songPosition;
+		if (charDropdown != null)
+			charDropdown.destroy();
+		PlayState.SONG = _song;
+		FlxG.sound.music.stop();
+		if (_song.needsVoices)
+			stopEditorVocals();
+		FlxG.mouse.visible = false;
+		autosaveSong();
+		LoadingState.loadAndSwitchState(new PlayState());
+	}
+
+	/** The source chart editor has an explicit exit action in Psych. This host
+	 * maps that action to Escape and clears only the selected Psych owner's flag. */
+	@:keep public function exitPsychChartEditor():Bool {
+		if (PlayState.psychChartingOwnerRoot() == '' || !PlayState.chartingMode)
+			return false;
+		autosaveSong();
+		PlayState.chartingMode = false;
+		if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		stopEditorVocals();
+		FlxG.mouse.visible = false;
+		LoadingState.loadAndSwitchState(new FreeplayState());
+		return true;
 	}
 
 	function changeNoteSustain(value:Float):Void {

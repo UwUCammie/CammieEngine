@@ -2580,7 +2580,12 @@ class Main {{
         self.assertIn("character.danceEvery <= 0", play_state)
         self.assertIn("characterDanceDue(dad, curBeat)", play_state)
         self.assertIn("characterDanceDue(boyfriend, curBeat)", play_state)
-        self.assertIn("characterDanceDue(gf, curBeat)", play_state)
+        self.assertIn("girlfriendDanceDue(curBeat)", play_state)
+        gf_gate = extract_method(play_state, "function girlfriendDanceDue(")
+        self.assertIn("return beat % gfSpeed == 0 && characterDanceDue(gf, beat);", gf_gate)
+        actor_gate = extract_method(play_state, "function characterDanceDue(")
+        self.assertIn("character.codenameLiveDefinition != null || character.danceEvery <= 0", actor_gate)
+        self.assertIn("return interval > 0 && beat % interval == 0;", actor_gate)
 
     def test_stage_conversion_preserves_positions_layers_props_and_animation_metadata(self):
         stage = {

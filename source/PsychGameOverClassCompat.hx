@@ -13,10 +13,12 @@ class PsychGameOverClassCompat {
 	var loopSoundValue:String;
 	var endSoundValue:String;
 	var delayValue:Float = 0;
+	var sourceBound:Bool = false;
 
 	public function new(host:Dynamic, chart:Dynamic) {
 		this.host = host;
 		this.chart = chart;
+		sourceBound = host != null && Reflect.getProperty(host, 'sourceGameOverSettings') != null;
 		characterValue = chartValue('gameOverChar', 'bf-dead');
 		deathSoundValue = chartValue('gameOverSound', 'fnf_loss_sfx');
 		loopSoundValue = chartValue('gameOverLoop', 'gameOver');
@@ -26,11 +28,25 @@ class PsychGameOverClassCompat {
 	function chartValue(field:String, fallback:String):String {
 		var value = chart == null ? null : Reflect.field(chart, field);
 		if (value == null) return fallback;
-		var name = Std.string(value).trim();
-		return name == '' ? fallback : name;
+		var name = Std.string(value);
+		return name.trim() == '' ? fallback : name;
 	}
 
-	function write(field:String, value:String):String {
+	function settings():SourceGameOverSettings {
+		var current:SourceGameOverSettings = host == null ? null : cast Reflect.getProperty(host, 'sourceGameOverSettings');
+		if (current == null && sourceBound)
+			throw '[psych-gameover] The source owner has been released';
+		if (current != null) sourceBound = true;
+		return current;
+	}
+
+	function read(field:String, fallback:Dynamic):Dynamic {
+		var current = settings();
+		return current == null ? fallback : current.read(field);
+	}
+
+	function write(field:String, value:Dynamic):Dynamic {
+		settings();
 		if (host == null)
 			throw '[psych-gameover] A live PlayState is required for ' + field;
 		var method = Reflect.field(host, 'setPsychClassProperty');
@@ -41,24 +57,28 @@ class PsychGameOverClassCompat {
 	}
 
 	public var characterName(get, set):String;
-	function get_characterName():String return characterValue;
+	function get_characterName():String return read('characterName', characterValue);
 	function set_characterName(value:String):String return characterValue = write('characterName', value);
 
 	public var deathSoundName(get, set):String;
-	function get_deathSoundName():String return deathSoundValue;
+	function get_deathSoundName():String return read('deathSoundName', deathSoundValue);
 	function set_deathSoundName(value:String):String return deathSoundValue = write('deathSoundName', value);
 
 	public var loopSoundName(get, set):String;
-	function get_loopSoundName():String return loopSoundValue;
+	function get_loopSoundName():String return read('loopSoundName', loopSoundValue);
 	function set_loopSoundName(value:String):String return loopSoundValue = write('loopSoundName', value);
 
 	public var endSoundName(get, set):String;
-	function get_endSoundName():String return endSoundValue;
+	function get_endSoundName():String return read('endSoundName', endSoundValue);
 	function set_endSoundName(value:String):String return endSoundValue = write('endSoundName', value);
 
 	public var deathDelay(get, set):Float;
-	function get_deathDelay():Float return delayValue;
+	function get_deathDelay():Float return read('deathDelay', delayValue);
 	function set_deathDelay(value:Float):Float {
+		if (settings() != null) {
+			write('deathDelay', value);
+			return value;
+		}
 		if (Math.isNaN(value) || !Math.isFinite(value) || value < 0)
 			throw '[psych-gameover] deathDelay must be a finite nonnegative number';
 		write('deathDelay', Std.string(value));
@@ -72,6 +92,11 @@ class PsychGameOverClassCompat {
 	}
 
 	public function resetVariables():Void {
+		var current = settings();
+		if (current != null) {
+			current.resetVariables();
+			return;
+		}
 		characterName = chartValue('gameOverChar', 'bf-dead');
 		deathSoundName = chartValue('gameOverSound', 'fnf_loss_sfx');
 		loopSoundName = chartValue('gameOverLoop', 'gameOver');

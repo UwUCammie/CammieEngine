@@ -109,6 +109,8 @@ class InputActor {
  public function new() {}
 }
 class InputField {
+ public var ID:Int=0;
+ public var strumline:InputFixtureStrumline;
  public var input:Bool = true;
  public var playAnims:Bool = true;
  public function new() {}
@@ -173,6 +175,7 @@ class InputFixture {
  public var boyfriend:InputActor = new InputActor();
  public var opponentActor:InputActor = new InputActor();
  public var fields:Array<InputField> = [new InputField(), new InputField()];
+ public var nightmareVisionFields:Array<InputField>;
  public var nightmareVisionPrefs:InputPrefs = new InputPrefs();
  public var ghostTapping:Bool = false;
  public function sourceLivePreference(name:String, fallback:Bool):Bool return fallback;
@@ -200,6 +203,9 @@ class InputFixture {
  public function new() {
   playerStrums = new InputFixtureStrumline('player', events);
   enemyStrums = new InputFixtureStrumline('enemy', events);
+  nightmareVisionFields=fields;
+  fields[0].ID=0;fields[0].strumline=playerStrums;
+  fields[1].ID=1;fields[1].strumline=enemyStrums;
  }
  function getOpponentSinger():InputActor return opponentActor;
  function getInputStrumline(line:Dynamic, playerOne:Bool):InputFixtureStrumline

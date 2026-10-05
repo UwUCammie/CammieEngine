@@ -526,6 +526,8 @@ class StrumNote extends FlxSprite {
 	public var nightmareVisionOffsets:Map<String, Array<Float>> = null;
 	public var nightmareVisionPalette:PsychRGBPalette = null;
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics = null;
+	/** Marks this receptor as source-owned even when its skin disables coloring. */
+	@:keep public var nightmareVisionSource:Bool = false;
 	@:keep public var resetAnim:Float = 0;
 	@:keep public var coyoteTime:Float = 0;
 	@:keep public var lastNote:Note;
@@ -553,8 +555,23 @@ class StrumNote extends FlxSprite {
 	var psychSkinConfigured:Bool = false;
 	var psychRGBExplicitlyEnabled:Bool = false;
 	var psychRGBShader:PsychRGBShaderReference = null;
-	@:keep public var rgbShader(get, never):PsychRGBShaderReference;
-	@:keep function get_rgbShader():PsychRGBShaderReference return psychRGBShader;
+	/** Psych keeps its typed reference; NV scripts receive the live source RGB view. */
+	@:keep public var rgbShader(get, never):Dynamic;
+	@:keep function get_rgbShader():Dynamic
+		return hasNightmareVisionRGB() ? getNightmareVisionRGB() : psychRGBShader;
+	/** Nightmare Vision's donor receptor field name for RGB graphics. */
+	@:keep public var rgbGraphics(get, never):NightmareVisionRGBGraphics;
+	@:keep function get_rgbGraphics():NightmareVisionRGBGraphics
+		return hasNightmareVisionRGB() ? getNightmareVisionRGB() : null;
+
+	function hasNightmareVisionRGB():Bool
+		return nightmareVisionSource || nightmareVisionPalette != null || nightmareVisionRGB != null;
+
+	function getNightmareVisionRGB():NightmareVisionRGBGraphics {
+		if (nightmareVisionRGB == null)
+			nightmareVisionRGB = new NightmareVisionRGBGraphics(nightmareVisionPalette);
+		return nightmareVisionRGB;
+	}
 	public var useRGBShader(default, set):Bool = true;
 	function set_useRGBShader(value:Bool):Bool {
 		useRGBShader = value;

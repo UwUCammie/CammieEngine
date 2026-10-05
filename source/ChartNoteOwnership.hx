@@ -43,6 +43,20 @@ class ChartNoteOwnership {
 		};
 	}
 
+	/** NV's older charts convert only their first two section-relative banks.
+	 * Additional banks retain their authored ID; leave retained chart rows intact. */
+	public static function nightmareVisionAddress(format:String, lane:Int, mustHitSection:Bool,
+		columns:Int):ChartNoteAddress {
+		var normalized = format == null ? '' : StringTools.trim(format).toLowerCase();
+		var result = address(normalized == 'nmv2' || normalized == 'psych_v1' ? normalized : null,
+			lane, mustHitSection, columns);
+		if (columns <= 0 || lane < 0) return result;
+		if (lane >= columns * 2) result.playfieldIndex = Std.int(lane / columns);
+		result.playerControlled = result.playfieldIndex != 1;
+		result.autoPlay = result.playfieldIndex != 0;
+		return result;
+	}
+
 	/** Legacy note ownership is represented by the mutable `mustPress` field.
 	 * Only normalized NMV formats need a separate owner override because their
 	 * authored playfield and the destination's binary hit side can differ. */

@@ -10,6 +10,8 @@ import openfl.filters.BitmapFilter;
 
 /** Small live view of a FlxCamera that restores Psych's setFilters helper
 	while forwarding the camera state used by source stages to the real camera. */
+@:allow(NightmareVisionScriptInterp)
+@:allow(PsychFlxGCompat)
 class PsychFlxCameraCompat {
 	final nativeCamera:FlxCamera;
 
@@ -18,6 +20,7 @@ class PsychFlxCameraCompat {
 	}
 
 	public function wraps(camera:FlxCamera):Bool return nativeCamera == camera;
+	function unwrap():FlxCamera return nativeCamera;
 
 	public var visible(get, set):Bool;
 	function get_visible():Bool return nativeCamera.visible;
@@ -71,10 +74,35 @@ class PsychFlxCameraCompat {
 	public function shake(intensity:Float = 0.05, duration:Float = 0.5,
 		?onComplete:Void->Void, force:Bool = true, ?axes:FlxAxes):Void
 		nativeCamera.shake(intensity, duration, onComplete, force, axes);
+
+	/** Resolve source camera members that are not explicitly wrapped above. */
+	function getField(field:String):Dynamic {
+		if (field == null || field == '') return null;
+		return switch (field) {
+			case 'visible' | 'zoom' | 'scroll' | 'filters' | 'filtersEnabled'
+				| 'viewLeft' | 'viewTop' | 'viewRight' | 'viewBottom'
+				| 'setFilters' | 'snapToTarget' | 'focusOn' | 'follow' | 'fade' | 'flash' | 'shake':
+				Reflect.getProperty(this, field);
+			default:
+				Reflect.getProperty(nativeCamera, field);
+		};
+	}
+
+	/** Keep the existing filter helper's enable/disable side effect; other
+	 * camera fields use FlxCamera's real setters and native read-only rules. */
+	function setField(field:String, value:Dynamic):Dynamic {
+		if (field == null || field == '') return value;
+		if (field == 'filters')
+			Reflect.setProperty(this, field, value);
+		else
+			Reflect.setProperty(nativeCamera, field, value);
+		return value;
+	}
 }
 
 /** FlxG view for owner stage modules. Static fields stay live and camera calls
 	pass through PsychFlxCameraCompat only where the source API had extra helpers. */
+@:allow(NightmareVisionScriptInterp)
 class PsychFlxGCompat {
 	static var _camera:PsychFlxCameraCompat;
 
@@ -106,4 +134,23 @@ class PsychFlxGCompat {
 	 * FlxGame publishes its initial state. */
 	public static var state(get, never):Dynamic;
 	static function get_state():Dynamic return FlxG.game == null ? null : FlxG.state;
+
+	/** Preserve this facade's live convenience views and delegate the rest of
+	 * Psych's FlxG surface to the actual global class. */
+	static function getField(field:String):Dynamic {
+		if (field == null || field == '') return null;
+		var local:Dynamic = Reflect.getProperty(PsychFlxGCompat, field);
+		return local == null ? Reflect.getProperty(FlxG, field) : local;
+	}
+
+	static function setField(field:String, value:Dynamic):Dynamic {
+		if (field != null && field != '') {
+			var assigned = value;
+			if (field == 'camera' && Std.isOfType(value, PsychFlxCameraCompat))
+				value = (cast value:PsychFlxCameraCompat).unwrap();
+			Reflect.setProperty(FlxG, field, value);
+			return assigned;
+		}
+		return value;
+	}
 }

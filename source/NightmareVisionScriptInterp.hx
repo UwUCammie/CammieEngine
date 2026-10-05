@@ -4,6 +4,10 @@ import crowplexus.hscript.Expr;
 import crowplexus.hscript.Interp;
 import crowplexus.hscript.Tools;
 import crowplexus.iris.utils.UsingEntry.UsingCall;
+#if flixel
+import PsychFlxCameraCompat.PsychFlxCameraCompat;
+import PsychFlxCameraCompat.PsychFlxGCompat;
+#end
 
 private typedef NightmareVisionConstructorBinding = {
 	var type:Dynamic;
@@ -384,6 +388,11 @@ class NightmareVisionScriptInterp extends Interp {
 	override function get(object:Dynamic, field:String):Dynamic {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot read ' + field + ' on null';
+		#if flixel
+		if (object == PsychFlxGCompat) return PsychFlxGCompat.getField(field);
+		if (Std.isOfType(object, PsychFlxCameraCompat))
+			return (cast object:PsychFlxCameraCompat).getField(field);
+		#end
 		if (usesClassParent(object, field, false)) return Reflect.getProperty(parent, field);
 		#if flixel
 		if (ownerPaths != null && (field == 'audio' || field == 'vocals')
@@ -416,6 +425,11 @@ class NightmareVisionScriptInterp extends Interp {
 	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot write ' + field + ' on null';
+		#if flixel
+		if (object == PsychFlxGCompat) return PsychFlxGCompat.setField(field, value);
+		if (Std.isOfType(object, PsychFlxCameraCompat))
+			return (cast object:PsychFlxCameraCompat).setField(field, value);
+		#end
 		if (usesClassParent(object, field, true)) {
 			Reflect.setProperty(parent, field, value);
 			return value;

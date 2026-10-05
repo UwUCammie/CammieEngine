@@ -129,6 +129,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var nightmareVisionNoteSkins:Map<String, NightmareVisionNoteSkin>;
 	var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime;
 	var nightmareVisionFields:Array<NightmareVisionPlayFieldView> = [];
+	/** Lightweight script view; native Strumlines remain PlayState-owned. */
+	@:keep public var playFields:NightmareVisionPlayFields;
+	/** One real native receptor bank per declared Nightmare Vision field. */
+	var nightmareVisionStrumlines:Array<Strumline> = [];
+	/** NV stages register extra world cameras that copy the gameplay view. */
+	@:keep public var followingCams:Array<FlxCamera> = [];
 	var nightmareVisionRenderers:Map<Int, NightmareVisionModchartRenderer> = new Map();
 	@:keep public var holdSubdivisions:Int = 1;
 	@:keep public var noteKillOffset:Float = 350;
@@ -159,14 +165,52 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return '';
 	}
 
+	function nightmareVisionLaneCount():Int {
+		var authored:Null<Int> = SONG == null ? null : SONG.lanes;
+		return authored != null && authored >= 1 ? authored : 2;
+	}
+
+	/** Donor generation discards notes outside the authored field count. */
+	function nightmareVisionAcceptsNoteField(id:Int):Bool {
+		return id >= 0 && id < nightmareVisionLaneCount();
+	}
+
+	function initializeNightmareVisionPlayFields():Void {
+		if (playFields == null) playFields = new NightmareVisionPlayFields();
+		nightmareVisionFields = playFields.members;
+	}
+
+	/** Source field lookup first honors mutable IDs, then donor array indexing. */
 	@:keep public function getNightmareVisionField(id:Int):NightmareVisionPlayFieldView {
-		if (id < 0 || id >= 2) throw '[nightmare-vision-playfield] Source field ' + id + ' has no native bank';
-		if (nightmareVisionFields[id] == null) {
-			nightmareVisionFields[id] = new NightmareVisionPlayFieldView(id, function():Bool return id == 1 || demoMode);
-			nightmareVisionFields[id].owner = id == 0 ? boyfriend : dad;
-			nightmareVisionFields[id].noteSplashes = id == 0;
+		if (playFields == null) return null;
+		return playFields.getFieldFromID(id);
+	}
+
+	/** Build script field views over the real receptor banks after actors exist. */
+	function buildNightmareVisionPlayFields():Void {
+		if (nightmareVisionScripts == null || playFields == null || playFields.members.length > 0) return;
+		var count = nightmareVisionLaneCount();
+		nightmareVisionStrumlines = [];
+		for (id in 0...count) {
+			var fieldID = id;
+			var line = fieldID == 0 ? playerStrums : fieldID == 1 ? enemyStrums
+				: new Strumline(0, strumLine == null ? 50 : strumLine.y, SONG.uiType);
+			var field = new NightmareVisionPlayFieldView(fieldID,
+				function():Bool return fieldID != 0 || cpuControlled);
+			field.strumline = line;
+			field.owner = fieldID == 1 ? dad : boyfriend;
+			field.noteSplashes = fieldID == 0;
+			playFields.add(field);
+			nightmareVisionStrumlines.push(line);
+			if (fieldID >= 2 && line != null) {
+				line.alpha = 0;
+				line.cameras = [camHUD];
+				line.noteHoldCovers.cameras = [camHUD];
+			}
 		}
-		return nightmareVisionFields[id];
+		// The host always constructs both legacy banks, but a one-field source
+		// chart owns only field zero and must not show the unused opponent bank.
+		if (count == 1 && enemyStrums != null) enemyStrums.visible = false;
 	}
 
 	/** Owner-local PlayableSong view used by imported source visualizers. */
@@ -388,6 +432,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActivePrefs = null;
 		}
 		if (root == '') return;
+		// The source initializes a null PlayField group before onLoad and fills it
+		// only when receptor generation starts later in create().
+		initializeNightmareVisionPlayFields();
 		NightmareVisionConductor.initializeMap(SONG.bpm);
 		if (nightmareVisionActiveMods == null) {
 			var sourceDirectory:String = null;
@@ -428,7 +475,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}, function() {
 			return inst == null ? 0 : (cast inst:Sound).length;
 		}, function() return vocalTracks);
-		modManager = new NightmareVisionModManager(null, Note.NOTE_AMOUNT, 2);
+		modManager = new NightmareVisionModManager(null, Note.NOTE_AMOUNT, nightmareVisionLaneCount());
 		// Persistent plugin bindings capture only this owner's paths/preferences,
 		// never a PlayState that will be destroyed when another song loads.
 		var ownerPaths = nightmareVisionPaths;
@@ -657,7 +704,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			insertDisplay:function(index, object) return insert(index, cast object)
 		});
 		if (prefs.hideHud) playHUD.visible = false;
-		modManager.receptors = [cast playerStrums.members, cast enemyStrums.members];
+		var receptorBanks:Array<Array<Dynamic>> = [];
+		for (field in nightmareVisionFields)
+			if (field != null && field.strumline != null) receptorBanks.push(cast field.strumline.members);
+		modManager.receptors = receptorBanks;
 	}
 
 	/** Shared PsychHUD character-change behavior over the existing PlayState HUD.
@@ -798,7 +848,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		demoMode = value;
 		if (value) maxStepCatchUp = 0;
 		if (sourceScoreNightmare)
-			for (field in nightmareVisionFields) if (field != null && field.playerControls) field.autoPlayed = value;
+			for (field in nightmareVisionFields) if (field != null && field.ID == 0) field.autoPlayed = value;
 	}
 
 	function sourceLivePreference(name:String, fallback:Bool):Bool {
@@ -862,6 +912,32 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				? curStage.name : curStage.authoredName)
 			: (SONG == null || SONG.stage == null ? '' : SONG.stage);
 	public static var SONG:SwagSong;
+	@:keep public static var chartingMode(get, set):Bool;
+	static function get_chartingMode():Bool {
+		var ownerRoot = psychChartingOwnerRoot();
+		return ownerRoot != '' && PsychOwnerChartingMode.get(ownerRoot);
+	}
+	static function set_chartingMode(value:Bool):Bool {
+		var ownerRoot = psychChartingOwnerRoot();
+		if (ownerRoot != '') PsychOwnerChartingMode.set(ownerRoot, value);
+		return ownerRoot != '' && value;
+	}
+	/** Resolve charting handoff state from the active chart's selected Psych
+	 * owner, without retaining a PlayState or editor instance. */
+	@:keep public static function psychChartingOwnerRoot():String {
+		if (instance != null && FlxG.state == instance) {
+			if (instance.sourceScoreNightmare) return '';
+			if (instance.sourceScoreOwner) {
+				var selected = instance.selectedPsychSkinRoot();
+				return selected == null ? '' : selected;
+			}
+		}
+		if (SONG == null) return '';
+		var folder = Song.storageFolder(SONG);
+		if (folder == '' || Song.characterOwnerEngineForSong(folder).toLowerCase()
+			!= ImportEngine.PSYCH.toLowerCase()) return '';
+		return Song.characterRootForSong(folder, ImportEngine.PSYCH);
+	}
 	// V-Slice/HXC modules call the active chart `currentSong` on their game
 	// object. Keep that read-only view tied to the live chart rather than
 	// copying a donor-side song wrapper into HScript.
@@ -1355,6 +1431,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var missBreakColor:FlxColor = 0xFFDD0A93;
 	
 	public var camZoomRate:Int = 4;
+	/** Nightmare Vision uses the same live camera beat interval under this name. */
+	@:keep public var beatsPerZoom(get, set):Int;
+	@:keep function get_beatsPerZoom():Int return camZoomRate;
+	@:keep function set_beatsPerZoom(value:Int):Int return camZoomRate = value;
 	public var cameraZoomRate(get, set):Int;
 	function get_cameraZoomRate():Int
 		return camZoomRate;
@@ -1549,7 +1629,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return FlxG.sound.play(path, volume, looped);
 	}
 
-	public var gfSpeed:Int = 1;
+	public var gfSpeed(default, set):Int = 1;
+	function set_gfSpeed(value:Int):Int {
+		// NV's setter multiplies the live actor on every write, including a
+		// repeated value. Other dialects retain the host's stored speed gate.
+		if (nightmareVisionScripts != null && nightmareVisionCharacterGroups.get(2) != null && gf != null)
+			gf.danceEveryNumBeats *= value;
+		return gfSpeed = value;
+	}
 	public var health(default, set):Float = 1;
 	private var combo:Int = 0;
 	public static var daScrollSpeed:Float = 1;
@@ -2148,6 +2235,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var sourceEventViews:Array<SourceEventNote> = [];
 	/** Psych's GameOverSubstate character and sound overrides belong to this song. */
 	var psychGameOverOverrides:Map<String, String> = new Map();
+	@:keep public var sourceGameOverSettings:SourceGameOverSettings;
 	var psychGameOverDeathDelaySeconds:Float = 0;
 	var psychGameOverTransitionPending:Bool = false;
 	var psychFlxGGameTicksProbeEmitted:Bool = false;
@@ -4028,6 +4116,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var sourcePrefs = compatSourceClientPrefs(className);
 		if (sourcePrefs != null) return compatReadPath(sourcePrefs, compatSourcePreferencePath(sourcePrefs, path));
 		var gameOverKey = psychGameOverClassPropertyKey(className, path);
+		if (gameOverKey != null && sourceGameOverSettings != null)
+			return sourceGameOverSettings.read(sourceGameOverSettingKey(gameOverKey));
 		if (gameOverKey == 'deathdelay')
 			return psychGameOverDeathDelaySeconds;
 		if (gameOverKey != null && psychGameOverOverrides.exists(gameOverKey))
@@ -4054,10 +4144,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			case 'isPixelStage':
 				return pixelUI;
 			case 'chartingMode':
-				// Imported gameplay scripts are never executed by ChartingState. Keep
-				// the donor read deterministic instead of exposing a missing static
-				// field through Type.resolveClass().
-				return false;
+				return chartingMode;
 		}
 		var probePath = '';
 		var probeFlxGGameTicks = false;
@@ -4154,6 +4241,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		var gameOverKey = psychGameOverClassPropertyKey(className, path);
 		if (gameOverKey != null) {
+			if (sourceGameOverSettings != null) {
+				sourceGameOverSettings.write(sourceGameOverSettingKey(gameOverKey), value);
+				return;
+			}
 			if (gameOverKey == 'deathdelay') {
 				var delay = value == null ? 0 : Std.parseFloat(StringTools.trim(Std.string(value)));
 				if (Math.isNaN(delay) || !Math.isFinite(delay) || delay < 0)
@@ -4164,6 +4255,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var name = value == null ? '' : StringTools.trim(Std.string(value));
 			if (name == '') psychGameOverOverrides.remove(gameOverKey);
 			else psychGameOverOverrides.set(gameOverKey, name);
+			return;
+		}
+		if (EngineCompat.legacyClassProperty(Std.string(className), Std.string(path)) == 'chartingMode') {
+			chartingMode = value == true;
 			return;
 		}
 		var classValue = compatResolveClass(className);
@@ -4198,6 +4293,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	public function psychGameOverCharacterName():Null<String> {
+		if (sourceGameOverSettings != null) return sourceGameOverSettings.characterName;
 		var name = psychGameOverOverrides.get('charactername');
 		if (name == null || name == '' || name == '.' || name == '..'
 			|| name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0)
@@ -4206,6 +4302,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	public function psychGameOverDeathDelay():Float {
+		if (sourceGameOverSettings != null)
+			return sourceGameOverSettings.mode == SourceGameOverSettings.PSYCH ? sourceGameOverSettings.deathDelay : 0;
 		return psychGameOverDeathDelaySeconds;
 	}
 
@@ -4251,12 +4349,63 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	public function psychGameOverSoundPath(property:String, preferSounds:Bool):Null<String> {
+		if (sourceGameOverSettings != null) return sourceGameOverSoundPath(property, preferSounds);
 		var key = psychGameOverClassPropertyKey('GameOverSubstate', property);
 		if (key == null || key == 'charactername' || !psychGameOverOverrides.exists(key)) return null;
 		var name = psychGameOverOverrides.get(key);
 		var sound = compatSoundPath(name, preferSounds);
 		if (sound == null) trace('[psych-gameover-missing-sound] ' + property + '=' + name);
 		return sound;
+	}
+
+	function sourceGameOverSettingKey(key:String):String {
+		return switch (key.toLowerCase()) {
+			case 'charactername': 'characterName';
+			case 'deathsoundname': 'deathSoundName';
+			case 'loopsoundname': 'loopSoundName';
+			case 'endsoundname': 'endSoundName';
+			case 'deathdelay': 'deathDelay';
+			default: throw '[source-gameover] unknown setting ' + key;
+		};
+	}
+
+	/** Source game-over assets share the song owner's current stage library. */
+	@:keep public function sourceGameOverPsychPaths():Dynamic {
+		if (sourceGameOverSettings == null || sourceGameOverSettings.mode != SourceGameOverSettings.PSYCH)
+			throw '[source-gameover] Psych Paths requires an active Psych owner';
+		return PsychOwnerPaths.create(selectedPsychSkinRoot(), psychStageLibrary);
+	}
+
+	/** Use the same selected-owner Paths surface as source scripts, retaining
+	 * each donor's sound/music distinction and authored nullable names. */
+	@:keep public function sourceGameOverSoundPath(property:String, preferSounds:Bool):Null<String> {
+		if (sourceGameOverSettings == null) return null;
+		var name:Null<String> = sourceGameOverSettings.read(sourceGameOverSettingKey(property));
+		if (sourceScoreNightmare) {
+			if (name == null) return null;
+			if (nightmareVisionPaths == null) throw '[source-gameover] NV owner Paths is unavailable';
+			return nightmareVisionPaths.findFileWithExts((preferSounds ? 'sounds/' : 'music/') + name, ['ogg', 'wav']);
+		}
+		var paths = sourceGameOverPsychPaths();
+		var method = Reflect.field(paths, preferSounds ? 'sound' : 'music');
+		return Reflect.callMethod(paths, method, [name]);
+	}
+
+	@:keep public function sourceGameOverSound(property:String, preferSounds:Bool):openfl.media.Sound {
+		if (sourceGameOverSettings == null) return null;
+		var name:Null<String> = sourceGameOverSettings.read(sourceGameOverSettingKey(property));
+		// NV's Paths owns its missing-sound diagnostic and source beep fallback.
+		if (sourceScoreNightmare) {
+			if (name == null) return null;
+			if (nightmareVisionPaths == null) throw '[source-gameover] NV owner Paths is unavailable';
+			return preferSounds ? nightmareVisionPaths.sound(name) : nightmareVisionPaths.music(name);
+		}
+		var path = sourceGameOverSoundPath(property, preferSounds);
+		if (!FNFAssets.exists(path)) {
+			trace('[psych-gameover-missing-sound] ' + property + '=' + name + ' path=' + path);
+			return flixel.system.FlxAssets.getSound('flixel/sounds/beep');
+		}
+		return FNFAssets.getSound(path);
 	}
 
 	function compatFindObject(name:Dynamic):Dynamic {
@@ -8436,23 +8585,29 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function getNoteStrumline(note:Note):Strumline {
 		if (note != null && note.codenameInputLine != null)
 			return getCodenameLineStrumline(note.codenameInputLine.lineIndex);
+		if (nightmareVisionScripts != null && note != null && note.sourcePlayfieldIndex >= 0) {
+			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			return field == null ? null : field.strumline;
+		}
 		return note != null && note.mustPress ? playerStrums : enemyStrums;
 	}
 
 	function configureNightmareVisionStrumlines():Void {
-		var format = SONG.format == null ? '' : StringTools.trim(SONG.format).toLowerCase();
-		if (format != 'nmv2' && format != 'psych_v1') return;
+		if (nightmareVisionScripts == null) return;
 		var centerY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height,
 			Note.swagWidth, downscroll);
-		for (field in 0...2) {
-			var line = field == 0 ? playerStrums : enemyStrums;
+		for (field in nightmareVisionFields) {
+			if (field == null) continue;
+			var line = field.strumline;
 			if (line != null) line.setCenteredLayout(
-				NightmareVisionPlayfieldLayout.centerX(field, Note.NOTE_AMOUNT,
+				NightmareVisionPlayfieldLayout.centerX(field.ID, Note.NOTE_AMOUNT,
 					FlxG.width, Note.swagWidth), centerY);
-			var skin = nightmareVisionSkinForField(field);
-			if (line != null && skin != null)
-				for (strum in line.members)
-					if (strum != null) skin.applyReceptor(strum, strum.ID);
+			var skin = nightmareVisionSkinForField(field.ID);
+			if (line != null)
+				for (strum in line.members) if (strum != null) {
+					strum.nightmareVisionSource = true;
+					if (skin != null) skin.applyReceptor(strum, strum.ID);
+				}
 			if (line != null && skin != null) line.resetStrums();
 		}
 	}
@@ -8483,8 +8638,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	public function nightmareVisionSkinForStrumline(line:Strumline):NightmareVisionNoteSkin {
-		if (line == playerStrums) return nightmareVisionSkinForField(0);
-		if (line == enemyStrums) return nightmareVisionSkinForField(1);
+		for (field in nightmareVisionFields)
+			if (field != null && field.strumline == line) return nightmareVisionSkinForField(field.ID);
 		return null;
 	}
 
@@ -8527,6 +8682,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function nightmareVisionRenderContext():NightmareVisionModchartContext {
 		return new NightmareVisionModchartContext(FlxG.width, FlxG.height, Note.NOTE_AMOUNT, Note.swagWidth,
 			Conductor.songPosition, curDecBeat, effectiveScrollSpeed, Conductor.crochet, downscroll, false);
+	}
+
+	function syncNightmareVisionFollowingCameras():Void {
+		var source = FlxG.camera;
+		if (nightmareVisionScripts == null || source == null) return;
+		for (camera in followingCams) if (camera != null && camera != source) {
+			camera.zoom = source.zoom;
+			camera.scroll.copyFrom(source.scroll);
+		}
 	}
 
 	function configureNightmareVisionNoteSkin(note:Note):Void {
@@ -12297,6 +12461,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		enemyStrums = new Strumline(92, strumLine.y, SONG.uiType);
 		playerStrums = new Strumline(FlxG.width / 2 + 92, strumLine.y, SONG.uiType);
+		buildNightmareVisionPlayFields();
 		configurePsychStrumSkins();
 		configureNightmareVisionStrumlines();
 		if ((midscroll && !duoMode) || soloMode) { // middlescroll hijinks (coming 2085)
@@ -12323,6 +12488,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		playerStrums.alpha = 0;
 		add(enemyStrums);
 		add(playerStrums);
+		for (index in 2...nightmareVisionStrumlines.length)
+			add(nightmareVisionStrumlines[index]);
 		add(grpNoteSplashes);
 		if (codenameNoteSplashHandler != null)
 			add(codenameNoteSplashHandler);
@@ -12502,6 +12669,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		playerStrums.cameras = [camHUD];
 		enemyStrums.noteHoldCovers.cameras = [camHUD];
 		playerStrums.noteHoldCovers.cameras = [camHUD];
+		for (index in 2...nightmareVisionStrumlines.length) {
+			var line = nightmareVisionStrumlines[index];
+			if (line != null) {
+				line.cameras = [camHUD];
+				line.noteHoldCovers.cameras = [camHUD];
+			}
+		}
 		notes.cameras = [camHUD];
 		healthBar.cameras = [camHUD];
 		healthBarBG.cameras = [camHUD];
@@ -13666,6 +13840,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			RuntimeSmokeHarness.markStep('countdown:strum-transitions-begin');
 			enemyStrums.transIn();
 			playerStrums.transIn();
+			for (index in 2...nightmareVisionStrumlines.length)
+				nightmareVisionStrumlines[index].transIn();
 			for (line in codenameStrumlines) if (line != null
 				&& line != playerStrums && line != enemyStrums) line.transIn();
 			RuntimeSmokeHarness.markStep('countdown:strum-transitions-complete');
@@ -16679,19 +16855,21 @@ void main(void) {
 					trace('Image Flash: no image for ${e.v1} (inert)');
 				}
 			case 'Alt Idle Animation':
-				// v1 = char (or 0 to reset), v2 = anim suffix (kade convention)
-				var suf = e.v2 != '' ? StringTools.trim(e.v2) : '-alt';
-				var who = StringTools.trim(e.v1).toLowerCase();
-				if (who == '0' || who == 'false' || who == 'off') {
-					boyfriend.idleSuffix = '';
-					dad.idleSuffix = '';
-					if (gf != null) gf.idleSuffix = '';
-				} else if (who == '1' || who == 'true' || who == 'on') {
-					if (gf != null) gf.idleSuffix = suf; // kade's alt-idle is gf's
-				} else {
-					var target = charForEventTarget(e.v1);
-					if (target != null)
-						target.idleSuffix = suf;
+				if (!applySourceAltIdleAnimation(e.v1, e.v2)) {
+					// v1 = char (or 0 to reset), v2 = anim suffix (kade convention)
+					var suf = e.v2 != '' ? StringTools.trim(e.v2) : '-alt';
+					var who = StringTools.trim(e.v1).toLowerCase();
+					if (who == '0' || who == 'false' || who == 'off') {
+						boyfriend.idleSuffix = '';
+						dad.idleSuffix = '';
+						if (gf != null) gf.idleSuffix = '';
+					} else if (who == '1' || who == 'true' || who == 'on') {
+						if (gf != null) gf.idleSuffix = suf; // kade's alt-idle is gf's
+					} else {
+						var target = charForEventTarget(e.v1);
+						if (target != null)
+							target.idleSuffix = suf;
+					}
 				}
 			case 'Goodbye Hud':
 				// v1 = 1/show else hide, v2 = tween seconds
@@ -17327,6 +17505,8 @@ void main(void) {
 		// when scripts move a receptor line.
 		add(enemyStrums.noteHoldCovers);
 		add(playerStrums.noteHoldCovers);
+		for (index in 2...nightmareVisionStrumlines.length)
+			add(nightmareVisionStrumlines[index].noteHoldCovers);
 
 		var noteData:Array<SwagSection>;
 
@@ -17380,10 +17560,15 @@ void main(void) {
 					Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
 			// Keep the exact source field and actor/autoplay policy alongside the
 			// legacy mustPress bit; that bit cannot represent NMV's extra BF fields.
-				var chartAddress:ChartNoteAddress = ChartNoteOwnership.address(SONG.format,
-					Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
-				var sourcePlayerControlled:Null<Bool> = ChartNoteOwnership.playerControlOverride(
-					SONG.format, chartAddress);
+				var chartAddress:ChartNoteAddress = nightmareVisionScripts != null
+					? ChartNoteOwnership.nightmareVisionAddress(SONG.format,
+						Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT)
+					: ChartNoteOwnership.address(SONG.format,
+						Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
+				if (nightmareVisionScripts != null && !nightmareVisionAcceptsNoteField(chartAddress.playfieldIndex)) continue;
+				if (nightmareVisionScripts != null) gottaHitNote = chartAddress.playfieldIndex == 0;
+				var sourcePlayerControlled:Null<Bool> = nightmareVisionScripts != null
+					? chartAddress.playerControlled : ChartNoteOwnership.playerControlOverride(SONG.format, chartAddress);
 				var altNote:Bool = false;
 				var doTheFunny:Bool = false;
 				var soloNote:Bool = false;
@@ -19123,11 +19308,14 @@ void main(void) {
 			if (!paused && !inCutscene) {
 				var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
 				var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
-				for (id in 0...2) if (getNightmareVisionField(id).canInput()) {
-					var line = id == 0 ? playerStrums : enemyStrums;
+				for (field in nightmareVisionFields) if (field != null && field.canInput()) {
+					var line = field.strumline;
 					if (line != null) for (strum in line.members) if (strum != null) {
-						if (pressed[strum.ID]) strum.holding = true;
-						if (released[strum.ID]) { strum.holding = false; strum.resetAnim = 0; }
+						if (strum.ID >= 0 && strum.ID < pressed.length && pressed[strum.ID]) strum.holding = true;
+						if (strum.ID >= 0 && strum.ID < released.length && released[strum.ID]) {
+							strum.holding = false;
+							strum.resetAnim = 0;
+						}
 					}
 				}
 			}
@@ -19251,10 +19439,14 @@ void main(void) {
 		}
 
 		if (FlxG.keys.justPressed.SEVEN && !OptionsHandler.options.danceMode) {
-			#if windows
-			DiscordClient.changePresence("Chart Editor", null, null, true);
-			#end
-			LoadingState.loadAndSwitchState(new ChartingState());
+			if (psychChartingOwnerRoot() != '')
+				openChartEditor();
+			else {
+				#if windows
+				DiscordClient.changePresence("Chart Editor", null, null, true);
+				#end
+				LoadingState.loadAndSwitchState(new ChartingState());
+			}
 		}/* else if (FlxG.keys.justPressed.SIX && !OptionsHandler.options.danceMode) {
 		#if windows
 			DiscordClient.changePresence("Inside Your Home", null, null, true);
@@ -19700,10 +19892,10 @@ void main(void) {
 		var nightmareContext = nightmareVisionScripts == null ? null : nightmareVisionRenderContext();
 		if (nightmareContext != null && !inCutscene) processNightmareVisionHolds();
 		if (nightmareContext != null) processNightmareVisionAutoHits(sourceBatch);
-		if (nightmareContext != null) for (field in 0...2) {
-			var line = field == 0 ? playerStrums : enemyStrums;
-			if (line != null) for (strum in line.members) if (strum != null)
-				nightmareVisionRenderer(field).updateReceptor(nightmareContext, strum, field);
+		if (nightmareContext != null) for (field in nightmareVisionFields) {
+			if (field == null || field.strumline == null) continue;
+			for (strum in field.strumline.members) if (strum != null)
+				nightmareVisionRenderer(field.ID).updateReceptor(nightmareContext, strum, field.ID);
 		}
 
 		for (line in codenameInputLines) if (line != null) line.botplay = demoMode;
@@ -20134,6 +20326,7 @@ void main(void) {
 			smokeProfileAt = now;
 		}
 		callCodenameScripts('postUpdate', [elapsed]);
+		syncNightmareVisionFollowingCameras();
 		if (smokeProfileAt > 0)
 			RuntimeSmokeHarness.profileSection('play-codename-post-update', haxe.Timer.stamp() - smokeProfileAt);
 		if (demoSongFinished && !endingSong) {
@@ -20148,6 +20341,7 @@ void main(void) {
 		if (FlxG.keys.justPressed.ONE)
 			endSong();
 		#end
+		RuntimeSourceChartingProbe.updateGameplay(this);
 	}
 
 	/** Drive the real hit route only in an explicitly requested native smoke. */
@@ -20416,6 +20610,10 @@ void main(void) {
 			}
 			return;
 		}
+		if (shouldRoutePsychChartingAfterSelectedEndSong(selectedDisposition)) {
+			endForReal();
+			return;
+		}
 		// A configured global results provider is the fallback for an ending
 		// that the selected mod did not claim. Its Lua endSong() later re-enters
 		// this gate after the screen closes. Do not show the native victory screen
@@ -20525,6 +20723,34 @@ void main(void) {
 		}
 		
 	}
+
+	@:keep function shouldReturnToPsychChartEditor():Bool {
+		var ownerRoot = psychChartingOwnerRoot();
+		return sourceScoreOwner && !sourceScoreNightmare && ownerRoot != ''
+			&& PsychOwnerChartingMode.get(ownerRoot);
+	}
+
+	@:keep function shouldRoutePsychChartingAfterSelectedEndSong(selectedDisposition:Int):Bool {
+		return selectedDisposition == PsychEndSongLifecycle.CONTINUE_NATIVE
+			&& shouldReturnToPsychChartEditor();
+	}
+
+	function openChartEditor():Void {
+		var ownerRoot = psychChartingOwnerRoot();
+		if (ownerRoot == '') return;
+		PsychOwnerChartingMode.set(ownerRoot, true);
+		canResync = false;
+		if (FlxG.camera != null) FlxG.camera.followLerp = 0;
+		persistentUpdate = false;
+		paused = true;
+		if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		pauseVocals();
+		#if windows
+		DiscordClient.changePresence('Chart Editor', null, null, true);
+		#end
+		LoadingState.loadAndSwitchState(new ChartingState());
+	}
+
 	function endForReal() {
 		psychStageCutsceneEnding = false;
 		clearHxcVignette();
@@ -20536,6 +20762,10 @@ void main(void) {
 		if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0)
 			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge);
 		#end
+		if (shouldReturnToPsychChartEditor()) {
+			openChartEditor();
+			return;
+		}
 		controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 		if (isStoryMode) {
 			campaignScore += songScore;
@@ -20990,6 +21220,7 @@ void main(void) {
 	function initializeSourceScoreLedger(nightmare:Bool):Void {
 		sourceScoreNightmare = nightmare;
 		sourceScoreOwner = nightmare || selectedPsychSkinRoot() != null;
+		sourceGameOverSettings = sourceScoreOwner ? new SourceGameOverSettings(nightmare ? 2 : 1, SONG) : null;
 		initializePsychClientPrefs(nightmare ? null : selectedPsychSkinRoot());
 		sourceAcceptedHits = 0;
 		epics = 0;
@@ -21056,6 +21287,8 @@ void main(void) {
 	@:keep public function sourceGameOverResetForMenu():Void {
 		balls = 0;
 		watchedCutscene = false;
+		var chartingOwner = psychChartingOwnerRoot();
+		if (chartingOwner != '') PsychOwnerChartingMode.clear(chartingOwner);
 	}
 
 	@:keep public function sourceScoreLedgerActive():Bool return sourceScoreOwner;
@@ -21586,8 +21819,9 @@ void main(void) {
 		note.destroy();
 	}
 
-	function setSourceInputReceptor(key:Int, playerOne:Bool, released:Bool):Void {
-		var strums = getInputStrumline(null, playerOne);
+	function setSourceInputReceptor(key:Int, playerOne:Bool, released:Bool, ?fieldID:Int = -1):Void {
+		var sourceField = fieldID < 0 ? null : getNightmareVisionField(fieldID);
+		var strums = sourceField != null ? sourceField.strumline : getInputStrumline(null, playerOne);
 		if (strums == null) return;
 		strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 			if (spr.ID != key) return;
@@ -21648,8 +21882,9 @@ void main(void) {
 			&& !disableKeys && !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			var anyInput = false;
 			var ghostTapped = true;
-			for (id in 0...2) {
-				var field = getNightmareVisionField(id);
+			for (field in nightmareVisionFields) {
+				if (field == null) continue;
+				var id = field.ID;
 				if (!field.canInput()) continue;
 				anyInput = true;
 				var selected = SourceInputNotes.nightmareVision(notes.members,
@@ -21662,8 +21897,8 @@ void main(void) {
 				if (selected.top != null) {
 					goodNoteHit(selected.top, id != 1);
 					ghostTapped = false;
-				} else if (field.playAnims) setSourceInputReceptor(key, id != 1, false);
-				var strums = id == 1 ? enemyStrums : playerStrums;
+				} else if (field.playAnims) setSourceInputReceptor(key, id != 1, false, id);
+				var strums = field.strumline;
 				if (strums != null) strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 					if (spr.ID == key) spr.holding = true;
 				});
@@ -21671,7 +21906,8 @@ void main(void) {
 			if (anyInput && ghostTapped) {
 				callNightmareVision('onGhostTap', [key]);
 				if (nightmareVisionPrefs.view.ghostTapping != true) {
-					for (id in 0...2) if (getNightmareVisionField(id).canInput()) noteMiss(key, id != 1, null, true);
+					for (field in nightmareVisionFields)
+						if (field != null && field.canInput()) noteMiss(key, field.ID != 1, null, true);
 					callNightmareVision('noteMissPress', [key]);
 				}
 			}
@@ -21682,16 +21918,17 @@ void main(void) {
 
 	function nightmareVisionSourceKeyReleased(key:Int):Void {
 		if (key < 0 || key >= 4) return;
-		if (startedCountdown && !paused) for (id in 0...2) {
-			if (!getNightmareVisionField(id).canInput()) continue;
-			var strums = id == 1 ? enemyStrums : playerStrums;
+		if (startedCountdown && !paused) for (field in nightmareVisionFields) {
+			if (field == null || !field.canInput()) continue;
+			var id = field.ID;
+			var strums = field.strumline;
 			if (strums != null) {
 				strums.endNoteHoldCoverAtLane(key);
 				strums.forEachReceptor(function(spr:Strumline.StrumNote) {
 					if (spr.ID == key) { spr.holding = false; spr.resetAnim = 0; }
 				});
 			}
-			setSourceInputReceptor(key, id != 1, true);
+			setSourceInputReceptor(key, id != 1, true, id);
 		}
 		callNightmareVision('onKeyRelease', [key]);
 		callNightmareVision('onInputRelease', [key]);
@@ -23019,7 +23256,7 @@ void main(void) {
 			? (activeField.playerControls ? 'goodNoteHit' : id == 1 ? 'opponentNoteHit' : 'extraNoteHit')
 			: callback;
 		var originalNoteData = note.noteData;
-		var line = id == 0 ? playerStrums : id == 1 ? enemyStrums : null;
+		var line = activeField.strumline;
 		// The source broadcasts Pre to the whole group and ignores its return.
 		nightmareVisionScripts.call(family + 'Pre', [note, id]);
 		// The bank/family are admitted before Pre, but the donor indexes that
@@ -23079,7 +23316,7 @@ void main(void) {
 		fieldID:Int):Void {
 		if (note == null || note.isSustainNote || !field.noteSplashes || note.hitCausesMiss
 			|| (field.playerControls && note.ratingMod < 1) || !shouldShowNoteSplash(note, fieldID)) return;
-		var line = fieldID == 0 ? playerStrums : fieldID == 1 ? enemyStrums : null;
+		var line = field == null ? null : field.strumline;
 		var lane = Std.int(Math.abs(note.noteData));
 		if (line == null || !line.showNotesplash || lane < 0 || lane >= line.members.length) return;
 		var splash = line.doSplash(lane);
@@ -23139,10 +23376,11 @@ void main(void) {
 
 	function dispatchNightmareVisionNoteHit(note:Note, fieldID:Int = -1,
 		callback:String = null):Void {
-		if (note == null || note.nightmareVisionHitDispatched) return;
+		if (nightmareVisionScripts == null || note == null || note.nightmareVisionHitDispatched) return;
 		if (fieldID < 0) fieldID = note.sourcePlayfieldIndex;
 		if (callback == null) {
 			var field = getNightmareVisionField(fieldID);
+			if (field == null) return;
 			callback = field.playerControls ? 'goodNoteHit' : fieldID == 1 ? 'opponentNoteHit' : 'extraNoteHit';
 		}
 		note.nightmareVisionHitDispatched = true;
@@ -23267,6 +23505,42 @@ void main(void) {
 	}
 
 
+	/** Source target selection and suffix writes do not use Kade's reset aliases. */
+	function applySourceAltIdleAnimation(value1:String, value2:String):Bool {
+		if (!sourceScoreOwner) return false;
+		var actor:Character = dad;
+		var target = value1 == null ? '' : value1.toLowerCase();
+		// Psych trims target names; NV deliberately compares the raw name.
+		if (!sourceScoreNightmare) target = StringTools.trim(target);
+		switch (target) {
+			case 'gf' | 'girlfriend': actor = gf;
+			case 'boyfriend' | 'bf': actor = boyfriend;
+			default:
+				var index = value1 == null ? null : Std.parseInt(value1);
+				switch (index) {
+					case 1: actor = boyfriend;
+					case 2: actor = gf;
+					default:
+				}
+		}
+		if (actor != null) {
+			actor.idleSuffix = value2;
+			actor.recalculateDanceIdle();
+		}
+		return true;
+	}
+
+	function girlfriendDanceDue(beat:Int):Bool {
+		// NV already folds gfSpeed into the actor's live interval in its setter.
+		if (nightmareVisionScripts != null) return characterDanceDue(gf, beat);
+		if (sourceScoreOwner && !sourceScoreNightmare) {
+			if (gf == null || gf.animation == null || gf.codenameLiveDefinition != null) return false;
+			var interval = Math.round(gfSpeed * gf.danceEveryNumBeats);
+			return interval > 0 && beat % interval == 0;
+		}
+		return beat % gfSpeed == 0 && characterDanceDue(gf, beat);
+	}
+
 	/** Return whether a character's authored idle cadence is due on this beat.
 	 * The default value of one preserves the native behaviour; zero is useful
 	 * for V-Slice characters which intentionally never auto-dance. */
@@ -23274,7 +23548,22 @@ void main(void) {
 		if (character == null || character.animation == null
 			|| character.codenameLiveDefinition != null || character.danceEvery <= 0)
 			return false;
-		return character.danceEvery == 1 || beat % character.danceEvery == 0;
+		var interval = character.danceEveryNumBeats;
+		return interval > 0 && beat % interval == 0;
+	}
+
+	/** NV pulses before onBeatHit, honors camera tweens, and resets zero cadence. */
+	function applyNightmareVisionBeatZoom():Void {
+		if (nightmareVisionScripts == null) return;
+		if (beatsPerZoom == 0) beatsPerZoom = 4;
+		if (!camZooming || !sourceLivePreference('camZooms', true) || curBeat % beatsPerZoom != 0) return;
+		var camera = FlxG.camera;
+		@:privateAccess if (camera != null && !FlxTween.globalManager.containsTweensOf(camera, ['zoom'])) {
+			if (camera == camGame) setGameCameraZoom(camera.zoom + 0.015 * camZoomIntensity);
+			else camera.zoom += 0.015 * camZoomIntensity;
+		}
+		@:privateAccess if (!FlxTween.globalManager.containsTweensOf(camHUD, ['zoom']))
+			camHUD.zoom += 0.03 * camZoomIntensity;
 	}
 
 	override function beatHit() {
@@ -23315,6 +23604,7 @@ void main(void) {
 			if (!animation.startsWith('sing') && !actor.singPriority.contains(animation)
 				&& characterDanceDue(actor, curBeat)) actor.dance();
 		}
+		applyNightmareVisionBeatZoom();
 		callNightmareVision('onBeatHit', []);
 		callAllHScript('beatHit', [curBeat]);
 		refreshCodenameCharacterScopes();
@@ -23337,7 +23627,7 @@ void main(void) {
 			nativeCamBoomPulse = true;
 		}
 		
-		if (!codenameCameraModuloActive && !inCutscene && !endingSong && !scriptChangedZoom && !nativeCamBoomPulse
+		if (nightmareVisionScripts == null && !codenameCameraModuloActive && !inCutscene && !endingSong && !scriptChangedZoom && !nativeCamBoomPulse
 			&& camZooming && camGame.zoom < 1.35 && camZoomRate > 0 && curBeat % camZoomRate == 0) {
 			setGameCameraZoom(camGame.zoom + 0.015 * camZoomIntensity);
 			camHUD.zoom += 0.03 * camZoomIntensity;
@@ -23349,8 +23639,8 @@ void main(void) {
 			iconP2.dance();
 		practiceDieIcon.dance();
 		var gfAnimationName = Character.animationName(gf);
-		if (curBeat % gfSpeed == 0 && (!gfSinging || !gfAnimationName.startsWith("sing"))
-			&& characterDanceDue(gf, curBeat))
+		if ((!gfSinging || !gfAnimationName.startsWith("sing"))
+			&& girlfriendDanceDue(curBeat))
 			gf.dance();
 
 		if (!boyfriendAnim.startsWith("sing") && !boyfriend.singPriority.contains(boyfriendAnim) && !opponentPlayer && !demoMode
@@ -23445,7 +23735,11 @@ void main(void) {
 		}
 		for (renderer in nightmareVisionRenderers) renderer.destroy();
 		nightmareVisionRenderers.clear();
+		if (playFields != null) playFields.members.resize(0);
+		playFields = null;
 		nightmareVisionFields = [];
+		nightmareVisionStrumlines = [];
+		followingCams.resize(0);
 		if (modManager != null) {
 			modManager.destroy();
 			modManager = null;
@@ -23556,6 +23850,7 @@ void main(void) {
 			RuntimeSmokeHarness.markCodenameActorTeardown(smokeActors);
 		}
 		sourceRatingApiDisposed = true;
+		sourceGameOverSettings = null;
 		if (psychPreferenceVolumeKeys != null) {
 			psychPreferenceVolumeKeys.release();
 			psychPreferenceVolumeKeys = null;

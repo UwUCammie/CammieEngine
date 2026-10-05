@@ -20,7 +20,7 @@ class GameOverAnimationTest(unittest.TestCase):
 
     def test_gameover_loop_is_idempotent(self):
         source = (ROOT / 'source/GameOverSubstate.hx').read_text()
-        start = source.index('\tfunction startGameoverLoop()')
+        start = source.index('\tfunction startGameoverLoop(')
         helper = source[start:source.index('\n\t}', start) + 3]
         self.assertIn('if (gameoverStarted) return;', helper)
         self.assertIn('gameoverStarted = true;', helper)

@@ -125,6 +125,7 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             Path(folder, "Main.hx").write_text(fixture, newline='\n')
+            Path(folder, "Strumline.hx").write_text("class Strumline { public var members:Array<StrumNote> = []; public function new() {} } class StrumNote { public function new() {} }", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "Main", "--interp"],

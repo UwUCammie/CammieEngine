@@ -8,7 +8,7 @@ import sys.io.File;
 /** Application presentation metadata. Foreign engine API versions are separate. */
 class EngineBranding {
 	public static inline var NAME:String = 'CammieEngine';
-	public static inline var FALLBACK_VERSION:String = '0.0.12';
+	public static inline var FALLBACK_VERSION:String = '0.0.13';
 	public static function version():String {
 		#if sys
 		try {

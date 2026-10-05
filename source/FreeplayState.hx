@@ -690,6 +690,7 @@ class FreeplayState extends MusicBeatState {
 		var smokeProfile = RuntimeSmokeHarness.enabled();
 		var profileMark = smokeProfile ? haxe.Timer.stamp() : 0.0;
 		super.update(elapsed);
+		RuntimeSourceChartingProbe.updateFreeplay();
 		syncSourceRows();
 		if (smokeProfile)
 			RuntimeSmokeHarness.profileSection('fp-update-base', haxe.Timer.stamp() - profileMark);

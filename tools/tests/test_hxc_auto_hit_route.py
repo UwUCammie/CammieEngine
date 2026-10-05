@@ -57,6 +57,7 @@ class FakeStrum {
 }
 class FakeLine { public var members:Array<FakeStrum>; public function new(strum:FakeStrum) members=[strum]; }
 class FakeField {
+  public var strumline:FakeLine;
   public var ID:Int;
   public var playerControls:Bool;
   public var playAnims = true;
@@ -124,6 +125,7 @@ class TestState {
     fields = [new FakeField(0, true, false), new FakeField(1, false, true)];
     lines = [new FakeLine(new FakeStrum(0, order)), new FakeLine(new FakeStrum(0, order))];
     playerStrums = lines[0]; enemyStrums = lines[1];
+    for (id in 0...fields.length) fields[id].strumline = lines[id];
   }
   function getNightmareVisionField(id:Int):FakeField return fields[id];
   function sourceScoreLedgerActive():Bool return sourceLedger;

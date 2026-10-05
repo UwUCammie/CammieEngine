@@ -63,11 +63,15 @@ class EngineCompat {
 }
 
 class SourcePreferenceReflectionFixture {
+    // Charting ownership is covered by test_psych_charting_handoff; retain
+    // the unrelated static dependency of the extracted reflection methods.
+    public static var chartingMode:Bool = false;
     var sourceScoreNightmare:Bool = false;
     var nightmareVisionPrefs:Dynamic = null;
     var psychClientPrefs:Dynamic = null;
     var psychGameOverDeathDelaySeconds:Float = 0;
     var psychGameOverOverrides:Map<String, Dynamic> = [];
+    var sourceGameOverSettings:SourceGameOverSettings = null;
     var psychFlxGGameTicksProbeEmitted:Bool = false;
     var pixelUI:Bool = false;
     public var lastReadTarget:Dynamic;
@@ -110,7 +114,6 @@ __METHODS__
         return true;
     }
 
-    function psychGameOverClassPropertyKey(_className:Dynamic, _path:Dynamic):Null<String> return null;
     function compatResolveClass(name:Dynamic):Dynamic {
         if (name == null) return null;
         return switch (StringTools.trim(Std.string(name)).toLowerCase()) {
@@ -129,6 +132,27 @@ __METHODS__
     static function check(value:Bool, message:String):Void if (!value) fail(message);
 
     static function main():Void {
+        var psychDeath = new SourcePreferenceReflectionFixture();
+        psychDeath.sourceGameOverSettings = new SourceGameOverSettings(1, {gameOverChar:'folder/death'});
+        var nvDeath = new SourcePreferenceReflectionFixture();
+        nvDeath.sourceScoreNightmare = true;
+        nvDeath.sourceGameOverSettings = new SourceGameOverSettings(2, {});
+        check(psychDeath.compatGetPropertyFromClass('substates.GameOverSubstate', 'characterName') == 'folder/death',
+            'GameOver class read did not select the live chart owner');
+        psychDeath.compatSetPropertyFromClass('GameOverSubstate', 'loopSoundName', '  folder/loop  ');
+        check(psychDeath.compatGetPropertyFromClass('substates.GameOverSubstate', 'loopSoundName') == '  folder/loop  '
+            && psychDeath.sourceGameOverSettings.loopSoundName == '  folder/loop  ',
+            'GameOver aliases diverged or reflective writes trimmed authored names');
+        psychDeath.compatSetPropertyFromClass('substates.GameOverSubstate', 'deathDelay', -1.5);
+        check(psychDeath.compatGetPropertyFromClass('GameOverSubstate', 'deathDelay') == -1.5,
+            'GameOver class bridge rejected a donor Float delay');
+        nvDeath.compatSetPropertyFromClass('funkin.states.substates.GameOverSubstate', 'loopSoundName', null);
+        check(nvDeath.compatGetPropertyFromClass('GameOverSubstate', 'loopSoundName') == null
+            && psychDeath.sourceGameOverSettings.loopSoundName == '  folder/loop  ',
+            'NV null loop was replaced or crossed an owner boundary');
+        var refusedNVDelay = false;
+        try nvDeath.compatSetPropertyFromClass('GameOverSubstate', 'deathDelay', 2) catch (_:Dynamic) refusedNVDelay = true;
+        check(refusedNVDelay, 'Psych-only GameOver delay was admitted to NV');
         var psychData:Dynamic = {ratingOffset:4, sickWindow:31.5, goodWindow:77.0, badWindow:128.0};
         var psychWrapper:Dynamic = {data:psychData, sickWindow:999.0};
         var psych = new SourcePreferenceReflectionFixture();
@@ -196,12 +220,16 @@ class SourcePreferenceReflectionTest(unittest.TestCase):
             "function compatPropertySeparator(",
             "function compatGetPropertyFromClass(",
             "function compatSetPropertyFromClass(",
+            "function psychGameOverClassPropertyKey(",
+            "function sourceGameOverSettingKey(",
         ):
             methods.append(extract_method(play_state, marker))
         fixture = FIXTURE.replace("__METHODS__", "\n\n".join(methods))
 
         TEST_TMP.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="source-preference-reflection-", dir=TEST_TMP) as folder:
+            Path(folder, "SourceGameOverSettings.hx").write_text(
+                (ROOT / "source/SourceGameOverSettings.hx").read_text(encoding="utf-8"), newline="\n")
             Path(folder, "SourcePreferenceReflectionFixture.hx").write_text(fixture, newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "SourcePreferenceReflectionFixture", "--interp"],

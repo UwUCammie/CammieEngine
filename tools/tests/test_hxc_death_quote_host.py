@@ -107,7 +107,7 @@ class Main {
         constructor = extract_method(source, 'public function new(')
         setup = extract_method(source, 'function setupDefaultGameOver(')
         self.assertLess(constructor.index('if (sourceMode != 0) return;'),
-                        constructor.index('setupDefaultGameOver(player, daBf);'))
+                        constructor.index('setupDefaultGameOver(player, cast daBf);'))
         self.assertLess(setup.index('if (codenameInitGameOverScript())'),
                         setup.index('HxcCompatRuntime.bindGameOverCharacter(bf);'))
         self.assertLess(setup.index('HxcCompatRuntime.bindGameOverCharacter(bf);'),
@@ -119,6 +119,8 @@ class Main {
             body = extract_method(source, marker)
             self.assertIn('deathquote', body.lower())
         self.run_haxe(r'''using StringTools;
+class SourceGameOverSettings { public static inline var NIGHTMARE=2; public static inline var PSYCH=1; }
+class PlayState { public static var SONG:Dynamic; }
 class FlxAnimation {
  public var name='firstDeath-costume';public var curFrame=13;public var finished=false;
  public function new() {}
@@ -133,7 +135,8 @@ class Camera {public function new() {}public function follow(target:Dynamic,styl
 class FlxG {public static var camera=new Camera();}
 class RuntimeSmokeHarness {public static function markGameOverPhase(p:String,d:Dynamic):Void {}}
 class Main {
- var bf=new Actor();var quoteCharacter=new Actor();var isEnding=false;var gameoverStarted=false;
+ var bf=new Actor();var quoteCharacter=new Actor();var sourceMode:Int=0;var startedDeath=false;
+ var isEnding=false;var gameoverStarted=false;
  var deathQuoteAttempted=false;var deathQuotePlayback:HxcDeathQuotePlayback;
  var camFollow:Dynamic={};var LOCKON=0;var events:Array<String>=[];
  function new() {
@@ -145,7 +148,9 @@ class Main {
    fadeLoopMusic:function(a:Float,b:Float,c:Float) {},stopQuote:function(a:Dynamic) {}
   });
  }
- function startGameoverLoop():Void {gameoverStarted=true;events.push('normal');}
+ function startGameoverLoop(?volume:Float=1):Void {gameoverStarted=true;events.push('normal');}
+ function playPsychTankGameOverVoice():Void {throw 'native quote routed to Psych Tank';}
+ function playDeathAnimation(name:String):Void {}
 ''' + method + r'''
  static function main() {
   var s=new Main();s.quoteCharacter.quotes=['gate-early','gate','playback'];
@@ -173,6 +178,7 @@ class Main {
         method = extract_method(source, 'override function update(')
         self.run_haxe(r'''class FlxAnimation { public var name='firstDeath';public function new() {} }
 class Actor {public var animation:Dynamic={curAnim:new FlxAnimation()};public function new() {}}
+class SourceGameOverSettings {public static inline var NIGHTMARE=2;}
 class Base {
  public var bf=new Actor();public var events:Array<String>=[];
  public function new() {}
@@ -188,6 +194,7 @@ class LoadingState {public static function loadAndSwitchState(s:Dynamic):Void {}
 class PlayState {public static var isStoryMode=false;}
 class Main extends Base {
  var sourceMode:Int=0;
+ var sourceStartStopped:Bool=false;
  var codenameGameOverRuntime:Dynamic;
  var codenameGameOverCancelled=false;var isEnding=false;
  var controls:Dynamic={ACCEPT:false,BACK:false};

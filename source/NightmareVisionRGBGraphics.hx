@@ -1,6 +1,7 @@
 package;
 
 /** NMV draw-state extension of Psych's identical RGB channel palette. */
+@:keep
 class NightmareVisionRGBGraphics {
 	public var palette(default, null):PsychRGBPalette;
 	public var enabled:Bool = true;

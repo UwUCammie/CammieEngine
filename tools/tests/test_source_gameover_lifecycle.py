@@ -80,10 +80,12 @@ class GameOverSubstate extends MusicBeatSubstate {
  var sourceStartStopped:Bool=false;
  var quoteCharacter:Dynamic;
  public function new(mode:Int,result:Dynamic) { super(); sourceMode=mode; sourceOwner=new PlayState(mode,result); }
- function setupDefaultGameOver(character:Dynamic,name:String,resetSongPosition:Bool=true):Void {
+ function setupSourceGameOver(character:Dynamic,name:Null<String>,resetSongPosition:Bool=true):Void {
   if(resetSongPosition) Conductor.songPosition=0;
   Trace.add("setup:"+name);
  }
+ function preloadPsychGameOverLoop():Void Trace.add("preload-loop");
+ function setupPsychPicoOverlay():Void Trace.add("pico-overlay");
  function sourceDeathCharacterName():String return "bf-dead";
 ''' + create + r'''
  public function runCreate():Void create();
@@ -106,8 +108,8 @@ class Main {
   Trace.reset();
   var psychStop=new GameOverSubstate(1,"PSY_STOP");
   psychStop.runCreate();
-  check(joined()=="setup:bf-dead,inGameOver:true,call:onGameOverStart:0:pos=0,super.create",
-   "Psych start must follow setup and ignore STOP: "+joined());
+  check(joined()=="setup:bf-dead,inGameOver:true,call:onGameOverStart:0:pos=0,preload-loop,pico-overlay,super.create",
+   "Psych start must follow setup, preload afterward, and ignore STOP: "+joined());
 
   Trace.reset();
   var native=new GameOverSubstate(0,null);
@@ -254,7 +256,18 @@ class SoundFrontEnd {
  public function new() {}
  public function playMusic(path:Dynamic):Void Trace.add("menuMusic:"+Std.string(path));
 }
-class FlxG { public static var sound:SoundFrontEnd=new SoundFrontEnd(); }
+class SourceGameOverSettings { public static inline var PSYCH:Int=1; }
+class Camera {
+ public var visible(get,set):Bool;
+ var value:Bool=true;
+ public function new() {}
+ function get_visible():Bool return value;
+ function set_visible(next:Bool):Bool { Trace.add("camera.visible:"+next); return value=next; }
+}
+class FlxG {
+ public static var sound:SoundFrontEnd=new SoundFrontEnd();
+ public static var camera:Camera=new Camera();
+}
 class HxcCompatRuntime { public static function clearGameOverCharacter(value:Dynamic):Void Trace.add("hxc.clear"); }
 class Paths { public static function music(key:String):String return key; }
 class StoryMenuState { public function new() {} }
@@ -289,7 +302,7 @@ class Main {
  static function main():Void {
   var psych=new GameOverSubstate(1);
   psych.runBack();
-  check(joined()=="quote.cancel,overlays.clear,hxc.clear,music.stop,reset,load:story,menuMusic:freakyMenu,call:onGameOverConfirm:1:false",
+  check(joined()=="quote.cancel,overlays.clear,hxc.clear,camera.visible:false,music.stop,reset,load:story,menuMusic:freakyMenu,call:onGameOverConfirm:1:false",
    "Psych back callback must follow menu transition and music: "+joined());
 
   Trace.events=[];

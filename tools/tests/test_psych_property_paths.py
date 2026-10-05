@@ -197,9 +197,14 @@ __ENGINE_METHODS__
 }
 class PsychClassPathCompat {
 __METHODS__
+  // Charting ownership is covered by test_psych_charting_handoff; the class
+  // reflection methods now also require this unrelated static property.
+  public static var chartingMode:Bool = false;
   public function new() {}
   var psychGameOverDeathDelaySeconds:Float = 0;
   var psychGameOverOverrides:Map<String, Dynamic> = [];
+  var sourceGameOverSettings:Dynamic = null;
+  function sourceGameOverSettingKey(key:String):String return key;
   var psychClientPrefs:Dynamic = null;
   var nightmareVisionPrefs:Dynamic = null;
   var sourceScoreNightmare:Bool = false;

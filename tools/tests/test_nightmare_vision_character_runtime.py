@@ -147,6 +147,9 @@ class Character {
  public var enemyOffsetY:Int=0; public var playerOffsetY:Int=0; public var gfOffsetY:Int=0;
  public var antialiasing:Bool=true; public var flipX:Bool=false; public var holdTime:Float=4;
  public var beatInterval:Int=2; public var danceEvery:Int=1; public var curCharacter:String='dusk';
+ public var danceEveryNumBeats(get,set):Int;
+ function get_danceEveryNumBeats():Int return danceEvery;
+ function set_danceEveryNumBeats(value:Int):Int return danceEvery=value;
  public var hitboxUpdates:Int=0;
  public var isPlayer:Bool=false; public var playerColor:FlxColor=0xFF66FF33; public var enemyColor:FlxColor=0xFFFF0000;
  public var nightmareVisionCharacterData:Dynamic;
@@ -261,7 +264,10 @@ class Main {
         source = (ROOT / 'source/Character.hx').read_text()
         constructor = source[source.index('\tpublic function new('):]
         self.assertIn('Song.characterRootForSong(Song.storageFolder(PlayState.SONG),', constructor)
-        self.assertIn('NightmareVisionCharacterData.load(nightmareVisionOwnerRoot, curCharacter)', constructor)
+        self.assertIn('var visualCharacterId = curCharacter;', constructor)
+        self.assertIn('NightmareVisionCharacterData.load(nightmareVisionOwnerRoot, visualCharacterId)', constructor)
+        self.assertIn('curCharacter = character;', constructor)
+        self.assertIn('requestedCharacter = codename == null', constructor)
         self.assertIn('loadNightmareVisionCharacterVisual(nightmareVisionOwnedCharacter, nightmareVisionImageRoot,', constructor)
         self.assertIn('codenameLiveDefinition == null && !nightmareVisionCharacterOwned', constructor)
         self.assertIn('&& !nightmareVisionCharacterOwned && isPlayer && !noFlip', constructor)

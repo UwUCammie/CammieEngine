@@ -291,6 +291,11 @@ class Note extends DynamicSprite {
 	/** Source chart field identity, independent from the binary `mustPress`
 	 * contract and from note-type bits stored in trueNoteData. */
 	public var sourcePlayfieldIndex:Int = -1;
+	/** Nightmare Vision calls the owning playfield index `lane`; noteData stays
+	 * the direction inside that field. */
+	@:keep public var lane(get, set):Int;
+	function get_lane():Int return sourcePlayfieldIndex;
+	function set_lane(value:Int):Int return sourcePlayfieldIndex = value;
 	/** Direction within sourcePlayfieldIndex before destination note encoding. */
 	public var sourceDirection:Int = -1;
 	/** Optional source-field actor owner, independent of native mustPress. NMV has

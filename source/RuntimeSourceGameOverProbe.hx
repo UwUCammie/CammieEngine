@@ -12,6 +12,7 @@ class RuntimeSourceGameOverProbe {
 	static var presses:Int = 0;
 	static var observed:Bool = false;
 	static var finished:Bool = false;
+	static var firstPressAfter:Float = 1.0;
 
 	public static function install():Void {
 		#if sys
@@ -19,6 +20,11 @@ class RuntimeSourceGameOverProbe {
 		action = Sys.args().indexOf('--source-gameover-probe-retry') >= 0 ? 'retry'
 			: Sys.args().indexOf('--source-gameover-probe-back') >= 0 ? 'back' : null;
 		if (action == null) return;
+		var delayIndex = Sys.args().indexOf('--source-gameover-probe-after-ms');
+		if (delayIndex >= 0 && delayIndex + 1 < Sys.args().length) {
+			var delay = Std.parseFloat(Sys.args()[delayIndex + 1]);
+			if (Math.isFinite(delay) && delay > 0) firstPressAfter = delay / 1000;
+		}
 		installed = true;
 		FlxG.signals.postUpdate.add(tick);
 		#end
@@ -31,7 +37,7 @@ class RuntimeSourceGameOverProbe {
 			observed = true;
 			elapsed += FlxG.elapsed;
 			var mode = PlayState.instance == null ? 0 : PlayState.instance.sourceGameOverMode();
-			var next = presses == 0 ? 1.0 : 2.0;
+			var next = firstPressAfter + (presses == 0 ? 0 : 1.0);
 			if (elapsed >= next && presses < (mode == 2 ? 2 : 1)) {
 				presses++;
 				RuntimeSmokeHarness.markGameOverPhase('probe_input', {action:action, press:presses});

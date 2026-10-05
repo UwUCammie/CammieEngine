@@ -63,12 +63,14 @@ class SkinWiring {
  var nightmareVisionNoteSkins:Map<String,NightmareVisionNoteSkin>;
  var SONG:Dynamic;
  var playerStrums:Strumline; var enemyStrums:Strumline;
+ var nightmareVisionFields:Array<{ID:Int,strumline:Strumline}>=[];
  public function new() {}
 ''' + methods + '''
  static function main():Void {
   var s=new SkinWiring(); s.nightmareVisionPaths=new NightmareVisionPaths("owner-a");
   s.SONG={arrowSkins:["pink","gray"]};
   s.playerStrums=new Strumline(); s.enemyStrums=new Strumline();
+  s.nightmareVisionFields=[{ID:0,strumline:s.playerStrums},{ID:1,strumline:s.enemyStrums}];
   var first=s.nightmareVisionSkinForField(0), second=s.nightmareVisionSkinForField(1);
   if (first==second || first.name!="pink" || second.name!="gray") throw "field skins merged";
   if (first.paths.root!="owner-a" || second.paths.root!="owner-a") throw "owner lost";

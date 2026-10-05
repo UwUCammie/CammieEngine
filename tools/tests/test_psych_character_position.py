@@ -265,7 +265,10 @@ class Probe {
         self.assertNotIn('followCamX +=', apply)
         self.assertIn('public var cameraPosition:Array<Float> = [0, 0];', character)
         self.assertIn('Song.currentPsychCharacterRoot()', character)
-        self.assertIn('PsychCharacterPosition.characterCameraPosition(curCharacter, psychCameraRoot)', character)
+        self.assertIn('PsychCharacterPosition.characterCameraPosition(visualCharacterId, psychCameraRoot)', character)
+        self.assertIn('positionArray = psychCharacterPositionArray(visualCharacterId, psychCameraRoot);', character)
+        self.assertIn('var visualCharacterId = curCharacter;', character)
+        self.assertIn('curCharacter = character;', character)
         self.assertLess(character.index('try callInterp("init", [this])'),
                         character.index('psychInitialFollowCamX = followCamX;'))
 

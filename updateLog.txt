@@ -1,7 +1,12 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-Unreleased
+v0.0.13 alpha — CammieEngine
+	- Support declared Nightmare Vision playfields, older charts without format markers, distinct live receptor banks, field-owned note/input/render routing and source RGB aliases. Follow registered extra world cameras and source beat zoom; restore script-created character beat/dance calls so stages can finish their background and cutscene setup without changing mod files.
+	- Keep NV hit callbacks scoped to the selected runtime so base-game and Psych notes never access absent NV playfields.
+	- Preserve owner-scoped Psych charting mode through editor test play, pause-menu entry and song-end return, with explicit editor/pause exits and menu reset. Respect source callback cancellation and save scores before returning to the editor; match source GF cadence and alternate idle animation changes.
+	- Share owner-scoped Psych/Nightmare Vision game-over settings and source asset routing. Preserve each engine's death actor metadata, camera setup, loop/confirmation timing and nullable audio rules; support Psych retry overlays and built-in Tank death audio without changing imported mods.
+	- Forward Psych HScript camera and FlxG properties to their live native values, preserve saved camera assignments, and stop game-over animation boundaries from overwriting Psych script camera changes.
 	- Show real per-step update progress, elapsed time, estimated remaining time and file counts in the game's update panel instead of showing preparation as already complete.
 
 v0.0.12 alpha — CammieEngine

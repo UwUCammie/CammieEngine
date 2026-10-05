@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
-DEFAULT_RELEASE_TAG = "v0.0.12"
+DEFAULT_RELEASE_TAG = "v0.0.13"
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 # Keep this list in sync with ImportIO.isRegistry. These tracked registries are
 # mutable in a developer runtime, so releases must source their bytes from HEAD.

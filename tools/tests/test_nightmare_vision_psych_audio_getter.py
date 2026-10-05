@@ -51,6 +51,12 @@ class FakeAnimation {
 }
 class Character { public var animation:FakeAnimation=new FakeAnimation(); }
 class PsychBaseStageActorGroupCompat {}
+class PsychFlxGCompat {
+ public static function getField(_field:String):Dynamic throw 'audio read selected FlxG facade';
+}
+class PsychFlxCameraCompat {
+ public function getField(_field:String):Dynamic throw 'audio read selected camera facade';
+}
 class HxcCompatRuntime { public static function getZIndex(_object:Dynamic):Dynamic return 0; }
 class NightmareVisionFlxGView { public function getField(_field:String):Dynamic return null; }
 class NightmareVisionSaveData { public function getField(_field:String):Dynamic return null; }

@@ -76,6 +76,7 @@ class NoteGroup {
  public function remove(n:Note,splice:Bool):Void removed++;
 }
 class Main {
+ var nightmareVisionScripts:Dynamic=null;
  var codenameScriptScopes:Array<Dynamic>=[{}];
  var callback:CodenameGameEvent->String->Void;
  var events:Array<String>=[];

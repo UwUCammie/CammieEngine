@@ -85,6 +85,7 @@ class PsychRuntimeBindings {
 }
 class StrumGroup {public var members:Array<Dynamic>=[]; public function new() {}}
 class DemoTest {
+ var nightmareVisionFields:Array<{ID:Int,strumline:StrumGroup}>=[];
  var demoMode=true; var demoPlaybackRate:Float=1;
  var demoSpeedTxt={text:""}; var vocals=new Audio();
  var missesTxt:Dynamic=null; var misses=0; var comboBreaks=true;

@@ -28,6 +28,57 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class PsychGameOverClassCompatTest(unittest.TestCase):
+    def test_owner_facades_share_live_nullable_settings_and_expire_with_owner(self):
+        fixture = r'''
+class Host {
+ public var sourceGameOverSettings:SourceGameOverSettings;
+ public function new(chart:Dynamic) sourceGameOverSettings = new SourceGameOverSettings(1, chart);
+ public function setPsychClassProperty(_className:String, key:String, value:Dynamic):Void
+  sourceGameOverSettings.write(key, value);
+}
+class Main {
+ static function check(value:Bool, message:String):Void if (!value) throw message;
+ static function main():Void {
+  var chart = {gameOverChar:'  alternate-dead  ', gameOverSound:'chart-loss'};
+  var host = new Host(chart);
+  var first = new PsychGameOverClassCompat(host, chart);
+  host.sourceGameOverSettings.loopSoundName = 'stage-loop';
+  var second = new PsychGameOverClassCompat(host, chart);
+  check(first.characterName == '  alternate-dead  ', 'chart name was trimmed');
+  check(second.loopSoundName == 'stage-loop', 'constructing a facade overwrote prior stage writes');
+  first.deathSoundName = '';
+  check(second.deathSoundName == '', 'empty direct setting reverted to chart default');
+  second.endSoundName = null;
+  check(first.endSoundName == null, 'null direct setting reverted to cached default');
+  host.sourceGameOverSettings.characterName = 'lua-dead';
+  check(first.characterName == 'lua-dead' && second.characterName == 'lua-dead', 'reflection writes did not reach both facades');
+  first.deathDelay = -0.5;
+  check(second.deathDelay == -0.5, 'source numeric delay was replaced or rejected');
+  second.resetVariables();
+  check(first.characterName == '  alternate-dead  ' && first.deathSoundName == 'chart-loss'
+   && first.loopSoundName == 'gameOver' && first.endSoundName == 'gameOverEnd' && first.deathDelay == 0,
+   'reset did not restore source chart/default values across facades');
+  var other = new Host({});
+  var otherFacade = new PsychGameOverClassCompat(other, {});
+  first.characterName = 'isolated-death';
+  check(otherFacade.characterName == 'bf-dead', 'owner mutation leaked into next song');
+  host.sourceGameOverSettings = null;
+  var readRejected = false;
+  var writeRejected = false;
+  try first.characterName catch (_:Dynamic) readRejected = true;
+  try second.deathSoundName = 'stale-loss' catch (_:Dynamic) writeRejected = true;
+  check(readRejected && writeRejected, 'disposed owner facade fell back to stale local state');
+ }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
+            Path(folder, 'Main.hx').write_text(fixture, encoding='utf-8', newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', folder,
+                 '-main', 'Main', '--interp'], cwd=ROOT, capture_output=True, text=True, timeout=60,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_compiled_stage_binds_the_per_song_class_surface(self):
         source = (ROOT / "source/PsychCompiledStageBindings.hx").read_text(encoding="utf-8")
         self.assertIn("new PsychGameOverClassCompat(PlayState.instance, PlayState.SONG)", source)

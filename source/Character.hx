@@ -92,6 +92,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var icon:String = 'face';
 	@:keep public var iconColor:Null<Int>;
 	@:keep public var gameOverCharacter:String = 'bf-dead';
+	/** Nightmare Vision's nullable character-specific game-over overrides. */
+	@:keep public var gameoverCharacter:Null<String>;
+	@:keep public var gameoverInitialDeathSound:Null<String>;
+	@:keep public var gameoverLoopDeathSound:Null<String>;
+	@:keep public var gameoverConfirmDeathSound:Null<String>;
 	@:keep public var extra:Map<String, Dynamic> = new Map();
 	var codenameAnimationContext:Dynamic;
 	var codenameAnimationLock:Bool = false;
@@ -324,6 +329,37 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	 * non-positive value disables the automatic beat dance; explicit sing/event
 	 * animation calls remain unaffected. */
 	public var danceEvery:Int = 1;
+	/** Psych/NV's reflected cadence shares the host's automatic dance gate. */
+	@:keep public var danceEveryNumBeats(get, set):Int;
+	function get_danceEveryNumBeats():Int return danceEvery;
+	function set_danceEveryNumBeats(value:Int):Int return danceEvery = value;
+	@:keep public var danceIdle:Bool = false;
+	var sourceDanceNightmare:Bool = false;
+	/** NV's script-facing sustain animation lease; other dialects keep their own cadence. */
+	@:keep public var holding:Bool = false;
+	/** Pinned NV Character -> Bopper beat callback for script-created stage actors. */
+	@:keep public function onBeatHit(beat:Int):Void {
+		if ((!sourceDanceNightmare && nightmareVisionCharacterData == null)
+			|| codenameLiveDefinition != null || characterDestroyed || animation == null
+			|| stunned || holding || debugMode || specialAnim) return;
+		var name = getAnimName();
+		if (name == null || name.startsWith('sing')) return;
+		if (danceEveryNumBeats > 0 && beat % danceEveryNumBeats == 0) dance();
+	}
+	var settingSourceDanceUp:Bool = true;
+	@:keep public function recalculateDanceIdle():Void {
+		var previous = danceIdle;
+		danceIdle = animation != null && animation.exists('danceLeft' + idleSuffix)
+			&& animation.exists('danceRight' + idleSuffix);
+		// NV's Bopper detects the pair without changing its JSON cadence.
+		if (!sourceDanceNightmare) {
+			if (settingSourceDanceUp) danceEveryNumBeats = danceIdle ? 1 : 2;
+			else if (previous != danceIdle)
+				danceEveryNumBeats = Math.round(Math.max(danceIdle
+					? danceEveryNumBeats / 2 : danceEveryNumBeats * 2, 1));
+		}
+		settingSourceDanceUp = false;
+	}
 	/** Psych-compatible runtime switch for suppressing dance() calls.  Stage
 	 * scripts may change it while explicit sing/playAnim calls stay available. */
 	public var skipDance:Bool = false;
@@ -1028,11 +1064,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			var singDuration = nightmareVisionNumber(Reflect.field(definition, 'sing_duration'), holdTime);
 			if (singDuration > 0)
 				holdTime = singDuration;
-			var danceEvery = nightmareVisionNumber(Reflect.field(definition, 'dance_every'), beatInterval);
-			if (danceEvery >= 0) {
-				this.danceEvery = Std.int(danceEvery);
-				beatInterval = this.danceEvery;
-			}
+			this.danceEveryNumBeats = Std.int(nightmareVisionNumber(Reflect.field(definition, 'dance_every'), 2));
+			beatInterval = this.danceEveryNumBeats;
 			var position:Array<Float> = nightmareVisionPair(Reflect.field(definition, 'position'));
 			positionArray = [position[0], position[1]];
 			enemyOffsetX = playerOffsetX = gfOffsetX = Std.int(Math.round(position[0]));
@@ -1053,6 +1086,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			return fallback;
 		var parsed = Std.parseFloat(Std.string(value));
 		return Math.isNaN(parsed) ? fallback : parsed;
+	}
+
+	static function nightmareVisionNullableString(definition:Dynamic, field:String):Null<String> {
+		var value:Dynamic = Reflect.field(definition, field);
+		return value == null || !Std.isOfType(value, String) ? null : cast value;
 	}
 
 	static function nightmareVisionPair(value:Dynamic):Array<Float> {
@@ -1110,9 +1148,25 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 		curCharacter = curCharacter.trim();
 		trace(curCharacter);
+		var sourceCharacterOwnerRoot = '';
+		var sourceCharacterOwnerEngine = '';
+		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
+			var sourceSongFolder = Song.storageFolder(PlayState.SONG);
+			sourceCharacterOwnerRoot = Song.characterRootForSong(sourceSongFolder);
+			sourceCharacterOwnerEngine = Song.characterOwnerEngineForSong(sourceSongFolder);
+		}
+		var sourceDeathFallbackId:Null<String> = null;
+		var sourceOwnsDeathIdentity = sourceCharacterOwnerRoot != ''
+			&& (sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
+				|| sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.NIGHTMARE_VISION.toLowerCase());
 		if (StringTools.endsWith(curCharacter, "-dead")) {
 			isDie = true;
-			curCharacter = curCharacter.substr(0, curCharacter.length - 5);
+			if (sourceOwnsDeathIdentity)
+				// Psych and NV keep the requested death id even when their source
+				// Character loader falls back to DEFAULT_CHARACTER (bf).
+				sourceDeathFallbackId = 'bf';
+			else
+				curCharacter = curCharacter.substr(0, curCharacter.length - 5);
 		}
 		markDeathConstructionStage('identity');
 		// Codename separates the actor's stage-slot flip (`isPlayer`) from the
@@ -1130,32 +1184,51 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 					flipX = Reflect.field(codenameCharacterMeta, 'flipX') == true;
 			}
 		}
-		var nightmareVisionOwnerRoot = '';
-		var nightmareVisionOwnedCharacter:Dynamic = null;
-		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
-			nightmareVisionOwnerRoot = Song.characterRootForSong(Song.storageFolder(PlayState.SONG),
-				ImportEngine.NIGHTMARE_VISION);
-			if (nightmareVisionOwnerRoot != '')
-				nightmareVisionOwnedCharacter = NightmareVisionCharacterData.load(nightmareVisionOwnerRoot, curCharacter);
+		var visualCharacterId = curCharacter;
+		var sourceDeathVisualResolution:Dynamic = null;
+		if (sourceDeathFallbackId != null) {
+			sourceDeathVisualResolution = Song.resolveCharacterVisualInManifest(curCharacter,
+				sourceCharacterOwnerRoot, true, sourceCharacterOwnerEngine);
+			if (Reflect.field(sourceDeathVisualResolution, 'complete') != true) {
+				var fallbackResolution:Dynamic = Song.resolveCharacterVisualInManifest(sourceDeathFallbackId,
+					sourceCharacterOwnerRoot, true, sourceCharacterOwnerEngine);
+				if (Reflect.field(fallbackResolution, 'complete') == true) {
+					visualCharacterId = sourceDeathFallbackId;
+					sourceDeathVisualResolution = fallbackResolution;
+				}
+			}
 		}
+		var nightmareVisionOwnerRoot = sourceCharacterOwnerEngine.toLowerCase()
+			== ImportEngine.NIGHTMARE_VISION.toLowerCase() ? sourceCharacterOwnerRoot : '';
+		var nightmareVisionOwnedCharacter:Dynamic = nightmareVisionOwnerRoot == '' ? null
+			: NightmareVisionCharacterData.load(nightmareVisionOwnerRoot, visualCharacterId);
 		var nightmareVisionCharacterOwned = nightmareVisionOwnerRoot != ''
 			&& nightmareVisionOwnedCharacter != null;
-		if (nightmareVisionCharacterOwned)
+		if (nightmareVisionCharacterOwned) {
 			nightmareVisionHealthIcon = nightmareVisionHealthIconFromDefinition(nightmareVisionOwnedCharacter);
+			gameoverCharacter = nightmareVisionNullableString(nightmareVisionOwnedCharacter, 'gameover_character');
+			gameoverConfirmDeathSound = nightmareVisionNullableString(nightmareVisionOwnedCharacter,
+				'gameover_confirm_sound');
+			gameoverLoopDeathSound = nightmareVisionNullableString(nightmareVisionOwnedCharacter, 'gameover_loop_sound');
+			// Keep the donor's historical misspelling; it is part of the JSON schema.
+			gameoverInitialDeathSound = nightmareVisionNullableString(nightmareVisionOwnedCharacter,
+				'gameover_intial_sound');
+		}
 		var psychCameraRoot = Song.currentPsychCharacterRoot();
-		positionArray = psychCharacterPositionArray(curCharacter, psychCameraRoot);
+		positionArray = psychCharacterPositionArray(visualCharacterId, psychCameraRoot);
 		// Psych keeps direction animation names and their named offsets authored
 		// on the character. Its JSON is preserved under the selected song owner,
 		// so existing imports can use Psych's slot flip without re-importing.
-		var psychAuthoredFlipX:Null<Bool> = PsychCharacterOrientation.authoredFlipX(curCharacter,
+		var psychAuthoredFlipX:Null<Bool> = PsychCharacterOrientation.authoredFlipX(visualCharacterId,
 			psychCameraRoot, function(path:String):Null<String> return FNFAssets.exists(path) ? FNFAssets.getText(path) : null);
 		cameraPosition = psychCameraRoot == null || StringTools.trim(psychCameraRoot) == '' ? [0, 0]
-			: PsychCharacterPosition.characterCameraPosition(curCharacter, psychCameraRoot);
+			: PsychCharacterPosition.characterCameraPosition(visualCharacterId, psychCameraRoot);
 		// Keep the authored id on the Character even when the resolver chooses a
 		// complete sibling/alias visual.  Only the interpreter's asset root is
 		// substituted; mutating curCharacter here loses chart identity and made
 		// incomplete Popipo-style aliases look like an ordinary Dad chart.
-		var visualResolution:Dynamic = Song.resolveCharacterVisualForCurrentSong(curCharacter);
+		var visualResolution:Dynamic = sourceDeathVisualResolution == null
+			? Song.resolveCharacterVisualForCurrentSong(visualCharacterId) : sourceDeathVisualResolution;
 		markDeathConstructionStage('visual-resolution');
 		if (nightmareVisionCharacterOwned) {
 			var nightmareVisionImageRoot = NightmareVisionCharacterData.imageRoot(nightmareVisionOwnerRoot,
@@ -1240,7 +1313,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			Character.reportResolution(visualResolution);
 		if (codenameLiveDefinition == null && !nightmareVisionCharacterOwned) {
 			markDeathConstructionStage('before-character-interpreter');
-			interp = Character.getAnimInterp(curCharacter);
+			interp = Character.getAnimInterp(visualCharacterId);
 			markDeathConstructionStage('after-character-interpreter');
 		}
 		// An imported character script may reference media the donor never
@@ -1260,7 +1333,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// folder but retained the donor's JSON under the selected owner. Repair
 		// only an exact generated-script match before dance() sets its authored
 		// animation offset; otherwise the camera uses an unscaled midpoint.
-		if (PsychCharacterDanceCompat.needsOwnedLegacyHitbox(curCharacter, psychCameraRoot,
+		if (PsychCharacterDanceCompat.needsOwnedLegacyHitbox(visualCharacterId, psychCameraRoot,
 			visualResolution == null || visualResolution.implementationPath == null
 				? '' : Std.string(visualResolution.implementationPath),
 			scale.x, scale.y, frameWidth, frameHeight, width, height,
@@ -1278,6 +1351,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		imageFile = PsychCharacterImage.resolve(graphicKey, resolvedAssetRoot);
 		markDeathConstructionStage('after-image-resolution');
 		markDeathConstructionStage('before-dance');
+		if (sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
+			|| sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.NIGHTMARE_VISION.toLowerCase()) {
+			sourceDanceNightmare = sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.NIGHTMARE_VISION.toLowerCase();
+			if (sourceDanceNightmare && nightmareVisionCharacterData == null) danceEveryNumBeats = 2;
+			recalculateDanceIdle();
+		}
 		dance();
 		markDeathConstructionStage('after-dance');
 		// Donor BaseCharacter resets to its dance pose before sizing the hitbox.

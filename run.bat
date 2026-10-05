@@ -27,7 +27,7 @@ rem   run.bat                 build release and launch 64-bit Windows
 rem   run.bat debug            build debug and launch 64-bit Windows
 rem   run.bat build            build release, do not launch
 rem   run.bat test             build release and run the full test suite
-rem   run.bat package          build, test and package v0.0.12 alpha
+rem   run.bat package          build, test and package v0.0.13 alpha
 rem   run.bat setup            prepare portable tools and libraries only
 rem   run.bat rebuild          rebuild release, do not launch
 rem   run.bat build32          build 32-bit, do not launch
@@ -275,7 +275,7 @@ if not "!ARCH!"=="64" (
 	echo ERROR: Release packaging requires a 64-bit build. 1>&2
 	exit /b 2
 )
-call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\package_windows_release.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin" --output-dir "!ROOT!\dist" --tag v0.0.12
+call !PYTHON_COMMAND! -X utf8 "!ROOT!\tools\package_windows_release.py" --runtime "!ROOT!\!BUILD_ROOT!\windows\bin" --output-dir "!ROOT!\dist" --tag v0.0.13
 if errorlevel 1 exit /b 1
 goto build_done
 
@@ -740,7 +740,7 @@ exit /b 2
 echo Usage: run.bat [test^|package^|setup^|debug^|release^|build^|rebuild^|nobuild^|server^|build32^|rebuild32]
 echo.
 echo In PowerShell: .\run.bat test builds Windows x64 and runs all tests.
-echo .\run.bat package also creates the v0.0.12 ZIP and SHA256SUMS.txt in dist.
+echo .\run.bat package also creates the v0.0.13 ZIP and SHA256SUMS.txt in dist.
 echo Default builds and launches a 64-bit release Windows executable.
 echo Native Windows requires Haxe 4.3.x, the pinned haxelibs, and a Visual
 echo Studio C++ toolchain or the automatic portable LLVM-MinGW fallback.

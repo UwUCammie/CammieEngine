@@ -65,9 +65,14 @@ class PsychStageCompatTest {
         self.assertIn("var activePlayState = PlayState.instance;", gameover)
         self.assertIn("sourceOwner = activeSourceMode == 0 ? null : activePlayState;", gameover)
         self.assertIn("var psychCharacter = activePlayState == null ? null : activePlayState.psychGameOverCharacterName();", gameover)
-        self.assertEqual(gameover.count("var playState = sourceOwner == null ? PlayState.instance : sourceOwner;"), 3,
-                         "death, loop, and end audio should use the retained song owner")
+        self.assertEqual(gameover.count("var playState = sourceOwner == null ? PlayState.instance : sourceOwner;"), 2,
+                         "native setup and loop audio retain their owning PlayState")
         self.assertIn("playState.psychGameOverSoundPath('deathSoundName', true)", gameover)
+        self.assertIn("playState.psychGameOverSoundPath('loopSoundName', false)", gameover)
+        self.assertIn("playState.psychGameOverSoundPath('endSoundName', false)", gameover)
+        self.assertIn("sourceOwner.sourceGameOverSound('deathSoundName', true)", gameover)
+        self.assertIn("sourceOwner.sourceGameOverSound('loopSoundName', false)", gameover)
+        self.assertIn("sourceOwner.sourceGameOverSound('endSoundName', false)", gameover)
         for key in ("deathSoundName", "loopSoundName", "endSoundName"):
             self.assertIn(f"playState.psychGameOverSoundPath('{key}'", gameover)
 
