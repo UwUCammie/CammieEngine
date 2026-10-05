@@ -1,4 +1,4 @@
-# CammieEngine v0.0.13
+# CammieEngine v0.0.14
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -66,18 +66,29 @@ OpenGL, ALSA, X11/Xext/Xi/Xrandr/Xinerama and PulseAudio headers.
 
 Use `.\run.bat` to build and play, `.\run.bat nobuild` to play the existing
 build, or `.\run.bat test debug` to build and test with debug symbols.
-To build, test and package the v0.0.13 alpha for release:
+To build, test and package the current development version:
 
 ```powershell
 .\run.bat package
 ```
 
 The ZIP and `SHA256SUMS.txt` are written to `dist/` only after the tests pass.
+Packaging reads its default tag from `VERSION`; an explicit `--tag` on the
+packaging tool or a tag argument to the Linux release script still overrides it.
+
+Development metadata stays one patch above the newest published downloadable
+GitHub build, including prereleases. Verify that build tag, then run
+`python tools/development_version.py --latest-release <verified-tag> --apply`
+to synchronize `VERSION`, `Project.xml`, and the runtime branding fallback. Repeating the command for the same
+published build retains the same development version. Advance once after each
+publication, without incrementing for ordinary edits, tests or builds. A
+maintainer can still deliberately select an explicitly authorized release version.
+
 On Linux, one command builds and packages a Windows x64 ZIP with the bundled
 results screen:
 
 ```sh
-./build-windows-release.sh v0.0.13
+./build-windows-release.sh
 ```
 
 The script uses `.tools/llvm-mingw` when installed locally; otherwise set
@@ -98,7 +109,7 @@ rebuilding. To check an existing Windows build only, run `./build.sh wine-smoke`
 ## Local imports
 
 Bundled assets are included. Imported mod libraries, build output, and personal
-runtime files stay local and are excluded from Git automatically—including
+runtime files stay local and are excluded from Git automatically-including
 future imports. Deliberate new engine assets in ignored folders require
 `git add -f`; ordinary source-code changes do not.
 

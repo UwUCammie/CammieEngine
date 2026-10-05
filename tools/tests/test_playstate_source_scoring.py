@@ -373,11 +373,14 @@ class PlayStateSourceScoringFixture {
         self.assertRegex(self.play,
             r"public function sourceScoreLedgerActive\(\):Bool return sourceScoreOwner;")
 
-        note_miss = extract_method(self.play, "function noteMiss(direction:Int = 1,")
+        note_miss = extract_method(self.play, "function noteMissCore(direction:Int = 1,")
         self.assertRegex(note_miss,
             r"if\s*\(sourceScoreLedgerActive\(\)\)\s*\{\s*if\s*\(countsMiss\)\s*"
             r"applySourceMiss\(\);\s*\}\s*else\s*misses \+= 1;")
         self.assertIn("if (!sourceScoreLedgerActive()) updateAccuracy();", note_miss)
+        note_miss_wrapper = extract_method(self.play, "function noteMiss(direction:Int = 1,")
+        self.assertIn("field.onNoteMiss.dispatch(note, field)", note_miss_wrapper)
+        self.assertIn("noteMissCore(direction, playerOne, note, playMissSound, sourceLine);", note_miss_wrapper)
 
         with tempfile.TemporaryDirectory(prefix="playstate-source-scoring-", dir=ROOT / "tmp") as scratch:
             scratch = FixturePath(scratch)

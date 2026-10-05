@@ -257,8 +257,8 @@ class EngineCompatTest {
 		var parts = EngineCompat.luaStringGmatch("a,b,,c", "([^,]+)");
 		if (parts.length != 3 || parts[0] != "a" || parts[2] != "c")
 			fail("Lua string.gmatch adapter");
-		if (EngineCompat.propertyPath("timeTxt.visible") != "timeBar.visible")
-			fail("Psych timeTxt alias");
+		if (EngineCompat.propertyPath("timeTxt.visible") != "timeTxt.visible")
+			fail("Psych timeTxt must resolve to its label, not the timeBar fill");
 		if (EngineCompat.propertyPath("game.camOther.zoom") != "camOther.zoom") fail("camOther alias");
 		if (EngineCompat.propertyPath("camFollowPos.x") != "camFollow.x") fail("follow alias");
 		if (EngineCompat.propertyPath("game.opponentStrums") != "enemyStrums") fail("strum alias");
@@ -799,7 +799,8 @@ class NotePoint {
         self.assertIn("public var cameraZoomRate(get, set):Int;", source)
         self.assertIn("public var isMinimalMode(get, never):Bool;", source)
         self.assertIn("public var timeTxt(get, never):FlxText;", source)
-        self.assertIn("return timeBar;", source)
+        self.assertIn("return sourceNoteTimingMode() == 1 ? songName : cast timeBar;", source)
+        self.assertIn("timeBar = sourceNoteTimingMode() == 1 ? cast songPosBar : cast songName;", source)
         self.assertIn("public var needsReset(get, never):Bool;", source)
         self.assertIn("function get_needsReset():Bool", source)
         self.assertIn("public function cancelCameraFollowTween():Void", source)

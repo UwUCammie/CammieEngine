@@ -267,14 +267,11 @@ class FreeplayState extends MusicBeatState {
 	function hxcLaunchCurrentSelection():Bool {
 		if (soundTest || curSelected < 0 || curSelected >= songs.length)
 			return false;
+		if (!selectionHasChart(songs[curSelected].songName, curDifficulty)) return false;
 		previewGen++;
 		stopPreviewSound();
 		var songName = songs[curSelected].songName;
 		var chartName = songName.toLowerCase() + DifficultyIcons.getEndingFP(curDifficulty);
-		if (!FNFAssets.exists('assets/data/' + songName.toLowerCase() + '/' + chartName.toLowerCase() + '.json')) {
-			chartName = songName;
-			curDifficulty = DifficultyIcons.getDefaultDiffFP();
-		}
 		PlayState.SONG = Song.loadFromJson(chartName, songName.toLowerCase());
 		Song.attachFreeplayScoreSongId(PlayState.SONG, songName);
 		PlayState.isStoryMode = false;
@@ -947,11 +944,9 @@ class FreeplayState extends MusicBeatState {
 					daSelection = randomValue;
 				}
 				poop = songs[daSelection].songName.toLowerCase() + DifficultyIcons.getEndingFP(curDifficulty);
-				if (!FNFAssets.exists('assets/data/' + songs[daSelection].songName.toLowerCase() + '/' + poop.toLowerCase() + '.json')) {
-					// assume we pecked up the difficulty, return to default difficulty
-					trace("UH OH SONG IN SPECIFIED DIFFICULTY DOESN'T EXIST\nUSING DEFAULT DIFFICULTY");
-					poop = songs[daSelection].songName;
-					curDifficulty = DifficultyIcons.getDefaultDiffFP();
+				if (!selectionHasChart(songs[daSelection].songName, curDifficulty)) {
+					RuntimeFreeplayDifficultyProbe.ordinaryRejectedSelection(songs[daSelection].songName, curDifficulty);
+					return;
 				}
 				PlayState.SONG = Song.loadFromJson(poop, songs[daSelection].songName.toLowerCase());
 				Song.attachFreeplayScoreSongId(PlayState.SONG, songs[daSelection].songName);
@@ -975,6 +970,7 @@ class FreeplayState extends MusicBeatState {
 	function changeDiff(change:Int = 0) {
 		var previousDifficulty = curDifficulty;
 		if (!soundTest) {
+			refreshRankStarsFor(curSelected);
 			// get valid one : )
 			// also forces
 			final difficultyObject:Dynamic = hxcDifficultyOrder.length > 0
@@ -1023,6 +1019,14 @@ class FreeplayState extends MusicBeatState {
 		}
 	}
 
+	/** Selection and both launch paths share the authoritative support list. */
+	static function selectionHasChart(song:String, difficulty:Int):Bool {
+		if (DifficultyManager.getSupportedDiffs(song).indexOf(difficulty) < 0) return false;
+		var key = song.toLowerCase();
+		return FNFAssets.exists('assets/data/' + key + '/' + key
+			+ DifficultyManager.getDiffEnding(difficulty) + '.json');
+	}
+
 	function hxcChangeDifficulty(change:Int):Dynamic {
 		if (hxcDifficultyOrder.length == 0)
 			return DifficultyManager.changeDifficultySans(curDifficulty, change, songs[curSelected].songName);
@@ -1036,6 +1040,10 @@ class FreeplayState extends MusicBeatState {
 			if (index < 0)
 				index += hxcDifficultyOrder.length;
 			var candidate = DifficultyManager.getDiffNum(hxcDifficultyOrder[index]);
+			// getDiffNum's legacy missing-name fallback is index zero. Verify
+			// the resolved name before accepting it as an authored difficulty.
+			if (DifficultyManager.getDiffName(candidate).toUpperCase()
+				!= hxcDifficultyOrder[index].toUpperCase()) continue;
 				var supported = DifficultyManager.getSupportedDiffs(songs[curSelected].songName);
 				if (supported.indexOf(candidate) >= 0)
 				return {difficulty: candidate, text: DifficultyManager.getDiffName(candidate)};
@@ -1330,8 +1338,29 @@ class FreeplayState extends MusicBeatState {
 		// Package subtitles are intentionally above icons when a long source
 		// label extends beyond a short chart title.
 		insert(members.indexOf(grpSongSources), icon);
+		refreshRankStarsFor(i);
+		if (i < hxcCapsuleViews.length && hxcCapsuleViews[i] != null)
+			Reflect.setField(hxcCapsuleViews[i], 'pixelIcon', icon);
+		if (i == curSelected) icon.alpha = 1;
+	}
+
+	/** Reconcile only the materialized row when refreshed support changes. */
+	function refreshRankStarsFor(i:Int):Void {
+		if (i < 0 || i >= songs.length || iconArray[i] == null) return;
+		var supported = DifficultyManager.getSupportedDiffs(songs[i].songName);
+		var previous = starArray[i];
+		var same = previous != null && previous.length == supported.length;
+		if (same) for (index in 0...supported.length)
+			if (previous[index].diff != supported[index]) { same = false; break; }
+		if (same) return;
+		if (previous != null) for (star in previous) {
+			FlxTween.cancelTweensOf(star);
+			remove(star, true);
+			star.destroy();
+		}
+		var icon = iconArray[i];
 		var starCount:Array<RankStar> = [];
-		for (diff in DifficultyManager.getSupportedDiffs(songs[i].songName)) {
+		for (diff in supported) {
 			var rankStar:RankStar = new RankStar(songs[i].songName, diff);
 			rankStar.sprTracker = icon;
 			rankStar.starNum = starCount.length;
@@ -1340,10 +1369,7 @@ class FreeplayState extends MusicBeatState {
 			starCount.push(rankStar);
 		}
 		starArray[i] = starCount;
-		if (i < hxcCapsuleViews.length && hxcCapsuleViews[i] != null)
-			Reflect.setField(hxcCapsuleViews[i], 'pixelIcon', icon);
 		if (i == curSelected) {
-			icon.alpha = 1;
 			for (star in starCount)
 				star.checkStar();
 		}

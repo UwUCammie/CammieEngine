@@ -10,7 +10,7 @@ typedef NightmareVisionChartCompatResult = {
 
 /**
 	Small chart adapter for the NMV schema documented by its bundled Chart.hx.
-	NMV's normalized formats store player/opponent lanes in separate key blocks;
+	NMV's normalized formats store character fields in separate key blocks;
 	older unmarked charts are normalized by swapping those blocks on opponent
 	sections. This adapter keeps the source engine identity elsewhere in import
 	provenance and only translates chart fields the source runtime defines.
@@ -66,10 +66,13 @@ class NightmareVisionChartCompat {
 			diagnostics.push(message('nightmare-vision-unsupported-chart-keys', sourcePath,
 				'keys must be a positive integer; found ' + keys));
 		}
-		if (lanes != 2) {
+		var rawLanes:Dynamic = Reflect.field(song, 'lanes');
+		var laneNumber = rawLanes == null ? 2.0 : Std.parseFloat(Std.string(rawLanes));
+		var literalLaneCount = rawLanes == null || ~/^[0-9]+$/.match(StringTools.trim(Std.string(rawLanes)));
+		if (lanes <= 0 || Math.isNaN(laneNumber) || laneNumber != lanes || !literalLaneCount) {
 			supported = false;
 			diagnostics.push(message('nightmare-vision-unsupported-chart-lanes', sourcePath,
-				'the destination supports the two NMV player/opponent fields; found lanes=' + lanes));
+				'lanes must be a positive integer; found lanes=' + Std.string(rawLanes)));
 		}
 
 		var arrowSkins:Dynamic = Reflect.field(song, 'arrowSkins');
@@ -78,7 +81,7 @@ class NightmareVisionChartCompat {
 				'NMV trackSwap audio routing is not represented by the destination runtime'));
 
 		var sections:Array<Dynamic> = cast Reflect.field(song, 'notes');
-		if (keys > 0 && lanes == 2) {
+		if (keys > 0 && lanes > 0) {
 			for (section in sections) {
 				if (section == null)
 					continue;

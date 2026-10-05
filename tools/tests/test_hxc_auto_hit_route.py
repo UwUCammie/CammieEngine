@@ -128,6 +128,10 @@ class TestState {
     for (id in 0...fields.length) fields[id].strumline = lines[id];
   }
   function getNightmareVisionField(id:Int):FakeField return fields[id];
+  function nightmareVisionFieldForNote(note:Note):FakeField
+    return note == null ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
+  // This route fixture tracks engine note cleanup separately from NV field membership.
+  function nightmareVisionRemoveFieldNoteMembership(_note:Note):Void {}
   function sourceScoreLedgerActive():Bool return sourceLedger;
   function judgeSourceNote(note:Note):FakeSourceRating {
     sourceRatingAssignments++;

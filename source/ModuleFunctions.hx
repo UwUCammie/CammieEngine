@@ -1615,7 +1615,7 @@ class ModuleFunctions {
 						for (index in 0...songData.diffFiles.length) {
 							var chartPath = songData.diffFiles[index];
 							var targetFolder = importSongFolderName(songData);
-							var destinationName = importedChartFileName(targetFolder, chartPath, index);
+							var destinationName = importedChartFileName(targetFolder, chartPath, index, Reflect.field(songData, 'sourceFolder'));
 							var stem = Path.withoutDirectory(destinationName);
 							stem = stem.substr(0, stem.length - Path.extension(stem).length - 1);
 							var prefix = targetFolder.toLowerCase() + '-';
@@ -1666,6 +1666,7 @@ class ModuleFunctions {
 						sourceRoot, dataFolder, songFolderName);
 				}
 				var key = StringTools.trim(songData.name).toLowerCase();
+				prepareInstalledDependencyRoots(songData, songSourceRoot, engine);
 				var physicalKey = key + '|' + importPathKey(dataFolder);
 				if (seenNames.exists(physicalKey))
 					continue;
@@ -5156,7 +5157,7 @@ class ModuleFunctions {
 							var chart = readSongChart(path);
 							if (chart != null) charts.push(chart);
 							var installed = readSongChart(existingImportChild(targetData,
-								importedChartFileName(targetFolder, path, index)));
+								importedChartFileName(targetFolder, path, index, Reflect.field(songData, 'sourceFolder'))));
 							if (installed != null) charts.push(installed);
 						}
 				}
@@ -6239,18 +6240,25 @@ class ModuleFunctions {
 	 * `<song>.json`/`<song>-<difficulty>.json` convention; an unknown suffix is
 	 * preserved so custom difficulty registries and future loaders can consume
 	 * it instead of silently dropping that chart. */
-	static function importedChartFileName(targetFolder:String, chartPath:String, index:Int):String {
+	static function importedChartFileName(targetFolder:String, chartPath:String, index:Int, ?sourceFolder:String):String {
 		var stem = Path.withoutDirectory(Path.normalize(chartPath));
 		for (extension in ['.jsonc', '.json'])
 			if (stem.toLowerCase().endsWith(extension))
 				stem = stem.substr(0, stem.length - extension.length);
 		var lowerStem = stem.toLowerCase();
 		var lowerFolder = targetFolder.toLowerCase();
+		var sourceName = sourceFolder == null ? '' : StringTools.trim(sourceFolder).toLowerCase();
+		if (sourceName.indexOf('/') >= 0 || sourceName.indexOf('\\') >= 0 || sourceName.indexOf('..') >= 0)
+			sourceName = '';
 		var suffix = '';
-		if (lowerStem == lowerFolder || lowerStem == 'normal') {
+		if (lowerStem == lowerFolder || lowerStem == 'normal' || (sourceName != '' && lowerStem == sourceName)) {
 			suffix = '';
 		} else if (StringTools.startsWith(lowerStem, lowerFolder + '-')) {
 			suffix = stem.substr(targetFolder.length + 1);
+			if (sourceName == lowerFolder && suffix.toLowerCase() == 'normal') suffix = '';
+		} else if (sourceName != '' && StringTools.startsWith(lowerStem, sourceName + '-')) {
+			suffix = stem.substr(sourceName.length + 1);
+			if (suffix.toLowerCase() == 'normal') suffix = '';
 		} else {
 			var known = false;
 			for (difficulty in getImportDifficultyNames()) {
@@ -6437,7 +6445,7 @@ class ModuleFunctions {
 				var chartPath = songData.diffFiles[index];
 				if (!validImportPath(chartPath) || readSongChart(chartPath) == null)
 					continue;
-				var fileName = importedChartFileName(targetFolder, chartPath, index);
+				var fileName = importedChartFileName(targetFolder, chartPath, index, Reflect.field(songData, 'sourceFolder'));
 				var existingChartPath = existingImportChild(dataFolder, fileName);
 				if (!FileSystem.exists(existingChartPath))
 					return true;
@@ -10876,6 +10884,28 @@ class ModuleFunctions {
 		}
 	}
 
+	/** Bind an add-on to one proven installed base, preserving its own owner. */
+	static function prepareInstalledDependencyRoots(songData:SongImport, sourceRoot:String, engine:String):Void {
+		if (songData == null || (engine != ImportEngine.PSYCH && engine != ImportEngine.NIGHTMARE_VISION)
+			|| songData.diffFiles == null) return;
+		var providers:Array<Dynamic> = [];
+		for (path in songData.diffFiles) {
+			var chart = readSongChart(path);
+			if (chart == null) continue;
+			var resolution = ImportInstalledDependencyRoots.resolve(sourceRoot, engine, chart);
+			for (diagnostic in resolution.diagnostics) {
+				if (songData.diagnostics == null) songData.diagnostics = [];
+				if (songData.diagnostics.indexOf(diagnostic) < 0) songData.diagnostics.push(diagnostic);
+			}
+			for (provider in resolution.providers) {
+				var known = false;
+				for (existing in providers) if (existing.owner == provider.owner) known = true;
+				if (!known) providers.push(provider);
+			}
+		}
+		Reflect.setField(songData, 'installedDependencyRoots', providers);
+	}
+
 	/** Add the current donor root to a song's manifest without ever persisting
 	 * the donor path.  Existing valid roots are retained so a repaired import
 	 * can safely finish after an interrupted previous merge. */
@@ -10902,6 +10932,26 @@ class ModuleFunctions {
 			}
 		}
 		var desired = CompatScriptManifest.create(songData.sourceRoot, songData.engine);
+		var dependencies:Array<Dynamic> = Reflect.field(songData, 'installedDependencyRoots');
+		if (dependencies != null)
+			for (provider in dependencies)
+				if (provider != null)
+					desired.roots.push({engine:provider.engine, path:provider.owner, dependency:true});
+		desired = CompatScriptManifest.normalize(desired);
+		// Thin add-ons may have only song-local Lua and no package-wide trees.
+		// Materialize their owner so source APIs still bind to the selected add-on.
+		var owner = CompatScriptManifest.selectedRoot(desired);
+		if (owner != '' && !FileSystem.exists(Path.join([owner, '.cammie-owner.json']))) {
+			try {
+				ensureDirectory(owner);
+				File.saveContent(Path.join([owner, '.cammie-owner.json']),
+					CoolUtil.stringifyJson({engine:songData.engine, version:1}));
+				result.copied++;
+			} catch (error:Dynamic) {
+				result.failed++;
+				return result;
+			}
+		}
 		var changed = false;
 		for (wanted in desired.roots) {
 			var present = false;
@@ -12988,7 +13038,7 @@ class ModuleFunctions {
 					}
 				}
 				coolSong.song = coolSongSong;
-				var fileName = importedChartFileName(targetFolder, chartPath, i);
+				var fileName = importedChartFileName(targetFolder, chartPath, i, Reflect.field(songData, 'sourceFolder'));
 				var chartDestination = Path.join([dataFolder, fileName]);
 				var existingChartPath = existingImportChild(dataFolder, fileName);
 				if (!FileSystem.exists(existingChartPath)) {

@@ -37,6 +37,12 @@ class NightmareVisionSourceBindings {
 			return key == null ? null : cast key;
 		});
 		set(vars, 'Random', NightmareVisionSourceRandom);
+		var underlayTypes = {
+			FIELD:'Lane Underlay', SCREEN:'Screen Dim',
+			toArray:function():Array<String> return ['Lane Underlay', 'Screen Dim']
+		};
+		set(vars, 'UnderlayType', underlayTypes);
+		bindImport(interp, 'funkin.data.ClientPrefs.UnderlayType', underlayTypes);
 		if (scriptContext != null) set(vars, 'script', scriptContext);
 
 		var saveFacade:Dynamic = Reflect.field(interp, 'ownerSave');

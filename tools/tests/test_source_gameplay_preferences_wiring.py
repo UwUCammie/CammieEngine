@@ -1,4 +1,5 @@
 """Verify PlayState wiring for owner-local source gameplay preferences."""
+from nv_field_fixture_support import write_nv_field_dependencies
 from pathlib import Path
 import subprocess
 import tempfile
@@ -211,7 +212,8 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
-            (work / "Strumline.hx").write_text("class Strumline { public var members:Array<StrumNote> = []; public function new() {} } class StrumNote { public function new() {} }", newline="\n")
+            (work / "Strumline.hx").write_text("class Strumline { public var members:Array<StrumNote> = []; public function new() {} } class StrumNote { public var resetAnim:Float=0; public function playAnim(name:String):Void {} public function new() {} }", newline="\n")
+            write_nv_field_dependencies(work)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
@@ -233,7 +235,7 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         self.assertIn("!sourceLivePreference('noReset', false)", update)
         psych_press = extract_method(play, "function psychSourceKeyPressed(")
         self.assertIn("sourceLivePreference('ghostTapping', ghostTapping)", psych_press)
-        note_miss = extract_method(play, "function noteMiss(direction:Int = 1,")
+        note_miss = extract_method(play, "function noteMissCore(direction:Int = 1,")
         self.assertIn("sourceLivePreference('ghostTapping', ghostTapping)", note_miss)
         self.assertLess(create.index("RuntimeSmokeHarness.config().practice"),
                         create.index("initializeSourceGameplayPreferences(psychClientPrefs, false)"))

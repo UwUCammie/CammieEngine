@@ -67,15 +67,17 @@ class DynamicAtlasFrames {
   public var scale = new Point(1, 1);
   public var offset = new Point(3, 4);
   public var width:Float = 10;
+  public var height:Float=10; public var frameWidth:Float=10;public var frameHeight:Float=10;
   public var antialiasing:Bool = true;
   public var shader:Dynamic;
-  public var frames:flixel.graphics.frames.FlxAtlasFrames;
+  public var frames(default,set):flixel.graphics.frames.FlxAtlasFrames;
+  function set_frames(value:flixel.graphics.frames.FlxAtlasFrames):flixel.graphics.frames.FlxAtlasFrames {width=10;height=10;frameWidth=10;frameHeight=10;return frames=value;}
   public var hitboxScaleY:Float = 0;
   public var originCentered:Bool=false;
   public function new() {}
-  public function loadGraphic(bitmap:Bitmap, animated:Bool, w:Int, h:Int):Void {width = w;}
+  public function loadGraphic(bitmap:Bitmap, animated:Bool, w:Int, h:Int):Void {frameWidth=w;frameHeight=h;width=w;height=h;}
   public function setGraphicSize(size:Int):Void {scale.x = size / width; scale.y = scale.x;}
-  public function updateHitbox():Void {hitboxScaleY = scale.y; centerOffsets();}
+  public function updateHitbox():Void {width=frameWidth*scale.x;height=frameHeight*scale.y;hitboxScaleY = scale.y; centerOffsets();}
   public function centerOffsets():Void offset.set(5, 5);
   public function centerOrigin():Void originCentered=true;
 }
@@ -100,7 +102,9 @@ class Bitmap {
             (work / 'FNFAssets.hx').write_text('''import Sprite.Bitmap;
 class FNFAssets {
   public static function getBitmapData(path:String):Bitmap
-    return new Bitmap(40, StringTools.endsWith(path, "ENDS.png") ? 20 : 50);
+    return StringTools.endsWith(path,"BadENDS.png") ? new Bitmap(41,21)
+      : StringTools.endsWith(path,"WideENDS.png") ? new Bitmap(36,16)
+      : new Bitmap(StringTools.endsWith(path,"ENDS.png")?28:40, StringTools.endsWith(path, "ENDS.png") ? 12 : 50);
   public static function getText(path:String):String return sys.io.File.getContent(path);
 }''', newline='\n')
             (work / 'PlayState.hx').write_text('class PlayState {public static var daPixelZoom:Float = 6;}', newline='\n')
@@ -161,6 +165,9 @@ class FNFAssets {
   var psychPixelSkin:Bool=false; var psychSkinPostfix:String='';
   var psychRGBDisabled:Bool=false; var psychRGBShader:PsychRGBShaderReference=null;
   public var psychSkinUsesNativeDefaultFallback:Bool=false;
+  public var originalHeight:Float=6;public var offsetX:Float=0;
+  public var psychLastNoteOffX:Float=0;public var psychSustainStartWidth:Float=0;
+  public var psychSustainLayoutInitialized:Bool=false;
   public var rgbShader(get,never):PsychRGBShaderReference;
   var psychSkinDiagnosticNoteIndex:Int=0;
   var psychSkinDiagnosticsEnabled:Bool=false;
@@ -195,6 +202,8 @@ class StrumNote extends Sprite {
   public function alignVSliceFrame():Void {}
   public function markReceptorVisual():Void {}
   public function new() {super();}
+  // NV-only color hookup is inert in this Psych-only extracted fixture.
+  public function handleColors(anim:String=''):Void {}
 ''' + strum_methods + '\n}', newline='\n')
             owner = work / 'assets/imported_mods/one/images'
             owner.mkdir(parents=True)
@@ -203,6 +212,11 @@ class StrumNote extends Sprite {
             (owner / 'Later.xml').write_text('<TextureAtlas><SubTexture name="purple0"/><SubTexture name="purple hold piece"/><SubTexture name="purple hold end"/><SubTexture name="red0"/><SubTexture name="red hold piece"/><SubTexture name="red hold end"/></TextureAtlas>', newline='\n')
             for key in ('Receptor', 'Receptor2'):
                 (owner / (key + '.xml')).write_text('<TextureAtlas><SubTexture name="arrowLEFT"/><SubTexture name="left press"/><SubTexture name="left confirm"/></TextureAtlas>', newline='\n')
+            pixel_skin = owner / 'pixelUI'
+            pixel_skin.mkdir()
+            for key in ('Pixel', 'Wide', 'Bad'):
+                (pixel_skin / (key + '.png')).write_bytes(b'png')
+                (pixel_skin / (key + 'ENDS.png')).write_bytes(b'png')
             native_skin = work / 'assets/images/custom_ui/ui_packs/normal'
             native_skin.mkdir(parents=True)
             (native_skin / 'NOTE_assets.png').write_bytes(b'png')
@@ -274,6 +288,29 @@ class StrumNote extends Sprite {
     check(hold.scale.y == 9 && hold.hitboxScaleY == 9, 'hold scale and hitbox');
     check(hold.offset.x == 5, 'sustain horizontal geometry recentered');
     check(hold.animation.curAnim.name == 'hold' && hold.shader == null, 'hold anim and rgb disable');
+    var pixelHold=new Note(true);pixelHold.scale.y=9;pixelHold.offsetX=12;
+    pixelHold.animation.play('hold');
+    check(pixelHold.configurePsychSkin(owner,'Pixel',true,true),'pixel sustain configure');
+    check(pixelHold.originalHeight==6 && pixelHold.offsetX==12 && pixelHold.psychLastNoteOffX==0 && pixelHold.width==42,
+      'pixel source originalHeight and horizontal adjustment');
+    pixelHold.offsetX+=5; // Authored travel offset survives later atlas changes.
+    pixelHold.texture='Wide';
+    check(pixelHold.originalHeight==8 && pixelHold.offsetX==11 && pixelHold.psychLastNoteOffX==6 && pixelHold.width==54,
+      'different pixel sheet recomputes only tracked source adjustment');
+    check(pixelHold.scale.y==9 && pixelHold.hitboxScaleY==9 && pixelHold.animation.curAnim.name=='hold',
+      'pixel reload retains body scale and animation');
+    pixelHold.texture='Pixel';
+    check(pixelHold.offsetX==17 && pixelHold.originalHeight==6,'A-B-A pixel swap does not accumulate offset');
+    pixelHold.texture='Wide';pixelHold.texture='Pixel';
+    check(pixelHold.offsetX==17 && pixelHold.scale.y==9,'repeated reload remains stable');
+    var stableFrames=pixelHold.frames;var stableAnim=pixelHold.animation.curAnim;
+    pixelHold.texture='Bad';
+    check(pixelHold.texture=='Pixel' && pixelHold.originalHeight==6 && pixelHold.offsetX==17
+      && pixelHold.psychLastNoteOffX==0 && pixelHold.scale.y==9 && pixelHold.frames==stableFrames
+      && pixelHold.animation.curAnim==stableAnim,'invalid pixel reload is atomic');
+    pixelHold.texture='Missing';
+    check(pixelHold.texture=='Pixel' && pixelHold.originalHeight==6 && pixelHold.offsetX==17,
+      'missing pixel reload preserves source geometry');
     var strum=new Strumline.StrumNote();
     check(!strum.configurePsychSkin(owner,'Missing',false,false), 'strum missing default');
     strum.texture='Receptor'; check(strum.texture == 'Receptor', 'strum retry');

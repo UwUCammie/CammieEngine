@@ -2244,6 +2244,17 @@ class ImportScanJob {
 		appendLegacyAtlasDiagnostics(scanSong, p2Atlas);
 		appendLegacyAtlasDiagnostics(scanSong, gfAtlas);
 		var stageCandidatesForChart = stageCandidates(roots, stage);
+		var implementationRoots = roots.copy();
+		var installedProviders:Array<Dynamic> = plannedSong == null ? null
+			: Reflect.field(plannedSong, 'installedDependencyRoots');
+		if (installedProviders != null)
+			for (provider in installedProviders) if (provider != null) {
+				// These are receipt-proven base owners, never an all-mods asset pool.
+				uniquePush(implementationRoots, provider.owner);
+				uniquePush(dependencyRoots, provider.owner);
+				for (candidate in stageCandidates([provider.owner], stage))
+					uniquePush(stageCandidatesForChart, candidate);
+			}
 		var psychStageCandidates = stageCandidatesForChart.copy();
 		if (compiledPsychStage != null) {
 			uniquePush(psychStageCandidates, compiledPsychStage.sourcePath);
@@ -2334,7 +2345,7 @@ class ImportScanJob {
 		inspectImplementationScripts(result, scanSong, p1Candidates, roots);
 		inspectImplementationScripts(result, scanSong, p2Candidates, roots);
 		inspectImplementationScripts(result, scanSong, gfCandidates, roots);
-		inspectImplementationScripts(result, scanSong, stageCandidatesForChart, roots);
+		inspectImplementationScripts(result, scanSong, stageCandidatesForChart, implementationRoots);
 		inspectImplementationScripts(result, scanSong, cutsceneCandidatesForChart, roots);
 		inspectImplementationHxcs(result, scanSong, p1Candidates, dependencyRoots);
 		inspectImplementationHxcs(result, scanSong, p2Candidates, dependencyRoots);
@@ -2344,7 +2355,7 @@ class ImportScanJob {
 		inspectImplementationJsons(result, scanSong, p1Candidates, roots);
 		inspectImplementationJsons(result, scanSong, p2Candidates, roots);
 		inspectImplementationJsons(result, scanSong, gfCandidates, roots);
-		inspectImplementationJsons(result, scanSong, stageCandidatesForChart, roots);
+		inspectImplementationJsons(result, scanSong, stageCandidatesForChart, implementationRoots);
 		inspectImplementationJsons(result, scanSong, cutsceneCandidatesForChart, roots);
 
 		var siblingScripts:Array<String> = [];
@@ -2636,7 +2647,7 @@ class ImportScanJob {
 		}
 		for (song in result.songs) {
 			lines.push('');
-			lines.push('[SONG] ' + song.name + (song.duplicate ? ' — DUPLICATE (not moved)' : ' — queued for import'));
+			lines.push('[SONG] ' + song.name + (song.duplicate ? ' - DUPLICATE (not moved)' : ' - queued for import'));
 			lines.push('  Reason: ' + song.reason);
 			if (song.source != null && StringTools.trim(song.source) != '')
 				lines.push('  Candidate source: ' + song.source);
@@ -2654,7 +2665,7 @@ class ImportScanJob {
 			}
 		}
 		for (asset in result.assets)
-			lines.push('[ASSET] ' + asset.kind + ' ' + asset.name + (asset.duplicate ? ' — DUPLICATE (not moved)' : ' — queued for import')
+			lines.push('[ASSET] ' + asset.kind + ' ' + asset.name + (asset.duplicate ? ' - DUPLICATE (not moved)' : ' - queued for import')
 				+ '\n  Source: ' + asset.source + '\n  Destination: ' + asset.destination);
 		for (error in result.errors)
 			lines.push('[ERROR] ' + error);

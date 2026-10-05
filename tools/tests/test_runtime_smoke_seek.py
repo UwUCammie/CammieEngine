@@ -287,6 +287,8 @@ class SeekHost {
   function syncPsychTimingGlobals():Void psychSynced=true;
   function syncLegacyKadeGlobals():Void legacySynced=true;
   function fireSongEvent(event:Dynamic):Void replayed.push(event.name);
+  // The seek fixture has no field-backed notes to remove from an NV owner.
+  function nightmareVisionRemoveFieldNoteMembership(_note:NoteStub):Void {}
   __SEEK_METHOD__
   __SMOKE_METHOD__
 }

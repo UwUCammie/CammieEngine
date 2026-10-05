@@ -113,6 +113,11 @@ class CoolUtil {
   public static var parseCalls:Int = 0;
   public static function parseJson(raw:String):Dynamic { parseCalls++; return Json.parse(raw); }
 }
+class FreeplayChartMetadata {
+  // Rejection recovery is exercised with the real helper in
+  // test_freeplay_chart_availability; this fixture retains its blocked chart.
+  public static function retainedChartSupported(song:String,difficulty:String,path:String):Bool return false;
+}
 class DifficultyFilterTest {
   static var diffJson:Dynamic;
   static var supportedDiff:Map<String,Array<Int>> = new Map();
@@ -241,6 +246,9 @@ class FNFAssets {
   public static function getText(path:String):String return "";
 }
 class CoolUtil { public static function parseJson(raw:String):Dynamic return null; }
+class FreeplayChartMetadata {
+  public static function retainedChartSupported(song:String,difficulty:String,path:String):Bool return false;
+}
 
 class FlxMath {
   public static function wrap(value:Int, min:Int, max:Int):Int {
@@ -268,7 +276,7 @@ class MissingDifficultyRuntimeTest {
     // This is the coredump shape: Freeplay has a song, but the startup scan
     // did not create a supportedDiff entry for it yet.
     var missing = changeDifficultySans(1, 0, 'late-imported-song');
-    if (missing == null || missing.difficulty != 1 || missing.text != 'NORMAL')
+    if (missing == null || missing.difficulty != 1 || missing.text != 'UNAVAILABLE')
       fail('missing song did not return the current difficulty safely');
     if (supportedDiff.get('late-imported-song') == null)
       fail('missing-song lookup did not lazily seed an empty support list');
@@ -277,8 +285,8 @@ class MissingDifficultyRuntimeTest {
     // take the same safe fallback path instead of calling contains on null.
     supportedDiff.set('empty-chart', []);
     var empty = changeDifficultySans(2, 1, 'empty-chart');
-    if (empty == null || empty.difficulty != 0 || empty.text != 'EASY')
-      fail('empty support list did not return the wrapped fallback');
+    if (empty == null || empty.difficulty != 2 || empty.text != 'UNAVAILABLE')
+      fail('empty support list offered an unrestricted difficulty');
 
     // Preserve normal behavior for a genuinely supported song as a control.
     supportedDiff.set('charted-song', [0, 2]);

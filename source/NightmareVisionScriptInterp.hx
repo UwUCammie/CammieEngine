@@ -27,6 +27,23 @@ class NightmareVisionScriptInterp extends Interp {
 	public var importBindings(default, null):Map<String, Dynamic> = new Map();
 	/** Owner-local constructor factories keyed by the imported class identity. */
 	var constructorBindings:Array<NightmareVisionConstructorBinding> = [];
+	var liveValues:Map<String, {read:Void->Dynamic, write:Dynamic->Dynamic, target:Void->Dynamic}> = new Map();
+
+	/** Source properties that differ from the native parent remain live and owner-local. */
+	public function bindLiveValue(name:String, read:Void->Dynamic, ?write:Dynamic->Dynamic,
+		?target:Void->Dynamic):Void {
+		liveValues.set(name, {read:read, write:write, target:target});
+	}
+	function liveField(object:Dynamic, field:String):Bool {
+		if (!liveValues.exists(field)) return false;
+		var binding = liveValues.get(field);
+		return binding.target != null && binding.target() == object;
+	}
+	function writeLiveValue(name:String, value:Dynamic):Dynamic {
+		var binding = liveValues.get(name);
+		if (binding.write == null) throw '[nightmare-vision-script] Read-only source property: ' + name;
+		return binding.write(value);
+	}
 	var usingBindings:Map<String, UsingCall> = new Map();
 	var boundUsings:Map<String, Bool> = new Map();
 	/** Imported scripts can address current-state fields through their state class.
@@ -152,6 +169,7 @@ class NightmareVisionScriptInterp extends Interp {
 			}
 		}
 		constructorBindings.resize(0);
+		liveValues.clear();
 		if (cameraShaders != null) {
 			cameraShaders.release();
 			cameraShaders = null;
@@ -184,14 +202,13 @@ class NightmareVisionScriptInterp extends Interp {
 	override function cnew(cl:String, args:Array<Dynamic>):Dynamic {
 		// Follow Iris's normal constructor lookup first so script locals, seeded
 		// variables and imported aliases keep their ordinary shadowing behavior.
-		var requestedType:Dynamic = Type.resolveClass(cl);
-		if (requestedType == null) {
+		var requestedType:Dynamic = null;
+		if (cl != null && cl.indexOf('.') >= 0 && importBindings.exists(cl))
+			requestedType = importBindings.get(cl);
+		else {
 			try requestedType = resolve(cl) catch (_:Dynamic) {}
+			if (requestedType == null) requestedType = Type.resolveClass(cl);
 		}
-		// A direct fully-qualified source constructor may not have a compiled
-		// host class. In that case use this interpreter's exact imported value.
-		if (requestedType == null && cl != null && cl.indexOf('.') >= 0
-			&& importBindings.exists(cl)) requestedType = importBindings.get(cl);
 		if (requestedType != null) for (binding in constructorBindings)
 			if (binding.type == requestedType) return binding.create(args);
 
@@ -262,6 +279,8 @@ class NightmareVisionScriptInterp extends Interp {
 			// imports and parent members, just as they do during resolve().
 			setVar(id, value);
 			return value;
+		} else if (liveValues.exists(id)) {
+			return writeLiveValue(id, value);
 		} else if (hasParentWriteField(id)) {
 			Reflect.setProperty(parent, id, value);
 			return value;
@@ -373,6 +392,7 @@ class NightmareVisionScriptInterp extends Interp {
 		if (locals.exists(id)) return locals.get(id).r;
 		if (variables.exists(id)) return variables.get(id);
 		if (imports.exists(id)) return imports.get(id);
+		if (liveValues.exists(id)) return liveValues.get(id).read();
 		if (ownerPaths != null && id == 'FunkinVideoSprite') {
 			var videoType = Type.resolveClass('NightmareVisionVideoSprite');
 			if (videoType != null) return videoType;
@@ -393,6 +413,7 @@ class NightmareVisionScriptInterp extends Interp {
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).getField(field);
 		#end
+		if (liveField(object, field)) return liveValues.get(field).read();
 		if (usesClassParent(object, field, false)) return Reflect.getProperty(parent, field);
 		#if flixel
 		if (ownerPaths != null && (field == 'audio' || field == 'vocals')
@@ -430,6 +451,7 @@ class NightmareVisionScriptInterp extends Interp {
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).setField(field, value);
 		#end
+		if (liveField(object, field)) return writeLiveValue(field, value);
 		if (usesClassParent(object, field, true)) {
 			Reflect.setProperty(parent, field, value);
 			return value;

@@ -157,7 +157,7 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         init = section(ps, '\t\tdaScrollSpeed = OptionsHandler.options.scrollSpeed == 1', '\t\ttrace(SONG.gf);')
         tween = section(ps, '\t@:keep public function tweenScrollSpeed(', '\n\tfunction healthChange(')
         queue = section(ps, '\t\twhile (unspawnNotes.length > 0 && unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead)', '\n\t\tvar nightmareContext =')
-        speed_resolution = section(ps, '\t\t\t\tvar noteScrollSpeed = FlxMath.roundDecimal(', '\n\t\t\t\tif (nightmareContext == null) {')
+        speed_resolution = section(ps, '\t\t\t\tvar noteScrollSpeed = FlxMath.roundDecimal(', '\n\t\t\t\tif (psychPresentation) {')
         movement = section(ps, '\t\t\t\tvar neg = downscroll ? -1 : 1;', '\t\t\t\tif (vnshNotes)')
         sustain = section(ps, '\t\t\t\t\t\tdaNote.prevNote.scale.y =', ';') + ';'
         sinks = [line for line in note.splitlines() if 'prevNote.scale.y *= Conductor.stepCrochet' in line]
@@ -187,6 +187,7 @@ class Note {
  public var frameWidth:Float=10; public var frameHeight:Float=10; public var clipRect:Dynamic=null;
  public var nightmareVisionRenderer:Dynamic=null;
  public function new(t:Float) {strumTime=t;}
+ public function resizeByRatio(_ratio:Float):Void {}
  public function kill():Void alive=false;
  public function destroy():Void {}
 }
@@ -218,8 +219,13 @@ class PlayState {
  var unspawnNotes:Array<Note>=[]; var notes=new Group(); var loaded=0;
  var hxcStrumlineNoteSurface:Dynamic=null;
  var nightmareVisionNoteTypes:Dynamic=null; var nightmareVisionScripts:Dynamic=null;
+ function isPsychReceptorNote(_note:Note):Bool return false;
+ function sourceNoteTimingMode():Int return 0;
  var codenameInputLines:Array<Dynamic>=[]; var demoMode=false;
  function bindCodenameNoteLine(note:Note):Void {}
+ // The extracted spawn loop has no NMV owner in this fixture.
+ function getNightmareVisionField(_id:Int):Dynamic return null;
+ function nightmareVisionFieldForNote(_note:Note):Dynamic return null;
  var downscroll=false; var drunkNotes=false; var songTime:Float=0; var noteSpeed:Float=0.45;
  var noteScrollSpeed:Float=1;
  var lineOverride=false;
@@ -239,7 +245,7 @@ class PlayState {
  // The extracted chart has no selected NMV owner; preserve normal note flow.
  function callNightmareVision(_event:String, ?_args:Array<Dynamic>):Dynamic
   return NightmareVisionScriptGroup.CONTINUE_FUNC;
- function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
+ function nightmareVisionRenderer(_field:Int, ?_sourceField:Dynamic):Dynamic return {configureNote:function(_note:Note):Void {}};
  function tweenVSliceScrollSpeed(speed:Dynamic, duration:Dynamic, ease:Dynamic, lines:Dynamic):Void {}
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}

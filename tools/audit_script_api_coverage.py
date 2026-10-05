@@ -2224,7 +2224,7 @@ def render_markdown(report: dict[str, object], full_list: bool = False) -> str:
         total = sum(counts.values())
         lines.append(f"| {dialect} | {group} | {counts['implemented']} | {counts['unverified']} | {counts['names-only']} | {counts['missing']} |")
     if not entries:
-        lines.append("| — | No local donor inventory | 0 | 0 | 0 | 0 |")
+        lines.append("| - | No local donor inventory | 0 | 0 | 0 | 0 |")
 
     routes = report.get("source_binding_routes", [])
     lines += ["", "## Wired source binder routes", ""]

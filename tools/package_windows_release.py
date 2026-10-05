@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_ROOT = "CammieEngine-windows-x64"
-DEFAULT_RELEASE_TAG = "v0.0.13"
+DEFAULT_RELEASE_TAG = "v" + (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 BUNDLED_RESULTS_ROOT = ("assets", "imported_mods", "bundled-vslice-results")
 # Keep this list in sync with ImportIO.isRegistry. These tracked registries are
 # mutable in a developer runtime, so releases must source their bytes from HEAD.
@@ -77,7 +77,7 @@ EXCLUDED_DIRECTORY_NAMES = {
 }
 STANDALONE_USER_STATE_ROOTS = {"import-cache"}
 PACKAGED_CONTENT_ROOTS = {"assets", "mods", "templates", "do not readme.txt"}
-START_HERE = """CammieEngine — Windows x64
+START_HERE = """CammieEngine - Windows x64
 
 1. Extract this ZIP to a writable folder.
 2. Run Funkin.exe from the extracted folder.

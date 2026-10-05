@@ -85,6 +85,8 @@ class SourceHealthWiringFixture {
   public var playerControls:Bool = true;
   public function new() {}
   function getNightmareVisionField(index:Int):SourceField return new SourceField(playerControls);
+  function nightmareVisionFieldForNote(note:Note):SourceField
+    return note == null ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
 __HELPERS__
 
   static function near(actual:Float, expected:Float, message:String):Void {
@@ -187,7 +189,7 @@ __HELPERS__
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_nightmare_can_miss_skips_ledger_but_keeps_common_health_and_callbacks(self):
-        miss_method = extract_method(self.play_source, "function noteMiss(")
+        miss_method = extract_method(self.play_source, "function noteMissCore(")
         common = extract_block(miss_method, "if (sourceCommon) {")
         compact_method = compact(miss_method)
         compact_common = compact(common)
@@ -221,6 +223,10 @@ __HELPERS__
             self.assertIn(callback, miss_method)
             self.assertNotIn(callback, common)
             self.assertGreater(miss_method.index(callback), miss_method.index(common))
+
+        wrapper = extract_method(self.play_source, "function noteMiss(")
+        self.assertIn("field.onNoteMiss.dispatch(note, field)", wrapper)
+        self.assertIn("noteMissCore(direction, playerOne, note, playMissSound, sourceLine);", wrapper)
 
     def test_sustain_links_are_established_before_notes_enter_spawn_callback_queue(self):
         generation = extract_method(self.play_source, "private function generateSong(")

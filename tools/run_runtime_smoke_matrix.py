@@ -396,7 +396,7 @@ def _output_text(value: object) -> str:
     ``TimeoutExpired.output`` is documented (and implemented on some Python
     versions) as the bytes collected before the timeout.  The post-kill
     ``communicate()`` call can then return a string, so concatenating the two
-    values directly raises ``TypeError`` while handling the timeout—the very
+    values directly raises ``TypeError`` while handling the timeout-the very
     path that should preserve the diagnostic output.
     """
 

@@ -111,6 +111,31 @@ class LuaCompatInterp extends Interp {
 		});
 	}
 
+	/**
+		Mirror llua's Haxe-Array-to-Lua-table return conversion for source APIs.
+		Native HScript arrays keep their zero-based behavior everywhere else.
+	*/
+	public function sourceApiResult(value:Dynamic):Dynamic {
+		if (!Std.isOfType(value, Array) || luaOwned(value))
+			return value;
+		return snapshotSourceArray(value, new ObjectMap<Dynamic, Dynamic>());
+	}
+
+	function snapshotSourceArray(value:Dynamic, seen:ObjectMap<Dynamic, Dynamic>):Dynamic {
+		if (!Std.isOfType(value, Array) || luaOwned(value))
+			return value;
+		var previous = seen.get(value);
+		if (previous != null)
+			return previous;
+
+		var output:Array<Dynamic> = [];
+		seen.set(value, output);
+		luaTables.set(output, true);
+		for (element in (cast value : Array<Dynamic>))
+			output.push(snapshotSourceArray(element, seen));
+		return output;
+	}
+
 	static function truthy(value:Dynamic):Bool {
 		if (value == null)
 			return false;

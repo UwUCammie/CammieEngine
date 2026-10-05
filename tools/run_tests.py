@@ -17,9 +17,17 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tools" / "tests"
+MAX_MODULE_JOBS = 16
+MAX_HXCPP_COMPILE_THREADS = 2
 
 
-def offscreen_test_environment(parent=None):
+def nested_hxcpp_compile_threads(jobs):
+    """Share logical CPUs between parallel modules and nested hxcpp builds."""
+    cpus = max(1, os.cpu_count() or 1)
+    return max(1, min(MAX_HXCPP_COMPILE_THREADS, cpus // max(1, jobs)))
+
+
+def offscreen_test_environment(parent=None, jobs=1):
     """Keep test modules detached from the user's desktop display.
 
     Native smoke helpers start their own Xvfb server when they need a screen.
@@ -34,6 +42,9 @@ def offscreen_test_environment(parent=None):
         environment.pop(name, None)
     environment['PYTHONUTF8'] = '1'
     environment['PYTHONIOENCODING'] = 'utf-8'
+    # Several modules compile native fixtures while other interpreters run.
+    # Share the logical CPU budget between workers and nested hxcpp builds.
+    environment.setdefault('HXCPP_COMPILE_THREADS', str(nested_hxcpp_compile_threads(jobs)))
     paths = [str(ROOT), str(ROOT / 'tools'), str(TESTS)]
     if environment.get('PYTHONPATH'):
         paths.append(environment['PYTHONPATH'])
@@ -48,13 +59,13 @@ def offscreen_test_environment(parent=None):
     return environment
 
 
-def run_module(path):
+def run_module(path, jobs=1):
     start = time.monotonic()
     result = subprocess.run(
         [sys.executable, '-X', 'utf8', str(ROOT / 'tools/run_tests.py'),
          '--module', path.name],
         cwd=ROOT, text=True, capture_output=True,
-        env=offscreen_test_environment(),
+        env=offscreen_test_environment(jobs=jobs),
     )
     return path, result, time.monotonic() - start
 
@@ -79,9 +90,9 @@ def run_single_module(name):
 
 
 def default_jobs():
-    # Each module keeps its own interpreter for fixture/global-state isolation.
-    # Cap fanout so large workstations do not spawn an unbounded compiler herd.
-    return min(16, max(1, os.cpu_count() or 1))
+    # Leave room for up to two nested hxcpp compiler threads per module.
+    return min(MAX_MODULE_JOBS,
+               max(1, (os.cpu_count() or 1) // MAX_HXCPP_COMPILE_THREADS))
 
 
 def timing_path():
@@ -126,7 +137,7 @@ def save_timings(timings):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jobs", type=int, default=default_jobs(),
-                        help="modules at once (default: up to 16, limited by logical CPUs)")
+                        help="modules at once (default: up to 16, budgeted for nested compilers)")
     parser.add_argument("--pattern", default="test_*.py",
                         help="module filename glob (default: test_*.py)")
     parser.add_argument('--module', help=argparse.SUPPRESS)
@@ -142,12 +153,13 @@ def main():
         parser.error("no test modules match --pattern")
     timings = load_timings()
     modules = schedule_modules(modules, timings)
+    worker_count = min(args.jobs, len(modules))
     start = time.monotonic()
     failures = []
     tests_run = 0
     tests_skipped = 0
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        pending = {pool.submit(run_module, path): path for path in modules}
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        pending = {pool.submit(run_module, path, worker_count): path for path in modules}
         for future in as_completed(pending):
             path, result, elapsed = future.result()
             timings[path.name] = elapsed

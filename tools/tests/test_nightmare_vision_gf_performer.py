@@ -122,7 +122,7 @@ class Main {
         self.assertEqual(self.source.count("else if (section.gfSection == true && !gottaHitNote)"), 2,
                          "classic Psych retains its existing opponent-only gfSection generation")
 
-        for marker in ["function noteMiss(", "function goodNoteHit("]:
+        for marker in ["function noteMissCore(", "function goodNoteHit("]:
             method = extract_method(self.source, marker)
             self.assertIn("var actingOn = noteSingerForSide(note, playerOne);", method)
             self.assertIn("var nightmareVisionGfPerformer = isNightmareVisionGfPerformer(note, playerOne);", method)
@@ -137,7 +137,7 @@ class Main {
         self.assertIn('callAllHScript("playerOneSing", []);', good_hit,
                       "player-owned GF notes keep player callback identity")
 
-        note_miss = extract_method(self.source, "function noteMiss(")
+        note_miss = extract_method(self.source, "function noteMissCore(")
         self.assertIn('callAllHScript("playerOneMiss", []);', note_miss,
                       "player-owned GF misses keep player callback identity")
 
@@ -158,7 +158,8 @@ class Main {
 
         hit_pre = extract_method(self.source, "function dispatchNightmareVisionNoteHitPre(")
         self.assertIn("strum.lastNote = note;", hit_pre)
-        self.assertIn("getNightmareVisionField(note.sourcePlayfieldIndex)", hit_pre)
+        self.assertIn("var activeField = field == null ? nightmareVisionFieldForNote(note) : field;", hit_pre)
+        self.assertIn("var line = activeField.strumline;", hit_pre)
         self.assertIn("var direction = note.sourceDirection;", hit_pre)
         self.assertIn("line.members[direction]", hit_pre,
                       "lastNote remains on the field's authored receptor while singer changes")

@@ -88,7 +88,7 @@ class Main {
 
     def test_all_judgement_paths_call_the_exact_line_helper(self):
         source = (ROOT / 'source/PlayState.hx').read_text()
-        miss = method(source, 'noteMiss')
+        miss = method(source, 'noteMissCore')
         hit = method(source, 'goodNoteHit')
         self.assertEqual(miss.count('singCodenameNoteActors('), 2,
             'both authored note miss branches need exact-line singers')

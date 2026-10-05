@@ -375,8 +375,8 @@ When a connection is successful, the <code>sync</code> event is dispatched.
 Before attempting to work with a remote shared object, first check for
 any errors using a <code>try..catch..finally</code> statement. Then, listen for
 and handle the <code>sync</code> event before you make changes to the shared
-object. Any changes made locally — before the <code>sync</code> event is
-dispatched — might be lost.</p>
+object. Any changes made locally - before the <code>sync</code> event is
+dispatched - might be lost.</p>
 <p>Call the <code>connect()</code> method to connect to a remote shared object, for
 example:</p>
 <pre><code class="prettyprint as3">var myRemoteSO:SharedObject = SharedObject.getRemote("mo", myNC.uri, false);

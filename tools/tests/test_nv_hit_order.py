@@ -172,6 +172,10 @@ class Main {
 
     def test_source_hit_pipeline_and_auto_cadence(self):
         hit = extract_method(self.play, "function hitNightmareVisionNote(")
+        hit_signal = extract_method(self.play, "function nightmareVisionFieldHitSignal(")
+        hit_handler = extract_method(self.play, "function handleNightmareVisionFieldHit(")
+        field_for_note = extract_method(self.play, "function nightmareVisionFieldForNote(")
+        remove_field_note = extract_method(self.play, "function nightmareVisionRemoveFieldNoteMembership(")
         pre = extract_method(self.play, "function dispatchNightmareVisionNoteHitPre(")
         dispatch = extract_method(self.play, "function dispatchNightmareVisionNoteHit(note:Note,")
         detach = extract_method(self.play, "function detachNightmareVisionTap(")
@@ -211,6 +215,8 @@ class Note {
  public var dontCountNote:Bool = false;
  public var noteHit:Dynamic;
  public var noteStrum:Dynamic;
+ public var scale:Dynamic = {copyFrom:function(value:Dynamic) {}};
+ public var baseScale:Dynamic = {};
  public var y:Float = 0;
  public var externalListeners:Int = 0;
  public var autoAttempts:Int = 0;
@@ -253,7 +259,18 @@ class NightmareVisionPlayFieldView {
  public var noteSplashes:Bool = true;
  public var holdDropLeniency:Float = 0.2;
  public var singers:Array<Dynamic> = [];
+ public var notes:Array<NVNote> = [];
+ public var onNoteHit:FieldHitSignal = new FieldHitSignal();
  public function new(id:Int, playerControls:Bool) { ID=id; this.playerControls=playerControls; }
+ public function addNote(note:NVNote):Void notes.push(note);
+ public function removeNote(note:NVNote):Void { notes.remove(note); }
+}
+class FieldHitSignal {
+ var listeners:Array<Dynamic->NightmareVisionPlayFieldView->Void> = [];
+ public function new() {}
+ public function add(callback:Dynamic->NightmareVisionPlayFieldView->Void):Void listeners.push(callback);
+ public function dispatch(note:Dynamic, field:NightmareVisionPlayFieldView):Void
+  for (callback in listeners) callback(note, field);
 }
 class Scripts {
  public var events:Array<String>;
@@ -314,6 +331,9 @@ class Main {
  public var nightmareVisionNoteTypes:NoteTypes;
  public var sourceScoreNightmare:Bool = true;
  public var fields:Array<NightmareVisionPlayFieldView>;
+ public var nightmareVisionFields:Array<NightmareVisionPlayFieldView>;
+ public var nightmareVisionNoteFields:haxe.ds.ObjectMap<NVNote, NightmareVisionPlayFieldView> = new haxe.ds.ObjectMap();
+ public var nightmareVisionFieldHitContext:Dynamic = null;
  public var playerStrums:Strumline;
  public var enemyStrums:Strumline;
  public var notes:NoteGroup;
@@ -337,15 +357,20 @@ class Main {
   nightmareVisionNoteTypes = new NoteTypes(events);
   fields = [new NightmareVisionPlayFieldView(0, true),
    new NightmareVisionPlayFieldView(1, false), new NightmareVisionPlayFieldView(2, false)];
+  nightmareVisionFields = fields;
   playerStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
   enemyStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
   fields[0].strumline = playerStrums;
   fields[1].strumline = enemyStrums;
   fields[2].strumline = new Strumline([new Strum(0, events), new Strum(1, events)]);
+  for (field in fields) field.onNoteHit.add(function(note, selectedField) nightmareVisionFieldHitSignal(note, selectedField));
   notes = new NoteGroup(events);
   FlxG.sound.events = events;
  }
  function getNightmareVisionField(index:Int):NightmareVisionPlayFieldView return fields[index];
+ __FIELD_FOR_NOTE__
+ __REMOVE_FIELD_NOTE__
+ __FIELD_HIT_SIGNAL__
  function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView, id:Int):Void
   events.push('singers');
  function prepareNightmareVisionHitSplash(note:Note, field:NightmareVisionPlayFieldView, id:Int):Void
@@ -366,6 +391,7 @@ class Main {
  }
 
 __HIT_METHOD__
+__HIT_HANDLER__
 __PRE_METHOD__
 __DISPATCH_METHOD__
 __DETACH_METHOD__
@@ -374,7 +400,10 @@ __AUTO_LOOP__
  static function check(value:Bool, message:String):Void if (!value) throw message;
  function newNote(id:Int, fieldID:Int = 0):Note {
   var note = new Note(id, events); note.sourcePlayfieldIndex=fieldID;
-  notes.members.push(note); return note;
+  notes.members.push(note);
+  var field = getNightmareVisionField(fieldID);
+  if (field != null) { field.addNote(note); nightmareVisionNoteFields.set(note, field); }
+  return note;
  }
  function clearEvents():Void events.resize(0);
  function mainCases():Void {
@@ -503,7 +532,10 @@ __AUTO_LOOP__
  }
  static function main():Void { new Main().mainCases(); autoCadence(); }
 }
-'''.replace("__HIT_METHOD__", hit).replace("__PRE_METHOD__", pre)
+'''.replace("__HIT_METHOD__", hit).replace("__HIT_HANDLER__", hit_handler)
+        fixture = fixture.replace("__FIELD_FOR_NOTE__", field_for_note).replace(
+            "__REMOVE_FIELD_NOTE__", remove_field_note
+        ).replace("__FIELD_HIT_SIGNAL__", hit_signal).replace("__PRE_METHOD__", pre)
         fixture = fixture.replace("__DISPATCH_METHOD__", dispatch).replace(
             "__DETACH_METHOD__", detach
         ).replace("__AUTO_LOOP__", auto_loop)

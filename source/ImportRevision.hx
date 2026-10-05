@@ -33,13 +33,13 @@ class ImportRevision {
 
 	static final ENGINE_REVISIONS:Map<String, Int> = [
 		"V-Slice" => 1,
-		"Kade Engine" => 1,
-		"Modding Plus" => 1,
-		"Psych Engine" => 1,
-		"Nightmare Vision" => 1,
-		"FPS Plus" => 1,
+		"Kade Engine" => 2,
+		"Modding Plus" => 2,
+		"Psych Engine" => 2,
+		"Nightmare Vision" => 2,
+		"FPS Plus" => 2,
 		"Codename Engine" => 1,
-		"Legacy FNF/Polymod" => 1
+		"Legacy FNF/Polymod" => 2
 	];
 
 	/** Returns the canonical importer name, or an empty string for Auto and

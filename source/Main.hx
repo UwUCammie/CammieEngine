@@ -31,6 +31,7 @@ class Main extends Sprite {
 		instance = this;
 		#if sys
 		RuntimeSmokeHarness.applyRuntimeRoot();
+		RuntimeSmokeSaveIsolation.install(RuntimeImportSmokeHarness.enabled());
 		cwd = Sys.getCwd();
 		#end
 		var initialState:Class<FlxState> = TitleState;
@@ -68,6 +69,7 @@ class Main extends Sprite {
 		FramerateOptionsCompat.apply(initialOptions);
 		RuntimeInputProbe.install();
 		RuntimeMenuTimingProbe.install();
+		RuntimeFreeplayDifficultyProbe.install();
 		RuntimeStartupProbe.install();
 		FlxG.scaleMode = new flixel.system.scaleModes.RatioScaleMode();
 

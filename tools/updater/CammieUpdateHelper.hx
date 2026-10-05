@@ -751,7 +751,7 @@ class CammieUpdateHelper {
 			case "rolling-back": "Restoring previous version";
 			default: progressPhase;
 		};
-		label += " — " + percent + "% | " + Std.int(elapsed) + "s elapsed";
+		label += " - " + percent + "% | " + Std.int(elapsed) + "s elapsed";
 		if (elapsed >= 2 && completed > 0 && completed < total)
 			label += " | about " + Std.int(elapsed * (total - completed) / completed) + "s left";
 		if (progressFile != "") label += "\n" + progressFiles + " files | " + progressFile;

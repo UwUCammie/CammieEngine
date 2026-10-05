@@ -1201,7 +1201,7 @@ class VSliceImporter {
 		// The native focus math adds Character.followCamX/Y (classic defaults
 		// 150/-100) AND the StageHelper camOffsets. V-Slice cameraOffsets are
 		// absolute authored offsets, so zero the followCam fields and let
-		// setCamOffsets be the single carrier — emitting both doubled every
+		// setCamOffsets be the single carrier - emitting both doubled every
 		// offset and pushed imported cameras off their authored framing.
 		lines.push('    ' + actor + '.followCamX = 0;');
 		lines.push('    ' + actor + '.followCamY = 0;');
@@ -2924,7 +2924,7 @@ class VSliceImporter {
 			girlfriendValue = field(characters, 'gf');
 		// V-Slice renders no girlfriend unless the playData explicitly names one
 		// (fantasy-girl-01 omits the key and its reference video has no gf), so
-		// both an absent and a blank field mean no-gf — never the native default.
+		// both an absent and a blank field mean no-gf - never the native default.
 		var girlfriend = girlfriendValue == null
 			? 'no-gf'
 			: (StringTools.trim(Std.string(girlfriendValue)) == '' ? 'no-gf' : Std.string(girlfriendValue).trim());

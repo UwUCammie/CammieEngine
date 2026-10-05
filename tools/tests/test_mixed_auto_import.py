@@ -87,6 +87,7 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function chartFieldInt",
                 "static function findNamedDirectory",
                 "static function readSongChart",
+                "static function prepareInstalledDependencyRoots",
                 "static function prepareSongNoteDefinitions",
                 "static function collectSongNoteDefinitions",
                 "static function normalizeImportedCategory",
@@ -437,7 +438,8 @@ class Main {{
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
             install_import_io_dependencies(temp_path)
-            for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx"):
+            for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx",
+                               "ImportInstalledDependencyRoots.hx", "CompatCanonicalPath.hx"):
                 (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline='\n')
             (temp_path / "NightmareVisionVocalRole.hx").write_text(
                 (ROOT / "source/NightmareVisionVocalRole.hx").read_text(), newline='\n'
@@ -455,6 +457,9 @@ class Main {{
             (temp_path / "ImportRootScanner.hx").write_text(self.scanner, newline='\n')
             (temp_path / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
+            , newline='\n')
+            (temp_path / "PsychSongNameCompat.hx").write_text(
+                (ROOT / "source/PsychSongNameCompat.hx").read_text()
             , newline='\n')
             (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc, newline='\n')
             (temp_path / "VSliceImporter.hx").write_text(self.vslice, newline='\n')

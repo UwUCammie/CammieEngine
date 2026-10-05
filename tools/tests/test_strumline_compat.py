@@ -80,10 +80,13 @@ class FlxTimer {
  public function fire():Void if(callback!=null)callback(this);
 }
 class TimerTest {
+ function isPsychReceptorNote(_note:Dynamic):Bool return false;
  var playbackRate:Float=1;
  public function new(){}
  function getNightmareVisionField(_strum:Int):Dynamic
   return {autoPlayed:false,holdDropLeniency:0.15};
+ function nightmareVisionFieldForNote(note:Dynamic):Dynamic
+  return note == null ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
 ''' + sustain_helper + method + '''
  static function main(){
   var state=new TimerTest();var note:Dynamic={sustainLength:500.,isSustainNote:false,

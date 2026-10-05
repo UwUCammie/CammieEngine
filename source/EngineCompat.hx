@@ -2708,10 +2708,10 @@ class EngineCompat {
 				return 'misses';
 			case 'songposition':
 				return 'songPosition';
-			// Psych's stock time text is named timeTxt; this engine exposes the
-			// same live FlxText as timeBar.
+			// Keep text distinct from the progress bar. PlayState's accessor
+			// retains the legacy label alias where that engine profile needs it.
 			case 'timetxt':
-				return 'timeBar';
+				return 'timeTxt';
 			default:
 				return root;
 		}

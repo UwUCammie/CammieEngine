@@ -11,8 +11,8 @@ Friday Night Funkin' **Disappointing Plus**: a HaxeFlixel 6.1.2 fork of Modding 
 ### Build and test (Windows 11)
 
 From PowerShell in the repository, ` .\run.bat test` builds Windows x64 and
-runs the full regression suite. ` .\run.bat package` also packages the v0.0.13
-alpha ZIP and checksum in `dist/`, after successful tests. ` .\run.bat` builds
+runs the full regression suite. ` .\run.bat package` also packages the current development
+ZIP and checksum in `dist/`, after successful tests. ` .\run.bat` builds
 and plays; ` .\run.bat nobuild` plays the current build. Add `debug` for a debug
 build. Unchanged Windows builds reuse a metadata cache; ` .\run.bat rebuild`
 forces recompilation. Tests always run; their module scheduling uses up to 16
@@ -135,11 +135,17 @@ The same interpreter is used for custom characters (`Character.hx`, optional `<c
 - **HScript compatibility shims are deliberate.** Names like `timeBarBG`, `judOffsetX`, `iconsVertical`, `forceCamera`, `hscriptSafePlay`, `showOnlyStrums` and many "old-engine alias" comments exist because hundreds of ported scripts reference them. Do not delete or rename them as dead code.
 - **Memory management in `Main.hx` is load-bearing.** It prunes dead `FlxSound`s and clears the bitmap cache when leaving PlayState. Removing it reintroduces multi-GB growth and native SIGBUS crashes on rapid scene switches. `PlayState.hscriptSafePlay`'s decode/cache/timing behavior is similarly a crash fix for ported modcharts; do not simplify it.
 - `export/`, `.tools/`, `.haxelib/` are gitignored. Never commit build output, and remember `.haxelib` is locally patched by run.sh.
-- `docs/` is generated API documentation (`builddocs.bat`: `lime build html5 -xml -Dtypebuild` then `haxelib run dox`). Do not hand-edit, and do not assume it reflects the working tree.
+- `docs/` is generated API documentation (`builddocs.bat`: `lime build html5 -xml -Dtypebuild` then `haxelib run dox`). Do not hand-edit API content, and do not assume it reflects the working tree. After dox, `builddocs.bat` runs `tools/normalize_api_docs.py` to normalize punctuation in generated HTML without changing other bytes.
 - `dump/decoding_error.txt` is captured debug output, not source.
 - `Modding.md` describes a planned Polymod `mods/` folder loader. There is no Polymod dependency and no loader in `source/`; `example_mods/` is just packaged as `mods/`. Actual modding today is HScript + the registries above.
 - CI (`.github/workflows/*.yml`, `azure-pipelines.yml`) builds with Haxe 4.2 and predates the local toolchain; local truth is `run.sh` (Haxe 4.3.x, pinned libs).
 - Update `updateLog.txt` for user-visible changes (recent project commits routinely do this and little else).
+
+## Development policy
+
+- Do not use U+2014 punctuation in engine-owned code, comments, documentation, user-facing text, or tests. Use a comma, colon, parentheses, or a plain hyphen as appropriate. Preserve immutable imported content, donor/vendor files, generated build outputs and binary artifacts. Engine-owned audit reports and generated API documentation remain covered by this rule. The fast text guard excludes the large generated `docs/` tree; its generation postprocessor enforces this rule after dox. Generated API documentation is not a generated build-output exception.
+- During development, keep `VERSION` and the `Project.xml` application version at the next patch after the newest published downloadable GitHub build, including prereleases. Verify the release list before choosing the baseline; do not increment on each edit, test or build. After a release is published, move development to its next patch once. Use `python tools/development_version.py --latest-release <verified-tag> --apply`; repeating the command with the same baseline is idempotent.
+- Explicitly authorized release versions remain a deliberate maintainer choice. Packaging defaults to the current `VERSION`; explicit release tag arguments remain supported. Never publish or change a GitHub release as part of version maintenance alone.
 
 ## Style
 

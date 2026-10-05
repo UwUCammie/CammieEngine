@@ -69,6 +69,9 @@ class NightmareVisionModchartRenderer {
 	public function destroy():Void {
 		baselines = new ObjectMap();
 		warnedUnsupported = new ObjectMap();
+		applyVisual = null;
+		onUnsupportedFeature = null;
+		skinOffsets.readLive = null;
 	}
 
 	/**

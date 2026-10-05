@@ -2,6 +2,8 @@ package nightmarevision.modchart;
 
 /** Primitive view of the selected source NoteSkin's per-lane visual offsets. */
 class NightmareVisionModchartSkinOffsets {
+	/** Scene-owned bridge to mutable runtime NoteSkin vectors; fixtures may keep snapshots. */
+	public var readLive:Null<(String, Int, Bool)->NightmareVisionModchartVector>;
 	public var note:Array<NightmareVisionModchartVector> = [];
 	public var receptor:Array<NightmareVisionModchartVector> = [];
 	public var sustain:Array<NightmareVisionModchartVector> = [];
@@ -20,6 +22,7 @@ class NightmareVisionModchartSkinOffsets {
 	}
 
 	public function get(kind:String, data:Int, isSustain:Bool = false):NightmareVisionModchartVector {
+		if (readLive != null) return readLive(kind, data, isSustain);
 		var values = switch (kind) {
 			case NightmareVisionModchartObject.NOTE: note;
 			case NightmareVisionModchartObject.RECEPTOR: receptor;
@@ -37,7 +40,7 @@ class NightmareVisionModchartSkinOffsets {
 	}
 
 	public function getSustainEnd(data:Int):NightmareVisionModchartVector
-		return pointAt(sustainEnd, data);
+		return readLive == null ? pointAt(sustainEnd, data) : readLive('sustainEnd', data, false);
 
 	static function readOffsets(source:Dynamic, field:String, count:Int):Array<NightmareVisionModchartVector> {
 		var values:Array<NightmareVisionModchartVector> = [];

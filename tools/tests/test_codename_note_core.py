@@ -76,6 +76,7 @@ class NoteGroup {
  public function remove(n:Note,splice:Bool):Void removed++;
 }
 class Main {
+ function isPsychReceptorNote(_note:Note):Bool return false;
  var nightmareVisionScripts:Dynamic=null;
  var codenameScriptScopes:Array<Dynamic>=[{}];
  var callback:CodenameGameEvent->String->Void;
@@ -105,6 +106,10 @@ class Main {
  var gf:Character=null;var grpNoteSplashes={add:function(v:Dynamic):Void {}};
  public function new() {codenameStrumlines=[enemyStrums,playerStrums];}
  function getNightmareVisionField(id:Int):Dynamic return null;
+ // This fixture exercises ordinary Codename notes with no NV field ownership.
+ function nightmareVisionFieldForNote(note:Note):Dynamic
+  return note == null ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
+ function nightmareVisionRemoveFieldNoteMembership(_note:Note):Void {}
  function getCodenameLineStrumline(index:Int):Strumline
   return index < 0 || index >= codenameStrumlines.length ? null : codenameStrumlines[index];
  function callCodenameScript(scope:Dynamic,name:String,args:Array<Dynamic>):Bool {
@@ -277,6 +282,7 @@ class Main {
  public var sustainLength:Float=0;
  public var mustPress=true;public var dontStrum=false;public var destroyed=false;
  public var noSustainClip=false;
+ public function isAutoPlayed():Bool return false;
  public function new(line:CodenameInputLine<Character>) codenameInputLine=line;
  public function kill():Void alive=false;public function destroy():Void destroyed=true;
 }''', newline='\n')
@@ -287,7 +293,7 @@ class Main {
  public function forEachReceptor(f:Strumline.StrumNote->Void):Void f(receptor);
  public function doSplash(direction:Int):Dynamic {splashes++;return {};}
 }
-class StrumNote {public var ID:Int;public var confirms=0;public var confirmationGeneration:Int=0;
+class StrumNote {public var psychSourceTiming:Bool=false;public var ID:Int;public var confirms=0;public var confirmationGeneration:Int=0;
  public var resetAnim:Float=0;public var coyoteTime:Float=0;
  public var exists=true;public var animation:Dynamic={curAnim:{name:'static',finished:false}};
  public var staticRestores=0;public var lastAnimation:String='static';

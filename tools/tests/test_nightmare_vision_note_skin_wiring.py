@@ -21,6 +21,7 @@ class NightmareVisionNoteSkinWiringTest(unittest.TestCase):
             "public function nightmareVisionSkinForField(",
             "public function nightmareVisionSkinForStrumline(",
             "function configureNightmareVisionNoteSkin(",
+            "function applyNightmareVisionNoteSkin(",
         ))
         fixture = '''using StringTools;
 class NightmareVisionPaths {
@@ -30,16 +31,42 @@ class NightmareVisionPaths {
 class NightmareVisionNoteSkin {
  public var paths:NightmareVisionPaths; public var name:String;
  public var applied:Array<Int>=[];
- public function new(paths:NightmareVisionPaths,name:String) {this.paths=paths;this.name=name;}
+ public var quantsEnabled:Bool=true;
+ public var keys:Int; public var ID:Int;
+ public function new(paths:NightmareVisionPaths,name:String,keys:Int=4,id:Int=0) {
+  this.paths=paths;this.name=name;this.keys=keys;this.ID=id;
+ }
  public function stringField(key:String,fallback:String):String return fallback;
- public function applyNote(note:Note,lane:Int):Bool {applied.push(lane);return true;}
+ public function applyNote(note:Note,lane:Int,?frames:Dynamic):Bool {applied.push(lane);return true;}
+}
+class FlxAtlasFrames {}
+class NightmareVisionQuantRendering {
+ public static var classifyCalls:Int=0; public static var applyCalls:Int=0;
+ public static var classifiedNote:Note; public static var appliedNote:Note;
+ public static var classifiedPrefs:Dynamic; public static var appliedPrefs:Dynamic;
+ public static var appliedSkin:NightmareVisionNoteSkin; public static var classifiedBeat:Float=0;
+ public static function classify(note:Note,prefs:Dynamic,beat:Float):Void {
+  if (note==null || note.nightmareVisionQuantInitialized) return;
+  note.nightmareVisionQuantInitialized=true;
+  classifyCalls++; classifiedNote=note; classifiedPrefs=prefs; classifiedBeat=beat;
+  if (prefs!=null && prefs.quants==true && note.canQuant) note.quant=12;
+ }
+ public static function apply(note:Note,skin:NightmareVisionNoteSkin,prefs:Dynamic):Void {
+  applyCalls++; appliedNote=note; appliedSkin=skin; appliedPrefs=prefs;
+  note.isQuant=prefs!=null && prefs.quants==true && skin.quantsEnabled && note.canQuant;
+ }
 }
 class NightmareVisionNoteTypeRuntime {
  public function new() {}
  public function setupNote(note:Note):Void {}
+ public function syncNote(note:Note):Void {}
 }
 class Note {
+ public static inline var NOTE_AMOUNT:Int=4;
  public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
+ public var quant:Int=4; public var isQuant:Bool=false; public var canQuant:Bool=true;
+ public var nightmareVisionQuantInitialized:Bool=false;
+ public var strumTime:Float=0;
  public var sourceSemanticsApplied:Int=0;
  public function applyPendingSourceNoteSemantics():Void {
   if (nightmareVisionTypeRuntime==null) throw "semantics before runtime attach";
@@ -64,6 +91,11 @@ class SkinWiring {
  var SONG:Dynamic;
  var playerStrums:Strumline; var enemyStrums:Strumline;
  var nightmareVisionFields:Array<{ID:Int,strumline:Strumline}>=[];
+ var playFields:Dynamic=null;
+ var nightmareVisionPrefs:Dynamic;
+ var nightmareVisionConductor:Dynamic;
+ var beatCalls:Int=0;
+ var beatInput:Float=0;
  public function new() {}
 ''' + methods + '''
  static function main():Void {
@@ -74,17 +106,51 @@ class SkinWiring {
   var first=s.nightmareVisionSkinForField(0), second=s.nightmareVisionSkinForField(1);
   if (first==second || first.name!="pink" || second.name!="gray") throw "field skins merged";
   if (first.paths.root!="owner-a" || second.paths.root!="owner-a") throw "owner lost";
+  if (first.keys!=4 || first.ID!=0 || second.ID!=1) throw "source skin key/player identity lost";
   if (s.nightmareVisionSkinForStrumline(s.playerStrums)!=first
    || s.nightmareVisionSkinForStrumline(s.enemyStrums)!=second) throw "line routing wrong";
   var note=new Note(1,3); note.ratingDisabled=true; note.rating="good"; note.ratingMod=0.8;
+  note.strumTime=300;
   s.nightmareVisionNoteTypes=new NightmareVisionNoteTypeRuntime();
+  s.nightmareVisionPrefs={view:{quants:true,noteOffset:50}};
+  s.nightmareVisionConductor={getBeat:function(time:Float):Float {s.beatCalls++;s.beatInput=time;return time/100;}};
   s.configureNightmareVisionNoteSkin(note);
   if (second.applied.join(",")!="3" || RuntimeSmokeHarness.marks!=1) throw "note lane wrong";
+  if (NightmareVisionQuantRendering.classifyCalls!=1
+   || NightmareVisionQuantRendering.classifiedNote!=note
+   || NightmareVisionQuantRendering.classifiedPrefs!=s.nightmareVisionPrefs.view
+   || NightmareVisionQuantRendering.classifiedBeat!=2.5 || s.beatInput!=250 || note.quant!=12
+   || !note.nightmareVisionQuantInitialized || s.beatCalls!=1) throw "source quant classification inputs lost";
+  if (NightmareVisionQuantRendering.applyCalls!=1
+   || NightmareVisionQuantRendering.appliedNote!=note
+   || NightmareVisionQuantRendering.appliedSkin!=second
+   || NightmareVisionQuantRendering.appliedPrefs!=s.nightmareVisionPrefs.view
+   || !note.isQuant) throw "quant rendering did not follow selected field skin";
   if (note.nightmareVisionTypeRuntime!=s.nightmareVisionNoteTypes || note.rating!=null
    || !note.ratingDisabled || note.ratingMod!=0) throw "type attach did not reset rating while preserving disabled flag";
   if (note.sourceSemanticsApplied!=1) throw "source semantics not applied on attach";
+  s.nightmareVisionConductor={getBeat:function(time:Float):Float {s.beatCalls++;return time/100+100;}};
+  s.configureNightmareVisionNoteSkin(note);
+  if (NightmareVisionQuantRendering.classifyCalls!=1 || note.quant!=12 || s.beatCalls!=2)
+   throw "initialized note must keep its original quant classification";
+  var missingSkinNote=new Note(1,2);
+  var selectedPaths=s.nightmareVisionPaths;
+  s.nightmareVisionPaths=null;
+  s.configureNightmareVisionNoteSkin(missingSkinNote);
+  if (NightmareVisionQuantRendering.classifyCalls!=1 || missingSkinNote.nightmareVisionQuantInitialized
+   || missingSkinNote.quant!=4 || s.beatCalls!=2)
+   throw "missing skin must not classify a source note";
+  s.nightmareVisionPaths=selectedPaths;
   s.SONG={arrowSkins:[]};
   if (s.nightmareVisionSkinForField(0).name!="default") throw "missing skin has no source default";
+  var sameNameFirst=s.nightmareVisionSkinForField(0), sameNameSecond=s.nightmareVisionSkinForField(1);
+  if (sameNameFirst==sameNameSecond || sameNameSecond.ID!=1) throw "mutable skin instances merged across fields";
+  sameNameFirst.name="mutated";
+  if (sameNameSecond.name!="default") throw "skin mutation leaked between fields";
+  var injected=new NightmareVisionNoteSkin(s.nightmareVisionPaths,"injected");
+  s.playFields={getFieldFromID:function(id:Int):Dynamic return id==0 ? {_skin:injected} : null};
+  if(s.nightmareVisionSkinForField(0)!=injected
+   ||s.nightmareVisionSkinForStrumline(s.playerStrums)!=injected) throw "live injected field skin lost";
  }
 }
 '''

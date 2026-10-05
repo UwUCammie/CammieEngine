@@ -126,7 +126,7 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                 self.assertIn(prefix + "tools/astcenc.exe", names)
                 self.assertIn(prefix + "tools/astcenc-LICENSE.txt", names)
                 self.assertIn(prefix + "assets/data/song/chart.json", names)
-                self.assertEqual(package.read(prefix + "RELEASE_TAG"), b"v0.0.13\n")
+                self.assertEqual(package.read(prefix + "RELEASE_TAG"), (PACKAGE.DEFAULT_RELEASE_TAG + "\n").encode("ascii"))
                 self.assertEqual(package.read(prefix + "updateLog.txt"), b"release notes")
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/pack.json", names)
                 self.assertIn(prefix + "assets/imported_mods/bundled-vslice-results/scripts/results.lua", names)
@@ -146,10 +146,10 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
 
             expected = sha256(archive.read_bytes()).hexdigest()
             self.assertEqual(checksum.read_text(encoding="ascii"), f"{expected}  {archive.name}\n")
-            self.assertEqual(archive.name, "CammieEngine-v0.0.13-windows-x64.zip")
+            self.assertEqual(archive.name, f"CammieEngine-{PACKAGE.DEFAULT_RELEASE_TAG}-windows-x64.zip")
             self.assertEqual(
                 checksum.read_text(encoding="ascii"),
-                f"{expected}  CammieEngine-v0.0.13-windows-x64.zip\n",
+                f"{expected}  CammieEngine-{PACKAGE.DEFAULT_RELEASE_TAG}-windows-x64.zip\n",
             )
 
     def test_package_requires_runtime_and_license_inputs(self):

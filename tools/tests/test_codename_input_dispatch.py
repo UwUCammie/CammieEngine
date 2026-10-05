@@ -43,6 +43,7 @@ class Note {
  public var blockHit=false; public var ignoreNote=false;
  public var alive=true; public var destroyed=false; public var noteData=0;
  public var strumTime:Float=1000;
+ public var sourcePlayfieldIndex:Int=-1;
  public function new(line:CodenameInputLine<Character>,time:Float=1000) {codenameInputLine=line;strumTime=time;}
  public function kill():Void alive=false; public function destroy():Void destroyed=true;
 }
@@ -84,6 +85,10 @@ class Main {
  static function psychNoteAction(key:Int):String return 'note_left';
  function getOpponentSinger():Character return dad;
  function getNightmareVisionField(index:Int):Dynamic return {canInput:function() return true};
+ // The input fixture covers authored lines, not NV-owned note membership.
+ function nightmareVisionFieldForNote(note:Note):Dynamic
+  return note == null || note.sourcePlayfieldIndex < 0 ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
+ function nightmareVisionRemoveFieldNoteMembership(_note:Note):Void {}
  function getCodenameLineStrumline(index:Int):Strumline
   return index < 0 || index >= codenameStrumlines.length ? null : codenameStrumlines[index];
  function codenameVisualInputOwner(line:CodenameInputLine<Character>):Bool return false;

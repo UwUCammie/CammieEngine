@@ -35,7 +35,7 @@ class PsychLuaTextTest(unittest.TestCase):
             self.skipTest("portable Haxe interpreter is unavailable")
         source = (ROOT / "source/PlayState.hx").read_text()
         names = (
-            "compatMakeLuaText", "compatAddLuaSprite", "compatAddLuaText",
+            "compatMakeLuaText", "compatRemoveLuaSprite", "compatAddLuaSprite", "compatAddLuaText",
             "compatSetTextString", "compatSetTextSize", "compatSetTextColor",
             "compatSetTextBorder", "compatSetTextFont", "compatSetTextAlignment",
             "compatGetTextFont",
@@ -53,7 +53,7 @@ class FlxBasic {
  function get_cameras():Array<FixtureCamera> return assigned;
  function set_cameras(value:Array<FixtureCamera>):Array<FixtureCamera> {cameraWrites++; return assigned=value;}
 }
-class FlxSprite extends FlxBasic { public function new() {super();} }
+class FlxSprite extends FlxBasic { public var destroyed:Bool=false; public function new() {super();} public function destroy():Void destroyed=true; }
 class FlxText extends FlxSprite {
  public var scrollFactor = new Scroll();
  public var text(default,set):String = '';
@@ -93,6 +93,7 @@ class PsychLuaTextFixture {
  var BEHIND_NONE:Int = 0; var BEHIND_ALL:Int = 7;
  var addedAt:Int = -1;
  public function new() {}
+ function remove(sprite:FlxSprite, splice:Bool):FlxSprite { if (splice) members.remove(sprite); return sprite; }
  function markPsychGlobalProviderSpritePhase(_sprite:Dynamic, _phase:String, ?_detail:String):Void {}
  function compatForgetSpriteAtlas(_sprite:Dynamic):Void {}
  function compatFindObject(name:Dynamic):Dynamic return haxeSprites.get(Std.string(name));

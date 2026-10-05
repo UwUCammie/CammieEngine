@@ -62,6 +62,10 @@ class SourceInputLifecycleTest(unittest.TestCase):
         play = (ROOT / "source/PlayState.hx").read_text()
         cls.receptor_helper = extract_method(play, "function setSourceInputReceptor(")
         cls.invalidate_helper = extract_method(play, "function invalidateSourceInputNote(")
+        cls.field_for_note = extract_method(play, "function nightmareVisionFieldForNote(").replace(
+            "NightmareVisionPlayFieldView", "InputField"
+        )
+        cls.remove_field_note = extract_method(play, "function nightmareVisionRemoveFieldNoteMembership(")
         cls.psych_press = extract_method(play, "function psychSourceKeyPressed(")
         cls.psych_release = extract_method(play, "function psychSourceKeyReleased(")
         cls.nv_press = extract_method(play, "function nightmareVisionSourceKeyPressed(")
@@ -103,6 +107,12 @@ class NoteGroup {
   return note;
  }
 }
+class InputTestEvent { public var timer:Float=0; public function new() {} }
+class InputMissPressSignal {
+ public var onDispatch:Int->Void;
+ public function new() {}
+ public function dispatch(key:Int):Void if (onDispatch != null) onDispatch(key);
+}
 class InputActor {
  public var stunned:Bool = false;
  public var holdTimer:Float = 7;
@@ -113,8 +123,11 @@ class InputField {
  public var strumline:InputFixtureStrumline;
  public var input:Bool = true;
  public var playAnims:Bool = true;
+ public var notes:Array<Note> = [];
+ public var onMissPress:InputMissPressSignal = new InputMissPressSignal();
  public function new() {}
  public function canInput():Bool return input;
+ public function removeNote(note:Note):Void notes.remove(note);
 }
 class InputPrefsView { public var ghostTapping:Bool = false; public function new() {} }
 class InputPrefs { public var view:InputPrefsView = new InputPrefsView(); public function new() {} }
@@ -176,6 +189,8 @@ class InputFixture {
  public var opponentActor:InputActor = new InputActor();
  public var fields:Array<InputField> = [new InputField(), new InputField()];
  public var nightmareVisionFields:Array<InputField>;
+ public var nightmareVisionNoteFields:haxe.ds.ObjectMap<Note, InputField> = new haxe.ds.ObjectMap();
+ public var nightmareVisionCurrentInputEvent:InputTestEvent = null;
  public var nightmareVisionPrefs:InputPrefs = new InputPrefs();
  public var ghostTapping:Bool = false;
  public function sourceLivePreference(name:String, fallback:Bool):Bool return fallback;
@@ -206,11 +221,17 @@ class InputFixture {
   nightmareVisionFields=fields;
   fields[0].ID=0;fields[0].strumline=playerStrums;
   fields[1].ID=1;fields[1].strumline=enemyStrums;
+  for (field in fields) {
+   var selected = field;
+   selected.onMissPress.onDispatch = function(key:Int):Void noteMiss(key, selected.ID != 1, null, true);
+  }
  }
  function getOpponentSinger():InputActor return opponentActor;
  function getInputStrumline(line:Dynamic, playerOne:Bool):InputFixtureStrumline
   return playerOne ? playerStrums : enemyStrums;
  function getNightmareVisionField(id:Int):InputField return fields[id];
+ __FIELD_FOR_NOTE__
+ __REMOVE_FIELD_NOTE__
  function goodNoteHit(note:Note, playerOne:Bool):Void {
   hits.push(note); note.wasGoodHit = true;
   events.push('hit:' + note.noteData + ':' + playerOne);
@@ -397,8 +418,8 @@ class Main {
   check(!has(noField.events, 'nv:onGhostTap') && has(noField.events, 'nv:onKeyPress'),
    'NV requires an eligible input field for ghost taps but still notifies the key edge');
   var invalidNv = new InputFixture();
-  invalidNv.exerciseNvPress(4); invalidNv.exerciseNvRelease(4);
-  check(invalidNv.events.length == 0, 'out-of-range NV keys must be rejected');
+  invalidNv.exerciseNvPress(-1); invalidNv.exerciseNvRelease(-1);
+  check(invalidNv.events.length == 0, 'negative NV keys must be rejected');
   var nvRelease = new InputFixture();
   nvRelease.nightmareReturns.set('onKeyRelease', ScriptCallbackResult.STOP);
   nvRelease.playerStrums.members[2].holding = true;
@@ -412,12 +433,19 @@ class Main {
  }
 }
 '''
+        fixture = fixture.replace("__FIELD_FOR_NOTE__", self.field_for_note).replace(
+            "__REMOVE_FIELD_NOTE__", self.remove_field_note
+        )
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             fixture = fixture.replace("Strumline.StrumNote", "InputFixtureReceptor")
             (temp / "Main.hx").write_text(fixture, newline="\n")
             for name in ("SourceInputNotes.hx", "ScriptCallbackResult.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
+            (temp / "Conductor.hx").write_text("class Conductor { public static var songPosition:Float=0; }", newline="\n")
+            (temp / "FlxG.hx").write_text("class FlxG { public static var sound:Dynamic={music:{playing:false,time:0.0}}; }", newline="\n")
+            (temp / "lime/system/System.hx").parent.mkdir(parents=True, exist_ok=True)
+            (temp / "lime/system/System.hx").write_text("package lime.system; class System { public static function getTimer():Float return 0; }", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
@@ -436,8 +464,9 @@ class Main {
         self.assertLess(route, self.key_shit.index("releaseArray = [for (_ in releaseArray) false];"))
         self.assertIn("for (key in 0...holdArray.length) if (strumsBlocked[key] == true) holdArray[key] = false;",
                       self.key_shit)
-        self.assertIn("nightmareVisionSourceKeyPressed(key)", self.update)
-        self.assertIn("nightmareVisionSourceKeyReleased(key)", self.update)
+        self.assertIn("nightmareVisionInputScope.input.update()", self.update)
+        self.assertNotIn("if (pressed[key]) nightmareVisionSourceKeyPressed(key)", self.update)
+        self.assertNotIn("if (released[key]) nightmareVisionSourceKeyReleased(key)", self.update)
 
 
 if __name__ == "__main__":

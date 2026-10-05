@@ -89,6 +89,10 @@ class HealthIcon extends FlxSprite {
 	/** V-Slice HealthIcon character-loading alias used by imported HUD scripts. The
 	 * selected character registry and icon owner are resolved by switchAnim. */
 	@:keep public function loadCharacter(char:String):Dynamic return switchAnim(char);
+	/** Psych changes the same owner-resolved icon only when its identifier changes. */
+	@:keep public function changeIcon(char:String, allowGPU:Bool = true):Void {
+		if (char != curCharacter) switchAnim(char);
+	}
 	public var iconState(default, set):IconState = Normal;
 	private var interp:Interp;
 	function set_iconState(x:IconState):IconState {

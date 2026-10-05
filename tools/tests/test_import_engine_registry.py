@@ -56,6 +56,9 @@ class ImportEngineRegistryTest(unittest.TestCase):
         (folder / "ImportDirectoryListing.hx").write_text(
             (ROOT / "source/ImportDirectoryListing.hx").read_text()
         , newline='\n')
+        (folder / "PsychSongNameCompat.hx").write_text(
+            (ROOT / "source/PsychSongNameCompat.hx").read_text()
+        , newline='\n')
 
     def test_labels_are_stable_and_do_not_claim_unsupported_kate_engine(self):
         for label in (

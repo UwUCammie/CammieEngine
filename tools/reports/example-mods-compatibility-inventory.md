@@ -1,4 +1,4 @@
-# Example Mods compatibility inventory — updated 30 September 2026
+# Example Mods compatibility inventory - updated 30 September 2026
 
 **Latest shared rendering checks (30 September):** Try Harder Hard's missing
 Animate lyric scene now renders, advances through the source 418-frame
@@ -1404,7 +1404,7 @@ validated Psych chart row. Ordinary and GC-debug isolated scans each passed
 once, but the original core does not identify a safe shared fix. The scanner
 failure remains an open verification blocker.
 
-### Focused ownership integration and evidence reuse — 2026-09-29
+### Focused ownership integration and evidence reuse - 2026-09-29
 
 The reusable natural-ending ledger confirms 237/242 historical endings by
 runtime chart path and difficulty, independent of shifting matrix indices.
@@ -1428,7 +1428,7 @@ sections of `engine-discrepancies-verification.md` for exact receipts,
 provenance and limits. This supersedes the preceding suite's failed status
 without treating an intermittent passing run as a defect fix.
 
-### Nightmare Vision layout follow-up — 2026-09-29
+### Nightmare Vision layout follow-up - 2026-09-29
 
 The shared difficulty loader retains NMV playfield settings, and receptor
 centering now follows the source ModManager. An isolated normal-speed Fresh
@@ -1448,7 +1448,7 @@ discovery tests and the 1,607-test integration suite pass. See the verification
 report for the exact scope and receipts.
 
 
-### 2026-09-29 — default results regression: Codename Dusk Hard
+### 2026-09-29 - default results regression: Codename Dusk Hard
 
 Shared results/callback/Animate/transition fixes verified by a normal-speed,
 private offscreen full-song run. All 386 player heads counted (380 Sick, 6 Good),
@@ -1460,7 +1460,7 @@ This closes the reported results case, not package-wide source parity. That
 batch's final suite reproduced the previously recorded import-scanner exit 245;
 later passing scanner runs have not resolved its intermittent cause.
 
-### 2026-09-29 — shared native-property callback coverage
+### 2026-09-29 - shared native-property callback coverage
 
 The HXC incoming-note ownership and character screen-position bridges now read
 native properties correctly. Extracted-method regressions reproduce both old
@@ -1473,7 +1473,7 @@ changed. These checks establish the shared callback contracts; existing song
 rows retain their recorded builds and limitations, with no new full-song or
 package parity claim.
 
-### 2026-09-29 — Nightmare Vision execution core
+### 2026-09-29 - Nightmare Vision execution core
 
 Nine focused script-discovery/interpreter/group tests pass. The new core
 matches the supplied dispatcher over 2,048 return-flow combinations in each
@@ -1489,7 +1489,7 @@ assertions per interpreter mode using test actor/camera/tween bindings
 real-script contract coverage, not native camera or tween-fidelity evidence.
 The integration suite passed 1,620 tests, with 65 skips and no failures.
 
-### 2026-09-30 — Nightmare Vision module grammar follow-up
+### 2026-09-30 - Nightmare Vision module grammar follow-up
 
 The independent runtime now uses pinned Iris 1.1.3 with owner-local import and
 using bindings, plus source adapters for string interpolation and key/value
@@ -1503,7 +1503,7 @@ native gameplay or plugin fidelity. The supplied source's newer ModPlugin API
 has been audited against release PluginsManager calls; host integration and
 source lifecycle differences remain open. No chart status is upgraded.
 
-### 2026-09-30 — Nightmare Vision native main-group integration
+### 2026-09-30 - Nightmare Vision native main-group integration
 
 The engine now hosts the selected NMV owner's stage/global/character/song
 scripts through its separate Iris interpreter. Stage metadata lookup/import
@@ -1534,7 +1534,7 @@ chart to full source parity. All 330 protected private files remain unchanged
 following the refresh and native tests.
 
 
-## 2026-09-30 — Nightmare Vision source APIs and asset retention
+## 2026-09-30 - Nightmare Vision source APIs and asset retention
 
 Shared importer/runtime changes retain the selected content tree plus its
 explicit engine assets under an isolated `__nmv_core` subtree. Core-only
@@ -1771,7 +1771,7 @@ initial failures, exact test counts and absence of a single green full summary.
 This closes the death-quote host gap, not complete package compatibility.
 
 
-### 2 October — V-Slice character-owned note kinds and clean host suite
+### 2 October - V-Slice character-owned note kinds and clean host suite
 
 The reviewed shared guitar/death-quote host passes a clean 1,730-test full
 suite (523 modules, 65 skipped, zero failed; 550.2 seconds). Receipt:
@@ -1826,7 +1826,7 @@ summary or full package parity. Production-source and native binary hashes
 still match the successful current offscreen transition receipt.
 
 
-### 2 October — discovery owner and lexical fragment consistency
+### 2 October - discovery owner and lexical fragment consistency
 
 Mixed character files now use the same filename/constructor-ID owner for
 lexical discovery and generated callbacks on POSIX and Windows path spellings.
@@ -1850,7 +1850,7 @@ unchanged private options; both actors have live guitar animation samples
 (`tmp/hxc-lexical-owner-animation-native-summary.json`). The source strumline geometry contract is saved separately, including
 the intentional tap/hold center difference; geometry parity is still open.
 
-### 2 October — Nightmare Vision candidate coverage boundary
+### 2 October - Nightmare Vision candidate coverage boundary
 
 Try Harder and Endless were each exercised in Easy/Normal/Hard using the
 selected Nightmare Vision owner `7a949ff139`, private defaults and offscreen
@@ -1864,7 +1864,7 @@ See the 2 October shared script/note/switching section in
 `tools/reports/engine-discrepancies-verification.md` for receipts, source APIs,
 focused tests, full-suite failure/repair and all outstanding gates.
 
-### 2 October — latest NV feedback
+### 2 October - latest NV feedback
 
 The engine-level chart-storage identity fix corrects Dusk BF orientation in native early and 48-second normal-difficulty samples, with Try Harder's initial normal actor also facing the opponent. That evidence does not certify later swaps or all difficulties. Accepted host-only `wayoff` popup image requests now cross a shared Psych source-rating projection; native ordinary-hit verification is pending.
 

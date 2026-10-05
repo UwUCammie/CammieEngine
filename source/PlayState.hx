@@ -73,6 +73,7 @@ import flixel.text.FlxText.FlxTextBorderStyle;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.ui.FlxBar;
+import flixel.ui.FlxBar.FlxBarFillDirection;
 import flixel.util.FlxCollision;
 import flixel.util.FlxColor;
 import flixel.util.FlxAxes;
@@ -133,15 +134,66 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var playFields:NightmareVisionPlayFields;
 	/** One real native receptor bank per declared Nightmare Vision field. */
 	var nightmareVisionStrumlines:Array<Strumline> = [];
+	/** Includes detached/replaced banks so PlayState still disposes its owned sprites. */
+	var nightmareVisionOwnedStrumlines:Array<Strumline> = [];
+	/** Source constructors may create fields that are never added to playFields. */
+	var nightmareVisionOwnedFields:Array<NightmareVisionPlayFieldView> = [];
+	/** Preserve the actual field object that admitted each live note if its ID changes. */
+	var nightmareVisionNoteFields:haxe.ds.ObjectMap<Note, NightmareVisionPlayFieldView>
+		= new haxe.ds.ObjectMap<Note, NightmareVisionPlayFieldView>();
+	var nightmareVisionFieldAttachmentEnabled:Bool = false;
+	var nightmareVisionFieldHitContext:Dynamic = null;
+	var nightmareVisionFieldMissContext:Dynamic = null;
 	/** NV stages register extra world cameras that copy the gameplay view. */
 	@:keep public var followingCams:Array<FlxCamera> = [];
-	var nightmareVisionRenderers:Map<Int, NightmareVisionModchartRenderer> = new Map();
+	var nightmareVisionRenderers:haxe.ds.ObjectMap<NightmareVisionPlayFieldView, NightmareVisionModchartRenderer> = new haxe.ds.ObjectMap();
 	@:keep public var holdSubdivisions:Int = 1;
 	@:keep public var noteKillOffset:Float = 350;
 	var nightmareVisionCharacterBanks:Map<Int, NightmareVisionCharacterBank>;
 	var nightmareVisionCharacterGroups:Map<Int, NightmareVisionCharacterGroupCompat> = new Map();
 	static var nightmareVisionActivePrefs:NightmareVisionClientPrefs;
 	var nightmareVisionPrefs:NightmareVisionClientPrefs;
+	var nightmareVisionInputScope:NightmareVisionInputScope;
+	var nightmareVisionCurrentInputEvent:NightmareVisionInputEvent;
+
+	static function activeNightmareVisionInputHost(owner:String):PlayState {
+		var play = PlayState.instance;
+		return play != null && play.nightmareVisionInputScope != null
+			&& (owner == null || play.nightmareVisionInputScope.ownerRoot == owner) ? play : null;
+	}
+	static function activeNightmareVisionInputScope(owner:String):NightmareVisionInputScope {
+		var play = activeNightmareVisionInputHost(owner);
+		return play == null ? null : play.nightmareVisionInputScope;
+	}
+	static function activeNightmareVisionSkinPaths(owner:String):NightmareVisionPaths {
+		var play = activeNightmareVisionInputHost(owner);
+		return play == null ? null : play.nightmareVisionPaths;
+	}
+	function bindNightmareVisionInputHost(old:NightmareVisionInputSystem, next:NightmareVisionInputSystem):Void {
+		if (old != null) {
+			old.removeEventListener(NightmareVisionInputEvent.INPUT_PRESSED, onNightmareVisionInputPress);
+			old.removeEventListener(NightmareVisionInputEvent.INPUT_RELEASED, onNightmareVisionInputRelease);
+		}
+		if (next != null) {
+			next.addEventListener(NightmareVisionInputEvent.INPUT_PRESSED, onNightmareVisionInputPress);
+			next.addEventListener(NightmareVisionInputEvent.INPUT_RELEASED, onNightmareVisionInputRelease);
+		}
+	}
+	function onNightmareVisionInputPress(event:NightmareVisionInputEvent):Void {
+		var previous = nightmareVisionCurrentInputEvent;
+		var previousTime = Conductor.songPosition;
+		nightmareVisionCurrentInputEvent = event;
+		try nightmareVisionSourceKeyPressed(event.noteData) catch (error:Dynamic) {
+			nightmareVisionCurrentInputEvent = previous;
+			Conductor.songPosition = previousTime;
+			throw error;
+		}
+		nightmareVisionCurrentInputEvent = previous;
+		Conductor.songPosition = previousTime;
+	}
+	function onNightmareVisionInputRelease(event:NightmareVisionInputEvent):Void
+		nightmareVisionSourceKeyReleased(event.noteData);
+
 	var nightmareVisionPlugins:NightmareVisionPluginRuntime;
 	@:keep public var modManager:NightmareVisionModManager;
 	@:keep public var playHUD:NightmareVisionHUDAdapter;
@@ -177,7 +229,352 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function initializeNightmareVisionPlayFields():Void {
 		if (playFields == null) playFields = new NightmareVisionPlayFields();
+		playFields.setNativeHooks(attachNightmareVisionPlayField,
+			detachNightmareVisionPlayField, syncNightmareVisionPlayFieldCollection);
 		nightmareVisionFields = playFields.members;
+	}
+
+	function syncNightmareVisionPlayFieldCollection():Void {
+		if (playFields != null) nightmareVisionFields = playFields.members;
+		nightmareVisionStrumlines = [];
+		for (field in nightmareVisionFields)
+			if (field != null && field.strumline != null) nightmareVisionStrumlines.push(field.strumline);
+		if (modManager != null) {
+			var banks:Array<Array<Dynamic>> = [];
+			for (field in nightmareVisionFields)
+				if (field != null && field.strumline != null) banks.push(cast field.strumline.members);
+			modManager.receptors = banks;
+		}
+	}
+
+	function attachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {
+		if (field == null) return;
+		bindNightmareVisionPlayFieldLifecycle(field);
+		var line = field.strumline;
+		if (line == null) {
+			line = new Strumline(field.baseX, field.baseY, SONG == null ? 'normal' : SONG.uiType);
+			field.strumline = line;
+			if (field.keyCount != line.members.length) nightmareVisionGenerateFieldReceptors(field);
+		}
+		if (!nightmareVisionOwnedStrumlines.contains(line)) nightmareVisionOwnedStrumlines.push(line);
+		if (field._skin == null) field._skin = nightmareVisionSkinForField(field.ID);
+		nightmareVisionConfigureFieldReceptors(field);
+		if (nightmareVisionFieldAttachmentEnabled) attachNightmareVisionFieldDisplay(field);
+		syncNightmareVisionPlayFieldCollection();
+	}
+
+	function bindNightmareVisionPlayFieldLifecycle(field:NightmareVisionPlayFieldView):Void {
+		if (!nightmareVisionOwnedFields.contains(field)) nightmareVisionOwnedFields.push(field);
+		field.bindNativeLifecycle({
+			idChanged:function(changed, oldID, newID) nightmareVisionFieldIDChanged(changed, oldID, newID),
+			destroy:nightmareVisionDestroyFieldView,
+			generateReceptors:nightmareVisionGenerateFieldReceptors,
+			clearReceptors:nightmareVisionClearFieldReceptors,
+			addNote:nightmareVisionAttachFieldNote,
+			removeNote:nightmareVisionRemoveFieldNote,
+			disposeNote:nightmareVisionDisposeFieldNote,
+			hit:nightmareVisionFieldHitSignal,
+			miss:nightmareVisionFieldMissSignal,
+			missPress:function(key) nightmareVisionFieldMissPressSignal(field, key),
+			alpha:function(changed, value) nightmareVisionSetFieldAlpha(changed, value),
+			quants:function(changed, value) nightmareVisionSetFieldQuants(changed, value),
+			changeSkin:function(changed, skin) nightmareVisionChangeFieldSkin(changed, skin),
+			fadeIn:function(changed, skip) nightmareVisionFadeField(changed, skip)
+		});
+	}
+
+	/** The donor constructor creates an unattached, empty field; scripts choose
+	 * when to generate its receptors and publish it to the collection. */
+	@:keep public function createNightmareVisionSourceField(args:Array<Dynamic>):NightmareVisionPlayFieldView {
+		if (nightmareVisionPaths == null || nightmareVisionPrefs == null)
+			throw '[nightmare-vision-playfield] No active source owner';
+		var spec = NightmareVisionFieldConstructor.parse(args, Note.NOTE_AMOUNT);
+		var skin:NightmareVisionNoteSkin;
+		if (spec.skinInput != null) {
+			if (!Std.isOfType(spec.skinInput, NightmareVisionNoteSkin))
+				throw '[nightmare-vision-playfield] Injected skin requires a source NoteSkin adapter';
+			skin = cast spec.skinInput;
+		} else skin = new NightmareVisionNoteSkin(nightmareVisionPaths, spec.skin, spec.keyCount, spec.player);
+		var line = new Strumline(spec.x, spec.y, SONG == null ? 'normal' : SONG.uiType);
+		var field = new NightmareVisionPlayFieldView(line.ID, function() return false);
+		field.strumline = line;
+		field.baseX = spec.x;
+		field.baseY = spec.y;
+		// Clear before setting keyCount: its setter regenerates only an existing bank.
+		nightmareVisionOwnedStrumlines.push(line);
+		bindNightmareVisionPlayFieldLifecycle(field);
+		nightmareVisionClearFieldReceptors(field);
+		field.keyCount = spec.keyCount;
+		field.owner = spec.owner;
+		field.isPlayer = spec.isPlayer;
+		field.playerControls = spec.playerControls;
+		field.autoPlayed = spec.cpu;
+		field.player = spec.player;
+		field.showRatings = false;
+		field.noteSplashes = false;
+		field._skin = skin;
+		field.quants = nightmareVisionPrefs.view.quants == true;
+		return field;
+	}
+
+	function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {
+		if (field == null || field.strumline == null) return;
+		var retained = playFields != null && playFields.length > 0
+			&& playFields.members.indexOf(field) >= 0;
+		if (!retained && members != null) {
+			field.strumline.sourceFieldBeforeDraw = null;
+			if (members.indexOf(field.strumline) >= 0) remove(field.strumline, false);
+			if (field.strumline.noteHoldCovers != null
+				&& members.indexOf(field.strumline.noteHoldCovers) >= 0)
+				remove(field.strumline.noteHoldCovers, false);
+		}
+		syncNightmareVisionPlayFieldCollection();
+	}
+
+	function nightmareVisionDestroyFieldView(field:NightmareVisionPlayFieldView):Void {
+		if (field != null && nightmareVisionRenderers != null) {
+			var renderer = nightmareVisionRenderers.get(field);
+			if (renderer != null) {
+				nightmareVisionRenderers.remove(field);
+				renderer.destroy();
+			}
+		}
+		// Source PlayField destruction does not dispose its notes. Keep them in
+		// the host group so scene teardown still destroys their native resources.
+		if (field != null && playFields != null && playFields.members.indexOf(field) >= 0)
+			playFields.remove(field, false);
+		else detachNightmareVisionPlayField(field);
+	}
+
+	/** Initial banks are added while collection attachment is disabled. Install
+	 * their draw slots without moving them or adding hold covers before notes. */
+	function enableNightmareVisionFieldAttachment():Void {
+		nightmareVisionFieldAttachmentEnabled = true;
+		for (field in nightmareVisionFields) {
+			if (field == null || field.strumline == null) continue;
+			field.strumline.sourceFieldBeforeDraw = function() drawNightmareVisionFieldUnderlay(field);
+		}
+	}
+
+	function attachNightmareVisionFieldDisplay(field:NightmareVisionPlayFieldView):Void {
+		if (field == null || field.strumline == null) return;
+		var line = field.strumline;
+		line.sourceFieldBeforeDraw = function() drawNightmareVisionFieldUnderlay(field);
+		if (line.cameras == null || line.cameras.length == 0) line.cameras = [camHUD];
+		if (line.noteHoldCovers != null && (line.noteHoldCovers.cameras == null
+			|| line.noteHoldCovers.cameras.length == 0)) line.noteHoldCovers.cameras = [camHUD];
+		if (members.indexOf(line) < 0) add(line);
+		if (line.noteHoldCovers != null && members.indexOf(line.noteHoldCovers) < 0)
+			add(line.noteHoldCovers);
+	}
+
+	/** Source FIELD underlays use the final live geometry, at the bank's draw slot. */
+	function drawNightmareVisionFieldUnderlay(field:NightmareVisionPlayFieldView):Void {
+		if (field == null || field.strumline == null || nightmareVisionPrefs == null) return;
+		var sprite = field.underlaySpr;
+		var prefs = nightmareVisionPrefs.view;
+		if (sprite == null || !sprite.exists || prefs.underlayType != 'Lane Underlay'
+			|| prefs.underlayOpacity <= 0) return;
+		var cameras = field.strumline.cameras;
+		var camera = cameras == null || cameras.length == 0 ? camHUD : cameras[0];
+		if (camera == null) return;
+		var bounds = NightmareVisionFieldUnderlay.measure(cast field.members, field.notes,
+			camera.viewWidth, camera.viewHeight, camera.angle);
+		if (bounds == null) return;
+		sprite.x = bounds.x;
+		sprite.scale.set(bounds.width, bounds.height);
+		sprite.screenCenter(Y);
+		sprite.updateHitbox();
+		sprite.cameras = [camera];
+		var managerAlpha = modManager == null ? 0 : modManager.getValue('alpha', field.player);
+		var managerDark = modManager == null ? 0 : modManager.getValue('dark', field.player);
+		sprite.alpha = NightmareVisionFieldUnderlay.effectiveAlpha(prefs.underlayOpacity,
+			field.underlayAlphaMult, managerAlpha, managerDark);
+		sprite.draw();
+	}
+
+	function nightmareVisionFieldIDChanged(field:NightmareVisionPlayFieldView,
+		oldID:Int, newID:Int):Void {
+		if (field == null) return;
+		nightmareVisionConfigureFieldReceptors(field);
+		syncNightmareVisionPlayFieldCollection();
+	}
+
+	function nightmareVisionConfigureFieldReceptors(field:NightmareVisionPlayFieldView):Void {
+		if (field == null || field.strumline == null) return;
+		var keys = field.keyCount <= 0 ? Note.NOTE_AMOUNT : field.keyCount;
+		field.strumline.centerReceptors = true;
+		field.strumline.x = field.baseX - Note.swagWidth * keys * 0.5;
+		field.strumline.y = field.baseY - Note.swagWidth * 0.5;
+		field.strumline.resetStrums();
+		var skin = field._skin == null ? nightmareVisionSkinForField(field.ID) : field._skin;
+		for (strum in field.strumline.members) if (strum != null) {
+			strum.nightmareVisionSource = true;
+			strum.isQuant = field.quants;
+			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
+			strum.alphaMult = field.alpha;
+			if (skin != null) skin.applyReceptor(strum, strum.ID);
+		}
+		if (skin != null) field.strumline.resetStrums();
+	}
+
+	function nightmareVisionGenerateFieldReceptors(field:NightmareVisionPlayFieldView):Void {
+		if (field == null) return;
+		var line = field.strumline;
+		if (line == null) {
+			line = new Strumline(field.baseX, field.baseY, SONG == null ? 'normal' : SONG.uiType);
+			field.strumline = line;
+			if (!nightmareVisionOwnedStrumlines.contains(line)) nightmareVisionOwnedStrumlines.push(line);
+		}
+		var count = Std.int(Math.max(0, field.keyCount));
+		if (count > Note.NOTE_AMOUNT)
+			throw '[nightmare-vision-playfield] keyCount exceeds this host receptor layout';
+		line.changeType(line.type, false, true);
+		while (line.members.length > count) {
+			var receptor = line.members[line.members.length - 1];
+			FlxTween.cancelTweensOf(receptor);
+			line.remove(receptor, true);
+			receptor.kill();
+			receptor.destroy();
+		}
+		nightmareVisionConfigureFieldReceptors(field);
+		syncNightmareVisionPlayFieldCollection();
+	}
+
+	function nightmareVisionClearFieldReceptors(field:NightmareVisionPlayFieldView):Void {
+		if (field == null || field.strumline == null) return;
+		var line = field.strumline;
+		for (receptor in line.members.copy()) if (receptor != null) {
+			FlxTween.cancelTweensOf(receptor);
+			line.remove(receptor, true);
+			receptor.kill();
+			receptor.destroy();
+		}
+		syncNightmareVisionPlayFieldCollection();
+	}
+
+	function nightmareVisionSetFieldAlpha(field:NightmareVisionPlayFieldView, value:Float):Void {
+		if (field == null || field.strumline == null) return;
+		for (receptor in field.strumline.members) if (receptor != null) receptor.alphaMult = value;
+	}
+
+	function nightmareVisionSetFieldQuants(field:NightmareVisionPlayFieldView, value:Bool):Void {
+		if (field == null || field.strumline == null) return;
+		var skin = field._skin;
+		var renderer = nightmareVisionRenderers.get(field);
+		for (strum in field.members) if (strum != null) {
+			var animation = strum.animation.curAnim == null ? null : strum.animation.curAnim.name;
+			var resetAnim = strum.resetAnim;
+			var rgbEnabled = strum.nightmareVisionRGB != null && strum.nightmareVisionRGB.enabled;
+			strum.isQuant = value;
+			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
+			if (skin != null && skin.applyReceptor(strum, strum.ID) && renderer != null) renderer.release(strum);
+			if (animation != null) strum.playAnim(animation, true);
+			strum.resetAnim = resetAnim;
+			if (!strum.useRGBShader && strum.nightmareVisionRGB != null) {
+				strum.nightmareVisionRGB.enabled = rgbEnabled;
+				strum.nightmareVisionRGB.apply(strum);
+			}
+			strum.handleColors();
+		}
+	}
+
+	function nightmareVisionFadeField(field:NightmareVisionPlayFieldView, skip:Bool):Void {
+		if (field == null || field.strumline == null) return;
+		for (index in 0...field.strumline.members.length) {
+			var receptor = field.strumline.members[index];
+			if (receptor == null) continue;
+			if (skip) receptor.alpha = field.baseAlpha;
+			else {
+				receptor.alpha = 0;
+				FlxTween.tween(receptor, {alpha:field.baseAlpha}, 1,
+					{ease:FlxEase.circOut, startDelay:0.5 + 0.2 * index});
+			}
+		}
+	}
+
+	function nightmareVisionChangeFieldSkin(field:NightmareVisionPlayFieldView,
+		skin:NightmareVisionNoteSkin):Void {
+		if (field == null || skin == null) return;
+		var renderer = nightmareVisionRenderers == null ? null : nightmareVisionRenderers.get(field);
+		for (strum in field.members) if (strum != null) {
+			if (skin.applyReceptor(strum, strum.ID) && renderer != null) renderer.release(strum);
+			strum.resetAnim = 0;
+		}
+		for (value in field.notes) if (value != null && Std.isOfType(value, Note)) {
+			var note:Note = cast value;
+			if (applyNightmareVisionNoteSkin(note, skin)
+				&& renderer != null) renderer.release(note);
+		}
+	}
+
+	function nightmareVisionAttachFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
+		if (field == null || value == null || !Std.isOfType(value, Note)) return;
+		var note:Note = cast value;
+		var previous = nightmareVisionNoteFields.get(note);
+		if (previous != null && previous != field) previous.notes.remove(note);
+		nightmareVisionNoteFields.set(note, field);
+		if (note.sourcePlayfieldIndex < 0) note.sourcePlayfieldIndex = field.ID;
+		Reflect.setField(note, 'playField', field);
+		var skin = field._skin == null ? nightmareVisionSkinForField(field.ID) : field._skin;
+		if (skin != null) {
+			NightmareVisionQuantRendering.classify(note, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view,
+				nightmareVisionConductor.getBeat(note.strumTime));
+			applyNightmareVisionNoteSkin(note, skin);
+		}
+	}
+
+	function nightmareVisionRemoveFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
+		if (value == null || !Std.isOfType(value, Note)) return;
+		var note:Note = cast value;
+		if (nightmareVisionNoteFields.get(note) == field) nightmareVisionNoteFields.remove(note);
+		if (note.playField == field) Reflect.setField(note, 'playField', null);
+		if (note.scale != null && note.baseScale != null) note.scale.copyFrom(note.baseScale);
+		note.updateHitbox();
+		if (notes != null) notes.remove(note, true);
+	}
+
+	function nightmareVisionDisposeFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
+		if (value == null || !Std.isOfType(value, Note)) return;
+		var note:Note = cast value;
+		note.kill();
+		nightmareVisionRemoveFieldNote(field, note);
+	}
+
+	function nightmareVisionRemoveFieldNoteMembership(note:Note):Void {
+		if (note == null || nightmareVisionNoteFields == null) return;
+		var field = nightmareVisionNoteFields.get(note);
+		if (field != null) field.removeNote(note);
+	}
+
+	function nightmareVisionFieldForNote(note:Note):NightmareVisionPlayFieldView {
+		if (note == null) return null;
+		var field = nightmareVisionNoteFields == null ? null : nightmareVisionNoteFields.get(note);
+		return field == null ? getNightmareVisionField(note.sourcePlayfieldIndex) : field;
+	}
+
+	function nightmareVisionFieldHitSignal(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
+		if (value == null || !Std.isOfType(value, Note) || field == null) return;
+		var note:Note = cast value;
+		var context = nightmareVisionFieldHitContext;
+		handleNightmareVisionFieldHit(note,
+			context != null && context.field == field ? context.playerOne : field.playerControls,
+			context != null && context.field == field ? context.autoAttempt : field.autoPlayed,
+			context != null && context.field == field ? context.sourceHold : false);
+	}
+
+	function nightmareVisionFieldMissSignal(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
+		if (field == null) return;
+		var note:Note = value != null && Std.isOfType(value, Note) ? cast value : null;
+		var context = nightmareVisionFieldMissContext;
+		if (context != null && context.field == field)
+			noteMissCore(context.direction, context.playerOne, note, context.playMissSound);
+		else if (note != null)
+			noteMissCore(note.noteData, field.playerControls, note, true);
+	}
+
+	function nightmareVisionFieldMissPressSignal(field:NightmareVisionPlayFieldView, key:Int):Void {
+		if (field != null) noteMissCore(key, field.playerControls, null, true);
 	}
 
 	/** Source field lookup first honors mutable IDs, then donor array indexing. */
@@ -191,6 +588,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionScripts == null || playFields == null || playFields.members.length > 0) return;
 		var count = nightmareVisionLaneCount();
 		nightmareVisionStrumlines = [];
+		nightmareVisionOwnedStrumlines = [];
 		for (id in 0...count) {
 			var fieldID = id;
 			var line = fieldID == 0 ? playerStrums : fieldID == 1 ? enemyStrums
@@ -198,10 +596,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var field = new NightmareVisionPlayFieldView(fieldID,
 				function():Bool return fieldID != 0 || cpuControlled);
 			field.strumline = line;
+			field.baseX = NightmareVisionPlayfieldLayout.centerX(fieldID, Note.NOTE_AMOUNT, FlxG.width, Note.swagWidth);
+			field.baseY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height, Note.swagWidth, downscroll);
 			field.owner = fieldID == 1 ? dad : boyfriend;
 			field.noteSplashes = fieldID == 0;
+			field.quants = nightmareVisionPrefs != null && nightmareVisionPrefs.view.quants == true;
 			playFields.add(field);
-			nightmareVisionStrumlines.push(line);
 			if (fieldID >= 2 && line != null) {
 				line.alpha = 0;
 				line.cameras = [camHUD];
@@ -294,6 +694,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('funkin.scripting.ScriptConstants', constants);
 		interp.bindImport('funkin.Paths', paths);
 		interp.bindImport('funkin.data.ClientPrefs', prefs.view);
+		NightmareVisionInputBindings.install(interp, paths.root, activeNightmareVisionInputScope, activeNightmareVisionInputHost);
+		NightmareVisionPlayFieldBindings.install(interp, paths.root, activeNightmareVisionInputHost);
+		NightmareVisionNoteSkinBindings.install(interp, paths.root, activeNightmareVisionSkinPaths);
 		interp.variables.set('Mods', mods);
 		interp.bindImport('funkin.Mods', mods);
 		interp.variables.set('Difficulty', difficulty);
@@ -460,6 +863,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActivePrefs.view.loadDefaultKeys();
 		}
 		nightmareVisionPrefs = nightmareVisionActivePrefs;
+		nightmareVisionInputScope = new NightmareVisionInputScope(root, nightmareVisionPrefs.view, true, false);
+		nightmareVisionInputScope.onInputChanged = bindNightmareVisionInputHost;
+		NightmareVisionControls.setInstanceAccessors(function() {
+			var scope = activeNightmareVisionInputScope(null);
+			return scope == null ? null : scope.controls;
+		}, function(value) {
+			var scope = activeNightmareVisionInputScope(null);
+			if (scope == null) throw '[nightmare-vision-input] No active controls owner';
+			scope.controls = value;
+		}, function() {
+			var play = activeNightmareVisionInputHost(null);
+			return play == null ? null : play.nightmareVisionPrefs.view;
+		});
 		initializeSourceGameplayPreferences(nightmareVisionPrefs, true);
 		initializeSourceSafeZone(nightmareVisionPrefs.view);
 		initializeSourceRatings(nightmareVisionPrefs.view);
@@ -525,7 +941,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value, atlas) {
 					var note:Note = cast value;
 					var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
-					return skin.applyNote(note, note.sourceDirection,
+					return applyNightmareVisionNoteSkin(note, skin,
 						nightmareVisionPaths.getSparrowAtlas(atlas));
 				}, function(value, enabled) {
 					var note:Note = cast value;
@@ -536,7 +952,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value, colors) {
 					var note:Note = cast value;
 					if (note.nightmareVisionRGB != null) {
-						if (colors == null) note.nightmareVisionRGB = new NightmareVisionRGBGraphics(nightmareVisionSkinForField(note.sourcePlayfieldIndex).palette(note.sourceDirection));
+						if (colors == null) NightmareVisionQuantRendering.apply(note,
+							nightmareVisionSkinForField(note.sourcePlayfieldIndex), nightmareVisionPrefs.view);
 						else note.nightmareVisionRGB.setColors(cast colors);
 						note.nightmareVisionRGB.apply(note);
 					}
@@ -1225,16 +1642,41 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var forceCamera:Bool = false;
 	/** Psych source stages hold an authored camera position during cutscenes. */
 	@:keep public var isCameraOnForcedPos:Bool = false;
-	// old-engine names for the song bar (milk 2.0 moves them); the hscript
-	// variables of the same name map these, this keeps currentPlayState.x working
+	// The source Psych bar is the progress fill; legacy engines name its label timeBar.
 	public var timeBarBG:FlxSprite;
-	public var timeBar:FlxText;
+	public var timeBar:Dynamic;
 	// V-Slice modules use Psych's `timeTxt` spelling for the same HUD label.
 	// Keep it tied to the native object so visibility/style changes affect the
 	// actual time text rather than a detached compatibility placeholder.
 	public var timeTxt(get, never):FlxText;
 	function get_timeTxt():FlxText
-		return timeBar;
+		return sourceNoteTimingMode() == 1 ? songName : cast timeBar;
+
+	/** Legacy scripts name the text timeBar; Psych names the actual progress fill. */
+	function initializeSourceTimeHUDAliases():Void {
+		timeBarBG = songPosBG;
+		timeBar = sourceNoteTimingMode() == 1 ? cast songPosBar : cast songName;
+		PlayState.globalSprites.set('timeBarBG', songPosBG);
+		PlayState.globalSprites.set('timeBar', timeBar);
+	}
+
+	/** Preserve native fills while matching source composite bar movement. */
+	function createSourceHUDBar(background:FlxSprite, inset:Int, direction:FlxBarFillDirection,
+		variable:String, minimum:Float, maximum:Float):FlxBar {
+		var bar:FlxBar;
+		if (sourceNoteTimingMode() == 1) {
+			var attached = new SourceAttachedBar(background.x + inset, background.y + inset, direction,
+				Std.int(background.width - inset * 2), Std.int(background.height - inset * 2), this,
+				variable, minimum, maximum);
+			attached.attachBackground(background);
+			bar = attached;
+		} else {
+			bar = new FlxBar(background.x + inset, background.y + inset, direction,
+				Std.int(background.width - inset * 2), Std.int(background.height - inset * 2), this,
+				variable, minimum, maximum);
+		}
+		return bar;
+	}
 	// V-Slice checks this while a PlayState is being reconstructed. This engine
 	// never reuses a live PlayState for that transition, so any callback running
 	// on the active instance is necessarily outside a reset window.
@@ -1331,6 +1773,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 		for (note in notes.members.copy())
 			if (note != null && note.mustPress == player) {
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, false);
 				note.destroy();
 			}
@@ -1644,18 +2087,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var scrollSpeed(get, set):Float;
 	function get_scrollSpeed():Float return daScrollSpeed;
 	function set_scrollSpeed(value:Float):Float {
+		var previousSpeed = effectiveScrollSpeed;
 		daScrollSpeed = value;
+		resizePsychSustains(previousSpeed, effectiveScrollSpeed);
 		refreshNightmareVisionNoteKillOffset();
 		return value;
+	}
+	/** Resize source bodies with rendered speed, including unspawned segments. */
+	function resizePsychSustains(previousSpeed:Float, nextSpeed:Float):Void {
+		if (nightmareVisionScripts != null || sourceNoteTimingMode() != 1
+			|| previousSpeed == nextSpeed || !Math.isFinite(previousSpeed) || previousSpeed <= 0
+			|| !Math.isFinite(nextSpeed) || nextSpeed <= 0) return;
+		var ratio = nextSpeed / previousSpeed;
+		// A segment can temporarily belong to both queues during callbacks.
+		var resized = new haxe.ds.ObjectMap<Note, Bool>();
+		function resize(note:Note):Void {
+			if (!isPsychReceptorNote(note) || resized.exists(note)) return;
+			resized.set(note, true);
+			note.resizeByRatio(ratio);
+		}
+		if (notes != null) for (note in notes.members) resize(note);
+		if (unspawnNotes != null) for (note in unspawnNotes) resize(note);
 	}
 	/** Nightmare Vision's source PlayState names the live speed `songSpeed`. */
 	@:keep public var songSpeed(get, set):Float;
 	function get_songSpeed():Float return daScrollSpeed;
 	function set_songSpeed(value:Float):Float return scrollSpeed = value;
 
-	/** Keep Nightmare Vision's note retirement window in step with its source songSpeed setter. */
+	/** Keep source note retirement in step with Psych/NV's songSpeed setter. */
 	function refreshNightmareVisionNoteKillOffset():Void {
-		if (nightmareVisionScripts == null) return;
+		if (nightmareVisionScripts == null && sourceNoteTimingMode() != 1) return;
 		noteKillOffset = Math.max(Conductor.stepCrochet, 350 / effectiveScrollSpeed * playbackRate);
 	}
 
@@ -1715,6 +2176,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return dynamicScrollTarget > 0 ? dynamicScrollTarget : daScrollSpeed;
 	}
 	var noteSpawnLookahead:Float = 1500;
+	var psychNoteUpdateScratch:Array<Note> = [];
 	static function scrollSpawnLookahead(target:Float):Float {
 		return target > 0 ? 1500 / Math.min(1, target) : 1500;
 	}
@@ -2253,6 +2715,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	// timer, but the synchronous nested call must not rebuild scripts and recurse
 	// until the native stack overflows.
 	var hxcCountdownHookDispatching:Bool = false;
+	var psychVideoHandoffTimer:FlxTimer;
+	var psychVideoRequestSerial:Int = 0;
+	var psychMissingIntroRequest:Null<Int>;
+	var psychMissingIntroHandoffUsed:Bool = false;
+	var psychVideoHostDestroyed:Bool = false;
+	var psychSourceVideo:NightmareVisionVideoSprite;
 	// A legacy Kade `0.offset` file has no generic timing ABI here.  Report a
 	// non-empty file once, but keep the authored chart/audio timing authoritative
 	// until a mounted corpus establishes a safe data-only meaning.
@@ -2321,13 +2789,23 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var finishedHxcEventSprites:Array<FlxSprite> = [];
 	var exInterp:InterpEx = new InterpEx();
 	var haxeSprites:Map<String, FlxSprite> = [];
+	/** Psych embedded HScript and Lua share the scene's tagged sprite registry. */
+	@:keep public var modchartSprites(get, set):Map<String, FlxSprite>;
+	function get_modchartSprites():Map<String, FlxSprite> return haxeSprites;
+	function set_modchartSprites(value:Map<String, FlxSprite>):Map<String, FlxSprite> return haxeSprites = value;
 	/** Per-scene variables shared by Psych Lua and HScript modules. */
 	public var psychScriptVariables:Map<String, Dynamic> = [];
+	/** Source direction names are also read by Lua's reflective property API. */
+	@:keep public var singAnimations:Array<String> = ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
 	var psychRuntimeBindings:Array<PsychRuntimeBindings> = [];
 	var psychSourceCallbacks = new PsychSourceCallbackRegistry();
 	public var variables(get, never):Map<String,Dynamic>;
 	function get_variables():Map<String,Dynamic> return psychScriptVariables;
 	public function getLuaObject(tag:String, text:Bool = true):Dynamic return compatFindObject(tag);
+	/** Source actor groups are native actors in this host's member list. */
+	@:keep public function addBehindGF(object:FlxBasic):Void insert(members.indexOf(gf), object);
+	@:keep public function addBehindBF(object:FlxBasic):Void insert(members.indexOf(boyfriend), object);
+	@:keep public function addBehindDad(object:FlxBasic):Void insert(members.indexOf(dad), object);
 	// Keep Sparrow names parsed from the source XML alongside each imported
 	// animated sprite. FlxAtlasFrames can reuse a native bitmap cache entry and
 	// expose a frame collection whose runtime names are unavailable on hxcpp;
@@ -3590,7 +4068,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			default:
 				if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
 				var value:Dynamic = null;
-				try value = Reflect.field(this, root) catch (_:Dynamic) {}
+				try value = Reflect.getProperty(this, root) catch (_:Dynamic) {}
 				if (value == null && PlayState.globalSprites.exists(root))
 					value = PlayState.globalSprites.get(root);
 				if (value == null && haxeSprites.exists(root))
@@ -4525,6 +5003,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatMakeLuaSprite(tag:String, image:String, x:Float = 0, y:Float = 0):FlxSprite {
+		// Psych destroys an existing tagged object before reusing its name. The
+		// registry is only a lookup table; overwriting it alone leaves the old
+		// sprite in the state's render/update members.
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		var sprite = new FlxSprite(x, y);
 		if (image != null && StringTools.trim(image) != '') {
 			var candidates = [image, image + '.png', 'assets/images/' + image, 'assets/images/' + image + '.png',
@@ -4601,6 +5084,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var graphic = compatPsychPathCall(ownerRoot, 'image', [compatPsychAssetKey(image, '.png')]);
 			if (graphic == null)
 				return compatMakeLuaSprite(tag, image, x, y);
+			if (tag != null)
+				compatRemoveLuaSprite(tag);
 			var traceFirstGlobalSprite = RuntimeSmokeHarness.enabled()
 				&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
 			if (traceFirstGlobalSprite)
@@ -4619,6 +5104,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 			return sprite;
 		}
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		var traceEmptyImageGlobalSprite = RuntimeSmokeHarness.enabled()
 			&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
 		if (traceEmptyImageGlobalSprite)
@@ -4667,6 +5154,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		fallback for donors which use the animated API for a single PNG.
 	*/
 	function compatMakeAnimatedLuaSprite(tag:String, image:String, x:Float = 0, y:Float = 0):FlxSprite {
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		var sprite = new FlxSprite(x, y);
 		var atlasNames:Array<String> = [];
 		if (image != null && StringTools.trim(image) != '') {
@@ -4722,6 +5211,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			trace('[psych-assets] Refused animated Lua sprite reference outside calling owner: ' + Std.string(image));
 			return compatMakeAnimatedLuaSprite(tag, '', x, y);
 		}
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		var sprite = new FlxSprite(x, y);
 		var atlasNames:Array<String> = [];
 		if (image != null && StringTools.trim(image) != '') {
@@ -4827,6 +5318,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatMakeLuaText(tag:String, text:String, width:Float = 0, x:Float = 0,
 		y:Float = 0):FlxText {
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		var label = new FlxText(x, y, width, text == null ? '' : text, 16);
 		// Psych Lua text starts on the HUD and stays fixed when the game
 		// camera scrolls. setObjectCamera can still override this afterward.
@@ -6476,7 +6969,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return true;
 			});
 			interp.variables.set('getModSetting', PsychModSettingCompat.create(origin,
-				psychScriptOwner, function(message:String) trace('[psych-mod-settings] ' + message)));
+				psychScriptOwner, function(message:String) trace('[psych-mod-settings] ' + message),
+				currentSongDataFolder()));
 		}
 		// Psych exposes these globals in every Lua state.  Keep them in the
 		// shared seed so converted scripts can use the same spelling without
@@ -6758,7 +7252,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			runtime.install();
 			psychRuntimeBindings.push(runtime);
 		}
-
+		// Convert Lua results after the source reflection overlay has installed
+		// its final getters; HScript retains the native array API unchanged.
+		PsychLuaApiResults.install(interp);
 	}
 
 	function hxcModuleNameKeys(scriptPath:String):Array<String> {
@@ -7772,7 +8268,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		for (entry in manifest.roots)
 			if (entry != null && entry.engine == ImportEngine.PSYCH && entry.path != null)
 				candidates.push(entry.path);
-		return PsychModSettingCompat.ownerForScriptRoots(scriptOrigin, candidates);
+		var physicalOwner = PsychModSettingCompat.ownerForScriptRoots(scriptOrigin, candidates);
+		if (physicalOwner != null) return physicalOwner;
+		return PsychModSettingCompat.ownerForSongCompanion(scriptOrigin,
+			selectedPsychSkinRoot(), currentSongDataFolder());
 	}
 
 	function preparePsychNoteDefinitions(ownerRoot:Null<String>):Void {
@@ -8586,7 +9085,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (note != null && note.codenameInputLine != null)
 			return getCodenameLineStrumline(note.codenameInputLine.lineIndex);
 		if (nightmareVisionScripts != null && note != null && note.sourcePlayfieldIndex >= 0) {
-			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			var field = nightmareVisionFieldForNote(note);
 			return field == null ? null : field.strumline;
 		}
 		return note != null && note.mustPress ? playerStrums : enemyStrums;
@@ -8594,37 +9093,30 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function configureNightmareVisionStrumlines():Void {
 		if (nightmareVisionScripts == null) return;
-		var centerY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height,
-			Note.swagWidth, downscroll);
 		for (field in nightmareVisionFields) {
 			if (field == null) continue;
-			var line = field.strumline;
-			if (line != null) line.setCenteredLayout(
-				NightmareVisionPlayfieldLayout.centerX(field.ID, Note.NOTE_AMOUNT,
-					FlxG.width, Note.swagWidth), centerY);
-			var skin = nightmareVisionSkinForField(field.ID);
-			if (line != null)
-				for (strum in line.members) if (strum != null) {
-					strum.nightmareVisionSource = true;
-					if (skin != null) skin.applyReceptor(strum, strum.ID);
-				}
-			if (line != null && skin != null) line.resetStrums();
+			if (field._skin == null) field._skin = nightmareVisionSkinForField(field.ID);
+			nightmareVisionConfigureFieldReceptors(field);
 		}
 	}
 
 	/** Source field zero is the player line; each field may select its own skin. */
 	public function nightmareVisionSkinForField(field:Int):NightmareVisionNoteSkin {
 		if (nightmareVisionPaths == null || SONG == null) return null;
+		var liveField = playFields == null ? null : playFields.getFieldFromID(field);
+		if (liveField != null && liveField._skin != null) return liveField._skin;
 		var names = SONG.arrowSkins;
 		var name = names != null && field >= 0 && field < names.length
 			&& names[field] != null && StringTools.trim(names[field]) != ''
 			? names[field] : 'default';
 		if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
-		var skin = nightmareVisionNoteSkins.get(name);
+		// Source fields own mutable skin instances, even when their JSON name matches.
+		var skinKey = field + ':' + name;
+		var skin = nightmareVisionNoteSkins.get(skinKey);
 		if (skin == null) {
 			try {
-				skin = new NightmareVisionNoteSkin(nightmareVisionPaths, name);
-				nightmareVisionNoteSkins.set(name, skin);
+				skin = new NightmareVisionNoteSkin(nightmareVisionPaths, name, Note.NOTE_AMOUNT, field);
+				nightmareVisionNoteSkins.set(skinKey, skin);
 				trace('[nightmare-vision-note-skin] loaded owner=' + nightmareVisionPaths.root
 					+ ' field=' + field + ' skin=' + name
 					+ ' atlas=' + skin.stringField('noteTexture', 'UI/notes/NOTE_assets'));
@@ -8643,27 +9135,34 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return null;
 	}
 
-	function nightmareVisionRenderer(field:Int):NightmareVisionModchartRenderer {
-		var renderer = nightmareVisionRenderers.get(field);
+	function nightmareVisionRenderer(field:Int, ?sourceField:NightmareVisionPlayFieldView):NightmareVisionModchartRenderer {
+		if (sourceField == null) sourceField = getNightmareVisionField(field);
+		if (sourceField == null) throw '[nightmare-vision-modchart] Missing source field ' + field;
+		var ownerField = sourceField;
+		var renderer = nightmareVisionRenderers.get(ownerField);
 		if (renderer == null) {
-			var skin = nightmareVisionSkinForField(field);
+			var skin = ownerField._skin;
 			if (skin == null || modManager == null) throw '[nightmare-vision-modchart] Missing source skin/manager for field ' + field;
+			var skinOffsets = new NightmareVisionModchartSkinOffsets(Note.NOTE_AMOUNT);
+			skinOffsets.readLive = function(kind:String, lane:Int, isSustain:Bool):nightmarevision.modchart.NightmareVisionModchartVector
+				return NightmareVisionSkinOffsetBridge.read(ownerField._skin, kind, lane, isSustain);
 			renderer = new NightmareVisionModchartRenderer(new NightmareVisionModchartTransform(modManager.registry),
-				new NightmareVisionModchartSkinOffsets(Note.NOTE_AMOUNT, skin.data), function(sprite:Dynamic, state:NightmareVisionModchartVisualState):Void {
+				skinOffsets, function(sprite:Dynamic, state:NightmareVisionModchartVisualState):Void {
 					var graphic:NightmareVisionRGBGraphics = null;
 					var animationX:Float = 0, animationY:Float = 0;
 					if (Std.isOfType(sprite, Note)) graphic = (cast sprite:Note).nightmareVisionRGB;
 					else if (Std.isOfType(sprite, Strumline.StrumNote)) {
 						var strum:Strumline.StrumNote = cast sprite;
-						if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics(skin.palette(strum.ID));
+						var liveSkin = ownerField._skin;
+						if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics(liveSkin.palette(strum.ID));
 						graphic = strum.nightmareVisionRGB;
 						var name = strum.animation.curAnim == null ? 'static' : strum.animation.curAnim.name;
-						graphic.enabled = strum.nightmareVisionPalette != null && name != 'static';
+						graphic.enabled = strum.useRGBShader && strum.nightmareVisionPalette != null && name != 'static';
 						var offsets = strum.nightmareVisionOffsets == null ? null : strum.nightmareVisionOffsets.get(name);
 						if (offsets != null) { animationX = offsets[0]; animationY = offsets[1]; }
 					}
 					if (graphic != null) {
-						graphic.alpha = state.alphaMod * state.rgbAlpha * getNightmareVisionField(field).baseAlpha;
+						graphic.alpha = state.alphaMod * state.rgbAlpha * ownerField.baseAlpha;
 						graphic.flash = state.rgbFlash;
 						graphic.apply(cast sprite);
 					}
@@ -8674,7 +9173,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					sprite.offset.x += x * Math.cos(angle) - y * Math.sin(angle);
 					sprite.offset.y += x * Math.sin(angle) + y * Math.cos(angle);
 				});
-			nightmareVisionRenderers.set(field, renderer);
+			nightmareVisionRenderers.set(ownerField, renderer);
 		}
 		return renderer;
 	}
@@ -8696,8 +9195,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function configureNightmareVisionNoteSkin(note:Note):Void {
 		if (note == null || note.sourcePlayfieldIndex < 0) return;
 		var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
-		if (skin != null && skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData))
-			RuntimeSmokeHarness.markNightmareVisionNoteVisual(note);
+		if (skin != null) {
+			NightmareVisionQuantRendering.classify(note, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view,
+				nightmareVisionConductor.getBeat(note.strumTime
+					- (nightmareVisionPrefs == null ? 0 : nightmareVisionPrefs.view.noteOffset)));
+			if (applyNightmareVisionNoteSkin(note, skin)) RuntimeSmokeHarness.markNightmareVisionNoteVisual(note);
+		}
 		if (nightmareVisionNoteTypes != null) {
 			if (note.nightmareVisionTypeRuntime != nightmareVisionNoteTypes) {
 				// Sustains may inherit this flag before their runtime is attached.
@@ -8708,6 +9211,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				note.ratingDisabled = disabled;
 			}
 		}
+	}
+
+	function applyNightmareVisionNoteSkin(note:Note, skin:NightmareVisionNoteSkin,
+		?frames:FlxAtlasFrames):Bool {
+		if (skin == null || !skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames))
+			return false;
+		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
+		if (note.nightmareVisionTypeRuntime != null) note.nightmareVisionTypeRuntime.syncNote(note);
+		return true;
 	}
 
 	function getInputStrumline(sourceLine:CodenameInputLine<Character>, playerOne:Bool):Strumline {
@@ -12494,6 +13006,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (codenameNoteSplashHandler != null)
 			add(codenameNoteSplashHandler);
 		if (comboGroup != null) add(comboGroup);
+		// From this point field collection mutations own live display attachment.
+		enableNightmareVisionFieldAttachment();
 
 		comboBreakThingies(0);
 		comboBreakThingies(1);
@@ -12572,21 +13086,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// Source Bar geometry is derived from its time graphic, before a script
 		// swaps the decorative border. Its fills sit beneath that border.
 		var timeInset = sourceTimeHUD ? 3 : 4;
-		songPosBar = new FlxBar(songPosBG.x + timeInset, songPosBG.y + timeInset, LEFT_TO_RIGHT,
-			Std.int(songPosBG.width - timeInset * 2), Std.int(songPosBG.height - timeInset * 2), this,
-			'songPositionBar', 0, 1);
+		songPosBar = createSourceHUDBar(songPosBG, timeInset, LEFT_TO_RIGHT, 'songPositionBar', 0, 1);
 		songPosBar.scrollFactor.set();
 		songPosBar.createFilledBar(FlxColor.GRAY, FlxColor.LIME);
 		songPosBar.numDivisions = 1000;
 		songPosBar.cameras = [camHUD];
 
-		// old-engine global sprite names for the song progress UI
-		PlayState.globalSprites.set("timeBarBG", songPosBG);
-		PlayState.globalSprites.set("timeBar", songName);
-		// old-engine field names for the same objects (milk 2.0 moves them via
-		// currentPlayState.timeBarBG / .timeBar)
-		timeBarBG = songPosBG;
-		timeBar = songName;
+		initializeSourceTimeHUDAliases();
 
 		if (useSongBar && !sourceTimeHUD) {
 			add(songPosBG);
@@ -12604,8 +13110,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		healthBarBG.scrollFactor.set();
 		add(healthBarBG);
 
-		healthBar = new FlxBar(healthBarBG.x + 4, healthBarBG.y + 4, RIGHT_TO_LEFT, Std.int(healthBarBG.width - 8), Std.int(healthBarBG.height - 8), this,
-			'health', 0, 2);
+		healthBar = createSourceHUDBar(healthBarBG, 4, RIGHT_TO_LEFT, 'health', 0, 2);
 		healthBar.scrollFactor.set();
 
 		// healthBar
@@ -12872,6 +13377,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');
 		if (selectedPsychSkinRoot() != null) PsychRuntimeBindings.dispatch(this, 'onCreatePost', []);
+		if (nightmareVisionInputScope != null)
+			nightmareVisionInputScope.input = nightmareVisionInputScope.createInput(nightmareVisionInputScope.controls);
 		callNightmareVision('onCreatePost', []);
 		refreshNightmareVisionStage();
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');
@@ -13162,6 +13669,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		for (note in notes.members.copy()) {
 			if (note != null && note.strumTime < target) {
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, true);
 				// A surviving sustain may still refer to this note as prevNote.
 				// Keep the same dead-before-destroy invariant as unspawn notes.
@@ -13444,36 +13952,81 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		returns either a native asset id or a selected imported namespace; reduce
 		both forms to an in-scope video file before handing it to the native class.
 	*/
+	/** Resume a source video only after its countdown callback has returned. */
+	function psychVideoHandoff(serial:Int, defer:Bool = false, missingIntro:Bool = false):Void {
+		if (psychVideoHostDestroyed || serial != psychVideoRequestSerial || FlxG.state != this) return;
+		if (missingIntro && (endingSong || isStoryMode || !alwaysDoCutscenes || startedCountdown)) return;
+		if (defer || hxcCountdownHookDispatching) {
+			if (psychVideoHandoffTimer != null) return;
+			psychVideoHandoffTimer = new FlxTimer().start(0.001, function(_:FlxTimer) {
+				psychVideoHandoffTimer = null;
+				psychVideoHandoff(serial, false, missingIntro);
+			});
+			return;
+		}
+		inCutscene = false;
+		if (endingSong) endForReal(); else startCountdown();
+	}
+
 	public function psychStartVideo(ownerRoot:String, name:String, canSkip:Bool = true,
 		forMidSong:Bool = false, shouldLoop:Bool = false, playOnLoad:Bool = true):Bool {
-		if (ownerRoot == null || ownerRoot == '') return false;
+		if (psychVideoHostDestroyed || ownerRoot == null || ownerRoot == '') return false;
 		var paths = PsychOwnerPaths.create(ownerRoot);
+		var location = Reflect.callMethod(paths, Reflect.field(paths, 'video'), [name]);
+		if (location == null || !FNFAssets.exists(location)) {
+			trace('[psych-video] Video file not found in selected owner: ' + name);
+			// Forced Freeplay projects story gates into Lua. A missing intro may
+			// otherwise strand its first Stop even after the local gate is released.
+			if (!forMidSong && !endingSong && !startedCountdown && hxcCountdownHookDispatching
+				&& !isStoryMode && alwaysDoCutscenes && !psychMissingIntroHandoffUsed) {
+				psychMissingIntroHandoffUsed = true;
+				if (psychVideoHandoffTimer != null) {
+					psychVideoHandoffTimer.cancel();
+					psychVideoHandoffTimer = null;
+				}
+				psychMissingIntroRequest = ++psychVideoRequestSerial;
+			}
+			return false;
+		}
+		var serial = ++psychVideoRequestSerial;
+		psychMissingIntroRequest = null;
+		if (psychVideoHandoffTimer != null) {
+			psychVideoHandoffTimer.cancel();
+			psychVideoHandoffTimer = null;
+		}
+		if (psychSourceVideo != null) {
+			remove(psychSourceVideo, true);
+			psychSourceVideo.destroy();
+			psychSourceVideo = null;
+		}
 		Reflect.setField(paths, 'root', ownerRoot);
 		Reflect.setField(paths, 'scopeAssetPath', function(path:String):String {
 			return PsychOwnerAssetPath.resolve(ownerRoot, path).path;
 		});
 		Reflect.setField(paths, 'exists', function(path:String):Bool return FNFAssets.exists(path));
 		var video = new NightmareVisionVideoSprite(this, paths, 0, 0, true, canSkip);
+		psychSourceVideo = video;
 		video.cameras = [camOther];
 		video.onFormat(function() {
 			video.setGraphicSize(FlxG.width, FlxG.height);
 			video.updateHitbox(); video.screenCenter();
 		});
 		var completed = false;
+		// Add before registering: unavailable decoders invoke late onEnd immediately.
+		if (!forMidSong) inCutscene = true;
+		add(video);
 		video.onEnd(function() {
 			if (completed) return;
 			completed = true;
 			remove(video, true);
-			if (!forMidSong) {
-				inCutscene = false;
-				if (endingSong) endForReal(); else startCountdown();
-			}
+			if (psychSourceVideo == video) psychSourceVideo = null;
+			if (!forMidSong) psychVideoHandoff(serial);
 		});
-		if (!forMidSong) inCutscene = true;
-		add(video);
-		var loaded = video.load(name, shouldLoop ? [NightmareVisionVideoSprite.looping] : []);
-		if (loaded && playOnLoad) video.delayAndStart();
-		return loaded;
+		if (completed) return true;
+		var loaded = video.load(location, shouldLoop ? [NightmareVisionVideoSprite.looping] : []);
+		// Psych Lua reports acceptance once the requested file exists.
+		if (loaded && playOnLoad && !completed) video.delayAndStart();
+		return true;
 	}
 
 	@:keep public function hxcPlayImportedVideo(filename:Dynamic, ?ending:Bool = false):Bool {
@@ -13899,10 +14452,21 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			RuntimeSmokeHarness.markStep('countdown:startCountdown-callback-complete');
 		} catch (error:Dynamic) {
 			hxcCountdownHookDispatching = false;
+			psychMissingIntroRequest = null;
 			throw error;
 		}
 		hxcCountdownHookDispatching = false;
-		if (EngineCompat.anyFunctionStop(countdownResults)) {
+		var sourceCountdownStopped = EngineCompat.anyFunctionStop(countdownResults);
+		if (psychMissingIntroRequest != null) {
+			var serial:Int = psychMissingIntroRequest;
+			psychMissingIntroRequest = null;
+			if (sourceCountdownStopped && !endingSong) {
+				trace('[psych-video] Missing forced-Freeplay intro: requesting one deferred countdown handoff');
+				psychVideoHandoff(serial, true, true);
+			}
+		}
+		RuntimeSmokeHarness.markStep('countdown:source-startCountdown-result stopped=' + sourceCountdownStopped);
+		if (sourceCountdownStopped) {
 			RuntimeSmokeHarness.markStep('countdown:stopped-by-startCountdown');
 			return;
 		}
@@ -17527,7 +18091,11 @@ void main(void) {
 		};
 
 		var nightmareHoldStep = Math.max(Conductor.stepCrochet / holdSubdivisions, 10);
+		var psychSectionBpm = Conductor.bpm;
+		var psychSectionStep = Conductor.stepCrochet;
 		for (section in noteData) {
+			psychSectionBpm = PsychSustainLayout.sectionBpm(psychSectionBpm, section.changeBPM, section.bpm);
+			psychSectionStep = PsychSustainLayout.stepCrochet(psychSectionBpm, Conductor.stepCrochet);
 			if (nightmareVisionScripts != null && section.changeBPM) nightmareHoldStep = 15000 / section.bpm / holdSubdivisions;
 			var coolSection:Int = Std.int(section.lengthInSteps / 4);
 			var rowIndex:Int = 0;
@@ -17683,7 +18251,9 @@ void main(void) {
 				// Imported charts may serialize an intended zero as a floating-point
 				// remainder (or as a numeric string). Normalize once at the chart
 				// boundary so generation, rendering, and receptor timing agree.
+				var psychSustain = isPsychReceptorNote(swagNote);
 				if (nightmareVisionScripts != null) swagNote.sustainLength = Math.max(0, songNotes[2]);
+				else if (psychSustain) swagNote.sustainLength = PsychSustainLayout.holdLength(songNotes[2]);
 				else swagNote.sustainLength = normalizeSustainLength(songNotes[2], Conductor.stepCrochet);
 					swagNote.scrollFactor.set();
 
@@ -17691,6 +18261,7 @@ void main(void) {
 					if (nightmareVisionScripts != null) swagNote.nightmareVisionTailState = {missed:false, active:false, notes:[swagNote]};
 					var sustainSteps:Int = sustainStepCount(susLength, Conductor.stepCrochet);
 					if (nightmareVisionScripts != null) sustainSteps = NightmareVisionSustainLayout.segmentCount(susLength, nightmareHoldStep);
+					else if (psychSustain) sustainSteps = PsychSustainLayout.segmentCount(susLength, psychSectionStep);
 
 				susLength = susLength / Conductor.stepCrochet;
 				unspawnNotes.push(swagNote);
@@ -17698,9 +18269,10 @@ void main(void) {
 					if (sustainSteps > 0 && !ModifierState.namedModifiers.nos.value) {
 						for (susNote in 0...sustainSteps) {
 						oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
-						if (nightmareVisionScripts != null || susLength > susNote) {
+						if (nightmareVisionScripts != null || psychSustain || susLength > susNote) {
 							var segmentTime = nightmareVisionScripts != null
 								? NightmareVisionSustainLayout.segmentTime(daStrumTime, susNote, nightmareHoldStep)
+								: psychSustain ? PsychSustainLayout.segmentTime(daStrumTime, susNote, psychSectionStep)
 								: daStrumTime + Conductor.stepCrochet * (susNote + 1);
 							var sustainNote:Note;
 							if (traceNoteConstruction)
@@ -17745,7 +18317,9 @@ void main(void) {
 									});
 							else
 								configurePsychNoteSkin(sustainNote, psychSkinRoot);
-							configureNightmareVisionNoteSkin(sustainNote);
+							if (psychSustain) sustainNote.finalizePsychSustainSegment(oldNote, swagNote, psychSectionStep,
+									Conductor.stepCrochet, effectiveScrollSpeed, playbackRate, pixelUI, downscroll);
+								configureNightmareVisionNoteSkin(sustainNote);
 							if (nightmareVisionScripts != null) {
 								if (nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex))
 									sustainNote.forceGfSing = true;
@@ -18412,6 +18986,15 @@ void main(void) {
 		if (!absolute)
 			scroll *= SONG.speed;
 
+		if (nightmareVisionScripts == null && sourceNoteTimingMode() == 1) {
+			if (ease.toLowerCase() == 'instant' || duration <= 0)
+				songSpeed = scroll;
+			else
+				FlxTween.tween(this, {songSpeed: scroll}, Conductor.stepsToTime(duration)/1000, {
+					ease: Reflect.field(FlxEase, ease)
+				});
+			return;
+		}
 		if (ease.toLowerCase() == 'instant' || duration <= 0) {
 			daScrollSpeed = scroll;
 			refreshNightmareVisionNoteKillOffset();
@@ -19300,14 +19883,19 @@ void main(void) {
 		}
 		if (nightmareVisionScripts != null && notes != null) {
 			for (note in notes.members) if (note != null && note.alive) {
-				var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+				var field = nightmareVisionFieldForNote(note);
+				if (field == null || nightmareVisionFields.indexOf(field) < 0) {
+					note.autoHitSuppressed = true;
+					continue;
+				}
 				note.autoHitSuppressed = !field.inControl;
 				note.sourcePlayfieldPlayerControlled = field.playerControls;
 				note.sourcePlayfieldAutoPlay = field.autoPlayed;
 			}
 			if (!paused && !inCutscene) {
-				var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
-				var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
+				var sourceInput = nightmareVisionInputScope == null ? null : nightmareVisionInputScope.input;
+				var pressed = sourceInput == null ? [] : [for (key in 0...sourceInput.justPressedActions.length) sourceInput.inputJustPressed(key)];
+				var released = sourceInput == null ? [] : [for (key in 0...sourceInput.justReleasedActions.length) sourceInput.inputJustReleased(key)];
 				for (field in nightmareVisionFields) if (field != null && field.canInput()) {
 					var line = field.strumline;
 					if (line != null) for (strum in line.members) if (strum != null) {
@@ -19337,7 +19925,7 @@ void main(void) {
 				// angle-based travel above. This legacy pass only knows the two
 				// primary banks, so snapping them here would erase extra-line,
 				// authored-offset, and angled note geometry.
-				if (daNote.codenameInputLine != null || nightmareVisionScripts != null)
+				if (daNote.codenameInputLine != null || nightmareVisionScripts != null || isPsychReceptorNote(daNote))
 					return;
 				var noteData = daNote.noteData;
 				var strums = daNote.mustPress ? playerStrums : enemyStrums;
@@ -19864,6 +20452,10 @@ void main(void) {
 				} else {
 					if (psychSpawn) notes.insert(0, dunceNote);
 					else notes.add(dunceNote);
+					if (nightmareVisionScripts != null) {
+						var sourceField = getNightmareVisionField(dunceNote.sourcePlayfieldIndex);
+						if (sourceField != null) sourceField.addNote(dunceNote);
+					}
 					dunceNote.spawned = true;
 					dispatchPsychNoteSpawn(dunceNote);
 					var typeSpawnResult = nightmareVisionNoteTypes == null ? NightmareVisionScriptGroup.CONTINUE_FUNC
@@ -19871,7 +20463,8 @@ void main(void) {
 					if (nightmareVisionScripts != null && typeSpawnResult != NightmareVisionScriptGroup.STOP_FUNC)
 						nightmareVisionScripts.call('onSpawnNotePost', [dunceNote], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(dunceNote)]);
 					if (nightmareVisionScripts != null) {
-						dunceNote.nightmareVisionRenderer = nightmareVisionRenderer(dunceNote.sourcePlayfieldIndex);
+						dunceNote.nightmareVisionRenderer = nightmareVisionRenderer(dunceNote.sourcePlayfieldIndex,
+							nightmareVisionFieldForNote(dunceNote));
 						dunceNote.nightmareVisionRenderer.configureNote(dunceNote);
 						if (dunceNote.isSustainNote) dunceNote.clipRect = new FlxRect(0, 0, dunceNote.frameWidth, dunceNote.frameHeight);
 					}
@@ -19895,14 +20488,16 @@ void main(void) {
 		if (nightmareContext != null) for (field in nightmareVisionFields) {
 			if (field == null || field.strumline == null) continue;
 			for (strum in field.strumline.members) if (strum != null)
-				nightmareVisionRenderer(field.ID).updateReceptor(nightmareContext, strum, field.ID);
+				nightmareVisionRenderer(field.ID, field).updateReceptor(nightmareContext, strum, field.ID);
 		}
 
 		for (line in codenameInputLines) if (line != null) line.botplay = demoMode;
 		if (generatedMusic) {
-			notes.forEachAlive(function(daNote:Note) {
+			refreshNightmareVisionNoteKillOffset();
+			forEachLiveGameplayNote(function(daNote:Note) {
+				var psychPresentation = isPsychReceptorNote(daNote);
 				if (nightmareVisionScripts != null) {
-					var field = getNightmareVisionField(daNote.sourcePlayfieldIndex);
+					var field = nightmareVisionFieldForNote(daNote);
 					daNote.autoHitSuppressed = !field.inControl;
 					daNote.sourcePlayfieldPlayerControlled = field.playerControls;
 					daNote.sourcePlayfieldAutoPlay = field.autoPlayed;
@@ -19921,13 +20516,14 @@ void main(void) {
 					}
 					if ((daNote.tooLate && Conductor.songPosition >= killOffset + daNote.strumTime + daNote.sustainLength)
 						|| (daNote.wasGoodHit && daNote.nightmareVisionHitDispatched && Conductor.songPosition >= daNote.strumTime + daNote.sustainLength)) {
-						daNote.kill(); notes.remove(daNote, true); daNote.destroy(); return;
+						daNote.kill(); nightmareVisionRemoveFieldNoteMembership(daNote);
+						notes.remove(daNote, true); daNote.destroy(); return;
 					}
 				}
 				if (updateCodenameNoteLifetime(daNote)) return;
 				var sourceVisible = daNote.codenameInputLine == null
 					|| daNote.codenameInputLine.visible;
-				if (nightmareContext == null && daNote.y > FlxG.height) {
+				if (nightmareContext == null && !psychPresentation && daNote.y > FlxG.height) {
 					daNote.active = false;
 					daNote.visible = false;
 				} else {
@@ -19947,7 +20543,9 @@ void main(void) {
 					: (daNoteStrums.hasScrollSpeedOverride() ? daNoteStrums.scrollSpeed
 						: effectiveScrollSpeed), 2);
 							
-				if (nightmareContext == null) {
+				if (psychPresentation) {
+					applyPsychNotePresentation(daNote, daNoteStrums, noteScrollSpeed);
+				} else if (nightmareContext == null) {
 				if (downscroll) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y
 						+
@@ -20033,10 +20631,13 @@ void main(void) {
 					// Computer notes are still real note hits for imported HXC
 					// modules. Dispatch before native singing/removal, with the
 					// perfect judgement that autoplay produced.
-					if (sourceScoreLedgerActive() && !sourceScoreNightmare && daNote.ignoreNote) return;
+					if (sourceScoreLedgerActive() && !sourceScoreNightmare && daNote.ignoreNote) {
+						updatePsychNoteLifetime(daNote);
+						return;
+					}
 					if (!dispatchHxcAutoNoteHit(daNote, false))
 						return;
-					if (sourceScoreNightmare && getNightmareVisionField(daNote.sourcePlayfieldIndex).playerControls) scoreSourceAutoNote(daNote, false);
+					if (sourceScoreNightmare && nightmareVisionFieldForNote(daNote).playerControls) scoreSourceAutoNote(daNote, false);
 					// Psych's GF Sing noteType is a note-local actor route.  Do not
 					// toggle the global GF-sing event flag: simultaneous charts can
 					// mix ordinary opponent notes and GF notes in one section.
@@ -20111,9 +20712,14 @@ void main(void) {
 						restoreSourceHitVocals(daNote, false);
 					dispatchNightmareVisionNoteHit(daNote);
 					dispatchPsychNoteHit(daNote, false);
-					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) return;
+					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) {
+						applyPsychNoteClip(daNote, daNoteStrums);
+						updatePsychNoteLifetime(daNote);
+						return;
+					}
 
 					daNote.kill();
+					nightmareVisionRemoveFieldNoteMembership(daNote);
 					notes.remove(daNote, true);
 					daNote.destroy();
 					return; // This note is gone; do not position it or judge it again.
@@ -20183,14 +20789,19 @@ void main(void) {
 						restoreSourceHitVocals(daNote, true);
 					dispatchNightmareVisionNoteHit(daNote);
 					dispatchPsychNoteHit(daNote, true);
-					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) return;
+					if ((nightmareVisionScripts != null || (sourceScoreLedgerActive() && !sourceScoreNightmare)) && daNote.isSustainNote) {
+						applyPsychNoteClip(daNote, daNoteStrums);
+						updatePsychNoteLifetime(daNote);
+						return;
+					}
 
 					daNote.kill();
+					nightmareVisionRemoveFieldNoteMembership(daNote);
 					notes.remove(daNote, true);
 					daNote.destroy();
 					return; // This note is gone; do not position it or judge it again.
 				}
-				if (nightmareContext == null) {
+				if (!psychPresentation && nightmareContext == null) {
 				var neg = downscroll ? -1 : 1;
 				if (drunkNotes) {
 					daNote.y = (daNoteStrums.members[Math.floor(Math.abs(daNote.noteData))].y - neg * (Conductor.songPosition - daNote.strumTime) * ((Math.sin(songTime/400)/6)+0.5) * noteSpeed * noteScrollSpeed);
@@ -20206,7 +20817,7 @@ void main(void) {
 					else
 						daNote.x = snekNumber+(Note.swagWidth*daNote.noteData)+50;
 				}
-				} else {
+				} else if (nightmareContext != null) {
 					var diff = daNote.strumTime - Conductor.songPosition;
 					var duration = daNote.nightmareVisionSustainDuration;
 					var futureBeat = nightmareVisionConductor.getBeat(nightmareVisionConductor.getBeat(Conductor.songPosition + duration));
@@ -20229,8 +20840,10 @@ void main(void) {
 
 				// this is not work well >:(
 				dispatchNoteStrumCallback(daNote);
+				applyPsychNoteClip(daNote, daNoteStrums);
+				if (updatePsychNoteLifetime(daNote)) return;
 
-				if (nightmareVisionScripts == null && ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll))) {
+				if (!psychPresentation && nightmareVisionScripts == null && ((daNote.y < -daNote.height && !downscroll) || (daNote.y > FlxG.height + daNote.height && downscroll))) {
 					if (daNote.codenameInputLine != null) {
 						// Source line lifetime is decided above by the hit-sustain
 						// duration and tooLate branches, not by screen clipping.
@@ -20262,6 +20875,7 @@ void main(void) {
 					daNote.visible = false;
 
 					daNote.kill();
+					nightmareVisionRemoveFieldNoteMembership(daNote);
 					notes.remove(daNote, true);
 					daNote.destroy();
 				}
@@ -20296,14 +20910,10 @@ void main(void) {
 			}
 		}
 
-		if (nightmareVisionScripts != null) {
-			var pressed = [controls.CTRLA_P, controls.CTRLB_P, controls.CTRLC_P, controls.CTRLD_P];
-			var released = [controls.CTRLA_R, controls.CTRLB_R, controls.CTRLC_R, controls.CTRLD_R];
-			for (key in 0...pressed.length) {
-				if (pressed[key]) nightmareVisionSourceKeyPressed(key);
-				if (released[key]) nightmareVisionSourceKeyReleased(key);
-			}
-		}
+		// Raw source input is drained once per host update, independently of the
+		// fixed source script clock. Do not also poll native-bank press/release edges.
+		if (nightmareVisionInputScope != null && nightmareVisionInputScope.input != null)
+			nightmareVisionInputScope.input.update();
 		updateHighwayDim();
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -20393,10 +21003,12 @@ void main(void) {
 
 	/** Source hold input is time-based; it does not use the legacy sick window. */
 	function processNightmareVisionHolds():Void {
-		var held = [controls.CTRLA, controls.CTRLB, controls.CTRLC, controls.CTRLD];
+		var sourceInput = nightmareVisionInputScope == null ? null : nightmareVisionInputScope.input;
+		var held = sourceInput == null ? [] : [for (key in 0...sourceInput.pressedActions.length) sourceInput.inputPressed(key)];
 		for (note in notes.members.copy()) {
 			if (note == null) continue;
-			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			var field = nightmareVisionFieldForNote(note);
+			if (field == null || nightmareVisionFields.indexOf(field) < 0) continue;
 			if (!NightmareVisionSustainInput.shouldProcessHold(boyfriend.stunned, note.alive,
 				note.isSustainNote, note.blockHit, note.tooLate, field.autoPlayed,
 				field.inControl, field.playerControls)) continue;
@@ -20426,7 +21038,8 @@ void main(void) {
 		for (_ in 0...batch.tickCount) for (note in notes.members.copy()) {
 			if (note == null || !note.alive || note.nightmareVisionHitDispatched
 				|| note.sourcePlayfieldIndex < 0) continue;
-			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			var field = nightmareVisionFieldForNote(note);
+			if (field == null || nightmareVisionFields.indexOf(field) < 0) continue;
 			note.sourcePlayfieldPlayerControlled = field.playerControls;
 			note.sourcePlayfieldAutoPlay = field.autoPlayed;
 			note.autoHitSuppressed = !field.inControl;
@@ -20437,8 +21050,16 @@ void main(void) {
 	}
 
 	function sustain2(strum:Int, spr:Strumline.StrumNote, note:Note):Void {
+		if (isPsychReceptorNote(note)) {
+			// Psych manual confirms last until key release. Autoplay uses the
+			// donor step-based timer; neither route rewrites authored hold length.
+			spr.psychSourceTiming = true;
+			spr.resetAnim = note.isAutoPlayed() ? Conductor.stepCrochet * 1.25 / 1000 / playbackRate : 0;
+			return;
+		}
 		if (note.nightmareVisionTypeRuntime != null) {
-			var field = getNightmareVisionField(note.sourcePlayfieldIndex);
+			var field = nightmareVisionFieldForNote(note);
+			if (field == null) return;
 			if (field.autoPlayed) spr.resetAnim = (0.15 + (note.isSustainNote && !note.nightmareVisionSustainEnd ? 0.15 : 0)) / playbackRate;
 			if (note.isSustainNote) spr.coyoteTime = field.holdDropLeniency;
 			else if (note.nightmareVisionTailState != null) note.nightmareVisionTailState.active = true;
@@ -20904,7 +21525,7 @@ void main(void) {
 		var dontCountNote = daNote.dontCountNote;
 		if (sourceLedger) {
 			var fieldAuto = sourceScoreNightmare
-				&& (sourceField == null ? getNightmareVisionField(daNote.sourcePlayfieldIndex).autoPlayed : sourceField.autoPlayed);
+				&& (sourceField == null ? nightmareVisionFieldForNote(daNote).autoPlayed : sourceField.autoPlayed);
 			applySourceScoredHit(daNote, sourceRating, fieldAuto);
 			if (!sourceScoreNightmare && sourceRating.noteSplash && shouldShowNoteSplash(daNote)) {
 				final strums = getNoteStrumline(daNote);
@@ -21356,8 +21977,8 @@ void main(void) {
 	}
 
 	function scoreSourceAutoNote(note:Note, playerOne:Bool):Void {
-		if (sourceScoreNightmare && !getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) return;
-		var show = !sourceScoreNightmare || getNightmareVisionField(note.sourcePlayfieldIndex).showRatings;
+		if (sourceScoreNightmare && !nightmareVisionFieldForNote(note).playerControls) return;
+		var show = !sourceScoreNightmare || nightmareVisionFieldForNote(note).showRatings;
 		if (sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 		if (show && !note.isSustainNote && !note.hitCausesMiss) {
 			combo = Std.int(Math.min(9999, combo + 1));
@@ -21381,7 +22002,7 @@ void main(void) {
 
 	function sourceMissCounts(note:Note):Bool {
 		return !sourceScoreNightmare || note == null || (!note.canMiss && !note.blockHit
-			&& getNightmareVisionField(note.sourcePlayfieldIndex).playerControls);
+			&& nightmareVisionFieldForNote(note).playerControls);
 	}
 
 	function applySourceMissHealth(note:Note, playerOne:Bool, reaction:Bool):Void {
@@ -21394,7 +22015,7 @@ void main(void) {
 	}
 
 	function applySourceHitHealth(note:Note, playerOne:Bool):Void {
-		if (sourceScoreNightmare && !getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) return;
+		if (sourceScoreNightmare && !nightmareVisionFieldForNote(note).playerControls) return;
 		var amount = SourceHealthDelta.hit(sourceScoreNightmare, note.hitHealth, healthGain, healthGainMultiplier,
 			note.isSustainNote, holdSubdivisions, guitarHeroSustains);
 		if (playerOne) health += amount; else health -= amount;
@@ -21815,6 +22436,7 @@ void main(void) {
 	function invalidateSourceInputNote(note:Note):Void {
 		if (note == null || !note.alive) return;
 		note.kill();
+		nightmareVisionRemoveFieldNoteMembership(note);
 		notes.remove(note, true);
 		note.destroy();
 	}
@@ -21877,7 +22499,12 @@ void main(void) {
 	}
 
 	function nightmareVisionSourceKeyPressed(key:Int):Void {
-		if (key < 0 || key >= 4) return;
+		if (key < 0) return;
+		var previousTime = Conductor.songPosition;
+		if (!demoMode && !paused && startedCountdown && nightmareVisionCurrentInputEvent != null) {
+			if (FlxG.sound.music != null && FlxG.sound.music.playing) Conductor.songPosition = FlxG.sound.music.time;
+			Conductor.songPosition -= lime.system.System.getTimer() - nightmareVisionCurrentInputEvent.timer;
+		}
 		if (!demoMode && !paused && startedCountdown && generatedMusic && !endingSong
 			&& !disableKeys && !compatEventVideoControlsDisabled && !hxcVideoControlsDisabled) {
 			var anyInput = false;
@@ -21888,7 +22515,7 @@ void main(void) {
 				if (!field.canInput()) continue;
 				anyInput = true;
 				var selected = SourceInputNotes.nightmareVision(notes.members,
-					function(note:Note):Bool return note != null && note.alive && note.sourcePlayfieldIndex == id
+					function(note:Note):Bool return note != null && note.alive && nightmareVisionFieldForNote(note) == field
 						&& note.noteData == key && note.canBeHit && !note.tooLate && !note.wasGoodHit,
 					function(note:Note):Bool return note.isSustainNote,
 					function(note:Note):Int return note.hitPriority,
@@ -21907,17 +22534,18 @@ void main(void) {
 				callNightmareVision('onGhostTap', [key]);
 				if (nightmareVisionPrefs.view.ghostTapping != true) {
 					for (field in nightmareVisionFields)
-						if (field != null && field.canInput()) noteMiss(key, field.ID != 1, null, true);
+						if (field != null && field.canInput()) field.onMissPress.dispatch(key);
 					callNightmareVision('noteMissPress', [key]);
 				}
 			}
 		}
+		Conductor.songPosition = previousTime;
 		callNightmareVision('onKeyPress', [key]);
 		callNightmareVision('onInputPress', [key]);
 	}
 
 	function nightmareVisionSourceKeyReleased(key:Int):Void {
-		if (key < 0 || key >= 4) return;
+		if (key < 0) return;
 		if (startedCountdown && !paused) for (field in nightmareVisionFields) {
 			if (field == null || !field.canInput()) continue;
 			var id = field.ID;
@@ -22058,6 +22686,7 @@ void main(void) {
 			for (note in dumbNotes) {
 				FlxG.log.add("killing dumb ass note at " + note.strumTime);
 				note.kill();
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, true);
 				note.destroy();
 			}
@@ -22150,6 +22779,7 @@ void main(void) {
 			for (note in dumbNotes) {
 				FlxG.log.add("killing dumb ass note at " + note.strumTime);
 				note.kill();
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, true);
 				note.destroy();
 			}
@@ -22386,6 +23016,79 @@ void main(void) {
 			trace('[codename-note-splash] selected owner is unavailable for "' + splashName + '"');
 	}
 
+	/** Source callbacks/removal splice the live group. Visit the entry set once so
+	 * removing a hit/expired note cannot skip its next neighbor. Reuse storage;
+	 * notes added during a callback enter the next host pass (unlike Psych's live
+	 * index loop, which may process additions immediately). */
+	function forEachLiveGameplayNote(callback:Note->Void):Void {
+		if (nightmareVisionScripts != null || sourceNoteTimingMode() != 1) {
+			notes.forEachAlive(callback);
+			return;
+		}
+		psychNoteUpdateScratch.resize(0);
+		for (note in notes.members) if (note != null && note.exists && note.alive)
+			psychNoteUpdateScratch.push(note);
+		for (note in psychNoteUpdateScratch) if (note.exists && note.alive)
+			callback(note);
+		psychNoteUpdateScratch.resize(0);
+	}
+
+	function isPsychReceptorNote(note:Note):Bool {
+		return note != null && nightmareVisionScripts == null
+			&& note.sourceTimingMode == 1 && note.codenameInputLine == null;
+	}
+
+	/** Psych 1.0.4 seeds sustain alignment from its authored head, before scripts run. */
+	function configurePsychSustainCorrection(note:Note, head:Note):Void {
+		if (!isPsychReceptorNote(note) || !note.isSustainNote || head == null) return;
+		note.correctionOffset = !pixelUI && downscroll ? 0 : head.height / 2;
+	}
+
+	/** This route owns all Psych geometry; native positioning must not overwrite copy flags. */
+	function applyPsychNotePresentation(note:Note, strums:Strumline, noteScrollSpeed:Float):Void {
+		if (!isPsychReceptorNote(note) || strums == null) return;
+		var lane = Math.floor(Math.abs(note.noteData));
+		if (lane < 0 || lane >= strums.members.length) return;
+		var receptor = strums.members[lane];
+		if (receptor == null) return;
+		var travelSpeed = noteScrollSpeed * noteSpeed / 0.45;
+		if (drunkNotes) travelSpeed *= (Math.sin(songTime / 400) / 6) + 0.5;
+		note.applyPsychReceptorFollow(receptor.x, receptor.y, receptor.direction,
+			receptor.angle, receptor.downScroll, travelSpeed / playbackRate, pixelUI, daPixelZoom);
+		if (snakeNotes && note.copyX)
+			note.x = (note.mustPress ? FlxG.width / 2 : 0) + snekNumber + Note.swagWidth * note.noteData + 50;
+		// Donor followStrumNote copies alpha before any hit callback or sustain return.
+		note.applyPsychReceptorAlpha(receptor.alpha);
+		if (vnshNotes && note.copyAlpha) {
+			var fadeDirection = receptor.downScroll ? -1 : 1;
+			note.alpha *= FlxMath.remapToRange(fadeDirection * note.y,
+				fadeDirection * receptor.y, FlxG.height, 0, 1);
+		}
+	}
+
+	function applyPsychNoteClip(note:Note, strums:Strumline):Void {
+		if (!isPsychReceptorNote(note) || strums == null) return;
+		var lane = Math.floor(Math.abs(note.noteData));
+		if (lane < 0 || lane >= strums.members.length) return;
+		var receptor = strums.members[lane];
+		if (receptor != null && receptor.sustainReduce)
+			note.applyPsychReceptorClip(receptor.y, receptor.downScroll);
+	}
+
+	/** Source retirement is independent of a script's note/receptor position. */
+	function updatePsychNoteLifetime(note:Note):Bool {
+		if (!isPsychReceptorNote(note) || Conductor.songPosition - note.strumTime <= noteKillOffset) return false;
+		if (!note.isAutoPlayed() && !note.dontCountNote && !note.ignoreNote && !endingSong
+			&& (note.tooLate || !note.wasGoodHit))
+			noteMiss(note.noteData, note.mustPress, note, false);
+		note.active = false;
+		note.visible = false;
+		note.kill();
+		notes.remove(note, true);
+		note.destroy();
+		return true;
+	}
+
 	/** Donor StrumLine judges tooLate every update and retires accepted holds
 	 * at their end time. A canceled/prevented miss may run again next frame. */
 	function updateCodenameNoteLifetime(note:Note):Bool {
@@ -22393,6 +23096,7 @@ void main(void) {
 		if (note.wasGoodHit && note.codenameHitDispatched && note.isSustainNote
 			&& note.strumTime + note.sustainLength < Conductor.songPosition) {
 			note.kill();
+			nightmareVisionRemoveFieldNoteMembership(note);
 			notes.remove(note, true);
 			note.destroy();
 			return true;
@@ -22402,6 +23106,7 @@ void main(void) {
 				noteMiss(note.noteData, note.mustPress, note, true);
 			else {
 				note.kill();
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, true);
 				note.destroy();
 			}
@@ -22507,6 +23212,7 @@ void main(void) {
 		if (event.enableCamZooming) camZooming = true;
 		if (event.deleteNote && note.alive) {
 			note.kill();
+			nightmareVisionRemoveFieldNoteMembership(note);
 			notes.remove(note, true);
 			note.destroy();
 		}
@@ -22584,6 +23290,7 @@ void main(void) {
 		callAllHScript('noteMiss', [note, !line.cpu, direction], true);
 		if (event.deleteNote && note != null && note.alive) {
 			note.kill();
+			nightmareVisionRemoveFieldNoteMembership(note);
 			notes.remove(note, true);
 			note.destroy();
 		}
@@ -22625,15 +23332,17 @@ void main(void) {
 		} else {
 			// A field's local handler precedes PlayState's counted-miss listener.
 			var reacts = note != null || actingOn == null || !actingOn.stunned;
+			var field = note == null ? null : nightmareVisionFieldForNote(note);
+			var fieldID = field == null ? (note == null ? -1 : note.sourcePlayfieldIndex) : field.ID;
 			applySourceMissHealth(note, playerOne, reacts);
 			if (reacts) sourceMissAnimation(direction, note, actingOn);
 			if (note == null && reacts)
 				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
 			if (note != null) {
 				if (nightmareVisionNoteTypes != null) {
-					var result = nightmareVisionNoteTypes.noteMiss(note, note.sourcePlayfieldIndex);
+					var result = nightmareVisionNoteTypes.noteMiss(note, fieldID);
 					if (result != NightmareVisionScriptGroup.STOP_FUNC)
-						nightmareVisionScripts.call('noteMiss', [note, note.sourcePlayfieldIndex], false,
+						nightmareVisionScripts.call('noteMiss', [note, fieldID], false,
 							[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
 				}
 				if (!note.hitCausesMiss && !note.canMiss && note.nightmareVisionTailState != null) {
@@ -22665,15 +23374,15 @@ void main(void) {
 	function sourceMissAnimation(direction:Int, note:Null<Note>, actingOn:Character):Void {
 		if (note != null && note.noMissAnimation) return;
 		var actors:Array<Character> = [actingOn];
-		if (sourceScoreNightmare && note != null)
-			actors = cast getNightmareVisionField(note.sourcePlayfieldIndex).singers;
+		var field = sourceScoreNightmare && note != null ? nightmareVisionFieldForNote(note) : null;
+		if (field != null) actors = cast field.singers;
 		for (singer in actors) {
 			var actor = sourceMissPerformer(note, singer);
 			if (actor == null || (sourceScoreNightmare ? actor.animTimer > 0 : !actor.hasMissAnimations)) continue;
 			var animations:Array<String> = ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
-			if (sourceScoreNightmare && note != null) {
-				var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
-				var names:Dynamic = skin == null ? null : Reflect.field(skin.data, 'singAnimations');
+			if (field != null) {
+				var skin = nightmareVisionSkinForField(field.ID);
+				var names:Dynamic = skin == null ? null : skin.singAnimations;
 				if (Std.isOfType(names, Array) && (cast names:Array<String>).length > 0) animations = cast names;
 			}
 			var lane = Std.int(Math.abs(Math.min(animations.length - 1, direction)));
@@ -22700,11 +23409,30 @@ void main(void) {
 		if (!sourceScoreLedgerActive()) {setVocalsVolume(1); return;}
 		if (!sourceScoreNightmare) {setSourceVocalVolume(playerOne ? 'player' : 'opponent', 1); return;}
 		// With combined voices NV also restores the player bus on opponent hits.
-		if (getNightmareVisionField(note.sourcePlayfieldIndex).playerControls
+		if (nightmareVisionFieldForNote(note).playerControls
 			|| vocalTracks == null || !vocalTracks.hasRole('opponent')) setSourceVocalVolume('player', 1);
 	}
 
 	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
+		?sourceLine:CodenameInputLine<Character>):Void {
+		if (sourceScoreNightmare && nightmareVisionScripts != null && note != null) {
+			var field = nightmareVisionFieldForNote(note);
+			if (field != null) {
+				var previous = nightmareVisionFieldMissContext;
+				nightmareVisionFieldMissContext = {field:field, direction:direction,
+					playerOne:playerOne, playMissSound:playMissSound};
+				try field.onNoteMiss.dispatch(note, field) catch (error:Dynamic) {
+					nightmareVisionFieldMissContext = previous;
+					throw error;
+				}
+				nightmareVisionFieldMissContext = previous;
+				return;
+			}
+		}
+		noteMissCore(direction, playerOne, note, playMissSound, sourceLine);
+	}
+
+	function noteMissCore(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
 		?sourceLine:CodenameInputLine<Character>):Void {
 		if (note != null && note.canMiss && !sourceScoreNightmare && note.nightmareVisionTypeRuntime == null) return;
 		if (note == null && sourceScoreLedgerActive() && sourceLivePreference('ghostTapping', ghostTapping)) return;
@@ -22906,7 +23634,7 @@ void main(void) {
 		if (note == null || !note.alive)
 			return false;
 		var controlledAuto = sourceScoreLedgerActive() && (sourceScoreNightmare
-			? getNightmareVisionField(note.sourcePlayfieldIndex).playerControls && getNightmareVisionField(note.sourcePlayfieldIndex).autoPlayed
+			? nightmareVisionFieldForNote(note).playerControls && nightmareVisionFieldForNote(note).autoPlayed
 			: playerOne && demoMode);
 		if (controlledAuto && !sourceScoreNightmare && note.ignoreNote) {
 			note.wasGoodHit = false;
@@ -22932,7 +23660,7 @@ void main(void) {
 		}
 		if (nightmareVisionScripts != null) note.wasGoodHit = true;
 		if (sourceScoreLedgerActive() && (!sourceScoreNightmare
-			|| getNightmareVisionField(note.sourcePlayfieldIndex).playerControls)) judgeSourceNote(note);
+			|| nightmareVisionFieldForNote(note).playerControls)) judgeSourceNote(note);
 		if (note.isSustainNote)
 			return true;
 		if (!sourceScoreLedgerActive()) note.rating = 'sick';
@@ -22945,6 +23673,7 @@ void main(void) {
 			[playerOne, note, false, event]);
 		EngineCompat.hxcApplyNoteCallbackPayload(event);
 		if (!note.alive) {
+			nightmareVisionRemoveFieldNoteMembership(note);
 			notes.remove(note, true);
 			note.destroy();
 			return false;
@@ -22966,7 +23695,7 @@ void main(void) {
 		}
 		if (PsychRuntimeBindings.hasScripts(this) && note.wasGoodHit) return;
 		if (nightmareVisionScripts != null && note != null
-			&& (note.wasGoodHit || !getNightmareVisionField(note.sourcePlayfieldIndex).inControl)) return;
+			&& (note.wasGoodHit || !nightmareVisionFieldForNote(note).inControl)) return;
 		if (note != null && note.codenameInputLine != null && (!note.alive || note.wasGoodHit)) return;
 		var actingOn = noteSingerForSide(note, playerOne);
 		var onActing = playerOne ? getOpponentSinger() : boyfriend;
@@ -22978,7 +23707,7 @@ void main(void) {
 		// HXC note callbacks run before popUpScore, including through the custom
 		// input path. Supply the same rating that the score will show below.
 		if (sourceScoreLedgerActive()) {
-			if (!sourceScoreNightmare || getNightmareVisionField(note.sourcePlayfieldIndex).playerControls) judgeSourceNote(note);
+			if (!sourceScoreNightmare || nightmareVisionFieldForNote(note).playerControls) judgeSourceNote(note);
 		} else note.rating = noteRatingAtHit(note);
 		// Give HXC note kinds first refusal over the native judgement. The
 		// payload keeps the live Note separately, so generic cancellation and
@@ -22997,6 +23726,7 @@ void main(void) {
 			var noteStrums = getNoteStrumline(note);
 			if (noteStrums != null) noteStrums.endNoteHoldCover(note);
 			if (!note.alive) {
+				nightmareVisionRemoveFieldNoteMembership(note);
 				notes.remove(note, true);
 				note.destroy();
 			}
@@ -23045,8 +23775,8 @@ void main(void) {
 			if (!note.dontCountNote)
 				notesPassing += 1;
 			var sourceLedger = sourceScoreLedgerActive();
-			var sourcePopup = !sourceScoreNightmare || (getNightmareVisionField(note.sourcePlayfieldIndex).playerControls
-				&& getNightmareVisionField(note.sourcePlayfieldIndex).showRatings);
+			var sourcePopup = !sourceScoreNightmare || (nightmareVisionFieldForNote(note).playerControls
+				&& nightmareVisionFieldForNote(note).showRatings);
 			if (sourceLedger && sourcePopup && !note.isSustainNote) combo = Std.int(Math.min(9999, combo + 1));
 			if (sourceLedger && sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 			if (!sourceLedger || sourcePopup) popUpScore(note.strumTime, note, playerOne);
@@ -23189,8 +23919,25 @@ void main(void) {
 		sourceHold:Bool = false):Void {
 		if (note == null || !note.alive || nightmareVisionScripts == null || !sourceScoreNightmare
 			|| note.sourcePlayfieldIndex < 0) return;
-		var fieldID = note.sourcePlayfieldIndex;
-		var field = getNightmareVisionField(fieldID);
+		var field = nightmareVisionFieldForNote(note);
+		if (field == null) return;
+		var previous = nightmareVisionFieldHitContext;
+		nightmareVisionFieldHitContext = {field:field, playerOne:playerOne,
+			autoAttempt:autoAttempt, sourceHold:sourceHold};
+		try field.onNoteHit.dispatch(note, field) catch (error:Dynamic) {
+			nightmareVisionFieldHitContext = previous;
+			throw error;
+		}
+		nightmareVisionFieldHitContext = previous;
+	}
+
+	function handleNightmareVisionFieldHit(note:Note, playerOne:Bool, autoAttempt:Bool = false,
+		sourceHold:Bool = false):Void {
+		if (note == null || !note.alive || nightmareVisionScripts == null || !sourceScoreNightmare
+			|| note.sourcePlayfieldIndex < 0) return;
+		var field = nightmareVisionFieldForNote(note);
+		if (field == null) return;
+		var fieldID = field.ID;
 		var callback = field.playerControls ? 'goodNoteHit'
 			: fieldID == 1 ? 'opponentNoteHit' : 'extraNoteHit';
 		if (!field.inControl || note.nightmareVisionHitDispatched) return;
@@ -23250,7 +23997,7 @@ void main(void) {
 	function dispatchNightmareVisionNoteHitPre(note:Note, ?field:NightmareVisionPlayFieldView,
 		?fieldID:Int, ?callback:String):Void {
 		if (nightmareVisionScripts == null || note == null) return;
-		var activeField = field == null ? getNightmareVisionField(note.sourcePlayfieldIndex) : field;
+		var activeField = field == null ? nightmareVisionFieldForNote(note) : field;
 		var id = fieldID == null ? activeField.ID : fieldID;
 		var family = callback == null
 			? (activeField.playerControls ? 'goodNoteHit' : id == 1 ? 'opponentNoteHit' : 'extraNoteHit')
@@ -23291,7 +24038,7 @@ void main(void) {
 		var owner:Dynamic = Reflect.getProperty(note, 'owner');
 		if (owner != null) actors = [owner];
 		var skin = nightmareVisionSkinForField(fieldID);
-		var authoredAnimations:Dynamic = skin == null ? null : Reflect.field(skin.data, 'singAnimations');
+		var authoredAnimations:Dynamic = skin == null ? null : skin.singAnimations;
 		var animations:Array<String> = Std.isOfType(authoredAnimations, Array)
 			&& (cast authoredAnimations:Array<Dynamic>).length > 0
 			? cast authoredAnimations : ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
@@ -23326,6 +24073,7 @@ void main(void) {
 
 	function detachNightmareVisionTap(note:Note):Void {
 		note.kill();
+		nightmareVisionRemoveFieldNoteMembership(note);
 		if (notes != null) notes.remove(note, true);
 	}
 
@@ -23443,6 +24191,7 @@ void main(void) {
 		}
 		if ((nightmareVisionScripts != null || psychSource) && note.isSustainNote) return;
 		note.kill();
+		nightmareVisionRemoveFieldNoteMembership(note);
 		notes.remove(note, true);
 		note.destroy();
 	}
@@ -23701,6 +24450,14 @@ void main(void) {
 	}
 
 	override public function destroy() {
+		psychVideoHostDestroyed = true;
+		psychMissingIntroRequest = null;
+		psychVideoRequestSerial++;
+		if (psychVideoHandoffTimer != null) {
+			psychVideoHandoffTimer.cancel();
+			psychVideoHandoffTimer = null;
+		}
+		psychSourceVideo = null;
 		if (sourceScoreTextTween != null) {
 			sourceScoreTextTween.cancel();
 			sourceScoreTextTween = null;
@@ -23725,6 +24482,13 @@ void main(void) {
 				trace('[nightmare-vision-script-release-error] ' + Std.string(error));
 			nightmareVisionScripts = null;
 		}
+		if (nightmareVisionInputScope != null) {
+			bindNightmareVisionInputHost(nightmareVisionInputScope.input, null);
+			nightmareVisionInputScope.destroy();
+			nightmareVisionInputScope = null;
+			NightmareVisionControls.clearInstanceAccessors();
+		}
+		nightmareVisionCurrentInputEvent = null;
 		if (nightmareVisionAudioApi != null) {
 			nightmareVisionAudioApi.release();
 			nightmareVisionAudioApi = null;
@@ -23735,10 +24499,22 @@ void main(void) {
 		}
 		for (renderer in nightmareVisionRenderers) renderer.destroy();
 		nightmareVisionRenderers.clear();
-		if (playFields != null) playFields.members.resize(0);
+		var ownedNightmareVisionLines = nightmareVisionOwnedStrumlines.copy();
+		if (playFields != null) playFields.destroy();
+		for (field in nightmareVisionOwnedFields) if (field != null) field.destroy();
+		nightmareVisionOwnedFields = [];
 		playFields = null;
 		nightmareVisionFields = [];
+		nightmareVisionFieldAttachmentEnabled = false;
+		for (line in ownedNightmareVisionLines) if (line != null) {
+			if (members != null && members.indexOf(line) >= 0) remove(line, false);
+			if (line.noteHoldCovers != null && members != null
+				&& members.indexOf(line.noteHoldCovers) >= 0) remove(line.noteHoldCovers, false);
+			line.destroy();
+		}
 		nightmareVisionStrumlines = [];
+		nightmareVisionOwnedStrumlines = [];
+		nightmareVisionNoteFields = new haxe.ds.ObjectMap<Note, NightmareVisionPlayFieldView>();
 		followingCams.resize(0);
 		if (modManager != null) {
 			modManager.destroy();

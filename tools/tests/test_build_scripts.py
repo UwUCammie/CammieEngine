@@ -286,7 +286,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_readme_documents_native_targets_and_appimage_writes(self):
         for text in (
             "./build.sh appimage",
-            "./build-windows-release.sh v0.0.13",
+            "./build-windows-release.sh",
             ".\\run.bat test",
             "DISAPPOINTINGPLUS_RUNTIME_DIR",
             "APPIMAGE_EXTRACT_AND_RUN",
@@ -303,17 +303,19 @@ class BuildScriptTests(unittest.TestCase):
 
     def test_current_release_version_is_used_by_branding_and_package_defaults(self):
         version = (ROOT / "VERSION").read_text(encoding="ascii").strip()
-        self.assertEqual(version, "0.0.13")
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertIn(f'version="{version}"', self.project_xml)
         self.assertIn(f"CammieEngine v{version}", self.readme)
         user_readme = (ROOT / "USER-README.txt").read_text(encoding="utf-8")
         self.assertIn(f"CammieEngine v{version}", user_readme)
         update_log = (ROOT / "updateLog.txt").read_text(encoding="utf-8")
-        self.assertIn(f"{version} alpha — CammieEngine", update_log)
+        current_headings = (f"{version} development - CammieEngine", f"v{version} alpha - CammieEngine")
+        self.assertTrue(any(heading in update_log for heading in current_headings),
+                        "Current version needs a development or alpha changelog heading")
         branding = (ROOT / "source/EngineBranding.hx").read_text(encoding="utf-8")
         self.assertIn(f"FALLBACK_VERSION:String = '{version}'", branding)
-        self.assertIn(f'TAG="${{1:-v{version}}}"', self.release_build)
-        self.assertIn(f'DEFAULT_RELEASE_TAG = "v{version}"', self.package_script)
+        self.assertIn("< VERSION", self.release_build)
+        self.assertIn('DEFAULT_RELEASE_TAG = "v" + (ROOT / "VERSION")', self.package_script)
         self.assertIn("default=DEFAULT_RELEASE_TAG", self.package_script)
 
 

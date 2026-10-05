@@ -5,7 +5,7 @@ import PsychSkinResolver.PsychSkinDescriptor;
 import DynamicSprite.DynamicAtlasFrames;
 import Strumline.StrumNote;
 
-/** Atomic Psych 0.7.3 skin reload for an individual native sprite. */
+/** Atomic Psych 1.0.4 skin reload for an individual native sprite. */
 class PsychSkinRuntime {
 	public static inline var DEFAULT_SKIN:String = 'noteSkins/NOTE_assets';
 	static var noteColors:Array<String> = ['purple', 'blue', 'green', 'red'];
@@ -41,7 +41,13 @@ class PsychSkinRuntime {
 			markDiagnostic(diagnostics, 'reload:pixel-sheet');
 			var bitmap = FNFAssets.getBitmapData(note.isSustainNote ? descriptor.endsImage : descriptor.image);
 			note.loadGraphic(bitmap, true, Std.int(bitmap.width / 4), Std.int(bitmap.height / (note.isSustainNote ? 2 : 5)));
+			if (note.isSustainNote) note.originalHeight = bitmap.height / 2;
 			note.setGraphicSize(Std.int(note.width * PlayState.daPixelZoom));
+			if (note.isSustainNote) {
+				note.offsetX += note.psychLastNoteOffX;
+				note.psychLastNoteOffX = (note.width - 7) * (PlayState.daPixelZoom / 2);
+				note.offsetX -= note.psychLastNoteOffX;
+			}
 			if (note.isSustainNote) {
 				note.animation.add('holdend', [lane + 4], 24, true);
 				note.animation.add('hold', [lane], 24, true);
@@ -67,6 +73,8 @@ class PsychSkinRuntime {
 		}
 		markDiagnostic(diagnostics, 'reload:hitbox');
 		note.updateHitbox();
+		if (note.sourceTimingMode == 1 && note.isSustainNote && !note.psychSustainLayoutInitialized)
+			note.psychSustainStartWidth = note.width;
 		markDiagnostic(diagnostics, 'reload:animation');
 		if (oldAnim != null && note.animation.exists(oldAnim)) note.animation.play(oldAnim, true);
 		else note.animation.play(note.isSustainNote ? 'holdend' : 'Scroll', true);

@@ -747,7 +747,8 @@ class ImportSongOwnership {
 		try {
 			if (FileSystem.stat(path).size > MAX_OWNER_IDENTITY_FILE_BYTES) return false;
 			var manifest = CompatScriptManifest.parse(File.getContent(path));
-			if (manifest == null || manifest.roots == null || manifest.roots.length < 2) return false;
+			if (manifest == null || manifest.roots == null
+				|| manifest.roots.filter(function(root) return root.dependency != true).length < 2) return false;
 			var desired = CompatScriptManifest.destinationKey(
 				CompatScriptManifest.destinationRoot(sourceRoot, engine));
 			var selected = CompatScriptManifest.destinationKey(
@@ -785,7 +786,7 @@ class ImportSongOwnership {
 				var old = CompatScriptManifest.parse(sys.io.File.getContent(installed));
 				var desired = CompatScriptManifest.destinationRoot(sourceRoot, engine);
 				if (old.roots.length > 0 && CompatScriptManifest.selectedRoot(old) == desired
-					&& old.roots.filter(function(root) return root.path != desired).length == 0) return null;
+					&& old.roots.filter(function(root) return root.dependency != true && root.path != desired).length == 0) return null;
 			} catch (_:Dynamic) {}
 		}
 		if (!FileSystem.exists(folder)) return null;
@@ -818,8 +819,10 @@ class ImportSongOwnership {
 		if (manifest.roots.length == 0)
 			return 'Destination ' + folder + ' has no valid import owner; preserving its existing files.';
 		var desired = CompatScriptManifest.destinationKey(CompatScriptManifest.destinationRoot(sourceRoot, engine));
+		if (CompatScriptManifest.destinationKey(CompatScriptManifest.selectedRoot(manifest)) != desired)
+			return 'Destination ' + folder + ' belongs to another selected import; preserving its existing files.';
 		for (root in manifest.roots)
-			if (CompatScriptManifest.destinationKey(root.path) != desired)
+			if (root.dependency != true && CompatScriptManifest.destinationKey(root.path) != desired)
 				return 'Destination ' + folder + ' belongs to another import (' + root.engine
 					+ '). Back up and reset that imported song before replacing its donor; charts, audio and scripts cannot be merged.';
 		#end

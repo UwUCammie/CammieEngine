@@ -62,7 +62,13 @@ class NightmareVisionFlxGView { public function getField(_field:String):Dynamic 
 class NightmareVisionSaveData { public function getField(_field:String):Dynamic return null; }
 class NightmareVisionSaveFacade {}
 class BaseInterp {
+ var liveValues:Map<String,{read:Void->Dynamic,write:Dynamic->Dynamic,target:Void->Dynamic}> = new Map();
  public function new() {}
+ function liveField(object:Dynamic,field:String):Bool {
+  if (!liveValues.exists(field)) return false;
+  var binding=liveValues.get(field);
+  return binding.target!=null && binding.target()==object;
+ }
  public function get(object:Dynamic,field:String):Dynamic return Reflect.getProperty(object,field);
 }
 class ProbeInterp extends BaseInterp {

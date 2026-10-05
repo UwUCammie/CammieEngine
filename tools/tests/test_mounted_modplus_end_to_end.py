@@ -347,6 +347,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "NightmareVisionVocalRole.hx",
                 "NightmareVisionAssetCollector.hx",
                 "ImportDirectoryListing.hx",
+                "PsychSongNameCompat.hx",
             ):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline='\n')
             codename_importer = (ROOT / "source/CodenameImporter.hx").read_text()

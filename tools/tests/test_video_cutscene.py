@@ -333,6 +333,9 @@ __METHOD__
                 function syncPsychTimingGlobals():Void {}
                 function syncLegacyKadeGlobals():Void {}
                 function fireSongEvent(event:Dynamic):Void replayed.push(event.name);
+                // This extraction has no Nightmare Vision field owner; seek cleanup
+                // still runs for ordinary notes and has no field membership to retire.
+                function nightmareVisionRemoveFieldNoteMembership(_note:NoteStub):Void {}
                 __SEEK_METHOD__
                 __SKIP_METHOD__
             }'''.replace('__SEEK_METHOD__', seek_method).replace('__SKIP_METHOD__', method)

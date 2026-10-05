@@ -159,7 +159,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
   note.nightmareVisionTailState.notes = [piece];
   host.notes.members = [note];
   host.nightmareVisionFields[0].singers = [host.boyfriend, host.enemy];
-  host.skin.data = {singAnimations:['left', 'down', 'up', 'right']};
+  host.skin.singAnimations = ['left', 'down', 'up', 'right'];
   host.combo = 9;
   host.instakillOnMiss = true;
   host.sourceNoteMiss(1, true, note, host.boyfriend, null);
@@ -279,15 +279,19 @@ class SourceMissLifecycleTest(unittest.TestCase):
 
     def test_outer_note_miss_keeps_live_ghost_gate_before_hxc_and_owner_router(self):
         miss = extract_method(self.play, "function noteMiss(")
+        core = extract_method(self.play, "function noteMissCore(")
+        self.assertIn("var field = nightmareVisionFieldForNote(note);", miss)
+        self.assertIn("field.onNoteMiss.dispatch(note, field)", miss)
+        self.assertIn("noteMissCore(direction, playerOne, note, playMissSound, sourceLine);", miss)
         ghost_gate = "if (note == null && sourceScoreLedgerActive() && sourceLivePreference('ghostTapping', ghostTapping)) return;"
-        self.assertIn(ghost_gate, miss)
-        self.assertLess(miss.index(ghost_gate), miss.index("callHxcNoteHScript('noteGhostMiss'"))
-        self.assertLess(miss.index(ghost_gate), miss.index("sourceNoteMiss(direction, playerOne, note, actingOn, hxcMissEvent)"))
-        self.assertIn("sourceLivePreference('ghostTapping', ghostTapping)", miss)
-        hxc_start = miss.index("var hxcMissEvent:Dynamic = null;")
-        cancel = miss.index("hxcMissEvent.eventCanceled == true")
-        codename = miss.index("missCodenameNote(direction, note, playMissSound, authoredLine)")
-        source_route = miss.index("sourceNoteMiss(direction, playerOne, note, actingOn, hxcMissEvent)")
+        self.assertIn(ghost_gate, core)
+        self.assertLess(core.index(ghost_gate), core.index("callHxcNoteHScript('noteGhostMiss'"))
+        self.assertLess(core.index(ghost_gate), core.index("sourceNoteMiss(direction, playerOne, note, actingOn, hxcMissEvent)"))
+        self.assertIn("sourceLivePreference('ghostTapping', ghostTapping)", core)
+        hxc_start = core.index("var hxcMissEvent:Dynamic = null;")
+        cancel = core.index("hxcMissEvent.eventCanceled == true")
+        codename = core.index("missCodenameNote(direction, note, playMissSound, authoredLine)")
+        source_route = core.index("sourceNoteMiss(direction, playerOne, note, actingOn, hxcMissEvent)")
         self.assertLess(hxc_start, cancel)
         self.assertLess(cancel, codename)
         self.assertLess(codename, source_route)
@@ -402,11 +406,12 @@ class TailState {
  function set_missed(value:Bool):Bool { _missed=value; if(value) events.push('tail:missed'); return value; }
 }
 class NVField {
+ public var ID:Int;
  public var playerControls:Bool = true;
  public var singers:Array<Character> = [];
- public function new() {}
+ public function new(id:Int) ID=id;
 }
-class NVSkin { public var data:Dynamic = null; public function new() {} }
+class NVSkin { public var singAnimations:Array<String> = null; public function new() {} }
 class SongData { public var notes:Array<Dynamic> = []; public function new() {} }
 class NightmareVisionScriptGroup { public static inline var STOP_FUNC:Int = 1; }
 class NightmareVisionNoteTypeRuntime {
@@ -482,7 +487,7 @@ class PlayState {
   boyfriend = new Character('boyfriend', events);
   enemy = new Character('enemy', events);
   gf = new Character('gf', events);
-  nightmareVisionFields = [new NVField(), new NVField()];
+  nightmareVisionFields = [new NVField(0), new NVField(1)];
   nightmareVisionNoteTypes = new FakeNoteTypes(this);
   nightmareVisionScripts = new FakeNVScripts(this);
  }
@@ -494,6 +499,11 @@ class PlayState {
  function set_accuracy(value:Float):Float { accuracy=value; events.push('accuracy:' + Std.string(value)); return value; }
  public function sourceScoreLedgerActive():Bool return sourceScoreOwner;
  public function getNightmareVisionField(index:Int):NVField return nightmareVisionFields[index];
+ public function nightmareVisionFieldForNote(note:Note):NVField {
+  if (note == null || note.sourcePlayfieldIndex < 0 || note.sourcePlayfieldIndex >= nightmareVisionFields.length)
+   return null;
+  return getNightmareVisionField(note.sourcePlayfieldIndex);
+ }
  public function nightmareVisionSkinForField(index:Int):NVSkin return skin;
  public function invalidateSourceInputNote(note:Note):Void events.push('invalidate');
  public function doDeathCheck(?force:Bool=false):Void {deathChecks++; events.push('death');}

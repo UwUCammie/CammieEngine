@@ -1,4 +1,4 @@
-# Engine discrepancy verification — 30 September 2026
+# Engine discrepancy verification - 30 September 2026
 
 This report records the shared engine/compatibility work and its verification.
 Named content below is used as a regression fixture, not an executable special
@@ -6,9 +6,9 @@ case or authored chart rewrite. Missing imported assets are restored only throug
 receipted, missing-only compatibility repairs. Architecture is documented in
 [ENGINE_ARCHITECTURE.md](../../ENGINE_ARCHITECTURE.md).
 
-## Current offscreen evidence — 29 September 2026
+## Current offscreen evidence - 29 September 2026
 
-### 30 September — Optional instrumental/vocal normalization
+### 30 September - Optional instrumental/vocal normalization
 
 Added the shared `Normalize Song Audio` toggle (default off) to main settings
 and imported Codename Gameplay settings. The same loader normalizes gameplay
@@ -33,7 +33,7 @@ mix clipping. Unsupported streaming PCM/bit depths diagnose and preserve
 original playback. Native editor interaction and a current-build integration
 suite remain pending alongside the custom-note work.
 
-### 30 September — NMV module parser and source syntax
+### 30 September - NMV module parser and source syntax
 
 The independent NMV core now uses namespaced `hscript-iris` 1.1.3, installed
 by the canonical build scripts and declared in `Project.xml`. Existing engine
@@ -851,7 +851,7 @@ ready rows, five source-media blockers, and one undeclared empty raw key
 (`tmp/example-mods-current-256-plan-20260928.log`). Chart/owner/audio
 readiness does not establish gameplay or source presentation parity.
 
-## Latest build and package-wide replay — 29 September 2026
+## Latest build and package-wide replay - 29 September 2026
 
 The pre-seek release binary was SHA-256
 `7a2c9ecaa3d8c6fd7b5bc6483937cd3335e506ac68b91ceea64d6d9cb8f340cb`.
@@ -960,7 +960,7 @@ is being traced; this is not yet a compatibility pass. Receipts are in
 `tmp/archive-monster-phase-replay-20260929/`, and
 `tmp/psych-hq-easy-nil-operand-20260929/`.
 
-## Latest status — 28 September 2026
+## Latest status - 28 September 2026
 
 An FNAS source menu action entered native Freeplay directly and initially
 SIGSEGV'd because `FreeplayState::create` assumed CategoryState had populated
@@ -3937,7 +3937,7 @@ claim of full chart or engine parity.
 | Tests/build/performance | See latest continuation above for current suite/follow-up status; the older 810-test all-green result below predates these changes. Skips and intermittent scanner allocator fault remain explicit. Prior Freeplay measurements show improvement; worst-case scene-switch pauses remain unproven. |
 | Temporary files | Runner and native diagnostic use project `tmp/`; obsolete fixtures/aliases/captures removed, verification and rollback records retained. |
 
-## Reopened user reports — 23 September 2026
+## Reopened user reports - 23 September 2026
 
 The user resumed the goal after live testing. Earlier bounded smokes do not
 override these reports. All fixes remain engine/compatibility-level, all game
@@ -6593,7 +6593,7 @@ empty classes would hide missing visual and gameplay behavior, so these
 scripts remain explicitly unsupported. No installed or donor files changed
 during this audit.
 
-## 25 September — D-Sides full-song diagnostic
+## 25 September - D-Sides full-song diagnostic
 
 An offscreen private Endless Hard run at 25× reached all 464 dispatched
 events and the natural song end, then crashed in `VictoryLoopState.beatHit`.
@@ -6648,7 +6648,7 @@ private overlay was removed. This verifies module initialization only,
 not its video callback behavior. Evidence:
 `tmp/hxc-freeplay-assetroot/result.json`, `process.log`, and `markers.jsonl`.
 
-## 25 September — real FunkinModchart integration gate
+## 25 September - real FunkinModchart integration gate
 
 The engine now pins FunkinModchart 1.2.5 through `run.sh` and `Project.xml`,
 compiles its real Manager, PlayField, modifier, event, and renderer classes,
@@ -9397,7 +9397,7 @@ focused tests pass. The runner subsequently passed on the 28 September
 combined native build under private Xvfb and default test options. The
 receipt and its one-owner scope are recorded in the latest-status section.
 
-## Legacy Codename pending-state bridge — 28 September 2026
+## Legacy Codename pending-state bridge - 28 September 2026
 
 The old global HScript field `FlxG.game._requestedState` now reads and writes
 through `CodenameRequestedStateCompat`, which maps it to Flixel 6's
@@ -9415,7 +9415,7 @@ physical `_nextState` field.
 
 Source/interpreter verification passed:
 
-- `python3 -m unittest tools.tests.test_codename_requested_state_compat` — 2
+- `python3 -m unittest tools.tests.test_codename_requested_state_compat` - 2
   tests. The extracted Haxe fixture covers concrete and deferred known-target
   leases, request/outgoing-state scoping, setter return and direct-write
   behavior, request replacement, cancellation cleanup, one-shot
@@ -9423,7 +9423,7 @@ Source/interpreter verification passed:
   confirm the production interpreter, switch paths, deferred callback, destroy
   cleanup, and script-facing trace getter are wired to the helper.
 - `python3 -m unittest tools.tests.test_codename_script_interp.CodenameScriptInterpTest.test_constructor_context_and_async_cleanup_are_scope_local`
-  — 1 test. The extracted production interpreter executes the legacy global
+  - 1 test. The extracted production interpreter executes the legacy global
   script redirect from a concrete native menu state to an imported state.
 
 The bounded final-build HL17 offscreen menu route reached
@@ -9450,7 +9450,7 @@ break lazy state construction and the runtime bitmap-cache guard. The donor
 global script remains an unmodified regression fixture, with no chart-name or
 mod-name conditions added.
 
-## D-Sides Try Harder event-end audit — 28 September 2026
+## D-Sides Try Harder event-end audit - 28 September 2026
 
 The earlier `657/658` count is source-matching. The selected donor contains 625
 rows in `songs/try-harder/events.json` and 33 embedded rows in
@@ -9477,7 +9477,7 @@ alignment/expiry, directional pose pixels, source audio mix, pause/seek/skip,
 and repeat-load/switch behavior still require their shared compatibility
 checks for this and the other example rows.
 
-## Shared 3D readback allocation check — 28 September 2026
+## Shared 3D readback allocation check - 28 September 2026
 
 The pinned OpenFL 9.5.2 `Context3D.drawToBitmapData` path previously
 allocated a full 2560×1440 byte array and `Image` wrapper for each Away3D
@@ -9506,7 +9506,7 @@ referenced `testStage.mtl`, which remains an explicit runtime diagnostic.
 The reported floor-in-front-of-desk depth problem is still open; the cached
 readback buffer does not change scene ordering or material rendering.
 
-### HL17 Gordonteen floor/desk source audit — 28 September 2026
+### HL17 Gordonteen floor/desk source audit - 28 September 2026
 
 The selected HL17 source defines the ground as the `Flx3DView` containing
 `models/plane.obj`; `data/stages/17.hx:38-53` inserts that view before gf, dad,
@@ -9927,7 +9927,7 @@ Evidence: the [baseline rows](../../tmp/example-mods-current-256-sweep-20260928/
 [vswhitty exact-name audit](../../tmp/vswhitty-character-source-dependencies.json),
 and [PERFEXION Xfracture dependency audit](../../tmp/perfexion-xfracture-dependencies.md).
 
-### Codename 480 FPS performance investigation — 29 September 2026
+### Codename 480 FPS performance investigation - 29 September 2026
 
 The selected-owner Try Harder Hard chart reproduces substantial lag in a
 private, default-settings offscreen run with only `fpsCap` changed to 480.
@@ -9989,7 +9989,7 @@ their own checks. Evidence:
 `tmp/codename-performance/try-harder-480-post-instrumentation-headless-gl-20260929T035000Z.json`
 and its `.markers.jsonl`/`.process.log` companions.
 
-### D-Sides imported owner menu route — 29 September 2026
+### D-Sides imported owner menu route - 29 September 2026
 
 The private Xvfb/dummy-audio menu harness selected the one D-Sides owner
 entry and observed exact-owner create-ready traces for authored TitleState,
@@ -10004,7 +10004,7 @@ personal options were unchanged. Evidence:
 `tmp/dsides-owner-native-menu-route-20260929-v2/receipt.json` and
 `tmp/dsides-owner-native-menu-route-20260929-v2/route.process.log`.
 
-### Psych class-property intro probe — 29 September 2026
+### Psych class-property intro probe - 29 September 2026
 
 A second private Ballistic HQ Easy intro run sent no input and used the
 repository's default settings. The shared `getPropertyFromClass` bridge
@@ -10017,7 +10017,7 @@ natural ending. Installed and private options remained byte-identical.
 Evidence: `tmp/psych-class-property-probe/ballistic-hq-easy-no-return-result.json`
 and `tmp/runtime-smoke/logs/ballistic-hq-psych-class-probe-no-return.process.log`.
 
-### Dynamic Codename atlas import and sound-cache lifecycle — 29 September 2026
+### Dynamic Codename atlas import and sound-cache lifecycle - 29 September 2026
 
 The D-Sides Freeplay script composes an atlas key from a constant directory
 and each song's runtime icon ID. The mounted selected donor contains 31
@@ -10059,7 +10059,7 @@ not D-Sides gameplay/source parity; the verified shared correction and paired
 offscreen evidence are recorded in the [FunkinModchart draw ownership
 section](#funkinmodchart-draw-ownership-29-september-2026) below.
 
-### Carol Roll allocator-crash follow-up — 29 September 2026
+### Carol Roll allocator-crash follow-up - 29 September 2026
 
 One earlier 256-row sweep crashed during Carol Roll Sayori Mix Normal's HUD
 creation with `malloc(): unsorted double linked list corrupted`. The retained
@@ -10084,7 +10084,7 @@ set remained steady at 58–59 entries (~1,000 MB) in the earlier 480 FPS
 sample, so no single-song RSS reduction is claimed without a switching
 measurement.
 
-## FunkinModchart draw ownership — 29 September 2026
+## FunkinModchart draw ownership - 29 September 2026
 
 The shared `PlayState.draw()` hook now prepares one live arrow snapshot before
 the native Flixel group pass. When the current state's visible, attached
@@ -10477,7 +10477,7 @@ retained their pre-run SHA-256 values. The disposable private runtime copy was
 removed after the replays; receipt logs and the original system core remain.
 
 
-## 30 September — Default results identity and Codename note/animation follow-up
+## 30 September - Default results identity and Codename note/animation follow-up
 
 `ResultsCharacterCompat` makes the configured fallback results provider read a
 validated presentation family, defaulting to BF for unknown requested identities.
@@ -10659,7 +10659,7 @@ confirmed absent. Final focused global/alias/stage/lifecycle run: **18 passed**
 (`tmp/codename-owner-final-focused-20260930.log`). Full package coverage, the
 unexplained scanner corruption, and NMV gameplay integration remain open.
 
-### 2026-09-30 — Nightmare Vision main gameplay host and native errors
+### 2026-09-30 - Nightmare Vision main gameplay host and native errors
 
 The selected installed NMV owner now supplies the main gameplay script group:
 stage/global/character/song initialization, live PlayState fields, source
@@ -10770,7 +10770,7 @@ This milestone closes the test-harness failures, not the remaining package
 compatibility gaps or unexplained historical native crashes.
 
 
-## 2026-09-30 — Nightmare Vision source APIs and asset retention
+## 2026-09-30 - Nightmare Vision source APIs and asset retention
 
 Shared importer/runtime changes retain the selected content tree plus its
 explicit engine assets under an isolated `__nmv_core` subtree. Core-only
@@ -10829,7 +10829,7 @@ The live settings file was not restored over the user's session. See
 `tmp/nmv-assets-private-refresh-20260930/post-build-integrity.json`.
 
 
-## 2026-09-30 — Modchart sustain UV and camera regression work
+## 2026-09-30 - Modchart sustain UV and camera regression work
 
 Two shared defects explain the new Endless report independently of chart name:
 
@@ -10971,7 +10971,7 @@ as a candidate for measurement; no unmeasured performance change or persistent
 donor-result cache was introduced in this batch.
 
 
-## 2026-09-30 — Nightmare Vision plugin/HUD/callback integration (in progress)
+## 2026-09-30 - Nightmare Vision plugin/HUD/callback integration (in progress)
 
 Shared source changes add a real persistent plugin runtime, owner save forwarding,
 callback scheduling and a live HUD adapter. No donor/chart files were changed.
@@ -11039,7 +11039,7 @@ and its focused check passes. README was shortened for the alpha. No upload,
 tag or GitHub release has been published by this work.
 
 
-### Windows alpha release pipeline — 2026-09-30
+### Windows alpha release pipeline - 2026-09-30
 
 Replaced the three obsolete Windows workflows with `windows-alpha.yml`. It builds
 through `run.bat build` on Windows 2022, publishes downloadable Actions artifacts,
@@ -11063,7 +11063,7 @@ required before claiming that platform is verified. Example trigger tag:
 `v0.0.1-alpha.1`; manual workflow runs produce downloadable development ZIPs.
 
 
-### NMV source context and release-facing cleanup — 2026-09-30
+### NMV source context and release-facing cleanup - 2026-09-30
 
 The latest development pass binds owner-scoped Mods/Difficulty context, preserves
 source difficulty spelling and maps selections by name, records the logical source
@@ -11103,7 +11103,7 @@ Discord's inherited application ID still needs a project-owned replacement to
 change its service-side application identity. No Git remote change or push was
 performed. Static metadata/credit checks and `git diff --check` pass.
 
-### Local Windows cross-build and loading checks — 2026-09-30
+### Local Windows cross-build and loading checks - 2026-09-30
 
 The repository's bundled LLVM MinGW toolchain built the Windows x64 executable
 from Linux with `./build.sh windows`. The output includes the PE executable,
@@ -11155,7 +11155,7 @@ The current run does not verify every difficulty, full song completion, visual
 parity by screenshot, actual Windows hardware, or the reported slow loads for
 other imported charts. The broader Example Mods completion goal remains open.
 
-### Bundled Windows results screen — 2026-09-30
+### Bundled Windows results screen - 2026-09-30
 
 The previously packaged local Windows ZIP contained **zero** files under
 `assets/imported_mods/`; the locally imported V-Slice-style Psych results pack
@@ -11211,7 +11211,7 @@ passed **1,683 tests across 506 modules, 65 skipped, zero failed**
 (`tmp/full-suite-bundled-results-final.log`). The prerelease asset has not been
 uploaded; the checkout's changes and the new bundled files remain uncommitted.
 
-### Windows import scan null listing — 2026-09-30
+### Windows import scan null listing - 2026-09-30
 
 An offscreen Wine replay of the local Windows executable crashed while scanning
 the Psych `Hey kid do you wanna weiner` package, before `scan_ready` and before
@@ -11251,7 +11251,7 @@ Archive integrity and `SHA256SUMS.txt` passed; the ZIP's executable matches
 the tested build, contains all 138 bundled results files, and contains no
 other imported-mod files. It has not been uploaded.
 
-### Character picker release roster — 2026-09-30
+### Character picker release roster - 2026-09-30
 
 The global character registry can retain names from earlier imports even when
 the release package excludes their media. `ChooseCharState` now derives its
@@ -11263,7 +11263,7 @@ are checked. The focused Haxe interpreter fixture passes and covers a missing
 visual, a borrowed alias, and refreshing the list after media becomes
 available. The Linux and Windows release builds both passed with this code.
 
-### Opt-in Windows release updater — 2026-09-30
+### Opt-in Windows release updater - 2026-09-30
 
 Windows Settings now checks the published GitHub release list on request, so
 alpha prereleases are included. It accepts only the matching Windows x64 ZIP
@@ -11296,7 +11296,7 @@ Wine startup stayed alive through its timeout (`tmp/wine-smoke-1188611.log`).
 The first sandboxed Wine attempt could not bind its local wineserver socket;
 the isolated retry succeeded. The updated ZIP has not been uploaded.
 
-### Windows tag rebuild removed — 2026-09-30
+### Windows tag rebuild removed - 2026-09-30
 
 The `windows-alpha.yml` workflow was removed after its tag trigger started a
 second Windows build while the locally built ZIP was being published. Release
@@ -11306,7 +11306,7 @@ already-running workflow was cancelled by the maintainer. The test contract
 now checks that the old workflows are absent. The full Python suite passed
 **1,687 tests across 508 modules, 65 skipped, zero failed** after the removal.
 
-### Windows alpha.5 import and visual checks — 2026-09-30
+### Windows alpha.5 import and visual checks - 2026-09-30
 
 The prior Wine HL17 scan crashed at `0x00000001412D7292` while
 `KadeStageSource.playStateFiles` read the length of a null result from
@@ -11347,7 +11347,7 @@ The final `./run.sh build` succeeded. The complete parallel suite passed
 is 1,185,459,082 bytes with SHA-256
 `96335c897480ab20c252194c33a0064fc75a1804a843e4862f6819561c0b3d86`.
 
-### Windows alpha.6 updater and version — 2026-10-01
+### Windows alpha.6 updater and version - 2026-10-01
 
 The Settings updater now starts a bundled Windows helper from a unique temporary
 job directory, allowing an update to replace the installed helper itself after
@@ -11387,7 +11387,7 @@ intentional timeout (`tmp/alpha6-wine-startup.log`). The sandboxed first attempt
 could not bind a wineserver socket; the permitted retry completed. The runtime
 settings file was backed up and restored after the check.
 
-### Windows alpha.7 same-session Freeplay difficulty — 2026-10-01
+### Windows alpha.7 same-session Freeplay difficulty - 2026-10-01
 
 The reported first-play failure was a difficulty registration race. A source
 package can provide only a suffixed chart while `DifficultyManager.init()` has
@@ -11418,7 +11418,7 @@ checksum check, contains `RELEASE_TAG=v0.0.1-alpha.7`, and is 1,186,010,548
 bytes with SHA-256
 `9ed0eb97b6ea5a1ab4cf3c0caed1a22d805d88bebaf542b3c36decfdc7b80e84`.
 
-### Nightmare Vision D-Sides API follow-up — 2026-10-01
+### Nightmare Vision D-Sides API follow-up - 2026-10-01
 
 The shared host now binds the source `funkin.api.DiscordClient` calling
 convention (including distinct small and large image keys) and
@@ -11452,7 +11452,7 @@ the connected Discord `username`, third playfields, and full-song difficulty
 playback remain open; no D-Sides
 chart has been promoted to complete source parity.
 
-### Nightmare Vision Redux Dusk visual selection — 2026-10-01
+### Nightmare Vision Redux Dusk visual selection - 2026-10-01
 
 The retained private import contains Dusk Easy, Normal, and Hard plus its
 selected-owner stage, character JSON, Animate atlases, Sparrow sheets, icon,
@@ -11636,7 +11636,7 @@ did not produce a single green summary. Relevant outputs are
 `tmp/nmv-overlay-hxc-scan-serial.log`. Final `git diff --check` passed.
 The disposable screenshot driver was removed; evidence logs/PNGs remain.
 
-## 2026-10-01 — V-Slice character costume callbacks (Virgin Rage)
+## 2026-10-01 - V-Slice character costume callbacks (Virgin Rage)
 
 Source comparison found two MultiSparrowCharacter companion classes stored in
 `data/stages/`, with filenames different from their literal constructor IDs.
@@ -11740,7 +11740,7 @@ Disposable capture/analysis drivers were removed; logs, compact scan counts
 and the inspected screenshot are retained under repository `tmp`.
 
 
-## 2026-10-01 — V-Slice declared stage identity follow-up
+## 2026-10-01 - V-Slice declared stage identity follow-up
 
 The costume regression also exposed a Stage wrapper whose constructor ID differs
 from its filename. Runtime selection and import dependency planning now match
@@ -11930,7 +11930,7 @@ incomplete. Native confirmation/retry, all 13 audio lines, audible mix parity
 and Windows/Wine were not established by these bounded runs.
 
 
-### 1 October — corrected full-suite result and versioned V-Slice source audit
+### 1 October - corrected full-suite result and versioned V-Slice source audit
 
 The unchanged reviewed death-quote/guitar host passes the clean full-suite
 rerun: **1,730 tests across 523 modules in 550.2 seconds, 65 skipped, zero
@@ -11965,7 +11965,7 @@ as a built-in alternate row would discard its source kind and bypass the
 character branch; the existing custom identity must remain intact.
 
 
-### 2 October — declared character note-kind discovery follow-up
+### 2 October - declared character note-kind discovery follow-up
 
 A shared importer correction now uses HxcScriptDiscovery's declared identity
 and active character selection for companion-owned note kinds. It inspects
@@ -12069,7 +12069,7 @@ reported transition on Linux, not the remaining geometry contracts or
 Windows/Wine behavior.
 
 
-### 2 October — mixed HXC owners, lexical fragments and shared companion layouts
+### 2 October - mixed HXC owners, lexical fragments and shared companion layouts
 
 The previous discovery/translation disagreement is reproduced with synthetic
 multi-character files: a filename or constructor-ID match to the second actor
@@ -12169,7 +12169,7 @@ source geometry and whole-package gameplay parity remain open. The preceding
 binary's evidence is retained separately in
 `tmp/hxc-lexical-owner-build-evidence.json`.
 
-### 2 October — Nightmare Vision shared script, note and switching checks
+### 2 October - Nightmare Vision shared script, note and switching checks
 
 Scope remains engine/compatibility/importer only. Nightmare Vision retains its
 source-specific dispatch and playfield extensions; identical palette mapping,
@@ -12433,7 +12433,7 @@ Further core inspection: the accelerated failure is in `FlxObject.update` while 
 
 Read-only current ELF audit (Build ID `a865d91fe3226421ada3a05b2f6da765d811ae42`, GCC 16.2.1): compiled `__Mark` routines load `FlxObject.last` at +0xa8, `ShaderParameter.value` at +0x28, and `PsychRGBShader.b` at +0x160; Note inherits the FlxSprite/FlxObject marking chain. These checks rule out a missing generated marker or the suspected stale member layout at these crash sites. They do not establish the corrupting write or justify a gameplay workaround.
 
-### 2026-10-02 — Collector diagnostic comparison; release gate remains open
+### 2026-10-02 - Collector diagnostic comparison; release gate remains open
 
 Temporary collector diagnostics were built with `HXCPP_GC_DEBUG_LEVEL=1 ./run.sh rebuild`, then the normal collector was restored with `./run.sh rebuild`. The first diagnostic build reused the old `Immix.o`; it is excluded from diagnostic evidence. Touching the unchanged pinned `Immix.cpp` and rebuilding forced the actual diagnostic collector compilation. The diagnostic ELF has no `GlobalAllocator::ThreadLoop` symbol; the normal rebuild restores the standard collector. No production source behavior or donor content was changed in this comparison.
 

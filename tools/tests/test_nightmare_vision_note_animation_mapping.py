@@ -18,25 +18,32 @@ class NightmareVisionNoteAnimationMappingTest(unittest.TestCase):
         if not HAXE.is_file():
             self.skipTest("portable Haxe interpreter is unavailable")
         source = (ROOT / "source/NightmareVisionNoteSkin.hx").read_text()
-        methods = "\n".join(extract_method(source, marker) for marker in (
-            "static function laneIndex(",
-            "static function laneItems(",
-            "static function noteAnimationKind(",
-            "static function prefixExists(",
-            "function diagnose(",
-            "public function boolField(",
-            "public function numberField(",
-            "public function applyNote(",
-            "static function numberValue(",
+        lane_index_start = source.index("static function laneIndex(")
+        lane_index_end = source.index(";", lane_index_start) + 1
+        methods = "\n".join((
+            source[lane_index_start:lane_index_end],
+            *(extract_method(source, marker) for marker in (
+                "static function laneItems(",
+                "static function noteAnimationKind(",
+                "static function prefixExists(",
+                "function diagnose(",
+                "public function boolField(",
+                "public function numberField(",
+                "static function runtimeFieldName(",
+                "function refreshRGB(",
+                "public function applyNote(",
+                "static function numberValue(",
+            )),
         ))
         fixture = r'''
 class FakeFrame { public var name:String; public function new(name:String) this.name=name; }
 class FlxAtlasFrames { public var frames:Array<FakeFrame>; public function new(names:Array<String>) frames=[for(name in names)new FakeFrame(name)]; }
 class NightmareVisionPaths { public var root:String="owner"; public function new() {} }
-class PsychRGBPalette { public function new() {} }
+class PsychRGBPalette { public function new() {} public function copyValues(_other:PsychRGBPalette):Void {} }
 class NightmareVisionRGBGraphics {
  public var enabled:Bool=false;
- public function new(palette:PsychRGBPalette) {}
+ public var palette:PsychRGBPalette;
+ public function new(palette:PsychRGBPalette) this.palette=palette;
  public function apply(note:Note):Void {}
 }
 class FakeAnim {
@@ -51,11 +58,12 @@ class FakeAnimation {
  public function exists(name:String):Bool return prefixes.exists(name);
  public function play(name:String,restart:Bool=false):Void curAnim=new FakeAnim(name);
 }
-class FakeScale { public var x:Float=1; public var y:Float=1; public function new() {} }
+class FakeScale { public var x:Float=1; public var y:Float=1; public function new() {} public function set(x:Float,y:Float):Void {this.x=x;this.y=y;} }
 class Note {
  public var isSustainNote:Bool;
  public var animation:FakeAnimation=new FakeAnimation();
  public var scale:FakeScale=new FakeScale();
+ public var baseScale:FakeScale=new FakeScale();
  public var frames:FlxAtlasFrames;
  public var width:Float=100; public var height:Float=100;
  public var antialiasing:Bool=true; public var normalSize:Float=1; public var alpha:Float=1;
@@ -73,8 +81,18 @@ class NightmareVisionNoteSkin {
  public var name:String="ourple";
  public var reported:Map<String,Bool>=new Map();
  public var noteFrames:FlxAtlasFrames;
- public function new(data:Dynamic) this.data=data;
+ public var noteAnims:Array<Array<Dynamic>>;
+ public var noteTexture:String="";
+ public var noteScale:Float=0.7;
+ public var antialiasing:Bool=true;
+ public var inEngineColoring:Bool=true;
+ public function new(data:Dynamic) {
+  this.data=data; noteAnims=cast Reflect.field(data,"noteAnimations");
+  if(Reflect.field(data,"noteScale")!=null) noteScale=Reflect.field(data,"noteScale");
+  if(Reflect.field(data,"antialiasing")!=null) antialiasing=Reflect.field(data,"antialiasing");
+ }
  public function palette(lane:Int):PsychRGBPalette return new PsychRGBPalette();
+ function refreshNoteFrames():FlxAtlasFrames return noteFrames;
 ''' + methods + r'''
 }
 class Main {

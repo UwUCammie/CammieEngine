@@ -97,6 +97,9 @@ class DemoTest {
  var hxcStrumlineNoteSurface:Dynamic=null;
  var codenameInputLines:Array<Dynamic>=[];
  function bindCodenameNoteLine(note:Note):Void {}
+ // The extracted spawn loop has no NMV owner in this fixture.
+ function getNightmareVisionField(_id:Int):Dynamic return null;
+ function nightmareVisionFieldForNote(_note:Note):Dynamic return null;
  var noteSpawnLookahead:Float=1500;
  var compatCustomSubstateName:String=''; var compatCustomSubstateOpen:Bool=false;
  var legacyOffsetDiagnosticEmitted:Bool=false;
@@ -119,7 +122,7 @@ class DemoTest {
  function processNightmareVisionHolds():Void {}
  function processNightmareVisionAutoHits(_batch:Dynamic):Void {}
  function currentSongDataPath(fileName:String):String return 'assets/data/demo/' + fileName;
- function nightmareVisionRenderer(_field:Int):Dynamic return {configureNote:function(_note:Note):Void {}};
+ function nightmareVisionRenderer(_field:Int, ?_sourceField:Dynamic):Dynamic return {configureNote:function(_note:Note):Void {}};
  function nightmareVisionRenderContext():Dynamic return null;
  public function new() {}
 ''' + methods + controls + '\nfunction spawn() {\nvar smokeProfileAt:Float = 0;\n' + spawn + '''\n}

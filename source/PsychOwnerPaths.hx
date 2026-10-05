@@ -62,7 +62,6 @@ class PsychOwnerPaths {
 		Reflect.setField(proxy, 'video', function(key:String):String {
 			var relative = cleanRelative('videos/' + key + '.mp4');
 			var imported = ownerAsset(owner, relative, null, currentLevel);
-			if (imported == null) throw '[psych-assets] Video is unavailable in selected owner: ' + key;
 			return imported;
 		});
 		Reflect.setField(proxy, 'getSparrowAtlas', function(key:String, ?library:String):FlxAtlasFrames {

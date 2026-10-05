@@ -34,6 +34,7 @@ class PsychHscriptSourceBindings {
 	public function install():Void {
 		var variables = interp.variables;
 		variables.set('Type', Type);
+		variables.set('Countdown', PsychBaseStageCountdown);
 		variables.set('Rating', PsychRatingCompat);
 		variables.set('PsychCamera', PsychHscriptCamera);
 		variables.set('CustomSubstate', new PsychHscriptCustomSubstateFacade(host));

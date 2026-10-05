@@ -13,7 +13,7 @@ from tools.tests.test_psych_character_scope import extract_method
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 FLIXEL = ROOT / ".haxelib/flixel/6,1,2"
-DONOR = ROOT.parent / "FNF-Example-Mods/misc/nightmare_vision_source_code/source/funkin/game/modchart"
+DONOR = ROOT.parent / "fnf_sources/NightmareVision/source/funkin/game/modchart"
 
 
 class NightmareVisionModchartCoreTest(unittest.TestCase):
@@ -690,6 +690,8 @@ class Main {
   renderer.release(holdEnd);
   renderer.destroy();
   check(renderer.visualState(hold) == null, 'renderer teardown retained note snapshots');
+  check(renderer.applyVisual == null && renderer.onUnsupportedFeature == null
+   && renderer.skinOffsets.readLive == null, 'renderer teardown retained scene callbacks');
 
   var receptor = {x:0.0, y:0.0, width:100.0, height:100.0, frameWidth:100.0,
    frameHeight:100.0, scale:{x:1.0, y:1.0}, offset:{x:0.0, y:0.0}, origin:{x:0.0, y:0.0},

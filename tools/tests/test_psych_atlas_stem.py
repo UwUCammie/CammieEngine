@@ -17,7 +17,7 @@ class PsychAtlasStemTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text()
         methods = "\n".join(extract_method(source, "function " + name + "(") for name in (
             "compatMakeLuaSprite", "compatMakeAnimatedLuaSprite",
-            "compatReadSparrowFrameNames", "compatLoadGraphic",
+            "compatReadSparrowFrameNames", "compatLoadGraphic", "compatRemoveLuaSprite",
         ))
         fixture = r'''class Bitmap {
  public var path:String;
@@ -39,8 +39,10 @@ class FNFAssets {
 class FlxSprite {
  public var frames:Dynamic;
  public var bitmap:Bitmap;
+ public var destroyed:Bool = false;
  public function new(x:Float = 0, y:Float = 0) {}
  public function loadGraphic(value:Bitmap, animated:Bool = false, frameWidth:Int = 0, frameHeight:Int = 0):Void bitmap = value;
+ public function destroy():Void destroyed = true;
 }
 class FlxAtlasFrames {
  public static function fromSparrow(bitmap:Bitmap, xml:String):Dynamic
@@ -49,7 +51,9 @@ class FlxAtlasFrames {
 class AtlasFixture {
  var haxeSprites:Map<String,FlxSprite> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
+ var members:Array<Dynamic> = [];
  function new() {}
+ function remove(sprite:Dynamic, splice:Bool):Dynamic { if (splice) members.remove(sprite); return sprite; }
  function compatFindObject(name:Dynamic):Dynamic return haxeSprites.get(Std.string(name));
  function compatForgetSpriteAtlas(sprite:Dynamic):Void {}
  function compatRememberSpriteAtlas(tag:String, sprite:FlxSprite, names:Array<String>):Void

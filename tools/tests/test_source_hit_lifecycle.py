@@ -124,6 +124,9 @@ class PlayState {
  }
  public function sourceScoreLedgerActive():Bool return sourceOwner;
  public function getNightmareVisionField(_index:Int):Dynamic return {playerControls:false,autoPlayed:false};
+ public function nightmareVisionFieldForNote(note:FixtureNote):Dynamic
+  return note == null ? null : getNightmareVisionField(note.sourcePlayfieldIndex);
+ public function nightmareVisionRemoveFieldNoteMembership(_note:FixtureNote):Void {}
  public function dispatchPsychCompiledStage(name:String,args:Array<Dynamic>):Void {
   stages.push([name,args]);events.push('stage:'+name);
  }

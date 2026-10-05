@@ -585,6 +585,10 @@ class ImportRootScanner {
 					score += 10;
 					evidence.push('Psych Engine Lua chart/script content');
 				}
+				if (score < 20 && hasThinPsychPackage(root, layout.data)) {
+					score += 25;
+					evidence.push('Psych Engine section chart + callback Lua + week metadata');
+				}
 				if (hasPsychSongDataCharts(layout.data)) {
 					score += 85;
 					evidence.push('Psych Engine chart layout: data/songData/<song>/*.json');
@@ -1277,6 +1281,75 @@ class ImportRootScanner {
 					} catch (_:Dynamic) continue;
 					if (directoryHasLuaFile(songDirectory)) return true;
 				}
+			}
+		}
+		return false;
+	}
+
+	/** Thin addons omit pack/images/actor trees. Require independent source
+	 * contracts for a week-listed song; a Lua filename alone stays ambiguous. */
+	static function hasThinPsychPackage(root:String, dataPath:String):Bool {
+		if (dataPath == null || dataPath == '') return false;
+		var weeks = findDirectory(readDirectory(root), root, 'weeks');
+		if (weeks == '') return false;
+		var weekSongs:Map<String, Bool> = new Map();
+		var checkedWeeks = 0;
+		for (file in readDirectory(weeks)) {
+			if (checkedWeeks++ >= 32) break;
+			if (!file.toLowerCase().endsWith('.json')) continue;
+			var path = Path.join([weeks, file]);
+			try {
+				if (FileSystem.isDirectory(path) || FileSystem.stat(path).size > MAX_PROJECT_MARKER_BYTES) continue;
+				var week:Dynamic = haxe.Json.parse(File.getContent(path));
+				var characters:Dynamic = Reflect.field(week, 'weekCharacters');
+				var songs:Dynamic = Reflect.field(week, 'songs');
+				if (!Std.isOfType(characters, Array) || (cast characters:Array<Dynamic>).length != 3
+					|| !Std.isOfType(songs, Array)) continue;
+				for (row in (cast songs:Array<Dynamic>)) {
+					if (!Std.isOfType(row, Array)) continue;
+					var values:Array<Dynamic> = cast row;
+					if (values.length < 2 || !Std.isOfType(values[0], String) || !Std.isOfType(values[1], String)) continue;
+					var name = PsychSongNameCompat.format(Std.string(values[0]));
+					if (name != '' && name.indexOf('/') < 0 && name.indexOf('\\') < 0 && name.indexOf('..') < 0)
+						weekSongs.set(name, true);
+				}
+			} catch (_:Dynamic) {}
+		}
+		if (!weekSongs.iterator().hasNext()) return false;
+		var checkedFolders = 0;
+		var checkedFiles = 0;
+		for (folder in readDirectory(dataPath)) {
+			if (checkedFolders++ >= MAX_LUA_SONG_DIRECTORIES) break;
+			if (!weekSongs.exists(PsychSongNameCompat.format(folder))) continue;
+			var directory = Path.join([dataPath, folder]);
+			try if (!FileSystem.isDirectory(directory)) continue catch (_:Dynamic) continue;
+			var hasChart = false;
+			var hasCallback = false;
+			for (file in readDirectory(directory)) {
+				if (checkedFiles++ >= MAX_NIGHTMARE_VISION_CHART_PROBES) break;
+				var path = Path.join([directory, file]);
+				try {
+					if (FileSystem.isDirectory(path)) continue;
+					var lower = file.toLowerCase();
+					if (lower.endsWith('.lua') && FileSystem.stat(path).size <= MAX_PROJECT_MARKER_BYTES) {
+						var contents = File.getContent(path);
+						contents = ~/--\[\[[\s\S]*?\]\]/g.replace(contents, '');
+						if (~/^[ \t]*(?:local[ \t]+)?function[ \t]+on(?:Create|CreatePost|StartCountdown|SongStart|Update|UpdatePost|Event)[ \t]*\(/m.match(contents))
+							hasCallback = true;
+					} else if ((lower.endsWith('.json') || lower.endsWith('.jsonc'))
+						&& FileSystem.stat(path).size <= MAX_ENGINE_CHART_BYTES) {
+						var chart:Dynamic = haxe.Json.parse(File.getContent(path));
+						var song:Dynamic = Reflect.field(chart, 'song');
+						var sections:Dynamic = song == null ? null : Reflect.field(song, 'notes');
+						var bpm = song == null ? Math.NaN : Std.parseFloat(Std.string(Reflect.field(song, 'bpm')));
+						if (Std.isOfType(sections, Array) && !Math.isNaN(bpm) && bpm > 0)
+							for (section in (cast sections:Array<Dynamic>))
+								if (section != null && Std.isOfType(Reflect.field(section, 'sectionNotes'), Array)) {
+									hasChart = true; break;
+								}
+					}
+				} catch (_:Dynamic) {}
+				if (hasChart && hasCallback) return true;
 			}
 		}
 		return false;

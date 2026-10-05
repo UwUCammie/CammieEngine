@@ -45,7 +45,7 @@ class CodenameSnapGeometryTest(unittest.TestCase):
 
         snap = block(play, "\t\tif (snapToStrumline) {")
         engine_owned_skip = snap.index(
-            "if (daNote.codenameInputLine != null || nightmareVisionScripts != null)")
+            "if (daNote.codenameInputLine != null || nightmareVisionScripts != null || isPsychReceptorNote(daNote))")
         legacy_x_write = snap.index("daNote.x = strums.members[noteData].x;")
         self.assertLess(engine_owned_skip, legacy_x_write)
         self.assertIn("daNote.codenameInputLine != null", snap[engine_owned_skip:legacy_x_write])
@@ -53,6 +53,7 @@ class CodenameSnapGeometryTest(unittest.TestCase):
         self.assertIn("\n\t\t\t\t\treturn;", snap[engine_owned_skip:legacy_x_write])
         snap_reassignment = snap[engine_owned_skip:snap.index(";", legacy_x_write) + 1]
 
+        psych_guard = re.sub(r"\bNote\b", "TestNote", method(play, "isPsychReceptorNote"))
         lane = method(play, "codenameNoteLane").replace(
             "function codenameNoteLane", "static function codenameNoteLane")
         lane = re.sub(r"\bNote\b", "TestNote", lane)
@@ -75,6 +76,7 @@ class CodenameSnapGeometryTest(unittest.TestCase):
 class TestNote {
   public static var NOTE_AMOUNT:Int=4;
   public static var swagWidth:Float=112;
+  public var sourceTimingMode:Int=0;
   public var noteData:Int=0;
   public var codenameInputLine:Dynamic={};
   public var codenameReceptorXOffset:Null<Float>=7;
@@ -111,7 +113,7 @@ class Main {
   public var playerStrums:TestLine;
   public var enemyStrums:TestLine;
   public function new() {}
-''' + lane + "\n" + align + "\n" + presentation + r'''
+''' + psych_guard + "\n" + lane + "\n" + align + "\n" + presentation + r'''
   function legacySnap(daNote:TestNote):Void {
 SNAP_REASSIGNMENT
   }
@@ -147,7 +149,7 @@ SNAP_REASSIGNMENT
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "Main.hx"
-            path.write_text(fixture, newline='\n')
+            path.write_text(fixture, encoding='utf-8', newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                  "-cp", folder, "--run", "Main"],

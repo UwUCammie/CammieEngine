@@ -1,7 +1,27 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.13 alpha — CammieEngine
+v0.0.14 alpha - CammieEngine
+	- Render Nightmare Vision lane underlays from live field geometry, opacity and modifiers, including default field initialization and mutable underlay sprites.
+	- Match source Psych sustain segment timing, body stretch, pixel reload offsets and confirmation lifetime; preserve authored short holds and resize live sustain bodies when song speed changes.
+	- Honor Psych note copy flags, receptor direction, offsets, alpha and speed; retire notes by song time and prevent adjacent notes from losing an update when a hit removes a note.
+	- Retire existing Psych Lua sprite/text tags before replacement so old subtitle portraits and other recreated objects cannot remain rendered.
+	- Move and fade source Psych health/time bar backgrounds with their fills; bind timeBar to the progress bar and timeTxt to its text so scripted intro HUD movement affects the visible objects.
+	- Restore Psych scripted opening visibility and extra actors through source note alpha, Lua function tables/closures, shared sprite tags, actor layering and one-based getter-array compatibility.
+	- Match Nightmare Vision quant note colors and owner receptor press colors; retain rhythmic classification, custom colors, animation timers and alpha through skin/quant reloads, using authored chart time before note offsets.
+	- Support owner-scoped Nightmare Vision PlayField construction with independent source flags and injected skins; generate and attach banks only when requested, and retain unattached fields for scene cleanup.
+	- Port Nightmare Vision runtime NoteSkin constructors, source defaults, mutable colors/scales/textures/animations and live per-key offsets; preserve alpha during reloads and isolate renderer caches across changed field IDs.
+	- Release field-owned renderer callbacks on destruction and reuse unchanged effect atlas caches. Expose Psych's source Countdown enum in plain and embedded HScript.
+	- Add owner-scoped Nightmare Vision Controls, InputSystem and timestamped input events; keep gameplay input independent of the source script frame clock and preserve Psych's distinct polling behavior.
+	- Connect Nightmare Vision field mutations to native receptors and note ownership, preserve positions across field ID changes, route field signals once, and apply receptor alpha without compounding or losing scene cleanup ownership.
+	- Detect thin Psych add-ons from their chart, Lua callback and week structure; link one verified installed base when its complete custom cast and stage match, preserving separate ownership and avoiding duplicate base media.
+	- Bind song-local Psych scripts to their selected import owner, and defer video completion until source countdown callbacks return. Recover once from missing forced-Freeplay intro videos while preserving authored Stop gates and scene lifetime.
+	- Keep Freeplay stars and difficulty selection aligned with real playable charts; revalidate retained Nightmare Vision charts with supported field counts, resolve legitimate source filename variants, and preserve difficulties when imported song IDs are renamed after a collision.
+	- Share the CPU budget between parallel regression modules and their native fixture compilers, preserving explicit worker/compiler overrides and running all checks.
+	- Keep development one patch above the newest published build, derive package defaults from VERSION, and remove U+2014 punctuation from engine text and generated API docs.
+
+v0.0.13 alpha - CammieEngine
+	- Mention Cammie Engine in Discord Rich Presence activity text and image tooltips across menus, gameplay and script-driven updates.
 	- Support declared Nightmare Vision playfields, older charts without format markers, distinct live receptor banks, field-owned note/input/render routing and source RGB aliases. Follow registered extra world cameras and source beat zoom; restore script-created character beat/dance calls so stages can finish their background and cutscene setup without changing mod files.
 	- Keep NV hit callbacks scoped to the selected runtime so base-game and Psych notes never access absent NV playfields.
 	- Preserve owner-scoped Psych charting mode through editor test play, pause-menu entry and song-end return, with explicit editor/pause exits and menu reset. Respect source callback cancellation and save scores before returning to the editor; match source GF cadence and alternate idle animation changes.
@@ -9,7 +29,7 @@ v0.0.13 alpha — CammieEngine
 	- Forward Psych HScript camera and FlxG properties to their live native values, preserve saved camera assignments, and stop game-over animation boundaries from overwriting Psych script camera changes.
 	- Show real per-step update progress, elapsed time, estimated remaining time and file counts in the game's update panel instead of showing preparation as already complete.
 
-v0.0.12 alpha — CammieEngine
+v0.0.12 alpha - CammieEngine
 	- Update helper repair revision 2: skip identical files so Windows-held fonts do not block installation, roll back only files actually changed, and show installation errors after the game exits. Use native streaming decompression and bounded checksum buffers; show verification, preparation and installation progress in a separate helper window that also works with older installs.
 	- Fix the native Windows updater helper build so release downloads use Windows HTTPS and follow GitHub redirects without a Bad file handle error.
 	- Share Nightmare Vision manual, autoplay and sustain hit routing; preserve source callback/score ordering, live field and lane edits, tap retirement and fixed-rate autoplay without changing mod files.
@@ -47,7 +67,7 @@ v0.0.12 alpha — CammieEngine
 	- Restore Nightmare Vision camera-follow callbacks and source actor focus before script updates, preserving authored turn zooms and forced camera positions.
 	- Use Nightmare Vision's source timebar asset dimensions, fill inset, border layering and timer placement, preventing custom borders from being overrun by the native song progress fill
 
-0.0.11 alpha — CammieEngine
+0.0.11 alpha - CammieEngine
 	- Package shared import registries from committed source rather than the developer runtime, keeping personal imports out of release downloads
 	- Show import refresh phases, remaining work, current file, elapsed time, approximate phase ETA and the time since progress changed; animate phases whose total is unknown
 	- Reuse scan roots, dependency candidates, script analysis and audio folder indexes within each scan; skip redundant owned media baselines and unchanged asset replacement while retaining source and validating publication
@@ -93,12 +113,12 @@ v0.0.12 alpha — CammieEngine
 	- Reuse successful Windows builds when input/output metadata is unchanged; keep full tests running and allow .\run.bat rebuild to force compilation
 	- Schedule regression modules using previous durations with up to sixteen isolated workers; keep automated gameplay checks muted without changing saved sound settings
 
-0.0.10 alpha — CammieEngine
+0.0.10 alpha - CammieEngine
 	- Fix Windows imports with retained source paths longer than 259 characters, including D-Sides Redux; reuse cache owner pointers safely when retrying a failed import
 	- Preserve each source root's detected engine identity when rescanning retained sources, so excluded executable markers cannot switch Nightmare Vision imports to another engine
 	- Keep Windows .exe files in retained source packages, preserving the original engine marker bytes for future import scans
 
-0.0.9 alpha — CammieEngine
+0.0.9 alpha - CammieEngine
 	- Add one Windows 11 command, .\run.bat test, to build Windows x64 and run the full regression suite
 	- Bootstrap portable Windows tools and a verified LLVM-MinGW compiler when Visual Studio is unavailable; preserve copied toolchains
 	- Add .\run.bat package to build, test and create the v0.0.9 alpha ZIP and checksum after successful validation
@@ -663,7 +683,7 @@ v0.0.12 alpha — CammieEngine
 	- Compiled Codename releases (HL17/fnas-style builds with a mods/<name> content tree) classify as Codename Engine, recover the real mods content instead of their embedded engine sample songs, and the scan report names the `import the mod source` expectation; girlfriend strum lines have no native third gameplay lane, so their notes are counted and diagnosed instead of silently dropped
 	- Kade source releases now import their code-defined characters too: KadeStageSource parses the mod's Character.hx switch (Sparrow atlas key/library, addByPrefix and addByIndices animations, addOffset entries, scale, playAnim), PlayState.hx's per-stage `gfVersion` switch, and the player2 arm's `dad.visible = false` statements, materializes referenced ids that do not already resolve natively (for example expurgation's tied gf from `fourth/EX Tricky GF.png`) as custom_chars characters with a generated dance/idle script and a no-clobber registry row, and extends the generated stage script with `switchCharacter("<gf>", "gf")` plus the authored gf placement and `dad.visible = false;` so source-stage imports match the donor's actors instead of the neutral girlfriend
 	- Added Kade-family Haxe source releases (Project.xml + source/*.hx beside the standard assets tree) as a first-class Auto import type: Auto classifies them as Kade Engine with `Haxe source release` evidence, resolves Kade `preload`-library layouts (charts below assets/preload/data, audio at assets/songs), and KadeStageSource extracts every song's authored stage from source/PlayState.hx so source downloads import the real scenes instead of the compiled release's neutral fallback
-	- Incomplete Haxe source downloads (a Project.xml without source/ or assets/data, such as an interrupted git checkout) are never misclassified: Auto skips them gracefully and the scan report explains `[source-release-incomplete] <name>: Haxe source project detected but source/ or assets/data is missing — re-download the complete source release.`
+	- Incomplete Haxe source downloads (a Project.xml without source/ or assets/data, such as an interrupted git checkout) are never misclassified: Auto skips them gracefully and the scan report explains `[source-release-incomplete] <name>: Haxe source project detected but source/ or assets/data is missing - re-download the complete source release.`
 	- Added generic FPS Plus character and stage conversion: data/characters and data/stages HXC modules are read data-only, so chart ids such as WhitBonkers/GfStandingScared register in custom_chars with their authored Sparrow atlas, animation prefixes/offsets, and donor health-icon strips, and stage ids such as alleyBalls register in custom_stages with a native script rebuilt from the donor's literal BGSprite/loadGraphic presentation and start-point offsets
 	- Native custom_chars characters now own their visuals when an imported HXC CharacterInfo companion is also present: the companion keeps donor extras (icon aliases, camera/reposition offsets) and behavior callbacks but no longer re-concatenates the same atlas, which corrupted frame collections into native SIGSEGVs on gameplay start
 	- Extended the Linux-host Windows cross-build to auto-detect self-contained LLVM-MinGW when the GCC triplet compiler is unavailable, normalize prefix/<triplet> sysroots, and select target LLVM archive/strip tools; documented CachyOS and unpacked LLVM-MinGW invocations

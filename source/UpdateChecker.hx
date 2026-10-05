@@ -287,7 +287,7 @@ class UpdateChecker {
 					if (Std.isOfType(record.updatedAt, Float)
 						&& Date.now().getTime() - record.updatedAt > 5000)
 						detail += ' | waiting for progress';
-					return {status:status, label:label + ' — ' + Std.int(fraction * 100) + '%',
+					return {status:status, label:label + ' - ' + Std.int(fraction * 100) + '%',
 						fraction:fraction, detail:detail, indeterminate:false};
 				}
 			} catch (_:Dynamic) {}
@@ -302,10 +302,10 @@ class UpdateChecker {
 					fraction = Math.max(0, Math.min(1, FileSystem.stat(archivePath).size / activeRelease.sizeBytes));
 			} catch (_:Dynamic) {}
 			var percent = Std.int(fraction * 100);
-			return {status:status, label:'Downloading update ' + activeRelease.tag + ' — ' + percent + '%', fraction:fraction};
+			return {status:status, label:'Downloading update ' + activeRelease.tag + ' - ' + percent + '%', fraction:fraction};
 		}
 		return switch (status) {
-			case 'ready': {status:status, label:'Update ready — installs after exit', fraction:1};
+			case 'ready': {status:status, label:'Update ready - installs after exit', fraction:1};
 			default: {status:status, label:'Update status: ' + status, fraction:0};
 		};
 	}

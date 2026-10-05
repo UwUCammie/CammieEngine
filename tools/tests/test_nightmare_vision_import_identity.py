@@ -55,6 +55,9 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
             , newline='\n')
+            (work / "PsychSongNameCompat.hx").write_text(
+                (ROOT / "source/PsychSongNameCompat.hx").read_text()
+            , newline='\n')
             (work / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", temp, "--run", "Main", *((path).as_posix() for path in paths)],

@@ -17,8 +17,10 @@ class PsychModSettingCompat {
 		owner's pack.json and never used to search other imports.
 	*/
 	public static function create(scriptOrigin:String, selectedRoot:String,
-		?diagnose:String->Void):Dynamic {
+		?diagnose:String->Void, ?activeCompanionDirectory:String):Dynamic {
 		var owner = ownerForScript(scriptOrigin, selectedRoot);
+		if (owner == null && activeCompanionDirectory != null)
+			owner = ownerForSongCompanion(scriptOrigin, selectedRoot, activeCompanionDirectory);
 		var packageChecked = false;
 		var ownerPackage:String = null;
 		var settingsChecked = false;
@@ -64,8 +66,21 @@ class PsychModSettingCompat {
 			return null;
 		if (!FileSystem.isDirectory(root) || !FileSystem.exists(origin)) return null;
 		try {
-			var base = Path.normalize(FileSystem.fullPath(root));
-			var candidate = Path.normalize(FileSystem.fullPath(origin));
+			var base = canonicalPath(root);
+			var candidate = canonicalPath(origin);
+			var imports = canonicalPath('assets/imported_mods');
+			if (base == null || candidate == null || imports == null) return null;
+			// Keep a junction at the owner boundary from claiming a different
+			// imported namespace. Windows fullPath is lexical; canonicalPath
+			// resolves the physical target before containment is checked.
+			var expectedBase = Path.normalize(StringTools.replace(Path.join([imports,
+				root.substr('assets/imported_mods/'.length)]), '\\', '/'));
+			if (Sys.systemName() == 'Windows') {
+				base = base.toLowerCase();
+				candidate = candidate.toLowerCase();
+				expectedBase = expectedBase.toLowerCase();
+			}
+			if (base != expectedBase) return null;
 			return candidate.startsWith(base + '/') ? root : null;
 		} catch (_:Dynamic) {
 			return null;
@@ -99,6 +114,59 @@ class PsychModSettingCompat {
 		return null;
 	}
 
+	/** Native companion scripts retain the selected song's imported owner.
+	 * Callers supply only the active chart's companion directory and validated
+	 * selected Psych owner. Physical owner containment takes precedence. */
+	public static function ownerForSongCompanion(scriptOrigin:String, selectedRoot:String,
+		activeCompanionDirectory:String):Null<String> {
+		#if sys
+		var owner = safeRelativePath(selectedRoot);
+		var directory = safeRelativePath(activeCompanionDirectory);
+		if (owner == null || !owner.startsWith('assets/imported_mods/')
+			|| directory == null || !directory.startsWith('assets/data/')
+			|| directory.split('/').length != 3 || scriptOrigin == null) return null;
+		var origin = scriptOrigin.trim().replace('\\', '/');
+		if (origin == '' || origin.indexOf(String.fromCharCode(0)) >= 0) return null;
+		for (part in origin.split('/')) if (part == '..' || part == '.') return null;
+		if (!isAbsoluteScriptOrigin(origin) && safeRelativePath(origin) == null) return null;
+		try {
+			if (!FileSystem.isDirectory(owner) || !FileSystem.isDirectory(directory)
+				|| !FileSystem.exists(origin) || FileSystem.isDirectory(origin)) return null;
+			// Check both the authored directory and its resolved target. A junction
+			// at either boundary must not turn this context into another asset owner.
+			var lexicalDirectory = Path.normalize(FileSystem.absolutePath(directory));
+			var lexicalOrigin = Path.normalize(FileSystem.absolutePath(origin));
+			if (Sys.systemName() == 'Windows') {
+				lexicalDirectory = lexicalDirectory.toLowerCase();
+				lexicalOrigin = lexicalOrigin.toLowerCase();
+			}
+			if (!lexicalOrigin.startsWith(lexicalDirectory + '/')) return null;
+			var imports = canonicalPath('assets/imported_mods');
+			var data = canonicalPath('assets/data');
+			var base = canonicalPath(directory);
+			var candidate = canonicalPath(origin);
+			var selected = canonicalPath(owner);
+			if (imports == null || data == null || base == null || candidate == null || selected == null
+				|| !selected.startsWith(imports + '/') || !base.startsWith(data + '/')
+				|| !candidate.startsWith(base + '/')) return null;
+			var expectedBase = Path.join([data, directory.split('/')[2]]);
+			var expectedOwner = Path.join([imports, owner.substr('assets/imported_mods/'.length)]);
+			if (Sys.systemName() == 'Windows') {
+				expectedBase = expectedBase.toLowerCase();
+				expectedOwner = expectedOwner.toLowerCase();
+			}
+			if (base != expectedBase || selected != expectedOwner) return null;
+			return owner;
+		} catch (_:Dynamic) return null;
+		#else
+		return null;
+		#end
+	}
+
+	#if sys
+	static function canonicalPath(path:String):Null<String> return CompatCanonicalPath.resolve(path);
+	#end
+
 	static function safeRelativePath(value:String):Null<String> {
 		if (value == null) return null;
 		var clean = StringTools.replace(StringTools.trim(value), '\\', '/');
@@ -117,8 +185,13 @@ class PsychModSettingCompat {
 		var candidate = Path.normalize(Path.join([owner, safeRelative]));
 		if (!candidate.startsWith(owner + '/') || !FileSystem.exists(candidate)) return null;
 		try {
-			var base = Path.normalize(FileSystem.fullPath(owner));
-			var full = Path.normalize(FileSystem.fullPath(candidate));
+			var base = canonicalPath(owner);
+			var full = canonicalPath(candidate);
+			if (base == null || full == null) return null;
+			if (Sys.systemName() == 'Windows') {
+				base = base.toLowerCase();
+				full = full.toLowerCase();
+			}
 			return full.startsWith(base + '/') ? candidate : null;
 		} catch (_:Dynamic) {
 			return null;

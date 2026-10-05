@@ -433,9 +433,10 @@ class Main {
         psych_source_gate = countdown.index("if (PsychRuntimeBindings.dispatch(this, 'onStartCountdown', [])")
         self.assertLess(nmv_countdown, hscript_countdown)
         self.assertLess(hscript_countdown, psych_source_gate)
-        self.assertLess(psych_source_gate, countdown.index("if (EngineCompat.anyFunctionStop(countdownResults))"))
-        self.assertLess(countdown.index("if (EngineCompat.anyFunctionStop(countdownResults))"),
-                        countdown.index("startedCountdown = true;"))
+        self.assertLess(psych_source_gate, countdown.index("var sourceCountdownStopped = EngineCompat.anyFunctionStop(countdownResults)"))
+        self.assertLess(countdown.index("var sourceCountdownStopped = EngineCompat.anyFunctionStop(countdownResults)"),
+                        countdown.index("if (sourceCountdownStopped)"))
+        self.assertLess(countdown.index("if (sourceCountdownStopped)"), countdown.index("startedCountdown = true;"))
         self.assertIn("hxcCountdownHookDispatching = true;", countdown[:nmv_countdown])
 
     def test_donor_character_onload_precedes_parent_assignment(self):

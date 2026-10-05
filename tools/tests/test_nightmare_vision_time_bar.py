@@ -7,12 +7,37 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+
+def extract_method(source: str, marker: str) -> str:
+    start = source.index(marker)
+    opening = source.find("{", start)
+    semicolon = source.find(";", start)
+    if semicolon >= 0 and (opening < 0 or semicolon < opening):
+        return source[start:semicolon + 1].strip()
+    if opening < 0:
+        raise AssertionError(f"Method body not found: {marker}")
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index + 1]
+    raise AssertionError(f"Unclosed method: {marker}")
+
+
 class NightmareVisionTimeBarTest(unittest.TestCase):
     def test_source_bar_dimensions_text_and_native_fallback(self):
-        source = (ROOT / "source/PlayState.hx").read_text()
+        source = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
         start = source.index("\t\tvar sourceTimeHUD = nightmareVisionScripts != null;")
-        end = source.index("\n\t\t// old-engine global sprite names", start)
+        end = source.index("\n\t\tif (useSongBar && !sourceTimeHUD)", start)
         construction = source[start:end]
+        helpers = "\n".join(extract_method(source, marker) for marker in (
+            "function initializeSourceTimeHUDAliases()",
+            "function createSourceHUDBar(",
+            "public function sourceNoteTimingMode()",
+        ))
         fixture = r'''
 class Point { public function new() {} public function set():Void {} }
 class Sprite {
@@ -34,11 +59,22 @@ class Text extends Sprite {
 }
 class Bar extends Sprite {
  public var numDivisions:Int;
- public function new(x:Float,y:Float,direction:Dynamic,width:Int,height:Int,parent:Dynamic,field:String,min:Int,max:Int) {
+ public var variable:String; public var minimum:Float; public var maximum:Float;
+ public function new(x:Float,y:Float,direction:Dynamic,width:Int,height:Int,parent:Dynamic,field:String,min:Float,max:Float) {
   super(x,y);this.width=width;this.height=height;
+  this.variable=field;this.minimum=min;this.maximum=max;
  }
  public function createFilledBar(empty:Dynamic,fill:Dynamic):Void {}
 }
+typedef FlxSprite = Sprite;
+typedef FlxBar = Bar;
+typedef FlxBarFillDirection = Int;
+class SourceAttachedBar extends Bar {
+ public function new(x:Float,y:Float,direction:FlxBarFillDirection,width:Int,height:Int,parent:Dynamic,
+  field:String,min:Float,max:Float) super(x,y,direction,width,height,parent,field,min,max);
+ public function attachBackground(background:Sprite):Void {}
+}
+class PlayState { public static var globalSprites:Map<String,Dynamic> = new Map(); }
 class Paths {
  public var usesSharedRatingPrefix:Bool; public var UI_PREFIX='UI/';
  public var selected:String;
@@ -52,14 +88,18 @@ class Main {
  static var X=1; static var CENTER=1; static var LEFT_TO_RIGHT=1;
  var nightmareVisionScripts:Dynamic; var nightmareVisionPaths:Paths;
  var downscroll:Bool; var camHUD:Dynamic;
+ var sourceScoreOwner:Bool; var sourceScoreNightmare:Bool;
  var SONG:Dynamic={compatPreserveSongTitle:false,song:'source-song'};
  var songPosBG:Sprite; var songPosBar:Bar; var songName:Text;
+ var timeBarBG:Sprite; var timeBar:Dynamic;
  function new(source:Bool,down:Bool,legacy:Bool) {
   nightmareVisionScripts=source?{}:null;downscroll=down;nightmareVisionPaths=new Paths(legacy);
+  sourceScoreOwner=source;sourceScoreNightmare=source;
  }
  function build():Void {
 CONSTRUCTION
  }
+ HELPERS
  static function main():Void {
   for (legacy in [true,false]) for (down in [true,false]) {
    var hud=new Main(true,down,legacy);hud.build();
@@ -76,7 +116,7 @@ CONSTRUCTION
   if(native.songPosBG.width!=601 || native.songPosBar.width!=593 || native.songPosBar.height!=11 || native.songName.size!=16) throw 'native HUD changed';
  }
 }
-'''.replace("CONSTRUCTION", construction).replace("new FlxSprite", "new Sprite").replace("new FlxText", "new Text").replace("new FlxBar", "new Bar")
+'''.replace("CONSTRUCTION", construction).replace("HELPERS", helpers).replace("new FlxSprite", "new Sprite").replace("new FlxText", "new Text").replace("new FlxBar", "new Bar")
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             (Path(folder)/"Main.hx").write_text(fixture)
             result=subprocess.run([*HAXE_COMMAND,"-cp",folder,"-main","Main","--interp"],capture_output=True,text=True,cwd=ROOT)

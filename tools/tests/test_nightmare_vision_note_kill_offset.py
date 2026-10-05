@@ -123,6 +123,10 @@ class PlayState {
  function get_playbackRate():Float return 1;
  public var noteKillOffset:Float = 350;
  public var nightmareVisionScripts:Dynamic;
+ public var sourceMode:Int=0;
+ function sourceNoteTimingMode():Int return sourceMode;
+ // This retirement-only fixture has no active or queued sustain notes.
+ function resizePsychSustains(_old:Float, _new:Float):Void {}
  public var scrollSpeed(get, set):Float;
  public function new() { instance = this; }
  function get_scrollSpeed():Float return daScrollSpeed;
@@ -173,7 +177,9 @@ class Main {
   state.noteKillOffset = 66;
   state.scrollSpeed = 3;
   check(state.noteKillOffset == 66,
-   'non-NMV scroll speed changed the existing note retirement behavior');
+   'native scroll speed changed the existing note retirement behavior');
+  state.sourceMode = 1; state.scrollSpeed = 0.5;
+  check(state.noteKillOffset == 700, 'Psych speed did not refresh donor retirement window');
  }
         }'''.replace("SETTER", setter).replace("REFRESH", refresh).replace("TWEEN", tween)
 

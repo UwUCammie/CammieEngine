@@ -5,7 +5,7 @@ Donor song scripts gate their intro cutscene on V-Slice's
 script-owned entrance, then call `startCountdown()` and clear the flag. The
 engine must expose that spelling as a read/write alias of its cutscene state
 with script-owned storage, because the native countdown consumes and clears
-the native `inCutscene` flag on re-entry — sharing one storage would wipe the
+the native `inCutscene` flag on re-entry - sharing one storage would wipe the
 script's gate and replay the cutscene forever.
 """
 

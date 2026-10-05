@@ -142,6 +142,7 @@ class RuntimeImportSmokeHarness {
 			songsToImport: fieldInt(result, 'songsToImport'),
 			duplicateSongs: fieldInt(result, 'duplicateSongs'),
 			missingDependencies: fieldInt(result, 'missingDependencies'),
+			detectedRoots: result == null ? null : Reflect.field(result, 'detectedRoots'),
 			errors: arrayLength(result == null ? null : Reflect.field(result, 'errors')),
 			errorDetails: boundedErrors(result == null ? null : Reflect.field(result, 'errors'))
 		});

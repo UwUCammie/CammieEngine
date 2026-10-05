@@ -181,6 +181,12 @@ class Note extends DynamicSprite {
 	var psychSkinPostfix:String = '';
 	var psychRGBDisabled:Bool = false;
 	@:allow(PsychSkinRuntime) public var psychSkinUsesNativeDefaultFallback(default, null):Bool = false;
+	/** Psych pixel ends retain their unscaled source height across reloads. */
+	@:keep public static inline var SUSTAIN_SIZE:Int = 44;
+	@:keep public var originalHeight:Float = 6;
+	@:allow(PsychSkinRuntime) var psychLastNoteOffX:Float = 0;
+	@:allow(PsychSkinRuntime) var psychSustainStartWidth:Float = 0;
+	@:allow(PsychSkinRuntime) var psychSustainLayoutInitialized:Bool = false;
 	var psychRGBShader:PsychRGBShaderReference = null;
 	@:keep public var rgbShader(get, never):PsychRGBShaderReference;
 	@:keep function get_rgbShader():PsychRGBShaderReference return psychRGBShader;
@@ -291,6 +297,17 @@ class Note extends DynamicSprite {
 	/** Source chart field identity, independent from the binary `mustPress`
 	 * contract and from note-type bits stored in trueNoteData. */
 	public var sourcePlayfieldIndex:Int = -1;
+	/** Live source membership; detached notes have no owning PlayField. */
+	@:keep public var playField(default, set):Dynamic = null;
+	function set_playField(value:Dynamic):Dynamic {
+		if (playField != value) {
+			var previousNotes:Array<Dynamic> = playField == null ? null : Reflect.getProperty(playField, 'notes');
+			if (previousNotes != null && previousNotes.indexOf(this) >= 0) playField.removeNote(this);
+			var nextNotes:Array<Dynamic> = value == null ? null : Reflect.getProperty(value, 'notes');
+			if (nextNotes != null && nextNotes.indexOf(this) < 0) value.addNote(this);
+		}
+		return playField = value;
+	}
 	/** Nightmare Vision calls the owning playfield index `lane`; noteData stays
 	 * the direction inside that field. */
 	@:keep public var lane(get, set):Int;
@@ -304,8 +321,41 @@ class Note extends DynamicSprite {
 	/** Source fields can autoplay independently of the user's botplay setting. */
 	public var sourcePlayfieldAutoPlay:Bool = false;
 	public var sourceTimingMode:Int = 0;
+	/** Source chart quant classification is independent of a field's receptor flag. */
+	@:keep public var quant:Int = 4;
+	@:keep public var isQuant:Bool = false;
+	@:keep public var canQuant:Bool = true;
+	public var nightmareVisionQuantInitialized:Bool = false;
 	/** Nightmare Vision's independent note fade, retained across renderer updates. */
 	@:keep public var alphaMod:Float = 1;
+	/** Psych notes follow each receptor axis/rotation unless a script opts out. */
+	@:keep public var copyX:Bool = true;
+	@:keep public var copyY:Bool = true;
+	@:keep public var copyAngle:Bool = true;
+	@:keep public var offsetX:Float = 0;
+	@:keep public var offsetY:Float = 0;
+	@:keep public var offsetAngle:Float = 0;
+	/** Psych note speed multiplier; sustain geometry resizes with the value. */
+	@:keep public var multSpeed(default, set):Float = 1.0;
+	function set_multSpeed(value:Float):Float {
+		resizeByRatio(value / multSpeed);
+		multSpeed = value;
+		return value;
+	}
+	@:keep public function resizeByRatio(ratio:Float):Void {
+		if (isSustainNote && animation != null && animation.curAnim != null
+			&& !animation.curAnim.name.endsWith('end')) {
+			scale.y *= ratio;
+			updateHitbox();
+		}
+	}
+	/** Extra source sustain alignment before clipping. */
+	@:keep public var correctionOffset:Float = 0;
+	@:keep public var distance:Float = 0;
+	/** Psych notes copy receptor alpha each frame unless a script opts out. */
+	@:keep public var copyAlpha:Bool = true;
+	/** Psych receptor alpha multiplier; sustains use 0.6. */
+	@:keep public var multAlpha:Float = 1.0;
 	public var hitbox:Float = Conductor.safeZoneOffset;
 	public var earlyHitMult:Float = 1;
 	public var lateHitMult:Float = 1;
@@ -321,6 +371,88 @@ class Note extends DynamicSprite {
 	}
 	function set_canBeHit(value:Bool):Bool return cachedCanBeHit = value;
 	public function isLate():Bool return SourceNoteTiming.isLate(strumTime, Conductor.songPosition, Conductor.safeZoneOffset, wasGoodHit);
+	/**
+		Apply Psych 1.0.4 receptor-relative position in its source presentation
+		route. The songSpeed argument is already divided by
+		playbackRate at the donor call site. Independent copy flags let scripts
+		keep control of an axis without changing other note routes.
+	*/
+	@:keep public function applyPsychReceptorFollow(receptorX:Float, receptorY:Float,
+		direction:Float, receptorAngle:Float, downScroll:Bool, songSpeed:Float,
+		pixelStage:Bool, pixelZoom:Float):Void {
+		if (sourceTimingMode != 1 || codenameInputLine != null) return;
+		distance = 0.45 * (Conductor.songPosition - strumTime) * songSpeed * multSpeed;
+		if (!downScroll) distance *= -1;
+		var angleDir = direction * Math.PI / 180;
+		if (copyAngle) angle = direction - 90 + receptorAngle + offsetAngle;
+		if (copyX) x = receptorX + offsetX + Math.cos(angleDir) * distance;
+		if (copyY) {
+			y = receptorY + offsetY + correctionOffset + Math.sin(angleDir) * distance;
+			if (downScroll && isSustainNote) {
+				if (pixelStage) y -= pixelZoom * 9.5;
+				y -= (frameHeight * scale.y) - (Note.swagWidth / 2);
+			}
+		}
+	}
+
+	/** Finish donor sustain construction after the selected source skin is installed. */
+	@:keep public function finalizePsychSustainSegment(previous:Note, head:Note,
+		localStep:Float, baseStep:Float, songSpeed:Float, playbackRate:Float,
+		pixelStage:Bool, downScroll:Bool):Void {
+		if (sourceTimingMode != 1 || codenameInputLine != null || !isSustainNote
+			|| psychSustainLayoutInitialized || head == null) return;
+		psychSustainLayoutInitialized = true;
+		correctionOffset = !pixelStage && downScroll ? 0 : head.height / 2;
+		updateHitbox();
+		var startWidth = psychSustainStartWidth > 0 ? psychSustainStartWidth : head.width;
+		offsetX += (startWidth - width) / 2;
+		if (pixelStage) offsetX += 30;
+		if (previous != null && previous.isSustainNote) {
+			previous.animation.play('hold');
+			previous.scale.y *= PsychSustainLayout.bodyStretchRatio(baseStep, songSpeed, pixelStage, height);
+			previous.updateHitbox();
+			previous.scale.y *= PsychSustainLayout.generationStretchRatio(localStep, baseStep,
+				playbackRate, pixelStage, previous.frameHeight);
+			previous.updateHitbox();
+		}
+		if (pixelStage) {
+			scale.y *= PlayState.daPixelZoom;
+			updateHitbox();
+		}
+	}
+
+	/** Apply Psych's sustain clipping after receptor-follow geometry. */
+	@:keep public function applyPsychReceptorClip(receptorY:Float, downScroll:Bool):Void {
+		if (sourceTimingMode != 1 || codenameInputLine != null || !isSustainNote) return;
+		if (noSustainClip) {
+			clipRect = null;
+			return;
+		}
+		if ((mustPress || !ignoreNote) && (wasGoodHit
+			|| (prevNote != null && prevNote.wasGoodHit && !canBeHit))) {
+			var center:Float = receptorY + offsetY + Note.swagWidth / 2;
+			var swagRect:FlxRect = clipRect;
+			if (swagRect == null) swagRect = new FlxRect(0, 0, frameWidth, frameHeight);
+			if (downScroll) {
+				if (y - offset.y * scale.y + height >= center) {
+					swagRect.width = frameWidth;
+					swagRect.height = (center - y) / scale.y;
+					swagRect.y = frameHeight - swagRect.height;
+				}
+			} else if (y + offset.y * scale.y <= center) {
+				swagRect.y = (center - y) / scale.y;
+				swagRect.width = width / scale.x;
+				swagRect.height = (height / scale.y) - swagRect.y;
+			}
+			clipRect = swagRect;
+		}
+	}
+
+	/** Apply Psych's receptor alpha without changing the independent base/NV/Codename paths. */
+	public function applyPsychReceptorAlpha(receptorAlpha:Float):Void {
+		if (sourceTimingMode != 1 || codenameInputLine != null || !copyAlpha) return;
+		alpha = receptorAlpha * multAlpha;
+	}
 	public var tooLate:Bool = false;
 	public var wasGoodHit:Bool = false;
 	public var prevNote:Note;
@@ -1145,6 +1277,7 @@ class Note extends DynamicSprite {
 		if (isSustainNote && prevNote != null) {
 			noteScore * 0.2;
 			alpha = 0.6;
+			multAlpha = 0.6;
 
 			// sustain notes are notes too #equalrightsforsustains
 			altNote = prevNote.altNote;
@@ -1174,24 +1307,24 @@ class Note extends DynamicSprite {
 				coolId = prevNote.coolId;
 			}
 
-			x += width / 2;
-
-			animation.play('holdend');			
-
-			updateHitbox();
-
-			x -= width / 2;
-
-			if (isPixel)
-				x += 30;
-
-			if (prevNote.isSustainNote) {
-				// DO mod it because we DIDN'T do that
-				prevNote.animation.play('hold');
-
-				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;
-				prevNote.updateHitbox();
-				// prevNote.setGraphicSize();
+			if (sourceTimingMode == 1 && codenameInputLine == null) {
+				// Source skin installation happens after construction. Stretch and
+				// center only once its actual atlas/sheet dimensions are available.
+				copyAngle = false;
+				animation.play('holdend');
+				scale.y = 1;
+				updateHitbox();
+			} else {
+				x += width / 2;
+				animation.play('holdend');
+				updateHitbox();
+				x -= width / 2;
+				if (isPixel) x += 30;
+				if (prevNote.isSustainNote) {
+					prevNote.animation.play('hold');
+					prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;
+					prevNote.updateHitbox();
+				}
 			}
 		}
 		offsetWritesReady = true;
@@ -1596,7 +1729,7 @@ class Note extends DynamicSprite {
 
 			updateHitbox();
 
-			if (prevNote.isSustainNote && prevNote.animation != null && prevNote.exists) {
+			if ((sourceTimingMode != 1 || codenameInputLine != null) && prevNote.isSustainNote && prevNote.animation != null && prevNote.exists) {
 				prevNote.animation.play('hold');
 
 				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;

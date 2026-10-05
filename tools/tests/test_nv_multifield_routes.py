@@ -1,4 +1,5 @@
 """Execute production NV field generation, lookup, bank routing and RGB access."""
+from nv_field_fixture_support import write_nv_field_dependencies
 import subprocess
 import tempfile
 import unittest
@@ -30,13 +31,15 @@ class NvMultifieldRoutesTest(unittest.TestCase):
             'function nightmareVisionAcceptsNoteField(id:Int):Bool',
             'function initializeNightmareVisionPlayFields():Void',
             'public function getNightmareVisionField(id:Int)',
+            'function nightmareVisionFieldForNote(note:Note)',
             'function buildNightmareVisionPlayFields():Void',
+            'function nightmareVisionConfigureFieldReceptors(field:NightmareVisionPlayFieldView):Void',
             'function configureNightmareVisionStrumlines():Void',
             'function getNoteStrumline(note:Note)',
             'function setSourceInputReceptor(key:Int',
         ])
         rgb_start = strums.index('@:keep public var rgbShader(get, never):Dynamic;')
-        rgb_end = strums.index('\n\tpublic var useRGBShader', rgb_start)
+        rgb_end = strums.index('\n\t/** Match the source receptor\'s lane/last-note fallback and pressed override. */', rgb_start)
         lane_start = note.index('@:keep public var lane(get, set):Int;')
         lane_end = note.index('\n\t/** Direction', lane_start)
         fixture = r'''
@@ -49,7 +52,7 @@ class NightmareVisionRGBGraphics {
  public function getColors():Array<Int> return colors;
 }
 class FlxG { public static var width:Float=1280; public static var height:Float=720; }
-class Skin { public function applyReceptor(s:Strumline.StrumNote, id:Int) {} }
+class Skin extends NightmareVisionNoteSkin { public function new() super(); }
 class Note {
  public static var NOTE_AMOUNT:Int=4;
  public static var swagWidth:Float=112;
@@ -63,9 +66,12 @@ class Note {
 class Main {
  public var SONG:Dynamic = {lanes:3, uiType:'default', format:'nmv2'};
  public var nightmareVisionScripts:Dynamic = {};
+ public var nightmareVisionPrefs:Dynamic = {view:{quants:false}};
  public var playFields:NightmareVisionPlayFields;
  public var nightmareVisionFields:Array<NightmareVisionPlayFieldView>=[];
  public var nightmareVisionStrumlines:Array<Strumline>=[];
+ public var nightmareVisionOwnedStrumlines:Array<Strumline>=[];
+ public var nightmareVisionNoteFields:haxe.ds.ObjectMap<Note, NightmareVisionPlayFieldView>=new haxe.ds.ObjectMap();
  public var playerStrums:Strumline=new Strumline(0,50,'default');
  public var enemyStrums:Strumline=new Strumline(0,50,'default');
  public var strumLine:Dynamic={y:50};
@@ -76,9 +82,16 @@ class Main {
  public var downscroll:Bool=false;
  public var strumsBlocked:Array<Bool>=[];
  public function new() {}
- function nightmareVisionSkinForField(id:Int):Skin return null;
+ function nightmareVisionSkinForField(id:Int):NightmareVisionNoteSkin return null;
  function getCodenameLineStrumline(id:Int):Strumline return null;
  function getInputStrumline(line:Dynamic, player:Bool):Strumline return player ? playerStrums : enemyStrums;
+ function attachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {
+  if(field.strumline!=null && !nightmareVisionOwnedStrumlines.contains(field.strumline)) nightmareVisionOwnedStrumlines.push(field.strumline);
+ }
+ function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {}
+ function syncNightmareVisionPlayFieldCollection():Void {
+  if(playFields!=null) nightmareVisionFields=playFields.members;
+ }
  __METHODS__
  static function check(ok:Bool, label:String) { if (!ok) throw label; }
  static function main() {
@@ -89,6 +102,11 @@ class Main {
   h.configureNightmareVisionStrumlines();
   check(h.playFields.length==3 && h.nightmareVisionFields==h.playFields.members, 'three live source fields');
   var f0=h.getNightmareVisionField(0), f1=h.getNightmareVisionField(1), f2=h.getNightmareVisionField(2);
+  check(f0.baseX==FlxG.width-112*2-103 && f1.baseX==112*2+97 && f2.baseX==FlxG.width*0.5-3,
+   'authored field center positions');
+  check(f0.strumline.x==f0.baseX-224 && f1.strumline.x==f1.baseX-224
+   && f2.strumline.x==f2.baseX-224 && f2.strumline.y==f2.baseY-56,
+   'receptor banks use their live field base coordinates');
   check(f0.strumline==h.playerStrums && f1.strumline==h.enemyStrums, 'legacy source fields');
   check(f2.strumline!=f0.strumline && f2.strumline!=f1.strumline, 'extra bank must be distinct');
   check(f2.members==f2.strumline.members && f2.members!=f0.members, 'live unique receptor arrays');
@@ -149,25 +167,32 @@ class Main {
         line_fixture = r'''
 class Strumline {
  public var members:Array<StrumNote>=[];
+ public var x:Float=0;
+ public var y:Float=0;
+ public var centerReceptors:Bool=false;
  public var alpha:Float=1;
  public var visible:Bool=true;
  public var cameras:Array<Dynamic>=[];
  public var noteHoldCovers:Dynamic={cameras:[]};
  public function new(x:Float,y:Float,ui:String) { for (i in 0...4) { var s=new StrumNote(); s.ID=i; members.push(s); } }
- public function setCenteredLayout(x:Float,y:Float) {}
+ public function setCenteredLayout(x:Float,y:Float) { this.x=x; this.y=y; }
  public function resetStrums() {}
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }
 }
 class StrumNote {
  public var ID:Int=0;
+ public var alphaMult:Float=1;
  public var animation:Dynamic={curAnim:{name:'static'}};
  public var resetAnim:Float=0;
  public var nightmareVisionSource:Bool=false;
  public var nightmareVisionPalette:Dynamic=null;
  public var nightmareVisionRGB:Main.NightmareVisionRGBGraphics=null;
  public var psychRGBShader:Main.PsychRGBShaderReference=new Main.PsychRGBShaderReference();
+ public var isQuant:Bool=false;
+ public var nightmareVisionQuantPrefs:Dynamic;
  public function new() {}
  public function playAnim(name:String) { animation.curAnim.name=name; }
+ public function handleColors(anim:String=''):Void {}
  __RGB__
 }
 '''.replace('__RGB__', strums[rgb_start:rgb_end].replace(':NightmareVisionRGBGraphics', ':Main.NightmareVisionRGBGraphics').replace('new NightmareVisionRGBGraphics', 'new Main.NightmareVisionRGBGraphics'))
@@ -175,6 +200,10 @@ class StrumNote {
             work = FixturePath(directory)
             (work / 'Main.hx').write_text(fixture, newline='\n')
             (work / 'Strumline.hx').write_text(line_fixture, newline='\n')
+            write_nv_field_dependencies(work)
+            (work / 'NightmareVisionNoteSkin.hx').write_text(
+                'class NightmareVisionNoteSkin { public function new() {} '
+                'public function applyReceptor(s:Dynamic, id:Int):Void {} }', newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', directory,
                                      '-main', 'Main', '--interp'], capture_output=True, text=True, timeout=45)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

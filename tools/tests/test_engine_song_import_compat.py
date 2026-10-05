@@ -1,5 +1,6 @@
 """Synthetic coverage for descriptor-aware legacy/Psych song discovery."""
 from haxe_test_support import HAXE_COMMAND
+from tools.haxe_import_io_stubs import install_import_io_dependencies
 
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
@@ -169,6 +170,7 @@ class ImportCompat {{
                         "static function findLegacyMusicAudio",
                         "static function songImportFromAssetFolders",
                         "static function appendAssetSongImports",
+                        "static function prepareInstalledDependencyRoots",
                 "static public function processInfo",
                 "static public function getInfoValue",
                 "static public function getInfoBool",
@@ -235,11 +237,6 @@ class ImportSettings {{
     if (value == null) return '';
     return Path.normalize(StringTools.replace(StringTools.trim(Std.string(value)), '\\\\', '/'));
   }}
-}}
-class ImportEngine {{
-  public static inline var PSYCH:String = 'Psych Engine';
-  public static inline var KADE:String = 'Kade Engine';
-  public static inline var NIGHTMARE_VISION:String = 'Nightmare Vision';
 }}
 class PsychStageInference {{ public static function resolve(_root:String, _song:String):String return null; }}
 class ImportCompat {{
@@ -402,9 +399,15 @@ class ImportCompat {{
       throw 'NMV lane-count diagnostics were not attached to the import plan';
     var laneThreeDiagnostics = laneThreeResult[0].diagnostics.join(';');
     if (laneThreeDiagnostics.indexOf('[nightmare-vision-unsupported-chart-lanes]') < 0
-        || laneThreeDiagnostics.indexOf('lanes=3') < 0
-        || laneThreeDiagnostics.indexOf('monster-three-lane.json') < 0)
-      throw 'NMV 3-lane chart did not retain a source-path diagnostic';
+        || laneThreeDiagnostics.indexOf('lanes=0') < 0
+        || laneThreeDiagnostics.indexOf('monster-zero-lane.json') < 0)
+      throw 'NMV invalid lane chart did not retain a source-path diagnostic';
+    var threeLaneChart = readSongChart(Path.join([laneThreePack, 'songs/monster/data/monster-three-lane.json']));
+    if (!NightmareVisionChartCompat.convert(threeLaneChart).supported)
+      throw 'NMV declared third field was rejected';
+    if (laneThreeResult[0].sourceUnsupportedDifficulties.indexOf('monster-three-lane') >= 0
+        || laneThreeResult[0].sourceUnsupportedDifficulties.indexOf('three-lane') >= 0)
+      throw 'NMV supported third-field chart remained blocked';
 
     var collisionRoot = Path.join([root, 'nmv-owner-collision']);
     var collisionResult:Array<SongImport> = [];
@@ -432,6 +435,12 @@ class ImportCompat {{
 '''
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
+            install_import_io_dependencies(temp_path)
+            for dependency in ("ImportEngine.hx", "ImportSongOwnership.hx", "CompatScriptManifest.hx",
+                               "ImportInstalledDependencyRoots.hx", "CompatCanonicalPath.hx"):
+                (temp_path / dependency).write_text(
+                    (ROOT / "source" / dependency).read_text(), newline='\n'
+                )
             (temp_path / "NightmareVisionChartCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
             , newline='\n')
@@ -544,6 +553,9 @@ class ImportCompat {{
                 '"notes":[{"mustHitSection":false,"sectionNotes":[[0,8,0]]}]}}'
             , newline='\n')
             (lane_three_data / "audio/Inst.ogg").write_bytes(b"inst")
+            (lane_three_data / "data/monster-zero-lane.json").write_text(
+                '{"song":{"song":"monster","format":"nmv2","keys":4,"lanes":0,"notes":[]}}'
+            , newline='\n')
             (collision_root / "assets/data/monster/monster.json").write_text(
                 '{"song":{"song":"monster","notes":[]}}'
             , newline='\n')

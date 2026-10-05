@@ -13,6 +13,16 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class NightmareVisionChartCompatTest(unittest.TestCase):
+    def test_positive_field_counts_and_invalid_declarations(self):
+        self.run_haxe(r'''for (lanes in [1, 3, 4]) {
+  var result = NightmareVisionChartCompat.convert({song:{keys:4, lanes:lanes, notes:[]}});
+  if (!result.supported || result.chart.song.lanes != lanes) throw "positive field count rejected";
+}
+for (lanes in ([0, -1, 1.5, "bogus", "3junk"]:Array<Dynamic>)) {
+  var result = NightmareVisionChartCompat.convert({song:{keys:4, lanes:lanes, notes:[]}});
+  if (result.supported) throw "invalid field count accepted";
+}''')
+
     def run_haxe(self, body):
         main = "class Main { static function main() {\n" + body + "\n} }\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
@@ -92,7 +102,6 @@ var result = NightmareVisionChartCompat.convert(chart, "custom.json");
 if (result.supported) throw "unsupported format/lanes were accepted";
 var joined = result.diagnostics.join(";");
 for (code in ["nightmare-vision-unsupported-chart-format",
-  "nightmare-vision-unsupported-chart-lanes",
   "nightmare-vision-unsupported-track-swap"])
   if (joined.indexOf("[" + code + "]") < 0) throw "missing diagnostic " + code;
 if (chart.song.format != "codenameChart") throw "unsupported chart was rewritten";

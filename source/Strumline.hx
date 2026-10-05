@@ -17,6 +17,8 @@ import sys.FileSystem;
 
 class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	public var type:String = 'normal';
+	/** A source field draws its underlay immediately before its receptor bank. */
+	public var sourceFieldBeforeDraw:Void->Void;
 	/** Codename scripts use `playerStrums.onMiss` and `.cpu`; these fields
 	 * forward to the matching source line while this remains the native group. */
 	var codenameScriptView:CodenameStrumlineScriptView<Character> = new CodenameStrumlineScriptView<Character>();
@@ -508,11 +510,13 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	}
 
 	override public function draw():Void {
+		if (sourceFieldBeforeDraw != null) sourceFieldBeforeDraw();
 		super.draw();
 		drawAttachedEffects();
 	}
 
 	override public function destroy():Void {
+		sourceFieldBeforeDraw = null;
 		if (attachedEffects != null) {
 			attachedEffects.destroy();
 			attachedEffects = null;
@@ -527,12 +531,39 @@ class StrumNote extends FlxSprite {
 	public var nightmareVisionPalette:PsychRGBPalette = null;
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics = null;
 	/** Marks this receptor as source-owned even when its skin disables coloring. */
-	@:keep public var nightmareVisionSource:Bool = false;
+	@:keep public var nightmareVisionSource(default, set):Bool = false;
+	@:keep public var isQuant:Bool = false;
+	public var nightmareVisionQuantPrefs:Dynamic;
+	/** Source PlayField keeps the animated alpha target separate from its field multiplier. */
+	@:keep public var targetAlpha:Float = 1;
+	@:keep public var alphaMult(default, set):Float = 1;
 	@:keep public var resetAnim:Float = 0;
+	/** Psych confirms use its source timer for autoplay and key release for manual input. */
+	public var psychSourceTiming:Bool = false;
 	@:keep public var coyoteTime:Float = 0;
 	@:keep public var lastNote:Note;
 	@:keep public var holding:Bool = false;
 	@:keep public var sustainReduce:Bool = true;
+
+	function set_nightmareVisionSource(value:Bool):Bool {
+		if (value && !nightmareVisionSource) targetAlpha = alpha;
+		nightmareVisionSource = value;
+		if (value) super.set_alpha(targetAlpha * alphaMult);
+		return value;
+	}
+
+	function set_alphaMult(value:Float):Float {
+		alphaMult = value;
+		if (nightmareVisionSource) super.set_alpha(targetAlpha * alphaMult);
+		return value;
+	}
+
+	/** Preserve Flixel/Psych alpha writes unless this receptor belongs to NV. */
+	override function set_alpha(value:Float):Float {
+		if (!nightmareVisionSource) return super.set_alpha(value);
+		targetAlpha = value;
+		return super.set_alpha(targetAlpha * alphaMult);
+	}
 	/** Codename receptor scripts inspect the live animation name. */
 	public function getAnim():String
 		return animation.curAnim == null ? null : animation.curAnim.name;
@@ -571,6 +602,20 @@ class StrumNote extends FlxSprite {
 		if (nightmareVisionRGB == null)
 			nightmareVisionRGB = new NightmareVisionRGBGraphics(nightmareVisionPalette);
 		return nightmareVisionRGB;
+	}
+	/** Match the source receptor's lane/last-note fallback and pressed override. */
+	@:keep public function handleColors(anim:String = '', ?note:Note):Void {
+		if (!nightmareVisionSource || !useRGBShader) return;
+		if (note == null) note = lastNote;
+		lastNote = note;
+		var graphics = getNightmareVisionRGB();
+		if (note != null && note.nightmareVisionRGB != null)
+			graphics.setColors(note.nightmareVisionRGB.getColors());
+		else if (nightmareVisionPalette != null) graphics.palette.copyValues(nightmareVisionPalette);
+		if (isQuant && anim == 'pressed')
+			graphics.setColors(NightmareVisionQuantColorCompat.pressedColors(nightmareVisionQuantPrefs));
+		graphics.enabled = nightmareVisionPalette != null && anim != 'static';
+		graphics.apply(this);
 	}
 	public var useRGBShader(default, set):Bool = true;
 	function set_useRGBShader(value:Bool):Bool {
@@ -641,6 +686,9 @@ class StrumNote extends FlxSprite {
 	public var isPixel:Bool = false;
 	/** Codename direction override for notes approaching this receptor. */
 	@:keep public var noteAngle:Null<Float> = null;
+	/** Psych independently controls a receptor's travel direction and scroll side. */
+	@:keep public var direction:Float = 90;
+	@:keep public var downScroll:Bool = false;
 	public var normalSize:Float = 0.7;
 	/** V-Slice receptor frame canvases and authored offsets need to be aligned
 	 * after every atlas-frame change; classic/Psych receptors keep legacy rules. */
@@ -665,6 +713,7 @@ class StrumNote extends FlxSprite {
 		?currentKey:NoteKeys, ?parentLine:Strumline) {
 		super(x, y);
 		this.parentLine = parentLine;
+		downScroll = OptionsHandler.options != null && OptionsHandler.options.downscroll;
 
 		var daType:Judgement.TUI = Reflect.field(Judgement.uiJson, type);
 
@@ -834,8 +883,7 @@ class StrumNote extends FlxSprite {
 			centerOrigin();
 			var authored = nightmareVisionOffsets.get(anim);
 			if (authored != null) offset.set(offset.x + authored[0], offset.y + authored[1]);
-			shader = nightmareVisionPalette != null && anim != 'static'
-				? nightmareVisionPalette.shader : null;
+			handleColors(anim);
 			return;
 		}
 		if (psychSkinOwner != null) {
@@ -864,8 +912,9 @@ class StrumNote extends FlxSprite {
 	 * frame. The play call itself may not install its first frame until update. */
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
-		if (nightmareVisionOffsets != null) {
-			if (coyoteTime > 0 && !holding) coyoteTime = Math.max(0, coyoteTime - elapsed);
+		if (nightmareVisionOffsets != null && coyoteTime > 0 && !holding)
+			coyoteTime = Math.max(0, coyoteTime - elapsed);
+		if (nightmareVisionOffsets != null || psychSourceTiming) {
 			if (resetAnim > 0) {
 				resetAnim -= elapsed;
 				if (resetAnim <= 0) { resetAnim = 0; playAnim('static'); }

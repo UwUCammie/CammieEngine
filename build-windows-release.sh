@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-TAG="${1:-v0.0.13}"
+TAG="${1:-v$(tr -d '\r\n' < VERSION)}"
 if [[ "$TAG" == "-h" || "$TAG" == "--help" ]]; then
 	cat <<'EOF'
 Usage: ./build-windows-release.sh [release-tag] [--wine-smoke]

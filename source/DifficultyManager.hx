@@ -24,6 +24,7 @@ class DifficultyManager {
     public static var weeksSupported:Map<Int, Array<Int>> = [];
 
 	public static function init() {
+		FreeplayChartMetadata.clear();
 		supportedDiff = [];
 		weeksSupported = [];
 		diffJson = CoolUtil.parseJson(FNFAssets.getJson("assets/images/custom_difficulties/difficulties"));
@@ -81,10 +82,12 @@ class DifficultyManager {
 			return;
 		for (diff in 0...diffJson.difficulties.length) {
 			var difficultyName = Std.string(Reflect.field(diffJson.difficulties[diff], 'name'));
-			if (FNFAssets.exists('assets/data/${key}/${key + getDiffEnding(diff)}.json')
+			var chartPath = 'assets/data/${key}/${key + getDiffEnding(diff)}.json';
+			if (FNFAssets.exists(chartPath)
 				&& NightmareVisionDifficultyCompat.allows(sourceRules.selectable, difficultyName)
 				&& (sourceRules.unsupported == null
-					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, difficultyName))) {
+					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, difficultyName)
+					|| FreeplayChartMetadata.retainedChartSupported(key, difficultyName, chartPath))) {
 				// : )
 				supportedDiff.get(key).push(diff);
 			}
@@ -119,7 +122,7 @@ class DifficultyManager {
 		for (value in (cast raw:Array<Dynamic>))
 			if (value != null && StringTools.trim(Std.string(value)) != '')
 				result.push(StringTools.trim(Std.string(value)).toLowerCase());
-		return result.length == 0 ? null : result;
+		return result;
 	}
 
 	static function readSourceSelectableDifficulties(song:String):Array<String> {
@@ -204,7 +207,8 @@ class DifficultyManager {
 			if (suffix != null && suffix != ''
 				&& NightmareVisionDifficultyCompat.allows(sourceRules.selectable, suffix)
 				&& (sourceRules.unsupported == null
-					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, suffix)))
+					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, suffix)
+					|| FreeplayChartMetadata.retainedChartSupported(song, suffix, directory + '/' + entry)))
 				ensureDifficultyDefinition(suffix);
 		}
 		return sourceRules;
@@ -246,7 +250,7 @@ class DifficultyManager {
 		var giveUpResult = changeDifficulty(diff, change);
 		var supported = getSupportedDiffs(song);
 		if (supported.length == 0)
-			return giveUpResult;
+			return {difficulty: diff, text: 'UNAVAILABLE'};
 		var ignoreIfExists = change == 0;
         if (change == 0)
             change = 1;
@@ -260,7 +264,7 @@ class DifficultyManager {
 				return sus;
             giveUpNum++;
         }
-        return giveUpResult;
+        return changeDifficulty(supported[0]);
     }
 
     public static function changeDiffStorySans(diff:Int, ?change:Int = 0, ?week:Int=0) {

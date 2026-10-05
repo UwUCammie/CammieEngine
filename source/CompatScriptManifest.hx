@@ -12,6 +12,8 @@ using StringTools;
 typedef CompatScriptRoot = {
 	var engine:String;
 	var path:String;
+	/** Explicit base-provider scope; it supplies resources but never chart/audio ownership. */
+	@:optional var dependency:Bool;
 }
 
 /** Destination-only record for a validated overlay retained when its base
@@ -197,7 +199,9 @@ class CompatScriptManifest {
 			if (path == '' || seen.exists(key))
 				continue;
 			seen.set(key, true);
-			result.roots.push({engine:engine, path:path});
+			var root:CompatScriptRoot = {engine:engine, path:path};
+			if (Reflect.field(entry, 'dependency') == true) root.dependency = true;
+			result.roots.push(root);
 		}
 		// Keep old manifests readable while making ownership explicit for every
 		// normalized manifest.  A selected root must already be one of the safe
@@ -208,7 +212,7 @@ class CompatScriptManifest {
 		if (selected != '') {
 			var selectedKnown = false;
 			for (root in result.roots)
-				if (root != null && destinationKey(root.path) == destinationKey(selected)) {
+				if (root != null && root.dependency != true && destinationKey(root.path) == destinationKey(selected)) {
 					selected = root.path;
 					selectedKnown = true;
 					break;
@@ -216,8 +220,9 @@ class CompatScriptManifest {
 			if (!selectedKnown)
 				selected = '';
 		}
-		if (selected == '' && result.roots.length > 0)
-			selected = result.roots[0].path;
+		if (selected == '')
+			for (root in result.roots) if (root.dependency != true) {selected = root.path; break;}
+		if (selected == '') result.roots = [];
 		if (selected != '')
 			result.selectedRoot = selected;
 		if (result.overlays.length == 0)

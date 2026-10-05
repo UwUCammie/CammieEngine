@@ -32,7 +32,7 @@ class PsychNoteAnimationFlagsTest(unittest.TestCase):
         note_source = (ROOT / "source/Note.hx").read_text(encoding="utf-8")
         play_source = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
         setter = extract_method(note_source, "function set_sourceKind(")
-        note_miss = extract_method(play_source, "function noteMiss(")
+        note_miss = extract_method(play_source, "function noteMissCore(")
         good_hit = extract_method(play_source, "function goodNoteHit(")
 
         self.assertIn("public var noAnimation:Bool = false;", note_source)

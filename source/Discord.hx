@@ -36,10 +36,10 @@ class DiscordClient {
 	static function onReady() {
         #if cpp
 		DiscordRpc.presence({
-			details: "In the Menus",
+			details: "Cammie Engine | In the Menus",
 			state: null,
 			largeImageKey: 'icon',
-			largeImageText: "CammieEngine"
+			largeImageText: "Cammie Engine"
 		});
         #end
 	}
@@ -73,10 +73,10 @@ class DiscordClient {
 			smallImageKey = "icon";
 
 		if (smallImageString == null)
-			smallImageString = "CammieEngine";
+			smallImageString = "Cammie Engine";
 
 		DiscordRpc.presence({
-			details: details,
+			details: "Cammie Engine | " + details,
 			state: state,
 			largeImageKey: smallImageKey,
 			largeImageText: smallImageString,
@@ -96,11 +96,11 @@ class DiscordClient {
 		var finishTimestamp:Float = endTimestamp == null ? 0 : endTimestamp;
 		if (finishTimestamp > 0) finishTimestamp += startTimestamp;
 		DiscordRpc.presence({
-			details: details,
+			details: "Cammie Engine | " + details,
 			state: state,
 			smallImageKey: smallImageKey,
 			largeImageKey: largeImageKey == null ? 'icon' : largeImageKey,
-			largeImageText: 'CammieEngine',
+			largeImageText: 'Cammie Engine',
 			startTimestamp: Std.int(startTimestamp / 1000),
 			endTimestamp: Std.int(finishTimestamp / 1000)
 		});

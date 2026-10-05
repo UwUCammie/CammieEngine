@@ -111,6 +111,9 @@ class Main {
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
             , newline='\n')
+            (work / "PsychSongNameCompat.hx").write_text(
+                (ROOT / "source/PsychSongNameCompat.hx").read_text()
+            , newline='\n')
             (work / "ImportSettings.hx").write_text(r'''import haxe.io.Path;
 using StringTools;
 class ImportSettings {

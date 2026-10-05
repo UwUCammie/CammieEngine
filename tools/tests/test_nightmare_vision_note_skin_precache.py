@@ -15,11 +15,11 @@ class NightmareVisionNoteSkinPrecacheTest(unittest.TestCase):
         source = (ROOT / "source/NightmareVisionNoteSkin.hx").read_text()
         methods = "\n".join(extract_method(source, marker) for marker in (
             "public function precacheEffects(",
-            "function effectTexture(",
+            "function loadAtlas(",
         ))
-        self.assertIn("DEFAULT_SPLASH_TEXTURE:String = 'UI/notes/noteSplashes'", source)
-        self.assertIn("DEFAULT_SUSTAIN_SPLASH_TEXTURE:String = 'UI/notes/sustainHold'", source)
-        self.assertIn("stringField('splashTexture', DEFAULT_SPLASH_TEXTURE)", source)
+        defaults = (ROOT / 'source/NightmareVisionNoteSkinDefaults.hx').read_text()
+        self.assertIn("DEFAULT_SPLASH_TEXTURE:String = 'UI/notes/noteSplashes'", defaults)
+        self.assertIn("DEFAULT_SUSTAIN_SPLASH_TEXTURE:String = 'UI/notes/sustainHold'", defaults)
 
         fixture = r'''class FlxAtlasFrames {
  public var key:String;
@@ -40,8 +40,19 @@ class NightmareVisionNoteSkin {
  public var data:Dynamic;
  public var paths:NightmareVisionPaths;
  public var splashFrames:FlxAtlasFrames;
+ public var splashFramesTexture:String;
+ public var splashFramesAttempted:Bool=false;
+ public var sustainSplashFramesTexture:String;
+ public var splashTexture:String;
+ public var sustainSplashTexture:String;
  public var effectsPrecached:Bool=false;
- public function new(paths:NightmareVisionPaths,data:Dynamic) {this.paths=paths;this.data=data;}
+ public var sustainSplashPrecached:Bool=false;
+ public function new(paths:NightmareVisionPaths,data:Dynamic) {
+  this.paths=paths;this.data=data;
+  NightmareVisionNoteSkinDefaults.resolveData(data);
+  splashTexture=data.splashTexture;sustainSplashTexture=data.sustainSplashTexture;
+ }
+ function diagnose(key:String,message:String):Void throw key+":"+message;
 ''' + methods + r'''
 }
 class Main {
@@ -56,6 +67,14 @@ class Main {
    "the splash atlas was not retained for the first splash or the prewarm was not marked");
   absent.precacheEffects();
   check(corePaths.requests.length==2,"repeated preparation warmed the same skin more than once");
+  absent.splashTexture="changed";
+  absent.precacheEffects();
+  check(corePaths.requests.length==3&&absent.splashFrames.key=="changed",
+   "mutable splash texture did not invalidate only its own atlas");
+  absent.sustainSplashTexture="changedHold";
+  absent.precacheEffects();
+  check(corePaths.requests.length==4&&corePaths.requests[3]=="owner-core:changedHold",
+   "mutable sustain texture did not invalidate its own prewarm");
 
   var customPaths=new NightmareVisionPaths("owner-custom");
   var custom=new NightmareVisionNoteSkin(customPaths,
@@ -82,7 +101,7 @@ class Main {
         with tempfile.TemporaryDirectory(prefix="nmv-note-skin-precache-", dir=ROOT / "tmp") as scratch:
             (Path(scratch) / "Main.hx").write_text(fixture, newline="\n")
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(scratch), "-main", "Main", "--interp"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / 'source'), "-cp", str(scratch), "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

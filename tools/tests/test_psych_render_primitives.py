@@ -27,7 +27,7 @@ class PsychRenderPrimitivesTest(unittest.TestCase):
     def test_disk_graphics_and_color_tween_dispatch(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         methods = "\n".join(extract_method(source, marker) for marker in [
-            "function compatMakeLuaSprite(", "function compatLoadGraphic(",
+            "function compatMakeLuaSprite(", "function compatRemoveLuaSprite(", "function compatLoadGraphic(",
             "function compatTweenObject(", "function compatCancelTween(",
             "function compatDoTween(",
             "function compatParseColor(",
@@ -61,7 +61,9 @@ class FlxSprite {
  public var x:Float = 0; public var y:Float = 0;
  public var scale:FlxPoint = new FlxPoint(10,10);
  public var image:Bitmap;
+ public var destroyed:Bool = false;
  public function new(x:Float = 0, y:Float = 0) {}
+ public function destroy():Void destroyed = true;
  public function loadGraphic(value:Dynamic, animated:Bool = false, frameWidth:Int = 0, frameHeight:Int = 0):FlxSprite {
   if (!Std.isOfType(value, Bitmap)) throw 'unregistered disk path passed to asset manifest';
   image = cast value; return this;
@@ -103,10 +105,12 @@ class FlxTween {
 class RenderFixture {
  var haxeSprites:Map<String,FlxSprite> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
+ var members:Array<Dynamic> = [];
  var compatTweens:Map<String,FlxTween> = [];
  var completed:Array<String> = [];
  var model:Dynamic = {point:{x:3.0,y:7.0}};
  function new() {}
+ function remove(sprite:Dynamic, splice:Bool):Dynamic { if (splice) members.remove(sprite); return sprite; }
  function compatForgetSpriteAtlas(sprite:Dynamic):Void {}
  function compatFindObject(name:Dynamic):Dynamic return haxeSprites.get(Std.string(name));
  function compatGetProperty(name:Dynamic):Dynamic {

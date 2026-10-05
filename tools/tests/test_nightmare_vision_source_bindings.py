@@ -61,6 +61,16 @@ class Main {
   check(runtimeKeys!=null && Reflect.field(runtimeKeys,'A')==flixel.input.keyboard.FlxKey.A
     && Reflect.field(runtimeKeys,'SPACE')==flixel.input.keyboard.FlxKey.SPACE,'runtime FlxKey snapshot exposes enum constants');
   check(importedKeys==runtimeKeys,'source FlxKey import reuses the runtime snapshot facade');
+  var underlay:Dynamic=interp.variables.get('UnderlayType');
+  check(underlay!=null && underlay.FIELD=='Lane Underlay' && underlay.SCREEN=='Screen Dim',
+    'source UnderlayType string enum values');
+  check(interp.imports.get('funkin.data.ClientPrefs.UnderlayType')==underlay,
+    'qualified UnderlayType import reuses owner facade');
+  var first:Array<String>=underlay.toArray();var next:Array<String>=underlay.toArray();
+  check(first!=next && first.join(',')=='Lane Underlay,Screen Dim','enum returns ordered fresh arrays');
+  first[0]='changed';first.push('extra');
+  check(underlay.toArray().join(',')=='Lane Underlay,Screen Dim','enum array mutation is isolated');
+
   check(NightmareVisionSourceRandom.float(2,4)==3,'source Random.float delegates to native RNG');
   var before=interp.ownerSave.data.flushCount;
   invoke(interp.variables,'newOption',['enabled','bool','null',{description:'Toggle',onChange:function(){}}]);

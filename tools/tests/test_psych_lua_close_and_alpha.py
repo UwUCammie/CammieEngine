@@ -35,7 +35,8 @@ class RuntimeSmokeHarness {
 }
 class PsychModSettingCompat {
  public static function ownerForScript(origin:String, root:String):String return null;
- public static function create(origin:String, root:String, report:String->Void):Dynamic
+ public static function create(origin:String, root:String, report:String->Void,
+  ?activeCompanionDirectory:String):Dynamic
   return function(?name:Dynamic, ?packageName:Dynamic):Dynamic return null;
 }
 class LuaCompatInterp extends Interp {
@@ -45,6 +46,7 @@ class Main {
  static var SONG:Dynamic = {song:'fixture-song'};
  static var storyDifficultyText='authored-difficulty';
  static var tween:Array<Dynamic>=[];
+ static function currentSongDataFolder():String return 'assets/data/fixture-song';
  static function compatNoteTween(tag:String,note:Dynamic,property:String,value:Float,
   duration:Float,?ease:String):Void tween=[tag,note,property,value,duration,ease];
  static function seed(interp:Interp):Void {
