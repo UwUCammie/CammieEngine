@@ -3,16 +3,68 @@ from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
+import os
+import re
 import subprocess
 import tempfile
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HAXE = ROOT / ".tools/haxe/haxe"
 
 
 class UpdateCheckerTest(unittest.TestCase):
+    def test_batch_helper_codegen_selects_urlmon_not_sys_http(self):
+        batch = (ROOT / "run.bat").read_text(encoding="utf-8")
+        marker = batch.index("\n:build_update_helper")
+        helper_section = batch[marker:].splitlines()
+        command_line = next(
+            line.strip() for line in helper_section
+            if line.strip().lower().startswith("call haxe ")
+        )
+        self.assertRegex(
+            command_line,
+            r"(?:^|\s)-D\s+windows(?:\s|$)",
+            "the standalone Windows helper must compile with Haxe's windows define",
+        )
+        defines = re.findall(r"(?:^|\s)-D\s+([A-Za-z_][A-Za-z0-9_-]*)", command_line)
+        self.assertIn("no-compilation", defines, "helper probe should only generate C++")
+
+        (ROOT / "tmp").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="windows-updater-codegen-", dir=ROOT / "tmp") as folder:
+            generated = Path(folder) / "cpp"
+            command = [
+                *HAXE_COMMAND,
+                "-cp", str(ROOT / "tools/updater"),
+                "-cp", str(ROOT / "source"),
+                "-main", "CammieUpdateHelper",
+                "-cpp", str(generated),
+            ]
+            for define in defines:
+                command.extend(("-D", define))
+            env = os.environ.copy()
+            env["HAXEPATH"] = str(ROOT / ".tools/haxe")
+            env["NEKOPATH"] = str(ROOT / ".tools/neko")
+            env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
+            env["PATH"] = os.pathsep.join(
+                (env["HAXEPATH"], env["NEKOPATH"], env.get("PATH", ""))
+            )
+            env["LD_LIBRARY_PATH"] = os.pathsep.join(
+                (env["NEKOPATH"], env.get("LD_LIBRARY_PATH", ""))
+            )
+            result = subprocess.run(
+                command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=90,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            transport = (generated / "src/WindowsUpdateDownload.cpp").read_text(encoding="utf-8")
+            self.assertIn("URLDownloadToFileW", transport)
+            self.assertNotIn("sys::Http", transport)
+            self.assertNotIn("customRequest", transport)
+            self.assertIn("urlmon.h", transport)
+            build_xml = (generated / "Build.xml").read_text(encoding="utf-8")
+            self.assertIn("urlmon", build_xml.lower(), "URLMon library is not linked")
+
     def test_progress_reads_persistent_job_and_downloaded_bytes(self):
         (ROOT / "tmp").mkdir(exist_ok=True)
         fixture = r'''

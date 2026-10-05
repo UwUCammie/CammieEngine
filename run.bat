@@ -320,7 +320,7 @@ exit /b !GAME_RESULT!
 :build_update_helper
 set "HELPER_CPP=!PROJECT_TMP!\windows-updater-cpp"
 echo ^>^> building standalone Windows update helper...
-call haxe -cp "!ROOT!\tools\updater" -cp "!ROOT!\source" -main CammieUpdateHelper -cpp "!HELPER_CPP!" -D HXCPP_M64 -D no-compilation !HAXE_COMPILER_FLAGS!
+call haxe -cp "!ROOT!\tools\updater" -cp "!ROOT!\source" -main CammieUpdateHelper -cpp "!HELPER_CPP!" -D windows -D HXCPP_M64 -D no-compilation !HAXE_COMPILER_FLAGS!
 if errorlevel 1 exit /b 1
 pushd "!HELPER_CPP!"
 if errorlevel 1 exit /b 1
