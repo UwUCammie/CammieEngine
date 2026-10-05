@@ -14,10 +14,55 @@ import sys.io.FileInput;
  * Arguments: statusPath exePath installRoot archiveUrl checksumUrl archiveName
  * apiSha256 releaseTag [originatingGamePid]
  */
+#if (cpp && windows && !updater_test)
+@:buildXml("<target id='haxe' if='HXCPP_MINGW'><lib name='-lcomctl32'/><lib name='-lgdi32'/></target><target id='haxe' unless='HXCPP_MINGW'><lib name='comctl32.lib'/><lib name='gdi32.lib'/></target>")
+@:cppFileCode('
+#include <windows.h>
+#include <commctrl.h>
+static HWND cammie_update_window = NULL;
+static HWND cammie_update_label = NULL;
+static HWND cammie_update_bar = NULL;
+static void cammie_update_pump() {
+ MSG message;
+ while (PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) {
+  TranslateMessage(&message);
+  DispatchMessageW(&message);
+ }
+}
+static void cammie_update_progress(const wchar_t* text, int percent) {
+ if (!IsWindow(cammie_update_window)) {
+  INITCOMMONCONTROLSEX controls = {sizeof(controls), ICC_PROGRESS_CLASS};
+  InitCommonControlsEx(&controls);
+  cammie_update_window = CreateWindowExW(WS_EX_APPWINDOW, L"STATIC", L"CammieEngine update",
+   WS_OVERLAPPED | WS_CAPTION | WS_BORDER | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+   620, 155, NULL, NULL, GetModuleHandleW(NULL), NULL);
+  cammie_update_label = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+   16, 15, 580, 65, cammie_update_window, NULL, GetModuleHandleW(NULL), NULL);
+  cammie_update_bar = CreateWindowExW(0, PROGRESS_CLASSW, L"", WS_CHILD | WS_VISIBLE,
+   16, 86, 580, 18, cammie_update_window, NULL, GetModuleHandleW(NULL), NULL);
+  SendMessageW(cammie_update_label, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+  SendMessageW(cammie_update_bar, PBM_SETRANGE32, 0, 100);
+ }
+ SetWindowTextW(cammie_update_label, text);
+ SendMessageW(cammie_update_bar, PBM_SETPOS, percent, 0);
+ cammie_update_pump();
+}
+static void cammie_update_close() {
+ if (IsWindow(cammie_update_window)) DestroyWindow(cammie_update_window);
+ cammie_update_window = NULL;
+}
+')
+#end
 class CammieUpdateHelper {
 	static inline var CHUNK_SIZE:Int = 65536;
 	static inline var PAYLOAD_ROOT:String = "CammieEngine-windows-x64";
 	static inline var HELPER_EXE:String = "CammieUpdateHelper.exe";
+	static var progressStatusPath:Null<String>;
+	static var progressPhase:String = "";
+	static var progressStarted:Float = 0;
+	static var progressLastWrite:Float = 0;
+	static var progressFiles:Int = 0;
+	static var progressFile:String = "";
 
 	static function main():Void {
 		var args = Sys.args();
@@ -51,7 +96,12 @@ class CammieUpdateHelper {
 			var message = cleanError(Std.string(error));
 			if (!StringTools.startsWith(message, "Update failed:")) message = "Update failed: " + message;
 			try setStatus(statusPath, "error:" + message) catch (_:Dynamic) {}
-			Sys.println(message);
+			#if (cpp && windows && !updater_test)
+			closeProgressWindow();
+			var detail = message + "\n\nUpdate log: " + statusPath;
+			untyped __cpp__('MessageBoxW(NULL, {0}.__WCStr(), L"CammieEngine update failed", MB_OK | MB_ICONERROR)', detail);
+			#end
+			try Sys.println(message) catch (_:Dynamic) {}
 			Sys.exit(1);
 		}
 	}
@@ -80,13 +130,14 @@ class CammieUpdateHelper {
 		var installing = false;
 		var progress = {count:0, failAfter:-1};
 		currentInstallRoot = installRoot;
+		progressStatusPath = statusPath;
 
 		try {
 			setStatus(statusPath, "downloading");
 			downloadHttps(archiveUrl, archivePath);
 			downloadHttps(checksumUrl, checksumPath);
 
-			setStatus(statusPath, "verifying");
+			beginProgress(statusPath, "verifying");
 			var sidecarHash = parseSidecarHash(File.getContent(checksumPath), archiveName);
 			if (sidecarHash == null || sidecarHash != apiSha256)
 				throw "The release checksum file did not contain the expected ZIP digest.";
@@ -94,27 +145,33 @@ class CammieUpdateHelper {
 			if (actualHash != apiSha256)
 				throw "The downloaded ZIP failed its SHA-256 checks.";
 
-			setStatus(statusPath, "extracting");
+			beginProgress(statusPath, "extracting");
 			if (FileSystem.exists(stageRoot)) throw "The temporary extraction path already exists.";
 			payloadRoot = extractArchive(archivePath, stageRoot, releaseTag);
 			if (!FileSystem.exists(exePath) || FileSystem.isDirectory(exePath))
 				throw "The installed executable could not be found.";
 			setStatus(statusPath, "ready");
+			reportProgress(1, 1, true);
+			showProgressWindow("Update ready. Close the game to install.", 100);
 			waitForGame(exePath, originPid);
 
-			setStatus(statusPath, "installing");
+			beginProgress(statusPath, "installing");
+			var fileTotal = countReleaseFiles(payloadRoot);
+			installTotal = fileTotal;
 			installing = true;
 			copyReleaseTree(payloadRoot, installRoot, "", backupRoot, backupIndex, backedUp, createdFiles, progress);
 			var stagedTag = StringTools.trim(File.getContent(Path.join([payloadRoot, "RELEASE_TAG"])));
 			if (stagedTag != releaseTag) throw "The release tag changed after package validation.";
 			installOne(Path.join([payloadRoot, "RELEASE_TAG"]), Path.join([installRoot, "RELEASE_TAG"]),
 				"RELEASE_TAG", backupRoot, backupIndex, backedUp, createdFiles);
+			reportProgress(fileTotal, fileTotal, true);
 			setStatus(statusPath, "complete");
 			installing = false;
 			try deleteIfExists(archivePath) catch (_:Dynamic) {}
 			try deleteIfExists(checksumPath) catch (_:Dynamic) {}
 			try deleteTree(stageRoot) catch (_:Dynamic) {}
 			try deleteTree(backupRoot) catch (_:Dynamic) {}
+			closeProgressWindow();
 			if (promptRestart(releaseTag)) {
 				Sys.setCwd(installRoot);
 				Sys.command(exePath, []);
@@ -122,6 +179,7 @@ class CammieUpdateHelper {
 		} catch (error:Dynamic) {
 			var message = "Update failed: " + cleanError(Std.string(error));
 			if (installing) {
+				try beginProgress(statusPath, "rolling-back") catch (_:Dynamic) {}
 				try {
 					rollback(backupRoot, backedUp, createdFiles);
 				} catch (rollbackError:Dynamic) {
@@ -157,18 +215,20 @@ class CammieUpdateHelper {
 		var backupRoot = Path.join([workRoot, "cammie-updater-test-backup"]);
 		if (FileSystem.exists(stageRoot) || FileSystem.exists(backupRoot))
 			throw "A previous local updater test did not clean up its temporary folders.";
-		setStatus(statusPath, "extracting");
+		beginProgress(statusPath, "extracting");
 		var payloadRoot = extractArchive(archivePath, stageRoot, tag);
 		var created:Array<String> = [];
 		var backedUp:Array<String> = [];
 		var backupIndex:Map<String, String> = new Map();
 		var progress = {count:0, failAfter:failAfter};
 		currentInstallRoot = installRoot;
-		setStatus(statusPath, "installing");
+		beginProgress(statusPath, "installing");
+		installTotal = countReleaseFiles(payloadRoot);
 		try {
 			copyReleaseTree(payloadRoot, installRoot, "", backupRoot, backupIndex, backedUp, created, progress);
 			installOne(Path.join([payloadRoot, "RELEASE_TAG"]), Path.join([installRoot, "RELEASE_TAG"]),
 				"RELEASE_TAG", backupRoot, backupIndex, backedUp, created);
+			reportProgress(installTotal, installTotal, true);
 			setStatus(statusPath, "complete");
 			deleteTree(stageRoot);
 			deleteTree(backupRoot);
@@ -244,18 +304,23 @@ class CammieUpdateHelper {
 		var input = File.read(path, true);
 		var hash = new CammieUpdateSha256();
 		var buffer = Bytes.alloc(CHUNK_SIZE);
+		var processed = 0;
+		var total = FileSystem.stat(path).size;
 		try {
 			while (true) {
 				var count:Int;
 				try count = input.readBytes(buffer, 0, buffer.length) catch (_:Eof) break;
 				if (count <= 0) break;
 				hash.update(buffer, 0, count);
+				processed += count;
+				if (progressPhase == "verifying") reportProgress(processed, total);
 			}
 		} catch (error:Dynamic) {
 			input.close();
 			throw error;
 		}
 		input.close();
+		if (progressPhase == "verifying") reportProgress(total, total, true);
 		return hash.digestHex();
 	}
 
@@ -268,6 +333,7 @@ class CammieUpdateHelper {
 		var input:FileInput = File.read(archivePath, true);
 		var seen:Map<String, Bool> = new Map();
 		var fileEntries:Map<String, Bool> = new Map();
+		var directoryEntries:Map<String, Bool> = new Map();
 		var requiredExe = false;
 		var requiredLime = false;
 		var requiredHelper = false;
@@ -275,6 +341,7 @@ class CammieUpdateHelper {
 		var releaseTagSeen = false;
 		var entries = 0;
 		var payloadRoot = Path.join([stageRoot, PAYLOAD_ROOT]);
+		var archiveSize = FileSystem.stat(archivePath).size;
 		createDirectory(stageRoot);
 		try {
 			while (true) {
@@ -311,15 +378,17 @@ class CammieUpdateHelper {
 				for (index in 1...components.length) {
 					var ancestor = components.slice(0, index).join("/").toLowerCase();
 					if (fileEntries.exists(ancestor)) throw "The release ZIP contains a file/directory path collision.";
+					directoryEntries.set(ancestor, true);
 				}
 				if (!safe.directory) {
-					var prefix = key + "/";
-					for (prior in seen.keys())
-						if (StringTools.startsWith(prior, prefix)) throw "The release ZIP contains a file/directory path collision.";
+					if (directoryEntries.exists(key)) throw "The release ZIP contains a file/directory path collision.";
 					fileEntries.set(key, true);
-				}
+				} else directoryEntries.set(key, true);
 				seen.set(key, true);
 				entries++;
+				progressFiles = entries;
+				progressFile = safe.relative;
+				reportProgress(input.tell(), archiveSize);
 				if (entries > 100000) throw "The release ZIP contains too many entries.";
 				if (extraLength > 0) {
 					var extra = Bytes.alloc(extraLength);
@@ -336,7 +405,7 @@ class CammieUpdateHelper {
 					var parent = Path.directory(destination);
 					createDirectory(parent);
 					var output = File.write(destination, true);
-					var actualCrc = new Crc32();
+						var actualCrc = new CammieUpdateCrc32();
 					var written = 0;
 					try {
 						if (method == 0) {
@@ -349,10 +418,50 @@ class CammieUpdateHelper {
 							output.writeBytes(buffer, 0, count);
 							actualCrc.update(buffer, 0, count);
 							written += count;
-							remaining -= count;
+								remaining -= count;
+								reportProgress(input.tell(), archiveSize);
 						}
 						} else {
-						var limited = new CammieUpdateBoundedInput(input, compressedSize);
+							#if cpp
+							// Use hxcpp's zlib with bounded chunks rather than Haxe's
+							// byte-at-a-time inflater on large native release archives.
+							var inflater = new haxe.zip.Uncompress(-15);
+							var outputBuffer = Bytes.alloc(CHUNK_SIZE);
+							var compressedRemaining = compressedSize;
+							var compressedBuffer = Bytes.alloc(0);
+							var compressedPosition = 0;
+							try {
+								while (true) {
+									if (compressedPosition == compressedBuffer.length && compressedRemaining > 0) {
+										var count = Std.int(Math.min(compressedRemaining, CHUNK_SIZE));
+										compressedBuffer = Bytes.alloc(count);
+										readFully(input, compressedBuffer, 0, count);
+										compressedRemaining -= count;
+										compressedPosition = 0;
+									}
+									var result = inflater.execute(compressedBuffer, compressedPosition, outputBuffer, 0);
+									compressedPosition += result.read;
+									if (written + result.write > uncompressedSize)
+										throw "The release ZIP entry exceeds its declared size.";
+									output.writeBytes(outputBuffer, 0, result.write);
+									actualCrc.update(outputBuffer, 0, result.write);
+									written += result.write;
+									reportProgress(input.tell() - compressedBuffer.length + compressedPosition, archiveSize);
+									if (result.done) {
+										if (compressedRemaining != 0 || compressedPosition != compressedBuffer.length)
+											throw "The release ZIP entry has unused compressed bytes.";
+										break;
+									}
+									if (result.read == 0 && result.write == 0)
+										throw "The release ZIP entry is truncated.";
+								}
+							} catch (error:Dynamic) {
+								inflater.close();
+								throw error;
+							}
+							inflater.close();
+							#else
+							var limited = new CammieUpdateBoundedInput(input, compressedSize);
 						var inflater = new haxe.zip.InflateImpl(limited, false, false);
 						var buffer = Bytes.alloc(CHUNK_SIZE);
 						while (true) {
@@ -361,9 +470,11 @@ class CammieUpdateHelper {
 							if (written + count > uncompressedSize) throw "The release ZIP entry exceeds its declared size.";
 							output.writeBytes(buffer, 0, count);
 							actualCrc.update(buffer, 0, count);
-							written += count;
+								written += count;
+								reportProgress(input.tell(), archiveSize);
 						}
-						if (limited.remaining != 0) throw "The release ZIP entry has unused compressed bytes.";
+							if (limited.remaining != 0) throw "The release ZIP entry has unused compressed bytes.";
+							#end
 					}
 					} catch (error:Dynamic) {
 						output.close();
@@ -389,6 +500,7 @@ class CammieUpdateHelper {
 			throw error;
 		}
 		input.close();
+		reportProgress(archiveSize, archiveSize, true);
 		return payloadRoot;
 	}
 
@@ -407,9 +519,16 @@ class CammieUpdateHelper {
 					throw "The installed path conflicts with a release directory: " + relativePath;
 				copyReleaseTree(sourcePath, targetPath, relativePath, backupRoot, backupIndex, backedUp, createdFiles, progress);
 			} else {
-				if (isProtectedRelative(relativePath) && FileSystem.exists(targetPath)) continue;
+				progressFile = relativePath;
+				if (isProtectedRelative(relativePath) && FileSystem.exists(targetPath)) {
+					progressFiles++;
+					reportProgress(progressFiles, installTotal);
+					continue;
+				}
 				installOne(sourcePath, targetPath, relativePath, backupRoot, backupIndex, backedUp, createdFiles);
 				progress.count++;
+				progressFiles++;
+				reportProgress(progressFiles, installTotal);
 				if (progress.failAfter > 0 && progress.count >= progress.failAfter)
 					throw "Injected local updater test failure after an installed file.";
 			}
@@ -425,21 +544,59 @@ class CammieUpdateHelper {
 			throw "The installed path conflicts with a release file: " + relative;
 		var key = relative.toLowerCase();
 		var oldExists = FileSystem.exists(destination);
+		// Windows can keep fonts and other unchanged files open after the game
+		// exits. There is no reason to replace an identical file.
+		if (oldExists && sameFileContents(source, destination)) return;
 		if (oldExists && !backupIndex.exists(key)) {
 			var saved = Path.join([backupRoot, relative]);
 			copyFile(destination, saved);
 			backupIndex.set(key, saved);
-			backedUp.push(relative);
-		} else if (!oldExists && !backupIndex.exists(key)) {
-			createdFiles.push(relative);
 		}
 		var temporary = uniqueSibling(destination, "cammie-update-tmp");
-		copyFile(source, temporary);
-		if (FileSystem.exists(destination)) deleteIfExists(destination);
-		try FileSystem.rename(temporary, destination) catch (error:Dynamic) {
+		try {
+			copyFile(source, temporary);
+			if (oldExists) {
+				deleteIfExists(destination);
+				// Record a mutation only after deletion succeeds. A locked file
+				// remains intact and must not be touched during rollback.
+				if (backedUp.indexOf(relative) < 0) backedUp.push(relative);
+			} else if (!backupIndex.exists(key)) createdFiles.push(relative);
+			FileSystem.rename(temporary, destination);
+		} catch (error:Dynamic) {
 			try deleteIfExists(temporary) catch (_:Dynamic) {}
 			throw "Could not replace " + relative + ": " + Std.string(error);
 		}
+	}
+
+	static function sameFileContents(left:String, right:String):Bool {
+		if (FileSystem.stat(left).size != FileSystem.stat(right).size) return false;
+		var a = File.read(left, true);
+		var b:FileInput = null;
+		var identical = true;
+		try {
+			b = File.read(right, true);
+			var first = Bytes.alloc(CHUNK_SIZE);
+			var second = Bytes.alloc(CHUNK_SIZE);
+			var remaining = FileSystem.stat(left).size;
+			while (remaining > 0) {
+				var count = Std.int(Math.min(remaining, CHUNK_SIZE));
+				readFully(a, first, 0, count);
+				readFully(b, second, 0, count);
+				for (index in 0...count) if (first.get(index) != second.get(index)) {
+					identical = false;
+					break;
+				}
+				if (!identical) break;
+				remaining -= count;
+			}
+		} catch (error:Dynamic) {
+			a.close();
+			if (b != null) b.close();
+			throw error;
+		}
+		a.close();
+		b.close();
+		return identical;
 	}
 
 	static function copyFile(sourcePath:String, destinationPath:String):Void {
@@ -465,26 +622,38 @@ class CammieUpdateHelper {
 
 	static function rollback(backupRoot:String, backedUp:Array<String>, createdFiles:Array<String>):Void {
 		var firstError:Null<String> = null;
+		var total = createdFiles.length + backedUp.length;
+		var completed = 0;
 		for (relative in createdFiles) {
+			progressFile = relative;
 			try {
 				var path = Path.join([currentInstallRoot, relative]);
 				if (FileSystem.exists(path) && !FileSystem.isDirectory(path)) deleteIfExists(path);
 			} catch (error:Dynamic) if (firstError == null) firstError = Std.string(error);
+			reportProgress(++completed, total);
 		}
 		var index = backedUp.length - 1;
 		while (index >= 0) {
 			var relative = backedUp[index--];
+			progressFile = relative;
 			try {
 				var saved = Path.join([backupRoot, relative]);
 				var destination = Path.join([currentInstallRoot, relative]);
 				if (!FileSystem.exists(saved)) throw "Missing backup for " + relative;
+				if (FileSystem.exists(destination) && !FileSystem.isDirectory(destination)
+					&& sameFileContents(saved, destination)) {
+					reportProgress(++completed, total);
+					continue;
+				}
 				createDirectory(Path.directory(destination));
 				if (FileSystem.exists(destination) && !FileSystem.isDirectory(destination)) deleteIfExists(destination);
 				var temporary = uniqueSibling(destination, "cammie-rollback-tmp");
 				copyFile(saved, temporary);
 				FileSystem.rename(temporary, destination);
 			} catch (error:Dynamic) if (firstError == null) firstError = Std.string(error);
+			reportProgress(++completed, total);
 		}
+		reportProgress(completed, total, true);
 		if (firstError != null) throw firstError;
 	}
 
@@ -503,10 +672,16 @@ class CammieUpdateHelper {
 			while (true) {
 				var running = processStatus(pid);
 				if (running == false) return;
-				if (running == true) Sys.sleep(0.5) else break;
+				if (running == true) {
+					pumpProgressWindow();
+					Sys.sleep(0.5);
+				} else break;
 			}
 		}
-		while (isExecutableLocked(exePath)) Sys.sleep(1);
+		while (isExecutableLocked(exePath)) {
+			pumpProgressWindow();
+			Sys.sleep(0.5);
+		}
 	}
 
 	static function processStatus(pid:Int):Null<Bool> {
@@ -531,6 +706,73 @@ class CammieUpdateHelper {
 		return false;
 		#else
 		return false;
+		#end
+	}
+
+	static var installTotal:Int = 0;
+
+	static function countReleaseFiles(root:String):Int {
+		var total = 0;
+		for (name in FileSystem.readDirectory(root)) {
+			var path = Path.join([root, name]);
+			total += FileSystem.isDirectory(path) ? countReleaseFiles(path) : 1;
+		}
+		return total;
+	}
+
+	static function beginProgress(path:String, phase:String):Void {
+		progressStatusPath = path;
+		progressPhase = phase;
+		progressStarted = haxe.Timer.stamp();
+		progressLastWrite = 0;
+		progressFiles = 0;
+		progressFile = "";
+		setStatus(path, phase);
+		reportProgress(0, 0, true);
+	}
+
+	/** Keep status.txt compatible with installed older games; richer progress
+	 * lives beside it and is also shown by the helper's own Windows window. */
+	static function reportProgress(completed:Float, total:Float, force:Bool = false):Void {
+		if (progressStatusPath == null) return;
+		var now = haxe.Timer.stamp();
+		if (!force && now - progressLastWrite < 0.2) return;
+		progressLastWrite = now;
+		var elapsed = Math.max(0, now - progressStarted);
+		var percent = total > 0 ? Std.int(Math.max(0, Math.min(1, completed / total)) * 100) : 0;
+		var data = {phase:progressPhase, completed:completed, total:total, files:progressFiles,
+			currentFile:progressFile, elapsed:elapsed, updatedAt:Date.now().getTime()};
+		try File.saveContent(Path.join([Path.directory(progressStatusPath), "progress.json"]),
+			haxe.Json.stringify(data)) catch (_:Dynamic) {}
+		var label = switch (progressPhase) {
+			case "verifying": "Verifying package";
+			case "extracting": "Preparing files";
+			case "installing": "Installing update";
+			case "rolling-back": "Restoring previous version";
+			default: progressPhase;
+		};
+		label += " — " + percent + "% | " + Std.int(elapsed) + "s elapsed";
+		if (elapsed >= 2 && completed > 0 && completed < total)
+			label += " | about " + Std.int(elapsed * (total - completed) / completed) + "s left";
+		if (progressFile != "") label += "\n" + progressFiles + " files | " + progressFile;
+		showProgressWindow(label, percent);
+	}
+
+	static function showProgressWindow(label:String, percent:Int):Void {
+		#if (cpp && windows && !updater_test)
+		untyped __cpp__('cammie_update_progress({0}.__WCStr(), {1})', label, percent);
+		#end
+	}
+
+	static function pumpProgressWindow():Void {
+		#if (cpp && windows && !updater_test)
+		untyped __cpp__('cammie_update_pump()');
+		#end
+	}
+
+	static function closeProgressWindow():Void {
+		#if (cpp && windows && !updater_test)
+		untyped __cpp__('cammie_update_close()');
 		#end
 	}
 
@@ -614,6 +856,27 @@ class CammieUpdateHelper {
 	}
 }
 
+/** Lookup-table CRC avoids eight bit operations per extracted byte. */
+private class CammieUpdateCrc32 {
+	static var table:Array<Int> = makeTable();
+	var crc:Int = -1;
+	public function new() {}
+	static function makeTable():Array<Int> {
+		var result = [];
+		for (index in 0...256) {
+			var value = index;
+			for (_ in 0...8) value = (value >>> 1) ^ (-(value & 1) & 0xEDB88320);
+			result.push(value);
+		}
+		return result;
+	}
+	public function update(bytes:Bytes, position:Int, length:Int):Void {
+		for (index in position...position + length)
+			crc = (crc >>> 8) ^ table[(crc ^ bytes.get(index)) & 255];
+	}
+	public function get():Int return crc ^ -1;
+}
+
 private class CammieUpdateBoundedInput extends Input {
 	var source:Input;
 	public var remaining:Int;
@@ -654,6 +917,7 @@ private class CammieUpdateSha256 {
 	];
 	var state:Array<Int> = [0x6A09E667,0xBB67AE85,0x3C6EF372,0xA54FF53A,0x510E527F,0x9B05688C,0x1F83D9AB,0x5BE0CD19];
 	var block:Bytes = Bytes.alloc(64);
+	var words:Array<Int> = [for (_ in 0...64) 0];
 	var buffered:Int = 0;
 	var totalBytes:Int = 0;
 	var finished:Bool = false;
@@ -699,7 +963,6 @@ private class CammieUpdateSha256 {
 	}
 
 	function compress(bytes:Bytes):Void {
-		var words = new Array<Int>();
 		for (index in 0...16) {
 			var position = index * 4;
 			words[index] = (bytes.get(position) << 24) | (bytes.get(position + 1) << 16)

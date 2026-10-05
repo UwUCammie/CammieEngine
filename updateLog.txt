@@ -1,7 +1,11 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+Unreleased
+	- Show real per-step update progress, elapsed time, estimated remaining time and file counts in the game's update panel instead of showing preparation as already complete.
+
 v0.0.12 alpha — CammieEngine
+	- Update helper repair revision 2: skip identical files so Windows-held fonts do not block installation, roll back only files actually changed, and show installation errors after the game exits. Use native streaming decompression and bounded checksum buffers; show verification, preparation and installation progress in a separate helper window that also works with older installs.
 	- Fix the native Windows updater helper build so release downloads use Windows HTTPS and follow GitHub redirects without a Bad file handle error.
 	- Share Nightmare Vision manual, autoplay and sustain hit routing; preserve source callback/score ordering, live field and lane edits, tap retirement and fixed-rate autoplay without changing mod files.
 	- Match Psych successful-hit Lua/HScript arguments and one-time callback routing; preserve source sustains and Hurt Note behavior, and keep translated Lua fallthrough returns nil without changing mod files.

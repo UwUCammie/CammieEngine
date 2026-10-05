@@ -36,6 +36,8 @@ typedef UpdateProgress = {
 	var status:String;
 	var label:String;
 	var fraction:Float;
+	@:optional var detail:String;
+	@:optional var indeterminate:Bool;
 }
 
 /** User-initiated updater for the published Windows x64 ZIP releases. */
@@ -261,6 +263,37 @@ class UpdateChecker {
 			return {status:status, label:status.substr('error:'.length), fraction:0};
 		if (status == 'complete')
 			return {status:status, label:'Update installed', fraction:1};
+		if (status == 'verifying' || status == 'extracting' || status == 'installing' || status == 'rolling-back') {
+			var label = switch (status) {
+				case 'verifying': 'Verifying update';
+				case 'extracting': 'Preparing files';
+				case 'installing': 'Installing update';
+				default: 'Restoring previous version';
+			};
+			try {
+				var path = Path.join([Path.directory(activeStatusPath), 'progress.json']);
+				var record:Dynamic = Json.parse(File.getContent(path));
+				if (record.phase == status && Std.isOfType(record.completed, Float)
+					&& Std.isOfType(record.total, Float) && record.total > 0
+					&& Math.isFinite(record.completed) && Math.isFinite(record.total)) {
+					var fraction = Math.max(0, Math.min(1, record.completed / record.total));
+					var elapsed:Float = Std.isOfType(record.elapsed, Float) && Math.isFinite(record.elapsed)
+						? Math.max(0, record.elapsed) : 0;
+					var detail = Std.int(elapsed) + 's elapsed';
+					if (elapsed >= 2 && fraction > 0 && fraction < 1)
+						detail += ' | about ' + Std.int(elapsed * (1 - fraction) / fraction) + 's left';
+					if (Std.isOfType(record.files, Int) && record.files > 0)
+						detail += ' | ' + record.files + ' files';
+					if (Std.isOfType(record.updatedAt, Float)
+						&& Date.now().getTime() - record.updatedAt > 5000)
+						detail += ' | waiting for progress';
+					return {status:status, label:label + ' — ' + Std.int(fraction * 100) + '%',
+						fraction:fraction, detail:detail, indeterminate:false};
+				}
+			} catch (_:Dynamic) {}
+			return {status:status, label:label + ' ' + activeRelease.tag,
+				fraction:0, detail:'Waiting for progress...', indeterminate:true};
+		}
 		if (status == 'downloading' || status == 'starting') {
 			var fraction = 0.0;
 			if (activeRelease.sizeBytes > 0) try {
@@ -272,10 +305,7 @@ class UpdateChecker {
 			return {status:status, label:'Downloading update ' + activeRelease.tag + ' — ' + percent + '%', fraction:fraction};
 		}
 		return switch (status) {
-			case 'verifying': {status:status, label:'Verifying update ' + activeRelease.tag, fraction:1};
-			case 'extracting': {status:status, label:'Preparing update ' + activeRelease.tag, fraction:1};
 			case 'ready': {status:status, label:'Update ready — installs after exit', fraction:1};
-			case 'installing': {status:status, label:'Installing update ' + activeRelease.tag, fraction:1};
 			default: {status:status, label:'Update status: ' + status, fraction:0};
 		};
 	}

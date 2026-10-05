@@ -85,6 +85,31 @@ class Main {
   var progress = UpdateChecker.installProgress();
   if (progress == null || progress.fraction != 0.5 || !StringTools.contains(progress.label, "50%"))
    throw "download byte progress was not shown";
+  for (phase in ["verifying", "extracting", "installing", "rolling-back"]) {
+   File.saveContent(status, phase);
+   File.saveContent(root + "/progress.json", haxe.Json.stringify({phase:phase,
+    completed:25, total:100, files:12, elapsed:10, updatedAt:Date.now().getTime()}));
+   progress = UpdateChecker.installProgress();
+   if (progress.fraction != 0.25 || progress.indeterminate == true
+    || !StringTools.contains(progress.label, "25%")
+    || !StringTools.contains(progress.detail, "30s left")
+    || !StringTools.contains(progress.detail, "12 files"))
+    throw "post-download phase progress was missing: " + phase;
+  }
+  File.saveContent(status, "extracting");
+  File.saveContent(root + "/progress.json", haxe.Json.stringify({phase:"verifying",
+   completed:100, total:100}));
+  progress = UpdateChecker.installProgress();
+  if (progress.fraction != 0 || progress.indeterminate != true)
+   throw "previous phase appeared complete while extraction started";
+  File.saveContent(root + "/progress.json", "{partial write");
+  progress = UpdateChecker.installProgress();
+  if (progress.indeterminate != true) throw "partial progress JSON was not tolerated";
+  File.saveContent(root + "/progress.json", haxe.Json.stringify({phase:"extracting",
+   completed:40, total:100, elapsed:10, updatedAt:Date.now().getTime() - 10000}));
+  progress = UpdateChecker.installProgress();
+  if (!StringTools.contains(progress.detail, "waiting for progress"))
+   throw "stale preparation progress looked active";
   File.saveContent(status, "ready");
   progress = UpdateChecker.installProgress();
   if (progress == null || progress.fraction != 1 || progress.status != "ready")
