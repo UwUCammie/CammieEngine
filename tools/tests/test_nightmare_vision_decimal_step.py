@@ -6,6 +6,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,11 +64,17 @@ class Main {
 
   // Exercise manager scheduling at rates that bracket low and very high FPS.
   // Events around a tempo boundary may share a frame, but every one-shot must
-  // fire once, in step order, with at most one frame of decimal-step lateness.
+  // fire once in donor queue order. Fractional comparator ties can place a
+  // later event ahead of an earlier one and block it until that frontier is due.
   for (fps in [60, 240, 480]) {
    var fired:Array<String> = [];
    var firedSteps:Map<String, Float> = new Map();
    var manager = new NightmareVisionModManager();
+   var donor = new DonorEventTimeline();
+   var donorFired:Array<String> = [];
+   var donorSteps:Map<String, Float> = [];
+   var eventNames:haxe.ds.ObjectMap<NightmareVisionBaseEvent, String> = new haxe.ds.ObjectMap();
+   var eligibleSteps:Map<String, Float> = [];
    for (entry in [
     {name:'before', step:7.99},
     {name:'boundary', step:8.0},
@@ -81,27 +88,42 @@ class Main {
      fired.push(name);
      firedSteps.set(name, currentStep);
     });
+    var sourceEvent = new NightmareVisionCallbackEvent(dueStep, function(event,currentStep):Void {
+     donorFired.push(name); donorSteps.set(name,currentStep);
+    }, manager);
+    donor.addEvent(sourceEvent); eventNames.set(sourceEvent,name);
+   }
+   var frontier = Math.NEGATIVE_INFINITY;
+   for (event in donor.events) {
+    frontier = Math.max(frontier,event.executionStep);
+    eligibleSteps.set(eventNames.get(event),frontier);
    }
    var frame = 0;
    var time = -500.0;
    while (time <= 1700.0) {
-    manager.updateTimeline(NightmareVisionDecimalStep.getStep(time, 120, map));
+    var step = NightmareVisionDecimalStep.getStep(time, 120, map);
+    manager.updateTimeline(step); donor.update(step);
     frame++;
     time = -500.0 + frame * (1000.0 / fps);
    }
-   eq(fired.join(','), 'before,boundary,within-a-frame-a,within-a-frame-b,after',
+   eq(fired.join(','), donorFired.join(','),
     'missed, repeated, or reordered callback at ' + fps + ' FPS');
+   check(fired.length == 5 && donorFired.length == 5, 'missed/repeated callback count at ' + fps);
    for (entry in [
     {name:'before', step:7.99}, {name:'boundary', step:8.0},
     {name:'within-a-frame-a', step:8.1}, {name:'within-a-frame-b', step:8.2},
     {name:'after', step:10.5}
    ]) {
-    var duration = entry.step < 8 ? 125.0 : (entry.step < 10 ? 250.0 : 62.5);
+    var eligible = eligibleSteps.get(entry.name);
+    var duration = eligible < 8 ? 125.0 : (eligible < 10 ? 250.0 : 62.5);
     var maxLate = (1000.0 / fps) / duration + 0.0001;
     var observed = firedSteps.get(entry.name);
-    check(observed >= entry.step && observed - entry.step <= maxLate,
+    check(observed == donorSteps.get(entry.name),
+     'callback firing step diverged from pinned donor at ' + fps + ' FPS for ' + entry.name);
+    check(observed >= entry.step && observed >= eligible && observed - eligible <= maxLate,
      'callback lateness exceeded one frame at ' + fps + ' FPS for ' + entry.name
-      + ': step=' + observed + ', due=' + entry.step + ', maxLate=' + maxLate);
+      + ': step=' + observed + ', due=' + entry.step + ', eligible=' + eligible + ', maxLate=' + maxLate);
+    check(fired.filter(name -> name == entry.name).length == 1, 'callback repeated: ' + entry.name);
    }
    manager.destroy();
   }
@@ -113,10 +135,18 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
+            (work / "HxcCompatRuntime.hx").write_text("class HxcCompatRuntime { public static function getZIndex(o:Dynamic):Int return 0; public static function setZIndex(o:Dynamic,v:Dynamic,?op:String):Dynamic return v; }",encoding="utf-8")
+            donor = ROOT.parent / "fnf_sources/NightmareVision/source/funkin/game/modchart/EventTimeline.hx"
+            donor_source = donor.read_text(encoding="utf-8").replace("package funkin.game.modchart;", "package;")
+            donor_source = donor_source.replace("import funkin.game.modchart.events.ModEvent;", "import NightmareVisionModEvent as ModEvent;")
+            donor_source = donor_source.replace("import funkin.game.modchart.events.BaseEvent;", "import NightmareVisionBaseEvent as BaseEvent;")
+            donor_source = donor_source.replace("class EventTimeline", "class DonorEventTimeline")
+            (work / "DonorEventTimeline.hx").write_text(donor_source, encoding="utf-8")
             (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
-                 "-cp", str(ROOT / ".haxelib/flixel/6,1,2"), "-cp", str(work),
+                 "-cp", str(ROOT / ".haxelib/hscript-iris/1,1,3"), "-cp", str(ROOT / ".haxelib/flixel/6,1,2"), "-cp", str(work),
                  "--main", "Main", "--interp"],
                 cwd=work, capture_output=True, text=True, timeout=30,
             )

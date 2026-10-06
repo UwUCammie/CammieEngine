@@ -51,6 +51,8 @@ class PsychNoteSplashDisabledTest(unittest.TestCase):
                 "static function " + marker.split("function ", 1)[1],
                 1,
             )
+            # This fixture intentionally statically isolates non-HUD property paths.
+            method = method.replace("target == this", "target == PsychNoteSplashFixture")
             property_methods.append(method)
 
         self.assertIn("noteSplashData:Dynamic = {disabled: false}", note_source)
@@ -156,6 +158,8 @@ __HAZARD_SPLASH__
         ).replace(
             "__HAZARD_SPLASH__", hazard_splash
         )
+        fixture = fixture.replace("class PsychNoteSplashFixture {", "class PsychNoteSplashFixture {\n" + '// No source HUD icon installation occurs in this note/property-only fixture.\n static function sourceHUDIconAlias(_name:String):Dynamic return null;\n static function isSourceHUDIconAlias(_name:String):Bool return false;\n static function writeSourceHUDIconAlias(_name:String,value:Dynamic):Dynamic return value;\n static function sourceHUDBarAlias(_name:String):Dynamic return null;\n static function isSourceHUDBarAlias(_name:String):Bool return false;\n static function writeSourceHUDBarAlias(_name:String,value:Dynamic):Dynamic return value;\n', 1)
+        fixture += "\nclass PlayState {}\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             Path(folder, "PsychNoteSplashFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 import re
+from tools.haxe_flixel_math_stubs import write_flixel_point_stub
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,7 +57,9 @@ class Main {
   manager.updateTimeline(4.99);
   eq(calls.length, 0, 'future callbacks ran early');
   manager.updateTimeline(5);
-  eq(calls.join(','), 'zero,args:5:5:true:finished=false', 'equal-step order or callback arguments changed');
+  // Donor integer comparator has no insertion-order tie breaker.
+  check(calls.length == 2 && calls.indexOf('zero') >= 0 && calls.indexOf('args:5:5:true:finished=false') >= 0,
+   'equal-step callback arguments or once-only execution changed');
   manager.updateTimeline(2);
   manager.updateTimeline(5);
   eq(calls.length, 2, 'backward seek replayed a finished one-shot callback');
@@ -132,16 +135,16 @@ class Main {
   eq(manager.getValue('reverse', 0), 0.25, 'HScript EaseFunction argument was not evaluated');
   manager.updateTimeline(68);
   eq(manager.getValue('reverse', 0), 1.0, 'HScript EaseFunction endpoint diverged');
-  var unsupported = false;
-  try manager.queueSet(0, 'unregistered-scripted', 1) catch (error:Dynamic) {
-   unsupported = Std.string(error).indexOf('unsupported') >= 0;
-  }
-  check(unsupported, 'unknown scripted modifier did not produce an explicit diagnostic');
+  manager.queueSet(0, 'unregistered-scripted', 1);
+  check(manager.timeline.modEvents.get('unregistered-scripted').length == manager.lanes,
+   'source unknown-name SetEvents must be accepted for execution-time diagnosis');
+  manager.updateTimeline(68);
+  eq(manager.timeline.modEvents.get('unregistered-scripted').length, 0,
+   'execution-time unknown-name SetEvents were not consumed');
   check(NightmareVisionModManager.callbackEventClass() == NightmareVisionCallbackEvent,
    'CallbackEvent binding did not expose the source-compatible runtime event class');
   var unsupportedApis = NightmareVisionModManager.unimplementedModifierApis();
-  check(unsupportedApis.indexOf('registerScriptedModifiers') >= 0,
-   'unsupported scripted modifiers were not inventoried');
+  check(unsupportedApis.indexOf('registerScriptedModifiers') < 0, 'registration API still marked unsupported');
   var invalidCallback = false;
   try manager.queueFuncOnce(0, null) catch (_:Dynamic) invalidCallback = true;
   check(invalidCallback, 'invalid callback was silently accepted');
@@ -159,6 +162,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
+            write_flixel_point_stub(work)
+            (work / "HxcCompatRuntime.hx").write_text("class HxcCompatRuntime { public static function getZIndex(o:Dynamic):Int return 0; public static function setZIndex(o:Dynamic,v:Dynamic,?op:String):Dynamic return v; }", encoding="utf-8")
             (work / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(IRIS), "-cp", str(ROOT / ".haxelib/flixel/6,1,2"), "-cp", str(work),

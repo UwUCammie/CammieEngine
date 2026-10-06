@@ -1,6 +1,7 @@
 package;
 
 import flixel.FlxSprite;
+import flixel.math.FlxPoint;
 import Judgement.TUI;
 import DynamicSprite.DynamicAtlasFrames;
 
@@ -16,6 +17,42 @@ using StringTools;
  * song or character ids.
  */
 class NoteHoldCover extends FlxSprite {
+	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+	@:keep public var rgbGraphics(get, never):NightmareVisionRGBGraphics;
+	function get_rgbGraphics():NightmareVisionRGBGraphics {
+		if (nightmareVisionRGB == null) {
+			nightmareVisionRGB = new NightmareVisionRGBGraphics();
+			nightmareVisionRGB.enabled = false;
+		}
+		return nightmareVisionRGB;
+	}
+	@:keep public var noteData(get, set):Int;
+	function get_noteData():Int return direction;
+	function set_noteData(value:Int):Int return direction = value;
+
+	/** Persistent source scale baseline, refreshed only after source skin loading. */
+	var nightmareVisionBaseScalePoint:FlxPoint;
+	@:keep public var baseScale(get, never):FlxPoint;
+	@:keep public var defScale(get, set):FlxPoint;
+	function get_baseScale():FlxPoint {
+		if (nightmareVisionBaseScalePoint == null) {
+			var currentScale = scale;
+			nightmareVisionBaseScalePoint = FlxPoint.get(
+				currentScale == null ? 1 : currentScale.x,
+				currentScale == null ? 1 : currentScale.y);
+		}
+		return nightmareVisionBaseScalePoint;
+	}
+	function set_defScale(value:FlxPoint):FlxPoint {
+		if (value == null) throw 'Nightmare Vision baseScale cannot be null';
+		var point = get_baseScale();
+		if (value != point) point.set(value.x, value.y);
+		return point;
+	}
+	function get_defScale():FlxPoint {
+		return get_baseScale();
+	}
+
 	public var uiType:String;
 	public var direction:Int = 0;
 	public var endTime:Float = Math.POSITIVE_INFINITY;
@@ -64,6 +101,7 @@ class NoteHoldCover extends FlxSprite {
 		setGraphicSize(Std.int(width * scale));
 		antialiasing = !ui.isPixel;
 		updateHitbox();
+		baseScale.set(this.scale.x, this.scale.y);
 	}
 
 	public function playStart(lane:Int):Void {
@@ -135,5 +173,10 @@ class NoteHoldCover extends FlxSprite {
 		endTime = Math.POSITIVE_INFINITY;
 		visible = false;
 		super.kill();
+	}
+
+	override public function draw():Void {
+		if (nightmareVisionRGB != null) nightmareVisionRGB.apply(this);
+		super.draw();
 	}
 }

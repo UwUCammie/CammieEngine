@@ -10,6 +10,11 @@ class NightmareVisionModchartObject {
 	public static inline var NOTE_SPLASH:String = 'noteSplash';
 	public static inline var SUSTAIN_SPLASH:String = 'sustainSplash';
 
+	/** Real sprite and synchronization callbacks used only by the native adapter. */
+	public var nativeObject:Dynamic;
+	public var livePosition:NightmareVisionModchartVector;
+	public var flushLive:Null<Void->Void>;
+	public var readLive:Null<Void->Void>;
 	public var kind:String = NOTE;
 	/** Player field/lane: 0 player side, 1 opponent side. */
 	public var player:Int = 0;

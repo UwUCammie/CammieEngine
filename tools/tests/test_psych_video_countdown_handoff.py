@@ -51,6 +51,8 @@ class Main {
  var psychSourceVideo:NightmareVisionVideoSprite;var hxcCountdownHookDispatching=false;
  var inCutscene=false;var endingSong=false;var camOther:Dynamic={};var members:Array<Dynamic>=[];
  var countdowns=0;var ends=0;var allowCountdown=false;var started=false;
+ var nightmareVisionScripts:Dynamic=null;var genNotesBeforeCountdown=true;
+ function generatePlayfields():Void throw "Psych video countdown entered NV receptor generation";
  public function new(){FlxG.state=this;}
  function add(v:Dynamic):Void members.push(v);function remove(v:Dynamic,b:Bool):Void members.remove(v);
  function callNightmareVision(n:String,a:Array<Dynamic>):Dynamic return 0;

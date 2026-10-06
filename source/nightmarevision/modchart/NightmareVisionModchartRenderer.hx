@@ -1,6 +1,7 @@
 package nightmarevision.modchart;
 
 import haxe.ds.ObjectMap;
+import nightmarevision.modchart.NightmareVisionModifierRegistry.NightmareVisionModifierExecution;
 
 private typedef NightmareVisionSpriteBaseline = {
 	var scaleX:Float;
@@ -61,12 +62,19 @@ class NightmareVisionModchartRenderer {
 	/** Drop a retired sprite's captured state and one-time feature warnings. */
 	public function release(sprite:Dynamic):Void {
 		if (sprite == null) return;
+		var baseline = baselines.get(sprite);
+		if (baseline != null) {
+			baseline.object.nativeObject = null;
+			baseline.object.flushLive = null;
+			baseline.object.readLive = null;
+		}
 		baselines.remove(sprite);
 		warnedUnsupported.remove(sprite);
 	}
 
 	/** Clear all sprite-owned snapshots when the modchart renderer is torn down. */
 	public function destroy():Void {
+		for (sprite in [for (sprite in baselines.keys()) sprite]) release(sprite);
 		baselines = new ObjectMap();
 		warnedUnsupported = new ObjectMap();
 		applyVisual = null;
@@ -96,19 +104,23 @@ class NightmareVisionModchartRenderer {
 
 		var state = baseline.state;
 		if (object.isSustain) {
-			var tailScratch = baseline.tailPosition;
+			var sourceTail = transform.registry.executionNames != null;
+			var tailScratch = sourceTail ? NightmareVisionModchartVector.get() : baseline.tailPosition;
 			if (tailScratch == null) {
 				tailScratch = new NightmareVisionModchartVector();
 				baseline.tailPosition = tailScratch;
 			}
 			var tailPosition = transform.getPositionInto(context, object, endVisualDiff, endTimeDiff,
-				endBeat, tailScratch);
+				endBeat, tailScratch, null, object.strumTime + object.sustainLength);
 			var radians = Math.atan2(tailPosition.y - position.y, tailPosition.x - position.x);
 			var degrees = radians * 180 / Math.PI - 90;
 			state.holdAngle = degrees;
 			setField(note, 'angle', degrees);
-			var sustainSplash = linkedSustainSplash(note);
-			if (object.wasGoodHit && sustainSplash != null && field(sustainSplash, 'alive') != false)
+			var sourceTracking = transform.registry.executionNames != null;
+			var sustainSplash = sourceTracking ? property(property(note, 'tailState'), 'splash') : linkedSustainSplash(note);
+			var track = sourceTracking ? property(property(note, 'playField'), 'trackSustainSplashes') == true
+				: sustainSplash != null && field(sustainSplash, 'alive') != false;
+			if (object.wasGoodHit && sustainSplash != null && track)
 				setField(sustainSplash, 'angle', degrees);
 
 			// Donor PlayState overwrites ScaleModifier's Y result after getPos:
@@ -132,9 +144,108 @@ class NightmareVisionModchartRenderer {
 				}
 			}
 			if (strum != null) applySourceClip(note, strum, context, baseline, state);
+			if (sourceTail || tailPosition != tailScratch) tailPosition.put();
 		}
 		applyVisualResult(note, state);
 		return state;
+	}
+
+	/** Public source manager path evaluation, including recursive excluded requests. */
+	/** Direct source position overrides ignore the sprite, including a null sprite. */
+	public function applyInstancePosition(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, sprite:Dynamic, kind:String,
+		position:NightmareVisionModchartVector, time:Float, diff:Float, timeDiff:Float,
+		beat:Float, data:Int, player:Int):NightmareVisionModchartVector {
+		var object = new NightmareVisionModchartObject(kind);
+		object.data = data;
+		object.player = player;
+		return transform.applyInstancePosition(context, entry, object, position, time, diff, timeDiff, beat);
+	}
+
+	/** Read and commit only fields used by the overridden source callback. */
+	public function applyInstanceObject(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, sprite:Dynamic, kind:String,
+		position:NightmareVisionModchartVector, beat:Float, player:Int):Void {
+		var family = entry.builtin;
+		var note = kind == NightmareVisionModchartObject.NOTE;
+		var receptor = kind == NightmareVisionModchartObject.RECEPTOR;
+		var supported = note || receptor || kind == NightmareVisionModchartObject.NOTE_SPLASH || kind == NightmareVisionModchartObject.SUSTAIN_SPLASH;
+		if (family != 'stealth' && family != 'mini' && family != 'perspectiveDONTUSE'
+			&& !(family == 'confusion' && (note || receptor))
+			&& !(note && (family == 'xmod' || family == 'receptorScroll'))) return;
+		if (!supported) return;
+		if (family == 'receptorScroll' && entry.value(player) == 0) return;
+		if (family == 'perspectiveDONTUSE' && !(Math.abs(position.z) > NightmareVisionModchartMath.EPSILON)) return;
+		if (sprite == null) throw 'Nightmare Vision source callback requires an object';
+		var object = new NightmareVisionModchartObject(kind);
+		object.player = family == 'stealth' && note ? Std.int(property(sprite, 'lane')) : player;
+		if (family != 'perspectiveDONTUSE') object.data = intFieldWithFallbacks(sprite, 'noteData', 'direction', 'ID');
+		if (family == 'confusion' || family == 'mini') {
+			object.isSustain = note && property(sprite, 'isSustainNote') == true;
+			if (family == 'confusion' && object.isSustain) return;
+		}
+		if (family == 'mini') {
+			object.isSustainEnd = note && property(sprite, 'isSustainEnd') == true;
+			var base = property(sprite, 'baseScale');
+			object.baseScaleX = number(property(base, 'x'));
+			object.baseScaleY = number(property(base, 'y'));
+		}
+		if (family == 'perspectiveDONTUSE') {
+			var scale = property(sprite, 'scale');
+			object.scaleX = number(property(scale, 'x'));
+			object.scaleY = number(property(scale, 'y'));
+		}
+		if (note && (family == 'stealth' || family == 'receptorScroll')) {
+			object.strumTime = number(property(sprite, 'strumTime'));
+			if (family == 'stealth') object.multSpeed = number(property(sprite, 'multSpeed'));
+			else {
+				object.alphaMod = number(property(sprite, 'alphaMod'));
+				object.wasGoodHit = property(sprite, 'wasGoodHit') == true;
+			}
+		}
+		transform.applyInstanceObject(context, entry, object, position, beat);
+		switch (family) {
+			case 'mini', 'perspectiveDONTUSE':
+				var scale = property(sprite, 'scale');
+				setField(scale, 'x', object.scaleX);
+				setField(scale, 'y', object.scaleY);
+			case 'confusion': setField(sprite, 'angle', object.angle);
+			case 'xmod': setField(sprite, 'multSpeed', object.multSpeed);
+			case 'receptorScroll':
+				setField(sprite, 'alphaMod', object.alphaMod);
+				if (object.wasGoodHit) setField(sprite, 'garbage', true);
+			case 'stealth':
+				var graphics = property(sprite, 'rgbGraphics');
+				if (note) {
+					setField(sprite, 'alphaMod', object.alphaMod);
+					setField(graphics, 'flash', object.rgbFlash);
+				} else setField(graphics, 'alpha', object.rgbAlpha);
+			default:
+		}
+	}
+
+	public function evaluatePosition(context:NightmareVisionModchartContext, sprite:Dynamic,
+		kind:String, data:Int, player:Int, time:Float, diff:Float, timeDiff:Float, beat:Float,
+		exclusions:Array<String>, position:NightmareVisionModchartVector):NightmareVisionModchartVector {
+		var baseline = ensureBaseline(sprite);
+		if (baseline == null) return position;
+		var object = snapshot(sprite, kind, player, baseline, new NightmareVisionModchartObject(kind));
+		readLiveObject(sprite, object, baseline);
+		object.data = data;
+		return transform.getPositionInto(context, object, diff, timeDiff, beat,
+			position == null ? NightmareVisionModchartVector.get() : position, exclusions, time);
+	}
+
+	/** Public source updateObject does not perform a second position evaluation. */
+	public function applyObject(context:NightmareVisionModchartContext, sprite:Dynamic,
+		kind:String, player:Int, beat:Float, position:NightmareVisionModchartVector):Void {
+		var baseline = ensureBaseline(sprite);
+		if (baseline == null) return;
+		var object = snapshot(sprite, kind, player, baseline, new NightmareVisionModchartObject(kind));
+		readLiveObject(sprite, object, baseline);
+		transform.updateObject(context, object, position, beat);
+		copySpriteResult(sprite, object, position, baseline, kind, false);
+		applyVisualResult(sprite, baseline.state);
 	}
 
 	/** Source modchart(splash) calls getPos(0, 0, 0), then updateObject. */
@@ -212,6 +323,13 @@ class NightmareVisionModchartRenderer {
 		baseline:NightmareVisionSpriteBaseline,
 		object:NightmareVisionModchartObject):NightmareVisionModchartObject {
 		object.kind = kind;
+		object.nativeObject = sprite;
+		if (object.flushLive == null) {
+			object.flushLive = function() {
+				flushLiveObject(sprite, object);
+			};
+			object.readLive = function() readLiveObject(sprite, object, baseline);
+		}
 		// NMV notes carry source-owned miss fades on alphaMod. Other sprite kinds
 		// have separate RGB alpha semantics and retain the source default of 1.
 		object.alphaMod = kind == NightmareVisionModchartObject.NOTE
@@ -244,28 +362,84 @@ class NightmareVisionModchartRenderer {
 		object.y = number(field(sprite, 'y'));
 		object.typeOffsetX = numberFieldWithFallback(sprite, 'offsetX', 'typeOffsetX');
 		object.typeOffsetY = numberFieldWithFallback(sprite, 'offsetY', 'typeOffsetY');
+		if (transform.registry.executionEntry != null) readLiveObject(sprite, object, baseline);
 		return object;
+	}
+
+	/** Refresh only current source fields; never reset callback mutations to the frame baseline. */
+	function readLiveObject(sprite:Dynamic, object:NightmareVisionModchartObject,
+		baseline:NightmareVisionSpriteBaseline):Void {
+		object.active = property(sprite, 'active') != false;
+		object.x = number(property(sprite, 'x'), object.x);
+		object.y = number(property(sprite, 'y'), object.y);
+		object.width = number(property(sprite, 'width'), object.width);
+		object.height = number(property(sprite, 'height'), object.height);
+		object.angle = number(property(sprite, 'angle'), object.angle);
+		var scale = property(sprite, 'scale');
+		object.scaleX = number(property(scale, 'x'), object.scaleX);
+		object.scaleY = number(property(scale, 'y'), object.scaleY);
+		var base = property(sprite, 'baseScale');
+		object.baseScaleX = number(property(base, 'x'), object.baseScaleX);
+		object.baseScaleY = number(property(base, 'y'), object.baseScaleY);
+		object.multSpeed = number(property(sprite, 'multSpeed'), object.multSpeed);
+		object.wasGoodHit = property(sprite, 'wasGoodHit') == true;
+		object.strumTime = number(property(sprite, 'strumTime'), object.strumTime);
+		object.typeOffsetX = numberFieldWithFallback(sprite, 'offsetX', 'typeOffsetX');
+		object.typeOffsetY = numberFieldWithFallback(sprite, 'offsetY', 'typeOffsetY');
+		if (object.kind == NightmareVisionModchartObject.NOTE)
+			object.alphaMod = number(property(sprite, 'alphaMod'), object.alphaMod);
+		var graphic = property(sprite, 'rgbGraphics');
+		object.rgbFlash = number(property(graphic, 'flash'), object.rgbFlash);
+		if (object.kind != NightmareVisionModchartObject.NOTE)
+			object.rgbAlpha = number(property(graphic, 'alpha'), object.rgbAlpha);
+	}
+
+	/** Source update callbacks run before final centering and source skin offsets. */
+	function flushLiveObject(sprite:Dynamic, object:NightmareVisionModchartObject):Void {
+		setField(sprite, 'x', object.x);
+		setField(sprite, 'y', object.y);
+		var scale = property(sprite, 'scale');
+		setField(scale, 'x', object.scaleX);
+		setField(scale, 'y', object.scaleY);
+		if (object.kind == NightmareVisionModchartObject.NOTE || object.kind == NightmareVisionModchartObject.RECEPTOR)
+			setField(sprite, 'angle', object.angle);
+		writeLiveEffects(sprite, object);
+	}
+
+	function writeLiveEffects(sprite:Dynamic, object:NightmareVisionModchartObject):Void {
+		// Standalone formula results remain visual-only and do not replace persistent miss fades.
+		if (transform.registry.executionEntry == null) return;
+		if (object.kind == NightmareVisionModchartObject.NOTE) {
+			setField(sprite, 'alphaMod', object.alphaMod);
+			setField(sprite, 'multSpeed', object.multSpeed);
+		}
+		var graphic = property(sprite, 'rgbGraphics');
+		if (graphic != null) {
+			setField(graphic, 'flash', object.rgbFlash);
+			if (object.kind != NightmareVisionModchartObject.NOTE) setField(graphic, 'alpha', object.rgbAlpha);
+		}
 	}
 
 	function copySpriteResult(sprite:Dynamic, object:NightmareVisionModchartObject,
 		position:NightmareVisionModchartVector, baseline:NightmareVisionSpriteBaseline,
-		kind:String):Void {
+		kind:String, applySkinOffsets:Bool = true):Void {
 		var state = baseline.state;
 		state.position = position.copy();
-		state.baseScaleX = baseline.scaleX;
-		state.baseScaleY = baseline.scaleY;
+		state.baseScaleX = object.baseScaleX;
+		state.baseScaleY = object.baseScaleY;
 		state.alphaMod = object.alphaMod;
 		state.rgbFlash = object.rgbFlash;
 		state.rgbAlpha = object.rgbAlpha;
-		var offset = skinOffsets.get(kind, object.data, object.isSustain);
+		var offset = applySkinOffsets ? skinOffsets.get(kind, object.data, object.isSustain) : new NightmareVisionModchartVector();
 		state.spriteOffsetX = offset.x + object.spriteOffsetX;
 		state.spriteOffsetY = offset.y + object.spriteOffsetY;
-		if (kind == NightmareVisionModchartObject.NOTE && object.isSustainEnd) {
+		if (applySkinOffsets && kind == NightmareVisionModchartObject.NOTE && object.isSustainEnd) {
 			var endOffset = skinOffsets.getSustainEnd(object.data);
 			state.spriteOffsetX += endOffset.x;
 			state.spriteOffsetY += endOffset.y;
 		}
 
+		writeLiveEffects(sprite, object);
 		setField(sprite, 'x', object.x);
 		setField(sprite, 'y', object.y);
 		var scale = field(sprite, 'scale');

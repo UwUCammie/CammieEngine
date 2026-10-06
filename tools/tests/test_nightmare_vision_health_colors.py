@@ -51,6 +51,9 @@ class Bar {
  public function updateBar():Void updates++;
 }
 class HealthColorState {
+ public var psychSourceHealthBar:Dynamic=null;
+ public var nightmareVisionSourceHealthBar:Dynamic=null;
+ public var playHUD:Dynamic=null;
  public var nightmareVisionScripts:Dynamic=null;
  public var dad:Actor=new Actor(0x1001,0x1002,0x1003,0x1004,0x1005,0x1006);
  public var boyfriend:Actor=new Actor(0x2001,0x2002,0x2003,0x2004,0x2005,0x2006);

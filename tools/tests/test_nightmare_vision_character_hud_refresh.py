@@ -19,7 +19,7 @@ def function_body(source, name):
     # Haxe allows expression-bodied getters; avoid consuming the next method's
     # brace when extracting one into the interpreter fixture.
     if line_end != -1 and line_end < opening:
-        expression_end = source.find('\n', line_end + 1)
+        expression_end = source.find(';', line_end + 1) + 1
         return source[start:expression_end if expression_end != -1 else len(source)]
     depth = 0
     quote = None
@@ -71,7 +71,7 @@ class NightmareVisionCharacterHUDRefreshTest(unittest.TestCase):
         resolver = function_body(source, 'nightmareVisionHealthIconFromDefinition')
         fixture = '''
 class Character {
- var nightmareVisionHealthIcon:Null<String>=null;
+ var nightmareVisionHealthIcon:Null<String>=null;var psychHealthIcon:Null<String>=null;var sourceHealthIconAssigned=false;var sourceHealthIconValue:String;
  public var curCharacter:String;
  public var healthIcon(get,never):String;
  public function new(character:String, data:Dynamic) {
@@ -119,10 +119,10 @@ class HealthIcon {
  public var character:String=''; public var selections:Array<String>=[];
  public var bopResets:Int=0;
  public function new(id:String) character=id;
- public function switchAnim(id:String):Dynamic { character=id; selections.push(id); bopResets++; return this; }
+ public function changeIcon(id:String):Void {if(character!=id)switchAnim(id);}public function switchAnim(id:String):Dynamic { character=id; selections.push(id); bopResets++; return this; }
 }
 class PlayState {
- public var iconP1:HealthIcon; public var iconP2:HealthIcon;
+ public var iconP1:HealthIcon; public var iconP2:HealthIcon;public var sourceHUDIconMode=0;public var psychSourceIconP1:HealthIcon;public var psychSourceIconP2:HealthIcon;public var playHUD:Dynamic;
  public var boyfriend:Character; public var dad:Character;
  public var healthBar:Dynamic={}; public var colorRefreshes:Int=0;
  public function new() {}

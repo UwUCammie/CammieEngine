@@ -66,6 +66,8 @@ class Main {
  public var camHUD:Dynamic={viewWidth:800.0,viewHeight:600.0,angle:0.0};
  public var modManager:Manager=new Manager();public var members:Array<Dynamic>=[];
  public var nightmareVisionFieldAttachmentEnabled:Bool=false;
+ public var nightmareVisionDefaultGenerationDepth:Int=0;
+ public var grpNoteSplashes:Dynamic={};
  public var nightmareVisionFields:Array<Dynamic>=[];
  public var nightmareVisionOwnedStrumlines:Array<Bank>=[];
  public var SONG:Dynamic={uiType:'default'};
@@ -76,6 +78,7 @@ class Main {
  function nightmareVisionConfigureFieldReceptors(field:Dynamic):Void {}
  function syncNightmareVisionPlayFieldCollection():Void {}
  function add(value:Dynamic):Void members.push(value);
+ function insert(index:Int,value:Dynamic):Void members.insert(index,value);
  __ENABLE__
  __REGISTER__
  __DRAW__
@@ -83,6 +86,11 @@ class Main {
  static function check(ok:Bool,label:String):Void if(!ok)throw label;
  static function near(a:Float,b:Float,label:String):Void check(Math.abs(a-b)<0.001,label+': '+a+' != '+b);
  static function main():Void {
+  var ordered=new Main();ordered.nightmareVisionDefaultGenerationDepth=1;
+  var hud={};ordered.members=[ordered.grpNoteSplashes,hud];var generatedBank=new Bank();
+  ordered.attachNightmareVisionFieldDisplay({strumline:generatedBank});
+  check(ordered.members[0]==generatedBank && ordered.members[1]==ordered.grpNoteSplashes && ordered.members[2]==hud,
+   'late default generation retains existing bank slot before splash and HUD');
   var host=new Main();var bank=new Bank();var sprite=new Sprite();
   var receptor:Dynamic={x:100.0,width:50.0,exists:true,visible:true};
   var note:Dynamic={x:50.0,width:20.0,exists:true,alive:true,isOnScreen:function()return true};

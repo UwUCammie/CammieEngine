@@ -110,6 +110,8 @@ class Character {
  public var isDie:Bool=false;
  public var flipX:Bool=false;
  public var nightmareVisionHealthIcon:Null<String>=null;
+ public var sourceHealthIconAssigned:Bool=false;
+ public var sourceHealthIconValue:String;
  public var gameoverCharacter:Null<String>=null;
  public var gameoverConfirmDeathSound:Null<String>=null;
  public var gameoverLoopDeathSound:Null<String>=null;
@@ -171,7 +173,11 @@ class Main {
    {healthicon:'nv-icon',gameover_character:'nv-respawn',gameover_confirm_sound:'nv-confirm',
     gameover_loop_sound:'nv-loop',gameover_intial_sound:'nv-initial'});
   var nvExact=new Character();
+  nvExact.sourceHealthIconAssigned=true;
+  nvExact.sourceHealthIconValue='previous-script-icon';
   nvExact.resolveDeathIdentity('nv-dead','nv-owner',ImportEngine.NIGHTMARE_VISION);
+  check(!nvExact.sourceHealthIconAssigned,
+   'new source death definition must clear a previous scripted icon override');
   check(nvExact.curCharacter=='nv-dead' && nvExact.lastVisualCharacterId=='nv-dead',
    'NV exact death identity and selected visual id must remain authored');
   check(Song.manifestCalls.join(',')=='nv-dead' && NightmareVisionCharacterData.calls.join(',')=='nv-owner:nv-dead',

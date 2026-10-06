@@ -19,6 +19,17 @@ MAIN = r'''class Main {
  }
  static function main():Void {
   var first:Dynamic = {};
+  var legacy:Dynamic={};NightmareVisionNoteSkinDefaults.resolveOwnerData(legacy,true);
+  check(legacy.sustainSplashTexture=="sustainHold"&&legacy.splashTexture=="UI/notes/noteSplashes",
+   "legacy owner selection must change only its omitted sustain default");
+  for(value in ["", "effects/customHold", "UI/notes/sustainHold"]){
+   var explicit:Dynamic={sustainSplashTexture:value};NightmareVisionNoteSkinDefaults.resolveOwnerData(explicit,true);
+   check(explicit.sustainSplashTexture==value,"explicit sustain paths must remain exact");
+  }
+  var nullable:Dynamic={sustainSplashTexture:null};NightmareVisionNoteSkinDefaults.resolveOwnerData(nullable,true);
+  check(nullable.sustainSplashTexture=="sustainHold","null default follows legacy owner");
+  var modern:Dynamic={};NightmareVisionNoteSkinDefaults.resolveOwnerData(modern,false);
+  check(modern.sustainSplashTexture=="UI/notes/sustainHold","modern and unknown owners retain source default");
   NightmareVisionNoteSkinDefaults.resolveData(first);
   check(first.noteTexture == "UI/notes/NOTE_assets"
    && first.splashTexture == "UI/notes/noteSplashes"

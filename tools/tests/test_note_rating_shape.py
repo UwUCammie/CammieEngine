@@ -42,6 +42,13 @@ class NoteRatingShapeTest(unittest.TestCase):
         fixture = '''
 class NoteRatingShapeProbe {
   public var nightmareVisionTypeRuntime:Dynamic;
+  public var sourceTimingMode:Int = 0;
+  public var garbage:Bool = false;
+  public var sustainSplash:Dynamic;
+  public var noteSplash:Dynamic;
+  public var noteSplashDisabled:Bool;
+  public var parent:Dynamic;
+  public var nightmareVisionTailState:Dynamic;
   public var rating:Dynamic = "miss";
   public var ratingDisabled:Bool = false;
   public var dontCountNote:Bool = false;
@@ -70,6 +77,8 @@ class Main {
       "native reset should restore the donor defaults");
 
     note.nightmareVisionTypeRuntime = {};
+    note.sourceTimingMode = 2;
+    note.garbage = true;
     note.rating = new SourceRating("good");
     check(note.ratingMod == 0.7, "NMV ratingMod should reflect the live descriptor");
     note.rating.ratingMod = 0.25;
@@ -78,7 +87,10 @@ class Main {
     check(note.ratingMod == -1, "the source sentinel ratingMod 9 should normalize to -1");
 
     note.ratingDisabled = true;
+    note.sustainSplash = {}; note.noteSplash={}; note.noteSplashDisabled=true; note.nightmareVisionTailState = {splash:{}};
     note.resetSourceRatingState();
+    check(note.sustainSplash == null && note.noteSplash == null && note.noteSplashDisabled && note.nightmareVisionTailState.splash == null, "independent fresh source splash pointers reset");
+    check(!note.garbage, "fresh NV reset clears source garbage marker");
     check(note.rating == null && !note.ratingDisabled && note.ratingMod == -1,
       "NMV reset should clear its live rating and expose the unset mod sentinel");
     var rejected = false;

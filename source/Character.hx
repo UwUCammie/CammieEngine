@@ -199,9 +199,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	/** Source CharacterData's HUD icon identity. Nightmare Vision stores this as
 	 * `healthicon`; other character formats keep the established character-id
 	 * fallback so HealthIcon continues using its existing owner-aware resolver. */
-	@:keep public var healthIcon(get, never):String;
+	@:keep public var healthIcon(get, set):String;
+	var sourceHealthIconAssigned:Bool = false;
+	var sourceHealthIconValue:String;
 	function get_healthIcon():String
-		return nightmareVisionHealthIcon == null ? curCharacter : nightmareVisionHealthIcon;
+		return sourceHealthIconAssigned ? sourceHealthIconValue : nightmareVisionHealthIcon != null ? nightmareVisionHealthIcon
+			: psychHealthIcon == null ? curCharacter : psychHealthIcon;
 	/** NMV scripts use this packed color for character-owned health displays. */
 	@:keep public var healthColour(get, set):FlxColor;
 	var nightmareVisionHealthColour:Null<FlxColor> = null;
@@ -259,6 +262,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			}
 		}
 		healthColorArray = nightmareVisionColorArrayFromPacked(healthColour);
+	}
+
+	function set_healthIcon(value:String):String {
+		sourceHealthIconAssigned = true;
+		sourceHealthIconValue = value;
+		return value;
 	}
 
 	static function nightmareVisionHealthIconFromDefinition(definition:Dynamic):Null<String> {
@@ -460,6 +469,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	var nightmareVisionCharacterData:Dynamic = null;
 	/** Owner-local source healthicon retained even if the character atlas falls back. */
 	var nightmareVisionHealthIcon:Null<String> = null;
+	var psychHealthIcon:Null<String> = null;
 	/** Source Character's no-argument animation-finish callback signal. */
 	public var onAnimationFinish:FlxSignal;
 	/** Deduplicated diagnostics exposed to import screens/tests and mirrored in
@@ -1198,6 +1208,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				}
 			}
 		}
+		sourceHealthIconAssigned = false;
+		nightmareVisionHealthIcon = null;
 		var nightmareVisionOwnerRoot = sourceCharacterOwnerEngine.toLowerCase()
 			== ImportEngine.NIGHTMARE_VISION.toLowerCase() ? sourceCharacterOwnerRoot : '';
 		var nightmareVisionOwnedCharacter:Dynamic = nightmareVisionOwnerRoot == '' ? null
@@ -1215,6 +1227,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				'gameover_intial_sound');
 		}
 		var psychCameraRoot = Song.currentPsychCharacterRoot();
+		psychHealthIcon = sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
+			? PsychCharacterHealthIcon.authored(visualCharacterId, psychCameraRoot,
+				function(path) return FNFAssets.exists(path) ? FNFAssets.getText(path) : null) : null;
 		positionArray = psychCharacterPositionArray(visualCharacterId, psychCameraRoot);
 		// Psych keeps direction animation names and their named offsets authored
 		// on the character. Its JSON is preserved under the selected song owner,

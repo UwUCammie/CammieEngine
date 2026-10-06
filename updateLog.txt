@@ -1,6 +1,20 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.15 alpha - CammieEngine
+	- Use actual Psych/Nightmare Vision source health icons for scripted HUD identity, reloads, tracker offsets, frame controls and owner-local graphics.
+	- Preserve Psych/Nightmare Vision scripted health values, update bounds, bar callbacks and source icon frames while retaining native and Codename behavior.
+	- Use source-compatible Psych/Nightmare Vision health and time bar groups, preserving scripted movement, resizing, colors and value callbacks; supply accurate stock frames when a mod has no override.
+	- Match Nightmare Vision tap-splash constructors, texture caching, animation lifetime, field spawning and script callbacks; share verified sprite mechanics with hold effects while preserving their separate behavior.
+	- Support Nightmare Vision tail-driven hold splashes, field-owned effect groups, source callbacks and skin-ID lookup; preserve pooled state, release/miss behavior and owner cleanup.
+	- Resolve omitted hold-splash textures against the imported engine's detected legacy or modern asset layout, without changing authored texture paths or mod files.
+	- Run Nightmare Vision modifier and callback events through one editable source timeline, with real event imports, mutable easing state and source scheduling behavior.
+	- Expose source Nightmare Vision builtin modifier classes, direct formulas and mutable helpers through the same ordered engine path, preserving native sprite scale/color ownership and constructor state.
+	- Load owner-scoped Nightmare Vision custom modifiers with real instances, child values, source registration order and live note/receptor/splash callbacks; preserve recursive position requests, source-clock updates and interpreter cleanup.
+	- Defer Nightmare Vision default receptors through source pre/post generation callbacks and accepted countdown gates; preserve authored field mutations and independent bank/skin ownership.
+	- Render Nightmare Vision Screen Dim as one source-owned HUD overlay, preserving creation preferences, live sprite/camera edits and independent FIELD underlays.
+	- Follow the source Psych live note cursor through callback additions, insertions, reordering and raw-array edits; preserve retirement neighbors and guard null, dead and out-of-range entries.
+
 v0.0.14 alpha - CammieEngine
 	- Render Nightmare Vision lane underlays from live field geometry, opacity and modifiers, including default field initialization and mutable underlay sprites.
 	- Match source Psych sustain segment timing, body stretch, pixel reload offsets and confirmation lifetime; preserve authored short holds and resize live sustain bodies when song speed changes.

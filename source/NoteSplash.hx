@@ -1,10 +1,47 @@
 package;
 import flixel.FlxSprite;
+import flixel.math.FlxPoint;
 import DynamicSprite.DynamicAtlasFrames;
 import flixel.FlxG;
 import Judgement.TUI;
 
 class NoteSplash extends FlxSprite {
+	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+	@:keep public var rgbGraphics(get, never):NightmareVisionRGBGraphics;
+	function get_rgbGraphics():NightmareVisionRGBGraphics {
+		if (nightmareVisionRGB == null) {
+			nightmareVisionRGB = new NightmareVisionRGBGraphics();
+			nightmareVisionRGB.enabled = false;
+		}
+		return nightmareVisionRGB;
+	}
+	@:keep public var noteData(get, set):Int;
+	function get_noteData():Int return direction;
+	function set_noteData(value:Int):Int return direction = value;
+
+	/** Persistent source scale baseline, refreshed only after source skin loading. */
+	var nightmareVisionBaseScalePoint:FlxPoint;
+	@:keep public var baseScale(get, never):FlxPoint;
+	@:keep public var defScale(get, set):FlxPoint;
+	function get_baseScale():FlxPoint {
+		if (nightmareVisionBaseScalePoint == null) {
+			var currentScale = scale;
+			nightmareVisionBaseScalePoint = FlxPoint.get(
+				currentScale == null ? 1 : currentScale.x,
+				currentScale == null ? 1 : currentScale.y);
+		}
+		return nightmareVisionBaseScalePoint;
+	}
+	function set_defScale(value:FlxPoint):FlxPoint {
+		if (value == null) throw 'Nightmare Vision baseScale cannot be null';
+		var point = get_baseScale();
+		if (value != point) point.set(value.x, value.y);
+		return point;
+	}
+	function get_defScale():FlxPoint {
+		return get_baseScale();
+	}
+
     public var isPixel:Bool = false;
     public var uiType:String = 'normal';
     public var variants:Int = 0;
@@ -121,10 +158,15 @@ class NoteSplash extends FlxSprite {
     }
 
     override public function update(elapsed) {
-        if (animation.curAnim.finished) {
+        if (animation.curAnim != null && animation.curAnim.finished) {
             // club pengiun is
             kill();
         }
         super.update(elapsed);
     }
+
+	override public function draw():Void {
+		if (nightmareVisionRGB != null) nightmareVisionRGB.apply(this);
+		super.draw();
+	}
 }

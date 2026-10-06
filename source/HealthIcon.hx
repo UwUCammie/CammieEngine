@@ -50,6 +50,12 @@ class HealthIcon extends FlxSprite {
 	/** V-Slice lets a song hold an authored icon animation until it restores
 	 * automatic health and beat updates. */
 	@:keep public var autoUpdate:Bool = true;
+	/** NMV's automatic two-frame switch is independent from native/V-Slice autoUpdate. */
+	@:keep public var updateFrames:Bool = true;
+	@:keep public inline function updateIconAnim(health:Float):Void {
+		if (!updateFrames) return;
+		animation.frameIndex = health < 0.2 ? 1 : 0;
+	}
 	@:keep public function getCurrentAnimation(?name:String):Dynamic {
 		var current = animation == null || animation.curAnim == null
 			? null : animation.curAnim.name;

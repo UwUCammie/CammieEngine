@@ -36,10 +36,11 @@ class StrumNote {
  public var animation:FakeAnimation = new FakeAnimation();
  public var scale:FakeScale = new FakeScale();
  public var antialiasing:Bool=true; public var isPixel:Bool=false;
+ public var baseScale:flixel.math.FlxPoint=new flixel.math.FlxPoint(1,1);
  public var normalSize:Float=1; public var resetAnim:Float=0;
  public var nightmareVisionOffsets:Map<String,Array<Float>>;
  public var nightmareVisionPalette:PsychRGBPalette;
- public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+ public var nightmareVisionRGB:NightmareVisionRGBGraphics; public var shader:Dynamic;
  public function new() {}
  public function updateHitbox():Void {}
  public function playAnim(name:String,force:Bool=false):Void animation.play(name,force);
@@ -64,7 +65,7 @@ class Note {
  public var isSustainNote:Bool=false; public var animation:FakeAnimation=new FakeAnimation();
  public var scale:FakeScale=new FakeScale(); public var baseScale:FlxPoint=new FlxPoint(1,1);
  public var frames:FlxAtlasFrames; public var antialiasing:Bool=true; public var normalSize:Float=1;
- public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+ public var nightmareVisionRGB:NightmareVisionRGBGraphics; public var shader:Dynamic;
  public function new(sustain:Bool=false) {isSustainNote=sustain;animation.play("PsychDefault");}
  public function resetPsychVisualOffset():Void {}
  public function updateHitbox():Void {}
@@ -79,7 +80,9 @@ class NoteSplash {
  public var frames:FlxAtlasFrames; public var animation:FakeAnimation=new FakeAnimation();
  public var variants:Int=0; public var nightmareVisionSplashOffset:Array<Float>;
  public var scale:FakeScale=new FakeScale(); public var antialiasing:Bool=true;
- public var alpha:Float=0.42; public var shader:Dynamic;
+ public var baseScale:flixel.math.FlxPoint=new flixel.math.FlxPoint(1,1);
+ public var nightmareVisionRGB:NightmareVisionRGBGraphics; public var shader:Dynamic;
+ public var alpha:Float=0.42;
  public function new() {}
 }
 ''',
@@ -96,18 +99,22 @@ class NoteSplash {
     "NightmareVisionRGBGraphics.hx": r'''class NightmareVisionRGBGraphics {
  public var palette:PsychRGBPalette; public var enabled:Bool=true; public var alpha:Float=1; public var flash:Float=0;
  public function new(?palette:PsychRGBPalette) this.palette=palette==null?new PsychRGBPalette():palette.copy();
- public function apply(note:Note):Void {}
+ public function apply(note:Dynamic):Void {note.shader=palette.shader;}
 }
 ''',
     "NightmareVisionPaths.hx": r'''import flixel.graphics.frames.FlxAtlasFrames;
 class NightmareVisionPaths {
  public var root:String; public var atlas:FlxAtlasFrames; public var hasJson:Bool=false;
+ public var hudProfile:Dynamic={name:"split"};
+ public var coreFiles:Map<String,Bool>=[];
+ public var atlasRequests:Array<String>=[];
  public function new(root:String,atlas:FlxAtlasFrames) {this.root=root;this.atlas=atlas;}
  public function noteskin(name:String):String return root+"/noteskins/"+name+".json";
  public function scopeAssetPath(path:String):Null<String> return path;
  public function getPath(path:String,?library:String,?allowNullSafety:Bool=false):String return path;
- public function exists(path:String):Bool return hasJson;
- public function getSparrowAtlas(path:String):FlxAtlasFrames return atlas;
+ public function getCorePath(path:String):String return root+"/__core/"+path;
+ public function exists(path:String):Bool return path.indexOf("/__core/")>=0?coreFiles.exists(path):hasJson;
+ public function getSparrowAtlas(path:String):FlxAtlasFrames {atlasRequests.push(path);return atlas;}
 }
 ''',
     "FNFAssets.hx": r'''class FNFAssets { public static var content:String=""; public static function getText(path:String):String return content; }
@@ -134,7 +141,34 @@ class Main {
  ]);
  static function main():Void {
   var firstPaths=new NightmareVisionPaths("skin-owner-a",frames());
+  for(layout in 0...3){
+   var owner=new NightmareVisionPaths("layout-owner"+layout,frames());
+   for(d in 0...10)if(layout!=2||d<9)owner.coreFiles.set(owner.getCorePath("images/num"+d+".png"),true);
+   if(layout==1)for(d in 0...10)owner.coreFiles.set(owner.getCorePath("images/UI/combo/num"+d+".png"),true);
+   owner.hudProfile=NightmareVisionHUDProfile.detect(owner);
+   var selected=new NightmareVisionNoteSkin(owner,"",4,0);
+   check(selected.sustainSplashTexture==(layout==0?"sustainHold":"UI/notes/sustainHold"),
+    "actual core layout detection, modern priority and partial-core default");
+   owner.atlasRequests=[];
+   check(selected.loadSustainSplashFrames()==owner.atlas&&owner.atlasRequests[0]==selected.sustainSplashTexture,
+    "selected default must load through its own exact atlas path");
+   owner.hasJson=true;FNFAssets.content='{"sustainSplashTexture":"custom/hold"}';
+   var authored=new NightmareVisionNoteSkin(owner,"authored",4,0);
+   check(authored.sustainSplashTexture=="custom/hold","explicit authored path overrides every layout");
+  }
+  FNFAssets.content="";
   var skin=new NightmareVisionNoteSkin(firstPaths,"",4,9);
+  skin.sustainSplashTexture="private-cover";
+  firstPaths.atlasRequests=[];
+  check(skin.loadSustainSplashFrames()==firstPaths.atlas && skin.loadSustainSplashFrames()==firstPaths.atlas
+   && firstPaths.atlasRequests.join(",")=="private-cover,private-cover",
+   "sustain setup atlas helper must use its owner paths and reload on every call");
+  firstPaths.atlasRequests=[];
+  skin.splashTexture="skin-tap";
+  check(skin.loadNoteSplashFrames("explicit/tap")==firstPaths.atlas
+   && skin.loadNoteSplashFrames("")==firstPaths.atlas
+   && firstPaths.atlasRequests.join(",")=="explicit/tap,",
+   "tap atlas helper must preserve explicit texture and blank paths through selected owner");
   var separate=new NightmareVisionNoteSkin(firstPaths,"second",4,9);
   check(skin.name=="" && skin.keys==4 && skin.ID==9,
    "native constructor must retain authored name, key count, and ID");
@@ -166,16 +200,22 @@ class Main {
   receptor.nightmareVisionRGB=receptorRGB;
   skin.receptorScale=0.6;
   check(skin.applyReceptor(receptor,0) && receptor.scale.x==0.6
-   && receptor.nightmareVisionRGB==receptorRGB && receptorRGB.alpha==0.25
+   && receptor.baseScale.x==0.6 && receptor.nightmareVisionRGB==receptorRGB && receptorRGB.alpha==0.25
    && receptorRGB.flash==0.75 && receptorRGB.palette.r==0xFF010203,
    "receptor helper must consume mutable scale/palette while retaining draw state");
   skin.receptorScale=0.9;
-  check(skin.applyReceptor(receptor,0) && receptor.scale.x==0.9,
+  check(skin.applyReceptor(receptor,0) && receptor.scale.x==0.9 && receptor.baseScale.x==0.9,
    "receptor scale changes must be direct and stable");
   var splash=new NoteSplash();
   check(skin.applySplash(splash,0) && splash.scale.x==1 && splash.alpha==0.42,
    "splash helper must keep source's unused alpha property inert");
 
+  var splashRGB=splash.nightmareVisionRGB; splashRGB.alpha=0.23; splashRGB.flash=0.4;
+  skin.splashScale=0.8;skin.inEngineColoring=false;
+  check(skin.applySplash(splash,0)&&splash.baseScale.x==0.8&&splash.nightmareVisionRGB==splashRGB
+   &&splashRGB.alpha==0.23&&splashRGB.flash==0.4&&!splashRGB.enabled&&splash.alpha==0.42,
+   "splash reload must refresh baseline and retain RGB identity/alpha/coloring flags");
+  skin.inEngineColoring=true;
   firstPaths.hasJson=true;
   FNFAssets.content="null";
   var parsedNull=skin.loadFromPath("null-data");

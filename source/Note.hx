@@ -455,6 +455,8 @@ class Note extends DynamicSprite {
 	}
 	public var tooLate:Bool = false;
 	public var wasGoodHit:Bool = false;
+	/** NMV source marker, separate from native retirement and liveness. */
+	@:keep public var garbage:Bool = false;
 	public var prevNote:Note;
 	/** Source note/hold views keep the authored chain available to scripts. */
 	@:keep public var parent:Note = null;
@@ -480,7 +482,12 @@ class Note extends DynamicSprite {
 	public var isPixel:Bool = false;
 	/** Authored NMV type behavior remains separate from Psych ignoreNote. */
 	@:keep public var spawned:Bool = false;
-	public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool};
+	public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool, ?splash:Dynamic};
+	@:keep public var tailState(get, set):Dynamic;
+	function get_tailState():Dynamic return nightmareVisionTailState;
+	function set_tailState(value:Dynamic):Dynamic return nightmareVisionTailState = value;
+	@:keep public var sustainSplash:Dynamic = null;
+	@:keep public var noteSplash:Dynamic = null;
 	public var nightmareVisionHitDispatched:Bool = false;
 	/** Psych sustains stay alive after their one successful notification. */
 	@:keep public var hitByOpponent:Bool = false;
@@ -556,6 +563,7 @@ class Note extends DynamicSprite {
 	/** Psych Lua can toggle splash behavior on one live note independently of
 		its note type or the global splash option. */
 	public var noteSplashData:Dynamic = {disabled: false};
+	@:keep public var noteSplashDisabled:Bool = false;
 	// pwease freeplay state don't edit me i already have special info :grief: :grief:
 	public var dontEdit:Bool = false;
 	/** Psych/native notes use a string; Nightmare Vision notes may carry their live
@@ -585,6 +593,10 @@ class Note extends DynamicSprite {
 	/** Restore the source note's fresh/recycled scoring defaults. Call after the
 	 * Nightmare Vision runtime is attached so its rating begins as null. */
 	@:keep public function resetSourceRatingState():Void {
+		if (sourceTimingMode == 2) {
+			garbage = false; sustainSplash = null; noteSplash = null;
+			if (parent == null && nightmareVisionTailState != null) nightmareVisionTailState.splash = null;
+		}
 		ratingDisabled = false;
 		rating = nightmareVisionTypeRuntime == null ? 'miss' : null;
 		storedRatingMod = 0;

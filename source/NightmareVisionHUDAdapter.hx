@@ -10,10 +10,19 @@ package;
 */
 typedef NightmareVisionHUDAdapterConfig = {
 	var parent:Dynamic;
+	#if flixel
+	var sourceHealthBar:NightmareVisionBar;
+	var sourceTimeBar:NightmareVisionBar;
+	#end
 	var healthFill:Dynamic;
 	var healthBackground:Dynamic;
+	#if flixel
+	var iconP1:NightmareVisionHealthIcon;
+	var iconP2:NightmareVisionHealthIcon;
+	#else
 	var iconP1:Dynamic;
 	var iconP2:Dynamic;
+	#end
 	var scoreText:Dynamic;
 	var songFill:Dynamic;
 	var songBackground:Dynamic;
@@ -345,10 +354,22 @@ class NightmareVisionHUDScaleView {
 class NightmareVisionHUDAdapter {
 	public var name(default, null):String = 'PSYCH';
 	public var parent(default, null):Dynamic;
+	#if flixel
+	public var healthBar:NightmareVisionBar;
+	public var timeBar:NightmareVisionBar;
+	#else
+	/** Legacy standalone fixtures; native gameplay always supplies the actual groups. */
 	public var healthBar:NightmareVisionHUDBarView;
 	public var timeBar:NightmareVisionHUDBarView;
+	#end
+	#if flixel
+	public var iconP1:NightmareVisionHealthIcon;
+	public var iconP2:NightmareVisionHealthIcon;
+	#else
 	public var iconP1:Dynamic;
 	public var iconP2:Dynamic;
+	#end
+	public var updateIconScale:Bool = true;
 	public var scoreTxt:Dynamic;
 	public var timeTxt:Dynamic;
 	public var ratingPrefix(get, set):String;
@@ -432,6 +453,13 @@ class NightmareVisionHUDAdapter {
 		applyRatingPrefix = config.applyRatingPrefix;
 		ratingPresentation = config.ratingPresentation;
 
+		#if flixel
+		healthBar = config.sourceHealthBar;
+		timeBar = config.sourceTimeBar;
+		if (healthBar == null || timeBar == null)
+			throw '[nightmare-vision-hud] Actual source Bar groups are required';
+		members = [healthBar, iconP1, iconP2, scoreTxt, timeBar, timeTxt];
+		#else
 		var healthValue = config.healthValue == null
 			? function():Float return number(parent, 'health')
 			: config.healthValue;
@@ -447,6 +475,7 @@ class NightmareVisionHUDAdapter {
 
 		members = [config.healthBackground, config.healthFill, iconP1, iconP2,
 			scoreTxt, config.songFill, config.songBackground, timeTxt];
+		#end
 		// FlxSpriteGroup.add/insert copy the group's backing camera field into
 		// each incoming sprite. Seed the facade from the live HUD camera set.
 		cameraValue = Reflect.getProperty(config.healthBackground, 'cameras');
@@ -478,14 +507,26 @@ class NightmareVisionHUDAdapter {
 	/** Refresh the native health fill using the source Bar value function. */
 	public function onHealthChange(?health:Float):Void {
 		ensureAlive();
+		#if flixel
+		var newPercent:Null<Float> = flixel.math.FlxMath.remapToRange(
+			flixel.math.FlxMath.bound(healthBar.valueFunction(), healthBar.bounds.min, healthBar.bounds.max),
+			healthBar.bounds.min, healthBar.bounds.max, 0, 100);
+		healthBar.percent = newPercent == null ? 0 : newPercent;
+		#else
 		healthBar.updateBar();
+		#end
 	}
 
 	/** PsychHUD bops the same two live health icons on every beat. */
 	public function beatHit():Void {
 		ensureAlive();
-		call(iconP1, 'bump', []);
-		call(iconP2, 'bump', []);
+		if (!updateIconScale) return;
+		#if flixel
+		iconP1.scale.set(1.2, 1.2);iconP2.scale.set(1.2, 1.2);
+		iconP1.updateHitbox();iconP2.updateHitbox();
+		#else
+		call(iconP1, 'bump', []);call(iconP2, 'bump', []);
+		#end
 	}
 
 	/** Flip the native bar fill direction and both actual player icons. */
@@ -494,6 +535,41 @@ class NightmareVisionHUDAdapter {
 		healthBar.leftToRight = !healthBar.leftToRight;
 		Reflect.setProperty(iconP1, 'flipX', Reflect.getProperty(iconP1, 'flipX') != true);
 		Reflect.setProperty(iconP2, 'flipX', Reflect.getProperty(iconP2, 'flipX') != true);
+	}
+
+	public function updateIconsPosition():Void {
+		ensureAlive();
+		if (!updateIconPos) return;
+		#if flixel
+		if (!healthBar.leftToRight) {
+			iconP1.x = healthBar.barCenter + (150 * iconP1.scale.x - 150) / 2 - 26;
+			iconP2.x = healthBar.barCenter - (150 * iconP2.scale.x) / 2 - 52;
+		} else {
+			iconP1.x = healthBar.barCenter - (150 * iconP2.scale.x) / 2 - 52;
+			iconP2.x = healthBar.barCenter + (150 * iconP1.scale.x - 150) / 2 - 26;
+		}
+		#end
+	}
+	public function updateIconsScale(elapsed:Float):Void {
+		ensureAlive();
+		if (!updateIconScale) return;
+		#if flixel
+		var mult = 1 + (iconP1.scale.x - 1) * Math.exp(-9 * elapsed);
+		iconP1.scale.set(mult, mult);iconP1.updateHitbox();
+		mult = 1 + (iconP2.scale.x - 1) * Math.exp(-9 * elapsed);
+		iconP2.scale.set(mult, mult);iconP2.updateHitbox();
+		#end
+	}
+	/** Source HUD animation phase, independent of native autoUpdate/iconState. */
+	public function updateIconsAnimation():Void {
+		ensureAlive();
+		#if flixel
+		iconP1.updateIconAnim(healthBar.percent * 0.01);
+		iconP2.updateIconAnim((100 - healthBar.percent) * 0.01);
+		#else
+		call(iconP1, 'updateIconAnim', [healthBar.percent * 0.01]);
+		call(iconP2, 'updateIconAnim', [(100 - healthBar.percent) * 0.01]);
+		#end
 	}
 
 	/** Update the source PsychHUD timer from the live audio clock.
@@ -510,7 +586,9 @@ class NightmareVisionHUDAdapter {
 		var current = Math.max(0, songPosition - noteOffset);
 		var fraction = songLength <= 0 ? 0 : current / songLength;
 		Reflect.setProperty(parent, 'songPositionBar', fraction);
+		#if !flixel
 		timeBar.percent = fraction * 100;
+		#end
 		if (timeBarType == 'Song Name') {
 			return;
 		}
@@ -721,8 +799,10 @@ class NightmareVisionHUDAdapter {
 		if (released) return;
 		released = true;
 		cancelScoreTextTween();
+		#if !flixel
 		if (healthBar != null) healthBar.release();
 		if (timeBar != null) timeBar.release();
+		#end
 		if (ratingPresentation != null) call(ratingPresentation, 'release', []);
 		ratingPresentation = null;
 		healthBar = null;
@@ -784,8 +864,13 @@ class NightmareVisionHUDAdapter {
 		ensureAlive();
 		var delta = value - groupX;
 		groupX = value;
+		#if flixel
+		if (healthBar != null) healthBar.x += delta;
+		if (timeBar != null) timeBar.x += delta;
+		#else
 		if (healthBar != null) healthBar.moveBy(delta, 0);
 		if (timeBar != null) timeBar.moveBy(delta, 0);
+		#end
 		for (object in [iconP1, iconP2, scoreTxt, timeTxt]) if (object != null)
 			Reflect.setProperty(object, 'x', number(object, 'x') + delta);
 		return value;
@@ -795,8 +880,13 @@ class NightmareVisionHUDAdapter {
 		ensureAlive();
 		var delta = value - groupY;
 		groupY = value;
+		#if flixel
+		if (healthBar != null) healthBar.y += delta;
+		if (timeBar != null) timeBar.y += delta;
+		#else
 		if (healthBar != null) healthBar.moveBy(0, delta);
 		if (timeBar != null) timeBar.moveBy(0, delta);
+		#end
 		for (object in [iconP1, iconP2, scoreTxt, timeTxt]) if (object != null)
 			Reflect.setProperty(object, 'y', number(object, 'y') + delta);
 		return value;

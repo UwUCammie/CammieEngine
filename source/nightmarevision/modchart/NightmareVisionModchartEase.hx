@@ -9,51 +9,54 @@ using StringTools;
 	FlxEase implementation used by the 6.1.2 game/toolchain.
 */
 class NightmareVisionModchartEase {
-	public static function apply(ease:Dynamic, time:Float):Float {
-		if (ease == null) return FlxEase.linear(time);
+	public static function apply(ease:Dynamic, time:Float):Float return resolve(ease)(time);
+
+	/** Resolve once so source EaseEvent exposes the real callable identity. */
+	public static function resolve(ease:Dynamic):Float->Float {
+		if (ease == null) return FlxEase.linear;
 		if (Reflect.isFunction(ease))
-			return cast Reflect.callMethod(null, ease, [time]);
+			return cast ease;
 		if (!Std.isOfType(ease, String))
 			throw 'Nightmare Vision ease must be a name or a function';
 		var name:String = cast ease;
 		return switch (name.toLowerCase().trim()) {
-			case 'backin': FlxEase.backIn(time);
-			case 'backinout': FlxEase.backInOut(time);
-			case 'backout': FlxEase.backOut(time);
-			case 'bouncein': FlxEase.bounceIn(time);
-			case 'bounceinout': FlxEase.bounceInOut(time);
-			case 'bounceout': FlxEase.bounceOut(time);
-			case 'circin': FlxEase.circIn(time);
-			case 'circinout': FlxEase.circInOut(time);
-			case 'circout': FlxEase.circOut(time);
-			case 'cubein': FlxEase.cubeIn(time);
-			case 'cubeinout': FlxEase.cubeInOut(time);
-			case 'cubeout': FlxEase.cubeOut(time);
-			case 'elasticin': FlxEase.elasticIn(time);
-			case 'elasticinout': FlxEase.elasticInOut(time);
-			case 'elasticout': FlxEase.elasticOut(time);
-			case 'expoin': FlxEase.expoIn(time);
-			case 'expoinout': FlxEase.expoInOut(time);
-			case 'expoout': FlxEase.expoOut(time);
-			case 'quadin': FlxEase.quadIn(time);
-			case 'quadinout': FlxEase.quadInOut(time);
-			case 'quadout': FlxEase.quadOut(time);
-			case 'quartin': FlxEase.quartIn(time);
-			case 'quartinout': FlxEase.quartInOut(time);
-			case 'quartout': FlxEase.quartOut(time);
-			case 'quintin': FlxEase.quintIn(time);
-			case 'quintinout': FlxEase.quintInOut(time);
-			case 'quintout': FlxEase.quintOut(time);
-			case 'sinein': FlxEase.sineIn(time);
-			case 'sineinout': FlxEase.sineInOut(time);
-			case 'sineout': FlxEase.sineOut(time);
-			case 'smoothstepin': FlxEase.smoothStepIn(time);
-			case 'smoothstepinout': FlxEase.smoothStepInOut(time);
-			case 'smoothstepout': FlxEase.smoothStepOut(time);
-			case 'smootherstepin': FlxEase.smootherStepIn(time);
-			case 'smootherstepinout': FlxEase.smootherStepInOut(time);
-			case 'smootherstepout': FlxEase.smootherStepOut(time);
-			default: FlxEase.linear(time);
+			case 'backin': FlxEase.backIn;
+			case 'backinout': FlxEase.backInOut;
+			case 'backout': FlxEase.backOut;
+			case 'bouncein': FlxEase.bounceIn;
+			case 'bounceinout': FlxEase.bounceInOut;
+			case 'bounceout': FlxEase.bounceOut;
+			case 'circin': FlxEase.circIn;
+			case 'circinout': FlxEase.circInOut;
+			case 'circout': FlxEase.circOut;
+			case 'cubein': FlxEase.cubeIn;
+			case 'cubeinout': FlxEase.cubeInOut;
+			case 'cubeout': FlxEase.cubeOut;
+			case 'elasticin': FlxEase.elasticIn;
+			case 'elasticinout': FlxEase.elasticInOut;
+			case 'elasticout': FlxEase.elasticOut;
+			case 'expoin': FlxEase.expoIn;
+			case 'expoinout': FlxEase.expoInOut;
+			case 'expoout': FlxEase.expoOut;
+			case 'quadin': FlxEase.quadIn;
+			case 'quadinout': FlxEase.quadInOut;
+			case 'quadout': FlxEase.quadOut;
+			case 'quartin': FlxEase.quartIn;
+			case 'quartinout': FlxEase.quartInOut;
+			case 'quartout': FlxEase.quartOut;
+			case 'quintin': FlxEase.quintIn;
+			case 'quintinout': FlxEase.quintInOut;
+			case 'quintout': FlxEase.quintOut;
+			case 'sinein': FlxEase.sineIn;
+			case 'sineinout': FlxEase.sineInOut;
+			case 'sineout': FlxEase.sineOut;
+			case 'smoothstepin': FlxEase.smoothStepIn;
+			case 'smoothstepinout': FlxEase.smoothStepInOut;
+			case 'smoothstepout': FlxEase.smoothStepOut;
+			case 'smootherstepin': FlxEase.smootherStepIn;
+			case 'smootherstepinout': FlxEase.smootherStepInOut;
+			case 'smootherstepout': FlxEase.smootherStepOut;
+			default: FlxEase.linear;
 		};
 	}
 }

@@ -123,14 +123,15 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	 */
 	public var attachedEffects(default, null):FlxTypedGroup<FlxSprite>;
 	var noteSpacing:Float = 1;
-	public function new(x:Float, y:Float, type:String = 'normal', ?transition:Bool = false) {
+	public function new(x:Float, y:Float, type:String = 'normal', ?transition:Bool = false,
+		?generateReceptors:Bool = true) {
 		super(x, y);
 
-		changeType(type, transition);
+		changeType(type, transition, false, generateReceptors);
 	}
 
 	public function changeType(type:String = 'normal', ?transition:Bool = false,
-		?preserveAttachedEffects:Bool = false) {
+		?preserveAttachedEffects:Bool = false, ?generateReceptors:Bool = true) {
 		// Splicing while iterating skips every other old receptor. Cancel intro
 		// tweens too: the legacy API can replace arrows during the countdown.
 		while (this.length > 0) {
@@ -153,7 +154,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 		else
 			currentKey.newKey(daType.uses);
 
-		for (i in 0...Note.NOTE_AMOUNT) {
+		for (i in 0...(generateReceptors ? Note.NOTE_AMOUNT : 0)) {
 			var babyArrow:StrumNote = new StrumNote(Note.swagWidth * i, 0, i, type, currentKey, this);
 			if (sourceStrumScale != 1) babyArrow.resetStrumSize();
 			add(babyArrow);
@@ -526,9 +527,37 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 }
 
 class StrumNote extends FlxSprite {
+	/** Persistent source scale baseline, refreshed only after source skin loading. */
+	var nightmareVisionBaseScalePoint:FlxPoint;
+	@:keep public var baseScale(get, never):FlxPoint;
+	@:keep public var defScale(get, set):FlxPoint;
+	function get_baseScale():FlxPoint {
+		if (nightmareVisionBaseScalePoint == null) {
+			var currentScale = scale;
+			nightmareVisionBaseScalePoint = FlxPoint.get(
+				currentScale == null ? 1 : currentScale.x,
+				currentScale == null ? 1 : currentScale.y);
+		}
+		return nightmareVisionBaseScalePoint;
+	}
+	function set_defScale(value:FlxPoint):FlxPoint {
+		if (value == null) throw 'Nightmare Vision baseScale cannot be null';
+		var point = get_baseScale();
+		if (value != point) point.set(value.x, value.y);
+		return point;
+	}
+	function get_defScale():FlxPoint {
+		return get_baseScale();
+	}
+
 	/** Authored Nightmare Vision receptor offsets and colors for each animation. */
 	public var nightmareVisionOffsets:Map<String, Array<Float>> = null;
 	public var nightmareVisionPalette:PsychRGBPalette = null;
+	override public function draw():Void {
+		if (nightmareVisionRGB != null) nightmareVisionRGB.apply(this);
+		super.draw();
+	}
+
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics = null;
 	/** Marks this receptor as source-owned even when its skin disables coloring. */
 	@:keep public var nightmareVisionSource(default, set):Bool = false;

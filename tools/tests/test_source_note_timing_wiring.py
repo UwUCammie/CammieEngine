@@ -242,9 +242,9 @@ class Main {
         init = extract_method(play, "function initializeSourceSafeZone(prefs:Dynamic)")
         init = init.replace("function initializeSourceSafeZone", "public function initializeSourceSafeZone", 1)
         destroy_start = play.index("function destroy()")
-        restore_start = play.index("if (sourcePreviousSafeZone != null) {", destroy_start)
-        restore_end = play.index("\n\t\tsuper.destroy();", restore_start)
-        restore = play[restore_start:restore_end]
+        # Isolate the actual safe-zone restoration block rather than unrelated
+        # cleanup now inserted between it and superclass destruction.
+        restore = extract_method(play[destroy_start:], "if (sourcePreviousSafeZone != null) {")
 
         fixture = r'''
 import SourceNoteTiming;

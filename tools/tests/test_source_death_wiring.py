@@ -125,6 +125,7 @@ class SourceDeathWiringFixture {
   public var cpuControlled:Bool = false;
   public var boyfriend:Character = new Character();
   public var nightmareOwner:Character = new Character();
+  public var fieldAvailable:Bool = true;
   public var balls:Int = 0;
   public var paused:Bool = false;
   public var canPause:Bool = true;
@@ -149,7 +150,7 @@ class SourceDeathWiringFixture {
     callbackArgs = args;
     return nightmareResult;
   }
-  public function getNightmareVisionField(index:Int):DeathField return new DeathField(nightmareOwner);
+  public function getNightmareVisionField(index:Int):DeathField return fieldAvailable ? new DeathField(nightmareOwner) : null;
   public function psychGameOverDeathDelay():Float return psychDelay;
   public function stopVocals():Void {
     vocalsStops++;
@@ -172,6 +173,14 @@ class SourceDeathWiringTestMain {
     if (actual != expected) throw message + ': ' + actual + ' != ' + expected;
 
   static function main():Void {
+    var deferred = new SourceDeathWiringFixture();deferred.sourceScoreNightmare = true;deferred.fieldAvailable = false;
+    deferred.nightmareResult = NightmareVisionScriptGroup.STOP_FUNC;
+    check(!deferred.doDeathCheck() && !deferred.boyfriend.stunned && deferred.balls == 0,
+      'stopped deferred death preserves callback and transition ordering');
+    deferred.nightmareResult = 0;
+    check(deferred.doDeathCheck() && deferred.boyfriend.stunned && deferred.balls == 1 && deferred.openedGameOver != null,
+      'accepted pre-field source death uses player actor and preserves full transition');
+
     psychStopIsSideEffectFree();
     psychDelayKeepsMusicUntilTimer();
     nightmareStopIsSideEffectFree();

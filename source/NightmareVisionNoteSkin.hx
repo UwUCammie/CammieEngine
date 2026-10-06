@@ -135,7 +135,8 @@ class NightmareVisionNoteSkin {
 				if (raw == null) raw = {};
 			}
 		}
-		resolveData(raw);
+		NightmareVisionNoteSkinDefaults.resolveOwnerData(raw,
+			paths.hudProfile != null && paths.hudProfile.name == 'legacy-shared');
 		return raw;
 	}
 
@@ -194,6 +195,16 @@ class NightmareVisionNoteSkin {
 			diagnose(diagnosticKey + '-' + texture, 'missing atlas ' + texture + ': ' + Std.string(error));
 			return null;
 		}
+	}
+
+	/** SustainSplash.addAnims reloads its owner's current texture on every call. */
+	public function loadSustainSplashFrames():FlxAtlasFrames {
+		return loadAtlas(sustainSplashTexture, 'sustain-splash-atlas');
+	}
+
+	/** NoteSplash owns the explicit texture cache, rather than the skin helper. */
+	public function loadNoteSplashFrames(texture:String):FlxAtlasFrames {
+		return loadAtlas(texture, 'splash-atlas');
 	}
 
 	function refreshNoteFrames():FlxAtlasFrames {
@@ -353,6 +364,7 @@ class NightmareVisionNoteSkin {
 		strum.nightmareVisionPalette = inEngineColoring ? palette(lane) : null;
 		strum.nightmareVisionRGB = refreshRGB(strum.nightmareVisionRGB, lane);
 		strum.scale.set(receptorScale, receptorScale);
+		strum.baseScale.set(strum.scale.x, strum.scale.y);
 		strum.antialiasing = antialiasing;
 		strum.isPixel = boolField('isPixel', false);
 		strum.updateHitbox();
@@ -390,9 +402,10 @@ class NightmareVisionNoteSkin {
 		splash.nightmareVisionSplashOffset = [pair.length > 0 ? numberValue(pair[0], 0) : 0,
 			pair.length > 1 ? numberValue(pair[1], 0) : 0];
 		splash.scale.set(splashScale, splashScale);
+		splash.baseScale.set(splash.scale.x, splash.scale.y);
 		splash.antialiasing = antialiasing;
-		if (inEngineColoring) splash.shader = palette(lane).shader;
-		else splash.shader = null;
+		splash.nightmareVisionRGB = refreshRGB(splash.nightmareVisionRGB, lane);
+		splash.nightmareVisionRGB.apply(splash);
 		return true;
 	}
 

@@ -15,9 +15,8 @@ typedef NightmareVisionModifierValueEvent = {
 }
 
 /**
-	Pure value-event scheduler mirroring source EventTimeline's per-mod queues.
-	Integrators should update this before the callback timeline: donor
-	EventTimeline drains modifier events first and callback events afterward.
+	Legacy standalone value-event scheduler for pure modchart use and fixtures.
+	Source ModManager uses one unified NightmareVisionEventTimeline instead.
 */
 class NightmareVisionModchartTimeline {
 	public final registry:NightmareVisionModifierRegistry;
@@ -35,6 +34,15 @@ class NightmareVisionModchartTimeline {
 			modEvents.set(definition.name, []);
 			queueOrder.push(definition.name);
 		}
+	}
+
+	/** Legacy standalone enrollment preserves pending schedules. Source registration
+	 * instead resets the bucket on its authoritative EventTimeline. */
+	public function registerName(name:String):Void {
+		ensureAlive();
+		if (modEvents.exists(name)) return;
+		modEvents.set(name, []);
+		queueOrder.push(name);
 	}
 
 	public function queueSet(step:Float, modName:String, value:Float, player:Int = -1):Void {

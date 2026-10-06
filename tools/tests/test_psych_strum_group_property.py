@@ -68,7 +68,15 @@ class PsychStrumGroupPropertyFixture {
   Sys.println("OK");
  }
 }
+class PlayState {}
 class ExtractedBridge {
+ // This strum-only harness has not installed source HUD icons.
+ function sourceHUDIconAlias(_name:String):Dynamic return null;
+ function isSourceHUDIconAlias(_name:String):Bool return false;
+ function writeSourceHUDIconAlias(_name:String,value:Dynamic):Dynamic return value;
+ function sourceHUDBarAlias(_name:String):Dynamic return null;
+ function isSourceHUDBarAlias(_name:String):Bool return false;
+ function writeSourceHUDBarAlias(_name:String,value:Dynamic):Dynamic return value;
  var group:Dynamic;
  var enemyStrums:EmptyGroup;
  var playerStrums:EmptyGroup;

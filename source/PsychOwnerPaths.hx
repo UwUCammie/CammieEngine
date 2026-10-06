@@ -17,6 +17,7 @@ class PsychOwnerPaths {
 		if (owner == '') throw '[psych-assets] A valid selected import owner root is required';
 		var currentLevel:String = initialLibrary == null || initialLibrary == '' ? null : initialLibrary.toLowerCase();
 		var proxy:Dynamic = {};
+		Reflect.setField(proxy, '__sourceOwnerRoot', function() return owner);
 		Reflect.setField(proxy, 'SOUND_EXT', Paths.SOUND_EXT);
 		Reflect.setField(proxy, 'VIDEO_EXT', 'mp4');
 		Reflect.setField(proxy, 'getPath', function(file:String, ?type:AssetType = TEXT,
@@ -193,6 +194,13 @@ class PsychOwnerPaths {
 		return null;
 	}
 
+	/** Captured asset owner for compatibility caches, independent of the current song. */
+	public static function ownerRoot(facade:Dynamic):String {
+		var read = Reflect.field(facade, '__sourceOwnerRoot');
+		if (read == null) throw '[psych-assets] Expected an owner-local Paths facade';
+		return Reflect.callMethod(facade, read, []);
+	}
+
 	static function image(owner:String, key:String, library:String, currentLevel:String):FlxGraphic {
 		var clean = PsychOwnerAssetPath.cleanId(key);
 		if (clean == null) throw '[psych-assets] Refused unsafe Psych image key: ' + Std.string(key);
@@ -207,6 +215,8 @@ class PsychOwnerPaths {
 				Paths.file('images/' + clean + '.png', IMAGE, 'preload'),
 				Paths.file('images/custom_stages/stage/' + clean + '.png', IMAGE, 'preload')
 			];
+			var barCore = SourceBarAssets.coreImage('psych', clean);
+			if (barCore != null) candidates.unshift(barCore);
 			path = null;
 			for (candidate in candidates)
 				if (FNFAssets.exists(candidate)) {

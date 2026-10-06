@@ -107,7 +107,7 @@ class SourceNoteHealthFieldsTest(unittest.TestCase):
             extract_field(note, "@:keep public var parent:Note = null;"),
             extract_field(note, "@:keep public var tail:Array<Note> = [];"),
             extract_field(note, "@:keep public var missed:Bool = false;"),
-            extract_field(note, "public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool};"),
+            extract_field(note, "public var nightmareVisionTailState:{missed:Bool, notes:Array<Note>, ?active:Bool, ?splash:Dynamic};"),
             extract_field(note, "@:keep public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;"),
             extract_field(note, "var pendingSourceCanMiss:Bool = false;"),
             extract_field(note, "public var hitHealth:Null<Float> = null;"),

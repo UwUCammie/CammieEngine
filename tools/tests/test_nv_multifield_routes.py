@@ -28,11 +28,13 @@ class NvMultifieldRoutesTest(unittest.TestCase):
         note = (ROOT / 'source/Note.hx').read_text()
         methods = '\n'.join(method(play, sig) for sig in [
             'function nightmareVisionLaneCount():Int',
+            'function nightmareVisionKeyCount():Int',
             'function nightmareVisionAcceptsNoteField(id:Int):Bool',
             'function initializeNightmareVisionPlayFields():Void',
             'public function getNightmareVisionField(id:Int)',
             'function nightmareVisionFieldForNote(note:Note)',
-            'function buildNightmareVisionPlayFields():Void',
+            'public function generatePlayfields():Void',
+            'function createNightmareVisionDefaultField(lane:Int)',
             'function nightmareVisionConfigureFieldReceptors(field:NightmareVisionPlayFieldView):Void',
             'function configureNightmareVisionStrumlines():Void',
             'function getNoteStrumline(note:Note)',
@@ -64,13 +66,20 @@ class Note {
  __LANE__
 }
 class Main {
+ public var modifiersRegistered=false;
+ public var modManager:Dynamic={configureDimensions:function(keys:Int,lanes:Int):Void {},registerEssentialModifiers:function():Void {},registerDefaultModifiers:function():Void {},registerScriptedModifiers:function():Void {}};
  public var SONG:Dynamic = {lanes:3, uiType:'default', format:'nmv2'};
  public var nightmareVisionScripts:Dynamic = {};
- public var nightmareVisionPrefs:Dynamic = {view:{quants:false}};
+ public var nightmareVisionPrefs:Dynamic = {view:{quants:false,opponentStrums:true,middleScroll:false}};
+ public var generatedFields:Bool=false; public var genNotesBeforeCountdown:Bool=true;
+ public var skipArrowStartTween:Bool=false; public var skipCountdown:Bool=false;
+ public var startOnTime:Float=0; public var isStoryMode:Bool=false;
+ public var nightmareVisionDefaultGenerationDepth:Int=0;
  public var playFields:NightmareVisionPlayFields;
  public var nightmareVisionFields:Array<NightmareVisionPlayFieldView>=[];
  public var nightmareVisionStrumlines:Array<Strumline>=[];
  public var nightmareVisionOwnedStrumlines:Array<Strumline>=[];
+ public var nightmareVisionOwnedFields:Array<NightmareVisionPlayFieldView>=[];
  public var nightmareVisionNoteFields:haxe.ds.ObjectMap<Note, NightmareVisionPlayFieldView>=new haxe.ds.ObjectMap();
  public var playerStrums:Strumline=new Strumline(0,50,'default');
  public var enemyStrums:Strumline=new Strumline(0,50,'default');
@@ -82,6 +91,18 @@ class Main {
  public var downscroll:Bool=false;
  public var strumsBlocked:Array<Bool>=[];
  public function new() {}
+ function comboBreakThingies(player:Int):Void {}
+ function callNightmareVision(name:String,args:Array<Dynamic>):Dynamic return 0;
+ function nightmareVisionSourceSkinRegistry():Dynamic return {noteskins:[]};
+ function initializeNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {}
+ function bindNightmareVisionPlayFieldLifecycle(field:NightmareVisionPlayFieldView):Void {
+  nightmareVisionOwnedFields.push(field);
+  field.bindNativeLifecycle({generateReceptors:function(f) {
+   f.strumline.regenerate(); nightmareVisionConfigureFieldReceptors(f);
+  },clearReceptors:function(f) f.strumline.members.resize(0),fadeIn:function(f,skip) {}});
+ }
+ function nightmareVisionClearFieldReceptors(f:NightmareVisionPlayFieldView):Void f.clearReceptors();
+ function nightmareVisionDefaultSkinForField(id:Int,reuseCached:Bool=true):NightmareVisionNoteSkin return null;
  function nightmareVisionSkinForField(id:Int):NightmareVisionNoteSkin return null;
  function getCodenameLineStrumline(id:Int):Strumline return null;
  function getInputStrumline(line:Dynamic, player:Bool):Strumline return player ? playerStrums : enemyStrums;
@@ -89,6 +110,7 @@ class Main {
   if(field.strumline!=null && !nightmareVisionOwnedStrumlines.contains(field.strumline)) nightmareVisionOwnedStrumlines.push(field.strumline);
  }
  function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {}
+ function publishNightmareVisionReceptorBanks():Void {}
  function syncNightmareVisionPlayFieldCollection():Void {
   if(playFields!=null) nightmareVisionFields=playFields.members;
  }
@@ -98,7 +120,7 @@ class Main {
   var h=new Main();
   h.initializeNightmareVisionPlayFields();
   check(h.playFields.length==0 && h.getNightmareVisionField(0)==null, 'pre-generation source fields empty');
-  h.buildNightmareVisionPlayFields();
+  h.generatePlayfields();
   h.configureNightmareVisionStrumlines();
   check(h.playFields.length==3 && h.nightmareVisionFields==h.playFields.members, 'three live source fields');
   var f0=h.getNightmareVisionField(0), f1=h.getNightmareVisionField(1), f2=h.getNightmareVisionField(2);
@@ -116,7 +138,8 @@ class Main {
   check(f0.playerControls && !f1.playerControls && f2.playerControls, 'donor input ownership');
   check(!f0.autoPlayed && f1.autoPlayed && f2.autoPlayed, 'donor autoplay policy');
   check(f0.noteSplashes && !f1.noteSplashes && !f2.noteSplashes, 'donor splash defaults');
-  h.cpuControlled=true; check(f0.autoPlayed, 'live CPU default');
+  check(!f0.autoPlayed, 'source construction captures initial CPU flag');
+  f0.autoPlayed=true; check(f0.autoPlayed, 'source CPU flag remains mutable');
   f2.autoPlayed=false; check(f2.canInput(), 'extra field manual override');
   var n=new Note(); n.lane=2;
   check(n.sourcePlayfieldIndex==2 && n.noteData==3 && h.getNoteStrumline(n)==f2.strumline, 'note field independent of direction');
@@ -133,10 +156,10 @@ class Main {
   f0.ID=7; f2.ID=0;
   check(h.getNightmareVisionField(0)==f2 && h.getNightmareVisionField(7)==f0, 'mutable IDs take precedence');
   check(h.getNightmareVisionField(2)==f2 && h.getNightmareVisionField(-1)==null && h.getNightmareVisionField(9)==null, 'array fallback and missing lookup');
-  var count=h.playFields.length; h.buildNightmareVisionPlayFields(); check(h.playFields.length==count,'generation idempotent');
+  var count=h.playFields.length; h.generatePlayfields(); check(h.playFields.length==count,'generation idempotent');
   for (format in [null,'','nmv2','psych_v1']) {
    var missing=new Main(); missing.SONG.format=format;
-   missing.initializeNightmareVisionPlayFields();missing.buildNightmareVisionPlayFields();missing.configureNightmareVisionStrumlines();
+   missing.initializeNightmareVisionPlayFields();missing.generatePlayfields();missing.configureNightmareVisionStrumlines();
    var receptor=missing.playFields.members[2].members[0];
    check(receptor.nightmareVisionSource,'selected NV receptor marking independent of chart format');
    var shader:Dynamic=receptor.rgbShader;
@@ -145,7 +168,7 @@ class Main {
    check(receptor.rgbGraphics.getColors().join(',')=='1,2,3','reflective color call targets NV graphics');
   }
   var absent=new Main();absent.SONG={lanes:3,uiType:'default'};
-  absent.initializeNightmareVisionPlayFields();absent.buildNightmareVisionPlayFields();absent.configureNightmareVisionStrumlines();
+  absent.initializeNightmareVisionPlayFields();absent.generatePlayfields();absent.configureNightmareVisionStrumlines();
   var absentRGB:Dynamic=absent.playFields.members[2].members[0].rgbShader;
   Reflect.callMethod(absentRGB,Reflect.field(absentRGB,'setColors'),[[4,5,6]]);
   check(absent.playFields.members[2].members[0].rgbGraphics.getColors().join(',')=='4,5,6','absent format RGB adapter live');
@@ -154,7 +177,7 @@ class Main {
   check(!native.playerStrums.members[0].nightmareVisionSource,'no NV runtime preserves native receptor');
 
   for (lanes in [null,0,-2,1,3,5]) {
-   var one=new Main(); one.SONG.lanes=lanes; one.initializeNightmareVisionPlayFields(); one.buildNightmareVisionPlayFields();
+   var one=new Main(); one.SONG.lanes=lanes; one.initializeNightmareVisionPlayFields(); one.generatePlayfields();
    var expected=lanes==null || lanes<1 ? 2 : lanes;
    check(one.playFields.length==expected,'authored lane count and default');
    check(!one.nightmareVisionAcceptsNoteField(-1) && !one.nightmareVisionAcceptsNoteField(expected), 'out of range fields excluded');
@@ -166,6 +189,7 @@ class Main {
 '''.replace('__METHODS__', methods).replace('__LANE__', note[lane_start:lane_end])
         line_fixture = r'''
 class Strumline {
+ public var ID:Int=99;
  public var members:Array<StrumNote>=[];
  public var x:Float=0;
  public var y:Float=0;
@@ -174,7 +198,8 @@ class Strumline {
  public var visible:Bool=true;
  public var cameras:Array<Dynamic>=[];
  public var noteHoldCovers:Dynamic={cameras:[]};
- public function new(x:Float,y:Float,ui:String) { for (i in 0...4) { var s=new StrumNote(); s.ID=i; members.push(s); } }
+ public function new(x:Float,y:Float,ui:String,transition:Bool=false,generate:Bool=true) { if(generate) regenerate(); }
+ public function regenerate():Void { members.resize(0); for (i in 0...4) { var s=new StrumNote(); s.ID=i; members.push(s); } }
  public function setCenteredLayout(x:Float,y:Float) { this.x=x; this.y=y; }
  public function resetStrums() {}
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }

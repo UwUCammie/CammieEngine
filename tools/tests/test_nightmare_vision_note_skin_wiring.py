@@ -19,6 +19,8 @@ class NightmareVisionNoteSkinWiringTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text()
         methods = "\n".join(extract_method(source, marker) for marker in (
             "public function nightmareVisionSkinForField(",
+            "function nightmareVisionDefaultSkinForField(",
+            "function nightmareVisionKeyCount(",
             "public function nightmareVisionSkinForStrumline(",
             "function configureNightmareVisionNoteSkin(",
             "function applyNightmareVisionNoteSkin(",
@@ -89,6 +91,7 @@ class SkinWiring {
  var nightmareVisionPaths:NightmareVisionPaths;
  var nightmareVisionNoteSkins:Map<String,NightmareVisionNoteSkin>;
  var SONG:Dynamic;
+ var arrowSkins:Array<String>;
  var playerStrums:Strumline; var enemyStrums:Strumline;
  var nightmareVisionFields:Array<{ID:Int,strumline:Strumline}>=[];
  var playFields:Dynamic=null;
@@ -100,7 +103,7 @@ class SkinWiring {
 ''' + methods + '''
  static function main():Void {
   var s=new SkinWiring(); s.nightmareVisionPaths=new NightmareVisionPaths("owner-a");
-  s.SONG={arrowSkins:["pink","gray"]};
+  s.SONG={arrowSkins:["pink","gray"]};s.arrowSkins=s.SONG.arrowSkins;
   s.playerStrums=new Strumline(); s.enemyStrums=new Strumline();
   s.nightmareVisionFields=[{ID:0,strumline:s.playerStrums},{ID:1,strumline:s.enemyStrums}];
   var first=s.nightmareVisionSkinForField(0), second=s.nightmareVisionSkinForField(1);
@@ -141,7 +144,7 @@ class SkinWiring {
    || missingSkinNote.quant!=4 || s.beatCalls!=2)
    throw "missing skin must not classify a source note";
   s.nightmareVisionPaths=selectedPaths;
-  s.SONG={arrowSkins:[]};
+  s.SONG={arrowSkins:[]};s.arrowSkins=s.SONG.arrowSkins;
   if (s.nightmareVisionSkinForField(0).name!="default") throw "missing skin has no source default";
   var sameNameFirst=s.nightmareVisionSkinForField(0), sameNameSecond=s.nightmareVisionSkinForField(1);
   if (sameNameFirst==sameNameSecond || sameNameSecond.ID!=1) throw "mutable skin instances merged across fields";

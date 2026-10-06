@@ -30,6 +30,20 @@ def extract_method(source: str, marker: str) -> str:
 
 class PsychPropertyPathTest(unittest.TestCase):
     def run_haxe(self, source: str, name: str) -> None:
+        # These fixtures isolate legacy property traversal; connected source
+        # Bar/icon aliases are exercised with real objects in their HUD integration tests.
+        # No source HUD icon installation occurs in these legacy traversal fixtures.
+        static = "static function compatReadPathPart" in source
+        prefix = "static " if static else ""
+        helpers = (prefix + "function sourceHUDIconAlias(_name:String):Dynamic return null;\n"
+                   + prefix + "function isSourceHUDIconAlias(_name:String):Bool return false;\n"
+                   + prefix + "function writeSourceHUDIconAlias(_name:String,_value:Dynamic):Dynamic return _value;\n"
+                   + prefix + "function sourceHUDBarAlias(_name:String):Dynamic return null;\n"
+                   + prefix + "function isSourceHUDBarAlias(_name:String):Bool return false;\n"
+                   + prefix + "function writeSourceHUDBarAlias(_name:String,_value:Dynamic):Dynamic return _value;\n")
+        source = source.replace("class " + name + " {", "class " + name + " {\n" + helpers, 1)
+        if static: source = source.replace("target == this", "target == " + name)
+        if "class PlayState" not in source: source += "\nclass PlayState {}\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / f"{name}.hx"
             path.write_text(source, newline='\n')

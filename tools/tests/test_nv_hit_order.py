@@ -260,6 +260,8 @@ class NightmareVisionPlayFieldView {
  public var holdDropLeniency:Float = 0.2;
  public var singers:Array<Dynamic> = [];
  public var notes:Array<NVNote> = [];
+ public var spawnTrace:Array<String>;
+ public function spawnSusSplash(note:Dynamic,isPlayer:Bool=false):Dynamic {spawnTrace.push('sustain-splash');return null;}
  public var onNoteHit:FieldHitSignal = new FieldHitSignal();
  public function new(id:Int, playerControls:Bool) { ID=id; this.playerControls=playerControls; }
  public function addNote(note:NVNote):Void notes.push(note);
@@ -358,6 +360,7 @@ class Main {
   fields = [new NightmareVisionPlayFieldView(0, true),
    new NightmareVisionPlayFieldView(1, false), new NightmareVisionPlayFieldView(2, false)];
   nightmareVisionFields = fields;
+  for(field in fields)field.spawnTrace=events;
   playerStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
   enemyStrums = new Strumline([new Strum(0, events), new Strum(1, events)]);
   fields[0].strumline = playerStrums;
@@ -411,7 +414,7 @@ __AUTO_LOOP__
   // after global STOP; type-hit mutations are visible to side/global calls.
   var tap = newNote(10);
   hitNightmareVisionNote(tap, true);
-  check(events.join('|') == 'pre:goodNoteHitPre:0|receptor:0|confirm:0|health|singers|rating|splash|type-hit:0:before-type-hit|side-good:0:after-type-hit|global:goodNoteHit:0:after-type-hit|kill|remove|external:0:true:true:true|destroy',
+  check(events.join('|') == 'pre:goodNoteHitPre:0|receptor:0|confirm:0|health|singers|rating|splash|sustain-splash|type-hit:0:before-type-hit|side-good:0:after-type-hit|global:goodNoteHit:0:after-type-hit|kill|remove|external:0:true:true:true|destroy',
    'tap phase order/callback mutation/global return changed: ' + events.join('|'));
   check(tap.destroyed && !tap.alive && tap.nightmareVisionHitDispatched,
    'accepted tap did not finish retirement');

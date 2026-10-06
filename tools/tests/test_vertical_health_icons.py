@@ -7,11 +7,12 @@ import unittest
 ROOT=Path(__file__).resolve().parents[2]
 class VerticalHealthIconsTest(unittest.TestCase):
     def test_icons_track_rotated_bar_and_respect_layout_override(self):
-        s=(ROOT/'source/PlayState.hx').read_text();start=s.index('\t\tif (!iconOverride && iconsVertical)');end=s.index('\n\t\tplayer1Icon =',start)
+        s=(ROOT/'source/PlayState.hx').read_text();start=s.index('\t\tif (updateSourceHUDIconPositions())');end=s.index('\n\t\tplayer1Icon =',start)
         fixture='''class FlxMath {public static function remapToRange(v:Float,a:Float,b:Float,c:Float,d:Float)return c+(v-a)/(b-a)*(d-c);}
 class Test {
  static function position(percent:Float,overrideLayout:Bool=false,p1OffsetX:Float=0,p1OffsetY:Float=0,p2OffsetX:Float=0,p2OffsetY:Float=0):Array<Float>{
  var healthBar={x:200.,y:100.,width:600.,height:20.,percent:percent};
+ var sourceNoteTimingMode=()->0;var updateSourceHUDIconPositions=()->false;var sourceHUDHealthPercent=()->healthBar.percent;
  var iconP1={x:0.,y:0.,width:150.,height:150.};var iconP2={x:0.,y:0.,width:150.,height:150.};
  var iconOffset=26;var iconsVertical=true;var iconOverride=overrideLayout;
  var compatIconP1OffsetX=p1OffsetX;var compatIconP1OffsetY=p1OffsetY;

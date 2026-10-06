@@ -126,6 +126,7 @@ class State {
   boyfriend.cameraPosition=[10,20];
   dad=new Character('dad',false,400,600,'singDOWN');
   dad.cameraPosition=[-200,-20];
+  playerOwner=boyfriend;opponentOwner=dad;
   gf=new Character('gf',false,600,300,'singRIGHT');
   gf.cameraPosition=[5,6];
   SONG={notes:[{mustHitSection:true,gfSection:false}]};

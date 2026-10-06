@@ -45,6 +45,8 @@ class PsychPropertyCoercionTest(unittest.TestCase):
                 "static function " + marker.split("function ", 1)[1],
                 1,
             )
+            # This fixture intentionally statically isolates non-HUD property paths.
+            method = method.replace("target == this", "target == PropertyCoercionCompat")
             methods.append(method)
         fixture = """
 class FlxColor {{
@@ -115,6 +117,8 @@ class PropertyCoercionCompat {{
   }}
 }}
 """.format(methods="\n".join(methods))
+        fixture = fixture.replace("class PropertyCoercionCompat {", "class PropertyCoercionCompat {\n" + '// No source HUD icon installation occurs in this note/property-only fixture.\n static function sourceHUDIconAlias(_name:String):Dynamic return null;\n static function isSourceHUDIconAlias(_name:String):Bool return false;\n static function writeSourceHUDIconAlias(_name:String,value:Dynamic):Dynamic return value;\n static function sourceHUDBarAlias(_name:String):Dynamic return null;\n static function isSourceHUDBarAlias(_name:String):Bool return false;\n static function writeSourceHUDBarAlias(_name:String,value:Dynamic):Dynamic return value;\n', 1)
+        fixture += "\nclass PlayState {}\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "PropertyCoercionCompat.hx"
             path.write_text(fixture, newline='\n')

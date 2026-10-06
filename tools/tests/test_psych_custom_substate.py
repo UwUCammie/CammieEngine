@@ -89,7 +89,7 @@ class Main {
         self.assertIn("callAllHScript('customSubstateUpdatePost', [state.customName, elapsed])", source)
         self.assertNotIn("callAllHScript('customSubstateUpdate', [compatCustomSubstateName", source)
         self.assertIn("case 'oncustomsubstateupdatepost' | 'customsubstateupdatepost'", bridge)
-        self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
+        self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*updateNightmareVisionScreenUnderlay\(\);\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
         self.assertIn('super.openSubState(null);', source)
 

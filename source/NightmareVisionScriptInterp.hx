@@ -414,7 +414,10 @@ class NightmareVisionScriptInterp extends Interp {
 			return (cast object:PsychFlxCameraCompat).getField(field);
 		#end
 		if (liveField(object, field)) return liveValues.get(field).read();
-		if (usesClassParent(object, field, false)) return Reflect.getProperty(parent, field);
+		if (usesClassParent(object, field, false)) {
+			if (liveField(parent, field)) return liveValues.get(field).read();
+			return Reflect.getProperty(parent, field);
+		}
 		#if flixel
 		if (ownerPaths != null && (field == 'audio' || field == 'vocals')
 			&& Std.isOfType(object, NightmareVisionPlayableSongOwner))
@@ -453,6 +456,7 @@ class NightmareVisionScriptInterp extends Interp {
 		#end
 		if (liveField(object, field)) return writeLiveValue(field, value);
 		if (usesClassParent(object, field, true)) {
+			if (liveField(parent, field)) return writeLiveValue(field, value);
 			Reflect.setProperty(parent, field, value);
 			return value;
 		}

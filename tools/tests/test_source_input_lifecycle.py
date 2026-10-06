@@ -226,6 +226,7 @@ class InputFixture {
    selected.onMissPress.onDispatch = function(key:Int):Void noteMiss(key, selected.ID != 1, null, true);
   }
  }
+ function releaseNightmareVisionSustainSplashes(field:InputField,key:Int):Void events.push('sustain-release:'+field.ID+':'+key);
  function getOpponentSinger():InputActor return opponentActor;
  function getInputStrumline(line:Dynamic, playerOne:Bool):InputFixtureStrumline
   return playerOne ? playerStrums : enemyStrums;
@@ -425,7 +426,10 @@ class Main {
   nvRelease.playerStrums.members[2].holding = true;
   nvRelease.enemyStrums.members[2].holding = true;
   nvRelease.exerciseNvRelease(2);
-  check(at(nvRelease.events, 'holdcover:player:2') < at(nvRelease.events, 'receptor:player:2:static')
+  check(at(nvRelease.events, 'sustain-release:0:2') >= 0
+   && at(nvRelease.events, 'sustain-release:0:2') < at(nvRelease.events, 'holdcover:player:2')
+   && at(nvRelease.events, 'sustain-release:1:2') < at(nvRelease.events, 'holdcover:enemy:2')
+   && at(nvRelease.events, 'holdcover:player:2') < at(nvRelease.events, 'receptor:player:2:static')
    && at(nvRelease.events, 'receptor:enemy:2:static') < at(nvRelease.events, 'nv:onKeyRelease')
    && at(nvRelease.events, 'nv:onKeyRelease') < at(nvRelease.events, 'nv:onInputRelease')
    && nvRelease.nvReleasePostSawState,

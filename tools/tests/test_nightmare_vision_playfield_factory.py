@@ -282,6 +282,8 @@ class FakePlayState {
 		SONG = song;
 	}
 
+ function nightmareVisionSourceSkinRegistry():Dynamic return {noteskins:[]};
+ function initializeNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {}
 	function bindNightmareVisionPlayFieldLifecycle(field:NightmareVisionPlayFieldView):Void {
 		nightmareVisionOwnedFields.push(field);
 		var host = this;

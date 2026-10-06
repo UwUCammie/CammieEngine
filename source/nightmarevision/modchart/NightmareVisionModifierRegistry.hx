@@ -1,5 +1,15 @@
 package nightmarevision.modchart;
 
+/** One current source note-modifier instance, resolved for each live active name. */
+typedef NightmareVisionModifierExecution = {
+	var builtin:Null<String>;
+	@:optional var value:Int->Float;
+	@:optional var subValue:String->Int->Float;
+	@:optional var state:NightmareVisionModifierFormulaState;
+	var getPosition:Float->Float->Float->Float->NightmareVisionModchartVector->Int->Int->Dynamic->NightmareVisionModchartVector;
+	var updateObject:Float->Dynamic->NightmareVisionModchartVector->Int->String->Void;
+}
+
 /** Public metadata for one source ModManager modifier or submodifier. */
 typedef NightmareVisionModifierDefinition = {
 	var name:String;
@@ -14,7 +24,7 @@ typedef NightmareVisionModifierDefinition = {
 	Pure value/registry layer for the supplied Nightmare Vision 0.6.4
 	ModManager. Names, submod families, registration order, and initial values
 	mirror ModManager.registerEssentialModifiers/registerDefaultModifiers.
-	Scripted modifiers are intentionally not synthesized here.
+	Owner bridges provide source instance values and execution; standalone use retains builtin formulas.
 */
 class NightmareVisionModifierRegistry {
 	public static inline var FIRST:Int = -1000;
@@ -24,10 +34,41 @@ class NightmareVisionModifierRegistry {
 	public static inline var DEFAULT:Int = 0;
 	public static inline var LAST:Int = 1000;
 
-	public final keys:Int;
-	public final players:Int;
+	public var keys(default, null):Int;
+	public var players(default, null):Int;
 	public var definitions(default, null):Array<NightmareVisionModifierDefinition> = [];
 	public var families(default, null):Array<String> = [];
+
+	/** Owner manager bridges preserve source instance identity, aliases and live arrays. */
+	public var executionNames:Null<Int->Array<String>>;
+	public var executionEntry:Null<String->Null<NightmareVisionModifierExecution>>;
+	public var hasNameBridge:Null<String->Bool>;
+	public var valueBridge:Null<String->Int->Float>;
+	public var setValueBridge:Null<String->Float->Int->Void>;
+	public var subValueBridge:Null<String->String->Int->Float>;
+	public var setSubValueBridge:Null<String->String->Float->Int->Void>;
+
+	/** Keep registry/timeline references and existing values when source dimensions finalize. */
+	public function configureDimensions(keys:Int, players:Int):Void {
+		this.keys = keys < 1 ? 1 : keys;
+		this.players = players < 1 ? 1 : players;
+		for (row in values) {
+			while (row.length < this.players) row.push(0);
+		}
+		while (activeFamilyRevision.length < this.players) {
+			activeFamilyCache.push([]);
+			activeFamilyCacheRevision.push(-1);
+			activeFamilyRevision.push(0);
+		}
+		for (player in 0...this.players) activeFamilyRevision[player]++;
+	}
+
+	/** Source mode returns its live active array. Pure mode retains formula caching. */
+	public function executionList(player:Int):Array<String> {
+		if (executionNames == null) return activeFamilies(player);
+		var names = executionNames(player);
+		return names == null ? [] : names;
+	}
 
 	var byName:Map<String, NightmareVisionModifierDefinition> = new Map();
 	var children:Map<String, Array<String>> = new Map();
@@ -121,17 +162,20 @@ class NightmareVisionModifierRegistry {
 		addFamily('noteSpawnTime', DEFAULT, false, false, []);
 
 		// Source ModManager.registerDefaultModifiers sets these after registration.
-		setValue('noteSpawnTime', 2000);
-		setValue('xmod', 1);
-		for (i in 0...keys) setValue('xmod' + i, 1);
+		if (setValueBridge == null) {
+			setValue('noteSpawnTime', 2000);
+			setValue('xmod', 1);
+			for (i in 0...keys) setValue('xmod' + i, 1);
+		}
 	}
 
-	public function isRegistered(name:String):Bool return name != null && byName.exists(name);
+	public function isRegistered(name:String):Bool return hasNameBridge != null ? hasNameBridge(name) : name != null && byName.exists(name);
 
 	public function definition(name:String):Null<NightmareVisionModifierDefinition>
 		return name == null ? null : byName.get(name);
 
 	public function value(name:String, player:Int):Float {
+		if (valueBridge != null) return valueBridge(name, player);
 		var row = requireValues(name);
 		checkPlayer(player);
 		return row[player];
@@ -140,6 +184,7 @@ class NightmareVisionModifierRegistry {
 	public function percent(name:String, player:Int):Float return value(name, player) * 100;
 
 	public function setValue(name:String, value:Float, player:Int = -1):Void {
+		if (setValueBridge != null) { setValueBridge(name, value, player); return; }
 		var row = requireValues(name);
 		if (player == -1) {
 			for (index in 0...players) setPlayerValue(row, index, value);
@@ -153,12 +198,14 @@ class NightmareVisionModifierRegistry {
 		setValue(name, value * 0.01, player);
 
 	public function getSubmodValue(parent:String, name:String, player:Int):Float {
+		if (subValueBridge != null) return subValueBridge(parent, name, player);
 		var list = children.get(parent);
 		if (list == null || list.indexOf(name) < 0) return 0;
 		return value(name, player);
 	}
 
 	public function setSubmodValue(parent:String, name:String, value:Float, player:Int):Void {
+		if (setSubValueBridge != null) { setSubValueBridge(parent, name, value, player); return; }
 		var list = children.get(parent);
 		if (list == null || list.indexOf(name) < 0)
 			throw 'Nightmare Vision modifier ' + parent + ' has no registered submodifier ' + name;

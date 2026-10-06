@@ -19,20 +19,18 @@ class NvQuantRenderingTest(unittest.TestCase):
  public var prevNote:Note;public var sourceDirection:Int=0;public var noteData:Int=0;
  public var nightmareVisionTypeRuntime:Dynamic;
  public function new(''', 1)
+        # Extend the shared RGB facade without replacing its updated apply method.
         stubs['NightmareVisionRGBGraphics.hx'] = stubs['NightmareVisionRGBGraphics.hx'].replace(
-            ' public function apply(note:Note):Void {}', '''
+            ' public function new(', """
  public function setColors(colors:Array<Int>):Void {palette.r=colors[0];palette.g=colors[1];palette.b=colors[2];}
  public function getColors():Array<Int> return [palette.r,palette.g,palette.b];
- public function apply(sprite:Dynamic):Void sprite.shader=palette.shader;
-''')
-        # The source color helper applies shader state to both kinds of sprite.
-        stubs['Note.hx'] = stubs['Note.hx'].replace('class Note {', 'class Note { public var shader:Dynamic;')
+ public function new(""", 1)
         source = (ROOT / 'source/Strumline.hx').read_text()
         handle = method(source, 'public function handleColors(')
         stubs['Strumline.hx'] = stubs['Strumline.hx'].replace(' public function new() {}', '''
  public var nightmareVisionSource:Bool=true;public var useRGBShader:Bool=true;
  public var isQuant:Bool=false;public var nightmareVisionQuantPrefs:Dynamic;
- public var lastNote:Note;public var shader:Dynamic;
+ public var lastNote:Note;
  function getNightmareVisionRGB():NightmareVisionRGBGraphics {
   if(nightmareVisionRGB==null)nightmareVisionRGB=new NightmareVisionRGBGraphics(nightmareVisionPalette);
   return nightmareVisionRGB;

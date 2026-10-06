@@ -144,8 +144,10 @@ class Main {
                                     text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         play = (ROOT / "source/PlayState.hx").read_text()
-        self.assertIn("if (iconP2auto && iconP2.autoUpdate)", play)
-        self.assertIn("if (iconP2.autoUpdate) iconP2.iconState = Winning;", play)
+        self.assertTrue("if (sourceNoteTimingMode() == 0 && iconP2auto && iconP2.autoUpdate)" in play,
+                        "Native/V-Slice automatic frames retain both live gates and exclude source owners")
+        self.assertTrue("if (sourceNoteTimingMode() == 0 && iconP2.autoUpdate) iconP2.iconState = Winning;" in play,
+                        "Winning frames retain the V-Slice autoUpdate gate and exclude Psych/NV source owners")
 
     def test_configured_hxc_placeholder_cancels_only_its_unresolved_fallback(self):
         source = (ROOT / "source/HealthIcon.hx").read_text()

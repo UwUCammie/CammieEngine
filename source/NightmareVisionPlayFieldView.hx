@@ -18,7 +18,9 @@ typedef NightmareVisionPlayFieldHooks = {
 	?alpha:(NightmareVisionPlayFieldView, Float)->Void,
 	?quants:(NightmareVisionPlayFieldView, Bool)->Void,
 	?changeSkin:(NightmareVisionPlayFieldView, NightmareVisionNoteSkin)->Void,
-	?fadeIn:(NightmareVisionPlayFieldView, Bool)->Void
+	?fadeIn:(NightmareVisionPlayFieldView, Bool)->Void,
+	?spawnSplash:(NightmareVisionPlayFieldView, Dynamic)->Dynamic,
+	?spawnSusSplash:(NightmareVisionPlayFieldView, Dynamic, Bool)->Dynamic
 }
 
 /** Live source field flags over a native receptor bank. */
@@ -38,6 +40,23 @@ class NightmareVisionPlayFieldView {
 	public var playAnims:Bool = true;
 	public var showRatings:Bool = true;
 	public var noteSplashes:Bool = false;
+	public var trackSustainSplashes:Bool = true;
+	public var trackNoteSplashes:Bool = true;
+	/** Actual owner-created Flixel groups. Writable pointers do not rewrite layer children. */
+	@:keep public var grpSusSplashes:Dynamic;
+	@:keep public var grpNoteSplashes:Dynamic;
+	@:keep public var splashLayer:Dynamic;
+	@:allow(PlayState) var ownedSplashLayer:Dynamic;
+	@:allow(PlayState) var displayedSplashLayer:Dynamic;
+	public function spawnSplash(note:Dynamic):Dynamic {
+		if (nativeHooks == null || nativeHooks.spawnSplash == null) missingHook('spawnSplash');
+		return nativeHooks.spawnSplash(this, note);
+	}
+	public function spawnSusSplash(note:Dynamic, isPlayer:Bool = false):Dynamic {
+		if (nativeHooks == null || nativeHooks.spawnSusSplash == null) missingHook('spawnSusSplash');
+		return nativeHooks.spawnSusSplash(this, note, isPlayer);
+	}
+
 	public var baseAlpha:Float = 1;
 	public var holdDropLeniency:Float = 1 / 3;
 	/** Source PlayField's mutable, field-owned FIELD underlay sprite. */

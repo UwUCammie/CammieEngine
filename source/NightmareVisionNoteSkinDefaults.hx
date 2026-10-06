@@ -3,6 +3,12 @@ package;
 /** Fresh copies of the pinned Nightmare Vision NoteUtil skin defaults. */
 @:keep
 class NightmareVisionNoteSkinDefaults {
+	/** Retained older cores use a flat image namespace. Explicit paths stay exact. */
+	public static function resolveOwnerData(data:Dynamic, legacyLayout:Bool):Void {
+		if (legacyLayout && data != null && !Std.isOfType(data, Array))
+			setDefault(data, 'sustainSplashTexture', 'sustainHold');
+		resolveData(data);
+	}
 	public static inline var DEFAULT_TEXTURE:String = 'UI/notes/NOTE_assets';
 	public static inline var DEFAULT_SPLASH_TEXTURE:String = 'UI/notes/noteSplashes';
 	public static inline var DEFAULT_SUSTAIN_SPLASH_TEXTURE:String = 'UI/notes/sustainHold';

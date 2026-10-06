@@ -170,6 +170,8 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         self.assertEqual(movement.count('* noteScrollSpeed)'), 2)
         fixture = '''
 class OptionsHandler {public static var options = {scrollSpeed:1.0, dynamicScrollSpeed:0.0};}
+// This fixture extracts speed fields but does not execute the note iteration pass.
+class PsychNoteIteration {public function new() {}}
 class RuntimeSmokeHarness {
  public static function profileSection(_section:String, _seconds:Float):Void {}
 }

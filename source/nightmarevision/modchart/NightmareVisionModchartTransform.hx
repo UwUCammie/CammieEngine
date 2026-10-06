@@ -1,17 +1,20 @@
 package nightmarevision.modchart;
 
+import nightmarevision.modchart.NightmareVisionModifierRegistry.NightmareVisionModifierExecution;
+
 private typedef InfinitePathCache = {
 	var points:Array<NightmareVisionModchartVector>;
 	var totalDistance:Float;
 }
 
 /**
-	Pure source-formula port of the built-in Nightmare Vision note modifiers.
-	Inputs/outputs are primitive snapshots; no Flixel object is owned or mutated.
+	Source-formula port with an ordered live-instance execution bridge.
+	Builtin formulas use snapshots; owner callbacks receive the real native sprite.
 	Formula provenance is the supplied NMV source tree's ModManager and
-	modifiers/*.hx implementations. Scripted modifier classes are not included.
+	modifiers/*.hx implementations. The owner manager resolves scripted/custom instances at each active-name step.
 */
 class NightmareVisionModchartTransform {
+	var currentFormulaEntry:Null<NightmareVisionModifierExecution>;
 	public final registry:NightmareVisionModifierRegistry;
 	static var infinitePathCache:Map<String, InfinitePathCache> = new Map();
 
@@ -52,36 +55,31 @@ class NightmareVisionModchartTransform {
 			new NightmareVisionModchartVector());
 	}
 
-	/** Fill caller-owned output storage. The result is the same object supplied by
-	 * the caller; unlike getPosition(), this method does not transfer ownership. */
+	/** Initialize caller-owned storage; a source modifier may return another vector.
+	 * The caller owns the returned position through the end of the render pass. */
 	public function getPositionInto(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject,
-		visualDiff:Float, timeDiff:Float, beat:Float, pos:NightmareVisionModchartVector):NightmareVisionModchartVector {
+		visualDiff:Float, timeDiff:Float, beat:Float, pos:NightmareVisionModchartVector, ?exclusions:Array<String>,
+		?time:Float):NightmareVisionModchartVector {
 		if (pos == null) throw 'Nightmare Vision position output cannot be null';
-		pos.x = 0;
-		pos.y = 0;
+		if (registry.executionNames == null) { pos.x = 0; pos.y = 0; pos.z = 0; }
+		if (object == null || !liveActive(object)) return pos;
 		pos.z = 0;
-		if (object == null || !object.active) return pos;
 		pos.x = baseX(context, object.data, object.player);
 		pos.y = baseY(context.noteWidth) + visualDiff;
 
-		for (family in registry.activeFamilies(object.player)) {
-			switch (family) {
-				case 'reverse': applyReverse(context, object, pos, visualDiff);
-				case 'opponentSwap': applyOpponentSwap(context, object, pos);
-				case 'flip': applyFlip(context, object, pos);
-				case 'invert': applyInvert(context, object, pos);
-				case 'drunk': applyDrunk(context, object, pos, visualDiff);
-				case 'beat': applyBeat(context, object, pos, visualDiff, beat);
-				case 'receptorScroll': applyReceptorScroll(context, object, pos, timeDiff);
-				case 'transformX': applyTransform(object, pos);
-				case 'infinite': applyInfinitePath(context, object, pos, visualDiff, timeDiff);
-				case 'boost': applyBoost(context, object, pos, visualDiff);
-				case 'rotateX': applyRotate(context, object, pos, '', false);
-				case 'centerrotateX': applyRotate(context, object, pos, 'center', true);
-				case 'localrotateX': applyLocalRotate(context, object, pos);
-				case 'perspectiveDONTUSE': applyPerspective(context, pos);
-				default: // Visual-only modifiers run in applyObject below.
+		for (name in registry.executionList(object.player)) {
+			if (!liveActive(object) || exclusions != null && exclusions.indexOf(name) >= 0) continue;
+			var entry = registry.executionEntry == null ? null : registry.executionEntry(name);
+			if (registry.executionEntry != null && entry == null) continue;
+			if (entry != null && entry.builtin == null) {
+				pos = entry.getPosition(time == null ? object.kind == NightmareVisionModchartObject.NOTE ? object.strumTime : 0 : time,
+					visualDiff, timeDiff, beat, pos, object.data, object.player, object.nativeObject);
+				if (object.readLive != null) object.readLive();
+				continue;
 			}
+			var family = entry == null ? name : entry.builtin;
+			pos = applyInstancePosition(context, entry, object, pos,
+				time == null ? object.strumTime : time, visualDiff, timeDiff, beat, family);
 		}
 		return pos;
 	}
@@ -95,20 +93,23 @@ class NightmareVisionModchartTransform {
 		object:NightmareVisionModchartObject, position:NightmareVisionModchartVector,
 		beat:Float):Void {
 		if (object == null || position == null) return;
+		object.livePosition = position;
 		object.x = position.x - object.width * 0.5;
 		object.y = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain
 			? position.y : position.y - object.height * 0.5;
 
-		for (family in registry.activeFamilies(object.player)) {
-			switch (family) {
-				case 'stealth': applyAlpha(context, object);
-				case 'confusion': applyConfusion(object);
-				case 'receptorScroll': applyReceptorScrollObject(context, object);
-				case 'mini': applyScale(object);
-				case 'xmod': applyXMod(object);
-				case 'perspectiveDONTUSE': applyPerspectiveScale(object, position);
-				default:
+		for (name in registry.executionList(object.player)) {
+			if (!liveActive(object)) continue;
+			var entry = registry.executionEntry == null ? null : registry.executionEntry(name);
+			if (registry.executionEntry != null && entry == null) continue;
+			if (entry != null && entry.builtin == null) {
+				if (object.flushLive != null) object.flushLive();
+				entry.updateObject(beat, object.nativeObject, position, object.player, object.kind);
+				if (object.readLive != null) object.readLive();
+				continue;
 			}
+			var family = entry == null ? name : entry.builtin;
+			applyInstanceObject(context, entry, object, position, beat, family);
 		}
 
 		object.centerOriginAndOffsets = true;
@@ -118,10 +119,172 @@ class NightmareVisionModchartTransform {
 		}
 	}
 
-	function get(family:String, player:Int):Float return registry.value(family, player);
+	/** One formula only: no base positioning, liveness gate, traversal or final centering. */
+	public function applyInstancePosition(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, object:NightmareVisionModchartObject,
+		pos:NightmareVisionModchartVector, time:Float, visualDiff:Float, timeDiff:Float,
+		beat:Float, ?family:String):NightmareVisionModchartVector {
+		if (family == null) family = entry.builtin;
+		var previous = currentFormulaEntry;
+		currentFormulaEntry = entry;
+		try { switch (family) {
+			case 'reverse': applyReverse(context, object, pos, visualDiff);
+			case 'opponentSwap': applyOpponentSwap(context, object, pos);
+			case 'flip': applyFlip(context, object, pos);
+			case 'invert': applyInvert(context, object, pos);
+			case 'drunk': applyDrunk(context, object, pos, visualDiff);
+			case 'beat': applyBeat(context, object, pos, visualDiff, beat);
+			case 'receptorScroll': applyReceptorScroll(context, object, pos, timeDiff);
+			case 'transformX': applyTransform(object, pos);
+			case 'infinite', 'path':
+				if (entry != null && entry.state != null) pos = instancePathPosition(object, pos, visualDiff, timeDiff);
+				else applyInfinitePath(context, object, pos, visualDiff, timeDiff);
+			case 'boost': applyBoost(context, object, pos, visualDiff);
+			case 'rotateX': applyRotate(context, object, pos, '', false);
+			case 'centerrotateX': applyRotate(context, object, pos, 'center', true);
+			case 'localrotateX': applyLocalRotate(context, object, pos);
+			case 'perspectiveDONTUSE':
+				if (entry != null && entry.state != null) pos = perspectiveVector(context, pos.z, pos);
+				else applyPerspective(context, pos);
+			default:
+		} } catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
+		currentFormulaEntry = previous;
+		return pos;
+	}
 
-	function sub(family:String, name:String, player:Int):Float
+	public function applyInstanceObject(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, object:NightmareVisionModchartObject,
+		position:NightmareVisionModchartVector, beat:Float, ?family:String):Void {
+		if (family == null) family = entry.builtin;
+		var previous = currentFormulaEntry;
+		currentFormulaEntry = entry;
+		try { switch (family) {
+			case 'stealth': applyAlpha(context, object);
+			case 'confusion': applyConfusion(object);
+			case 'receptorScroll': applyReceptorScrollObject(context, object);
+			case 'mini': applyScale(object);
+			case 'xmod': applyXMod(object);
+			case 'perspectiveDONTUSE': applyPerspectiveScale(object, position);
+			default:
+		} } catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
+		currentFormulaEntry = previous;
+	}
+
+	public function instanceReverseValue(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, dir:Int, player:Int, scrolling:Bool = false):Float {
+		var previous = currentFormulaEntry;
+		currentFormulaEntry = entry;
+		var result:Float;
+		try { result = reverseFactor(context, dir, player, scrolling); }
+		catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
+		currentFormulaEntry = previous;
+		return result;
+	}
+
+	public function alphaBoundary(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, boundary:String, player:Int):Float {
+		var previous = currentFormulaEntry;
+		currentFormulaEntry = entry;
+		var result:Float;
+		try { result = boundaryValue(context, boundary, player); }
+		catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
+		currentFormulaEntry = previous;
+		return result;
+	}
+
+	function boundaryValue(context:NightmareVisionModchartContext, boundary:String, player:Int):Float {
+		var hs = sub('stealth', 'hidden', player) * sub('stealth', 'sudden', player);
+		if (boundary == 'hiddenSudden') return hs;
+		var fade = currentFormulaEntry != null && currentFormulaEntry.state != null ? currentFormulaEntry.state.fadeDistY : 120;
+		var hidden = StringTools.startsWith(boundary, 'hidden');
+		var end = StringTools.endsWith(boundary, 'End');
+		var lo = hidden ? (end ? -1.0 : 0.0) : (end ? 1.0 : 0.0);
+		var hi = hidden ? (end ? -1.25 : -0.25) : (end ? 1.25 : 0.25);
+		return context.height * 0.5 + fade * scale(hs, 0, 1, lo, hi)
+			+ context.height * 0.5 * sub('stealth', hidden ? 'hiddenOffset' : 'suddenOffset', player);
+	}
+
+	public function instancePerspectiveVector(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, z:Float, pos:NightmareVisionModchartVector):NightmareVisionModchartVector {
+		var previous = currentFormulaEntry;
+		currentFormulaEntry = entry;
+		var result:NightmareVisionModchartVector;
+		try { result = perspectiveVector(context, z, pos); }
+		catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
+		currentFormulaEntry = previous;
+		return result;
+	}
+
+	function perspectiveVector(context:NightmareVisionModchartContext, curZ:Float,
+		pos:NightmareVisionModchartVector):NightmareVisionModchartVector {
+		if (Math.abs(curZ) < NightmareVisionModchartMath.EPSILON) return pos;
+		var half = currentFormulaEntry.state.halfOffset;
+		pos.subtract(half, pos);
+		var ox = pos.x, oy = pos.y;
+		pos.put();
+		var clipped = curZ - 1;
+		if (clipped > 0) clipped = 0;
+		var tangent = NightmareVisionModchartMath.fastSin(Math.PI / 4) / NightmareVisionModchartMath.fastCos(Math.PI / 4);
+		var result = NightmareVisionModchartVector.get(ox / tangent / -clipped, oy / tangent / -clipped, -clipped);
+		return result.add(half, result);
+	}
+
+	public static function tracePath(state:NightmareVisionModifierFormulaState,
+		path:Array<Array<NightmareVisionModchartVector>>):Void {
+		state.pathData.resize(0);
+		state.totalDists.resize(0);
+		for (dir in 0...path.length) {
+			state.pathData[dir] = [];
+			state.totalDists[dir] = 0;
+			for (index in 0...path[dir].length) {
+				var pos = path[dir][index];
+				if (index > 0) {
+					var last = state.pathData[dir][index - 1];
+					var distance = state.totalDists[dir] += NightmareVisionModchartVector.distance(last.position, pos);
+					last.end = distance;
+					last.dist = last.start - distance;
+				}
+				state.pathData[dir].push({position:pos, start:state.totalDists[dir], end:state.totalDists[dir], dist:0});
+			}
+		}
+	}
+
+	function instancePathPosition(object:NightmareVisionModchartObject, pos:NightmareVisionModchartVector,
+		visualDiff:Float, timeDiff:Float):NightmareVisionModchartVector {
+		var state = currentFormulaEntry.state;
+		var value = currentFormulaEntry.value(object.player);
+		if (value == 0 || state.pathData.length == 0) return pos;
+		var path = state.pathData[object.data % state.pathData.length];
+		var total = state.totalDists[object.data % state.pathData.length];
+		var speed = state.moveSpeed * (1 - currentFormulaEntry.subValue(state.prefix + 'speed', object.player));
+		var progress = (currentFormulaEntry.subValue(state.prefix + 'visual', object.player) > 0 ? visualDiff : timeDiff) / speed * total;
+		var clamped = clamp(progress, 0, total);
+		for (index in 0...path.length - 1) {
+			var current = path[index];
+			if (clamped >= current.start && clamped <= current.end) {
+				var alpha = (current.start - progress) / current.dist;
+				return pos.lerp(current.position.lerp(path[index + 1].position, alpha), value);
+			}
+		}
+		return path.length == 0 ? pos : pos.lerp(path[0].position, value);
+	}
+
+	static function liveActive(object:NightmareVisionModchartObject):Bool {
+		if (object.nativeObject == null) return object.active;
+		return Reflect.getProperty(object.nativeObject, 'active') != false;
+	}
+
+	function get(family:String, player:Int):Float {
+		if (currentFormulaEntry != null && currentFormulaEntry.value != null)
+			return currentFormulaEntry.value(player);
+		return registry.value(family, player);
+	}
+
+	function sub(family:String, name:String, player:Int):Float {
+		if (currentFormulaEntry != null && currentFormulaEntry.subValue != null)
+			return currentFormulaEntry.subValue(name, player);
 		return registry.getSubmodValue(family, name, player);
+	}
 
 	static inline function scale(value:Float, lowA:Float, highA:Float, lowB:Float, highB:Float):Float
 		return (value - lowA) * (highB - lowB) / (highA - lowA) + lowB;
@@ -134,13 +297,15 @@ class NightmareVisionModchartTransform {
 
 	static inline function lerp(a:Float, b:Float, t:Float):Float return a + (b - a) * t;
 
-	function reverseValue(context:NightmareVisionModchartContext, data:Int, player:Int,
+	function reverseFactor(context:NightmareVisionModchartContext, data:Int, player:Int,
 		scrolling:Bool = false):Float {
 		var suffix = scrolling ? 'Scroll' : '';
+		var keys = currentFormulaEntry != null && currentFormulaEntry.state != null && currentFormulaEntry.state.receptorCount != null
+			? currentFormulaEntry.state.receptorCount(player) : context.keys;
 		var val = 0.0;
-		if (data >= context.keys / 2) val += sub('reverse', 'split' + suffix, player);
+		if (data >= keys / 2) val += sub('reverse', 'split' + suffix, player);
 		if (data % 2 == 1) val += sub('reverse', 'alternate' + suffix, player);
-		if (data >= context.keys / 4 && data <= context.keys * 3 / 4 - 1)
+		if (data >= keys / 4 && data <= keys * 3 / 4 - 1)
 			val += sub('reverse', 'cross' + suffix, player);
 		if (!scrolling) val += get('reverse', player) + sub('reverse', 'reverse' + data, player);
 		else val += sub('reverse', 'reverse' + suffix, player);
@@ -154,7 +319,7 @@ class NightmareVisionModchartTransform {
 
 	function applyReverse(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject,
 		pos:NightmareVisionModchartVector, visualDiff:Float):Void {
-		var reverse = reverseValue(context, object.data, object.player);
+		var reverse = reverseFactor(context, object.data, object.player);
 		var shift = scale(reverse, 0, 1, 50 + context.noteWidth * 0.5,
 			context.height - 50 - context.noteWidth * 0.5);
 		shift = scale(sub('reverse', 'centered', object.player), 0, 1, shift, context.height / 2);
@@ -164,7 +329,7 @@ class NightmareVisionModchartTransform {
 
 	function applyOpponentSwap(context:NightmareVisionModchartContext,
 		object:NightmareVisionModchartObject, pos:NightmareVisionModchartVector):Void {
-		var opposite = object.player == 0 ? 1 : 0;
+		var opposite = 1 - object.player;
 		var distanceX = baseX(context, object.data, opposite) - baseX(context, object.data, object.player);
 		pos.x += distanceX * get('opponentSwap', object.player);
 	}
@@ -248,7 +413,7 @@ class NightmareVisionModchartTransform {
 	function applyReceptorScroll(context:NightmareVisionModchartContext,
 		object:NightmareVisionModchartObject, pos:NightmareVisionModchartVector,
 		timeDiff:Float):Void {
-		var moveSpeed = context.crotchet * 3;
+		var moveSpeed = currentFormulaEntry != null && currentFormulaEntry.state != null ? currentFormulaEntry.state.moveSpeed : context.crotchet * 3;
 		var diff = timeDiff;
 		var songPosition = context.songPosition;
 		var visual = -(-diff - songPosition) / moveSpeed;
@@ -343,7 +508,8 @@ class NightmareVisionModchartTransform {
 		var boost = get('boost', player);
 		var effectHeight = 500.0;
 		var yAdjust = 0.0;
-		var reversePercent = reverseValue(context, object.data, player);
+		var reversePercent = currentFormulaEntry != null && currentFormulaEntry.state != null
+			? currentFormulaEntry.state.reverseValue(object.data, player, false) : reverseFactor(context, object.data, player);
 		var multiplier = scale(reversePercent, 0, 1, 1, -1);
 		if (brake != 0) {
 			var factor = scale(visualDiff, 0, effectHeight, 0, 1);
@@ -358,29 +524,39 @@ class NightmareVisionModchartTransform {
 		pos.y += yAdjust * multiplier;
 	}
 
+	/** Source rotateV3 vector ownership, with MathUtil.rotate's scalar equations. */
+	static function rotateVector(vec:NightmareVisionModchartVector, xAngle:Float,
+		yAngle:Float, zAngle:Float):NightmareVisionModchartVector {
+		var zx = vec.x * Math.cos(zAngle) - vec.y * Math.sin(zAngle);
+		var zy = vec.x * Math.sin(zAngle) + vec.y * Math.cos(zAngle);
+		var offZ = NightmareVisionModchartVector.get(zx, zy, vec.z);
+		var xx = offZ.z * Math.cos(xAngle) - offZ.y * Math.sin(xAngle);
+		var xy = offZ.z * Math.sin(xAngle) + offZ.y * Math.cos(xAngle);
+		var offX = NightmareVisionModchartVector.get(offZ.x, xy, xx);
+		var yx = offX.x * Math.cos(yAngle) - offX.z * Math.sin(yAngle);
+		var yy = offX.x * Math.sin(yAngle) + offX.z * Math.cos(yAngle);
+		var offY = NightmareVisionModchartVector.get(yx, offX.y, yy);
+		offZ.put();
+		offX.put();
+		return offY;
+	}
+
 	function applyRotate(context:NightmareVisionModchartContext,
 		object:NightmareVisionModchartObject, pos:NightmareVisionModchartVector,
 		prefix:String, centered:Bool):Void {
-		var originX = centered ? context.width * 0.5 : baseX(context, object.data, object.player);
-		var originY = context.height * 0.5;
-		var root = prefix == '' ? 'rotateX' : prefix + 'rotateX';
-		var yName = prefix + 'rotateY';
-		var zName = prefix + 'rotateZ';
-		var xAngle = get(root, object.player);
-		var yAngle = sub(root, yName, object.player);
-		var zAngle = sub(root, zName, object.player);
-		var x = pos.x - originX;
-		var y = pos.y - originY;
-		var z = pos.z * context.height;
-		var x1 = x * Math.cos(zAngle) - y * Math.sin(zAngle);
-		var y1 = x * Math.sin(zAngle) + y * Math.cos(zAngle);
-		var x2 = z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
-		var y2 = z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
-		var x3 = x1 * Math.cos(yAngle) - x2 * Math.sin(yAngle);
-		var z3 = x1 * Math.sin(yAngle) + x2 * Math.cos(yAngle);
-		pos.x = originX + x3;
-		pos.y = originY + y2;
-		pos.z = z3 / context.height;
+		var origin = NightmareVisionModchartVector.get(centered ? context.width * 0.5 : baseX(context, object.data, object.player), context.height * 0.5);
+		if (currentFormulaEntry != null && currentFormulaEntry.state != null) {
+			prefix = currentFormulaEntry.state.prefix;
+			if (currentFormulaEntry.state.origin != null) origin = currentFormulaEntry.state.origin;
+		}
+		var root = prefix + 'rotateX';
+		var diff = pos.subtract(origin);
+		diff.z *= context.height;
+		var out = rotateVector(diff, get(root, object.player),
+			sub(root, prefix + 'rotateY', object.player), sub(root, prefix + 'rotateZ', object.player));
+		out.z /= context.height;
+		origin.add(out, pos);
+		out.put();
 	}
 
 	function applyLocalRotate(context:NightmareVisionModchartContext,
@@ -390,26 +566,21 @@ class NightmareVisionModchartTransform {
 			case 0: x += context.width * 0.5 - context.noteWidth * (context.keys / 2) - 100;
 			case 1: x -= context.width * 0.5 - context.noteWidth * (context.keys / 2) - 100;
 		}
-		var originX = x;
-		var originY = context.height * 0.5;
+		var prefix = currentFormulaEntry != null && currentFormulaEntry.state != null ? currentFormulaEntry.state.prefix : 'local';
 		var root = 'localrotateX';
-		var xAngle = get(root, object.player) + sub(root, 'localrotate' + object.data + 'X', object.player);
-		var yAngle = sub(root, 'localrotateY', object.player)
-			+ sub(root, 'localrotate' + object.data + 'Y', object.player);
-		var zAngle = sub(root, 'localrotateZ', object.player)
-			+ sub(root, 'localrotate' + object.data + 'Z', object.player);
-		var x = pos.x - originX;
-		var y = pos.y - originY;
-		var z = pos.z * context.height;
-		var x1 = x * Math.cos(zAngle) - y * Math.sin(zAngle);
-		var y1 = x * Math.sin(zAngle) + y * Math.cos(zAngle);
-		var x2 = z * Math.cos(xAngle) - y1 * Math.sin(xAngle);
-		var y2 = z * Math.sin(xAngle) + y1 * Math.cos(xAngle);
-		var x3 = x1 * Math.cos(yAngle) - x2 * Math.sin(yAngle);
-		var z3 = x1 * Math.sin(yAngle) + x2 * Math.cos(yAngle);
-		pos.x = originX + x3;
-		pos.y = originY + y2;
-		pos.z = z3 / context.height;
+		var origin = NightmareVisionModchartVector.get(x, context.height * 0.5);
+		var diff = pos.subtract(origin);
+		diff.z *= context.height;
+		var values = NightmareVisionModchartVector.get(get(root, object.player),
+			sub(root, prefix + 'rotateY', object.player), sub(root, prefix + 'rotateZ', object.player));
+		values.x += sub(root, prefix + 'rotate' + object.data + 'X', object.player);
+		values.y += sub(root, prefix + 'rotate' + object.data + 'Y', object.player);
+		values.z += sub(root, prefix + 'rotate' + object.data + 'Z', object.player);
+		var out = rotateVector(diff, values.x, values.y, values.z);
+		out.z /= context.height;
+		origin.add(out, pos);
+		out.put();
+		values.put();
 	}
 
 	function applyPerspective(context:NightmareVisionModchartContext,
@@ -483,20 +654,10 @@ class NightmareVisionModchartTransform {
 		var family = 'stealth';
 		if (yPos < 0 && sub(family, 'stealthPastReceptors', player) == 0) return 1;
 		var alpha = 0.0;
-		var hiddenSudden = sub(family, 'hidden', player) * sub(family, 'sudden', player);
-		var fadeDist = 120.0;
-		var hiddenEnd = (context.height * 0.5)
-			+ fadeDist * scale(hiddenSudden, 0, 1, -1, -1.25)
-			+ (context.height * 0.5) * sub(family, 'hiddenOffset', player);
-		var hiddenStart = (context.height * 0.5)
-			+ fadeDist * scale(hiddenSudden, 0, 1, 0, -0.25)
-			+ (context.height * 0.5) * sub(family, 'hiddenOffset', player);
-		var suddenEnd = (context.height * 0.5)
-			+ fadeDist * scale(hiddenSudden, 0, 1, 1, 1.25)
-			+ (context.height * 0.5) * sub(family, 'suddenOffset', player);
-		var suddenStart = (context.height * 0.5)
-			+ fadeDist * scale(hiddenSudden, 0, 1, 0, 0.25)
-			+ (context.height * 0.5) * sub(family, 'suddenOffset', player);
+		var hiddenEnd = boundaryValue(context, 'hiddenEnd', player);
+		var hiddenStart = boundaryValue(context, 'hiddenStart', player);
+		var suddenEnd = boundaryValue(context, 'suddenEnd', player);
+		var suddenStart = boundaryValue(context, 'suddenStart', player);
 		var hidden = sub(family, 'hidden', player);
 		if (hidden != 0) alpha += hidden * clamp(scale(yPos, hiddenStart, hiddenEnd, 0, -1), -1, 0);
 		var sudden = sub(family, 'sudden', player);
@@ -518,7 +679,7 @@ class NightmareVisionModchartTransform {
 	function applyReceptorScrollObject(context:NightmareVisionModchartContext,
 		object:NightmareVisionModchartObject):Void {
 		if (object.kind != NightmareVisionModchartObject.NOTE || get('receptorScroll', object.player) == 0) return;
-		var moveSpeed = context.crotchet * 3;
+		var moveSpeed = currentFormulaEntry != null && currentFormulaEntry.state != null ? currentFormulaEntry.state.moveSpeed : context.crotchet * 3;
 		var diff = object.strumTime - context.songPosition;
 		var songPosition = context.songPosition;
 		var songPositionWrap = songPosition / moveSpeed;
@@ -538,8 +699,9 @@ class NightmareVisionModchartTransform {
 		var prefix = object.kind;
 		var presetX = sub(family, prefix + 'ScaleX', player);
 		var presetY = sub(family, prefix + 'ScaleY', player);
-		var scaleX = presetX > 0 ? presetX : object.baseScaleX;
-		var scaleY = presetY > 0 ? presetY : object.baseScaleY;
+		var preset = presetX > 0 || presetY > 0;
+		var scaleX = preset && presetX != 0 ? presetX : object.baseScaleX;
+		var scaleY = preset && presetY != 0 ? presetY : object.baseScaleY;
 		var sustainBody = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain && !object.isSustainEnd;
 		var squish = lerp(1, 2, sub(family, 'squish', player) + sub(family, 'squish' + data, player));
 		var stretch = lerp(1, 0.5, sub(family, 'stretch', player) + sub(family, 'stretch' + data, player));

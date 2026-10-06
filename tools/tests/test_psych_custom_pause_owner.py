@@ -35,6 +35,7 @@ class Main {
  var vSliceScrollTweens:Array<Dynamic>=[];
  var behavior=0;var nativeOpens=0;var nmvStop=false;
  var sourceBatch:Dynamic = {};var postDispatches=0;
+ function updateNightmareVisionScreenUnderlay():Void {}
  function dispatchNightmareVisionUpdatePost(batch:Dynamic){postDispatches++;}
  function callNightmareVision(name:String,args:Array<Dynamic>):Int return nmvStop ? 1 : 0;
  public function new(){}

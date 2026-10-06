@@ -61,7 +61,7 @@ class State {
  public var isCameraOnForcedPos=false;public var compatScriptClock:Dynamic=null;
  public var calls:Array<String>=[]; public var callbackTurns:Array<String>=[];
  public var playerOwner:Character=null;public var opponentOwner:Character=null;
- public function new() {boyfriend.cameraPosition=[110,-10];dad.cameraPosition=[-200,-20];gf.cameraPosition=[5,6];}
+ public function new() {playerOwner=boyfriend;opponentOwner=dad;boyfriend.cameraPosition=[110,-10];dad.cameraPosition=[-200,-20];gf.cameraPosition=[5,6];}
  function getNightmareVisionField(id:Int):Dynamic return {owner:id==0?playerOwner:opponentOwner};
  function setCameraFollowActor(actor:Character,role:String):Void throw 'native camera used';
  function callAllHScript(name:String,args:Array<Dynamic>):Dynamic throw 'Psych callback leaked into NMV';
@@ -92,7 +92,7 @@ class Main {
   s.SONG.notes[0].gfSection=false;s.playerOwner=new Character(true,1200,700);
   s.SONG.notes[0].mustHitSection=true;s.moveCameraSection();point(s,1111,612,'field owner override');
   s.camCurTarget=new Character(false,700,800);s.moveCameraSection();point(s,821,722,'explicit actor override uses player flag');
-  s.camCurTarget=null;s.playerOwner=null;s.calls=[];s.tick(0);check(s.calls.length==0,'uncapped render without source tick');
+  s.camCurTarget=null;s.playerOwner=s.boyfriend;s.calls=[];s.tick(0);check(s.calls.length==0,'uncapped render without source tick');
   s.tick(3);point(s,808,402,'follow precedes onUpdate on every source tick');
   check(s.calls.length==6&&s.calls[0]=='onMoveCamera:boyfriend'&&s.calls[1].indexOf('onUpdate:')==0,'source callback order/count');
   s.isCameraOnForcedPos=true;s.calls=[];s.tick(2);point(s,822,402,'forced target remains script owned');

@@ -50,6 +50,7 @@ class Main {
  public var notes:NativeNotes=new NativeNotes();
  public var detached:Int=0;
  public function new() {}
+ function destroyNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {}
  function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void detached++;
  __TEARDOWN__
  static function check(ok:Bool,label:String):Void if(!ok)throw label;

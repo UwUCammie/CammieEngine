@@ -121,7 +121,7 @@ CONSTRUCTION
             (Path(folder)/"Main.hx").write_text(fixture)
             result=subprocess.run([*HAXE_COMMAND,"-cp",folder,"-main","Main","--interp"],capture_output=True,text=True,cwd=ROOT)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-        self.assertIn("for (object in [cast songPosBar, cast songPosBG, cast songName])", source)
+        self.assertTrue("for (object in [cast nightmareVisionSourceTimeBar, cast songName])" in source, "NV display owns source time group plus label, not hidden fill/background")
         self.assertIn("if (useSongBar && !sourceTimeHUD)", source)
 
 if __name__ == "__main__":
