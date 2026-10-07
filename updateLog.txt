@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.17 development - CammieEngine
+	- Begin the next roadmap checkpoint: shared Psych source asset profiles and reusable native test compilation.
+
 v0.0.16 alpha - CammieEngine
 	- Add owner-scoped Psych language parsing, phrase/file translation callbacks and glyph reloads shared by Lua, HScript, reflection and achievement text.
 	- Publish authored Psych language files from authenticated package data scopes and retained-source refreshes, preserving source bytes and local output edits.
