@@ -24,18 +24,29 @@ class NightmareVisionAssetCollector {
 		#if sys
 		if (sourceRoot == null || !FileSystem.isDirectory(sourceRoot))
 			return '';
-		var owner = Path.normalize(sourceRoot);
-		var nestedAssets = Path.join([owner, 'assets']);
-		if (FileSystem.isDirectory(nestedAssets))
-			owner = Path.normalize(nestedAssets);
-		var parts = owner.split('/');
-		if (parts.length >= 3 && parts[parts.length - 2].toLowerCase() == 'content') {
-			var gameRoot = parts.slice(0, parts.length - 2).join('/');
-			var candidate = Path.join([gameRoot, 'assets']);
-			return FileSystem.isDirectory(candidate) ? Path.normalize(candidate) : '';
-		}
+		var owner = canonicalExisting(sourceRoot);
+		if (owner == '') return '';
+		// A caller that explicitly selected an assets directory retains the
+		// existing core-only behavior. Its identity does not depend on a parent
+		// directory's name.
 		if (Path.withoutDirectory(owner).toLowerCase() == 'assets')
 			return owner;
+		var parent = Path.directory(owner);
+		if (parent != null && Path.withoutDirectory(parent).toLowerCase() == 'content'
+			&& isDirectChild(owner, parent)) {
+			// A package's own assets/ tree is package-owned, not the engine core.
+			// Resolve the sibling game assets only when the actual parent root has
+			// NMV project/executable/chart evidence. A folder merely named content
+			// cannot borrow an unrelated parent tree.
+			var gameRoot = Path.directory(parent);
+			if (gameRoot == null || gameRoot == parent || !isNightmareVisionGameRoot(gameRoot))
+				return '';
+			var candidate = Path.join([gameRoot, 'assets']);
+			return FileSystem.isDirectory(candidate) ? canonicalExisting(candidate) : '';
+		}
+		var nestedAssets = Path.join([owner, 'assets']);
+		if (FileSystem.isDirectory(nestedAssets))
+			return canonicalExisting(nestedAssets);
 		#end
 		return '';
 	}
@@ -125,6 +136,33 @@ class NightmareVisionAssetCollector {
 	}
 
 	#if sys
+	static function isDirectChild(child:String, parent:String):Bool {
+		var normalizedChild = canonicalExisting(child);
+		var normalizedParent = canonicalExisting(parent);
+		if (normalizedChild == '' || normalizedParent == '') return false;
+		var parentOfChild = Path.directory(normalizedChild);
+		#if windows
+		return parentOfChild != null && parentOfChild.toLowerCase() == normalizedParent.toLowerCase();
+		#else
+		return parentOfChild == normalizedParent;
+		#end
+	}
+
+	static function isNightmareVisionGameRoot(root:String):Bool {
+		if (root == null || !FileSystem.isDirectory(root)) return false;
+		var resolved = canonicalExisting(root);
+		if (resolved == '' || !isDirectChild(Path.join([resolved, 'content']), resolved)) return false;
+		var inspected = ImportRootScanner.inspectRoot(resolved, ImportEngine.AUTO);
+		if (inspected == null || inspected.engine != ImportEngine.NIGHTMARE_VISION
+			|| inspected.evidence == null) return false;
+		for (evidence in inspected.evidence)
+			if (evidence != null && (StringTools.startsWith(evidence, 'Nightmare Vision executable package marker:')
+				|| StringTools.startsWith(evidence, 'Nightmare Vision Haxe project package:')
+				|| StringTools.startsWith(evidence, 'Nightmare Vision chart metadata: format=nmv2')))
+				return true;
+		return false;
+	}
+
 	static function canonicalExisting(path:String):String {
 		try return Path.normalize(FileSystem.fullPath(path)) catch (_:Dynamic) return '';
 	}

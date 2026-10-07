@@ -28,31 +28,36 @@ class NightmareVisionPluginHost extends FlxGroup {
 
 	public static function mount(root:String,
 		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void,
-		?assetPaths:NightmareVisionPaths):NightmareVisionPluginRuntime {
+		?assetPaths:NightmareVisionPaths, populateImmediately:Bool = true,
+		?discoverEntries:Void->Array<NightmareVisionScriptDiscovery.NightmareVisionScriptEntry>,
+		?report:String->String->Dynamic->Void):NightmareVisionPluginRuntime {
 		releaseOtherOwner(root);
 		if (activeHost == null) {
-			activeHost = new NightmareVisionPluginHost(root, configure, assetPaths);
+			activeHost = new NightmareVisionPluginHost(root, configure, assetPaths, discoverEntries, report);
 			FlxG.plugins.addPlugin(activeHost);
-			activeHost.runtime.populate();
+			if (populateImmediately) activeHost.runtime.populate();
 		}
 		return activeHost.runtime;
 	}
 
 	function new(root:String,
 		configure:NightmareVisionScriptInterp->NightmareVisionScriptDiscovery.NightmareVisionScriptEntry->NightmareVisionPluginRuntime->Void,
-		?assetPaths:NightmareVisionPaths) {
+		?assetPaths:NightmareVisionPaths,
+		?discoverEntries:Void->Array<NightmareVisionScriptDiscovery.NightmareVisionScriptEntry>,
+		?report:String->String->Dynamic->Void) {
 		super();
 		this.assetPaths = assetPaths;
 		runtime = new NightmareVisionPluginRuntime(root, this,
-			function() return NightmareVisionScriptDiscovery.discoverPlugins(root),
+			discoverEntries == null ? function() return NightmareVisionScriptDiscovery.discoverPlugins(root) : discoverEntries,
 			sys.io.File.getContent, function(interp, entry) configure(interp, entry, runtime),
-			function(name, phase, error) trace('[nightmare-vision-script-error] ' + root + '/plugins/' + name + '#' + phase + ': ' + Std.string(error)),
+			report == null ? function(name, phase, error) trace('[nightmare-vision-script-error] ' + root + '/plugins/' + name + '#' + phase + ': ' + Std.string(error)) : report,
 			function() {
 				for (member in members) if (member != null) {
 					try member.destroy() catch (error:Dynamic)
 						trace('[nightmare-vision-plugin-release-error] ' + root + ': ' + Std.string(error));
 				}
 				clear();
+				NightmareVisionVideoSprite.destroyForState(this);
 			});
 		FlxG.signals.preStateSwitch.add(onStateSwitch);
 		FlxG.signals.postStateSwitch.add(onStateSwitchPost);

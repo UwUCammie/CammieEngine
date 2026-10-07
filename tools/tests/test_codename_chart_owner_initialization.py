@@ -63,7 +63,7 @@ class CodenameChartOwnerInitializationTest(unittest.TestCase):
         activate = 'CodenameModRuntime.synchronizeChartOwner(codenameSelectedRoot());'
         self.assertEqual(create.count(activate), 1)
         self.assertLess(create.index('clearScriptOwnership();'), create.index(activate))
-        self.assertLess(create.index(activate), create.index('gf = addCharacter('))
+        self.assertLess(create.index(activate), create.index('addCharacter(SONG.gf,'))
         self.assertLess(create.index(activate), create.index('generateSong('))
 
 

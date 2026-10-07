@@ -95,7 +95,7 @@ class Main {
     function onUpdate(elapsed) { sharedCount++; throw "update boom"; }
     function destroy() record("destroy:"+this.getName());
    ');
-   i.variables.set('mod',mod);if(!module.execute(program)) throw 'module load';return module;
+   i.variables.set('mod',mod);if(!module.executeProgram(program)) throw 'module load';return module;
   };
   var mod=new NightmareVisionScriptedModifier(m,'real','pre-');m.quickRegister(mod);
   ok(records[0]=='real:pre-:true:true'&&mod.getName()=='script-note'&&mod.getOrder()==-3,'metadata/load ordering');

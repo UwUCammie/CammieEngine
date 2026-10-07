@@ -216,6 +216,7 @@ class Strumline {
 }
 
 class NightmareVisionPlayFieldView {
+	public var underlaySpr:Dynamic = null;
 	public var ID:Int;
 	public var strumline:Strumline;
 	public var owner:Dynamic;
@@ -419,7 +420,9 @@ class NightmareVisionPlayFieldHostConstructorTest(unittest.TestCase):
 		play_state = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
 		constructor = extract_method(play_state,
 			'@:keep public function createNightmareVisionSourceField(')
+		# The constructor fixture isolates receptor generation, not sprite helper IO.
 		fixture = HOST_CONSTRUCTOR_FIXTURE.replace('__SOURCE_CONSTRUCTOR__', constructor)
+		fixture += '\nclass NightmareVisionSpriteMethods {public static function bind(object:Dynamic,owner:Dynamic):Void {}}\nclass NightmareVisionSpriteRegistry {public static function capture(paths:Dynamic):Dynamic return null;}'
 		with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
 			work = Path(directory)
 			(work / 'Main.hx').write_text(fixture, newline='\n')

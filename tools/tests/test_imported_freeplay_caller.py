@@ -17,6 +17,12 @@ class ImportedFreeplayCallerTest(unittest.TestCase):
                 (ROOT / "source/ImportedFreeplayCaller.hx").read_text(), newline='\n')
             (base / "FreeplayDirectEntry.hx").write_text(
                 (ROOT / "source/FreeplayDirectEntry.hx").read_text(), newline='\n')
+            (base / "FreeplaySongOrder.hx").write_text(
+                (ROOT / "source/FreeplaySongOrder.hx").read_text(), newline='\n')
+            (base / "FreeplaySourceDisplay.hx").write_text('''class FreeplaySourceDisplay {
+ public static function resolve(display:String, source:String, name:String, provenance:Dynamic):Dynamic
+  return {source:'', title:display};
+}''', newline='\n')
             (base / "CompatScriptManifest.hx").write_text('''class CompatScriptManifest {
  public static function destinationKey(value:String):String
   return value == null ? '' : StringTools.trim(value).toLowerCase();

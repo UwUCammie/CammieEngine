@@ -193,6 +193,8 @@ class PsychGlobalPackImporter {
 					0, seenDirectories, counters, result);
 			}
 		}
+		copyLanguageDataScopes(root, destinationPrefix, sourceRoot, ownerRoot,
+			seenDirectories, counters, result);
 		var shared = existingChild(root, 'shared');
 		if (shared != null && FileSystem.isDirectory(shared)) {
 			if (!pathWithin(shared, sourceRoot)) {
@@ -209,11 +211,166 @@ class PsychGlobalPackImporter {
 				copyTree(sourceTree, Path.join([ownerRoot, relative]), sourceRoot, ownerRoot,
 					0, seenDirectories, counters, result);
 			}
+			var sharedPrefix = destinationPrefix == '' ? 'shared' : destinationPrefix + '/shared';
+			copyLanguageDataScopes(shared, sharedPrefix, sourceRoot, ownerRoot,
+				seenDirectories, counters, result);
 		}
 		var dataRoot = existingChild(root, 'data');
 		var settings = dataRoot == null ? null : existingChild(dataRoot, 'settings.json');
 		if (settings != null && !FileSystem.isDirectory(settings)) {
 			copyFile(settings, Path.join([ownerRoot, 'data', 'settings.json']), sourceRoot, ownerRoot, result);
+		}
+	}
+
+	/** Retain only authored .lang files from authenticated Psych data-library
+	 * scopes. Library directories stay at their original owner-relative paths;
+	 * arbitrary mods/ roots and unrelated data files are not enrolled. */
+	static function copyLanguageDataScopes(root:String, destinationPrefix:String, sourceRoot:String,
+		ownerRoot:String, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
+		result:PsychGlobalPackImportResult):Void {
+		if (root == null || !FileSystem.isDirectory(root) || !pathWithin(root, sourceRoot)) {
+			fail(result, '[psych-global-pack-reject] Language scope escaped the selected pack: ' + Std.string(root));
+			return;
+		}
+		var scopes:Array<{root:String, prefix:String}> = [{root:root, prefix:destinationPrefix}];
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(root);
+			entries.sort(Reflect.compare);
+		} catch (error:Dynamic) {
+			fail(result, '[psych-global-pack-skip] Could not inspect language library roots: ' + Std.string(error));
+			return;
+		}
+		for (entry in entries) {
+			counters.entries++;
+			if (counters.entries > MAX_ENTRIES) {
+				fail(result, '[psych-global-pack-skip] Entry count limit reached while reading language scopes.');
+				return;
+			}
+			if (!validEntry(entry)) {
+				fail(result, '[psych-global-pack-reject] Invalid language library entry in ' + root);
+				continue;
+			}
+			var lower = entry.toLowerCase();
+			if (lower == 'shared' || lower == 'mods' || lower == 'mod' || lower == 'imported_mods'
+				|| lower == 'assets' || lower == 'content' || lower == 'source' || lower == 'scripts'
+				|| lower == 'songs' || lower == 'data' || lower == 'images' || lower == 'sounds'
+				|| lower == 'music' || lower == 'videos' || lower == 'fonts' || lower == 'shaders'
+				|| lower == 'animations' || lower == 'plugins' || lower == 'events' || lower == 'characters'
+				|| lower == 'stages')
+				continue;
+			var libraryRoot = Path.join([root, entry]);
+			if (!FileSystem.isDirectory(libraryRoot)) continue;
+			if (!pathWithin(libraryRoot, sourceRoot)) {
+				fail(result, '[psych-global-pack-reject] Language library escaped the selected pack: ' + libraryRoot);
+				continue;
+			}
+			var prefix = destinationPrefix == '' ? entry : destinationPrefix + '/' + entry;
+			scopes.push({root:libraryRoot, prefix:prefix});
+			if (lower == 'base_game' || lower == 'library') {
+				var libraries:Array<String>;
+				try {
+					libraries = FileSystem.readDirectory(libraryRoot);
+					libraries.sort(Reflect.compare);
+				} catch (error:Dynamic) {
+					fail(result, '[psych-global-pack-skip] Could not inspect nested language libraries: ' + Std.string(error));
+					continue;
+				}
+				for (library in libraries) {
+					counters.entries++;
+					if (counters.entries > MAX_ENTRIES) {
+						fail(result, '[psych-global-pack-skip] Entry count limit reached while reading nested language libraries.');
+						return;
+					}
+					if (!validEntry(library)) {
+						fail(result, '[psych-global-pack-reject] Invalid nested language library entry in ' + libraryRoot);
+						continue;
+					}
+					var child = Path.join([libraryRoot, library]);
+					if (!FileSystem.isDirectory(child)) continue;
+					if (!pathWithin(child, sourceRoot)) {
+						fail(result, '[psych-global-pack-reject] Nested language library escaped the selected pack: ' + child);
+						continue;
+					}
+					scopes.push({root:child, prefix:prefix + '/' + library});
+				}
+			}
+		}
+		var seenScopes:Map<String, Bool> = new Map<String, Bool>();
+		for (scope in scopes) {
+			var scopeKey = canonicalPath(scope.root);
+			if (scopeKey == '' || seenScopes.exists(scopeKey)) continue;
+			seenScopes.set(scopeKey, true);
+			var data = existingChild(scope.root, 'data');
+			if (data == null || !FileSystem.isDirectory(data)) continue;
+			if (!pathWithin(data, sourceRoot)) {
+				fail(result, '[psych-global-pack-reject] Language data escaped the selected pack: ' + data);
+				continue;
+			}
+			var dataName = Path.withoutDirectory(data);
+			var relative = scope.prefix == '' ? dataName : scope.prefix + '/' + dataName;
+			var languageDestination = Path.join([ownerRoot, relative]);
+			copyLanguageTree(data, languageDestination, sourceRoot, ownerRoot, 0,
+				seenDirectories, counters, result);
+		}
+	}
+
+	/** Copy only .lang descendants of one authenticated data/ scope. */
+	static function copyLanguageTree(source:String, destination:String, sourceRoot:String, ownerRoot:String,
+		depth:Int, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
+		result:PsychGlobalPackImportResult):Void {
+		if (depth > MAX_DEPTH) {
+			fail(result, '[psych-global-pack-skip] Language directory depth limit reached: ' + source);
+			return;
+		}
+		if (!pathWithin(source, sourceRoot) || !pathWithin(destination, ownerRoot)) {
+			fail(result, '[psych-global-pack-reject] Language copy escaped its owner boundary.');
+			return;
+		}
+		var directoryKey = canonicalPath(source);
+		if (directoryKey == '' || seenDirectories.exists(directoryKey)) return;
+		seenDirectories.set(directoryKey, true);
+		counters.directories++;
+		if (counters.directories > MAX_DIRECTORIES) {
+			fail(result, '[psych-global-pack-skip] Directory count limit reached while copying languages.');
+			return;
+		}
+		if (FileSystem.exists(destination) && !FileSystem.isDirectory(destination)) {
+			result.skipped++;
+			return;
+		}
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(source);
+			entries.sort(Reflect.compare);
+		} catch (error:Dynamic) {
+			fail(result, '[psych-global-pack-skip] Could not inspect language directory: ' + Std.string(error));
+			return;
+		}
+		for (entry in entries) {
+			counters.entries++;
+			if (counters.entries > MAX_ENTRIES) {
+				fail(result, '[psych-global-pack-skip] Entry count limit reached while copying languages.');
+				return;
+			}
+			if (!validEntry(entry)) {
+				fail(result, '[psych-global-pack-reject] Invalid language filename in ' + source);
+				continue;
+			}
+			var sourcePath = Path.join([source, entry]);
+			var destinationPath = existingChildOr(destination, entry);
+			if (!FileSystem.exists(sourcePath)) continue;
+			if (!pathWithin(sourcePath, sourceRoot)) {
+				fail(result, '[psych-global-pack-reject] Language source escaped the selected pack: ' + sourcePath);
+				continue;
+			}
+			if (FileSystem.isDirectory(sourcePath)) {
+				copyLanguageTree(sourcePath, destinationPath, sourceRoot, ownerRoot,
+					depth + 1, seenDirectories, counters, result);
+				continue;
+			}
+			if (!entry.toLowerCase().endsWith('.lang')) continue;
+			copyFile(sourcePath, destinationPath, sourceRoot, ownerRoot, result);
 		}
 	}
 

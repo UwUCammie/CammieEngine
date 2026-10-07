@@ -18,6 +18,8 @@ class PsychOwnerPaths {
 		var currentLevel:String = initialLibrary == null || initialLibrary == '' ? null : initialLibrary.toLowerCase();
 		var proxy:Dynamic = {};
 		Reflect.setField(proxy, '__sourceOwnerRoot', function() return owner);
+		Reflect.setField(proxy, '__sourceCurrentLevel', function() return currentLevel);
+		Reflect.setField(proxy, '__sourceOwnedPath', function(file:String):String return ownerAsset(owner, file, null, currentLevel));
 		Reflect.setField(proxy, 'SOUND_EXT', Paths.SOUND_EXT);
 		Reflect.setField(proxy, 'VIDEO_EXT', 'mp4');
 		Reflect.setField(proxy, 'getPath', function(file:String, ?type:AssetType = TEXT,

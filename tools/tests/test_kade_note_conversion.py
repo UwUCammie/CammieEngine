@@ -26,6 +26,7 @@ class KadeNoteConversionTest(unittest.TestCase):
                 (ROOT / "source/EngineCompat.hx").read_text()
             , newline='\n')
             (folder_path / "ScriptCallbackResult.hx").write_text((ROOT / "source/ScriptCallbackResult.hx").read_text(), newline="\n")
+            (folder_path / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline="\n")
             (folder_path / "NoteTypeCompat.hx").write_text(
                 (ROOT / "source/NoteTypeCompat.hx").read_text()
             , newline='\n')

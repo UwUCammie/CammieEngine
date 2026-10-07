@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 from haxe_test_support import HAXE_COMMAND, FixturePath as Path
 
@@ -55,6 +56,24 @@ class Main {
   eq(calls[1].family,'HScript','HScript callback family');
   eq(calls[1].args.length,1,'HScript callback arity');
   check(calls[1].args[0]==note,'HScript receives the original live Note');
+  check(Std.isOfType(calls[0].args[2],String),'noteType retains native String type');
+  check(Std.isOfType(calls[0].args[3],Bool),'sustain retains native Bool type');
+  note.isSustainNote=false;
+  calls=[];
+  PsychNoteCallbacks.dispatch('opponentNoteHit',note,8,2,broadcast);
+  check(calls[0].args[3]==false && Std.isOfType(calls[0].args[3],Bool),
+   'false sustain remains Bool, not integer zero');
+  note.isSustainNote=true;
+
+  var objectResult:Dynamic={identity:'live'};
+  var ordinaryResults:Array<Dynamic>=[17,2.5,false,true,objectResult];
+  for (ordinary in ordinaryResults) {
+   calls=[];luaResult=ordinary;hscriptResult=ordinary;
+   returned=PsychNoteCallbacks.dispatch('opponentNoteHit',note,3,2,broadcast);
+   eq(calls.length,2,'ordinary Lua result keeps HScript callback');
+   check(returned==ordinary,'numeric/boolean/object result identity retained');
+   check(Type.typeof(returned)==Type.typeof(ordinary),'ordinary result native type retained');
+  }
 
   for (stop in [ScriptCallbackResult.STOP, ScriptCallbackResult.STOP_HSCRIPT,
       ScriptCallbackResult.STOP_ALL]) {
@@ -130,6 +149,27 @@ class Main {
 
 
 class PsychNoteCallbacksTest(unittest.TestCase):
+    def test_native_cpp_keeps_mixed_callback_payload_and_result_dynamic(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
+            work = Path(directory)
+            (work / 'Main.hx').write_text(MAIN, encoding='utf-8', newline='\n')
+            env = os.environ.copy()
+            env['HAXELIB_PATH'] = str(ROOT / '.haxelib')
+            env['NEKOPATH'] = str(ROOT / '.tools/neko')
+            env['PATH'] = str(ROOT / '.tools/haxe') + os.pathsep + env['NEKOPATH'] + os.pathsep + env.get('PATH', '')
+            result = subprocess.run(
+                [*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(work), '-main', 'Main',
+                 '-cpp', str(work / 'cpp'), '-D', 'no-compilation'],
+                cwd=ROOT, env=env, capture_output=True, text=True, timeout=45)
+            self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-4000:])
+            generated = (work / 'cpp/src/PsychNoteCallbacks.cpp').read_text(encoding='utf-8')
+            self.assertNotIn('Array_obj<int>::__new(4)', generated)
+            self.assertIn('::cpp::VirtualArray_obj::__new(4)', generated)
+            self.assertRegex(generated, r'::Dynamic\s+result\s*=')
+            self.assertNotRegex(generated, r'::String\s+result\s*=')
+            self.assertIn('HX_("noteType"', generated)
+            self.assertIn('HX_("isSustainNote"', generated)
+
     def test_generic_note_router_and_miss_compatibility_wrapper(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)

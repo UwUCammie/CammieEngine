@@ -67,7 +67,10 @@ class CompatScriptManifest {
 		var context = ImportIO.current();
 		if (context != null) {
 			var retained = context.namespace(sourceRoot, engine);
-			if (retained != null && retained != '') return retained;
+			if (retained != null && retained != '') {
+				context.recordResolvedNamespace(sourceRoot, engine, retained);
+				return retained;
+			}
 		}
 		#end
 		var normalized = normalizeSource(sourceRoot);
@@ -78,7 +81,12 @@ class CompatScriptManifest {
 		if (label == '-' || label == '')
 			label = 'imported-root';
 		var legacyNamespace = label + '-' + Md5.encode(normalized).substr(0, 10);
-		return ImportSongOwnership.priorNamespace(sourceRoot, engine, legacyNamespace);
+		var resolved = ImportSongOwnership.priorNamespace(sourceRoot, engine, legacyNamespace);
+		#if sys
+		var context = ImportIO.current();
+		if (context != null) context.recordResolvedNamespace(sourceRoot, engine, resolved);
+		#end
+		return resolved;
 	}
 
 	public static function destinationRoot(sourceRoot:String, engine:String):String {

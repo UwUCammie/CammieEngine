@@ -170,6 +170,8 @@ class ImportCompat {{
                         "static function findLegacyMusicAudio",
                         "static function songImportFromAssetFolders",
                         "static function appendAssetSongImports",
+                        "static function canonicalNightmareVisionPackageRoot",
+                        "static function retainNightmareVisionPackageNamespace",
                         "static function prepareInstalledDependencyRoots",
                 "static public function processInfo",
                 "static public function getInfoValue",
@@ -238,12 +240,21 @@ class ImportSettings {{
     return Path.normalize(StringTools.replace(StringTools.trim(Std.string(value)), '\\\\', '/'));
   }}
 }}
+class ImportPackageFamilyCatalog {{
+  public static function isAuthenticatedNightmareVisionContainer(_root:String):Bool return true;
+}}
 class PsychStageInference {{ public static function resolve(_root:String, _song:String):String return null; }}
 class ImportCompat {{
   static inline var MAX_IMPORT_DISCOVERY_DIRECTORIES:Int = 4096;
   static function importWorkCancelled():Bool return false;
   static function yieldImportWork(?force:Bool = false):Void {{}}
 {methods}
+  static function ensureFixtureDirectory(path:String):Void {{
+    if (FileSystem.exists(path)) return;
+    var parent = Path.directory(path);
+    if (parent != null && parent != '' && parent != path) ensureFixtureDirectory(parent);
+    FileSystem.createDirectory(path);
+  }}
   static function validateAndRecordSongImport(_rejections:SongImportRejectionCollector,
       songData:SongImport, _sourceRoot:String, _sourcePath:String, _engine:String):Bool
     return validateSongImport(songData) == null;
@@ -429,6 +440,46 @@ class ImportCompat {{
         || Reflect.field(packMonster, 'sourceRoot')
           != Path.join([collisionRoot, 'content/dsides-pack']))
       throw 'Nested NMV owner was not isolated from its same-key engine-base song';
+
+    var alphaOwner = Path.join([root, 'auth-root/content/alpha']);
+    var alphaAssets = Path.join([alphaOwner, 'assets']);
+    ensureFixtureDirectory(Path.join([alphaAssets, 'songs/alias-alpha/data']));
+    ensureFixtureDirectory(Path.join([alphaAssets, 'songs/alias-alpha/audio']));
+    File.saveContent(Path.join([alphaOwner, 'meta.json']), '{{"name":"alpha"}}');
+    File.saveContent(Path.join([alphaAssets, 'songs/alias-alpha/data/normal.json']),
+      '{{"song":{{"song":"alias-alpha","notes":[]}}}}');
+    File.saveContent(Path.join([alphaAssets, 'songs/alias-alpha/audio/Inst.ogg']), 'audio');
+    var betaOwner = Path.join([root, 'auth-root/content/beta']);
+    var betaAssets = Path.join([betaOwner, 'assets']);
+    ensureFixtureDirectory(Path.join([betaAssets, 'songs/alias-beta/data']));
+    ensureFixtureDirectory(Path.join([betaAssets, 'songs/alias-beta/audio']));
+    File.saveContent(Path.join([betaOwner, 'meta.json']), '{{"name":"beta"}}');
+    File.saveContent(Path.join([betaAssets, 'songs/alias-beta/data/normal.json']),
+      '{{"song":{{"song":"alias-beta","notes":[]}}}}');
+    File.saveContent(Path.join([betaAssets, 'songs/alias-beta/audio/Inst.ogg']), 'audio');
+    var aliasStage = Path.join([root, 'import-cache/staging/nmv-alias']);
+    ensureFixtureDirectory(aliasStage);
+    ImportIO.begin(root, aliasStage);
+    ImportIO.current().setNamespace(alphaAssets, ImportEngine.NIGHTMARE_VISION, 'scan-root-alpha-assets');
+    ImportIO.current().setNamespace(betaAssets, ImportEngine.NIGHTMARE_VISION, 'scan-root-beta-assets');
+    ImportIO.current().setNamespace(betaOwner, ImportEngine.NIGHTMARE_VISION, 'prior-catalog-beta');
+    var alphaAliasResult:Array<SongImport> = [];
+    appendAssetSongImports(alphaAliasResult, new Map<String, Bool>(),
+      Path.join([alphaAssets, 'songs']), '', null, null, Path.join([root, 'auth-root']),
+      ImportEngine.NIGHTMARE_VISION);
+    if (alphaAliasResult.length != 1
+        || Reflect.field(alphaAliasResult[0], 'sourceRoot') != alphaOwner
+        || ImportIO.current().namespace(alphaOwner, ImportEngine.NIGHTMARE_VISION) != 'scan-root-alpha-assets')
+      throw 'authenticated assets-root discovery did not canonicalize the song owner and retain its scanned namespace';
+    var betaAliasResult:Array<SongImport> = [];
+    appendAssetSongImports(betaAliasResult, new Map<String, Bool>(),
+      Path.join([betaAssets, 'songs']), '', null, null, Path.join([root, 'auth-root']),
+      ImportEngine.NIGHTMARE_VISION);
+    if (betaAliasResult.length != 1
+        || Reflect.field(betaAliasResult[0], 'sourceRoot') != betaOwner
+        || ImportIO.current().namespace(betaOwner, ImportEngine.NIGHTMARE_VISION) != 'prior-catalog-beta')
+      throw 'canonical NMV ownership did not preserve the verified prior package namespace';
+    ImportIO.end();
     trace('OK');
   }}
 }}
@@ -931,12 +982,21 @@ class ImportEngine {{
   public static inline var KADE:String = 'Kade Engine';
   public static inline var NIGHTMARE_VISION:String = 'Nightmare Vision';
 }}
+class ImportPackageFamilyCatalog {{
+  public static function isAuthenticatedNightmareVisionContainer(_root:String):Bool return true;
+}}
 class PsychStageInference {{ public static function resolve(_root:String, _song:String):String return null; }}
 class ImportCompat {{
   static inline var MAX_IMPORT_DISCOVERY_DIRECTORIES:Int = 4096;
   static function importWorkCancelled():Bool return false;
   static function yieldImportWork(?force:Bool = false):Void {{}}
 {methods}
+  static function ensureFixtureDirectory(path:String):Void {{
+    if (FileSystem.exists(path)) return;
+    var parent = Path.directory(path);
+    if (parent != null && parent != '' && parent != path) ensureFixtureDirectory(parent);
+    FileSystem.createDirectory(path);
+  }}
   static function validateAndRecordSongImport(_rejections:SongImportRejectionCollector,
       songData:SongImport, _sourceRoot:String, _sourcePath:String, _engine:String):Bool
     return validateSongImport(songData) == null;

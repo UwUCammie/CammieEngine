@@ -1387,6 +1387,40 @@ class ModuleFunctions {
 
 	#end
 
+	#if sys
+	/** Canonicalize only the authenticated NMV game layout
+	 * <game>/content/<package>/assets. The direct package metadata and outer
+	 * scanner identity keep ordinary assets roots and unrelated nested packages
+	 * on their existing ownership path. */
+	static function canonicalNightmareVisionPackageRoot(assetRoot:String):String {
+		if (assetRoot == null || StringTools.trim(assetRoot) == '' || !FileSystem.isDirectory(assetRoot)
+			|| Path.withoutDirectory(Path.normalize(assetRoot)).toLowerCase() != 'assets')
+			return null;
+		var packageRoot = Path.directory(Path.normalize(assetRoot));
+		var contentRoot = packageRoot == null ? null : Path.directory(packageRoot);
+		var gameRoot = contentRoot == null ? null : Path.directory(contentRoot);
+		if (packageRoot == null || contentRoot == null || gameRoot == null
+			|| Path.withoutDirectory(Path.normalize(contentRoot)).toLowerCase() != 'content'
+			|| findImportFile(packageRoot, ['meta.json']) == null
+			|| !ImportPackageFamilyCatalog.isAuthenticatedNightmareVisionContainer(gameRoot))
+			return null;
+		retainNightmareVisionPackageNamespace(packageRoot, assetRoot);
+		return packageRoot;
+	}
+
+	/** Reuse the namespace already recorded for an assets-root scan. A verified
+	 * package-root mapping from an earlier v2 catalog wins when it exists. */
+	static function retainNightmareVisionPackageNamespace(packageRoot:String, assetRoot:String):Void {
+		var io = ImportIO.current();
+		if (io == null || packageRoot == null || assetRoot == null) return;
+		var packageNamespace = io.namespace(packageRoot, ImportEngine.NIGHTMARE_VISION);
+		if (packageNamespace != null && StringTools.trim(packageNamespace) != '') return;
+		var assetsNamespace = io.namespace(assetRoot, ImportEngine.NIGHTMARE_VISION);
+		if (assetsNamespace != null && StringTools.trim(assetsNamespace) != '')
+			io.setNamespace(packageRoot, ImportEngine.NIGHTMARE_VISION, assetsNamespace);
+	}
+	#end
+
 	/** Add the conventional data/<song> (or data/songs/<song>) folders from one
 	 * engine descriptor.  ImportRootScanner resolves the physical data/audio
 	 * paths for packaged roots, so discovery must not infer them again from the
@@ -1396,8 +1430,14 @@ class ModuleFunctions {
 		?sourcePaths:Map<String, SongImportSource>, ?sourceRoot:String, ?engine:String,
 		?rejections:SongImportRejectionCollector):Void {
 		#if sys
-		if (dataRoot == null || !FileSystem.isDirectory(dataRoot))
+		if (dataRoot == null || StringTools.trim(dataRoot) == '' || !FileSystem.isDirectory(dataRoot))
 			return;
+		// Some scanner descriptors represent an absent optional audio/music root
+		// as an empty string rather than null. Do not pass that sentinel to the
+		// staged filesystem facade, where an empty path is intentionally rejected.
+		var sourceAudioRoot = audioRoot == null || StringTools.trim(audioRoot) == '' ? null : audioRoot;
+		var sourceMusicRoot = musicRoot == null || StringTools.trim(musicRoot) == '' ? null : musicRoot;
+		var hasAudioDirectory = sourceAudioRoot != null && FileSystem.isDirectory(sourceAudioRoot);
 
 		var dataRoots:Array<String> = [dataRoot];
 		// FPS Plus and a few older packaged builds put native charts below
@@ -1497,14 +1537,14 @@ class ModuleFunctions {
 			return indexed;
 		};
 		var audioSongFolders = new Map<String, String>();
-		if (audioRoot != null && FileSystem.isDirectory(audioRoot)) {
+		if (hasAudioDirectory) {
 			try {
-				var audioFolderNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(audioRoot));
+				var audioFolderNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(sourceAudioRoot));
 				audioFolderNames.sort(function(a:String, b:String):Int {
 					var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 					return lower == 0 ? Reflect.compare(a, b) : lower;
 				});
-				audioSongFolders = indexNamedDirectories(audioRoot, audioFolderNames);
+				audioSongFolders = indexNamedDirectories(sourceAudioRoot, audioFolderNames);
 			} catch (_:Dynamic) {}
 		}
 
@@ -1544,16 +1584,16 @@ class ModuleFunctions {
 					}
 				}
 				if (songFolder == null && !isNestedNmvPackageSong
-					&& audioRoot != null && FileSystem.isDirectory(audioRoot))
+					&& hasAudioDirectory)
 					songFolder = audioSongFolders.get(StringTools.trim(songFolderName).toLowerCase());
 				if (sourceSongFolder == null)
 					sourceSongFolder = songFolder;
 				// A songs/ root is a folder-per-song tree.  A music/ root is a
 				// flat legacy stem tree and is passed as the fallback below.
-				var flatMusicRoot = musicRoot;
-				if (songFolder == null && audioRoot != null
-					&& Path.withoutDirectory(Path.normalize(audioRoot)).toLowerCase() == 'music')
-					flatMusicRoot = audioRoot;
+				var flatMusicRoot = sourceMusicRoot;
+				if (songFolder == null && hasAudioDirectory
+					&& Path.withoutDirectory(Path.normalize(sourceAudioRoot)).toLowerCase() == 'music')
+					flatMusicRoot = sourceAudioRoot;
 
 				var songData = songImportFromAssetFolders(songFolder, chartDataFolder, songFolderName, flatMusicRoot);
 				if (songData != null && engine == ImportEngine.NIGHTMARE_VISION)
@@ -1567,12 +1607,12 @@ class ModuleFunctions {
 				// than creating songs/<name>/.  Resolve only this song's exact stem so
 				// one flat library cannot accidentally satisfy another chart.
 				if (songData != null && !isNestedNmvPackageSong
-					&& audioRoot != null && FileSystem.isDirectory(audioRoot)) {
+					&& hasAudioDirectory) {
 					if (songData.inst == null)
-						songData.inst = findImportFile(audioRoot, [songFolderName + '_Inst.ogg',
+						songData.inst = findImportFile(sourceAudioRoot, [songFolderName + '_Inst.ogg',
 							songFolderName + '-Inst.ogg', songFolderName + 'Inst.ogg']);
 					if (songData.voices == null)
-						songData.voices = findImportFile(audioRoot, [songFolderName + '_Voices.ogg',
+						songData.voices = findImportFile(sourceAudioRoot, [songFolderName + '_Voices.ogg',
 							songFolderName + '-Voices.ogg', songFolderName + 'Voices.ogg',
 							songFolderName + 'VoicesTogether.ogg']);
 				}
@@ -1584,6 +1624,12 @@ class ModuleFunctions {
 					// base-game `monster` candidate.
 					var packageRoot = Path.directory(Path.directory(dataFolder));
 					var packageContainer = packageRoot == null ? null : Path.directory(packageRoot);
+					#if sys
+					var canonicalPackageRoot = canonicalNightmareVisionPackageRoot(packageRoot);
+					if (canonicalPackageRoot != null)
+						songSourceRoot = canonicalPackageRoot;
+					else
+					#end
 					if (packageRoot != null && packageContainer != null
 						&& Path.withoutDirectory(Path.normalize(packageContainer)).toLowerCase() == 'content')
 						songSourceRoot = packageRoot;
@@ -8715,6 +8761,153 @@ class ModuleFunctions {
 		}
 	}
 
+	/** Retain authored Psych translation inputs in the selected owner's actual
+	 * data-library scopes. Only files below a library's data/ tree whose extension
+	 * is .lang are copied; unrelated package data and arbitrary mods/ trees stay
+	 * outside this runtime publication path. */
+	static function mergePsychLanguageDataScopes(contentRoot:String, sourceRoot:String,
+		destinationRoot:String, result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>):Void {
+		if (contentRoot == null || sourceRoot == null || destinationRoot == null || result == null
+			|| !FileSystem.isDirectory(contentRoot) || !importPathIsWithin(contentRoot, sourceRoot)
+			|| !importPathIsWithin(destinationRoot, CompatScriptManifest.ROOT_PREFIX))
+			return;
+		var scopes:Array<{root:String, prefix:String}> = [{root:contentRoot, prefix:''}];
+		var shared = findChildDirectory(contentRoot, 'shared');
+		if (shared != null && FileSystem.isDirectory(shared) && importPathIsWithin(shared, sourceRoot))
+			scopes.push({root:shared, prefix:Path.withoutDirectory(shared)});
+		var entries:Array<String> = [];
+		try entries = FileSystem.readDirectory(contentRoot) catch (error:Dynamic) {
+			result.failed++;
+			if (result.errors == null) result.errors = [];
+			result.errors.push('Could not inspect Psych language library roots in ' + contentRoot + ': ' + Std.string(error));
+			return;
+		}
+		entries.sort(Reflect.compare);
+		if (entries.length > 4096) {
+			result.failed++;
+			if (result.errors == null) result.errors = [];
+			result.errors.push('Too many Psych language library roots in ' + contentRoot);
+			return;
+		}
+		for (entry in entries) {
+			if (importWorkCancelled()) return;
+			if (!validImportEntryName(entry)) continue;
+			var lower = entry.toLowerCase();
+			if (lower == 'shared' || lower == 'mods' || lower == 'mod' || lower == 'imported_mods'
+				|| lower == 'assets' || lower == 'content' || lower == 'source' || lower == 'scripts'
+				|| lower == 'songs' || lower == 'data' || lower == 'images' || lower == 'sounds'
+				|| lower == 'music' || lower == 'videos' || lower == 'fonts' || lower == 'shaders'
+				|| lower == 'animations' || lower == 'plugins' || lower == 'events' || lower == 'characters'
+				|| lower == 'stages')
+				continue;
+			var libraryRoot = Path.join([contentRoot, entry]);
+			if (FileSystem.isDirectory(libraryRoot) && importPathIsWithin(libraryRoot, sourceRoot))
+				scopes.push({root:libraryRoot, prefix:entry});
+			// Some installed builds retain base-game libraries one level below
+			// base_game/. Preserve that real lookup shape without descending into
+			// unrelated package folders.
+			if (lower == 'base_game' || lower == 'library') {
+				var libraries:Array<String> = [];
+				try libraries = FileSystem.readDirectory(libraryRoot) catch (_:Dynamic) continue;
+				libraries.sort(Reflect.compare);
+				if (libraries.length > 2048) {
+					result.failed++;
+					if (result.errors == null) result.errors = [];
+					result.errors.push('Too many Psych language libraries in ' + libraryRoot);
+					continue;
+				}
+				for (library in libraries) {
+					if (importWorkCancelled()) return;
+					if (!validImportEntryName(library)) continue;
+					var child = Path.join([libraryRoot, library]);
+					if (FileSystem.isDirectory(child) && importPathIsWithin(child, sourceRoot))
+						scopes.push({root:child, prefix:entry + '/' + library});
+				}
+			}
+		}
+		var counters = {entries:0};
+		for (scope in scopes) {
+			if (importWorkCancelled()) return;
+			if (!importPathIsWithin(scope.root, sourceRoot)) {
+				result.failed++;
+				if (result.errors == null) result.errors = [];
+				result.errors.push('Psych language scope escaped its authenticated source: ' + scope.root);
+				continue;
+			}
+			var dataRoot = findChildDirectory(scope.root, 'data');
+			if (dataRoot == null || !FileSystem.isDirectory(dataRoot)) continue;
+			var dataName = Path.withoutDirectory(dataRoot);
+			var destinationData = scope.prefix == ''
+				? Path.join([destinationRoot, dataName])
+				: Path.join([destinationRoot, scope.prefix, dataName]);
+			mergePsychLanguageFiles(dataRoot, destinationData, sourceRoot, destinationRoot,
+				result, counters, 0, skipPaths);
+		}
+	}
+
+	/** Copy only .lang files from one already authenticated data/ subtree. */
+	static function mergePsychLanguageFiles(source:String, destination:String, sourceRoot:String,
+		destinationRoot:String, result:ImportAssetMergeResult, counters:Dynamic, depth:Int,
+		?skipPaths:Map<String, Bool>):Void {
+		if (importWorkCancelled() || source == null || destination == null || depth > 10
+			|| !FileSystem.isDirectory(source))
+			return;
+		if (!importPathIsWithin(source, sourceRoot) || !importPathIsWithin(destination, destinationRoot)) {
+			result.failed++;
+			if (result.errors == null) result.errors = [];
+			result.errors.push('Psych language copy escaped its authenticated owner scope: ' + source);
+			return;
+		}
+		var entries:Array<String> = [];
+		try entries = FileSystem.readDirectory(source) catch (error:Dynamic) {
+			result.failed++;
+			if (result.errors == null) result.errors = [];
+			result.errors.push('Could not inspect Psych language files in ' + source + ': ' + Std.string(error));
+			return;
+		}
+		entries.sort(Reflect.compare);
+		for (entry in entries) {
+			if (importWorkCancelled()) return;
+			counters.entries++;
+			if (counters.entries > 16384) {
+				result.failed++;
+				if (result.errors == null) result.errors = [];
+				result.errors.push('Psych language file entry limit reached below ' + sourceRoot);
+				return;
+			}
+			if (!validImportEntryName(entry)) {
+				result.failed++;
+				continue;
+			}
+			var sourcePath = Path.join([source, entry]);
+			if (!FileSystem.exists(sourcePath) || !importPathIsWithin(sourcePath, sourceRoot)) {
+				result.failed++;
+				continue;
+			}
+			var destinationPath = existingImportChild(destination, entry);
+			if (FileSystem.isDirectory(sourcePath)) {
+				if (FileSystem.exists(destinationPath) && !FileSystem.isDirectory(destinationPath)) {
+					result.skipped++;
+					continue;
+				}
+				mergePsychLanguageFiles(sourcePath, destinationPath, sourceRoot, destinationRoot,
+					result, counters, depth + 1, skipPaths);
+				continue;
+			}
+			if (!entry.toLowerCase().endsWith('.lang')) continue;
+			if (skipPaths != null && skipPaths.exists(importPathKey(sourcePath))) continue;
+			if (FileSystem.exists(destinationPath)) {
+				result.skipped++;
+				continue;
+			}
+			if (!importPathIsWithin(destinationPath, destinationRoot)) {
+				result.failed++;
+				continue;
+			}
+			copyImportFileNonOverwriting(sourcePath, destinationPath, result);
+		}
+	}
+
 	/**
 	 * FPS Plus and older Haxe packs keep HXC character/stage modules under
 	 * data/, whereas the compatibility runtime discovers executable HXC families
@@ -10668,6 +10861,15 @@ class ModuleFunctions {
 			packageMetadata = findImportFile(contentRoot, ['pack.json']);
 		if (packageMetadata != null)
 			copyImportFileNonOverwriting(packageMetadata, Path.join([destinationRoot, 'pack.json']), result);
+		// Nightmare Vision reads package settings from the selected mod root's
+		// meta.json. Keep only that exact package-local file beside its owned
+		// runtime trees; the shared content-container config is a distinct source
+		// boundary and is never substituted for a package config.
+		if (engine == ImportEngine.NIGHTMARE_VISION) {
+			var packageConfig = findImportFile(sourceRoot, ['meta.json']);
+			if (packageConfig != null)
+				copyImportFileNonOverwriting(packageConfig, Path.join([destination, 'meta.json']), result);
+		}
 		var roots:Array<{base:String, prefix:String}> = [{base:contentRoot, prefix:''}];
 		var shared = findChildDirectory(contentRoot, 'shared');
 		if (shared != null)
@@ -10801,6 +11003,8 @@ class ModuleFunctions {
 				}
 			}
 		}
+		if (engine == ImportEngine.PSYCH)
+			mergePsychLanguageDataScopes(contentRoot, sourceRoot, destinationRoot, result, skipPaths);
 		return destination;
 	}
 
@@ -10882,6 +11086,66 @@ class ModuleFunctions {
 					+ ownerRoot);
 			}
 		}
+	}
+
+	/** Materialize structurally authorized Nightmare Vision package roots even
+	 * when their source packages contain no chart rows. The caller supplies roots
+	 * from the retained-source family catalog; this method publishes only a
+	 * package with its own direct meta.json and uses the normal staged namespace,
+	 * asset collectors, collision rules, and shared-core layout. */
+	public static function publishNightmareVisionFamilyMemberRoots(sourceRoots:Array<String>):ImportAssetMergeResult {
+		var result:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
+		#if sys
+		if (sourceRoots == null) return result;
+		var seen:Map<String, Bool> = new Map();
+		for (ownerRoot in sourceRoots) {
+			if (importWorkCancelled()) break;
+			if (ownerRoot == null || StringTools.trim(ownerRoot) == '' || !FileSystem.isDirectory(ownerRoot))
+				continue;
+			var ownerKey = importPathKey(ownerRoot);
+			if (ownerKey == '' || seen.exists(ownerKey)) continue;
+			seen.set(ownerKey, true);
+			// Only an exact file at the package root authorizes config publication.
+			// A container-level or song-level meta.json cannot make a sibling a mod.
+			var packageConfig = findImportFile(ownerRoot, ['meta.json']);
+			if (packageConfig == null) continue;
+			var contentRoot = Path.join([ownerRoot, 'assets']);
+			if (!FileSystem.isDirectory(contentRoot)) contentRoot = ownerRoot;
+			if (!importPathIsWithin(contentRoot, ownerRoot)) {
+				result.failed++;
+				result.errors.push('Nightmare Vision package content root leaves its owner: ' + ownerRoot);
+				continue;
+			}
+			#if sys
+			var canonicalPackageRoot = canonicalNightmareVisionPackageRoot(contentRoot);
+			if (canonicalPackageRoot != null && importPathKey(canonicalPackageRoot) == ownerKey)
+				retainNightmareVisionPackageNamespace(ownerRoot, contentRoot);
+			#end
+			var coreAssetsRoot = NightmareVisionAssetCollector.resolveCoreAssetsRoot(ownerRoot);
+			var coreIsSelectedRoot = coreAssetsRoot != ''
+				&& (importPathKey(coreAssetsRoot) == importPathKey(contentRoot)
+					|| importPathKey(coreAssetsRoot) == importPathKey(ownerRoot));
+			var installedOwnerRoot = mergeCompatScriptTrees(contentRoot, ownerRoot,
+				ImportEngine.NIGHTMARE_VISION, result, null, null,
+				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null);
+			if (installedOwnerRoot == null
+				|| !importPathIsWithin(installedOwnerRoot, CompatScriptManifest.ROOT_PREFIX)) {
+				result.failed++;
+				result.errors.push('Could not resolve a staged Nightmare Vision package namespace: ' + ownerRoot);
+				continue;
+			}
+			if (!coreIsSelectedRoot)
+				mergeNightmareVisionAssetFiles(contentRoot, installedOwnerRoot, result);
+			if (coreAssetsRoot != '')
+				mergeNightmareVisionAssetFiles(coreAssetsRoot,
+					Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE]), result);
+			var stageDestination = coreIsSelectedRoot
+				? Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE])
+				: installedOwnerRoot;
+			mergeNightmareVisionStageDataFiles(contentRoot, stageDestination, result);
+		}
+		#end
+		return result;
 	}
 
 	/** Bind an add-on to one proven installed base, preserving its own owner. */

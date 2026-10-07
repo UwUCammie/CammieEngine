@@ -9,6 +9,7 @@ using StringTools;
 /** Actual NV icon sprite with owner-local loading. */
 @:keep
 @:nullSafety
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionHealthIcon extends FlxSprite implements NightmareVisionIUiSprite
 {
 
@@ -68,6 +69,7 @@ class NightmareVisionHealthIcon extends FlxSprite implements NightmareVisionIUiS
 		super();
 		if (owner == null) throw "[source-health-icon] Missing selected owner";
 		this.owner = owner;
+		NightmareVisionSpriteMethods.bind(this, owner.spriteOwner);
 		this.isPlayer = isPlayer;
 		changeIcon(char);
 	}

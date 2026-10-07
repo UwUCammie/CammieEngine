@@ -165,17 +165,27 @@ class Main {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('nightmare-vision-shared-hud-refresh-ok', result.stdout)
 
-    def test_bank_and_native_character_swaps_use_psych_refresh_route(self):
+    def test_group_and_native_character_swaps_use_psych_refresh_route(self):
         play = (ROOT / 'source/PlayState.hx').read_text()
         adapter = (ROOT / 'source/NightmareVisionHUDAdapter.hx').read_text()
         self.assertIn('refreshCharacterPresentation:refreshCharacterIconsAndColors,', play)
         character = (ROOT / 'source/Character.hx').read_text()
         self.assertIn('nightmareVisionHealthIcon = nightmareVisionHealthIconFromDefinition(nightmareVisionOwnedCharacter);',
                       character)
-        bank_activate = play[play.index('}, function(previous, next) {', play.index('function nightmareVisionCharacterBank')):
-                             play.index('nightmareVisionCharacterBanks.set(type, bank)')]
-        self.assertIn('switchToChar(actor, role, false, true);', bank_activate)
-        self.assertNotIn('refreshCharacterHUD();', bank_activate)
+        publication = function_body(play, 'publishNightmareVisionCharacter')
+        self.assertIn('nightmareVisionCharacterGroup(type).change(name)', publication)
+        self.assertIn('case 0:boyfriend = actor;', publication)
+        self.assertIn('case 1:dad = actor;', publication)
+        self.assertIn('case 2:gf = actor;', publication)
+        self.assertIn('refreshCharacterHUD();', publication)
+        self.assertLess(publication.index('.change(name)'), publication.index('boyfriend = actor'))
+        self.assertLess(publication.index('boyfriend = actor'), publication.index('refreshCharacterHUD();'))
+        group = (ROOT / 'source/NightmareVisionCharacterGroup.hx').read_text(encoding='utf-8')
+        change = function_body(group, 'change')
+        self.assertIn('parent = map.get(name);', change)
+        self.assertIn('if (checkFields[field.ID]) field.owner = parent;', change)
+        self.assertNotIn('refreshCharacterHUD', change)
+        self.assertNotIn('switchToChar', change)
         self.assertIn('refreshCharacterHUD();', function_body(play, 'switchToChar'))
         self.assertIn('refreshCharacterHUD();', function_body(play, 'switchCharacter'))
         self.assertIn('if (playHUD != null) playHUD.onCharacterChange();', play)

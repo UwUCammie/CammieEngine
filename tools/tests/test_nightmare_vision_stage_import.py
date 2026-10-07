@@ -149,6 +149,20 @@ def run_fixture(temp: Path, *args: str) -> subprocess.CompletedProcess[str]:
     (temp / "ImportDirectoryListing.hx").write_text(
         (ROOT / "source/ImportDirectoryListing.hx").read_text()
     , newline='\n')
+    (temp / "ImportRootScanner.hx").write_text(r'''
+import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+class ImportRootScanner {
+  public static function inspectRoot(root:String, _engine:String):{var engine:String; var evidence:Array<String>;} {
+    var marker = Path.join([root, 'Project.xml']);
+    if (!FileSystem.exists(marker) || !FileSystem.isDirectory(Path.join([root, 'content']))) return null;
+    var raw = File.getContent(marker).toLowerCase();
+    if (raw.indexOf('com.nmvteam.nightmareengine') < 0) return null;
+    return {engine:'Nightmare Vision',
+      evidence:['Nightmare Vision Haxe project package: com.nmvTeam.nightmareEngine']};
+  }
+}''', newline='\n')
     (temp / "StageImportFixture.hx").write_text(fixture_source(), newline='\n')
     (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
     (temp / "NightmareVisionAssetCollector.hx").write_text(
@@ -193,6 +207,8 @@ class NightmareVisionStageImportTest(unittest.TestCase):
             (core / "images").mkdir(parents=True)
             (core / "images/collision.png").write_bytes(b"core image")
             (core / "images/core-only.png").write_bytes(b"core only")
+            (core.parent / "Project.xml").write_text(
+                '<project><app package="com.nmvTeam.nightmareEngine" /></project>', newline='\n')
             destination.mkdir(parents=True)
             result = run_fixture(temp, str(donor), str(destination))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -8,6 +8,12 @@ import ImportFileSystem as FileSystem;
 import ImportFile as File;
 #end
 
+private typedef ImportSongOwnerIdentityCache = {
+	var index:Map<String, String>;
+	var ambiguous:Map<String, Bool>;
+	var ready:Bool;
+}
+
 /** A non-overwriting repair cannot change the donor which owns chart/audio.
  * Script provenance and chart provenance must move together. */
 class ImportSongOwnership {
@@ -15,9 +21,11 @@ class ImportSongOwnership {
 	static var baseSongRegistryValid:Bool = false;
 	static var identityOverrides:Map<String, String> = null;
 	static var sourceFingerprintHints:Map<String, String> = null;
-	static var ownerIdentityIndex:Map<String, String> = null;
-	static var ownerIdentityAmbiguous:Map<String, Bool> = null;
-	static var ownerIdentityIndexReady:Bool = false;
+	#if target.threaded
+	static var ownerIdentityCacheTls:sys.thread.Tls<ImportSongOwnerIdentityCache> = new sys.thread.Tls();
+	#else
+	static var ownerIdentityCacheValue:ImportSongOwnerIdentityCache;
+	#end
 	static inline var MAX_OWNER_IDENTITY_RECORDS:Int = 8192;
 	static inline var MAX_OWNER_IDENTITY_FILE_BYTES:Int = 131072;
 	static inline var MAX_FINGERPRINT_CHARTS:Int = 2048;
@@ -139,8 +147,9 @@ class ImportSongOwnership {
 		var identity = stableIdentity(sourceRoot, engine);
 		if (identity == '')
 			return legacyNamespace;
-		buildOwnerIdentityIndex();
-		if (!ownerIdentityIndexReady)
+		var cache = ownerIdentityCache();
+		buildOwnerIdentityIndex(cache);
+		if (!cache.ready)
 			return legacyNamespace;
 		var identityParts = identity.split('|');
 		var usesStrongId = identityParts.length > 1 && identityParts[1] == 'id';
@@ -150,16 +159,36 @@ class ImportSongOwnership {
 			if (fingerprint == '') return legacyNamespace;
 			lookupKey += '|' + fingerprint;
 		}
-		if (ownerIdentityAmbiguous.exists(lookupKey))
+		if (cache.ambiguous.exists(lookupKey))
 			return legacyNamespace;
-		return ownerIdentityIndex.exists(lookupKey) ? ownerIdentityIndex.get(lookupKey) : legacyNamespace;
+		return cache.index.exists(lookupKey) ? cache.index.get(lookupKey) : legacyNamespace;
 	}
 
-	/** A successful receipt write changes the destination identity index. */
+	/** Each native worker and the main thread keep an independent installed-tree
+	 * identity index. A worker's staged ImportFileSystem view must not replace
+	 * the cache that menu/gameplay readers built against the live installation. */
+	static function ownerIdentityCache():ImportSongOwnerIdentityCache {
+		#if target.threaded
+		var cache = ownerIdentityCacheTls.value;
+		if (cache == null) {
+			cache = {index:null, ambiguous:null, ready:false};
+			ownerIdentityCacheTls.value = cache;
+		}
+		return cache;
+		#else
+		if (ownerIdentityCacheValue == null)
+			ownerIdentityCacheValue = {index:null, ambiguous:null, ready:false};
+		return ownerIdentityCacheValue;
+		#end
+	}
+
+	/** A successful receipt write changes this thread's view. The import manager
+	 * also calls this on the main thread after the runtime handoff commits. */
 	public static function invalidateOwnerIdentityIndex():Void {
-		ownerIdentityIndex = null;
-		ownerIdentityAmbiguous = null;
-		ownerIdentityIndexReady = false;
+		var cache = ownerIdentityCache();
+		cache.index = null;
+		cache.ambiguous = null;
+		cache.ready = false;
 	}
 
 	static function sourceFingerprint(sourceRoot:String):String {
@@ -449,10 +478,10 @@ class ImportSongOwnership {
 		return clean;
 	}
 
-	static function buildOwnerIdentityIndex():Void {
-		if (ownerIdentityIndexReady) return;
-		ownerIdentityIndex = new Map<String, String>();
-		ownerIdentityAmbiguous = new Map<String, Bool>();
+	static function buildOwnerIdentityIndex(cache:ImportSongOwnerIdentityCache):Void {
+		if (cache.ready) return;
+		cache.index = new Map<String, String>();
+		cache.ambiguous = new Map<String, Bool>();
 		#if sys
 		var dataRoot = 'assets/data';
 		if (!FileSystem.isDirectory(dataRoot)) return;
@@ -488,11 +517,11 @@ class ImportSongOwnership {
 						|| StringTools.trim(cast rawFingerprint) == '') continue;
 					lookupKey += '|' + StringTools.trim(cast rawFingerprint);
 				}
-				addOwnerIdentity(ownerIdentityIndex, ownerIdentityAmbiguous, lookupKey, owner);
+				addOwnerIdentity(cache.index, cache.ambiguous, lookupKey, owner);
 			} catch (_:Dynamic) {}
 		}
 		#end
-		ownerIdentityIndexReady = true;
+		cache.ready = true;
 	}
 
 	static function addOwnerIdentity(index:Map<String, String>, ambiguous:Map<String, Bool>,

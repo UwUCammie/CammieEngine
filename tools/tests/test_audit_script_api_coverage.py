@@ -19,6 +19,231 @@ def write(root: Path, relative: str, text: str) -> Path:
     return path
 
 
+PSYCH_ACHIEVEMENT_LUA_NAMES = (
+    "getAchievementScore", "setAchievementScore", "addAchievementScore",
+    "unlockAchievement", "isAchievementUnlocked", "achievementExists",
+)
+PSYCH_LANGUAGE_LUA_NAMES = ("getTranslationPhrase", "getFileTranslation")
+PSYCH_DISCORD_LUA_NAMES = ("changeDiscordPresence", "changeDiscordClientID")
+
+
+def write_psych_achievement_donor(root: Path) -> None:
+    write(root, "source/psychlua/FunkinLua.hx", '''
+        class FunkinLua {
+            public function new(scriptName:String) {
+                #if ACHIEVEMENTS_ALLOWED Achievements.addLuaCallbacks(lua); #end
+            }
+        }
+    ''')
+    registrations = "\n".join(
+        f"Lua_helper.add_callback(lua, '{name}', function() return null);"
+        for name in PSYCH_ACHIEVEMENT_LUA_NAMES
+    )
+    write(root, "source/backend/Achievements.hx", f'''
+        #if ACHIEVEMENTS_ALLOWED
+        class Achievements {{
+            #if LUA_ALLOWED
+            public static function addLuaCallbacks(lua:State) {{
+                {registrations}
+            }}
+            #end
+        }}
+        #end
+    ''')
+    write(root, "source/psychlua/HScript.hx", "set('Achievements', Achievements);\n")
+
+
+def write_psych_achievement_engine(root: Path) -> None:
+    write(root, "source/PlayState.hx", '''
+        class PlayState {
+            function makeHaxeState(plainPsych:Bool, translatedLua:Bool):Void {
+                var interp:Dynamic = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
+                    : translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : null;
+                seedEngineCompat(interp, null);
+            }
+            function seedEngineCompat(interp:Dynamic, ?ownerRoot:String):Void {
+                var runtime = new PsychRuntimeBindings(this, interp, 'chart.lua');
+                runtime.install();
+            }
+        }
+    ''')
+    write(root, "source/PsychRuntimeBindings.hx", '''
+        class PsychRuntimeBindings {
+            function install():Void {
+                if (Std.isOfType(owner, SourceIrisBridge)) installHscriptPreset(owner, null);
+                else if (Std.isOfType(owner, LuaCompatInterp)) {
+                    PsychAchievementsIntegration.installLua(host, owner, origin);
+                    PsychStandardServices.installLua(host, owner, origin);
+                }
+                var run = function() return module();
+            }
+            function module():SourceIrisBridge {
+                embedded = new SourceIrisBridge(host);
+                installHscriptPreset(embedded, Std.isOfType(owner, LuaCompatInterp) ? owner : null);
+                return embedded;
+            }
+            function installHscriptPreset(scope:Dynamic, parent:Dynamic):Void {
+                new PsychHscriptSourceBindings(host, scope, origin, parent).install();
+            }
+        }
+    ''')
+    write(root, "source/PsychHscriptSourceBindings.hx", '''
+        class PsychHscriptSourceBindings {
+            function install():Void {
+                PsychAchievementsIntegration.installHscript(host, interp, origin);
+            }
+        }
+    ''')
+    write(root, "source/PsychAchievementsIntegration.hx", '''
+        class PsychAchievementsIntegration {
+            function installLua(host:Dynamic, interp:Dynamic, origin:String):Void {
+                var runtime = runtimeFor(host, interp.variables.get('Paths'), origin);
+                if (runtime == null) return;
+                PsychAchievementsLuaBindings.install(interp, runtime.service, report);
+            }
+            function installHscript(host:Dynamic, interp:Dynamic, origin:String):Void {
+                if (!Std.isOfType(interp, SourceIrisBridge)) return;
+                var runtime = runtimeFor(host, interp.variables.get('Paths'), origin);
+                if (runtime == null) return;
+                PsychAchievementsBindings.install((cast interp:SourceIrisBridge).evaluator,
+                    runtime.service, function() requireRuntime(runtime));
+            }
+        }
+    ''')
+    lua_registrations = "\n".join(
+        f"interp.variables.set('{name}', function() return null);"
+        for name in PSYCH_ACHIEVEMENT_LUA_NAMES
+    )
+    write(root, "source/PsychAchievementsLuaBindings.hx", f'''
+        class PsychAchievementsLuaBindings {{
+            function install(interp:Dynamic, service:Dynamic, report:Dynamic):Void {{
+                {lua_registrations}
+            }}
+        }}
+    ''')
+    write(root, "source/PsychAchievementsBindings.hx", '''
+        class PsychAchievementsBindings {
+            function install(interp:Dynamic, service:Dynamic, guard:Dynamic):Void {
+                interp.variables.set('Achievements', service);
+                interp.bindImport('backend.Achievements', service);
+            }
+        }
+    ''')
+
+
+def write_psych_standard_donor(root: Path) -> None:
+    write(root, "source/psychlua/FunkinLua.hx", '''
+        class FunkinLua {
+            public function new(scriptName:String) {
+                #if DISCORD_ALLOWED DiscordClient.addLuaCallbacks(lua); #end
+                #if TRANSLATIONS_ALLOWED Language.addLuaCallbacks(lua); #end
+            }
+        }
+    ''')
+    for class_name, names in (
+        ("Language", PSYCH_LANGUAGE_LUA_NAMES),
+        ("DiscordClient", PSYCH_DISCORD_LUA_NAMES),
+    ):
+        registrations = "\n".join(
+            f"Lua_helper.add_callback(lua, '{name}', function() return null);"
+            for name in names
+        )
+        write(root, f"source/backend/{class_name}.hx", f'''
+            class {class_name} {{
+                #if LUA_ALLOWED
+                public static function addLuaCallbacks(lua:State) {{
+                    {registrations}
+                }}
+                #end
+            }}
+        ''')
+
+
+def write_psych_standard_engine(root: Path) -> None:
+    write(root, "source/PlayState.hx", '''
+        class PlayState {
+            function makeHaxeState(plainPsych:Bool, translatedLua:Bool):Void {
+                var interp:Dynamic = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
+                    : translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : null;
+                seedEngineCompat(interp, null);
+            }
+            function seedEngineCompat(interp:Dynamic, ?ownerRoot:String):Void {
+                var runtime = new PsychRuntimeBindings(this, interp, 'chart.lua');
+                runtime.install();
+            }
+        }
+    ''')
+    write(root, "source/PsychRuntimeBindings.hx", '''
+        class PsychRuntimeBindings {
+            function install():Void {
+                if (Std.isOfType(owner, SourceIrisBridge)) installHscriptPreset(owner, null);
+                else if (Std.isOfType(owner, LuaCompatInterp)) {
+                    PsychAchievementsIntegration.installLua(host, owner, origin);
+                    PsychStandardServices.installLua(host, owner, origin);
+                }
+                var run = function() return module();
+            }
+            function module():SourceIrisBridge {
+                embedded = new SourceIrisBridge(host);
+                installHscriptPreset(embedded, Std.isOfType(owner, LuaCompatInterp) ? owner : null);
+                return embedded;
+            }
+            function installHscriptPreset(scope:Dynamic, parent:Dynamic):Void {
+                new PsychHscriptSourceBindings(host, scope, origin, parent).install();
+            }
+        }
+    ''')
+    write(root, "source/PsychHscriptSourceBindings.hx", '''
+        class PsychHscriptSourceBindings {
+            function install():Void {
+                PsychStandardServices.installHscript(host, interp, origin);
+            }
+        }
+    ''')
+    write(root, "source/PsychStandardServices.hx", '''
+        class PsychStandardServices {
+            function installLua(host:PlayState, interp:Interp, origin:String):Void {
+                var owner = runtimeFor(host, interp.variables.get('Paths'), origin);
+                if (owner == null) return;
+                PsychLanguageBindings.installLua(interp, owner.language);
+                PsychDiscordBindings.installLua(interp, owner.discord);
+            }
+            function installHscript(host:PlayState, interp:Interp, origin:String):Void {
+                if (!Std.isOfType(interp, SourceIrisBridge)) return;
+                var owner = runtimeFor(host, interp.variables.get('Paths'), origin);
+                if (owner == null) return;
+                var evaluator = (cast interp:SourceIrisBridge).evaluator;
+                PsychLanguageBindings.install(evaluator, owner.language);
+                PsychDiscordBindings.install(evaluator, owner.discord);
+            }
+        }
+    ''')
+    write(root, "source/PsychLanguageBindings.hx", '''
+        class PsychLanguageBindings {
+            function install(interp:Dynamic, runtime:Dynamic):Void {
+                interp.variables.set('Language', type);
+                interp.bindImport('backend.Language', type);
+            }
+            function installLua(interp:Dynamic, runtime:Dynamic):Void {
+                interp.variables.set('getTranslationPhrase', callback);
+                interp.variables.set('getFileTranslation', callback);
+            }
+        }
+    ''')
+    write(root, "source/PsychDiscordBindings.hx", '''
+        class PsychDiscordBindings {
+            function install(interp:Dynamic, facade:Dynamic):Void {
+                interp.variables.set('DiscordClient', type);
+                interp.bindImport('backend.DiscordClient', type);
+            }
+            function installLua(interp:Dynamic, facade:Dynamic):Void {
+                interp.variables.set('changeDiscordPresence', callback);
+                interp.variables.set('changeDiscordClientID', callback);
+            }
+        }
+    ''')
+
+
 class ScriptApiCoverageAuditTests(unittest.TestCase):
     def test_psych_inventory_ignores_comments_and_string_examples(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -56,6 +281,118 @@ class ScriptApiCoverageAuditTests(unittest.TestCase):
             self.assertEqual(names[("seeded globals", "helper")].kind, "function")
             self.assertEqual(names[("seeded globals", "FlxSprite")].kind, "class/value")
             self.assertEqual(names[("registered functions", "makeThing")].source[0].line, 2)
+
+    def test_psych_inventory_follows_only_reachable_lua_callback_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write(root, "source/psychlua/FunkinLua.hx", '''
+                package psychlua;
+                import backend.Achievements;
+                class FunkinLua {
+                    public function new(scriptName:String) {
+                        #if ACHIEVEMENTS_ALLOWED Achievements.addLuaCallbacks(lua); #end
+                    }
+                }
+            ''')
+            write(root, "source/backend/Achievements.hx", '''
+                package backend;
+                #if ACHIEVEMENTS_ALLOWED
+                class Achievements {
+                    #if LUA_ALLOWED
+                    public static function addLuaCallbacks(lua:State) {
+                        Lua_helper.add_callback(lua, "getAchievementScore", function(name:String) return 0);
+                        Lua_helper.add_callback(lua, "setAchievementScore", function(name:String) return 0);
+                        Lua_helper.add_callback(lua, "addAchievementScore", function(name:String) return 0);
+                        Lua_helper.add_callback(lua, "unlockAchievement", function(name:String) return null);
+                        Lua_helper.add_callback(lua, "isAchievementUnlocked", function(name:String) return false);
+                        Lua_helper.add_callback(lua, "achievementExists", function(name:String) return false);
+                    }
+                    #end
+                }
+                #end
+            ''')
+            write(root, "source/backend/UnusedCallbacks.hx", '''
+                class UnusedCallbacks {
+                    #if LUA_ALLOWED
+                    public static function addLuaCallbacks(lua:State) {
+                        Lua_helper.add_callback(lua, "notRegistered", function() return null);
+                    }
+                    #end
+                }
+            ''')
+
+            expected = {
+                "getAchievementScore", "setAchievementScore", "addAchievementScore",
+                "unlockAchievement", "isAchievementUnlocked", "achievementExists",
+            }
+            entries = audit_api._psych_donor_entries(root)
+            callbacks = {
+                entry.name: entry for entry in entries
+                if entry.dialect == "Psych Lua" and entry.group == "registered functions"
+                and entry.name in expected
+            }
+            self.assertEqual(set(callbacks), expected)
+            for name, entry in callbacks.items():
+                self.assertEqual(entry.source[0].path, "source/backend/Achievements.hx")
+                self.assertEqual(entry.source[1].path, "source/backend/Achievements.hx")
+                self.assertEqual(entry.source[2].path, "source/psychlua/FunkinLua.hx")
+                self.assertEqual(entry.contract["registration_conditions"],
+                                 ["ACHIEVEMENTS_ALLOWED", "LUA_ALLOWED"])
+                self.assertEqual(entry.contract["registration_chain"][0]["source"],
+                                 {"path": "source/psychlua/FunkinLua.hx", "line": 6})
+            self.assertNotIn("notRegistered", {entry.name for entry in entries})
+            audit_api._build_contract_inventory(
+                entries,
+                {"Psych Lua": root, "Psych HScript": root, "Psych chart hooks": root},
+                root,
+            )
+            self.assertEqual(callbacks["getAchievementScore"].contract["registration_conditions"],
+                             ["ACHIEVEMENTS_ALLOWED", "LUA_ALLOWED"])
+            self.assertEqual(callbacks["getAchievementScore"].contract["registration_chain"][0]["source"],
+                             {"path": "source/psychlua/FunkinLua.hx", "line": 6})
+
+            # A matching helper declaration is not donor API evidence unless
+            # the actual constructor calls it under the achievement define.
+            write(root, "source/psychlua/FunkinLua.hx", '''
+                class FunkinLua {
+                    public function new(scriptName:String) {
+                        #if TRANSLATIONS_ALLOWED Achievements.addLuaCallbacks(lua); #end
+                    }
+                }
+            ''')
+            self.assertFalse(expected.intersection(
+                entry.name for entry in audit_api._psych_donor_entries(root)
+                if entry.dialect == "Psych Lua"
+            ))
+
+            write(root, "source/psychlua/FunkinLua.hx", '''
+                class FunkinLua {
+                    public function new(scriptName:String) {
+                        #if ACHIEVEMENTS_ALLOWED Achievements.addLuaCallbacks(lua); #end
+                    }
+                }
+            ''')
+            achievements = root / "source" / "backend" / "Achievements.hx"
+            achievements.write_text(
+                achievements.read_text(encoding="utf-8").replace("#if LUA_ALLOWED", ""),
+                encoding="utf-8",
+            )
+            self.assertFalse(expected.intersection(
+                entry.name for entry in audit_api._psych_donor_entries(root)
+                if entry.dialect == "Psych Lua"
+            ))
+
+            write(root, "source/psychlua/FunkinLua.hx", '''
+                class FunkinLua {
+                    public function new(scriptName:String) {
+                        // #if ACHIEVEMENTS_ALLOWED Achievements.addLuaCallbacks(lua); #end
+                    }
+                }
+            ''')
+            self.assertFalse(expected.intersection(
+                entry.name for entry in audit_api._psych_donor_entries(root)
+                if entry.dialect == "Psych Lua"
+            ))
 
     def test_nightmare_vision_inventory_keeps_its_script_dialect(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -650,6 +987,212 @@ class ScriptApiCoverageAuditTests(unittest.TestCase):
             self.assertEqual([site["callback"] for site in sites if site["callback"]], ["onUpdate"])
             self.assertFalse(any(site["callback_expression"] == "funcToCall:String" for site in sites))
 
+    def test_psych_achievement_bindings_require_complete_runtime_reachability(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            donor = root / "donor"
+            engine = root / "engine"
+            write_psych_achievement_donor(donor)
+            write_psych_achievement_engine(engine)
+
+            def inventory():
+                entries = audit_api._psych_donor_entries(donor)
+                routes = audit_api._source_binding_audit(engine)
+                names = {entry.name for entry in entries}
+                direct, mentions, dynamic, _ = audit_api._engine_inventory(engine, names, routes)
+                audit_api._apply_statuses(entries, engine, direct, mentions, dynamic)
+                return entries, {route["name"]: route for route in routes[1]}
+
+            entries, routes = inventory()
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            self.assertEqual(
+                {name: by_key[("Psych Lua", name)].status for name in PSYCH_ACHIEVEMENT_LUA_NAMES},
+                {name: "implemented" for name in PSYCH_ACHIEVEMENT_LUA_NAMES},
+            )
+            self.assertEqual(by_key[("Psych HScript", "Achievements")].status, "implemented")
+            lua_route = routes["Psych Lua achievements callbacks"]
+            hscript_route = routes["Psych HScript Achievements global"]
+            self.assertEqual(lua_route["binding_names"], sorted(PSYCH_ACHIEVEMENT_LUA_NAMES))
+            self.assertEqual(hscript_route["binding_names"], ["Achievements"])
+            self.assertTrue(all(step["status"] == "found" for step in lua_route["chain"]))
+            self.assertTrue(all(step["status"] == "found" for step in hscript_route["chain"]))
+
+            # Literal callback registrations are insufficient when translated
+            # Lua no longer reaches their owner binding helper.
+            runtime_path = engine / "source" / "PsychRuntimeBindings.hx"
+            runtime = runtime_path.read_text(encoding="utf-8")
+            runtime_path.write_text(runtime.replace("owner, LuaCompatInterp", "owner, OtherLuaInterp"), encoding="utf-8")
+            entries, routes = inventory()
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            self.assertEqual(routes["Psych Lua achievements callbacks"]["status"], "not-wired")
+            self.assertEqual(
+                {by_key[("Psych Lua", name)].status for name in PSYCH_ACHIEVEMENT_LUA_NAMES},
+                {"missing"},
+            )
+            self.assertEqual(by_key[("Psych HScript", "Achievements")].status, "implemented")
+
+            # The HScript class token is not implemented by a detached binder;
+            # its SourceIrisBridge integration handoff must reach the binder.
+            runtime_path.write_text(runtime, encoding="utf-8")
+            integration_path = engine / "source" / "PsychAchievementsIntegration.hx"
+            integration = integration_path.read_text(encoding="utf-8")
+            integration_path.write_text(
+                integration.replace("PsychAchievementsBindings.install(", "PsychAchievementsBindings.unwired("),
+                encoding="utf-8",
+            )
+            entries, routes = inventory()
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            self.assertEqual(routes["Psych HScript Achievements global"]["status"], "not-wired")
+            self.assertEqual(by_key[("Psych HScript", "Achievements")].status, "missing")
+            self.assertEqual(
+                {by_key[("Psych Lua", name)].status for name in PSYCH_ACHIEVEMENT_LUA_NAMES},
+                {"implemented"},
+            )
+
+    def test_psych_language_and_discord_routes_require_standard_service_handoffs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            donor = root / "donor"
+            engine = root / "engine"
+            write_psych_standard_donor(donor)
+            write_psych_standard_engine(engine)
+
+            entries = audit_api._psych_donor_entries(donor)
+            routes = audit_api._source_binding_audit(engine)
+            names = {entry.name for entry in entries}
+            direct, mentions, dynamic, _ = audit_api._engine_inventory(engine, names, routes)
+            audit_api._apply_statuses(entries, engine, direct, mentions, dynamic)
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            route_by_name = {route["name"]: route for route in routes[1]}
+
+            self.assertEqual(
+                {name: by_key[("Psych Lua", name)].status
+                 for name in (*PSYCH_LANGUAGE_LUA_NAMES, *PSYCH_DISCORD_LUA_NAMES)},
+                {name: "implemented"
+                 for name in (*PSYCH_LANGUAGE_LUA_NAMES, *PSYCH_DISCORD_LUA_NAMES)},
+            )
+            self.assertEqual(
+                route_by_name["Psych Lua Language callbacks"]["binding_names"],
+                sorted(PSYCH_LANGUAGE_LUA_NAMES),
+            )
+            self.assertEqual(
+                route_by_name["Psych Lua Discord callbacks"]["binding_names"],
+                sorted(PSYCH_DISCORD_LUA_NAMES),
+            )
+            for name in (
+                "Psych Lua Language callbacks", "Psych Lua Discord callbacks",
+                "Psych HScript Language import (plain HScript)",
+                "Psych HScript Language import (embedded runHaxeCode)",
+                "Psych HScript DiscordClient import (plain HScript)",
+                "Psych HScript DiscordClient import (embedded runHaxeCode)",
+            ):
+                self.assertEqual(route_by_name[name]["status"], "wired")
+                self.assertTrue(all(step["status"] == "found" for step in route_by_name[name]["chain"]))
+                self.assertEqual(route_by_name[name]["behavioral_verification"], "unverified")
+            self.assertEqual(
+                route_by_name["Psych HScript Language import (plain HScript)"]["binding_names"],
+                ["backend.Language"],
+            )
+            self.assertEqual(
+                route_by_name["Psych HScript DiscordClient import (plain HScript)"]["binding_names"],
+                ["backend.DiscordClient"],
+            )
+
+    def test_psych_standard_routes_reject_disconnected_and_swapped_methods(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            donor = root / "donor"
+            engine = root / "engine"
+            write_psych_standard_donor(donor)
+            write_psych_standard_engine(engine)
+
+            def inspect():
+                entries = audit_api._psych_donor_entries(donor)
+                routes = audit_api._source_binding_audit(engine)
+                names = {entry.name for entry in entries}
+                direct, mentions, dynamic, _ = audit_api._engine_inventory(engine, names, routes)
+                audit_api._apply_statuses(entries, engine, direct, mentions, dynamic)
+                return entries, {route["name"]: route for route in routes[1]}
+
+            standard_path = engine / "source" / "PsychStandardServices.hx"
+            standard_original = standard_path.read_text(encoding="utf-8")
+            runtime_path = engine / "source" / "PsychRuntimeBindings.hx"
+            runtime_original = runtime_path.read_text(encoding="utf-8")
+
+            # The literal Language and Discord callback names remain in their
+            # binders, but a disconnected runtime route invalidates both APIs.
+            runtime_path.write_text(
+                runtime_original.replace(
+                    "PsychStandardServices.installLua(host, owner, origin);",
+                    "PsychAchievementsIntegration.installLua(host, owner, origin);",
+                ),
+                encoding="utf-8",
+            )
+            entries, routes = inspect()
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            self.assertEqual(routes["Psych Lua Language callbacks"]["status"], "not-wired")
+            self.assertEqual(routes["Psych Lua Discord callbacks"]["status"], "not-wired")
+            self.assertEqual(
+                {by_key[("Psych Lua", name)].status
+                 for name in (*PSYCH_LANGUAGE_LUA_NAMES, *PSYCH_DISCORD_LUA_NAMES)},
+                {"missing"},
+            )
+
+            runtime_path.write_text(runtime_original, encoding="utf-8")
+            standard_path.write_text(
+                standard_original.replace(
+                    "PsychLanguageBindings.installLua(interp, owner.language);",
+                    "PsychDiscordBindings.installLua(interp, owner.language);",
+                ),
+                encoding="utf-8",
+            )
+            entries, routes = inspect()
+            by_key = {(entry.dialect, entry.name): entry for entry in entries}
+            self.assertEqual(routes["Psych Lua Language callbacks"]["status"], "not-wired")
+            self.assertEqual(routes["Psych Lua Discord callbacks"]["status"], "wired")
+            self.assertEqual(
+                {by_key[("Psych Lua", name)].status for name in PSYCH_LANGUAGE_LUA_NAMES},
+                {"missing"},
+            )
+            self.assertEqual(
+                {by_key[("Psych Lua", name)].status for name in PSYCH_DISCORD_LUA_NAMES},
+                {"implemented"},
+            )
+
+            standard_path.write_text(
+                standard_original.replace(
+                    "PsychLanguageBindings.install(evaluator, owner.language);",
+                    "PsychDiscordBindings.install(evaluator, owner.language);",
+                ),
+                encoding="utf-8",
+            )
+            entries, routes = inspect()
+            self.assertEqual(
+                routes["Psych HScript Language import (plain HScript)"]["status"],
+                "not-wired",
+            )
+            self.assertEqual(
+                routes["Psych HScript DiscordClient import (plain HScript)"]["status"],
+                "wired",
+            )
+
+            standard_path.write_text(standard_original, encoding="utf-8")
+            language_path = engine / "source" / "PsychLanguageBindings.hx"
+            language_original = language_path.read_text(encoding="utf-8")
+            language_path.write_text(
+                language_original.replace(
+                    "interp.bindImport('backend.Language', type);",
+                    "interp.bindImport('backend.OtherLanguage', type);",
+                ),
+                encoding="utf-8",
+            )
+            _, routes = inspect()
+            self.assertEqual(
+                routes["Psych HScript Language import (plain HScript)"]["status"],
+                "not-wired",
+            )
+            language_path.write_text(language_original, encoding="utf-8")
+
     def test_psych_source_preset_requires_a_wired_interpreter_chain(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -710,9 +1253,23 @@ class ScriptApiCoverageAuditTests(unittest.TestCase):
             )
             audit_api._apply_statuses(entries, root, direct, mentions, dynamic)
             self.assertEqual([entry.status for entry in entries], ["implemented"] * 3)
+            route_by_name = {route["name"]: route for route in routes[1]}
             self.assertEqual(
-                [route["status"] for route in routes[1]], ["wired", "wired", "not-wired", "not-wired"]
+                [route_by_name[name]["status"] for name in (
+                    "Psych plain HScript owner preset", "Psych embedded runHaxeCode preset",
+                    "Nightmare Vision chart owner globals", "Nightmare Vision chart-local globals",
+                )], ["wired", "wired", "not-wired", "not-wired"]
             )
+            self.assertEqual(route_by_name["Psych Lua achievements callbacks"]["status"], "not-wired")
+            self.assertEqual(route_by_name["Psych HScript Achievements global"]["status"], "not-wired")
+            for name in (
+                "Psych Lua Language callbacks", "Psych Lua Discord callbacks",
+                "Psych HScript Language import (plain HScript)",
+                "Psych HScript Language import (embedded runHaxeCode)",
+                "Psych HScript DiscordClient import (plain HScript)",
+                "Psych HScript DiscordClient import (embedded runHaxeCode)",
+            ):
+                self.assertEqual(route_by_name[name]["status"], "not-wired")
             self.assertTrue(all(route["behavioral_verification"] == "unverified" for route in routes[1]))
 
             disconnected = root / "disconnected"

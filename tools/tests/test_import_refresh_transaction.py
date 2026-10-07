@@ -1,6 +1,7 @@
 """Exercise the shared import refresh transaction with portable Haxe fixtures."""
 from haxe_test_support import HAXE_COMMAND, TEST_TMP
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,18 +35,20 @@ class ImportRefreshTransactionFixture {
   static var owner:String = "Psych Engine|fixture-package";
   static var owned:Array<String> = ["assets/imported/engine/package"];
 
-  static function outputs(names:Array<String>):Array<ImportRefreshStagedOutput> {
+  static function outputs(names:Array<String>, includeDigest:Bool=true):Array<ImportRefreshStagedOutput> {
     var result:Array<ImportRefreshStagedOutput> = [];
     for (name in names) {
       var stagedPath = name + ".stage";
-      result.push({path: owned[0] + "/" + name, stagedPath: stagedPath,
-        sha256: ImportSourceSnapshot.sha256File(staging + "/" + stagedPath)});
+      var output:ImportRefreshStagedOutput = {path: owned[0] + "/" + name, stagedPath: stagedPath};
+      if (includeDigest) output.sha256 = ImportSourceSnapshot.sha256File(staging + "/" + stagedPath);
+      result.push(output);
     }
     return result;
   }
 
-  static function apply(names:Array<String>, ?cancel:Void->Bool, ?progress:Dynamic->Void):ImportRefreshResult {
-    return ImportRefreshTransaction.apply(root, staging, state, owner, owned, outputs(names),
+  static function apply(names:Array<String>, ?cancel:Void->Bool, ?progress:Dynamic->Void,
+    includeDigest:Bool=true):ImportRefreshResult {
+    return ImportRefreshTransaction.apply(root, staging, state, owner, owned, outputs(names,includeDigest),
       {commonRevision: 1, engineRevision: 1}, cancel, null, progress);
   }
 
@@ -100,6 +103,14 @@ class ImportRefreshTransactionFixture {
       case "refresh":
         var result = apply(["a.txt"]);
         reportResult(result);
+      case "computed-digest":
+        reportResult(apply(["a.txt"], null, null, false));
+      case "wrong-digest":
+        // Deliberately pass a syntactically valid but incorrect caller digest.
+        var mismatched:Array<ImportRefreshStagedOutput> = outputs(["a.txt"]);
+        mismatched[0].sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+        reportResult(ImportRefreshTransaction.apply(root, staging, state, owner, owned, mismatched,
+          {commonRevision: 1, engineRevision: 1}));
       case "unchanged-progress":
         var events:Array<Dynamic> = [];
         var result = apply(["a.txt", "obsolete.txt"], null, function(event) events.push(event));
@@ -306,6 +317,27 @@ class ImportRefreshTransactionTest(unittest.TestCase):
         self.assertEqual(target.read_bytes(), b"repaired output")
         self.assertEqual(target.stat().st_mtime_ns, before,
                          "already-correct owned output should be retained in place")
+
+    def test_transaction_computes_omitted_digest_and_rejects_explicit_mismatch(self):
+        self.seed_initial_import()
+        self.stage("a.txt", b"updated a")
+
+        refreshed = self.report(self.run_fixture("computed-digest"))
+
+        self.assertEqual(refreshed["status"], "applied")
+        target = self.destination / "a.txt"
+        self.assertEqual(target.read_bytes(), b"updated a")
+        manifest = json.loads(Path(refreshed["manifestPath"]).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(b"updated a").hexdigest())
+
+        manifest_path = Path(refreshed["manifestPath"])
+        prior_manifest = manifest_path.read_bytes()
+        self.stage("a.txt", b"different staged bytes")
+        failed = self.run_fixture("wrong-digest", expected=1)
+
+        self.assertIn("wrong SHA-256", failed.stderr)
+        self.assertEqual(target.read_bytes(), b"updated a")
+        self.assertEqual(manifest_path.read_bytes(), prior_manifest)
 
     def test_stale_registry_baseline_still_rejects_output_equal_to_live_bytes(self):
         registry = self.destination / "registry.json"

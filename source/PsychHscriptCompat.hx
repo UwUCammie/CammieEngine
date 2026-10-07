@@ -152,6 +152,10 @@ class PsychHscriptCompat {
 	/** Class spelling differs between forks; all values come from the live seed. */
 	public static function importBindings():Map<String, String> {
 		return [
+			'Reflect' => 'Reflect', 'Type' => 'Type',
+			'backend.Language' => 'Language', 'backend.DiscordClient' => 'DiscordClient',
+			'objects.Alphabet.AlphaCharacter' => 'AlphaCharacter', 'objects.Alphabet.Alignment' => 'Alignment',
+			'objects.AttachedText' => 'AttachedText',
 			'flixel.FlxG' => 'FlxG', 'flixel.FlxCamera' => 'FlxCamera',
 			'flixel.FlxBasic' => 'FlxBasic', 'flixel.FlxObject' => 'FlxObject',
 			'flixel.FlxSprite' => 'FlxSprite', 'flixel.math.FlxRect' => 'FlxRect',
@@ -165,6 +169,7 @@ class PsychHscriptCompat {
 			'openfl.filters.ShaderFilter' => 'ShaderFilter', 'flxanimate.FlxAnimate' => 'FlxAnimate',
 			'backend.Paths' => 'Paths', 'backend.Conductor' => 'Conductor',
 			'backend.Rating' => 'Rating',
+			'backend.Achievements' => 'Achievements',
 			'backend.ClientPrefs' => 'ClientPrefs', 'backend.CoolUtil' => 'CoolUtil',
 			'backend.Controls' => 'Controls', 'backend.BaseStage' => 'BaseStage',
 			'backend.BaseStage.Countdown' => 'Countdown', 'backend.Difficulty' => 'Difficulty',
@@ -188,6 +193,7 @@ class PsychHscriptCompat {
 	}
 
 	static function isQualifiedName(value:String):Bool {
+		if (value == 'Reflect' || value == 'Type') return true;
 		if (value == null || value == '') return false;
 		var parts = value.split('.');
 		if (parts.length < 2) return false;

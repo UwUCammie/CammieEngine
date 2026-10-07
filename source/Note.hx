@@ -171,6 +171,7 @@ typedef SingInfo = {
 	var ?miss:Null<Bool>;
 }
 // sinful dynamic sprite
+@:build(NightmareVisionSpriteMacro.build())
 class Note extends DynamicSprite {
 	/** Psych 0.7.3 logical texture. Empty means the current chart's arrow skin. */
 	public var texture(get, set):String;

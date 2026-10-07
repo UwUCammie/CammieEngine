@@ -1,0 +1,35 @@
+# NV CharacterGroup core contracts
+
+Pinned NV revision: 733165c42ca71eb0961a70e4173b2d81ba4a29ea, source/funkin/objects/CharacterGroup.hx:5-92. This is a bounded core implementation. Bounded connected gameplay migration, canonical build/full suite and root-reviewed native acceptance are now recorded in tools/reports/nv-character-group-integration-contracts.md and tmp/source-nv-character-group-checkpoint.json. Final gate:2307 tests/756 modules,145.8s,344 skips,zero failures. No Phase2 or full Character parity claim.
+
+## Actual class and dependencies
+
+NightmareVisionCharacterGroup directly extends the real host FlxSpriteGroup, with the verified targeted five-method sprite macro. Public parent/map/type/gfCheck are actual writable storage. The Int-backed NightmareVisionCharacterType enum abstract has BF0/DAD1/GF2; it is not a runtime Haxe enum. Constructor keeps three source arguments, including required type, followed by optional host owner. Owner construction receives requested identity and source isPlayer decision; a typed live scene view provides gfPosition and the actual NightmareVisionPlayFields collection. Optional spriteOwner is borrowed.
+
+The group neither publishes game roles/scripts/HUD nor attaches actors to a second hidden group. Existing PsychCharacterCache and NV facades are untouched. Their readonly/fixed-role cache semantics do not own the new writable fields. Native geometry and verified sprite conveniences are shared without duplicating those formulas or introducing cache policy machinery for three alpha assignments.
+
+## Executed source behavior
+
+addChar returns Void; null is a no-op. Placement precedes resolved curCharacter map publication, then real native add. Map publication is visible to memberAdded. Parent is never automatically assigned. Repeated startPos/addChar retain source accumulation/reset behavior and native preAdd before duplicate rejection. GF startPos .95 scroll factor can be overwritten by the group's scrollFactor in preAdd. Type changes affect new isPlayer decisions without recomputing gfCheck.
+
+addToList reuses only nonnull map.get results, while change tests map.exists. Requested/resolved identity mismatches remain observable, including repeated construction and failure after hiding an old actor. Parent and map replacement are respected. change captures field-owner flags positionally before construction, reads the live parent alpha after callbacks, transfers alpha, then indexes the earlier flags by CURRENT field.ID over CURRENT members. No identity-map replacement, rollback or ID normalization was added. Same-name change does not require a scene.
+
+Attributed diagnostics are inserted immediately before native-null unsafe dereferences: parent/map/character/positionArray, null snapshot/publication fields or members, null gfPosition within a present scene, and unavailable owner construction. These preserve the source side-effect phase/partial state while replacing a native null crash with an attributed error. Original constructor exceptions remain untouched. Null scene GF placement uses the source zero-coordinate fallback. Other missing scene access during publication fails after alpha transfer, as source does.
+
+Group destruction delegates actual parent ownership first, then clears only private borrowed owner context on normal/error exits. Shared sprite macro clears its borrowed provider cell. Original child errors are rethrown by identity. Source map and parent references remain; providers are never released by the group.
+
+## Focused evidence
+
+Command: `.tools/python/python.exe tools/run_tests.py --jobs 1 --pattern test_nv_character_group_contract.py`.
+
+Result: one test module/case, 0.8 seconds, zero skips/failures. It executes eval comparisons and generates C++ with no native compilation. The case covers normal/GF repeated placement, nonzero group coordinates, scale callback, duplicate add, null no-op, map-before-memberAdded, cached identities/hidden alpha, writable map/type/gfCheck, field transfer, reentrant constructor parent changes, reordered current fields/IDs, requested/resolved names, null-scene fallback, same-name scene independence, clear/remove ownership and destruction/error cleanup/provider survival.
+
+Nine malformed/error cases compare source versus host partial alpha/parent/cache state: null parent, null map value, null field slot, absent publication scene, resolved-name mismatch, null map, null positionArray, original construction error, and null gfPosition. Four IDs (-1,0,1,4) compare direct source index behavior. C++ generated donor and adapter both emit `checkFields->__get(field1->ID)`; pinned hxcpp4.3.2 include/Array.h:545-549 implements unsigned bounds checking for __get. No new ID guard was needed. C++ generation also proves the actual FlxTypedSpriteGroup parent, Void addChar and real public method/member metadata.
+
+The reference uses the full immutable donor class body, dependency import/class renames and one attributed owner-construction substitution; no behavior body is silently removed. Typed native-shaped Character/scene dependencies isolate loading. Parent fixtures execute actual host add/preAdd/remove/clear/x/y/alpha/update/recycle, actual FlxTypedGroup member-destruction loop, and FlxCallbackPoint scale methods inherited from existing verified fixture support. The SpriteGroup destructor scaffold forwards child ownership but does not execute every native callback-point cleanup instruction. Donor does not pin a precise Flixel version; actual host6.1.2 is the dependency used. Fixture point/group scaffolding does not prove every aggregate bounds/origin/camera transform or real Character asset/loading/animation behavior.
+
+## Required connected/native acceptance
+
+Integration must prove actual scene group identity and sole display/update/destruction ownership, source constructor/import/Class/enum-abstract routes, owner isolation and live scene access, initial/cached actors and current field ownership. Root native probes must exercise real C++ typed actors/getters, ID cases and guard error phases, group movement/GF placement/cached animation, shared provider/cell teardown, two visits60/unlimited and reviewed captures with protected originals/settings. No fake class/enum metadata or old facade casts. Whole donor stage container ordering, arbitrary raw member ownership, complete Character API and broader Phase2 remain open.
+
+Connected acceptance footer: root accepted the bounded component after capped/unlimited native runs and reviewed captures. Native evidence includes STOP/manual mount graph, actual cache/field/group-role separation, measured manual group traversal and observable actor/group teardown/provider lifetime. It does not establish missing-type reflection behavior, arbitrary raw/shared ownership, exact normal-frame/default teardown call counts, full Stage/Character/GF-null parity or every native case listed above. Core fixture/dependency limits remain unchanged; consult the integration report and receipt for exact measured scope.

@@ -28,7 +28,7 @@ def constructor_resolution_code() -> str:
     identity = extract_section(
         source,
         "\t\tvar sourceDeathFallbackId:Null<String> = null;",
-        "\t\tvar psychCameraRoot = Song.currentPsychCharacterRoot();",
+        "\t\tvar psychCameraRoot =",
     )
     visual_resolution_start = source.index(
         "\t\tvar visualResolution:Dynamic = sourceDeathVisualResolution == null"
@@ -133,6 +133,7 @@ class Character {
   ?codename:Dynamic):Void {
   curCharacter=requested; this.isPlayer=false;
   requestedCharacter=requested==null?'':requested.trim();
+  var sourceConstruction:Dynamic=null;
   var sourceCharacterOwnerRoot=ownerRoot;
   var sourceCharacterOwnerEngine=ownerEngine;
   var codenameRuntime:Dynamic=codename;

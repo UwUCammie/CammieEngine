@@ -23,6 +23,27 @@ class NightmareVisionSourceApiContextsTest(unittest.TestCase):
         fixture = r'''
 import crowplexus.hscript.Parser;
 
+class RecordingModConfigHost implements NightmareVisionModConfigHost {
+ public var events:Array<String> = [];
+ public var selectedRoot:String = '';
+ public function new() {}
+ public function defaultAppTitle():String return 'Default Title';
+ public function defaultRpcId():String return 'source-default-rpc';
+ public function resolveSelectedPath(path:String):String return selectedRoot + '/' + path;
+ public function resolveSelectedFont(key:String):String return selectedRoot + '/fonts/' + key;
+ public function pathExists(path:String):Bool return false;
+ public function selectedDirectoryExists(path:String):Bool return false;
+ public function updateLiveConfig(directory:String, root:String, pack:Dynamic):Void { selectedRoot = root; events.push('config:' + directory); }
+ public function initializeOptions(directory:String, root:String):Void events.push('options:' + directory + ':' + root);
+ public function setWindowTitle(title:String):Void events.push('title:' + title);
+ public function setWindowIcon(path:String):Void events.push('icon:' + path);
+ public function reportMissingIcon(icon:String):Void events.push('missing:' + icon);
+ public function setTransition(value:NightmareVisionModTransition):Void events.push('transition:' + Type.enumConstructor(value));
+ public function setRpcId(value:String):Void events.push('rpc:' + value);
+ public function setDefaultFont(path:String):Void events.push('font:' + path);
+ public function setPrefix(field:String, value:String):Void events.push('prefix:' + field + ':' + value);
+}
+
 class Main {
  static function fail(message:String):Void throw message;
  static function check(value:Bool, message:String):Void if (!value) fail(message);
@@ -208,6 +229,7 @@ check(!first.canReuseFor(second.ownerRoot), 'difficulty adapter accepted another
     def test_mods_files_and_pack_apis_are_owner_scoped(self):
         self.run_haxe(r'''
 var mods = new NightmareVisionModsContext('assets/imported_mods/owner-a', 'owner-a');
+mods.bindConfigHost(new RecordingModConfigHost());
 eq(mods.getModDirectories().join(','), 'owner-a', 'selected owner directory');
 eq(mods.pushGlobalMods().join(','), 'owner-a', 'selected owner global flag');
 eq(mods.getPack().name, 'Owner Display', 'owner metadata read');
@@ -235,6 +257,123 @@ mods.loadTopMod();
             'assets/imported_mods/owner-a/fonts/owner-font.ttf': 'font',
             'assets/imported_mods/owner-a/values.txt': 'owner\nsame\n',
             'assets/imported_mods/owner-a/__nmv_core/data/values.txt': 'core\nsame\n',
+        })
+
+    def test_mods_family_list_selection_persistence_and_errors(self):
+        self.run_haxe(r'''
+var alpha = 'assets/imported_mods/alpha';
+var beta = 'assets/imported_mods/beta';
+var persisted = 'beta|0\nalpha|1\noutside|1';
+var reads = 0;
+var writes = 0;
+var readList = function():Null<String> { reads++; return persisted; };
+var writeList = function(value:String):Void { writes++; persisted = value; };
+var members = [{directory:'alpha', root:alpha}, {directory:'beta', root:beta}];
+var session = new NightmareVisionModFamilySession('alpha', alpha, members, readList, writeList);
+var first = new NightmareVisionModsContext(alpha, 'alpha', session);
+first.bindConfigHost(new RecordingModConfigHost());
+var second = new NightmareVisionModsContext(alpha, 'alpha', session);
+eq(first.selectedRoot(), alpha, 'initial family root');
+var parsed = first.parseList();
+eq(parsed.enabled.join(','), 'alpha', 'top package is forced enabled');
+eq(parsed.disabled.join(','), 'beta', 'persisted disabled state');
+eq(parsed.all.join(','), 'alpha,beta', 'unknown persisted root was filtered');
+eq(persisted, 'alpha|1\nbeta|0', 'normalized family list');
+eq(reads, 1, 'family list was loaded once');
+eq(writes, 1, 'changed normalized list was persisted once');
+eq(first.getPack('beta').name, 'Beta Display', 'authorized sibling metadata');
+eq(first.getPack('outside'), null, 'unrelated metadata was rejected');
+eq(first.getPack(''), null, 'explicit empty folder incorrectly selected family metadata');
+eq(first.getPack().name, 'Alpha Display', 'null folder did not default to current family member');
+eq(first.pushGlobalMods().join(','), 'alpha', 'enabled global package list');
+second.currentModDirectory = 'beta';
+eq(first.currentModDirectory, 'beta', 'shared session selection was stale');
+eq(first.selectedRoot(), beta, 'shared session root was stale');
+second.updateModList('alpha');
+eq(second.currentModDirectory, 'beta', 'formal updateModList top argument was not ignored');
+eq(persisted, 'beta|1\nalpha|1', 'current package order was not retained');
+first.loadTopMod();
+eq(first.currentModDirectory, 'beta', 'loadTopMod did not select first enabled persisted row');
+eq(first.currentModConfig.name, 'Beta Display', 'selected package config');
+eq(first.pushGlobalMods().join(','), 'beta,alpha', 'global packages lost source list order');
+var unrelatedRejected = false;
+try second.currentModDirectory = 'outside' catch (error:Dynamic)
+  unrelatedRejected = Std.string(error).indexOf('[nightmare-vision-mod-family-scope]') >= 0;
+check(unrelatedRejected && second.currentModDirectory == 'beta', 'unrelated selection changed state');
+eq(second.getPack('C:'), null, 'drive-style metadata label was not rejected');
+var topRejected = false;
+try second.getListAsArray('outside') catch (_:Dynamic) topRejected = true;
+check(topRejected, 'unrelated explicit list root was accepted');
+var boundedMatches = first.directoriesWithFile('content/outside', 'meta.json');
+for (path in boundedMatches)
+  check(path.indexOf(alpha + '/') == 0 || path.indexOf(beta + '/') == 0,
+    'unrelated content label escaped the catalog into ' + path);
+first.release();
+eq(second.currentModDirectory, 'beta', 'releasing one shared context released its sibling');
+second.release();
+var releasedRejected = false;
+try session.familyDirectories() catch (_:Dynamic) releasedRejected = true;
+check(releasedRejected, 'last context release left the family session live');
+
+var duplicateRootRejected = false;
+try new NightmareVisionModFamilySession('alpha', alpha,
+  [{directory:'alias', root:alpha}], null, null) catch (_:Dynamic) duplicateRootRejected = true;
+check(duplicateRootRejected, 'lease root was accepted under an unrelated label');
+var normalizedDuplicateMessage = '';
+try new NightmareVisionModFamilySession('alpha', alpha,
+  [{directory:'alpha', root:alpha}, {directory:'beta', root:StringTools.replace(alpha, '/', '\\')}], null, null)
+catch (error:Dynamic) normalizedDuplicateMessage = Std.string(error);
+check(normalizedDuplicateMessage.indexOf('One installed root cannot have multiple source labels') >= 0,
+  'normalized duplicate roots were not rejected with a diagnostic');
+var nullMember:NightmareVisionModFamilyMember = null;
+var nullMemberMessage = '';
+try new NightmareVisionModFamilySession('alpha', alpha, [nullMember], null, null)
+catch (error:Dynamic) nullMemberMessage = Std.string(error);
+check(nullMemberMessage.indexOf('Invalid family directory') >= 0,
+  'null catalog member was not rejected with a diagnostic');
+var colonLabelRejected = false;
+try new NightmareVisionModFamilySession('C:', alpha,
+  [{directory:'C:', root:alpha}], null, null) catch (_:Dynamic) colonLabelRejected = true;
+check(colonLabelRejected, 'drive-style source label was accepted');
+
+var restartedSession = new NightmareVisionModFamilySession('alpha', alpha, members,
+  function():Null<String> return persisted, function(value:String):Void persisted = value);
+var restarted = new NightmareVisionModsContext(alpha, 'alpha', restartedSession);
+restarted.bindConfigHost(new RecordingModConfigHost());
+restarted.loadTopMod();
+eq(restarted.currentModDirectory, 'beta', 'owner-private list did not survive session restart');
+restarted.release();
+''', {
+            'assets/imported_mods/alpha/meta.json': '{"name":"Alpha Display","global":true}',
+            'assets/imported_mods/beta/meta.json': '{"name":"Beta Display","global":true}',
+        })
+
+    def test_family_invalid_json5_and_empty_folder_keep_bounded_partial_state(self):
+        self.run_haxe(r'''
+var alpha = 'assets/imported_mods/alpha';
+var beta = 'assets/imported_mods/beta';
+var persisted = 'beta|1\nalpha|1';
+var session = new NightmareVisionModFamilySession('alpha', alpha,
+  [{directory:'alpha', root:alpha}, {directory:'beta', root:beta}],
+  function():Null<String> return persisted,
+  function(value:String):Void persisted = value);
+var mods = new NightmareVisionModsContext(alpha, 'alpha', session);
+eq(mods.getPack().name, 'Alpha Display', 'null folder did not resolve current member');
+eq(mods.getPack(''), null, 'empty folder read the selected member instead of shared content metadata');
+mods.currentModDirectory = null;
+eq(mods.getPack(), null, 'no selected member fell back to the immutable lease owner');
+eq(mods.selectedRoot(), null, 'cleared selection retained an asset root');
+mods.currentModDirectory = 'alpha';
+mods.currentModConfig = {name:'Prior Config'};
+mods.loadTopMod();
+eq(mods.currentModDirectory, 'beta', 'loadTopMod selection mutation was lost after corrupt config');
+eq(persisted, 'beta|1\nalpha|1', 'list mutation was lost after corrupt config');
+eq(mods.currentModConfig.name, 'Prior Config', 'corrupt config replaced prior local state');
+eq(mods.getPack('beta'), null, 'corrupt JSON5 config did not return null');
+mods.release();
+''', {
+            'assets/imported_mods/alpha/meta.json': '{"name":"Alpha Display"}',
+            'assets/imported_mods/beta/meta.json': '{ name: "Broken",',
         })
 
 

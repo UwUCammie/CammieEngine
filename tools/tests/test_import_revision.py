@@ -22,12 +22,22 @@ class Main {
   check(legacy.status == ImportRevision.UNKNOWN, "legacy app version was mistaken for a compatibility receipt");
 
   var current = ImportRevision.current("psychengine", "0.0.8");
+  check(current.engineRevision == 3
+   && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:2},
+    "Psych Engine").status == ImportRevision.OUTDATED,
+   "older Psych receipts did not request language-file publication refresh");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,
    "explicit common and engine revisions were not recorded");
   check(current.commonRevision == 3
    && ImportRevision.assess({schemaVersion:1, commonRevision:2, sourceEngine:"Psych Engine",
     engineRevision:1}, "Psych Engine").status == ImportRevision.OUTDATED,
    "shared display metadata changes do not trigger retained-source refresh");
+  var priorNmv = {schemaVersion:1, commonRevision:3, sourceEngine:"Nightmare Vision",
+	 engineRevision:4};
+  check(ImportRevision.assess(priorNmv, "Nightmare Vision").status == ImportRevision.OUTDATED,
+	 "older Nightmare Vision package-root ownership receipts were not scheduled for refresh");
+  check(ImportRevision.current("Nightmare Vision").engineRevision == 5,
+	 "canonical NMV package-root import semantics did not advance the engine revision");
   current.applicationVersion = "0.0.1-alpha.8";
   check(ImportRevision.assess(current, "Psych Engine").status == ImportRevision.CURRENT,
    "app release number incorrectly determined importer compatibility");

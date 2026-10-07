@@ -41,13 +41,13 @@ class Main {
    function halt() { record("unreachable"); return ScriptConstants.STOP_FUNC; }
   ', configure) != null, 'second module');
   var first = group.getScript('first');
-  check(first.call('current') == state, 'live play state');
+  check(first.callValue('current') == state, 'live play state');
   state = {name:'gameover'};
-  check(first.call('current') == state, 'live game over state');
+  check(first.callValue('current') == state, 'live game over state');
   state = {name:'menu'};
-  check(first.call('current') == state, 'live menu state');
+  check(first.callValue('current') == state, 'live menu state');
   state = null;
-  check(first.call('current') == null, 'pending gameover may have no instance yet');
+  check(first.callValue('current') == null, 'pending gameover may have no instance yet');
   check(group.call('stop') == 1 && calls.join(',') == 'first,second', 'STOP broadcasts and retains stop');
   calls = [];
   check(group.call('halt') == 0 && calls.join(',') == 'halt', 'HALT ends broadcast');

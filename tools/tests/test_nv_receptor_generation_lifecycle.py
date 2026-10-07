@@ -185,6 +185,9 @@ class Main {
         countdown = method(play, 'public function startCountdown():Void')
         tail = countdown[countdown.index('var sourceCountdownStopped ='):countdown.index('\n\t\tif (duoMode)')]
         main = MAIN.replace('__METHODS__', methods).replace('__DISPATCH__', dispatch).replace('__COUNTDOWN__', tail)
+        # Pure field-generation fixture isolates provider setup from its non-sprite bank stubs.
+        main = main.replace('NightmareVisionSpriteMethods.bind', 'FixtureSpriteBinding.bind').replace('NightmareVisionSpriteRegistry.capture', 'FixtureSpriteBinding.capture')
+        main += '\nclass FixtureSpriteBinding {public static function bind(object:Dynamic,owner:Dynamic):Void {} public static function capture(paths:Dynamic):Dynamic return null;}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
             write_nv_field_dependencies(work)
@@ -220,7 +223,7 @@ class EngineCompat {public static function anyFunctionStop(values:Array<Dynamic>
 class Module {
  public var name='probe'; public var callback:(String,Array<Dynamic>)->Dynamic;
  public function new(callback:(String,Array<Dynamic>)->Dynamic) this.callback=callback;
- public function call(event:String,args:Array<Dynamic>):Dynamic return callback(event,args);
+ public function callValue(event:String,args:Array<Dynamic>):Dynamic return callback(event,args);
 }
 class Scripts {
  public static var CONTINUE_FUNC=0;public static var HALT_FUNC=2;

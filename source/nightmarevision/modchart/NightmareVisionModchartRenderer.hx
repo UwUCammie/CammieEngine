@@ -134,7 +134,8 @@ class NightmareVisionModchartRenderer {
 			var isEnd = object.isSustainEnd;
 			if (!isEnd) {
 				var antialiasing = field(note, 'antialiasing') == true;
-				var denominator = baseline.frameHeight - (antialiasing ? 1 : 0);
+				var frameHeight = transform.registry.executionEntry == null ? baseline.frameHeight : number(property(note, 'frameHeight'), baseline.frameHeight);
+				var denominator = frameHeight - (antialiasing ? 1 : 0);
 				if (denominator > 0 && Math.isFinite(distance)) {
 					var bodyScaleY = distance / denominator;
 					setScaleY(note, bodyScaleY);
@@ -374,6 +375,7 @@ class NightmareVisionModchartRenderer {
 		object.y = number(property(sprite, 'y'), object.y);
 		object.width = number(property(sprite, 'width'), object.width);
 		object.height = number(property(sprite, 'height'), object.height);
+		object.frameHeight = number(property(sprite, 'frameHeight'), object.frameHeight);
 		object.angle = number(property(sprite, 'angle'), object.angle);
 		var scale = property(sprite, 'scale');
 		object.scaleX = number(property(scale, 'x'), object.scaleX);
@@ -482,8 +484,9 @@ class NightmareVisionModchartRenderer {
 		var clipY = Math.sqrt(x * x + y * y) / scaleY;
 		state.clipX = 0;
 		state.clipY = clipY;
-		state.clipWidth = baseline.frameWidth;
-		state.clipHeight = baseline.frameHeight - clipY;
+		state.clipWidth = transform.registry.executionEntry == null ? baseline.frameWidth : number(property(note, 'frameWidth'), baseline.frameWidth);
+		var frameHeight = transform.registry.executionEntry == null ? baseline.frameHeight : number(property(note, 'frameHeight'), baseline.frameHeight);
+		state.clipHeight = frameHeight - clipY;
 		state.clipApplied = true;
 		applyClipRect(note, state);
 	}

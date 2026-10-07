@@ -22,7 +22,7 @@ class CharacterResolutionTest(unittest.TestCase):
         exists = method(source, '\tpublic static function characterExists(')
         interp = method(source, '\tpublic static function getAnimInterp(')
         typedef_start = source.index('typedef CharacterProgramCacheEntry = {')
-        typedef_end = source.index('\nclass Character extends', typedef_start)
+        typedef_end = source.index('\n@:build(NightmareVisionSpriteMacro.build())', typedef_start)
         cache_start = source.index('\tstatic var characterProgramCache:')
         cache_end = source.index('\n\tpublic var animOffsets', cache_start)
         cache = source[cache_start:cache_end]
@@ -45,6 +45,7 @@ class FNFAssets {
  public static function getHscript(p:String):String return 'isPixel = false;';
  public static function getText(p:String):String return 'isPixel = false;';
 }
+class SourceCharacterConstruction {public var root:String;public function new(root:String)this.root=root;public function resolve(name:String):Dynamic return Song.resolveCharacterVisual(name);}
 class PluginManager {public static function createSimpleInterp()return new Interp();}
 class EngineCompat {public static function rewriteLegacyAssetPaths(source:String):String return source;}
 class PlayState {

@@ -1068,6 +1068,11 @@ def _build_contract_inventory(entries: list[ApiEntry], roots: dict[str, Path], e
         contract["side_effect_evidence"] = side_effects
         contract.pop("body_calls", None)
         contract.pop("body_writes", None)
+        # Reachable helper registrations carry preprocessor and call-chain
+        # provenance that the ordinary inline callback parser cannot infer.
+        for key in ("registration_conditions", "registration_chain"):
+            if key in entry.contract:
+                contract[key] = entry.contract[key]
         entry.contract = contract
     return dynamic_donor_sites
 
@@ -1537,12 +1542,22 @@ def _source_binding_audit(
     plain_bridge_match = next(iter(_code_matches(
         make_body, re.compile(r"plainPsych\s*\?\s*PluginManager\.addVarsToInterp\s*\(\s*new\s+SourceIrisBridge\s*\(")
     )), None)
+    lua_bridge_match = next(iter(_code_matches(
+        make_body, re.compile(
+            r"translatedLua\s*\?\s*PluginManager\.addVarsToInterp\s*\(\s*"
+            r"new\s+LuaCompatInterp\s*\(\s*\)\s*\)"
+        )
+    )), None)
     seed_compat_match = next(iter(_code_matches(
         make_body, re.compile(r"\bseedEngineCompat\s*\(\s*interp\s*,")
     )), None)
     plain_bridge_ref = (
         _ref(engine_root, play_path, _line_at(play_code, make_offset + plain_bridge_match.start()))
         if plain_bridge_match else None
+    )
+    lua_bridge_ref = (
+        _ref(engine_root, play_path, _line_at(play_code, make_offset + lua_bridge_match.start()))
+        if lua_bridge_match else None
     )
     seed_compat_ref = (
         _ref(engine_root, play_path, _line_at(play_code, make_offset + seed_compat_match.start()))
@@ -1663,6 +1678,273 @@ def _source_binding_audit(
         ],
         psych_candidates_with_conditions,
     )
+
+    # Psych Lua achievement callbacks are registered by the translated Lua
+    # runtime, then delegated to the same owner service used by HScript.
+    integration_path = engine_root / "source" / "PsychAchievementsIntegration.hx"
+    integration_code = _read_code(integration_path)
+    lua_bindings_path = engine_root / "source" / "PsychAchievementsLuaBindings.hx"
+    lua_bindings_code = _read_code(lua_bindings_path)
+    achievements_bindings_path = engine_root / "source" / "PsychAchievementsBindings.hx"
+    achievements_bindings_code = _read_code(achievements_bindings_path)
+    lua_compat_branch = re.compile(
+        r"\belse\s+if\s*\(\s*Std\.isOfType\s*\(\s*owner\s*,\s*LuaCompatInterp\s*\)\s*\)\s*\{"
+        r"(?=[^}]*\bPsychAchievementsIntegration\.installLua\s*\(\s*host\s*,\s*owner\s*,\s*origin\s*\))"
+        r"(?=[^}]*\bPsychStandardServices\.installLua\s*\(\s*host\s*,\s*owner\s*,\s*origin\s*\))"
+        r"[^}]*\}"
+    )
+    lua_install_ref = first_ref(
+        engine_root, runtime_path, runtime_code, runtime_install_region,
+        lua_compat_branch,
+    )[1]
+    lua_integration_region = method(integration_path, integration_code, "installLua")
+    lua_runtime_ref = first_ref(
+        engine_root, integration_path, integration_code, lua_integration_region,
+        re.compile(r"\bruntime\s*=\s*runtimeFor\s*\(\s*host\s*,\s*interp\.variables\.get\s*\(\s*['\"]Paths['\"]\s*\)\s*,\s*origin\s*\)"),
+    )[1]
+    lua_runtime_guard_ref = first_ref(
+        engine_root, integration_path, integration_code, lua_integration_region,
+        re.compile(r"\bif\s*\(\s*runtime\s*==\s*null\s*\)\s*return\s*;"),
+    )[1]
+    lua_binding_handoff_ref = first_ref(
+        engine_root, integration_path, integration_code, lua_integration_region,
+        re.compile(r"PsychAchievementsLuaBindings\s*\.\s*install\s*\(\s*interp\s*,\s*runtime\.service\s*,\s*report\s*\)"),
+    )[1]
+    lua_candidates = direct_bindings(
+        engine_root, lua_bindings_path, lua_bindings_code, "install", DIRECT_BIND,
+    )
+    lua_candidate_conditions = {
+        "getAchievementScore": "registered on each active LuaCompatInterp",
+        "setAchievementScore": "registered on each active LuaCompatInterp",
+        "addAchievementScore": "registered on each active LuaCompatInterp",
+        "unlockAchievement": "registered on each active LuaCompatInterp",
+        "isAchievementUnlocked": "registered on each active LuaCompatInterp",
+        "achievementExists": "registered on each active LuaCompatInterp",
+    }
+    append_route(
+        "Psych Lua achievements callbacks",
+        "Psych Lua",
+        [
+            ("PlayState.makeHaxeState creates LuaCompatInterp for translated Lua", lua_bridge_ref),
+            ("PlayState.makeHaxeState seeds compatibility bindings", seed_compat_ref),
+            ("PlayState.seedEngineCompat constructs PsychRuntimeBindings", construct_ref),
+            ("PlayState.seedEngineCompat calls runtime.install()", runtime_install_ref),
+            ("PsychRuntimeBindings.install routes LuaCompatInterp to achievements and standard services", lua_install_ref),
+            ("PsychAchievementsIntegration.installLua resolves the owner runtime", lua_runtime_ref),
+            ("installLua returns when the owner runtime is unavailable", lua_runtime_guard_ref),
+            ("installLua delegates callback registration to the owner binding", lua_binding_handoff_ref),
+        ],
+        [(name, ref, lua_candidate_conditions.get(name)) for name, ref in lua_candidates],
+    )
+
+    # The donor HScript global is likewise exposed only after a SourceIrisBridge
+    # reaches the owner integration and its class-token binder.
+    hscript_integration_region = method(integration_path, integration_code, "installHscript")
+    hscript_preset_integration_ref = first_ref(
+        engine_root, psych_binder_path, psych_binder_code, method(psych_binder_path, psych_binder_code, "install"),
+        re.compile(r"PsychAchievementsIntegration\s*\.\s*installHscript\s*\(\s*host\s*,\s*interp\s*,\s*origin\s*\)"),
+    )[1]
+    hscript_bridge_guard_ref = first_ref(
+        engine_root, integration_path, integration_code, hscript_integration_region,
+        re.compile(r"\bif\s*\(\s*!\s*Std\.isOfType\s*\(\s*interp\s*,\s*SourceIrisBridge\s*\)\s*\)\s*return\s*;"),
+    )[1]
+    hscript_runtime_ref = first_ref(
+        engine_root, integration_path, integration_code, hscript_integration_region,
+        re.compile(r"\bruntime\s*=\s*runtimeFor\s*\(\s*host\s*,\s*interp\.variables\.get\s*\(\s*['\"]Paths['\"]\s*\)\s*,\s*origin\s*\)"),
+    )[1]
+    hscript_binding_handoff_ref = first_ref(
+        engine_root, integration_path, integration_code, hscript_integration_region,
+        re.compile(
+            r"PsychAchievementsBindings\s*\.\s*install\s*\(\s*"
+            r"\(\s*cast\s+interp\s*:\s*SourceIrisBridge\s*\)\s*\.evaluator\s*,\s*runtime\.service"
+        ),
+    )[1]
+    hscript_candidates = direct_bindings(
+        engine_root, achievements_bindings_path, achievements_bindings_code, "install", DIRECT_BIND,
+    )
+    append_route(
+        "Psych HScript Achievements global",
+        "Psych HScript",
+        [
+            ("PlayState.makeHaxeState creates SourceIrisBridge for plain HScript", plain_bridge_ref),
+            ("PlayState.makeHaxeState calls seedEngineCompat(interp)", seed_compat_ref),
+            ("PlayState.seedEngineCompat constructs PsychRuntimeBindings", construct_ref),
+            ("PlayState.seedEngineCompat calls runtime.install()", runtime_install_ref),
+            ("PsychRuntimeBindings.install seeds a SourceIrisBridge owner", owner_install_ref),
+            ("installHscriptPreset installs PsychHscriptSourceBindings", psych_binder_install_ref),
+            ("PsychHscriptSourceBindings.install routes to achievement integration", hscript_preset_integration_ref),
+            ("PsychAchievementsIntegration.installHscript requires SourceIrisBridge", hscript_bridge_guard_ref),
+            ("installHscript resolves the owner runtime", hscript_runtime_ref),
+            ("installHscript delegates the class token to owner bindings", hscript_binding_handoff_ref),
+        ],
+        [(name, ref, "seeded only in SourceIrisBridge owner interpreters")
+         for name, ref in hscript_candidates if name == "Achievements"],
+    )
+
+    # Language and Discord are owner-scoped services installed by the shared
+    # standard-services bridge. Trace the concrete engine entry and the final
+    # per-interpreter binding call so detached literal registrations cannot be
+    # mistaken for reachable APIs.
+    standard_path = engine_root / "source" / "PsychStandardServices.hx"
+    standard_code = _read_code(standard_path)
+    language_bindings_path = engine_root / "source" / "PsychLanguageBindings.hx"
+    language_bindings_code = _read_code(language_bindings_path)
+    discord_bindings_path = engine_root / "source" / "PsychDiscordBindings.hx"
+    discord_bindings_code = _read_code(discord_bindings_path)
+
+    lua_standard_ref = first_ref(
+        engine_root, runtime_path, runtime_code, runtime_install_region,
+        lua_compat_branch,
+    )[1]
+    standard_lua_region = method(standard_path, standard_code, "installLua")
+    standard_lua_runtime_ref = first_ref(
+        engine_root, standard_path, standard_code, standard_lua_region,
+        re.compile(r"\bruntimeFor\s*\(\s*host\s*,\s*interp\.variables\.get\s*\(\s*['\"]Paths['\"]\s*\)\s*,\s*origin\s*\)"),
+    )[1]
+    standard_lua_guard_ref = first_ref(
+        engine_root, standard_path, standard_code, standard_lua_region,
+        re.compile(r"\bif\s*\(\s*owner\s*==\s*null\s*\)\s*return\s*;"),
+    )[1]
+
+    def psych_lua_service_route(
+        route_name: str,
+        binding_path: Path,
+        binding_code: str,
+        helper_name: str,
+        expected_names: tuple[str, ...],
+        owner_field: str,
+    ) -> None:
+        service_call_ref = first_ref(
+            engine_root, standard_path, standard_code, standard_lua_region,
+            re.compile(
+                rf"\b{re.escape(helper_name)}\.installLua\s*\(\s*interp\s*,\s*owner\.{re.escape(owner_field)}\s*\)"
+            ),
+        )[1]
+        binding_region = method(binding_path, binding_code, "installLua")
+        direct = direct_bindings(engine_root, binding_path, binding_code, "installLua", DIRECT_BIND)
+        refs_by_name = {name: ref for name, ref in direct}
+        registrations = [
+            (name, refs_by_name.get(name)) for name in expected_names
+        ]
+        append_route(
+            route_name,
+            "Psych Lua",
+            [
+                ("PlayState.makeHaxeState creates LuaCompatInterp", lua_bridge_ref),
+                ("PlayState.makeHaxeState seeds compatibility bindings", seed_compat_ref),
+                ("PlayState.seedEngineCompat constructs PsychRuntimeBindings", construct_ref),
+                ("PlayState.seedEngineCompat calls runtime.install()", runtime_install_ref),
+                ("PsychRuntimeBindings.install routes LuaCompatInterp to achievements and standard services", lua_standard_ref),
+                ("PsychStandardServices.installLua resolves the owner runtime", standard_lua_runtime_ref),
+                ("installLua returns when the owner runtime is unavailable", standard_lua_guard_ref),
+                (f"PsychStandardServices.installLua delegates to {helper_name}", service_call_ref),
+                *[(f"{helper_name}.installLua registers {name}", ref) for name, ref in registrations],
+            ],
+            [(name, ref, "registered on each active LuaCompatInterp")
+             for name, ref in registrations if ref is not None],
+        )
+
+    psych_lua_service_route(
+        "Psych Lua Language callbacks",
+        language_bindings_path,
+        language_bindings_code,
+        "PsychLanguageBindings",
+        ("getTranslationPhrase", "getFileTranslation"),
+        "language",
+    )
+    psych_lua_service_route(
+        "Psych Lua Discord callbacks",
+        discord_bindings_path,
+        discord_bindings_code,
+        "PsychDiscordBindings",
+        ("changeDiscordPresence", "changeDiscordClientID"),
+        "discord",
+    )
+
+    standard_hscript_region = method(standard_path, standard_code, "installHscript")
+    standard_hscript_guard_ref = first_ref(
+        engine_root, standard_path, standard_code, standard_hscript_region,
+        re.compile(r"\bif\s*\(\s*!Std\.isOfType\s*\(\s*interp\s*,\s*SourceIrisBridge\s*\)\s*\)\s*return\s*;"),
+    )[1]
+    standard_hscript_runtime_ref = first_ref(
+        engine_root, standard_path, standard_code, standard_hscript_region,
+        re.compile(r"\bruntimeFor\s*\(\s*host\s*,\s*interp\.variables\.get\s*\(\s*['\"]Paths['\"]\s*\)\s*,\s*origin\s*\)"),
+    )[1]
+    standard_hscript_owner_guard_ref = first_ref(
+        engine_root, standard_path, standard_code, standard_hscript_region,
+        re.compile(r"\bif\s*\(\s*owner\s*==\s*null\s*\)\s*return\s*;"),
+    )[1]
+    psych_binder_standard_ref = first_ref(
+        engine_root, psych_binder_path, psych_binder_code,
+        method(psych_binder_path, psych_binder_code, "install"),
+        re.compile(r"PsychStandardServices\.installHscript\s*\(\s*host\s*,\s*interp\s*,\s*origin\s*\)"),
+    )[1]
+
+    def psych_hscript_import_route(
+        route_name: str,
+        language: bool,
+    ) -> None:
+        binding_path = language_bindings_path if language else discord_bindings_path
+        binding_code = language_bindings_code if language else discord_bindings_code
+        helper_name = "PsychLanguageBindings" if language else "PsychDiscordBindings"
+        owner_field = "language" if language else "discord"
+        import_name = "backend.Language" if language else "backend.DiscordClient"
+        service_install_ref = first_ref(
+            engine_root, standard_path, standard_code, standard_hscript_region,
+            re.compile(
+                rf"\b{re.escape(helper_name)}\.install\s*\(\s*evaluator\s*,\s*owner\.{owner_field}\s*\)"
+            ),
+        )[1]
+        binding_import_ref = first_ref(
+            engine_root, binding_path, binding_code, method(binding_path, binding_code, "install"),
+            re.compile(rf"\bbindImport\s*\(\s*['\"]{re.escape(import_name)}['\"]\s*,\s*type\s*\)"),
+        )[1]
+        candidate = [(import_name, binding_import_ref, "owner class token bound to source import")]
+        common_steps = [
+            ("PlayState.makeHaxeState creates SourceIrisBridge", plain_bridge_ref),
+            ("PlayState.makeHaxeState calls seedEngineCompat(interp)", seed_compat_ref),
+            ("PlayState.seedEngineCompat constructs PsychRuntimeBindings", construct_ref),
+            ("PlayState.seedEngineCompat calls runtime.install()", runtime_install_ref),
+            ("PsychRuntimeBindings.install seeds a SourceIrisBridge owner", owner_install_ref),
+        ]
+        install_preset_region = method(runtime_path, runtime_code, "installHscriptPreset")
+        preset_binding_ref = first_ref(
+            engine_root, runtime_path, runtime_code, install_preset_region, hscript_preset_call,
+        )[1]
+        hscript_steps = [
+            *common_steps,
+            ("installHscriptPreset installs PsychHscriptSourceBindings", preset_binding_ref),
+            ("PsychHscriptSourceBindings.install routes to standard services", psych_binder_standard_ref),
+            ("PsychStandardServices.installHscript requires SourceIrisBridge", standard_hscript_guard_ref),
+            ("installHscript resolves the owner runtime", standard_hscript_runtime_ref),
+            ("installHscript returns when the owner runtime is unavailable", standard_hscript_owner_guard_ref),
+            (f"installHscript delegates to {helper_name}", service_install_ref),
+            (f"{helper_name}.install binds {import_name}", binding_import_ref),
+        ]
+        append_route(route_name, "Psych HScript", hscript_steps, candidate)
+
+        # runHaxeCode creates another SourceIrisBridge through the same preset.
+        # Keep its reachability separate from the plain interpreter route.
+        embedded_steps = [
+            ("PlayState.makeHaxeState creates SourceIrisBridge for plain HScript", plain_bridge_ref),
+            ("PlayState.makeHaxeState calls seedEngineCompat(interp)", seed_compat_ref),
+            ("PlayState.seedEngineCompat constructs PsychRuntimeBindings", construct_ref),
+            ("PlayState.seedEngineCompat calls runtime.install()", runtime_install_ref),
+            ("PsychRuntimeBindings.install exposes a runHaxeCode closure using module()", run_call_ref),
+            ("PsychRuntimeBindings.module creates SourceIrisBridge", bridge_ref),
+            ("PsychRuntimeBindings.module installs HScript preset", embedded_install_ref),
+            ("PsychHscriptSourceBindings.install routes to standard services", psych_binder_standard_ref),
+            ("PsychStandardServices.installHscript requires SourceIrisBridge", standard_hscript_guard_ref),
+            ("installHscript resolves the owner runtime", standard_hscript_runtime_ref),
+            ("installHscript returns when the owner runtime is unavailable", standard_hscript_owner_guard_ref),
+            (f"installHscript delegates to {helper_name}", service_install_ref),
+            (f"{helper_name}.install binds {import_name}", binding_import_ref),
+        ]
+        append_route(route_name.replace("plain HScript", "embedded runHaxeCode"),
+            "Psych HScript", embedded_steps, candidate)
+
+    psych_hscript_import_route("Psych HScript Language import (plain HScript)", True)
+    psych_hscript_import_route("Psych HScript DiscordClient import (plain HScript)", False)
 
     # Nightmare Vision's gameplay loader stores the seeder as `configure`
     # and invokes it while loading the chart scope. This reaches both the
@@ -1847,11 +2129,110 @@ def _extract_named(
     return list(found.values())
 
 
+def _active_preprocessor_conditions(code: str, offset: int) -> list[str]:
+    """Return simple active Haxe ``#if`` guards before a source offset."""
+    stack: list[str] = []
+    for line in code[:offset].splitlines():
+        directive = line.strip()
+        conditional = re.fullmatch(r"#if\s+([A-Za-z_$][\w$]*)", directive)
+        if conditional is not None:
+            stack.append(conditional.group(1))
+        elif directive.startswith("#elseif") and stack:
+            branch = directive[len("#elseif"):].strip()
+            stack[-1] = "elseif " + branch
+        elif directive == "#else" and stack:
+            stack[-1] = "else " + stack[-1]
+        elif directive == "#end" and stack:
+            stack.pop()
+    return stack
+
+
+def _psych_reachable_lua_helper_entries(root: Path, files: list[Path]) -> list[ApiEntry]:
+    """Inventory callback helpers called from the pinned FunkinLua constructor.
+
+    Psych registers some Lua APIs in helpers outside ``psychlua/``. Only
+    helpers explicitly called as ``Class.addLuaCallbacks(lua)`` from the
+    constructor count; unrelated callback declarations elsewhere in source do
+    not become part of the donor surface.
+    """
+    funkin_lua = root / "source" / "psychlua" / "FunkinLua.hx"
+    if not funkin_lua.is_file():
+        return []
+    funkin_code = _read_code(funkin_lua)
+    constructor = _named_function_region(funkin_code, "new")
+    if constructor is None:
+        return []
+    constructor_body, constructor_offset = constructor
+    helper_calls = re.compile(
+        r"#if\s+([A-Za-z_$][\w$]*)\s+([A-Za-z_$][\w$]*)"
+        r"\s*\.\s*addLuaCallbacks\s*\(\s*lua\s*\)\s*;\s*#end"
+    )
+    helper_files: dict[str, tuple[Path, str, tuple[str, int], int, list[str]]] = {}
+    for path in files:
+        code = _read_code(path)
+        for call in _code_matches(constructor_body, helper_calls):
+            helper_name = call.group(2)
+            if helper_name in helper_files:
+                continue
+            declaration = re.search(rf"\bclass\s+{re.escape(helper_name)}\b", code)
+            method_declaration = re.search(
+                r"\bfunction\s+addLuaCallbacks\s*\(", code,
+            )
+            method = _named_function_region(code, "addLuaCallbacks")
+            if declaration is None or method_declaration is None or method is None:
+                continue
+            method_conditions = _active_preprocessor_conditions(code, method_declaration.start())
+            if "LUA_ALLOWED" not in method_conditions:
+                continue
+            class_conditions = _active_preprocessor_conditions(code, declaration.start())
+            call_condition = call.group(1)
+            if any(condition != call_condition for condition in class_conditions):
+                continue
+            helper_files[helper_name] = (
+                path, code, method, method_declaration.start(),
+                list(dict.fromkeys([call_condition, *class_conditions, *method_conditions])),
+            )
+
+    entries: dict[tuple[str, str, str], ApiEntry] = {}
+    for call in _code_matches(constructor_body, helper_calls):
+        helper_name = call.group(2)
+        resolved = helper_files.get(helper_name)
+        if resolved is None:
+            continue
+        path, code, method, declaration_offset, conditions = resolved
+        method_body, method_offset = method
+        call_ref = _ref(root, funkin_lua,
+                        _line_at(funkin_code, constructor_offset + call.start()))
+        method_ref = _ref(root, path, _line_at(code, declaration_offset))
+        for binding in _code_matches(method_body, LUA_CALLBACK):
+            name = binding.group(2)
+            registration_ref = _ref(root, path, _line_at(code, method_offset + binding.start()))
+            entry = ApiEntry(
+                dialect="Psych Lua",
+                group="registered functions",
+                name=name,
+                kind="function",
+                source=[registration_ref, method_ref, call_ref],
+                contract={
+                    "registration_conditions": conditions,
+                    "registration_chain": [
+                        {"step": f"FunkinLua.new calls {helper_name}.addLuaCallbacks(lua)",
+                         "source": asdict(call_ref), "condition": call.group(1)},
+                        {"step": f"{helper_name}.addLuaCallbacks is Lua-gated",
+                         "source": asdict(method_ref), "condition": "LUA_ALLOWED"},
+                    ],
+                },
+            )
+            _add_entry(entries, entry)
+    return list(entries.values())
+
+
 def _psych_donor_entries(root: Path) -> list[ApiEntry]:
     entries: list[ApiEntry] = []
     files = list(iter_haxe_files(root))
     psychlua = [path for path in files if "psychlua" in path.parts]
     entries.extend(_extract_named(root, psychlua, LUA_CALLBACK, "Psych Lua", "registered functions", "function"))
+    entries.extend(_psych_reachable_lua_helper_entries(root, files))
 
     hscript = root / "source" / "psychlua" / "HScript.hx"
     if hscript.is_file():

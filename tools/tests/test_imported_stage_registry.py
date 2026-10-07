@@ -259,6 +259,8 @@ class EngineCompat { public static function resolveStageAlias(name:String):Strin
 class Main {
   public var SONG:Dynamic = {song:'Improbable Outset', compatStorageFolder:'improbable-outset--codename-engine-d97d25757d'};
   public var curStage:StageHelper = new StageHelper('original');
+  public var nightmareVisionScripts:Dynamic=null;
+  function swapNightmareVisionStage(name:String):Bool throw 'Unexpected NV route in native/Codename registry fixture';
   public var hscriptStates:Map<String,Dynamic> = new Map();
   public var cleanupCalls:Int = 0;
   public function new() {}

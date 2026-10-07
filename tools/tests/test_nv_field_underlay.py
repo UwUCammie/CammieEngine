@@ -3,6 +3,7 @@
 import subprocess
 import tempfile
 import unittest
+from nv_sprite_dependency_support import add_native_sprite_dependencies
 
 from haxe_test_support import HAXE_COMMAND, FixturePath as Path
 
@@ -69,6 +70,10 @@ class Main {
 			'initial underlay should be black, transparent and fixed to the screen');
 		check(field.underlayAlphaMult == 1, 'source field underlay multiplier should default to one');
 		field.underlayAlphaMult = 0.35;
+		var helper:Dynamic=initial;
+		check(Std.isOfType(initial,NightmareVisionFlxSprite), 'actual FIELD wrapper identity');
+		check(helper.setScale(2,3,false)==initial && initial.scale.x==2 && initial.scale.y==3, 'actual FIELD helper executes without atlas owner IO');
+		helper.setScale(1,1,false);
 		var replacement = new FlxSprite();
 		field.underlaySpr = replacement;
 		check(field.underlaySpr == replacement && !initial.destroyed,
@@ -104,6 +109,7 @@ def write_fixture_stubs(work):
 	files = {
 		"flixel/FlxSprite.hx": r'''package flixel;
 class FlxSprite {
+	public var x:Float=0;public var y:Float=0;
 	public var width:Float = 0;
 	public var height:Float = 0;
 	public var color:Int = 0;
@@ -111,8 +117,8 @@ class FlxSprite {
 	public var scrollFactor:FixtureScrollFactor;
 	public var destroyed:Bool = false;
 	public var destroyCalls:Int = 0;
-	public function new() scrollFactor = new FixtureScrollFactor();
-	public function makeGraphic(width:Int, height:Int, color:Int):FlxSprite {
+	public function new(x:Float=0,y:Float=0) scrollFactor = new FixtureScrollFactor();
+	public function makeGraphic(width:Int, height:Int, color:Int=-1, unique:Bool=false, ?key:String):FlxSprite {
 		this.width = width; this.height = height; this.color = color; return this;
 	}
 	public function destroy():Void { destroyed = true; destroyCalls++; }
@@ -146,6 +152,7 @@ class StrumNote {
 }''',
 		"NightmareVisionNoteSkin.hx": r'''class NightmareVisionNoteSkin {}''',
 	}
+	add_native_sprite_dependencies(files)
 	for relative, content in files.items():
 		path = work / relative
 		path.parent.mkdir(parents=True, exist_ok=True)

@@ -18,6 +18,13 @@ class RuntimeImportSmokeState extends FlxState {
 	var importJob:ImportImportJob;
 	var cancellationRequested:Bool = false;
 
+	/** Keep the play-after-import smoke path in its preparation state while the
+	 * manager defers publication to a safe main-thread handoff. Worker completion
+	 * alone does not make the new registry revision safe to consume. */
+	static function waitForSuccessfulImportHandoff(result:Dynamic, error:Dynamic, runtimeCommitted:Bool):Bool {
+		return error == null && result != null && !runtimeCommitted;
+	}
+
 	override public function create():Void {
 		super.create();
 		// The automated importer window is not guaranteed to receive desktop
@@ -115,11 +122,19 @@ class RuntimeImportSmokeState extends FlxState {
 				return;
 			var result:Dynamic = snapshot.result;
 			var error:Dynamic = snapshot.error;
-			importJob = null;
+			if (error != null || result == null) {
+				importJob = null;
+				RuntimeImportSmokeHarness.finish(result, error);
+				return;
+			}
 			if (cancellationRequested) {
+				importJob = null;
 				RuntimeImportSmokeHarness.fail('timeout', 'import cancellation completed');
 				return;
 			}
+			if (waitForSuccessfulImportHandoff(result, error, snapshot.runtimeCommitted))
+				return;
+			importJob = null;
 			if (RuntimeImportSmokeHarness.finish(result, error)) {
 				if (RuntimeSmokeHarness.config().freeplay)
 					FlxG.switchState(new RuntimeSmokeFreeplayState());

@@ -963,7 +963,8 @@ class ScopedDependencyFixture {{
         commit_end = poll.index("if (!reportWritten)", commit_start)
         commit = poll[commit_start:commit_end]
         self.assertIn("localResult.importedSongs", commit)
-        self.assertIn("completeImportOnMainThread(importedNames)", commit)
+        self.assertIn("completeInitialImportHandoff(importedNames)", commit)
+        self.assertIn("runtimeCommitted =", commit)
         self.assertNotIn("scan.songs", commit)
         self.assertNotIn("localPhase != 'import-cancelled'", commit)
 
@@ -994,6 +995,7 @@ class ScopedDependencyFixture {{
         main_menu = (ROOT / "source/MainMenuState.hx").read_text()
         assets = (ROOT / "source/FNFAssets.hx").read_text()
         freeplay = (ROOT / "source/FreeplayState.hx").read_text()
+        manager = (ROOT / "source/ImportRefreshManager.hx").read_text()
         self.assertIn("FreeplayRegistry.getJson()", category)
         self.assertIn("FreeplayRegistry.getJson()", main_menu)
         self.assertIn("FreeplayState.currentSongList = epicCategoryJs[0].songs", category)
@@ -1001,7 +1003,9 @@ class ScopedDependencyFixture {{
         self.assertIn("for (songSnippet in currentSongList)", freeplay)
         # Import completion refreshes difficulty support for the committed
         # names; menu state creation then consumes the disk-backed registry.
-        self.assertIn("completeImportOnMainThread(importedNames)", self.source)
+        self.assertIn("completeInitialImportHandoff(importedNames)", self.source)
+        handoff = extract_method(manager, "static function tryHandoff(token:String):Bool")
+        self.assertIn("ModuleFunctions.completeImportOnMainThread(names)", handoff)
 
     def test_auto_keeps_standalone_packages_alongside_detected_engine_roots(self):
         """Mixed parent selections must not drop package-shaped songs."""
@@ -1030,12 +1034,157 @@ class ScopedDependencyFixture {{
         )
         self.assertIn("if (!indexed.exists(key))", discovery)
         self.assertIn("FileSystem.isDirectory(candidate)", discovery)
-        self.assertIn("audioSongFolders = indexNamedDirectories(audioRoot, audioFolderNames)", discovery)
+        self.assertIn("audioSongFolders = indexNamedDirectories(sourceAudioRoot, audioFolderNames)", discovery)
         self.assertIn("var chartSongFolders = indexNamedDirectories(chartsRoot, songFolderNames)", discovery)
         self.assertIn("chartSongFolders.get(StringTools.trim(songFolderName).toLowerCase())", discovery)
         self.assertIn("audioSongFolders.get(StringTools.trim(songFolderName).toLowerCase())", discovery)
         self.assertNotIn("findNamedDirectory(chartsRoot, songFolderName)", discovery)
         self.assertNotIn("findNamedDirectory(audioRoot, songFolderName)", discovery)
+
+    def test_asset_song_import_accepts_blank_optional_audio_roots_in_retained_family(self):
+        """A scanner's empty audio sentinel must not fail a retained NV chart scan."""
+        module = (ROOT / "source/ModuleFunctions.hx").read_text()
+        method = extract_method(module, "static function appendAssetSongImports")
+        fixture = f'''import haxe.io.Path;
+using StringTools;
+import ImportFileSystem as FileSystem;
+import FixtureDependencies.SongImport;
+import FixtureDependencies.SongImportSource;
+import FixtureDependencies.SongImportRejectionCollector;
+import FixtureDependencies.NightmareVisionDifficultyCompat as NightmareVisionDifficultyCompat;
+import FixtureDependencies.NightmareVisionScriptDiscovery as NightmareVisionScriptDiscovery;
+import FixtureDependencies.NightmareVisionChartCompat as NightmareVisionChartCompat;
+import FixtureDependencies.CoolUtil as CoolUtil;
+
+class Main {{
+  static inline var MAX_IMPORT_DISCOVERY_DIRECTORIES:Int = 64;
+
+{method}
+
+  static function findNamedDirectory(parent:String, wantedName:String):String {{
+    if (parent == null || StringTools.trim(parent) == '' || !FileSystem.isDirectory(parent)) return null;
+    for (entry in FileSystem.readDirectory(parent)) {{
+      var child = Path.join([parent, entry]);
+      if (entry.toLowerCase() == wantedName.toLowerCase() && FileSystem.isDirectory(child)) return child;
+    }}
+    return null;
+  }}
+  static function importPathKey(path:String):String return path == null ? '' : Path.normalize(path);
+  static function canonicalNightmareVisionPackageRoot(_assetRoot:String):String return null;
+  static function importWorkCancelled():Bool return false;
+  static function findImportFile(root:String, names:Array<String>):String return null;
+  static function readSongChart(path:String):Dynamic return null;
+  static function inferPsychStageForImport(songData:SongImport, chartSong:Dynamic,
+      sourceRoot:String, chartRoot:String, fallbackSongName:String):Void {{}}
+  static function songImportFromAssetFolders(songPath:String, dataPath:String, folderName:String,
+      ?musicPath:String):SongImport return {{
+    name:folderName, inst:null, voices:null, diffFiles:[], diagnostics:[], compatMetadata:null,
+    sourceFolder:null, sourceSelectableDifficulties:null, sourceUnsupportedDifficulties:null,
+    sourceRoot:null, engine:null, importSourceInfo:null
+  }};
+  static function normalizeNightmareVisionVocalRoles(songData:SongImport):Void {{}}
+  static function validateAndRecordSongImport(collector:SongImportRejectionCollector, songData:SongImport,
+      sourceRoot:String, dataFolder:String, engine:String):Bool return songData != null;
+  static function importSongFolderName(songData:SongImport):String return songData.name;
+  static function importedChartFileName(targetFolder:String, chartPath:String, index:Int,
+      ?sourceFolder:String):String return targetFolder;
+  static function prepareInstalledDependencyRoots(songData:SongImport, sourceRoot:String, engine:String):Void {{}}
+
+  static function main():Void {{
+    var args = Sys.args();
+    var install = args[0];
+    var stage = args[1];
+    var source = args[2];
+    ImportIO.begin(install, stage);
+    var songs:Array<SongImport> = [];
+    var seen:Map<String, Bool> = new Map();
+    var sourcePaths:Map<String, SongImportSource> = new Map();
+    appendAssetSongImports(songs, seen, Path.join([source, 'assets/data']), '', '', sourcePaths,
+      source, ImportEngine.NIGHTMARE_VISION, null);
+    if (songs.length != 1 || songs[0].name != 'retained-state-fixture')
+      throw 'The nested alpha chart was not discovered with blank optional roots.';
+    if (songs[0].sourceRoot != Path.join([source, 'content/alpha']))
+      throw 'The retained song lost its direct package owner.';
+    var info = songs[0].importSourceInfo;
+    if (info == null || info.data != Path.join([source, 'content/alpha/songs/retained-state-fixture/data']))
+      throw 'The nested chart data path changed during discovery.';
+    if (sourcePaths.get('retained-state-fixture') == null)
+      throw 'The source-path map did not retain the discovered chart.';
+    ImportIO.end();
+    Sys.println('blank optional audio roots preserved retained alpha discovery');
+  }}
+}}
+'''
+        dependencies = r'''package;
+typedef SongImport = {
+  var name:String;
+  var inst:Null<String>;
+  var voices:Null<String>;
+  var diffFiles:Array<String>;
+  var diagnostics:Array<String>;
+  var compatMetadata:Dynamic;
+  var sourceFolder:Null<String>;
+  var sourceSelectableDifficulties:Array<String>;
+  var sourceUnsupportedDifficulties:Array<String>;
+  var sourceRoot:Null<String>;
+  var engine:Null<String>;
+  var importSourceInfo:SongImportSource;
+}
+typedef SongImportSource = {
+  var song:Null<String>;
+  var data:String;
+  var destination:String;
+  var sourceRoot:Null<String>;
+  var engine:Null<String>;
+}
+typedef SongImportRejectionCollector = Dynamic;
+typedef ConversionResult = { var supported:Bool; var diagnostics:Array<String>; }
+class NightmareVisionDifficultyCompat {
+  public static function fromSourceRoot(root:String):Dynamic return {names:['normal'], diagnostic:null};
+  public static function allows(names:Array<String>, difficulty:String):Bool return true;
+}
+class NightmareVisionScriptDiscovery {
+  public static function discover(root:String, song:String, chart:Dynamic, events:Dynamic,
+      parseJson:String->Dynamic):Dynamic return null;
+  public static function unsupportedDiagnostics(plan:Dynamic):Array<String> return [];
+}
+class NightmareVisionChartCompat {
+  public static function convert(chart:Dynamic, path:String):ConversionResult return null;
+}
+class CoolUtil {
+  public static function parseJson(value:String):Dynamic return null;
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:
+            base = Path(temporary)
+            install = base / "install"
+            stage = install / "import-cache/staging/session"
+            source = base / "source"
+            alpha = source / "content/alpha/songs/retained-state-fixture"
+            beta = source / "content/beta/assets/scripts/states"
+            stage.mkdir(parents=True)
+            (source / "assets/data").mkdir(parents=True)
+            (alpha / "data").mkdir(parents=True)
+            (alpha / "audio").mkdir(parents=True)
+            beta.mkdir(parents=True)
+            (source / "Project.xml").write_text('<project><app main="Main"/></project>', encoding="utf-8")
+            (source / "content/alpha/meta.json").write_text('{"name":"alpha"}', encoding="utf-8")
+            (source / "content/beta/meta.json").write_text('{"name":"beta"}', encoding="utf-8")
+            (alpha / "data/normal.json").write_text('{"song":{"song":"Fixture","notes":[]}}', encoding="utf-8")
+            (alpha / "audio/Inst.ogg").write_bytes(b"OggS-fixture")
+            (beta / "TitleState.hx").write_text('class TitleState {}', encoding="utf-8")
+            (base / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
+            (base / "FixtureDependencies.hx").write_text(dependencies, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(base), "--run", "Main",
+                 str(install), str(stage), str(source)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("blank optional audio roots preserved retained alpha discovery", result.stdout)
 
     def test_registry_keys_are_not_themselves_dependency_successes(self):
         source = self.source

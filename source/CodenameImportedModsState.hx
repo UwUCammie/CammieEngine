@@ -8,6 +8,7 @@ import ImportedModDiscovery.ImportedModPackage;
 /** Explicit package picker for imported owners; no package is chosen implicitly. */
 class CodenameImportedModsState extends MusicBeatState {
 	var entries:Array<ImportedModPackage> = [];
+	var publishedEntries:Array<ImportedModPackage> = [];
 	var diagnostics:Array<String> = [];
 	var selected:Int = 0;
 	var heading:FlxText;
@@ -15,6 +16,9 @@ class CodenameImportedModsState extends MusicBeatState {
 	var subtitles:Array<FlxText> = [];
 	var details:FlxText;
 	var notice:FlxText;
+	var importAvailability:ImportRefreshAvailabilitySnapshot;
+	var availabilityRevision:Int = -1;
+	var importGeneration:Int = -1;
 
 	override function create():Void {
 		super.create();
@@ -22,12 +26,7 @@ class CodenameImportedModsState extends MusicBeatState {
 		heading = new FlxText(40, 28, FlxG.width - 80, 'Imported Mods', 34);
 		heading.setFormat(null, 34, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		add(heading);
-		var catalog = '';
-		if (FNFAssets.exists(CodenameModCatalog.PATH)) try catalog = FNFAssets.getText(CodenameModCatalog.PATH)
-		catch (error:Dynamic) diagnostics.push('[codename-mod-catalog] ' + Std.string(error));
-		var discovery = ImportedModDiscovery.discover('assets/data', catalog);
-		entries = discovery.packages;
-		for (message in discovery.diagnostics) diagnostics.push(message);
+		refreshCatalog();
 		for (index in 0...8) {
 			var row = new FlxText(76, 102 + index * 54, FlxG.width - 152, '', 22);
 			row.setFormat(null, 22, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
@@ -49,11 +48,59 @@ class CodenameImportedModsState extends MusicBeatState {
 			'Up/Down: choose package   Enter: open package   Backspace: native menu', 15);
 		notice.setFormat(null, 15, 0xFFA0A0A0, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		add(notice);
+		syncImportAvailability();
 		refreshRows();
+	}
+
+	function refreshCatalog():Void {
+		var catalog = '';
+		if (FNFAssets.exists(CodenameModCatalog.PATH)) try catalog = FNFAssets.getText(CodenameModCatalog.PATH)
+		catch (error:Dynamic) diagnostics.push('[codename-mod-catalog] ' + Std.string(error));
+		var discovery = ImportedModDiscovery.discover('assets/data', catalog);
+		publishedEntries = discovery.packages;
+		for (message in discovery.diagnostics) if (!diagnostics.contains(message)) diagnostics.push(message);
+		reconcilePendingEntries();
+		#if sys
+		importGeneration = ImportRefreshManager.generation;
+		#end
+	}
+
+	function reconcilePendingEntries():Void {
+		var prior = entries.length > selected ? entries[selected].root : '';
+		entries = publishedEntries.copy();
+		if (importAvailability != null) for (candidate in importAvailability.pendingSongs) {
+			if (candidate.ownerRoot == null || candidate.ownerRoot == '') continue;
+			var present = false;
+			for (item in entries) if (item.root == candidate.ownerRoot) {present = true; break;}
+			if (present) continue;
+			var source = StringTools.replace(candidate.sourceRoot, '\\', '/');
+			while (StringTools.endsWith(source, '/')) source = source.substr(0, source.length - 1);
+			var title = source.substr(source.lastIndexOf('/') + 1);
+			entries.push({root:candidate.ownerRoot, title:title, engine:'Import in progress', launchState:'', songCount:0});
+		}
+		selected = 0;
+		for (index in 0...entries.length) if (entries[index].root == prior) selected = index;
+	}
+
+	function syncImportAvailability():Bool {
+		#if sys
+		ImportRefreshManager.browseTick();
+		var changed = availabilityRevision != ImportRefreshManager.availabilityRevision();
+		if (changed) {
+			importAvailability = ImportRefreshManager.availabilitySnapshot();
+			availabilityRevision = importAvailability.revision;
+			reconcilePendingEntries();
+		}
+		if (importGeneration != ImportRefreshManager.generation) {refreshCatalog(); changed = true;}
+		return changed;
+		#else
+		return false;
+		#end
 	}
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
+		if (syncImportAvailability()) refreshRows();
 		if (controls.UP_MENU || FlxG.keys.justPressed.UP) {
 			if (entries.length > 0) selected = selected <= 0 ? entries.length - 1 : selected - 1;
 			refreshRows();
@@ -86,17 +133,20 @@ class CodenameImportedModsState extends MusicBeatState {
 			}
 			var item = entries[itemIndex];
 			var current = itemIndex == selected;
+			var ready = FreeplaySongAvailability.ownerReadiness(importAvailability, item.root).ready;
 			row.text = (current ? '> ' : '  ') + item.title;
-			row.color = current ? FlxColor.YELLOW : FlxColor.WHITE;
+			row.color = !ready ? 0xFF777777 : current ? FlxColor.YELLOW : FlxColor.WHITE;
 			subtitle.text = '(' + item.engine + ')';
-			subtitle.color = current ? FlxColor.YELLOW : 0xFFB9B9C5;
+			subtitle.color = !ready ? 0xFF777777 : current ? FlxColor.YELLOW : 0xFFB9B9C5;
 		}
 		if (details != null) {
 			if (entries.length == 0)
 				details.text = diagnostics.length == 0 ? 'No imported packages are available.' : diagnostics.slice(0, 2).join('\n');
 			else {
 				var item = entries[selected];
-				if (item.launchState != '')
+				var readiness = FreeplaySongAvailability.ownerReadiness(importAvailability, item.root);
+				if (!readiness.ready) details.text = readiness.reason;
+				else if (item.launchState != '')
 					details.text = 'Open the package\'s authored title or intro screen.';
 				else if (item.songCount > 0)
 					details.text = 'Open native Freeplay for ' + item.songCount + ' imported song'
@@ -109,7 +159,11 @@ class CodenameImportedModsState extends MusicBeatState {
 	}
 
 	function launchSelected():Void {
+		syncImportAvailability();
+		if (entries.length == 0) return;
 		var item = entries[selected];
+		var readiness = FreeplaySongAvailability.ownerReadiness(importAvailability, item.root);
+		if (!readiness.ready) {details.text = readiness.reason; return;}
 		if (item.launchState != '') {
 			if (!CodenameModRuntime.activateOwner(item.root)) {
 				diagnostics = CodenameModRuntime.diagnostics();

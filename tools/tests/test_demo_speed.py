@@ -85,6 +85,8 @@ class PsychRuntimeBindings {
 }
 class StrumGroup {public var members:Array<Dynamic>=[]; public function new() {}}
 class DemoTest {
+	// This renderer-free demo fixture has no source startup redirect.
+	var nightmareVisionStartupRedirect:Bool=false;
  var nightmareVisionFields:Array<{ID:Int,strumline:StrumGroup}>=[];
  var demoMode=true; var demoPlaybackRate:Float=1;
  var demoSpeedTxt={text:""}; var vocals=new Audio();
@@ -139,6 +141,10 @@ class DemoTest {
     && state.haxeVars.get("stepCrochet") == Conductor.stepCrochet,
     "Timing globals must follow the authoritative Conductor clock");
   check(state.demoSpeedTxt.text.indexOf("1.5x")>=0, "HUD should display the speed");
+  state.nightmareVisionStartupRedirect=true;
+  state.update(0);
+  check(state.demoPlaybackRate==1.5, "A pending source startup redirect must not advance demo controls");
+  state.nightmareVisionStartupRedirect=false;
   for(i in 0...200) state.update(0);
   check(state.demoPlaybackRate==50, "Speed must cap at 50x");
   FlxG.keys.justPressed.LEFT=true;

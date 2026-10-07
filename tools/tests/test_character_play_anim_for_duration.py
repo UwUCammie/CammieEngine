@@ -155,10 +155,12 @@ class Main {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_nightmare_vision_bopper_exposes_the_inherited_sprite_helper(self):
-        source = (ROOT / "source/NightmareVisionBopper.hx").read_text()
+        bopper = (ROOT / "source/NightmareVisionBopper.hx").read_text()
+        self.assertIn("extends NightmareVisionFunkinSprite", bopper)
+        source = (ROOT / "source/NightmareVisionFunkinSprite.hx").read_text()
         helper = function_body(source, "playAnimForDuration")
         play = function_body(source, "playAnim")
-        self.assertIn("@:keep public function playAnimForDuration", source)
+        self.assertIn("public function playAnimForDuration", source)
         self.assertIn("if (!canPlayAnimations) return;", play)
 
         fixture = r'''class FlxTimer {

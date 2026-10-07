@@ -60,6 +60,8 @@ class CompatScriptImportTest(unittest.TestCase):
                 "static function readImportJson",
                 "static function mergeModPlusCharacterAssets",
                 "static function compatScriptTreeNames",
+                "static function mergePsychLanguageDataScopes",
+                "static function mergePsychLanguageFiles",
                 "static function mergeCompatScriptTrees",
             )
         )
@@ -126,6 +128,31 @@ class CopyFixture {{
       throw 'packaged assets/shared/stages metadata was not retained under the owner';
     if (FileSystem.exists(Path.join([destination, 'assets', 'stages', 'packaged-stage.json'])))
       throw 'packaged stage metadata retained the source assets prefix';
+    var rootLanguage = Path.join([destination, 'data', 'en-US.lang']);
+    if (File.getContent(rootLanguage) != 'English (US)\\r\\nhello: "Root"\\r\\n')
+      throw 'root data language bytes were not retained exactly';
+    if (File.getContent(Path.join([destination, 'data', 'languages', 'fr-FR.LANG']))
+        != 'Francais\\nhello: "Nested"\\n')
+      throw 'nested language file or case-insensitive extension was not retained';
+    if (File.getContent(Path.join([destination, 'shared', 'data', 'en-US.lang']))
+        != 'English (US)\\nhello: "Shared"\\n')
+      throw 'shared-library language was flattened or omitted';
+    if (File.getContent(Path.join([destination, 'week1', 'data', 'en-US.lang']))
+        != 'English (US)\\nhello: "Current level"\\n')
+      throw 'current-level language was not preserved in its library';
+    if (File.getContent(Path.join([destination, 'base_game', 'week1', 'data', 'en-US.lang']))
+        != 'English (US)\\nhello: "Base game level"\\n')
+      throw 'base-game library language was not preserved';
+    if (File.getContent(Path.join([destination, 'library', 'alternate', 'data', 'en-US.lang']))
+        != 'English (US)\\nhello: "Named library"\\n')
+      throw 'named library language was not preserved';
+    if (FileSystem.exists(Path.join([destination, 'mods', 'untrusted', 'data', 'en-US.lang']))
+        || FileSystem.exists(Path.join([destination, 'week1', 'data', 'languages', 'ignored.json'])))
+      throw 'unrelated mods or non-language data was copied';
+    File.saveContent(rootLanguage, 'user-owned language override');
+    mergeCompatScriptTrees(Path.join([source, 'assets']), source, 'Psych Engine', result);
+    if (File.getContent(rootLanguage) != 'user-owned language override')
+      throw 'reimport replaced an existing owner language file';
     var modPlusRoot = Sys.args()[1];
     var modPlus = mergeCompatScriptTrees(modPlusRoot, modPlusRoot, 'Modding Plus', result);
     if (!FileSystem.exists(Path.join([modPlus, 'images', 'custom_stages', 'custom_stages.json'])))
@@ -175,6 +202,21 @@ class CopyFixture {{
             (donor / "assets/stages/packaged-stage.json").write_text('{"defaultZoom":0.73}', newline='\n')
             (donor / "assets/shared/stages").mkdir(parents=True)
             (donor / "assets/shared/stages/shared-stage.json").write_text('{"defaultZoom":0.81}', newline='\n')
+            language_bytes = {
+                "assets/data/en-US.lang": b'English (US)\r\nhello: "Root"\r\n',
+                "assets/data/languages/fr-FR.LANG": b'Francais\nhello: "Nested"\n',
+                "assets/shared/data/en-US.lang": b'English (US)\nhello: "Shared"\n',
+                "assets/week1/data/en-US.lang": b'English (US)\nhello: "Current level"\n',
+                "assets/base_game/week1/data/en-US.lang": b'English (US)\nhello: "Base game level"\n',
+                "assets/library/alternate/data/en-US.lang": b'English (US)\nhello: "Named library"\n',
+                "assets/mods/untrusted/data/en-US.lang": b'English (US)\nhello: "Untrusted"\n',
+            }
+            for relative, contents in language_bytes.items():
+                path = donor / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(contents)
+            (donor / "assets/week1/data/languages").mkdir(parents=True)
+            (donor / "assets/week1/data/languages/ignored.json").write_text('{"ignored":true}', newline='\n')
             (donor / "shared/scripts").mkdir(parents=True)
             (donor / "shared/scripts/shared.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "data/characters").mkdir(parents=True)
@@ -202,6 +244,8 @@ class CopyFixture {{
                 capture_output=True,
                 text=True,
             )
+            for relative, contents in language_bytes.items():
+                self.assertEqual((donor / relative).read_bytes(), contents, relative)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("assets/imported_mods/psych-engine-donor-", result.stdout + result.stderr)
 
@@ -608,6 +652,8 @@ class RepairFixture {{
                 "static function mergeNightmareVisionAssetFiles",
                 "static function compatScriptNamespaceHasExpectedFiles",
                 "static function sourceHasCompatScriptTree",
+                "static function mergePsychLanguageDataScopes",
+                "static function mergePsychLanguageFiles",
                 "static function isImportFile",
                 "static function validModuleName",
                 "static function importSongFolderName",
@@ -615,6 +661,9 @@ class RepairFixture {{
                 "static function compatScriptManifestNeedsRepair",
                 "static function mergeCompatScriptTrees",
                 "static function mergeSelectedNightmareVisionScriptOwners",
+                "static function canonicalNightmareVisionPackageRoot",
+                "static function retainNightmareVisionPackageNamespace",
+                "public static function publishNightmareVisionFamilyMemberRoots",
             )
         )
         manifest = (ROOT / "source/CompatScriptManifest.hx").read_text()
@@ -626,6 +675,19 @@ using StringTools;
 
 class ImportSettings {{
   public static function normalizeSourcePath(path:String):String return Path.normalize(path);
+}}
+class ImportPackageFamilyCatalog {{
+  public static function isAuthenticatedNightmareVisionContainer(path:String):Bool {{
+    var root = ImportRootScanner.inspectRoot(path, ImportEngine.AUTO);
+    if (root == null || root.engine != ImportEngine.NIGHTMARE_VISION || root.evidence == null)
+      return false;
+    for (item in root.evidence)
+      if (StringTools.startsWith(item, 'Nightmare Vision executable package marker:')
+          || StringTools.startsWith(item, 'Nightmare Vision Haxe project package:')
+          || StringTools.startsWith(item, 'Nightmare Vision chart metadata: format=nmv2'))
+        return true;
+    return false;
+  }}
 }}
 typedef SongImport = {{
   var name:String;
@@ -678,6 +740,8 @@ class RepairFixture {{
     var mergedDestination = mergeCompatScriptTrees(donor, donor, ImportEngine.NIGHTMARE_VISION, result);
     if (mergedDestination != destination || result.failed != 0)
       throw 'NMV owner copy failed: ' + Std.string(result.errors);
+    if (File.getContent(Path.join([destination, 'meta.json'])) != '{{"name":"single package"}}')
+      throw 'package-local Nightmare Vision config was not copied byte-for-byte';
     var importedHx = Path.join([destinationScripts, 'global.hx']);
     if (!FileSystem.exists(importedHx)
         || File.getContent(importedHx) != 'function onLoad() {{}}')
@@ -835,6 +899,41 @@ class RepairFixture {{
     if (compatScriptManifestNeedsRepair(song))
       throw 'repair did not clear after restoring the generic .hx script';
 
+    // Chartless siblings still receive a real runtime namespace when their
+    // package-local config and assets are present. A shared-container config
+    // cannot enroll a child package.
+    var chartlessGame = donor + '-chartless-game';
+    ensureDirectory(Path.join([chartlessGame, 'content']));
+    ensureDirectory(Path.join([chartlessGame, 'assets']));
+    File.saveContent(Path.join([chartlessGame, 'Project.xml']),
+      '<project><app package="com.nmvTeam.nightmareEngine" /></project>');
+    var chartlessRoot = Path.join([chartlessGame, 'content', 'chartless-family-member']);
+    ensureDirectory(Path.join([chartlessRoot, 'assets', 'images']));
+    ensureDirectory(Path.join([chartlessRoot, 'assets', 'scripts']));
+    File.saveContent(Path.join([chartlessRoot, 'meta.json']), '{{"name":"chartless"}}');
+    File.saveContent(Path.join([chartlessRoot, 'assets', 'images', 'menu.png']), 'menu asset');
+    File.saveContent(Path.join([chartlessRoot, 'assets', 'scripts', 'mod.hx']), 'function onLoad() {{}}');
+    var chartlessResult = publishNightmareVisionFamilyMemberRoots([chartlessRoot]);
+    var chartlessOwner = CompatScriptManifest.destinationRoot(chartlessRoot, ImportEngine.NIGHTMARE_VISION);
+    if (chartlessResult.failed != 0
+        || !FileSystem.exists(Path.join([chartlessOwner, 'meta.json']))
+        || !FileSystem.exists(Path.join([chartlessOwner, 'images', 'menu.png']))
+        || !FileSystem.exists(Path.join([chartlessOwner, 'scripts', 'mod.hx']))
+        || File.getContent(Path.join([chartlessOwner, 'meta.json'])) != '{{"name":"chartless"}}'
+        || File.getContent(Path.join([chartlessOwner, 'images', 'menu.png'])) != 'menu asset'
+        || File.getContent(Path.join([chartlessOwner, 'scripts', 'mod.hx'])) != 'function onLoad() {{}}')
+      throw 'chartless configured Nightmare Vision package was not fully published: copied='
+        + chartlessResult.copied + ' failed=' + chartlessResult.failed + ' errors='
+        + Std.string(chartlessResult.errors) + ' owner=' + chartlessOwner;
+    var unconfiguredRoot = Path.join([chartlessGame, 'content', 'unconfigured-family-member']);
+    ensureDirectory(Path.join([unconfiguredRoot, 'assets', 'images']));
+    File.saveContent(Path.join([unconfiguredRoot, 'assets', 'images', 'menu.png']), 'unconfigured asset');
+    var unconfiguredOwner = CompatScriptManifest.destinationRoot(unconfiguredRoot,
+      ImportEngine.NIGHTMARE_VISION);
+    var unconfiguredResult = publishNightmareVisionFamilyMemberRoots([unconfiguredRoot]);
+    if (unconfiguredResult.failed != 0 || FileSystem.exists(unconfiguredOwner))
+      throw 'family publication substituted a missing package config';
+
     FileSystem.deleteFile(copiedSongDestination);
     if (!compatScriptManifestNeedsRepair(song))
       throw 'missing NMV song script was treated as complete';
@@ -861,6 +960,20 @@ class RepairFixture {{
             temp = Path(folder)
             install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
+            (temp / "ImportRootScanner.hx").write_text('''
+import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+class ImportRootScanner {
+  public static function inspectRoot(root:String, _engine:String):{var engine:String; var evidence:Array<String>;} {
+    var marker = Path.join([root, 'Project.xml']);
+    if (!FileSystem.exists(marker) || !FileSystem.isDirectory(Path.join([root, 'content']))) return null;
+    var raw = File.getContent(marker).toLowerCase();
+    if (raw.indexOf('com.nmvteam.nightmareengine') < 0) return null;
+    return {engine:'Nightmare Vision',
+      evidence:['Nightmare Vision Haxe project package: com.nmvTeam.nightmareEngine']};
+  }
+}''', newline='\n')
             (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in (
@@ -874,6 +987,7 @@ class RepairFixture {{
             donor = temp / "donor"
             (donor / "scripts").mkdir(parents=True)
             (donor / "scripts/global.hx").write_text("function onLoad() {}", newline='\n')
+            (donor / "meta.json").write_text('{"name":"single package"}', newline='\n')
             (donor / "data/stages").mkdir(parents=True)
             (donor / "data/stages/stage.hx").write_text("function create() {}", newline='\n')
             (donor / "data/stages/nested").mkdir(parents=True)

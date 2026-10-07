@@ -11,11 +11,12 @@ import flixel.util.helpers.FlxBounds;
 /** Actual Nightmare Vision source bar group, with owner-local image loading. */
 @:keep
 @:nullSafety
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionBar extends FlxSpriteGroup implements NightmareVisionIUiSprite
 {
-	public final bg:FlxSprite;
-	public final leftBar:FlxSprite;
-	public final rightBar:FlxSprite;
+	public final bg:NightmareVisionFlxSprite;
+	public final leftBar:NightmareVisionFlxSprite;
+	public final rightBar:NightmareVisionFlxSprite;
 
 	public var valueFunction:Null<Void->Float> = null;
 
@@ -46,17 +47,22 @@ class NightmareVisionBar extends FlxSpriteGroup implements NightmareVisionIUiSpr
 
 		this.valueFunction = valueFunction;
 
-		bg = new FlxSprite().loadGraphic(owner.image(image));
+		bg = new NightmareVisionFlxSprite(0, 0, null, owner.nightmarePaths);
+		bg.loadGraphic(owner.image(image));
 		bg.setPosition(bg.x + bgOffset.x, bg.y + bgOffset.y);
 
 		@:bypassAccessor barWidth = Std.int(bg.width - 6);
 		@:bypassAccessor barHeight = Std.int(bg.height - 6);
 
-		leftBar = new FlxSprite().makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
+		leftBar = new NightmareVisionFlxSprite(0, 0, null, owner.nightmarePaths);
+		leftBar.makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
 
-		rightBar = new FlxSprite().makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
+		rightBar = new NightmareVisionFlxSprite(0, 0, null, owner.nightmarePaths);
+		rightBar.makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
 		rightBar.color = FlxColor.BLACK;
 
+		NightmareVisionSpriteMethods.bind(this, owner.spriteOwner);
+		for (child in [bg, leftBar, rightBar]) NightmareVisionSpriteMethods.bind(child, owner.spriteOwner);
 		add(leftBar);
 		add(rightBar);
 		add(bg);

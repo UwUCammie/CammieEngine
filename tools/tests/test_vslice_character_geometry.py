@@ -139,6 +139,7 @@ class FlxPoint {
   public function new(x:Float = 0, y:Float = 0) { this.x = x; this.y = y; }
   public function set(x:Float, y:Float):FlxPoint { this.x = x; this.y = y; return this; }
   public function add(x:Float, y:Float):FlxPoint { this.x += x; this.y += y; return this; }
+  public function subtract(point:FlxPoint):FlxPoint { x -= point.x; y -= point.y; return this; }
 }
 class FakeAnim {
   public var name:String;
@@ -161,6 +162,11 @@ class CodenameCharacterEvent {
 }
 class Conductor { public static var songPosition:Float = 0; }
 class PlayState { public static var instance:Dynamic = null; }
+// The separately verified NV Stage channel must remain inactive for V-Slice.
+class NightmareVisionFunkinSpriteAnimation {
+  public static function transformOffset(sprite:Dynamic,input:FlxPoint,base:FlxPoint,output:FlxPoint):FlxPoint
+    throw 'NV Stage offsets unexpectedly entered the V-Slice fixture';
+}
 class FakePlayState {
   public function new() {}
   public function dispatchHxcCharacterScreenPosition(actor:Character, result:FlxPoint,
@@ -192,6 +198,9 @@ class FakeSprite {
   }
 }
 class Character extends FakeSprite {
+  var sourceStageAnimOffset:Null<FlxPoint> = null;
+  var sourceStageOffsetBase:Null<FlxPoint> = null;
+  var sourceStageOffsetScratch:Null<FlxPoint> = null;
   public var vSliceBaseFrames:Dynamic;
   public var animation:FakeAnimation = new FakeAnimation();
   public var canPlayAnimations:Bool = true;

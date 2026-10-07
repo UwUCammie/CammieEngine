@@ -1,6 +1,42 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.16 alpha - CammieEngine
+	- Add owner-scoped Psych language parsing, phrase/file translation callbacks and glyph reloads shared by Lua, HScript, reflection and achievement text.
+	- Publish authored Psych language files from authenticated package data scopes and retained-source refreshes, preserving source bytes and local output edits.
+	- Support source Psych Discord callbacks through the existing shared daemon, retain requests before startup, and restore only identity/presence values still owned by the departing session.
+	- Share owner-scoped Psych achievement maps, score/unlock callbacks and private saves across Lua, HScript and class reflection, with source popup rendering and cleanup.
+	- Preserve achievement save flush boundaries through the shared owner storage policy, and keep live popup icons valid across scene bitmap-cache clearing.
+	- Expose Nightmare Vision source Main cache helpers through shared interpreter reflection, preserve filtered-camera resize behavior, and remove captured Main listeners when leaving the imported session.
+	- Run the source Nightmare Vision Init sequence through captured owner services, with private source highscores, saved controls, startup metadata, diagnostic plugins and scoped native-setting restoration.
+	- Add the source Splash lifecycle with owner-scoped intro media, branding, timing and cancellation cleanup.
+	- Handle absent optional audio directories when importing nested song packages without weakening retained-source path validation.
+	- Preserve Nightmare Vision package ownership and namespaces for assets-root scans, publish verified sibling metadata from retained snapshots, and regenerate older imports with the corrected family mapping.
+	- Share source script construction for Nightmare Vision states and substates; preserve source path/name lookup, top-level parent timing and distinct missing-script versus parse-failure behavior.
+	- Retain one Nightmare Vision source session across constructor-based state requests, selected-package redirects and resets; restore native presentation when leaving that session.
+	- Add source state/substate lifecycle, title/main-menu and full ColorSwap adapters, with private flashing preferences and a source swipe fallback for missing scripted transitions.
+	- Retain authenticated Nightmare Vision sibling packages and their local metadata during import, including chartless support packages; preserve exact namespace identities during source refreshes.
+	- Apply source-selected Nightmare Vision window, font, UI prefix and RPC configuration with shared live mod options, isolated package saves and native configuration restoration at owner teardown.
+	- Keep queued/importing/refreshing songs visible in gray while fully published mods remain playable; let imports continue when leaving Import Settings, preserve the selected category, and unlock each package after its safe runtime handoff.
+	- Allow provenance-authorized Nightmare Vision package families to share source selection and private mod-list state, with asset lookup following the selected package and retained resources released at owner teardown.
+	- Use one embedded importer progress card for scans, imports and automatic refreshes, with shared phase/count/activity/elapsed/ETA tracking and correctly scoped Cancel controls.
+	- Avoid hashing every regenerated output twice before publication; retain output verification, local-edit protection, recovery checks and complete source snapshots.
+	- Honor per-note animation suppression during automatic hits while retaining custom actor callbacks, preventing the default character from singing on notes assigned to another actor.
+	- Show automatic import progress only during active work in its current menu; keep refresh warnings in import details instead of persistent or replayed popups.
+	- Use actual Nightmare Vision Stage containers, source sprite construction and script loading order; preserve mounted ownership, captured asset lifetimes and live script-group pointers.
+	- Share custom-event fallback ownership between Psych and Nightmare Vision so authored handlers do not also spawn host fallback effects, while retaining each engine's built-in event rules.
+	- Preserve mixed note callback argument types and dynamic callback results on Windows, allowing authored alternate-character singing and speaker selection.
+	- Install the same source HUD bindings in embedded and plain Psych HScript so scripted icon and bar changes reach the displayed objects.
+	- Use actual Nightmare Vision character groups with writable source caches, independent parent and game-role pointers, native placement and field-owner changes.
+	- Preserve character-script ordering, manual group attachment after source STOP, retained actor animations and native group cleanup without flat actor duplication.
+	- Capture source Character construction ownership before asset reads and reject released owners; retain separate Psych, native and Codename paths.
+	- Expose shared Nightmare Vision sprite loading, scaling, graphic and centering helpers through supported source sprites, HUDs and gameplay objects with captured owner lifetimes.
+	- Use current source sustain frame dimensions after scripted callbacks, preserving modifier scale baselines and clipping behavior.
+	- Preserve native shallow array and string copy behavior through shared script reflection.
+	- Add Nightmare Vision source glyph text, menu movement and manual reveal with shared class reflection and owner-local character sets.
+	- Add source Psych glyph text, alignment, scaling and attached text with owner-scoped metadata and reflective construction.
+	- Support source Psych attached sprites and Nightmare Vision attachment nodes with live tracking, copy flags and source object ownership.
+
 v0.0.15 alpha - CammieEngine
 	- Use actual Psych/Nightmare Vision source health icons for scripted HUD identity, reloads, tracker offsets, frame controls and owner-local graphics.
 	- Preserve Psych/Nightmare Vision scripted health values, update bounds, bar callbacks and source icon frames while retaining native and Codename behavior.

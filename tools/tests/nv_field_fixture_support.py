@@ -1,5 +1,6 @@
 """Minimal standalone field dependencies; exercise the pinned real signal code."""
 from pathlib import Path
+from nv_sprite_dependency_support import add_native_sprite_dependencies
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,6 +25,14 @@ class FixtureScrollFactor {public function new(){} public function set(x:Float=1
     (work / 'flixel/util/FlxColor.hx').write_text('''package flixel.util;
 class FlxColor {public static inline var WHITE:Int=0xFFFFFF;public static inline var BLACK:Int=0x000000;}
 ''', newline='\n')
+
+
+    files = {'flixel/FlxSprite.hx': (work / 'flixel/FlxSprite.hx').read_text(encoding='utf-8')}
+    add_native_sprite_dependencies(files)
+    for name, content in files.items():
+        target = work / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding='utf-8', newline='\n')
 
 
 def write_nv_field_dependencies(work):

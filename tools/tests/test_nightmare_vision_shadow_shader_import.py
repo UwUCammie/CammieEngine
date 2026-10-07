@@ -60,12 +60,12 @@ __BINDING__
     ticks++;
    });
   }
-  var blur:Float = script.call('readBlur');
+  var blur:Float = script.callValue('readBlur');
   if (bound) {
    check(errors.length == 0, 'import or callback failed: ' + errors);
    check(ticks == 1800, 'source callback cadence changed');
-   check(script.call('readOverlay').alpha == .125, 'setup stopped before overlay');
-   var shader:shaders.DropShadowShader = script.call('readShader');
+   check(script.callValue('readOverlay').alpha == .125, 'setup stopped before overlay');
+   var shader:shaders.DropShadowShader = script.callValue('readShader');
    check(shader.distance == 15 && shader.angle == 90 && shader.color == 0xDF2F68,
     'source shader properties were lost');
    check(blur >= 1 && blur < 5, 'beat blur accumulates instead of decaying: ' + blur);

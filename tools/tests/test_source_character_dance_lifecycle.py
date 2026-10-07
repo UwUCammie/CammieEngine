@@ -32,11 +32,11 @@ class Character {
  public function new() {}
  public function recalculateDanceIdle():Void recalculations++;
 }
-class NightmareVisionCharacterGroupCompat { public function new() {} }
+class NightmareVisionCharacterGroup { public function new() {} }
 class Main {
  public var gfSpeed(default,set):Int = 1;
  var nightmareVisionScripts:Dynamic = null;
- var nightmareVisionCharacterGroups:Map<Int, NightmareVisionCharacterGroupCompat> = new Map();
+ var gfGroup:NightmareVisionCharacterGroup;
  var sourceScoreOwner:Bool = false;
  var sourceScoreNightmare:Bool = false;
  var gf:Character = new Character();
@@ -76,7 +76,7 @@ class Main {
   nv.sourceScoreOwner = true;
   nv.sourceScoreNightmare = true;
   nv.nightmareVisionScripts = {};
-  nv.nightmareVisionCharacterGroups.set(2, new NightmareVisionCharacterGroupCompat());
+  nv.gfGroup = new NightmareVisionCharacterGroup();
   Reflect.setProperty(nv, 'gfSpeed', 2);
   check(nv.gf.danceEveryNumBeats == 4 && !nv.girlfriendDanceDue(2)
    && nv.girlfriendDanceDue(4), 'NV live write must multiply actor cadence');
@@ -85,12 +85,11 @@ class Main {
   nv.gf.danceEveryNumBeats = 3;
   check(nv.girlfriendDanceDue(3), 'NV live interval must not also retain the independent gfSpeed gate');
   nv.gf.danceEveryNumBeats = 8;
-  nv.nightmareVisionCharacterGroups.remove(2);
-  nv.nightmareVisionCharacterGroups.set(1, new NightmareVisionCharacterGroupCompat());
+  nv.gfGroup = null;
   nv.gfSpeed = 3;
   check(nv.gf.danceEveryNumBeats == 8 && nv.gfSpeed == 3, 'NV absent group must store without multiplying');
-  check(!nv.nightmareVisionCharacterGroups.exists(2), 'NV setter created an unavailable GF group');
-  nv.nightmareVisionCharacterGroups.set(2, new NightmareVisionCharacterGroupCompat());
+  check(nv.gfGroup == null, 'NV setter created an unavailable GF group');
+  nv.gfGroup = new NightmareVisionCharacterGroup();
   nv.gf = null;
   nv.gfSpeed = 4;
   check(nv.gfSpeed == 4, 'NV absent actor must still store');

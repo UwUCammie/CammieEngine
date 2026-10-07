@@ -244,21 +244,21 @@ class Main {
   var probe = new ProbeInterp();
   var probeScript = new NightmareVisionScriptModule('probe', probe,
    function(name, phase, error):Void { throw 'unexpected probe error'; });
-  if (!probeScript.execute(parsed('
+  if (!probeScript.executeProgram(parsed('
    var calls = 0;
    function tick() { calls++; return calls; }
    function mutate(value) { value++; calls += value; return value; }
   '))) fail('probe script failed to execute');
-  eq(probeScript.call('tick'), 1);
-  eq(probeScript.call('tick'), 2);
+  eq(probeScript.callValue('tick'), 1);
+  eq(probeScript.callValue('tick'), 2);
   eq(probe.receivedArgs.length, 2);
   eq(probe.receivedArgs[0].length, 0);
   eq(probe.receivedArgs[0], probe.receivedArgs[1]);
   var callerArgs:Array<Dynamic> = [4];
-  eq(probeScript.call('mutate', callerArgs), 5);
+  eq(probeScript.callValue('mutate', callerArgs), 5);
   eq(callerArgs[0], 4);
   eq(probe.receivedArgs[2], callerArgs);
-  eq(probeScript.call('tick'), 8);
+  eq(probeScript.callValue('tick'), 8);
   eq(probe.receivedArgs[2], callerArgs);
   probeScript.destroy();
 
@@ -270,15 +270,15 @@ class Main {
   receiverInterp.variables.set('this', previousThis);
   var receiverScript = new NightmareVisionScriptModule('receiver', receiverInterp,
    function(name, callback, error):Void { errors.push(name + '#' + callback); });
-  if (!receiverScript.execute(parsed('
+  if (!receiverScript.executeProgram(parsed('
    function inspectThis() return this.label;
    function failThis() throw "receiver failure";
   '))) fail('receiver script failed to execute');
-  eq(receiverScript.call('inspectThis', null, callReceiver), 'receiver');
+  eq(receiverScript.callValue('inspectThis', null, callReceiver), 'receiver');
   eq(receiverInterp.variables.get('this'), previousThis);
-  eq(receiverScript.call('inspectThis'), 'previous');
+  eq(receiverScript.callValue('inspectThis'), 'previous');
   eq(receiverInterp.variables.get('this'), previousThis);
-  eq(receiverScript.call('failThis', null, callReceiver), null);
+  eq(receiverScript.callValue('failThis', null, callReceiver), null);
   eq(receiverInterp.variables.get('this'), previousThis);
   eq(errors.pop(), 'receiver#failThis');
   receiverScript.destroy();
@@ -318,11 +318,11 @@ class Main {
    function read() return sharedCount;
    function write(v) sharedCount = v;
   ');
-  eq(consumer.call('read'), 4);
-  eq(publicOwner.call('ownSecret'), 99);
+  eq(consumer.callValue('read'), 4);
+  eq(publicOwner.callValue('ownSecret'), 99);
   eq(g.sharedFields.exists('secret'), false);
-  eq(publicOwner.call('literal'), 'public var untouched = 9');
-  consumer.call('write', [0]); eq(g.sharedFields.get('sharedCount'), 0);
+  eq(publicOwner.callValue('literal'), 'public var untouched = 9');
+  consumer.callValue('write', [0]); eq(g.sharedFields.get('sharedCount'), 0);
   eq(g.loadSource('parse-error.hx', 'public 123;'), null);
   eq(g.exists('parse-error.hx'), false); eq(errors.pop(), 'parse-error.hx#parse');
   eq(g.loadSource('consumer.hxs', 'this is invalid syntax'), null);

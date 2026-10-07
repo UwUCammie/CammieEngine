@@ -1,3 +1,4 @@
+from nv_sprite_dependency_support import add_native_sprite_dependencies
 """Exercise the NMV waveform/PlayableSong adapters without starting the game."""
 from haxe_test_support import HAXE_COMMAND
 
@@ -229,6 +230,10 @@ class FlxSound {
 }''',
         }
 
+        add_native_sprite_dependencies(stubs)
+        # Real FlxStrip is a FlxSprite subtype; retain this fixture's mesh operations.
+        stubs['flixel/FlxStrip.hx'] = stubs['flixel/FlxStrip.hx'].replace('class FlxStrip {', 'class FlxStrip extends FlxSprite {').replace(' public var x:Float; public var y:Float; public var destroyed:Bool=false;', '').replace('this.x=x; this.y=y;', 'super(x,y);').replace('public function makeGraphic(width:Int,height:Int,color:FlxColor):FlxStrip', 'override public function makeGraphic(width:Int,height:Int,color:Int=-1,unique:Bool=false,?key:String):FlxSprite').replace('public function update(elapsed:Float)', 'override public function update(elapsed:Float)').replace('public function destroy():Void', 'override public function destroy():Void')
+        stubs['flixel/FlxSprite.hx'] = stubs['flixel/FlxSprite.hx'].replace('class FlxSprite {', 'class FlxSprite {public function update(e:Float):Void{}')
         with tempfile.TemporaryDirectory(prefix="nmv-spectrum-", dir=ROOT / "tmp") as scratch:
             scratch = Path(scratch)
             for relative, content in stubs.items():

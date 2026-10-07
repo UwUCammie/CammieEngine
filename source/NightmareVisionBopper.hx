@@ -1,140 +1,123 @@
 package;
 
-import animate.FlxAnimate;
-import animate.FlxAnimateFrames;
 import flixel.graphics.frames.FlxAtlasFrames;
-import flixel.util.FlxTimer;
 
-using StringTools;
+import animate.FlxAnimateFrames;
+import animate.FlxAnimate;
 
-/** Owner-scoped subset of Nightmare Vision's Bopper stage API. */
+import flixel.util.FlxSignal.FlxTypedSignal;
+
+// highly based of base games bopper class
+// i liked it alot
 @:keep
-class NightmareVisionBopper extends FlxAnimate {
-	/** Source Bopper exposes its FlxAnimate instance through this alias. */
-	@:keep public var animateAtlas:FlxAnimate;
+@:build(NightmareVisionSpriteMacro.build())
+class NightmareVisionBopper extends NightmareVisionFunkinSprite
+{
+	@:inheritDoc(flixel.animation.FlxAnimationController.onFinish)
+	public final onAnimationFinish = new FlxTypedSignal<(animName:String) -> Void>();
 
-	public var ownerPaths(default, null):Null<NightmareVisionPaths>;
+	@:inheritDoc(flixel.animation.FlxAnimationController.onFrameChange)
+	public final onAnimationFrameChange = new FlxTypedSignal<(animName:String, frameNumber:Int, frameIndex:Int) -> Void>();
+
+	@:inheritDoc(flixel.animation.FlxAnimationController.onLoop)
+	public final onAnimationLoop = new FlxTypedSignal<(animName:String) -> Void>();
+
+	/**
+	 * Texture atlas instance. Initiated through `loadAtlas`.
+	 */
+	@:deprecated("animateAtlas is deprecated. Use this NightmareVisionBopper directly instead.")
+	public var animateAtlas(get, never):Null<FlxAnimate>;
+
+	function get_animateAtlas():Null<FlxAnimate>
+	{
+		if (library != null) return this;
+		return null;
+	}
+
+	/**
+	 * However many beats between dances
+	 */
 	public var danceEveryNumBeats:Int = 2;
-	public var alternatingDance:Null<Bool>;
-	public var canDance:Bool = true;
-	public var idleSuffix:String = '';
-	public var canPlayAnimations:Bool = true;
-	public var onAnimationFinish(get, never):Dynamic;
-	public var onAnimationFrameChange(get, never):Dynamic;
-	public var onAnimationLoop(get, never):Dynamic;
-	var forcedAnimationTimer:FlxTimer = new FlxTimer();
-	function get_onAnimationFinish():Dynamic return animation.onFinish;
-	function get_onAnimationFrameChange():Dynamic return animation.onFrameChange;
-	function get_onAnimationLoop():Dynamic return animation.onLoop;
+
+	/**
+	 * Whether the bopper should dance left and right.
+	 * - If true, alternate playing `danceLeft` and `danceRight`.
+	 * - If false, play `idle` every time.
+	 *
+	 * You can manually set this value, or you can leave it as `null` to determine it automatically.
+	 */
+	public var alternatingDance:Null<Bool> = null;
+
+	/**
+	 * internal tracker for alternating dance chars.
+	 */
 	var danced:Bool = false;
 
-	public function new(?x:Float = 0, ?y:Float = 0, danceEveryNumBeats:Int = 2,
-		?ownerPaths:NightmareVisionPaths) {
-		super(x, y);
-		animateAtlas = this;
-		this.ownerPaths = ownerPaths;
+	/**
+	 * Suffix added to the characters `dance` animation.
+	 */
+	public var idleSuffix:String = '';
+
+	//-----
+
+	public function new(x:Float = 0, y:Float = 0, danceEveryNumBeats:Int = 2, ?ownerPaths:NightmareVisionPaths)
+	{
+		super(x, y, null, null, ownerPaths);
 		this.danceEveryNumBeats = danceEveryNumBeats;
+
+		this.animation.onFinish.add((anim) -> onAnimationFinish.dispatch(anim));
+		this.animation.onFrameChange.add((anim, num, idx) -> onAnimationFrameChange.dispatch(anim, num, idx));
+		this.animation.onLoop.add((anim) -> onAnimationLoop.dispatch(anim));
 	}
 
-	/** Match source Bopper.loadAtlas for owner-local Animate or Flixel atlases. */
-	@:keep public function loadAtlas(path:String):NightmareVisionBopper {
-		var paths = requireOwnerPaths();
-		var loaded:Array<FlxAtlasFrames> = [];
-		for (part in path.split(',')) {
-			var key = StringTools.trim(part);
-			if (key == '') continue;
-			loaded.push(paths.getTextureAtlas(key));
-		}
-		if (loaded.length == 0)
-			throw '[nightmare-vision-asset] Bopper.loadAtlas needs an owner atlas path';
-		frames = loaded.length == 1 ? loaded[0] : FlxAnimateFrames.combineAtlas(loaded);
-		return this;
-	}
+	/**
+	 * If false, This `NightmareVisionBopper` will be unable to dance
+	 */
+	public var canDance:Bool = true;
 
-	/** Match source FunkinSprite's symbol/frame-label-aware prefix helper. */
-	@:keep public function addAnimByPrefix(name:String, prefix:String, fps:Int = 24,
-		looping:Bool = true, flipX:Bool = false, flipY:Bool = false):Void {
-		if (library != null && anim.findFrameLabelIndices(prefix).length > 0)
-			anim.addByFrameLabel(name, prefix, fps, looping, flipX, flipY);
-		else if (hasSymbol(library, prefix))
-			anim.addBySymbol(name, prefix, fps, looping, flipX, flipY);
-		else
-			animation.addByPrefix(name, prefix, fps, looping, flipX, flipY);
-	}
-
-	/** Search merged Animate collections, matching Nightmare Vision's helper. */
-	@:access(animate.FlxAnimateFrames)
-	static function hasSymbol(atlas:FlxAnimateFrames, symbol:String):Bool {
-		if (atlas == null) return false;
-		if (atlas.existsSymbol(symbol)) return true;
-		for (collection in atlas.addedCollections)
-			if (collection.dictionary.exists(symbol)) return true;
-		return false;
-	}
-
-	@:keep public function dance(?forced:Bool = false):Void {
+	/**
+	 * Makes the sprite "dance".
+	 */
+	public function dance(forced:Bool = false):Void
+	{
 		if (alternatingDance == null)
+		{
 			recalculateDanceIdle();
+		}
+
 		if (!canDance) return;
-		if (alternatingDance) {
+
+		if (alternatingDance)
+		{
 			danced = !danced;
-			playBopperAnim((danced ? 'danceRight' : 'danceLeft') + idleSuffix, forced);
-		} else
-			playBopperAnim('idle' + idleSuffix, forced);
+			if (danced) playAnim('danceRight$idleSuffix', forced);
+			else playAnim('danceLeft$idleSuffix', forced);
+		}
+		else
+		{
+			playAnim('idle$idleSuffix', forced);
+		}
 	}
 
-	@:keep public function recalculateDanceIdle():Void
-		alternatingDance = animation.exists('danceLeft' + idleSuffix)
-			&& animation.exists('danceRight' + idleSuffix);
-
-	@:keep public function onBeatHit(beat:Int):Void {
-		if (danceEveryNumBeats > 0 && beat % danceEveryNumBeats == 0)
-			dance();
+	/**
+	 * Updates if the current character has a alternating `left/right` dance
+	 */
+	public function recalculateDanceIdle():Void
+	{
+		alternatingDance = hasAnim('danceLeft' + idleSuffix) && hasAnim('danceRight' + idleSuffix);
 	}
 
-	function playBopperAnim(name:String, ?forced:Bool = false):Void {
-		playAnim(name, forced);
+	public function onBeatHit(beat:Int)
+	{
+		if (!isAnimNull() && beat % danceEveryNumBeats == 0) dance();
 	}
 
-	/** FunkinSprite's animation helpers use the FlxAnimate controller through
-	 * the same Flixel animation property for texture and ordinary atlases. */
-	@:keep public function correctAnimationName(name:String):Null<String> {
-		if (animation.exists(name)) return name;
-		var suffix = name.lastIndexOf('-');
-		return suffix < 0 ? null : correctAnimationName(name.substring(0, suffix));
-	}
+	override public function destroy()
+	{
+		onAnimationFinish.removeAll();
+		onAnimationFrameChange.removeAll();
+		onAnimationFinish.removeAll();
 
-	@:keep public function playAnim(name:String, forced:Bool = false,
-		reversed:Bool = false, frame:Int = 0):Void {
-		if (!canPlayAnimations) return;
-		var corrected = correctAnimationName(name);
-		if (corrected != null) animation.play(corrected, forced, reversed, frame);
-	}
-
-	/** Match FunkinSprite's timed play helper for its Bopper subclass. */
-	@:keep public function playAnimForDuration(animToPlay:String, duration:Float = 0.6,
-		forced:Bool = false):Void {
-		if (forced) canPlayAnimations = true;
-		playAnim(animToPlay, true);
-		if (forced) canPlayAnimations = false;
-		forcedAnimationTimer.start(duration, function(_:FlxTimer):Void {
-			if (forced) canPlayAnimations = true;
-		});
-	}
-
-	@:keep public function pauseAnim():Void animation.pause();
-	@:keep public function resumeAnim():Void animation.resume();
-
-	function requireOwnerPaths():NightmareVisionPaths {
-		if (ownerPaths == null)
-			throw '[nightmare-vision-asset] Bopper is not bound to an imported owner';
-		return ownerPaths;
-	}
-
-	override public function destroy():Void {
-		forcedAnimationTimer.cancel();
-		forcedAnimationTimer.destroy();
-		ownerPaths = null;
 		super.destroy();
 	}
 }

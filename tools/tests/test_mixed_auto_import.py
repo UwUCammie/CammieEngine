@@ -110,6 +110,8 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function recordSongImportValidationRejection",
                 "static function validateAndRecordSongImport",
                 "static function appendAssetSongImports",
+                "static function canonicalNightmareVisionPackageRoot",
+                "static function retainNightmareVisionPackageNamespace",
                 "static function findVSliceFile",
                 "static function findVSliceFreeplayIcon",
     "static function findVSliceVideo",
@@ -256,6 +258,19 @@ class FreeplayRegistry {{
 class CoolUtil {{
   public static function parseJson(raw:String):Dynamic return Json.parse(raw);
   public static function stringifyJson(value:Dynamic):String return Json.stringify(value);
+}}
+class ImportPackageFamilyCatalog {{
+  public static function isAuthenticatedNightmareVisionContainer(path:String):Bool {{
+    var root = ImportRootScanner.inspectRoot(path, ImportEngine.AUTO);
+    if (root == null || root.engine != ImportEngine.NIGHTMARE_VISION || root.evidence == null)
+      return false;
+    for (item in root.evidence)
+      if (StringTools.startsWith(item, 'Nightmare Vision executable package marker:')
+          || StringTools.startsWith(item, 'Nightmare Vision Haxe project package:')
+          || StringTools.startsWith(item, 'Nightmare Vision chart metadata: format=nmv2'))
+        return true;
+    return false;
+  }}
 }}
 class ModuleFunctions {{
   static inline var MAX_SONG_IMPORT_REJECTIONS:Int = 64;

@@ -69,7 +69,7 @@ class Main {
     def test_psych_custom_event_callback_owner_requires_live_matching_function(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         method_start = source.index("function psychCustomEventHasCallback(")
-        method_end = source.index("\n\tfunction fireNativeSongEvent(", method_start)
+        method_end = source.index("\n\tfunction sourceCustomEventOwnsNativeFallback(", method_start)
         method = source[method_start:method_end].strip()
         compat = (ROOT / "source/EngineCompat.hx").read_text()
         fallback_start = compat.index("public static function psychCustomEventOwnsNativeFallback(")
@@ -79,11 +79,14 @@ class Main {
             "\n\tprivate function generateSong(", source.index("function fireNativeSongEvent(")
         )]
         script_dispatch = event_dispatch.index("callAllHScript('onEvent'")
-        custom_owner_check = event_dispatch.index("EngineCompat.psychCustomEventOwnsNativeFallback(")
+        custom_owner_check = event_dispatch.index("sourceCustomEventOwnsNativeFallback(e.name)")
         native_route = event_dispatch.index("EngineCompat.routeLegacyEvent(")
         self.assertLess(script_dispatch, custom_owner_check)
         self.assertLess(custom_owner_check, native_route)
-        self.assertIn("psychCustomEventHasCallback(e.name)", event_dispatch)
+        selector = source[method_end:source.index("\n\tfunction fireNativeSongEvent(", method_end)]
+        self.assertIn("psychCustomEventHasCallback(name)", selector)
+        self.assertIn("EngineCompat.sourceCustomEventOwnsNativeFallback(", selector)
+        self.assertIn("nightmare ? ImportEngine.NIGHTMARE_VISION : ImportEngine.PSYCH, name, callable", selector)
         fixture = f'''class MockInterp {{
  public var variables:Map<String, Dynamic> = [];
  public function new() {{}}

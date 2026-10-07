@@ -3043,19 +3043,32 @@ class EngineCompat {
 		https://github.com/ShadowMario/FNF-PsychEngine/blob/0.7.3/source/states/PlayState.hx#L1824-L2046
 	*/
 	public static function psychCustomEventOwnsNativeFallback(name:Dynamic,
-		customScriptLoaded:Bool):Bool {
-		if (!customScriptLoaded || name == null)
-			return false;
+		customScriptLoaded:Bool):Bool
+		return sourceCustomEventOwnsNativeFallback(ImportEngine.PSYCH, name, customScriptLoaded);
 
+	/** Custom handlers own host-only fallback effects, never exact donor builtins. */
+	public static function sourceCustomEventOwnsNativeFallback(engine:String, name:Dynamic,
+		customCallback:Bool):Bool {
+		if (!customCallback || name == null) return false;
+		if (engine == ImportEngine.NIGHTMARE_VISION) {
+			// Pinned NV733165c triggerEventNote compares raw exact event names.
+			return switch (Std.string(name)) {
+				case 'Hey!' | 'Set GF Speed' | 'Add Camera Zoom' | 'Camera Zoom'
+					| 'HUD Fade' | 'Camera Fade' | 'Play Animation' | 'Camera Follow Pos'
+					| 'Alt Idle Animation' | 'Screen Shake' | 'Change Noteskin'
+					| 'Change Character' | 'Change Scroll Speed' | 'Set Cam Zoom'
+					| 'Set Cam Pos' | 'Set Property': false;
+				default: true;
+			};
+		}
+		if (engine != ImportEngine.PSYCH) return false;
 		return switch (StringTools.trim(Std.string(name))) {
 			case 'Dadbattle Spotlight' | 'Hey!' | 'Set GF Speed' | 'Philly Glow'
 				| 'Kill Henchmen' | 'Add Camera Zoom' | 'Trigger BG Ghouls'
 				| 'Play Animation' | 'Camera Follow Pos' | 'Alt Idle Animation'
 				| 'Screen Shake' | 'Change Character' | 'BG Freaks Expression'
-				| 'Change Scroll Speed' | 'Set Property' | 'Play Sound':
-				false;
-			default:
-				true;
+				| 'Change Scroll Speed' | 'Set Property' | 'Play Sound': false;
+			default: true;
 		};
 	}
 

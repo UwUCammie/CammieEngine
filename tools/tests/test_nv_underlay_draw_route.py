@@ -60,6 +60,7 @@ class Manager {
  }
 }
 class Main {
+ public var nightmareVisionPaths:Dynamic=null;
  public static var events:Array<String>=[];
  static var Y:String='Y';
  public var nightmareVisionPrefs:Dynamic={view:{underlayType:'Lane Underlay',underlayOpacity:0.8}};
@@ -147,6 +148,8 @@ class Main {
  }
 }
 '''.replace('__DRAW__', draw).replace('__ATTACH__', attach).replace('__BANK_DRAW__', bank_draw).replace('__ENABLE__', enable).replace('__REGISTER__', register)
+        # Rendering geometry is exercised unchanged; owner-cell setup is tested separately.
+        fixture += '\nclass NightmareVisionSpriteMethods {public static function bind(object:Dynamic,owner:Dynamic):Void {}}\nclass NightmareVisionSpriteRegistry {public static function capture(paths:Dynamic):Dynamic return null;}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
             (work / 'Main.hx').write_text(fixture, newline='\n')

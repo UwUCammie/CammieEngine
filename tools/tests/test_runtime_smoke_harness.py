@@ -1106,6 +1106,7 @@ class FlxState {
 """,
             "ImportWorkflow.hx": """typedef ImportProgress = {
   var complete:Bool; var result:Dynamic; var error:String;
+  @:optional var runtimeCommitted:Bool;
 }
 class ImportScanJob {
   public function new() {}

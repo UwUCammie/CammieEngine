@@ -20,13 +20,15 @@ class Main {
   var args = Sys.args();
   var collection = NightmareVisionAssetCollector.collect(args[0]);
   check(collection.complete, 'collector incomplete: ' + collection.errors);
-  check(collection.cycles == 1, 'ancestor cycle was not stopped');
+  var hasSymlinks = args[3] == 'true';
+  check(collection.cycles == (hasSymlinks ? 1 : 0), 'ancestor cycle count mismatch');
   var paths:Array<String> = [];
   for (file in (cast collection.files:Array<Dynamic>)) paths.push(file.relative);
   paths.sort(Reflect.compare);
   check(paths.join('|') == 'characters/bf/bf.json'
     + '|data/d0/d1/d2/d3/d4/d5/d6/d7/d8/d9/d10/d11/d12/file.json'
-    + '|images/aliasTarget/pixel.png|images/atlas/alias/pixel.png'
+    + '|images/aliasTarget/pixel.png'
+    + (hasSymlinks ? '|images/atlas/alias/pixel.png' : '')
     + '|images/atlas/pixel.png|images/collision.png|noteskins/skin.json'
     + '|songs/track/Inst.ogg|stages/legacy/room.json',
     'unexpected collected paths: ' + paths.join('|'));
@@ -43,11 +45,49 @@ class Main {
             timeout=45,
         )
 
+    def run_core_resolution_haxe(self, work: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        (work / "Main.hx").write_text(r'''
+import haxe.io.Path;
+import sys.FileSystem;
+class Main {
+ static function samePath(left:String, right:String):Bool {
+  if (left == '' || right == '') return left == right;
+  var a = Path.normalize(FileSystem.fullPath(left));
+  var b = Path.normalize(FileSystem.fullPath(right));
+  #if windows
+  return a.toLowerCase() == b.toLowerCase();
+  #else
+  return a == b;
+  #end
+ }
+ static function main() {
+  var args = Sys.args();
+  if (args.length % 2 != 0) throw 'expected path pairs';
+  var index = 0;
+  while (index < args.length) {
+   var actual = NightmareVisionAssetCollector.resolveCoreAssetsRoot(args[index]);
+   if (!samePath(actual, args[index + 1]))
+    throw 'core root mismatch for ' + args[index] + ': got ' + actual + ', expected ' + args[index + 1];
+   index += 2;
+  }
+ }
+}''', newline='\n')
+        return subprocess.run(
+            [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main", *args],
+            cwd=work,
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+
     def test_uncapped_tree_alias_cycle_and_separate_core_root(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
             owner = work / "game/content/owner"
             core = work / "game/assets"
+            (work / "game").mkdir()
+            (work / "game/Project.xml").write_text(
+                '<project><app package="com.nmvTeam.nightmareEngine" /></project>', newline='\n')
             deep = owner / "data"
             for index in range(13):
                 deep /= f"d{index}"
@@ -58,8 +98,15 @@ class Main {
             (owner / "images/collision.png").write_bytes(b"owner")
             (owner / "images/aliasTarget").mkdir()
             (owner / "images/aliasTarget/pixel.png").write_bytes(b"aliased")
-            (owner / "images/atlas/alias").symlink_to(owner / "images/aliasTarget", target_is_directory=True)
-            (owner / "images/atlas/loop").symlink_to(owner / "images/atlas", target_is_directory=True)
+            symlinks_available = True
+            try:
+                (owner / "images/atlas/alias").symlink_to(owner / "images/aliasTarget", target_is_directory=True)
+                (owner / "images/atlas/loop").symlink_to(owner / "images/atlas", target_is_directory=True)
+            except (OSError, NotImplementedError):
+                symlinks_available = False
+                for link in (owner / "images/atlas/alias", owner / "images/atlas/loop"):
+                    if link.is_symlink():
+                        link.unlink()
             (owner / "characters/bf").mkdir(parents=True)
             (owner / "characters/bf/bf.json").write_text("{}", newline='\n')
             (owner / "noteskins").mkdir()
@@ -71,7 +118,62 @@ class Main {
             (song / "Inst.ogg").write_bytes(b"audio")
             (core / "images").mkdir(parents=True)
             (core / "images/collision.png").write_bytes(b"core")
-            result = self.run_haxe(work, str(owner), str(owner), str(core))
+            result = self.run_haxe(work, str(owner), str(owner), str(core), str(symlinks_available).lower())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_core_resolution_requires_authenticated_content_container(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
+            work = Path(folder)
+            game = work / 'engine'
+            package = game / 'content' / 'package'
+            package_assets = package / 'assets'
+            engine_assets = game / 'assets'
+            package_assets.mkdir(parents=True)
+            engine_assets.mkdir()
+            (game / 'Project.xml').write_text(
+                '<project><app package="com.nmvTeam.nightmareEngine" /></project>', newline='\n')
+
+            ordinary = work / 'ordinary-package'
+            ordinary_assets = ordinary / 'assets'
+            ordinary_assets.mkdir(parents=True)
+            standalone_assets = work / 'standalone-assets' / 'assets'
+            standalone_assets.mkdir(parents=True)
+
+            unrelated = work / 'unmarked-game'
+            unrelated_assets = unrelated / 'assets'
+            unrelated_package = unrelated / 'content' / 'package'
+            unrelated_assets.mkdir(parents=True)
+            unrelated_package.mkdir(parents=True)
+            (unrelated_package / 'assets').mkdir()
+
+            malformed = work / 'malformed-game'
+            (malformed / 'assets').mkdir(parents=True)
+            (malformed / 'content' / 'package').mkdir(parents=True)
+            (malformed / 'Project.xml').write_text('<project><app package="unterminated"', newline='\n')
+
+            cases = [
+                str(package), str(engine_assets),
+                str(ordinary), str(ordinary_assets),
+                str(standalone_assets), str(standalone_assets),
+                str(unrelated_package), '',
+                str(malformed / 'content' / 'package'), '',
+            ]
+
+            # A canonicalized content symlink is not a direct child of the game
+            # root, even when a valid marker and sibling assets directory exist.
+            symlink_game = work / 'symlink-game'
+            (symlink_game / 'assets').mkdir(parents=True)
+            (symlink_game / 'Project.xml').write_text(
+                '<project><app package="com.nmvTeam.nightmareEngine" /></project>', newline='\n')
+            external_content = work / 'external-content'
+            (external_content / 'package').mkdir(parents=True)
+            try:
+                (symlink_game / 'content').symlink_to(external_content, target_is_directory=True)
+                cases.extend([str(external_content / 'package'), ''])
+            except (OSError, NotImplementedError):
+                pass
+
+            result = self.run_core_resolution_haxe(work, *cases)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_external_symlink_is_incomplete(self):
@@ -82,7 +184,10 @@ class Main {
             (root / "images").mkdir(parents=True)
             (external / "nested").mkdir(parents=True)
             (external / "nested/file.png").write_bytes(b"outside")
-            (root / "images/escape").symlink_to(external, target_is_directory=True)
+            try:
+                (root / "images/escape").symlink_to(external, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest('directory symlinks are unavailable in this environment')
             (work / "Main.hx").write_text(r'''
 class Main {
  static function main() {

@@ -11,6 +11,7 @@ from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
 import subprocess
+import re
 import tempfile
 import unittest
 
@@ -120,15 +121,19 @@ class WindowResizeFramingTest(unittest.TestCase):
                          "a window-sized game space reintroduces the framing drift")
 
     def test_engine_does_not_reassign_scale_mode_elsewhere(self):
-        # The scale mode is engine policy owned by Main; scripts may flip it via
-        # the HxcCompatRuntime adapter, but engine code must not fight Main.
+        # Main owns the native policy. The NV source bootstrap leases a scale
+        # mode and restores it when its authenticated source session ends.
         offenders = []
         for path in (ROOT / "source").rglob("*.hx"):
-            if path.name == "Main.hx":
+            if path.name in ("Main.hx", "NightmareVisionBootstrapServices.hx"):
                 continue
-            if "FlxG.scaleMode =" in path.read_text():
+            if re.search(r"FlxG\.scaleMode\s*=(?!=)", path.read_text()):
                 offenders.append(str(path))
         self.assertEqual(offenders, [], "engine scale-mode assignments outside Main.hx")
+        bootstrap=(ROOT/"source/NightmareVisionBootstrapServices.hx").read_text()
+        self.assertIn("previousScaleMode = FlxG.scaleMode", bootstrap)
+        self.assertIn("if (FlxG.scaleMode == scaleMode) FlxG.scaleMode = previousScaleMode", bootstrap)
+        self.assertIn("FlxG.signals.preStateSwitch.remove(resetOwnerScale)", bootstrap)
 
     def test_ratio_scale_mode_math(self):
         scale_mode_dir = FLIXEL / "flixel/system/scaleModes"

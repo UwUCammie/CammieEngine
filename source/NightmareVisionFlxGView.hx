@@ -27,6 +27,7 @@ class NightmareVisionFlxGView {
 	var sourceTickActive:Bool = false;
 	var sourceElapsed:Float = 0;
 	var sourceKeys:Dynamic;
+	var stateRequests:Map<String, Dynamic> = new Map();
 
 	public function new(nativeFlxG:Dynamic, save:NightmareVisionSaveFacade,
 		?clock:CompatScriptClock, ?keyCodes:Map<String, Int>) {
@@ -46,12 +47,21 @@ class NightmareVisionFlxGView {
 
 	public function getField(name:String):Dynamic {
 		if (name == null || name == '') return null;
+		getNativeDelegate();
+		if (stateRequests.exists(name)) return stateRequests.get(name);
 		if (name == 'save') return save;
 		if (sourceTickActive) {
 			if (name == 'elapsed') return sourceElapsed;
 			if (name == 'keys') return sourceKeys;
 		}
 		return Reflect.getProperty(getNativeDelegate(), name);
+	}
+
+	/** Captured session factories replace only source navigation operations. */
+	public function bindStateRequests(switchState:Dynamic->Void, resetState:Void->Void):Void {
+		getNativeDelegate();
+		stateRequests.set('switchState', switchState);
+		stateRequests.set('resetState', resetState);
 	}
 
 	public function setField(name:String, value:Dynamic):Dynamic {
@@ -140,6 +150,7 @@ class NightmareVisionFlxGView {
 	}
 
 	public function release():Void {
+		stateRequests.clear();
 		nativeDelegates.remove(this);
 		removeFromClock();
 		var views = viewsBySave.get(save);

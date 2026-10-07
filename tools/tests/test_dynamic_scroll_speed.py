@@ -214,9 +214,20 @@ class Group {
 class PsychRuntimeBindings {
  public static function hasScripts(_host:Dynamic):Bool return false;
 }
-class PlayState {
+// Keep the new source startup boundary in the extracted init body. Ordinary
+// speed cases have no NV session, and the redirect case is asserted separately.
+class NightmareVisionStateSession {
+ public static var active:Null<{hasPendingSwitch:Bool}>=null;
+}
+class SourceSceneFixture {
+ public var persistentUpdate:Bool=true; public var baseCreates:Int=0;
+ public function new() {}
+ public function create():Void baseCreates++;
+}
+class PlayState extends SourceSceneFixture {
 ''' + fields + '''
  static var SONG={speed:1.0};
+ var nightmareVisionStartupRedirect:Bool=false;
  var noteKillOffset:Float=350; var playbackRate:Float=1;
  var unspawnNotes:Array<Note>=[]; var notes=new Group(); var loaded=0;
  var hxcStrumlineNoteSurface:Dynamic=null;
@@ -235,6 +246,7 @@ class PlayState {
  var initialStepCrochet:Float=100;
  var daNoteStrums={members:[{y:100.0}]};
  public function new() {
+  super();
   var self=this;
   strums={scrollSpeed:1.0,hasScrollSpeedOverride:function()return self.lineOverride};
  }
@@ -271,6 +283,11 @@ class PlayState {
  static function near(a:Float,b:Float) {if (!Math.isFinite(a) || Math.abs(a-b)>0.00001) throw a+" != "+b;}
  static function main() {
   var state=new PlayState();
+  NightmareVisionStateSession.active={hasPendingSwitch:true};
+  var redirected=new PlayState(); redirected.init();
+  if (!redirected.nightmareVisionStartupRedirect || redirected.persistentUpdate
+   || redirected.baseCreates!=1) throw "source startup redirect boundary";
+  NightmareVisionStateSession.active=null;
   for (chart in [0.7, 1.0, 2.7, 5.0]) {
    SONG.speed=chart; OptionsHandler.options.dynamicScrollSpeed=0; state.init(); near(effectiveScrollSpeed, chart);
    near(state.resolveNoteScrollSpeed(), chart);

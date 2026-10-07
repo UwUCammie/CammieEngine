@@ -10,6 +10,9 @@ class NightmareVisionScriptGroup {
 
 	public var members(default, null):Array<NightmareVisionScriptModule> = [];
 	public var sharedFields(default, null):Map<String, Dynamic> = new Map();
+	public var scriptShareables(get, set):Map<String, Dynamic>;
+	function get_scriptShareables():Map<String, Dynamic> return sharedFields;
+	function set_scriptShareables(value:Map<String, Dynamic>):Map<String, Dynamic> return sharedFields = value;
 	public var parent(default, set):Dynamic;
 	public var released(default, null):Bool = false;
 	final report:String->String->Dynamic->Void;
@@ -22,9 +25,12 @@ class NightmareVisionScriptGroup {
 	}
 
 	function set_parent(value:Dynamic):Dynamic {
+		if (value != null && value == parent) return parent;
 		parent = value;
-		for (script in members)
-			if (script != null && script.interp != null) script.interp.parent = value;
+		for (script in members) if (script != null && script.interp != null) {
+			script.interp.parent = value;
+			script.interp.sharedFields = sharedFields;
+		}
 		return value;
 	}
 
@@ -80,7 +86,7 @@ class NightmareVisionScriptGroup {
 			return null;
 		}
 		addScript(script, allowDupeNames);
-		if (!script.execute(program)) {
+		if (!script.executeProgram(program)) {
 			members.remove(script);
 			script.destroy();
 			return null;
@@ -93,7 +99,7 @@ class NightmareVisionScriptGroup {
 			script.destroy();
 			return null;
 		}
-		if (script.exists('onLoad')) script.call('onLoad');
+		if (script.exists('onLoad')) script.callValue('onLoad');
 		return script;
 	}
 
@@ -110,7 +116,7 @@ class NightmareVisionScriptGroup {
 		if (released) return result;
 		for (script in members) {
 			if (script == null || (exclusions != null && exclusions.indexOf(script.name) >= 0)) continue;
-			var returned:Dynamic = script.call(event, args);
+			var returned:Dynamic = script.callValue(event, args);
 			if (Std.isOfType(returned, Int)) {
 				if (returned == HALT_FUNC) {
 					returned = result;

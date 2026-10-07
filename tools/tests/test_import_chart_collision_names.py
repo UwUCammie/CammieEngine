@@ -36,10 +36,14 @@ if(importedChartFileName(target,"source-song.json",0,"../source-song")!=target+"
 if(importedChartFileName(target,"SOURCE-SONG-HARD.JSON",0,"Source-Song")!=target+"-hard.json") throw "case insensitive source identity lost";
 for(engine in ["Psych Engine","Nightmare Vision","Kade Engine","Modding Plus","FPS Plus","Legacy FNF/Polymod"]) {
  var current=ImportRevision.current(engine);
- if(current.engineRevision!=2 || current.commonRevision!=3) throw "affected importer stamp wrong";
+ var minimumNamingRevision=engine=="Nightmare Vision"?5:2;
+ if(current.engineRevision<minimumNamingRevision || current.commonRevision<3) throw "affected naming importer stamp too old";
  current.engineRevision=1;
  if(ImportRevision.assess(current,engine).status!=ImportRevision.OUTDATED) throw "prior naming importer remained current";
 }
+var priorNmv={schemaVersion:1,commonRevision:3,sourceEngine:"Nightmare Vision",engineRevision:3};
+if(ImportRevision.assess(priorNmv,"Nightmare Vision").status!=ImportRevision.OUTDATED)
+ throw "prior Nightmare Vision package-family receipts were not scheduled for refresh";
 for(engine in ["V-Slice","Codename Engine"])
  if(ImportRevision.current(engine).engineRevision!=1) throw "unaffected converted importer forced refresh";
 }}

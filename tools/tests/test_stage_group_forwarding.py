@@ -101,7 +101,11 @@ class FakeStage extends FakeGroup {
 class FakeState {
   public static var instance:FakeState;
   public var curStage:FakeStage;
+  public var stage:FakeStage; // Actual NV container is a separate route.
   public var nightmareVisionScripts:Dynamic = null;
+  public var nightmareVisionRoleGroups:Array<FakeSprite>=[];
+  function isNightmareVisionRoleGroup(sprite:Dynamic):Bool return false;
+  public function preserveNightmareVisionStageMember(sprite:Dynamic):Bool return false;
   function nightmareVisionStageGroups():Array<PsychSceneGroupOrdering.PsychSceneGroup<FakeSprite>> return [];
   public function insert(index:Int, sprite:FakeSprite):FakeSprite {members.insert(index, sprite); return sprite;}
   public var members:Array<FakeSprite> = [];
@@ -176,7 +180,8 @@ class FakeState {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         cleanup = play[play.index("\tfunction clearRuntimeStage():Void"):]
         self.assertIn("for (sprite in stageSprites)", cleanup)
-        self.assertIn("oldStage.clearStage(false);", cleanup)
+        self.assertIn("try oldStage.clearStage(false) catch", cleanup)
+        self.assertIn("nightmareVisionStageCleanup = false;throw error", cleanup)
 
 
 if __name__ == "__main__":

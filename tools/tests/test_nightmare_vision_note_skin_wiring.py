@@ -25,7 +25,10 @@ class NightmareVisionNoteSkinWiringTest(unittest.TestCase):
             "function configureNightmareVisionNoteSkin(",
             "function applyNightmareVisionNoteSkin(",
         ))
+        # Atlas-provider binding is outside this extracted skin-selection subject.
         fixture = '''using StringTools;
+class NightmareVisionSpriteMethods {public static function bind(object:Dynamic,owner:Dynamic):Void {}}
+class NightmareVisionSpriteRegistry {public static function capture(paths:Dynamic):Dynamic return null;}
 class NightmareVisionPaths {
  public var root:String;
  public function new(root:String) this.root=root;

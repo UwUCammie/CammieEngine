@@ -15,7 +15,9 @@ import ImportSourceSnapshot.ImportSnapshotSha256;
 typedef ImportRefreshStagedOutput = {
 	var path:String;
 	var stagedPath:String;
-	var sha256:String;
+	/** Optional caller digest. When omitted, apply hashes the staged bytes once
+	 * and carries that verified value into the manifest and conflict checks. */
+	@:optional var sha256:String;
 }
 
 /** One file recorded as owned by the previous successful import. */
@@ -23,6 +25,24 @@ typedef ImportRefreshManifestFile = {
 	var path:String;
 	var sha256:String;
 	var owner:String;
+}
+
+/** A source child authorized as a member of one retained package container. */
+typedef ImportRefreshPackageFamilyCatalogEntry = {
+	var directory:String;
+	var sourceRelative:String;
+	/** Required by v2 catalogs, which bind each retained member to an actually
+	 * published installed namespace. Older v1 catalogs only grouped source roots. */
+	@:optional var namespace:String;
+}
+
+/** Commit-authenticated description of a bounded, structurally detected family. */
+typedef ImportRefreshPackageFamilyCatalog = {
+	var version:Int;
+	var engine:String;
+	var snapshotId:String;
+	var containerRelative:String;
+	var members:Array<ImportRefreshPackageFamilyCatalogEntry>;
 }
 
 /** Persistent receipt describing the current files owned by one import. */
@@ -33,6 +53,7 @@ typedef ImportRefreshManifest = {
 	var ownedRoots:Array<String>;
 	var revision:Dynamic;
 	var files:Array<ImportRefreshManifestFile>;
+	@:optional var packageFamilyCatalog:ImportRefreshPackageFamilyCatalog;
 }
 
 typedef ImportRefreshConflict = {
@@ -119,17 +140,19 @@ class ImportRefreshTransaction {
 			if (outputByPath.exists(relative) || caseFolded.exists(folded))
 				throw 'Duplicate or case-colliding output path: $relative';
 			caseFolded.set(folded, relative);
-			validateHash(output.sha256, 'expected output SHA-256 for $relative');
+			var expectedOutputHash:Null<String> = output.sha256 == null ? null : output.sha256.toLowerCase();
+			if (expectedOutputHash != null)
+				validateHash(expectedOutputHash, 'expected output SHA-256 for $relative');
 			var sourceRel = normalizeRelative(output.stagedPath);
 			var source = safeChild(staging, sourceRel, true);
 			if (!isRegularFile(source)) throw 'Staged output is not a regular file: $sourceRel';
 			var sourceHash = ImportSourceSnapshot.sha256File(source, CHUNK_SIZE);
-			if (sourceHash != output.sha256.toLowerCase())
+			if (expectedOutputHash != null && sourceHash != expectedOutputHash)
 				throw 'Staged output changed or has the wrong SHA-256: $sourceRel';
 			outputByPath.set(relative, {
 				path: relative,
 				stagedPath: sourceRel,
-				sha256: output.sha256.toLowerCase()
+				sha256: sourceHash
 			});
 			outputsChecked++;
 			lastOutputPath = relative;
@@ -478,6 +501,61 @@ class ImportRefreshTransaction {
 		return conflicts;
 	}
 
+	/** Destination paths from receiptless journals which still need recovery.
+	 * This is a bounded metadata read used only after recover() reports conflicts;
+	 * it never hashes installed or backup file contents. Paths are returned only
+	 * when the journal identity, install root, and owned-root declaration agree. */
+	public static function recoveryTargetPaths(installRoot:String, stateRoot:String,
+		owner:String):Array<String> {
+		if (owner == null || StringTools.trim(owner) == "") return [];
+		var install = canonicalDirectory(installRoot, false);
+		var state = canonicalDirectory(stateRoot, true);
+		var transactions = Path.join([state, digestText(owner), "transactions"]);
+		if (!FileSystem.exists(transactions) || !FileSystem.isDirectory(transactions)) return [];
+		var names = FileSystem.readDirectory(transactions);
+		names.sort(Reflect.compare);
+		var result:Array<String> = [];
+		for (name in names) {
+			if (!StringTools.startsWith(name, "txn-") || name.indexOf("/") >= 0 || name.indexOf("\\") >= 0) continue;
+			var transactionPath:String;
+			try transactionPath = safeChild(state, Path.join([digestText(owner), "transactions", name]), true)
+			catch (_:Dynamic) continue;
+			if (!FileSystem.isDirectory(transactionPath)) continue;
+			var journal = latestJournal(transactionPath);
+			if (journal == null || Reflect.field(journal, "owner") != owner
+				|| Reflect.field(journal, "transactionId") != name) continue;
+			var recordedInstall:Dynamic = Reflect.field(journal, "installRoot");
+			if (recordedInstall == null || !samePath(Path.normalize(Std.string(recordedInstall)), install)) continue;
+			if (Std.string(Reflect.field(journal, "phase")) == "rolled-back") continue;
+			var receiptPath = Path.join([transactionPath, "receipt.json"]);
+			if (FileSystem.exists(receiptPath)) {
+				try {
+					validateReceipt(receiptPath, journal);
+					continue;
+				} catch (_:Dynamic) {
+					// A mismatched receipt is still unresolved; its journal targets below
+					// let the UI hold only songs whose installed paths are known.
+				}
+			}
+			var rawRoots:Dynamic = Reflect.field(journal, "ownedRoots");
+			var roots:Array<String>;
+			try roots = normalizeOwnedRoots(cast rawRoots) catch (_:Dynamic) continue;
+			var operations:Dynamic = Reflect.field(journal, "operations");
+			if (!Std.isOfType(operations, Array)) continue;
+			for (operation in (cast operations:Array<Dynamic>)) {
+				if (operation == null) continue;
+				var rawPath:Dynamic = Reflect.field(operation, "path");
+				if (rawPath == null) continue;
+				var path:String;
+				try path = normalizeRelative(Std.string(rawPath)) catch (_:Dynamic) continue;
+				if (!isWithinOwnedRoots(path, roots) || isProtectedSettingsPath(path)) continue;
+				if (result.indexOf(path) < 0) result.push(path);
+			}
+		}
+		result.sort(Reflect.compare);
+		return result;
+	}
+
 	/** Read and validate the latest committed manifest for one owner. */
 	public static function loadManifest(stateRoot:String, owner:String):ImportRefreshManifest {
 		var state = canonicalDirectory(stateRoot, true);
@@ -513,7 +591,12 @@ class ImportRefreshTransaction {
 			var output = outputs.get(name);
 			files.push({path: name, sha256: output.sha256, owner: owner});
 		}
-		return {
+		var revisionRecord:Dynamic = revision == null ? null : Reflect.field(revision, "importRecord");
+		var nestedCatalog:Dynamic = revisionRecord == null ? null : Reflect.field(revisionRecord, "packageFamilyCatalog");
+		var catalog = validatePackageFamilyCatalog(nestedCatalog, revisionRecord);
+		if (catalog != null && catalog.version >= 2)
+			validatePackageFamilyOutputs(catalog, files);
+		var manifest:Dynamic = {
 			schemaVersion: MANIFEST_SCHEMA,
 			owner: owner,
 			transactionId: transactionId,
@@ -521,6 +604,8 @@ class ImportRefreshTransaction {
 			revision: revision,
 			files: files
 		};
+		if (catalog != null) Reflect.setField(manifest, "packageFamilyCatalog", catalog);
+		return manifest;
 	}
 
 	static function readCurrentManifest(state:String, owner:String, allowedRoots:Null<Array<String>>):ImportRefreshManifest {
@@ -551,6 +636,17 @@ class ImportRefreshTransaction {
 		if (Reflect.field(receipt, "owner") != owner || Reflect.field(receipt, "transactionId") != transactionId
 			|| Reflect.field(receipt, "manifestSha256") != digestText(text))
 			throw "Current import manifest does not match its commit receipt.";
+		var revision:Dynamic = Reflect.field(raw, "revision");
+		var revisionRecord:Dynamic = revision == null ? null : Reflect.field(revision, "importRecord");
+		var nestedCatalog:Dynamic = revisionRecord == null ? null : Reflect.field(revisionRecord, "packageFamilyCatalog");
+		var topLevelCatalog:Dynamic = Reflect.field(raw, "packageFamilyCatalog");
+		var catalog = validatePackageFamilyCatalog(nestedCatalog, revisionRecord);
+		if (topLevelCatalog != null) {
+			var topCatalog = validatePackageFamilyCatalog(topLevelCatalog, revisionRecord);
+			if (catalog == null || Json.stringify(catalog) != Json.stringify(topCatalog))
+				throw "Current import package-family catalog does not match its retained record.";
+			catalog = topCatalog;
+		}
 		var rawFiles:Dynamic = Reflect.field(raw, "files");
 		var rawRoots:Dynamic = Reflect.field(raw, "ownedRoots");
 		if (!Std.isOfType(rawFiles, Array) || !Std.isOfType(rawRoots, Array))
@@ -577,7 +673,9 @@ class ImportRefreshTransaction {
 			if (!isWithinOwnedRoots(entryPath, roots)) throw 'Prior target is outside its recorded owned roots: $entryPath';
 			files.push({path: entryPath, sha256: hash, owner: entryOwner});
 		}
-		return {
+		if (catalog != null && catalog.version >= 2)
+			validatePackageFamilyOutputs(catalog, files);
+		var manifest:ImportRefreshManifest = {
 			schemaVersion: MANIFEST_SCHEMA,
 			owner: owner,
 			transactionId: Std.string(transactionId),
@@ -585,6 +683,160 @@ class ImportRefreshTransaction {
 			revision: Reflect.field(raw, "revision"),
 			files: files
 		};
+		if (catalog != null) manifest.packageFamilyCatalog = catalog;
+		return manifest;
+	}
+
+	/** Validate the optional family catalog against the committed retained import
+	 * record. Legacy manifests without a catalog remain valid and resolve as a
+	 * singleton until their source snapshot proves a structural family. */
+	public static function validatePackageFamilyCatalog(value:Dynamic,
+		record:Dynamic):Null<ImportRefreshPackageFamilyCatalog> {
+		if (value == null) return null;
+		if (record == null || Reflect.field(record, "schemaVersion") != 1)
+			throw "Import package-family catalog has no retained import record.";
+		var version:Dynamic = Reflect.field(value, "version");
+		var engine:Dynamic = Reflect.field(value, "engine");
+		var snapshotId:Dynamic = Reflect.field(value, "snapshotId");
+		var container:Dynamic = Reflect.field(value, "containerRelative");
+		var rawMembers:Dynamic = Reflect.field(value, "members");
+		if ((version != 1 && version != 2) || engine != "Nightmare Vision" || !isSha256Text(snapshotId)
+			|| (version == 1 && container != "content")
+			|| (version == 2 && container != "content" && container != "")
+			|| !Std.isOfType(rawMembers, Array))
+			throw "Import package-family catalog identity or container is invalid.";
+		var recordId:Dynamic = Reflect.field(record, "snapshotId");
+		var recordSource:Dynamic = Reflect.field(record, "source");
+		if (recordId != snapshotId || recordSource != "sources/" + Std.string(snapshotId) + "/content")
+			throw "Import package-family catalog does not belong to this retained snapshot.";
+		var engines:Dynamic = Reflect.field(record, "engines");
+		var hasEngine = false;
+		if (Std.isOfType(engines, Array)) for (item in (cast engines:Array<Dynamic>))
+			if (item == "Nightmare Vision") hasEngine = true;
+		if (!hasEngine) throw "Import package-family catalog engine does not match its retained record.";
+		var rawRoots:Dynamic = Reflect.field(record, "roots");
+		if (!Std.isOfType(rawRoots, Array)) throw "Import package-family catalog record has no roots.";
+		var memberValues:Array<Dynamic> = cast rawMembers;
+		if (memberValues.length < 2 || memberValues.length > 128)
+			throw "Import package-family catalog member count is invalid.";
+		var members:Array<ImportRefreshPackageFamilyCatalogEntry> = [];
+		var seenDirectories:Map<String, Bool> = new Map();
+		var seenPaths:Map<String, Bool> = new Map();
+		var seenNamespaces:Map<String, Bool> = new Map();
+		for (member in memberValues) {
+			var directoryValue:Dynamic = Reflect.field(member, "directory");
+			var sourceValue:Dynamic = Reflect.field(member, "sourceRelative");
+			if (!Std.isOfType(directoryValue, String) || !Std.isOfType(sourceValue, String))
+				throw "Import package-family catalog member fields are invalid.";
+			var directory:String = cast directoryValue;
+			var sourceRelative:String = cast sourceValue;
+			var expectedRelative = version == 1 || container == "content"
+				? "content/" + directory : directory;
+			if (directory == "" || directory == "." || directory == ".."
+				|| directory.indexOf("/") >= 0 || directory.indexOf("\\") >= 0
+				|| normalizeRelative(expectedRelative) != expectedRelative
+				|| sourceRelative != expectedRelative)
+				throw "Import package-family catalog member path is invalid.";
+			var folded = directory.toLowerCase();
+			if (seenDirectories.exists(folded) || seenPaths.exists(sourceRelative.toLowerCase()))
+				throw "Import package-family catalog has an equal-label collision.";
+			seenDirectories.set(folded, true);
+			seenPaths.set(sourceRelative.toLowerCase(), true);
+			var namespace:String = null;
+			if (version == 2) {
+				var namespaceValue:Dynamic = Reflect.field(member, "namespace");
+				if (!Std.isOfType(namespaceValue, String) || namespaceValue == ""
+					|| Std.string(namespaceValue).indexOf("/") >= 0 || Std.string(namespaceValue).indexOf("\\") >= 0)
+					throw "Import package-family destination namespace is invalid.";
+				namespace = cast namespaceValue;
+				var safeNamespace = "assets/imported_mods/" + namespace;
+				if (normalizeRelative(safeNamespace) != safeNamespace)
+					throw "Import package-family destination namespace is invalid.";
+				var namespaceKey = pathTextKey(namespace);
+				if (seenNamespaces.exists(namespaceKey))
+					throw "Import package-family catalog maps multiple labels to one namespace.";
+				seenNamespaces.set(namespaceKey, true);
+			}
+			members.push({directory: directory, sourceRelative: sourceRelative, namespace: namespace});
+		}
+		members.sort(function(a, b) {
+			var folded = Reflect.compare(a.sourceRelative.toLowerCase(), b.sourceRelative.toLowerCase());
+			return folded != 0 ? folded : Reflect.compare(a.sourceRelative, b.sourceRelative);
+		});
+		var ownsMember = false;
+		var hasFamilyEngine = false;
+		for (root in (cast rawRoots:Array<Dynamic>)) {
+			if (root == null || Reflect.field(root, "engine") != "Nightmare Vision") continue;
+			hasFamilyEngine = true;
+			if (version == 2) continue;
+			var relative:Dynamic = Reflect.field(root, "relative");
+			var label:Dynamic = Reflect.field(root, "label");
+			var namespace:Dynamic = Reflect.field(root, "namespace");
+			if (!Std.isOfType(relative, String) || !Std.isOfType(label, String)
+				|| !Std.isOfType(namespace, String) || namespace == "") continue;
+			var safeNamespace = normalizeRelative("assets/imported_mods/" + Std.string(namespace));
+			if (safeNamespace != "assets/imported_mods/" + Std.string(namespace))
+				throw "Import package-family destination namespace is invalid.";
+			for (member in members) if (relative == member.sourceRelative && label == member.directory)
+				ownsMember = true;
+		}
+		if (version == 1 && !ownsMember)
+			throw "Import package-family catalog does not include an imported source root.";
+		if (version == 2 && !hasFamilyEngine)
+			throw "Import package-family catalog has no Nightmare Vision source root.";
+		return {
+			version: cast version,
+			engine: "Nightmare Vision",
+			snapshotId: Std.string(snapshotId).toLowerCase(),
+			containerRelative: cast container,
+			members: members
+		};
+	}
+
+	/** A v2 namespace is authoritative only when this transaction owns the
+	 * package-local config and at least one package runtime file outside the
+	 * shared engine-core subtree. */
+	static function validatePackageFamilyOutputs(catalog:ImportRefreshPackageFamilyCatalog,
+		files:Array<Dynamic>):Void {
+		if (catalog == null || catalog.version != 2 || catalog.members == null) return;
+		for (member in catalog.members) {
+			var prefix = "assets/imported_mods/" + member.namespace + "/";
+			var configPath = prefix + "meta.json";
+			var hasConfig = false;
+			var hasRuntime = false;
+			for (file in files) {
+				var path:String = Std.isOfType(file, String) ? cast file : Std.string(Reflect.field(file, "path"));
+				var key = pathTextKey(path);
+				if (key == pathTextKey(configPath)) hasConfig = true;
+				if (StringTools.startsWith(key, pathTextKey(prefix))
+					&& key != pathTextKey(configPath)
+					&& !StringTools.startsWith(key, pathTextKey(prefix + "__nmv_core/")))
+					hasRuntime = true;
+			}
+			if (!hasConfig || !hasRuntime)
+				throw "Import package-family member lacks transaction-owned config or runtime files.";
+		}
+	}
+
+	static function pathTextKey(value:String):String {
+		var normalized = value == null ? "" : StringTools.replace(Path.normalize(value), "\\", "/");
+		#if windows
+		return normalized.toLowerCase();
+		#else
+		return normalized;
+		#end
+	}
+
+	static function isSha256Text(value:Dynamic):Bool {
+		if (!Std.isOfType(value, String)) return false;
+		var text:String = cast value;
+		if (text.length != 64) return false;
+		for (index in 0...text.length) {
+			var code = text.charCodeAt(index);
+			if (!((code >= 48 && code <= 57) || (code >= 97 && code <= 102) || (code >= 65 && code <= 70)))
+				return false;
+		}
+		return true;
 	}
 
 	static function applyOperation(install:String, staging:String, transactionPath:String, transactionId:String,

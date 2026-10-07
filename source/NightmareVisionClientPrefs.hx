@@ -34,6 +34,8 @@ class NightmareVisionClientPrefs {
 		view = makeDefaults();
 		seedNativeEquivalents(nativeOptions);
 		installMethods();
+		// Source Main captures reset defaults before Init overlays saved bindings.
+		loadDefaultKeys();
 	}
 
 	/** The owner key is compared after the same slash cleanup used by imports. */

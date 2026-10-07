@@ -14,9 +14,9 @@ class PsychNoteCallbacks {
 
 		// noteType may be a script-facing property backed by an authored-kind
 		// accessor. Read it as a property so callers see the same value as Psych.
-		var preparedLuaArgs = luaArgs == null ? [groupSlot, lane,
+		var preparedLuaArgs:Array<Dynamic> = luaArgs == null ? [(cast groupSlot:Dynamic), lane,
 			Reflect.getProperty(note, 'noteType'), Reflect.getProperty(note, 'isSustainNote')] : luaArgs;
-		var result = broadcast(callback, preparedLuaArgs, 'Luas');
+		var result:Dynamic = broadcast(callback, preparedLuaArgs, 'Luas');
 		if (result == ScriptCallbackResult.STOP || result == ScriptCallbackResult.STOP_HSCRIPT
 			|| result == ScriptCallbackResult.STOP_ALL) return result;
 

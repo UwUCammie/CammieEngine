@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from haxe_test_support import FixturePath as Path, HAXE_COMMAND
 from tools.haxe_flixel_math_stubs import write_flixel_point_stub
+from test_source_event_preparation import extract_method
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,7 +21,7 @@ class NightmareVisionStateClassApiTest(unittest.TestCase):
         song_start = source[source.index("function startSong("):source.index("// ---- hscript helper shaders")]
         self.assertLess(song_start.index("nightmareVisionStartOnTime = 0;"), song_start.index("callNightmareVision('onSongStart'"))
         self.assertNotIn("startOnTime = 0;", song_start)
-        seed = source[source.index("function seedNightmareVision("):source.index("function seedNightmareVision(") + 600]
+        seed = extract_method(source,"function seedNightmareVision(")
         self.assertIn("interp.bindClassParent(PlayState);", seed)
         main = """class State {
  public var startTimestamp:Float = 0;
@@ -102,30 +103,30 @@ class Main {
  static function main():Void {
   var ordinary=new State(0);
   var negative=load(ordinary,false);negative.call('onCreatePost');
-  check(negative.getScript('global').call('readCard')==null,
+  check(negative.getScript('global').callValue('readCard')==null,
    'negative control should reproduce a missing numeric state-class property');
   negative.destroy();
   var first=new State(0);
   var g=load(first,true);g.call('onCreatePost');
   var script=g.getScript('global');
-  var card:Dynamic=script.call('readCard');
+  var card:Dynamic=script.callValue('readCard');
   check(card!=null&&card.song=='Synthetic'&&card.composer=='Synthetic Composer',
    'normal launch cannot create its authored intro');
-  var layers:Array<Dynamic>=script.call('readLayers');
+  var layers:Array<Dynamic>=script.callValue('readLayers');
   check(layers.length==4&&layers[0]==first.camGame&&layers[1]==card
    &&layers[2]==first.camHUD&&layers[3]==first.camOther,
    'source class camera must place the card above game and below HUD');
-  check(script.call('readCollision')=='static'&&script.call('readNullable')==null,
+  check(script.callValue('readCollision')=='static'&&script.callValue('readNullable')==null,
    'real static fields, including null, must precede instance aliases');
-  script.call('writeOffset',[12000]);check(first.offset==12000,'instance setter not forwarded');
+  script.callValue('writeOffset',[12000]);check(first.offset==12000,'instance setter not forwarded');
   var editor=new State(42000);var other=load(editor,true);other.call('onCreatePost');
-  check(other.getScript('global').call('readCard')==null,'editor seek should suppress authored intro');
-  check(script.call('readOffset')==12000&&other.getScript('global').call('readOffset')==42000,
+  check(other.getScript('global').callValue('readCard')==null,'editor seek should suppress authored intro');
+  check(script.callValue('readOffset')==12000&&other.getScript('global').callValue('readOffset')==42000,
    'source state class aliases leaked across owners');
-  check(script.call('readHud')==first.camHUD&&other.getScript('global').call('readHud')==editor.camHUD,
+  check(script.callValue('readHud')==first.camHUD&&other.getScript('global').callValue('readHud')==editor.camHUD,
    'camera alias leaked across owners');
   var replacement=new State(7);g.parent=replacement;
-  check(script.call('readOffset')==7&&script.call('readHud')==replacement.camHUD,
+  check(script.callValue('readOffset')==7&&script.callValue('readHud')==replacement.camHUD,
    'class alias retained a stale parent');
   g.destroy();other.destroy();
  }

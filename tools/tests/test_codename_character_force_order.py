@@ -83,6 +83,8 @@ class Character {
  public var log:Array<String>=[];
  public var animation=new FakeAnimation();
  public var offset=new FakePoint();
+ // This Codename fixture has no Nightmare Vision Stage animation channel.
+ var sourceStageAnimOffset:Null<FakePoint>=null;
  public var frameOffset=new FakePoint();
  public var globalOffset=new FakePoint();
  public var isPlayer=false; public var playerOffsets=false;

@@ -177,7 +177,7 @@ class MainMenuState extends MusicBeatState {
 		#end
 
 		#if sys
-		add(new ImportRefreshProgressBar());
+		add(new ImportRefreshProgressBar(this));
 		#end
 		super.create();
 		RuntimeStartupProbe.mark('main_menu_ready');
@@ -185,13 +185,20 @@ class MainMenuState extends MusicBeatState {
 
 	var selectedSomethin:Bool = false;
 	var startupImportCheckMarked:Bool = false;
+	var importWorkBusy:Bool = false;
+	var importAvailabilityRevision:Int = -1;
+	var importAvailability:ImportRefreshAvailabilitySnapshot;
 
 	override function update(elapsed:Float) {
 		#if sys
 		if (!startupImportCheckMarked) RuntimeStartupProbe.mark('main_menu_import_check_enter');
 		var refresh = ImportRefreshManager.browseTick();
 		if (!startupImportCheckMarked) { RuntimeStartupProbe.mark('main_menu_import_check_ready'); startupImportCheckMarked = true; }
-		if (refresh.busy) { super.update(elapsed); return; }
+		importWorkBusy = refresh.busy;
+		if (importAvailabilityRevision != ImportRefreshManager.availabilityRevision()) {
+			importAvailability = ImportRefreshManager.availabilitySnapshot();
+			importAvailabilityRevision = importAvailability.revision;
+		}
 		#end
 		if (FlxG.sound.music.volume < 0.8) {
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;
@@ -204,6 +211,9 @@ class MainMenuState extends MusicBeatState {
 			return;
 
 		if (hxcOverlaySpec != null) {
+			if (!FreeplaySongAvailability.ownerReadiness(importAvailability, hxcOverlayRoot).ready) {
+				super.update(elapsed); return;
+			}
 			updateHxcMenuOverlay();
 			super.update(elapsed);
 			return;
@@ -227,6 +237,9 @@ class MainMenuState extends MusicBeatState {
 			}
 
 			if (controls.ACCEPT) {
+				if (!ImportMenuNavigationPolicy.mainActionAllowed(importWorkBusy, optionShit[curSelected])) {
+					FlxG.sound.play('assets/sounds/cancelMenu' + TitleState.soundExt); super.update(elapsed); return;
+				}
 				if (optionShit[curSelected] == 'donate') {
 					#if linux
 					Sys.command('/usr/bin/xdg-open', [FNFAssets.getText("assets/data/donate_button_link.txt"), "&"]);
@@ -479,8 +492,9 @@ class MainMenuState extends MusicBeatState {
 		if (hxcOverlaySpec == null || hxcOverlayBusy
 			|| hxcOverlayIndex < 0 || hxcOverlayIndex >= hxcOverlaySpec.items.length)
 			return;
-		hxcOverlayBusy = true;
 		var item = hxcOverlaySpec.items[hxcOverlayIndex];
+		if (!ImportMenuNavigationPolicy.mainActionAllowed(importWorkBusy, item.route)) return;
+		hxcOverlayBusy = true;
 		var route = item.route;
 		hxcClearMenuOverlay();
 		switch (route) {

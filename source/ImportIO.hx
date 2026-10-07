@@ -45,6 +45,7 @@ class ImportIO {
 	var baselineCache:Map<String, ImportIOBaseline> = new Map();
 	var baselineChecked:Map<String, Bool> = new Map();
 	var namespaces:Map<String, String> = new Map();
+	var resolvedNamespaces:Map<String, String> = new Map();
 	var sourceLabels:Map<String, String> = new Map();
 
 	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false) {
@@ -239,6 +240,23 @@ class ImportIO {
 	public function namespace(sourceRoot:String, engine:String):Null<String> {
 		var key = sourceEngineKey(sourceRoot, engine);
 		return key == "" ? null : namespaces.get(key);
+	}
+
+	/** Record the namespace actually selected by CompatScriptManifest for this
+	 * source root. The importer uses this exact result when publishing retained
+	 * package-family provenance; it never reconstructs a namespace from labels. */
+	public function recordResolvedNamespace(sourceRoot:String, engine:String, namespace:String):Void {
+		var key = sourceEngineKey(sourceRoot, engine);
+		if (key == "" || namespace == null || StringTools.trim(namespace) == "") return;
+		var prior = resolvedNamespaces.get(key);
+		if (prior != null && prior != namespace)
+			throw "An import source root resolved to multiple destination namespaces.";
+		resolvedNamespaces.set(key, namespace);
+	}
+
+	public function resolvedNamespace(sourceRoot:String, engine:String):Null<String> {
+		var key = sourceEngineKey(sourceRoot, engine);
+		return key == "" ? null : resolvedNamespaces.get(key);
 	}
 
 	public function setSourceLabel(sourceRoot:String, label:String):Void {

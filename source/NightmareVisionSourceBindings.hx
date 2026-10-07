@@ -21,7 +21,7 @@ class NightmareVisionSourceBindings {
 	 * points at its full FunkinScript object; a bare interpreter is not a
 	 * compatible substitute. */
 	public static function bindOwner(interp:Dynamic, ownerRoot:String, modFolder:String,
-		?scriptContext:Dynamic):NightmareVisionSourceOptions {
+		?scriptContext:Dynamic, ?ownerOptions:NightmareVisionSourceOptions):NightmareVisionSourceOptions {
 		var vars = variablesOf(interp);
 		if (ownerRoot == null || !StringTools.startsWith(StringTools.replace(ownerRoot, '\\', '/'), 'assets/imported_mods/'))
 			throw '[nightmare-vision-bindings] Invalid selected owner root';
@@ -47,11 +47,20 @@ class NightmareVisionSourceBindings {
 
 		var saveFacade:Dynamic = Reflect.field(interp, 'ownerSave');
 		var saveData:Dynamic = saveFacade == null ? null : Reflect.field(saveFacade, 'data');
-		var options = new NightmareVisionSourceOptions(ownerRoot, saveData);
+		var options = ownerOptions == null ? new NightmareVisionSourceOptions(ownerRoot, saveData) : ownerOptions;
+		if (options.ownerRoot != ownerRoot) throw '[nightmare-vision-bindings] Options belong to a different lease';
+		var optionScript = scriptContext == null ? get(vars, 'script') : scriptContext;
 		set(vars, 'newOption', function(key:String, type:String = 'string',
 			defaultValue:Dynamic = 'null', ?settings:Dynamic):Void
-			options.add(key, type, defaultValue, settings));
+			if (ownerOptions == null) options.add(key, type, defaultValue, settings)
+			else options.addForMod(optionScript == null ? modFolder : Reflect.getProperty(optionScript, 'modFolder'),
+				key, type, defaultValue, settings));
 		set(vars, 'getOption', function(key:String):Dynamic return options.getValue(key));
+		var sourceOptions = new NightmareVisionModOptionsFacade(options);
+		set(vars, 'ModOptions', sourceOptions);
+		bindImport(interp, 'funkin.data.ModOptions', sourceOptions);
+		set(vars, 'ModOption', NightmareVisionSourceModOption);
+		bindImport(interp, 'funkin.data.ModOptions.ModOption', NightmareVisionSourceModOption);
 		bindImport(interp, 'flixel.input.keyboard.FlxKey', keyFacade);
 		bindImport(interp, 'funkin.scripts.ScriptClasses.ScriptedFlxRandom', NightmareVisionSourceRandom);
 		return options;

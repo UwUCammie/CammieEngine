@@ -85,4 +85,18 @@ class Main {
     files['flixel/FlxSprite.hx'] = files['flixel/FlxSprite.hx'].replace('function set_clipRect(v:FlxRect){clips++;return clipRect=v;}', clip_setter)
     math_source = (flixel / 'math/FlxMath.hx').read_text()
     files['flixel/math/FlxMath.hx'] = 'package flixel.math;class FlxMath {' + '\n'.join(method(math_source, name) for name in ['public static function roundDecimal(', 'public static inline function bound(', 'public static function remapToRange(', 'public static inline function lerp(']) + '}'
+    # Compile the real targeted wrapper/macro used by NV Bar children; no donor body changes.
+    color_source = (flixel / 'util/FlxColor.hx').read_text(encoding='utf-8')
+    color_methods = ''.join(method(color_source, n) for n in ['inline function getThis(', 'inline function get_red(', 'inline function get_green(', 'inline function get_blue(', 'inline function get_alpha(', 'public inline function toHexString('])
+    files['flixel/util/FlxColor.hx'] = 'package flixel.util;abstract FlxColor(Int) from Int to Int {public static inline var WHITE:Int=-1;public static inline var BLACK:Int=0xFF000000;public var red(get,never):Int;public var green(get,never):Int;public var blue(get,never):Int;public var alpha(get,never):Int;' + color_methods + '}'
+    files['flixel/graphics/frames/FlxAtlasFrames.hx'] = 'package flixel.graphics.frames;class FlxAtlasFrames {public function new(){}}'
+    files['flixel/system/FlxAssets.hx'] = 'package flixel.system;typedef FlxGraphicAsset=Dynamic;'
+    files['flixel/FlxObject.hx'] = 'package flixel;typedef FlxObject=FlxSprite;'
+    files['flixel/util/FlxAxes.hx'] = (flixel / 'util/FlxAxes.hx').read_text(encoding='utf-8')
+    files['NightmareVisionPaths.hx'] = 'class NightmareVisionPaths {public var root="fixture";public function new(){}public function getAtlasFrames(p:String):flixel.graphics.frames.FlxAtlasFrames return new flixel.graphics.frames.FlxAtlasFrames();public function image(p:String):flixel.graphics.FlxGraphic return new flixel.graphics.FlxGraphic(106,26);}'
+    sprite = files['flixel/FlxSprite.hx']
+    sprite = sprite.replace('public function loadGraphic(g:FlxGraphic)', 'public function loadGraphic(g:Dynamic,animated:Bool=false,w:Int=0,h:Int=0,unique:Bool=false,?key:String):FlxSprite')
+    sprite = sprite.replace('public function makeGraphic(w:Int,h:Int,c:Null<Int>)', 'public function makeGraphic(w:Int,h:Int,c:Int=-1,unique:Bool=false,?key:String):FlxSprite')
+    sprite = sprite.replace('public var path:Dynamic;', 'public var frames:Dynamic;public var animation:Dynamic={curAnim:null,addByPrefix:function(a:String,b:String,c:Int,d:Bool){},play:function(a:String){}};public var path:Dynamic;')
+    files['flixel/FlxSprite.hx'] = sprite
     return files

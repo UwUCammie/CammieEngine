@@ -24,6 +24,7 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 		super(x, y);
 		if (owner == null) throw '[nightmare-vision-note-splash] Missing selected owner';
 		this.owner = owner;
+		NightmareVisionSpriteMethods.bind(this, owner.spriteOwner);
 		data = noteData;
 		this.player = player;
 		loadAnims(owner.skinForID(player).splashTexture);

@@ -64,6 +64,10 @@ class PsychRuntimeBindings {
 	public function install():Void {
 		attachCallbackScope(owner);
 		if (Std.isOfType(owner, SourceIrisBridge)) installHscriptPreset(owner, null);
+		else if (Std.isOfType(owner, LuaCompatInterp)) {
+			PsychAchievementsIntegration.installLua(host, owner, origin);
+			PsychStandardServices.installLua(host, owner, origin);
+		}
 		var run = function(code:String, ?varsToBring:Dynamic, ?funcToRun:String,
 			?funcArgs:Array<Dynamic>):Dynamic {
 			var target = module();

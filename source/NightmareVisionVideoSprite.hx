@@ -13,6 +13,7 @@ using StringTools;
 	stage scripts. It preserves the source callback shape while making every
 	video path resolve through that script's selected package.
 */
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionVideoSprite extends FlxVideoSprite {
 	public static inline var looping:String = ':input-repeat=65535';
 	public static inline var muted:String = ':no-audio';
@@ -42,6 +43,7 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 		this.ownerState = ownerState;
 		this.ownerPaths = ownerPaths;
 		ownerRoot = Std.string(Reflect.field(ownerPaths, 'root'));
+		NightmareVisionSpriteMethods.bind(this, NightmareVisionSpriteRegistry.peek(ownerRoot));
 		this.oneTimeUse = oneTimeUse;
 		canSkip = isSkippable;
 		live.push(this);
@@ -271,6 +273,7 @@ import flixel.FlxSprite;
 
 /** Renderer-only fallback completes the scripted transition when video output
 	is unavailable on the current target. */
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionVideoSprite extends FlxSprite {
 	static var live:Array<NightmareVisionVideoSprite> = [];
 	public var ownerState(default, null):Dynamic;
@@ -288,6 +291,7 @@ class NightmareVisionVideoSprite extends FlxSprite {
 		this.ownerState = ownerState;
 		this.ownerPaths = ownerPaths;
 		ownerRoot = ownerPaths == null ? '' : Std.string(Reflect.field(ownerPaths, 'root'));
+		NightmareVisionSpriteMethods.bind(this, NightmareVisionSpriteRegistry.peek(ownerRoot));
 		this.oneTimeUse = oneTimeUse;
 		canSkip = isSkippable;
 		live.push(this);

@@ -32,6 +32,7 @@ public var curSelected:Int=0;
 public var curDifficulty:Int=0; public var hxcDifficultyOrder:Array<String>=[];
 public function new() {}
 function songMatches(i:Int):Bool return true;
+public function availabilityAllowsSelection(i:Int,fresh:Bool=false):Bool return true;
 function insert(i:Int,v:Dynamic):Void members.push(v);
 function remove(v:Dynamic,b:Bool):Void members.remove(v);
 public static var diffJson:Dynamic = {defaultDiff:1,difficulties:[{name:"easy"},{name:"normal"},{name:"hard"}]};
@@ -148,9 +149,11 @@ public static function allows(names:Array<String>,name:String):Bool return names
     def test_both_launch_routes_and_rank_stars_share_support(self):
         source = (ROOT/'source/FreeplayState.hx').read_text()
         hxc = extract_method(source, 'function hxcLaunchCurrentSelection(')
-        self.assertIn('selectionHasChart(songs[curSelected].songName, curDifficulty)', hxc)
-        self.assertLess(hxc.index('selectionHasChart('), hxc.index('Song.loadFromJson('))
-        self.assertIn('if (!selectionHasChart(songs[daSelection].songName, curDifficulty)) {', source)
+        self.assertIn('availabilityAllowsLaunch(curSelected, curDifficulty)', hxc)
+        self.assertLess(hxc.index('availabilityAllowsLaunch('), hxc.index('Song.loadFromJson('))
+        launch = extract_method(source, 'function availabilityAllowsLaunch(')
+        self.assertIn('selectionHasChart(songs[index].songName, difficulty)', launch)
+        self.assertIn('if (!availabilityAllowsLaunch(daSelection, curDifficulty)) {', source)
         self.assertIn('ordinaryRejectedSelection(songs[daSelection].songName, curDifficulty)', source)
         icon = extract_method(source, 'function buildIconFor(')
         self.assertIn('refreshRankStarsFor(i)', icon)

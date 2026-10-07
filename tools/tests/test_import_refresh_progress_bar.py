@@ -1,6 +1,7 @@
-"""The shared refresh overlay polls coordinator status and renders its state."""
+"""The shared importer/refresh panel renders coordinator and manual job state."""
 from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
+from test_nv_multifield_routes import method
 from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
@@ -11,12 +12,14 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 STUBS = {
+    "haxe/Timer.hx": r'''package haxe;
+class Timer { public static var now:Float=0; public static function stamp():Float return now; }''',
     "flixel/FlxBasic.hx": r'''package flixel;
 class FlxBasic {
  public var active:Bool = true;
- public var visible:Bool = true;
+ public var visible:Bool = true; public var exists=true;
  public function new() {}
- public function update(elapsed:Float):Void {}
+ public function update(elapsed:Float):Void {} public function destroy():Void {} public var draws=0;public function draw():Void draws++;
 }''',
     "flixel/Point.hx": r'''package flixel;
 class Point {
@@ -36,7 +39,9 @@ class FlxSprite extends FlxBasic {
  public function setPosition(x:Float=0,y:Float=0):Void { this.x=x; this.y=y; }
 }''',
     "flixel/FlxG.hx": r'''package flixel;
-class FlxG { public static var width:Int=1280; public static var height:Int=720; }''',
+class FlxG {public static var state:FlxState; public static var width:Int=1280; public static var height:Int=720; }''',
+    "flixel/FlxState.hx": 'package flixel;class FlxState extends flixel.group.FlxGroup.FlxTypedGroup<FlxBasic> {public var subState:Dynamic;public var persistentDraw=true;public var persistentUpdate=false;public function new(){super();}}',
+    "flixel/FlxCamera.hx": 'package flixel;class FlxCamera {public static var _defaultCameras:Array<FlxCamera>=[];}',
     "flixel/util/FlxColor.hx": r'''package flixel.util;
 class FlxColor {
  public static inline var WHITE:Int=0xFFFFFFFF;
@@ -54,8 +59,9 @@ class FlxText extends FlxSprite {
  function set_text(value:String):String { writes++; _text=value; return value; }
 }''',
     "flixel/group/FlxGroup.hx": r'''package flixel.group;
-import flixel.FlxBasic;
+import flixel.FlxBasic;import flixel.FlxCamera;
 class FlxTypedGroup<T:FlxBasic> extends FlxBasic {
+ public var _cameras:Array<flixel.FlxCamera>;
  public var members:Array<T>=[];
  public function new(maxSize:Int=0) { super(); }
  public function add(value:T):T { members.push(value); return value; }
@@ -65,7 +71,7 @@ class FlxTypedGroup<T:FlxBasic> extends FlxBasic {
 }''',
     "ImportRefreshManager.hx": r'''class ImportRefreshManager {
  public static var calls:Int=0;
- public static var failNext:Bool=false;
+ public static var failNext:Bool=false;public static var warnings:Array<String>=[];public static function reportFailure(message:String):Void warnings.push(message);
  public static var snapshot:Dynamic={busy:false,label:"",fraction:0.0,complete:false,changed:false,blocked:false};
  public static function browseTick():Dynamic {
   calls++;
@@ -75,13 +81,24 @@ class FlxTypedGroup<T:FlxBasic> extends FlxBasic {
  public static function setStatus(status:Dynamic):Void snapshot=status;
 }''',
 }
+STUBS["ImportRefreshProgress.hx"] = (ROOT / "source/ImportRefreshProgress.hx").read_text(encoding="utf-8")
+
+# Exercise actual pinned parent/group draw algorithms, including persistentDraw
+# with parent update paused. Drawing stubs measure calls, not pixels.
+_NATIVE = ROOT / '.haxelib/flixel/6,1,2/flixel'
+_group_draw = method((_NATIVE / 'group/FlxGroup.hx').read_text(encoding='utf-8'), 'override public function draw(')
+STUBS['flixel/group/FlxGroup.hx'] = STUBS['flixel/group/FlxGroup.hx'].replace(' override public function update(', _group_draw + '\n override public function update(')
+_state_draw = method((_NATIVE / 'FlxState.hx').read_text(encoding='utf-8'), 'override function draw(')
+STUBS['flixel/FlxState.hx'] = STUBS['flixel/FlxState.hx'].replace('public function new(){', _state_draw + 'public function new(){')
 
 
 MAIN = r'''import flixel.FlxG;
+import haxe.Timer;
 class Main {
  static function check(value:Bool,message:String):Void if(!value) throw message;
  static function main():Void {
-  var overlay=new ImportRefreshProgressBar();
+  var foreground=new flixel.FlxState();FlxG.state=foreground;
+  var overlay=new ImportRefreshProgressBar(foreground);foreground.add(overlay);
   check(overlay.active&&!overlay.visible,"overlay must keep polling while hidden");
   overlay.update(0.016);
   check(ImportRefreshManager.calls==1&&!overlay.visible,"idle poll or visibility");
@@ -110,11 +127,11 @@ class Main {
   check(overlay.timingText.text.indexOf("Elapsed 1m 15s")>=0
    &&overlay.timingText.text.indexOf(" | ")>=0
    &&overlay.timingText.text.indexOf("Phase ETA ~2m 04s")>=0
-   &&overlay.timingText.text.indexOf("Queue remaining 2")>=0,"elapsed time, phase ETA, or queue count was omitted");
+   &&overlay.timingText.text.indexOf("Queue 2")>=0,"elapsed time, phase ETA, or queue count was omitted");
   check(Math.abs(overlay.progressFraction()-0.375)<0.0001
    &&Math.abs(overlay.progressFill.scale.x-0.375)<0.0001,"phase fraction was not drawn");
 
-  var second=new ImportRefreshProgressBar();
+  var second=new ImportRefreshProgressBar(foreground);
   second.update(0.016);
   check(second.visible&&ImportRefreshManager.calls==3,"multiple menu pollers did not share status");
 
@@ -180,16 +197,16 @@ class Main {
   ImportRefreshManager.setStatus({busy:false,label:"Local changes need review",fraction:0.0,
    complete:false,changed:false,blocked:true});
   overlay.update(0.25);
-  check(overlay.visible&&overlay.statusText.text=="Local changes need review",
-   "blocked refresh state was not surfaced");
+  check(!overlay.visible,"completed conflict must not persist as automatic popup");
+  check(ImportRefreshManager.snapshot.label=="Local changes need review"&&ImportRefreshManager.snapshot.blocked,"warning diagnostics remain in coordinator");
 
   ImportRefreshManager.setStatus({busy:false,label:"",fraction:1.0,
    complete:true,changed:true,blocked:false});
   overlay.update(0.25);
-  check(overlay.visible&&overlay.statusText.text=="Imported mods refreshed",
-   "completed refresh did not show a brief confirmation");
+  check(!overlay.visible,"completed background work never shows a success popup");
+  var later=new ImportRefreshProgressBar(foreground);later.update(.016);check(!later.visible,"new overlay cannot replay completion");
   overlay.update(3.0);
-  check(!overlay.visible,"completion toast did not dismiss itself");
+  check(!overlay.visible,"terminal status became visible during the idle interval");
   var calls=ImportRefreshManager.calls;
   overlay.update(0.25);
   check(!overlay.visible&&ImportRefreshManager.calls==calls+1,
@@ -197,14 +214,92 @@ class Main {
 
   ImportRefreshManager.failNext=true;
   overlay.update(0.25);
-  check(overlay.visible&&overlay.statusText.text.indexOf("Import refresh failed:")==0,
-   "coordinator failure was hidden from the user");
+  check(!overlay.visible&&ImportRefreshManager.warnings[0]=="coordinator unavailable","failure popup retired while full diagnostics preserved");
+  ImportRefreshManager.setStatus({busy:true,label:"Retry",fraction:0,complete:false,changed:false,blocked:false});
+  overlay.update(.25);check(overlay.visible,"later active retry visible");
+  ImportRefreshManager.setStatus({busy:true,backgroundBusy:false,label:"Old warning",fraction:0,complete:false,changed:false,blocked:true});
+  overlay.update(.25);check(!overlay.visible,"manual busy gate cannot show stale automatic progress");
+  ImportRefreshManager.setStatus({busy:true,backgroundBusy:true,label:"Background retry",fraction:0,complete:false,changed:false,blocked:false});
+  overlay.update(.25);check(overlay.visible,"explicit background progress is shown");
+  var pollCount=ImportRefreshManager.calls;
+  foreground.draw();var childDraws=overlay.panel.draws;check(childDraws>0,"actual parent draws foreground progress");
+  foreground.subState={draw:function(){}};
+  foreground.draw();check(overlay.panel.draws==childDraws&&!overlay.visible&&ImportRefreshManager.calls==pollCount,"persistent parent draw without update cannot leak modal progress");
+  ImportRefreshManager.setStatus({busy:false,backgroundBusy:false,label:"Imports refreshed.",fraction:1,complete:true,changed:true,blocked:false});
+  foreground.subState=null;overlay.update(.016);check(!overlay.visible,"resume polls fresh idle snapshot rather than cached busy");
+  ImportRefreshManager.setStatus({busy:true,backgroundBusy:true,label:"Background retry",fraction:0,complete:false,changed:false,blocked:false});overlay.update(.25);
+  pollCount=ImportRefreshManager.calls;
+  foreground.subState={modal:true};overlay.update(.25);check(!overlay.visible&&ImportRefreshManager.calls==pollCount,"modal foreground hides and does not poll stale owner");
+  foreground.subState=null;FlxG.state=new flixel.FlxState();overlay.update(.25);check(!overlay.visible&&ImportRefreshManager.calls==pollCount,"departed screen cannot show or pump progress");
+  var current=new ImportRefreshProgressBar(FlxG.state);current.update(.016);check(current.visible,"current screen can display real ongoing work");
+  ImportRefreshManager.setStatus({busy:false,label:"Checking saved imports",fraction:0,complete:false,changed:false,blocked:false});current.update(.25);check(!current.visible,"idle inspection never remains visible");
+
+  var importer=new flixel.FlxState();FlxG.state=importer;
+  Timer.now=0;
+  var localStatus:Dynamic={busy:true,label:"Scanning as psych",phase:"scan-assets",
+   current:"selected-source/assets/images/characters/example.png",completed:7,total:20,fraction:0.35,
+   complete:false,changed:false,blocked:false};
+  var callsBeforeLocal=ImportRefreshManager.calls;
+  var integrated=new ImportRefreshProgressBar(importer,function():Dynamic return localStatus,true);
+  integrated.update(.016);
+  check(integrated.visible&&integrated.panel.y==226,"manual work did not use the embedded shared panel");
+  check(integrated.statusText.text=="Scanning as psych"
+   &&integrated.phaseText.text.indexOf("Scanning assets")>=0
+   &&integrated.phaseText.text.indexOf("7/20 done")>=0
+   &&integrated.currentFileText.text.indexOf("Current file: selected-source/")==0
+   &&integrated.currentFileText.text.indexOf("example.png")>=0,
+   "manual scan did not reuse the automatic phase/count/file presentation: "
+    +integrated.statusText.text+" | "+integrated.phaseText.text+" | "+integrated.currentFileText.text);
+  check(integrated.activityText.text.indexOf("just now")>=0
+   &&integrated.timingText.text.indexOf("Elapsed 0s")>=0
+   &&integrated.timingText.text.indexOf("Phase ETA unavailable")>=0
+   &&integrated.timingText.text.indexOf("Queue ")==-1,
+   "manual elapsed/activity/unknown ETA or queue display was misleading");
+  check(Math.abs(integrated.progressFraction()-0.35)<0.0001,
+   "known local phase fraction was not kept from the shared progress tracker");
+  Timer.now=4;
+  localStatus.completed=8;
+  integrated.update(0.25);
+  check(integrated.activityText.text.indexOf("just now")>=0
+   &&integrated.timingText.text.indexOf("Elapsed 4s")>=0
+   &&integrated.timingText.text.indexOf("Phase ETA ~48s")>=0,
+   "shared helper did not calculate a phase-only ETA from local activity");
+  Timer.now=5;
+  localStatus.phase="scan-roots";
+  localStatus.current="selected-source";
+  localStatus.completed=4;
+  localStatus.total=100;
+  integrated.update(0.25);
+  check(integrated.phaseText.text.indexOf("4 folders checked | unknown")>=0
+   &&integrated.timingText.text.indexOf("Phase ETA unavailable")>=0
+   &&integrated.progressFraction()==0
+   &&integrated.progressFill.scale.x>0&&integrated.progressFill.scale.x<=0.24,
+   "local root scan safety caps were shown as a known total or whole-import fraction: "
+    +integrated.phaseText.text+" | "+integrated.timingText.text+" | "+integrated.progressFraction()+" | "+integrated.progressFill.scale.x);
+  check(ImportRefreshManager.calls==callsBeforeLocal,"local status must not poll or replace coordinator work");
+  localStatus=null;integrated.invalidateStatus();integrated.update(.016);
+  check(!integrated.visible,"consuming a manual job must not leave a completion toast");
+
+  for(viewport in [1280,1024,800]) {
+   FlxG.width=viewport;
+   var lane=new ImportRefreshProgressBar(foreground);
+   lane.setMenuLane(130,16,0.56,20);
+   lane.update(.25);
+   check(lane.panel.x==130&&lane.panel.y==16,
+    "menu lane must leave the FPS corner clear");
+   check(lane.panel.x+lane.panel.width*lane.panel.scale.x<=viewport*0.56-19,
+    "menu lane overlaps the native score column");
+   check(lane.panel.origin.x==0&&lane.progressTrack.origin.x==0,
+    "scaled panel and track drift outside their reserved bounds");
+  }
+  FlxG.width=1280;
+  foreground.active=false;FlxG.state=foreground;overlay.update(.25);check(!overlay.visible,"inactive owner hides");
  }
 }'''
 
 
 class ImportRefreshProgressBarTest(unittest.TestCase):
-    def test_overlay_polls_shared_status_and_shows_busy_blocked_and_completion(self):
+    def test_overlay_shows_foreground_busy_state_and_keeps_terminal_status_hidden(self):
         source = (ROOT / "source/ImportRefreshProgressBar.hx").read_text(encoding="utf-8")
         self.assertNotIn("\u00b7", source, "VCR UI text must use ASCII separators")
         self.assertNotIn("\u2026", source, "VCR UI text must use ASCII ellipses")
@@ -222,6 +317,14 @@ class ImportRefreshProgressBarTest(unittest.TestCase):
                 cwd=base, text=True, capture_output=True, timeout=60,
             )
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+
+    def test_import_settings_uses_the_shared_card_without_the_old_manual_bar(self):
+        source = (ROOT / "source/ImportSettingsState.hx").read_text(encoding="utf-8")
+        self.assertIn("public var progressPresentation(default, null):ImportRefreshProgressBar", source)
+        self.assertIn("new ImportRefreshProgressBar(this, progressPresentationStatus, true)", source)
+        self.assertNotIn("FlxBar", source)
+        self.assertNotIn("progressText", source)
+        self.assertNotIn("progressBar", source)
 
 
 if __name__ == "__main__":

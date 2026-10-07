@@ -11,6 +11,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+import os
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,7 +79,7 @@ class SourceGameplayLifecycleTest(unittest.TestCase):
         cls.hit_helper = extract_method(cls.play, "function dispatchPsychNoteHitPre(")
         cls.countdown_helper = extract_method(cls.play, "function notifySourceCountdownStarted(")
 
-    def compile_helper_fixture(self):
+    def compile_helper_fixture(self, cpp=False):
         fixture = r'''
 class ScriptCallbackResult {
  public static inline var STOP:String = 'STOP';
@@ -227,6 +228,22 @@ class Main {
                 [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
             )
+            self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-4000:])
+            if cpp:
+                env = os.environ.copy()
+                env['HAXELIB_PATH'] = str(ROOT / '.haxelib')
+                env['NEKOPATH'] = str(ROOT / '.tools/neko')
+                env['PATH'] = str(ROOT / '.tools/haxe') + os.pathsep + env['NEKOPATH'] + os.pathsep + env.get('PATH', '')
+                exported = subprocess.run(
+                    [*HAXE_COMMAND, '-cp', folder, '-main', 'Main', '-cpp', str(Path(folder) / 'cpp'), '-D', 'no-compilation'],
+                    cwd=ROOT, env=env, capture_output=True, text=True, timeout=45)
+                self.assertEqual(exported.returncode, 0, (exported.stdout + exported.stderr)[-4000:])
+                generated = (Path(folder) / 'cpp/src/PlayState.cpp').read_text(encoding='utf-8')
+                pre_hook = generated[generated.index('bool PlayState_obj::dispatchPsychNoteHitPre('):]
+                pre_hook = pre_hook[:pre_hook.index('HX_DEFINE_DYNAMIC_FUNC2')]
+                self.assertRegex(pre_hook, r'::Dynamic\s+result\s*=')
+                self.assertNotRegex(pre_hook, r'::String\s+result\s*=')
+                self.assertNotIn('( (::String)(::PsychRuntimeBindings_obj::dispatch', pre_hook)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_extracted_dispatch_helpers_execute_sentinel_matrix_and_payloads(self):
@@ -238,6 +255,9 @@ class Main {
         self.assertIn("result != ScriptCallbackResult.STOP_ALL", self.hit_helper)
         self.assertIn("return result != ScriptCallbackResult.STOP", self.hit_helper)
         self.compile_helper_fixture()
+
+    def test_native_pre_hit_result_remains_dynamic_before_stop_comparisons(self):
+        self.compile_helper_fixture(cpp=True)
 
     def test_note_adapter_supplies_live_group_slot_and_scalar_fields(self):
         adapter = extract_method(self.engine_compat,

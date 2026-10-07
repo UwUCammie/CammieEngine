@@ -15,6 +15,7 @@ import Sys;
 import sys.FileSystem;
 #end
 
+@:build(NightmareVisionSpriteMacro.build())
 class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	public var type:String = 'normal';
 	/** A source field draws its underlay immediately before its receptor bank. */
@@ -156,6 +157,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 
 		for (i in 0...(generateReceptors ? Note.NOTE_AMOUNT : 0)) {
 			var babyArrow:StrumNote = new StrumNote(Note.swagWidth * i, 0, i, type, currentKey, this);
+			NightmareVisionSpriteMethods.bind(babyArrow, Reflect.field(this, '__nightmareVisionSpriteOwner'));
 			if (sourceStrumScale != 1) babyArrow.resetStrumSize();
 			add(babyArrow);
 			if (babyArrow.codenameCreationEvent != null && PlayState.instance != null) {
@@ -526,6 +528,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 	}
 }
 
+@:build(NightmareVisionSpriteMacro.build())
 class StrumNote extends FlxSprite {
 	/** Persistent source scale baseline, refreshed only after source skin loading. */
 	var nightmareVisionBaseScalePoint:FlxPoint;

@@ -66,6 +66,7 @@ class SaveDataState extends MusicBeatState {
 	var musicJson:Dynamic = CoolUtil.parseJson(FNFAssets.getText("assets/music/custom_menu_music/custom_menu_music.json"));
 	var preferredSave:Int = 0;
 	var description:FlxText;
+	var importWorkBusy:Bool = false;
 	var forbiddenIndexes:Array<Int> = [];
 	#if (sys && windows)
 	var updateDialogBackground:FlxSprite;
@@ -304,17 +305,14 @@ class SaveDataState extends MusicBeatState {
 		if (curOptions.allowEditOptions)
 			swapMenus();
 		#if sys
-		add(new ImportRefreshProgressBar());
+		add(new ImportRefreshProgressBar(this));
 		#end
 		super.create();
 	}
 	override function update(elapsed:Float) {
 		super.update(elapsed);
 		#if sys
-		if (ImportRefreshManager.browseTick().busy) {
-			amountRepeat.reset();
-			return;
-		}
+		importWorkBusy = ImportRefreshManager.browseTick().busy;
 		#end
 		#if (sys && windows)
 		pollUpdateCheck();
@@ -338,9 +336,18 @@ class SaveDataState extends MusicBeatState {
 
 				saveOptions();
 				FlxG.sound.music.stop();
-				if (prevPath == 'freeplay')
+				if (prevPath == 'freeplay') {
+					#if sys
+					var folder = PlayState.SONG == null ? '' : Song.storageFolder(PlayState.SONG);
+					var owner = folder == '' ? '' : ImportedModDiscovery.ownerForSong(folder, 'assets/data');
+					var ready = folder != '' && FreeplaySongAvailability.songReadiness(
+						ImportRefreshManager.availabilitySnapshot(), owner,
+						DifficultyManager.getSupportedDiffs(folder).length > 0, 'assets/data/' + folder.toLowerCase()).ready;
+					LoadingState.loadAndSwitchState(ready ? new PlayState() : new FreeplayState());
+					#else
 					LoadingState.loadAndSwitchState(new PlayState());
-				else
+					#end
+				} else
 					LoadingState.loadAndSwitchState(new MainMenuState());
 			} else {
 				if (saves.members[curSelected].askingToConfirm)
@@ -382,6 +389,13 @@ class SaveDataState extends MusicBeatState {
 				changeAmount(repeatDirection > 0);
 		}
 		if (controls.ACCEPT) {
+			if (importWorkBusy && !inOptionsMenu) {
+				playMenuSound('cancel'); return;
+			}
+			if (inOptionsMenu && inOptionCategory && !ImportMenuNavigationPolicy.optionsActionAllowed(importWorkBusy, optionList[optionsSelected].name)) {
+				description.text = 'An import is still running. You can browse available songs or return to the importer.';
+				playMenuSound('cancel'); return;
+			}
 			if (inOptionsMenu && !inOptionCategory) {
 				openOptionCategory();
 				return;

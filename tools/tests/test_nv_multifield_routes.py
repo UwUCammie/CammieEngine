@@ -66,6 +66,7 @@ class Note {
  __LANE__
 }
 class Main {
+ public var nightmareVisionPaths:Dynamic=null;
  public var modifiersRegistered=false;
  public var modManager:Dynamic={configureDimensions:function(keys:Int,lanes:Int):Void {},registerEssentialModifiers:function():Void {},registerDefaultModifiers:function():Void {},registerScriptedModifiers:function():Void {}};
  public var SONG:Dynamic = {lanes:3, uiType:'default', format:'nmv2'};
@@ -221,6 +222,9 @@ class StrumNote {
  __RGB__
 }
 '''.replace('__RGB__', strums[rgb_start:rgb_end].replace(':NightmareVisionRGBGraphics', ':Main.NightmareVisionRGBGraphics').replace('new NightmareVisionRGBGraphics', 'new Main.NightmareVisionRGBGraphics'))
+        # Bank/control/RGB stubs are not helper receivers; the real wrapper route is covered separately.
+        fixture = fixture.replace('NightmareVisionSpriteMethods.bind', 'FixtureSpriteBinding.bind')
+        fixture += '\nclass FixtureSpriteBinding {public static function bind(object:Dynamic,owner:Dynamic):Void {}}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
             (work / 'Main.hx').write_text(fixture, newline='\n')

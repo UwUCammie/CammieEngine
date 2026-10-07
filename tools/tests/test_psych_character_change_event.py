@@ -22,48 +22,54 @@ def extract_block(source, marker):
 
 
 class CharacterChangeEventTest(unittest.TestCase):
-    def test_event_and_script_changes_reuse_the_same_live_bank(self):
+    def test_event_and_script_changes_reuse_the_same_live_group(self):
         source = (ROOT/'source/PlayState.hx').read_text()
         helper = source[source.index('function changeNightmareVisionCharacterEvent'):source.index('function switchCharacter')]
+        publish = extract_block(source, 'function publishNightmareVisionCharacter(')
         fixture = r'''
 using StringTools;
 class Character {
- public var curCharacter:String;public var alpha:Float=1;public var danceEvery:Int=2;
+ public var curCharacter:String;public var alpha:Float=1;public var danceEveryNumBeats:Int=2;
  public var animation:Dynamic = {curAnim:{name:'idle',curFrame:0}};
  public function new(name:String)curCharacter=name;
  public function playAnim(name:String,force:Bool)animation.curAnim={name:name,curFrame:0};
 }
+class GroupFixture {
+ public var parent:Character;public var map:Map<String,Character>=[];
+ public function new(actor:Character){parent=actor;map.set(actor.curCharacter,actor);}
+ public function addToList(name:String):Character {var old=map.get(name);if(old!=null)return old;var actor=new Character(name);actor.alpha=.00001;map.set(name,actor);return actor;}
+ public function change(name:String):Character {if(parent.curCharacter!=name){var next=addToList(name);var alpha=parent.alpha;parent.alpha=.0001;parent=next;parent.alpha=alpha;}return parent;}
+}
 class Main {
  var boyfriend=new Character('player');var dad=new Character('opponent');var gf=new Character('support');var gfSpeed=2;
- var banks:Map<Int,PsychCharacterCache<Dynamic>>=new Map();
+ var groups:Map<Int,GroupFixture>=new Map();var hud=0;
  function new(){}
- function nightmareVisionCharacterBank(type:Int):PsychCharacterCache<Dynamic> {
-  if(banks.exists(type))return banks[type];
-  var initial=type==0?boyfriend:type==1?dad:gf;
-  var bank=new PsychCharacterCache<Dynamic>(initial,function(actor)return actor.curCharacter,
-   function(name)return new Character(name),function(old,next){
-    if(type==0)boyfriend=next;else if(type==1)dad=next;else gf=next;
-   });banks[type]=bank;return bank;
+ function nightmareVisionCharacterGroup(type:Int):GroupFixture {
+  if(groups.exists(type))return groups[type];var group=new GroupFixture(type==0?boyfriend:type==1?dad:gf);groups[type]=group;return group;
  }
+ function refreshCharacterHUD():Void hud++;
+ PUBLISH
  HELPER
  static function check(ok:Bool,message:String)if(!ok)throw message;
  static function main(){
   var host=new Main();var old=host.dad;old.alpha=.4;
-  var bank=host.nightmareVisionCharacterBank(1);
+  var bank=host.nightmareVisionCharacterGroup(1);
   bank.addToList('opponent-variant');
   host.changeNightmareVisionCharacterEvent('dad','opponent-variant');
   check(old.alpha==.0001&&host.dad.alpha==.4,'event did not hide old/cache alpha');
   var variant=host.dad;variant.animation.curAnim={name:'singUP',curFrame:3};
   bank.change('opponent');
+  check(host.dad==variant&&bank.parent==old,'direct group change must not publish game role');
+  host.publishNightmareVisionCharacter('opponent',1);
   check(host.dad==old&&variant.alpha==.0001,'script path lost event cache');
   host.dad.animation.curAnim={name:'singLEFT',curFrame:4};
   host.changeNightmareVisionCharacterEvent('1','opponent-variant');
   check(host.dad==variant&&host.dad.animation.curAnim.name=='singLEFT'&&host.dad.animation.curAnim.curFrame==4,'related identity frame carry');
   host.changeNightmareVisionCharacterEvent('gf','support-variant');
-  check(host.gf.danceEvery==4,'source GF dance multiplier');
+  check(host.gf.danceEveryNumBeats==4,'source GF dance multiplier');
  }
 }
-'''.replace('HELPER',helper)
+'''.replace('HELPER',helper).replace('PUBLISH',publish)
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
             Path(folder,'Main.hx').write_text(fixture, newline='\n')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',folder,'--main','Main','--interp'],capture_output=True,text=True)
@@ -92,6 +98,7 @@ class Main {
         event = native_dispatch[event_start:event_end]
         self.assertLess(event.index('changeNightmareVisionCharacterEvent'), event.index('switchCharacter'))
         helper = source[source.index('function changeNightmareVisionCharacterEvent'):source.index('function switchCharacter')]
-        self.assertIn('nightmareVisionCharacterBank(type).change(name)',helper)
+        self.assertIn('publishNightmareVisionCharacter(name, type)',helper)
+        self.assertIn('nightmareVisionCharacterGroup(type).change(name)', extract_block(source, 'function publishNightmareVisionCharacter('))
         self.assertNotIn('.destroy()',helper)
         self.assertIn('anim.curFrame',helper)

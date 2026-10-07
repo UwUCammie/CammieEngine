@@ -3,13 +3,33 @@ package;
 import NightmareVisionScriptDiscovery.NightmareVisionScriptPlan;
 import NightmareVisionScriptDiscovery.NightmareVisionScriptEntry;
 
+/** State pointers stay actual typed storage; the backend follows replacements. */
+typedef NightmareVisionGameplayGroupAccess = {
+	var main:Void->NightmareVisionScriptGroup;
+	var setMain:NightmareVisionScriptGroup->NightmareVisionScriptGroup;
+	var events:Void->NightmareVisionScriptGroup;
+	var setEvents:NightmareVisionScriptGroup->NightmareVisionScriptGroup;
+	var notes:Void->NightmareVisionScriptGroup;
+	var setNotes:NightmareVisionScriptGroup->NightmareVisionScriptGroup;
+}
+
 /** Per-play-state NMV script groups. Event and note-type registries retain
  * source lookups over the same module instances also owned by the main group. */
 class NightmareVisionGameplayScripts {
 	public final plan:NightmareVisionScriptPlan;
-	public final group:NightmareVisionScriptGroup;
-	public final eventGroup:NightmareVisionScriptGroup;
-	public final noteTypeGroup:NightmareVisionScriptGroup;
+	public var group(get, set):NightmareVisionScriptGroup;
+	public var eventGroup(get, set):NightmareVisionScriptGroup;
+	public var noteTypeGroup(get, set):NightmareVisionScriptGroup;
+	var ownGroup:NightmareVisionScriptGroup;
+	var ownEvents:NightmareVisionScriptGroup;
+	var ownNotes:NightmareVisionScriptGroup;
+	var groupAccess:Null<NightmareVisionGameplayGroupAccess>;
+	function get_group():NightmareVisionScriptGroup return groupAccess == null ? ownGroup : groupAccess.main();
+	function set_group(value:NightmareVisionScriptGroup):NightmareVisionScriptGroup return groupAccess == null ? ownGroup = value : groupAccess.setMain(value);
+	function get_eventGroup():NightmareVisionScriptGroup return groupAccess == null ? ownEvents : groupAccess.events();
+	function set_eventGroup(value:NightmareVisionScriptGroup):NightmareVisionScriptGroup return groupAccess == null ? ownEvents = value : groupAccess.setEvents(value);
+	function get_noteTypeGroup():NightmareVisionScriptGroup return groupAccess == null ? ownNotes : groupAccess.notes();
+	function set_noteTypeGroup(value:NightmareVisionScriptGroup):NightmareVisionScriptGroup return groupAccess == null ? ownNotes = value : groupAccess.setNotes(value);
 	final configure:NightmareVisionScriptInterp->NightmareVisionScriptEntry->Dynamic->Void;
 	final read:String->String;
 	final report:String->String->Dynamic->Void;
@@ -22,16 +42,27 @@ class NightmareVisionGameplayScripts {
 		configure:NightmareVisionScriptInterp->NightmareVisionScriptEntry->Dynamic->Void,
 		report:String->String->Dynamic->Void,
 		?beforeLoad:NightmareVisionScriptInterp->NightmareVisionScriptEntry->Void,
-		?resolveScript:String->NightmareVisionScriptEntry) {
+		?resolveScript:String->NightmareVisionScriptEntry, ?groups:NightmareVisionGameplayGroupAccess) {
 		this.plan = plan;
 		this.read = read;
 		this.configure = configure;
 		this.report = report;
 		this.beforeLoad = beforeLoad;
 		this.resolveScript = resolveScript;
-		group = new NightmareVisionScriptGroup(parent, report);
-		eventGroup = new NightmareVisionScriptGroup(parent, report);
-		noteTypeGroup = new NightmareVisionScriptGroup(parent, report);
+		groupAccess = groups;
+		if (groups == null) {
+			ownGroup = new NightmareVisionScriptGroup(parent, report);
+			ownEvents = new NightmareVisionScriptGroup(parent, report);
+			ownNotes = new NightmareVisionScriptGroup(parent, report);
+		}
+	}
+
+	/** Stage.fromFile executes an unregistered handle. The source filename is
+	 * also its default name; injection, onLoad and registration belong to Stage. */
+	public function fromStageFile(path:String, shared:Map<String, Dynamic>):NightmareVisionScriptModule {
+		var entry:NightmareVisionScriptEntry = {scope:'stage', name:path, path:path, relative:path};
+		return NightmareVisionScriptModule.fromSource(path, read(path), group.parent, shared,
+			function(interp) {configure(interp, entry, null); bindDynamicLoader(interp);}, report);
 	}
 
 	/** A failed module is diagnosed once per state; other modules still load. */
@@ -83,7 +114,7 @@ class NightmareVisionGameplayScripts {
 		var script = noteTypeGroup.getScript(noteType);
 		if (script == null || !script.exists(callback))
 			return NightmareVisionScriptGroup.CONTINUE_FUNC;
-		var result = script.call(callback, args, receiver);
+		var result = script.callValue(callback, args, receiver);
 		return result == null ? NightmareVisionScriptGroup.CONTINUE_FUNC : result;
 	}
 
@@ -117,23 +148,31 @@ class NightmareVisionGameplayScripts {
 		}
 	}
 
-	/** Event scripts receive onTrigger only for their own event. */
-	public function callEvent(name:String, callback:String, ?args:Array<Dynamic>):Dynamic {
-		if (group.released || name == null || name == '') return NightmareVisionScriptGroup.CONTINUE_FUNC;
+	/** Same exact selection/lazy preparation as source event dispatch. */
+	function selectedEventScript(name:String):Null<NightmareVisionScriptModule> {
+		if (group == null || group.released || name == null || name == '') return null;
 		var selected:NightmareVisionScriptEntry = null;
 		for (entry in plan.scripts) {
-			if (entry.scope == 'event' && entry.name == name) {
-				selected = entry;
-				break;
-			}
+			if (entry.scope == 'event' && entry.name == name) {selected = entry; break;}
 		}
-		if (selected == null) return NightmareVisionScriptGroup.CONTINUE_FUNC;
-
+		if (selected == null) return null;
 		loadScope('event', name);
-		var script = eventGroup.getScript(selected.name);
-		if (script == null || !script.exists(callback))
-			return NightmareVisionScriptGroup.CONTINUE_FUNC;
-		var result = script.call(callback, args);
+		var current = eventGroup;
+		return current == null || current.released ? null : current.getScript(selected.name);
+	}
+
+	/** Presence alone cannot claim an effect: the selected live value must be callable. */
+	public function hasEventCallback(name:String, callback:String):Bool {
+		var script = selectedEventScript(name);
+		return script != null && script.exists(callback)
+			&& Reflect.isFunction(script.interp.variables.get(callback));
+	}
+
+	/** Event scripts receive onTrigger only for their own event. */
+	public function callEvent(name:String, callback:String, ?args:Array<Dynamic>):Dynamic {
+		var script = selectedEventScript(name);
+		if (script == null || !script.exists(callback)) return NightmareVisionScriptGroup.CONTINUE_FUNC;
+		var result = script.callValue(callback, args);
 		return result == null ? NightmareVisionScriptGroup.CONTINUE_FUNC : result;
 	}
 

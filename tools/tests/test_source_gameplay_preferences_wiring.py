@@ -228,7 +228,7 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         self.assertLess(psych_init, create.index("initializeNightmareVisionScripts();"))
         self.assertLess(psych_init, create.index("PsychRuntimeBindings.dispatch(this, 'onCreatePost'"))
         self.assertLess(nv_init.index("initializeSourceGameplayPreferences(nightmareVisionPrefs, true)"),
-                        nv_init.index("nightmareVisionScripts.loadScope('stage')"))
+                        nv_init.index("stage.runScript(nightmareVisionScripts.group)"))
         self.assertLess(nv_init.index("initializeSourceGameplayPreferences(nightmareVisionPrefs, true)"),
                         nv_init.index("callNightmareVision('onAddSpriteGroups'"))
         update = extract_method(play, "override public function update(elapsed:Float)")

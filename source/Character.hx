@@ -63,6 +63,7 @@ typedef CharacterProgramCacheEntry = {
 	var source:String;
 	var program:Expr;
 }
+@:build(NightmareVisionSpriteMacro.build())
 class Character extends DisSprite implements CodenameCharacterAccess {
 	public var codenameRuntime:CodenameCharacterRuntime;
 	public var codenameGamePostCreated:Bool = false;
@@ -599,6 +600,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	*/
 	override public function getScreenPosition(?result:FlxPoint, ?camera:FlxCamera):FlxPoint {
 		var output = hxcBaseScreenPosition(result, camera);
+		if (sourceStageAnimOffset != null) {
+			output.subtract(NightmareVisionFunkinSpriteAnimation.transformOffset(this, sourceStageAnimOffset,
+				sourceStageOffsetBase, sourceStageOffsetScratch));
+		}
 		if (PlayState.instance != null) {
 			var routed = PlayState.instance.dispatchHxcCharacterScreenPosition(this, output, camera);
 			if (routed != null)
@@ -1132,10 +1137,16 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		return [0, 0];
 	}
 
-	public function new(x:Float, y:Float, ?character:String = "bf", ?isPlayer:Bool = false, ?codename:CodenameCharacterConstruction) {
+	public function new(x:Float, y:Float, ?character:String = "bf", ?isPlayer:Bool = false,
+		?codename:CodenameCharacterConstruction, ?sourceConstruction:SourceCharacterConstruction) {
+		if (sourceConstruction != null) {
+			sourceConstruction.requireActive();
+			sourceAnimationPaths = sourceConstruction.paths;
+		}
 		animOffsets = new Map<String, Array<Dynamic>>();
 		camOffsets = new Map<String, Array<Dynamic>>();
 		super(x, y);
+		if (sourceConstruction != null) NightmareVisionSpriteMethods.bind(this, sourceConstruction.spriteOwner);
 		onAnimationFinish = new FlxSignal();
 		animation.onFinish.add(function(_animationName:String):Void onAnimationFinish.dispatch());
 		markDeathConstructionStage('base');
@@ -1160,7 +1171,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		trace(curCharacter);
 		var sourceCharacterOwnerRoot = '';
 		var sourceCharacterOwnerEngine = '';
-		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
+		if (sourceConstruction != null) {
+			sourceCharacterOwnerRoot = sourceConstruction.root;
+			sourceCharacterOwnerEngine = sourceConstruction.engine;
+		} else if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
 			var sourceSongFolder = Song.storageFolder(PlayState.SONG);
 			sourceCharacterOwnerRoot = Song.characterRootForSong(sourceSongFolder);
 			sourceCharacterOwnerEngine = Song.characterOwnerEngineForSong(sourceSongFolder);
@@ -1183,7 +1197,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// character definition's `playerOffsets` convention. Only read this
 		// adapter metadata while its selected Codename owner is active.
 		var codenameCharacterMeta:Dynamic = null;
-		if (PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
+		if (sourceConstruction == null && PlayState.instance != null && FlxG.state == PlayState.instance && PlayState.SONG != null) {
 			var codenameRoot = Song.characterRootForSong(Song.storageFolder(PlayState.SONG),
 				ImportEngine.CODENAME);
 			if (codenameRoot != '') {
@@ -1226,7 +1240,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			gameoverInitialDeathSound = nightmareVisionNullableString(nightmareVisionOwnedCharacter,
 				'gameover_intial_sound');
 		}
-		var psychCameraRoot = Song.currentPsychCharacterRoot();
+		var psychCameraRoot = sourceConstruction == null ? Song.currentPsychCharacterRoot() : sourceConstruction.root;
 		psychHealthIcon = sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
 			? PsychCharacterHealthIcon.authored(visualCharacterId, psychCameraRoot,
 				function(path) return FNFAssets.exists(path) ? FNFAssets.getText(path) : null) : null;
@@ -1243,7 +1257,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// substituted; mutating curCharacter here loses chart identity and made
 		// incomplete Popipo-style aliases look like an ordinary Dad chart.
 		var visualResolution:Dynamic = sourceDeathVisualResolution == null
-			? Song.resolveCharacterVisualForCurrentSong(visualCharacterId) : sourceDeathVisualResolution;
+			? sourceConstruction == null ? Song.resolveCharacterVisualForCurrentSong(visualCharacterId)
+				: sourceConstruction.resolve(visualCharacterId) : sourceDeathVisualResolution;
 		markDeathConstructionStage('visual-resolution');
 		if (nightmareVisionCharacterOwned) {
 			var nightmareVisionImageRoot = NightmareVisionCharacterData.imageRoot(nightmareVisionOwnerRoot,
@@ -1328,7 +1343,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			Character.reportResolution(visualResolution);
 		if (codenameLiveDefinition == null && !nightmareVisionCharacterOwned) {
 			markDeathConstructionStage('before-character-interpreter');
-			interp = Character.getAnimInterp(visualCharacterId);
+			interp = Character.getAnimInterp(visualCharacterId, sourceConstruction);
 			markDeathConstructionStage('after-character-interpreter');
 		}
 		// An imported character script may reference media the donor never
@@ -1781,6 +1796,36 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public function pauseAnim():Void animation.pause();
 	@:keep public function resumeAnim():Void animation.resume();
 
+	var sourceAnimationPaths:Null<NightmareVisionPaths>;
+	var sourceStageAnimOffset:Null<FlxPoint>;
+	var sourceStageOffsetBase:Null<FlxPoint>;
+	var sourceStageOffsetScratch:Null<FlxPoint>;
+	/** The real Stage Bopper-family bridge uses source draw offsets, leaving
+	 * native/Codename/V-Slice presentation on their existing paths. */
+	public function enableNightmareVisionStageSprite():Void {
+		if (sourceStageAnimOffset != null) return;
+		sourceStageAnimOffset = FlxPoint.get();
+		sourceStageOffsetBase = FlxPoint.get(1, 1);
+		sourceStageOffsetScratch = FlxPoint.get();
+		var current = animation.curAnim == null ? null : animOffsets.get(animation.curAnim.name);
+		if (current != null) sourceStageAnimOffset.set(current[0], current[1]);
+	}
+
+	@:keep public function loadAtlas(path:String):Character {
+		enableNightmareVisionStageSprite();
+		if (sourceAnimationPaths == null) throw '[nightmare-vision-character] No captured atlas owner';
+		NightmareVisionFunkinSpriteAnimation.loadAtlas(this, sourceAnimationPaths, path);
+		return this;
+	}
+	@:keep public function addAnimByPrefix(name:String, prefix:String, fps:Int = 24,
+		looping:Bool = true, flipX:Bool = false, flipY:Bool = false):Void {
+		NightmareVisionFunkinSpriteAnimation.addAnimByPrefix(this, name, prefix, fps, looping, flipX, flipY);
+	}
+	@:keep public function addAnimByIndices(name:String, prefix:String, indices:Array<Int>, fps:Int = 24,
+		looping:Bool = true, flipX:Bool = false, flipY:Bool = false):Void {
+		NightmareVisionFunkinSpriteAnimation.addAnimByIndices(this, name, prefix, indices, fps, looping, flipX, flipY);
+	}
+
 	public function playAnim(AnimName:String, Force:Bool = false, Reversed:Bool = false, Frame:Int = 0):Void {
 		if (!canPlayAnimations) return;
 		var codenameContext:Dynamic = null;
@@ -1844,7 +1889,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		// The V-Slice donor applies animation offsets in getScreenPosition,
 		// leaving the base offset written by updateHitbox() intact. Legacy and
 		// Psych characters retain this fork's original FlxSprite.offset path.
-		if (vSliceBaseFrames == null && !codenamePlayback) {
+		if (sourceStageAnimOffset != null && !codenamePlayback) {
+			var sourceOffsets = animOffsets.get(animName);
+			if (sourceOffsets != null) sourceStageAnimOffset.set(sourceOffsets[0], sourceOffsets[1]);
+		} else if (vSliceBaseFrames == null && !codenamePlayback) {
 			if (animOffsets.exists(animName)) {
 				var daOffset = animOffsets.get(animName);
 				offset.set(daOffset[0], daOffset[1]);
@@ -2023,6 +2071,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		if (codenameRuntime != null) codenameRuntime.destroy();
 		codenameRuntime = null;
 		globalOffset.put(); cameraOffset.put(); frameOffset.put(); extraOffset.put();
+		if (sourceStageAnimOffset != null) sourceStageAnimOffset.put();
+		if (sourceStageOffsetBase != null) sourceStageOffsetBase.put();
+		if (sourceStageOffsetScratch != null) sourceStageOffsetScratch.put();
+		sourceStageAnimOffset = null;sourceStageOffsetBase = null;sourceStageOffsetScratch = null;sourceAnimationPaths = null;
 		super.destroy();
 	}
 
@@ -2078,18 +2130,20 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	public function addCamOffset(name:String, camX:Float = 0, camY:Float = 0) {
 		camOffsets[name] = [camX, camY];
 	}
-	public static function getAnimInterp(char:String):Interp {
+	public static function getAnimInterp(char:String, ?sourceConstruction:SourceCharacterConstruction):Interp {
 		var interp = PluginManager.createSimpleInterp();
 		var requested = char == null ? '' : StringTools.trim(char);
 		var lookup = isNoGirlfriend(requested) ? 'gf' : requested;
-		var resolution:Dynamic = Song.resolveCharacterVisualForCurrentSong(lookup);
+		var resolution:Dynamic = sourceConstruction == null ? Song.resolveCharacterVisualForCurrentSong(lookup)
+			: sourceConstruction.resolve(lookup);
 		if (!resolution.complete) {
 			Character.reportResolution(resolution);
 			// Keep the authored charName below, but use a known-safe native visual
 			// only for the emergency interpreter bootstrap. The diagnostic above is
 			// the observable result; this fallback is not allowed to masquerade as
 			// a successful character resolution.
-			var dadResolution:Dynamic = Song.resolveCharacterVisualForCurrentSong('dad');
+			var dadResolution:Dynamic = sourceConstruction == null ? Song.resolveCharacterVisualForCurrentSong('dad')
+				: sourceConstruction.resolve('dad');
 			if (dadResolution.complete)
 				resolution = dadResolution;
 		}

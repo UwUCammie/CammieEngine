@@ -1,0 +1,11 @@
+# Psych achievements runtime adapter
+
+`PsychAchievementsRuntime` owns one `PsychAchievements` service and its popup manager per imported owner root. The first `adopt(root, paths, save, context)` snapshots the owner paths, private save view, ordered achievement sources, text/audio/report callbacks, asset facades, phrase lookup, a live antialiasing callback, stage, and game display root. Re-adopting the same root returns that runtime, preserving achievement maps and visible popups across same-owner gameplay states.
+
+The caller controls the active provider set through `retainOwners(roots)`. It must pass roots from already validated chart/import manifests and enabled global-provider records. The runtime releases only owners omitted from that set; `releaseAll()` handles root lifecycle shutdown. The adapter does not retain a `PlayState`, inspect global Psych `Mods` state, scan directories, or enroll arbitrary mod folders.
+
+Achievement JSON paths must resolve to an existing file under the captured owner. Absolute paths are accepted only after the filesystem containment check; relative paths are resolved through `PsychOwnerAssetPath`. Reads are limited to paths accepted into the ordered context list. A source with a mod label is refused unless that exact label has a supplied owner asset facade. The empty asset-facade key is reserved for the base owner. Source order and enabled-mod identity remain the caller's responsibility; the initial integration can safely provide the base `data/achievements.json` record while wider enabled-Mod reload ordering is not yet seeded.
+
+Popup creation uses the real `PsychAchievementPopup` and its captured stage/game objects. Each popup registers with its per-owner runtime, and retiring one owner destroys only that owner's popups and service. Context callbacks must capture durable owner services and must not close over a gameplay-state instance.
+
+Focused verification: `tools/tests/test_psych_achievements_runtime.py` compiles the actual runtime and achievement service against narrow platform/popup stubs. It checks one-time activation after pool registration, base JSON loading, out-of-owner and unseeded-mod rejection, same-owner reuse, live antialiasing lookup per popup, isolated audio and popup callbacks, independent owner retirement, and `releaseAll()`. The test does not build or launch the game.

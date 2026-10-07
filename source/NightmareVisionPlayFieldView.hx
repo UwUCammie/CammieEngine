@@ -90,7 +90,7 @@ class NightmareVisionPlayFieldView {
 		isPlayer = id != 1;
 		player = id;
 		this.defaultAuto = defaultAuto;
-		underlaySpr = new FlxSprite().makeGraphic(1, 1, FlxColor.WHITE);
+		underlaySpr = new NightmareVisionFlxSprite().makeGraphic(1, 1, FlxColor.WHITE);
 		underlaySpr.color = FlxColor.BLACK;
 		underlaySpr.alpha = 0;
 		underlaySpr.scrollFactor.set();

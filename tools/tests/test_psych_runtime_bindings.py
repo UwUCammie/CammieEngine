@@ -172,6 +172,12 @@ class PsychRuntimeBindingsFixture {
   var hscriptSecond=addScope(host,'hscript-second','owner-a/hscript-second.hx',false);
   var luaOtherOwner=addScope(host,'lua-other-owner','owner-b/owner.lua',true);
   var closedLua=addScope(host,'closed-lua','owner-a/closed.lua',true);
+  check(PsychAchievementsIntegration.luaCalls.length==5
+   && PsychAchievementsIntegration.luaCalls[0][0]==host
+   && PsychAchievementsIntegration.luaCalls[0][1]==luaOwner
+   && PsychAchievementsIntegration.luaCalls[0][2]=='owner-a/owner.lua'
+   && PsychAchievementsIntegration.luaCalls[4][1]==closedLua,
+   'only Lua scopes install achievements callbacks with their captured host and origin');
   closedLua.variables.set('__compatClosed',true);
 
   var events:Array<String>=[];
@@ -504,10 +510,20 @@ class PsychRuntimeBindingsTest(unittest.TestCase):
             self.skipTest("portable Haxe interpreter is unavailable")
         with tempfile.TemporaryDirectory(prefix="psych-runtime-bindings-", dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
+            from psych_standard_fixture_support import write_standard_services_stub
+            write_standard_services_stub(scratch)
             write_point_stub(scratch)
             (scratch / "PlayState.hx").write_text(PLAY_STATE, encoding="utf-8", newline="\n")
             (scratch / "LuaCompatInterp.hx").write_text(LUA_INTERP, encoding="utf-8", newline="\n")
             (scratch / "PsychHscriptSourceBindings.hx").write_text(HSCRIPT_PRESET, encoding="utf-8", newline="\n")
+            (scratch / "PsychAchievementsIntegration.hx").write_text(
+                """class PsychAchievementsIntegration {
+ public static var luaCalls:Array<Array<Dynamic>>=[];
+ public static function installLua(host:Dynamic,interp:Dynamic,origin:String):Void
+  luaCalls.push([host,interp,origin]);
+ public static function installHscript(host:Dynamic,interp:Dynamic,origin:String):Void {}
+}
+""", encoding="utf-8", newline="\n")
             (scratch / "HxcCompatRuntime.hx").write_text(HXC_RUNTIME, encoding="utf-8", newline="\n")
             (scratch / "PsychRuntimeBindingsFixture.hx").write_text(MAIN, encoding="utf-8", newline="\n")
             result = subprocess.run(

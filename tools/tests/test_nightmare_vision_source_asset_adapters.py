@@ -87,6 +87,8 @@ class Main {
 }
 '''
         stubs = {
+            # Script-name cache type only; real module execution has separate Stage/Iris coverage.
+            "NightmareVisionScriptModule.hx": "class NightmareVisionScriptModule {}",
             "flixel/FlxBitmapCache.hx": '''package flixel;
 class FlxBitmapCache {public var removed:Array<flixel.graphics.FlxGraphic>=[];public var cached:Map<String,flixel.graphics.FlxGraphic>=new Map();public function new(){} public function add(value:Dynamic, unique:Bool=false, ?key:String):flixel.graphics.FlxGraphic {
  var bitmap:openfl.display.BitmapData=Std.isOfType(value,openfl.display.BitmapData)?cast value:null;

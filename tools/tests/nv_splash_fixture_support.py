@@ -1,5 +1,7 @@
 """Native-shaped splash dependencies shared by executable donor comparisons."""
 
+from nv_sprite_dependency_support import add_native_sprite_dependencies
+
 def splash_fixture_files(donor, offset_method):
     files = {
         'flixel/FlxCamera.hx': 'package flixel;class FlxCamera {}',
@@ -63,4 +65,4 @@ def splash_fixture_files(donor, offset_method):
     files['DonorSprite.hx'] = files['DonorSprite.hx'].rstrip()[:-1] + offset_method + '}\n'
     files['MathUtil.hx'] = 'class MathUtil {public static function fastTan(r:Float)return flixel.math.FlxMath.fastSin(r)/flixel.math.FlxMath.fastCos(r);}'
     files['flixel/math/FlxPoint.hx'] = files['flixel/math/FlxPoint.hx'].replace('public static function get', 'public static function weak(x=0.,y=0.)return get(x,y);public static function get')
-    return files
+    return add_native_sprite_dependencies(files)

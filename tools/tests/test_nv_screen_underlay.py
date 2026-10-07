@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from nv_sprite_dependency_support import add_native_sprite_dependencies
 from haxe_test_support import HAXE_COMMAND
 from test_psych_note_follow import extract_method
 
@@ -35,7 +36,10 @@ class NightmareVisionScreenUnderlay {
  public static function createScreen(type:String,opacity:Float,camera:Dynamic):Sprite {if(type!='Screen Dim')return null;created++;return new Sprite(camera,opacity);}
  public static function updateScreen(type:String,sprite:Sprite):Void {if(type=='Screen Dim' && sprite!=null)sprite.updated++;}
 }
+class NightmareVisionSpriteMethods {public static function bind(object:Dynamic,owner:Dynamic):Void {}}
+class NightmareVisionSpriteRegistry {public static function capture(paths:Dynamic):Dynamic return null;}
 class Main {
+ public var nightmareVisionPaths:Dynamic=null;
  public var nightmareVisionScripts:Dynamic={};public var nightmareVisionPrefs:Dynamic={view:{underlayType:'Screen Dim',underlayOpacity:0.6}};
  public var camHUD:Dynamic={width:1280};public var screenDim:Sprite;public var members:Array<Dynamic>=[];
  public function new(){}
@@ -84,6 +88,8 @@ class Main {
   var zero=NightmareVisionScreenUnderlay.createScreen('Screen Dim',0,hud);
   check(zero!=null && zero.alpha==0,'SCREEN must exist even at zero opacity');
   var original=NightmareVisionScreenUnderlay.createScreen('Screen Dim',0.65,hud);
+  check(Std.isOfType(original,NightmareVisionFlxSprite),'actual SCREEN helper wrapper identity');
+  var helper:Dynamic=original;check(helper.setScale(2,3,true)==original,'real SCREEN setScale return');near(original.width,2,'real SCREEN virtual hitbox');helper.setScale(1,1,true);
   check(original.frameWidth==1 && original.frameHeight==1 && original.fillColor==FlxColor.BLACK,'source black pixel');
   check(original.color==FlxColor.WHITE && original.camera==hud,'default tint/HUD camera');
   check(original.scrollFactor.x==0 && original.scrollFactor.y==0,'fixed scroll factor');
@@ -128,8 +134,9 @@ class FlxSprite {
  public var color:Int=0xFFFFFFFF;public var alpha:Float=1;public var exists=true;public var visible=true;public var destroyed=false;
  public var camera:FlxCamera;public var scale=new Point();public var offset=new Point();public var origin=new Point();public var scrollFactor=new Point();
  public var hitboxes:Int=0;
- public function new(){}
- public function makeGraphic(w:Int,h:Int,c:Int):FlxSprite{frameWidth=w;frameHeight=h;width=w;height=h;fillColor=c;return this;}
+ public function new(x:Float=0,y:Float=0){}
+ public function destroy():Void destroyed=true;
+ public function makeGraphic(w:Int,h:Int,c:Int=-1,unique:Bool=false,?key:String):FlxSprite{frameWidth=w;frameHeight=h;width=w;height=h;fillColor=c;return this;}
  public function centerOrigin():Void{origin.set(frameWidth/2,frameHeight/2);hitboxes++;}
  __HITBOX__
  __CENTER__
@@ -147,6 +154,7 @@ class FlxSprite {
                    'flixel/FlxG.hx':'package flixel; class FlxG {public static var width:Int=1280;public static var height:Int=720;}',
                    'flixel/util/FlxColor.hx':'package flixel.util; class FlxColor {public static inline var BLACK:Int=0xFF000000;public static inline var WHITE:Int=0xFFFFFFFF;}',
                    'flixel/util/FlxAxes.hx':(FLIXEL/'util/FlxAxes.hx').read_text(encoding='utf-8')}
+            add_native_sprite_dependencies(files)
             for name,text in files.items():
                 path=work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text,encoding='utf-8',newline='\n')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=30)

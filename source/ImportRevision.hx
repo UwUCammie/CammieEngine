@@ -35,8 +35,8 @@ class ImportRevision {
 		"V-Slice" => 1,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
-		"Psych Engine" => 2,
-		"Nightmare Vision" => 2,
+		"Psych Engine" => 3,
+		"Nightmare Vision" => 5,
 		"FPS Plus" => 2,
 		"Codename Engine" => 1,
 		"Legacy FNF/Polymod" => 2

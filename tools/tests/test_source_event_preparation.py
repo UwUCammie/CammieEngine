@@ -203,8 +203,10 @@ class PlayState {
   // Donor ScriptGroup.call propagates Int values only; zero means continue.
   return Std.isOfType(result, Int) ? result : NightmareVisionScriptGroup.CONTINUE_FUNC;
  }
- function nightmareVisionCharacterBank(role:Int):NightmareVisionCharacterBank
-  return new NightmareVisionCharacterBank(this, role);
+ // Event-pipeline fixture records the source caller boundary, not renderer membership.
+ function addNightmareVisionCharacterToList(name:String,role:Int):Void {
+  log.push('nv-precache-character:' + role + ':' + name);
+ }
  public function exercisePsychPrepare():Void preparePsychSourceEvents();
  public function exercisePsychFinalize():Void finalizePsychSourceEvents();
  public function exerciseNvPrepare():Void prepareNightmareVisionSourceEvents();

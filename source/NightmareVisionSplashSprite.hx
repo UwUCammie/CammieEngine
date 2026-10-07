@@ -7,6 +7,7 @@ import flixel.math.FlxMath;
 
 /** The shared source splash animation and screen-offset mechanics only. */
 @:keep
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionSplashSprite extends FlxSprite {
 	public final baseScale:FlxPoint = FlxPoint.get(1, 1);
 	public var defScale(get, set):FlxPoint;

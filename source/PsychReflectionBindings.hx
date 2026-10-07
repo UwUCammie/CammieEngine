@@ -9,6 +9,7 @@ import PlayState.DisplayLayer;
 class PsychReflectionBindings {
 	final host:PlayState;
 	final interp:Interp;
+	var nativeClasses:SourceNativeClassScope;
 
 	public function new(host:PlayState, interp:Interp) {
 		this.host = host;
@@ -16,6 +17,13 @@ class PsychReflectionBindings {
 	}
 
 	public function install():Void {
+		var paths:Dynamic = interp.variables.get('Paths');
+		var ownerRoot = host.selectedPsychSkinRoot();
+		if (paths == null && ownerRoot != null) paths = PsychOwnerPaths.create(ownerRoot, host.psychStageLibrary);
+		if (Std.isOfType(interp, SourceIrisBridge)) nativeClasses = (cast interp:SourceIrisBridge).evaluator.sourceClassScope();
+		else if (paths != null && Reflect.isFunction(Reflect.field(paths, '__sourceOwnerRoot')))
+			nativeClasses = host.psychLuaNativeClassScope(paths);
+		else nativeClasses = new SourceNativeClassScope();
 		var previousGet = interp.variables.get('getProperty');
 		var previousSet = interp.variables.get('setProperty');
 		interp.variables.set('getProperty', function(path:Dynamic, allowMaps:Bool = false):Dynamic {
@@ -45,13 +53,14 @@ class PsychReflectionBindings {
 		var previousClassSet = interp.variables.get('setPropertyFromClass');
 		interp.variables.set('getPropertyFromClass', function(type:Dynamic, path:Dynamic,
 			allowMaps:Bool = false):Dynamic {
-			return allowMaps ? readPath(host.compatResolveClass(type), Std.string(path), true)
+			return nativeClasses.hasRuntimeClass(Std.string(type)) ? readPath(resolveClass(type), Std.string(path), allowMaps)
+				: allowMaps ? readPath(resolveClass(type), Std.string(path), true)
 				: Reflect.callMethod(null, previousClassGet, [type, path]);
 		});
 		interp.variables.set('setPropertyFromClass', function(type:Dynamic, path:Dynamic,
 			value:Dynamic, allowMaps:Bool = false, allowInstances:Bool = false):Dynamic {
 			if (allowInstances) value = parse(value);
-			if (allowMaps) writePath(host.compatResolveClass(type), Std.string(path), value, true);
+			if (nativeClasses.hasRuntimeClass(Std.string(type)) || allowMaps) writePath(resolveClass(type), Std.string(path), value, allowMaps);
 			else Reflect.callMethod(null, previousClassSet, [type, path, value]);
 			return value;
 		});
@@ -71,7 +80,7 @@ class PsychReflectionBindings {
 		});
 		interp.variables.set('callMethodFromClass', function(type:String, path:String,
 			?args:Array<Dynamic>):Dynamic {
-			return SourceScriptReflection.call(host.compatResolveClass(type),
+			return SourceScriptReflection.call(resolveClass(type),
 				host.compatPathTokens(path), parsedArgs(args), readPart);
 		});
 		interp.variables.set('instanceArg', function(path:String, ?type:String):String {
@@ -81,9 +90,9 @@ class PsychReflectionBindings {
 			?args:Array<Dynamic>):Bool {
 			name = StringTools.replace(StringTools.trim(name), '.', '');
 			if (host.psychScriptVariables.get(name) != null) return false;
-			var resolved = host.compatResolveClass(type);
+			var resolved = resolveClass(type);
 			if (resolved == null) return false;
-			var object:Dynamic = Type.createInstance(resolved, parsedArgs(args));
+			var object:Dynamic = nativeClasses.createInstance(resolved, parsedArgs(args));
 			if (object == null) return false;
 			host.psychScriptVariables.set(name, object);
 			return true;
@@ -111,15 +120,26 @@ class PsychReflectionBindings {
 			: host.compatPropertyRoot(name);
 	}
 
+	function resolveClass(type:Dynamic):Dynamic {
+		var name = Std.string(type);
+		return nativeClasses.hasRuntimeClass(name) ? nativeClasses.resolveClass(name) : host.compatResolveClass(type);
+	}
+	function readClassPart(target:Dynamic, key:String):Dynamic {
+		return nativeClasses.hasBinding(target, key) ? nativeClasses.read(target, key) : host.compatReadPathPart(target, key);
+	}
+	function writeClassPart(target:Dynamic, key:String, value:Dynamic):Bool {
+		if (nativeClasses.hasBinding(target, key)) {nativeClasses.write(target, key, value); return true;}
+		return host.compatWritePathPart(target, key, value);
+	}
 	function readPart(object:Dynamic, key:String):Dynamic {
 		return SourceScriptReflection.read(object, host.compatPathIndex(key), true,
-			function(target, _) return host.compatReadPathPart(target, key));
+			function(target, _) return readClassPart(target, key));
 	}
 
 	function readPath(object:Dynamic, path:String, maps:Bool):Dynamic {
 		for (key in host.compatPathTokens(path)) {
 			object = SourceScriptReflection.read(object, host.compatPathIndex(key), maps,
-				function(target, _) return host.compatReadPathPart(target, key));
+				function(target, _) return readClassPart(target, key));
 			if (object == null) break;
 		}
 		return object;
@@ -130,9 +150,9 @@ class PsychReflectionBindings {
 		if (tokens.length == 0) return;
 		var last = tokens.pop();
 		for (key in tokens) object = SourceScriptReflection.read(object, host.compatPathIndex(key), maps,
-			function(target, _) return host.compatReadPathPart(target, key));
+			function(target, _) return readClassPart(target, key));
 		SourceScriptReflection.write(object, host.compatPathIndex(last), value, maps,
-			function(target, _, next) return host.compatWritePathPart(target, last, next));
+			function(target, _, next) return writeClassPart(target, last, next));
 	}
 
 	function get(path:Dynamic, maps:Bool):Dynamic {
@@ -140,7 +160,7 @@ class PsychReflectionBindings {
 		if (tokens.length == 0) return null;
 		var value = root(tokens.shift());
 		for (key in tokens) value = SourceScriptReflection.read(value, host.compatPathIndex(key), maps,
-			function(target, _) return host.compatReadPathPart(target, key));
+			function(target, _) return readClassPart(target, key));
 		return value;
 	}
 
@@ -155,9 +175,9 @@ class PsychReflectionBindings {
 		var object = root(tokens.shift());
 		var last = tokens.pop();
 		for (key in tokens) object = SourceScriptReflection.read(object, host.compatPathIndex(key), maps,
-			function(target, _) return host.compatReadPathPart(target, key));
+			function(target, _) return readClassPart(target, key));
 		SourceScriptReflection.write(object, host.compatPathIndex(last), value, maps,
-			function(target, _, next) return host.compatWritePathPart(target, last, next));
+			function(target, _, next) return writeClassPart(target, last, next));
 	}
 
 	function member(group:Dynamic, index:Dynamic):Dynamic {
@@ -173,7 +193,7 @@ class PsychReflectionBindings {
 
 	function parse(value:Dynamic):Dynamic {
 		return SourceScriptReflection.parseInstances(value, function(path, type) {
-			return type == null ? get(path, true) : readPath(host.compatResolveClass(type), path, true);
+			return type == null ? get(path, true) : readPath(resolveClass(type), path, true);
 		});
 	}
 

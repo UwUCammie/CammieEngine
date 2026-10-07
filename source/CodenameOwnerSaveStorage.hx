@@ -4,10 +4,14 @@ package;
 class CodenameOwnerSaveStorage {
 	static inline var ROOT_FIELD:String = 'codenameImportedModData';
 
-	public static function create():Dynamic {
+	/** Build a save backend for one caller policy. Writes keep the historical
+		flush behavior by default; callers which batch persistence can opt out and
+		use the explicit `flush` delegate at their source-defined save boundary. */
+	public static function create(autoFlushWrites:Bool = true):Dynamic {
 		return {
 			read: function(owner:String, field:String):Dynamic return read(owner, field),
-			write: function(owner:String, field:String, value:Dynamic):Void write(owner, field, value),
+			write: function(owner:String, field:String, value:Dynamic):Void
+				write(owner, field, value, autoFlushWrites),
 			flush: function():Void {
 				if (flixel.FlxG.save != null) flixel.FlxG.save.flush();
 			}
@@ -23,7 +27,7 @@ class CodenameOwnerSaveStorage {
 		return bucket == null ? null : Reflect.field(bucket, field);
 	}
 
-	static function write(owner:String, field:String, value:Dynamic):Void {
+	static function write(owner:String, field:String, value:Dynamic, autoFlushWrites:Bool):Void {
 		var data = saveData();
 		if (data == null) throw '[codename-save] Native save data is unavailable';
 		var owners = objectField(data, ROOT_FIELD, true);
@@ -33,7 +37,7 @@ class CodenameOwnerSaveStorage {
 			throw '[codename-save] Owner values must be JSON-serializable: ' + Std.string(error);
 		Reflect.setField(bucket, field, snapshot);
 		Reflect.setField(data, ROOT_FIELD, owners);
-		if (flixel.FlxG.save != null) flixel.FlxG.save.flush();
+		if (autoFlushWrites && flixel.FlxG.save != null) flixel.FlxG.save.flush();
 	}
 
 	static function saveData():Dynamic {

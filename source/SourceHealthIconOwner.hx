@@ -6,4 +6,5 @@ typedef SourceHealthIconOwner = {
 	var exists:String->Bool;
 	var uiPrefix:Void->String;
 	var antialiasing:Void->Bool;
+	@:optional var spriteOwner:Null<NightmareVisionSpriteOwner>;
 }

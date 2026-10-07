@@ -36,6 +36,20 @@ class PsychGlobalPackImportTest(unittest.TestCase):
                 , newline='\n')
             (donor_a / "shared/images").mkdir(parents=True)
             (donor_a / "shared/images/atlas.png").write_text("shared-image", encoding="utf-8", newline='\n')
+            language_bytes = {
+                "data/en-US.lang": b'English (US)\r\nhello: "Global root"\r\n',
+                "data/languages/fr-FR.LANG": b'Francais\nhello: "Global nested"\n',
+                "shared/data/en-US.lang": b'English (US)\nhello: "Global shared"\n',
+                "week1/data/en-US.lang": b'English (US)\nhello: "Global level"\n',
+                "base_game/week1/data/en-US.lang": b'English (US)\nhello: "Global base level"\n',
+                "library/alternate/data/en-US.lang": b'English (US)\nhello: "Global named library"\n',
+                "mods/untrusted/data/en-US.lang": b'English (US)\nhello: "Untrusted"\n',
+            }
+            for relative, contents in language_bytes.items():
+                path = donor_a / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(contents)
+            (donor_a / "data/languages/catalog.json").write_text('{"not":"translation"}', encoding="utf-8", newline='\n')
             (donor_a / "songs/demo").mkdir(parents=True)
             (donor_a / "songs/demo/Inst.ogg").write_text("unused-audio", encoding="utf-8", newline='\n')
             (donor_b / "images" / "screen.png").write_text("image-b", encoding="utf-8", newline='\n')
@@ -76,6 +90,24 @@ class Main {
     check(!FileSystem.exists(ownerA + '/songs'), 'song audio tree was copied');
     check(File.getContent(ownerA + '/data/settings.json').indexOf('allowResultsAnimation') >= 0,
       'pack settings missing');
+    var expectedGlobalLanguage = haxe.io.Bytes.ofString('English (US)\r\nhello: "Global root"\r\n');
+    var globalLanguage = File.getBytes(ownerA + '/data/en-US.lang');
+    check(globalLanguage.toHex() == expectedGlobalLanguage.toHex(),
+      'global-pack root language bytes differed: actual=' + globalLanguage.toHex()
+        + ' expected=' + expectedGlobalLanguage.toHex());
+    check(File.getContent(ownerA + '/data/languages/fr-FR.LANG') == 'Francais\nhello: "Global nested"\n',
+      'global-pack nested language or case-insensitive extension was not retained');
+    check(File.getContent(ownerA + '/shared/data/en-US.lang') == 'English (US)\nhello: "Global shared"\n',
+      'global-pack shared language was flattened or omitted');
+    check(File.getContent(ownerA + '/week1/data/en-US.lang') == 'English (US)\nhello: "Global level"\n',
+      'global-pack current-level language was not retained');
+    check(File.getContent(ownerA + '/base_game/week1/data/en-US.lang') == 'English (US)\nhello: "Global base level"\n',
+      'global-pack base-game language was not retained');
+    check(File.getContent(ownerA + '/library/alternate/data/en-US.lang') == 'English (US)\nhello: "Global named library"\n',
+      'global-pack named library language was not retained');
+    check(!FileSystem.exists(ownerA + '/mods/untrusted/data/en-US.lang')
+      && !FileSystem.exists(ownerA + '/data/languages/catalog.json'),
+      'global-pack importer copied unrelated mod or data files');
     check(File.getContent('assets/data/options.json') == 'personal-options-sentinel',
       'personal options were mutated');
     check(PsychGlobalPackImporter.defaultProvider() == ownerA, 'first provider was not selected');
@@ -83,6 +115,7 @@ class Main {
       'owner receipt missing');
 
     File.saveContent(ownerA + '/images/screen.png', 'user-owner-override');
+    File.saveContent(ownerA + '/data/en-US.lang', 'user language override');
     File.saveContent(donorA + '/images/screen.png', 'changed-donor-image');
     var receiptBefore = File.getContent(ownerA + '/' + PsychGlobalPackImporter.RECEIPT_NAME);
     var repeat = PsychGlobalPackImporter.importPack(donorA);
@@ -91,6 +124,8 @@ class Main {
       'valid owner receipt was rewritten');
     check(File.getContent(ownerA + '/images/screen.png') == 'user-owner-override',
       'existing owner file was replaced');
+    check(File.getContent(ownerA + '/data/en-US.lang') == 'user language override',
+      'existing owner language was replaced');
     check(File.getContent(donorA + '/images/screen.png') == 'changed-donor-image', 'donor was changed');
 
     var second = PsychGlobalPackImporter.importPack(donorB);
@@ -122,6 +157,9 @@ class Main {
                 text=True,
                 timeout=60,
             )
+            for relative, contents in language_bytes.items():
+                if relative != "mods/untrusted/data/en-US.lang":
+                    self.assertEqual((donor_a / relative).read_bytes(), contents, relative)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_import_workflow_routes_chart_free_psych_packs_to_the_scoped_importer(self):

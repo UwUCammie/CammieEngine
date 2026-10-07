@@ -23,10 +23,41 @@ private typedef NightmareVisionConstructorBinding = {
 */
 @:access(crowplexus.hscript.Interp)
 class NightmareVisionScriptInterp extends Interp {
+	/** Diagnostics stay attached to this owner instead of replacing Iris hooks. */
+	public var sourceError:Null<(Dynamic, haxe.PosInfos)->Void>;
 	/** Fully qualified host adapters belonging to this interpreter's owner. */
 	public var importBindings(default, null):Map<String, Dynamic> = new Map();
 	/** Owner-local constructor factories keyed by the imported class identity. */
 	var constructorBindings:Array<NightmareVisionConstructorBinding> = [];
+	public var nativeClassScope(default, null):SourceNativeClassScope;
+	#if flixel
+	public var sourceSpriteOwner:Null<NightmareVisionSpriteOwner>;
+	#end
+	function finishSourceConstruction(value:Dynamic):Dynamic {
+		#if flixel
+		if (sourceSpriteOwner != null && Std.isOfType(value, flixel.FlxSprite)
+			&& Type.getInstanceFields(Type.getClass(value)).indexOf('__nightmareVisionSpriteOwner') >= 0)
+			NightmareVisionSpriteMethods.bind(cast value, sourceSpriteOwner);
+		#end
+		return value;
+	}
+	public function sourceClassScope():SourceNativeClassScope {
+		if (nativeClassScope == null) {
+			nativeClassScope = new SourceNativeClassScope();
+			nativeClassScope.construct = createSourceInstance;
+			nativeClassScope.installReflectionBindings();
+		}
+		return nativeClassScope;
+	}
+	/** Object owners retain factories without retaining a released interpreter. */
+	public function captureSourceConstructors():Array<{type:Dynamic, create:Array<Dynamic>->Dynamic}> {
+		return [for (binding in constructorBindings) {type:binding.type, create:binding.create}];
+	}
+
+	public function createSourceInstance(type:Dynamic, args:Array<Dynamic>):Dynamic {
+		for (binding in constructorBindings) if (binding.type == type) return finishSourceConstruction(binding.create(args));
+		return finishSourceConstruction(Type.createInstance(type, args));
+	}
 	var liveValues:Map<String, {read:Void->Dynamic, write:Dynamic->Dynamic, target:Void->Dynamic}> = new Map();
 
 	/** Source properties that differ from the native parent remain live and owner-local. */
@@ -159,6 +190,7 @@ class NightmareVisionScriptInterp extends Interp {
 
 	/** Break all interpreter-owned references at the end of a script lifetime. */
 	public function release():Void {
+		sourceError = null;
 		var saveError:Dynamic = null;
 		for (binding in constructorBindings) {
 			var releaseOwner:Dynamic = binding.owner == null ? null : Reflect.field(binding.owner, 'release');
@@ -169,6 +201,10 @@ class NightmareVisionScriptInterp extends Interp {
 			}
 		}
 		constructorBindings.resize(0);
+		#if flixel
+		sourceSpriteOwner = null;
+		#end
+		if (nativeClassScope != null) {nativeClassScope.release(); nativeClassScope = null;}
 		liveValues.clear();
 		if (cameraShaders != null) {
 			cameraShaders.release();
@@ -210,30 +246,30 @@ class NightmareVisionScriptInterp extends Interp {
 			if (requestedType == null) requestedType = Type.resolveClass(cl);
 		}
 		if (requestedType != null) for (binding in constructorBindings)
-			if (binding.type == requestedType) return binding.create(args);
+			if (binding.type == requestedType) return finishSourceConstruction(binding.create(args));
 
 		if (ownerPaths != null) {
 			var className = cl == null ? '' : cl.substr(cl.lastIndexOf('.') + 1);
 			switch (className) {
 				case 'FlxSprite':
 					var spriteType = Type.resolveClass('NightmareVisionFlxSprite');
-					if (spriteType != null) return Type.createInstance(spriteType, [argumentFloat(args, 0, 0),
-						argumentFloat(args, 1, 0), argument(args, 2), ownerPaths]);
+					if (spriteType != null) return finishSourceConstruction(Type.createInstance(spriteType, [argumentFloat(args, 0, 0),
+						argumentFloat(args, 1, 0), argument(args, 2), ownerPaths]));
 				case 'Bopper':
 					var bopperType = Type.resolveClass('NightmareVisionBopper');
-					if (bopperType != null) return Type.createInstance(bopperType, [argumentFloat(args, 0, 0),
-							argumentFloat(args, 1, 0), Std.int(argumentFloat(args, 2, 2)), ownerPaths]);
+					if (bopperType != null) return finishSourceConstruction(Type.createInstance(bopperType, [argumentFloat(args, 0, 0),
+							argumentFloat(args, 1, 0), Std.int(argumentFloat(args, 2, 2)), ownerPaths]));
 				case 'BGSprite':
 					var bgType = Type.resolveClass('NightmareVisionBGSprite');
-					if (bgType != null) return Type.createInstance(bgType, [argument(args, 0),
+					if (bgType != null) return finishSourceConstruction(Type.createInstance(bgType, [argument(args, 0),
 						argumentFloat(args, 1, 0), argumentFloat(args, 2, 0),
 						argumentFloat(args, 3, 1), argumentFloat(args, 4, 1),
-						argument(args, 5), argument(args, 6) == true, ownerPaths]);
+						argument(args, 5), argument(args, 6) == true, ownerPaths]));
 				case 'FunkinVideoSprite':
 					var videoType = Type.resolveClass('NightmareVisionVideoSprite');
-					if (videoType != null) return Type.createInstance(videoType, [parent, ownerPaths,
+					if (videoType != null) return finishSourceConstruction(Type.createInstance(videoType, [parent, ownerPaths,
 						argumentFloat(args, 0, 0), argumentFloat(args, 1, 0),
-						argumentBool(args, 2, true), argumentBool(args, 3, false)]);
+						argumentBool(args, 2, true), argumentBool(args, 3, false)]));
 			}
 		}
 		// A qualified import can name a real Haxe runtime class without a bare
@@ -241,9 +277,9 @@ class NightmareVisionScriptInterp extends Interp {
 		// owner facades and other imported objects remain on their own APIs.
 		if (cl != null && cl.indexOf('.') >= 0 && importBindings.exists(cl)) {
 			var importedType = importBindings.get(cl);
-			if (isRuntimeClass(importedType)) return Type.createInstance(importedType, args);
+			if (isRuntimeClass(importedType)) return finishSourceConstruction(Type.createInstance(importedType, args));
 		}
-		return super.cnew(cl, args);
+		return finishSourceConstruction(super.cnew(cl, args));
 	}
 
 	static function isRuntimeClass(value:Dynamic):Bool {
@@ -413,6 +449,7 @@ class NightmareVisionScriptInterp extends Interp {
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).getField(field);
 		#end
+		if (nativeClassScope != null && nativeClassScope.hasBinding(object, field)) return nativeClassScope.read(object, field);
 		if (liveField(object, field)) return liveValues.get(field).read();
 		if (usesClassParent(object, field, false)) {
 			if (liveField(parent, field)) return liveValues.get(field).read();
@@ -454,6 +491,7 @@ class NightmareVisionScriptInterp extends Interp {
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).setField(field, value);
 		#end
+		if (nativeClassScope != null && nativeClassScope.hasBinding(object, field)) return nativeClassScope.write(object, field, value);
 		if (liveField(object, field)) return writeLiveValue(field, value);
 		if (usesClassParent(object, field, true)) {
 			if (liveField(parent, field)) return writeLiveValue(field, value);
@@ -579,7 +617,8 @@ class NightmareVisionScriptInterp extends Interp {
 		var method = get(object, field);
 		if (method == null) {
 			var details = isStringMethod(field) ? stringReceiverDetails(object) : '';
-			crowplexus.iris.Iris.error('Unknown function: ' + field + details, posInfos());
+			if (sourceError != null) sourceError('Unknown function: ' + field + details, posInfos());
+			else crowplexus.iris.Iris.error('Unknown function: ' + field + details, posInfos());
 			return null;
 		}
 		return call(object, method, args);

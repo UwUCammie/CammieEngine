@@ -70,6 +70,11 @@ class Main {
   var host=new FakeHost();
   var plain=new SourceIrisBridge(host);
   new PsychHscriptSourceBindings(host,plain,"plain.hx",null).install();
+  check(PsychAchievementsIntegration.hscriptCalls.length==1
+   && PsychAchievementsIntegration.hscriptCalls[0][0]==host
+   && PsychAchievementsIntegration.hscriptCalls[0][1]==plain
+   && PsychAchievementsIntegration.hscriptCalls[0][2]=="plain.hx",
+   "preset installation forwards the captured host, interpreter, and origin");
   check(plain.variables.get("Countdown")==PsychBaseStageCountdown,
    "plain Psych preset did not expose the engine countdown enum type");
 
@@ -97,6 +102,11 @@ class Main {
   var embedded=new SourceIrisBridge(host);
   for (name => value in plain.variables) embedded.variables.set(name,value);
   new PsychHscriptSourceBindings(host,embedded,"embedded.hx",null).install();
+  check(PsychAchievementsIntegration.hscriptCalls.length==2
+   && PsychAchievementsIntegration.hscriptCalls[1][0]==host
+   && PsychAchievementsIntegration.hscriptCalls[1][1]==embedded
+   && PsychAchievementsIntegration.hscriptCalls[1][2]=="embedded.hx",
+   "embedded preset installation retains its own interpreter and origin");
   check(embedded.variables.get("Countdown")==PsychBaseStageCountdown,
    "embedded Psych preset did not retain the real countdown enum type");
   embedded.evaluate("import backend.BaseStage.Countdown; "
@@ -142,10 +152,23 @@ class PsychHscriptCountdownPresetTest(unittest.TestCase):
         source = (ROOT / "source/PsychHscriptSourceBindings.hx").read_text(encoding="utf-8")
         install = extract_method(source, "public function install():Void")
         fixture = MAIN_TEMPLATE.replace("__INSTALL_METHOD__", install)
+        # Countdown-only scopes intentionally have no selected source asset owner.
+        fixture = fixture.replace(' public function new() {}', ' public var psychStageLibrary:String;public function compatPsychOwnerForScript(o:String):String return null;public function bindSourceBarClass(i:Dynamic,n:Bool,p:Dynamic):Void{} public function new() {}', 1)
 
         with tempfile.TemporaryDirectory(prefix="psych-countdown-preset-", dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
+            from psych_standard_fixture_support import write_standard_services_stub
+            write_standard_services_stub(scratch)
             write_flixel_point_stub(scratch)
+            (scratch / "PsychAchievementsIntegration.hx").write_text(
+                """import hscript.Interp;
+class PsychAchievementsIntegration {
+ public static var hscriptCalls:Array<Array<Dynamic>>=[];
+ public static function installHscript(host:Dynamic,interp:Interp,origin:String):Void
+  hscriptCalls.push([host,interp,origin]);
+}
+""", encoding="utf-8", newline="\n")
+            (scratch / "PsychOwnerPaths.hx").write_text('class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return null;}')
             (scratch / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
             command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),

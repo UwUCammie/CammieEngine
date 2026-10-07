@@ -125,7 +125,21 @@ class Main {
   near(sharedSplash.angle,tracked.holdAngle,"source tail pointer follows even when not alive");near(directSplash.angle,17,"source head pointer still independent");
   live.tailState.splash=null;sharedSplash.angle=29;
   renderer.updateNote(context,live,0,0,0,50,100,200,2.5,null);near(directSplash.angle,17,"missing shared pointer does not invent link");
-  renderer.release(live);renderer.destroy();
+  renderer.release(live);
+  // The source PlayState reads frame dimensions AFTER updateObject. A helper
+  // may replace graphics in that callback, while cached scale stays separate.
+  names=["newFrames"];var resized=sprite(true);resized.wasGoodHit=true;
+  var mutateFrames=false;
+  entries.set("newFrames",entry(null,function(t,d,td,b,p,data,player,obj){p.x=0;p.y=t;return p;},
+   function(b,obj,p,player,kind){if(mutateFrames){obj.frameWidth=37;obj.frameHeight=25;obj.width=37;obj.height=25;}}));
+  renderer.updateNote(context,resized,0,0,0,20,30,3.2,null);
+  mutateFrames=true;context=new NightmareVisionModchartContext(1280,720,4,112,1100,2.5);var changedFrames=renderer.updateNote(context,resized,0,0,0,20,30,3.2,{x:0.,y:1000.,width:37.,height:25.});
+  near(changedFrames.holdSegmentDistance,124,"exact endpoint distance retained after graphics mutation");
+  near(resized.scale.y,124/25,"body stretch consumes live frameHeight after callback");
+  check(changedFrames.clipApplied,"hit sustain clipping remains active");
+  near(changedFrames.clipWidth,37,"clip consumes live frameWidth");
+  near(changedFrames.clipHeight+changedFrames.clipY,25,"clip consumes live frameHeight");
+  renderer.release(resized);renderer.destroy();
   // Dimension finalization preserves values and registry identity; timeline enrolls dynamically.
   var dimensions=new NightmareVisionModifierRegistry(1,1,false);dimensions.registerDefaultModifiers();dimensions.setValue("mini",0.3,0);dimensions.configureDimensions(3,4);
   near(dimensions.value("mini",0),0.3,"existing value preserved");near(dimensions.value("mini",3),0,"new lane initialized");check(dimensions.keys==3 && dimensions.players==4,"live dimensions");

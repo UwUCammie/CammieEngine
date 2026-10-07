@@ -1,5 +1,6 @@
 """Pin Nightmare Vision's authored flip and player-slot orientation semantics."""
 from haxe_test_support import HAXE_COMMAND
+from test_nv_multifield_routes import method
 
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
@@ -25,10 +26,21 @@ class NightmareVisionCharacterOrientationTest(unittest.TestCase):
         self.assertNotIn("authoredSlotFlipX", character)
         self.assertIn("public var isPlayer:Bool = false;", character)
 
-        # The source NMV bank constructs every cached replacement in its stage
-        # role. This preserves isPlayer when a cached actor becomes active again.
-        play_state = (ROOT / "source/PlayState.hx").read_text()
-        self.assertIn("new Character(placement.x, placement.y, name, type == 0);", play_state)
+        # The real source group constructs by its live type and then places through
+        # actual startPos/group.add, preserving the captured player's orientation.
+        play_state = (ROOT / "source/PlayState.hx").read_text(encoding='utf-8')
+        role = method(play_state, 'function constructNightmareVisionRole(')
+        self.assertIn('owner.construct(name, type == 0)', role)
+        bindings = (ROOT / 'source/NightmareVisionCharacterGroupBindings.hx').read_text(encoding='utf-8')
+        owner = method(bindings, 'public static function owner(')
+        self.assertIn('new Character(0, 0, name, player, null, construction)', owner)
+        group = (ROOT / 'source/NightmareVisionCharacterGroup.hx').read_text(encoding='utf-8')
+        self.assertIn('owner.construct(newCharacter, type == BF)', method(group, 'public function addToList('))
+        add = method(group, 'public function addChar(')
+        self.assertLess(add.index('startPos(char)'), add.index('add(char)'))
+        change = method(group, 'public function change(')
+        self.assertIn('parent = map.get(name);', change)
+        self.assertNotIn('isPlayer =', change)
         cache = (ROOT / "source/PsychCharacterCache.hx").read_text()
         self.assertIn("public function change(name:String):T", cache)
         self.assertIn("parent = next;", cache)

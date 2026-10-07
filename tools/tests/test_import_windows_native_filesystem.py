@@ -1,19 +1,28 @@
 """Exercise native Windows long paths and import retry pointers, beyond eval."""
+import atexit
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
 import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from tools import patch_hxcpp_windows_file_paths as patcher
 from haxe_test_support import HAXE, TEST_TMP
 from test_import_refresh_manager import STUBS, FIXTURE
 import test_import_refresh_manager as manager_fixtures
 
-ROOT = Path(__file__).resolve().parents[2]
+_NATIVE_BUILD_LOCK = threading.Lock()
+_NATIVE_BUILD_CACHE = None
+_SEQUENCE_CHECKPOINT = 'committed:view.committedOwnerRoots,revision:view.revision};'
 
 MAIN = r'''import haxe.Json;
 import sys.io.File;
@@ -25,7 +34,7 @@ class NativeImportFilesystemFixture {
   var args=Sys.args();
   try {
    switch(args[0]) {
-    case "fresh", "auto-refresh":
+    case "fresh", "auto-refresh", "auto-refresh-sequence":
      ImportRefreshManagerFixture.main();
     case "pointer":
      ImportRefreshManager.atomicText(args[1],args[2]);
@@ -59,6 +68,71 @@ class NativeImportFilesystemFixture {
 }'''
 
 
+def _native_fixture_source():
+    if _SEQUENCE_CHECKPOINT not in FIXTURE:
+        raise AssertionError('native refresh fixture lost its overlap checkpoint')
+    return FIXTURE.replace(_SEQUENCE_CHECKPOINT,
+        'committed:view.committedOwnerRoots,revision:view.revision,active:ImportRefreshManager.active};')
+
+
+def _cleanup_native_build():
+    global _NATIVE_BUILD_CACHE
+    with _NATIVE_BUILD_LOCK:
+        cache = _NATIVE_BUILD_CACHE
+        _NATIVE_BUILD_CACHE = None
+    if cache is not None:
+        cache['build_temp'].cleanup()
+
+
+atexit.register(_cleanup_native_build)
+
+
+def _assert_native_handoff_overlap(test_case):
+    test_case.install = test_case.base / 'install'
+    registry = test_case.install / 'assets/data/freeplaySongJson.json'
+    registry.parent.mkdir(parents=True)
+    registry.write_text('{"base":{"keep":true},"owners":{}}', encoding='utf-8')
+
+    donors = []
+    for label, song in (("native-sequence-a", "queue-a"),
+                         ("native-sequence-b", "queue-b")):
+        donor = test_case.base / label
+        donor.mkdir()
+        (donor / 'package.json').write_text(json.dumps({
+            'ownerKey': label, 'marker': 'retained:' + label,
+            'initialVersion': 'v1-' + label, 'nextVersion': 'v2-' + label,
+            'initialSongs': [song], 'nextSongs': [song, song + '-new']}), encoding='utf-8')
+        imported = test_case.run_fixture('fresh', test_case.install, donor)
+        test_case.assertEqual(imported['failed'], 0, imported)
+        donors.append(donor)
+
+    records = {record['label']: record for record in imported['records']}
+    sequence_records = [records['native-sequence-a'], records['native-sequence-b']]
+    for record in sequence_records:
+        manager_fixtures.ImportRefreshManagerTest.mark_record_stale(
+            test_case, record, common_revision=2)
+    ordered = sorted(sequence_records, key=lambda record: record['id'])
+    for donor in donors:
+        shutil.rmtree(donor)
+
+    result = test_case.run_fixture('auto-refresh-sequence', test_case.install, ordered[1]['label'])
+
+    first_owner = 'assets/imported_mods/' + ordered[0]['roots'][0]['namespace']
+    second_owner = 'assets/imported_mods/' + ordered[1]['roots'][0]['namespace']
+    test_case.assertIsNotNone(result['split'], result)
+    # The checkpoint is captured only inside the generation >= 1 &&
+    # manager.active branch.
+    test_case.assertTrue(result['split']['active'], result)
+    test_case.assertEqual(result['split']['pending'], [second_owner], result)
+    test_case.assertEqual(result['split']['handoff'], [], result)
+    test_case.assertEqual(result['split']['committed'], sorted([first_owner, second_owner]), result)
+    test_case.assertEqual(result['pending'], [], result)
+    test_case.assertEqual(result['generation'], 2, result)
+    test_case.assertEqual(result['handoffCalls'], 2, result)
+    for song in ('queue-a-new', 'queue-b-new'):
+        test_case.assertTrue((test_case.install / 'assets/songs' / song / 'Inst.ogg').is_file(), result)
+
+
 class WindowsFilePathPatchTest(unittest.TestCase):
     def test_exact_patch_chain_is_idempotent_and_rejects_drift(self):
         for name, replacements, original_hash, patched_hash in (
@@ -81,34 +155,62 @@ class WindowsFilePathPatchTest(unittest.TestCase):
 class NativeWindowsImportFilesystemTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        compiler = ROOT / '.tools/llvm-mingw-windows'
-        if not HAXE.exists() or not (compiler / 'bin/x86_64-w64-mingw32-clang++.exe').exists():
-            raise unittest.SkipTest('portable native Windows toolchain is unavailable')
-        cls.build_temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
-        cls.work = Path(cls.build_temp.name)
-        for name, content in {**STUBS, 'ImportRefreshManagerFixture.hx': FIXTURE,
-                              'NativeImportFilesystemFixture.hx': MAIN}.items():
-            (cls.work / name).write_text(content, encoding='utf-8', newline='\n')
-        cls.environment = {**os.environ, 'HAXEPATH': str(HAXE.parent),
-            'NEKOPATH': str(ROOT / '.tools/neko'), 'HAXELIB_PATH': str(ROOT / '.haxelib'),
-            'MINGW_ROOT': str(compiler), 'HXCPP_MINGW_EXE': 'x86_64-w64-mingw32-clang++.exe',
-            'HXCPP_AR': 'llvm-ar.exe', 'HXCPP_RANLIB': 'llvm-ranlib.exe',
-            'HXCPP_STRIP': 'llvm-strip.exe', 'HXCPP_RC': 'llvm-windres.exe',
-            'PATH': os.pathsep.join([str(HAXE.parent), str(ROOT / '.tools/neko'),
-                                    str(compiler / 'bin'), os.environ['PATH']])}
-        cls.binary = cls.work / 'cpp/NativeImportFilesystemFixture.exe'
-        process = subprocess.run([str(HAXE), '-cp', str(ROOT / 'source'),
-            '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), '-cp', str(cls.work),
-            '-main', 'NativeImportFilesystemFixture', '-cpp', str(cls.binary.parent),
-            '-D', 'windows', '-D', 'HXCPP_M64', '-D', 'HXCPP_MINGW', '-D', 'HXCPP_RC=llvm-windres.exe'],
-            cwd=ROOT, env=cls.environment, capture_output=True, text=True, timeout=180)
-        if process.returncode:
-            cls.build_temp.cleanup()
-            raise AssertionError(process.stdout + process.stderr)
+        global _NATIVE_BUILD_CACHE
+        with _NATIVE_BUILD_LOCK:
+            if _NATIVE_BUILD_CACHE is not None and _NATIVE_BUILD_CACHE['binary'].is_file():
+                cls.build_temp = _NATIVE_BUILD_CACHE['build_temp']
+                cls.work = _NATIVE_BUILD_CACHE['work']
+                cls.environment = _NATIVE_BUILD_CACHE['environment']
+                cls.binary = _NATIVE_BUILD_CACHE['binary']
+                return
+
+            compiler = ROOT / '.tools/llvm-mingw-windows'
+            if not HAXE.exists() or not (compiler / 'bin/x86_64-w64-mingw32-clang++.exe').exists():
+                raise unittest.SkipTest('portable native Windows toolchain is unavailable')
+
+            Path(TEST_TMP).mkdir(parents=True, exist_ok=True)
+            build_temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
+            work = Path(build_temp.name)
+            try:
+                native_fixture = _native_fixture_source()
+                for name, content in {**STUBS, 'ImportRefreshManagerFixture.hx': native_fixture,
+                                      'NativeImportFilesystemFixture.hx': MAIN}.items():
+                    target = work / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(content, encoding='utf-8', newline='\n')
+                environment = {**os.environ, 'HAXEPATH': str(HAXE.parent),
+                    'NEKOPATH': str(ROOT / '.tools/neko'), 'HAXELIB_PATH': str(ROOT / '.haxelib'),
+                    'MINGW_ROOT': str(compiler), 'HXCPP_MINGW_EXE': 'x86_64-w64-mingw32-clang++.exe',
+                    'HXCPP_AR': 'llvm-ar.exe', 'HXCPP_RANLIB': 'llvm-ranlib.exe',
+                    'HXCPP_STRIP': 'llvm-strip.exe', 'HXCPP_RC': 'llvm-windres.exe',
+                    'PATH': os.pathsep.join([str(HAXE.parent), str(ROOT / '.tools/neko'),
+                                            str(compiler / 'bin'), os.environ['PATH']])}
+                binary = work / 'cpp/NativeImportFilesystemFixture.exe'
+                process = subprocess.run([str(HAXE), '-cp', str(ROOT / 'source'),
+                    '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), '-cp', str(work),
+                    '-main', 'NativeImportFilesystemFixture', '-cpp', str(binary.parent),
+                    '-D', 'windows', '-D', 'HXCPP_M64', '-D', 'HXCPP_MINGW', '-D', 'HXCPP_RC=llvm-windres.exe'],
+                    cwd=ROOT, env=environment, capture_output=True, text=True, timeout=180)
+                if process.returncode:
+                    raise AssertionError(process.stdout + process.stderr)
+            except BaseException:
+                build_temp.cleanup()
+                raise
+
+            _NATIVE_BUILD_CACHE = {
+                'build_temp': build_temp,
+                'work': work,
+                'environment': environment,
+                'binary': binary,
+            }
+            cls.build_temp = build_temp
+            cls.work = work
+            cls.environment = environment
+            cls.binary = binary
 
     @classmethod
     def tearDownClass(cls):
-        cls.build_temp.cleanup()
+        _cleanup_native_build()
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
@@ -160,6 +262,15 @@ class NativeWindowsImportFilesystemTest(unittest.TestCase):
         self.assertTrue((self.install / 'assets/songs/new-song/Inst.ogg').exists())
         self.assertFalse(donor.exists())
 
+    def test_native_handoff_overlap_route_is_preserved(self):
+        native_fixture = _native_fixture_source()
+        self.assertIn('case "fresh", "auto-refresh", "auto-refresh-sequence":', MAIN)
+        self.assertIn('mode=="auto-refresh-sequence"&&ImportRefreshManager.generation>=1'
+                      '&&ImportRefreshManager.active', FIXTURE)
+        self.assertIn('active:ImportRefreshManager.active', native_fixture)
+        self.assertIn('pending:view.pendingOwnerRoots,handoff:view.handoffPendingOwnerRoots',
+                      native_fixture)
+
     def test_long_unicode_paths_support_stat_reads_writes_rename_and_cleanup(self):
         directory = self.base / ('parent-' + 'a' * 100) / ('nested-' + 'b' * 100) / ('leaf-' + 'c' * 70)
         self.assertGreater(len(str(directory)), 260)
@@ -185,6 +296,17 @@ class NativeWindowsImportFilesystemTest(unittest.TestCase):
         self.assertFalse(rejected['ok'])
         self.assertIn('Snapshot file size changed', rejected['error'])
         self.assertEqual(authored.read_bytes(), b'authored bytes\x00\xff')
+
+
+def run_native_handoff_overlap_case():
+    """Run the shared native overlap case with the fixture's normal lifecycle."""
+    NativeWindowsImportFilesystemTest.setUpClass()
+    test_case = NativeWindowsImportFilesystemTest('test_native_handoff_overlap_route_is_preserved')
+    test_case.setUp()
+    try:
+        _assert_native_handoff_overlap(test_case)
+    finally:
+        test_case.tearDown()
 
 
 if __name__ == '__main__':

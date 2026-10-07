@@ -61,7 +61,9 @@ class HxcCompatRuntime { public static function getZIndex(_object:Dynamic):Dynam
 class NightmareVisionFlxGView { public function getField(_field:String):Dynamic return null; }
 class NightmareVisionSaveData { public function getField(_field:String):Dynamic return null; }
 class NightmareVisionSaveFacade {}
+// Audio-only fixture: actual class scopes are covered by connected integration.
 class BaseInterp {
+ var nativeClassScope:Dynamic=null;
  var liveValues:Map<String,{read:Void->Dynamic,write:Dynamic->Dynamic,target:Void->Dynamic}> = new Map();
  public function new() {}
  function liveField(object:Dynamic,field:String):Bool {

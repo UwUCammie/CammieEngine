@@ -1,4 +1,4 @@
-"""Keep Nightmare Vision event preloads in their source character banks."""
+"""Keep Nightmare Vision event preloads in their source character groups."""
 from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
@@ -98,20 +98,21 @@ class NightmareVisionRetainedPreloadTest(unittest.TestCase):
 }'''
         self.run_haxe(fixture)
 
-    def test_playstate_preload_paths_retain_bank_actors(self):
+    def test_playstate_preload_paths_retain_group_actors(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         preload = function_body(source, "preloadSwapCharacters")
         psych_preload = function_body(source, "compatAddCharacterToList")
         self.assertIn("NightmareVisionCharacterEvent.preloadRole(e.v1)", preload)
-        self.assertIn("nightmareVisionCharacterBank(PsychCharacterChangeEvent.role", psych_preload)
+        self.assertIn("addNightmareVisionCharacterToList(characterName, PsychCharacterChangeEvent.role", psych_preload)
+        group_preload = function_body(source, "addNightmareVisionCharacterToList")
 
         fixture = r'''import sys.FileSystem;
 using StringTools;
 class Actor {
- public var requestedCharacter:String;
+ public var requestedCharacter:String;public var curCharacter:String;
  public var alpha:Float=1;
  public var destroyed:Bool=false;
- public function new(name:String) requestedCharacter=name;
+ public function new(name:String) {requestedCharacter=name;curCharacter=name;}
  public function destroy():Void destroyed=true;
 }
 class Character {
@@ -120,9 +121,15 @@ class Character {
 class CodenameEventDispatch {
  public static function fromNative(event:Dynamic):Dynamic return null;
 }
+class RetainedGroup {
+ public var map:Map<String,Actor>=[];var construct:String->Actor;
+ public function new(initial:Actor,construct:String->Actor){map.set(initial.curCharacter,initial);this.construct=construct;}
+ public function addToList(name:String):Actor {var old=map.get(name);if(old!=null)return old;var actor=construct(name);actor.alpha=.00001;map.set(actor.curCharacter,actor);return actor;}
+}
 class Main {
  var nightmareVisionScripts:Dynamic={owner:'nightmare-vision'};
- var nightmareVisionCharacterBanks:Map<Int,NightmareVisionCharacterBank>=new Map();
+ var characterGroups:Map<Int,RetainedGroup>=new Map();
+ var nightmareVisionHiddenGFPlaceholder:Actor;var loaded:Array<String>=[];
  var boyfriend:Actor;
  var dad:Actor;
  var gf:Actor;
@@ -136,16 +143,14 @@ class Main {
  function new() {
   boyfriend=new Actor('bf'); dad=new Actor('dad'); gf=new Actor('gf');
  }
- function nightmareVisionCharacterBank(type:Int):NightmareVisionCharacterBank {
-  var existing=nightmareVisionCharacterBanks.get(type);
-  if(existing!=null)return existing;
+ function nightmareVisionCharacterGroup(type:Int):RetainedGroup {
+  var existing=characterGroups.get(type);if(existing!=null)return existing;
   var initial=type==0?boyfriend:type==1?dad:gf;
-  var bank=new NightmareVisionCharacterBank(initial,function(name:String):Dynamic {
-   var actor=new Actor(name); warmed.push(actor); return actor;
-  },function(previous:Dynamic,next:Dynamic):Void {});
-  nightmareVisionCharacterBanks.set(type,bank);
-  return bank;
+  var group=new RetainedGroup(initial,function(name){var actor=new Actor(name);warmed.push(actor);return actor;});
+  characterGroups.set(type,group);return group;
  }
+ function loadNightmareVisionCharacter(actor:Actor):Void loaded.push(actor.curCharacter);
+ __GROUP_PRELOAD_BODY__
  function warmCharacterAtlas(name:String,isPlayer:Bool=false):Void {
   warmCalls.push(name+':'+isPlayer);
   var actor=new Actor(name); warmed.push(actor); actor.destroy();
@@ -167,8 +172,8 @@ class Main {
   ];
   state.preloadSwapCharacters();
 
-  var gfBank=state.nightmareVisionCharacterBank(2);
-  var dadBank=state.nightmareVisionCharacterBank(1);
+  var gfBank=state.nightmareVisionCharacterGroup(2);
+  var dadBank=state.nightmareVisionCharacterGroup(1);
   check(gfBank.map.exists('gf-by-name') && gfBank.map.exists('gf-by-one'),
    'event-push GF aliases did not preload into GF bank');
   check(dadBank.map.exists('dad-by-name') && dadBank.map.exists('dad-by-zero'),
@@ -182,6 +187,7 @@ class Main {
    check(actor.alpha==0.00001 && !actor.destroyed, 'opponent preload actor was not retained hidden');
   }
   check(state.warmCalls.length==0, 'event preload used the temporary atlas warmer');
+  check(state.loaded.join(',')=='gf-by-name,gf-by-one,dad-by-name,dad-by-zero','source caller loads current identities after group preloads');
 
   // The Psych script API continues to use Psych's 0=BF, 1=opponent, 2=GF roles.
   state.compatAddCharacterToList('script-gf','gf');
@@ -209,7 +215,7 @@ class Main {
   sourcePrepared.useExplicitPreloadFile=true;
   sourcePrepared.songEvents=[{name:'Change Character',v1:'gf',v2:'already-prepared'}];
   sourcePrepared.preloadSwapCharacters();
-  check(sourcePrepared.nightmareVisionCharacterBanks.get(2)==null,
+  check(sourcePrepared.characterGroups.get(2)==null,
    'prepared NV events should not construct a duplicate retained character-bank actor');
   check(sourcePrepared.warmCalls.join(',')=='explicit-preload:false',
    'source-prepared early return should still process explicit preload.txt entries');
@@ -218,7 +224,7 @@ class Main {
  }
 }'''
         fixture = fixture.replace("__PRELOAD_BODY__", preload).replace(
-            "__PSYCH_PRELOAD_BODY__", psych_preload)
+            "__PSYCH_PRELOAD_BODY__", psych_preload).replace("__GROUP_PRELOAD_BODY__", group_preload)
         cool_util_stub = '''class CoolUtil {
  public static function coolTextFile(path:String):Array<String>
   return sys.io.File.getContent(path).split("\\n");

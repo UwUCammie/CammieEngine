@@ -1,3 +1,4 @@
+from nv_sprite_dependency_support import add_native_sprite_dependencies
 """Owner-scoped NMV sprite and Bopper constructors used by imported stages."""
 from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
@@ -47,9 +48,9 @@ class FakeFrameSignal {
 class FlxAnimationController {
  var names:Map<String,Bool> = [];
  public var curAnim:FakeAnimation;
- public var onFinish:FakeNameSignal = new FakeNameSignal();
- public var onFrameChange:FakeFrameSignal = new FakeFrameSignal();
- public var onLoop:FakeNameSignal = new FakeNameSignal();
+ public var onFinish=new flixel.util.FlxSignal.FlxTypedSignal<String->Void>();
+ public var onFrameChange=new flixel.util.FlxSignal.FlxTypedSignal<String->Int->Int->Void>();
+ public var onLoop=new flixel.util.FlxSignal.FlxTypedSignal<String->Void>();
  public var pauseCalls:Int=0;
  public var resumeCalls:Int=0;
  public function new(){}
@@ -74,7 +75,7 @@ import flixel.animation.FlxAnimationController;
 import flixel.system.FlxAssets.FlxGraphicAsset;
 class Scale {public var x:Float=1;public var y:Float=1;public function new(){} public function set(x:Float=1,y:Float=1):Void{this.x=x;this.y=y;}}
 class FlxSprite {
- public var x:Float; public var y:Float; public var active:Bool=true; public var exists:Bool=true;
+ public var x:Float; public var y:Float; public var active:Bool=true; public var exists:Bool=true;public var frameWidth=150;public var frameHeight=150;
  public var camera:Dynamic; public var cameras:Array<Dynamic>;
  public var scale:Scale=new Scale(); public var graphic:Dynamic; public var hitboxUpdates:Int=0;
  public var animation:FlxAnimationController = new FlxAnimationController();
@@ -101,7 +102,7 @@ class FlxAnimateFrames extends FlxAtlasFrames {
  public function new(path:String){super(path,'animate');}
  public function existsSymbol(name:String):Bool return dictionary.exists(name);
  public static function fromAnimate(path:String):FlxAnimateFrames return new FlxAnimateFrames(path);
- public static function combineAtlas(items:Array<FlxAtlasFrames>):FlxAtlasFrames return new FlxAtlasFrames(items.map(function(i)return i.path).join(','),'combined');
+ public static function combineAtlas(items:Array<FlxAtlasFrames>):FlxAtlasFrames {if(items.length==0)return null;var frames=items[0];for(i in 1...items.length)frames=Std.isOfType(frames,FlxAnimateFrames)?frames:items[i];return frames;}
 }''',
             "animate/FlxAnimate.hx": r'''package animate;
 class FlxAnimate extends flixel.FlxSprite {
@@ -164,9 +165,9 @@ class TestMain {
    frameName=name; frameNumber=number; frameIndex=index;
   });
   uber.onAnimationLoop.add(function(name:String) looped=name);
-  check(uber.onAnimationFinish==uber.animation.onFinish
-   && uber.onAnimationFrameChange==uber.animation.onFrameChange
-   && uber.onAnimationLoop==uber.animation.onLoop,'Bopper exposes the live animation signals');
+  check(uber.onAnimationFinish!=uber.animation.onFinish
+   && uber.onAnimationFrameChange!=uber.animation.onFrameChange
+   && uber.onAnimationLoop!=uber.animation.onLoop,'Bopper exposes independent source-forwarded signals');
   uber.animation.onFinish.dispatch('idle');
   uber.animation.onFrameChange.dispatch('idle',1,7);
   uber.animation.onLoop.dispatch('idle');
@@ -211,6 +212,28 @@ class TestMain {
  }
 }'''
 
+        # Keep this fixture's owner path/controller instrumentation while adding
+        # the actual source base's native FlxAnimate dependency surface.
+        from nv_stage_fixture_support import nv_stage_fixture_files
+        base = nv_stage_fixture_files()
+        for name in ['flixel/FlxCamera.hx','flixel/math/FlxMath.hx','flixel/math/FlxPoint.hx',
+                     'flixel/util/FlxSignal.hx','flixel/util/FlxDestroyUtil.hx','flixel/util/FlxPool.hx']:
+            stubs[name] = base[name]
+        sprite = stubs['flixel/FlxSprite.hx'].replace('function set_frames(', 'public function set_frames(')
+        sprite = sprite.replace('public var scale:Scale=new Scale();', 'public var angle:Float=0;public var flipX=false;public var flipY=false;public var scale=flixel.math.FlxPoint.get(1,1);')
+        sprite = sprite.replace('class FlxSprite {', 'class FlxSprite {public function getScreenPosition(?p:flixel.math.FlxPoint,?c:flixel.FlxCamera):flixel.math.FlxPoint {if(p==null)p=flixel.math.FlxPoint.get();return p.set(x,y);}public function clone():FlxSprite return new FlxSprite();')
+        stubs['flixel/FlxSprite.hx'] = sprite
+        stubs['animate/FlxAnimateFrames.hx'] = stubs['animate/FlxAnimateFrames.hx'].replace('class FlxAnimateFrames', 'typedef FlxAnimateSettings={?swfMode:Bool,?cacheOnLoad:Bool,?filterQuality:Dynamic,?onSymbolCreate:Dynamic->Void};class FlxAnimateFrames',1)
+        stubs['animate/FlxAnimate.hx'] = stubs['animate/FlxAnimate.hx'].replace('public var anim:', 'public var skew=flixel.math.FlxPoint.get();public var anim:').replace('?simpleGraphic:flixel.system.FlxAssets.FlxGraphicAsset)', '?simpleGraphic:flixel.system.FlxAssets.FlxGraphicAsset,?settings:animate.FlxAnimateFrames.FlxAnimateSettings)').replace('override function set_frames(', 'override public function set_frames(')
+        controller = stubs['flixel/animation/FlxAnimationController.hx'].replace('public var numFrames:Int;', 'public var numFrames:Int;public var finished=false;public var curFrame=0;')
+        controller = controller.replace('public function addByPrefix(', 'public function remove(n:String):Void names.remove(n);public function finish():Void{}public function stop():Void{}public function copyFrom(other:FlxAnimationController):Void {names=other.names.copy();curAnim=other.curAnim;}public function addByIndices(name:String,prefix:String,indices:Array<Int>,post:String,fps:Float=24,looped:Bool=true,flipX:Bool=false,flipY:Bool=false):Void names.set(name,true);public function addByPrefix(')
+        stubs['flixel/animation/FlxAnimationController.hx'] = controller
+        controller = stubs['animate/FlxAnimateController.hx'].replace('public function findFrameLabelIndices(', 'public function addByFrameLabelIndices(name:String,label:String,indices:Array<Int>,fps:Int=24,looped:Bool=true,flipX:Bool=false,flipY:Bool=false):Void addByPrefix(name,label,fps,looped,flipX,flipY);public function addBySymbolIndices(name:String,label:String,indices:Array<Int>,fps:Int=24,looped:Bool=true,flipX:Bool=false,flipY:Bool=false):Void addByPrefix(name,label,fps,looped,flipX,flipY);public function findFrameLabelIndices(')
+        stubs['animate/FlxAnimateController.hx'] = controller
+        paths = stubs['NightmareVisionPaths.hx'].replace(' public function image(', ' public function fileExists(p:String):Bool return p.indexOf("Animation.json")>=0;public function gpuCachingEnabled():Bool return false;public function forgetAtlasGraphic(g:Dynamic):Void{} public function image(')
+        stubs['NightmareVisionPaths.hx'] = paths
+        stubs['flixel/graphics/frames/FlxAtlasFrames.hx'] = stubs['flixel/graphics/frames/FlxAtlasFrames.hx'].replace('public var path:String;', 'public var parent={bitmap:{disposeImage:function(){}},persist:true};public var path:String;')
+        add_native_sprite_dependencies(stubs)
         with tempfile.TemporaryDirectory(prefix="nmv-stage-adapters-", dir=ROOT / "tmp") as directory:
             scratch = Path(directory)
             write_flixel_point_stub(scratch)

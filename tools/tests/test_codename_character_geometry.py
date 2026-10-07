@@ -47,6 +47,7 @@ class FlxPoint {
  public var x:Float; public var y:Float;
  public function new(x:Float=0,y:Float=0) {this.x=x;this.y=y;}
  public function add(x:Float,y:Float):FlxPoint {this.x+=x;this.y+=y;return this;}
+ public function subtract(point:FlxPoint):FlxPoint {x-=point.x;y-=point.y;return this;}
  public function set(x:Float,y:Float):FlxPoint {this.x=x;this.y=y;return this;}
 }
 class FlxRect {
@@ -55,6 +56,11 @@ class FlxRect {
 }
 class CodenameCharacterEvent { public function new() {} }
 class PlayState { public static var instance:Dynamic=null; }
+// The native NV Stage channel is covered separately; it must stay inactive here.
+class NightmareVisionFunkinSpriteAnimation {
+ public static function transformOffset(sprite:Dynamic,input:FlxPoint,base:FlxPoint,output:FlxPoint):FlxPoint
+  throw 'NV Stage offsets unexpectedly entered the Codename fixture';
+}
 class FakeSprite {
  public var x:Float=100; public var y:Float=200; public var scale=new FlxPoint(2,3);
  public var angle:Float=0;
@@ -88,6 +94,9 @@ class FakeSprite {
  }
 }
 class Character extends FakeSprite {
+ var sourceStageAnimOffset:Null<FlxPoint>=null;
+ var sourceStageOffsetBase:Null<FlxPoint>=null;
+ var sourceStageOffsetScratch:Null<FlxPoint>=null;
  public var codenameLiveDefinition:Dynamic={};
  public var codenameRuntime:Dynamic;
  public var log:Array<String>=[];

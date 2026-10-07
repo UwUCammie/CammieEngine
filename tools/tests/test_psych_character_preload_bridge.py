@@ -38,6 +38,7 @@ class PlayState {
     if (!banks.exists(role)) banks.set(role, new FakeCharacterBank());
     return banks.get(role);
   }
+  function addNightmareVisionCharacterToList(name:String,role:Int):Void nightmareVisionCharacterBank(role).addToList(name);
   function warmCharacterAtlas(name:String, isPlayer:Bool = false):Void
     warmed.push(name + ":" + isPlayer);
 ''' + method + '''

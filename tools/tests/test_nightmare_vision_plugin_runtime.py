@@ -96,6 +96,10 @@ class Main {static function main() {
             work = Path(directory)
             write_flixel_point_stub(work)
             stubs = {
+                'NightmareVisionVideoSprite.hx': '''class NightmareVisionVideoSprite {
+public static var releasedOwners:Array<Dynamic>=[];
+public static function destroyForState(owner:Dynamic):Void releasedOwners.push(owner);
+}''',
                 'NightmareVisionPaths.hx': '''class NightmareVisionPaths {
 public var released:Bool=false;public var releases:Int=0;public var order:Array<String>;
 public function new(order:Array<String>)this.order=order;public function releaseOwnerAssets():Void {
@@ -151,6 +155,7 @@ class Main {
   if(!first.released||second==first||flixel.FlxG.plugins.list.length!=1)throw 'owner handoff';
   if(log.slice(4).join(',')!=a+':destroy,'+b+':load')throw 'destroy before replacement';
   if(!assets.released||assets.releases!=1||lifetime.join(',')!='script-destroy,asset-release')throw 'owner asset teardown order';
+  if(NightmareVisionVideoSprite.releasedOwners.length<1)throw 'unattached plugin video resources not retired';
   NightmareVisionPluginHost.releaseOtherOwner('');
   var length=log.length;flixel.FlxG.signals.postStateSwitch.dispatch();
   if(!second.released||NightmareVisionPluginHost.activeHost!=null||flixel.FlxG.plugins.list.length!=0

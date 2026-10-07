@@ -3,8 +3,6 @@ package;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
-import flixel.ui.FlxBar;
-import flixel.ui.FlxBar.FlxBarFillDirection;
 import flixel.util.FlxColor;
 import flixel.addons.ui.FlxUIButton;
 import lime.ui.FileDialog;
@@ -47,13 +45,13 @@ class ImportSettingsState extends MusicBeatState {
 	var scanButton:FlxUIButton;
 	var importSourceButton:FlxUIButton;
 	var cancelButton:FlxUIButton;
-	var progressBar:FlxBar;
-	var progressText:FlxText;
+	public var progressPresentation(default, null):ImportRefreshProgressBar;
 	var detailPanel:FlxSprite;
 
 	var actionIndex:Int = ACTION_CHOOSE;
 	var detailPage:Int = 0;
 	var detailLines:Array<String> = [];
+	var refreshDiagnosticCount:Int = -1;
 	var sourcePathAtScan:String = '';
 	var importTypeAtScan:String = '';
 	var scanResult:ImportScanResult = null;
@@ -62,7 +60,7 @@ class ImportSettingsState extends MusicBeatState {
 	var packageNamePromptOpen:Bool = false;
 	var backRequested:Bool = false;
 	var stateAlive:Bool = false;
-	var progressMotion:Float = 0;
+	var coordinatorWasBusy:Bool = false;
 
 	override function create() {
 		stateAlive = true;
@@ -127,16 +125,7 @@ class ImportSettingsState extends MusicBeatState {
 		cancelButton.visible = false;
 		cancelButton.active = false;
 		add(cancelButton);
-
-		progressBar = new FlxBar(margin, 232, FlxBarFillDirection.LEFT_TO_RIGHT, contentWidth, 18, null, "", 0, 100, true);
-		progressBar.createFilledBar(0xFF161616, 0xFF65E67A, true, 0xFFFFFFFF);
-		progressBar.percent = 0;
-		progressBar.visible = false;
-		add(progressBar);
-
-		progressText = new FlxText(margin, 254, contentWidth, "", 17);
-		progressText.setFormat("assets/fonts/vcr.ttf", 17, FlxColor.WHITE, LEFT, OUTLINE, FlxColor.BLACK);
-		add(progressText);
+		layoutActionButtons(margin, buttonY, contentWidth);
 
 		importStatus = new FlxText(margin, 282, contentWidth, "Choose a source folder, then scan it before importing.", 19);
 		importStatus.setFormat("assets/fonts/vcr.ttf", 19, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
@@ -152,8 +141,10 @@ class ImportSettingsState extends MusicBeatState {
 		scanSummary.fieldHeight = SUMMARY_HEIGHT;
 		add(scanSummary);
 
-		var detailY = 402;
-		var detailHeight = Std.int(Math.max(150, FlxG.height - detailY - 74));
+		var progressBottom = 396;
+		var detailBottomLimit = FlxG.height - 66;
+		var detailY = Std.int(Math.max(progressBottom + 10, Math.min(402, detailBottomLimit - 150)));
+		var detailHeight = Std.int(Math.max(90, detailBottomLimit - detailY));
 		detailPanel = new FlxSprite(margin, detailY).makeGraphic(contentWidth, detailHeight, 0xB9000000);
 		add(detailPanel);
 
@@ -179,17 +170,38 @@ class ImportSettingsState extends MusicBeatState {
 		refreshButtons();
 		refreshDetails();
 		#if sys
-		add(new ImportRefreshProgressBar());
+		progressPresentation = new ImportRefreshProgressBar(this, progressPresentationStatus, true);
+		add(progressPresentation);
 		#end
 		super.create();
 	}
 
 	override function update(elapsed:Float) {
+		var coordinatorBusy = false;
+		var coordinatorSnapshotKnown = false;
+		#if sys
+		if (!hasJobHandle()) {
+			var coordinatorStatus = ImportRefreshManager.browseTick();
+			coordinatorBusy = coordinatorStatus != null && coordinatorStatus.busy;
+			coordinatorSnapshotKnown = true;
+		}
+		if (coordinatorBusy)
+			coordinatorWasBusy = true;
+		else if (coordinatorWasBusy)
+			coordinatorWasBusy = false;
+		// Synchronize controls before FlxState updates its children. A parent can
+		// resume after a substate while a background worker changed its state.
+		// This prevents one stale frame with an enabled navigation or Cancel button.
+		refreshButtons(coordinatorSnapshotKnown ? coordinatorBusy : null);
+		#end
 		super.update(elapsed);
 		#if sys
-		if (!hasJobHandle() && ImportRefreshManager.browseTick().busy) { refreshButtons(); return; }
+		var diagnosticCount = ImportRefreshManager.diagnosticCount();
+		if (diagnosticCount != refreshDiagnosticCount) {
+			refreshDiagnosticCount = diagnosticCount;
+			refreshDetails();
+		}
 		#end
-		progressMotion += elapsed;
 
 		// A worker can finish between frames.  At that point hasActiveJob()
 		// becomes false, but the completed handle still needs one main-thread
@@ -197,16 +209,30 @@ class ImportSettingsState extends MusicBeatState {
 		// Without this distinction the UI skipped the completed snapshot and
 		// remained on "scan-complete" with "No completed scan." forever.
 		if (hasJobHandle()) {
+			var backPressed = controls.BACK || FlxG.keys.justPressed.ESCAPE
+				|| FlxG.keys.justPressed.BACKSPACE;
+			if (backPressed && importJob != null) {
+				// Back only hides the manual import UI. ImportRefreshManager owns
+				// the reservation, report, and main-thread publication lifecycle.
+				detachImportAndLeave();
+				return;
+			}
+			if (backPressed && scanJob != null)
+				cancelActiveJob();
 			pollJobs();
 			// Keep input disabled while a handle is still active.  If pollJobs()
 			// consumed a completed handle, allow the normal UI path to continue
-			// on the next frame (or leaveState() immediately when Back was held).
+			// on the next frame (or cancel a still-running scan when Back is held).
 			if (hasJobHandle())
 				return;
 			if (backRequested)
 				return;
-			if (controls.BACK || FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE)
+			if (backPressed)
 				cancelActiveJob();
+			return;
+		}
+		if (backRequested) {
+			leaveState();
 			return;
 		}
 
@@ -257,6 +283,62 @@ class ImportSettingsState extends MusicBeatState {
 		return scanJob != null || importJob != null;
 	}
 
+	function hasCancelableWorker():Bool {
+		return !packageNamePromptOpen && ((scanJob != null && !scanJob.isFinished())
+			|| (importJob != null && !importJob.isFinished()));
+	}
+
+	function coordinatorWorkBusy():Bool {
+		#if sys
+		return !hasJobHandle() && ImportRefreshManager.browseTick().busy;
+		#else
+		return false;
+		#end
+	}
+
+	function layoutActionButtons(margin:Int, y:Int, availableWidth:Int):Void {
+		var buttons:Array<FlxUIButton> = [chooseSourceButton, scanButton, importSourceButton, cancelButton];
+		var widths = 0.0;
+		for (button in buttons) widths += button.width;
+		var gap:Float = 12;
+		if (widths + gap * (buttons.length - 1) > availableWidth)
+			gap = Math.max(2, (availableWidth - widths) / (buttons.length - 1));
+		var x:Float = margin;
+		for (button in buttons) {
+			button.setPosition(x, y);
+			x += button.width + gap;
+		}
+	}
+
+	#if sys
+	function progressPresentationStatus():Dynamic {
+		if (packageNamePromptOpen) return null;
+		var snapshot:ImportWorkflowProgress = null;
+		var label = "";
+		if (scanJob != null) {
+			snapshot = scanJob.snapshot();
+			label = "Scanning as " + importTypeAtScan;
+		} else if (importJob != null) {
+			snapshot = importJob.snapshot();
+			label = "Importing as " + importTypeAtScan;
+		}
+		if (snapshot == null || snapshot.complete) return null;
+		if (backRequested) label = "Stopping the active job safely...";
+		return {
+			busy: true,
+			label: label,
+			phase: snapshot.phase == null ? "working" : snapshot.phase,
+			current: snapshot.current == null ? "" : snapshot.current,
+			completed: Std.int(Math.max(0, snapshot.completed)),
+			total: Std.int(Math.max(0, snapshot.total)),
+			fraction: snapshot.progress,
+			complete: false,
+			changed: false,
+			blocked: false
+		};
+	}
+	#end
+
 	function acceptAction():Void {
 		switch (actionIndex) {
 			case ACTION_CHOOSE:
@@ -304,11 +386,18 @@ class ImportSettingsState extends MusicBeatState {
 			importSourceButton.alpha = actionIndex == ACTION_IMPORT && actionEnabled(ACTION_IMPORT) ? 1.0 : 0.65;
 	}
 
-	function refreshButtons():Void {
-		var busy = hasActiveJob();
+	function refreshButtons(?knownCoordinatorBusy:Null<Bool>):Void {
+		var manualBusy = hasActiveJob() || hasJobHandle();
+		var coordinatorBusy = false;
 		#if sys
-		if (!hasJobHandle()) busy = busy || ImportRefreshManager.browseTick().busy;
+		if (!hasJobHandle()) {
+			coordinatorBusy = knownCoordinatorBusy == null
+				? ImportRefreshManager.browseTick().busy : knownCoordinatorBusy;
+			if (coordinatorBusy) coordinatorWasBusy = true;
+		}
 		#end
+		var busy = manualBusy || coordinatorBusy;
+		var canCancel = hasCancelableWorker();
 		var sourceValid = sourcePathIsValid();
 		if (chooseSourceButton != null) {
 			chooseSourceButton.active = !busy;
@@ -323,21 +412,27 @@ class ImportSettingsState extends MusicBeatState {
 			importSourceButton.alpha = !busy && canImport() && actionIndex == ACTION_IMPORT ? 1.0 : (!busy && canImport() ? 0.65 : 0.35);
 		}
 		if (cancelButton != null) {
-			cancelButton.visible = busy;
-			cancelButton.active = busy;
-			cancelButton.alpha = busy ? 1.0 : 0.0;
+			cancelButton.visible = canCancel;
+			cancelButton.active = canCancel;
+			cancelButton.alpha = canCancel ? 1.0 : 0.0;
 		}
-		if (progressBar != null)
-			progressBar.visible = busy;
+		if (importStatus != null) importStatus.visible = !busy;
+		if (scanSummary != null) scanSummary.visible = !busy;
 		if (helpText != null) {
-			helpText.text = busy
-				? "Working... Back/Cancel requests a safe stop; the screen will close after the current step."
-				: "Mouse: choose/scan/import   Up/Down: action   Page Up/Down or wheel: details   Back: return";
+			helpText.text = canCancel && importJob != null
+				? "Import running. Back hides this screen; Cancel requests a safe stop."
+				: canCancel
+				? "Scan running. Back/Cancel requests a safe stop; the screen closes after this step."
+				: coordinatorBusy
+					? "Automatic refresh continues in background. Ready songs remain playable; import actions are paused."
+					: manualBusy
+						? "Finishing import. Back hides this screen while package handoff completes."
+					: "Mouse: choose/scan/import   Up/Down: action   Page Up/Down or wheel: details   Back: return";
 		}
 	}
 
 	function changeImportType(change:Int):Void {
-		if (hasActiveJob() || importTypes == null || importTypes.length == 0)
+		if (hasActiveJob() || coordinatorWorkBusy() || importTypes == null || importTypes.length == 0)
 			return;
 		importTypeIndex += change < 0 ? -1 : 1;
 		if (importTypeIndex < 0)
@@ -399,8 +494,10 @@ class ImportSettingsState extends MusicBeatState {
 	}
 
 	function chooseSourceFolder():Void {
-		if (hasActiveJob())
+		if (hasActiveJob() || coordinatorWorkBusy()) {
+			refreshButtons();
 			return;
+		}
 		#if sys
 		var dialog = new FileDialog();
 		dialog.onSelect.add(function(path:String):Void {
@@ -442,8 +539,10 @@ class ImportSettingsState extends MusicBeatState {
 
 	function startScan():Void {
 		#if sys
-		if (hasActiveJob())
+		if (hasActiveJob() || coordinatorWorkBusy()) {
+			refreshButtons();
 			return;
+		}
 		var sourcePath = currentSourcePath();
 		if (!sourcePathIsValid()) {
 			importStatus.text = "Choose a valid, safe source folder first.";
@@ -455,7 +554,7 @@ class ImportSettingsState extends MusicBeatState {
 		scanJob = ImportWorkflow.beginSongScan(sourcePath, importTypeAtScan);
 		backRequested = false;
 		importStatus.text = "Scanning as " + importTypeAtScan + "...";
-		progressText.text = "Scanning directories and charts...";
+		if (progressPresentation != null) progressPresentation.invalidateStatus();
 		refreshButtons();
 		#else
 		importStatus.text = "Song scanning is unavailable on this target.";
@@ -464,6 +563,10 @@ class ImportSettingsState extends MusicBeatState {
 
 	function startImport():Void {
 		#if sys
+		if (hasActiveJob() || coordinatorWorkBusy()) {
+			refreshButtons();
+			return;
+		}
 		if (!canImport()) {
 			importStatus.text = "Run a successful scan first; Import is disabled until then.";
 			return;
@@ -494,6 +597,11 @@ class ImportSettingsState extends MusicBeatState {
 
 	function beginImport(packageNames:Map<String, String>):Void {
 		#if sys
+		if (coordinatorWorkBusy()) {
+			importStatus.text = "An automatic refresh is running. Import actions unlock when it finishes.";
+			refreshButtons();
+			return;
+		}
 		if (!canImport()) {
 			importStatus.text = "The scan is no longer current. Scan the selected folder again.";
 			refreshButtons();
@@ -503,7 +611,7 @@ class ImportSettingsState extends MusicBeatState {
 		importJob = ImportWorkflow.beginSongImport(sourcePath, scanResult, currentImportType(), packageNames);
 		backRequested = false;
 		importStatus.text = "Importing as " + currentImportType() + "...";
-		progressText.text = "Preparing import...";
+		if (progressPresentation != null) progressPresentation.invalidateStatus();
 		refreshButtons();
 		#else
 		importStatus.text = "Song importing is unavailable on this target.";
@@ -515,7 +623,7 @@ class ImportSettingsState extends MusicBeatState {
 		// nonexistent worker to stop while that modal is active.
 		if (packageNamePromptOpen)
 			return;
-		if (!hasActiveJob())
+		if (!hasCancelableWorker())
 			return;
 		backRequested = true;
 		if (scanJob != null && !scanJob.isFinished())
@@ -523,13 +631,12 @@ class ImportSettingsState extends MusicBeatState {
 		if (importJob != null && !importJob.isFinished())
 			importJob.cancel();
 		importStatus.text = "Stopping the active job safely...";
-		progressText.text = "Cancellation requested; returning after the current filesystem step.";
+		if (progressPresentation != null) progressPresentation.invalidateStatus(false);
 	}
 
 	function pollJobs():Void {
 		if (scanJob != null) {
 			var snapshot = scanJob.snapshot();
-			updateProgress(snapshot);
 			if (snapshot.complete) {
 				var completedResult:ImportScanResult = cast snapshot.result;
 				scanJob = null;
@@ -550,6 +657,7 @@ class ImportSettingsState extends MusicBeatState {
 					scanResult = null;
 					importStatus.text = snapshot.error == null ? "Scan failed." : "Scan failed: " + snapshot.error;
 				}
+				if (progressPresentation != null) progressPresentation.invalidateStatus();
 				refreshButtons();
 				if (backRequested)
 					leaveState();
@@ -559,7 +667,6 @@ class ImportSettingsState extends MusicBeatState {
 
 		if (importJob != null) {
 			var snapshot = importJob.snapshot();
-			updateProgress(snapshot);
 			if (snapshot.complete) {
 				var imported:Dynamic = snapshot.result;
 				importJob = null;
@@ -569,37 +676,12 @@ class ImportSettingsState extends MusicBeatState {
 				} else {
 					importStatus.text = snapshot.error == null ? "Import failed." : "Import failed: " + snapshot.error;
 				}
+				if (progressPresentation != null) progressPresentation.invalidateStatus();
 				refreshButtons();
 				if (backRequested)
 					leaveState();
 			}
 		}
-	}
-
-	function updateProgress(snapshot:ImportWorkflowProgress):Void {
-		if (snapshot == null)
-			return;
-		var active = !snapshot.complete;
-		if (!active) {
-			progressBar.percent = 100;
-			progressText.text = "Finished.";
-			return;
-		}
-		var hasDeterminateProgress = snapshot.progress >= 0 && snapshot.progress > 0;
-		if (hasDeterminateProgress) {
-			progressBar.percent = Math.max(0, Math.min(100, snapshot.progress * 100));
-		} else {
-			// A scan may not know its total until discovery is complete. Moving
-			// the bar keeps the UI visibly alive during a large directory walk.
-			progressBar.percent = 12 + ((Math.sin(progressMotion * 4) + 1) * 35);
-		}
-		var current = snapshot.current == null ? '' : shortenPath(snapshot.current, 80);
-		var phase = snapshot.phase == null ? "working" : snapshot.phase;
-		if (snapshot.total > 0)
-			progressText.text = phase + "  " + snapshot.completed + "/" + snapshot.total
-				+ (current == '' ? '' : "  " + current);
-		else
-			progressText.text = phase + (current == '' ? '' : "  " + current);
 	}
 
 	function showScanResult(result:ImportScanResult):Void {
@@ -804,10 +886,17 @@ class ImportSettingsState extends MusicBeatState {
 
 	function wrappedDetailLines():Array<String> {
 		var wrapped:Array<String> = [];
-		if (detailLines == null)
-			return wrapped;
+		var lines = detailLines == null ? [] : detailLines.copy();
+		#if sys
+		var diagnostics = ImportRefreshManager.diagnostics();
+		if (diagnostics.length > 0) {
+			var warnings = [for (message in diagnostics) "[IMPORT REFRESH WARNING] " + message];
+			warnings.push("");
+			lines = warnings.concat(lines);
+		}
+		#end
 		var maxChars = detailCharsPerLine();
-		for (line in detailLines)
+		for (line in lines)
 			for (piece in wrapDetailLine(line, maxChars))
 				wrapped.push(piece);
 		return wrapped;
@@ -868,10 +957,26 @@ class ImportSettingsState extends MusicBeatState {
 	}
 
 	function leaveState():Void {
+		if (importJob != null) {
+			detachImportAndLeave();
+			return;
+		}
 		if (hasActiveJob()) {
 			cancelActiveJob();
 			return;
 		}
+		backRequested = false;
+		LoadingState.loadAndSwitchState(new SaveDataState());
+	}
+
+	function detachImportAndLeave():Void {
+		// Dropping only this view's handle does not stop the worker. The manager
+		// retained the job reservation and completes the import/handoff in safe
+		// menu frames; reopening Import Settings reads its shared status card.
+		importJob = null;
+		backRequested = false;
+		if (progressPresentation != null)
+			progressPresentation.invalidateStatus();
 		LoadingState.loadAndSwitchState(new SaveDataState());
 	}
 }

@@ -47,7 +47,7 @@ class NightmareVisionPluginRuntime {
 	public function callOnPlugin(name:String, callback:String, ?args:Array<Dynamic>):Dynamic {
 		if (released) return null;
 		var script = getPlugin(name);
-		return script == null ? null : script.call(callback, args);
+		return script == null ? null : script.callValue(callback, args);
 	}
 
 	public function callPluginFunc(name:String, callback:String, ?args:Array<Dynamic>):Dynamic

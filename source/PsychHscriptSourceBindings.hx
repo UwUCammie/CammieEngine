@@ -34,6 +34,15 @@ class PsychHscriptSourceBindings {
 	public function install():Void {
 		var variables = interp.variables;
 		variables.set('Type', Type);
+		PsychAchievementsIntegration.installHscript(host, interp, origin);
+		PsychStandardServices.installHscript(host, interp, origin);
+		if (Std.isOfType(interp, SourceIrisBridge)) {
+			var paths:Dynamic = variables.get('Paths');
+			var root = host.compatPsychOwnerForScript(origin);
+			if (paths == null && root != null) paths = PsychOwnerPaths.create(root, host.psychStageLibrary);
+			if (paths != null && Reflect.isFunction(Reflect.field(paths, '__sourceOwnerRoot')))
+				host.bindSourceBarClass((cast interp:SourceIrisBridge).evaluator, false, paths);
+		}
 		variables.set('Countdown', PsychBaseStageCountdown);
 		variables.set('Rating', PsychRatingCompat);
 		variables.set('PsychCamera', PsychHscriptCamera);

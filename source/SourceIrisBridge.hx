@@ -160,6 +160,7 @@ class SourceIrisBridge extends hscript.Interp {
 	}
 
 	static function isSourceQualifiedName(value:String):Bool {
+		if (value == 'Reflect' || value == 'Type') return true;
 		if (value == null || value == '') return false;
 		var parts = value.split('.');
 		if (parts.length < 2) return false;
@@ -198,6 +199,9 @@ class SourceIrisBridge extends hscript.Interp {
 		else
 			value = evaluator.getOrImportClass(packagePath);
 
+		if (value != null && evaluator.nativeClassScope != null && evaluator.nativeClassScope.ownsClass(value)
+			&& !evaluator.importBindings.exists(packagePath))
+			throw '[psych-hscript-import] Unregistered source module path: ' + packagePath;
 		if (value == null)
 			throw '[psych-hscript-import] No seeded or resolvable binding for `' + packagePath + '`';
 		if (shortName != null && !variables.exists(shortName))

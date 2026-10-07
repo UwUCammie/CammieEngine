@@ -66,6 +66,10 @@ typedef ImportScanSong = {
 	var willImport:Bool;
 	var reason:String;
 	@:optional var source:String;
+	/** Original donor song folder, retained for provisional availability rows. */
+	@:optional var sourceFolder:String;
+	/** Scan-authoritative destination folder when duplicate planning resolved it. */
+	@:optional var destinationFolder:String;
 	@:optional var sourceDuplicate:Bool;
 	@:optional var sourceDuplicateOf:String;
 	var charts:Array<String>;
@@ -148,6 +152,8 @@ typedef ImportWorkflowProgress = {
 	var copied:Int;
 	var skipped:Int;
 	var failed:Int;
+	/** True after the transaction's main-thread cache/registry handoff succeeds. */
+	@:optional var runtimeCommitted:Bool;
 }
 
 /**
@@ -2812,13 +2818,15 @@ class ImportScanJob {
 			var sourceDuplicateOf = field(songData, 'sourceDuplicateOf', '');
 			var duplicate = sourceDuplicate;
 			var destinationError:String = null;
+			var sourceFolderValue:Dynamic = Reflect.field(songData, 'sourceFolder');
+			var sourceFolder = sourceFolderValue == null || StringTools.trim(Std.string(sourceFolderValue)) == ''
+				? name : StringTools.trim(Std.string(sourceFolderValue));
+			var destinationFolder:String = '';
 			try {
-				var sourceFolder:Dynamic = Reflect.field(songData, 'sourceFolder');
 				var plannedFolder:Dynamic = Reflect.field(songData, 'destinationFolder');
 				var storageKey:String = plannedFolder != null && StringTools.trim(Std.string(plannedFolder)) != ''
 					? Std.string(plannedFolder)
-					: (sourceFolder == null || StringTools.trim(Std.string(sourceFolder)) == ''
-						? name : Std.string(sourceFolder));
+					: sourceFolder;
 				if (!sourceDuplicate) {
 					var existingDataFolder = caseInsensitivePath(Path.join(['assets', 'data', storageKey]));
 					var destinationPlan = ImportSongOwnership.planDestination(existingDataFolder, storageKey,
@@ -2832,8 +2840,11 @@ class ImportScanJob {
 							destinationError = 'Destination collision did not produce an owner-qualified song folder.';
 						else {
 							storageKey = Std.string(ownerFolder);
-							Reflect.setField(songData, 'destinationFolder', storageKey);
 						}
+					}
+					if (destinationError == null) {
+						destinationFolder = storageKey;
+						Reflect.setField(songData, 'destinationFolder', storageKey);
 					}
 				}
 				// Existing folders are only a duplicate when the song is already
@@ -2895,6 +2906,8 @@ class ImportScanJob {
 					: (destinationError != null ? 'destination owner collision cannot be imported: ' + destinationError
 						: (duplicate ? 'destination data or audio already exists' : 'new song')),
 				source: sourceRoot,
+				sourceFolder: sourceFolder,
+				destinationFolder: destinationFolder == '' ? null : destinationFolder,
 				sourceDuplicate: sourceDuplicate,
 				sourceDuplicateOf: sourceDuplicateOf,
 				charts: charts,
@@ -3068,6 +3081,12 @@ class ImportImportJob {
 			ModuleFunctions.setImportProgressCallback(null);
 			ModuleFunctions.setImportCancelCallback(null);
 			ModuleFunctions.setImportBackgroundMode(false);
+			if (imported != null) try {
+				ImportScanJob.writeReport(this.scan, ModuleFunctions.importBatchSummary(imported));
+				reportWritten = true;
+			} catch (reportError:Dynamic) {
+				trace('[import-report-error] ' + Std.string(reportError));
+			}
 			stateMutex.acquire();
 			result = imported;
 			error = failure;
@@ -3082,6 +3101,10 @@ class ImportImportJob {
 		try {
 			result = ModuleFunctions.importSongsFromPath(this.sourcePath, this.importType,
 				scan == null ? null : scan.overlayMounts, this.packageNames);
+			if (result != null) {
+				ModuleFunctions.completeImportOnMainThread(result.importedSongs == null ? [] : result.importedSongs);
+				runtimeCommitted = true;
+			}
 		} catch (caught:Dynamic) {
 			error = Std.string(caught);
 		}
@@ -3252,8 +3275,7 @@ class ImportImportJob {
 					// playable without restarting the game.
 					var importedNames:Array<String> = localResult.importedSongs == null
 						? [] : localResult.importedSongs.copy();
-					ModuleFunctions.completeImportOnMainThread(importedNames);
-					runtimeCommitted = true;
+					runtimeCommitted = ImportRefreshManager.completeInitialImportHandoff(importedNames);
 				}
 			#end
 			if (!reportWritten) {
@@ -3278,7 +3300,8 @@ class ImportImportJob {
 			error: localError,
 			copied: localCopied,
 			skipped: localSkipped,
-			failed: localFailed
+			failed: localFailed,
+			runtimeCommitted: runtimeCommitted
 		};
 	}
 

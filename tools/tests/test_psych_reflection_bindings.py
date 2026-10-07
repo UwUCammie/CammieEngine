@@ -88,7 +88,11 @@ class PsychReflectionBindingsTest(unittest.TestCase):
             root = Path(directory)
             (root / 'flixel').mkdir()
             (root / 'flixel/FlxBasic.hx').write_text('package flixel; class FlxBasic { public function new(){} public function destroy():Void{} }')
-            (root / 'PlayState.hx').write_text(HOST)
+            # Native reflection mode; source classes have actual connected fixtures.
+            host = HOST.replace(' public function new() {}', ' public var psychStageLibrary:String;public function selectedPsychSkinRoot():String return null;public function psychLuaNativeClassScope(p:Dynamic):SourceNativeClassScope return new SourceNativeClassScope(); public function new() {}', 1)
+            (root / 'PsychOwnerPaths.hx').write_text('class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return null;}')
+            (root / 'SourceIrisBridge.hx').write_text('class SourceIrisBridge extends hscript.Interp {public var evaluator:Dynamic;}')
+            (root / 'PlayState.hx').write_text(host)
             (root / 'Main.hx').write_text(MAIN)
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', str(ROOT / '.haxelib/hscript/2,5,0'), '-cp', directory,

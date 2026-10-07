@@ -6,6 +6,7 @@ using StringTools;
 typedef NightmareVisionSustainSplashOwner = {
 	var skinForID:Int->NightmareVisionNoteSkin;
 	var noteSplashType:Void->String;
+	@:optional var spriteOwner:Null<NightmareVisionSpriteOwner>;
 }
 
 /** The source tail-driven effect, independent of the native V-Slice hold-cover timer. */
@@ -31,6 +32,7 @@ class NightmareVisionSustainSplash extends NightmareVisionSplashSprite {
 		super(x, y);
 		if (owner == null) throw '[nightmare-vision-sustain-splash] Missing selected owner';
 		this.owner = owner;
+		NightmareVisionSpriteMethods.bind(this, owner.spriteOwner);
 		// Source uses the argument to select constructor frames, without storing either argument.
 		addAnims(owner.skinForID(player));
 	}

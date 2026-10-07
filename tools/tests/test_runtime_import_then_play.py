@@ -54,9 +54,15 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
 
         import_job = self.workflow[self.workflow.index("class ImportImportJob {"):]
         poll = extract_method(import_job, "public function poll():ImportWorkflowProgress {")
-        handoff = poll.index("ModuleFunctions.completeImportOnMainThread(importedNames);")
-        returned_snapshot = poll.index("return {\n\t\t\timportType: importType", handoff)
+        handoff = poll.index("ImportRefreshManager.completeInitialImportHandoff(importedNames);")
+        returned_snapshot = poll.index("runtimeCommitted: runtimeCommitted", handoff)
         self.assertLess(handoff, returned_snapshot)
+        update = extract_method(self.import_state, "override public function update(elapsed:Float):Void")
+        wait = update.index("waitForSuccessfulImportHandoff(result, error, snapshot.runtimeCommitted)")
+        self.assertLess(update.index("if (error != null || result == null)"), wait)
+        self.assertIn("RuntimeImportSmokeHarness.fail('timeout', 'import cancellation completed')", update)
+        manager = (SOURCE / "ImportRefreshManager.hx").read_text()
+        self.assertIn('"RuntimeImportSmokeState"', manager)
 
     def test_followup_play_reuses_services_initialized_before_import(self):
         consume = "RuntimeImportSmokeHarness.consumePreparedRuntimeForPlay()"
@@ -66,6 +72,78 @@ class RuntimeImportThenPlayTest(unittest.TestCase):
         self.assertLess(self.freeplay_state.index(consume), self.freeplay_state.index("DifficultyManager.init()"))
         self.assertIn("preparedRuntimeForPlay = true;", self.import_harness)
         self.assertIn("public static function consumePreparedRuntimeForPlay():Bool", self.import_harness)
+
+    @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
+    def test_play_waits_for_actual_deferred_import_handoff(self):
+        """The real poll method reports worker completion separately from handoff."""
+        import_job = self.workflow[self.workflow.index("class ImportImportJob {"):]
+        poll = extract_method(import_job, "public function poll():ImportWorkflowProgress {")
+        wait_for_handoff = extract_method(
+            self.import_state,
+            "static function waitForSuccessfulImportHandoff(result:Dynamic, error:Dynamic, runtimeCommitted:Bool):Bool"
+        )
+        fixture = r'''import sys.thread.Mutex;
+typedef ImportWorkflowProgress = Dynamic;
+class ImportScanJob {
+  public static function writeReport(scan:Dynamic, summary:String):Void {}
+}
+class ModuleFunctions {
+  public static function importBatchSummary(result:Dynamic, ?includeFailures:Bool = false):String return '';
+}
+class ImportRefreshManager {
+  public static var handoffCalls:Int = 0;
+  public static function completeInitialImportHandoff(names:Array<String>):Bool {
+    handoffCalls++;
+    return handoffCalls >= 2;
+  }
+}
+class Main {
+  var importType:String = 'Auto';
+  var done:Bool = true;
+  var result:Dynamic = {importedSongs: ['fixture-song']};
+  var error:String = null;
+  var phase:String = 'complete';
+  var current:String = '';
+  var completed:Int = 1;
+  var total:Int = 1;
+  var copied:Int = 0;
+  var skipped:Int = 0;
+  var failed:Int = 0;
+  var stateMutex:Mutex = new Mutex();
+  var runtimeCommitted:Bool = false;
+  var reportWritten:Bool = false;
+  var scan:Dynamic = {};
+  public function new() {}
+''' + poll + "\n" + wait_for_handoff + r'''
+  static function main():Void {
+    var job = new Main();
+    var deferred = job.poll();
+    if (!deferred.complete || deferred.runtimeCommitted)
+      throw 'worker completion must remain distinct from deferred handoff';
+    if (!waitForSuccessfulImportHandoff(deferred.result, deferred.error, deferred.runtimeCommitted))
+      throw 'play should wait while handoff is deferred';
+    var committed = job.poll();
+    if (!committed.complete || !committed.runtimeCommitted)
+      throw 'poll did not report successful retry';
+    if (waitForSuccessfulImportHandoff(committed.result, committed.error, committed.runtimeCommitted))
+      throw 'play should proceed after the handoff';
+    if (waitForSuccessfulImportHandoff(null, 'worker error', false))
+      throw 'worker errors must not wait for an unavailable handoff';
+    if (ImportRefreshManager.handoffCalls != 2)
+      throw 'handoff retry count';
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            (Path(folder) / "Main.hx").write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--interp", "-main", "Main"],
+                cwd=folder,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
     def test_import_success_returns_to_caller_without_ending_same_process(self):

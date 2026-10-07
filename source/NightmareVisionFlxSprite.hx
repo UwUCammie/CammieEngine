@@ -7,6 +7,7 @@ using StringTools;
 
 /** NMV's FlxSprite conveniences backed by the interpreter's selected owner. */
 @:keep
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionFlxSprite extends FlxSprite {
 	public var ownerPaths(default, null):Null<NightmareVisionPaths>;
 
@@ -14,26 +15,8 @@ class NightmareVisionFlxSprite extends FlxSprite {
 		?ownerPaths:NightmareVisionPaths) {
 		super(x, y);
 		this.ownerPaths = ownerPaths;
+		NightmareVisionSpriteMethods.bind(this, NightmareVisionSpriteRegistry.capture(ownerPaths));
 		if (simpleGraphic != null) loadGraphic(cast simpleGraphic);
-	}
-
-	/** NMV's FlxMacro.buildFlxSprite loadFromSheet implementation. */
-	@:keep public function loadFromSheet(path:String, animName:String, fps:Int = 24,
-		looped:Bool = true):NightmareVisionFlxSprite {
-		var paths = requireOwnerPaths();
-		frames = paths.getAtlasFrames(path);
-		animation.addByPrefix(animName, animName, fps, looped);
-		animation.play(animName);
-		if (animation.curAnim == null || animation.curAnim.numFrames == 1)
-			active = false;
-		return this;
-	}
-
-	/** NMV's FlxMacro convenience used by imported stage scripts. */
-	@:keep public function setScale(x:Float, y:Float, update:Bool = true):NightmareVisionFlxSprite {
-		scale.set(x, y);
-		if (update) updateHitbox();
-		return this;
 	}
 
 	/** String graphics are looked up in this NMV package/core only. */

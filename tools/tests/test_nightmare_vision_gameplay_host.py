@@ -203,15 +203,15 @@ class Main {
   // inside this owner and retain the actual actor object.
   var gfScript = host.group.getScript('data/characters/gf.hx');
   var dadScript = host.group.getScript('data/characters/dad.hx');
-  eq(gfScript.call('captureActor'), 'gf');
-  eq(gfScript.call('currentName'), 'gf');
-  eq(dadScript.call('currentName'), 'dad');
-  eq(dadScript.call('firstName'), 'gf');
+  eq(gfScript.callValue('captureActor'), 'gf');
+  eq(gfScript.callValue('currentName'), 'gf');
+  eq(dadScript.callValue('currentName'), 'dad');
+  eq(dadScript.callValue('firstName'), 'gf');
   gf.name = 'gf-live';
-  eq(gfScript.call('currentName'), 'gf-live');
-  eq(dadScript.call('firstName'), 'gf-live');
+  eq(gfScript.callValue('currentName'), 'gf-live');
+  eq(dadScript.callValue('firstName'), 'gf-live');
   bf.name = 'bf-live';
-  eq(host.group.getScript('data/characters/bf.hx').call('currentName'), 'bf-live');
+  eq(host.group.getScript('data/characters/bf.hx').callValue('currentName'), 'bf-live');
 
   // The real gameplay host forwards supported callback arities unchanged.
   eq(host.call('zero'), 10);
@@ -235,12 +235,12 @@ class Main {
   eq(a.errors.length, errorCount + 1);
 
   // Public state is shared across modules only within its owning group.
-  eq(host.group.getScript('songs/demo/scripts/reader.hxs').call('ownerValue'), 'token-A');
+  eq(host.group.getScript('songs/demo/scripts/reader.hxs').callValue('ownerValue'), 'token-A');
   var b = createHost('owner-B', 'token-B');
   var hostB:NightmareVisionGameplayScripts = b.host;
   hostB.loadScope('song');
-  eq(hostB.group.getScript('songs/demo/scripts/reader.hxs').call('ownerValue'), 'token-B');
-  eq(host.group.getScript('songs/demo/scripts/reader.hxs').call('ownerValue'), 'token-A');
+  eq(hostB.group.getScript('songs/demo/scripts/reader.hxs').callValue('ownerValue'), 'token-B');
+  eq(host.group.getScript('songs/demo/scripts/reader.hxs').callValue('ownerValue'), 'token-A');
 
   // Destruction broadcasts once to every loaded member, then releases the
   // group; later calls, scope loads, and repeated destroy cannot run callbacks.
@@ -369,10 +369,10 @@ class Main {
         source = (ROOT / "source" / "PlayState.hx").read_text()
 
         init = source.index("initializeNightmareVisionScripts();")
-        gf_create = source.index("gf = addCharacter(SONG.gf")
+        gf_create = source.index("gf = nightmareVisionScripts == null ? addCharacter(SONG.gf")
         self.assertLess(init, gf_create, "stage/global NMV modules must precede actor creation")
         self.assertLess(source.index("loadNightmareVisionCharacter(gf);", gf_create),
-                        source.index("dad = addCharacter(SONG.player2", gf_create))
+                        source.index("dad = nightmareVisionScripts == null ? addCharacter(SONG.player2", gf_create))
 
         song_scope = source.index("nightmareVisionScripts.loadScope('song');")
         pre_generation = source.index("callNightmareVision('preNoteGeneration', []);", song_scope)
@@ -391,13 +391,18 @@ class Main {
         self.assertIn("nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);", event_prepare)
         self.assertNotIn("nightmareVisionScripts.loadScope('event');", source,
                          "event modules should load lazily for authored event names")
+        event_host = (ROOT / "source" / "NightmareVisionGameplayScripts.hx").read_text()
+        event_selection = extract_block(event_host, "function selectedEventScript(name:String)")
         event_dispatch = extract_block(
-            (ROOT / "source" / "NightmareVisionGameplayScripts.hx").read_text(),
+            event_host,
             "public function callEvent(name:String, callback:String",
         )
-        self.assertLess(event_dispatch.index("loadScope('event', name);"),
-                        event_dispatch.index("eventGroup.getScript(selected.name)"),
+        self.assertLess(event_selection.index("loadScope('event', name);"),
+                        event_selection.index("current.getScript(selected.name)"),
                         "a matching event module must load before its callback is selected")
+        self.assertLess(event_dispatch.index("selectedEventScript(name)"),
+                        event_dispatch.index("script.callValue(callback, args)"),
+                        "dispatch must use the same prepared selection as effect ownership")
 
         create_post = source.index("callNightmareVision('onCreatePost', []);")
         super_create = source.index("super.create();", create_post)
@@ -415,12 +420,16 @@ class Main {
         self.assertNotIn("entry.scope == 'notetype'", initialization,
                          "notetype scripts are supported by NightmareVisionNoteTypeRuntime")
 
-        # Shared StageHelper owns props in the live state already. Mounting
-        # its sprite group again duplicates update/draw and propagates the
-        # gameplay camera over explicitly assigned overlay cameras.
-        self.assertIn("interp.variables.set('add', curStage.add)", initialization)
+        # Source Stage is the sole displayed container, populated only after
+        # the callback accepts group mounting. Its script registers after run.
+        self.assertIn("stage.buildStage();", initialization)
+        self.assertLess(initialization.index("stage.runScript(nightmareVisionScripts.group)"),
+                        initialization.index("nightmareVisionScripts.group.addScript(stage.script)"))
+        self.assertLess(initialization.index("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'"),
+                        initialization.index("add(stage);"))
+        self.assertIn("stage.add(gfGroup);", initialization)
+        self.assertNotIn("curStage.add(gfGroup);", initialization)
         self.assertNotIn("add(curStage)", initialization)
-        self.assertIn("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'", initialization)
 
         pause_start = source.index("if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause")
         pause_end = source.index("var canShowKeys = true;", pause_start)
@@ -440,7 +449,7 @@ class Main {
         self.assertIn("hxcCountdownHookDispatching = true;", countdown[:nmv_countdown])
 
     def test_donor_character_onload_precedes_parent_assignment(self):
-        donor = ROOT.parent / "FNF-Example-Mods" / "misc" / "nightmare_vision_source_code" / "source" / "funkin" / "states" / "PlayState.hx"
+        donor = ROOT.parent / "fnf_sources" / "NightmareVision" / "source" / "funkin" / "states" / "PlayState.hx"
         if not donor.is_file():
             self.skipTest("supplied Nightmare Vision gameplay source unavailable")
         source = donor.read_text()

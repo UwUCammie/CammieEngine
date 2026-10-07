@@ -9,7 +9,20 @@ import haxe.ds.StringMap;
 class NightmareVisionSourceOptions {
 	public static inline var SAVE_FIELD:String = 'nightmareVisionSourceModOptions';
 	public final ownerRoot:String;
-	final ownerSave:Dynamic;
+	var ownerSave:Dynamic;
+	var selectedOwnerRoot:String;
+	var resolveDirectory:String->Null<String>;
+	var saveForRoot:String->Dynamic;
+	var globalDirectories:Void->Array<String>;
+	public var currentMod(default, null):String = '';
+	public var options:StringMap<NightmareVisionSourceModOption> = new StringMap();
+	public var list(get, never):Array<NightmareVisionSourceModOption>;
+	function get_list():Array<NightmareVisionSourceModOption> {
+		ensureAlive();
+		var result = [for (option in options) option];
+		result.sort(function(a, b) return a.idx - b.idx);
+		return result;
+	}
 	var released:Bool = false;
 
 	public function new(ownerRoot:String, ownerSave:Dynamic) {
@@ -22,6 +35,93 @@ class NightmareVisionSourceOptions {
 		if (saveOwner != null && normalizeOwner(Std.string(saveOwner)) != this.ownerRoot)
 			throw '[nightmare-vision-options] Save data belongs to a different imported owner';
 		this.ownerSave = ownerSave;
+		selectedOwnerRoot = this.ownerRoot;
+		loadStoredOptions();
+	}
+
+	/** Share one live option table across scripts, with saves selected only from
+	 * the provenance-authorized family. The lease root itself never changes. */
+	public function bindFamily(resolveDirectory:String->Null<String>, saveForRoot:String->Dynamic,
+		globalDirectories:Void->Array<String>):Void {
+		ensureAlive();
+		this.resolveDirectory = resolveDirectory;
+		this.saveForRoot = saveForRoot;
+		this.globalDirectories = globalDirectories;
+	}
+
+	public function init(modName:String = 'NMV-Base-Game'):Void {
+		ensureAlive();
+		var selected = resolveDirectory == null ? ownerRoot : resolveDirectory(modName);
+		if (selected == null) throw '[nightmare-vision-options] Unrelated source option namespace: ' + modName;
+		initForOwner(modName, selected);
+	}
+
+	public function initForOwner(modName:String, selectedRoot:String):Void {
+		ensureAlive();
+		var root = normalizeOwner(selectedRoot);
+		if (root == '' || (root != ownerRoot && (resolveDirectory == null || resolveDirectory(modName) != root)))
+			throw '[nightmare-vision-options] Unrelated source option owner';
+		if (currentMod != '' && currentMod != modName) flush();
+		currentMod = modName;
+		options.clear();
+		if (root != selectedOwnerRoot || ownerSave == null) {
+			// Publish the target identity and detach the old save before binding.
+			// A failed bind must never write the target table through the old owner.
+			ownerSave = null;
+			selectedOwnerRoot = root;
+			if (saveForRoot == null) throw '[nightmare-vision-options] Missing selected owner save service';
+			var nextSave = saveForRoot(root);
+			validateSave(nextSave, root);
+			ownerSave = nextSave;
+			selectedOwnerRoot = root;
+		}
+		loadStoredOptions();
+	}
+
+	/** A source static assignment changes the save namespace without loading or
+	 * clearing the live table. Only authenticated namespaces can be written. */
+	public function assignCurrentMod(modName:String):String {
+		ensureAlive();
+		var root = resolveDirectory == null ? ownerRoot : resolveDirectory(modName);
+		if (root == null) throw '[nightmare-vision-options] Unrelated source option namespace: ' + modName;
+		if (root != selectedOwnerRoot) {
+			var nextSave = saveForRoot == null ? null : saveForRoot(root);
+			validateSave(nextSave, root);
+			ownerSave = nextSave; selectedOwnerRoot = root;
+		}
+		currentMod = modName;
+		return currentMod;
+	}
+
+	function loadStoredOptions():Void {
+		var stored = loadOptions();
+		for (key in stored.keys()) {
+			var entry = stored.get(key);
+			var option = new NightmareVisionSourceModOption(key, Reflect.field(entry, 'type'),
+				Reflect.field(entry, 'value'), Reflect.field(entry, 'settings'));
+			var idx:Dynamic = Reflect.field(entry, 'idx');
+			option.idx = idx == null ? -1 : idx;
+			options.set(key, option);
+		}
+		validateOrder();
+	}
+
+	function validateOrder():Void {
+		var used:Array<Int> = [];
+		var sorted = list;
+		for (i in 0...sorted.length) {
+			var option = sorted[i];
+			if (option.idx == -1 || used.contains(option.idx)) option.idx = i;
+			used.push(option.idx);
+		}
+	}
+
+	/** FunkinScript's newOption supplies its own modFolder to source add. */
+	public function addForMod(mod:String, key:String, type:String = 'string', defaultValue:Dynamic = 'null',
+		?settings:Dynamic):Void {
+		ensureAlive();
+		if (currentMod != mod && (globalDirectories == null || !globalDirectories().contains(mod))) return;
+		add(key, type, defaultValue, settings);
 	}
 
 	/** Mirrors ModOptions.add's default sentinel, duplicate behavior, and option
@@ -29,42 +129,62 @@ class NightmareVisionSourceOptions {
 	public function add(key:String, type:String = 'string', defaultValue:Dynamic = 'null', ?settings:Dynamic):Void {
 		ensureAlive();
 		if (key == null) return;
-		var options = loadOptions();
 		if (options.exists(key)) return;
-		if (type == null || type == '') type = 'string';
-		var normalizedType = type.toLowerCase();
 		if (defaultValue == 'null') {
-			switch (normalizedType) {
+			switch (type.toLowerCase()) {
 				case 'bool': defaultValue = false;
 				case 'int' | 'float': defaultValue = 0;
 				case 'string': defaultValue = '';
-				default:
-					trace('[nightmare-vision-options] Unable to create option [' + key + ']: invalid type ' + type);
-					return;
+				default: type = 'null';
 			}
 		}
-		var nextIndex = 0;
-		for (existingKey in options.keys()) {
-			var existing:Dynamic = options.get(existingKey);
-			var index:Dynamic = existing == null ? null : Reflect.field(existing, 'idx');
-			if (Std.isOfType(index, Int) && (cast index:Int) >= nextIndex) nextIndex = (cast index:Int) + 1;
+		if (type == 'null') {
+			trace('[nightmare-vision-options] Unable to create option [' + key + ']: invalid type ' + type);
+			return;
 		}
-		options.set(key, {
-			type:normalizedType,
-			value:defaultValue,
-			idx:nextIndex,
-			settings:safeSettings(settings)
-		});
-		writeOptions(options);
+		var option = new NightmareVisionSourceModOption(key, type, defaultValue, settings);
+		option.idx = list.length;
+		options.set(key, option);
+		flush();
 	}
 
 	/** Source getValue returns null for an unregistered or invalid option. */
 	public function getValue(key:String):Dynamic {
 		ensureAlive();
 		if (key == null) return null;
-		var option:Dynamic = loadOptions().get(key);
-		if (option == null || Reflect.field(option, 'type') == 'null') return null;
-		return Reflect.field(option, 'value');
+		var option = get(key);
+		return option == null ? null : option.value;
+	}
+
+	public function get(key:String):NightmareVisionSourceModOption {
+		ensureAlive();
+		var option = options.get(key);
+		return option == null || option.type == 'null' ? null : option;
+	}
+
+	public function setValue(key:String, value:Dynamic):Void {
+		var option = get(key);
+		if (option != null) option.value = value;
+	}
+
+	public function flush():Void {
+		ensureAlive();
+		if (currentMod == '' && resolveDirectory != null) return;
+		var expectedRoot = resolveDirectory == null ? ownerRoot : resolveDirectory(currentMod);
+		if (expectedRoot == null || expectedRoot != selectedOwnerRoot)
+			throw '[nightmare-vision-options] Live options do not match their save owner';
+		if (ownerSave == null) {
+			var nextSave = saveForRoot == null ? null : saveForRoot(expectedRoot);
+			validateSave(nextSave, expectedRoot);
+			ownerSave = nextSave;
+		}
+		var output:Dynamic = {};
+		for (key => option in options) Reflect.setField(output, key, {
+			type:option.type, value:option.value, idx:option.idx, settings:safeSettings(option.settings)
+		});
+		callSave('setField', [SAVE_FIELD, output]);
+		var flush:Dynamic = Reflect.field(ownerSave, 'flush');
+		if (flush != null) Reflect.callMethod(ownerSave, flush, []);
 	}
 
 	function loadOptions():StringMap<Dynamic> {
@@ -79,12 +199,6 @@ class NightmareVisionSourceOptions {
 			return result;
 		}
 		throw '[nightmare-vision-options] Malformed owner option data';
-	}
-
-	function writeOptions(options:StringMap<Dynamic>):Void {
-		callSave('setField', [SAVE_FIELD, options]);
-		var flush:Dynamic = Reflect.field(ownerSave, 'flush');
-		if (flush != null) Reflect.callMethod(ownerSave, flush, []);
 	}
 
 	function callSave(methodName:String, args:Array<Dynamic>):Dynamic {
@@ -118,11 +232,26 @@ class NightmareVisionSourceOptions {
 	}
 
 	function ensureAlive():Void {
-		if (released || ownerSave == null) throw '[nightmare-vision-options] This owner options view has been released';
+		if (released) throw '[nightmare-vision-options] This owner options view has been released';
 	}
 
-	function release():Void {
+	public function release():Void {
+		if (released) return;
+		var failure:Dynamic = null;
+		try flush() catch (error:Dynamic) failure = error;
 		released = true;
+		options.clear();
+		ownerSave = null;
+		resolveDirectory = null; saveForRoot = null; globalDirectories = null;
+		if (failure != null) throw failure;
+	}
+
+	static function validateSave(save:Dynamic, root:String):Void {
+		if (save == null || Reflect.field(save, 'getField') == null || Reflect.field(save, 'setField') == null)
+			throw '[nightmare-vision-options] Missing owner-scoped save data';
+		var key:Dynamic = Reflect.field(save, 'ownerKey');
+		if (key != null && normalizeOwner(Std.string(key)) != root)
+			throw '[nightmare-vision-options] Save data belongs to a different imported owner';
 	}
 
 	static function normalizeOwner(value:String):String {

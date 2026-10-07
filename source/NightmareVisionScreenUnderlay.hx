@@ -9,7 +9,7 @@ import flixel.util.FlxColor;
 class NightmareVisionScreenUnderlay {
 	public static function createScreen(type:String, opacity:Float, camera:FlxCamera):Null<FlxSprite> {
 		if (type != 'Screen Dim') return null;
-		var sprite = new FlxSprite().makeGraphic(1, 1, FlxColor.BLACK);
+		var sprite = new NightmareVisionFlxSprite().makeGraphic(1, 1, FlxColor.BLACK);
 		sprite.alpha = opacity;
 		sprite.scrollFactor.set();
 		sprite.camera = camera;

@@ -18,10 +18,14 @@ using StringTools;
 /** Source-shaped NMV Paths API. Its core assets are an explicit dependency
  * of this import; neither the native game nor another import is a fallback. */
 @:keep
-class NightmareVisionPaths {
+class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	public static inline var CORE_SUBTREE:String = '__nmv_core';
 	static var missingSoundDiagnostics:Map<String, Bool> = new Map();
 	public final root:String;
+	/** Borrowed atlas cache uses the resolved PNG path without its extension. */
+	public var tempAtlasFramesCache:Map<String, FlxAtlasFrames> = [];
+	public final scriptExtensions:Array<String> = ['hx', 'hxs', 'hscript'];
+	public final scriptInstances:Map<String, NightmareVisionScriptModule> = [];
 	public final CORE_DIRECTORY:String;
 	public final hudProfile:NightmareVisionHUDProfile;
 	/** Source-visible directory name, translated to this import's owner by
@@ -37,6 +41,40 @@ class NightmareVisionPaths {
 	public var UI_PREFIX:String;
 	var ownerAssetCache:NightmareVisionFunkinAssetCache;
 	var ownerAssetFacade:NightmareVisionFunkinAssets;
+	var modFamily:NightmareVisionModsContext;
+	var familyProviders:Map<String, NightmareVisionPaths> = [];
+
+	/** Keep the lease anchor stable while source lookups follow its authorized family.
+	 * Existing sprites/cache keys keep their resolved paths until ordinary teardown. */
+	public function bindModFamily(context:NightmareVisionModsContext):Void {
+		if (context == null || context.ownerRoot != root)
+			throw '[nightmare-vision-asset] Family context does not own this Paths lease';
+		if (modFamily != null && modFamily != context)
+			throw '[nightmare-vision-asset] Cannot replace a live Paths family context';
+		modFamily = context;
+	}
+
+	function providerForDirectory(directory:String):NightmareVisionPaths {
+		var selectedRoot = modFamily == null ? null : modFamily.rootForDirectory(directory);
+		if (selectedRoot == null) return null;
+		if (selectedRoot == root) return this;
+		var provider = familyProviders.get(selectedRoot);
+		if (provider == null) {
+			provider = new NightmareVisionPaths(selectedRoot, null, clientPrefs, directory);
+			familyProviders.set(selectedRoot, provider);
+		}
+		return provider;
+	}
+
+	function selectedProvider():NightmareVisionPaths {
+		if (modFamily == null) return this;
+		var selectedRoot = modFamily.selectedRoot();
+		if (selectedRoot == null) return null;
+		if (selectedRoot == root) return this;
+		for (directory in modFamily.familyDirectories())
+			if (modFamily.rootForDirectory(directory) == selectedRoot) return providerForDirectory(directory);
+		throw '[nightmare-vision-asset] Selected family root is unavailable';
+	}
 
 	public function new(root:String, ?baseRoot:String, ?clientPrefs:Dynamic, ?sourceDirectory:String) {
 		this.root = checkedRoot(root);
@@ -122,6 +160,15 @@ class NightmareVisionPaths {
 	 * or other-owner paths must not become an escape hatch from this adapter. */
 	public function scopeAssetPath(path:String):Null<String> {
 		if (!safeRelative(path)) return null;
+		if (modFamily != null) {
+			// Both old borrowed keys and newly selected keys remain inside the catalog.
+			for (directory in modFamily.familyDirectories()) {
+				var provider = providerForDirectory(directory);
+				if (provider == this) continue;
+				var candidate = provider.scopeAssetPath(path);
+				if (candidate != null) return candidate;
+			}
+		}
 		var normalized = Path.normalize(path.replace('\\', '/'));
 		// Source scripts retain a content/<mod>/ spelling from Paths.mods().
 		// Resolve that alias only for this adapter's captured owner.
@@ -138,34 +185,80 @@ class NightmareVisionPaths {
 		return null;
 	}
 
-	public function getCorePath(file:String = ''):String return scopedPath(CORE_DIRECTORY, file);
+	public function getCorePath(file:String = ''):String {
+		var provider = selectedProvider();
+		return provider != null && provider != this ? provider.getCorePath(file) : scopedPath(CORE_DIRECTORY, file);
+	}
 
 	/** FunkinScript.getPath extension precedence within this owner/core. */
 	public function resolveScript(path:String):NightmareVisionScriptDiscovery.NightmareVisionScriptEntry {
 		if (path == null || path == '') return null;
 		var clean = path.replace('\\', '/');
-		if (clean.startsWith(root + '/')) {
+		var explicitRoot:String = clean.startsWith(root + '/') ? root : null;
+		if (modFamily != null) for (directory in modFamily.familyDirectories()) {
+			var candidate = modFamily.rootForDirectory(directory);
+			if (clean.startsWith(candidate + '/') && (explicitRoot == null || candidate.length > explicitRoot.length)) explicitRoot = candidate;
+		}
+		if (explicitRoot != null) {
 			var scoped = scopeAssetPath(clean);
 			if (scoped == null) return null;
-			clean = scoped.substr(root.length + 1);
+			clean = scoped.substr(explicitRoot.length + 1);
 		}
 		// Reject parent traversal and foreign owner paths before existence checks.
 		if (!safeRelative(clean) || clean.startsWith('assets/'))
 			throw '[nightmare-vision-script-path] Invalid owner script: ' + path;
 		for (extension in ['hx', 'hxs', 'hscript']) {
-			var selected = getPath(clean + '.' + extension, null, true);
-			if (exists(selected)) return {scope:'dynamic', name:clean, path:selected,
-				relative:selected.substr(root.length + 1)};
+			var selected = explicitRoot == null ? getPath(clean + '.' + extension, null, true)
+				: scopeAssetPath(explicitRoot + '/' + clean + '.' + extension);
+			if (selected != null && exists(selected)) {
+				var origin = root;
+				if (modFamily != null) for (directory in modFamily.familyDirectories()) {
+					var candidate = modFamily.rootForDirectory(directory);
+					if (selected.startsWith(candidate + '/')) {origin = candidate; break;}
+				}
+				return {scope:'dynamic', name:clean, path:selected, relative:selected.substr(origin.length + 1)};
+			}
 		}
 		return null;
 	}
 
 	/** The selected content package is already mounted at root. This source API
 	 * addresses mod content directly; it must not silently select engine core. */
-	public function modFolders(key:String):String return scopedPath(root, key);
+	function existingFamilyModPath(key:String):Null<String> {
+		var provider = selectedProvider();
+		if (provider != null) {
+			var selected = provider.scopedPath(provider.root, key);
+			if (exists(selected)) return selected;
+		}
+		if (modFamily != null) for (directory in modFamily.globalMods) {
+			var global = providerForDirectory(directory);
+			if (global == null) continue;
+			var candidate = global.scopedPath(global.root, key);
+			if (exists(candidate)) return candidate;
+		}
+		return null;
+	}
+
+	public function modFolders(key:String):String {
+		var found = existingFamilyModPath(key);
+		if (found != null) return found;
+		var provider = selectedProvider();
+		if (provider == null) throw '[nightmare-vision-asset] Shared content-root lookup requires an installed source package';
+		return provider.scopedPath(provider.root, key);
+	}
 
 	/** Source Paths.mods spelling, scoped to this selected owner. */
 	public function mods(key:String = ''):String {
+		if (modFamily != null && key != null) {
+			var clean = key.replace('\\', '/');
+			var slash = clean.indexOf('/');
+			var label = slash < 0 ? clean : clean.substr(0, slash);
+			var explicit = providerForDirectory(label);
+			if (explicit != null) return explicit.scopedPath(explicit.root, slash < 0 ? '' : clean.substr(slash + 1));
+		}
+		var provider = selectedProvider();
+		if (provider == null) throw '[nightmare-vision-asset] No source mod selected';
+		if (provider != this) return provider.mods(key);
 		var relative = key == null ? '' : key.replace('\\', '/');
 		if (sourceDirectory != null && relative == sourceDirectory) relative = '';
 		else if (sourceDirectory != null && relative.startsWith(sourceDirectory + '/'))
@@ -177,8 +270,8 @@ class NightmareVisionPaths {
 	public function getPath(file:String, ?parentFolder:String, checkMods:Bool = false):String {
 		if (parentFolder != null) file = parentFolder + '/' + file;
 		if (checkMods) {
-			var selected = scopedPath(root, file);
-			if (exists(selected)) return selected;
+			var selected = existingFamilyModPath(file);
+			if (selected != null) return selected;
 		}
 		return getCorePath(file);
 	}
@@ -265,9 +358,13 @@ class NightmareVisionPaths {
 
 	/** Clear every cache entry owned by this import when its runtime is unmounted. */
 	public function releaseOwnerAssets():Void {
+		tempAtlasFramesCache.clear();
+		scriptInstances.clear();
 		if (ownerAssetCache != null) ownerAssetCache.release();
 		ownerAssetCache = null;
 		ownerAssetFacade = null;
+		for (provider in familyProviders) provider.releaseOwnerAssets();
+		familyProviders.clear();
 	}
 
 	function songAudioPath(song:String, kind:String, postFix:String, checkMods:Bool):String {
@@ -354,12 +451,21 @@ class NightmareVisionPaths {
 	 * current mods. An imported source owner has no global list, so only the
 	 * selected owner contributes after the core dependency. */
 	public function listAllFilesInDirectory(directory:String, checkMods:Bool = true):Array<String> {
+		var provider = selectedProvider();
 		var folders:Array<String> = [];
 		var corePath = getCorePath(directory);
 		if (exists(corePath) && isDirectory(corePath)) folders.push(corePath);
 		if (checkMods) {
-			var ownerPath = scopedPath(root, directory);
-			if (exists(ownerPath) && isDirectory(ownerPath) && !folders.contains(ownerPath)) folders.push(ownerPath);
+			if (modFamily != null) for (label in modFamily.globalMods) {
+				var global = providerForDirectory(label);
+				if (global == null) continue;
+				var globalPath = global.scopedPath(global.root, directory);
+				if (exists(globalPath) && isDirectory(globalPath) && !folders.contains(globalPath)) folders.push(globalPath);
+			}
+			if (provider != null) {
+				var ownerPath = provider.scopedPath(provider.root, directory);
+				if (exists(ownerPath) && isDirectory(ownerPath) && !folders.contains(ownerPath)) folders.push(ownerPath);
+			}
 		}
 		var files:Array<String> = [];
 		for (folder in folders) for (name in ownedAssets().readDirectory(folder)) {
@@ -373,32 +479,97 @@ class NightmareVisionPaths {
 	public function getModFolder(path:String, ?exclude:String):String {
 		if (path == null) return '';
 		var normalized = path.replace('\\', '/');
-		var folder = '';
-		var sourcePrefix = MODS_DIRECTORY + '/';
-		var sourceIndex = normalized.indexOf(sourcePrefix);
-		if (sourceIndex >= 0) {
-			var tail = normalized.substr(sourceIndex + sourcePrefix.length);
-			var slash = tail.indexOf('/');
-			folder = slash < 0 ? tail : tail.substr(0, slash);
-		} else if (normalized == root || normalized.startsWith(root + '/')) {
-			folder = sourceDirectory == null ? root.substr(root.lastIndexOf('/') + 1) : sourceDirectory;
+		if (modFamily != null) {
+			var directories = modFamily.familyDirectories();
+			for (directory in directories) {
+				var provider = providerForDirectory(directory);
+				var relative = provider.sourceAliasPath(normalized);
+				if (relative != null) return directory == exclude ? '' : directory;
+			}
+			if (directories.length > 0) return '';
 		}
+		var relative = sourceAliasPath(normalized);
+		if (relative != null) {
+			var folder = sourceDirectory == null ? root.substr(root.lastIndexOf('/') + 1) : sourceDirectory;
+			return folder == exclude ? '' : folder;
+		}
+		// Preserve the legacy syntactic label helper outside an enrolled family.
+		var prefix = MODS_DIRECTORY + '/';
+		var index = normalized.indexOf(prefix);
+		if (index < 0) return '';
+		var tail = normalized.substr(index + prefix.length);
+		var slash = tail.indexOf('/');
+		var folder = slash < 0 ? tail : tail.substr(0, slash);
 		return folder == exclude ? '' : folder;
 	}
 
+	/** Map absolute discovery paths through the same physical owner guard as IO. */
+	function sourceAliasPath(path:String):Null<String> {
+		#if sys
+		if (Path.isAbsolute(path)) {
+			var absoluteRoot = Path.normalize(FileSystem.absolutePath(root));
+			var normalized = Path.normalize(path);
+			#if windows
+			var rootKey = absoluteRoot.toLowerCase();
+			var key = normalized.toLowerCase();
+			#else
+			var rootKey = absoluteRoot;
+			var key = normalized;
+			#end
+			if (key != rootKey && !key.startsWith(rootKey + '/')) return null;
+			path = root + normalized.substr(absoluteRoot.length);
+		}
+		#end
+		var normalized = Path.normalize(path);
+		var alias = sourceDirectory == null ? null : MODS_DIRECTORY + '/' + sourceDirectory;
+		if (normalized != root && !normalized.startsWith(root + '/')
+			&& (alias == null || (normalized != alias && !normalized.startsWith(alias + '/')))) return null;
+		try return scopeAssetPath(path) catch (_:Dynamic) return null;
+	}
+
 	public function getSparrowAtlas(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
-		var metadata = requireFile(getPath('images/' + key + '.xml', parentFolder, checkMods));
-		return FlxAtlasFrames.fromSparrow(image(key, parentFolder, allowGPU, checkMods), FNFAssets.getText(metadata));
+		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
+		var cached = tempAtlasFramesCache.get(directPath);
+		if (cached != null) return cached;
+		var metadata = getPath('images/' + key + '.xml', parentFolder, checkMods);
+		var frames = FlxAtlasFrames.fromSparrow(image(key, parentFolder, allowGPU, checkMods), exists(metadata) ? FNFAssets.getText(metadata) : null);
+		if (frames != null) tempAtlasFramesCache.set(directPath, frames);
+		return frames;
 	}
 	public function getPackerAtlas(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
-		var metadata = requireFile(getPath('images/' + key + '.txt', parentFolder, checkMods));
-		return FlxAtlasFrames.fromSpriteSheetPacker(image(key, parentFolder, allowGPU, checkMods), FNFAssets.getText(metadata));
+		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
+		var cached = tempAtlasFramesCache.get(directPath);
+		if (cached != null) return cached;
+		var metadata = getPath('images/' + key + '.txt', parentFolder, checkMods);
+		var frames = FlxAtlasFrames.fromSpriteSheetPacker(image(key, parentFolder, allowGPU, checkMods), exists(metadata) ? FNFAssets.getText(metadata) : null);
+		if (frames != null) tempAtlasFramesCache.set(directPath, frames);
+		return frames;
 	}
 	public function getAtlasFrames(key:String, ?parentFolder:String, allowGPU:Bool = true, checkMods:Bool = true):FlxAtlasFrames {
-		if (fileExists('images/' + key + '.xml', parentFolder, checkMods)) return getSparrowAtlas(key, parentFolder, allowGPU, checkMods);
+		var directPath = haxe.io.Path.withoutExtension(getPath('images/' + key + '.png', parentFolder, checkMods));
+		var cached = tempAtlasFramesCache.get(directPath);
+		if (cached != null) return cached;
+		var xml = getPath('images/' + key + '.xml', parentFolder, checkMods);
+		var txt = getPath('images/' + key + '.txt', parentFolder, checkMods);
 		var json = getPath('images/' + key + '.json', parentFolder, checkMods);
-		if (exists(json)) return FlxAtlasFrames.fromAseprite(image(key, parentFolder, allowGPU, checkMods), FNFAssets.getText(json));
-		return getPackerAtlas(key, parentFolder, allowGPU, checkMods);
+		var graphic = image(key, parentFolder, allowGPU, checkMods);
+		var frames = exists(xml) ? FlxAtlasFrames.fromSparrow(graphic, FNFAssets.getText(xml))
+			: exists(json) ? FlxAtlasFrames.fromAseprite(graphic, FNFAssets.getText(json))
+			: FlxAtlasFrames.fromSpriteSheetPacker(graphic, exists(txt) ? FNFAssets.getText(txt) : null);
+		if (frames != null) tempAtlasFramesCache.set(directPath, frames);
+		return frames;
+	}
+
+	/** Translate this owner's native graphic key to its bounded source cache
+	 * path when loadAtlas evicts a borrowed frame-cache entry. */
+	public function forgetAtlasGraphic(graphic:FlxGraphic):Void {
+		var key = graphic.key;
+		var nativePrefix = 'nightmare-vision:' + root + ':';
+		if (key != null && key.startsWith(nativePrefix)) key = key.substr(nativePrefix.length);
+		var selected = scopeAssetPath(key);
+		if (selected == null) return;
+		tempAtlasFramesCache.remove(haxe.io.Path.withoutExtension(selected));
+		getOwnerAssetCache().currentTrackedGraphics.remove(selected);
 	}
 
 	/** Source multi-atlas merge. The source intentionally shifts the first key

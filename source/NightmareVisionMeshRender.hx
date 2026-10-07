@@ -5,6 +5,7 @@ import flixel.util.FlxColor;
 
 /** Minimal source MeshRender behavior on the host's FlxStrip draw path. */
 @:keep
+@:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionMeshRender extends FlxStrip {
 	@:keep public var vertex_count(default, null):Int = 0;
 	@:keep public var index_count(default, null):Int = 0;

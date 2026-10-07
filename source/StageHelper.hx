@@ -330,6 +330,11 @@ class StageHelper extends FlxSpriteGroup {
 	override public function remove(sprite:FlxSprite, splice:Bool = false):FlxSprite {
 		if (sprite == null || members.indexOf(sprite) < 0)
 			return sprite;
+		// Host stage replacement drops borrowed role bookkeeping; its mounted
+		// real groups retain cameras/transforms and sole state ownership.
+		if (PlayState.instance != null && PlayState.instance.curStage == this
+			&& PlayState.instance.preserveNightmareVisionStageMember(sprite))
+			return group.remove(sprite, splice);
 		if (PlayState.instance != null && PlayState.instance.curStage == this)
 			PlayState.instance.detachStageMember(sprite);
 		// FlxSpriteGroup.remove clears cameras. Donor scripts may temporarily

@@ -17,7 +17,7 @@ class CharacterScriptCacheTest(unittest.TestCase):
     def test_program_cache_reuses_unchanged_source_and_is_bounded(self):
         source = (ROOT / "source/Character.hx").read_text()
         typedef_start = source.index("typedef CharacterProgramCacheEntry = {")
-        typedef_end = source.index("\nclass Character extends", typedef_start)
+        typedef_end = source.index("\n@:build(NightmareVisionSpriteMacro.build())", typedef_start)
         typedef = source[typedef_start:typedef_end]
         cache_start = source.index("\tstatic var characterProgramCache:")
         cache_end = source.index("\n\tpublic var animOffsets", cache_start)

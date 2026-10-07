@@ -16,6 +16,8 @@ class NightmareVisionShaderFactoryTest(unittest.TestCase):
         self.scratch = tempfile.TemporaryDirectory(dir=ROOT / "tmp")
         self.addCleanup(self.scratch.cleanup)
         self.work = Path(self.scratch.name)
+        # Paths owns a typed module-name cache; script execution is outside this shader subject.
+        self.write("NightmareVisionScriptModule.hx", "class NightmareVisionScriptModule {}")
         self.owner = self.work / "assets/imported_mods/nmv-selected"
         self.core = self.owner / "__nmv_core"
         self.foreign = self.work / "assets/imported_mods/nmv-other"

@@ -2,14 +2,15 @@ package;
 
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.FlxState;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
 
 /**
-	Small menu overlay for the shared import-refresh coordinator. Each attached
-	menu may poll it independently; `ImportRefreshManager.browseTick()` is the
-	coordinator's idempotent status pump, so state transitions do not own jobs.
+	Shared progress card for Import Settings jobs and automatic import refreshes.
+	Menu instances poll the coordinator independently; `browseTick()` is its
+	idempotent status pump, so state transitions do not own background jobs.
 */
 class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	static inline var PANEL_WIDTH:Int = 660;
@@ -17,8 +18,8 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	static inline var PANEL_MIN_WIDTH:Int = 240;
 	static inline var PANEL_MARGIN:Int = 22;
 	static inline var PANEL_TOP:Int = 16;
+	static inline var EMBEDDED_PANEL_TOP:Int = 226;
 	static inline var TRACK_HEIGHT:Int = 12;
-	static inline var TOAST_SECONDS:Float = 2.4;
 	static inline var TEXT_REFRESH_SECONDS:Float = 0.25;
 	static inline var INDETERMINATE_WIDTH:Float = 0.24;
 
@@ -32,8 +33,10 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	public var activityText:FlxText;
 	public var timingText:FlxText;
 
-	var toastRemaining:Float = 0;
-	var showingCompletion:Bool = false;
+	var foregroundOwner:Null<FlxState>;
+	var statusProvider:Null<Void->Dynamic>;
+	var embedded:Bool = false;
+	var polledStatusIsLocal:Bool = false;
 	var displayedFraction:Float = 0;
 	var statusPollElapsed:Float = 0;
 	var hasPolledStatus:Bool = false;
@@ -47,19 +50,38 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	var trackY:Float = 0;
 	var trackWidth:Float = PANEL_WIDTH - PANEL_MARGIN * 2;
 	var graphicsWidthScale:Float = 1;
+	var localMeasurements:ImportRefreshProgress;
+	var menuLane:Bool = false;
+	var laneLeft:Float = 0;
+	var laneTop:Float = 0;
+	var laneRightRatio:Float = 1;
+	var laneRightPadding:Float = 0;
 
-	public function new() {
+	/** Reserve menu chrome without coupling this shared renderer to a state class. */
+	public function setMenuLane(left:Float, top:Float, rightRatio:Float, rightPadding:Float):Void {
+		menuLane = true;
+		laneLeft = left; laneTop = top; laneRightRatio = rightRatio; laneRightPadding = rightPadding;
+		hasRenderedText = false;
+		positionOverlay();
+	}
+
+	public function new(owner:FlxState, ?statusProvider:Void->Dynamic, ?embedded:Bool = false) {
 		super();
+		foregroundOwner = owner;
+		this.statusProvider = statusProvider;
+		this.embedded = embedded;
 		active = true;
 		visible = false;
 
 		panel = new FlxSprite().makeGraphic(PANEL_WIDTH, PANEL_HEIGHT, FlxColor.fromRGB(10, 12, 20, 235));
 		panel.alpha = 0.96;
+		panel.origin.set(0, 0);
 		progressTrack = new FlxSprite().makeGraphic(PANEL_WIDTH - PANEL_MARGIN * 2, TRACK_HEIGHT,
 			FlxColor.fromRGB(43, 47, 60));
 		progressFill = new FlxSprite().makeGraphic(PANEL_WIDTH - PANEL_MARGIN * 2, TRACK_HEIGHT,
 			FlxColor.fromRGB(92, 203, 255));
 		progressFill.origin.set(0, 0);
+		progressTrack.origin.set(0, 0);
 
 		// FlxText's engine default font is used throughout the menus. Its normal
 		// font keeps file paths and counters easier to scan than mod display fonts.
@@ -101,6 +123,13 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	/** Keep polling even while hidden so newly queued work becomes visible. The
 	 * 250ms cadence is fast enough for UI handoffs and avoids work at frame rate. */
 	public override function update(elapsed:Float):Void {
+		if (!isForeground()) {
+			visible = false;
+			hasPolledStatus = false;
+			polledStatus = null;
+			polledStatusIsLocal = false;
+			return;
+		}
 		super.update(elapsed);
 		statusPollElapsed += Math.max(0, elapsed);
 		if (!hasPolledStatus || statusPollElapsed >= TEXT_REFRESH_SECONDS) {
@@ -111,24 +140,16 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		var state = polledStatus;
 		if (state == null) {
 			visible = false;
-			showingCompletion = false;
-			toastRemaining = 0;
 			return;
 		}
 
 		var busy = boolField(state, "busy");
 		var blocked = boolField(state, "blocked");
 		var complete = boolField(state, "complete");
-		var changed = boolField(state, "changed");
-		var completionEdge = complete && changed && !showingCompletion;
-		if (completionEdge) toastRemaining = TOAST_SECONDS;
-		showingCompletion = complete && changed;
-		if (!busy && !blocked && toastRemaining > 0) {
-			toastRemaining -= Math.max(0, elapsed);
-			if (toastRemaining < 0) toastRemaining = 0;
-		}
-
-		visible = busy || blocked || toastRemaining > 0;
+		// Completion and warnings belong to the explicit import details/result UI.
+		// A background status must never start or restart a popup on a new screen.
+		var backgroundBusy:Dynamic = Reflect.field(state, "backgroundBusy");
+		visible = polledStatusIsLocal ? busy : (backgroundBusy == null ? busy : backgroundBusy == true);
 		if (!visible) return;
 
 		positionOverlay();
@@ -141,12 +162,65 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		}
 	}
 
+	function isForeground():Bool {
+		return foregroundOwner != null && FlxG.state == foregroundOwner && foregroundOwner.active
+			&& foregroundOwner.exists && foregroundOwner.subState == null;
+	}
+
+	public override function draw():Void {
+		// FlxState may draw its background while a substate pauses parent updates.
+		if (!isForeground()) {
+			visible = false;
+			hasPolledStatus = false;
+			polledStatus = null;
+			polledStatusIsLocal = false;
+			return;
+		}
+		if (visible) super.draw();
+	}
+
+	public override function destroy():Void {
+		super.destroy();
+		foregroundOwner = null;
+		statusProvider = null;
+	}
+
+	/** Force a fresh provider/coordinator snapshot after starting or consuming a local job. */
+	public function invalidateStatus(?resetMeasurements:Bool = true):Void {
+		hasPolledStatus = false;
+		polledStatus = null;
+		polledStatusIsLocal = false;
+		statusPollElapsed = 0;
+		textRefreshElapsed = 0;
+		hasRenderedText = false;
+		visible = false;
+		if (resetMeasurements) localMeasurements = null;
+	}
+
 	function pollStatus():Void {
+		if (statusProvider != null) {
+			var local:Dynamic = null;
+			try {
+				local = statusProvider();
+			} catch (error:Dynamic) {
+				#if sys
+				ImportRefreshManager.reportFailure(Std.string(error));
+				#end
+			}
+			if (local != null) {
+				polledStatus = addLocalMeasurements(local);
+				polledStatusIsLocal = true;
+				return;
+			}
+		}
+		localMeasurements = null;
+		polledStatusIsLocal = false;
 		#if sys
 		var state:Dynamic;
 		try {
 			state = ImportRefreshManager.browseTick();
 		} catch (error:Dynamic) {
+			ImportRefreshManager.reportFailure(Std.string(error));
 			state = {busy: false, label: "Import refresh failed: " + Std.string(error),
 				fraction: 0.0, complete: false, changed: false, blocked: true};
 		}
@@ -154,6 +228,28 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		var state:Dynamic = null;
 		#end
 		polledStatus = state;
+	}
+
+	function addLocalMeasurements(state:Dynamic):Dynamic {
+		var now = haxe.Timer.stamp();
+		if (localMeasurements == null) localMeasurements = new ImportRefreshProgress(now);
+		localMeasurements.update(state, now);
+		var measured = localMeasurements.snapshot(now, -1);
+		var result:Dynamic = {};
+		for (field in Reflect.fields(state)) Reflect.setField(result, field, Reflect.field(state, field));
+		for (field in Reflect.fields(measured)) {
+			if (field == "queueRemaining") continue;
+			if (field == "phase" || field == "current" || field == "completed" || field == "total"
+				|| Reflect.field(state, field) == null)
+				Reflect.setField(result, field, Reflect.field(measured, field));
+		}
+		var total = intField(result, "total", 0);
+		var completed = intField(result, "completed", 0);
+		Reflect.setField(result, "fraction", total <= 0 ? 0.0 : Math.min(0.99, completed / total));
+		// Manual imports have no coordinator queue. Keep the sentinel through the
+		// presentation adapter instead of rendering the helper's queue size.
+		Reflect.setField(result, "queueRemaining", -1);
+		return result;
 	}
 
 	/** Exposed for small UI tests and callers that want a stable displayed
@@ -231,10 +327,10 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 
 		var elapsed = floatField(state, "elapsedSeconds", -1);
 		var eta = floatField(state, "etaSeconds", -1);
-		var queueRemaining = Math.max(0, intField(state, "queueRemaining", 0));
-		var timing = eta >= 0 ? "Phase ETA ~" + formatDuration(eta, true) : "Phase ETA unavailable";
-		timing += " | Queue remaining " + queueRemaining;
-		timing += elapsed < 0 ? " | Elapsed unavailable" : " | Elapsed " + formatDuration(elapsed, false);
+		var queueRemaining = intField(state, "queueRemaining", 0);
+		var timing = elapsed < 0 ? "Elapsed unavailable" : "Elapsed " + formatDuration(elapsed, false);
+		timing += eta >= 0 ? " | Phase ETA ~" + formatDuration(eta, true) : " | Phase ETA unavailable";
+		if (queueRemaining >= 0) timing += " | Queue " + queueRemaining;
 		timingText.text = ellipsizeEnd(timing, charsForWidth(contentWidth, 13));
 	}
 
@@ -370,10 +466,14 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 
 	function positionOverlay():Void {
 		currentPanelWidth = Std.int(Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_WIDTH, FlxG.width - PANEL_MARGIN * 2)));
+		if (menuLane)
+			currentPanelWidth = Std.int(Math.max(120, Math.min(PANEL_WIDTH,
+				FlxG.width * laneRightRatio - laneRightPadding - laneLeft)));
 		contentWidth = currentPanelWidth - PANEL_MARGIN * 2;
 		graphicsWidthScale = contentWidth / (PANEL_WIDTH - PANEL_MARGIN * 2);
 		var x = Std.int(Math.max(8, (FlxG.width - currentPanelWidth) * 0.5));
-		var y = PANEL_TOP;
+		var y = embedded ? EMBEDDED_PANEL_TOP : PANEL_TOP;
+		if (menuLane) { x = Std.int(laneLeft); y = Std.int(laneTop); }
 		var textX = x + PANEL_MARGIN;
 		panel.scale.x = currentPanelWidth / PANEL_WIDTH;
 		panel.setPosition(x, y);

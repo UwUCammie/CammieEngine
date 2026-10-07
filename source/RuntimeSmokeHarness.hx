@@ -2054,6 +2054,14 @@ class RuntimeSmokeHarness {
 
 	/** Drive scrolling/leaving and completion for --smoke-freeplay. */
 	static function freeplayFrame(now:Float):Void {
+		#if sys
+		if (RuntimeImportAvailabilityProbe.enabled()) { RuntimeImportAvailabilityProbe.tick(); return; }
+		if (RuntimeNvFamilyProbe.enabled()) { RuntimeNvFamilyProbe.tick(); return; }
+		if (RuntimeNvStateProbe.enabled()) { RuntimeNvStateProbe.tick(); return; }
+		if (RuntimePsychAchievementsProbe.enabled()) { RuntimePsychAchievementsProbe.tick(); return; }
+		if (RuntimePsychStandardProbe.enabled()) { RuntimePsychStandardProbe.tick(); return; }
+		if (RuntimeImportUiProbe.enabled()) { RuntimeImportUiProbe.tick(); return; }
+		#end
 		var cfg = config();
 		var inFreeplay = Std.isOfType(FlxG.state, FreeplayState);
 		if (inFreeplay && !freeplaySeen) {
