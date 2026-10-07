@@ -387,12 +387,13 @@ class ImportSongOwnership {
 				roots.unshift(Path.join([mods, children[0]]));
 		}
 		for (root in roots) {
-			for (file in ['_polymod_meta.json', 'pack.json', 'mod.json', 'metadata.json']) {
+			for (file in ['_polymod_meta.json', 'pack.json', 'mod.json', 'metadata.json', 'meta.json']) {
 				var path = Path.join([root, file]);
 				if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) continue;
 				try {
 					if (FileSystem.stat(path).size > MAX_OWNER_IDENTITY_FILE_BYTES) continue;
 					var data:Dynamic = Json.parse(File.getContent(path));
+					if (isSongChartMetadata(data)) continue;
 					for (field in ['id', 'modId', 'modID', 'uuid', 'packageId', 'packageID']) {
 						var raw:Dynamic = Reflect.field(data, field);
 						if (raw != null && Std.isOfType(raw, String)) {
@@ -604,12 +605,13 @@ class ImportSongOwnership {
 			}
 		}
 		for (root in roots) {
-			for (file in ['_polymod_meta.json', 'pack.json', 'mod.json']) {
+			for (file in ['_polymod_meta.json', 'pack.json', 'mod.json', 'metadata.json', 'meta.json']) {
 				var path = Path.join([root, file]);
 				if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) continue;
 				try {
 					if (FileSystem.stat(path).size > 131072) continue;
 					var data:Dynamic = Json.parse(File.getContent(path));
+					if (isSongChartMetadata(data)) continue;
 					if (isGenericPackageTemplateMetadata(data)) {
 						skippedTemplateMetadata = true;
 						continue;
@@ -644,17 +646,65 @@ class ImportSongOwnership {
 				}
 			} catch (_:Dynamic) {}
 		}
+		var retainedLabel = retainedSourceLabel(sourceRoot);
+		if (retainedLabel != '')
+			return {name:retainedLabel, authored:false, template:skippedTemplateMetadata};
 		if (innerMod != null) return {name:innerMod, authored:false, template:skippedTemplateMetadata};
 		#end
 		var fallbackRoot = sourceRoot;
-		if (skippedTemplateMetadata
-			&& Path.withoutDirectory(Path.normalize(sourceRoot)).toLowerCase() == 'mods') {
+		if (isGenericContainerLabel(Path.withoutDirectory(Path.normalize(sourceRoot)))) {
+			// During retained refresh the physical parent is a snapshot cache directory.
+			// Only its exact ImportIO source-label mapping can name the original root.
+			#if sys
+			if (ImportIO.current() != null)
+				return {name:'', authored:false, template:skippedTemplateMetadata};
+			#end
 			var parentRoot = Path.directory(Path.normalize(sourceRoot));
-			if (parentRoot != null && StringTools.trim(parentRoot) != '' && parentRoot != '.')
+			if (parentRoot != null && StringTools.trim(parentRoot) != '' && parentRoot != '.'
+				&& !isGenericContainerLabel(Path.withoutDirectory(Path.normalize(parentRoot)))) {
 				fallbackRoot = parentRoot;
+			} else {
+				return {name:'', authored:false, template:skippedTemplateMetadata};
+			}
 		}
 		return {name:Path.withoutDirectory(Path.normalize(fallbackRoot)), authored:false,
 			template:skippedTemplateMetadata};
+	}
+
+	/** Read a manager-recorded source label only for the exact active import root.
+	 * It is an inferred fallback, below package metadata and user overrides. */
+	static function retainedSourceLabel(sourceRoot:String):String {
+		#if sys
+		var context = ImportIO.current();
+		if (context == null) return '';
+		var raw = context.sourceLabel(sourceRoot);
+		if (raw == null) return '';
+		var label = StringTools.trim(raw);
+		if (!validIdentityLabel(label)) return '';
+		return label != '' && !isGenericContainerLabel(label) ? label : '';
+		#else
+		return '';
+		#end
+	}
+
+	static function isGenericContainerLabel(value:String):Bool {
+		if (value == null) return false;
+		return switch (StringTools.trim(value).toLowerCase()) {
+			case 'assets', 'content', 'data', 'mods', 'music', 'songs', 'source': true;
+			default: false;
+		}
+	}
+
+	/** Song chart metadata can also contain title-like fields. Do not promote a
+	 * chart envelope to the package label or stable package identity. */
+	static function isSongChartMetadata(data:Dynamic):Bool {
+		if (data == null || Std.isOfType(data, Array) || Std.isOfType(data, String)
+			|| Std.isOfType(data, Bool) || Std.isOfType(data, Int) || Std.isOfType(data, Float))
+			return false;
+		var signature = 0;
+		for (field in ['bpm', 'stepsPerBeat', 'difficulties'])
+			if (Reflect.hasField(data, field)) signature++;
+		return signature >= 2;
 	}
 
 	/** Destination-only import provenance for a selected source owner. */
@@ -732,6 +782,49 @@ class ImportSongOwnership {
 		Reflect.setField(record, 'modName', cleanName);
 		Reflect.setField(record, 'nameSource', cleanSource);
 		return true;
+	}
+
+	/** Resolve a legacy inferred package subtitle from the same import receipt when
+	 * its saved display name is only a generic storage-container basename. This
+	 * is a read-only fallback for Freeplay; callers must pass the expected song
+	 * destination, owner, and engine that were used to load this exact receipt. */
+	public static function inferredGenericLabelFromReceipt(record:Dynamic,
+		expectedDestinationFolder:String, expectedSourceOwner:String,
+		expectedEngine:String):String {
+		if (record == null || Std.isOfType(record, Array) || Std.isOfType(record, String)
+			|| Std.isOfType(record, Bool) || Std.isOfType(record, Int) || Std.isOfType(record, Float)
+			|| expectedDestinationFolder == null || StringTools.trim(expectedDestinationFolder) == ''
+			|| expectedSourceOwner == null || expectedEngine == null
+			|| StringTools.trim(expectedEngine) == '')
+			return '';
+		if (Reflect.field(record, 'version') != 1
+			|| Reflect.field(record, 'destinationFolder') != expectedDestinationFolder)
+			return '';
+		var rawEngine:Dynamic = Reflect.field(record, 'sourceEngine');
+		var rawOwner:Dynamic = Reflect.field(record, 'sourceOwner');
+		if (!Std.isOfType(rawEngine, String) || !Std.isOfType(rawOwner, String)
+			|| ImportEngine.normalize(rawEngine) == ImportEngine.AUTO
+			|| ImportEngine.normalize(rawEngine) != ImportEngine.normalize(expectedEngine))
+			return '';
+		var owner = validOwnerNamespace(cast rawOwner);
+		var expectedOwner = validOwnerNamespace(expectedSourceOwner);
+		if (owner == '' || expectedOwner == ''
+			|| CompatScriptManifest.destinationKey(cast rawOwner)
+				!= CompatScriptManifest.destinationKey(expectedSourceOwner))
+			return '';
+		var nameSource:Dynamic = Reflect.field(record, 'nameSource');
+		var modName:Dynamic = Reflect.field(record, 'modName');
+		if (!Std.isOfType(nameSource, String)
+			|| StringTools.trim(cast nameSource).toLowerCase() != 'inferred'
+			|| !Std.isOfType(modName, String)
+			|| !isGenericContainerLabel(cast modName))
+			return '';
+		var rawLabel:Dynamic = Reflect.field(record, 'sourceModDirectory');
+		if (!Std.isOfType(rawLabel, String)) return '';
+		var label = StringTools.trim(cast rawLabel);
+		if (!validIdentityLabel(label)) return '';
+		if (label == '' || isGenericContainerLabel(label)) return '';
+		return displayWithEngine(label, ImportEngine.normalize(rawEngine));
 	}
 
 	/** Plan a destination when the canonical chart folder is already owned by

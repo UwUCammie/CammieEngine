@@ -34,7 +34,23 @@ class NightmareVisionFunkinAssets {
 		paths.bindOwnerAssetFacade(this);
 	}
 
-	function resolve(path:String):Null<String> return paths.scopeAssetPath(path);
+	function resolve(path:String, ?expectedType:String):Null<String> {
+		var physical = paths.scopeAssetPath(path);
+		if (physical != null && physicalExists(physical)) return physical;
+		if (path == null || path.toLowerCase().startsWith('assets/imported_mods/')) return null;
+		var indexed = paths.resolveOwnerAssetIdentity(path, expectedType);
+		if (indexed.state == 'found') return indexed.path;
+		if (indexed.state == 'no-index' || indexed.state == 'unclaimed') return physical;
+		return null;
+	}
+
+	function physicalExists(path:String):Bool {
+		#if sys
+		return FileSystem.exists(path);
+		#else
+		return FNFAssets.exists(path);
+		#end
+	}
 
 	public function parseJson(content:String, ?pos:haxe.PosInfos):Null<Any> {
 		if (content == null) return null;
@@ -59,7 +75,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getBytes(path:String):Bytes {
-		var selected = resolve(path);
+		var selected = resolve(path, 'BINARY');
 		if (selected == null) throw '[nightmare-vision-assets] Refused out-of-owner byte read: ' + path;
 		#if sys
 		if (!FileSystem.exists(selected) || FileSystem.isDirectory(selected))
@@ -72,7 +88,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getContentUnsafe(key:String, useCache:Bool = true):String {
-		var selected = resolve(key);
+		var selected = resolve(key, 'TEXT');
 		if (selected == null) return '';
 		useCache = useCache && !paths.devModeEnabled();
 		if (useCache && cache.currentTrackedTexts.exists(selected)) {
@@ -101,13 +117,13 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getBitmapData(path:String, useCache:Bool = true):Null<BitmapData> {
-		var selected = resolve(path);
+		var selected = resolve(path, 'IMAGE');
 		if (selected == null || !exists(selected)) return null;
 		try return FNFAssets.getBitmapData(selected, useCache) catch (_:Dynamic) return null;
 	}
 
 	public function exists(path:String):Bool {
-		var selected = resolve(path);
+		var selected = resolve(path, null);
 		if (selected == null) return false;
 		#if sys
 		return FileSystem.exists(selected);
@@ -117,7 +133,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function readDirectory(directory:String):Array<String> {
-		var selected = resolve(directory);
+		var selected = resolve(directory, null);
 		if (selected == null || !isDirectory(selected)) return [];
 		#if sys
 		try return FileSystem.readDirectory(selected) catch (_:Dynamic) return [];
@@ -136,7 +152,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function isDirectory(directory:String):Bool {
-		var selected = resolve(directory);
+		var selected = resolve(directory, null);
 		if (selected == null) return false;
 		#if sys
 		return FileSystem.exists(selected) && FileSystem.isDirectory(selected);
@@ -146,7 +162,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getGraphicUnsafe(key:String, useCache:Bool = true, allowGPU:Bool = true):Null<FlxGraphic> {
-		var selected = resolve(key);
+		var selected = resolve(key, 'IMAGE');
 		if (selected == null || !exists(selected) || isDirectory(selected)) return null;
 		if (useCache && cache.currentTrackedGraphics.exists(selected)) {
 			cache.localTrackedAssets.push(selected);
@@ -178,7 +194,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getSoundUnsafe(key:String, useCache:Bool = true):Null<Sound> {
-		var selected = resolve(key);
+		var selected = resolve(key, 'SOUND');
 		return selected == null ? null : loadSound(selected, useCache);
 	}
 
@@ -197,7 +213,7 @@ class NightmareVisionFunkinAssets {
 	}
 
 	public function getVorbisSound(key:String):Null<Sound> {
-		var selected = resolve(key);
+		var selected = resolve(key, 'SOUND');
 		return selected == null ? null : getVorbisSoundAt(selected);
 	}
 

@@ -51,6 +51,9 @@ using StringTools;
 
 typedef ImportAssetMergeResult = {{ var copied:Int; var skipped:Int; var failed:Int;
   @:optional var errors:Array<String>; }};
+typedef SourceMappedAssetPlan = {{ var failed:Bool; var cancelled:Bool; var diagnostics:Array<String>; }};
+typedef PreparedMappedAssetOwner = {{ var sourceRoot:String; var engine:String; var scope:String;
+  var destinationRoot:String; var plan:SourceMappedAssetPlan; }};
 typedef SongImportSource = {{ var engine:String; var sourceRoot:String; }};
 class ImportSettings {{
   public static function normalizeSourcePath(path:Dynamic):String return Path.normalize(Std.string(path));
@@ -64,8 +67,16 @@ class StageImportFixture {{
   static function importWorkCancelled():Bool return false;
   static function mergeCompatScriptTrees(contentRoot:String, sourceRoot:String, engine:String,
       result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>,
-      ?modPlusCharacterIds:Array<String>, ?destinationSubpath:String):String
+      ?modPlusCharacterIds:Array<String>, ?destinationSubpath:String,
+      ?mappedAssetPlan:SourceMappedAssetPlan, ?nightmareVisionScope:String):String
     return selectedNamespace;
+  static function mappedOwnerPlan(_plans:Map<String, PreparedMappedAssetOwner>,
+      _sourceRoot:String, _engine:String):PreparedMappedAssetOwner return null;
+  static function skipMappedOwnerMediaFile(owner:PreparedMappedAssetOwner,
+      _source:String, _destination:String):Bool {{
+    if (owner != null) throw "stage fixture is only for the profile-unavailable legacy path";
+    return false;
+  }}
   static function collectCompatScriptFiles(source:String, relative:String, hxcOnly:Bool,
       output:Array<Dynamic>, depth:Int, budget:Array<Int>, ?suffixes:Array<String>,
       ?includeHaxe:Bool = false):Void {{}}

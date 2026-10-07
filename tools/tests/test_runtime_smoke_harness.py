@@ -52,6 +52,8 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         cls.state = (SOURCE / "RuntimeSmokeState.hx").read_text()
         cls.main = (SOURCE / "Main.hx").read_text()
         cls.play_state = (SOURCE / "PlayState.hx").read_text()
+        cls.mapped_media_probe = (SOURCE / "RuntimeMappedMediaProbe.hx").read_text()
+        cls.availability_probe = (SOURCE / "RuntimeImportAvailabilityProbe.hx").read_text()
         cls.import_harness = (SOURCE / "RuntimeImportSmokeHarness.hx").read_text()
         cls.import_state = (SOURCE / "RuntimeImportSmokeState.hx").read_text()
         cls.matrix = load_matrix_module()
@@ -99,6 +101,34 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         self.assertIn("Sys.exit(1)", self.harness)
         self.assertIn("--smoke-runtime-root", self.harness)
         self.assertNotIn("OptionsHandler.options =", self.harness + self.state)
+
+    def test_mapped_media_probe_is_opt_in_and_preempts_generic_freeplay_driver(self):
+        frame = extract_haxe_method(self.harness, "static function freeplayFrame(")
+        mapped_probe = "if (RuntimeMappedMediaProbe.enabled()) { RuntimeMappedMediaProbe.tick(); return; }"
+        availability_probe = "if (RuntimeImportAvailabilityProbe.enabled())"
+        self.assertIn(mapped_probe, frame)
+        self.assertLess(frame.index(mapped_probe), frame.index(availability_probe))
+        self.assertIn("Sys.getEnv('CAMMIE_MAPPED_MEDIA_SMOKE') == '1'", self.mapped_media_probe)
+        self.assertIn("!Std.isOfType(FlxG.state, FreeplayState)", self.mapped_media_probe)
+
+    def test_availability_probe_returns_to_freeplay_before_releasing_real_worker(self):
+        probe = self.availability_probe
+        phase_play = probe.index("if (phase == 8 && Std.isOfType(FlxG.state, PlayState))")
+        phase_return = probe.index("if (phase == 9 && Std.isOfType(FlxG.state, FreeplayState))")
+        phase_complete = probe.index("if (phase == 10 && Std.isOfType(FlxG.state, FreeplayState))")
+        play_path = probe[phase_play:phase_return]
+        return_path = probe[phase_return:phase_complete]
+        self.assertLess(phase_play, phase_return)
+        self.assertLess(phase_return, phase_complete)
+        self.assertIn("!directDone && ImportWorkScheduler.gameplayActive()", play_path)
+        self.assertIn("LoadingState.loadAndSwitchState(new FreeplayState())", play_path)
+        self.assertIn("!directDone && stillWaiting", return_path)
+        self.assertIn("B should remain gray before worker release", return_path)
+        self.assertLess(return_path.index("B should remain gray before worker release"),
+                        return_path.index("releaseDirectWorker.release()"))
+        self.assertIn("import_availability_direct_return_pending", return_path)
+        self.assertIn("import_availability_direct_return_complete", probe[phase_complete:])
+        self.assertIn("releaseDirectWorker.wait(45)", probe)
 
     @unittest.skipUnless(HAXE.is_file(), "portable Haxe is unavailable")
     def test_return_freeplay_scope_requires_base_and_imported_rows_without_owner_filter(self):
@@ -1125,6 +1155,10 @@ class ImportWorkflow {
   public static function beginImport(source:String, scan:Dynamic, type:String, ?names:Map<String,String>):ImportImportJob return new ImportImportJob();
   public static function beginSongScan(source:String, type:String):ImportScanJob return new ImportScanJob();
   public static function beginSongImport(source:String, scan:Dynamic, type:String):ImportImportJob return new ImportImportJob();
+}
+""",
+            "ImportRefreshManager.hx": """class ImportRefreshManager {
+  public static function browseTick():Dynamic return {busy:false};
 }
 """,
             "PluginManager.hx": "class PluginManager { public static function init():Void {} }\n",

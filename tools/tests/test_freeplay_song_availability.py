@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from haxe_test_support import HAXE_COMMAND, FixturePath
+from test_source_event_preparation import extract_method
 
 
 ROOT = FixturePath(__file__).resolve().parents[2]
@@ -20,6 +21,14 @@ import ImportRefreshAvailabilitySnapshot.ImportRefreshPendingSong;
 class Main {
  static function check(value:Bool, message:String):Void if (!value) throw message;
  static function main():Void {
+  check(!FreeplaySongAvailability.songListNeedsRegistryRefresh(false,4,7,7),
+   'a same-generation selected category list can be retained');
+  check(FreeplaySongAvailability.songListNeedsRegistryRefresh(false,4,7,8),
+   'a list selected before a background handoff must reload when Freeplay is recreated');
+  check(FreeplaySongAvailability.songListNeedsRegistryRefresh(false,0,8,8),
+   'an explicitly cleared category list must repopulate from the registry');
+  check(FreeplaySongAvailability.songListNeedsRegistryRefresh(true,4,8,8),
+   'direct imported-package Freeplay must reselect from its owner registry');
   var owner='assets/imported_mods/alpha';
   var other='assets/imported_mods/beta';
   var empty:ImportRefreshAvailabilitySnapshot={revision:1,inspectionPending:true,
@@ -132,6 +141,9 @@ class Main {
         source = (ROOT / 'source/FreeplayState.hx').read_text()
         self.assertIn('ImportRefreshManager.availabilityRevision()', source)
         self.assertIn('ImportRefreshManager.availabilitySnapshot()', source)
+        self.assertIn('currentSongListGeneration', source)
+        self.assertIn('songListNeedsRegistryRefresh(', source)
+        self.assertIn('ImportRefreshManager.requestAvailabilityRecheck();', source)
         self.assertIn('FreeplaySongAvailability.ownerReadiness(', source)
         self.assertIn('FreeplaySongAvailability.songReadiness(', source)
         self.assertNotIn('if (ImportRefreshManager.browseTick().busy) { super.update(elapsed); return; }', source)
@@ -149,6 +161,78 @@ class Main {
         self.assertIn('changeSelection(0, true);', source)
         self.assertIn('if (infoPanel == null)', source)
         self.assertIn('FreeplaySongAvailability.canPresentPendingSongs(curCategory, directOwnerRoot != \'\')', source)
+
+    def test_interaction_snapshot_is_reconciled_on_the_following_update(self):
+        source = (ROOT / 'source/FreeplayState.hx').read_text(encoding='utf-8')
+        refresh = extract_method(source, 'function refreshImportAvailability(')
+        interaction = extract_method(source, 'function refreshAvailabilityForInteraction():Void')
+        refresh = refresh.replace('function refreshImportAvailability(', 'public function refreshImportAvailability(', 1)
+        interaction = interaction.replace('function refreshAvailabilityForInteraction()',
+                                          'public function refreshAvailabilityForInteraction()', 1)
+        main = r'''class ImportRefreshManager {
+  public static var revision:Int = 1;
+  public static var snapshot:Dynamic = {revision:1,pendingSongs:[]};
+  public static function availabilityRevision():Int return revision;
+  public static function availabilitySnapshot():Dynamic return snapshot;
+}
+class FreeplayHarness {
+  public var importAvailability:Dynamic;
+  public var importAvailabilityRevision:Int = -1;
+  public var importAvailabilityAppliedRevision:Int = -1;
+  public var songs:Array<Dynamic> = [{isProvisional:false,pendingKey:'',availabilityRevision:-1,chartRevision:-1}];
+  public var rowSongIndices:Array<Int> = [0];
+  public var grpSongs:Dynamic = {};
+  public var curSelected:Int = 0;
+  public var previewSound:Dynamic;
+  public var reconciles:Int = 0;
+  public var rendered:Int = 0;
+  public var renderedRevision:Int = -1;
+  public function new() {}
+  function reconcilePendingSongs():Bool { reconciles++; return false; }
+  function rebuildVisibleRows():Void {}
+  function rebuildIconQueue():Void {}
+  function updateRenderedRowAvailability(index:Int):Void {
+    rendered++;
+    renderedRevision = importAvailabilityRevision;
+  }
+  function availabilityAllowsSelection(index:Int):Bool return true;
+  function stopPreviewSound():Void {}
+  function returnFromEmptySongList():Void {}
+  function indexForPendingKey(key:String):Int return -1;
+  function changeSelection(amount:Int, force:Bool=false):Void {}
+''' + refresh + '\n' + interaction + r'''
+}
+class Main {
+  static function check(value:Bool,message:String):Void if(!value) throw message;
+  static function main():Void {
+    var state=new FreeplayHarness();
+    check(state.refreshImportAvailability(true),'initial snapshot was not applied');
+    check(state.importAvailabilityRevision==1 && state.importAvailabilityAppliedRevision==1
+      && state.renderedRevision==1,'initial UI revision was not reconciled');
+    var reconcilesBefore=state.reconciles;
+    var renderedBefore=state.rendered;
+    ImportRefreshManager.revision=2;
+    ImportRefreshManager.snapshot={revision:2,pendingSongs:[{key:'pending:new'}]};
+    state.refreshAvailabilityForInteraction();
+    check(state.importAvailabilityRevision==2 && state.importAvailabilityAppliedRevision==1,
+      'interaction should consume the new snapshot without claiming the UI applied it');
+    check(state.reconciles==reconcilesBefore && state.rendered==renderedBefore,
+      'interaction path mutated or rebuilt the song rows');
+    check(state.refreshImportAvailability(false),
+      'next browse update skipped a snapshot already consumed by an interaction');
+    check(state.reconciles==reconcilesBefore+1 && state.rendered==renderedBefore+1
+      && state.renderedRevision==2 && state.importAvailabilityAppliedRevision==2,
+      'pending rows or rendered availability were not reconciled to the consumed revision');
+  }
+}'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
+            work = FixturePath(directory)
+            (work / 'Main.hx').write_text(main, encoding='utf-8', newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, '-cp', str(work), '-main', 'Main', '--interp'],
+                cwd=work, capture_output=True, text=True, timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_import_back_detaches_manual_import_but_stops_scan(self):
         source = (ROOT / 'source/ImportSettingsState.hx').read_text()

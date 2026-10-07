@@ -27,6 +27,11 @@ class PsychOwnerAssetPath {
 		return owner;
 	}
 
+	/** Release the small identity-index cache when this selected owner retires. */
+	public static function releaseOwner(owner:String):Void {
+		RuntimeOwnerAssetIdentity.releaseOwner(owner);
+	}
+
 	/** Locate only owner media. Native fallback remains the caller's decision. */
 	public static function resolve(owner:String, id:String):PsychOwnerAssetPathResult {
 		var clean = cleanId(id);

@@ -3144,7 +3144,8 @@ class ImportImportJob {
 			packIndex++;
 			ModuleFunctions.reportImportProgressPayload({phase:'psych-global-pack', current:root.path,
 				completed:packIndex - 1, total:candidates.length, copied:0, skipped:0, failed:0, work:0});
-			var importedPack = PsychGlobalPackImporter.importPack(root.root, root.contentRoot);
+			var importedPack = PsychGlobalPackImporter.importPack(root.root, root.contentRoot,
+				function():Bool return ModuleFunctions.importWorkCancelled());
 			if (!importedPack.eligible) {
 				// The source may have changed after its scan. Leave it untouched and
 				// make the stale plan visible in the import details.

@@ -10,6 +10,7 @@ import animate.FlxAnimateFrames.SpritemapInput;
 import openfl.media.Sound;
 import openfl.display.BitmapData;
 import haxe.Http;
+import RuntimeOwnerAssetIdentity.RuntimeOwnerAssetIdentityResult;
 #if sys
 import sys.FileSystem;
 #end
@@ -349,6 +350,19 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		return ownerAssetCache;
 	}
 
+	/** Resolve a symbolic Lime ID through the authenticated package first and
+	 * this same owner's explicit core dependency second. A definite package type
+	 * mismatch or incomplete catalog never binds another library implicitly. */
+	public function resolveOwnerAssetIdentity(id:String, expectedType:Null<String>):RuntimeOwnerAssetIdentityResult {
+		var packageResult = RuntimeOwnerAssetIdentity.lookup(root, 'Nightmare Vision', 'package', id, expectedType);
+		if (packageResult.state == 'found' || packageResult.state == 'type-mismatch'
+			|| packageResult.state == 'unknown' || packageResult.state == 'invalid') return packageResult;
+		var coreResult = RuntimeOwnerAssetIdentity.lookup(root, 'Nightmare Vision', 'core', id, expectedType);
+		if (coreResult.state != 'no-index' && coreResult.state != 'unclaimed') return coreResult;
+		if (packageResult.state == 'missing') return packageResult;
+		return coreResult;
+	}
+
 	public function bindOwnerAssetFacade(value:NightmareVisionFunkinAssets):Void ownerAssetFacade = value;
 
 	function ownedAssets():NightmareVisionFunkinAssets {
@@ -358,6 +372,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 
 	/** Clear every cache entry owned by this import when its runtime is unmounted. */
 	public function releaseOwnerAssets():Void {
+		RuntimeOwnerAssetIdentity.releaseOwner(root);
 		tempAtlasFramesCache.clear();
 		scriptInstances.clear();
 		if (ownerAssetCache != null) ownerAssetCache.release();

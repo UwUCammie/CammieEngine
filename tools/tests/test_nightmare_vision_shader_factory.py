@@ -18,6 +18,15 @@ class NightmareVisionShaderFactoryTest(unittest.TestCase):
         self.work = Path(self.scratch.name)
         # Paths owns a typed module-name cache; script execution is outside this shader subject.
         self.write("NightmareVisionScriptModule.hx", "class NightmareVisionScriptModule {}")
+        self.write("RuntimeOwnerAssetIdentity.hx", '''
+typedef RuntimeOwnerAssetIdentityResult = { var state:String; var path:Null<String>; };
+class RuntimeOwnerAssetIdentity {
+ public static function lookup(_owner:String, _engine:String, _scope:String,
+     _id:String, ?_expectedType:String):RuntimeOwnerAssetIdentityResult
+  return {state:'no-index', path:null};
+ public static function releaseOwner(_owner:String):Void {}
+}
+''')
         self.owner = self.work / "assets/imported_mods/nmv-selected"
         self.core = self.owner / "__nmv_core"
         self.foreign = self.work / "assets/imported_mods/nmv-other"

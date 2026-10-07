@@ -11,6 +11,14 @@ typedef FreeplayAvailabilityDecision = {
 
 /** Pure owner and chart gate shared by Freeplay rows and imported-package entry points. */
 class FreeplaySongAvailability {
+	/** A static song list can outlive the FreeplayState which selected it. When
+	 * the importer publishes a new generation in another safe menu, a later
+	 * FreeplayState must rebuild that list from the current registry. */
+	public static function songListNeedsRegistryRefresh(hasDirectOwner:Bool,
+		entryCount:Int, listGeneration:Int, managerGeneration:Int):Bool {
+		return hasDirectOwner || entryCount <= 0 || listGeneration != managerGeneration;
+	}
+
 	/** Provisional scan rows belong in the unscoped master lists and the native
 	 * Imported category, while explicit package Freeplay remains owner-scoped. */
 	public static function canPresentPendingSongs(category:String, hasDirectOwner:Bool):Bool {

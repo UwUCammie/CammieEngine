@@ -84,6 +84,8 @@ import sys.FileSystem;
 import sys.io.File;
 class FNFAssets {
  public static var lastBitmapPath:String;
+ public static var lastSoundPath:String;
+ public static var soundLoads:Int = 0;
  static function resolve(id:String):String return Path.normalize(id);
  public static function exists(id:String, ?ext:Dynamic):Bool return id != null && FileSystem.exists(resolve(id));
  public static function resolveCaseInsensitivePath(id:String):String return exists(id) ? resolve(id) : null;
@@ -93,12 +95,17 @@ class FNFAssets {
   lastBitmapPath = resolve(id);
   return new BitmapData(1, 1, true, 0);
  }
- public static function getSound(id:String, ?useCache:Bool = true):Sound return null;
+ public static function getSound(id:String, ?useCache:Bool = true):Sound {
+  lastSoundPath = resolve(id);
+  soundLoads++;
+  return cast {id:lastSoundPath, load:soundLoads};
+ }
 }''',
                 encoding="utf-8",
              newline='\n')
             (work / "CompatScriptManifest.hx").write_text(
-                'package; class CompatScriptManifest { public static inline var ROOT_PREFIX = "assets/imported_mods"; }',
+                'package; class CompatScriptManifest { public static inline var ROOT_PREFIX = "assets/imported_mods"; '
+                'public static function destinationKey(path:String):String return path; }',
                 encoding="utf-8",
              newline='\n')
             (work / "PsychOwnerPathsProbe.hx").write_text(
@@ -132,11 +139,14 @@ class PsychOwnerPathsProbe {
   if (stageBack == null || FNFAssets.lastBitmapPath != "assets/images/custom_stages/stage/stageback.png")
    throw "Psych stock stageback did not resolve to the native stage asset: " + FNFAssets.lastBitmapPath;
   var resultSound = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["tickleFight"]);
-  if (resultSound != owner + "/sounds/tickleFight.ogg")
-   throw "Paths.sound did not resolve results audio from the selected owner: " + resultSound;
+  if (resultSound == null || Reflect.field(resultSound, "id") != owner + "/sounds/tickleFight.ogg")
+   throw "Paths.sound did not decode results audio from the selected owner: " + FNFAssets.lastSoundPath;
+  var cachedSound = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["tickleFight"]);
+  if (cachedSound != resultSound || FNFAssets.soundLoads != 1)
+   throw "Paths.sound did not reuse the selected owner's decoded Sound";
   var resultMusic = Reflect.callMethod(paths, Reflect.field(paths, "music"), ["resultsPERFECT"]);
-  if (resultMusic != owner + "/music/resultsPERFECT.ogg")
-   throw "Paths.music did not resolve results music from the selected owner: " + resultMusic;
+  if (resultMusic == null || Reflect.field(resultMusic, "id") != owner + "/music/resultsPERFECT.ogg")
+   throw "Paths.music did not decode results music from the selected owner: " + FNFAssets.lastSoundPath;
   var resultAtlas = Reflect.callMethod(paths, Reflect.field(paths, "getAtlas"), ["results"]);
   if (resultAtlas == null || FNFAssets.lastBitmapPath != owner + "/images/results.png")
    throw "Paths.getAtlas did not load a paired owner image and Sparrow metadata";

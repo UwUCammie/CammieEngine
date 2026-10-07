@@ -1,0 +1,590 @@
+package;
+
+import PsychAssetProfile.PsychAssetProfileCandidate;
+import PsychAssetProfile.PsychAssetProfileMappedFile;
+#if sys
+import sys.io.File;
+import sys.FileSystem;
+#end
+using StringTools;
+
+/** One receipt-owned Lime AssetLibrary entry. `ownerRelative` is a physical
+	path under the selected imported owner; it is never derived from `id`. */
+typedef SourceLimeAssetIdentityEntry = {
+	var library:String;
+	var id:String;
+	var type:String;
+	var ownerRelative:String;
+	var size:Int;
+	var sha256:String;
+	var candidateOrder:Int;
+}
+
+/** Immutable persisted index metadata. Runtime transaction/generation values
+	are intentionally supplied by the verified manifest loader, not serialized. */
+typedef SourceLimeAssetIdentityIndex = {
+	var version:Int;
+	var owner:String;
+	var engine:String;
+	var scope:String;
+	var namespace:String;
+	var snapshotId:String;
+	var rootRelative:String;
+	var projectSha256:String;
+	var complete:Bool;
+	var libraries:Array<String>;
+	var librariesComplete:Bool;
+	var entries:Array<SourceLimeAssetIdentityEntry>;
+}
+
+/** Lime's `library:id` symbol, split at the first colon only. */
+typedef SourceLimeAssetIdentityKey = {
+	var library:String;
+	var id:String;
+}
+
+/** Staged sidecar value, committed through the ordinary import transaction. */
+typedef SourceLimeAssetIdentityPublication = {
+	var path:String;
+	var content:String;
+	var index:SourceLimeAssetIdentityIndex;
+	var failed:Bool;
+	var diagnostics:Array<String>;
+}
+
+typedef SourceLimeAssetIdentityPublicationInput = {
+	var profile:Dynamic;
+	var owner:String;
+	var engine:String;
+	var scope:String;
+	var identityEvents:Array<Dynamic>;
+	var blockedKeys:Array<SourceLimeAssetIdentityKey>;
+	var blockAll:Bool;
+	var complete:Bool;
+	var librariesComplete:Bool;
+}
+
+/**
+	Shared Lime AssetLibrary identity rules and validated sidecar schema.
+	This type does not load files or trust importer ownership by itself. A runtime
+	loader must verify the sidecar and each entry against the committed import
+	manifest before using the returned index.
+*/
+class SourceLimeAssetIdentity {
+	public static inline var VERSION:Int = 1;
+	public static inline var SIDECAR_DIR:String = ".cammie-asset-identities";
+	public static inline var PSYCH_FILE:String = "psych.json";
+	public static inline var NIGHTMARE_VISION_PACKAGE_FILE:String = "nightmare-vision-package.json";
+	public static inline var NIGHTMARE_VISION_CORE_FILE:String = "nightmare-vision-core.json";
+
+	static final TYPES:Array<String> = [
+		"BINARY", "BUNDLE", "FONT", "IMAGE", "MANIFEST", "MOVIE_CLIP", "MUSIC", "SOUND", "TEMPLATE", "TEXT"
+	];
+
+	/** Lime maps a null or empty library to `default`, preserving every other
+		library name exactly, including case. */
+	public static function canonicalLibrary(library:Null<String>):String {
+		return library == null || library == "" ? "default" : library;
+	}
+
+	/** Parse Lime's `library:id` symbol. No colon means the default library;
+		when a colon is present, only the first one is structural. */
+	public static function parseQualifiedId(value:String):SourceLimeAssetIdentityKey {
+		if (value == null) return null;
+		var separator = value.indexOf(":");
+		if (separator < 0) return {library:"default", id:value};
+		return {library:canonicalLibrary(value.substr(0, separator)), id:value.substr(separator + 1)};
+	}
+
+	public static function keyForEvent(event:PsychAssetProfileMappedFile):Null<SourceLimeAssetIdentityKey> {
+		if (event == null) return null;
+		var id = event.assetId;
+		if (id == null) id = event.mappedPath;
+		return id == null ? null : {library:canonicalLibrary(event.library), id:id};
+	}
+
+	/** Resolve the identity a candidate could claim at one enumerated source
+		path. Returns null when an unresolved path or library prevents exactness. */
+	public static function keyForProjection(candidate:PsychAssetProfileCandidate,
+		sourceRelative:Null<String>):Null<SourceLimeAssetIdentityKey> {
+		if (candidate == null) return null;
+		var library = candidate.library == null || candidate.library == ""
+			? "default" : candidate.library;
+		if (hasSymbol(library)) return null;
+		if (candidate.assetIdOverride == true) {
+			if (candidate.assetId == null || hasSymbol(candidate.assetId)) return null;
+			return {library:library, id:candidate.assetId};
+		}
+		if (sourceRelative == null || sourceRelative == "" || hasSymbol(sourceRelative)
+			|| candidate.sourceRelative == null || candidate.targetRelative == null
+			|| hasSymbol(candidate.sourceRelative) || hasSymbol(candidate.targetRelative)) return null;
+		var base = StringTools.replace(candidate.sourceRelative, "\\", "/");
+		var source = StringTools.replace(sourceRelative, "\\", "/");
+		var suffix = source == base ? "" : StringTools.startsWith(source, base + "/")
+			? source.substr(base.length + 1) : null;
+		if (suffix == null) return null;
+		var id = projectPath(candidate, suffix);
+		return id == null || hasSymbol(id) ? null : {library:library, id:id};
+	}
+
+	/** Apply a concrete Project source-to-target rename without requiring the
+		candidate to be enabled. This is used only to identify a deferred or
+		disabled projection; it never authorizes reading or publishing the source. */
+	public static function projectPath(candidate:PsychAssetProfileCandidate,
+		sourceSuffix:String):Null<String> {
+		if (candidate == null || sourceSuffix == null) return null;
+		var target = normalizeLogical(candidate.targetRelative);
+		var suffix = sourceSuffix == "" ? "" : normalizeRelative(sourceSuffix);
+		if (target == null || (sourceSuffix != "" && suffix == null)) return null;
+		var mapped = suffix == null || suffix == "" ? target : target + "/" + suffix;
+		return normalizeLogical(mapped);
+	}
+
+	public static function targetForProjection(candidate:PsychAssetProfileCandidate,
+		sourceRelative:Null<String>):Null<String> {
+		if (candidate == null || candidate.sourceRelative == null || candidate.targetRelative == null
+			|| hasSymbol(candidate.sourceRelative) || hasSymbol(candidate.targetRelative)
+			|| sourceRelative == null || hasSymbol(sourceRelative)) return null;
+		var base = StringTools.replace(candidate.sourceRelative, "\\", "/");
+		var source = StringTools.replace(sourceRelative, "\\", "/");
+		var suffix = source == base ? "" : StringTools.startsWith(source, base + "/")
+			? source.substr(base.length + 1) : null;
+		return suffix == null ? null : projectPath(candidate, suffix);
+	}
+
+	/** Runtime-owned path for a logical Lime target. Project `assets/` maps to
+		its contents under an imported owner; other safe target roots stay intact. */
+	public static function ownerRelativeForTarget(target:String):Null<String> {
+		var clean = normalizeLogical(target);
+		if (clean == null) return null;
+		if (clean == "assets") return "";
+		if (StringTools.startsWith(clean, "assets/")) clean = clean.substr("assets/".length);
+		return normalizeOwnerRelative(clean);
+	}
+
+	public static function keyToken(key:SourceLimeAssetIdentityKey):Null<String> {
+		if (key == null || key.library == null || key.id == null) return null;
+		return Std.string(key.library.length) + ":" + key.library
+			+ Std.string(key.id.length) + ":" + key.id;
+	}
+
+	/** Canonical Lime AssetType spelling, or null when Lime would not recognize
+		an explicit Project type. `bytes` is Lime's alias for BINARY. */
+	public static function normalizeType(value:Null<String>):Null<String> {
+		if (value == null || value == "") return null;
+		if (value == "bytes") return "BINARY";
+		var upper = value.toUpperCase();
+		return TYPES.indexOf(upper) >= 0 ? upper : null;
+	}
+
+	/** Reproduce Lime 8.3.2 Asset type inference, including hxp.System.isText's
+		512-byte probe for extensions not listed by AssetHelper. The optional source
+		path must be a verified snapshot file; without it, an unknown extension
+		remains unresolved instead of guessing TEXT or BINARY. */
+	public static function inferType(explicitType:Null<String>, sourceRelative:String,
+		size:Int, ?sourcePath:String):Null<String> {
+		var explicit = normalizeType(explicitType);
+		if (explicit != null) return explicit;
+		var extension = extensionOf(sourceRelative);
+		var known = switch (extension) {
+			case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".jfif": "IMAGE";
+			case ".otf", ".ttf": "FONT";
+			case ".wav", ".wave": "SOUND";
+			case ".mp3", ".mp2": "MUSIC";
+			case ".exe", ".bin", ".so", ".pch", ".dll", ".zip", ".tar", ".gz", ".fla", ".swf", ".atf", ".psd", ".awd": "BINARY";
+			case ".txt", ".text", ".xml", ".java", ".hx", ".cpp", ".c", ".h", ".cs", ".js", ".mm", ".hxml", ".html", ".json", ".css", ".gpe", ".pbxproj", ".plist", ".properties", ".ini", ".hxproj", ".nmml", ".lime", ".svg": "TEXT";
+			case ".bundle": "MANIFEST";
+			case ".ogg", ".m4a": size > 1024 * 1024 ? "MUSIC" : "SOUND";
+			default: "";
+		};
+		if (known != "") return known;
+		if (sourcePath == null || sourcePath == "") return null;
+		var text = hxpIsText(sourcePath);
+		return text == null ? null : text ? "TEXT" : "BINARY";
+	}
+
+	/** Reproduce hxp.System.isText classification. The file-size bound models its
+		readByte EOF catch without requiring the eval target to instantiate haxe.io.Eof. */
+	static function hxpIsText(sourcePath:Null<String>):Null<Bool> {
+		#if sys
+		if (sourcePath == null || !FileSystem.exists(sourcePath)) return false;
+		var fileSize:Int;
+		try fileSize = FileSystem.stat(sourcePath).size catch (_:Dynamic) return null;
+		var input;
+		try input = File.read(sourcePath, true) catch (_:Dynamic) return null;
+		var numChars = 0;
+		var numBytes = 0;
+		var byteHeader:Null<Array<Int>> = [];
+		var zeroBytes = 0;
+		var bom = false;
+		try {
+			while (numBytes < 512 && numBytes < fileSize) {
+				var byte = input.readByte();
+				if (numBytes < 3) {
+					byteHeader.push(byte);
+				} else if (byteHeader != null) {
+					if (byteHeader[0] == 0xFF && byteHeader[1] == 0xFE) bom = true;
+					else if (byteHeader[0] == 0xFE && byteHeader[1] == 0xFF) bom = true;
+					else if (byteHeader[0] == 0xEF && byteHeader[1] == 0xBB && byteHeader[2] == 0xBF) bom = true;
+					byteHeader = null;
+				}
+				if (bom) break;
+				numBytes++;
+				if (byte == 0) zeroBytes++;
+				if ((byte > 8 && byte < 16) || (byte > 32 && byte < 256) || byte > 287)
+					numChars++;
+			}
+		} catch (_:Dynamic) {}
+		input.close();
+		if (bom) return true;
+		if (numBytes == 0 || (numChars / numBytes) > 0.9
+			|| ((zeroBytes / numBytes) < 0.015 && (numChars / numBytes) > 0.5)) return true;
+		return false;
+		#else
+		return null;
+		#end
+	}
+
+	/** Match Lime's native AssetLibrary.exists semantics. A null request and a
+		BINARY request accept any stored native type; SOUND and MUSIC inter-match;
+		stored BINARY satisfies TEXT. Flash-only IMAGE/TEXT permissiveness is not
+		applied to this native runtime. */
+	public static function typeMatches(actual:String, expected:Null<String>):Bool {
+		var actualType = normalizeType(actual);
+		if (actualType == null) return false;
+		var expectedType = normalizeType(expected);
+		if (expected == null || expectedType == "BINARY") return true;
+		if (expectedType == null) return false;
+		if (actualType == expectedType) return true;
+		if ((actualType == "SOUND" || actualType == "MUSIC")
+			&& (expectedType == "SOUND" || expectedType == "MUSIC")) return true;
+		return actualType == "BINARY" && expectedType == "TEXT";
+	}
+
+	public static function sidecarFilename(engine:String, scope:String):Null<String> {
+		var canonical = ImportRevision.normalizeEngine(engine);
+		if (canonical == "Psych Engine" && scope == "package") return PSYCH_FILE;
+		if (canonical == "Nightmare Vision" && scope == "package") return NIGHTMARE_VISION_PACKAGE_FILE;
+		if (canonical == "Nightmare Vision" && scope == "core") return NIGHTMARE_VISION_CORE_FILE;
+		return null;
+	}
+
+	/** Path relative to the owner root. */
+	public static function sidecarRelativePath(engine:String, scope:String):Null<String> {
+		var filename = sidecarFilename(engine, scope);
+		return filename == null ? null : SIDECAR_DIR + "/" + filename;
+	}
+
+	public static function isReservedOwnerPath(path:String):Bool {
+		var clean = normalizeOwnerRelative(path);
+		if (clean == null) return false;
+		var key = clean.toLowerCase();
+		var reserved = SIDECAR_DIR.toLowerCase();
+		return key == reserved || key.startsWith(reserved + "/");
+	}
+
+	/** Validate and copy a JSON-decoded index against independently captured
+		owner identity. The caller still verifies the index and entry hashes against
+		the committed manifest's owned-file table. */
+	public static function validate(raw:Dynamic, expectedOwner:String, expectedEngine:String,
+		expectedScope:String, expectedNamespace:String):Null<SourceLimeAssetIdentityIndex> {
+		if (raw == null || !isRecord(raw)) return null;
+		var version = intField(raw, "version");
+		var owner = stringField(raw, "owner");
+		var engine = stringField(raw, "engine");
+		var scope = stringField(raw, "scope");
+		var namespace = stringField(raw, "namespace");
+		var snapshotId = stringField(raw, "snapshotId");
+		var rootRelative = stringField(raw, "rootRelative");
+		var projectSha256 = stringField(raw, "projectSha256");
+		var complete = boolField(raw, "complete");
+		var librariesComplete = boolField(raw, "librariesComplete");
+		var librariesRaw:Dynamic = Reflect.field(raw, "libraries");
+		var entriesRaw:Dynamic = Reflect.field(raw, "entries");
+		var expectedCanonicalEngine = ImportRevision.normalizeEngine(expectedEngine);
+		if (version != VERSION || owner == null || expectedOwner == null || owner != expectedOwner
+			|| !isSafeOwnerRoot(owner) || engine == null || expectedCanonicalEngine == ""
+			|| ImportRevision.normalizeEngine(engine) != expectedCanonicalEngine
+			|| scope == null || scope != expectedScope || namespace == null || namespace != expectedNamespace
+			|| !isNamespace(namespace) || owner != "assets/imported_mods/" + namespace
+			|| sidecarFilename(engine, scope) == null
+			|| snapshotId == null || !isHex(snapshotId, 64)
+			|| rootRelative == null || (rootRelative != "" && normalizeRelative(rootRelative) != rootRelative)
+			|| projectSha256 == null || !isHex(projectSha256, 64)
+			|| complete == null || librariesComplete == null
+			|| !Std.isOfType(librariesRaw, Array) || !Std.isOfType(entriesRaw, Array)) return null;
+
+		var libraries:Array<String> = [];
+		var seenLibraries:Map<String, Bool> = new Map();
+		for (rawLibrary in (cast librariesRaw:Array<Dynamic>)) {
+			if (!Std.isOfType(rawLibrary, String)) return null;
+			var library:String = cast rawLibrary;
+			if (library == "" || canonicalLibrary(library) != library || seenLibraries.exists(library)) return null;
+			seenLibraries.set(library, true);
+			libraries.push(library);
+		}
+		if (!seenLibraries.exists("default")) return null;
+
+		var entries:Array<SourceLimeAssetIdentityEntry> = [];
+		var seenKeys:Map<String, Bool> = new Map();
+		for (rawEntry in (cast entriesRaw:Array<Dynamic>)) {
+			if (!isRecord(rawEntry)) return null;
+			var library = stringField(rawEntry, "library");
+			var id = stringField(rawEntry, "id");
+			var type = stringField(rawEntry, "type");
+			var ownerRelative = stringField(rawEntry, "ownerRelative");
+			var size = intField(rawEntry, "size");
+			var sha256 = stringField(rawEntry, "sha256");
+			var candidateOrder = intField(rawEntry, "candidateOrder");
+			if (library == null || library == "" || !validIdentityText(library, 1024) || !seenLibraries.exists(library)
+				|| id == null || id == "" || !validIdentityText(id, 4096) || id.indexOf("$") >= 0
+				|| type == null || normalizeType(type) != type
+				|| ownerRelative == null || normalizeOwnerRelative(ownerRelative) != ownerRelative
+				|| isReservedOwnerPath(ownerRelative) || size == null || size < 0
+				|| sha256 == null || !isHex(sha256, 64) || sha256 != sha256.toLowerCase()
+				|| candidateOrder == null || candidateOrder < 0) return null;
+			var key = library + "\x00" + id;
+			if (seenKeys.exists(key)) return null;
+			seenKeys.set(key, true);
+			entries.push({library:library, id:id, type:type, ownerRelative:ownerRelative,
+				size:size, sha256:sha256, candidateOrder:candidateOrder});
+		}
+		entries.sort(function(a, b) {
+			var order = Reflect.compare(a.candidateOrder, b.candidateOrder);
+			if (order != 0) return order;
+			var libraryOrder = Reflect.compare(a.library, b.library);
+			return libraryOrder != 0 ? libraryOrder : Reflect.compare(a.id, b.id);
+		});
+		libraries.sort(Reflect.compare);
+		return {
+			version:version, owner:owner, engine:expectedCanonicalEngine, scope:scope,
+			namespace:namespace, snapshotId:snapshotId, rootRelative:rootRelative,
+			projectSha256:projectSha256, complete:complete, libraries:libraries,
+			librariesComplete:librariesComplete, entries:entries
+		};
+	}
+
+	/** Convert the final collision-free shared publication plan to one
+		transaction-owned sidecar. Every published entry points at an already
+		planned physical file, and blocked IDs are omitted rather than guessed. */
+	public static function preparePublication(profile:Dynamic, owner:String, engine:String,
+		scope:String, identityEvents:Array<Dynamic>, blockedKeys:Array<SourceLimeAssetIdentityKey>,
+		blockAll:Bool, complete:Bool, librariesComplete:Bool):SourceLimeAssetIdentityPublication {
+		var diagnostics:Array<String> = [];
+		var canonicalEngine = ImportRevision.normalizeEngine(engine);
+		var canonicalScope = scope == null || scope == "" ? "package" : scope;
+		var namespace = stringField(profile, "namespace");
+		var sidecar = sidecarRelativePath(canonicalEngine, canonicalScope);
+		var rootRelative = stringField(profile, "rootRelative");
+		var snapshotId = stringField(profile, "snapshotId");
+		var projectSha256 = stringField(profile, "projectSha256");
+		if (profile == null || owner == null || sidecar == null || namespace == ""
+			|| owner != "assets/imported_mods/" + namespace
+			|| !isSafeOwnerRoot(owner) || snapshotId == null || !isHex(snapshotId, 64)
+			|| projectSha256 == null || !isHex(projectSha256, 64)
+			|| rootRelative == null || (rootRelative != "" && normalizeRelative(rootRelative) != rootRelative)) {
+			return {path:"", content:"", index:null, failed:true,
+				diagnostics:["[lime-asset-identity] The verified profile cannot be represented by a safe owner identity sidecar."]};
+		}
+
+		var libraries:Array<String> = ["default"];
+		var knownLibrary:Map<String, Bool> = new Map();
+		knownLibrary.set("default", true);
+		var rawCandidates:Dynamic = Reflect.field(profile, "candidates");
+		if (!Std.isOfType(rawCandidates, Array)) {
+			librariesComplete = false;
+			complete = false;
+		} else for (candidate in (cast rawCandidates:Array<Dynamic>)) {
+			if (candidate == null) {
+				librariesComplete = false;
+				complete = false;
+				continue;
+			}
+			var candidateState = stringField(candidate, "state");
+			if (candidateState == "disabled") continue;
+			if (candidateState != "enabled") {
+				librariesComplete = false;
+				complete = false;
+			}
+			var rawLibrary = stringField(candidate, "library");
+			if (candidateState != "enabled" || rawLibrary == null || hasSymbol(rawLibrary)
+				|| !validIdentityText(rawLibrary, 1024)) {
+				librariesComplete = false;
+				complete = false;
+			}
+		}
+
+		var blocked:Map<String, Bool> = new Map();
+		if (blockedKeys != null) for (blockedKey in blockedKeys) {
+			var token = keyToken(blockedKey);
+			if (token != null) blocked.set(token, true);
+			else blockAll = true;
+		}
+		var winners:Map<String, SourceLimeAssetIdentityEntry> = new Map();
+		if (identityEvents != null) for (rawEvent in identityEvents) {
+			if (rawEvent == null) {
+				complete = false;
+				blockAll = true;
+				continue;
+			}
+			var event:PsychAssetProfileMappedFile = cast Reflect.field(rawEvent, "event");
+			var ownerRelative = normalizeOwnerRelative(stringField(rawEvent, "ownerRelative"));
+			var key = keyForEvent(event);
+			var token = keyToken(key);
+			var type = event == null ? null : inferType(event.type, event.sourceRelative,
+				event.size, event.sourcePath);
+			if (key != null && key.library != null && key.library != ""
+				&& validIdentityText(key.library, 1024))
+				addLibrary(libraries, knownLibrary, key.library);
+			if (key == null || token == null || key.id == "" || hasSymbol(key.id)
+				|| !validIdentityText(key.id, 4096) || !validIdentityText(key.library, 1024)
+				|| ownerRelative == null || type == null || type == "TEMPLATE" || type == "MANIFEST") {
+				complete = false;
+				if (token == null) {
+					blockAll = true;
+					librariesComplete = false;
+				} else blocked.set(token, true);
+				continue;
+			}
+			if (blocked.exists(token) || blockAll) continue;
+			var entry:SourceLimeAssetIdentityEntry = {
+				library:key.library, id:key.id, type:type, ownerRelative:ownerRelative,
+				size:event.size, sha256:event.sha256.toLowerCase(), candidateOrder:event.candidateOrder
+			};
+			var prior = winners.get(token);
+			if (prior == null || entry.candidateOrder > prior.candidateOrder) winners.set(token, entry);
+			else if (entry.candidateOrder == prior.candidateOrder
+				&& (entry.ownerRelative != prior.ownerRelative || entry.sha256 != prior.sha256
+					|| entry.size != prior.size || entry.type != prior.type)) {
+				blocked.set(token, true);
+				winners.remove(token);
+				complete = false;
+				diagnostics.push("[lime-asset-identity] Equal-order declarations conflict for one Lime library/id key; the key is unavailable.");
+			}
+		}
+		if (blockAll) winners = new Map();
+		for (token in blocked.keys()) winners.remove(token);
+
+		var entries:Array<SourceLimeAssetIdentityEntry> = [];
+		for (entry in winners) entries.push(entry);
+		entries.sort(function(left, right) {
+			var byOrder = Reflect.compare(left.candidateOrder, right.candidateOrder);
+			if (byOrder != 0) return byOrder;
+			var byLibrary = Reflect.compare(left.library, right.library);
+			return byLibrary != 0 ? byLibrary : Reflect.compare(left.id, right.id);
+		});
+		libraries.sort(Reflect.compare);
+		var index:SourceLimeAssetIdentityIndex = {
+			version:VERSION, owner:owner, engine:canonicalEngine, scope:canonicalScope,
+			namespace:namespace, snapshotId:snapshotId, rootRelative:rootRelative,
+			projectSha256:projectSha256.toLowerCase(), complete:complete,
+			libraries:libraries, librariesComplete:librariesComplete, entries:entries
+		};
+		var validated = validate(index, owner, canonicalEngine, canonicalScope, namespace);
+		if (validated == null) {
+			diagnostics.push("[lime-asset-identity] Generated sidecar failed its own schema validation.");
+			return {path:"", content:"", index:null, failed:true, diagnostics:diagnostics};
+		}
+		var relativeSidecar = sidecarRelativePath(canonicalEngine, canonicalScope);
+		var fullPath = normalizeInstallRelative(owner + "/" + relativeSidecar);
+		if (fullPath == null || fullPath != owner + "/" + relativeSidecar)
+			return {path:"", content:"", index:null, failed:true,
+				diagnostics:["[lime-asset-identity] The generated sidecar path is unsafe."]};
+		return {path:fullPath, content:serialize(validated), index:validated,
+			failed:false, diagnostics:diagnostics};
+	}
+
+	public static function serialize(index:SourceLimeAssetIdentityIndex):String {
+		if (index == null) throw "A Lime asset identity index is required.";
+		return UnicodeSafeJson.stringifyStandard(index) + "\n";
+	}
+
+	public static function normalizeOwnerRelative(path:String):Null<String> {
+		if (path == null || path == "" || path.indexOf("\\") >= 0) return null;
+		var clean = normalizeRelative(path);
+		return clean == path ? clean : null;
+	}
+
+	static function hasSymbol(value:Null<String>):Bool {
+		return value != null && value.indexOf("$") >= 0;
+	}
+
+	static function extensionOf(path:String):String {
+		if (path == null) return "";
+		var normalized = StringTools.replace(path, "\\", "/");
+		var slash = normalized.lastIndexOf("/");
+		var dot = normalized.lastIndexOf(".");
+		if (dot <= slash || dot == normalized.length - 1) return "";
+		return normalized.substr(dot).toLowerCase();
+	}
+
+	static function normalizeRelative(path:String):Null<String> {
+		if (path == null || path == "" || path.startsWith("/") || path.indexOf(":") >= 0
+			|| path.indexOf("\x00") >= 0) return null;
+		var parts:Array<String> = [];
+		for (part in path.split("/")) {
+			if (part == "" || part == "." || part == "..") return null;
+			parts.push(part);
+		}
+		return parts.join("/");
+	}
+
+	static function isSafeOwnerRoot(path:String):Bool {
+		if (path == null || normalizeRelative(path) != path) return false;
+		return path.startsWith("assets/imported_mods/") && path.substr("assets/imported_mods/".length) != "";
+	}
+
+	static function isNamespace(value:String):Bool {
+		return value != null && value != "" && value.length <= 180
+			&& ~/^[A-Za-z0-9][A-Za-z0-9._-]*$/.match(value);
+	}
+
+	static function isHex(value:String, length:Int):Bool {
+		return value != null && value.length == length && ~/^[a-fA-F0-9]+$/.match(value);
+	}
+
+	static function isRecord(value:Dynamic):Bool {
+		return value != null && !Std.isOfType(value, String) && !Std.isOfType(value, Array)
+			&& Reflect.isObject(value);
+	}
+
+	static function addLibrary(output:Array<String>, seen:Map<String, Bool>, name:String):Void {
+		if (name == null || name == "" || seen.exists(name)) return;
+		seen.set(name, true);
+		output.push(name);
+	}
+
+	static function validIdentityText(value:String, maximum:Int):Bool {
+		if (value == null || value == "" || value.length > maximum) return false;
+		for (index in 0...value.length) {
+			var code = StringTools.unsafeCodeAt(value, index);
+			if (code < 0x20 || (code >= 0x7F && code <= 0x9F)) return false;
+		}
+		return true;
+	}
+
+	static function normalizeLogical(path:String):Null<String> {
+		if (path == null || path == "" || path.indexOf("\\") >= 0) return null;
+		var clean = normalizeRelative(path);
+		return clean == path ? clean : null;
+	}
+
+	static function normalizeInstallRelative(path:String):Null<String> {
+		return normalizeLogical(path);
+	}
+
+	static function stringField(value:Dynamic, name:String):Null<String> {
+		var field:Dynamic = Reflect.field(value, name);
+		return Std.isOfType(field, String) ? cast field : null;
+	}
+
+	static function intField(value:Dynamic, name:String):Null<Int> {
+		var field:Dynamic = Reflect.field(value, name);
+		return Std.isOfType(field, Int) ? cast field : null;
+	}
+
+	static function boolField(value:Dynamic, name:String):Null<Bool> {
+		var field:Dynamic = Reflect.field(value, name);
+		return Std.isOfType(field, Bool) ? cast field : null;
+	}
+}

@@ -334,9 +334,7 @@ class CoolUtil {
 		return TJSON.parse(json);
 	}
 	public static function stringifyJson(json:Dynamic, ?fancy:Bool = true):String {
-		// use tjson to prettify it
-		var style:String = if (fancy) 'fancy' else null;
-		return TJSON.encode(json,style);
+		return UnicodeSafeJson.stringify(json, fancy);
 	}
 	// include all helper functions to keep shit in the same place
 	public static function truncateFloat(number:Float, precision:Int):Float {

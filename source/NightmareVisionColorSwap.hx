@@ -61,10 +61,10 @@ class NightmareVisionColorSwap {
 class NightmareVisionColorSwapShader extends FlxShader {
 	@:glFragmentSource('
 		#pragma header
-
+		
 		uniform float u_saturation;
-		uniform float u_hue;
-		uniform float u_brightness;
+	 	uniform float u_hue;
+	 	uniform float u_brightness;
 
 		uniform float u_alpha;
 		uniform float u_flash;
@@ -96,7 +96,7 @@ class NightmareVisionColorSwapShader extends FlxShader {
 			swagColor.r = swagColor.r + u_hue;
 			swagColor.g = swagColor.g + clamp(u_saturation,-1.0,1.0);
 			swagColor.b = swagColor.b * (1.0 + u_brightness);
-
+			
 			color = vec4(hsv2rgb(vec3(swagColor.rgb)), swagColor.a);
 
 			if(u_flash != 0.0){

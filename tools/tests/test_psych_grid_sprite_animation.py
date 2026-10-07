@@ -217,6 +217,15 @@ class PsychGridSpriteAnimationTest(unittest.TestCase):
                 "class CompatScriptManifest { public static inline var ROOT_PREFIX:String = 'assets/imported_mods'; }\n",
                 encoding="utf-8", newline="\n",
             )
+            (work / "RuntimeOwnerAssetIdentity.hx").write_text('''
+typedef RuntimeOwnerAssetIdentityResult = { var state:String; var path:Null<String>; };
+class RuntimeOwnerAssetIdentity {
+ public static function lookup(_owner:String, _engine:String, _scope:String,
+     _id:String, ?_expectedType:String):RuntimeOwnerAssetIdentityResult
+  return {state:'no-index', path:null};
+ public static function releaseOwner(_owner:String):Void {}
+}
+''', encoding="utf-8", newline="\n")
             (work / "FNFAssets.hx").write_text(r'''import sys.FileSystem;
 class FNFAssets {
   static var assets:Map<String, Dynamic> = new Map();

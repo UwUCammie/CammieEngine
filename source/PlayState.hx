@@ -7079,6 +7079,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return;
 		}
 		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'sound', [compatPsychAssetKey(path, '.ogg')]);
+		if (Std.isOfType(resolved, Sound)) return;
 		var nativePath = resolved != null && FNFAssets.exists(Std.string(resolved))
 			? Std.string(resolved) : compatPsychNativeSoundPath(path, true);
 		if (nativePath != null) try FNFAssets.getSound(nativePath) catch (_:Dynamic) {}
@@ -7092,6 +7093,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return;
 		}
 		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'music', [compatPsychAssetKey(path, '.ogg')]);
+		if (Std.isOfType(resolved, Sound)) return;
 		var nativePath = resolved != null && FNFAssets.exists(Std.string(resolved))
 			? Std.string(resolved) : compatPsychNativeSoundPath(path, false);
 		if (nativePath != null) try FNFAssets.getSound(nativePath) catch (_:Dynamic) {}
@@ -7355,7 +7357,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return null;
 	}
 
-	function compatPlayMusic(path:String, volume:Float = 1, looped:Bool = false):Void {
+	function compatPlayMusic(path:Dynamic, volume:Float = 1, looped:Bool = false):Void {
+		if (Std.isOfType(path, Sound)) {
+			FlxG.sound.playMusic(path, volume, looped);
+			return;
+		}
 		var resolved = compatSoundPath(path);
 		if (resolved == null)
 			return;
@@ -7364,7 +7370,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatPlaySound(path:Dynamic, volume:Float = 1, ?tagOrLoop:Dynamic,
 		?loopArgument:Bool = false):FlxSound {
-		var resolved = path == null ? null : compatSoundPath(Std.string(path), true);
+		var resolved:Dynamic = Std.isOfType(path, Sound) ? path
+			: path == null ? null : compatSoundPath(Std.string(path), true);
 		if (resolved == null) return null;
 		var looped = loopArgument || (Std.isOfType(tagOrLoop, Bool) && tagOrLoop == true);
 		var sound = hscriptSafePlay(resolved, volume, looped);
@@ -7378,6 +7385,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function compatPlaySoundForOwner(ownerRoot:String, path:Dynamic, volume:Float = 1,
 		?tag:Dynamic, ?looped:Bool = false):FlxSound {
 		if (ownerRoot == null) return compatPlaySound(path, volume, tag, looped);
+		if (Std.isOfType(path, Sound)) return compatPlaySound(path, volume, tag, looped);
 		if (path == null) return null;
 		if (!compatPsychOwnerFallbackAllowed(ownerRoot, Std.string(path))) {
 			trace('[psych-assets] Refused playSound reference outside calling owner: ' + Std.string(path));
@@ -7385,6 +7393,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'sound',
 			[compatPsychAssetKey(Std.string(path), '.ogg')]);
+		if (Std.isOfType(resolved, Sound)) return compatPlaySound(resolved, volume, tag, looped);
 		var playable = resolved != null && FNFAssets.exists(Std.string(resolved))
 			? Std.string(resolved) : compatPsychNativeSoundPath(Std.string(path), true);
 		return playable == null ? null : compatPlaySound(playable, volume, tag, looped);
@@ -7399,6 +7408,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return;
 		}
 		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'music', [compatPsychAssetKey(path, '.ogg')]);
+		if (Std.isOfType(resolved, Sound)) {
+			compatPlayMusic(resolved, volume, looped);
+			return;
+		}
 		var playable = resolved != null && FNFAssets.exists(Std.string(resolved))
 			? Std.string(resolved) : compatPsychNativeSoundPath(path, false);
 		if (playable != null) compatPlayMusic(playable, volume, looped);

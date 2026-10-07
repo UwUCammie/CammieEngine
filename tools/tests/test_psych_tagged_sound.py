@@ -36,7 +36,8 @@ class PsychTaggedSoundTest(unittest.TestCase):
         methods = "\n".join(method(source, name) for name in (
             "compatPlaySound", "compatTaggedSound", "compatSoundFadeOut",
             "compatSoundFadeIn", "compatStopSound"))
-        fixture = r'''class FlxSound {
+        fixture = r'''class Sound { public function new() {} }
+class FlxSound {
  public var exists=true;
  public var stopped=false;
  public var fadeDuration:Float=-1;
@@ -53,9 +54,11 @@ class PsychTaggedSoundTest(unittest.TestCase):
 class Main {
  var psychTaggedSounds:Map<String,FlxSound>=new Map();
  static var latest:FlxSound;
+ static var latestInput:Dynamic;
  function new() {}
  function compatSoundPath(path:String,preferSounds:Bool):String return 'owner/'+path;
- static function hscriptSafePlay(path:String,volume:Float,looped:Bool):FlxSound {
+ static function hscriptSafePlay(path:Dynamic,volume:Float,looped:Bool):FlxSound {
+  latestInput=path;
   latest=new FlxSound();return latest;
  }
 ''' + methods + r'''
@@ -73,6 +76,10 @@ class Main {
   if(!sound.stopped || first.compatTaggedSound('rumb')!=null) throw 'stop failed';
   first.compatPlaySound('plain',1,true);
   if(first.compatTaggedSound('plain')!=null) throw 'legacy loop flag became a tag';
+  var embedded=new Sound();
+  var embeddedPlayback=first.compatPlaySound(embedded,0.5,'embedded');
+  if(latestInput!=embedded || first.compatTaggedSound('embedded')!=embeddedPlayback)
+   throw 'decoded sound identity/tag lost through string coercion';
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:

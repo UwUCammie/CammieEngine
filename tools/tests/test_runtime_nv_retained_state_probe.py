@@ -19,7 +19,9 @@ class RuntimeNvRetainedStateProbeTest(unittest.TestCase):
     def test_retained_mode_uses_committed_receipt_snapshot_and_public_family_lookup(self):
         self.assertIn("CAMMIE_NV_STATE_RETAINED", self.probe)
         self.assertIn("ImportRefreshTransaction.loadManifest", self.probe)
-        self.assertIn("ImportSourceSnapshot.verify(snapshotRoot, snapshotId)", self.probe)
+        self.assertIn("ImportSourceSnapshot.verify(snapshotRoot, snapshotId, null, null, 1)", self.probe)
+        self.assertIn("A child verification pool", self.probe)
+        self.assertIn("while the game waits for the pool", self.probe)
         self.assertIn("ImportPackageFamilyCatalog.forOwner(alphaRootFromCatalog)", self.probe)
         self.assertIn("manifest.packageFamilyCatalog", self.probe)
         self.assertIn("sourceCore:Reflect.field(retainedEvidence, 'sourceCore')", self.probe)

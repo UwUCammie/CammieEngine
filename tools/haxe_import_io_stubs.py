@@ -2,8 +2,9 @@
 
 Several import tests compile a small source subset in a temporary class path.
 Modules that now use the import I/O facade need the facade and its hashing
-dependencies available there as well. These are the production modules, not
-behavioral test doubles.
+dependencies available there as well. ImportSourceSnapshot also uses the
+cooperative scheduler and its cancellation type. These are the production
+modules, not behavioral test doubles.
 """
 
 from pathlib import Path
@@ -15,7 +16,10 @@ IMPORT_IO_MODULES = (
     "ImportSourceSnapshot.hx",
     "ImportIO.hx",
     "ImportFile.hx",
+    "ImportGeneratedOutput.hx",
     "ImportFileSystem.hx",
+    "ImportWorkScheduler.hx",
+    "ImportWorkCancelled.hx",
 )
 
 

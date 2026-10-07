@@ -6,6 +6,7 @@ import flixel.graphics.frames.FlxAtlasFrames;
 import DynamicSprite.DynamicAtlasFrames;
 import animate.FlxAnimateFrames;
 import haxe.io.Path;
+import openfl.media.Sound;
 import openfl.utils.AssetType;
 
 using StringTools;
@@ -16,11 +17,21 @@ class PsychOwnerPaths {
 		var owner = PsychOwnerAssetPath.normalizeOwner(ownerRoot);
 		if (owner == '') throw '[psych-assets] A valid selected import owner root is required';
 		var currentLevel:String = initialLibrary == null || initialLibrary == '' ? null : initialLibrary.toLowerCase();
+		var soundCache = PsychOwnerSoundCache.forOwner(owner);
+		var fileTranslation:String->String = function(key:String):String return key;
 		var proxy:Dynamic = {};
 		Reflect.setField(proxy, '__sourceOwnerRoot', function() return owner);
 		Reflect.setField(proxy, '__sourceCurrentLevel', function() return currentLevel);
+		Reflect.setField(proxy, '__sourceSetFileTranslation', function(translate:String->String):Void {
+			fileTranslation = translate == null ? function(key:String):String return key : translate;
+		});
 		Reflect.setField(proxy, '__sourceOwnedPath', function(file:String):String return ownerAsset(owner, file, null, currentLevel));
 		Reflect.setField(proxy, 'SOUND_EXT', Paths.SOUND_EXT);
+		Reflect.setField(proxy, 'currentTrackedSounds', soundCache.currentTrackedSounds);
+		Reflect.setField(proxy, 'localTrackedAssets', soundCache.localTrackedAssets);
+		Reflect.setField(proxy, 'dumpExclusions', soundCache.dumpExclusions);
+		Reflect.setField(proxy, 'clearStoredMemory', function():Void soundCache.clearStoredMemory());
+		Reflect.setField(proxy, 'releaseOwnerAssets', function():Void soundCache.release());
 		Reflect.setField(proxy, 'VIDEO_EXT', 'mp4');
 		Reflect.setField(proxy, 'getPath', function(file:String, ?type:AssetType = TEXT,
 			?parentFolder:String, ?modsAllowed:Bool = true):String {
@@ -47,14 +58,40 @@ class PsychOwnerPaths {
 		Reflect.setField(proxy, 'lua', function(key:String, ?library:String):String {
 			return getPath(owner, key + '.lua', TEXT, library, true, currentLevel);
 		});
-		Reflect.setField(proxy, 'sound', function(key:String, ?library:String):String {
-			return getPath(owner, 'sounds/' + key + '.' + Paths.SOUND_EXT, SOUND, library, true, currentLevel);
+		Reflect.setField(proxy, 'sound', function(key:String, ?modsAllowedOrLibrary:Dynamic = true):Sound {
+			return sound(owner, key, modsAllowedOrLibrary, currentLevel, fileTranslation, soundCache);
 		});
-		Reflect.setField(proxy, 'soundRandom', function(key:String, min:Int, max:Int, ?library:String):String {
-			return Reflect.callMethod(proxy, Reflect.field(proxy, 'sound'), [key + FlxG.random.int(min, max), library]);
+		Reflect.setField(proxy, 'soundRandom', function(key:String, min:Int, max:Int,
+			?modsAllowedOrLibrary:Dynamic = true):Sound {
+			return sound(owner, key + FlxG.random.int(min, max), modsAllowedOrLibrary,
+				currentLevel, fileTranslation, soundCache);
 		});
-		Reflect.setField(proxy, 'music', function(key:String, ?library:String):String {
-			return getPath(owner, 'music/' + key + '.' + Paths.SOUND_EXT, MUSIC, library, true, currentLevel);
+		Reflect.setField(proxy, 'music', function(key:String, ?modsAllowedOrLibrary:Dynamic = true):Sound {
+			return music(owner, key, modsAllowedOrLibrary, currentLevel, fileTranslation, soundCache);
+		});
+		Reflect.setField(proxy, 'inst', function(song:String, ?modsAllowed:Bool = true):Sound {
+			return inst(owner, song, modsAllowed, currentLevel, fileTranslation, soundCache);
+		});
+		Reflect.setField(proxy, 'voices', function(song:String, ?postfix:String = null,
+			?modsAllowed:Bool = true):Sound {
+			return voices(owner, song, postfix, modsAllowed, currentLevel, fileTranslation, soundCache);
+		});
+		Reflect.setField(proxy, 'returnSound', function(key:String, ?pathOrModsAllowed:Dynamic,
+			?modsAllowed:Bool = true, ?beepOnNull:Bool = true):Sound {
+			var path:Null<String> = null;
+			var selectedModsAllowed = modsAllowed;
+			if (pathOrModsAllowed != null) {
+				if (Std.isOfType(pathOrModsAllowed, Bool)) {
+					path = null;
+					selectedModsAllowed = cast pathOrModsAllowed;
+				} else if (Std.isOfType(pathOrModsAllowed, String)) {
+					path = cast pathOrModsAllowed;
+				} else {
+					throw '[psych-assets] Psych returnSound path must be a string or its modsAllowed boolean';
+				}
+			}
+			return returnSound(owner, key, path, selectedModsAllowed, beepOnNull,
+				currentLevel, fileTranslation, soundCache);
 		});
 		Reflect.setField(proxy, 'image', function(key:String, ?library:String):FlxGraphic {
 			return image(owner, key, library, currentLevel);
@@ -127,6 +164,121 @@ class PsychOwnerPaths {
 			return loadAnimateAtlas(owner, sprite, key, spriteJson, animationJson, currentLevel);
 		});
 		return proxy;
+	}
+
+	/** Attach this owner's Psych language translation lookup to a Paths facade. */
+	public static function bindFileTranslation(paths:Dynamic, translate:String->String):Void {
+		if (paths == null) throw '[psych-assets] Cannot bind translations to a missing Paths facade';
+		var bind = Reflect.field(paths, '__sourceSetFileTranslation');
+		if (bind == null || !Reflect.isFunction(bind))
+			throw '[psych-assets] Expected an owner-local Paths translation hook';
+		Reflect.callMethod(paths, bind, [translate]);
+	}
+
+	static function sound(owner:String, key:String, modsAllowedOrLibrary:Dynamic, currentLevel:String,
+		translate:String->String, cache:PsychOwnerSoundCache):Sound {
+		var options = audioOptions(modsAllowedOrLibrary);
+		return returnSound(owner, 'sounds/' + key, options.path, options.modsAllowed, true,
+			currentLevel, translate, cache);
+	}
+
+	static function music(owner:String, key:String, modsAllowedOrLibrary:Dynamic, currentLevel:String,
+		translate:String->String, cache:PsychOwnerSoundCache):Sound {
+		var options = audioOptions(modsAllowedOrLibrary);
+		return returnSound(owner, 'music/' + key, options.path, options.modsAllowed, true,
+			currentLevel, translate, cache);
+	}
+
+	static function inst(owner:String, song:String, modsAllowed:Bool, currentLevel:String,
+		translate:String->String, cache:PsychOwnerSoundCache):Sound {
+		var formatted = formatToSongPath(song);
+		return returnSound(owner, formatted + '/Inst', 'songs', modsAllowed, true,
+			currentLevel, translate, cache);
+	}
+
+	static function voices(owner:String, song:String, postfix:String, modsAllowed:Bool, currentLevel:String,
+		translate:String->String, cache:PsychOwnerSoundCache):Sound {
+		var songKey = formatToSongPath(song) + '/Voices';
+		if (postfix != null) songKey += '-' + postfix;
+		return returnSound(owner, songKey, 'songs', modsAllowed, false,
+			currentLevel, translate, cache);
+	}
+
+	static function audioOptions(value:Dynamic):{path:Null<String>, modsAllowed:Bool} {
+		if (value == null) return {path:null, modsAllowed:true};
+		if (Std.isOfType(value, Bool)) return {path:null, modsAllowed:cast value};
+		if (Std.isOfType(value, String)) return {path:cast value, modsAllowed:true};
+		throw '[psych-assets] Psych sound/music optional argument must be a library string or modsAllowed boolean';
+	}
+
+	static function returnSound(owner:String, key:String, path:Null<String>, modsAllowed:Bool,
+		beepOnNull:Bool, currentLevel:String, translate:String->String,
+		cache:PsychOwnerSoundCache):Sound {
+		if (key == null) throw '[psych-assets] Psych returnSound requires a key';
+		var translated = translate == null ? key : translate(key);
+		if (translated == null) translated = key;
+		var file = translated + '.' + Paths.SOUND_EXT;
+		var resolved = soundPath(owner, file, path, modsAllowed, currentLevel);
+		if (resolved == null) return cache.returnMissing(file, beepOnNull, key, path);
+		return cache.returnSound(resolved, beepOnNull, key, path);
+	}
+
+	static function soundPath(owner:String, file:String, path:Null<String>, modsAllowed:Bool,
+		currentLevel:String):Null<String> {
+		// The donor checks only the direct mod folder before its compiled asset
+		// libraries. A selected-owner identity is also eligible when modsAllowed
+		// is false because it represents this source build, not a mod override.
+		if (modsAllowed) {
+			var ownerOverride = ownerOverridePath(owner, file, path);
+			if (ownerOverride != null) return ownerOverride;
+		}
+
+		// An explicit parent folder is final in Psych's getPath contract.
+		if (path != null) {
+			var explicit = indexedSoundResolution(owner, file, path);
+			if (explicit.state == 'found') return explicit.path;
+			if (explicit.state == 'no-index' || explicit.state == 'unclaimed') return explicit.sourceId;
+			return null;
+		}
+
+		if (currentLevel != null && currentLevel != '' && currentLevel != 'shared') {
+			var level = indexedSoundResolution(owner, file, currentLevel);
+			if (level.state == 'found') return level.path;
+			if (level.state == 'unknown' || level.state == 'unverified' || level.state == 'invalid') return null;
+			if ((level.state == 'no-index' || level.state == 'unclaimed') && FNFAssets.exists(level.sourceId))
+				return level.sourceId;
+		}
+
+		var shared = indexedSoundResolution(owner, file, 'shared');
+		if (shared.state == 'found') return shared.path;
+		if (shared.state == 'no-index' || shared.state == 'unclaimed') return shared.sourceId;
+		return null;
+	}
+
+	static function ownerOverridePath(owner:String, file:String, path:Null<String>):String {
+		var relative = path == null || path == '' ? file : path + '/' + file;
+		var resolved = PsychOwnerAssetPath.resolve(owner, relative);
+		if (resolved.blocked) throw '[psych-assets] Refused sound override outside selected owner: ' + relative;
+		if (resolved.unavailable) throw '[psych-assets] Sound override is unavailable in selected owner: ' + relative;
+		return resolved.owned ? resolved.path : null;
+	}
+
+	static function indexedSoundResolution(owner:String, file:String, library:String):{
+		state:String, path:Null<String>, sourceId:String} {
+		var sourceId = sourceAudioAssetId(file, library);
+		var identity = RuntimeOwnerAssetIdentity.acquire(owner, 'Psych Engine', 'package');
+		var result = identity.resolveAssetId(sourceId, 'SOUND');
+		// The source asks OpenFL for a raw assets/... ID in Lime's default
+		// library. Only host fallback uses Cammie's library-qualified path form.
+		return {state:result.state, path:result.path, sourceId:Paths.file(file, SOUND, library)};
+	}
+
+	static function sourceAudioAssetId(file:String, library:String):String {
+		var cleanFile = PsychOwnerAssetPath.cleanId(file);
+		var cleanLibrary = PsychOwnerAssetPath.cleanId(library);
+		if (cleanFile == null || cleanLibrary == null)
+			throw '[psych-assets] Refused unsafe Psych sound asset identity';
+		return 'assets/' + cleanLibrary + '/' + cleanFile;
 	}
 
 	static function getPath(owner:String, file:String, type:AssetType, library:String,

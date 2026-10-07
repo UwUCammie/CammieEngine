@@ -69,6 +69,8 @@ class PsychStandardServices {
 				existing.epoch = epoch;
 				existing.language.reloadPhrases();
 			}
+			PsychOwnerPaths.bindFileTranslation(resolved.paths,
+				function(key:String) return existing.language.getFileTranslation(key));
 			return existing;
 		}
 		var prefs = host.psychClientPrefs;
@@ -90,6 +92,8 @@ class PsychStandardServices {
 				report:function(message) trace('[psych-language] ' + message)
 			});
 			owner.language.reloadPhrases();
+			PsychOwnerPaths.bindFileTranslation(owner.paths,
+				function(key:String) return owner.language.getFileTranslation(key));
 			owner.discord = new PsychDiscordClient(rpc, function() return !owner.released);
 		} catch (error:Dynamic) {
 			retire(owner); throw error;
@@ -146,6 +150,8 @@ class PsychStandardServices {
 		if (owner.released) return;
 		owner.released = true;
 		owners.remove(CompatScriptManifest.destinationKey(owner.root));
+		PsychOwnerSoundCache.releaseOwner(owner.root);
+		PsychOwnerAssetPath.releaseOwner(owner.root);
 		if (owner.language != null) owner.language.release();
 		if (owner.discord != null) owner.discord.release();
 		if (owner.ownsPrefs) owner.prefs.release();

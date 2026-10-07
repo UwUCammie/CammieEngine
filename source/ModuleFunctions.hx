@@ -12,6 +12,9 @@ import ImportOverlayPlanner.ImportOverlayRetention;
 import ImportOverlayPlanner.ImportOverlaySummary;
 import ImportOverlayRuntime;
 import PsychStageInference;
+import PsychLanguagePublisher.PsychLanguagePublicationPlan;
+import SourceMappedAssetPublisher.SourceMappedAssetPlan;
+import SourceMappedAssetPublisher.SourceMappedAssetPolicyView;
 #if sys
 import ImportFile as File;
 import haxe.io.Path;
@@ -143,6 +146,15 @@ typedef SongImport = {
 	/** Physical chart/audio folders for this candidate. A name-keyed lookup loses
 	 * the source when two independent packages contain the same song name. */
 	@:optional var importSourceInfo:SongImportSource;
+}
+
+/** A receipt-bound mapping plan for one exact source owner. */
+typedef PreparedMappedAssetOwner = {
+	var sourceRoot:String;
+	var engine:String;
+	var scope:String;
+	var destinationRoot:String;
+	var plan:SourceMappedAssetPlan;
 }
 
 typedef ConvertedSongChart = {
@@ -419,6 +431,8 @@ class ModuleFunctions {
 	 */
 	public static function yieldImportWork(?force:Bool = false):Void {
 		if (!importBackgroundMode)
+			return;
+		if (!ImportWorkScheduler.cooperate(function() return importWorkCancelled()))
 			return;
 		importWorkCounter++;
 		if (force || importWorkCounter >= 24) {
@@ -738,6 +752,114 @@ class ModuleFunctions {
 			return StringTools.startsWith(pathKey, rootKey);
 		return StringTools.startsWith(pathKey, rootKey + '/');
 	}
+
+	#if sys
+	static function mappedAssetOwnerKey(sourceRoot:String, engine:String):String {
+		var sourceKey = importPathKey(sourceRoot);
+		var engineKey = ImportRevision.normalizeEngine(engine);
+		return sourceKey == '' || engineKey == '' ? '' : engineKey + '|' + sourceKey;
+	}
+
+	static function mappedOwnerPlan(plans:Map<String, PreparedMappedAssetOwner>,
+		sourceRoot:String, engine:String):PreparedMappedAssetOwner {
+		if (plans == null) return null;
+		var key = mappedAssetOwnerKey(sourceRoot, engine);
+		return key == '' ? null : plans.get(key);
+	}
+
+	static function mappedOwnerLanguageView(owner:PreparedMappedAssetOwner):SourceMappedAssetPolicyView {
+		return owner == null || owner.plan == null || owner.engine != ImportEngine.PSYCH
+			? null : SourceMappedMediaPublisher.languageView(owner.plan);
+	}
+
+	static function mappedOwnerMediaView(owner:PreparedMappedAssetOwner):SourceMappedAssetPolicyView {
+		if (owner == null || owner.plan == null) return null;
+		var label = SourceMappedMediaPublisher.mediaLabel(owner.engine, owner.scope);
+		return label == '' ? null : SourceMappedMediaPublisher.policyView(owner.plan, label);
+	}
+
+	/** Determine NV package/core scope from scanner identity and exact layout.
+		Unknown remains empty so a receipt-bound plan uses its unresolved policy. */
+	static function authenticatedNightmareVisionScope(sourceRoot:String,
+		contentRoot:String):String {
+		if (sourceRoot == null || StringTools.trim(sourceRoot) == '') return '';
+		var sourceKey = importPathKey(sourceRoot);
+		var assetRoot = contentRoot;
+		if (assetRoot == null || StringTools.trim(assetRoot) == '') {
+			var candidate = Path.join([sourceRoot, 'assets']);
+			if (FileSystem.isDirectory(candidate)) assetRoot = candidate;
+		}
+		var packageRoot = assetRoot == null ? null : canonicalNightmareVisionPackageRoot(assetRoot);
+		if (packageRoot != null && importPathKey(packageRoot) == sourceKey)
+			return SourceMappedMediaPolicy.PACKAGE_SCOPE;
+		if (ImportPackageFamilyCatalog.isAuthenticatedNightmareVisionContainer(sourceRoot))
+			return SourceMappedMediaPolicy.CORE_SCOPE;
+		return '';
+	}
+
+	static function skipMappedGlobalFile(owner:PreparedMappedAssetOwner,
+		sourcePath:String, destinationPath:String):Bool {
+		var logicalPath = mappedLogicalAssetPath(destinationPath);
+		return logicalPath == null ? false : skipMappedAssetPath(owner, sourcePath, logicalPath);
+	}
+
+	/** Only generic raw copies consult identity blocks. Registry/script/chart
+	 * transformations keep their dedicated conversion rules. */
+	static function skipMappedRawFile(owner:PreparedMappedAssetOwner,
+		sourcePath:String, destinationPath:String):Bool {
+		return skipMappedGlobalFile(owner, sourcePath, destinationPath)
+			|| SourceMappedMediaPublisher.skipIdentityLegacy(owner == null ? null : owner.plan,
+				sourcePath, destinationPath);
+	}
+
+	static function skipMappedOwnerMediaFile(owner:PreparedMappedAssetOwner,
+		sourcePath:String, destinationPath:String):Bool {
+		if (owner == null || destinationPath == null) return false;
+		var ownerRelative = relativeImportPath(destinationPath, owner.destinationRoot);
+		return ownerRelative == null ? false : skipMappedAssetPath(owner, sourcePath,
+			'assets/' + ownerRelative);
+	}
+
+	static function skipMappedAssetPath(owner:PreparedMappedAssetOwner,
+		sourcePath:String, logicalPath:String):Bool {
+		if (owner == null || owner.plan == null) return false;
+		var languageView = mappedOwnerLanguageView(owner);
+		if (languageView != null && (isLanguagePathForImport(sourcePath)
+			|| isLanguagePathForImport(logicalPath))
+			&& SourceMappedMediaPublisher.skipLegacyGlobal(owner.sourceRoot, owner.engine,
+				owner.destinationRoot, PsychLanguagePublisher.policy(), languageView,
+				sourcePath, logicalPath)) return true;
+		var mediaPolicy = SourceMappedMediaPublisher.mediaPolicy(owner.engine, owner.scope);
+		var mediaView = mappedOwnerMediaView(owner);
+		return mediaPolicy != null && mediaView != null
+			&& SourceMappedMediaPublisher.skipLegacyGlobal(owner.sourceRoot, owner.engine,
+				owner.destinationRoot, mediaPolicy, mediaView, sourcePath, logicalPath);
+	}
+
+	static function relativeImportPath(path:String, root:String):Null<String> {
+		if (path == null || root == null) return null;
+		var normalizedPath = Path.normalize(path);
+		var normalizedRoot = Path.normalize(root);
+		var pathKey = importPathKey(normalizedPath);
+		var rootKey = importPathKey(normalizedRoot);
+		if (pathKey == rootKey) return '';
+		var prefix = StringTools.endsWith(rootKey, '/') ? rootKey : rootKey + '/';
+		if (!StringTools.startsWith(pathKey, prefix)) return null;
+		return StringTools.replace(normalizedPath.substr(normalizedRoot.length + 1), '\\', '/');
+	}
+
+	static function mappedLogicalAssetPath(destinationPath:String):Null<String> {
+		if (destinationPath == null || StringTools.trim(destinationPath) == '') return null;
+		var clean = StringTools.replace(Path.normalize(destinationPath), '\\', '/');
+		if (clean == 'assets') return 'assets';
+		return StringTools.startsWith(clean, 'assets/') ? clean : null;
+	}
+
+	static function isLanguagePathForImport(path:String):Bool {
+		return path != null && StringTools.trim(path) != ''
+			&& StringTools.trim(path).toLowerCase().endsWith('.lang');
+	}
+	#end
 
 	/** Logical asset roots for one detected engine project. The primary mapped
 	 * root is copied first; supplemental Project.xml roots follow so existing
@@ -5110,6 +5232,77 @@ class ModuleFunctions {
 				selectedAssetEngines.push(selectedType == ImportEngine.AUTO ? '' : selectedType);
 			}
 		}
+		// Resolve every receipt-bound language/media source before the first owner
+		// asset copy. This lets one source root's language and media policies share
+		// the same conflict pass, and prevents a later unresolved root from failing
+		// after earlier roots have already published mapped files.
+		var mappedOwnerPlans:Map<String, PreparedMappedAssetOwner> = new Map();
+		var mappedPlanFailed = false;
+		var addMappedOwnerPlan = function(sourceRoot:String, engine:String,
+			contentHint:String):Void {
+			var normalizedEngine = ImportRevision.normalizeEngine(engine);
+			if (sourceRoot == null || StringTools.trim(sourceRoot) == ''
+				|| (normalizedEngine != ImportEngine.PSYCH
+					&& normalizedEngine != ImportEngine.NIGHTMARE_VISION)) return;
+			var key = mappedAssetOwnerKey(sourceRoot, normalizedEngine);
+			if (key == '' || mappedOwnerPlans.exists(key)) return;
+			if (importWorkCancelled()) return;
+			var scope = normalizedEngine == ImportEngine.NIGHTMARE_VISION
+				? authenticatedNightmareVisionScope(sourceRoot, contentHint) : '';
+			var ownerRoot = CompatScriptManifest.destinationRoot(sourceRoot, normalizedEngine);
+			var plan = SourceMappedMediaPublisher.prepare(sourceRoot, normalizedEngine,
+				ownerRoot, scope, function():Bool return importWorkCancelled());
+			var owner:PreparedMappedAssetOwner = {
+				sourceRoot:sourceRoot, engine:normalizedEngine, scope:scope,
+				destinationRoot:ownerRoot, plan:plan
+			};
+			mappedOwnerPlans.set(key, owner);
+			if (plan.diagnostics != null)
+				for (diagnostic in plan.diagnostics)
+					if (diagnostic != null && StringTools.trim(diagnostic) != '')
+						result.errors.push(diagnostic);
+			if (plan.cancelled || importWorkCancelled()) return;
+			if (plan.failed) {
+				mappedPlanFailed = true;
+				result.failed++;
+			}
+		};
+		for (engineRoot in engineRoots)
+			addMappedOwnerPlan(engineRoot.root, engineRoot.engine, engineRoot.contentRoot);
+		for (index in 0...selectedAssetSourceRoots.length)
+			addMappedOwnerPlan(selectedAssetSourceRoots[index], selectedAssetEngines[index],
+				selectedAssetRoots[index]);
+		for (sourceInfo in importedSources)
+			if (sourceInfo != null)
+				addMappedOwnerPlan(sourceInfo.sourceRoot, sourceInfo.engine, null);
+		if (importWorkCancelled()) {
+			markImportCancelled(result);
+			return result;
+		}
+		if (mappedPlanFailed) return result;
+		for (owner in mappedOwnerPlans) {
+			if (importWorkCancelled()) {
+				markImportCancelled(result);
+				return result;
+			}
+			var published:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
+			SourceMappedMediaPublisher.publish(owner.plan,
+				function(source:String, destination:String):Void
+					copyImportFileNonOverwriting(source, destination, published),
+				function():Bool return importWorkCancelled(),
+				function(path:String, content:String):Void
+					writeImportContentNonOverwriting(content, path, published, true));
+			result.copiedAssets += published.copied;
+			result.skippedAssets += published.skipped;
+			assetFailures += published.failed;
+			if (published.errors != null)
+				for (message in published.errors)
+					if (message != null && StringTools.trim(message) != '') result.errors.push(message);
+			if (owner.plan.cancelled || importWorkCancelled()) {
+				markImportCancelled(result);
+				return result;
+			}
+		}
 		var assetRootIndex = 0;
 		reportImportProgress('assets', '', 0, selectedAssetRoots.length);
 		for (assetRootIndexValue in 0...selectedAssetRoots.length) {
@@ -5121,12 +5314,15 @@ class ModuleFunctions {
 			assetRootIndex++;
 			reportImportProgress('assets', assetsRoot, assetRootIndex - 1, selectedAssetRoots.length,
 				result.copiedAssets, result.skippedAssets, assetFailures);
+			var ownerPlan = mappedOwnerPlan(mappedOwnerPlans,
+				selectedAssetSourceRoots[assetRootIndexValue], selectedAssetEngines[assetRootIndexValue]);
 				var merged = selectedAssetDestinations[assetRootIndexValue] == ''
 					? mergeSupportedAssets(assetsRoot, importedRegistryNames, importedSources,
 						selectedAssetSourceRoots[assetRootIndexValue], selectedAssetEngines[assetRootIndexValue],
-						stagedCompatOwnerRoots)
+						stagedCompatOwnerRoots, ownerPlan, mappedOwnerPlans)
 				: mergeMappedAssetRoot(assetsRoot, selectedAssetDestinations[assetRootIndexValue],
-					selectedAssetSourceRoots[assetRootIndexValue], selectedAssetEngines[assetRootIndexValue]);
+					selectedAssetSourceRoots[assetRootIndexValue], selectedAssetEngines[assetRootIndexValue],
+					ownerPlan);
 			result.copiedAssets += merged.copied;
 			result.skippedAssets += merged.skipped;
 			assetFailures += merged.failed;
@@ -5160,9 +5356,10 @@ class ModuleFunctions {
 			}
 			psychSourceRoots = uniquePsychSourceRoots;
 			var ownerRuntimeRoot = CompatScriptManifest.destinationRoot(engineRoot.root, engineRoot.engine);
+			var ownerPlan = mappedOwnerPlan(mappedOwnerPlans, engineRoot.root, engineRoot.engine);
 			for (mappedRoot in selectedAssetRootsForEngineRoot(engineRoot)) {
 				var mediaMerge = mergePsychRuntimeMedia(mappedRoot.path, mappedRoot.destinationPrefix,
-					ownerRuntimeRoot);
+					ownerRuntimeRoot, ownerPlan);
 				result.copiedAssets += mediaMerge.copied;
 				result.skippedAssets += mediaMerge.skipped;
 				assetFailures += mediaMerge.failed;
@@ -5178,7 +5375,8 @@ class ModuleFunctions {
 				for (message in sourceModuleMerge.errors)
 					result.errors.push(message);
 			for (psychSourceRoot in psychSourceRoots) {
-				var soundMerge = mergePsychRuntimeSounds(psychSourceRoot, ownerRuntimeRoot);
+				var soundMerge = mergePsychRuntimeSounds(psychSourceRoot, ownerRuntimeRoot,
+					ownerPlan);
 				result.copiedAssets += soundMerge.copied;
 				result.skippedAssets += soundMerge.skipped;
 				assetFailures += soundMerge.failed;
@@ -8328,7 +8526,8 @@ class ModuleFunctions {
 	 * non-overwriting so installed owner edits and prior package owners win. */
 	static function mergeNightmareVisionAssetFiles(sourceRoot:String,
 		destinationRoot:String, result:ImportAssetMergeResult,
-		?skipPaths:Map<String, Bool>):Bool {
+		?skipPaths:Map<String, Bool>,
+		?mappedOwner:PreparedMappedAssetOwner):Bool {
 		if (sourceRoot == null || destinationRoot == null || result == null
 			|| !FileSystem.isDirectory(sourceRoot))
 			return false;
@@ -8364,6 +8563,11 @@ class ModuleFunctions {
 				result.failed++;
 				if (result.errors == null) result.errors = [];
 				result.errors.push('Nightmare Vision asset destination escapes its owner: ' + destination);
+				continue;
+			}
+			if (mappedOwner != null
+				&& skipMappedOwnerMediaFile(mappedOwner, file.source, destination)) {
+				result.skipped++;
 				continue;
 			}
 			copyImportFileNonOverwriting(file.source, destination, result);
@@ -8700,7 +8904,8 @@ class ModuleFunctions {
 	 * file.  skipPaths contains registry files already handled by a merge.
 	 */
 	static function mergeTreeNonOverwriting(source:String, destination:String, depth:Int,
-		result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>):Void {
+		result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>,
+		?skipMapped:(String->String->Bool)):Void {
 		if (importWorkCancelled() || source == null || destination == null || depth > 10 || !FileSystem.isDirectory(source))
 			return;
 		if (importPathIsWithin(source, 'assets'))
@@ -8738,11 +8943,15 @@ class ModuleFunctions {
 					reportImportProgress('assets', destinationPath, 0, 0, 0, 1, 0, 1);
 					continue;
 				}
-				mergeTreeNonOverwriting(sourcePath, destinationPath, depth + 1, result, skipPaths);
+				mergeTreeNonOverwriting(sourcePath, destinationPath, depth + 1, result, skipPaths, skipMapped);
 				continue;
 			}
 			if (importWorkCancelled())
 				return;
+			if (skipMapped != null && skipMapped(sourcePath, destinationPath)) {
+				result.skipped++;
+				continue;
+			}
 				if (FileSystem.exists(destinationPath)) {
 					result.skipped++;
 					reportImportProgress('assets', destinationPath, 0, 0, 0, 1, 0, 1);
@@ -8766,7 +8975,10 @@ class ModuleFunctions {
 	 * is .lang are copied; unrelated package data and arbitrary mods/ trees stay
 	 * outside this runtime publication path. */
 	static function mergePsychLanguageDataScopes(contentRoot:String, sourceRoot:String,
-		destinationRoot:String, result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>):Void {
+		destinationRoot:String, result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>,
+		?languagePlan:PsychLanguagePublicationPlan):Void {
+		if (languagePlan != null && (!languagePlan.legacyAllowed || languagePlan.blockAllLegacy))
+			return;
 		if (contentRoot == null || sourceRoot == null || destinationRoot == null || result == null
 			|| !FileSystem.isDirectory(contentRoot) || !importPathIsWithin(contentRoot, sourceRoot)
 			|| !importPathIsWithin(destinationRoot, CompatScriptManifest.ROOT_PREFIX))
@@ -8841,14 +9053,14 @@ class ModuleFunctions {
 				? Path.join([destinationRoot, dataName])
 				: Path.join([destinationRoot, scope.prefix, dataName]);
 			mergePsychLanguageFiles(dataRoot, destinationData, sourceRoot, destinationRoot,
-				result, counters, 0, skipPaths);
+				result, counters, 0, skipPaths, languagePlan);
 		}
 	}
 
 	/** Copy only .lang files from one already authenticated data/ subtree. */
 	static function mergePsychLanguageFiles(source:String, destination:String, sourceRoot:String,
 		destinationRoot:String, result:ImportAssetMergeResult, counters:Dynamic, depth:Int,
-		?skipPaths:Map<String, Bool>):Void {
+		?skipPaths:Map<String, Bool>, ?languagePlan:PsychLanguagePublicationPlan):Void {
 		if (importWorkCancelled() || source == null || destination == null || depth > 10
 			|| !FileSystem.isDirectory(source))
 			return;
@@ -8891,11 +9103,12 @@ class ModuleFunctions {
 					continue;
 				}
 				mergePsychLanguageFiles(sourcePath, destinationPath, sourceRoot, destinationRoot,
-					result, counters, depth + 1, skipPaths);
+					result, counters, depth + 1, skipPaths, languagePlan);
 				continue;
 			}
 			if (!entry.toLowerCase().endsWith('.lang')) continue;
 			if (skipPaths != null && skipPaths.exists(importPathKey(sourcePath))) continue;
+			if (PsychLanguagePublisher.skipLegacy(languagePlan, sourcePath, destinationPath)) continue;
 			if (FileSystem.exists(destinationPath)) {
 				result.skipped++;
 				continue;
@@ -9544,7 +9757,8 @@ class ModuleFunctions {
 	 * executable foreign-engine trees remain isolated by mergeCompatScriptTrees
 	 * under the selected project owner's namespace. */
 	static function mergeMappedAssetRoot(sourceRoot:String, destinationPrefix:String,
-		scriptSourceRoot:String, scriptEngine:String):ImportAssetMergeResult {
+		scriptSourceRoot:String, scriptEngine:String,
+		?ownerPlan:PreparedMappedAssetOwner):ImportAssetMergeResult {
 		var result:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
 		if (sourceRoot == null || !FileSystem.isDirectory(sourceRoot))
 			return result;
@@ -9561,6 +9775,8 @@ class ModuleFunctions {
 				return result;
 			}
 		var destinationRoot = Path.join(['assets', prefix]);
+		var skipMapped = function(source:String, destination:String):Bool
+			return skipMappedRawFile(ownerPlan, source, destination);
 		var scriptTrees:Map<String, Bool> = new Map<String, Bool>();
 		for (name in compatScriptTreeNames())
 			scriptTrees.set(name.toLowerCase(), true);
@@ -9585,11 +9801,15 @@ class ModuleFunctions {
 				continue;
 			var destination = Path.join([destinationRoot, entry]);
 			if (FileSystem.isDirectory(source))
-				mergeTreeNonOverwriting(source, destination, 0, result);
+				mergeTreeNonOverwriting(source, destination, 0, result, null, skipMapped);
+			else if (skipMapped(source, destination))
+				result.skipped++;
 			else
 				copyImportFileNonOverwriting(source, destination, result);
 		}
-		mergeCompatScriptTrees(sourceRoot, scriptSourceRoot, scriptEngine, result);
+		mergeCompatScriptTrees(sourceRoot, scriptSourceRoot, scriptEngine, result, null, null, null,
+			ownerPlan == null ? null : ownerPlan.plan,
+			ownerPlan == null ? '' : ownerPlan.scope);
 		return result;
 	}
 
@@ -10672,12 +10892,17 @@ class ModuleFunctions {
 		}
 	}
 
-	/** Write one validated generated Codename companion beside the selected
-	 * owner's imported scripts, without replacing user-edited destinations. */
+	/** Write generated import output without replacing user-edited destinations.
+	 * Identity metadata additionally requires an existing staged copy to agree. */
 	static function writeImportContentNonOverwriting(content:String, destination:String,
-		result:ImportAssetMergeResult):Void {
+		result:ImportAssetMergeResult, strictExisting:Bool = false):Void {
 		if (content == null || destination == null)
 			return;
+		if (strictExisting) {
+			if (ImportGeneratedOutput.write(destination, content, true)) result.copied++;
+			else result.skipped++;
+			return;
+		}
 		if (FileSystem.exists(destination)) {
 			result.skipped++;
 			return;
@@ -10835,7 +11060,8 @@ class ModuleFunctions {
 	 * exposed below the namespace's scripts/ tree for HxcScriptDiscovery. */
 	static function mergeCompatScriptTrees(contentRoot:String, sourceRoot:String, engine:String,
 		result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>,
-		?modPlusCharacterIds:Array<String>, ?destinationSubpath:String):String {
+		?modPlusCharacterIds:Array<String>, ?destinationSubpath:String,
+		?mappedAssetPlan:SourceMappedAssetPlan, ?nightmareVisionScope:String):String {
 		if (contentRoot == null || !FileSystem.isDirectory(contentRoot)
 			|| sourceRoot == null || StringTools.trim(sourceRoot) == '')
 			return null;
@@ -11003,8 +11229,31 @@ class ModuleFunctions {
 				}
 			}
 		}
-		if (engine == ImportEngine.PSYCH)
-			mergePsychLanguageDataScopes(contentRoot, sourceRoot, destinationRoot, result, skipPaths);
+		if (engine == ImportEngine.PSYCH) {
+			var mappedPlan = mappedAssetPlan;
+			if (mappedPlan == null) {
+				mappedPlan = SourceMappedMediaPublisher.prepare(sourceRoot, engine, destination,
+					'', function():Bool return importWorkCancelled());
+				if (mappedPlan.diagnostics != null && mappedPlan.diagnostics.length > 0) {
+					if (result.errors == null) result.errors = [];
+					for (diagnostic in mappedPlan.diagnostics)
+						if (diagnostic != null) result.errors.push(diagnostic);
+				}
+				if (mappedPlan.cancelled || importWorkCancelled()) return destination;
+				if (mappedPlan.failed) {
+					result.failed++;
+					return destination;
+				}
+				SourceMappedMediaPublisher.publish(mappedPlan,
+					function(source:String, target:String):Void copyImportFileNonOverwriting(source, target, result),
+					function():Bool return importWorkCancelled(),
+					function(path:String, content:String):Void
+						writeImportContentNonOverwriting(content, path, result, true));
+			}
+			var languagePlan = SourceMappedMediaPublisher.languageView(mappedPlan);
+			mergePsychLanguageDataScopes(contentRoot, sourceRoot, destinationRoot, result,
+				skipPaths, languagePlan);
+		}
 		return destination;
 	}
 
@@ -11015,7 +11264,8 @@ class ModuleFunctions {
 	static function mergeSelectedNightmareVisionScriptOwners(importedNames:Map<String, Bool>,
 		importedSources:Map<String, SongImportSource>, scriptSourceRoot:String,
 		result:ImportAssetMergeResult, stagedOwnerRoots:Map<String, Bool>,
-		?skipPaths:Map<String, Bool>):Void {
+		?skipPaths:Map<String, Bool>,
+		?mappedOwnerPlans:Map<String, PreparedMappedAssetOwner>):Void {
 		if (importedNames == null || importedSources == null || result == null)
 			return;
 		var staged = stagedOwnerRoots == null ? new Map<String, Bool>() : stagedOwnerRoots;
@@ -11064,17 +11314,21 @@ class ModuleFunctions {
 			var coreIsSelectedRoot = coreAssetsRoot != ''
 				&& (importPathKey(coreAssetsRoot) == importPathKey(contentRoot)
 					|| importPathKey(coreAssetsRoot) == importPathKey(ownerRoot));
+			var mappedOwner = mappedOwnerPlan(mappedOwnerPlans, ownerRoot, ImportEngine.NIGHTMARE_VISION);
 			var installedOwnerRoot = mergeCompatScriptTrees(contentRoot, ownerRoot,
 				ImportEngine.NIGHTMARE_VISION, result, skipPaths, null,
-				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null);
+				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null,
+				mappedOwner == null ? null : mappedOwner.plan,
+				mappedOwner == null ? '' : mappedOwner.scope);
 			if (installedOwnerRoot != null
 				&& importPathIsWithin(installedOwnerRoot, CompatScriptManifest.ROOT_PREFIX)) {
 				if (!coreIsSelectedRoot)
-					mergeNightmareVisionAssetFiles(contentRoot, installedOwnerRoot, result, skipPaths);
+					mergeNightmareVisionAssetFiles(contentRoot, installedOwnerRoot, result, skipPaths,
+						mappedOwner);
 				if (coreAssetsRoot != '')
 					mergeNightmareVisionAssetFiles(coreAssetsRoot,
 						Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE]),
-						result, skipPaths);
+						result, skipPaths, coreIsSelectedRoot ? mappedOwner : null);
 				var stageDestination = coreIsSelectedRoot
 					? Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE])
 					: installedOwnerRoot;
@@ -11097,6 +11351,60 @@ class ModuleFunctions {
 		var result:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
 		#if sys
 		if (sourceRoots == null) return result;
+		var mappedOwners:Map<String, PreparedMappedAssetOwner> = new Map();
+		var preparedKeys:Map<String, Bool> = new Map();
+		for (ownerRoot in sourceRoots) {
+			if (importWorkCancelled()) {
+				return result;
+			}
+			if (ownerRoot == null || StringTools.trim(ownerRoot) == '' || !FileSystem.isDirectory(ownerRoot)
+				|| findImportFile(ownerRoot, ['meta.json']) == null) continue;
+			var ownerKey = importPathKey(ownerRoot);
+			var key = mappedAssetOwnerKey(ownerRoot, ImportEngine.NIGHTMARE_VISION);
+			if (ownerKey == '' || key == '' || preparedKeys.exists(key)) continue;
+			preparedKeys.set(key, true);
+			var contentRoot = Path.join([ownerRoot, 'assets']);
+			if (!FileSystem.isDirectory(contentRoot)) contentRoot = ownerRoot;
+			var scope = authenticatedNightmareVisionScope(ownerRoot, contentRoot);
+			var destinationRoot = CompatScriptManifest.destinationRoot(ownerRoot,
+				ImportEngine.NIGHTMARE_VISION);
+			var plan = SourceMappedMediaPublisher.prepare(ownerRoot,
+				ImportEngine.NIGHTMARE_VISION, destinationRoot, scope,
+				function():Bool return importWorkCancelled());
+			var owner:PreparedMappedAssetOwner = {sourceRoot:ownerRoot,
+				engine:ImportEngine.NIGHTMARE_VISION, scope:scope,
+				destinationRoot:destinationRoot, plan:plan};
+			mappedOwners.set(key, owner);
+			if (plan.diagnostics != null)
+				for (diagnostic in plan.diagnostics)
+					if (diagnostic != null && StringTools.trim(diagnostic) != '') result.errors.push(diagnostic);
+			if (plan.cancelled || importWorkCancelled()) {
+				return result;
+			}
+			if (plan.failed) result.failed++;
+		}
+		if (result.failed > 0) return result;
+		for (owner in mappedOwners) {
+			if (importWorkCancelled()) {
+				return result;
+			}
+			var published:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
+			SourceMappedMediaPublisher.publish(owner.plan,
+				function(source:String, destination:String):Void
+					copyImportFileNonOverwriting(source, destination, published),
+				function():Bool return importWorkCancelled(),
+				function(path:String, content:String):Void
+					writeImportContentNonOverwriting(content, path, published, true));
+			result.copied += published.copied;
+			result.skipped += published.skipped;
+			result.failed += published.failed;
+			if (published.errors != null)
+				for (message in published.errors)
+					if (message != null && StringTools.trim(message) != '') result.errors.push(message);
+			if (owner.plan.cancelled || importWorkCancelled()) {
+				return result;
+			}
+		}
 		var seen:Map<String, Bool> = new Map();
 		for (ownerRoot in sourceRoots) {
 			if (importWorkCancelled()) break;
@@ -11125,9 +11433,12 @@ class ModuleFunctions {
 			var coreIsSelectedRoot = coreAssetsRoot != ''
 				&& (importPathKey(coreAssetsRoot) == importPathKey(contentRoot)
 					|| importPathKey(coreAssetsRoot) == importPathKey(ownerRoot));
+			var mappedOwner = mappedOwnerPlan(mappedOwners, ownerRoot, ImportEngine.NIGHTMARE_VISION);
 			var installedOwnerRoot = mergeCompatScriptTrees(contentRoot, ownerRoot,
 				ImportEngine.NIGHTMARE_VISION, result, null, null,
-				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null);
+				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null,
+				mappedOwner == null ? null : mappedOwner.plan,
+				mappedOwner == null ? '' : mappedOwner.scope);
 			if (installedOwnerRoot == null
 				|| !importPathIsWithin(installedOwnerRoot, CompatScriptManifest.ROOT_PREFIX)) {
 				result.failed++;
@@ -11135,10 +11446,12 @@ class ModuleFunctions {
 				continue;
 			}
 			if (!coreIsSelectedRoot)
-				mergeNightmareVisionAssetFiles(contentRoot, installedOwnerRoot, result);
+				mergeNightmareVisionAssetFiles(contentRoot, installedOwnerRoot, result, null,
+					mappedOwner);
 			if (coreAssetsRoot != '')
 				mergeNightmareVisionAssetFiles(coreAssetsRoot,
-					Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE]), result);
+					Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE]), result,
+					null, coreIsSelectedRoot ? mappedOwner : null);
 			var stageDestination = coreIsSelectedRoot
 				? Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE])
 				: installedOwnerRoot;
@@ -11264,7 +11577,9 @@ class ModuleFunctions {
 
 	static function mergeSupportedAssets(sourceRoot:String, importedNames:Map<String, Bool>,
 		?importedSources:Map<String, SongImportSource>, ?scriptSourceRoot:String,
-		?scriptEngine:String, ?stagedCompatOwnerRoots:Map<String, Bool>):ImportAssetMergeResult {
+		?scriptEngine:String, ?stagedCompatOwnerRoots:Map<String, Bool>,
+		?ownerPlan:PreparedMappedAssetOwner,
+		?mappedOwnerPlans:Map<String, PreparedMappedAssetOwner>):ImportAssetMergeResult {
 		var result:ImportAssetMergeResult = {copied: 0, skipped: 0, failed: 0};
 		if (sourceRoot == null || !FileSystem.isDirectory(sourceRoot))
 			return result;
@@ -11280,6 +11595,8 @@ class ModuleFunctions {
 		// of being stranded under assets/shared.
 		var sharedLayout = sharedRoot != null && (directImages == null
 			|| (directData == null && findChildDirectory(sharedRoot, 'data') != null));
+		var skipMappedGlobal = function(source:String, destination:String):Bool
+			return skipMappedRawFile(ownerPlan, source, destination);
 
 		// Merge registries first, then copy their surrounding trees while telling
 		// the file copier not to count the registry a second time.
@@ -11314,6 +11631,10 @@ class ModuleFunctions {
 		for (registry in registrySources) {
 			if (importWorkCancelled())
 				return result;
+			if (skipMappedGlobalFile(ownerPlan, registry.source, registry.destination)) {
+				skipPaths.set(importPathKey(registry.source), true);
+				continue;
+			}
 			var merged = (registry.destination == freeplayRegistryPath())
 				? mergeFreeplayRegistry(registry.source, importedNames)
 				: (registry.destination == 'assets/data/storySonglist.json'
@@ -11354,7 +11675,8 @@ class ModuleFunctions {
 				continue;
 			var source = Path.join([sourceRoot, relative]);
 			if (FileSystem.isDirectory(source))
-				mergeTreeNonOverwriting(source, Path.join(['assets', relative]), 0, result, skipPaths);
+				mergeTreeNonOverwriting(source, Path.join(['assets', relative]), 0, result,
+					skipPaths, skipMappedGlobal);
 		}
 		if (sharedLayout) {
 			for (relative in supportedAssetTrees(sharedRoot)) {
@@ -11362,7 +11684,8 @@ class ModuleFunctions {
 					return result;
 				var source = Path.join([sharedRoot, relative]);
 				if (FileSystem.isDirectory(source))
-					mergeTreeNonOverwriting(source, Path.join(['assets', relative]), 0, result, skipPaths);
+					mergeTreeNonOverwriting(source, Path.join(['assets', relative]), 0, result,
+						skipPaths, skipMappedGlobal);
 			}
 		}
 		// Foreign global scripts never enter the shared destination tree.  They
@@ -11374,11 +11697,13 @@ class ModuleFunctions {
 			? modPlusCharactersUsedByImportedSongs(characterChartRoot, importedNames, importedSources) : null;
 		mergeCompatScriptTrees(sourceRoot,
 			scriptSourceRoot == null || StringTools.trim(scriptSourceRoot) == '' ? sourceRoot : scriptSourceRoot,
-			scriptEngine, result, skipPaths, modPlusCharacterIds);
+			scriptEngine, result, skipPaths, modPlusCharacterIds, null,
+			ownerPlan == null ? null : ownerPlan.plan,
+			ownerPlan == null ? '' : ownerPlan.scope);
 		if (scriptEngine == ImportEngine.NIGHTMARE_VISION)
 			mergeSelectedNightmareVisionScriptOwners(importedNames, importedSources,
 				scriptSourceRoot == null || StringTools.trim(scriptSourceRoot) == '' ? sourceRoot : scriptSourceRoot,
-				result, stagedCompatOwnerRoots, skipPaths);
+				result, stagedCompatOwnerRoots, skipPaths, mappedOwnerPlans);
 		return result;
 	}
 
@@ -11636,7 +11961,8 @@ class ModuleFunctions {
 	/** Psych sound IDs resolve through the selected import owner's namespace.
 	 * Retain the donor's sound tree there and repair absent files on a repeat
 	 * import without replacing an existing owner override. */
-	static function mergePsychRuntimeSounds(sourceRoot:String, runtimeNamespace:String):ImportAssetMergeResult {
+	static function mergePsychRuntimeSounds(sourceRoot:String, runtimeNamespace:String,
+		?mappedOwner:PreparedMappedAssetOwner):ImportAssetMergeResult {
 		var result:ImportAssetMergeResult = {copied: 0, skipped: 0, failed: 0, errors: []};
 		if (sourceRoot == null || runtimeNamespace == null || runtimeNamespace == ''
 			|| !FileSystem.isDirectory(sourceRoot))
@@ -11648,9 +11974,13 @@ class ModuleFunctions {
 			roots.push(shared);
 		for (root in roots) {
 			var sounds = findChildDirectory(root, 'sounds');
-			if (sounds != null)
+			if (sounds != null) {
+				var skipMapped = function(source:String, destination:String):Bool
+					return mappedOwner != null
+						&& skipMappedOwnerMediaFile(mappedOwner, source, destination);
 				mergeTreeNonOverwriting(sounds, Path.join([runtimeNamespace, 'sounds']),
-					0, result, skipPaths);
+					0, result, skipPaths, skipMapped);
+			}
 		}
 		return result;
 	}
@@ -11661,7 +11991,8 @@ class ModuleFunctions {
 	 * directories are copied; charts, songs and scripts keep their existing
 	 * import paths. */
 	static function mergePsychRuntimeMedia(sourceRoot:String, destinationPrefix:String,
-		runtimeNamespace:String):ImportAssetMergeResult {
+		runtimeNamespace:String,
+		?mappedOwner:PreparedMappedAssetOwner):ImportAssetMergeResult {
 		var result:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
 		if (sourceRoot == null || StringTools.trim(sourceRoot) == '' || !FileSystem.isDirectory(sourceRoot))
 			return result;
@@ -11693,10 +12024,10 @@ class ModuleFunctions {
 		// mapped week/library sound trees at their Project.xml relative paths;
 		// mergePsychRuntimeSounds also retains the legacy flat shared fallback.
 		var mediaFolders:Map<String, Bool> = new Map<String, Bool>();
-		for (name in ['images', 'videos', 'fonts', 'shaders', 'animations', 'sounds'])
+		for (name in ['images', 'videos', 'fonts', 'shaders', 'animations', 'sounds', 'music'])
 			mediaFolders.set(name, true);
 		var excludedTrees:Map<String, Bool> = new Map<String, Bool>();
-		for (name in ['data', 'songs', 'music', 'source', 'scripts', 'mods', 'export', 'bin', '.git'])
+		for (name in ['data', 'songs', 'source', 'scripts', 'mods', 'export', 'bin', '.git'])
 			excludedTrees.set(name, true);
 		var maxDepth = 8;
 		var maxDirectories = 8192;
@@ -11755,7 +12086,7 @@ class ModuleFunctions {
 					}
 					var mappedRelative = prefix == '' ? childRelative : prefix + '/' + childRelative;
 					mergePsychMediaTree(source, Path.join([ownerRoot, mappedRelative]), sourceRoot,
-						ownerRoot, 0, result, new Map<String, Bool>());
+						ownerRoot, 0, result, new Map<String, Bool>(), mappedOwner);
 				} else if (!excludedTrees.exists(lower)) {
 					walk(source, childRelative, depth + 1);
 				}
@@ -11769,7 +12100,8 @@ class ModuleFunctions {
 	 * source path. The generic asset copier follows symlinks, so this owner copy
 	 * rejects any link that would read outside the selected donor root. */
 	static function mergePsychMediaTree(source:String, destination:String, sourceRoot:String,
-		ownerRoot:String, depth:Int, result:ImportAssetMergeResult, seen:Map<String, Bool>):Void {
+		ownerRoot:String, depth:Int, result:ImportAssetMergeResult, seen:Map<String, Bool>,
+		?mappedOwner:PreparedMappedAssetOwner):Void {
 		if (importWorkCancelled() || source == null || destination == null || depth > 10
 			|| !FileSystem.isDirectory(source))
 			return;
@@ -11833,7 +12165,13 @@ class ModuleFunctions {
 					result.skipped++;
 					continue;
 				}
-				mergePsychMediaTree(sourcePath, destinationPath, sourceRoot, ownerRoot, depth + 1, result, seen);
+				mergePsychMediaTree(sourcePath, destinationPath, sourceRoot, ownerRoot, depth + 1,
+					result, seen, mappedOwner);
+				continue;
+			}
+			if (mappedOwner != null
+				&& skipMappedOwnerMediaFile(mappedOwner, sourcePath, destinationPath)) {
+				result.skipped++;
 				continue;
 			}
 			if (FileSystem.exists(destinationPath)) {

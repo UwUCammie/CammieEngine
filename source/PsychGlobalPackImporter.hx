@@ -2,6 +2,10 @@ package;
 
 import haxe.Json;
 import haxe.io.Path;
+import PsychLanguagePublisher.PsychLanguagePublicationPlan;
+import SourceMappedAssetPublisher.SourceMappedAssetPolicy;
+import SourceMappedAssetPublisher.SourceMappedAssetPolicyView;
+import SourceMappedAssetPublisher.SourceMappedAssetPlan;
 #if sys
 import ImportFileSystem as FileSystem;
 import ImportFile as File;
@@ -63,7 +67,8 @@ class PsychGlobalPackImporter {
 		existing owner files.  A provider is selected only when no valid selection
 		already exists.
 	*/
-	public static function importPack(sourceRoot:String, ?contentRoot:String):PsychGlobalPackImportResult {
+	public static function importPack(sourceRoot:String, ?contentRoot:String,
+		?cancelled:Void->Bool):PsychGlobalPackImportResult {
 		var result:PsychGlobalPackImportResult = {
 			eligible:false, imported:false, ownerRoot:'', copied:0, skipped:0, failed:0, errors:[]
 		};
@@ -94,14 +99,39 @@ class PsychGlobalPackImporter {
 			return result;
 		}
 		result.ownerRoot = owner;
+		var mappedPlan = SourceMappedMediaPublisher.prepare(source, ImportEngine.PSYCH,
+			owner, '', cancelled);
+		for (diagnostic in mappedPlan.diagnostics)
+			result.errors.push(diagnostic);
+		if (mappedPlan.cancelled || (cancelled != null && cancelled()))
+			return result;
+		if (mappedPlan.failed) {
+			result.failed++;
+			return result;
+		}
+		var languagePlan = SourceMappedMediaPublisher.languageView(mappedPlan);
+		var mediaPlan = SourceMappedMediaPublisher.policyView(mappedPlan,
+			SourceMappedMediaPublisher.PSYCH_MEDIA_LABEL);
+		var mediaPolicy = SourceMappedMediaPublisher.mediaPolicy(ImportEngine.PSYCH, '');
+		SourceMappedMediaPublisher.publish(mappedPlan,
+			function(sourcePath:String, destinationPath:String):Void
+				copyFile(sourcePath, destinationPath, source, owner, result),
+			cancelled,
+			function(path:String, content:String):Void writeIdentityIndex(path, content, owner, result));
+		if (mappedPlan.cancelled || (cancelled != null && cancelled()))
+			return result;
 		var seenDirectories:Map<String, Bool> = new Map<String, Bool>();
 		var counters = {directories:0, entries:0};
 		for (root in roots) {
+			if (cancelled != null && cancelled()) return result;
 			if (root.prefix == '')
-				copyScopedRoot(root.path, '', source, owner, seenDirectories, counters, result);
+				copyScopedRoot(root.path, '', source, owner, seenDirectories, counters, result,
+				languagePlan, mediaPolicy, mediaPlan, cancelled, mappedPlan);
 			else
-				copyScopedRoot(root.path, root.prefix, source, owner, seenDirectories, counters, result);
+				copyScopedRoot(root.path, root.prefix, source, owner, seenDirectories, counters, result,
+					languagePlan, mediaPolicy, mediaPlan, cancelled, mappedPlan);
 		}
+		if (cancelled != null && cancelled()) return result;
 		copyPackMetadata(packPath, owner, source, result);
 		if (result.failed > 0)
 			return result;
@@ -179,7 +209,10 @@ class PsychGlobalPackImporter {
 
 	static function copyScopedRoot(root:String, destinationPrefix:String, sourceRoot:String,
 		ownerRoot:String, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
-		result:PsychGlobalPackImportResult):Void {
+		result:PsychGlobalPackImportResult, languagePlan:PsychLanguagePublicationPlan,
+		mediaPolicy:SourceMappedAssetPolicy,
+		mediaPlan:SourceMappedAssetPolicyView,
+		?cancelled:Void->Bool, ?identityPlan:SourceMappedAssetPlan):Void {
 		if (!pathWithin(root, sourceRoot)) {
 			fail(result, '[psych-global-pack-reject] Source root escaped the selected pack: ' + root);
 			return;
@@ -190,11 +223,11 @@ class PsychGlobalPackImporter {
 				var actualName = Path.withoutDirectory(sourceTree);
 				var relative = destinationPrefix == '' ? actualName : destinationPrefix + '/' + actualName;
 				copyTree(sourceTree, Path.join([ownerRoot, relative]), sourceRoot, ownerRoot,
-					0, seenDirectories, counters, result);
+					0, seenDirectories, counters, result, languagePlan, mediaPolicy, mediaPlan, identityPlan);
 			}
 		}
 		copyLanguageDataScopes(root, destinationPrefix, sourceRoot, ownerRoot,
-			seenDirectories, counters, result);
+			seenDirectories, counters, result, languagePlan, cancelled);
 		var shared = existingChild(root, 'shared');
 		if (shared != null && FileSystem.isDirectory(shared)) {
 			if (!pathWithin(shared, sourceRoot)) {
@@ -209,11 +242,11 @@ class PsychGlobalPackImporter {
 				var relative = destinationPrefix == '' ? 'shared/' + actualName
 					: destinationPrefix + '/shared/' + actualName;
 				copyTree(sourceTree, Path.join([ownerRoot, relative]), sourceRoot, ownerRoot,
-					0, seenDirectories, counters, result);
+					0, seenDirectories, counters, result, languagePlan, mediaPolicy, mediaPlan, identityPlan);
 			}
 			var sharedPrefix = destinationPrefix == '' ? 'shared' : destinationPrefix + '/shared';
 			copyLanguageDataScopes(shared, sharedPrefix, sourceRoot, ownerRoot,
-				seenDirectories, counters, result);
+				seenDirectories, counters, result, languagePlan, cancelled);
 		}
 		var dataRoot = existingChild(root, 'data');
 		var settings = dataRoot == null ? null : existingChild(dataRoot, 'settings.json');
@@ -227,7 +260,11 @@ class PsychGlobalPackImporter {
 	 * arbitrary mods/ roots and unrelated data files are not enrolled. */
 	static function copyLanguageDataScopes(root:String, destinationPrefix:String, sourceRoot:String,
 		ownerRoot:String, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
-		result:PsychGlobalPackImportResult):Void {
+		result:PsychGlobalPackImportResult, languagePlan:PsychLanguagePublicationPlan,
+		?cancelled:Void->Bool):Void {
+		if (languagePlan != null && (!languagePlan.legacyAllowed || languagePlan.blockAllLegacy))
+			return;
+		if (cancelled != null && cancelled()) return;
 		if (root == null || !FileSystem.isDirectory(root) || !pathWithin(root, sourceRoot)) {
 			fail(result, '[psych-global-pack-reject] Language scope escaped the selected pack: ' + Std.string(root));
 			return;
@@ -242,6 +279,7 @@ class PsychGlobalPackImporter {
 			return;
 		}
 		for (entry in entries) {
+			if (cancelled != null && cancelled()) return;
 			counters.entries++;
 			if (counters.entries > MAX_ENTRIES) {
 				fail(result, '[psych-global-pack-skip] Entry count limit reached while reading language scopes.');
@@ -277,6 +315,7 @@ class PsychGlobalPackImporter {
 					continue;
 				}
 				for (library in libraries) {
+					if (cancelled != null && cancelled()) return;
 					counters.entries++;
 					if (counters.entries > MAX_ENTRIES) {
 						fail(result, '[psych-global-pack-skip] Entry count limit reached while reading nested language libraries.');
@@ -311,14 +350,16 @@ class PsychGlobalPackImporter {
 			var relative = scope.prefix == '' ? dataName : scope.prefix + '/' + dataName;
 			var languageDestination = Path.join([ownerRoot, relative]);
 			copyLanguageTree(data, languageDestination, sourceRoot, ownerRoot, 0,
-				seenDirectories, counters, result);
+				seenDirectories, counters, result, languagePlan, cancelled);
 		}
 	}
 
 	/** Copy only .lang descendants of one authenticated data/ scope. */
 	static function copyLanguageTree(source:String, destination:String, sourceRoot:String, ownerRoot:String,
 		depth:Int, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
-		result:PsychGlobalPackImportResult):Void {
+		result:PsychGlobalPackImportResult, languagePlan:PsychLanguagePublicationPlan,
+		?cancelled:Void->Bool):Void {
+		if (cancelled != null && cancelled()) return;
 		if (depth > MAX_DEPTH) {
 			fail(result, '[psych-global-pack-skip] Language directory depth limit reached: ' + source);
 			return;
@@ -348,6 +389,7 @@ class PsychGlobalPackImporter {
 			return;
 		}
 		for (entry in entries) {
+			if (cancelled != null && cancelled()) return;
 			counters.entries++;
 			if (counters.entries > MAX_ENTRIES) {
 				fail(result, '[psych-global-pack-skip] Entry count limit reached while copying languages.');
@@ -366,17 +408,20 @@ class PsychGlobalPackImporter {
 			}
 			if (FileSystem.isDirectory(sourcePath)) {
 				copyLanguageTree(sourcePath, destinationPath, sourceRoot, ownerRoot,
-					depth + 1, seenDirectories, counters, result);
+					depth + 1, seenDirectories, counters, result, languagePlan, cancelled);
 				continue;
 			}
 			if (!entry.toLowerCase().endsWith('.lang')) continue;
+			if (PsychLanguagePublisher.skipLegacy(languagePlan, sourcePath, destinationPath)) continue;
 			copyFile(sourcePath, destinationPath, sourceRoot, ownerRoot, result);
 		}
 	}
 
 	static function copyTree(source:String, destination:String, sourceRoot:String, ownerRoot:String,
 		depth:Int, seenDirectories:Map<String, Bool>, counters:{directories:Int, entries:Int},
-		result:PsychGlobalPackImportResult):Void {
+		result:PsychGlobalPackImportResult, languagePlan:PsychLanguagePublicationPlan,
+		mediaPolicy:SourceMappedAssetPolicy,
+		mediaPlan:SourceMappedAssetPolicyView, ?identityPlan:SourceMappedAssetPlan):Void {
 		if (depth > MAX_DEPTH) {
 			fail(result, '[psych-global-pack-skip] Directory depth limit reached: ' + source);
 			return;
@@ -436,11 +481,51 @@ class PsychGlobalPackImporter {
 			}
 			if (FileSystem.isDirectory(sourcePath)) {
 				copyTree(sourcePath, destinationPath, sourceRoot, ownerRoot,
-					depth + 1, seenDirectories, counters, result);
+					depth + 1, seenDirectories, counters, result, languagePlan, mediaPolicy, mediaPlan, identityPlan);
+				continue;
+			}
+			if (SourceMappedMediaPublisher.skipIdentityLegacy(identityPlan, sourcePath, destinationPath)
+				|| skipMappedLegacy(sourcePath, destinationPath, sourceRoot, ownerRoot,
+				languagePlan, mediaPolicy, mediaPlan)) {
+				result.skipped++;
 				continue;
 			}
 			copyFile(sourcePath, destinationPath, sourceRoot, ownerRoot, result);
 		}
+	}
+
+	static function skipMappedLegacy(sourcePath:String, destinationPath:String,
+		sourceRoot:String, ownerRoot:String, languagePlan:PsychLanguagePublicationPlan,
+		mediaPolicy:SourceMappedAssetPolicy,
+		mediaPlan:SourceMappedAssetPolicyView):Bool {
+		if (sourcePath == null || destinationPath == null || ownerRoot == null) return false;
+		var ownerRelative = relativeWithin(destinationPath, ownerRoot);
+		if (ownerRelative == null) return false;
+		var logicalPath = 'assets/' + ownerRelative;
+		if (languagePlan != null && (isLanguagePath(sourcePath) || isLanguagePath(logicalPath))
+			&& SourceMappedMediaPublisher.skipLegacyGlobal(sourceRoot, ImportEngine.PSYCH,
+				ownerRoot, PsychLanguagePublisher.policy(), languagePlan, sourcePath, logicalPath))
+			return true;
+		return mediaPolicy != null && mediaPlan != null
+			&& SourceMappedMediaPublisher.skipLegacyGlobal(sourceRoot, ImportEngine.PSYCH,
+				ownerRoot, mediaPolicy, mediaPlan, sourcePath, logicalPath);
+	}
+
+	static function relativeWithin(path:String, root:String):Null<String> {
+		if (path == null || root == null) return null;
+		var normalizedPath = Path.normalize(path);
+		var normalizedRoot = Path.normalize(root);
+		var pathKey = canonicalPath(normalizedPath);
+		var rootKey = canonicalPath(normalizedRoot);
+		if (pathKey == rootKey) return '';
+		var prefix = rootKey.endsWith('/') ? rootKey : rootKey + '/';
+		if (!pathKey.startsWith(prefix)) return null;
+		return StringTools.replace(normalizedPath.substr(normalizedRoot.length + 1), '\\', '/');
+	}
+
+	static function isLanguagePath(path:String):Bool {
+		return path != null && StringTools.trim(path) != ''
+			&& StringTools.trim(path).toLowerCase().endsWith('.lang');
 	}
 
 	static function copyFile(source:String, destination:String, sourceRoot:String, ownerRoot:String,
@@ -467,6 +552,20 @@ class PsychGlobalPackImporter {
 			result.copied++;
 		} catch (error:Dynamic) {
 			fail(result, '[psych-global-pack-skip] Could not copy ' + source + ': ' + Std.string(error));
+		}
+	}
+
+	/** Generated identity metadata is a staged owned output, not a donor copy. */
+	static function writeIdentityIndex(path:String, content:String, owner:String,
+		result:PsychGlobalPackImportResult):Void {
+		if (result.failed > 0 || !pathWithin(path, owner))
+			throw '[psych-global-pack-reject] Asset identity publication lacks a valid owner.';
+		try {
+			if (ImportGeneratedOutput.write(path, content, true)) result.copied++;
+			else result.skipped++;
+		} catch (error:Dynamic) {
+			fail(result, '[psych-global-pack-reject] Could not stage asset identity metadata: ' + Std.string(error));
+			throw error;
 		}
 	}
 

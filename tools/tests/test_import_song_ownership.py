@@ -312,6 +312,133 @@ class Main {
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_retained_source_label_is_exact_and_below_authored_metadata(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
+            path = Path(tmp)
+            (path / "Main.hx").write_text(r'''import sys.FileSystem;
+import sys.io.File;
+class Main {
+ static function mkdir(path:String) {
+  var current = "";
+  for (part in path.split("/")) {
+   if (part == "") continue;
+   current = current == "" ? part : current + "/" + part;
+   if (!FileSystem.exists(current)) FileSystem.createDirectory(current);
+  }
+ }
+ static function main() {
+  var install = "install";
+  mkdir("install/import-cache/staging/run");
+  mkdir("retained/snapshot/content");
+  mkdir("other/snapshot/content");
+  mkdir("authored/snapshot/content");
+  mkdir("package-meta");
+  mkdir("chart-meta");
+  File.saveContent("authored/snapshot/content/pack.json", '{"name":"Authored Package"}');
+  File.saveContent("package-meta/meta.json", '{"name":"Real Package"}');
+  File.saveContent("chart-meta/meta.json",
+    '{"bpm":120,"stepsPerBeat":4,"difficulties":["Normal"],"name":"Chart Title"}');
+  var io = ImportIO.begin(install, "install/import-cache/staging/run");
+  try {
+   io.setSourceLabel("retained/snapshot/content", "Original Source Mod");
+   var retained = ImportSongOwnership.displayNameInfo("retained/snapshot/content");
+   if (retained.name != "Original Source Mod" || retained.authored)
+    throw "exact retained-root label was not used as inferred fallback";
+   var provenance = ImportSongOwnership.provenance("song", "retained/snapshot/content",
+    "Psych Engine", "song", "Song Title");
+   if (provenance.sourceModDirectory != "Original Source Mod")
+    throw "the exact retained source label was not preserved in the receipt";
+   var wrongRoot = ImportSongOwnership.displayNameInfo("other/snapshot/content");
+   if (wrongRoot.name != "" || wrongRoot.name == "snapshot" || wrongRoot.name == "content")
+    throw "unmapped retained root leaked its cache/container basename";
+   io.setSourceLabel("other/snapshot/content", "content");
+   if (ImportSongOwnership.displayNameInfo("other/snapshot/content").name != "")
+    throw "generic retained label was accepted";
+   io.setSourceLabel("authored/snapshot/content", "Recorded Source Name");
+   var authored = ImportSongOwnership.displayNameInfo("authored/snapshot/content");
+   if (authored.name != "Authored Package" || !authored.authored)
+    throw "recorded root label overrode authored package metadata";
+  } catch (error:Dynamic) {
+   ImportIO.end();
+   throw error;
+  }
+  ImportIO.end();
+  var packageMeta = ImportSongOwnership.displayNameInfo("package-meta");
+  if (packageMeta.name != "Real Package" || !packageMeta.authored)
+   throw "ordinary meta.json package metadata was not recognized";
+  var chartMeta = ImportSongOwnership.displayNameInfo("chart-meta");
+  if (chartMeta.name != "chart-meta" || chartMeta.authored)
+   throw "chart-shaped meta.json was promoted to package metadata";
+ }
+}''', encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                cwd=tmp, capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_legacy_generic_receipt_label_fallback_requires_same_inferred_owner(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
+            fixture = Path(tmp) / "Main.hx"
+            fixture.write_text(r'''import haxe.Json;
+class Main {
+ static function main() {
+  var destination = "philly-nice--psych-engine-68fb3cd061";
+  var owner = "assets/imported_mods/psych-engine-fnf-fnia-68fb3cd061";
+  var record:Dynamic = {
+   version:1, destinationFolder:destination, sourceEngine:"Psych Engine",
+   sourceOwner:owner, sourceModDirectory:"fnf_fnia", modName:"content",
+   nameSource:"inferred", display:"Philly Nice"
+  };
+  var before = Json.stringify(record);
+  var label = ImportSongOwnership.inferredGenericLabelFromReceipt(
+   record, destination, owner, "Psych Engine");
+  if (label != "fnf_fnia · Psych Engine") throw "generic inferred name did not recover the recorded source directory";
+  if (Json.stringify(record) != before) throw "read-time label resolution mutated provenance";
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(record,
+      "another-song", owner, "Psych Engine") != "") throw "wrong destination accepted";
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(record,
+      destination, owner + "-other", "Psych Engine") != "") throw "wrong owner accepted";
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(record,
+      destination, owner, "V-Slice") != "") throw "wrong engine accepted";
+
+  var invalid:Dynamic = Json.parse(before);
+  Reflect.setField(invalid, "sourceOwner", "");
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+      destination, owner, "Psych Engine") != "") throw "incomplete owner accepted";
+  Reflect.setField(invalid, "sourceEngine", "unregistered engine");
+  Reflect.setField(invalid, "sourceOwner", owner);
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+      destination, owner, "unregistered engine") != "") throw "unknown engine accepted";
+
+  for (source in ["user", "metadata"]) {
+   invalid = Json.parse(before);
+   Reflect.setField(invalid, "nameSource", source);
+   if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+       destination, owner, "Psych Engine") != "") throw "explicit " + source + " label was replaced";
+  }
+  invalid = Json.parse(before);
+  Reflect.setField(invalid, "modName", "Real Mod Name");
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+      destination, owner, "Psych Engine") != "") throw "non-generic display name was replaced";
+  invalid = Json.parse(before);
+  Reflect.setField(invalid, "sourceModDirectory", "content");
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+      destination, owner, "Psych Engine") != "") throw "generic source directory was returned";
+  invalid = Json.parse(before);
+  Reflect.setField(invalid, "nameSource", "inferred");
+  Reflect.setField(invalid, "modName", "assets");
+  if (ImportSongOwnership.inferredGenericLabelFromReceipt(invalid,
+      destination, owner, "Psych Engine") != "fnf_fnia · Psych Engine")
+   throw "another generic container basename was not repaired";
+ }
+}''', encoding="utf-8", newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                cwd=tmp, capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_package_id_reuses_existing_owner_after_source_root_moves(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as tmp:
             path = Path(tmp)

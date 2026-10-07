@@ -438,7 +438,9 @@ class RuntimeNvStateProbe {
 		var snapshotId = Std.string(snapshotIdValue).toLowerCase();
 		check(Reflect.field(record, 'source') == 'sources/' + snapshotId + '/content', 'Retained import source path invalid');
 		var snapshotRoot = Path.join([install, 'import-cache', 'sources', snapshotId]);
-		ImportSourceSnapshot.verify(snapshotRoot, snapshotId);
+		// This opt-in probe runs on the game thread. A child verification pool
+		// would wait behind its gameplay lease while the game waits for the pool.
+		ImportSourceSnapshot.verify(snapshotRoot, snapshotId, null, null, 1);
 		var snapshotReceipt:Dynamic = Json.parse(File.getContent(Path.join([snapshotRoot, 'receipt.json'])));
 		var incomplete:Dynamic = Reflect.field(snapshotReceipt, 'incompleteReasons');
 		check(Std.isOfType(incomplete, Array) && (cast incomplete:Array<Dynamic>).length == 0,

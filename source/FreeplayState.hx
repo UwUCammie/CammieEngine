@@ -41,9 +41,23 @@ class FreeplayState extends MusicBeatState {
 	var importRefreshGeneration:Int = 0;
 	var importAvailability:ImportRefreshAvailabilitySnapshot;
 	var importAvailabilityRevision:Int = -1;
+	var importAvailabilityAppliedRevision:Int = -1;
 	var baseSongCount:Int = 0;
 	#end
-	public static var currentSongList:Array<JsonMetadata> = [];
+	public static var currentSongList(default, set):Array<JsonMetadata> = [];
+	#if sys
+	static var currentSongListGeneration:Int = -1;
+	#else
+	static var currentSongListGeneration:Int = 0;
+	#end
+	static function set_currentSongList(value:Array<JsonMetadata>):Array<JsonMetadata> {
+		#if sys
+		currentSongListGeneration = ImportRefreshManager.generation;
+		#else
+		currentSongListGeneration = 0;
+		#end
+		return currentSongList = value;
+	}
 	public static var soundTest:Bool = false;
 	var vocals:FlxSound;
 	var songs:Array<SongMetadata> = [];
@@ -331,10 +345,16 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	override function create() {
-		#if sys
-		importRefreshGeneration = ImportRefreshManager.generation;
-		#end
 		prepareDirectFreeplayContext();
+		#if sys
+		var managerGeneration = ImportRefreshManager.generation;
+		importRefreshGeneration = managerGeneration;
+		if (FreeplaySongAvailability.songListNeedsRegistryRefresh(directOwnerRoot != '',
+			currentSongList == null ? 0 : currentSongList.length,
+			currentSongListGeneration, managerGeneration))
+			currentSongList = [];
+		ImportRefreshManager.requestAvailabilityRecheck();
+		#end
 		if (directOwnerRoot != '' || currentSongList == null || currentSongList.length == 0) {
 			var categories:Array<Dynamic> = null;
 			try categories = cast FreeplayRegistry.getJson() catch (error:Dynamic)
@@ -680,11 +700,12 @@ class FreeplayState extends MusicBeatState {
 		return FreeplaySongAvailability.ownerReadiness(snapshot, ownerRoot);
 	}
 
-	/** The manager revision is the only per-frame importer read. Copying the
-	 * immutable snapshot and reconciling provisional rows happens only on change. */
+	/** The manager revision is the only per-frame importer read. Interactions can
+	 * consume a snapshot before the visible rows apply it, so track both revisions. */
 	function refreshImportAvailability(force:Bool = false):Bool {
 		var managerRevision = ImportRefreshManager.availabilityRevision();
-		if (!force && importAvailability != null && managerRevision == importAvailabilityRevision)
+		if (!force && importAvailability != null && managerRevision == importAvailabilityRevision
+			&& importAvailabilityAppliedRevision == importAvailabilityRevision)
 			return false;
 		var next = ImportRefreshManager.availabilitySnapshot();
 		if (next == null)
@@ -701,6 +722,7 @@ class FreeplayState extends MusicBeatState {
 		if (grpSongs != null) {
 			if (rowsChanged) {
 				if (songs.length == 0) {
+					importAvailabilityAppliedRevision = next.revision;
 					returnFromEmptySongList();
 					return true;
 				}
@@ -720,6 +742,7 @@ class FreeplayState extends MusicBeatState {
 			if (selectedPendingKey != '' && indexForPendingKey(selectedPendingKey) < 0)
 				changeSelection(0, true);
 		}
+		importAvailabilityAppliedRevision = next.revision;
 		return true;
 	}
 
@@ -1487,13 +1510,13 @@ class FreeplayState extends MusicBeatState {
 		if (song.isProvisional)
 			return;
 		var provenance:Dynamic = song.provenance;
-		// Only rows without an explicit sourceLabel need a receipt lookup.  Rows
-		// are materialized lazily and sourceResolved caches the result per song,
-		// so this checks at most the visible imported candidates rather than
-		// scanning every chart on entering Freeplay.  Reject path-shaped registry
+		// Rows are materialized lazily and sourceResolved caches the result per
+		// song. Read receipts for blank labels and the old generic-container form;
+		// explicit package labels need no disk lookup. Reject path-shaped registry
 		// names before constructing a path below assets/data.
 		var songKey = song.songName;
-		if (provenance == null && (song.sourceLabel == null || StringTools.trim(song.sourceLabel) == '')
+		var existingSourceLabel = song.sourceLabel == null ? '' : StringTools.trim(song.sourceLabel);
+		if (provenance == null && (existingSourceLabel == '' || looksLikeGenericSourceLabel(existingSourceLabel))
 			&& songKey != null && songKey != '' && songKey.indexOf('/') < 0
 			&& songKey.indexOf('\\') < 0 && songKey.indexOf('..') < 0) {
 			var path = 'assets/data/' + song.songName.toLowerCase() + '/importProvenance.json';
@@ -1501,6 +1524,33 @@ class FreeplayState extends MusicBeatState {
 				provenance = CoolUtil.parseJson(FNFAssets.getText(path));
 				song.provenance = provenance;
 			} catch (_:Dynamic) {}
+		}
+		var staleGenericLabel = '';
+		if (provenance != null) {
+			// Older registry rows may already contain the inferred storage basename
+			// as their source label. Repair only that exact receipt-derived generic
+			// value; other explicit package labels continue to win.
+			var receiptEngine:Dynamic = Reflect.field(provenance, 'sourceEngine');
+			var expectedEngine = ImportEngine.normalize(receiptEngine);
+			var receiptName:Dynamic = Reflect.field(provenance, 'modName');
+			var receiptGenericLabel = Std.isOfType(receiptName, String)
+				? ImportSongOwnership.displayWithEngine(cast receiptName, expectedEngine) : '';
+			var currentLabel = song.sourceLabel == null ? '' : StringTools.trim(song.sourceLabel);
+			var staleDisplaySuffix = ' · ' + currentLabel;
+			var mayRepair = currentLabel == '' || (receiptGenericLabel != ''
+				&& currentLabel == receiptGenericLabel);
+			if (mayRepair && !song.ownerResolved)
+				resolveSongIdentity(song);
+			if (mayRepair && song.ownerRoot != '' && expectedEngine != ImportEngine.AUTO) {
+				var inferredLabel = ImportSongOwnership.inferredGenericLabelFromReceipt(
+					provenance, song.songName, song.ownerRoot, expectedEngine);
+				if (inferredLabel != '') {
+					if (currentLabel == receiptGenericLabel && song.display != null
+						&& StringTools.endsWith(song.display, staleDisplaySuffix))
+						staleGenericLabel = currentLabel;
+					song.sourceLabel = inferredLabel;
+				}
+			}
 		}
 		var chartTitle = '';
 		if (provenance != null && song.songName.indexOf('--') >= 0) {
@@ -1510,9 +1560,22 @@ class FreeplayState extends MusicBeatState {
 					Reflect.field(provenance, 'sourceFolder'));
 		}
 		var resolved = FreeplaySourceDisplay.resolve(song.display, song.sourceLabel,
-			song.songName, provenance, chartTitle);
+			song.songName, provenance, chartTitle, staleGenericLabel);
 		song.displayTitle = resolved.title;
 		song.sourceLabel = resolved.source;
+	}
+
+	static function looksLikeGenericSourceLabel(value:String):Bool {
+		if (value == null) return false;
+		var separator = value.lastIndexOf(' · ');
+		if (separator <= 0) return false;
+		var container = StringTools.trim(value.substr(0, separator)).toLowerCase();
+		var engine = ImportEngine.normalize(StringTools.trim(value.substr(separator + 3)));
+		if (engine == ImportEngine.AUTO) return false;
+		return switch (container) {
+			case 'assets', 'content', 'data', 'mods', 'music', 'songs', 'source': true;
+			default: false;
+		};
 	}
 
 	/** Read only the selected owner's bounded chart directory when legacy

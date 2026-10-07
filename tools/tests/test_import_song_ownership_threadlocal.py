@@ -139,6 +139,9 @@ class ImportSongOwnershipThreadLocalTest(unittest.TestCase):
             (temp_path / "ImportFile.hx").write_text(IMPORT_FILE, encoding="utf-8", newline="\n")
             (temp_path / "CompatScriptManifest.hx").write_text(COMPAT_SCRIPT_MANIFEST,
                 encoding="utf-8", newline="\n")
+            (temp_path / "ImportEngine.hx").write_text(
+                (SOURCE / "ImportEngine.hx").read_text(encoding="utf-8"),
+                encoding="utf-8", newline="\n")
             (temp_path / "Main.hx").write_text(MAIN, encoding="utf-8", newline="\n")
             root_a = temp_path / "install-a"
             root_b = temp_path / "install-b"

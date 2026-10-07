@@ -1,4 +1,4 @@
-CammieEngine v0.0.16 - alpha player guide
+CammieEngine v0.0.17 - alpha player guide
 
 PLAY
 Extract the complete release ZIP to a writable folder and run Funkin.exe.
@@ -22,6 +22,9 @@ payloads are excluded. Future importer improvements automatically
 refresh outdated imports while you browse menus or Settings; a progress bar
 shows the work. Keep import-cache when moving or updating the game. This uses
 additional disk space but removes the need to select the original folder again.
+Pending songs stay gray until their mod is ready; completed mods remain playable.
+Background import work pauses during gameplay and resumes when you return to a
+menu. A transaction already installing files finishes safely before pausing.
 Local edits, missing cached files or incomplete scans stop the refresh and
 preserve the installed content. Older imports without a retained source are
 not automatically enrolled or overwritten.

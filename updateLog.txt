@@ -1,8 +1,24 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.17 development - CammieEngine
-	- Begin the next roadmap checkpoint: shared Psych source asset profiles and reusable native test compilation.
+v0.0.17 alpha - CammieEngine
+	- Preserve source Lime asset IDs and named libraries in owner-scoped, receipt-verified indexes shared by Psych and Nightmare Vision.
+	- Return decoded Sound objects from modern Psych Paths audio helpers, including instrumentals and voices; retain owner caches, source translations and missing-audio behavior.
+	- Resolve compiled Psych audio through its imported source identity instead of borrowing an unrelated host core asset.
+	- Share one receipt-verified publication planner for Psych language and Psych/Nightmare Vision media, checking destination conflicts before copying.
+	- Preserve Project media renames, typed file formats and separate Nightmare Vision package/core ownership, including music and animation metadata.
+	- Keep disabled media out of legacy fallback copies and protect managed files when typed mappings are unresolved or ambiguous. Prior Psych/Nightmare Vision receipts refresh from retained sources.
+	- Redraw completed import rows even when a launch check has already read their new readiness; preserve the current Freeplay selection.
+	- Pause disposable import staging cleanup during gameplay, then resume it in menus without interrupting committed transactions.
+	- Refresh stale Freeplay lists after imports finish in another menu, and scope incomplete import metadata to its affected package instead of keeping unrelated songs unavailable.
+	- Preserve original package labels when refreshing retained sources; repair older inferred container labels from validated song receipts without changing user names.
+	- Pause background import receipt inspection, registry reconciliation, copying, hashing, conversion and disposable cleanup during gameplay, then resume automatically in menus. Transactions already publishing finish safely; import ETA excludes gameplay pauses.
+	- Share Unicode-safe JSON string encoding between engine registry writes and import refreshes, preserving existing JSONC parsing and serializer behavior.
+	- Reuse validated Windows native test binaries across test processes; all filesystem and import-refresh checks still run. Changed source, compiler, library or patch inputs invalidate the cache.
+	- Share receipt-checked Project asset mappings across Psych and Nightmare Vision. Psych language imports honor verified renames and preserve managed files when mappings are unresolved or ambiguous.
+	- Retain explicit source build flags, string values and command context with their snapshot. Shared Psych/Nightmare Vision Project parsing now handles local includes, ordered variables and Lime substitution rules.
+	- Preserve usable imports when required Project inputs are malformed or unresolved; keep legacy behavior for absent Project files and honor optional local includes. Unknown source build inputs stay unresolved.
+	- Pause staged file copies and prewrite hashing at 64 KiB checkpoints during gameplay, including cancellation while paused. Language mapping avoids rehashing unrelated images and audio.
 
 v0.0.16 alpha - CammieEngine
 	- Add owner-scoped Psych language parsing, phrase/file translation callbacks and glyph reloads shared by Lua, HScript, reflection and achievement text.

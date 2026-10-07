@@ -1,0 +1,13 @@
+# Shared source-mapped asset planner
+
+`SourceMappedAssetPublisher` centralizes receipt-bound mapping for multiple owner runtime classes. `prepareMany` asks each policy which source/target pairs need hashing, unions those filters, and performs one `PsychAssetProfile.walkMappedFiles` pass. Each verified event is then classified independently by each policy. The core applies accepted runtime owner paths, deduplicates identical source and destination pairs, and checks cross-policy destination conflicts before `publish` can copy anything.
+
+Policies use three decisions: `accept` schedules a receipt-verified file, `ignore` leaves the event to another importer path, and `defer` blocks unsafe legacy fallback while protecting a matching prior managed output. A policy may return a runtime `ownerRelative` to apply library routing. `policyView` exposes only that policy's files and legacy suppression maps; `blocksLegacySource`, `blocksLegacyDestination`, and `skipLegacy` keep fallback decisions class-scoped.
+
+Incomplete profiles remain additive. Accepted sources are blocked from the same policy's legacy collector to avoid copying one mapped source to an inferred second target. That source block does not filter mapped events, so one source can still map to multiple distinct destinations and a disabled or deferred source projection cannot erase a disjoint enabled mapping. Deferred owner prefixes suppress only overlapping mapped destinations. Unknown scope blocks the affected policy's legacy path. Opaque projections check prior output using the policy predicate; typed deferred projections whose target is unknown protect any prior managed output under the exact owner, including custom extensions.
+
+The focused Haxe eval fixture covers shared-event deduplication and one-copy publication, a cross-policy collision preserving prior bytes, additive incomplete mappings and source-scoped legacy suppression, unresolved/disabled prefix handling, preservation of disjoint mapped targets, runtime owner-path overrides, unknown-scope class filtering, multi-target fan-out, and cancellation during planning and publication.
+
+An exact deferred leaf now checks transaction ownership regardless of whether the policy classifies that output extension as one of its normal managed classes. Deferred destination masks are merged across policy views before finalizing the batch, so a later cross-policy defer removes an earlier accepted mapping at that same owner path regardless of Project event order. Fan-out to a different owner path remains independent.
+
+Focused validation passed 22 publisher tests under forced eval. Native C++ manager, game-build and full-suite evidence is recorded in `source-mapped-media-integration.md` and its checkpoint receipt.

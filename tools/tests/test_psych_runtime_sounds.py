@@ -45,6 +45,9 @@ import sys.io.File;
 using StringTools;
 typedef ImportAssetMergeResult = {{var copied:Int; var skipped:Int; var failed:Int;
   @:optional var errors:Array<String>;}};
+typedef SourceMappedAssetPlan = {{var failed:Bool; var cancelled:Bool; var diagnostics:Array<String>;}};
+typedef PreparedMappedAssetOwner = {{var sourceRoot:String; var engine:String; var scope:String;
+  var destinationRoot:String; var plan:SourceMappedAssetPlan;}};
 class ImportSettings {{
   public static function normalizeSourcePath(value:Dynamic):String
     return value == null ? '' : Path.normalize(StringTools.trim(Std.string(value)));
@@ -53,6 +56,11 @@ class ModuleFunctions {{
   static function importWorkCancelled():Bool return false;
   static function reportImportProgress(phase:String, path:String, completed:Int = 0,
     total:Int = 0, copied:Int = 0, skipped:Int = 0, failed:Int = 0, work:Int = 0):Void {{}}
+  static function skipMappedOwnerMediaFile(owner:PreparedMappedAssetOwner,
+      _source:String, _destination:String):Bool {{
+    if (owner != null) throw "runtime-sounds fixture is only for the profile-unavailable legacy path";
+    return false;
+  }}
 {methods}
   public static function merge(source:String, target:String):ImportAssetMergeResult
     return mergePsychRuntimeSounds(source, target);

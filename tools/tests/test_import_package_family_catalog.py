@@ -12,6 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "source"
+TJSON = ROOT / ".haxelib/tjson/1,4,0"
 HAXE = ROOT / ".tools/haxe" / ("haxe.exe" if os.name == "nt" else "haxe")
 
 
@@ -361,7 +362,7 @@ class ImportPackageFamilyCatalogTest(unittest.TestCase):
 
     def run_fixture(self, mode: str) -> dict:
         result = subprocess.run(
-            [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(self.fixture_dir),
+            [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(TJSON), "-cp", str(self.fixture_dir),
              "--run", "ImportPackageFamilyCatalogFixture", mode, str(self.install)],
             cwd=ROOT,
             env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

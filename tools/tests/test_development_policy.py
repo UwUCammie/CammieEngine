@@ -34,6 +34,10 @@ class DevelopmentPolicyTest(unittest.TestCase):
             branding = root / 'source' / 'EngineBranding.hx'
             branding.parent.mkdir()
             branding.write_text("class EngineBranding {static var FALLBACK_VERSION:String = '0.0.13';}", encoding='utf-8')
+            readme = root / 'README.md'
+            guide = root / 'USER-README.txt'
+            readme.write_bytes(b'# CammieEngine v0.0.13\r\n\r\nKeep this guide text.\r\n')
+            guide.write_bytes(b'CammieEngine v0.0.13 - alpha player guide\r\n')
             with self.assertRaises(ValueError):
                 VERSIONS.configure_development_version(root, 'v0.0.13')
             VERSIONS.configure_development_version(root, 'v0.0.13', apply=True)
@@ -43,9 +47,12 @@ class DevelopmentPolicyTest(unittest.TestCase):
             self.assertIn(b'<app version="0.0.14"', first_project)
             self.assertEqual(first_version, b'0.0.14\r\n')
             self.assertIn("FALLBACK_VERSION:String = '0.0.14'", branding.read_text())
+            self.assertEqual(readme.read_bytes(), b'# CammieEngine v0.0.14\r\n\r\nKeep this guide text.\r\n')
+            self.assertEqual(guide.read_bytes(), b'CammieEngine v0.0.14 - alpha player guide\r\n')
             VERSIONS.configure_development_version(root, 'v0.0.13', apply=True)
             self.assertEqual(project.read_bytes(), first_project)
             self.assertEqual(version.read_bytes(), first_version)
+            self.assertEqual(readme.read_bytes(), b'# CammieEngine v0.0.14\r\n\r\nKeep this guide text.\r\n')
             VERSIONS.configure_development_version(root, 'v0.0.14', apply=True)
             self.assertEqual(version.read_text().strip(), '0.0.15')
 

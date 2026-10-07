@@ -1,4 +1,4 @@
-# CammieEngine v0.0.16
+# CammieEngine v0.0.17
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.
@@ -57,6 +57,12 @@ metadata; unchanged runs reuse the executable and still run every test. Use
 `.\run.bat rebuild` to force a build. Automated gameplay checks are muted.
 Failed builds or tests return a nonzero exit code. Tests requiring Linux-only tools or unavailable donor packages report
 their skips explicitly.
+
+Windows native import tests share a content-verified compilation cache between
+test processes. Every behavior check still runs. Engine sources, libraries,
+compiler inputs and executable hashes are checked before reuse; game assets
+are not scanned for this cache. Set `CAMMIE_NATIVE_FIXTURE_CACHE` to choose its
+directory (the default is `tmp/native-fixture-cache`).
 
 Unlimited FPS uses a small native scheduler patch to the pinned Lime 8.3.2.
 The first build fetches its exact source revision and compiles that library;

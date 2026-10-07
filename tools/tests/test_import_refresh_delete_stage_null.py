@@ -85,7 +85,8 @@ class ImportRefreshDeleteStageNullTest(unittest.TestCase):
             fixture = work / "ImportRefreshDeleteStageFixture.hx"
             fixture.write_text(FIXTURE.replace("__DELETE_STAGE__", self.method), encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(work), "--run", "ImportRefreshDeleteStageFixture"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
+                 "--run", "ImportRefreshDeleteStageFixture"],
                 cwd=work,
                 env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
                 capture_output=True,

@@ -81,18 +81,33 @@ class RuntimeImportSmokeState extends FlxState {
 			var snapshot = scanJob.snapshot();
 			if (!snapshot.complete)
 				return;
-			var result:Dynamic = snapshot.result;
-			scanJob = null;
 			if (cancellationRequested) {
+				scanJob = null;
 				RuntimeImportSmokeHarness.fail('timeout', 'scan cancellation completed');
 				return;
 			}
+			var result:Dynamic = snapshot.result;
 			if (result == null) {
+				scanJob = null;
 				RuntimeImportSmokeHarness.fail('scan', snapshot.error == null ? 'scan returned no result' : snapshot.error);
 				return;
 			}
+			var request = RuntimeImportSmokeHarness.config();
+			if (request != null && !request.scanOnly) {
+				// Like Import Settings, keep the completed scan handle until startup
+				// receipt inspection and queued handoffs are idle. ImportOnce rejects
+				// while that coordinator work is active, so don't publish scan-ready
+				// or import-start markers before it is safe to proceed. Scan-only is
+				// intentionally independent of importer readiness.
+				#if sys
+				var coordinatorStatus = ImportRefreshManager.browseTick();
+				if (coordinatorStatus != null && coordinatorStatus.busy)
+					return;
+				#end
+			}
+			scanJob = null;
 			RuntimeImportSmokeHarness.markScanReady(result);
-			if (RuntimeImportSmokeHarness.config().scanOnly) {
+			if (request != null && request.scanOnly) {
 				RuntimeImportSmokeHarness.finishScan(result);
 				return;
 			}

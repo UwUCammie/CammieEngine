@@ -72,14 +72,37 @@ class FreeplaySourceDisplayFixture {
       {destinationFolder:"other", modName:"Wrong Owner", sourceEngine:"Psych Engine"});
     check(explicit.title == "Custom title" && explicit.source == "Chosen label",
       "explicit registry label did not take precedence");
+
+    var repaired = FreeplaySourceDisplay.resolve(
+      "Philly Nice · content · Psych Engine", "fnf_fnia · Psych Engine",
+      "philly-nice--psych-engine-68fb3cd061",
+      {destinationFolder:"philly-nice--psych-engine-68fb3cd061",
+       modName:"content", sourceEngine:"Psych Engine"}, "",
+      "content · Psych Engine");
+    check(repaired.title == "Philly Nice", "validated generic display suffix remained in title");
+    check(repaired.source == "fnf_fnia · Psych Engine", "validated inferred source label was lost");
+
+    var repairedCaptionOnly = FreeplaySourceDisplay.resolve(
+      "Philly Nice", "fnf_fnia · Psych Engine",
+      "philly-nice--psych-engine-68fb3cd061",
+      {destinationFolder:"philly-nice--psych-engine-68fb3cd061",
+       modName:"content", sourceEngine:"Psych Engine"});
+    check(repairedCaptionOnly.title == "Philly Nice",
+      "caption repair changed a title without the validated stale suffix");
+
+    var authored = FreeplaySourceDisplay.resolve(
+      "A title · content · Psych Engine", "User Pack", "authored-song",
+      {destinationFolder:"authored-song", modName:"content", sourceEngine:"Psych Engine"});
+    check(authored.title == "A title · content · Psych Engine" && authored.source == "User Pack",
+      "authored title suffix was stripped without a validated stale label");
     Sys.println("OK");
   }
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             shutil.copy2(ROOT / "source/FreeplaySourceDisplay.hx", folder)
-            (Path(folder) / "ImportSongOwnership.hx").write_text(ownership_stub, newline='\n')
-            (Path(folder) / "FreeplaySourceDisplayFixture.hx").write_text(fixture, newline='\n')
+            (Path(folder) / "ImportSongOwnership.hx").write_text(ownership_stub, encoding="utf-8", newline='\n')
+            (Path(folder) / "FreeplaySourceDisplayFixture.hx").write_text(fixture, encoding="utf-8", newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder,
                  "--run", "FreeplaySourceDisplayFixture"],
@@ -88,17 +111,26 @@ class FreeplaySourceDisplayFixture {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("OK", result.stdout + result.stderr)
 
-    def test_freeplay_reads_receipts_only_for_unlabeled_safe_rows(self):
+    def test_freeplay_reads_receipts_for_unlabeled_or_legacy_generic_rows(self):
         source = (ROOT / "source/FreeplayState.hx").read_text()
         start = source.index("function sourceDisplayFor(song:SongMetadata)")
         end = source.index("\n\t/** Read only the selected owner's bounded chart directory", start)
         method = source[start:end]
         self.assertLess(method.index("if (song.sourceResolved)"),
                         method.index("FNFAssets.exists(path)"))
-        self.assertIn("StringTools.trim(song.sourceLabel) == ''", method)
+        self.assertIn("looksLikeGenericSourceLabel(existingSourceLabel)", method)
         self.assertIn("songKey.indexOf('/') < 0", method)
         self.assertIn("songKey.indexOf('\\\\') < 0", method)
         self.assertIn("importProvenance.json", method)
+        self.assertIn("inferredGenericLabelFromReceipt(", method)
+        self.assertIn("provenance, song.songName, song.ownerRoot, expectedEngine", method)
+        self.assertIn("currentLabel == receiptGenericLabel", method)
+        self.assertIn("&& currentLabel == receiptGenericLabel);", method)
+        self.assertIn("StringTools.endsWith(song.display, staleDisplaySuffix)", method)
+        self.assertLess(method.index("inferredGenericLabelFromReceipt("),
+                        method.index("FreeplaySourceDisplay.resolve("))
+        self.assertIn("if (mayRepair && !song.ownerResolved)", method)
+        self.assertIn("chartTitle, staleGenericLabel", method)
 
 
 if __name__ == "__main__":

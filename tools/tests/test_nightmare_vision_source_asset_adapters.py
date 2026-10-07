@@ -87,6 +87,20 @@ class Main {
 }
 '''
         stubs = {
+            "ImportRefreshManager.hx": '''package;
+class ImportRefreshManager {
+ public static var generation:Int = 0;
+ public static function availabilityRevision():Int return 0;
+ public static function ownerAssetIndexBinding(owner:String,engine:String,scope:String):Dynamic return null;
+}''',
+            "tjson/TJSON.hx": '''package tjson;
+class TJSON {}
+enum EncodeStyle { Full; }
+class TJSONEncoder {
+ public function new(){}
+ public function doEncode(value:Dynamic, ?style:String):String return haxe.Json.stringify(value);
+ public function encodeValue(value:Dynamic, style:EncodeStyle, depth:Int):String return haxe.Json.stringify(value);
+}''',
             # Script-name cache type only; real module execution has separate Stage/Iris coverage.
             "NightmareVisionScriptModule.hx": "class NightmareVisionScriptModule {}",
             "flixel/FlxBitmapCache.hx": '''package flixel;
@@ -134,6 +148,7 @@ class FlxAssets {public static function getSoundAddExtension(path:String):openfl
 class FNFAssets {
 static var bitmaps:Map<String,openfl.display.BitmapData>=new Map();
 public static function exists(path:String):Bool return sys.FileSystem.exists(path);
+public static function resolveCaseInsensitivePath(path:String):String return exists(path)?path:null;
 public static function getText(path:String):String return sys.io.File.getContent(path);
 public static function getBytes(path:String):Bytes return sys.io.File.getBytes(path);
 public static function getBitmapData(path:String,useCache:Bool=true):openfl.display.BitmapData {

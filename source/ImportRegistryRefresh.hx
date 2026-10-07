@@ -65,7 +65,9 @@ class ImportRegistryRefresh {
 			return {text: liveText, conflicts: conflicts.length == 0 ? ["$: registry root cannot be removed"] : conflicts};
 		if (deepEqual(result.value, live)) return {text: liveText, conflicts: conflicts};
 		try {
-			return {text: TJSON.encode(result.value, "fancy") + "\n", conflicts: conflicts};
+			// Keep TJSON for JSONC parsing and use the same string-safe printer
+			// as engine registry writes so native targets retain astral characters.
+			return {text: UnicodeSafeJson.stringify(result.value), conflicts: conflicts};
 		} catch (error:Dynamic) {
 			return {text: liveText, conflicts: conflicts.concat(["$: could not encode merged registry: " + Std.string(error)])};
 		}

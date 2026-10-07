@@ -127,6 +127,9 @@ import sys.FileSystem;
 import sys.io.File;
 using StringTools;
 typedef ImportAssetMergeResult = { var copied:Int; var skipped:Int; var failed:Int; @:optional var errors:Array<String>; };
+typedef SourceMappedAssetPlan = { var failed:Bool; var cancelled:Bool; var diagnostics:Array<String>; };
+typedef PreparedMappedAssetOwner = { var sourceRoot:String; var engine:String; var scope:String;
+  var destinationRoot:String; var plan:SourceMappedAssetPlan; };
 class ModuleFunctions {
   public static var lastOwnerRoot:String = "";
   public static var lastEngine:String = "";
@@ -135,10 +138,22 @@ class ModuleFunctions {
   static function reportImportProgress(phase:String, current:String, completed:Int = 0, total:Int = 0,
       copied:Int = 0, skipped:Int = 0, failed:Int = 0, work:Int = 0):Void {}
   static function mergeCompatScriptTrees(sourceRoot:String, scriptSourceRoot:String, engine:String,
-      result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>):String {
+      result:ImportAssetMergeResult, ?skipPaths:Map<String, Bool>,
+      ?modPlusCharacterIds:Array<String>, ?destinationSubpath:String,
+      ?mappedAssetPlan:SourceMappedAssetPlan, ?nightmareVisionScope:String):String {
     lastOwnerRoot = scriptSourceRoot;
     lastEngine = engine;
     return scriptSourceRoot;
+  }
+  static function skipMappedGlobalFile(owner:PreparedMappedAssetOwner,
+      _source:String, _destination:String):Bool {
+    if (owner != null) throw "source-layout fixture is only for the profile-unavailable legacy path";
+    return false;
+  }
+  static function skipMappedRawFile(owner:PreparedMappedAssetOwner,
+      _source:String, _destination:String):Bool {
+    if (owner != null) throw "source-layout fixture is only for the profile-unavailable legacy path";
+    return false;
   }
   public static function selected(root:ImportRootScanner.ImportRoot):Array<ImportRootScanner.ImportRootAssetSource>
     return selectedAssetRootsForEngineRoot(root);
@@ -182,8 +197,10 @@ class ModuleFunctions {
         self.assertIn("|AUDIO=" + str(project / "assets/base_game/songs"), result.stdout)
         self.assertIn("|EXTRA=" + str(project / "assets/shared"), result.stdout)
         importer = (ROOT / "source/ModuleFunctions.hx").read_text()
+        normalized_importer = " ".join(importer.split())
         self.assertIn("selectedAssetRootsForEngineRoot(engineRoot)", importer)
-        self.assertIn("mergePsychRuntimeSounds(psychSourceRoot, ownerRuntimeRoot)", importer)
+        self.assertIn("mergePsychRuntimeSounds(psychSourceRoot, ownerRuntimeRoot, ownerPlan);",
+                      normalized_importer)
         self.assertIn("importPsychCharacters(supplemental", importer)
 
 

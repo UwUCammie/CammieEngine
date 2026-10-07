@@ -1,5 +1,4 @@
 """Exercise native Windows long paths and import retry pointers, beyond eval."""
-import atexit
 import hashlib
 import json
 import os
@@ -8,7 +7,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,75 +14,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools import patch_hxcpp_windows_file_paths as patcher
-from haxe_test_support import HAXE, TEST_TMP
-from test_import_refresh_manager import STUBS, FIXTURE
+from haxe_test_support import TEST_TMP
+from test_import_refresh_manager import FIXTURE
 import test_import_refresh_manager as manager_fixtures
-
-_NATIVE_BUILD_LOCK = threading.Lock()
-_NATIVE_BUILD_CACHE = None
-_SEQUENCE_CHECKPOINT = 'committed:view.committedOwnerRoots,revision:view.revision};'
-
-MAIN = r'''import haxe.Json;
-import sys.io.File;
-import sys.FileSystem;
-@:access(ImportRefreshManager)
-@:access(ImportRefreshManagerFixture)
-class NativeImportFilesystemFixture {
- static function main() {
-  var args=Sys.args();
-  try {
-   switch(args[0]) {
-    case "fresh", "auto-refresh", "auto-refresh-sequence":
-     ImportRefreshManagerFixture.main();
-    case "pointer":
-     ImportRefreshManager.atomicText(args[1],args[2]);
-     Sys.println(Json.stringify({ok:true,text:File.getContent(args[1])}));
-    case "capture":
-     var result=ImportSourceSnapshot.capture(args[1],args[2],"Nightmare Vision","0.0.9");
-     if(!result.complete) throw result.error;
-     ImportSourceSnapshot.verify(result.snapshotRoot,result.snapshotId);
-     Sys.println(Json.stringify({ok:true,result:result}));
-    case "verify":
-     ImportSourceSnapshot.verify(args[1],args[2]);
-     Sys.println(Json.stringify({ok:true}));
-    case "io":
-     var directory=args[1];
-     FileSystem.createDirectory(directory);
-     if(!FileSystem.exists(directory)||!FileSystem.isDirectory(directory)) throw "directory missing";
-     var path=directory+"/雪.txt";
-     File.saveContent(path,"long-path-bytes");
-     if(File.getContent(path)!="long-path-bytes"||File.getBytes(path).length!=15||FileSystem.stat(path).size!=15)
-      throw "incorrect long-path read or stat";
-     var input=File.read(path,true);
-     var text=input.readAll().toString(); input.close();
-     if(text!="long-path-bytes") throw "incorrect streaming read";
-     FileSystem.rename(path,path+".renamed");
-     FileSystem.deleteFile(path+".renamed");
-     FileSystem.deleteDirectory(directory);
-     Sys.println(Json.stringify({ok:true}));
-   }
-  } catch(error:Dynamic) Sys.println(Json.stringify({ok:false,error:Std.string(error)}));
- }
-}'''
+from windows_native_import_fixture import MAIN, NativeFixtureUnavailable, get_native_fixture, native_fixture_source
 
 
-def _native_fixture_source():
-    if _SEQUENCE_CHECKPOINT not in FIXTURE:
-        raise AssertionError('native refresh fixture lost its overlap checkpoint')
-    return FIXTURE.replace(_SEQUENCE_CHECKPOINT,
-        'committed:view.committedOwnerRoots,revision:view.revision,active:ImportRefreshManager.active};')
-
-
-def _cleanup_native_build():
-    global _NATIVE_BUILD_CACHE
-    with _NATIVE_BUILD_LOCK:
-        cache = _NATIVE_BUILD_CACHE
-        _NATIVE_BUILD_CACHE = None
-    if cache is not None:
-        cache['build_temp'].cleanup()
-
-
-atexit.register(_cleanup_native_build)
+_native_fixture_source = native_fixture_source
 
 
 def _assert_native_handoff_overlap(test_case):
@@ -155,62 +91,15 @@ class WindowsFilePathPatchTest(unittest.TestCase):
 class NativeWindowsImportFilesystemTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        global _NATIVE_BUILD_CACHE
-        with _NATIVE_BUILD_LOCK:
-            if _NATIVE_BUILD_CACHE is not None and _NATIVE_BUILD_CACHE['binary'].is_file():
-                cls.build_temp = _NATIVE_BUILD_CACHE['build_temp']
-                cls.work = _NATIVE_BUILD_CACHE['work']
-                cls.environment = _NATIVE_BUILD_CACHE['environment']
-                cls.binary = _NATIVE_BUILD_CACHE['binary']
-                return
-
-            compiler = ROOT / '.tools/llvm-mingw-windows'
-            if not HAXE.exists() or not (compiler / 'bin/x86_64-w64-mingw32-clang++.exe').exists():
-                raise unittest.SkipTest('portable native Windows toolchain is unavailable')
-
-            Path(TEST_TMP).mkdir(parents=True, exist_ok=True)
-            build_temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
-            work = Path(build_temp.name)
-            try:
-                native_fixture = _native_fixture_source()
-                for name, content in {**STUBS, 'ImportRefreshManagerFixture.hx': native_fixture,
-                                      'NativeImportFilesystemFixture.hx': MAIN}.items():
-                    target = work / name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(content, encoding='utf-8', newline='\n')
-                environment = {**os.environ, 'HAXEPATH': str(HAXE.parent),
-                    'NEKOPATH': str(ROOT / '.tools/neko'), 'HAXELIB_PATH': str(ROOT / '.haxelib'),
-                    'MINGW_ROOT': str(compiler), 'HXCPP_MINGW_EXE': 'x86_64-w64-mingw32-clang++.exe',
-                    'HXCPP_AR': 'llvm-ar.exe', 'HXCPP_RANLIB': 'llvm-ranlib.exe',
-                    'HXCPP_STRIP': 'llvm-strip.exe', 'HXCPP_RC': 'llvm-windres.exe',
-                    'PATH': os.pathsep.join([str(HAXE.parent), str(ROOT / '.tools/neko'),
-                                            str(compiler / 'bin'), os.environ['PATH']])}
-                binary = work / 'cpp/NativeImportFilesystemFixture.exe'
-                process = subprocess.run([str(HAXE), '-cp', str(ROOT / 'source'),
-                    '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), '-cp', str(work),
-                    '-main', 'NativeImportFilesystemFixture', '-cpp', str(binary.parent),
-                    '-D', 'windows', '-D', 'HXCPP_M64', '-D', 'HXCPP_MINGW', '-D', 'HXCPP_RC=llvm-windres.exe'],
-                    cwd=ROOT, env=environment, capture_output=True, text=True, timeout=180)
-                if process.returncode:
-                    raise AssertionError(process.stdout + process.stderr)
-            except BaseException:
-                build_temp.cleanup()
-                raise
-
-            _NATIVE_BUILD_CACHE = {
-                'build_temp': build_temp,
-                'work': work,
-                'environment': environment,
-                'binary': binary,
-            }
-            cls.build_temp = build_temp
-            cls.work = work
-            cls.environment = environment
-            cls.binary = binary
-
-    @classmethod
-    def tearDownClass(cls):
-        _cleanup_native_build()
+        Path(TEST_TMP).mkdir(parents=True, exist_ok=True)
+        try:
+            fixture = get_native_fixture()
+        except NativeFixtureUnavailable as error:
+            raise unittest.SkipTest(str(error)) from error
+        cls.binary = fixture.executable
+        cls.environment = fixture.environment
+        cls.cache_key = fixture.key
+        cls.cache_reused = fixture.reused
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=TEST_TMP)
@@ -227,6 +116,30 @@ class NativeWindowsImportFilesystemTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
         return json.loads(process.stdout.strip().splitlines()[-1])
 
+    def test_native_staged_io_pauses_for_gameplay_and_cancels_without_blocking_foreground(self):
+        install = self.base / 'install'
+        stage = install / 'import-cache/staging/io-scheduler'
+        stage.mkdir(parents=True)
+        (install / 'assets/data').mkdir(parents=True)
+        source = self.base / 'large.bin'
+        chunk = b'x' * (1024 * 1024)
+        for path in (source, install / 'assets/data/hash.bin'):
+            with path.open('wb') as output:
+                for _ in range(64):
+                    output.write(chunk)
+        foreground = self.base / 'foreground.bin'
+        foreground.write_bytes(b'foreground')
+        process = subprocess.run(
+            [str(self.binary), 'io-scheduler', str(install), str(stage), str(source), str(foreground)],
+            env=self.environment, capture_output=True, text=True, encoding='utf-8', timeout=45)
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        self.assertIn('OK', process.stdout)
+        self.assertNotIn('"ok":false', process.stdout)
+        with source.open('rb') as original, (stage / 'assets/data/copied.bin').open('rb') as copied:
+            self.assertEqual(hashlib.file_digest(original, 'sha256').hexdigest(),
+                             hashlib.file_digest(copied, 'sha256').hexdigest())
+        self.assertEqual((stage / 'assets/data/foreground.bin').read_bytes(), b'foreground')
+
     def test_retry_reuses_pointer_and_preserves_conflicting_record(self):
         pointer = self.base / 'owner.json'
         text = '{"id":"immutable-owner"}'
@@ -238,6 +151,15 @@ class NativeWindowsImportFilesystemTest(unittest.TestCase):
         self.assertFalse(conflict['ok'])
         self.assertIn('conflicts', conflict['error'])
         self.assertEqual(pointer.read_text(), text)
+
+    def test_native_disposable_cleanup_pauses_while_gameplay_is_active(self):
+        install = self.base / 'install'
+        install.mkdir()
+        result = self.run_fixture('cleanup-scheduler', install)
+        self.assertFalse(result['completedWhileGameplay'], result)
+        self.assertTrue(result['treePreserved'], result)
+        self.assertTrue(result['foregroundRemoved'], result)
+        self.assertTrue(result['removed'], result)
 
     def test_native_thread_refreshes_stale_record_after_donor_removal(self):
         self.install = self.base / 'install'
@@ -264,7 +186,7 @@ class NativeWindowsImportFilesystemTest(unittest.TestCase):
 
     def test_native_handoff_overlap_route_is_preserved(self):
         native_fixture = _native_fixture_source()
-        self.assertIn('case "fresh", "auto-refresh", "auto-refresh-sequence":', MAIN)
+        self.assertIn('case "fresh", "auto-refresh", "auto-refresh-sequence", "cleanup-scheduler":', MAIN)
         self.assertIn('mode=="auto-refresh-sequence"&&ImportRefreshManager.generation>=1'
                       '&&ImportRefreshManager.active', FIXTURE)
         self.assertIn('active:ImportRefreshManager.active', native_fixture)

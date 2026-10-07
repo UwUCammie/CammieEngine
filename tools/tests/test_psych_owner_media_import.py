@@ -155,8 +155,16 @@ typedef ImportAssetMergeResult = {
  var failed:Int;
  @:optional var errors:Array<String>;
 }
+typedef SourceMappedAssetPlan = { var failed:Bool; var cancelled:Bool; var diagnostics:Array<String>; }
+typedef PreparedMappedAssetOwner = { var sourceRoot:String; var engine:String; var scope:String;
+ var destinationRoot:String; var plan:SourceMappedAssetPlan; }
 
 class ModuleFunctions {
+ static function skipMappedOwnerMediaFile(owner:PreparedMappedAssetOwner,
+     _source:String, _destination:String):Bool {
+  if (owner != null) throw "owner-media fixture is only for the profile-unavailable legacy path";
+  return false;
+ }
 ''' + methods + r'''
  static function importWorkCancelled():Bool return false;
  static function reportImportProgress(phase:String, current:String, completed:Int = 0, total:Int = 0,

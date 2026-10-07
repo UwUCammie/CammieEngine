@@ -37,28 +37,57 @@ class ImportRegistryRefreshTest(unittest.TestCase):
     def setUpClass(cls):
         if not HAXE.is_file() or not TJSON.is_dir():
             raise unittest.SkipTest("portable Haxe or pinned TJSON is unavailable")
+        cls.native_fixture = None
+        if os.name == "nt":
+            from windows_native_import_fixture import NativeFixtureUnavailable, get_native_fixture
+            try:
+                cls.native_fixture = get_native_fixture()
+            except NativeFixtureUnavailable:
+                cls.native_fixture = None
 
     def run_merge(self, mode: str, before: str, generated: str, live: str) -> dict:
         (ROOT / "tmp").mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            folder = Path(folder)
-            fixture = folder / "ImportRegistryRefreshFixture.hx"
-            fixture.write_text(FIXTURE, encoding="utf-8", newline='\n')
-            spec = folder / "registry-case.json"
-            spec.write_text(json.dumps({"mode": mode, "before": before,
-                                       "generated": generated, "live": live}),
-                            encoding="utf-8", newline='\n')
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder_name:
+            folder = Path(folder_name)
+            output_path = None
+            merged_text = None
+            if self.native_fixture is not None:
+                before_path = folder / "before.json"
+                generated_path = folder / "generated.json"
+                live_path = folder / "live.json"
+                output_path = folder / "merged.json"
+                before_path.write_text(before, encoding="utf-8", newline="\n")
+                generated_path.write_text(generated, encoding="utf-8", newline="\n")
+                live_path.write_text(live, encoding="utf-8", newline="\n")
+                command = [str(self.native_fixture.executable), "registry-refresh", mode,
+                           str(before_path), str(generated_path), str(live_path), str(output_path)]
+                environment = self.native_fixture.environment
+            else:
+                fixture = folder / "ImportRegistryRefreshFixture.hx"
+                fixture.write_text(FIXTURE, encoding="utf-8", newline="\n")
+                spec = folder / "registry-case.json"
+                spec.write_text(json.dumps({"mode": mode, "before": before,
+                                           "generated": generated, "live": live}),
+                                encoding="utf-8", newline="\n")
+                command = [*HAXE_COMMAND, "-cp", str(folder), "-cp", str(ROOT / "source"),
+                           "-cp", str(TJSON), "--run", "ImportRegistryRefreshFixture", str(spec)]
+                environment = {**os.environ, "TMPDIR": str(ROOT / "tmp")}
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(folder), "-cp", str(ROOT / "source"),
-                 "-cp", str(TJSON), "--run", "ImportRegistryRefreshFixture", str(spec)],
+                command,
                 cwd=ROOT,
-                env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
+                env=environment,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=60,
             )
+            if output_path is not None:
+                merged_text = output_path.read_text(encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        return json.loads(result.stdout.strip().splitlines()[-1])
+        response = json.loads(result.stdout.strip().splitlines()[-1])
+        if merged_text is not None:
+            response["text"] = merged_text
+        return response
 
     @staticmethod
     def parsed(text: str) -> dict:
@@ -216,6 +245,64 @@ class ImportRegistryRefreshTest(unittest.TestCase):
         result = self.run_merge("merge", text, text, text)
         self.assertEqual(result["text"], text)
         self.assertEqual(result["conflicts"], [])
+
+    def test_astral_keys_and_values_survive_strict_json_reconciliation(self):
+        before = r'''{"base":{"literal-🎵":"Café 🎵","\ud83c\udfb5-key":"literal 🎵",
+          "escaped-value":"\ud83c\udfb5"},"groups":[]}'''
+        generated = r'''{"base":{"literal-🎵":"Café 🎵","\ud83c\udfb5-key":"literal 🎵",
+          "escaped-value":"\ud83c\udfb5"},"groups":[{"name":"🎵"}]}'''
+
+        result = self.run_merge("merge", before, generated, before)
+
+        self.assertEqual(result["conflicts"], [])
+        merged = self.parsed(result["text"])
+        self.assertEqual(merged["base"]["literal-🎵"], "Café 🎵")
+        self.assertEqual(merged["base"]["🎵-key"], "literal 🎵")
+        self.assertEqual(merged["base"]["escaped-value"], "🎵")
+        self.assertEqual(merged["groups"], [{"name": "🎵"}])
+
+    def test_astral_keys_and_values_survive_jsonc_reconciliation(self):
+        before = r'''{
+          // literal and escaped astral key/value coverage
+          "base":{"literal-🎵":"Café 🎵","\ud83c\udfb5-key":"literal 🎵",
+            "escaped-value":"\ud83c\udfb5",},
+          "groups":[],
+        }
+        '''
+        generated = r'''{
+          // parser accepts comments and trailing commas before serialization
+          "base":{"literal-🎵":"Café 🎵","\ud83c\udfb5-key":"literal 🎵",
+            "escaped-value":"\ud83c\udfb5",},
+          "groups":[{"name":"🎵",}],
+        }
+        '''
+
+        result = self.run_merge("merge", before, generated, before)
+
+        self.assertEqual(result["conflicts"], [])
+        merged = self.parsed(result["text"])
+        self.assertEqual(merged["base"]["literal-🎵"], "Café 🎵")
+        self.assertEqual(merged["base"]["🎵-key"], "literal 🎵")
+        self.assertEqual(merged["base"]["escaped-value"], "🎵")
+        self.assertEqual(merged["groups"], [{"name": "🎵"}])
+
+    def test_astral_unchanged_fast_path_and_user_edit_conflict_keep_original_text(self):
+        unchanged = r'''{
+          // retain this JSONC byte-for-byte
+          "base":{"🎵-key":"Café 🎵","escaped":"\ud83c\udfb5"},
+          "owned":"old",
+        }
+        '''
+        unchanged_result = self.run_merge("merge", unchanged, unchanged, unchanged)
+        self.assertEqual(unchanged_result["text"], unchanged)
+        self.assertEqual(unchanged_result["conflicts"], [])
+
+        before = r'''{"base":{"🎵-key":"Café 🎵"},"owned":"old"}'''
+        generated = r'''{"base":{"🎵-key":"Café 🎵"},"owned":"new"}'''
+        user_edit = r'''{"base":{"🎵-key":"Café 🎵"},"owned":"local edit"}'''
+        conflict = self.run_merge("merge", before, generated, user_edit)
+        self.assertTrue(any("owned" in item for item in conflict["conflicts"]))
+        self.assertEqual(conflict["text"], user_edit)
 
     def test_merge_keyed_freeplay_arrays_keeps_concurrent_category_and_song_additions(self):
         before = '''[

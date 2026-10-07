@@ -149,6 +149,16 @@ class Main {
       'chart-bearing global pack was imported');
   }
 }''', encoding="utf-8", newline='\n')
+            tjson = work / "tjson"
+            tjson.mkdir()
+            (tjson / "TJSON.hx").write_text('''package tjson;
+class TJSON {}
+enum EncodeStyle { Full; }
+class TJSONEncoder {
+ public function new() {}
+ public function doEncode(value:Dynamic, ?style:String):String return haxe.Json.stringify(value);
+ public function encodeValue(value:Dynamic, style:EncodeStyle, depth:Int):String return haxe.Json.stringify(value);
+}''', encoding="utf-8", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work), "--run", "Main",
                  str(donor_a), str(donor_b), str(chart_donor)],
@@ -169,7 +179,8 @@ class Main {
         self.assertIn("public static function convertRetainedSource", workflow)
         self.assertIn("return ImportImportJob.importChartFreePsychGlobalPacks(scan)", workflow)
         self.assertIn("public static function importChartFreePsychGlobalPacks(scan:ImportScanResult)", workflow)
-        self.assertIn("PsychGlobalPackImporter.importPack(root.root, root.contentRoot)", workflow)
+        self.assertIn("PsychGlobalPackImporter.importPack(root.root, root.contentRoot,", workflow)
+        self.assertIn("function():Bool return ModuleFunctions.importWorkCancelled()", workflow)
         self.assertIn("scanResult.globalPacksToImport > 0", settings)
 
 

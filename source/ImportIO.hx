@@ -20,6 +20,18 @@ private typedef ImportIOPath = {
 	var stageAbsolute:Bool;
 }
 
+typedef ImportIOAssetProfile = {
+	var contentRoot:String;
+	var profile:Dynamic;
+}
+
+private typedef ImportIOAssetProfileEntry = {
+	var contentRoot:String;
+	var profile:Dynamic;
+	var engineLabel:String;
+	var namespace:String;
+}
+
 /**
 	Per-thread virtual filesystem used while an import is being regenerated.
 
@@ -37,6 +49,7 @@ class ImportIO {
 	public var installRoot(default, null):String;
 	public var stageRoot(default, null):String;
 	var parent:ImportIO;
+	var workCancelled:Void->Bool;
 	var masks:Map<String, Bool> = new Map();
 	var ownedAncestors:Map<String, Bool> = new Map();
 	var deferOwnedBaselines:Bool;
@@ -47,9 +60,12 @@ class ImportIO {
 	var namespaces:Map<String, String> = new Map();
 	var resolvedNamespaces:Map<String, String> = new Map();
 	var sourceLabels:Map<String, String> = new Map();
+	var assetProfiles:Map<String, ImportIOAssetProfileEntry> = new Map();
 
-	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false) {
+	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false,
+		?workCancelled:Void->Bool) {
 		this.deferOwnedBaselines = deferOwnedBaselines;
+		this.workCancelled = workCancelled;
 		if (installRoot == null || StringTools.trim(installRoot) == "")
 			throw "Import staging requires an install root.";
 		if (stageRoot == null || StringTools.trim(stageRoot) == "")
@@ -88,8 +104,9 @@ class ImportIO {
 	}
 
 	/** Start a virtual filesystem scope on this thread. Scopes may nest. */
-	public static function begin(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false):ImportIO {
-		var context = new ImportIO(installRoot, stageRoot, masked, deferOwnedBaselines);
+	public static function begin(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false,
+		?workCancelled:Void->Bool):ImportIO {
+		var context = new ImportIO(installRoot, stageRoot, masked, deferOwnedBaselines, workCancelled);
 		context.parent = current();
 		setCurrent(context);
 		return context;
@@ -100,6 +117,7 @@ class ImportIO {
 		var context = current();
 		if (context == null)
 			throw "ImportIO.end() called without an active import scope.";
+		context.assetProfiles.clear();
 		setCurrent(context.parent);
 		context.parent = null;
 	}
@@ -205,6 +223,7 @@ class ImportIO {
 			var hash = new ImportSnapshotSha256();
 			var buffer = Bytes.alloc(65536);
 			while (true) {
+				checkpointImportWork();
 				var count:Int;
 				try count = input.readBytes(buffer, 0, buffer.length) catch (_:haxe.io.Eof) break;
 				if (count <= 0) break;
@@ -219,6 +238,7 @@ class ImportIO {
 			return result;
 		} catch (error:Dynamic) {
 			if (input != null) try input.close() catch (_:Dynamic) {}
+			if (Std.isOfType(error, ImportWorkCancelled)) throw error;
 			throw "Could not capture prewrite import baseline for " + relative + ": " + Std.string(error);
 		}
 	}
@@ -230,6 +250,32 @@ class ImportIO {
 		// The retained manifest can contain thousands of paths. Index their
 		// ancestors once instead of walking every mask for each asset lookup.
 		return ownedAncestors.exists(relative) || isMasked(relative);
+	}
+
+	/** List exact prior-manifest outputs strictly below a validated assets prefix.
+	 * This is a transaction-local manifest view, not a filesystem discovery API. */
+	public function ownedOutputPathsUnder(prefix:String, suffix:String):Array<String> {
+		var relative = outputRelative(prefix);
+		var result:Array<String> = [];
+		if (relative == null || !StringTools.startsWith(relative, "assets/") || relative == "assets")
+			return result;
+		var prefixKey = StringTools.endsWith(relative, "/") ? relative : relative + "/";
+		var suffixKey = suffix == null ? "" : suffix;
+		for (path in masks.keys()) {
+			var comparedPath = path;
+			var comparedPrefix = prefixKey;
+			#if windows
+			comparedPath = comparedPath.toLowerCase();
+			comparedPrefix = comparedPrefix.toLowerCase();
+			#end
+			if (!StringTools.startsWith(comparedPath, comparedPrefix)) continue;
+			if (suffixKey != "") {
+				if (!StringTools.endsWith(path.toLowerCase(), suffixKey.toLowerCase())) continue;
+			}
+			result.push(path);
+		}
+		result.sort(Reflect.compare);
+		return result;
 	}
 
 	public function setNamespace(sourceRoot:String, engine:String, namespace:String):Void {
@@ -267,6 +313,141 @@ class ImportIO {
 	public function sourceLabel(sourceRoot:String):Null<String> {
 		var key = sourceRootKey(sourceRoot);
 		return key == "" ? null : sourceLabels.get(key);
+	}
+
+	/** Bind a receipt-verified source asset profile to one exact retained root.
+	 * The profile is copied at the boundary and must agree with the root record;
+	 * consumers cannot borrow a profile from a sibling root or engine. */
+	public function setAssetProfile(sourceRoot:String, contentRoot:String, snapshotId:String,
+		rootRelative:String, engine:String, namespace:String, profile:Dynamic):Void {
+		if (profile == null || !Reflect.isObject(profile))
+			throw "Import asset profile does not match its verified retained source root.";
+		var key = assetProfileKey(sourceRoot, engine);
+		var source = sourceRootKey(sourceRoot);
+		var content = sourceRootKey(contentRoot);
+		var canonicalContent = canonicalRoot(contentRoot);
+		var contentRelative = relativeWithin(source, content);
+		var relative = normalizeAssetProfileRelative(rootRelative);
+		var profileRelative = normalizeAssetProfileRelative(Reflect.field(profile, "rootRelative"));
+		var profileEngine = normalizeAssetProfileEngine(Reflect.field(profile, "sourceEngine"));
+		var requestedEngine = normalizeAssetProfileEngine(engine);
+		var profileSnapshot = Reflect.field(profile, "snapshotId");
+		var profileNamespace = Reflect.field(profile, "namespace");
+		var selectedNamespace = this.namespace(sourceRoot, engine);
+		if (key == "" || source == "" || content == "" || relative == null || profileRelative == null
+			|| !samePath(relative, profileRelative) || !isAssetProfileSnapshotId(snapshotId)
+			|| profileSnapshot != snapshotId || requestedEngine == "" || profileEngine != requestedEngine
+			|| namespace == null || StringTools.trim(namespace) == "" || profileNamespace != namespace
+			|| selectedNamespace != namespace
+			|| Reflect.field(profile, "provenance") != "receipt-bound"
+			|| !FileSystemDirectory(content) || !FileSystemDirectory(source)
+			|| Path.withoutDirectory(content).toLowerCase() != "content"
+			|| contentRelative == null || !samePath(contentRelative, relative)
+			|| !samePath(Path.withoutDirectory(Path.directory(content)), snapshotId)
+			|| relativeWithin(content, Path.join([installRoot, "import-cache", "sources"])) == null)
+			throw "Import asset profile does not match its verified retained source root.";
+		var copy = cloneAssetProfile(profile);
+		if (copy == null)
+			throw "Import asset profile could not be copied safely.";
+		var existing = assetProfiles.get(key);
+		if (existing != null) {
+			if (!samePath(existing.contentRoot, canonicalContent)
+				|| Reflect.field(existing.profile, "snapshotId") != snapshotId
+				|| Reflect.field(existing.profile, "rootRelative") != Reflect.field(copy, "rootRelative")
+				|| existing.namespace != namespace || existing.engineLabel != engine)
+				throw "A retained source root cannot bind multiple asset profiles in one import scope.";
+			return;
+		}
+		assetProfiles.set(key, {contentRoot:canonicalContent, profile:copy,
+			engineLabel:engine, namespace:namespace});
+	}
+
+	/** Return a defensive copy only when the exact root+engine binding remains
+	 * receipt-bound. ImportIO.end() clears this scope's profile map. */
+	public function assetProfile(sourceRoot:String, engine:String):Null<ImportIOAssetProfile> {
+		var key = assetProfileKey(sourceRoot, engine);
+		if (key == "") return null;
+		var entry = assetProfiles.get(key);
+		if (entry == null) return null;
+		var profile = entry.profile;
+		var expectedEngine = normalizeAssetProfileEngine(engine);
+		if (Reflect.field(profile, "provenance") != "receipt-bound"
+			|| Reflect.field(profile, "sourceEngine") == null
+			|| normalizeAssetProfileEngine(Reflect.field(profile, "sourceEngine")) != expectedEngine
+			|| Reflect.field(profile, "namespace") != entry.namespace
+			|| namespace(sourceRoot, entry.engineLabel) != entry.namespace)
+			return null;
+		var copy = cloneAssetProfile(profile);
+		return copy == null ? null : {contentRoot:entry.contentRoot, profile:copy};
+	}
+
+	static function normalizeAssetProfileEngine(value:Dynamic):String {
+		if (value == null) return "";
+		return ImportRevision.normalizeEngine(Std.string(value));
+	}
+
+	function assetProfileKey(sourceRoot:String, engine:String):String {
+		var root = sourceRootKey(sourceRoot);
+		var normalizedEngine = ImportRevision.normalizeEngine(engine);
+		if (root == "" || normalizedEngine == "") return "";
+		return root + "\n" + normalizedEngine.toLowerCase();
+	}
+
+	static function normalizeAssetProfileRelative(value:Dynamic):Null<String> {
+		if (value == null) return null;
+		var input = StringTools.replace(StringTools.trim(Std.string(value)), "\\", "/");
+		if (input == "") return "";
+		if (Path.isAbsolute(input) || input.indexOf(":") >= 0 || input.indexOf("\u0000") >= 0
+			|| StringTools.startsWith(input, "~")) return null;
+		var pieces:Array<String> = [];
+		for (piece in input.split("/")) {
+			if (piece == "" || piece == ".") continue;
+			if (piece == "..") return null;
+			pieces.push(piece);
+		}
+		return pieces.join("/");
+	}
+
+	static function isAssetProfileSnapshotId(value:String):Bool {
+		return value != null && ~/^[0-9a-fA-F]{64}$/.match(value);
+	}
+
+	static function cloneAssetProfile(profile:Dynamic):Dynamic {
+		try return cloneAssetProfileValue(profile, 0, [], [500000]) catch (_:Dynamic) return null;
+	}
+
+	static function cloneAssetProfileValue(value:Dynamic, depth:Int, ancestors:Array<Dynamic>,
+		remaining:Array<Int>):Dynamic {
+		if (depth > 64 || remaining == null || remaining.length == 0 || remaining[0] <= 0)
+			throw "Import asset profile exceeds its safe copy limits.";
+		remaining[0]--;
+		if (value == null || Std.isOfType(value, String) || Std.isOfType(value, Bool)
+			|| Std.isOfType(value, Int) || Std.isOfType(value, Float)) return value;
+		for (ancestor in ancestors) if (ancestor == value)
+			throw "Import asset profile contains a cycle.";
+		ancestors.push(value);
+		if (Std.isOfType(value, Array)) {
+			var result:Array<Dynamic> = [];
+			for (entry in (cast value:Array<Dynamic>))
+				result.push(cloneAssetProfileValue(entry, depth + 1, ancestors, remaining));
+			ancestors.pop();
+			return result;
+		}
+		if (Type.typeof(value) != TObject)
+			throw "Import asset profile contains an unsupported value.";
+		var result:Dynamic = {};
+		for (field in Reflect.fields(value)) {
+			if (field == "__proto__" || field == "prototype" || field == "constructor")
+				throw "Import asset profile contains a reserved field.";
+			Reflect.setField(result, field, cloneAssetProfileValue(Reflect.field(value, field),
+				depth + 1, ancestors, remaining));
+		}
+		ancestors.pop();
+		return result;
+	}
+
+	static function FileSystemDirectory(path:String):Bool {
+		return RawFileSystem.exists(path) && RawFileSystem.isDirectory(path);
 	}
 
 	public function exists(path:String):Bool {
@@ -548,7 +729,7 @@ class ImportIO {
 		}
 	}
 
-	static function copyStreaming(source:String, destination:String):Void {
+	function copyStreaming(source:String, destination:String):Void {
 		ensureParent(destination);
 		var input:FileInput = null;
 		var output:FileOutput = null;
@@ -557,6 +738,7 @@ class ImportIO {
 			input = RawFile.read(source, true);
 			output = RawFile.write(destination, true);
 			while (true) {
+				checkpointImportWork();
 				var count:Int;
 				try count = input.readBytes(buffer, 0, buffer.length) catch (_:haxe.io.Eof) break;
 				if (count <= 0) break;
@@ -571,6 +753,15 @@ class ImportIO {
 			if (output != null) try output.close() catch (_:Dynamic) {}
 			throw error;
 		}
+	}
+
+	/** Keep large staged copies and prewrite hashes responsive to foreground
+	 * gameplay while preserving a bounded 64 KiB unit of in-flight work. */
+	function checkpointImportWork():Void {
+		if (workCancelled != null && workCancelled()) throw new ImportWorkCancelled();
+		if (!ImportWorkScheduler.cooperate(workCancelled)
+			|| (workCancelled != null && workCancelled()))
+			throw new ImportWorkCancelled();
 	}
 
 	static function isInstallOutput(relative:String):Bool {

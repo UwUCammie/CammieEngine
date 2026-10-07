@@ -7,6 +7,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_VERSION = re.compile(r'(<app\b[^>]*\bversion=")([^"]+)(")')
+DOC_VERSION = re.compile(r'(?m)^((?:# )?CammieEngine v)\d+\.\d+\.\d+')
 
 
 def next_patch_version(latest_release: str) -> str:
@@ -33,7 +34,19 @@ def configure_development_version(root: Path, latest_release: str, apply: bool =
     if branding is not None and not branding_pattern.search(branding):
         raise ValueError('EngineBranding.hx has no fallback version')
     branding_matches = branding is None or f"FALLBACK_VERSION:String = '{target}'" in branding
-    if current == target and match.group(2) == target and branding_matches:
+    documents = []
+    for name in ('README.md', 'USER-README.txt'):
+        path = root / name
+        if not path.is_file():
+            continue
+        original = path.read_bytes()
+        text = original.decode('utf-8')
+        if DOC_VERSION.search(text) is None:
+            raise ValueError(f'{name} has no CammieEngine version heading')
+        updated = DOC_VERSION.sub(lambda found: found.group(1) + target, text, count=1).encode('utf-8')
+        documents.append((path, original, updated))
+    docs_match = all(original == updated for _, original, updated in documents)
+    if current == target and match.group(2) == target and branding_matches and docs_match:
         return target
     if not apply:
         raise ValueError(f'development VERSION and Project.xml must both be {target}; use --apply after verifying the latest published build')
@@ -44,6 +57,9 @@ def configure_development_version(root: Path, latest_release: str, apply: bool =
         branding_path.write_bytes(branding.encode('utf-8'))
     newline = '\r\n' if b'\r\n' in version_path.read_bytes() else '\n'
     version_path.write_bytes((target + newline).encode('ascii'))
+    for path, original, updated in documents:
+        if original != updated:
+            path.write_bytes(updated)
     return target
 
 

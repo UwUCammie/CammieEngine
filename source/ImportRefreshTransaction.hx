@@ -101,6 +101,20 @@ class ImportRefreshTransaction {
 		ownedRoots:Array<String>, stagedOutputs:Array<ImportRefreshStagedOutput>, ?revision:Dynamic,
 		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>,
 		?progress:Dynamic->Void):ImportRefreshResult {
+		try {
+			return applyInternal(installRoot, stagingRoot, stateRoot, owner, ownedRoots, stagedOutputs,
+				revision, cancelCheck, validatedBaselines, progress);
+		} catch (error:Dynamic) {
+			if (Std.isOfType(error, ImportWorkCancelled))
+				return result(STATUS_CANCELLED, [], manifestPath(stateRoot, owner), "", "");
+			throw error;
+		}
+	}
+
+	static function applyInternal(installRoot:String, stagingRoot:String, stateRoot:String, owner:String,
+		ownedRoots:Array<String>, stagedOutputs:Array<ImportRefreshStagedOutput>, ?revision:Dynamic,
+		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>,
+		?progress:Dynamic->Void):ImportRefreshResult {
 		if (installRoot == null || stagingRoot == null || stateRoot == null)
 			throw "Import refresh requires install, staging, and state roots.";
 		if (owner == null || StringTools.trim(owner) == "")
@@ -115,10 +129,11 @@ class ImportRefreshTransaction {
 		var state = canonicalDirectory(stateRoot, true);
 		var scope = Path.join([state, digestText(owner)]);
 		var transactionsRoot = Path.join([scope, "transactions"]);
+		var manifestPath = safeChild(state, Path.join([digestText(owner), "manifest.json"]), false);
 		ensureDirectoryUnder(state, scope);
 		ensureDirectoryUnder(state, transactionsRoot);
 
-		var recoveryConflicts = recover(install, state, owner);
+		var recoveryConflicts = recover(install, state, owner, cancelCheck);
 		if (recoveryConflicts.length > 0)
 			return result(STATUS_CONFLICT, recoveryConflicts, currentManifestPath(state, owner), "", "");
 
@@ -129,6 +144,8 @@ class ImportRefreshTransaction {
 		var outputsChecked = 0;
 		var lastOutputPath = "";
 		for (output in stagedOutputs) {
+			if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck)))
+				return result(STATUS_CANCELLED, [], manifestPath, "", "");
 			if (output == null) throw "Import refresh output entry cannot be null.";
 			var relative = normalizeRelative(output.path);
 			reportProgress(progress, "checking-output", relative, outputsChecked, stagedOutputs.length);
@@ -146,7 +163,8 @@ class ImportRefreshTransaction {
 			var sourceRel = normalizeRelative(output.stagedPath);
 			var source = safeChild(staging, sourceRel, true);
 			if (!isRegularFile(source)) throw 'Staged output is not a regular file: $sourceRel';
-			var sourceHash = ImportSourceSnapshot.sha256File(source, CHUNK_SIZE);
+			var sourceHash = ImportSourceSnapshot.sha256File(source, CHUNK_SIZE,
+				function() return checkCancelled(cancelCheck));
 			if (expectedOutputHash != null && sourceHash != expectedOutputHash)
 				throw 'Staged output changed or has the wrong SHA-256: $sourceRel';
 			outputByPath.set(relative, {
@@ -164,6 +182,8 @@ class ImportRefreshTransaction {
 		var baselineCaseFolded:Map<String, String> = new Map();
 		if (validatedBaselines != null) {
 			for (baseline in validatedBaselines) {
+				if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck)))
+					return result(STATUS_CANCELLED, [], manifestPath, "", "");
 				if (baseline == null) throw "Validated import baseline cannot be null.";
 				var relative = normalizeRelative(baseline.path);
 				if (!isWithinOwnedRoots(relative, rootList))
@@ -181,31 +201,43 @@ class ImportRefreshTransaction {
 			}
 		}
 
-		var manifestPath = safeChild(state, Path.join([digestText(owner), "manifest.json"]), false);
-		var previous = readCurrentManifest(state, owner, rootList);
+		checkpointWork(cancelCheck);
+		var previous = readCurrentManifest(state, owner, rootList, cancelCheck);
 		var previousByPath:Map<String, ImportRefreshManifestFile> = new Map();
-		for (entry in previous.files) previousByPath.set(entry.path, entry);
+		for (entry in previous.files) {
+			checkpointWork(cancelCheck);
+			previousByPath.set(entry.path, entry);
+		}
 
 		var conflicts:Array<ImportRefreshConflict> = [];
 		var operations:Array<Dynamic> = [];
 		var unchangedTargets:Array<Dynamic> = [];
 		var allPaths:Array<String> = [];
-		for (path in outputByPath.keys()) allPaths.push(path);
-		for (path in previousByPath.keys()) if (!outputByPath.exists(path)) allPaths.push(path);
+		for (path in outputByPath.keys()) {
+			checkpointWork(cancelCheck);
+			allPaths.push(path);
+		}
+		for (path in previousByPath.keys()) {
+			checkpointWork(cancelCheck);
+			if (!outputByPath.exists(path)) allPaths.push(path);
+		}
 		allPaths.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 
 		var transactionId = makeTransactionId();
 		var transactionPath = Path.join([transactionsRoot, transactionId]);
 		var manifestBeforeExists = FileSystem.exists(manifestPath);
-		var manifestBeforeHash = manifestBeforeExists ? ImportSourceSnapshot.sha256File(manifestPath, CHUNK_SIZE) : "";
-		var manifestAfter = makeManifest(owner, transactionId, rootList, revision, outputByPath);
-		var manifestText = Json.stringify(manifestAfter) + "\n";
+		var manifestBeforeHash = manifestBeforeExists ? ImportSourceSnapshot.sha256File(manifestPath, CHUNK_SIZE,
+			function() return checkCancelled(cancelCheck)) : "";
+		var manifestAfter = makeManifest(owner, transactionId, rootList, revision, outputByPath, cancelCheck);
+		var manifestText = UnicodeSafeJson.stringifyStandard(manifestAfter) + "\n";
 		var manifestAfterHash = digestText(manifestText);
 
 		var installedChecked = 0;
 		var lastInstalledPath = "";
 		if (allPaths.length == 0) reportProgress(progress, "checking-installed", "", 0, 0);
 		for (relative in allPaths) {
+			if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck)))
+				return result(STATUS_CANCELLED, [], manifestPath, "", "");
 			reportProgress(progress, "checking-installed", relative, installedChecked, allPaths.length);
 			if (!isWithinOwnedRoots(relative, rootList)) {
 				conflicts.push({path: relative, reason: "The prior manifest target is outside the caller-provided owned roots."});
@@ -253,7 +285,8 @@ class ImportRefreshTransaction {
 						lastInstalledPath = relative;
 						continue;
 					}
-					var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE);
+					var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE,
+						function() return checkCancelled(cancelCheck));
 					var matchesPrior = prior != null && actual == prior.sha256.toLowerCase();
 					var matchesBaseline = baseline != null && actual == baseline.sha256.toLowerCase();
 					var matchesDesired = prior != null && prior.owner == owner && actual == output.sha256;
@@ -295,7 +328,8 @@ class ImportRefreshTransaction {
 					lastInstalledPath = relative;
 					continue;
 				}
-				var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE);
+				var actual = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE,
+					function() return checkCancelled(cancelCheck));
 				if (actual != prior.sha256.toLowerCase()) {
 					conflicts.push({path: relative, reason: "Obsolete installed bytes were edited; the local file is preserved."});
 					installedChecked++;
@@ -321,9 +355,13 @@ class ImportRefreshTransaction {
 		var backupRoot = Path.join([transactionPath, "backups"]);
 		var backupFiles = Path.join([backupRoot, "files"]);
 		ensureDirectoryUnder(transactionPath, backupFiles);
+		var uninterruptedPublicationToken = 0;
 		try {
 			var backupTotal = (manifestBeforeExists ? 1 : 0);
-			for (operation in operations) if (operation.beforeExists) backupTotal++;
+			for (operation in operations) {
+				if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck))) throw CANCEL_TOKEN;
+				if (operation.beforeExists) backupTotal++;
+			}
 			var backupsCompleted = 0;
 			var lastBackupPath = "";
 			if (backupTotal == 0) reportProgress(progress, "backing-up-import", "", 0, 0);
@@ -350,6 +388,11 @@ class ImportRefreshTransaction {
 			}
 			if (backupsCompleted > 0)
 				reportProgress(progress, "backing-up-import", lastBackupPath, backupsCompleted, backupTotal);
+
+			uninterruptedPublicationToken = ImportWorkScheduler.beginUninterruptedPublication(function() {
+				return checkCancelled(cancelCheck);
+			});
+			if (uninterruptedPublicationToken < 0) throw CANCEL_TOKEN;
 
 			var journal:Dynamic = {
 				schemaVersion: MANIFEST_SCHEMA,
@@ -430,14 +473,25 @@ class ImportRefreshTransaction {
 			reportProgress(progress, "publishing-import", "receipt.json", published, publishTotal);
 			writeNewText(receiptPath, Json.stringify(receipt) + "\n", transactionId + "-receipt");
 			validateReceipt(receiptPath, journal);
-			cleanupCommittedBackups(transactionPath, journal);
 			published++;
 			reportProgress(progress, "publishing-import", "receipt.json", published, publishTotal);
+			ImportWorkScheduler.endUninterruptedPublication(uninterruptedPublicationToken);
+			uninterruptedPublicationToken = 0;
+			// The receipt makes publication durable. Backup deletion is storage
+			// maintenance and can now pause between files without risking rollback.
+			cleanupCommittedBackups(transactionPath, journal);
 			return result(STATUS_APPLIED, [], manifestPath, receiptPath, transactionPath);
 		} catch (error:Dynamic) {
-			var rollbackErrors = rollback(transactionPath, install, state, owner);
-			if (rollbackErrors.length > 0)
+			var rollbackErrors:Array<ImportRefreshConflict> = [];
+			try rollbackErrors = rollback(transactionPath, install, state, owner) catch (rollbackError:Dynamic) {
+				ImportWorkScheduler.endUninterruptedPublication(uninterruptedPublicationToken);
+				throw rollbackError;
+			}
+			if (rollbackErrors.length > 0) {
+				ImportWorkScheduler.endUninterruptedPublication(uninterruptedPublicationToken);
 				throw 'Import refresh failed (${Std.string(error)}) and rollback needs recovery: ${rollbackErrors[0].reason}';
+			}
+			ImportWorkScheduler.endUninterruptedPublication(uninterruptedPublicationToken);
 			if (Std.string(error) == CANCEL_TOKEN)
 				return result(STATUS_CANCELLED, [], manifestPath, "", transactionPath);
 			throw error;
@@ -445,7 +499,8 @@ class ImportRefreshTransaction {
 	}
 
 	/** Recover every uncommitted journal for this owner. Safe to call repeatedly. */
-	public static function recover(installRoot:String, stateRoot:String, owner:String):Array<ImportRefreshConflict> {
+	public static function recover(installRoot:String, stateRoot:String, owner:String,
+		?cancelCheck:Void->Bool):Array<ImportRefreshConflict> {
 		var conflicts:Array<ImportRefreshConflict> = [];
 		if (owner == null || StringTools.trim(owner) == "") throw "Recovery requires an owner identity.";
 		var install = canonicalDirectory(installRoot, false);
@@ -459,6 +514,7 @@ class ImportRefreshTransaction {
 		var names = FileSystem.readDirectory(transactions);
 		names.sort(Reflect.compare);
 		for (name in names) {
+			checkpointWork(cancelCheck);
 			if (!StringTools.startsWith(name, "txn-") || name.indexOf("/") >= 0 || name.indexOf("\\") >= 0) {
 				conflicts.push({path: name, reason: "Unexpected entry in the owner transaction directory."});
 				continue;
@@ -472,7 +528,7 @@ class ImportRefreshTransaction {
 				conflicts.push({path: name, reason: "Transaction entry is not a directory."});
 				continue;
 			}
-			var journal = latestJournal(transactionPath);
+			var journal = latestJournal(transactionPath, cancelCheck);
 			if (journal == null) continue;
 			if (Reflect.field(journal, "owner") != owner || Reflect.field(journal, "transactionId") != name) {
 				conflicts.push({path: name, reason: "Journal owner or transaction identity does not match its directory."});
@@ -495,8 +551,21 @@ class ImportRefreshTransaction {
 				conflicts.push({path: name, reason: "Journal install root differs from the current installation; preserving files for manual recovery."});
 				continue;
 			}
-			for (conflict in rollbackFromJournal(transactionPath, install, state, journal))
-				conflicts.push(conflict);
+			// A rollback spans several destination paths and its journal transition.
+			// Wait before it starts, then let this one transaction finish or report its
+			// conflicts without pausing in a partially restored installation.
+			var recoveryToken = ImportWorkScheduler.beginUninterruptedPublication(function() {
+				return checkCancelled(cancelCheck);
+			});
+			if (recoveryToken < 0) throw new ImportWorkCancelled();
+			try {
+				for (conflict in rollbackFromJournal(transactionPath, install, state, journal))
+					conflicts.push(conflict);
+			} catch (error:Dynamic) {
+				ImportWorkScheduler.endUninterruptedPublication(recoveryToken);
+				throw error;
+			}
+			ImportWorkScheduler.endUninterruptedPublication(recoveryToken);
 		}
 		return conflicts;
 	}
@@ -516,6 +585,7 @@ class ImportRefreshTransaction {
 		names.sort(Reflect.compare);
 		var result:Array<String> = [];
 		for (name in names) {
+			ImportWorkScheduler.cooperate();
 			if (!StringTools.startsWith(name, "txn-") || name.indexOf("/") >= 0 || name.indexOf("\\") >= 0) continue;
 			var transactionPath:String;
 			try transactionPath = safeChild(state, Path.join([digestText(owner), "transactions", name]), true)
@@ -543,6 +613,7 @@ class ImportRefreshTransaction {
 			var operations:Dynamic = Reflect.field(journal, "operations");
 			if (!Std.isOfType(operations, Array)) continue;
 			for (operation in (cast operations:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
 				if (operation == null) continue;
 				var rawPath:Dynamic = Reflect.field(operation, "path");
 				if (rawPath == null) continue;
@@ -582,12 +653,16 @@ class ImportRefreshTransaction {
 	}
 
 	static function makeManifest(owner:String, transactionId:String, roots:Array<String>, revision:Dynamic,
-		outputs:Map<String, ImportRefreshStagedOutput>):Dynamic {
+		outputs:Map<String, ImportRefreshStagedOutput>, ?cancelCheck:Void->Bool):Dynamic {
 		var names:Array<String> = [];
-		for (name in outputs.keys()) names.push(name);
+		for (name in outputs.keys()) {
+			checkpointWork(cancelCheck);
+			names.push(name);
+		}
 		names.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 		var files:Array<Dynamic> = [];
 		for (name in names) {
+			checkpointWork(cancelCheck);
 			var output = outputs.get(name);
 			files.push({path: name, sha256: output.sha256, owner: owner});
 		}
@@ -608,7 +683,9 @@ class ImportRefreshTransaction {
 		return manifest;
 	}
 
-	static function readCurrentManifest(state:String, owner:String, allowedRoots:Null<Array<String>>):ImportRefreshManifest {
+	static function readCurrentManifest(state:String, owner:String, allowedRoots:Null<Array<String>>,
+		?cancelCheck:Void->Bool):ImportRefreshManifest {
+		checkpointWork(cancelCheck);
 		var path = currentManifestPath(state, owner);
 		if (!FileSystem.exists(path)) return {
 			schemaVersion: MANIFEST_SCHEMA,
@@ -632,6 +709,7 @@ class ImportRefreshTransaction {
 		var receiptPath = safeChild(state,
 			Path.join([digestText(owner), "transactions", safeTransactionId, "receipt.json"]), true);
 		if (!FileSystem.exists(receiptPath)) throw "Current import manifest has no commit receipt.";
+		checkpointWork(cancelCheck);
 		var receipt:Dynamic = Json.parse(File.getContent(receiptPath));
 		if (Reflect.field(receipt, "owner") != owner || Reflect.field(receipt, "transactionId") != transactionId
 			|| Reflect.field(receipt, "manifestSha256") != digestText(text))
@@ -654,6 +732,7 @@ class ImportRefreshTransaction {
 		var roots = normalizeOwnedRoots(cast rawRoots);
 		if (allowedRoots != null) {
 			for (entry in (cast rawFiles:Array<Dynamic>)) {
+				checkpointWork(cancelCheck);
 				var entryPath = normalizeRelative(Std.string(Reflect.field(entry, "path")));
 				if (!isWithinOwnedRoots(entryPath, allowedRoots))
 					throw 'Prior manifest target is outside the caller-provided owned roots: $entryPath';
@@ -662,6 +741,7 @@ class ImportRefreshTransaction {
 		var seen:Map<String, Bool> = new Map();
 		var files:Array<ImportRefreshManifestFile> = [];
 		for (entry in (cast rawFiles:Array<Dynamic>)) {
+			checkpointWork(cancelCheck);
 			var entryPath = normalizeRelative(Std.string(Reflect.field(entry, "path")));
 			var hash = Std.string(Reflect.field(entry, "sha256")).toLowerCase();
 			var entryOwner = Std.string(Reflect.field(entry, "owner"));
@@ -711,8 +791,10 @@ class ImportRefreshTransaction {
 			throw "Import package-family catalog does not belong to this retained snapshot.";
 		var engines:Dynamic = Reflect.field(record, "engines");
 		var hasEngine = false;
-		if (Std.isOfType(engines, Array)) for (item in (cast engines:Array<Dynamic>))
+		if (Std.isOfType(engines, Array)) for (item in (cast engines:Array<Dynamic>)) {
+			ImportWorkScheduler.cooperate();
 			if (item == "Nightmare Vision") hasEngine = true;
+		}
 		if (!hasEngine) throw "Import package-family catalog engine does not match its retained record.";
 		var rawRoots:Dynamic = Reflect.field(record, "roots");
 		if (!Std.isOfType(rawRoots, Array)) throw "Import package-family catalog record has no roots.";
@@ -724,6 +806,7 @@ class ImportRefreshTransaction {
 		var seenPaths:Map<String, Bool> = new Map();
 		var seenNamespaces:Map<String, Bool> = new Map();
 		for (member in memberValues) {
+			ImportWorkScheduler.cooperate();
 			var directoryValue:Dynamic = Reflect.field(member, "directory");
 			var sourceValue:Dynamic = Reflect.field(member, "sourceRelative");
 			if (!Std.isOfType(directoryValue, String) || !Std.isOfType(sourceValue, String))
@@ -766,6 +849,7 @@ class ImportRefreshTransaction {
 		var ownsMember = false;
 		var hasFamilyEngine = false;
 		for (root in (cast rawRoots:Array<Dynamic>)) {
+			ImportWorkScheduler.cooperate();
 			if (root == null || Reflect.field(root, "engine") != "Nightmare Vision") continue;
 			hasFamilyEngine = true;
 			if (version == 2) continue;
@@ -777,8 +861,10 @@ class ImportRefreshTransaction {
 			var safeNamespace = normalizeRelative("assets/imported_mods/" + Std.string(namespace));
 			if (safeNamespace != "assets/imported_mods/" + Std.string(namespace))
 				throw "Import package-family destination namespace is invalid.";
-			for (member in members) if (relative == member.sourceRelative && label == member.directory)
-				ownsMember = true;
+			for (member in members) {
+				ImportWorkScheduler.cooperate();
+				if (relative == member.sourceRelative && label == member.directory) ownsMember = true;
+			}
 		}
 		if (version == 1 && !ownsMember)
 			throw "Import package-family catalog does not include an imported source root.";
@@ -800,11 +886,13 @@ class ImportRefreshTransaction {
 		files:Array<Dynamic>):Void {
 		if (catalog == null || catalog.version != 2 || catalog.members == null) return;
 		for (member in catalog.members) {
+			ImportWorkScheduler.cooperate();
 			var prefix = "assets/imported_mods/" + member.namespace + "/";
 			var configPath = prefix + "meta.json";
 			var hasConfig = false;
 			var hasRuntime = false;
 			for (file in files) {
+				ImportWorkScheduler.cooperate();
 				var path:String = Std.isOfType(file, String) ? cast file : Std.string(Reflect.field(file, "path"));
 				var key = pathTextKey(path);
 				if (key == pathTextKey(configPath)) hasConfig = true;
@@ -880,6 +968,7 @@ class ImportRefreshTransaction {
 	}
 
 	static function rollbackFromJournal(transactionPath:String, install:String, state:String, journal:Dynamic):Array<ImportRefreshConflict> {
+		ImportWorkScheduler.cooperate();
 		var conflicts:Array<ImportRefreshConflict> = [];
 		var owner = Std.string(Reflect.field(journal, "owner"));
 		var roots:Array<String>;
@@ -892,6 +981,7 @@ class ImportRefreshTransaction {
 		var operationList:Array<Dynamic> = cast operations;
 		var index = operationList.length - 1;
 		while (index >= 0) {
+			ImportWorkScheduler.cooperate();
 			var operation = operationList[index];
 			index--;
 			var relative = Std.string(Reflect.field(operation, "path"));
@@ -947,6 +1037,7 @@ class ImportRefreshTransaction {
 			}
 		}
 
+		ImportWorkScheduler.cooperate();
 		try {
 			var manifestPath = currentManifestPath(state, owner);
 			var beforeExists:Bool = Reflect.field(journal, "manifestBeforeExists");
@@ -996,7 +1087,8 @@ class ImportRefreshTransaction {
 		FileSystem.rename(temp, destination);
 	}
 
-	static function latestJournal(transactionPath:String):Dynamic {
+	static function latestJournal(transactionPath:String, ?cancelCheck:Void->Bool):Dynamic {
+		checkpointWork(cancelCheck);
 		if (!FileSystem.exists(transactionPath) || !FileSystem.isDirectory(transactionPath)) return null;
 		var names = FileSystem.readDirectory(transactionPath);
 		var candidates:Array<{path:String, sequence:Int}> = [];
@@ -1009,6 +1101,7 @@ class ImportRefreshTransaction {
 		}
 		candidates.sort(function(a, b) return b.sequence - a.sequence);
 		for (candidate in candidates) {
+			checkpointWork(cancelCheck);
 			try {
 				var journal:Dynamic = Json.parse(File.getContent(candidate.path));
 				if (Reflect.field(journal, "schemaVersion") == MANIFEST_SCHEMA)
@@ -1045,6 +1138,7 @@ class ImportRefreshTransaction {
 	 * transaction's journal, leaving its small journal and receipt for audit. */
 	static function cleanupCommittedBackups(transactionPath:String, journal:Dynamic):Void {
 		try {
+			ImportWorkScheduler.cooperate();
 			var backupPaths:Array<String> = [];
 			if (Reflect.field(journal, "manifestBeforeExists") == true) {
 				var expectedManifest = Path.join(["backups", "files", digestText("manifest.json") + ".bak"]);
@@ -1055,6 +1149,7 @@ class ImportRefreshTransaction {
 			var operations:Dynamic = Reflect.field(journal, "operations");
 			if (!Std.isOfType(operations, Array)) return;
 			for (operation in (cast operations:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
 				if (operation == null || Reflect.field(operation, "beforeExists") != true)
 					continue;
 				var relative = Std.string(Reflect.field(operation, "path"));
@@ -1066,14 +1161,18 @@ class ImportRefreshTransaction {
 
 			var resolved:Array<String> = [];
 			for (relative in backupPaths) {
+				ImportWorkScheduler.cooperate();
 				var path = safeChild(transactionPath, relative, false);
 				if (FileSystem.exists(path) && !isRegularFile(path)) return;
 				resolved.push(path);
 			}
-			for (path in resolved)
+			for (path in resolved) {
+				ImportWorkScheduler.cooperate();
 				if (FileSystem.exists(path)) FileSystem.deleteFile(path);
+			}
 
 			for (relative in ["backups/files", "backups"]) {
+				ImportWorkScheduler.cooperate();
 				var directory = safeChild(transactionPath, relative, false);
 				if (FileSystem.exists(directory) && FileSystem.isDirectory(directory)
 					&& FileSystem.readDirectory(directory).length == 0)
@@ -1248,6 +1347,16 @@ class ImportRefreshTransaction {
 		return callback != null && callback();
 	}
 
+	/** Pause only at a caller-owned safe boundary; cancellation is honored before
+	 * the journaled publication window, never between a destination mutation and
+	 * the matching manifest or rollback bookkeeping. */
+	static function checkpointWork(cancelCheck:Null<Void->Bool>):Void {
+		if (checkCancelled(cancelCheck)) throw new ImportWorkCancelled();
+		if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck)))
+			throw new ImportWorkCancelled();
+		if (checkCancelled(cancelCheck)) throw new ImportWorkCancelled();
+	}
+
 	static function reportProgress(callback:Null<Dynamic->Void>, phase:String, current:String,
 		completed:Int, total:Int):Void {
 		if (callback == null) return;
@@ -1267,6 +1376,7 @@ class ImportRefreshTransaction {
 		try {
 			output = File.write(destination, true);
 			while (true) {
+				if (!ImportWorkScheduler.cooperate(function() return checkCancelled(cancelCheck))) throw CANCEL_TOKEN;
 				if (checkCancelled(cancelCheck)) throw CANCEL_TOKEN;
 				var count:Int;
 				try count = input.readBytes(buffer, 0, buffer.length) catch (_:Eof) break;

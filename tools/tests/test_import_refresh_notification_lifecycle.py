@@ -1,5 +1,6 @@
 """Foreground progress retires without consuming status or warning evidence."""
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 class ImportRefreshNotificationLifecycleTest(unittest.TestCase):
     def run_haxe(self, source):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
+            for module in ('ImportWorkScheduler.hx', 'ImportWorkCancelled.hx'):
+                shutil.copy2(ROOT / 'source' / module, Path(directory) / module)
             main = Path(directory) / 'Main.hx'
             main.write_text(source, encoding='utf-8')
             result = subprocess.run([*HAXE_COMMAND, '-cp', directory, '-main', 'Main', '--interp'],

@@ -74,6 +74,39 @@ using StringTools;
 
 typedef ImportAssetMergeResult = {{ var copied:Int; var skipped:Int; var failed:Int;
   @:optional var errors:Array<String>; }};
+typedef SourceMappedAssetPlan = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; }};
+typedef SourceMappedAssetPolicyView = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; var legacyAllowed:Bool; var blockAllLegacy:Bool; }};
+typedef PreparedMappedAssetOwner = {{ var sourceRoot:String; var engine:String; var scope:String;
+  var destinationRoot:String; var plan:SourceMappedAssetPlan; }};
+typedef PsychLanguagePublicationPlan = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; var legacyAllowed:Bool; var blockAllLegacy:Bool; }};
+class PsychLanguagePublisher {{
+  public static function prepare(_source:String, _engine:String, _destination:String,
+      ?_cancelled:Void->Bool):PsychLanguagePublicationPlan
+    return {{diagnostics:[], cancelled:false, failed:false, legacyAllowed:true, blockAllLegacy:false}};
+  public static function publish(_plan:PsychLanguagePublicationPlan,
+      _copy:String->String->Void, ?_cancelled:Void->Bool):Void {{}}
+  public static function skipLegacy(_plan:PsychLanguagePublicationPlan,
+      _source:String, _destination:String):Bool return false;
+}}
+class SourceMappedMediaPublisher {{
+  public static function prepare(_source:String, _engine:String, _destination:String,
+      ?_scope:String, ?_cancelled:Void->Bool):SourceMappedAssetPlan
+    return {{diagnostics:[], cancelled:false, failed:false}};
+  public static function publish(_plan:SourceMappedAssetPlan,
+      _copy:String->String->Void, ?_cancelled:Void->Bool,
+      ?_writeText:String->String->Void):Void {{}}
+  public static function languageView(_plan:SourceMappedAssetPlan):SourceMappedAssetPolicyView
+    return {{diagnostics:[], cancelled:false, failed:false, legacyAllowed:true, blockAllLegacy:false}};
+  public static function policyView(_plan:SourceMappedAssetPlan, _label:String):SourceMappedAssetPolicyView
+    return languageView(_plan);
+  public static function mediaLabel(_engine:String, _scope:String):String return '';
+  public static function mediaPolicy(_engine:String, _scope:String):Dynamic return null;
+  public static function skipLegacyOwner(_view:SourceMappedAssetPolicyView,
+      _source:String, _destination:String):Bool return false;
+}}
 class ImportSettings {{
   public static function normalizeSourcePath(path:Dynamic):String
     return Path.normalize(Std.string(path));
@@ -650,6 +683,7 @@ class RepairFixture {{
                 "static function collectNightmareVisionStageDataFiles",
                 "static function mergeNightmareVisionStageDataFiles",
                 "static function mergeNightmareVisionAssetFiles",
+                "static function writeImportContentNonOverwriting",
                 "static function compatScriptNamespaceHasExpectedFiles",
                 "static function sourceHasCompatScriptTree",
                 "static function mergePsychLanguageDataScopes",
@@ -704,8 +738,49 @@ typedef SongImportSource = {{
 }};
 typedef ImportAssetMergeResult = {{ var copied:Int; var skipped:Int; var failed:Int;
   @:optional var errors:Array<String>; }};
+typedef SourceMappedAssetPlan = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; }};
+typedef SourceMappedAssetPolicyView = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; var legacyAllowed:Bool; var blockAllLegacy:Bool; }};
+typedef PreparedMappedAssetOwner = {{ var sourceRoot:String; var engine:String; var scope:String;
+  var destinationRoot:String; var plan:SourceMappedAssetPlan; }};
+typedef PsychLanguagePublicationPlan = {{ var diagnostics:Array<String>; var cancelled:Bool;
+  var failed:Bool; var legacyAllowed:Bool; var blockAllLegacy:Bool; }};
+class PsychLanguagePublisher {{
+  public static function prepare(_source:String, _engine:String, _destination:String,
+      ?_cancelled:Void->Bool):PsychLanguagePublicationPlan
+    return {{diagnostics:[], cancelled:false, failed:false, legacyAllowed:true, blockAllLegacy:false}};
+  public static function publish(_plan:PsychLanguagePublicationPlan,
+      _copy:String->String->Void, ?_cancelled:Void->Bool):Void {{}}
+  public static function skipLegacy(_plan:PsychLanguagePublicationPlan,
+      _source:String, _destination:String):Bool return false;
+}}
+class SourceMappedMediaPublisher {{
+  public static function prepare(_source:String, _engine:String, _destination:String,
+      ?_scope:String, ?_cancelled:Void->Bool):SourceMappedAssetPlan
+    return {{diagnostics:[], cancelled:false, failed:false}};
+  public static function publish(_plan:SourceMappedAssetPlan,
+      _copy:String->String->Void, ?_cancelled:Void->Bool,
+      ?_writeText:String->String->Void):Void {{}}
+  public static function languageView(_plan:SourceMappedAssetPlan):SourceMappedAssetPolicyView
+    return {{diagnostics:[], cancelled:false, failed:false, legacyAllowed:true, blockAllLegacy:false}};
+  public static function policyView(_plan:SourceMappedAssetPlan, _label:String):SourceMappedAssetPolicyView
+    return languageView(_plan);
+  public static function mediaLabel(_engine:String, _scope:String):String return '';
+  public static function mediaPolicy(_engine:String, _scope:String):Dynamic return null;
+  public static function skipLegacyOwner(_view:SourceMappedAssetPolicyView,
+      _source:String, _destination:String):Bool return false;
+}}
 class RepairFixture {{
 {methods}
+  static function mappedAssetOwnerKey(sourceRoot:String, engine:String):String return engine + '|' + sourceRoot;
+  static function mappedOwnerPlan(_plans:Map<String, PreparedMappedAssetOwner>,
+      _sourceRoot:String, _engine:String):PreparedMappedAssetOwner return null;
+  static function mappedOwnerMediaView(_owner:PreparedMappedAssetOwner):SourceMappedAssetPolicyView return null;
+  static function skipMappedOwnerMediaFile(_owner:PreparedMappedAssetOwner,
+      _source:String, _destination:String):Bool return false;
+  static function authenticatedNightmareVisionScope(_sourceRoot:String,
+      _contentRoot:String):String return '';
   static function importWorkCancelled():Bool return false;
   static function mergeModPlusCharacterAssets(_root:String, _destination:String,
       _ids:Array<String>, _result:ImportAssetMergeResult):Void {{}}
@@ -975,6 +1050,8 @@ class ImportRootScanner {
   }
 }''', newline='\n')
             (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
+            (temp / "ImportGeneratedOutput.hx").write_text(
+                (ROOT / "source/ImportGeneratedOutput.hx").read_text(), newline='\n')
             (temp / "ImportSongOwnership.hx").write_text((ROOT / "source/ImportSongOwnership.hx").read_text(), newline='\n')
             for helper in (
                 "CodenameScriptPlan", "CodenameScriptDiscovery", "CodenameEventPack",

@@ -20,6 +20,15 @@ class Main extends Sprite {
 	public static var instance:Main;
 	// set in preStateSwitch, read after old-state teardown
 	static var leavingPlayState:Bool = false;
+	static var importForegroundLease:Int = 0;
+	/** Keep import workers behind gameplay/loading without blocking state swaps. */
+	static function syncImportForegroundForState(next:FlxState):Void {
+		var previous = importForegroundLease;
+		importForegroundLease = Std.isOfType(next, PlayState) || Std.isOfType(next, LoadingState)
+			? ImportWorkScheduler.beginGameplay() : 0;
+		// Acquire the next lease first so consecutive gameplay states have no gap.
+		ImportWorkScheduler.endGameplay(previous);
+	}
 	public function new() {
 		#if typebuild
 			// god is dead
@@ -28,6 +37,7 @@ class Main extends Sprite {
 		#end
 		super();
 		RuntimeStartupProbe.begin();
+		ImportWorkScheduler.bindForegroundThread();
 		instance = this;
 		#if sys
 		RuntimeSmokeHarness.applyRuntimeRoot();
@@ -84,6 +94,7 @@ class Main extends Sprite {
 		// before the new state's create(). Trim here so newly created transition
 		// sprites cannot have their graphics destroyed by a late cache sweep.
 		FlxG.signals.preStateCreate.add(function(_state:FlxState) {
+			syncImportForegroundForState(_state);
 			if (leavingPlayState)
 				FlxG.bitmap.clearCache();
 		});

@@ -142,6 +142,8 @@ class ImportSourceSnapshot {
 			var stopWalk = false;
 
 			while (stack.length > 0 && !stopWalk) {
+				if (!ImportWorkScheduler.cooperate(function() return isCancelled(options)))
+					return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				if (isCancelled(options)) return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				var directory = stack.pop();
 				var children:Array<String>;
@@ -152,6 +154,8 @@ class ImportSourceSnapshot {
 					continue;
 				}
 				for (name in children) {
+					if (!ImportWorkScheduler.cooperate(function() return isCancelled(options)))
+						return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 					if (isCancelled(options)) return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 					visited++;
 					if (maxEntries > 0 && visited > maxEntries) {
@@ -237,6 +241,8 @@ class ImportSourceSnapshot {
 			var copied:Array<Dynamic> = [];
 			var copiedBytes:Float = 0;
 			for (directory in directories) {
+				if (!ImportWorkScheduler.cooperate(function() return isCancelled(options)))
+					return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				if (isCancelled(options)) return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				createContainedDirectory(contentStagePath, directory.relativePath);
 			}
@@ -253,6 +259,8 @@ class ImportSourceSnapshot {
 
 			// Directory timestamps catch additions/removals during the bounded walk.
 			for (directory in directories) {
+				if (!ImportWorkScheduler.cooperate(function() return isCancelled(options)))
+					return finishFailure(output, "cancelled", "Snapshot capture was cancelled.", stagePath, stageExists);
 				var nowPath = canonicalPath(directory.sourcePath);
 				var nowStat = FileSystem.stat(directory.sourcePath);
 				if (!isWithin(nowPath, donor) || nowPath != directory.canonicalPath
@@ -465,6 +473,7 @@ class ImportSourceSnapshot {
 		emit(0);
 		if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
 		for (index in 0...jobs.length) {
+			if (!ImportWorkScheduler.cooperate(cancelled)) throw new ImportSnapshotCancelled();
 			if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
 			var job = jobs[index];
 			var path = snapshotWorkPath(job);
@@ -474,6 +483,7 @@ class ImportSourceSnapshot {
 				bytesCompleted += amount;
 				emit(1);
 				if (cancelled != null && cancelled()) throw new ImportSnapshotCancelled();
+				if (!ImportWorkScheduler.cooperate(cancelled)) throw new ImportSnapshotCancelled();
 			});
 			values[index] = value;
 			completed++;
@@ -487,13 +497,21 @@ class ImportSourceSnapshot {
 	static function snapshotWorkerLoop(state:ImportSnapshotWorkerState):Void {
 		try {
 			while (true) {
+				if (!ImportWorkScheduler.cooperate(function() return state.isStopped()))
+					throw new ImportSnapshotCancelled();
 				var index = state.claim();
 				if (index < 0) break;
 				var job = state.jobs[index];
 				var path = snapshotWorkPath(job);
 				try {
+					if (!ImportWorkScheduler.cooperate(function() return state.isStopped()))
+						throw new ImportSnapshotCancelled();
 					state.ensureRunning();
-					var value = state.action(job, function(amount:Int):Void state.addBytes(amount, path));
+					var value = state.action(job, function(amount:Int):Void {
+						state.addBytes(amount, path);
+						if (!ImportWorkScheduler.cooperate(function() return state.isStopped()))
+							throw new ImportSnapshotCancelled();
+					});
 					state.complete(index, value, path);
 				} catch (error:Dynamic) {
 					state.fail(error);
@@ -538,9 +556,9 @@ class ImportSourceSnapshot {
 		}
 	}
 
-	/** Hash one regular file with bounded memory. Callers that need cancellation
-	 * or progress while hashing can use the public incremental helper directly. */
-	public static function sha256File(path:String, ?chunkSize:Int):String {
+	/** Hash one regular file with bounded memory. The optional callback lets a
+	 * worker leave a gameplay-paused checkpoint promptly when cancelled. */
+	public static function sha256File(path:String, ?chunkSize:Int, ?cancelled:Void->Bool):String {
 		if (chunkSize == null || chunkSize < 4096) chunkSize = DEFAULT_CHUNK_SIZE;
 		if (chunkSize > 1048576) chunkSize = 1048576;
 		var hash = new ImportSnapshotSha256();
@@ -551,6 +569,7 @@ class ImportSourceSnapshot {
 		var buffer = Bytes.alloc(chunkSize);
 		try {
 			while (remaining > 0) {
+				if (!ImportWorkScheduler.cooperate(cancelled)) throw new ImportWorkCancelled();
 				var count = remaining < buffer.length ? remaining : buffer.length;
 				var read = input.readBytes(buffer, 0, count);
 				if (read != count) throw "Short read while hashing " + path;
@@ -683,6 +702,8 @@ class ImportSourceSnapshot {
 		var totalBytes = expectedBytes;
 		var verifyJobs:Array<Dynamic> = [];
 		while (pending.length > 0) {
+			if (!ImportWorkScheduler.cooperate(function() return verificationCancelled(cancel)))
+				throw "Snapshot verification was cancelled.";
 			if (verificationCancelled(cancel)) throw "Snapshot verification was cancelled.";
 			var directory = pending.pop();
 			var directoryPath = directory == "" ? contentRoot : joinFsRelative(contentRoot, directory);
@@ -696,6 +717,8 @@ class ImportSourceSnapshot {
 			try children = FileSystem.readDirectory(directoryPath) catch (error:Dynamic)
 				throw "Could not list snapshot directory " + directory + ": " + Std.string(error);
 			for (name in children) {
+				if (!ImportWorkScheduler.cooperate(function() return verificationCancelled(cancel)))
+					throw "Snapshot verification was cancelled.";
 				if (verificationCancelled(cancel)) throw "Snapshot verification was cancelled.";
 				if (!validComponent(name)) throw "Snapshot contains an invalid path component.";
 				var relative = joinRelative(directory, name);
@@ -1162,6 +1185,13 @@ private class ImportSnapshotWorkerState {
 		var shouldStop = stopped;
 		mutex.release();
 		if (shouldStop) throw new ImportSnapshotCancelled();
+	}
+
+	public function isStopped():Bool {
+		mutex.acquire();
+		var shouldStop = stopped;
+		mutex.release();
+		return shouldStop;
 	}
 
 	public function addBytes(amount:Int, path:String):Void {

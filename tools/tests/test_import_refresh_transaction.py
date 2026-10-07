@@ -14,6 +14,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
 SOURCE = ROOT / "source"
+TJSON = ROOT / ".haxelib/tjson/1,4,0"
 OWNED = "assets/imported/engine/package"
 OWNER = "Psych Engine|fixture-package"
 
@@ -25,9 +26,14 @@ import ImportRefreshTransaction.ImportRefreshConflict;
 import ImportRefreshTransaction.ImportRefreshManifestFile;
 import ImportRefreshTransaction.ImportRefreshResult;
 import ImportRefreshTransaction.ImportRefreshStagedOutput;
+import ImportWorkScheduler;
+import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
+import sys.thread.Lock;
+import sys.thread.Thread;
 
+@:access(ImportRefreshTransaction)
 class ImportRefreshTransactionFixture {
   static var root:String;
   static var staging:String;
@@ -118,34 +124,34 @@ class ImportRefreshTransactionFixture {
       case "staged-drift":
         var changed = false;
         var staged = staging + "/a.txt.stage";
-        var result = apply(["a.txt"], function() {
-          if (!changed) {
+        var result = apply(["a.txt"], null, function(event) {
+          if (!changed && Reflect.field(event, "phase") == "publishing-import"
+            && Reflect.field(event, "current") == owned[0] + "/a.txt") {
             changed = true;
             File.saveContent(staged, "mutated after preflight");
           }
-          return false;
         });
         reportResult(result);
       case "unchanged-live-drift":
         var changed = false;
         var target = root + "/" + owned[0] + "/a.txt";
-        var result = apply(["a.txt", "obsolete.txt"], function() {
-          if (!changed) {
+        var result = apply(["a.txt", "obsolete.txt"], null, function(event) {
+          if (!changed && Reflect.field(event, "phase") == "publishing-import"
+            && Reflect.field(event, "current") == owned[0] + "/a.txt") {
             changed = true;
             File.saveContent(target, "local edit after preflight");
           }
-          return false;
         });
         reportResult(result);
       case "unchanged-staged-drift":
         var changed = false;
         var staged = staging + "/a.txt.stage";
-        var result = apply(["a.txt", "obsolete.txt"], function() {
-          if (!changed) {
+        var result = apply(["a.txt", "obsolete.txt"], null, function(event) {
+          if (!changed && Reflect.field(event, "phase") == "publishing-import"
+            && Reflect.field(event, "current") == owned[0] + "/a.txt") {
             changed = true;
             File.saveContent(staged, "mutated after preflight");
           }
-          return false;
         });
         reportResult(result);
       case "two-outputs":
@@ -170,6 +176,116 @@ class ImportRefreshTransactionFixture {
         });
       case "recover":
         report("recovered", ImportRefreshTransaction.recover(root, state, owner));
+      case "backup-cleanup-scheduler":
+        ImportWorkScheduler.bindForegroundThread();
+        var scope = state + "/" + Sha256.make(Bytes.ofString(owner)).toHex();
+        var transactions = scope + "/transactions";
+        var transactionId = "txn-cleanup-checkpoint";
+        var transactionPath = transactions + "/" + transactionId;
+        for (directory in [scope, transactions, transactionPath,
+          transactionPath + "/backups", transactionPath + "/backups/files"])
+          if (!FileSystem.exists(directory)) FileSystem.createDirectory(directory);
+        var operations:Array<Dynamic> = [];
+        var firstBackup = "";
+        for (index in 0...32) {
+          var relative = owned[0] + "/prior-" + index + ".bin";
+          var backupRelative = Path.join(["backups", "files",
+            Sha256.make(Bytes.ofString(relative)).toHex() + ".bak"]);
+          var backup = transactionPath + "/" + backupRelative;
+          File.saveContent(backup, "prior-" + index);
+          if (index == 0) firstBackup = backup;
+          operations.push({path:relative, beforeExists:true, backupPath:backupRelative});
+        }
+        var manifestHash = Sha256.make(Bytes.ofString("committed-manifest")).toHex();
+        var journal:Dynamic = {schemaVersion:ImportRefreshTransaction.MANIFEST_SCHEMA,
+          owner:owner, transactionId:transactionId, phase:"receipt-pending",
+          installRoot:Path.normalize(FileSystem.fullPath(root)), ownedRoots:owned,
+          operations:operations, manifestBeforeExists:false, manifestAfterSha256:manifestHash,
+          manifestBackupPath:"", journalSequence:1};
+        File.saveContent(transactionPath + "/journal-00000001.json", Json.stringify(journal));
+        File.saveContent(transactionPath + "/receipt.json", Json.stringify({
+          status:ImportRefreshTransaction.STATUS_APPLIED, owner:owner,
+          transactionId:transactionId, manifestSha256:manifestHash}));
+        var gameplay = ImportWorkScheduler.beginGameplay();
+        var started = new Lock();
+        var finished = new Lock();
+        var workerConflicts:Array<ImportRefreshConflict> = null;
+        var workerFailure:Dynamic = null;
+        Thread.create(function() {
+          started.release();
+          try workerConflicts = ImportRefreshTransaction.recover(root, state, owner)
+          catch (error:Dynamic) workerFailure = error;
+          finished.release();
+        });
+        if (!started.wait(2)) throw "committed receipt cleanup worker did not start";
+        Sys.sleep(0.08);
+        var completedWhileGameplay = finished.wait(0.01);
+        var backupsPreserved = FileSystem.exists(firstBackup);
+        var foregroundProgress = ImportWorkScheduler.cooperate();
+        ImportWorkScheduler.endGameplay(gameplay);
+        var completed = completedWhileGameplay || finished.wait(3);
+        if (!completed) throw "committed receipt cleanup did not resume after gameplay";
+        if (workerFailure != null) throw "committed receipt recovery failed: " + Std.string(workerFailure);
+        var remaining = FileSystem.exists(transactionPath + "/backups/files");
+        Sys.println(Json.stringify({completedWhileGameplay:completedWhileGameplay,
+          backupsPreserved:backupsPreserved, foregroundProgress:foregroundProgress,
+          conflicts:workerConflicts == null ? -1 : workerConflicts.length,
+          backupsRemain:remaining}));
+      case "rollback-recovery-scheduler":
+        ImportWorkScheduler.bindForegroundThread();
+        var scope = state + "/" + Sha256.make(Bytes.ofString(owner)).toHex();
+        var transactions = scope + "/transactions";
+        var transactionId = "txn-recovery-checkpoint";
+        var transactionPath = transactions + "/" + transactionId;
+        for (directory in [scope, transactions, transactionPath,
+          transactionPath + "/backups", transactionPath + "/backups/files"])
+          if (!FileSystem.exists(directory)) FileSystem.createDirectory(directory);
+        var relative = owned[0] + "/recovery-checkpoint.txt";
+        var target = root + "/" + relative;
+        var beforeText = "recovery-before";
+        var afterText = "recovery-after";
+        var backupRelative = Path.join(["backups", "files",
+          Sha256.make(Bytes.ofString(relative)).toHex() + ".bak"]);
+        var backup = transactionPath + "/" + backupRelative;
+        var beforeHash = Sha256.make(Bytes.ofString(beforeText)).toHex();
+        var afterHash = Sha256.make(Bytes.ofString(afterText)).toHex();
+        File.saveContent(target, afterText);
+        File.saveContent(backup, beforeText);
+        var journal:Dynamic = {schemaVersion:ImportRefreshTransaction.MANIFEST_SCHEMA,
+          owner:owner, transactionId:transactionId, phase:"applying",
+          installRoot:Path.normalize(FileSystem.fullPath(root)), ownedRoots:owned,
+          operations:[{path:relative, beforeExists:true, beforeSha256:beforeHash,
+            afterExists:true, afterSha256:afterHash, stagedPath:"", backupPath:backupRelative}],
+          manifestPath:"manifest.json", manifestBeforeExists:false,
+          manifestBeforeSha256:"", manifestAfterSha256:Sha256.make(Bytes.ofString("manifest-after")).toHex(),
+          manifestBackupPath:"", journalSequence:1};
+        File.saveContent(transactionPath + "/journal-00000001.json", Json.stringify(journal));
+        var gameplay = ImportWorkScheduler.beginGameplay();
+        var started = new Lock();
+        var finished = new Lock();
+        var workerConflicts:Array<ImportRefreshConflict> = null;
+        var workerFailure:Dynamic = null;
+        Thread.create(function() {
+          started.release();
+          try workerConflicts = ImportRefreshTransaction.recover(root, state, owner)
+          catch (error:Dynamic) workerFailure = error;
+          finished.release();
+        });
+        if (!started.wait(2)) throw "rollback recovery worker did not start";
+        Sys.sleep(0.08);
+        var completedWhileGameplay = finished.wait(0.01);
+        var destinationPreserved = File.getContent(target) == afterText;
+        var backupPreserved = FileSystem.exists(backup);
+        var foregroundProgress = ImportWorkScheduler.cooperate();
+        ImportWorkScheduler.endGameplay(gameplay);
+        var completed = completedWhileGameplay || finished.wait(3);
+        if (!completed) throw "rollback recovery did not resume after gameplay";
+        if (workerFailure != null) throw "rollback recovery failed: " + Std.string(workerFailure);
+        Sys.println(Json.stringify({completedWhileGameplay:completedWhileGameplay,
+          destinationPreserved:destinationPreserved, backupPreserved:backupPreserved,
+          foregroundProgress:foregroundProgress,
+          conflicts:workerConflicts == null ? -1 : workerConflicts.length,
+          restored:File.getContent(target) == beforeText}));
       case "manifest":
         var manifest = ImportRefreshTransaction.loadManifest(state, owner);
         Sys.println(Json.stringify(manifest));
@@ -232,7 +348,7 @@ class ImportRefreshTransactionTest(unittest.TestCase):
     def run_fixture(self, mode: str, *, expected: int = 0, install: Path | None = None,
                     state: Path | None = None) -> subprocess.CompletedProcess:
         result = subprocess.run(
-            [*HAXE_COMMAND, "-cp", str(self.scratch), "-cp", str(SOURCE), "--run", "ImportRefreshTransactionFixture",
+            [*HAXE_COMMAND, "-cp", str(self.scratch), "-cp", str(SOURCE), "-cp", str(TJSON), "--run", "ImportRefreshTransactionFixture",
              mode, str(install or self.install), str(self.staging), str(state or self.state)],
             cwd=ROOT,
             env={**os.environ, "TMPDIR": str(ROOT / "tmp")},
@@ -271,6 +387,23 @@ class ImportRefreshTransactionTest(unittest.TestCase):
         self.assertTrue(Path(result["receiptPath"]).is_file())
         transaction = Path(result["transactionPath"])
         self.assertFalse((transaction / "backups").exists(), "committed rollback copies should be reclaimed")
+
+    def test_committed_receipt_cleanup_pauses_during_gameplay_and_resumes(self):
+        result = self.report(self.run_fixture("backup-cleanup-scheduler"))
+        self.assertFalse(result["completedWhileGameplay"], result)
+        self.assertTrue(result["backupsPreserved"], result)
+        self.assertTrue(result["foregroundProgress"], result)
+        self.assertEqual(result["conflicts"], 0, result)
+        self.assertFalse(result["backupsRemain"], result)
+
+    def test_receiptless_rollback_waits_before_mutating_a_destination(self):
+        result = self.report(self.run_fixture("rollback-recovery-scheduler"))
+        self.assertFalse(result["completedWhileGameplay"], result)
+        self.assertTrue(result["destinationPreserved"], result)
+        self.assertTrue(result["backupPreserved"], result)
+        self.assertTrue(result["foregroundProgress"], result)
+        self.assertEqual(result["conflicts"], 0, result)
+        self.assertTrue(result["restored"], result)
 
     def test_unchanged_outputs_keep_their_timestamp_and_report_transaction_progress(self):
         self.seed_initial_import()

@@ -13,7 +13,8 @@ class FreeplaySourceDisplay {
 	}
 
 	public static function resolve(display:String, sourceLabel:String, songKey:String,
-		legacyProvenance:Dynamic, ?legacyChartTitle:String):{title:String, source:String} {
+		legacyProvenance:Dynamic, ?legacyChartTitle:String,
+		?validatedStaleGenericLabel:String):{title:String, source:String} {
 		var title = display == null ? '' : display;
 		var source = sourceLabel == null ? '' : StringTools.trim(sourceLabel);
 		// The destination receipt is the ownership proof.  Older collision rows
@@ -52,6 +53,14 @@ class FreeplaySourceDisplay {
 			var suffix = ' · ' + source;
 			if (StringTools.endsWith(title, suffix))
 				title = title.substr(0, title.length - suffix.length);
+		}
+		// FreeplayState supplies this only after the same receipt has passed the
+		// inferred-container owner and engine checks. Strip the old label suffix
+		// only when it is the exact trailing text, preserving authored title text.
+		if (validatedStaleGenericLabel != null && validatedStaleGenericLabel != '') {
+			var staleSuffix = ' · ' + validatedStaleGenericLabel;
+			if (StringTools.endsWith(title, staleSuffix))
+				title = title.substr(0, title.length - staleSuffix.length);
 		}
 		return {title:title, source:source};
 	}
