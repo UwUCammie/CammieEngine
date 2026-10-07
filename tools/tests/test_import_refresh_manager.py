@@ -88,9 +88,19 @@ typedef ImportScanResult = {
  var missingDependencies:Null<Int>;
  var errors:Array<String>;
  var songs:Array<ImportScanSong>;
+ var songsFound:Int;
+ var songsToImport:Int;
+ var duplicateSongs:Int;
+ var assetFilesFound:Int;
+ var assetsToImport:Int;
+ var duplicateAssets:Int;
+ var assets:Array<Dynamic>;
+ var globalPacksToImport:Int;
+ var overlayPlanned:Int;
 }
 typedef ImportScanSong = {
  var missing:Array<Dynamic>;
+ @:optional var dependencies:Array<Dynamic>;
  @:optional var duplicate:Bool;
  @:optional var sourceDuplicate:Bool;
  @:optional var name:String;
@@ -99,6 +109,8 @@ typedef ImportScanSong = {
  @:optional var destinationFolder:String;
  @:optional var willImport:Bool;
  @:optional var charts:Array<String>;
+ @:optional var sourceRelative:String;
+ @:optional var reason:String;
 }
 class ImportWorkflow {
  public static var rootTruncated:Bool=false;
@@ -110,6 +122,7 @@ class ImportWorkflow {
  public static var scanErrors:Array<String>=[];
  public static var missing:Array<ImportScanSong>=[];
  public static var existingDuplicate:Bool=false;
+ public static var manualSongs:Null<Array<ImportScanSong>>=null;
  public static function scanNow(source:String,type:String):ImportScanResult {
   var songs=missing.copy();
   var packagePath=haxe.io.Path.join([source,"package.json"]);
@@ -130,12 +143,35 @@ class ImportWorkflow {
      engine:Reflect.field(overrideRoots[index],"engine"),
      evidence:Reflect.field(overrideRoots[index],"evidence")};
    }
+  var allowedRoots:Array<Dynamic>=[];
+  for(root in detected) if(root!=null
+    &&ImportRootScanner.retainedSourceRootAllowed(Std.string(Reflect.field(root,"root")),
+     Std.string(Reflect.field(root,"engine")))) allowedRoots.push(root);
+  detected=allowedRoots;
+  if(manualSongs!=null) for(song in manualSongs) if(song!=null) {
+   var relative=Reflect.field(song,"sourceRelative");
+   var root=relative==null||Std.string(relative)==""?source:haxe.io.Path.join([source,Std.string(relative)]);
+   var engine=Reflect.field(song,"engine")==null?type:Std.string(Reflect.field(song,"engine"));
+   if(!ImportRootScanner.retainedSourceRootAllowed(root,engine)) continue;
+   var copy:Dynamic=Reflect.copy(song);
+   Reflect.setField(copy,"source",root);
+   songs.push(cast copy);
+  }
+  var songsToImport=0;
+  var duplicateSongs=0;
+  for(song in songs) if(song!=null) {
+   if(Reflect.field(song,"willImport")==true) songsToImport++;
+   else if(Reflect.field(song,"duplicate")==true) duplicateSongs++;
+  }
   return {
    detectedRoots:detected, detectedEngines:[type],
    rootScanDiagnostics:rootDiagnostics.copy(), packageScanDiagnostics:packageDiagnostics.copy(),
    rootScanTruncated:rootTruncated, packageScanTruncated:packageTruncated,
-   missingDependencies:missing.length, errors:scanErrors.copy(), songs:songs
-  };
+   missingDependencies:missing.length, errors:scanErrors.copy(), songs:songs,
+   songsFound:songs.length, songsToImport:songsToImport, duplicateSongs:duplicateSongs,
+   assetFilesFound:0, assetsToImport:0, duplicateAssets:0, assets:[],
+   globalPacksToImport:0, overlayPlanned:0
+ };
  }
  public static function convertRetainedSource(source:String,scan:ImportScanResult,
   names:Map<String,String>):SongImportBatchResult
@@ -433,6 +469,51 @@ class ImportRefreshManagerFixture {
   }
   return ImportRefreshManager.importOnce(source,"Psych Engine",scan(source),new Map(),
    mappedAssetConverter(cancelAfterCopies),noCancel,progress,contexts);
+ }
+
+ static var overlapObservedRoots:Array<String>=[];
+ static var overlapObservedSongs:Array<String>=[];
+ static function retainedRootOverlap(source:String, relatives:Array<String>,
+  forceNewDuplicate:Bool=false, allOwned:Bool=false, pendingWork:Bool=false):Dynamic {
+  ImportRefreshManager.checked=true;
+  ImportRefreshManager.inspectionPending=false;
+  ImportRefreshManager.inspectionRunning=false;
+  ImportRefreshManager.unresolvedRecovery=false;
+  ImportWorkflow.overrideRoots=[for(_ in relatives) {engine:"Psych Engine",evidence:[]}];
+  ImportWorkflow.overrideRootRelatives=relatives.copy();
+  ImportWorkflow.manualSongs=[];
+  for(index in 0...relatives.length) {
+   var relative=relatives[index];
+   var old=allOwned||index<relatives.length-1;
+   var newWork=pendingWork&&index==relatives.length-1;
+   var duplicate=(old||forceNewDuplicate)&&!newWork;
+   ImportWorkflow.manualSongs.push({name:"song-"+Path.withoutDirectory(relative),duplicate:duplicate,
+    sourceDuplicate:false,willImport:!duplicate,sourceRelative:relative,missing:[],charts:[],
+    dependencies:[],reason:old?"already imported root":"new independent root"});
+  }
+  var input=ImportWorkflow.scanNow(source,"Psych Engine");
+  overlapObservedRoots=[];
+  overlapObservedSongs=[];
+  var conversion=function(retained:String,scanned:ImportScanResult,
+   names:Map<String,String>):SongImportBatchResult {
+   overlapObservedRoots=[for(root in scanned.detectedRoots)
+    Path.withoutDirectory(Std.string(Reflect.field(root,"root")))];
+   overlapObservedSongs=[for(song in scanned.songs) Std.string(Reflect.field(song,"name"))];
+   ImportFile.saveContent("assets/data/retained-root-probe/probe.json",
+    Json.stringify({roots:overlapObservedRoots,songs:overlapObservedSongs}));
+   return {found:overlapObservedSongs.length,imported:overlapObservedSongs.length,
+    importedSongs:overlapObservedSongs.copy(),skipped:0,failed:0,copiedAssets:1,
+    skippedAssets:0,errors:[]};
+  };
+  try {
+   var result=ImportRefreshManager.importOnce(source,"Psych Engine",input,new Map(),
+    conversion,noCancel,progress);
+   return {status:"ok",failed:result.failed,noChanges:Reflect.field(result,"noChanges")==true,
+    roots:overlapObservedRoots,songs:overlapObservedSongs,
+    records:ImportRefreshManager.cachedRecords(Sys.getCwd())};
+  } catch(error:Dynamic) return {status:"error",error:Std.string(error),
+   roots:overlapObservedRoots,songs:overlapObservedSongs,
+   records:ImportRefreshManager.cachedRecords(Sys.getCwd())};
  }
 
  static function mappedRefresh(id:String,nested:Bool=false,cancelAfterCopies:Int=0):Dynamic {
@@ -1315,6 +1396,13 @@ class ImportRefreshManagerFixture {
     var first=importPackage(args[2],false);
     var second=importPackage(args[3],false);
     report({failed:first.failed+second.failed, records:ImportRefreshManager.cachedRecords(install)});
+   case "retained-root-overlap":
+    var relatives=args.slice(3);
+    var forceDuplicate=relatives.length>0&&relatives[relatives.length-1]=="force-duplicate";
+    var allOwned=relatives.length>0&&relatives[relatives.length-1]=="all-owned";
+    var pendingWork=relatives.length>0&&relatives[relatives.length-1]=="all-owned-new-work";
+    if(forceDuplicate||allOwned||pendingWork) relatives.pop();
+    report(retainedRootOverlap(args[2],relatives,forceDuplicate,allOwned||pendingWork,pendingWork));
    case "refresh", "refresh-fail", "refresh-cancel", "refresh-concurrent-registry",
     "refresh-concurrent-owned", "refresh-scan-errors":
     var id=args[2];
@@ -1612,6 +1700,37 @@ class ImportRefreshManagerTest(unittest.TestCase):
         }
         (source / "package.json").write_text(json.dumps(package), encoding="utf-8", newline='\n')
         return source
+
+    def make_parent_corpus(self):
+        corpus = self.scratch / "psych-parent-corpus"
+        corpus.mkdir()
+        roots = {}
+        for name in ("fnia", "swag-messiah", "new-package"):
+            root = corpus / name
+            root.mkdir()
+            package = {
+                "ownerKey": name,
+                "marker": "retained:" + name,
+                "initialVersion": "v1-" + name,
+                "nextVersion": "v2-" + name,
+                "initialSongs": ["song-" + name],
+                "nextSongs": ["song-" + name, "song-" + name + "-new"],
+            }
+            (root / "package.json").write_text(
+                json.dumps(package), encoding="utf-8", newline="\n")
+            roots[name] = root
+        return corpus, roots
+
+    def seed_parent_corpus_owners(self):
+        self.use_eval_fixture()
+        corpus, roots = self.make_parent_corpus()
+        records = []
+        for name in ("fnia", "swag-messiah"):
+            imported = self.run_fixture("fresh", roots[name])
+            self.assertEqual(imported["failed"], 0, imported)
+            records.append(next(record for record in imported["records"]
+                                if record["label"] == name))
+        return corpus, roots, records
 
     def make_language_source(self, name: str) -> Path:
         source = self.make_source(name, initial_songs=["language-fixture"],
@@ -2493,7 +2612,13 @@ class ImportRefreshManagerTest(unittest.TestCase):
         donor = self.make_source("donor-auto", initial_songs=["auto-song"], next_songs=["auto-song", "auto-new"])
         record = self.initial_import(donor)
         shutil_rmtree(donor)
-        self.mark_record_stale(record, common_revision=2)
+        stale_revisions = [dict(stamp) for stamp in record["revisions"]]
+        self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {8})
+        for stamp in stale_revisions:
+            stamp["engineRevision"] = 7
+        self.mark_record_stale(record, common_revision=None,
+                               record_updates={"revisions": stale_revisions})
 
         result = self.run_fixture("auto-refresh")
 
@@ -2502,6 +2627,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
+        self.assertTrue(any(stamp["engineRevision"] == 8
+                            for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())
 
@@ -3032,6 +3159,81 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(registry["owners"]["owner-a"], "v2-owner-a")
         self.assertEqual(registry["owners"]["owner-b"], "v1-owner-b")
         self.assertTrue((self.install / "assets/songs/a-new/Inst.ogg").is_file())
+
+    def test_parent_corpus_excludes_only_authenticated_independent_roots(self):
+        corpus, roots, previous = self.seed_parent_corpus_owners()
+        manifests = {record["id"]: self.manifest_bytes(record) for record in previous}
+        installed = {name: (self.install / "assets/songs" / ("song-" + name) / "Inst.ogg").read_bytes()
+                     for name in ("fnia", "swag-messiah")}
+
+        result = self.run_fixture("retained-root-overlap", corpus,
+                                  "fnia", "swag-messiah", "new-package")
+
+        self.assertEqual(result["status"], "ok", result)
+        self.assertEqual(result["failed"], 0, result)
+        self.assertEqual(result["roots"], ["new-package"], result)
+        self.assertEqual(result["songs"], ["song-new-package"], result)
+        parent = next(record for record in result["records"]
+                      if record["label"] == corpus.name)
+        self.assertEqual([root["relative"] for root in parent["roots"]], ["new-package"])
+        for record in previous:
+            self.assertEqual(self.manifest_bytes(record), manifests[record["id"]])
+        for name, data in installed.items():
+            path = self.install / "assets/songs" / ("song-" + name) / "Inst.ogg"
+            self.assertEqual(path.read_bytes(), data)
+        self.assertTrue((self.install / "assets/data/retained-root-probe/probe.json").is_file())
+
+    def test_parent_corpus_still_blocks_unowned_duplicate_in_a_new_root(self):
+        corpus, roots, previous = self.seed_parent_corpus_owners()
+        manifests = {record["id"]: self.manifest_bytes(record) for record in previous}
+        record_ids = {record["id"] for record in previous}
+
+        result = self.run_fixture("retained-root-overlap", corpus,
+                                  "fnia", "swag-messiah", "new-package", "force-duplicate")
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertIn("no retained-source ownership baseline", result["error"].lower())
+        self.assertEqual({record["id"] for record in result["records"]}, record_ids)
+        for record in previous:
+            self.assertEqual(self.manifest_bytes(record), manifests[record["id"]])
+        self.assertFalse((self.install / "assets/data/retained-root-probe/probe.json").exists())
+
+    def test_parent_corpus_with_only_authenticated_roots_is_a_noop(self):
+        corpus, roots, previous = self.seed_parent_corpus_owners()
+        manifests = {record["id"]: self.manifest_bytes(record) for record in previous}
+        record_ids = {record["id"] for record in previous}
+        installed = {name: (self.install / "assets/songs" / ("song-" + name) / "Inst.ogg").read_bytes()
+                     for name in ("fnia", "swag-messiah")}
+
+        result = self.run_fixture("retained-root-overlap", corpus,
+                                  "fnia", "swag-messiah", "all-owned")
+
+        self.assertEqual(result["status"], "ok", result)
+        self.assertTrue(result["noChanges"], result)
+        self.assertEqual(result["roots"], [], result)
+        self.assertEqual(result["songs"], [], result)
+        self.assertEqual({record["id"] for record in result["records"]}, record_ids)
+        for record in previous:
+            self.assertEqual(self.manifest_bytes(record), manifests[record["id"]])
+        for name, data in installed.items():
+            path = self.install / "assets/songs" / ("song-" + name) / "Inst.ogg"
+            self.assertEqual(path.read_bytes(), data)
+        self.assertFalse((self.install / "assets/data/retained-root-probe/probe.json").exists())
+
+    def test_parent_corpus_with_authenticated_roots_but_new_scan_work_stays_blocked(self):
+        corpus, roots, previous = self.seed_parent_corpus_owners()
+        manifests = {record["id"]: self.manifest_bytes(record) for record in previous}
+        record_ids = {record["id"] for record in previous}
+
+        result = self.run_fixture("retained-root-overlap", corpus,
+                                  "fnia", "swag-messiah", "all-owned-new-work")
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertIn("still reports new or unresolved work", result["error"].lower())
+        self.assertEqual({record["id"] for record in result["records"]}, record_ids)
+        for record in previous:
+            self.assertEqual(self.manifest_bytes(record), manifests[record["id"]])
+        self.assertFalse((self.install / "assets/data/retained-root-probe/probe.json").exists())
 
     def test_first_retained_import_refuses_unowned_legacy_output_collision(self):
         donor = self.make_source("legacy-donor", initial_songs=["legacy-song"])

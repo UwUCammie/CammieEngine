@@ -57,7 +57,7 @@ class NightmareVisionModConfigApplier {
 		} else fontPath = host.resolveSelectedFont(DEFAULT_FONT_KEY);
 		host.setDefaultFont(fontPath);
 
-		applyPrefix('UI_PREFIX', field(pack, 'uiPrefix'), 'UI/');
+		applyPrefix('UI_PREFIX', field(pack, 'uiPrefix'), host.defaultUiPrefix());
 		applyPrefix('COMBO_PREFIX', field(pack, 'comboPrefix'), 'UI/combo/');
 		applyPrefix('RATINGS_PREFIX', field(pack, 'ratingsPrefix'), 'UI/ratings/');
 		applyPrefix('COUNTDOWN_PREFIX', field(pack, 'countdownPrefix'), 'UI/countdown/');

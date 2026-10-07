@@ -44,6 +44,19 @@ class Main {
   var sparrow = NightmareVisionCharacterData.load(owner, 'sparrow');
   check(NightmareVisionCharacterData.imageRoot(owner, sparrow)
    == owner + '/images/characters/Sparrow', 'Sparrow prefix resolves');
+  var windowsPath = NightmareVisionCharacterData.load(owner, 'windows-path');
+  check(NightmareVisionCharacterData.imageRoot(owner, windowsPath)
+   == owner + '/images/characters/BF/grunt',
+   'Windows separators in an authored image path resolve within the owner');
+  var windowsTraversal = NightmareVisionCharacterData.load(owner, 'windows-traversal');
+  check(windowsTraversal != null && NightmareVisionCharacterData.imageRoot(owner, windowsTraversal) == null,
+   'Windows separator normalization still rejects owner traversal');
+  var windowsDrive = NightmareVisionCharacterData.load(owner, 'windows-drive');
+  check(windowsDrive != null && NightmareVisionCharacterData.imageRoot(owner, windowsDrive) == null,
+   'Windows drive-rooted image paths stay outside the owner');
+  var windowsUnc = NightmareVisionCharacterData.load(owner, 'windows-unc');
+  check(windowsUnc != null && NightmareVisionCharacterData.imageRoot(owner, windowsUnc) == null,
+   'Windows UNC image paths stay outside the owner');
   var multi = NightmareVisionCharacterData.load(owner, 'multi');
   check(NightmareVisionCharacterData.imageRoot(owner, multi)
    == owner + '/images/characters/Boy,' + owner + '/images/characters/Stomp',
@@ -100,6 +113,15 @@ class Main {
                    '{"image":"characters/Sparrow"}')
         self.write(self.owner, 'images/characters/Sparrow.png')
         self.write(self.owner, 'images/characters/Sparrow.xml', '<TextureAtlas/>')
+        self.write(self.owner, 'data/characters/windows-path.json',
+                   '{"image":"characters\\\\BF/grunt"}')
+        self.make_animate(self.owner, 'images/characters/BF/grunt')
+        self.write(self.owner, 'data/characters/windows-traversal.json',
+                   '{"image":"..\\\\outside"}')
+        self.write(self.owner, 'data/characters/windows-drive.json',
+                   '{"image":"C:\\\\outside"}')
+        self.write(self.owner, 'data/characters/windows-unc.json',
+                   '{"image":"\\\\\\\\server\\\\share"}')
         self.write(self.owner, 'data/characters/multi.json',
                    '{"image":"characters/Boy.png, images/characters/Stomp.xml"}')
         for name in ('Boy', 'Stomp'):

@@ -2,7 +2,8 @@ package;
 
 /** Select the HUD asset contract from the selected engine-core package. The
 	older NMV runtime shipped rating and combo art at the image root and shared
-	the script-facing ratingPrefix/ratingSuffix; newer cores split those paths. */
+	the script-facing ratingPrefix/ratingSuffix. Its icons also lived at the
+	image root; the later UI reorganization moved them under UI/. */
 @:keep
 class NightmareVisionHUDProfile {
 	public final name:String;
@@ -42,7 +43,7 @@ class NightmareVisionHUDProfile {
 			return new NightmareVisionHUDProfile('split', false, 'UI/combo/', 'UI/ratings/',
 				'UI/countdown/', 'UI/', true, splitCount, legacyCount);
 		if (legacyCount == 10)
-			return new NightmareVisionHUDProfile('legacy-shared', true, '', '', 'UI/countdown/', 'UI/',
+			return new NightmareVisionHUDProfile('legacy-shared', true, '', '', 'UI/countdown/', '',
 				true, splitCount, legacyCount);
 
 		// Some selected cores do not ship either complete default set (for

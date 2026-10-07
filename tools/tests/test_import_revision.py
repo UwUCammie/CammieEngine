@@ -22,10 +22,10 @@ class Main {
   check(legacy.status == ImportRevision.UNKNOWN, "legacy app version was mistaken for a compatibility receipt");
 
   var current = ImportRevision.current("psychengine", "0.0.8");
-  check(current.engineRevision == 7
-   && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:6},
+  check(current.engineRevision == 8
+   && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:7},
     "Psych Engine").status == ImportRevision.OUTDATED,
-   "older Psych receipts did not request asset identity publication refresh");
+   "Psych revision-7 receipts did not request source-profile republishing");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,
    "explicit common and engine revisions were not recorded");
   check(current.commonRevision == 3
@@ -33,11 +33,11 @@ class Main {
     engineRevision:1}, "Psych Engine").status == ImportRevision.OUTDATED,
    "shared display metadata changes do not trigger retained-source refresh");
   var priorNmv = {schemaVersion:1, commonRevision:3, sourceEngine:"Nightmare Vision",
-	 engineRevision:6};
+	 engineRevision:7};
   check(ImportRevision.assess(priorNmv, "Nightmare Vision").status == ImportRevision.OUTDATED,
-	 "older Nightmare Vision identity publication receipts were not scheduled for refresh");
-  check(ImportRevision.current("Nightmare Vision").engineRevision == 7,
-	 "NMV asset identity semantics did not advance the engine revision");
+	 "Nightmare Vision revision-7 receipts were not scheduled for refresh");
+  check(ImportRevision.current("Nightmare Vision").engineRevision == 8,
+	 "Nightmare Vision source-profile repair did not advance the engine revision");
   current.applicationVersion = "0.0.1-alpha.8";
   check(ImportRevision.assess(current, "Psych Engine").status == ImportRevision.CURRENT,
    "app release number incorrectly determined importer compatibility");

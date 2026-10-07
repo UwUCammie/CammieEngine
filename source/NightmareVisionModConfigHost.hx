@@ -7,6 +7,8 @@ package;
 interface NightmareVisionModConfigHost {
 	function defaultAppTitle():String;
 	function defaultRpcId():String;
+	/** Core-derived prefix used when the selected package does not override UI paths. */
+	function defaultUiPrefix():String;
 	function resolveSelectedPath(relativePath:String):String;
 	function resolveSelectedFont(key:String):String;
 	function pathExists(path:String):Bool;

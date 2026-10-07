@@ -11,6 +11,59 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NightmareVisionPathsTest(unittest.TestCase):
+    def test_historical_core_layout_selects_root_icons_and_keeps_explicit_override(self):
+        fixture = r'''
+class NightmareVisionLegacyIconPrefixMain {
+ static function check(value:Bool,message:String):Void if(!value)throw message;
+ static function paths(prefix:String):Array<String> {
+  var files:Array<String>=[];
+  for(digit in 0...10)files.push('core/images/'+prefix+'num'+digit+'.png');
+  return files;
+ }
+ static function main():Void {
+  var oldFiles=paths('');
+  oldFiles.push('core/images/icons/icon-bfmobian.png');
+  oldFiles.push('core/images/UI/custom/icons/icon-bfmobian.png');
+  var oldCore=new NightmareVisionPaths(oldFiles);
+  var oldProfile=NightmareVisionHUDProfile.detect(oldCore);
+  var owner:SourceHealthIconOwner={
+   image:function(name:String,gpu:Bool)return null,
+   exists:function(path:String)return oldCore.exists(oldCore.getCorePath(path)),
+   uiPrefix:function()return oldProfile.uiPrefix,
+   antialiasing:function()return true
+  };
+  check(oldProfile.name=='legacy-shared'&&owner.uiPrefix()=='',
+   'legacy root-level HUD marker selects root-level icon default');
+  check(SourceHealthIconLoader.nightmarePath('bfmobian',owner)=='icons/icon-bfmobian',
+   'legacy profile finds a real root-layout icon');
+  owner.uiPrefix=function()return 'UI/custom/';
+  check(SourceHealthIconLoader.nightmarePath('bfmobian',owner)=='UI/custom/icons/icon-bfmobian',
+   'an explicit prefix remains authoritative even for a historical core');
+  var newCore=new NightmareVisionPaths(paths('UI/combo/'));
+  check(NightmareVisionHUDProfile.detect(newCore).uiPrefix=='UI/',
+   'new split layout keeps the modern UI icon default');
+ }
+        }
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as scratch:
+            (Path(scratch) / 'NightmareVisionHUDProfile.hx').write_text(
+                (ROOT / 'source/NightmareVisionHUDProfile.hx').read_text(), newline='\n')
+            (Path(scratch) / 'SourceHealthIconLoader.hx').write_text(
+                (ROOT / 'source/SourceHealthIconLoader.hx').read_text(), newline='\n')
+            (Path(scratch) / 'NightmareVisionPaths.hx').write_text(
+                'class NightmareVisionPaths { public var files:Map<String,Bool>=new Map(); '
+                'public function new(paths:Array<String>)for(p in paths)files.set(p,true); '
+                "public function getCorePath(relative:String):String return 'core/'+relative; "
+                'public function exists(path:String):Bool return files.exists(path); }', newline='\n')
+            (Path(scratch) / 'SourceHealthIconOwner.hx').write_text(
+                'typedef SourceHealthIconOwner={var image:(String,Bool)->Dynamic;var exists:String->Bool;'
+                'var uiPrefix:Void->String;var antialiasing:Void->Bool;}', newline='\n')
+            (Path(scratch) / 'NightmareVisionLegacyIconPrefixMain.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(scratch),
+                                     '--main', 'NightmareVisionLegacyIconPrefixMain', '--interp'], cwd=ROOT,
+                                    text=True, capture_output=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_lookup_precedence_suffixes_case_media_and_containment(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = Path(directory)
@@ -73,6 +126,9 @@ public static function getSound(path:String)return new openfl.media.Sound(path);
                 '__nmv_core/sounds/noise.ogg':'core-ogg',
                 '__nmv_core/images/core.png':'core',
                 '__nmv_core/images/core.xml':'core-xml',
+                '__nmv_core/images/icons/icon-face.png':'legacy core face',
+                '__nmv_core/images/icons/icon-bfmobian.png':'legacy core icon',
+                '__nmv_core/images/UI/custom/icons/icon-bfmobian.png':'explicitly prefixed icon',
                 'images/custom/num0.png':'explicit owner digit',
             }
             for name, content in files.items():
@@ -116,11 +172,22 @@ class Main {
   var legacyPaths=new NightmareVisionPaths('assets/imported_mods/legacy');
   check(legacyPaths.hudProfile.name=='legacy-shared' && legacyPaths.usesSharedRatingPrefix
    && legacyPaths.COMBO_PREFIX=='' && legacyPaths.RATINGS_PREFIX==''
-   && legacyPaths.COUNTDOWN_PREFIX=='UI/countdown/' && legacyPaths.UI_PREFIX=='UI/',
-   'complete flat core selects the legacy shared rating/digit prefix without inventing other old constants');
+   && legacyPaths.COUNTDOWN_PREFIX=='UI/countdown/' && legacyPaths.UI_PREFIX=='',
+   'complete flat core selects historical root icons independently from the legacy shared rating/digit prefix');
   check(legacyPaths.fileExists('images/num0.png',null,false)
    && !legacyPaths.fileExists('images/UI/combo/num0.png',null,false),
    'legacy profile detects capabilities without adding path aliases');
+  var legacyIconOwner:SourceHealthIconOwner={
+   image:function(name:String,gpu:Bool)return new flixel.graphics.FlxGraphic(name),
+   exists:function(path:String)return legacyPaths.exists(legacyPaths.getPath(path,null,true)),
+   uiPrefix:function()return legacyPaths.UI_PREFIX,
+   antialiasing:function()return true
+  };
+  check(SourceHealthIconLoader.nightmarePath('bfmobian',legacyIconOwner)=='icons/icon-bfmobian',
+   'historical core profile resolves icons at images/icons');
+  legacyPaths.UI_PREFIX='UI/custom/';
+  check(SourceHealthIconLoader.nightmarePath('bfmobian',legacyIconOwner)=='UI/custom/icons/icon-bfmobian',
+   'explicit UI prefix remains independent from historical defaults');
 
   var splitPaths=new NightmareVisionPaths('assets/imported_mods/split');
   check(splitPaths.hudProfile.name=='split' && splitPaths.hudProfile.detected

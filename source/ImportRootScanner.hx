@@ -98,8 +98,10 @@ typedef ImportRootScanCallbacks = {
 class ImportRootScanner {
 	#if target.threaded
 	static var retainedEngines = new sys.thread.Tls<Map<String, String>>();
+	static var retainedRoots = new sys.thread.Tls<Map<String, String>>();
 	#else
 	static var retainedEngines:Map<String, String>;
+	static var retainedRoots:Map<String, String>;
 	#end
 
 	/** Scope trusted original scan identities to the current import worker.
@@ -113,6 +115,47 @@ class ImportRootScanner {
 		retainedEngines = engines;
 		#end
 		return previous;
+	}
+
+	/** Scope an exact retained-root allowlist to the current import worker.
+	 * Paths are the selected roots inside the retained snapshot, not owner names.
+	 * A null map leaves ordinary interactive scans unchanged; an empty map rejects
+	 * every detected root until the previous scope is restored. */
+	public static function setRetainedSourceRoots(roots:Map<String, String>):Map<String, String> {
+		#if target.threaded
+		var previous = retainedRoots.value;
+		retainedRoots.value = roots;
+		#else
+		var previous = retainedRoots;
+		retainedRoots = roots;
+		#end
+		return previous;
+	}
+
+	/** True when a discovered root is in the active retained import selection.
+	 * This also gates legacy package discovery that can otherwise bypass the
+	 * root scanner by walking a selected parent directly. */
+	public static function retainedSourceRootAllowed(root:String, engine:String):Bool {
+		#if target.threaded
+		var allowedRoots = retainedRoots.value;
+		#else
+		var allowedRoots = retainedRoots;
+		#end
+		if (allowedRoots == null) return true;
+		var normalized = canonicalize(root);
+		if (normalized == '') return false;
+		var normalizedEngine = ImportEngine.normalize(engine);
+		for (path in allowedRoots.keys()) {
+			var known = canonicalize(path);
+			#if windows
+			var samePath = known.toLowerCase() == normalized.toLowerCase();
+			#else
+			var samePath = known == normalized;
+			#end
+			if (samePath)
+				return ImportEngine.normalize(allowedRoots.get(path)) == normalizedEngine;
+		}
+		return false;
 	}
 	public static inline var MAX_DEPTH:Int = 10;
 	public static inline var MAX_DIRECTORIES:Int = 8192;
@@ -235,7 +278,8 @@ class ImportRootScanner {
 						break;
 					}
 				}
-				if (rootKey != '' && !roots.exists(rootKey) && !isContentChild) {
+				if (rootKey != '' && !roots.exists(rootKey) && !isContentChild
+					&& retainedSourceRootAllowed(match.root, match.engine)) {
 					roots.set(rootKey, true);
 					found.push(match);
 				}

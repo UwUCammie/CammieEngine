@@ -370,7 +370,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				var splash = group.recycle(NightmareVisionSustainSplash,
 					function() return new NightmareVisionSustainSplash(0, 0, 0, 0, nightmareVisionSustainSplashOwner()));
 				splash.setupSplash(strum, note, (note.sustainLength + nightmareVisionConductor.stepCrotchet * 1.25) / 1000,
-					isPlayer, note.rgbGraphics, field);
+					isPlayer, (cast note:Note).rgbGraphics, field);
 				group.add(splash);
 				callNightmareVision('onSpawnSustainSplash', [splash, note]);
 				return note.sustainSplash = splash;
@@ -631,7 +631,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		for (value in field.notes) if (value != null && Std.isOfType(value, Note)) {
 			var note:Note = cast value;
-			if (applyNightmareVisionNoteSkin(note, skin)
+			if (applyNightmareVisionFieldNoteSkin(note, skin, true)
 				&& renderer != null) renderer.release(note);
 		}
 		if (field.grpNoteSplashes != null) {
@@ -665,7 +665,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (skin != null) {
 			NightmareVisionQuantRendering.classify(note, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view,
 				nightmareVisionConductor.getBeat(note.strumTime));
-			applyNightmareVisionNoteSkin(note, skin);
+			applyNightmareVisionFieldNoteSkin(note, skin);
 		}
 	}
 
@@ -1422,11 +1422,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		refreshCharacterHUD();
 		return actor;
 	}
-	@:keep public function refreshZ(?group:flixel.group.FlxGroup.FlxTypedGroup<FlxBasic>):Void {
+	@:keep public function refreshZ(?group:Dynamic):Void {
 		if (group == null) group = stage;
-		group.sort(function(order:Int, a:FlxBasic, b:FlxBasic):Int {
+		// Source HUDs may be non-rendering adapters over live display slots.
+		// Preserve their sort operation instead of casting them to a FlxGroup.
+		var sort = group == null ? null : Reflect.field(group, 'sort');
+		if (sort == null || !Reflect.isFunction(sort))
+			throw '[source-group-sort] refreshZ requires a live group sort operation';
+		Reflect.callMethod(group, sort, [function(order:Int, a:Dynamic, b:Dynamic):Int {
 			return flixel.util.FlxSort.byValues(order, HxcCompatRuntime.getZIndex(a), HxcCompatRuntime.getZIndex(b));
-		}, flixel.util.FlxSort.ASCENDING);
+		}, flixel.util.FlxSort.ASCENDING]);
 	}
 
 	/** Source sorting operates on the actual Stage container's live members. */
@@ -2092,6 +2097,27 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		camFollow.setPosition(x, y);
 		FlxG.camera.snapToTarget();
 		if (lockPosition) isCameraOnForcedPos = true;
+	}
+	/** Shared Psych/NV source event semantics, separate from legacy camera modes. */
+	function sourceCameraFollowPosition(value1:String, value2:String):Void {
+		var x = Std.parseFloat(value1);
+		var y = Std.parseFloat(value2);
+		isCameraOnForcedPos = false;
+		if (!Math.isNaN(x) || !Math.isNaN(y)) {
+			camFollow.x = Math.isNaN(x) ? 0 : x;
+			camFollow.y = Math.isNaN(y) ? 0 : y;
+			isCameraOnForcedPos = true;
+		}
+	}
+	/** A new source fade replaces an unfinished fade on the same HUD camera. */
+	function sourceHudFade(value1:String, value2:String):Void {
+		FlxTween.cancelTweensOf(camHUD, ['alpha']);
+		var alpha = Std.parseFloat(value1);
+		var duration = Std.parseFloat(value2);
+		if (Math.isNaN(alpha)) alpha = 1;
+		if (Math.isNaN(duration)) duration = 1;
+		if (duration > 0) FlxTween.tween(camHUD, {alpha:alpha}, duration);
+		else camHUD.alpha = alpha;
 	}
 	#if windows
 	public static var customPrecence = FNFAssets.getText("assets/discord/presence/play.txt");
@@ -5892,12 +5918,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			trace('[psych-assets] Refused Lua sprite reference outside calling owner: ' + Std.string(image));
 			return compatMakeLuaSprite(tag, '', x, y);
 		}
+		// Source Lua destroys a reused tag before it resolves the replacement
+		// graphic. Removing the last sprite reference first lets FNFAssets reload
+		// a FlxGraphic that its cache destroyed when that sprite was released.
+		if (tag != null)
+			compatRemoveLuaSprite(tag);
 		if (image != null && StringTools.trim(image) != '') {
 			var graphic = compatPsychPathCall(ownerRoot, 'image', [compatPsychAssetKey(image, '.png')]);
 			if (graphic == null)
 				return compatMakeLuaSprite(tag, image, x, y);
-			if (tag != null)
-				compatRemoveLuaSprite(tag);
 			var traceFirstGlobalSprite = RuntimeSmokeHarness.enabled()
 				&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
 			if (traceFirstGlobalSprite)
@@ -5916,8 +5945,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 			return sprite;
 		}
-		if (tag != null)
-			compatRemoveLuaSprite(tag);
 		var traceEmptyImageGlobalSprite = RuntimeSmokeHarness.enabled()
 			&& tag == psychGlobalProviderFirstSpriteTag && psychGlobalProviderFirstSprite == null;
 		if (traceEmptyImageGlobalSprite)
@@ -10056,6 +10083,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
 		if (note.nightmareVisionTypeRuntime != null) note.nightmareVisionTypeRuntime.syncNote(note);
 		return true;
+	}
+
+	/** Source PlayField.addNote assigns the selected field texture through
+	 * Note.texture, which reloads the note while preserving its stored prefix. */
+	function applyNightmareVisionFieldNoteSkin(note:Note, skin:NightmareVisionNoteSkin,
+		forceReload:Bool = false):Bool {
+		if (note == null || skin == null) return false;
+		if (nightmareVisionNoteTypes != null)
+			return nightmareVisionNoteTypes.reloadForFieldSkin(note, skin.noteTexture,
+				skin.inEngineColoring, forceReload);
+		return applyNightmareVisionNoteSkin(note, skin);
 	}
 
 	function getInputStrumline(sourceLine:CodenameInputLine<Character>, playerOne:Bool):Strumline {
@@ -17900,13 +17938,17 @@ void main(void) {
 				// per-section auto-follow must not override it. Coords lock
 				// the camera (scriptable 'static'), empty args release it
 				// back to the automatic follow.
-				if (StringTools.trim(e.v1) == '' && StringTools.trim(e.v2) == '') {
+				if (sourceNoteTimingMode() == 1 || sourceNoteTimingMode() == 2) {
+					sourceCameraFollowPosition(e.v1, e.v2);
+				} else if (StringTools.trim(e.v1) == '' && StringTools.trim(e.v2) == '') {
 					if (scriptableCamera == 'static')
 						scriptableCamera = 'false';
 				} else {
 					scriptCamPos[0] = [parseF(e.v1), parseF(e.v2)];
 					scriptableCamera = 'static';
 				}
+			case 'HUD Fade':
+				sourceHudFade(e.v1, e.v2);
 			case 'Toggle Camera Movement':
 				// FPS Plus overhead rows encode the enabled bit in value1.  Lock
 				// the current follow point while disabled, then return to normal

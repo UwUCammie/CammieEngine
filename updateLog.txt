@@ -1,6 +1,14 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.18 alpha - CammieEngine
+	- Accept verified legacy retained-source receipts and preserve independent installed owners when importing a parent mod folder.
+	- Preserve custom note prefixes, palettes and partial animation atlases through field attachment, source reloads and skin changes; restore receptor coloring from the selected skin.
+	- Resolve legacy Nightmare Vision health icons from the detected core asset layout while retaining explicit package UI prefixes.
+	- Apply source camera-follow locks and HUD Fade events, and route custom HUD sorting through its live display adapter.
+	- Normalize authored Windows character atlas separators before owner containment checks.
+	- Replace reused Psych sprite tags before resolving cached images, preserving icon frame sizes when consecutive subtitles use the same portrait.
+
 v0.0.17 alpha - CammieEngine
 	- Preserve source Lime asset IDs and named libraries in owner-scoped, receipt-verified indexes shared by Psych and Nightmare Vision.
 	- Return decoded Sound objects from modern Psych Paths audio helpers, including instrumentals and voices; retain owner caches, source translations and missing-audio behavior.

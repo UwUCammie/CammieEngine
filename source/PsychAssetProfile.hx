@@ -4,6 +4,7 @@ import haxe.crypto.Sha256;
 import haxe.io.Bytes;
 import haxe.io.BytesBuffer;
 import haxe.io.Path;
+import ImportSourceSnapshot;
 #if sys
 import sys.FileSystem;
 import sys.io.File;
@@ -2169,7 +2170,10 @@ class PsychAssetProfile {
 			var size = FileSystem.stat(receiptPath).size;
 			if (size < 0 || size > MAX_RECEIPT_BYTES) throw "Snapshot receipt exceeds the parser size limit.";
 			var receipt:Dynamic = haxe.Json.parse(File.getContent(receiptPath));
-			if (receipt == null || Reflect.field(receipt, "snapshotSchemaVersion") != 2
+			var schemaValue:Dynamic = receipt == null ? null : Reflect.field(receipt, "snapshotSchemaVersion");
+			if (receipt == null || !Std.isOfType(schemaValue, Int)
+				|| (cast schemaValue:Int) < 1
+				|| (cast schemaValue:Int) > ImportSourceSnapshot.RECEIPT_SCHEMA_VERSION
 				|| Reflect.field(receipt, "snapshotId") != snapshotId
 				|| Reflect.field(receipt, "contentRoot") != "content"
 				|| !Std.isOfType(Reflect.field(receipt, "files"), Array))

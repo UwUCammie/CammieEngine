@@ -1877,6 +1877,8 @@ class ModuleFunctions {
 		for (packagePath in packageDiscovery.folders) {
 			if (importWorkCancelled())
 				break;
+			if (!ImportRootScanner.retainedSourceRootAllowed(packagePath, ImportEngine.MODDING_PLUS))
+				continue;
 			yieldImportWork(true);
 			var songData = songImportFromFolder(packagePath);
 			if (validateAndRecordSongImport(rejectionCollector, songData, packagePath, packagePath,
@@ -1903,6 +1905,8 @@ class ModuleFunctions {
 		for (assetsRoot in findSelectedAssetsRoots(selectedPath)) {
 			if (importWorkCancelled())
 				break;
+			if (!ImportRootScanner.retainedSourceRootAllowed(assetsRoot, ImportEngine.MODDING_PLUS))
+				continue;
 			yieldImportWork(true);
 			var songsRoot = Path.join([assetsRoot, 'songs']);
 			var dataRoot = Path.join([assetsRoot, 'data']);
@@ -4347,6 +4351,8 @@ class ModuleFunctions {
 					candidateRoot = source == null ? selectedPath : source.sourceRoot;
 				if (candidateRoot == null || StringTools.trim(candidateRoot) == '')
 					candidateRoot = selectedPath;
+				if (!ImportRootScanner.retainedSourceRootAllowed(candidateRoot, ImportEngine.MODDING_PLUS))
+					continue;
 				candidates.push({song:song, root:candidateRoot,
 					engine:ImportEngine.MODDING_PLUS, source:source});
 			}

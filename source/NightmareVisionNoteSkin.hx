@@ -292,11 +292,16 @@ class NightmareVisionNoteSkin {
 			var name = noteAnimationKind(sourceName == null ? null : Std.string(sourceName), direction);
 			if (name == null || needed.indexOf(name) < 0) continue;
 			var prefix = Std.string(Reflect.field(entry, 'xmlName')) + '0';
+			selected.set(name, entry);
 			if (!prefixExists(frames, prefix)) {
 				diagnose('note-' + lane + '-' + sourceName, 'missing note animation ' + prefix);
-				return false;
+				// Source Note.reloadNote replaces the resolved atlas before asking
+				// the current skin to add its usual animation prefixes. A partial
+				// note-type atlas is still authoritative; Flixel simply leaves any
+				// absent animation uncreated. Only the initial skin load keeps the
+				// strict validation that protects the native/default fallback.
+				if (overrideFrames == null) return false;
 			}
-			selected.set(name, entry);
 		}
 		for (name in needed) if (!selected.exists(name)) {
 			diagnose('note-' + lane + '-' + name, 'missing note metadata ' + name);
@@ -361,6 +366,10 @@ class NightmareVisionNoteSkin {
 				pair.length > 1 ? numberValue(pair[1], 0) : 0]);
 		}
 		strum.nightmareVisionOffsets = offsets;
+		// Donor PlayField sets this on every receptor whenever a skin is applied.
+		// Source PlayState can reuse a line previously configured by Psych, whose
+		// RGB flag may be false even though this skin enables lane coloring.
+		strum.useRGBShader = inEngineColoring;
 		strum.nightmareVisionPalette = inEngineColoring ? palette(lane) : null;
 		strum.nightmareVisionRGB = refreshRGB(strum.nightmareVisionRGB, lane);
 		strum.scale.set(receptorScale, receptorScale);

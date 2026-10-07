@@ -17,6 +17,7 @@ MAIN = r'''import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
 import PsychAssetProfile.PsychAssetProfileBuild;
+@:access(ImportSourceSnapshot)
 class Main {
  static function main():Void {
   var config:Dynamic = haxe.Json.parse(File.getContent("config.json"));
@@ -25,6 +26,24 @@ class Main {
    engine, "0.0.17", {workerCount:1});
   if (capture.status != "complete" || !capture.complete)
    throw "fixture snapshot did not complete: " + capture.error;
+  if (config.legacySchema1 == true) {
+   var receipt:Dynamic = haxe.Json.parse(File.getContent(capture.receiptPath));
+   var directories:Array<String> = cast Reflect.field(receipt, "directories");
+   var files:Array<Dynamic> = cast Reflect.field(receipt, "files");
+   var exclusions:Array<Dynamic> = cast Reflect.field(receipt, "exclusions");
+   var omissions:Array<Dynamic> = cast Reflect.field(receipt, "omissions");
+   var incomplete:Array<Dynamic> = cast Reflect.field(receipt, "incompleteReasons");
+   Reflect.setField(receipt, "snapshotSchemaVersion", 1);
+   var legacyId = ImportSourceSnapshot.receiptSnapshotId(engine, directories, files,
+    exclusions, omissions, incomplete, 1);
+   Reflect.setField(receipt, "snapshotId", legacyId);
+   File.saveContent(capture.receiptPath, haxe.Json.stringify(receipt));
+   var legacyRoot = Path.join([Path.directory(capture.snapshotRoot), legacyId]);
+   FileSystem.rename(capture.snapshotRoot, legacyRoot);
+   capture.snapshotId = legacyId;
+   capture.snapshotRoot = legacyRoot;
+   capture.receiptPath = Path.join([legacyRoot, "receipt.json"]);
+  }
   ImportSourceSnapshot.verify(capture.snapshotRoot, capture.snapshotId, null, null, 1);
   var content = Path.join([capture.snapshotRoot, "content"]);
   var selected = Path.join([content, config.rootRelative]);
@@ -228,6 +247,7 @@ class PsychAssetProfileTest(unittest.TestCase):
                     omit_translation_root=False,
                     tamper_included_project=None, project_files=None,
                     cancel_after=None,
+                    legacy_schema1=False,
                     project_text=PROJECT,
                     engine="Psych Engine"):
         TEST_TMP.mkdir(parents=True, exist_ok=True)
@@ -306,6 +326,7 @@ class PsychAssetProfileTest(unittest.TestCase):
             "deleteTypedMapped": delete_typed_mapped,
             "tamperIncludedProject": tamper_included_project,
             "cancelAfter": cancel_after,
+            "legacySchema1": legacy_schema1,
         }
         (work / "Main.hx").write_text(MAIN, encoding="utf-8", newline="\n")
         (work / "config.json").write_text(json.dumps(config), encoding="utf-8", newline="\n")
@@ -358,7 +379,6 @@ class PsychAssetProfileTest(unittest.TestCase):
         )
         self.assertFalse(profile["complete"], "opaque macro/include inputs must prevent a completeness claim")
         self.assertTrue(any(":haxedef name=FLAG_ONLY" in item for item in profile["opaqueBuildInputs"]))
-
 
         candidates = profile["candidates"]
         translations = [item for item in candidates if item["sourceRelative"] == "assets/translations"]
@@ -461,6 +481,12 @@ class PsychAssetProfileTest(unittest.TestCase):
             data = Path(row["sourcePath"]).read_bytes()
             self.assertEqual(row["size"], len(data))
             self.assertEqual(row["sha256"], hashlib.sha256(data).hexdigest())
+
+    def test_schema_one_snapshot_receipt_remains_receipt_bound(self):
+        result, _ = self.run_profile(EXPLICIT_BUILD, legacy_schema1=True)
+        self.assertEqual(result["capture"]["status"], "complete")
+        self.assertEqual(result["profile"]["provenance"], "receipt-bound")
+        self.assertEqual(result["profile"]["snapshotId"], result["capture"]["snapshotId"])
 
     def test_lime_asset_ids_follow_file_directory_and_nested_name_rules(self):
         project = '''<project>

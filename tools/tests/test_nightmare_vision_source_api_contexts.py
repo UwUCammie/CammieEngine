@@ -29,6 +29,8 @@ class RecordingModConfigHost implements NightmareVisionModConfigHost {
  public function new() {}
  public function defaultAppTitle():String return 'Default Title';
  public function defaultRpcId():String return 'source-default-rpc';
+ // These source API fixtures use the split HUD core's default layout.
+ public function defaultUiPrefix():String return 'UI/';
  public function resolveSelectedPath(path:String):String return selectedRoot + '/' + path;
  public function resolveSelectedFont(key:String):String return selectedRoot + '/fonts/' + key;
  public function pathExists(path:String):Bool return false;

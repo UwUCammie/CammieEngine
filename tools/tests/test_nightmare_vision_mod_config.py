@@ -30,6 +30,7 @@ class RecordingHost implements NightmareVisionModConfigHost {
  public var transition:NightmareVisionModTransition;
  public var rpcId:String;
  public var font:String;
+ public var defaultUi:String='UI/';
  public var prefixes:Map<String, String> = new Map();
  public var existingPaths:Map<String, Bool> = new Map();
  public var existingDirectories:Map<String, Bool> = new Map();
@@ -42,6 +43,7 @@ class RecordingHost implements NightmareVisionModConfigHost {
  }
  public function defaultAppTitle():String { record('default-title'); return 'Engine Title'; }
  public function defaultRpcId():String { record('default-rpc'); return 'donor-rpc'; }
+ public function defaultUiPrefix():String return defaultUi;
  public function resolveSelectedPath(path:String):String {
   record('path:' + path);
   return currentRoot + '/' + path;
@@ -181,6 +183,20 @@ check(host.events.indexOf('default-title') >= 0 && host.events.indexOf('default-
 var host = new RecordingHost();
 new NightmareVisionModConfigApplier(host).apply({defaultTransition:'MyCustomFade'}, 'owner', 'assets/imported_mods/owner');
   eq(host.events[6], 'transition:SCRIPTED:MyCustomFade', 'scripted transition key case');
+''')
+
+    def test_absent_or_invalid_ui_prefix_uses_core_layout_but_explicit_prefix_wins(self):
+        self.run_haxe(r'''
+var root = 'assets/imported_mods/historical';
+var host = new RecordingHost();
+host.defaultUi = '';
+host.existingDirectories.set('custom/', true);
+new NightmareVisionModConfigApplier(host).apply({}, 'historical', root);
+eq(host.prefixes.get('UI_PREFIX'), '', 'historical core default remains at image root');
+new NightmareVisionModConfigApplier(host).apply({uiPrefix:'missing/'}, 'historical', root);
+eq(host.prefixes.get('UI_PREFIX'), '', 'invalid override returns to historical core default');
+new NightmareVisionModConfigApplier(host).apply({uiPrefix:'custom/'}, 'historical', root);
+eq(host.prefixes.get('UI_PREFIX'), 'custom/', 'explicit valid package override wins');
 ''')
 
     def test_callback_error_keeps_prior_effects_and_context_config_assignment(self):

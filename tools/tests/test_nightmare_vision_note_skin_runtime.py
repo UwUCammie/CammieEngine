@@ -40,6 +40,7 @@ class StrumNote {
  public var normalSize:Float=1; public var resetAnim:Float=0;
  public var nightmareVisionOffsets:Map<String,Array<Float>>;
  public var nightmareVisionPalette:PsychRGBPalette;
+ public var useRGBShader:Bool=false;
  public var nightmareVisionRGB:NightmareVisionRGBGraphics; public var shader:Dynamic;
  public function new() {}
  public function updateHitbox():Void {}
@@ -201,8 +202,14 @@ class Main {
   skin.receptorScale=0.6;
   check(skin.applyReceptor(receptor,0) && receptor.scale.x==0.6
    && receptor.baseScale.x==0.6 && receptor.nightmareVisionRGB==receptorRGB && receptorRGB.alpha==0.25
-   && receptorRGB.flash==0.75 && receptorRGB.palette.r==0xFF010203,
-   "receptor helper must consume mutable scale/palette while retaining draw state");
+   && receptorRGB.flash==0.75 && receptorRGB.palette.r==0xFF010203 && receptor.useRGBShader,
+   "receptor helper must consume mutable scale/palette, enable source RGB, and retain draw state");
+  skin.inEngineColoring=false;
+  check(skin.applyReceptor(receptor,0) && !receptor.useRGBShader && !receptorRGB.enabled,
+   "receptor skin changes must disable both the source RGB flag and graphics view");
+  skin.inEngineColoring=true;
+  check(skin.applyReceptor(receptor,0) && receptor.useRGBShader && receptorRGB.enabled,
+   "receptor skin changes must restore both the source RGB flag and graphics view");
   skin.receptorScale=0.9;
   check(skin.applyReceptor(receptor,0) && receptor.scale.x==0.9 && receptor.baseScale.x==0.9,
    "receptor scale changes must be direct and stable");

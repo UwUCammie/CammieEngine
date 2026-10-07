@@ -6,6 +6,7 @@ private typedef NightmareVisionNoteApiState = {
 	var prefix:String;
 	var suffix:String;
 	var texture:String;
+	var fieldTexture:String;
 	var atlasPath:String;
 	var rgbEnabled:Bool;
 	var customColors:Array<Dynamic>;
@@ -144,6 +145,25 @@ class NightmareVisionNoteTypeRuntime {
 		return loaded;
 	}
 
+	/** Mirror source PlayField.addNote's texture assignment. Reloading through
+	 * this runtime preserves each note type's prefix and callback lifecycle. */
+	public function reloadForFieldSkin(note:Dynamic, texture:String, rgbEnabled:Bool,
+		forceReload:Bool = false):Bool {
+		if (note == null || texture == null) return false;
+		api.setRgbEnabled(note, rgbEnabled);
+		var changed = api.fieldTexture(note) != texture;
+		if (!changed && !forceReload) return true;
+		var result = true;
+		if (changed) {
+			result = reloadNote(note, '', texture, '');
+			api.rememberFieldTexture(note, texture);
+		}
+		// Source PlayField.changeSkin explicitly reloads again after assigning
+		// Note.texture and refreshing the skin animation table.
+		if (forceReload) result = reloadNote(note, '', texture, '');
+		return result;
+	}
+
 	/** The parent must use this on note expiry and bot-hit paths. canMiss is a
 	 * separate source flag: it suppresses automatic miss bookkeeping and
 	 * botplay auto-hit, while leaving manual hit dispatch available. */
@@ -201,6 +221,7 @@ class NightmareVisionNoteApiBridge {
 		state.prefix = '';
 		state.suffix = '';
 		state.texture = '';
+		state.fieldTexture = '';
 		state.atlasPath = '';
 		state.rgbEnabled = rgbEnabled;
 		state.customColors = null;
@@ -235,6 +256,7 @@ class NightmareVisionNoteApiBridge {
 			if (readInitialRgb != null)
 				try rgb = readInitialRgb(note) catch (_:Dynamic) {}
 			state = {prefix:'', suffix:'', texture:'', atlasPath:'',
+				fieldTexture:'',
 				rgbEnabled:rgb, customColors:null, canMiss:false};
 			states.set(note, state);
 		}
@@ -299,6 +321,18 @@ class NightmareVisionNoteApiBridge {
 		var atlasPath = parts.join('/');
 		state.atlasPath = atlasPath;
 		return loadAtlas != null && loadAtlas(note, atlasPath);
+	}
+
+	/** Last texture assigned by the owning field, separate from texture values
+	 * passed directly to a note-type reloadNote call. */
+	public function fieldTexture(note:Dynamic):String {
+		var state = stateFor(note, false);
+		return state == null ? '' : state.fieldTexture;
+	}
+
+	public function rememberFieldTexture(note:Dynamic, texture:String):Void {
+		var state = stateFor(note, true);
+		if (state != null) state.fieldTexture = texture;
 	}
 
 	public function atlasPath(note:Dynamic):String {

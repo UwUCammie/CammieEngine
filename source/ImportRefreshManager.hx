@@ -17,6 +17,7 @@ import ImportRefreshAvailabilitySnapshot.ImportRefreshAvailabilitySnapshot;
 import ImportRefreshAvailabilitySnapshot.ImportRefreshPendingSong;
 import ImportRefreshTransaction.ImportRefreshStagedOutput;
 import ImportRefreshTransaction.ImportRefreshManifestFile;
+import ImportSourceSnapshot.ImportSourceSnapshotResult;
 import PsychAssetProfile.PsychAssetProfileBuild;
 
 typedef ImportRefreshBrowseStatus = {
@@ -1526,11 +1527,12 @@ class ImportRefreshManager {
 			active = false;
 			status.busy = false;
 			status.complete = true;
-			status.changed = true;
+			var noChanges = Reflect.field(result, "noChanges") == true;
+			status.changed = !noChanges;
 			status.fraction = 1;
-			status.label = "Import committed; updating the song list";
+			status.label = noChanges ? "Selected source roots are already imported" : "Import committed; updating the song list";
 			var reservation = reservations.get(token);
-			if (reservation != null) queueHandoffLocked(token, result.importedSongs);
+			if (!noChanges && reservation != null) queueHandoffLocked(token, result.importedSongs);
 			mutex.release();
 			return result;
 		} catch (error:Dynamic) {
@@ -1574,31 +1576,70 @@ class ImportRefreshManager {
 		}
 		if (engines.length == 0) throw "No supported import owner was found in the scan.";
 		var normalizedBuildContexts = validateSourceBuildContexts(sourceBuildContexts, normalized, roots);
-		var rootOwners = expandDependentOwnerRoots([for (root in roots) ownerRootForNamespace(Std.string(root.namespace))]);
-		var dependencyOwners = dependencyOwnerRootsForScan(scan, install, rootOwners);
-		setReservationCandidates(reservationToken, "", rootOwners,
-			candidatesForScan(scan, sourceRootDescriptors(normalized, roots)));
-		var keys = [for (root in roots) Std.string(root.engine) + "/" + Std.string(root.namespace)];
-		keys.sort(Reflect.compare);
-		var id = Sha256.make(haxe.io.Bytes.ofString(keys.join("\n"))).toHex();
-		if (!FileSystem.exists(ImportRefreshTransaction.manifestPath(Path.join([cache,"state"]),"retained-import:" + id))) {
-			if (scan != null && scan.songs != null) for (song in scan.songs)
-				if (Reflect.field(song,"duplicate") == true && Reflect.field(song,"sourceDuplicate") != true)
-					throw "An existing song import has no retained-source ownership baseline. Its files were preserved; automatic refresh requires migration.";
-			for (root in roots) if (FileSystem.exists(Path.join([install,"assets","imported_mods",Std.string(root.namespace)])))
-				throw "This older import has no retained-source ownership baseline. Its files were preserved; automatic refresh requires migration.";
-		}
+		var initialId = retainedImportId(roots);
+		var stateRoot = Path.join([cache, "state"]);
+		var initialOwner = "retained-import:" + initialId;
+		var hasInitialOwner = FileSystem.exists(ImportRefreshTransaction.manifestPath(stateRoot, initialOwner));
 		var snapshot = ImportSourceSnapshot.capture(normalized, Path.join([cache,"sources"]), engines[0],
 			EngineBranding.version(), {cancelled:cancel, onProgress:function(p) {
 				progress({phase:"retaining-source",current:p.current,completed:p.filesCompleted,total:p.filesTotal});
 			}});
 		if (snapshot.status == "cancelled") throw "Import cancelled before source retention completed.";
 		if (!snapshot.complete) throw "Source retention incomplete: " + snapshot.error + " " + snapshot.incompleteReasons.join(", ");
+		var effectiveScan = scan;
+		var excludedRootPaths:Map<String, Bool> = new Map();
+		// A parent selection may contain roots already imported through independent
+		// retained owners. Exclude only roots whose receipt-backed subtree is byte-
+		// identical to a committed owner root; never merge those owners' baselines.
+		// An existing aggregate owner keeps its full selected root set for refresh.
+		if (!hasInitialOwner) {
+			var previouslyOwned = authenticatedPreviouslyOwnedRoots(install, cache, normalized,
+				snapshot, roots, cancel, progress);
+			if (previouslyOwned.length > 0) {
+				var remainingRoots:Array<Dynamic> = [];
+				for (root in roots) {
+					cooperateImportWork(cancel);
+					var rootPath = Path.join([normalized, Std.string(root.relative)]);
+					var key = sourceRootIdentityKey(rootPath, Std.string(root.engine));
+					if (previouslyOwned.indexOf(key) >= 0) excludedRootPaths.set(key, true);
+					else remainingRoots.push(root);
+				}
+				if (remainingRoots.length == 0) {
+					if (scanHasUnclaimedImportWork(scan))
+						throw "Every selected source root already has a verified retained import, but the scan still reports new or unresolved work. No existing owner was changed.";
+					cooperateImportWork(cancel);
+					mutex.acquire();
+					releaseReservationLocked(reservationToken);
+					mutex.release();
+					return alreadyImportedNoOpResult(scan);
+				}
+				roots = remainingRoots;
+				engines = uniqueRootEngines(roots);
+				effectiveScan = scanWithoutPreviouslyOwnedRoots(scan, excludedRootPaths);
+			}
+		}
+		if (engines.length == 0) throw "No supported import owner remains after retained-root reconciliation.";
+		normalizedBuildContexts = buildContextsWithoutExcludedRoots(normalizedBuildContexts,
+			normalized, excludedRootPaths);
+		var id = retainedImportId(roots);
+		var owner = "retained-import:" + id;
+		var hasOwner = FileSystem.exists(ImportRefreshTransaction.manifestPath(stateRoot, owner));
+		var rootOwners = expandDependentOwnerRoots([for (root in roots) ownerRootForNamespace(Std.string(root.namespace))]);
+		var dependencyOwners = dependencyOwnerRootsForScan(effectiveScan, install, rootOwners);
+		setReservationCandidates(reservationToken, "", rootOwners,
+			candidatesForScan(effectiveScan, sourceRootDescriptors(normalized, roots)));
+		if (!hasOwner) {
+			if (effectiveScan != null && effectiveScan.songs != null) for (song in effectiveScan.songs)
+				if (Reflect.field(song,"duplicate") == true && Reflect.field(song,"sourceDuplicate") != true)
+					throw "An existing song import has no retained-source ownership baseline. Its files were preserved; automatic refresh requires migration.";
+			for (root in roots) if (FileSystem.exists(Path.join([install,"assets","imported_mods",Std.string(root.namespace)])))
+				throw "This older import has no retained-source ownership baseline. Its files were preserved; automatic refresh requires migration.";
+		}
 		var record:Dynamic = {
 			schemaVersion:1, id:id, source:Path.join(["sources",snapshot.snapshotId,"content"]),
 			snapshotId:snapshot.snapshotId, type:type, engines:engines, roots:roots,
 			label:Path.withoutDirectory(Path.normalize(source)), exclusions:snapshot.exclusions,
-			dependencyDiagnostics:dependencyDiagnostics(scan),
+			dependencyDiagnostics:dependencyDiagnostics(effectiveScan),
 			runtimeDependencyOwners:dependencyOwners,
 			revisions:[for (engine in engines) ImportRevision.current(engine,EngineBranding.version())]
 		};
@@ -1621,6 +1662,354 @@ class ImportRefreshManager {
 		mutex.release();
 		atomicText(Path.join([records,id + ".json"]),Json.stringify({id:id}));
 		return regenerate(install,record,convert,cancel,progress,reservationToken);
+	}
+
+	static function retainedImportId(roots:Array<Dynamic>):String {
+		var keys = [for (root in roots) Std.string(root.engine) + "/" + Std.string(root.namespace)];
+		keys.sort(Reflect.compare);
+		return Sha256.make(Bytes.ofString(keys.join("\n"))).toHex();
+	}
+
+	static function scanHasUnclaimedImportWork(scan:Dynamic):Bool {
+		if (scan == null) return true;
+		for (field in ["songsToImport", "assetsToImport", "globalPacksToImport", "overlayPlanned"]) {
+			var value:Dynamic = Reflect.field(scan, field);
+			if (!Std.isOfType(value, Int) && !Std.isOfType(value, Float)) return true;
+			if ((cast value:Float) > 0) return true;
+		}
+		var songs:Dynamic = Reflect.field(scan, "songs");
+		if (!Std.isOfType(songs, Array)) return true;
+		for (song in (cast songs:Array<Dynamic>)) {
+			if (song == null) return true;
+			var willImport:Dynamic = Reflect.field(song, "willImport");
+			if (willImport == true || (willImport != false && Reflect.field(song, "duplicate") != true)) return true;
+		}
+		var assets:Dynamic = Reflect.field(scan, "assets");
+		if (!Std.isOfType(assets, Array)) return true;
+		for (asset in (cast assets:Array<Dynamic>)) {
+			if (asset == null || Reflect.field(asset, "duplicate") != true) return true;
+		}
+		return false;
+	}
+
+	static function alreadyImportedNoOpResult(scan:Dynamic):SongImportBatchResult {
+		var found:Dynamic = Reflect.field(scan, "songsFound");
+		var duplicateSongs:Dynamic = Reflect.field(scan, "duplicateSongs");
+		var duplicateAssets:Dynamic = Reflect.field(scan, "duplicateAssets");
+		var songs:Dynamic = Reflect.field(scan, "songs");
+		if ((!Std.isOfType(found, Int) && !Std.isOfType(found, Float)) && Std.isOfType(songs, Array))
+			found = (cast songs:Array<Dynamic>).length;
+		if (!Std.isOfType(found, Int) && !Std.isOfType(found, Float)) found = 0;
+		if (!Std.isOfType(duplicateSongs, Int) && !Std.isOfType(duplicateSongs, Float)) {
+			var count = 0;
+			if (Std.isOfType(songs, Array)) for (song in (cast songs:Array<Dynamic>))
+				if (song != null && Reflect.field(song, "duplicate") == true) count++;
+			duplicateSongs = count;
+		}
+		if (!Std.isOfType(duplicateAssets, Int) && !Std.isOfType(duplicateAssets, Float)) duplicateAssets = 0;
+		var result:SongImportBatchResult = {
+			found:Std.int(found), imported:0, importedSongs:[], skipped:Std.int(duplicateSongs), failed:0,
+			copiedAssets:0, skippedAssets:Std.int(duplicateAssets), errors:[]
+		};
+		Reflect.setField(result, "noChanges", true);
+		return result;
+	}
+
+	static function uniqueRootEngines(roots:Array<Dynamic>):Array<String> {
+		var result:Array<String> = [];
+		if (roots != null) for (root in roots) {
+			if (root == null) continue;
+			var engine:Dynamic = Reflect.field(root, "engine");
+			if (engine != null && ImportRevision.normalizeEngine(Std.string(engine)) != ""
+				&& result.indexOf(Std.string(engine)) < 0) result.push(Std.string(engine));
+		}
+		return result;
+	}
+
+	/** Return exact roots already covered by committed retained-source owners.
+	 * Namespace and engine select possible owners; complete verified snapshot
+	 * subtrees prove identity. A matching folder name or song duplicate is never
+	 * enough to suppress a root. */
+	static function authenticatedPreviouslyOwnedRoots(install:String, cache:String, selectedSource:String,
+		snapshot:ImportSourceSnapshotResult, roots:Array<Dynamic>, cancel:Void->Bool,
+		progress:Dynamic->Void):Array<String> {
+		var matched:Array<String> = [];
+		if (roots == null || roots.length == 0) return matched;
+		var records = cachedRecords(install);
+		var state = Path.join([cache, "state"]);
+		var possible = false;
+		for (root in roots) {
+			cooperateImportWork(cancel);
+			var engine = ImportRevision.normalizeEngine(Std.string(root.engine));
+			var namespace = Std.string(root.namespace);
+			for (record in records) {
+				var oldRoots:Dynamic = Reflect.field(record, "roots");
+				if (oldRoots == null || !Std.isOfType(oldRoots, Array)) continue;
+				for (oldRoot in (cast oldRoots:Array<Dynamic>)) {
+					cooperateImportWork(cancel);
+					if (oldRoot != null
+						&& ImportRevision.normalizeEngine(Std.string(Reflect.field(oldRoot, "engine"))) == engine
+						&& Reflect.field(oldRoot, "namespace") == namespace) {
+						possible = true;
+						break;
+					}
+				}
+				if (possible) break;
+			}
+			if (possible) break;
+		}
+		if (!possible) return matched;
+
+		// The just-captured tree may have reused a cache entry. Verify its bytes
+		// before using its receipt table as comparison evidence.
+		try {
+			ImportSourceSnapshot.verify(snapshot.snapshotRoot, snapshot.snapshotId, cancel, function(p) {
+				if (progress != null) progress({phase:"verifying-selected-root-baseline", current:p.current,
+					completed:p.filesCompleted, total:p.filesTotal});
+			});
+		} catch (error:Dynamic) {
+			if (cancel != null && cancel()) throw error;
+			throw "The captured source snapshot could not be verified for retained-root migration: " + Std.string(error);
+		}
+		var newReceipt:Dynamic = readSnapshotReceiptForRootComparison(snapshot.snapshotRoot);
+		var verifiedSnapshots:Map<String, String> = new Map();
+		var receipts:Map<String, Dynamic> = new Map();
+		for (root in roots) {
+			cooperateImportWork(cancel);
+			var engine = ImportRevision.normalizeEngine(Std.string(root.engine));
+			var namespace = Std.string(root.namespace);
+			var currentRelative = normalizeSourceRootRelative(Reflect.field(root, "relative"));
+			if (currentRelative == null) continue;
+			var currentSignature = snapshotSubtreeSignature(newReceipt, currentRelative);
+			if (currentSignature == null) continue;
+			var currentRootPath = currentRelative == "" ? selectedSource : Path.join([selectedSource, currentRelative]);
+			for (record in records) {
+				cooperateImportWork(cancel);
+				var recordId = Std.string(Reflect.field(record, "id"));
+				var oldRoots:Dynamic = Reflect.field(record, "roots");
+				if (oldRoots == null || !Std.isOfType(oldRoots, Array)) continue;
+				for (oldRoot in (cast oldRoots:Array<Dynamic>)) {
+					cooperateImportWork(cancel);
+					if (oldRoot == null
+						|| ImportRevision.normalizeEngine(Std.string(Reflect.field(oldRoot, "engine"))) != engine
+						|| Reflect.field(oldRoot, "namespace") != namespace) continue;
+					var oldRelative = normalizeSourceRootRelative(Reflect.field(oldRoot, "relative"));
+					if (oldRelative == null) continue;
+					var owner = "retained-import:" + recordId;
+					var manifest:Dynamic = null;
+					try manifest = committedManifest(state, owner) catch (_:Dynamic) continue;
+					var namespaceRoot = ownerRootForNamespace(namespace);
+					if (!manifestAuthenticatesOwnerRecord(manifest, owner, namespaceRoot)) continue;
+					var oldSnapshotId = Std.string(Reflect.field(record, "snapshotId"));
+					if (oldSnapshotId == "") continue;
+					var snapshotState = verifiedSnapshots.get(oldSnapshotId);
+					if (snapshotState == null) {
+						var oldSource = Std.string(Reflect.field(record, "source"));
+						var oldContent = "";
+						try oldContent = contained(cache, oldSource) catch (_:Dynamic) {}
+						if (oldContent == "" || Path.withoutDirectory(Path.directory(oldContent)) != oldSnapshotId) {
+							verifiedSnapshots.set(oldSnapshotId, "invalid");
+						} else {
+						var oldSnapshotRoot = Path.directory(oldContent);
+						try {
+							ImportSourceSnapshot.verify(oldSnapshotRoot, oldSnapshotId, cancel, function(p) {
+								if (progress != null) progress({phase:"verifying-existing-root-baseline",
+									current:p.current, completed:p.filesCompleted, total:p.filesTotal});
+							});
+							receipts.set(oldSnapshotId, readSnapshotReceiptForRootComparison(oldSnapshotRoot));
+							verifiedSnapshots.set(oldSnapshotId, "valid");
+						} catch (error:Dynamic) {
+							if (cancel != null && cancel()) throw error;
+							verifiedSnapshots.set(oldSnapshotId, "invalid");
+						}
+					}
+					snapshotState = verifiedSnapshots.get(oldSnapshotId);
+				}
+				if (snapshotState != "valid") continue;
+				var oldReceipt = receipts.get(oldSnapshotId);
+				if (oldReceipt == null) continue;
+				var oldSignature = snapshotSubtreeSignature(oldReceipt, oldRelative);
+				if (oldSignature == null || oldSignature != currentSignature) continue;
+				var matchKey = sourceRootIdentityKey(currentRootPath, engine);
+				if (matched.indexOf(matchKey) < 0) matched.push(matchKey);
+				break;
+			}
+		}
+		}
+		matched.sort(Reflect.compare);
+		return matched;
+	}
+
+	static function manifestAuthenticatesOwnerRecord(manifest:Dynamic, owner:String, ownerRoot:String):Bool {
+		if (manifest == null || ownerRoot == "" || Reflect.field(manifest, "owner") != owner) return false;
+		var roots:Dynamic = Reflect.field(manifest, "ownedRoots");
+		if (roots == null || !Std.isOfType(roots, Array)
+			|| (cast roots:Array<Dynamic>).indexOf("assets") < 0) return false;
+		var files:Dynamic = Reflect.field(manifest, "files");
+		if (files == null || !Std.isOfType(files, Array) || (cast files:Array<Dynamic>).length == 0) return false;
+		for (file in (cast files:Array<Dynamic>))
+			if (file == null || Reflect.field(file, "owner") != owner
+				|| !StringTools.startsWith(Std.string(Reflect.field(file, "path")), "assets/")) return false;
+		var revision:Dynamic = Reflect.field(manifest, "revision");
+		var record:Dynamic = revision == null ? null : Reflect.field(revision, "importRecord");
+		if (record == null || Reflect.field(record, "id") != owner.substr("retained-import:".length)) return false;
+		var recordRoots:Dynamic = Reflect.field(record, "roots");
+		if (recordRoots == null || !Std.isOfType(recordRoots, Array)) return false;
+		var namespace = ownerRoot.substr("assets/imported_mods/".length);
+		for (root in (cast recordRoots:Array<Dynamic>))
+			if (root != null && Reflect.field(root, "namespace") == namespace) return true;
+		return false;
+	}
+
+	static function readSnapshotReceiptForRootComparison(snapshotRoot:String):Dynamic {
+		var path = Path.join([snapshotRoot, "receipt.json"]);
+		if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) return null;
+		var size = FileSystem.stat(path).size;
+		if (size < 0 || size > PsychAssetProfile.MAX_RECEIPT_BYTES) return null;
+		return Json.parse(File.getContent(path));
+	}
+
+	static function snapshotSubtreeSignature(receipt:Dynamic, rootRelative:String):Null<String> {
+		if (receipt == null) return null;
+		var root = normalizeSourceRootRelative(rootRelative);
+		if (root == null) return null;
+		var incomplete:Dynamic = Reflect.field(receipt, "incompleteReasons");
+		if (!Std.isOfType(incomplete, Array) || (cast incomplete:Array<Dynamic>).length != 0) return null;
+		var directoryValues:Dynamic = Reflect.field(receipt, "directories");
+		var fileValues:Dynamic = Reflect.field(receipt, "files");
+		var exclusionValues:Dynamic = Reflect.field(receipt, "exclusions");
+		var omissionValues:Dynamic = Reflect.field(receipt, "omissions");
+		if (!Std.isOfType(directoryValues, Array) || !Std.isOfType(fileValues, Array)
+			|| !Std.isOfType(exclusionValues, Array) || !Std.isOfType(omissionValues, Array)) return null;
+		var directories:Array<String> = [];
+		for (value in (cast directoryValues:Array<Dynamic>)) {
+			var relative = snapshotPathWithinRoot(Std.string(value), root);
+			if (relative != null && relative != "" && directories.indexOf(relative) < 0)
+				directories.push(relative);
+		}
+		directories.sort(Reflect.compare);
+		var files:Array<Array<Dynamic>> = [];
+		for (entry in (cast fileValues:Array<Dynamic>)) {
+			if (entry == null) return null;
+			var path:Dynamic = Reflect.field(entry, "path");
+			var relative = path == null ? null : snapshotPathWithinRoot(Std.string(path), root);
+			if (relative == null) continue;
+			files.push([relative, Reflect.field(entry, "size"), Std.string(Reflect.field(entry, "sha256")).toLowerCase()]);
+		}
+		files.sort(function(a, b) return Reflect.compare(Std.string(a[0]), Std.string(b[0])));
+		var exclusions:Array<Array<Dynamic>> = [];
+		for (entry in (cast exclusionValues:Array<Dynamic>)) {
+			if (entry == null) return null;
+			var path:Dynamic = Reflect.field(entry, "path");
+			var relative = path == null ? null : snapshotPathWithinRoot(Std.string(path), root);
+			if (relative == null) continue;
+			exclusions.push([relative, Reflect.field(entry, "size"), Reflect.field(entry, "reason"),
+				Reflect.field(entry, "detectedHeader")]);
+		}
+		exclusions.sort(function(a, b) return Reflect.compare(Std.string(a[0]), Std.string(b[0])));
+		var omissions:Array<Array<Dynamic>> = [];
+		for (entry in (cast omissionValues:Array<Dynamic>)) {
+			if (entry == null) return null;
+			var path:Dynamic = Reflect.field(entry, "path");
+			if (path == null) return null;
+			var rawPath = Std.string(path);
+			// A root-relative empty omission cannot be attributed to one child root.
+			if (rawPath == "" && root != "") return null;
+			var relative = snapshotPathWithinRoot(rawPath, root);
+			if (relative == null) continue;
+			omissions.push([relative, Reflect.field(entry, "reason"), Reflect.field(entry, "detail")]);
+		}
+		if (omissions.length > 0) return null;
+		return Json.stringify([directories, files, exclusions]);
+	}
+
+	static function snapshotPathWithinRoot(path:String, root:String):Null<String> {
+		var normalized = StringTools.replace(path == null ? "" : path, "\\", "/");
+		if (normalized == "") return root == "" ? "" : null;
+		if (root == "") return normalized;
+		if (normalized == root) return "";
+		return StringTools.startsWith(normalized, root + "/")
+			? normalized.substr(root.length + 1) : null;
+	}
+
+	static function sourceRootIdentityKey(path:String, engine:String):String {
+		var normalizedPath = canonicalSourceRoot(path);
+		#if windows
+		normalizedPath = normalizedPath.toLowerCase();
+		#end
+		return normalizedPath + "\n" + ImportRevision.normalizeEngine(engine);
+	}
+
+	static function buildContextsWithoutExcludedRoots(contexts:Array<ImportSourceBuildContextRecord>,
+		source:String, excluded:Map<String, Bool>):Array<ImportSourceBuildContextRecord> {
+		if (contexts == null || contexts.length == 0 || excluded == null || !hasMapEntries(excluded))
+			return contexts;
+		var result:Array<ImportSourceBuildContextRecord> = [];
+		for (context in contexts) {
+			if (context == null) { result.push(context); continue; }
+			var rootPath = context.rootRelative == "" ? source : Path.join([source, context.rootRelative]);
+			var key = sourceRootIdentityKey(rootPath, context.engine);
+			if (!excluded.exists(key)) result.push(context);
+		}
+		return result;
+	}
+
+	static function scanWithoutPreviouslyOwnedRoots(scan:ImportScanResult,
+		excluded:Map<String, Bool>):ImportScanResult {
+		if (scan == null || excluded == null || !hasMapEntries(excluded)) return scan;
+		var result:ImportScanResult = cast Reflect.copy(scan);
+		if (scan.detectedRoots != null) {
+			var roots:Array<Dynamic> = [];
+			var engines:Map<String, Bool> = new Map();
+			for (root in scan.detectedRoots) {
+				if (root == null) continue;
+				var key = sourceRootIdentityKey(Std.string(Reflect.field(root, "root")),
+					Std.string(Reflect.field(root, "engine")));
+				if (excluded.exists(key)) continue;
+				roots.push(root);
+				var engine = Std.string(Reflect.field(root, "engine"));
+				if (engine != "" && !engines.exists(engine)) engines.set(engine, true);
+			}
+			result.detectedRoots = cast roots;
+			result.detectedEngines = [for (engine in engines.keys()) engine];
+			result.detectedEngines.sort(Reflect.compare);
+		}
+		if (scan.songs != null) {
+			var songs:Array<ImportScanSong> = [];
+			for (song in scan.songs) {
+				if (song == null) continue;
+				var sourcePath:Dynamic = Reflect.field(song, "sourceRoot");
+				if (sourcePath == null || StringTools.trim(Std.string(sourcePath)) == "")
+					sourcePath = Reflect.field(song, "source");
+				if (sourcePath != null && StringTools.trim(Std.string(sourcePath)) != "") {
+					var pathKey = canonicalSourceRoot(Std.string(sourcePath));
+					#if windows
+					pathKey = pathKey.toLowerCase();
+					#end
+					var engine = Reflect.field(song, "engine");
+					for (key in excluded.keys()) {
+						var split = key.lastIndexOf("\n");
+						var excludedPath = key.substr(0, split);
+						var excludedEngine = key.substr(split + 1);
+						if (pathKey == excludedPath && (engine == null
+							|| ImportRevision.normalizeEngine(Std.string(engine)) == excludedEngine)) {
+							pathKey = "";
+							break;
+						}
+					}
+					if (pathKey == "") continue;
+				}
+				songs.push(song);
+			}
+			result.songs = songs;
+		}
+		return result;
+	}
+
+	static function hasMapEntries(values:Map<String, Bool>):Bool {
+		if (values == null) return false;
+		for (_ in values.keys()) return true;
+		return false;
 	}
 
 	public static function refreshNow(install:String, record:Dynamic,
@@ -1701,11 +2090,15 @@ class ImportRefreshManager {
 		FileSystem.createDirectory(stage);
 		var io = ImportIO.begin(install,stage,masked,true,cancel);
 		var retainedEngines:Map<String, String> = new Map();
+		var retainedRoots:Map<String, String> = new Map();
 		for (root in (cast record.roots:Array<Dynamic>)) {
 			ImportWorkScheduler.cooperate();
-			retainedEngines.set(Path.join([source,Std.string(root.relative)]),Std.string(root.engine));
+			var rootPath = Std.string(root.relative) == "" ? source : Path.join([source,Std.string(root.relative)]);
+			retainedEngines.set(rootPath,Std.string(root.engine));
+			retainedRoots.set(rootPath,Std.string(root.engine));
 		}
 		var previousEngines = ImportRootScanner.setRetainedSourceEngines(retainedEngines);
+		var previousRoots = ImportRootScanner.setRetainedSourceRoots(retainedRoots);
 		var ended = false;
 		try {
 			var registrySeeds:Map<String,String> = new Map();
@@ -1890,6 +2283,7 @@ class ImportRefreshManager {
 			}
 			ImportIO.end(); ended = true;
 			ImportRootScanner.setRetainedSourceEngines(previousEngines);
+			ImportRootScanner.setRetainedSourceRoots(previousRoots);
 				if (scan.detectedEngines != null) for (engine in scan.detectedEngines)
 					if (ImportRevision.normalizeEngine(engine) != "" && (cast record.engines:Array<String>).indexOf(engine) < 0) {
 						ImportWorkScheduler.cooperate();
@@ -1931,6 +2325,7 @@ class ImportRefreshManager {
 			trace("[import-refresh-conversion-error] " + Std.string(error) + "\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack()));
 			if (!ended) ImportIO.end();
 			ImportRootScanner.setRetainedSourceEngines(previousEngines);
+			ImportRootScanner.setRetainedSourceRoots(previousRoots);
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			try deleteStage(stage) catch (cleanup:Dynamic)
 				trace("[import-refresh-cleanup-error] " + Std.string(cleanup));

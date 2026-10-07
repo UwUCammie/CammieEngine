@@ -61,6 +61,7 @@ class NightmareVisionModConfigRuntime implements NightmareVisionModConfigHost {
 
 	public function defaultAppTitle():String return lime.app.Application.current.meta.get('name');
 	public function defaultRpcId():String return #if cpp '1252033037680513115' #else '' #end;
+	public function defaultUiPrefix():String return persistentPaths.hudProfile.uiPrefix;
 	public function resolveSelectedPath(relativePath:String):String return paths.getPath(relativePath, null, true);
 	public function resolveSelectedFont(key:String):String return paths.font(key);
 	public function pathExists(path:String):Bool {

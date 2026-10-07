@@ -89,6 +89,8 @@ typedef RuntimeSmokeOptions = {
 	var ?pacingOnly:Bool;
 	/** Capture one muted native framebuffer after an imported chart's note is visible. */
 	var noteRenderReadback:Bool;
+	/** Optional scene capture when a cutscene has no visible notes. */
+	var ?sceneRenderReadback:Bool;
 	/** PNG destination for --smoke-note-render-readback. */
 	var noteRenderPath:String;
 	/** Minimum song position before capturing the note framebuffer. */
@@ -206,6 +208,7 @@ class RuntimeSmokeHarness {
 			botplay: false,
 			frameStats: false,
 			noteRenderReadback: false,
+			sceneRenderReadback: false,
 			noteRenderPath: 'tmp/note-render-readback.png',
 			noteRenderAfterMs: 5000,
 			seekAfterMs: -1,
@@ -336,6 +339,10 @@ class RuntimeSmokeHarness {
 				case '--smoke-note-render-readback':
 					smokeArgumentsSeen = true;
 					result.noteRenderReadback = true;
+				case '--smoke-scene-render-readback':
+					smokeArgumentsSeen = true;
+					result.noteRenderReadback = true;
+					result.sceneRenderReadback = true;
 				case '--smoke-note-render-path':
 					smokeArgumentsSeen = true;
 					result.noteRenderPath = value == null ? '' : StringTools.trim(value);
@@ -1883,6 +1890,10 @@ class RuntimeSmokeHarness {
 			|| !Std.isOfType(FlxG.state, PlayState))
 			return;
 		var state:PlayState = cast FlxG.state;
+		if (config().sceneRenderReadback == true) {
+			captureNoteRenderReadback(null, visitsStarted);
+			return;
+		}
 		if (state.notes == null || state.notes.members == null)
 			return;
 		for (note in state.notes.members) {
@@ -1947,6 +1958,7 @@ class RuntimeSmokeHarness {
 			if (noteRenderReadbackCaptures >= config().playstateVisits)
 				window.onRender.remove(onNoteRenderReadbackRendered);
 			emit('note_render_readback', {
+				sceneOnly: config().sceneRenderReadback == true,
 				path: Path.normalize(outputPath),
 				visit: visit,
 				width: image.width,

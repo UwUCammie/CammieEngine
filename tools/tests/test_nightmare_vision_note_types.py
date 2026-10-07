@@ -238,6 +238,74 @@ class Main {
 }
 ''')
 
+    def test_field_skin_reload_preserves_each_note_prefix_and_reassigns_base(self):
+        self.compile_haxe(r'''
+import NightmareVisionNoteTypeRuntime.NightmareVisionNoteApiBridge;
+
+class FakeNote {
+ public var noteType:String;
+ public var rgbEnabled:Bool = true;
+ public function new(noteType:String) this.noteType = noteType;
+}
+
+class Main {
+ static function fail(message:String):Void throw message;
+ static function eq(actual:Dynamic, expected:Dynamic):Void {
+  if (actual != expected) fail('expected ' + expected + ', got ' + actual);
+ }
+ static function main():Void {
+  var loads:Array<String> = [];
+  var api = new NightmareVisionNoteApiBridge(
+   function(note:Dynamic):String return 'UI/game/notes/NOTE_assets',
+   function(note:Dynamic, path:String):Bool {
+    loads.push(note.noteType + ':' + path);
+    return true;
+   },
+   function(note:Dynamic, enabled:Bool):Void note.rgbEnabled = enabled);
+  var runtime = new NightmareVisionNoteTypeRuntime(null, api);
+  var bullet = new FakeNote('Bullet');
+  var accel = new FakeNote('Accelerant');
+  api.attach(bullet);
+  api.attach(accel);
+
+  eq(runtime.reloadNote(bullet, 'bullet/'), true);
+  eq(runtime.reloadNote(accel, 'accel/'), true);
+  eq(api.atlasPath(bullet), 'UI/game/notes/bullet/NOTE_assets');
+  eq(api.atlasPath(accel), 'UI/game/notes/accel/NOTE_assets');
+
+  // Field attachment changes the base texture like source Note.texture's
+  // setter. The two per-note prefixes survive independently.
+  eq(runtime.reloadForFieldSkin(bullet, 'UI/game/notes/NOTE_assets', false), true);
+  eq(api.atlasPath(bullet), 'UI/game/notes/bullet/NOTE_assets');
+  eq(bullet.rgbEnabled, false);
+  eq(runtime.reloadForFieldSkin(accel, 'UI/game/notes/NOTE_assets', true), true);
+  eq(api.atlasPath(accel), 'UI/game/notes/accel/NOTE_assets');
+  eq(accel.rgbEnabled, true);
+
+  // Reassigning the field skin reloads its new base with the same prefix;
+  // reassigning the identical texture is the source setter's no-op.
+  eq(runtime.reloadForFieldSkin(bullet, 'UI/alternate/NOTE_assets', true, true), true);
+  eq(api.atlasPath(bullet), 'UI/alternate/bullet/NOTE_assets');
+  var loadCount = loads.length;
+  eq(runtime.reloadForFieldSkin(bullet, 'UI/alternate/NOTE_assets', false), true);
+  eq(loads.length, loadCount);
+  eq(runtime.reloadForFieldSkin(bullet, 'UI/alternate/NOTE_assets', true, true), true);
+  eq(loads.length, loadCount + 1);
+  eq(api.atlasPath(accel), 'UI/game/notes/accel/NOTE_assets');
+  eq(loads.join(','), 'Bullet:UI/game/notes/bullet/NOTE_assets,'
+   + 'Accelerant:UI/game/notes/accel/NOTE_assets,'
+   + 'Bullet:UI/game/notes/bullet/NOTE_assets,'
+   + 'Accelerant:UI/game/notes/accel/NOTE_assets,'
+   + 'Bullet:UI/alternate/bullet/NOTE_assets,'
+   + 'Bullet:UI/alternate/bullet/NOTE_assets,'
+   + 'Bullet:UI/alternate/bullet/NOTE_assets');
+  runtime.releaseNote(bullet);
+  runtime.releaseNote(accel);
+  runtime.destroy();
+ }
+}
+''')
+
 
 if __name__ == "__main__":
     unittest.main()

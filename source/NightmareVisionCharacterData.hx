@@ -61,7 +61,11 @@ class NightmareVisionCharacterData {
 			return null;
 		var prefixes:Array<String> = [];
 		for (authoredPart in Std.string(image).split(',')) {
-			var relativeImage = StringTools.trim(authoredPart);
+			// Source character JSON can contain Windows separators even when the
+			// owner is loaded on another platform. Canonicalize this authored path
+			// before extension and containment checks; normalizeRelative still
+			// rejects traversal, absolute paths, and drive-qualified values.
+			var relativeImage = StringTools.replace(StringTools.trim(authoredPart), '\\', '/');
 			if (relativeImage.startsWith('images/'))
 				relativeImage = relativeImage.substr('images/'.length);
 			var extension = Path.extension(relativeImage).toLowerCase();

@@ -25,10 +25,14 @@ class NvQuantRenderingTest(unittest.TestCase):
  public function setColors(colors:Array<Int>):Void {palette.r=colors[0];palette.g=colors[1];palette.b=colors[2];}
  public function getColors():Array<Int> return [palette.r,palette.g,palette.b];
  public function new(""", 1)
+        # The shared StrumNote stub owns this field; enable its source path
+        # without redeclaring it in the extracted method fixture.
+        stubs['Strumline.hx'] = stubs['Strumline.hx'].replace(
+            'public var useRGBShader:Bool=false;', 'public var useRGBShader:Bool=true;', 1)
         source = (ROOT / 'source/Strumline.hx').read_text()
         handle = method(source, 'public function handleColors(')
         stubs['Strumline.hx'] = stubs['Strumline.hx'].replace(' public function new() {}', '''
- public var nightmareVisionSource:Bool=true;public var useRGBShader:Bool=true;
+ public var nightmareVisionSource:Bool=true;
  public var isQuant:Bool=false;public var nightmareVisionQuantPrefs:Dynamic;
  public var lastNote:Note;
  function getNightmareVisionRGB():NightmareVisionRGBGraphics {
