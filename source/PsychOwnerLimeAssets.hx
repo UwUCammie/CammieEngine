@@ -6,8 +6,10 @@ import lime.graphics.Image;
 import lime.media.AudioBuffer;
 import lime.text.Font;
 import lime.utils.AssetType;
+import lime.utils.AssetCache as LimeAssetCache;
 import lime.utils.Assets as LimeAssets;
 import PsychOwnerAssetPath.PsychOwnerAssetPathResult;
+import PsychOwnerAssetLibraryCache.PsychOwnerAssetLibraryAssetView;
 
 using StringTools;
 
@@ -23,7 +25,9 @@ class PsychOwnerLimeAssets {
 		var engine = 'Psych Engine';
 		var scope = 'package';
 		var proxy:Dynamic = {};
-		Reflect.setField(proxy, 'cache', LimeAssets.cache);
+		Reflect.setField(proxy, 'cache', PsychOwnerAssetLibraryCache.limeAssetCacheForOwner(
+			owner, engine, scope, LimeAssets.cache));
+		var ownerCache:LimeAssetCache = cast Reflect.field(proxy, 'cache');
 		Reflect.setField(proxy, 'onChange', LimeAssets.onChange);
 		Reflect.setField(proxy, 'exists', function(id:String, ?type:AssetType):Bool {
 			var resolved = resolve(owner, id, assetTypeName(type));
@@ -33,6 +37,8 @@ class PsychOwnerLimeAssets {
 		});
 		Reflect.setField(proxy, 'getText', function(id:String):String {
 			var resolved = required(owner, id, 'TEXT');
+			var indexed = ownerLibraryAsset(owner, id, 'TEXT');
+			if (indexed != null) return indexed.library.getText(indexed.id);
 			if (resolved.owned || (resolved.path != null && FNFAssets.exists(resolved.path)
 				&& !LimeAssets.exists(id, AssetType.TEXT)))
 				return FNFAssets.getText(resolved.path);
@@ -40,55 +46,84 @@ class PsychOwnerLimeAssets {
 		});
 		Reflect.setField(proxy, 'getBytes', function(id:String):Bytes {
 			var resolved = required(owner, id, 'BINARY');
+			var indexed = ownerLibraryAsset(owner, id, 'BINARY');
+			if (indexed != null) return indexed.library.getBytes(indexed.id);
 			if (resolved.owned || (resolved.path != null && FNFAssets.exists(resolved.path)
 				&& !LimeAssets.exists(id, AssetType.BINARY)))
 				return FNFAssets.getBytes(resolved.path);
 			return LimeAssets.getBytes(id);
 		});
 		Reflect.setField(proxy, 'getImage', function(id:String, ?useCache:Bool = true):Image {
+			var indexedCacheId = ownerIndexCacheId(owner, id, 'IMAGE');
+			var cached = indexedCacheId == null ? null : PsychOwnerAssetLibraryCache.cachedLimeAssetIn(
+				ownerCache, indexedCacheId, AssetType.IMAGE, useCache);
+			if (cached != null) return cast cached;
 			var resolved = required(owner, id, 'IMAGE');
+			var indexed = ownerLibraryAsset(owner, id, 'IMAGE');
+			if (indexed != null) return cast PsychOwnerAssetLibraryCache.getLimeAsset(indexed,
+				AssetType.IMAGE, useCache);
 			if (!resolved.owned && LimeAssets.exists(id, AssetType.IMAGE))
 				return LimeAssets.getImage(id, useCache);
-			var key = cacheKey(owner, resolved.path);
-			if (useCache && LimeAssets.cache.enabled) {
-				var cached = LimeAssets.cache.image.get(key);
+			var key = ownerCacheKey(owner, id, 'IMAGE', resolved.path);
+			if (useCache && ownerCache != null && ownerCache.enabled) {
+				cached = PsychOwnerAssetLibraryCache.cachedLimeAssetIn(ownerCache, key, AssetType.IMAGE, useCache);
 				if (cached != null) return cached;
 			}
 			var image = Image.fromBytes(FNFAssets.getBytes(resolved.path));
-			if (image != null && useCache && LimeAssets.cache.enabled)
-				LimeAssets.cache.set(key, AssetType.IMAGE, image);
+			if (image != null && useCache && ownerCache != null && ownerCache.enabled)
+				ownerCache.set(key, AssetType.IMAGE, image);
 			return image;
 		});
 		Reflect.setField(proxy, 'getAudioBuffer', function(id:String, ?useCache:Bool = true):AudioBuffer {
+			var indexedCacheId = ownerIndexCacheId(owner, id, 'SOUND');
+			var cached = indexedCacheId == null ? null : PsychOwnerAssetLibraryCache.cachedLimeAssetIn(
+				ownerCache, indexedCacheId, AssetType.SOUND, useCache);
+			if (cached != null) return cast cached;
 			var resolved = required(owner, id, 'SOUND');
+			var indexed = ownerLibraryAsset(owner, id, 'SOUND');
+			if (indexed != null) return cast PsychOwnerAssetLibraryCache.getLimeAsset(indexed,
+				AssetType.SOUND, useCache);
 			if (!resolved.owned && LimeAssets.exists(id, AssetType.SOUND))
 				return LimeAssets.getAudioBuffer(id, useCache);
-			var key = cacheKey(owner, resolved.path);
-			if (useCache && LimeAssets.cache.enabled) {
-				var cached = LimeAssets.cache.audio.get(key);
+			var key = ownerCacheKey(owner, id, 'SOUND', resolved.path);
+			if (useCache && ownerCache != null && ownerCache.enabled) {
+				cached = PsychOwnerAssetLibraryCache.cachedLimeAssetIn(ownerCache, key, AssetType.SOUND, useCache);
 				if (cached != null) return cached;
 			}
 			var audio = AudioBuffer.fromBytes(FNFAssets.getBytes(resolved.path));
-			if (audio != null && useCache && LimeAssets.cache.enabled)
-				LimeAssets.cache.set(key, AssetType.SOUND, audio);
+			if (audio != null && useCache && ownerCache != null && ownerCache.enabled)
+				ownerCache.set(key, AssetType.SOUND, audio);
 			return audio;
 		});
 		Reflect.setField(proxy, 'getFont', function(id:String, ?useCache:Bool = true):Font {
+			var indexedCacheId = ownerIndexCacheId(owner, id, 'FONT');
+			var cached = indexedCacheId == null ? null : PsychOwnerAssetLibraryCache.cachedLimeAssetIn(
+				ownerCache, indexedCacheId, AssetType.FONT, useCache);
+			if (cached != null) return cast cached;
 			var resolved = required(owner, id, 'FONT');
+			var indexed = ownerLibraryAsset(owner, id, 'FONT');
+			if (indexed != null) return cast PsychOwnerAssetLibraryCache.getLimeAsset(indexed,
+				AssetType.FONT, useCache);
 			if (!resolved.owned && LimeAssets.exists(id, AssetType.FONT))
 				return LimeAssets.getFont(id, useCache);
-			var key = cacheKey(owner, resolved.path);
-			if (useCache && LimeAssets.cache.enabled) {
-				var cached:Dynamic = LimeAssets.cache.font.get(key);
+			var key = ownerCacheKey(owner, id, 'FONT', resolved.path);
+			if (useCache && ownerCache != null && ownerCache.enabled) {
+				cached = PsychOwnerAssetLibraryCache.cachedLimeAssetIn(ownerCache, key, AssetType.FONT, useCache);
 				if (cached != null) return cast cached;
 			}
 			var font = Font.fromBytes(FNFAssets.getBytes(resolved.path));
-			if (font != null && useCache && LimeAssets.cache.enabled)
-				LimeAssets.cache.set(key, AssetType.FONT, font);
+			if (font != null && useCache && ownerCache != null && ownerCache.enabled)
+				ownerCache.set(key, AssetType.FONT, font);
 			return font;
 		});
 		Reflect.setField(proxy, 'getAsset', function(id:String, type:AssetType, ?useCache:Bool = true):Dynamic {
+			var indexedCacheId = ownerIndexCacheId(owner, id, assetTypeName(type));
+			var cached = indexedCacheId == null ? null
+				: PsychOwnerAssetLibraryCache.cachedLimeAssetIn(ownerCache, indexedCacheId, type, useCache);
+			if (cached != null) return cached;
 			var resolved = required(owner, id, assetTypeName(type));
+			var indexed = ownerLibraryAsset(owner, id, assetTypeName(type));
+			if (indexed != null) return PsychOwnerAssetLibraryCache.getLimeAsset(indexed, type, useCache);
 			if (!resolved.owned && LimeAssets.exists(id, type))
 				return LimeAssets.getAsset(id, type, useCache);
 			return switch (type) {
@@ -117,9 +152,13 @@ class PsychOwnerLimeAssets {
 			return list(owner, engine, scope, type, null));
 		Reflect.setField(proxy, 'getLibrary', function(name:String):Dynamic {
 			if (unsafeLibraryName(name)) throw '[psych-assets] Lime asset libraries cannot escape the selected owner';
-			var state = RuntimeOwnerAssetIdentity.ownerLibraryState(owner, engine, scope,
-				SourceLimeAssetIdentity.canonicalLibrary(name));
-			if (state == 'declared') return ownerLibrary(owner, engine, scope, name, proxy);
+			var identity = RuntimeOwnerAssetIdentity.acquire(owner, engine, scope);
+			var libraryName = SourceLimeAssetIdentity.canonicalLibrary(name);
+			var state = identity.libraryState(libraryName);
+			if (state == 'declared') {
+				if (identity.indexVersion < 2) return ownerLibrary(owner, engine, scope, name, proxy);
+				return PsychOwnerAssetLibraryCache.getLime(identity, libraryName);
+			}
 			if (state == 'unknown') throw '[psych-assets] Asset library identity is incomplete for selected owner: ' + name;
 			return LimeAssets.getLibrary(name);
 		});
@@ -136,18 +175,26 @@ class PsychOwnerLimeAssets {
 			LimeAssets.registerLibrary(name, library);
 		});
 		Reflect.setField(proxy, 'unloadLibrary', function(name:String):Void {
+			if (releaseOwnerLibrary(owner, engine, scope, name, 'unload', true)) return;
 			guardGlobalLibraryMutation(owner, engine, scope, name, 'unload');
 			LimeAssets.unloadLibrary(name);
 		});
 		Reflect.setField(proxy, 'removeLibrary', function(name:String, ?unload:Bool = true):Void {
+			if (releaseOwnerLibrary(owner, engine, scope, name, 'remove', unload)) return;
 			guardGlobalLibraryMutation(owner, engine, scope, name, 'remove');
 			LimeAssets.removeLibrary(name, unload);
 		});
 		Reflect.setField(proxy, 'loadLibrary', function(id:String):Dynamic {
 			if (unsafeLibraryName(id)) return Future.withError('[psych-assets] Lime asset libraries cannot escape the selected owner');
-			var state = RuntimeOwnerAssetIdentity.ownerLibraryState(owner, engine, scope,
-				SourceLimeAssetIdentity.canonicalLibrary(id));
-			if (state == 'declared') return Future.withValue(ownerLibrary(owner, engine, scope, id, proxy));
+			var identity = RuntimeOwnerAssetIdentity.acquire(owner, engine, scope);
+			var libraryName = SourceLimeAssetIdentity.canonicalLibrary(id);
+			var state = identity.libraryState(
+				libraryName);
+			if (state == 'declared') {
+				if (identity.indexVersion < 2)
+					return Future.withError('[psych-assets] Selected-owner library load metadata is unavailable; refresh this import: ' + id);
+				return PsychOwnerAssetLibraryCache.loadLime(identity, libraryName);
+			}
 			if (state == 'unknown') return Future.withError('[psych-assets] Asset library identity is incomplete for selected owner: ' + id);
 			return LimeAssets.loadLibrary(id);
 		});
@@ -163,7 +210,24 @@ class PsychOwnerLimeAssets {
 	}
 
 	static function load(owner:String, id:String, type:AssetType, useCache:Bool, proxy:Dynamic):Dynamic {
+		var cache:LimeAssetCache = cast Reflect.field(proxy, 'cache');
+		var cacheable = switch (type) { case FONT | IMAGE | MUSIC | SOUND: true; default: false; };
+		var indexedCacheId = ownerIndexCacheId(owner, id, assetTypeName(type));
+		if (useCache && cacheable && indexedCacheId != null) {
+			var cached = PsychOwnerAssetLibraryCache.cachedLimeAssetIn(cache, indexedCacheId, type, true);
+			if (cached != null) return Future.withValue(cached);
+		}
 		var resolved = resolve(owner, id, assetTypeName(type));
+		var indexed:PsychOwnerAssetLibraryAssetView;
+		try indexed = ownerLibraryAsset(owner, id, assetTypeName(type)) catch (error:Dynamic)
+			return Future.withError(error);
+		if (indexed != null) return switch (type) {
+			case BINARY: indexed.library.loadBytes(indexed.id);
+			case TEXT: indexed.library.loadText(indexed.id);
+			case IMAGE | FONT | SOUND | MUSIC:
+				PsychOwnerAssetLibraryCache.loadLimeAsset(indexed, type, useCache);
+			default: Future.withError('[psych-assets] Unsupported selected-owner Lime asset type: ' + Std.string(type));
+		};
 		if (resolved.blocked) return Future.withError('[psych-assets] Refused asset outside selected owner: ' + id);
 		if (resolved.unavailable) return Future.withError('[psych-assets] Asset is unavailable in selected owner: ' + id);
 		if (!resolved.owned && LimeAssets.exists(id, type)) {
@@ -277,6 +341,29 @@ class PsychOwnerLimeAssets {
 		return proxy;
 	}
 
+	static function ownerLibraryAsset(owner:String, id:String,
+		expectedType:Null<String>):Null<PsychOwnerAssetLibraryAssetView> {
+		var identity = RuntimeOwnerAssetIdentity.acquire(owner, 'Psych Engine', 'package');
+		return PsychOwnerAssetLibraryCache.findLimeAsset(identity, id, expectedType);
+	}
+
+	static function releaseOwnerLibrary(owner:String, engine:String, scope:String,
+		name:String, operation:String, unload:Bool):Bool {
+		if (unsafeLibraryName(name)) return false;
+		var identity = RuntimeOwnerAssetIdentity.acquire(owner, engine, scope);
+		var library = SourceLimeAssetIdentity.canonicalLibrary(name);
+		var state = identity.libraryState(library);
+		if (state == 'declared') {
+			if (identity.indexVersion < 2)
+				throw '[psych-assets] Dynamic ' + operation + ' is unsupported for selected-owner asset libraries: ' + name;
+			PsychOwnerAssetLibraryCache.unload(identity, library, unload);
+			return true;
+		}
+		if (state == 'unknown')
+			throw '[psych-assets] Asset library identity is incomplete for selected owner: ' + name;
+		return false;
+	}
+
 	static function unsafeLibraryName(name:String):Bool {
 		if (name == null || StringTools.trim(name) == '') return false;
 		var clean = PsychOwnerAssetPath.cleanId(name);
@@ -297,6 +384,18 @@ class PsychOwnerLimeAssets {
 	}
 
 	static function cacheKey(owner:String, path:String):String return 'psych-owner:' + owner + ':' + path;
+
+	static function ownerCacheKey(owner:String, id:String, type:String, path:String):String {
+		var indexed = RuntimeOwnerAssetIdentity.lookup(owner, 'Psych Engine', 'package', id, type);
+		return indexed.state == 'found' ? id : cacheKey(owner, path);
+	}
+
+	static function ownerIndexCacheId(owner:String, id:String, type:String):Null<String> {
+		var identity = RuntimeOwnerAssetIdentity.acquire(owner, 'Psych Engine', 'package');
+		if (identity.bindingState == 'ready') PsychOwnerAssetLibraryCache.limeAssetCache(identity);
+		var indexed = identity.resolve(id, type);
+		return indexed.state == 'found' ? id : null;
+	}
 
 	static function assetTypeName(type:AssetType):Null<String>
 		return type == null ? null : Std.string(type).toUpperCase();

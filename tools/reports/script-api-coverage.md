@@ -1,6 +1,6 @@
 # Chart scripting API coverage audit
 
-Generated: 2026-10-07
+Generated: 2026-10-08
 
 This is a static source audit. `implemented` means a literal binding, direct dispatch, explicit callback-name alias, or fully traced source-binder call chain was found; `names-only` means the name occurs without such evidence; `unverified` marks broad reflective reachability; `missing` means no route was found. Every `implemented` entry remains behaviorally unverified unless separately supported by an execution-and-assertion test.
 
@@ -8,7 +8,7 @@ This is a static source audit. `implemented` means a literal binding, direct dis
 
 | Source | Version | Revision | Tracked tree | Haxe files | Path |
 |---|---|---|---|---:|---|
-| Engine | 0.0.16 | 3fb9aba6 | modified | 741 | `C:\Users\uwucammie\Documents\coding\FNF\Cammie-Engine` |
+| Engine | 0.0.19 | ce671830 | modified | 761 | `C:\Users\uwucammie\Documents\coding\FNF\Cammie-Engine` |
 | Psych Engine | Psych Engine 1.0.4 / project 0.2.8 | 5c67ced | clean | 157 | `C:\Users\uwucammie\Documents\coding\FNF\fnf_sources\FNF-PsychEngine` |
 | Nightmare Vision | NMV 1.0 / project 0.2.7 | 733165c | clean | 239 | `C:\Users\uwucammie\Documents\coding\FNF\fnf_sources\NightmareVision` |
 

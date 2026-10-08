@@ -169,6 +169,7 @@ class NightmareVisionFunkinSpriteAnimation {
 }
 class FakePlayState {
   public function new() {}
+  public function sourceNoteTimingMode():Int return 0;
   public function dispatchHxcCharacterScreenPosition(actor:Character, result:FlxPoint,
     camera:FlxCamera):FlxPoint {
     // Translated super.getScreenPosition restarts from the native Bopper base.
@@ -210,6 +211,8 @@ class Character extends FakeSprite {
   public var vSliceGlobalOffsetX:Float = 12;
   public var vSliceGlobalOffsetY:Float = -8;
   public var isDie:Bool = false;
+  public var specialAnim:Bool = false;
+  var sourceDanceNightmare:Bool = false;
   public var likeGf:Bool = false;
   public var debugMode:Bool = false;
   public var frameOffset:FlxPoint = new FlxPoint();

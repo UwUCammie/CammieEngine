@@ -458,7 +458,10 @@ class ImportRefreshManagerFixture {
   ImportRefreshManager.unresolvedRecovery=false;
   cancelAfterWrite=false;
   var contexts=selectMappedRoots(source,nested);
-  if(contextMode=="partial") {
+  if(contextMode=="file-backed") {
+   contexts=[for(context in contexts) {sourceRoot:context.sourceRoot,engine:"Psych Engine",
+    build:{target:"html5",command:"",flags:[],values:[],flagsComplete:true}}];
+  } else if(contextMode=="partial") {
    contexts=[for(context in contexts) mappedBuildContext(context.sourceRoot,false)];
   } else if(contextMode=="disabled") {
    var disabledFlags:Array<Dynamic>=[{name:"DISABLED_MEDIA",state:"disabled",provenance:"caller-supplied"}];
@@ -1176,19 +1179,21 @@ class ImportRefreshManagerFixture {
     } catch(error:Dynamic) report({status:"error",error:Std.string(error),
      plans:languagePlanSummaries(),profiles:lastLanguageProfiles,
      records:ImportRefreshManager.cachedRecords(install)});
-   case "mapped-assets-initial", "mapped-assets-enabled-initial", "mapped-assets-two-owner", "mapped-assets-cancel", "mapped-assets-binding",
+   case "mapped-assets-initial", "mapped-assets-enabled-initial", "mapped-assets-two-owner", "mapped-assets-zero-song-two-owner", "mapped-assets-cancel", "mapped-assets-binding",
     "mapped-assets-reimport", "mapped-assets-disabled-reimport", "mapped-assets-deferred-reimport":
     var source=args[2];
-    var nested=mode=="mapped-assets-two-owner";
+    var nested=mode=="mapped-assets-two-owner"||mode=="mapped-assets-zero-song-two-owner";
     var cancelCopies=mode=="mapped-assets-cancel"?1:0;
-    var contextMode=mode=="mapped-assets-enabled-initial"?"enabled"
+    var contextMode=mode=="mapped-assets-zero-song-two-owner"?"file-backed"
+     :mode=="mapped-assets-enabled-initial"?"enabled"
      :mode=="mapped-assets-disabled-reimport"?"disabled"
      :mode=="mapped-assets-deferred-reimport"?"partial":"complete";
     try {
      var result=mappedImport(source,nested,cancelCopies,contextMode);
      var bindings:Array<Dynamic>=[];
      var detached=true;
-     if(mode=="mapped-assets-binding") for(record in ImportRefreshManager.cachedRecords(install))
+     if(mode=="mapped-assets-binding"||mode=="mapped-assets-zero-song-two-owner")
+      for(record in ImportRefreshManager.cachedRecords(install))
       for(root in (cast record.roots:Array<Dynamic>)) {
        var owner="assets/imported_mods/"+Std.string(root.namespace);
        var binding=ImportRefreshManager.ownerAssetIndexBinding(owner,"Psych Engine","package");
@@ -1200,7 +1205,7 @@ class ImportRefreshManagerFixture {
         if(third.files.length>0&&third.files[0].sha256=="mutated") detached=false;
        }
       }
-     report({status:"ok",failed:result.failed,errors:result.errors,
+     report({status:"ok",failed:result.failed,errors:result.errors,importedSongs:result.importedSongs,
       bindings:bindings,detached:detached,
       plans:mappedPlanSummaries(),copyCalls:mappedCopyCalls,
       legacySkips:mappedLegacySkips,records:ImportRefreshManager.cachedRecords(install)});
@@ -2258,6 +2263,54 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(proof[expected_path], digest)
         self.assertTrue(all(path.startswith(binding["owner"] + "/") for path in proof))
 
+    def test_zero_song_two_root_import_commits_each_owner_asset_library_index(self):
+        project = (
+            '<project><library name="owner-runtime" preload="true" embed="false" />'
+            '<assets path="assets/media" rename="assets/images/primary" library="owner-runtime" />'
+            '<assets path="assets/media" rename="assets/images/secondary" library="owner-runtime" />'
+            '</project>'
+        )
+        source = self.make_mapped_assets_source("donor-zero-song-owner-libraries", nested=True,
+                                               project=project)
+        package_path = source / "package.json"
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+        package["initialSongs"] = []
+        package["nextSongs"] = []
+        package_path.write_text(json.dumps(package), encoding="utf-8", newline="\n")
+
+        imported = self.run_fixture("mapped-assets-zero-song-two-owner", source)
+
+        self.assertEqual(imported["status"], "ok", imported)
+        self.assertEqual(imported["failed"], 0, imported)
+        self.assertEqual(imported["importedSongs"], [], imported)
+        self.assertEqual(imported["copyCalls"], 4, imported)
+        record, = imported["records"]
+        self.assertEqual({root["relative"] for root in record["roots"]}, {"", "nested"})
+        self.assertEqual(len(imported["bindings"]), 2, imported)
+        manifest = json.loads(self.manifest_bytes(record))
+        bindings_by_relative = {binding["rootRelative"]: binding for binding in imported["bindings"]}
+        self.assertEqual(set(bindings_by_relative), {"", "nested"})
+        for relative, binding in bindings_by_relative.items():
+            self.assertEqual(binding["engine"], "Psych Engine")
+            self.assertEqual(binding["scope"], "package")
+            self.assertEqual(binding["snapshotId"], record["snapshotId"])
+            self.assertEqual(binding["transactionId"], manifest["transactionId"])
+            sidecar = self.install / binding["indexPath"]
+            self.assertTrue(sidecar.is_file(), binding)
+            self.assertEqual(hashlib.sha256(sidecar.read_bytes()).hexdigest(), binding["indexSha256"])
+            index = json.loads(sidecar.read_text(encoding="utf-8"))
+            self.assertEqual(index["version"], 2, index)
+            self.assertTrue(index["loadProfileComplete"], index)
+            self.assertEqual(index["loadTarget"], "html5", index)
+            self.assertIn("owner-runtime", [profile["library"]
+                                            for profile in index["libraryLoadProfiles"]], index)
+            owner_library_entries = [entry for entry in index["entries"]
+                                     if entry["library"] == "owner-runtime"]
+            self.assertGreaterEqual(len(owner_library_entries), 2, index)
+            owner = self.mapped_owner_path(record, relative)
+            self.assertTrue((owner / "images/primary/icon.png").is_file())
+            self.assertTrue((owner / "images/secondary/icon.png").is_file())
+
     def test_manager_combines_mapped_media_and_language_for_each_owner_and_refreshes_after_donor_removal(self):
         source = self.make_mapped_assets_source("donor-mapped-two-owner", nested=True)
         initial = self.run_fixture("mapped-assets-two-owner", source)
@@ -2614,9 +2667,9 @@ class ImportRefreshManagerTest(unittest.TestCase):
         shutil_rmtree(donor)
         stale_revisions = [dict(stamp) for stamp in record["revisions"]]
         self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
-        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {8})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {9})
         for stamp in stale_revisions:
-            stamp["engineRevision"] = 7
+            stamp["engineRevision"] = 8
         self.mark_record_stale(record, common_revision=None,
                                record_updates={"revisions": stale_revisions})
 
@@ -2627,7 +2680,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
-        self.assertTrue(any(stamp["engineRevision"] == 8
+        self.assertTrue(any(stamp["engineRevision"] == 9
                             for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())

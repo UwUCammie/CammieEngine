@@ -24,10 +24,24 @@ class Note {
 }
 class NightmareVisionPlayFieldView {
  public var notes:Array<Dynamic>=[];
+ public var holdActors:Array<HoldActor>=[];
  public var adds:Int=0;public var removes:Int=0;
  public function new() {}
  public function addNote(note:Dynamic):Void {adds++;notes.push(note);}
  public function removeNote(note:Dynamic):Void {removes++;notes.remove(note);}
+}
+class HoldActor { public var holding:Bool=true; public var sourceActor:Bool=true; public function new() {} }
+class HoldLedger {
+ public var clearCalls:Int=0;
+ public function new() {}
+ public function clearFieldAll(field:NightmareVisionPlayFieldView):Array<Dynamic> {
+  clearCalls++; var actors:Array<Dynamic> = [];
+  if (field != null && field.holdActors != null) {
+   for (actor in field.holdActors) actors.push(actor);
+   field.holdActors.resize(0);
+  }
+  return actors;
+ }
 }
 class NativeNotes {
  public var members:Array<Note>=[];
@@ -45,11 +59,20 @@ class Renderer {
  public function destroy():Void destroys++;
 }
 class Main {
+ public var nightmareVisionHoldLedger:HoldLedger=new HoldLedger();
+ public var releasedHoldActors:Int=0;
  public var nightmareVisionRenderers:haxe.ds.ObjectMap<NightmareVisionPlayFieldView,Renderer>=new haxe.ds.ObjectMap();
  public var playFields:Fields=new Fields();
  public var notes:NativeNotes=new NativeNotes();
  public var detached:Int=0;
  public function new() {}
+ function releaseNightmareVisionHoldActors(actors:Array<Dynamic>):Void {
+  if (actors == null) return;
+  for (value in actors) {
+   var actor:HoldActor=cast value;
+   if (actor != null && actor.sourceActor) { actor.holding=false; releasedHoldActors++; }
+  }
+ }
  function destroyNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {}
  function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void detached++;
  __TEARDOWN__
@@ -70,11 +93,14 @@ class Main {
   check(b.adds==2 && b.notes.length==1,'existing membership not re-added');
   host.notes.members.push(note);host.playFields.members.push(b);
   var renderer=new Renderer();host.nightmareVisionRenderers.set(b,renderer);
+  var heldActor=new HoldActor();b.holdActors.push(heldActor);
   host.detachNightmareVisionPlayField(b);
   check(host.nightmareVisionRenderers.get(b)==renderer && renderer.destroys==0,'plain detach retains live renderer');
   host.detached=0;
   host.nightmareVisionDestroyFieldView(b);
   check(!host.nightmareVisionRenderers.exists(b) && renderer.destroys==1,'destroyed field releases renderer');
+  check(!heldActor.holding && host.releasedHoldActors==1 && host.nightmareVisionHoldLedger.clearCalls==1,
+   'field detach/destroy must release its hold claim while retaining renderer teardown behavior');
   check(host.playFields.members.length==0 && b.removes==1,'field teardown does not remove notes');
   check(host.notes.members[0]==note && note.destroys==0,'native group retains cleanup ownership');
   host.notes.destroy();

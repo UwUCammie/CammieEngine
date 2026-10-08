@@ -23,6 +23,28 @@ def extract_section(source: str, start_marker: str, end_marker: str) -> str:
     return source[start:end]
 
 
+def extract_method(source: str, marker: str) -> str:
+    start = source.index(marker)
+    opening = source.index("{", start)
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+    raise AssertionError(f"unterminated method: {marker}")
+
+
+def character_flag_helpers() -> str:
+    source = SOURCE.read_text(encoding="utf-8")
+    return "\n".join((
+        extract_method(source, "\tfunction loadNightmareVisionCharacterFlags("),
+        extract_method(source, "\tstatic function nightmareVisionNumber("),
+    ))
+
+
 def constructor_resolution_code() -> str:
     source = SOURCE.read_text(encoding="utf-8")
     identity = extract_section(
@@ -120,6 +142,9 @@ class Character {
  public var lastSourceVisualResolution:Dynamic;
  public var lastVisualResolution:Dynamic;
  public var lastNVVisualId:String='';
+ public var vSliceSustains:Bool=false;
+ public var singDuration:Float=1;
+ public var holdTime:Float=1;
  public function new() {}
  public static function isNoGirlfriend(id:String):Bool return false;
  public static function nightmareVisionHealthIconFromDefinition(definition:Dynamic):Null<String>
@@ -128,6 +153,7 @@ class Character {
   var value:Dynamic=Reflect.field(definition,field);
   return value==null?null:Std.string(value);
  }
+''' + character_flag_helpers() + r'''
  public function markDeathConstructionStage(stage:String):Void {}
  public function resolveDeathIdentity(requested:String,ownerRoot:String,ownerEngine:String,
   ?codename:Dynamic):Void {

@@ -42,12 +42,13 @@ class GroupFixture {
 }
 class Main {
  var boyfriend=new Character('player');var dad=new Character('opponent');var gf=new Character('support');var gfSpeed=2;
- var groups:Map<Int,GroupFixture>=new Map();var hud=0;
+ var groups:Map<Int,GroupFixture>=new Map();var hud=0;var holdClaimUpdates=0;
  function new(){}
  function nightmareVisionCharacterGroup(type:Int):GroupFixture {
   if(groups.exists(type))return groups[type];var group=new GroupFixture(type==0?boyfriend:type==1?dad:gf);groups[type]=group;return group;
  }
  function refreshCharacterHUD():Void hud++;
+ function updateNightmareVisionHoldClaims():Void holdClaimUpdates++;
  PUBLISH
  HELPER
  static function check(ok:Bool,message:String)if(!ok)throw message;
@@ -57,16 +58,20 @@ class Main {
   bank.addToList('opponent-variant');
   host.changeNightmareVisionCharacterEvent('dad','opponent-variant');
   check(old.alpha==.0001&&host.dad.alpha==.4,'event did not hide old/cache alpha');
+  check(host.holdClaimUpdates==1,'published character change must refresh hold claims');
   var variant=host.dad;variant.animation.curAnim={name:'singUP',curFrame:3};
   bank.change('opponent');
   check(host.dad==variant&&bank.parent==old,'direct group change must not publish game role');
   host.publishNightmareVisionCharacter('opponent',1);
   check(host.dad==old&&variant.alpha==.0001,'script path lost event cache');
+  check(host.holdClaimUpdates==2,'direct source publication must refresh hold claims');
   host.dad.animation.curAnim={name:'singLEFT',curFrame:4};
   host.changeNightmareVisionCharacterEvent('1','opponent-variant');
   check(host.dad==variant&&host.dad.animation.curAnim.name=='singLEFT'&&host.dad.animation.curAnim.curFrame==4,'related identity frame carry');
+  check(host.holdClaimUpdates==3,'related event publication must refresh hold claims');
   host.changeNightmareVisionCharacterEvent('gf','support-variant');
   check(host.gf.danceEveryNumBeats==4,'source GF dance multiplier');
+  check(host.holdClaimUpdates==4,'GF publication must refresh hold claims');
  }
 }
 '''.replace('HELPER',helper).replace('PUBLISH',publish)

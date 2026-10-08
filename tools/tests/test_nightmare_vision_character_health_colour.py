@@ -123,6 +123,7 @@ abstract FlxColor(Int) from Int to Int {
         array_setter = extract_method(source, "function set_healthColorArray(value:Array<Int>):Array<Int>")
         packed_array = extract_method(source, "static function nightmareVisionColorArrayFromPacked(")
         load_colors = extract_method(source, "function loadNightmareVisionHealthColors(")
+        load_flags = extract_method(source, "function loadNightmareVisionCharacterFlags(")
         number = extract_method(source, "static function nightmareVisionNumber(")
 
         fixture = '''
@@ -133,11 +134,14 @@ class Character {
   public var playerColor:FlxColor = 0xFF66FF33;
   public var enemyColor:FlxColor = 0xFFFF0000;
   public var nightmareVisionCharacterData:Dynamic = null;
+  public var vSliceSustains:Bool = false;
+  public var singDuration:Float = 1;
+  public var holdTime:Float = 1;
   var nightmareVisionHealthColour:Null<FlxColor> = null;
   var nightmareVisionHealthColorArray:Array<Int> = [255, 0, 0];
   public var healthColour(get, set):FlxColor;
   public var healthColorArray(get, set):Array<Int>;
-''' + getter + '\n' + setter + '\n' + array_getter + '\n' + array_setter + '\n' + packed_array + '\n' + load_colors + '\n' + number + '''
+''' + getter + '\n' + setter + '\n' + array_getter + '\n' + array_setter + '\n' + packed_array + '\n' + load_colors + '\n' + load_flags + '\n' + number + '''
   public function new(definition:Dynamic, player:Bool=false) {
     isPlayer=player;
     healthColorArray=nightmareVisionColorArrayFromPacked(healthColour);

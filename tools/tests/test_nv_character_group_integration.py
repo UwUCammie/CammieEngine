@@ -18,6 +18,8 @@ def connected_files():
     files['Character.hx'] = '''@:build(NightmareVisionSpriteMacro.build()) class Character extends flixel.FlxSprite {
  public var curCharacter:String;public var requestedCharacter:String;public var characterType:Dynamic;
  public var positionArray:Array<Float>=[3,5];public var danceEveryNumBeats=1;public var isPlayer=false;public var selectedRoot:String;
+ public var holding:Bool=false;public var sourceActor:Bool=true;
+ public function isNightmareVisionSourceActor():Bool return sourceActor;
  public function new(x=0.,y=0.,name="bf",player=false,?codename:Dynamic,?source:SourceCharacterConstruction){
   if(source!=null)source.requireActive();super(x,y);curCharacter=name;requestedCharacter=name;isPlayer=player;
   if(source!=null){selectedRoot=source.resolve(name).root;NightmareVisionSpriteMethods.bind(this,source.spriteOwner);}}
@@ -27,6 +29,21 @@ def connected_files():
     files['ImportEngine.hx'] = 'class ImportEngine {public static inline var NIGHTMARE_VISION="Nightmare Vision";}'
     files['Song.hx'] = '''class Song {public static var reads:Array<String>=[];public static var current="other-owner";
  public static function resolveCharacterVisualInManifest(name:String,root:String,nativeFallback:Bool,engine:String):Dynamic {reads.push(root+":"+name);return {root:root,name:name,complete:true};}}'''
+    files['NightmareVisionPlayFieldView.hx'] = '''class NightmareVisionPlayFieldView {
+ public var ID:Int;public var owner:Character;public var singers:Array<Character>=[];
+ public var inControl:Bool=false;public var playerControls:Bool=false;public var autoPlayed:Bool=false;
+ public function new(id:Int,c:Character){ID=id;owner=c;}
+}'''
+    files['SourceCharacterHoldLedger.hx'] = (ROOT / 'source/SourceCharacterHoldLedger.hx').read_text(encoding='utf-8')
+    files['HoldInputFixture.hx'] = '''class HoldInputFixture {
+ public var pressedActions:Array<Bool>;
+ public function new(actions:Array<Bool>) pressedActions=actions;
+ public function inputPressed(key:Int):Bool return key>=0 && key<pressedActions.length && pressedActions[key];
+}'''
+    files['HoldScopeFixture.hx'] = '''class HoldScopeFixture {
+ public var ownerRoot:String;public var input:HoldInputFixture;
+ public function new(owner:String,actions:Array<Bool>){ownerRoot=owner;input=new HoldInputFixture(actions);}
+}'''
     return files
 
 class NVCharacterGroupIntegrationTest(unittest.TestCase):
@@ -82,22 +99,38 @@ class Main {static function ok(value:Bool,message:String):Void if(!value)throw m
         begin = switch.index("if (charState == 'bf'")
         end = switch.index('var previousStageActor:', begin)
         branch = switch[begin:end]
+        hold_methods = '\n'.join(method(play, signature) for signature in (
+            'function nightmareVisionHoldRoleGroup(',
+            'function nightmareVisionGroupContainsActor(',
+            'function releaseNightmareVisionHoldActors(',
+            'function updateNightmareVisionHoldClaims(',
+        ))
         files['PsychCharacterChangeEvent.hx'] = 'class PsychCharacterChangeEvent {public static function role(s:String):Int return s=="boyfriend"?0:s=="gf"?2:1;}'
-        files['Bridge.hx'] = '''class Bridge {
+        files['Bridge.hx'] = 'import SourceCharacterHoldLedger.SourceCharacterHoldClaim;\n' + '''class Bridge {
  public var nightmareVisionScripts:Dynamic={};public var nightmareVisionFields:Array<NightmareVisionPlayFieldView>=[];
  public var boyfriend:Character;public var dad:Character;public var gf:Character;public var hud=0;
- public var group:NightmareVisionCharacterGroup;public function new(g:NightmareVisionCharacterGroup)group=g;
+ public var group:NightmareVisionCharacterGroup;public var boyfriendGroup:NightmareVisionCharacterGroup;
+ public var dadGroup:NightmareVisionCharacterGroup;public var gfGroup:NightmareVisionCharacterGroup;
+ public var nightmareVisionRoleGroups:Array<NightmareVisionCharacterGroup>=[];
+ public var nightmareVisionHoldLedger:SourceCharacterHoldLedger=new SourceCharacterHoldLedger();
+ public var nightmareVisionInputScope:HoldScopeFixture;public var inCutscene:Bool=false;public var SONG:Dynamic;
+ public function new(g:NightmareVisionCharacterGroup){group=g;boyfriendGroup=g;}
  function nightmareVisionCharacterGroup(type:Int):NightmareVisionCharacterGroup return group;
  function refreshCharacterHUD():Void hud++;
+''' + hold_methods + '''
  public function swap(daCharacter:Character,charState:String,destroy=false):Void {''' + branch + '}}'
         files['Main.hx'] = '''class Main {static function ok(b:Bool,s:String)if(!b)throw s;static function main(){
  var paths=new NightmareVisionPaths("a");NightmareVisionSpriteRegistry.enterSession("a");NightmareVisionSpriteRegistry.setup(paths);
  var group=new NightmareVisionCharacterGroup(10,20,cast 0,NightmareVisionCharacterGroupBindings.owner(paths,function()return null));
  var old=new Character(0,0,"old");group.addChar(old);group.parent=old;old.alpha=.6;
- var bridge=new Bridge(group);bridge.boyfriend=old;var field=new NightmareVisionPlayFieldView(0,old);bridge.nightmareVisionFields=[field];
+ var bridge=new Bridge(group);bridge.boyfriend=old;var field=new NightmareVisionPlayFieldView(0,old);field.inControl=true;field.playerControls=true;bridge.nightmareVisionFields=[field];
+ bridge.nightmareVisionInputScope=new HoldScopeFixture("a",[true]);
+ bridge.nightmareVisionHoldLedger.retain("a",field,group,old,false);old.holding=true;
  var next=new Character(0,0,"next");bridge.swap(next,"bf");ok(old.alpha==.0001&&next.alpha==.6&&old.destroyed==0,"retained old cache hidden with alpha transfer");
+ ok(!old.holding&&!bridge.nightmareVisionHoldLedger.hasActorClaim(old),"hidden cached actor releases its hold when role ownership moves to the replacement");
  ok(group.members.length==2&&bridge.boyfriend==next&&group.parent==next&&field.owner==next&&bridge.hud==1,"group owns members once and host caller publishes role fields HUD");
- var third=new Character(0,0,"third");bridge.swap(third,"boyfriend",true);ok(next.destroyed==1&&group.members.indexOf(next)<0&&third.alpha==.6,"explicit destroy removes then destroys once");
+ var third=new Character(0,0,"third");bridge.nightmareVisionHoldLedger.retain("a",field,group,next,false);next.holding=true;bridge.swap(third,"boyfriend",true);ok(next.destroyed==1&&group.members.indexOf(next)<0&&third.alpha==.6,"explicit destroy removes then destroys once");
+ ok(!next.holding&&!bridge.nightmareVisionHoldLedger.hasActorClaim(next),"destroyed role actor is released and its lease is removed");
  bridge.swap(third,"bf");ok(third.alpha==.6&&third.destroyed==0&&group.members.length==2,"same actor not hidden or duplicated");group.destroy();ok(old.destroyed==1&&third.destroyed==1&&next.destroyed==1,"native group sole final destruction");}}
 '''
         self.run_haxe(files)

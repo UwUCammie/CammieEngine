@@ -1,15 +1,15 @@
 {
   "schema_version": 2,
-  "generated": "2026-10-07",
+  "generated": "2026-10-08",
   "source_metadata": [
     {
       "label": "Engine",
       "available": true,
       "path": "C:\\Users\\uwucammie\\Documents\\coding\\FNF\\Cammie-Engine",
-      "revision": "3fb9aba6",
-      "version": "0.0.16",
+      "revision": "ce671830",
+      "version": "0.0.19",
       "tracked_tree": "modified",
-      "source_files": 741
+      "source_files": 761
     },
     {
       "label": "Psych Engine",
@@ -114,7 +114,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -200,7 +200,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12588
+            "line": 12790
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -290,7 +290,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23599
+            "line": 23812
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -330,7 +330,7 @@
           },
           {
             "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 129,
+            "line": 162,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -372,7 +372,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1308
+            "line": 1394
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -466,7 +466,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25437
+            "line": 25658
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -548,7 +548,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3820
+            "line": 3939
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -667,7 +667,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_compat_script_import.py",
-            "line": 200,
+            "line": 233,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -833,7 +833,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 14248
+            "line": 14450
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -924,7 +924,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15073
+            "line": 15275
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1006,7 +1006,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 22248
+            "line": 22461
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1092,7 +1092,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 17687
+            "line": 17889
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1170,7 +1170,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12597
+            "line": 12799
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1246,7 +1246,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1989
+            "line": 2087
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1332,7 +1332,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1450,7 +1450,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           },
           {
             "path": "source/GameOverSubstate.hx",
@@ -1546,7 +1546,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1638,7 +1638,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1678,7 +1678,7 @@
           },
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 315,
+            "line": 318,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -1722,7 +1722,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23595
+            "line": 23808
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1766,7 +1766,7 @@
           },
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 392,
+            "line": 395,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -1832,7 +1832,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23605
+            "line": 23818
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -1870,7 +1870,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 434,
+            "line": 437,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -1936,7 +1936,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23624
+            "line": 23837
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2046,7 +2046,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23604
+            "line": 23817
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2150,7 +2150,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23623
+            "line": 23836
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2192,7 +2192,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_compat_script_import.py",
-            "line": 747,
+            "line": 822,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -2398,11 +2398,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12079
+            "line": 12281
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12084
+            "line": 12286
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2496,7 +2496,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 21013
+            "line": 21225
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2584,7 +2584,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23228
+            "line": 23441
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2666,7 +2666,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 20484
+            "line": 20696
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2754,7 +2754,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25325
+            "line": 25546
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2836,7 +2836,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 15670
+            "line": 15872
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -2922,7 +2922,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 21468
+            "line": 21680
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3002,7 +3002,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 21504
+            "line": 21716
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3114,11 +3114,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 15227
+            "line": 15429
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15377
+            "line": 15579
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3206,7 +3206,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25301
+            "line": 25522
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3288,7 +3288,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 20540
+            "line": 20752
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3370,7 +3370,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 20450
+            "line": 20662
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3488,7 +3488,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           },
           {
             "path": "source/NightmareVisionMusicBeatState.hx",
@@ -3604,7 +3604,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22940
+            "line": 23153
           },
           {
             "path": "source/NightmareVisionMainMenuState.hx",
@@ -3692,7 +3692,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23206
+            "line": 23419
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3766,7 +3766,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 774
+            "line": 860
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3840,7 +3840,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 768
+            "line": 854
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -3922,7 +3922,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 14200
+            "line": 14402
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -4001,7 +4001,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 743
+            "line": 829
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -4067,7 +4067,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8056
+            "line": 8189
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4164,7 +4164,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 24,
+        "test_evidence_total_count": 25,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -4177,7 +4177,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 23,
+          "semantic_test_candidates": 24,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -4185,11 +4185,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9521
+            "line": 9654
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10908
+            "line": 11110
           },
           {
             "path": "source/PluginManager.hx",
@@ -4352,7 +4352,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1752
+            "line": 1850
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4417,7 +4417,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 887
+            "line": 973
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4488,7 +4488,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 898
+            "line": 984
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4591,7 +4591,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 50,
+        "test_evidence_total_count": 51,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -4604,7 +4604,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 45,
+          "semantic_test_candidates": 46,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -4612,11 +4612,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12796
+            "line": 12998
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13273
+            "line": 13475
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4685,7 +4685,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1117
+            "line": 1203
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4741,7 +4741,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 120,
+        "test_evidence_total_count": 122,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -4754,7 +4754,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 115,
+          "semantic_test_candidates": 117,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -4827,11 +4827,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8046
+            "line": 8179
           },
           {
             "path": "source/PlayState.hx",
-            "line": 902
+            "line": 988
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4875,7 +4875,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 75,
+        "test_evidence_total_count": 77,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -4888,7 +4888,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 75,
+          "semantic_test_candidates": 77,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -4896,15 +4896,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 970
+            "line": 1056
           },
           {
             "path": "source/PlayState.hx",
-            "line": 9531
+            "line": 9664
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10919
+            "line": 11121
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -4975,7 +4975,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8044
+            "line": 8177
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5040,15 +5040,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9520
+            "line": 9653
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10921
+            "line": 11123
           },
           {
             "path": "source/PlayState.hx",
-            "line": 901
+            "line": 987
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5107,7 +5107,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 906
+            "line": 992
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5172,15 +5172,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12800
+            "line": 13002
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13274
+            "line": 13476
           },
           {
             "path": "source/PlayState.hx",
-            "line": 906
+            "line": 992
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5414,11 +5414,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12743
+            "line": 12945
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13268
+            "line": 13470
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5477,7 +5477,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7775
+            "line": 7908
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -5533,7 +5533,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 579,
+        "test_evidence_total_count": 600,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -5546,7 +5546,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 574,
+          "semantic_test_candidates": 595,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -5875,11 +5875,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1671
+            "line": 1769
           },
           {
             "path": "source/PlayState.hx",
-            "line": 892
+            "line": 978
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6059,15 +6059,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9527
+            "line": 9660
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10912
+            "line": 11114
           },
           {
             "path": "source/PlayState.hx",
-            "line": 892
+            "line": 978
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6119,7 +6119,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 897
+            "line": 983
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6184,15 +6184,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9529
+            "line": 9662
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10916
+            "line": 11118
           },
           {
             "path": "source/PlayState.hx",
-            "line": 893
+            "line": 979
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6263,7 +6263,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 891
+            "line": 977
           },
           {
             "path": "source/PluginManager.hx",
@@ -6422,7 +6422,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 184,
+        "test_evidence_total_count": 188,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -6435,7 +6435,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 7,
-          "semantic_test_candidates": 177,
+          "semantic_test_candidates": 181,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -6443,15 +6443,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9523
+            "line": 9656
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10911
+            "line": 11113
           },
           {
             "path": "source/PlayState.hx",
-            "line": 885
+            "line": 971
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6579,7 +6579,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           },
           {
             "path": "source/PluginManager.hx",
@@ -6654,15 +6654,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8050
+            "line": 8183
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10917
+            "line": 11119
           },
           {
             "path": "source/PlayState.hx",
-            "line": 899
+            "line": 985
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6771,7 +6771,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 12,
+        "test_evidence_total_count": 13,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -6784,7 +6784,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 12,
+          "semantic_test_candidates": 13,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -6792,7 +6792,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 891
+            "line": 977
           },
           {
             "path": "source/PluginManager.hx",
@@ -6852,7 +6852,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 94,
+        "test_evidence_total_count": 95,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -6865,7 +6865,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 4,
-          "semantic_test_candidates": 90,
+          "semantic_test_candidates": 91,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -6873,15 +6873,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9524
+            "line": 9657
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10913
+            "line": 11115
           },
           {
             "path": "source/PlayState.hx",
-            "line": 886
+            "line": 972
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -6993,11 +6993,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8049
+            "line": 8182
           },
           {
             "path": "source/PlayState.hx",
-            "line": 900
+            "line": 986
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7125,7 +7125,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 891
+            "line": 977
           },
           {
             "path": "source/PluginManager.hx",
@@ -7194,7 +7194,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 894
+            "line": 980
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7259,7 +7259,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 896
+            "line": 982
           },
           {
             "path": "source/PluginManager.hx",
@@ -7387,15 +7387,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9526
+            "line": 9659
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10915
+            "line": 11117
           },
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7439,7 +7439,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 45,
+        "test_evidence_total_count": 46,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -7452,7 +7452,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 45,
+          "semantic_test_candidates": 46,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -7460,15 +7460,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9522
+            "line": 9655
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10909
+            "line": 11111
           },
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7533,15 +7533,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9525
+            "line": 9658
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10914
+            "line": 11116
           },
           {
             "path": "source/PlayState.hx",
-            "line": 900
+            "line": 986
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7606,11 +7606,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7948
+            "line": 8081
           },
           {
             "path": "source/PlayState.hx",
-            "line": 903
+            "line": 989
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -7679,7 +7679,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 905
+            "line": 991
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -7744,11 +7744,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7947
+            "line": 8080
           },
           {
             "path": "source/PlayState.hx",
-            "line": 904
+            "line": 990
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -7945,11 +7945,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9528
+            "line": 9661
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10910
+            "line": 11112
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8014,7 +8014,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 888
+            "line": 974
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8070,7 +8070,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 144,
+        "test_evidence_total_count": 147,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -8083,7 +8083,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 9,
-          "semantic_test_candidates": 135,
+          "semantic_test_candidates": 138,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -8091,15 +8091,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 871
+            "line": 957
           },
           {
             "path": "source/PlayState.hx",
-            "line": 1134
+            "line": 1220
           },
           {
             "path": "source/PlayState.hx",
-            "line": 8059
+            "line": 8192
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8176,7 +8176,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1094
+            "line": 1180
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8435,7 +8435,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 106,
+        "test_evidence_total_count": 109,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -8448,7 +8448,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 101,
+          "semantic_test_candidates": 104,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -8566,15 +8566,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1503
+            "line": 1601
           },
           {
             "path": "source/PlayState.hx",
-            "line": 8055
+            "line": 8188
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12955
+            "line": 13157
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8780,7 +8780,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 22954
+            "line": 23167
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -8951,7 +8951,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 872
+            "line": 958
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9079,11 +9079,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8051
+            "line": 8184
           },
           {
             "path": "source/PlayState.hx",
-            "line": 889
+            "line": 975
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9148,11 +9148,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1116
+            "line": 1202
           },
           {
             "path": "source/PlayState.hx",
-            "line": 7801
+            "line": 7934
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9373,7 +9373,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 531,
+        "test_evidence_total_count": 549,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -9386,7 +9386,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 3,
-          "semantic_test_candidates": 528,
+          "semantic_test_candidates": 546,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -9442,7 +9442,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 138,
+        "test_evidence_total_count": 139,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -9455,7 +9455,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 137,
+          "semantic_test_candidates": 138,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -9463,15 +9463,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9530
+            "line": 9663
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10918
+            "line": 11120
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12748
+            "line": 12950
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9612,7 +9612,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1030
+            "line": 1116
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9791,7 +9791,7 @@
           },
           {
             "path": "tools/tests/test_runtime_nv_retained_state_probe.py",
-            "line": 97,
+            "line": 99,
             "evidence_kind": "name-reference-only",
             "behavior_proof": false
           }
@@ -9817,7 +9817,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8058
+            "line": 8191
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -9888,7 +9888,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12848
+            "line": 13050
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10045,7 +10045,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1001
+            "line": 1087
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10101,7 +10101,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 117,
+        "test_evidence_total_count": 119,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -10114,7 +10114,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 2,
-          "semantic_test_candidates": 115,
+          "semantic_test_candidates": 117,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -10122,7 +10122,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8054
+            "line": 8187
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10244,7 +10244,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1120
+            "line": 1206
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10309,11 +10309,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8052
+            "line": 8185
           },
           {
             "path": "source/PlayState.hx",
-            "line": 889
+            "line": 975
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10351,13 +10351,13 @@
             "behavior_proof": false
           },
           {
-            "path": "tools/tests/test_psych_owner_paths.py",
-            "line": 204,
+            "path": "tools/tests/test_psych_owner_asset_library_lifecycle.py",
+            "line": 29,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 3,
+        "test_evidence_total_count": 4,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -10370,7 +10370,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 3,
+          "semantic_test_candidates": 4,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -10432,7 +10432,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 85,
+        "test_evidence_total_count": 86,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -10445,7 +10445,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 3,
-          "semantic_test_candidates": 82,
+          "semantic_test_candidates": 83,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -10453,15 +10453,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9519
+            "line": 9652
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10907
+            "line": 11109
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13057
+            "line": 13259
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10517,7 +10517,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 376,
+        "test_evidence_total_count": 383,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -10530,7 +10530,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 14,
-          "semantic_test_candidates": 362,
+          "semantic_test_candidates": 369,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -10538,15 +10538,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8057
+            "line": 8190
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12876
+            "line": 13078
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13328
+            "line": 13530
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10737,7 +10737,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 244,
+        "test_evidence_total_count": 245,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -10750,7 +10750,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 14,
-          "semantic_test_candidates": 230,
+          "semantic_test_candidates": 231,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -10821,7 +10821,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 946
+            "line": 1032
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -10919,7 +10919,7 @@
           },
           {
             "path": "tools/tests/test_runtime_nv_retained_state_probe.py",
-            "line": 99,
+            "line": 101,
             "evidence_kind": "name-reference-only",
             "behavior_proof": false
           }
@@ -11052,7 +11052,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12821
+            "line": 13023
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -11111,7 +11111,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7800
+            "line": 7933
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -11388,7 +11388,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 30,
+        "test_evidence_total_count": 31,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -11401,7 +11401,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 2,
-          "semantic_test_candidates": 28,
+          "semantic_test_candidates": 29,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -11409,15 +11409,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7774
+            "line": 7907
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10442
+            "line": 10644
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13304
+            "line": 13506
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -11533,7 +11533,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 14,
+        "test_evidence_total_count": 15,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -11546,7 +11546,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 13,
+          "semantic_test_candidates": 14,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -11608,7 +11608,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 245,
+        "test_evidence_total_count": 257,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -11621,7 +11621,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 7,
-          "semantic_test_candidates": 238,
+          "semantic_test_candidates": 250,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -11629,7 +11629,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 884
+            "line": 970
           },
           {
             "path": "source/PluginManager.hx",
@@ -11762,7 +11762,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 907
+            "line": 993
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -11827,7 +11827,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 889
+            "line": 975
           },
           {
             "path": "source/PluginManager.hx",
@@ -11875,7 +11875,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 166,
+        "test_evidence_total_count": 177,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -11888,7 +11888,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 166,
+          "semantic_test_candidates": 177,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -11896,7 +11896,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 884
+            "line": 970
           },
           {
             "path": "source/PluginManager.hx",
@@ -12076,7 +12076,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 320,
+        "test_evidence_total_count": 332,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -12088,8 +12088,8 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "failure_evidence": [],
         "test_evidence_summary": {
-          "name_reference_count": 6,
-          "semantic_test_candidates": 314,
+          "name_reference_count": 7,
+          "semantic_test_candidates": 325,
           "behavior_proof_count": 0
         },
         "coverage_status": "names-only",
@@ -12220,7 +12220,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 43,
+        "test_evidence_total_count": 44,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -12233,7 +12233,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 4,
-          "semantic_test_candidates": 39,
+          "semantic_test_candidates": 40,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -12241,15 +12241,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1732
+            "line": 1830
           },
           {
             "path": "source/PlayState.hx",
-            "line": 8053
+            "line": 8186
           },
           {
             "path": "source/PlayState.hx",
-            "line": 884
+            "line": 970
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -12305,7 +12305,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 67,
+        "test_evidence_total_count": 76,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -12318,7 +12318,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 15,
-          "semantic_test_candidates": 52,
+          "semantic_test_candidates": 61,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -12326,7 +12326,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12805
+            "line": 13007
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -12508,7 +12508,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 985
+            "line": 1071
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -12824,14 +12824,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 63,
+        "test_evidence_total_count": 72,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":PlayableSong",
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 58,
+          "semantic_test_candidates": 67,
           "behavior_proof_count": 0
         },
         "coverage_status": "missing",
@@ -13251,26 +13251,26 @@
         },
         "test_evidence": [
           {
-            "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 111,
+            "path": "tools/tests/test_nightmare_vision_character_holds.py",
+            "line": 259,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
           {
-            "path": "tools/tests/test_psych_scene_helpers.py",
-            "line": 59,
+            "path": "tools/tests/test_nv_character_group_integration.py",
+            "line": 112,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 2,
-        "test_evidence_sample_is_complete": true,
+        "test_evidence_total_count": 3,
+        "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":CharacterGroup",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 2,
+          "semantic_test_candidates": 3,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -13309,7 +13309,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 112,
+            "line": 145,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -13913,14 +13913,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 19,
+        "test_evidence_total_count": 20,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":FlxObject",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 18,
+          "semantic_test_candidates": 19,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -14045,14 +14045,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 48,
+        "test_evidence_total_count": 49,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":FlxCamera",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 47,
+          "semantic_test_candidates": 48,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -14366,14 +14366,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 6,
+        "test_evidence_total_count": 7,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = true",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 5,
+          "semantic_test_candidates": 6,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -14975,7 +14975,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nightmare_vision_mod_config.py",
-            "line": 121,
+            "line": 123,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -15230,7 +15230,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 119,
+        "test_evidence_total_count": 128,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -15238,7 +15238,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 4,
-          "semantic_test_candidates": 115,
+          "semantic_test_candidates": 124,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -15448,26 +15448,26 @@
         },
         "test_evidence": [
           {
-            "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 111,
+            "path": "tools/tests/test_nightmare_vision_character_holds.py",
+            "line": 260,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
           {
-            "path": "tools/tests/test_psych_scene_helpers.py",
-            "line": 59,
+            "path": "tools/tests/test_nv_character_group_integration.py",
+            "line": 113,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 3,
+        "test_evidence_total_count": 4,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":CharacterGroup",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 3,
+          "semantic_test_candidates": 4,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -15921,7 +15921,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 159,
+        "test_evidence_total_count": 160,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -15929,7 +15929,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 154,
+          "semantic_test_candidates": 155,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -16116,14 +16116,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 23,
+        "test_evidence_total_count": 24,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = false",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 23,
+          "semantic_test_candidates": 24,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -17682,14 +17682,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 108,
+        "test_evidence_total_count": 109,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Character",
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 103,
+          "semantic_test_candidates": 104,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -17727,26 +17727,26 @@
         },
         "test_evidence": [
           {
-            "path": "tools/tests/test_nightmare_vision_gameplay_host.py",
-            "line": 430,
+            "path": "tools/tests/test_nightmare_vision_character_holds.py",
+            "line": 261,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
           {
-            "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 111,
+            "path": "tools/tests/test_nightmare_vision_gameplay_host.py",
+            "line": 430,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 5,
+        "test_evidence_total_count": 6,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":CharacterGroup",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 5,
+          "semantic_test_candidates": 6,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -17791,7 +17791,7 @@
           },
           {
             "path": "tools/tests/test_nv_character_group_integration.py",
-            "line": 57,
+            "line": 74,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -18278,7 +18278,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nv_hit_order.py",
-            "line": 348,
+            "line": 349,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -18352,14 +18352,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 9,
+        "test_evidence_total_count": 11,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = false",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 8,
+          "semantic_test_candidates": 10,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -18540,14 +18540,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 84,
+        "test_evidence_total_count": 91,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":InputSystem",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 83,
+          "semantic_test_candidates": 90,
           "behavior_proof_count": 0
         },
         "coverage_status": "missing",
@@ -18664,14 +18664,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 107,
+        "test_evidence_total_count": 109,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Null<PlayState> = null",
         "test_evidence_summary": {
           "name_reference_count": 3,
-          "semantic_test_candidates": 104,
+          "semantic_test_candidates": 106,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -18763,14 +18763,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 5,
+        "test_evidence_total_count": 6,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = false",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 5,
+          "semantic_test_candidates": 6,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -19180,14 +19180,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 29,
+        "test_evidence_total_count": 30,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Null<SongMetaData> = null",
         "test_evidence_summary": {
           "name_reference_count": 2,
-          "semantic_test_candidates": 27,
+          "semantic_test_candidates": 28,
           "behavior_proof_count": 0
         },
         "coverage_status": "missing",
@@ -19684,14 +19684,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 151,
+        "test_evidence_total_count": 152,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":FlxTypedGroup<Note>",
         "test_evidence_summary": {
           "name_reference_count": 15,
-          "semantic_test_candidates": 136,
+          "semantic_test_candidates": 137,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -19963,7 +19963,7 @@
           },
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 392,
+            "line": 395,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -20022,7 +20022,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 434,
+            "line": 437,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -20406,14 +20406,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 31,
+        "test_evidence_total_count": 33,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = false",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 31,
+          "semantic_test_candidates": 33,
           "behavior_proof_count": 0
         },
         "coverage_status": "missing",
@@ -21560,15 +21560,15 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 2,
-        "test_evidence_sample_is_complete": true,
+        "test_evidence_total_count": 3,
+        "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "shape": "function",
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 2,
+          "semantic_test_candidates": 3,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -21959,14 +21959,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 135,
+        "test_evidence_total_count": 137,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":ScriptGroup",
         "test_evidence_summary": {
           "name_reference_count": 10,
-          "semantic_test_candidates": 125,
+          "semantic_test_candidates": 127,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -22849,14 +22849,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 90,
+        "test_evidence_total_count": 92,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Null<Song> = null",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 89,
+          "semantic_test_candidates": 91,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -23472,7 +23472,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nightmare_vision_note_types.py",
-            "line": 83,
+            "line": 126,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -23684,14 +23684,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 177,
+        "test_evidence_total_count": 182,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Stage",
         "test_evidence_summary": {
           "name_reference_count": 13,
-          "semantic_test_candidates": 164,
+          "semantic_test_candidates": 169,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -23884,14 +23884,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 14,
+        "test_evidence_total_count": 15,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Bool = false",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 13,
+          "semantic_test_candidates": 14,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -24522,7 +24522,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 193,
+        "test_evidence_total_count": 196,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -24530,7 +24530,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 7,
-          "semantic_test_candidates": 186,
+          "semantic_test_candidates": 189,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -24753,14 +24753,14 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 196,
+        "test_evidence_total_count": 198,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "field_type_and_default": ":Map<String, Dynamic> = new Map()",
         "test_evidence_summary": {
           "name_reference_count": 7,
-          "semantic_test_candidates": 189,
+          "semantic_test_candidates": 191,
           "behavior_proof_count": 0
         },
         "coverage_status": "unverified",
@@ -24879,11 +24879,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -25048,7 +25048,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8056
+            "line": 8189
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -25291,9 +25291,22 @@
           "writes": [],
           "classification": "syntactic source observations, not a complete semantic effect analysis"
         },
-        "test_evidence": [],
-        "test_evidence_total_count": 0,
-        "test_evidence_sample_is_complete": true,
+        "test_evidence": [
+          {
+            "path": "tools/tests/test_import_io.py",
+            "line": 136,
+            "evidence_kind": "test-file-semantic-candidate",
+            "behavior_proof": false
+          },
+          {
+            "path": "tools/tests/test_import_refresh_manager.py",
+            "line": 624,
+            "evidence_kind": "test-file-semantic-candidate",
+            "behavior_proof": false
+          }
+        ],
+        "test_evidence_total_count": 4,
+        "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
         "binding": "value-expression",
@@ -25305,7 +25318,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 0,
+          "semantic_test_candidates": 4,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -25319,11 +25332,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -25379,7 +25392,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 120,
+        "test_evidence_total_count": 122,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -25392,7 +25405,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 5,
-          "semantic_test_candidates": 115,
+          "semantic_test_candidates": 117,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -25465,11 +25478,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8046
+            "line": 8179
           },
           {
             "path": "source/PlayState.hx",
-            "line": 902
+            "line": 988
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -25513,7 +25526,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 75,
+        "test_evidence_total_count": 77,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -25526,7 +25539,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 75,
+          "semantic_test_candidates": 77,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -25534,15 +25547,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 970
+            "line": 1056
           },
           {
             "path": "source/PlayState.hx",
-            "line": 9531
+            "line": 9664
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10919
+            "line": 11121
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -25592,7 +25605,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 38,
+        "test_evidence_total_count": 39,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -25605,7 +25618,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 37,
+          "semantic_test_candidates": 38,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -25613,7 +25626,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8045
+            "line": 8178
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -25684,11 +25697,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -25817,11 +25830,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -25913,11 +25926,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -25975,11 +25988,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -26037,11 +26050,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -26099,11 +26112,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -26200,7 +26213,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7995
+            "line": 8128
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -26258,11 +26271,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -26312,7 +26325,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 161,
+        "test_evidence_total_count": 172,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -26325,7 +26338,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 160,
+          "semantic_test_candidates": 171,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -26383,7 +26396,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 121,
+        "test_evidence_total_count": 127,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -26396,7 +26409,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 120,
+          "semantic_test_candidates": 126,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -26534,15 +26547,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9527
+            "line": 9660
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10912
+            "line": 11114
           },
           {
             "path": "source/PlayState.hx",
-            "line": 892
+            "line": 978
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -26607,15 +26620,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9529
+            "line": 9662
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10916
+            "line": 11118
           },
           {
             "path": "source/PlayState.hx",
-            "line": 893
+            "line": 979
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -26686,7 +26699,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 891
+            "line": 977
           },
           {
             "path": "source/PluginManager.hx",
@@ -26746,7 +26759,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 184,
+        "test_evidence_total_count": 188,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -26759,7 +26772,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 7,
-          "semantic_test_candidates": 177,
+          "semantic_test_candidates": 181,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -26767,15 +26780,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9523
+            "line": 9656
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10911
+            "line": 11113
           },
           {
             "path": "source/PlayState.hx",
-            "line": 885
+            "line": 971
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -26840,7 +26853,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           },
           {
             "path": "source/PluginManager.hx",
@@ -26965,7 +26978,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 94,
+        "test_evidence_total_count": 95,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -26978,7 +26991,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 4,
-          "semantic_test_candidates": 90,
+          "semantic_test_candidates": 91,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -26986,15 +26999,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9524
+            "line": 9657
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10913
+            "line": 11115
           },
           {
             "path": "source/PlayState.hx",
-            "line": 886
+            "line": 972
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -27059,7 +27072,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 891
+            "line": 977
           },
           {
             "path": "source/PluginManager.hx",
@@ -27128,15 +27141,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9526
+            "line": 9659
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10915
+            "line": 11117
           },
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -27180,7 +27193,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 45,
+        "test_evidence_total_count": 46,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -27193,7 +27206,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 45,
+          "semantic_test_candidates": 46,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -27201,15 +27214,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9522
+            "line": 9655
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10909
+            "line": 11111
           },
           {
             "path": "source/PlayState.hx",
-            "line": 890
+            "line": 976
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -27274,11 +27287,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7948
+            "line": 8081
           },
           {
             "path": "source/PlayState.hx",
-            "line": 903
+            "line": 989
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -27347,11 +27360,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7947
+            "line": 8080
           },
           {
             "path": "source/PlayState.hx",
-            "line": 904
+            "line": 990
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -27606,7 +27619,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 144,
+        "test_evidence_total_count": 147,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -27619,7 +27632,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 9,
-          "semantic_test_candidates": 135,
+          "semantic_test_candidates": 138,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -27633,11 +27646,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -28239,7 +28252,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7783
+            "line": 7916
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -28346,11 +28359,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -28430,7 +28443,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7903
+            "line": 8036
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -28690,7 +28703,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7904
+            "line": 8037
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -28960,7 +28973,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 117,
+        "test_evidence_total_count": 119,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -28973,7 +28986,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 2,
-          "semantic_test_candidates": 115,
+          "semantic_test_candidates": 117,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -28981,7 +28994,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8054
+            "line": 8187
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -29062,11 +29075,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29122,7 +29135,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 85,
+        "test_evidence_total_count": 86,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -29135,7 +29148,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 3,
-          "semantic_test_candidates": 82,
+          "semantic_test_candidates": 83,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -29143,15 +29156,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9519
+            "line": 9652
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10907
+            "line": 11109
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13057
+            "line": 13259
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -29207,7 +29220,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 376,
+        "test_evidence_total_count": 383,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -29220,7 +29233,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 14,
-          "semantic_test_candidates": 362,
+          "semantic_test_candidates": 369,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -29228,15 +29241,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 8057
+            "line": 8190
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12876
+            "line": 13078
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13328
+            "line": 13530
           }
         ],
         "coverage_evidence_kind": "literal-seed-or-map-binding"
@@ -29307,11 +29320,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29407,11 +29420,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29521,11 +29534,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29590,7 +29603,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12958
+            "line": 13160
           },
           {
             "path": "source/PluginManager.hx",
@@ -29638,7 +29651,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 166,
+        "test_evidence_total_count": 177,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -29651,7 +29664,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 166,
+          "semantic_test_candidates": 177,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -29659,7 +29672,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 884
+            "line": 970
           },
           {
             "path": "source/PluginManager.hx",
@@ -29719,7 +29732,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 320,
+        "test_evidence_total_count": 332,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -29731,8 +29744,8 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "failure_evidence": [],
         "test_evidence_summary": {
-          "name_reference_count": 6,
-          "semantic_test_candidates": 314,
+          "name_reference_count": 7,
+          "semantic_test_candidates": 325,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -29746,11 +29759,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29806,7 +29819,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 43,
+        "test_evidence_total_count": 44,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -29819,7 +29832,7 @@
         "failure_evidence": [],
         "test_evidence_summary": {
           "name_reference_count": 4,
-          "semantic_test_candidates": 39,
+          "semantic_test_candidates": 40,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -29833,11 +29846,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "explicit-installed-source-binder"
@@ -29937,11 +29950,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -30092,11 +30105,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -30203,12 +30216,18 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_psych_grid_sprite_animation.py",
-            "line": 244,
+            "line": 253,
+            "evidence_kind": "test-file-semantic-candidate",
+            "behavior_proof": false
+          },
+          {
+            "path": "tools/tests/test_psych_reused_owner_graphic_lifecycle.py",
+            "line": 203,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 1,
+        "test_evidence_total_count": 2,
         "test_evidence_sample_is_complete": true,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -30222,7 +30241,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 1,
+          "semantic_test_candidates": 2,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -30230,7 +30249,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7857
+            "line": 7990
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -30343,7 +30362,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7859
+            "line": 7992
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -30600,7 +30619,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7858
+            "line": 7991
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -30983,7 +31002,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7860
+            "line": 7993
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -31240,11 +31259,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1143
+            "line": 1229
           },
           {
             "path": "source/PlayState.hx",
-            "line": 7917
+            "line": 8050
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -31857,7 +31876,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_compat_script_import.py",
-            "line": 194,
+            "line": 227,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -31890,7 +31909,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12810
+            "line": 13012
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -32005,7 +32024,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 6,
+        "test_evidence_total_count": 7,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -32019,7 +32038,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 6,
+          "semantic_test_candidates": 7,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -32027,7 +32046,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7848
+            "line": 7981
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -32118,7 +32137,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7849
+            "line": 7982
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -32918,7 +32937,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 88,
+        "test_evidence_total_count": 91,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -32932,7 +32951,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 88,
+          "semantic_test_candidates": 91,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -33050,7 +33069,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7954
+            "line": 8087
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -33749,7 +33768,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7921
+            "line": 8054
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -33855,7 +33874,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7920
+            "line": 8053
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34038,7 +34057,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7919
+            "line": 8052
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34105,7 +34124,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7897
+            "line": 8030
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34179,7 +34198,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7898
+            "line": 8031
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34281,11 +34300,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -34499,11 +34518,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -34604,7 +34623,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7895
+            "line": 8028
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34722,7 +34741,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7863
+            "line": 7996
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -34932,7 +34951,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7779
+            "line": 7912
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -35009,7 +35028,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7953
+            "line": 8086
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -35300,7 +35319,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7995
+            "line": 8128
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -35406,7 +35425,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 28,
+        "test_evidence_total_count": 30,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -35420,7 +35439,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 28,
+          "semantic_test_candidates": 30,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -35631,7 +35650,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7877
+            "line": 8010
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -35749,7 +35768,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7878
+            "line": 8011
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -35932,7 +35951,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7880
+            "line": 8013
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36050,7 +36069,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7875
+            "line": 8008
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36168,7 +36187,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7876
+            "line": 8009
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36327,7 +36346,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7879
+            "line": 8012
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36408,11 +36427,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12886
+            "line": 13088
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12888
+            "line": 13090
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36633,7 +36652,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7951
+            "line": 8084
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -36807,15 +36826,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 9529
+            "line": 9662
           },
           {
             "path": "source/PlayState.hx",
-            "line": 10916
+            "line": 11118
           },
           {
             "path": "source/PlayState.hx",
-            "line": 893
+            "line": 979
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -37423,11 +37442,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -37937,7 +37956,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7909
+            "line": 8042
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -38289,11 +38308,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -38907,7 +38926,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7783
+            "line": 7916
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -38996,7 +39015,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7905
+            "line": 8038
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -39085,7 +39104,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7906
+            "line": 8039
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -39256,7 +39275,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7831
+            "line": 7964
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -39474,7 +39493,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 42,
+        "test_evidence_total_count": 43,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -39488,7 +39507,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 41,
+          "semantic_test_candidates": 42,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -39496,11 +39515,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7817
+            "line": 7950
           },
           {
             "path": "source/PlayState.hx",
-            "line": 7824
+            "line": 7957
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -39657,7 +39676,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7828
+            "line": 7961
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -39866,7 +39885,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7826
+            "line": 7959
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -40101,7 +40120,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7901
+            "line": 8034
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -40218,7 +40237,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7900
+            "line": 8033
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -40341,7 +40360,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7899
+            "line": 8032
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -41386,7 +41405,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7991
+            "line": 8124
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -41794,7 +41813,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7893
+            "line": 8026
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -41855,7 +41874,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nightmare_vision_paths.py",
-            "line": 166,
+            "line": 233,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -42093,7 +42112,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7894
+            "line": 8027
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -42264,11 +42283,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -42475,7 +42494,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7922
+            "line": 8055
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -42900,11 +42919,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -43110,7 +43129,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7903
+            "line": 8036
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -43374,7 +43393,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7904
+            "line": 8037
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -43680,7 +43699,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_psych_owner_paths.py",
-            "line": 158,
+            "line": 168,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -43707,7 +43726,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7844
+            "line": 7977
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -43937,7 +43956,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 27,
+        "test_evidence_total_count": 28,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -43951,7 +43970,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 27,
+          "semantic_test_candidates": 28,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -43959,7 +43978,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7872
+            "line": 8005
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -44213,7 +44232,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7949
+            "line": 8082
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45132,7 +45151,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7839
+            "line": 7972
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45276,7 +45295,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7842
+            "line": 7975
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45405,7 +45424,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7874
+            "line": 8007
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45530,7 +45549,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 5,
+        "test_evidence_total_count": 6,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -45544,7 +45563,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 4,
+          "semantic_test_candidates": 5,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -45552,7 +45571,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7836
+            "line": 7969
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45703,7 +45722,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7847
+            "line": 7980
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -45800,7 +45819,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7908
+            "line": 8041
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -46278,7 +46297,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7883
+            "line": 8016
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -46390,7 +46409,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7884
+            "line": 8017
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -46620,7 +46639,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7881
+            "line": 8014
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -46732,7 +46751,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7882
+            "line": 8015
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -46881,7 +46900,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7861
+            "line": 7994
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47107,7 +47126,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7952
+            "line": 8085
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47332,7 +47351,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 46,
+        "test_evidence_total_count": 48,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -47346,7 +47365,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 45,
+          "semantic_test_candidates": 47,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -47354,7 +47373,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7862
+            "line": 7995
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47438,7 +47457,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 6,
+        "test_evidence_total_count": 7,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -47452,7 +47471,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 5,
+          "semantic_test_candidates": 6,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -47460,7 +47479,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7945
+            "line": 8078
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47642,7 +47661,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7939
+            "line": 8072
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47730,7 +47749,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7911
+            "line": 8044
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47797,7 +47816,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7915
+            "line": 8048
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -47864,7 +47883,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7913
+            "line": 8046
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -48263,7 +48282,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12812
+            "line": 13014
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -48406,7 +48425,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7850
+            "line": 7983
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -48518,7 +48537,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7851
+            "line": 7984
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -48710,7 +48729,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7950
+            "line": 8083
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -49218,7 +49237,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7896
+            "line": 8029
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -49447,7 +49466,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7891
+            "line": 8024
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -49604,7 +49623,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7834
+            "line": 7967
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -49749,7 +49768,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7835
+            "line": 7968
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -49878,11 +49897,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -50057,7 +50076,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7910
+            "line": 8043
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -50644,7 +50663,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7870
+            "line": 8003
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -50810,7 +50829,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7867
+            "line": 8000
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -51125,7 +51144,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7833
+            "line": 7966
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -51323,13 +51342,19 @@
         },
         "test_evidence": [
           {
+            "path": "tools/tests/test_psych_reused_owner_graphic_lifecycle.py",
+            "line": 206,
+            "evidence_kind": "test-file-semantic-candidate",
+            "behavior_proof": false
+          },
+          {
             "path": "tools/tests/test_psych_stage_compat.py",
             "line": 113,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 1,
+        "test_evidence_total_count": 2,
         "test_evidence_sample_is_complete": true,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -51343,7 +51368,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 0,
-          "semantic_test_candidates": 1,
+          "semantic_test_candidates": 2,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -51351,7 +51376,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7829
+            "line": 7962
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -51512,7 +51537,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7830
+            "line": 7963
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -51959,7 +51984,7 @@
             "behavior_proof": false
           }
         ],
-        "test_evidence_total_count": 39,
+        "test_evidence_total_count": 40,
         "test_evidence_sample_is_complete": false,
         "test_evidence_sample_limit_per_kind": 2,
         "behavioral_verification": "unverified",
@@ -51973,7 +51998,7 @@
         "failure_behavior": "not-stated-in-nearby-source",
         "test_evidence_summary": {
           "name_reference_count": 1,
-          "semantic_test_candidates": 38,
+          "semantic_test_candidates": 39,
           "behavior_proof_count": 0
         },
         "coverage_status": "implemented",
@@ -51981,7 +52006,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7814
+            "line": 7947
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -52166,7 +52191,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7827
+            "line": 7960
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -52366,7 +52391,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7825
+            "line": 7958
           },
           {
             "path": "source/PsychReflectionBindings.hx",
@@ -52955,7 +52980,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7832
+            "line": 7965
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -53322,7 +53347,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7927
+            "line": 8060
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -54355,7 +54380,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7926
+            "line": 8059
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -54497,7 +54522,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7892
+            "line": 8025
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -54747,7 +54772,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7868
+            "line": 8001
           },
           {
             "path": "source/PsychSourceBindings.hx",
@@ -54866,7 +54891,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7866
+            "line": 7999
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -54988,7 +55013,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7869
+            "line": 8002
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -55321,7 +55346,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7865
+            "line": 7998
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -55432,7 +55457,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7864
+            "line": 7997
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -55966,7 +55991,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7943
+            "line": 8076
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -56085,7 +56110,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7942
+            "line": 8075
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -56174,7 +56199,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7809
+            "line": 7942
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -56346,7 +56371,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7810
+            "line": 7943
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -56548,7 +56573,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7890
+            "line": 8023
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -56823,7 +56848,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7944
+            "line": 8077
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -57248,7 +57273,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7918
+            "line": 8051
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -57361,11 +57386,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         ],
         "coverage_evidence_kind": "static-engine-binding",
@@ -57512,7 +57537,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 7871
+            "line": 8004
           }
         ],
         "coverage_evidence_kind": "static-engine-binding"
@@ -57775,7 +57800,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12543
+            "line": 12745
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -57894,15 +57919,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 25238
+            "line": 25459
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25233
+            "line": 25454
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25259
+            "line": 25480
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -57940,7 +57965,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_nv_hit_order.py",
-            "line": 417,
+            "line": 420,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -58021,15 +58046,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3807
+            "line": 3926
           },
           {
             "path": "source/PlayState.hx",
-            "line": 3803
+            "line": 3922
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24767
+            "line": 24981
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -58148,15 +58173,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 24352
+            "line": 24566
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24432
+            "line": 24646
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24647
+            "line": 24861
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -58246,15 +58271,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3656
+            "line": 3775
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24352
+            "line": 24566
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24432
+            "line": 24646
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -58344,11 +58369,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15686
+            "line": 15888
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25438
+            "line": 25659
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58428,7 +58453,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3819
+            "line": 3938
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -58543,7 +58568,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15175
+            "line": 15377
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58577,7 +58602,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_compat_script_import.py",
-            "line": 200,
+            "line": 233,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           },
@@ -58620,11 +58645,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13162
+            "line": 13364
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13368
+            "line": 13570
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58704,7 +58729,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 14245
+            "line": 14447
           },
           {
             "path": "source/EngineCompat.hx",
@@ -58712,7 +58737,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 13167
+            "line": 13369
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58777,11 +58802,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 11877
+            "line": 12079
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15122
+            "line": 15324
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58868,11 +58893,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22255
+            "line": 22468
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22307
+            "line": 22520
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -58959,7 +58984,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 17736
+            "line": 17938
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59040,7 +59065,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12528
+            "line": 12730
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59117,7 +59142,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 1990
+            "line": 2088
           },
           {
             "path": "source/EngineCompat.hx",
@@ -59125,7 +59150,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 5616
+            "line": 5735
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -59245,7 +59270,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22944
+            "line": 23157
           },
           {
             "path": "source/GameOverSubstate.hx",
@@ -59341,7 +59366,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22944
+            "line": 23157
           },
           {
             "path": "source/EngineCompat.hx",
@@ -59385,7 +59410,7 @@
           },
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 315,
+            "line": 318,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -59429,7 +59454,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23543
+            "line": 23756
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59513,7 +59538,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23547
+            "line": 23760
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59591,7 +59616,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23524
+            "line": 23737
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59669,7 +59694,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23559
+            "line": 23772
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59703,7 +59728,7 @@
         "test_evidence": [
           {
             "path": "tools/tests/test_source_input_lifecycle.py",
-            "line": 352,
+            "line": 355,
             "evidence_kind": "test-file-semantic-candidate",
             "behavior_proof": false
           }
@@ -59747,7 +59772,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23557
+            "line": 23770
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59883,7 +59908,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 12093
+            "line": 12295
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -59961,7 +59986,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 6916
+            "line": 7036
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -60056,7 +60081,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 21020
+            "line": 21232
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -60145,7 +60170,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23230
+            "line": 23443
           },
           {
             "path": "source/EngineCompat.hx",
@@ -60153,7 +60178,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 23232
+            "line": 23445
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -60233,7 +60258,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 20483
+            "line": 20695
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -60317,7 +60342,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25327
+            "line": 25548
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -60395,7 +60420,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 6919
+            "line": 7039
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -60479,7 +60504,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15671
+            "line": 15873
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -60593,11 +60618,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3795
+            "line": 3914
           },
           {
             "path": "source/PlayState.hx",
-            "line": 3796
+            "line": 3915
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -60708,11 +60733,11 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 15226
+            "line": 15428
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15379
+            "line": 15581
           },
           {
             "path": "source/EngineCompat.hx",
@@ -60800,11 +60825,11 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 15685
+            "line": 15887
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25302
+            "line": 25523
           }
         ],
         "coverage_evidence_kind": "callback-name-alias",
@@ -60924,7 +60949,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22944
+            "line": 23157
           },
           {
             "path": "source/EngineCompat.hx",
@@ -61042,7 +61067,7 @@
           },
           {
             "path": "source/PlayState.hx",
-            "line": 22944
+            "line": 23157
           },
           {
             "path": "source/EngineCompat.hx",
@@ -61130,7 +61155,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23180
+            "line": 23393
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -61249,15 +61274,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 25238
+            "line": 25459
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25233
+            "line": 25454
           },
           {
             "path": "source/PlayState.hx",
-            "line": 25259
+            "line": 25480
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -61376,15 +61401,15 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 3807
+            "line": 3926
           },
           {
             "path": "source/PlayState.hx",
-            "line": 3803
+            "line": 3922
           },
           {
             "path": "source/PlayState.hx",
-            "line": 24767
+            "line": 24981
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -61463,7 +61488,7 @@
         "coverage_evidence_refs": [
           {
             "path": "source/PlayState.hx",
-            "line": 23176
+            "line": 23389
           }
         ],
         "coverage_evidence_kind": "literal-dispatch",
@@ -62451,12 +62476,12 @@
       ],
       "source": {
         "path": "source/PlayState.hx",
-        "line": 3656
+        "line": 3775
       },
       "append_sites": [
         {
           "path": "source/PlayState.hx",
-          "line": 3658
+          "line": 3777
         }
       ],
       "evidence_kind": "conditional-argument-adapter",
@@ -62487,7 +62512,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -62495,7 +62520,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -62503,7 +62528,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -62511,7 +62536,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -62736,7 +62761,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -62744,7 +62769,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -62752,7 +62777,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -62760,7 +62785,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63001,7 +63026,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           }
         },
         {
@@ -63009,7 +63034,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63017,7 +63042,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63025,7 +63050,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63140,7 +63165,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -63148,7 +63173,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63156,7 +63181,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63164,7 +63189,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63245,7 +63270,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           }
         },
         {
@@ -63253,7 +63278,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63261,7 +63286,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63269,7 +63294,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63360,7 +63385,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12733
+            "line": 12935
           }
         },
         {
@@ -63368,7 +63393,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63376,7 +63401,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63384,7 +63409,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63475,7 +63500,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -63483,7 +63508,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63491,7 +63516,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63499,7 +63524,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63596,7 +63621,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -63604,7 +63629,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63612,7 +63637,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63620,7 +63645,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63725,7 +63750,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -63733,7 +63758,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63741,7 +63766,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63749,7 +63774,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63846,7 +63871,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 12732
+            "line": 12934
           }
         },
         {
@@ -63854,7 +63879,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 13053
+            "line": 13255
           }
         },
         {
@@ -63862,7 +63887,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8063
+            "line": 8196
           }
         },
         {
@@ -63870,7 +63895,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 8064
+            "line": 8197
           }
         },
         {
@@ -63975,7 +64000,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1296
+            "line": 1382
           }
         },
         {
@@ -63996,7 +64021,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1091
+            "line": 1177
           }
         },
         {
@@ -64004,7 +64029,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1026
+            "line": 1112
           }
         },
         {
@@ -64046,7 +64071,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1296
+            "line": 1382
           }
         },
         {
@@ -64067,7 +64092,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1091
+            "line": 1177
           }
         },
         {
@@ -64075,7 +64100,7 @@
           "status": "found",
           "source": {
             "path": "source/PlayState.hx",
-            "line": 1110
+            "line": 1196
           }
         },
         {
@@ -64193,7 +64218,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64215,7 +64240,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64237,7 +64262,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64259,7 +64284,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64281,7 +64306,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64303,7 +64328,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64325,7 +64350,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64347,7 +64372,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64369,7 +64394,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64391,7 +64416,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64413,7 +64438,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64435,7 +64460,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64457,7 +64482,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64479,7 +64504,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "caller_source": {
           "path": "source/GameOverSubstate.hx",
@@ -64517,7 +64542,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 3778
+          "line": 3897
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64534,7 +64559,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 3835
+          "line": 3954
         },
         "return_use": "used-in-conditional"
       },
@@ -64550,7 +64575,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 4799
+          "line": 4918
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64567,7 +64592,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 8383
+          "line": 8516
         },
         "return_use": "used-in-conditional"
       },
@@ -64583,7 +64608,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 21749
+          "line": 21961
         },
         "return_use": "used-in-conditional"
       },
@@ -64599,7 +64624,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 21826
+          "line": 22038
         },
         "return_use": "used-in-conditional"
       },
@@ -64618,7 +64643,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 24269
+          "line": 24483
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64634,7 +64659,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 24430
+          "line": 24644
         },
         "return_use": "used-in-conditional"
       },
@@ -64656,7 +64681,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 24431
+          "line": 24645
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64672,7 +64697,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 24550
+          "line": 24764
         },
         "return_use": "used-in-conditional"
       },
@@ -64694,7 +64719,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25188
+          "line": 25409
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64710,7 +64735,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25195
+          "line": 25416
         },
         "return_use": "used-in-conditional"
       },
@@ -64726,7 +64751,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25198
+          "line": 25419
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64748,7 +64773,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25262
+          "line": 25483
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64764,7 +64789,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25264
+          "line": 25485
         },
         "return_use": "used-in-conditional"
       },
@@ -64780,7 +64805,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25268
+          "line": 25489
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64795,7 +64820,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 826
+          "line": 912
         },
         "return_use": "returned-to-caller"
       },
@@ -64810,7 +64835,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25071
+          "line": 25285
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64827,7 +64852,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25224
+          "line": 25445
         },
         "return_use": "compared-to-script-sentinel"
       },
@@ -64846,7 +64871,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 3807
+          "line": 3926
         },
         "return_use": "assigned-to-local"
       },
@@ -64865,7 +64890,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 3810
+          "line": 3929
         },
         "return_use": "compared-to-script-sentinel"
       },
@@ -64884,7 +64909,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22944
+          "line": 23157
         },
         "return_use": "returned-to-caller"
       },
@@ -64900,7 +64925,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 24392
+          "line": 24606
         },
         "return_use": "returned-to-caller"
       },
@@ -64919,7 +64944,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 25238
+          "line": 25459
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64934,7 +64959,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22931
+          "line": 23144
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -64949,7 +64974,7 @@
         ],
         "source": {
           "path": "source/PlayState.hx",
-          "line": 22940
+          "line": 23153
         },
         "return_use": "returned-to-caller"
       },
@@ -65115,7 +65140,7 @@
         ],
         "source": {
           "path": "source/RuntimeNvStateProbe.hx",
-          "line": 684
+          "line": 686
         },
         "return_use": "return-value-not-observed-in-containing-statement"
       },
@@ -65145,7 +65170,7 @@
         "expression": "FlxG.state",
         "source": {
           "path": "source/PlayState.hx",
-          "line": 883
+          "line": 969
         }
       },
       {
@@ -65153,7 +65178,7 @@
         "expression": "PlayState",
         "source": {
           "path": "source/PlayState.hx",
-          "line": 901
+          "line": 987
         }
       },
       {
@@ -65161,13 +65186,13 @@
         "expression": "this",
         "source": {
           "path": "source/PlayState.hx",
-          "line": 1134
+          "line": 1220
         }
       }
     ],
     "class_parent": {
       "path": "source/PlayState.hx",
-      "line": 1093
+      "line": 1179
     },
     "resolver": [
       {

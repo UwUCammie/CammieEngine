@@ -1,6 +1,16 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.19 alpha - CammieEngine
+	- Respect Nightmare Vision's authored V-Slice sustain animation mode, allowing one-shot event animations to continue while sustain notes score normally.
+	- Restore Nightmare Vision sing-duration and return-animation behavior for player and opponent characters, including manual hold release and live script changes to sing duration.
+	- Resolve prefixed custom note atlases through the selected field skin and retained explicit note texture, preserving the owner boundary and authored colors.
+	- Capture target and library preload metadata in shared Psych/Nightmare Vision asset indexes when exact source build context is retained; keep unknown contexts unresolved and refresh older imports from retained sources.
+	- Load verified Psych file-backed Lime/OpenFL libraries privately per owner, share their typed preload caches, and preserve live libraries when unrelated imports finish.
+	- Retire stale and detached source library handles when their owner changes, clearing cached resources and rejecting delayed results from the old owner.
+	- Keep asset caches isolated while owner imports are pending, bind them before the first verified read, and honor source typed-asset cache flags.
+	- Decode owner fonts from verified bytes and stream owner music from private immutable copies, allowing refreshed files to replace managed outputs while old loaded resources remain usable.
+
 v0.0.18 alpha - CammieEngine
 	- Accept verified legacy retained-source receipts and preserve independent installed owners when importing a parent mod folder.
 	- Preserve custom note prefixes, palettes and partial animation atlases through field attachment, source reloads and skin changes; restore receptor coloring from the selected skin.

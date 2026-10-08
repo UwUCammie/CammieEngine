@@ -53,6 +53,10 @@ class FakeAnimation {
   public function getByName(_name:String):Dynamic return null;
 }
 class FlxColor { public static inline var WHITE:Int = 0xFFFFFFFF; }
+class SourceCharacterAnimationLifecycle {
+  public static function returnAnimation(_currentName:Null<String>, _returnExists:Bool,
+    _nightmareVision:Bool, _debugMode:Bool, _specialAnim:Bool):Null<String> return null;
+}
 class PlayState {
   public static var instance:PlayState = null;
   public function new() {}
@@ -61,6 +65,7 @@ class PlayState {
 }
 class Character {
   public var skipDance:Bool = false;
+  var sourceDanceNightmare:Bool = false;
   public var nightmareVisionCharacterData:Dynamic = null;
   public var codenameLiveDefinition:Dynamic = null;
   var codenameVisualBuilding:Bool = false;

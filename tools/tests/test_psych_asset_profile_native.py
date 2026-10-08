@@ -193,11 +193,16 @@ class PsychAssetProfileNativeTest(unittest.TestCase):
                 result = self.run_fixture('source-asset-profile', captured['snapshotRoot'],
                     captured['snapshotId'], '', engine, 'include-profile-owner', json.dumps(context), 'language')
                 self.assertTrue(result['ok'], result)
-                self.assertEqual(result['profile']['version'], 3)
+                self.assertEqual(result['profile']['version'], 4)
                 self.assertEqual(result['walk']['status'], 'complete', result)
                 self.assertEqual(result['profile']['libraries'], [
                     {'order': 0, 'name': 'empty-test', 'state': 'enabled',
-                     'sourcePath': '', 'conditions': [], 'diagnostic': ''}])
+                     'sourcePath': '', 'type': '', 'typeState': 'known',
+                     'embed': None, 'embedState': 'known',
+                     'preload': False, 'preloadState': 'known',
+                     'generate': False, 'generateState': 'known',
+                     'prefix': '', 'prefixState': 'known',
+                     'conditions': [], 'diagnostic': ''}])
                 self.assertTrue(result['profile']['librariesComplete'], result)
                 self.assertEqual([row['ownerRelative'] for row in result['mapped']], [
                     'from-include/shared/data/pt-BR.lang', 'after/shared/data/pt-BR.lang'], result)

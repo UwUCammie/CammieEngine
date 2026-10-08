@@ -69,7 +69,10 @@ class CodenameCharacterEvent {
  public function new() {}
 }
 class Conductor { public static var songPosition:Float=123; }
-class PlayState { public static var instance:Dynamic=null; }
+class PlayState {
+ public static var instance:Dynamic=null;
+ public function sourceNoteTimingMode():Int return 0;
+}
 class Character {
  public var codenameLiveDefinition:Dynamic={animations:[{name:'plain',forced:false},
   {name:'forced',forced:true}]};
@@ -91,6 +94,7 @@ class Character {
  public var animOffsets:Map<String,Array<Dynamic>>=[];
  public var vSliceBaseFrames:Dynamic=null;
  public var isDie=false; public var likeGf=false; public var danced=false;
+ public var specialAnim=false; var sourceDanceNightmare=false;
  public var stunned=false; var codenameStunnedTime:Float=0;
  public var debugMode=false;
  public var lastAnimContext:Dynamic=null; public var lastHit:Float=0;

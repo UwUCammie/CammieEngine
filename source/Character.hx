@@ -84,6 +84,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var ghostDraw:Bool = false;
 	@:keep public var playerOffsets:Bool = false;
 	@:keep public var holdTime:Float = 4;
+	/** NV's source-facing CharacterData duration. Keep the legacy holdTime
+	 * alias for host paths which still consume it. */
+	@:keep public var singDuration:Float = 4;
 	@:keep public var beatInterval:Int = 2;
 	@:keep public var beatOffset:Int = 0;
 	@:keep public var danceOnBeat:Bool = true;
@@ -249,6 +252,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	 * array reference. The array triplet has precedence over the packed color. */
 	function loadNightmareVisionHealthColors(definition:Dynamic):Void {
 		nightmareVisionCharacterData = definition;
+		loadNightmareVisionCharacterFlags(definition);
 		nightmareVisionHealthColour = null;
 		var authored:Dynamic = definition == null ? null : Reflect.field(definition, 'healthbar_colors');
 		if (Std.isOfType(authored, Array)) {
@@ -263,6 +267,14 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			}
 		}
 		healthColorArray = nightmareVisionColorArrayFromPacked(healthColour);
+	}
+
+	function loadNightmareVisionCharacterFlags(definition:Dynamic):Void {
+		vSliceSustains = definition != null && Reflect.field(definition, 'vslice_sustains') == true;
+		if (definition != null) {
+			singDuration = nightmareVisionNumber(Reflect.field(definition, 'sing_duration'), singDuration);
+			holdTime = singDuration;
+		}
 	}
 
 	function set_healthIcon(value:String):String {
@@ -345,8 +357,28 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	function set_danceEveryNumBeats(value:Int):Int return danceEvery = value;
 	@:keep public var danceIdle:Bool = false;
 	var sourceDanceNightmare:Bool = false;
+	/** Whether this actor's live animation contract is owned by Nightmare Vision.
+	 * Character hold leases must not alter native, Psych, or Codename actors. */
+	@:keep public function isNightmareVisionSourceActor():Bool
+		return sourceDanceNightmare && codenameLiveDefinition == null && !codenameVisualBuilding;
+	/** Pinned NV CharacterData switch for suppressing sustain-piece animation
+	 * restarts while preserving the sing head and manual hold state. */
+	@:keep public var vSliceSustains:Bool = false;
 	/** NV's script-facing sustain animation lease; other dialects keep their own cadence. */
-	@:keep public var holding:Bool = false;
+	@:keep public var holding(get, set):Bool;
+	var nightmareVisionHolding:Bool = false;
+	function get_holding():Bool return nightmareVisionHolding;
+	function set_holding(value:Bool):Bool {
+		if (!value && nightmareVisionHolding && sourceDanceNightmare
+			&& holdTimer >= Conductor.stepCrochet * 0.001 * nightmareVisionSingDuration()) {
+			dance(forceDance);
+			holdTimer = 0;
+		}
+		return nightmareVisionHolding = value;
+	}
+	function nightmareVisionSingDuration():Float {
+		return singDuration;
+	}
 	/** Pinned NV Character -> Bopper beat callback for script-created stage actors. */
 	@:keep public function onBeatHit(beat:Int):Void {
 		if ((!sourceDanceNightmare && nightmareVisionCharacterData == null)
@@ -1076,9 +1108,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			flipX = PsychCharacterOrientation.flipX(Reflect.field(definition, 'flip_x') == true, isPlayer);
 			antialiasing = Reflect.field(definition, 'no_antialiasing') != true;
 			this.cameraPosition = nightmareVisionPair(Reflect.field(definition, 'camera_position'));
-			var singDuration = nightmareVisionNumber(Reflect.field(definition, 'sing_duration'), holdTime);
-			if (singDuration > 0)
-				holdTime = singDuration;
+			var authoredSingDuration = nightmareVisionNumber(Reflect.field(definition, 'sing_duration'), singDuration);
+			singDuration = authoredSingDuration;
+			holdTime = authoredSingDuration;
 			this.danceEveryNumBeats = Std.int(nightmareVisionNumber(Reflect.field(definition, 'dance_every'), 2));
 			beatInterval = this.danceEveryNumBeats;
 			var position:Array<Float> = nightmareVisionPair(Reflect.field(definition, 'position'));
@@ -1231,6 +1263,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		var nightmareVisionCharacterOwned = nightmareVisionOwnerRoot != ''
 			&& nightmareVisionOwnedCharacter != null;
 		if (nightmareVisionCharacterOwned) {
+			loadNightmareVisionCharacterFlags(nightmareVisionOwnedCharacter);
 			nightmareVisionHealthIcon = nightmareVisionHealthIconFromDefinition(nightmareVisionOwnedCharacter);
 			gameoverCharacter = nightmareVisionNullableString(nightmareVisionOwnedCharacter, 'gameover_character');
 			gameoverConfirmDeathSound = nightmareVisionNullableString(nightmareVisionOwnedCharacter,
@@ -1603,17 +1636,23 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			if (heyTimer <= 0) {
 				heyTimer = 0;
 				var activeName = animationName(this);
-				if (specialAnim && (activeName == 'hey' || activeName == 'cheer')) {
+				if (specialAnim && (activeName == 'hey' || activeName == 'cheer')
+					&& SourceCharacterAnimationLifecycle.mayFinishSpecial(sourceDanceNightmare, holding)) {
 					specialAnim = false;
 					dance();
 				}
 			}
 		}
-		if (specialAnim && heyTimer <= 0 && animation.curAnim != null && animation.curAnim.finished) {
+		if (specialAnim && heyTimer <= 0 && animation.curAnim != null && animation.curAnim.finished
+			&& SourceCharacterAnimationLifecycle.mayFinishSpecial(sourceDanceNightmare, holding)) {
 			specialAnim = false;
 			// Nightmare Vision returns to the normal dance as soon as a
 			// one-shot special animation completes, even between beats.
-			if (nightmareVisionCharacterData != null) dance();
+			if (sourceDanceNightmare) dance();
+		} else if (animation.curAnim != null
+			&& SourceCharacterAnimationLifecycle.finishesReturn(sourceDanceNightmare,
+				animation.curAnim.name, animation.curAnim.finished)) {
+			dance();
 		}
 		var currentAnim = animationName(this);
 		if (animation.curAnim != null && animation.curAnim.finished) {
@@ -1628,9 +1667,11 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		//curCharacter = curCharacter.trim();
 		//var charJson:Dynamic = Json.parse(Assets.getText('assets/images/custom_chars/custom_chars.json'));
 		//var animJson = File.getContent("assets/images/custom_chars/"+Reflect.field(charJson,curCharacter).like+".json");
-		if (beingControlled) {
+		if (!SourceCharacterAnimationLifecycle.usesSingDurationFallback(sourceDanceNightmare,
+			beingControlled)) {
 			if (!debugMode) {
-				if (currentAnim.startsWith('sing') || singPriority.contains(currentAnim))
+				if (SourceCharacterAnimationLifecycle.shouldAccumulateSingDuration(false,
+					currentAnim, singPriority, holding))
 					holdTimer += elapsed;
 				else
 					holdTimer = 0;
@@ -1644,15 +1685,20 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 					playAnim('deathLoop');
 			}
 		}
-		if (!beingControlled) {
-			if (currentAnim.startsWith('sing') || singPriority.contains(currentAnim))
+		if (SourceCharacterAnimationLifecycle.usesSingDurationFallback(sourceDanceNightmare,
+			beingControlled)) {
+			if ((!sourceDanceNightmare || !debugMode)
+				&& SourceCharacterAnimationLifecycle.shouldAccumulateSingDuration(
+					sourceDanceNightmare, currentAnim, singPriority, holding))
 				holdTimer += elapsed;
 
-			var dadVar:Float = nightmareVisionCharacterData == null ? 4
+			var dadVar:Float = sourceDanceNightmare ? singDuration : nightmareVisionCharacterData == null ? 4
 				: nightmareVisionNumber(Reflect.field(nightmareVisionCharacterData, 'sing_duration'), 4);
-			if (interp != null)
+			if (interp != null && !sourceDanceNightmare)
 				dadVar = interp.variables.get("dadVar");
-			if (holdTimer >= Conductor.stepCrochet * dadVar * 0.001) {
+			if ((!sourceDanceNightmare || !debugMode)
+				&& holdTimer >= Conductor.stepCrochet * dadVar * 0.001
+				&& SourceCharacterAnimationLifecycle.mayAdvanceSingDance(sourceDanceNightmare, holding)) {
 				dance();
 				holdTimer = 0;
 			}
@@ -1741,7 +1787,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	}
 	public function dance(forced:Bool = false) {
 		if (skipDance) return;
-		if (nightmareVisionCharacterData != null && specialAnim) return;
+		if (sourceDanceNightmare && specialAnim) return;
 		// A script can retain an actor after its visual is destroyed or fails to
 		// resolve. The next beat must not dereference its animation controller.
 		if (animation == null) return;
@@ -1759,7 +1805,15 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			codenamePlayAnim(name + idleSuffix, null, 'DANCE');
 			return;
 		}
-		if (nightmareVisionCharacterData != null) {
+		if (sourceDanceNightmare || nightmareVisionCharacterData != null) {
+			var currentName = animation.curAnim == null ? null : animation.curAnim.name;
+			var returnName = SourceCharacterAnimationLifecycle.returnAnimation(currentName,
+				currentName != null && animation.exists(currentName + '-return'),
+				sourceDanceNightmare, debugMode, specialAnim);
+			if (returnName != null) {
+				playAnim(returnName, forced);
+				return;
+			}
 			var left = 'danceLeft' + idleSuffix;
 			var right = 'danceRight' + idleSuffix;
 			if (animation.exists(left) && animation.exists(right)) {
@@ -1828,6 +1882,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 
 	public function playAnim(AnimName:String, Force:Bool = false, Reversed:Bool = false, Frame:Int = 0):Void {
 		if (!canPlayAnimations) return;
+		specialAnim = SourceCharacterAnimationLifecycle.specialAfterPlay(specialAnim,
+			PlayState.instance == null ? 0 : PlayState.instance.sourceNoteTimingMode(),
+			sourceDanceNightmare, codenameLiveDefinition != null || codenameVisualBuilding);
 		var codenameContext:Dynamic = null;
 		var codenamePlayback = false;
 		if (codenameLiveDefinition != null || codenameVisualBuilding) {

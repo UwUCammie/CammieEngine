@@ -93,6 +93,20 @@ class ImportRefreshManager {
  public static function availabilityRevision():Int return 0;
  public static function ownerAssetIndexBinding(owner:String,engine:String,scope:String):Dynamic return null;
 }''',
+            # These adapter fixtures exercise NV paths and file reads, not the
+            # separate Psych Lime-library loader. Keep the identity teardown
+            # hook available without pulling Lime Future/AssetLibrary into this
+            # intentionally narrow Haxe eval fixture.
+            "PsychOwnerAssetLibraryCache.hx": '''package;
+class PsychOwnerAssetLibraryCache {
+ public static function releaseIdentity(identity:RuntimeOwnerAssetIdentity):Void
+  if (identity != null) identity.retireAssetLibraryViews();
+}''',
+            "PsychOwnerAssetLibraryView.hx": '''package;
+class PsychOwnerAssetLibraryView {
+ public function new() {}
+ public function retire():Void {}
+}''',
             "tjson/TJSON.hx": '''package tjson;
 class TJSON {}
 enum EncodeStyle { Full; }

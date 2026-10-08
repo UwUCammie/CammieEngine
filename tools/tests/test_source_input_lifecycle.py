@@ -181,6 +181,8 @@ class PsychRuntimeBindings {
 }
 class InputFixture {
  public var events:Array<String> = [];
+ public var nightmareVisionScripts:Dynamic = null;
+ public var holdClaimUpdateCount:Int = 0;
  public var notes:NoteGroup = new NoteGroup();
  public var strumsBlocked:Array<Bool> = [false, false, false, false];
  public var playerStrums:InputFixtureStrumline;
@@ -194,6 +196,7 @@ class InputFixture {
  public var nightmareVisionPrefs:InputPrefs = new InputPrefs();
  public var ghostTapping:Bool = false;
  public function sourceLivePreference(name:String, fallback:Bool):Bool return fallback;
+ public function updateNightmareVisionHoldClaims():Void holdClaimUpdateCount++;
  public var keysPressed:Array<Int> = [];
  public var demoMode:Bool = false;
  public var paused:Bool = false;
@@ -469,6 +472,10 @@ class Main {
         self.assertIn("for (key in 0...holdArray.length) if (strumsBlocked[key] == true) holdArray[key] = false;",
                       self.key_shit)
         self.assertIn("nightmareVisionInputScope.input.update()", self.update)
+        hold_update = "if (nightmareVisionScripts != null) updateNightmareVisionHoldClaims();"
+        self.assertIn(hold_update, self.update)
+        self.assertLess(self.update.index("nightmareVisionInputScope.input.update()"),
+                        self.update.index(hold_update))
         self.assertNotIn("if (pressed[key]) nightmareVisionSourceKeyPressed(key)", self.update)
         self.assertNotIn("if (released[key]) nightmareVisionSourceKeyReleased(key)", self.update)
 

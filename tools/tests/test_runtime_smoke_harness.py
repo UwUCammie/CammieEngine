@@ -53,6 +53,7 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         cls.main = (SOURCE / "Main.hx").read_text()
         cls.play_state = (SOURCE / "PlayState.hx").read_text()
         cls.mapped_media_probe = (SOURCE / "RuntimeMappedMediaProbe.hx").read_text()
+        cls.owner_library_probe = (SOURCE / "RuntimeOwnerLibraryProbe.hx").read_text()
         cls.availability_probe = (SOURCE / "RuntimeImportAvailabilityProbe.hx").read_text()
         cls.import_harness = (SOURCE / "RuntimeImportSmokeHarness.hx").read_text()
         cls.import_state = (SOURCE / "RuntimeImportSmokeState.hx").read_text()
@@ -110,6 +111,22 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         self.assertLess(frame.index(mapped_probe), frame.index(availability_probe))
         self.assertIn("Sys.getEnv('CAMMIE_MAPPED_MEDIA_SMOKE') == '1'", self.mapped_media_probe)
         self.assertIn("!Std.isOfType(FlxG.state, FreeplayState)", self.mapped_media_probe)
+
+    def test_owner_library_probe_is_opt_in_and_uses_receipt_bound_imports(self):
+        frame = extract_haxe_method(self.harness, "static function freeplayFrame(")
+        owner_probe = "if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }"
+        self.assertIn(owner_probe, frame)
+        self.assertLess(frame.index(owner_probe), frame.index("RuntimeMappedMediaProbe.enabled()"))
+        self.assertIn("Sys.getEnv('CAMMIE_OWNER_LIBRARY_SMOKE') == '1'", self.owner_library_probe)
+        self.assertIn("FlxG.sound.muted", self.owner_library_probe)
+        self.assertIn("ImportWorkflow.scanNow(source, ImportEngine.PSYCH)", self.owner_library_probe)
+        self.assertIn("ImportWorkflow.convertRetainedSource", self.owner_library_probe)
+        self.assertIn("contexts.push({sourceRoot:root.root", self.owner_library_probe)
+        self.assertIn("flagsComplete:true", self.owner_library_probe)
+        self.assertIn("function(_payload:Dynamic):Void {}, contexts)", self.owner_library_probe)
+        self.assertIn("identity.loadProfileComplete", self.owner_library_probe)
+        self.assertIn("owner_library_native_verified", self.owner_library_probe)
+        self.assertIn("PsychOwnerAssetPath.releaseOwner", self.owner_library_probe)
 
     def test_availability_probe_returns_to_freeplay_before_releasing_real_worker(self):
         probe = self.availability_probe

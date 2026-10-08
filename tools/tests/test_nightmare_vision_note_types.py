@@ -3,6 +3,7 @@ from haxe_test_support import HAXE_COMMAND
 
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
+import json
 import subprocess
 import tempfile
 import unittest
@@ -31,6 +32,48 @@ class NightmareVisionNoteTypeRuntimeTest(unittest.TestCase):
                         timeout=45,
                     )
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_native_note_and_grab_observers_load_through_nightmare_vision_script_host(self):
+        observer_sources = [
+            (ROOT / 'tmp/v19-nv-ice-note-observer.hx').read_text(encoding='utf-8'),
+            (ROOT / 'tmp/v19-nv-grab-observer.hx').read_text(encoding='utf-8'),
+            (ROOT / 'tmp/v19-try-combined-observer.hx').read_text(encoding='utf-8'),
+        ]
+        self.compile_haxe(r'''
+import NightmareVisionScriptDiscovery.NightmareVisionScriptEntry;
+import NightmareVisionScriptDiscovery.NightmareVisionScriptPlan;
+
+class Main {
+ static function fail(message:String):Void throw message;
+ static function main():Void {
+  var sources:Array<String> = OBSERVER_SOURCES;
+  for (index in 0...sources.length) {
+   var relative = 'scripts/observer-' + index + '.hx';
+   var entry:NightmareVisionScriptEntry = {
+    scope:'global', name:'observer-' + index, path:'owner/' + relative, relative:relative
+   };
+   var plan:NightmareVisionScriptPlan = {
+    root:'owner', baseAssetsRoot:'', song:'try-harder', stage:'try-harder',
+    scripts:[entry], coverageNotes:[]
+   };
+   var errors:Array<String> = [];
+   var host = new NightmareVisionGameplayScripts({}, plan,
+    function(path:String):String return sources[index],
+    function(interp:NightmareVisionScriptInterp, entry:NightmareVisionScriptEntry,
+     actor:Dynamic):Void {
+     interp.variables.set('Function_Continue', NightmareVisionScriptGroup.CONTINUE_FUNC);
+     interp.variables.set('Function_Stop', NightmareVisionScriptGroup.STOP_FUNC);
+    },
+    function(name:String, phase:String, error:Dynamic):Void
+     errors.push(name + '#' + phase + ':' + Std.string(error)));
+   host.loadScope('global');
+   if (errors.length != 0 || !host.group.exists(relative))
+    fail('observer ' + index + ' did not load through the source script host: ' + errors.join(','));
+   host.destroy();
+  }
+ }
+}
+'''.replace('OBSERVER_SOURCES', json.dumps(observer_sources)))
 
     def test_note_type_modules_share_lifecycle_group_and_targeted_dispatch(self):
         self.compile_haxe(r'''
@@ -84,7 +127,8 @@ class Main {
    function postSpawnNote(note) { record("ice:postSpawn:" + note.name); return Function_Continue; }
    function update(note, elapsed) { record("ice:updateNote:" + this.name + ":" + elapsed); return Function_Continue; }
    function onReloadNote(note, prefix, texture, suffix) {
-    if (note.prefix != prefix) throw "prefix must be visible before onReloadNote";
+    if (prefix != "" && note.prefix != prefix) throw "prefix must be visible before onReloadNote";
+    if (texture == "STOP") return Function_Stop;
     record("ice:reload:" + this.name); return Function_Continue;
    }
    function postReloadNote(note, prefix, texture, suffix) { record("ice:postReload:" + this.name); return Function_Continue; }
@@ -156,6 +200,13 @@ class Main {
   eq(runtime.reloadNote(note, 'ice/', 'UI/game/notes/NOTE_assets'), true);
   eq(log.slice(-5).join(','), 'ice:miss:ice-1:2,ice:updateNote:ice-1:0.5,ice:reload:ice-1,'
    + 'atlas:UI/game/notes/ice/NOTE_assets,ice:postReload:ice-1');
+  eq(api.scriptTexture(note), 'UI/game/notes/NOTE_assets');
+  var lastAtlas = api.atlasPath(note);
+  eq(runtime.reloadNote(note, '', 'STOP'), false);
+  eq(api.atlasPath(note), lastAtlas);
+  eq(api.scriptTexture(note), 'UI/game/notes/NOTE_assets');
+  eq(runtime.reloadForFieldSkin(note, 'STOP', false), false);
+  eq(api.atlasPath(note), lastAtlas);
 
   // For generic note broadcasts, exclude every registered note type so only
   // the selected owner receives its targeted callback.
@@ -169,6 +220,72 @@ class Main {
   host.destroy();
   eq(log.slice(-3).join(','), 'global:destroy,ice:destroy,other:destroy');
   eq(host.group.released, true);
+  runtime.destroy();
+ }
+}
+''')
+
+    def test_field_skin_prefers_selected_then_explicit_then_conventional_owner_atlas(self):
+        self.compile_haxe(r'''
+import NightmareVisionNoteTypeRuntime.NightmareVisionNoteApiBridge;
+
+class Main {
+ static function fail(message:String):Void throw message;
+ static function eq(actual:Dynamic, expected:Dynamic):Void {
+  if (actual != expected) fail('expected ' + expected + ', got ' + actual);
+ }
+ static function main():Void {
+  var available:Map<String, Bool> = new Map();
+  var loaded:Array<String> = [];
+  var diagnostics:Array<String> = [];
+  var rgb:Array<Bool> = [];
+  var api = new NightmareVisionNoteApiBridge(
+   function(note:Dynamic):String return 'UI/game/notes/DEFAULT',
+   function(note:Dynamic, atlas:String):Bool { loaded.push(atlas); return true; },
+   function(note:Dynamic, enabled:Bool):Void rgb.push(enabled),
+   null,
+   null,
+   function(atlas:String):Bool return available.exists(atlas) && available.get(atlas),
+   function(note:Dynamic, message:String):Void diagnostics.push(message));
+  var runtime = new NightmareVisionNoteTypeRuntime(null, api);
+  var note:Dynamic = {noteType:'Ice Note'};
+  api.attach(note);
+  eq(runtime.reloadNote(note, 'ice/', 'UI/game/notes/SCRIPT_Notes', '-alt'), true);
+  eq(api.scriptTexture(note), 'UI/game/notes/SCRIPT_Notes');
+
+  // The selected field skin wins when its composed PNG and XML pair exists.
+  available.set('UI/game/notes/ice/SELECTED-alt', true);
+  available.set('UI/game/notes/ice/SCRIPT_Notes-alt', true);
+  available.set('UI/game/notes/ice/NOTE_assets-alt', true);
+  eq(runtime.reloadForFieldSkin(note, 'UI/game/notes/SELECTED', false), true);
+  eq(api.atlasPath(note), 'UI/game/notes/ice/SELECTED-alt');
+  eq(rgb[rgb.length - 1], false);
+
+  // If the new field atlas is absent, the last explicit script texture wins.
+  available.clear();
+  available.set('UI/game/notes/ice/SCRIPT_Notes-alt', true);
+  available.set('UI/game/notes/ice/NOTE_assets-alt', true);
+  eq(runtime.reloadForFieldSkin(note, 'UI/game/notes/MISSING', true), true);
+  eq(api.atlasPath(note), 'UI/game/notes/ice/SCRIPT_Notes-alt');
+  eq(rgb[rgb.length - 1], true);
+
+  // With no explicit texture available, NOTE_assets is searched in the same
+  // prefix-composed field directory, retaining the suffix.
+  available.clear();
+  available.set('UI/game/notes/ice/NOTE_assets-alt', true);
+  eq(runtime.reloadForFieldSkin(note, 'UI/game/notes/OTHER', false), true);
+  eq(api.atlasPath(note), 'UI/game/notes/ice/NOTE_assets-alt');
+
+  // Missing owner PNG/XML pairs fail instead of silently loading another skin.
+  available.clear();
+  var before = loaded.length;
+  eq(runtime.reloadForFieldSkin(note, 'UI/game/notes/ABSENT', true), false);
+  eq(loaded.length, before);
+  eq(diagnostics.length, 1);
+  if (diagnostics[0].indexOf('UI/game/notes/ice/ABSENT-alt') < 0
+   || diagnostics[0].indexOf('UI/game/notes/ice/SCRIPT_Notes-alt') < 0
+   || diagnostics[0].indexOf('UI/game/notes/ice/NOTE_assets-alt') < 0)
+   fail('missing-atlas diagnostic omitted attempted owner candidates: ' + diagnostics[0]);
   runtime.destroy();
  }
 }

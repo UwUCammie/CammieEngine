@@ -5,7 +5,7 @@ import haxe.ds.ObjectMap;
 private typedef NightmareVisionNoteApiState = {
 	var prefix:String;
 	var suffix:String;
-	var texture:String;
+	var scriptTexture:String;
 	var fieldTexture:String;
 	var atlasPath:String;
 	var rgbEnabled:Bool;
@@ -139,6 +139,7 @@ class NightmareVisionNoteTypeRuntime {
 			return false;
 		var loaded = api.reloadNote(note, prefix, texture, suffix);
 		if (loaded) {
+			if (texture != '') api.rememberScriptTexture(note, texture);
 			call(note, 'postReloadNote', args, note);
 			api.syncNote(note);
 		}
@@ -150,18 +151,32 @@ class NightmareVisionNoteTypeRuntime {
 	public function reloadForFieldSkin(note:Dynamic, texture:String, rgbEnabled:Bool,
 		forceReload:Bool = false):Bool {
 		if (note == null || texture == null) return false;
-		api.setRgbEnabled(note, rgbEnabled);
 		var changed = api.fieldTexture(note) != texture;
-		if (!changed && !forceReload) return true;
 		var result = true;
 		if (changed) {
-			result = reloadNote(note, '', texture, '');
+			result = reloadFieldSkin(note, texture);
 			api.rememberFieldTexture(note, texture);
 		}
+		// PlayField assigns the field's RGB mode after the texture setter returns.
+		// On a skin change this deliberately falls between the source setter's
+		// reload and its explicit second reload.
+		api.setRgbEnabled(note, rgbEnabled);
 		// Source PlayField.changeSkin explicitly reloads again after assigning
 		// Note.texture and refreshing the skin animation table.
-		if (forceReload) result = reloadNote(note, '', texture, '');
+		if (forceReload) result = reloadFieldSkin(note, texture);
 		return result;
+	}
+
+	function reloadFieldSkin(note:Dynamic, texture:String):Bool {
+		var args:Array<Dynamic> = [note, '', texture, ''];
+		if (call(note, 'onReloadNote', args, note) == NightmareVisionScriptGroup.STOP_FUNC)
+			return false;
+		var loaded = api.reloadForFieldSkin(note, texture);
+		if (loaded) {
+			call(note, 'postReloadNote', args, note);
+			api.syncNote(note);
+		}
+		return loaded;
 	}
 
 	/** The parent must use this on note expiry and bot-hit paths. canMiss is a
@@ -198,17 +213,23 @@ class NightmareVisionNoteApiBridge {
 	final readInitialRgb:Dynamic->Bool;
 	final applyRgb:Dynamic->Bool->Void;
 	final applyColors:Dynamic->Array<Dynamic>->Void;
+	final atlasAvailable:Null<String->Bool>;
+	final reportAtlasFailure:Null<Dynamic->String->Void>;
 
 	public function new(?defaultTexture:Dynamic->String,
 		?loadAtlas:Dynamic->String->Bool,
 		?applyRgb:Dynamic->Bool->Void,
 		?applyColors:Dynamic->Array<Dynamic>->Void,
-		?readInitialRgb:Dynamic->Bool) {
+		?readInitialRgb:Dynamic->Bool,
+		?atlasAvailable:String->Bool,
+		?reportAtlasFailure:Dynamic->String->Void) {
 		this.defaultTexture = defaultTexture;
 		this.loadAtlas = loadAtlas;
 		this.applyRgb = applyRgb;
 		this.applyColors = applyColors;
 		this.readInitialRgb = readInitialRgb;
+		this.atlasAvailable = atlasAvailable;
+		this.reportAtlasFailure = reportAtlasFailure;
 	}
 
 	public function attach(note:Dynamic):Void {
@@ -220,7 +241,7 @@ class NightmareVisionNoteApiBridge {
 		if (state == null) return;
 		state.prefix = '';
 		state.suffix = '';
-		state.texture = '';
+		state.scriptTexture = '';
 		state.fieldTexture = '';
 		state.atlasPath = '';
 		state.rgbEnabled = rgbEnabled;
@@ -255,7 +276,7 @@ class NightmareVisionNoteApiBridge {
 			var rgb = true;
 			if (readInitialRgb != null)
 				try rgb = readInitialRgb(note) catch (_:Dynamic) {}
-			state = {prefix:'', suffix:'', texture:'', atlasPath:'',
+			state = {prefix:'', suffix:'', scriptTexture:'', atlasPath:'',
 				fieldTexture:'',
 				rgbEnabled:rgb, customColors:null, canMiss:false};
 			states.set(note, state);
@@ -311,8 +332,6 @@ class NightmareVisionNoteApiBridge {
 		if (base == '') {
 			base = defaultTexture == null ? '' : defaultTexture(note);
 			if (base == null || StringTools.trim(base) == '') base = 'NOTE_assets';
-		} else {
-			state.texture = base;
 		}
 		var parts = base.split('/');
 		if (parts.length == 0) return false;
@@ -321,6 +340,83 @@ class NightmareVisionNoteApiBridge {
 		var atlasPath = parts.join('/');
 		state.atlasPath = atlasPath;
 		return loadAtlas != null && loadAtlas(note, atlasPath);
+	}
+
+	/** Field skin reloads keep script-authored texture overrides separate from
+	 * the changing field texture. Missing atlases fall back only within the
+	 * same composed field directory. */
+	public function reloadForFieldSkin(note:Dynamic, texture:String):Bool {
+		var state = stateFor(note, true);
+		if (state == null) return false;
+		var selectedTexture = texture == null ? '' : texture;
+		if (StringTools.trim(selectedTexture) == '') {
+			selectedTexture = defaultTexture == null ? '' : defaultTexture(note);
+			if (selectedTexture == null || StringTools.trim(selectedTexture) == '')
+				selectedTexture = 'NOTE_assets';
+		}
+
+		var candidates:Array<String> = [];
+		appendCandidate(candidates, composeAtlas(selectedTexture, state.prefix, state.suffix));
+		if (state.scriptTexture != null && state.scriptTexture != '')
+			appendCandidate(candidates, composeAtlas(state.scriptTexture, state.prefix, state.suffix));
+		appendCandidate(candidates, composeAtlas(conventionalTexture(selectedTexture), state.prefix, state.suffix));
+
+		var selected:String = null;
+		for (candidate in candidates) {
+			if (atlasAvailable == null || atlasAvailable(candidate)) {
+				selected = candidate;
+				break;
+			}
+		}
+		if (selected == null) {
+			var message = 'No owner PNG and XML atlas found for field texture '
+				+ selectedTexture + ' or its explicit/conventional fallbacks: '
+				+ candidates.join(', ');
+			if (reportAtlasFailure != null) reportAtlasFailure(note, message);
+			else trace('[nightmare-vision-note-atlas] ' + message);
+			return false;
+		}
+		state.atlasPath = selected;
+		if (loadAtlas == null || !loadAtlas(note, selected)) {
+			var message = 'Owner atlas could not be loaded after PNG/XML validation: ' + selected;
+			if (reportAtlasFailure != null) reportAtlasFailure(note, message);
+			else trace('[nightmare-vision-note-atlas] ' + message);
+			return false;
+		}
+		return true;
+	}
+
+	public function rememberScriptTexture(note:Dynamic, texture:String):Void {
+		var state = stateFor(note, true);
+		if (state != null && texture != null && texture != '') state.scriptTexture = texture;
+	}
+
+	public function scriptTexture(note:Dynamic):String {
+		var state = stateFor(note, false);
+		return state == null ? '' : state.scriptTexture;
+	}
+
+	static function composeAtlas(base:String, prefix:String, suffix:String):String {
+		if (base == null) base = '';
+		if (prefix == null) prefix = '';
+		if (suffix == null) suffix = '';
+		var parts = base.split('/');
+		if (parts.length == 0) return '';
+		var last = parts.length - 1;
+		parts[last] = prefix + parts[last] + suffix;
+		return parts.join('/');
+	}
+
+	static function conventionalTexture(base:String):String {
+		if (base == null || base == '') return 'NOTE_assets';
+		var parts = base.split('/');
+		if (parts.length == 0) return 'NOTE_assets';
+		parts[parts.length - 1] = 'NOTE_assets';
+		return parts.join('/');
+	}
+
+	static function appendCandidate(candidates:Array<String>, value:String):Void {
+		if (value != null && value != '' && candidates.indexOf(value) < 0) candidates.push(value);
 	}
 
 	/** Last texture assigned by the owning field, separate from texture values

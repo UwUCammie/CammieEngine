@@ -27,6 +27,7 @@ import HxcCutsceneTimeline.HxcCutsceneTimelineData;
 import HxcCutsceneTimelineRuntime;
 import HxcCompat.HxcCompatResult;
 import HxcCharacterLifecycleQueue.HxcCharacterLifecycleCall;
+import SourceCharacterHoldLedger.SourceCharacterHoldClaim;
 import ExtraStrumlineAdapter.CompatSongNoteData;
 import ExtraStrumlineAdapter.CompatSongDifficultyView;
 import PsychSourceStageCompat.PsychCompiledStageSource;
@@ -133,6 +134,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var nightmareVisionSkinRegistry:NightmareVisionNoteSkinRegistry;
 	var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime;
 	var nightmareVisionFields:Array<NightmareVisionPlayFieldView> = [];
+	/** Manual NV hit holds are leased by authenticated owner, live field and source role. */
+	var nightmareVisionHoldLedger:SourceCharacterHoldLedger = new SourceCharacterHoldLedger();
 	/** Lightweight script view; native Strumlines remain PlayState-owned. */
 	@:keep public var playFields:NightmareVisionPlayFields;
 	@:keep public var generatedFields:Bool = false;
@@ -274,6 +277,85 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		for (field in nightmareVisionFields)
 			if (field != null && field.strumline != null) nightmareVisionStrumlines.push(field.strumline);
 		if (nightmareVisionDefaultGenerationDepth == 0) publishNightmareVisionReceptorBanks();
+		updateNightmareVisionHoldClaims();
+	}
+
+	function nightmareVisionHoldRoleGroup(actor:Character):Dynamic {
+		if (actor == null) return null;
+		if (nightmareVisionRoleGroups != null) for (group in nightmareVisionRoleGroups)
+			if (nightmareVisionGroupContainsActor(group, actor)) return group;
+		if (nightmareVisionGroupContainsActor(boyfriendGroup, actor)) return boyfriendGroup;
+		if (nightmareVisionGroupContainsActor(dadGroup, actor)) return dadGroup;
+		if (nightmareVisionGroupContainsActor(gfGroup, actor)) return gfGroup;
+		// Source scripts can use an ordinary Character as a manual field singer
+		// without first inserting it into a role group. The actor itself is a
+		// stable lease token; prune still validates its source mode and field use.
+		return actor.isNightmareVisionSourceActor() ? cast actor : null;
+	}
+
+	function nightmareVisionGroupContainsActor(group:NightmareVisionCharacterGroup,
+		actor:Character):Bool {
+		return group != null && group.members != null && group.members.indexOf(actor) >= 0;
+	}
+
+	function releaseNightmareVisionHoldActors(actors:Array<Dynamic>):Void {
+		if (actors == null) return;
+		for (value in actors) {
+			var actor:Character = cast value;
+			if (actor != null && !nightmareVisionHoldLedger.hasActorClaim(actor)
+				&& actor.isNightmareVisionSourceActor()) actor.holding = false;
+		}
+	}
+
+	/**
+	 * Mirror the donor's no-input release while pruning leases whose owner, field,
+	 * control state, or source role has ended. This runs even during cutscenes so
+	 * a removed field cannot leave a character frozen behind an event.
+	 */
+	function updateNightmareVisionHoldClaims():Void {
+		if (nightmareVisionHoldLedger == null || !nightmareVisionHoldLedger.hasClaims()) return;
+		var owner = nightmareVisionInputScope == null ? '' : nightmareVisionInputScope.ownerRoot;
+		var input = nightmareVisionInputScope == null ? null : nightmareVisionInputScope.input;
+		var anyPressed = false;
+		if (input != null && input.pressedActions != null) {
+			// The donor checks only the chart's authored action range.
+			var actionCount = SONG == null ? input.pressedActions.length
+				: Std.int(Math.min(Math.max(SONG.keys, 0), input.pressedActions.length));
+			for (key in 0...actionCount)
+				if (input.inputPressed(key)) {anyPressed = true; break;}
+		}
+		if (owner == '') releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
+		// The donor skips processHolds during cutscenes. Keep valid manual claims
+		// there, but still prune fields/roles that have actually been retired.
+		else if (!anyPressed && !inCutscene)
+			releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearOwner(owner));
+		var released = nightmareVisionHoldLedger.prune(function(claim:SourceCharacterHoldClaim):Bool {
+			if (claim.owner != owner || owner == '') return false;
+			var field:NightmareVisionPlayFieldView = cast claim.field;
+			var actor:Character = cast claim.actor;
+			if (field == null || actor == null || !actor.exists || nightmareVisionFields == null
+				|| nightmareVisionFields.indexOf(field) < 0
+				|| !field.inControl || !field.playerControls || field.autoPlayed
+				|| !actor.isNightmareVisionSourceActor()
+				|| nightmareVisionHoldRoleGroup(actor) != claim.role) return false;
+			if (!claim.noteOwnerOverride && field.owner != actor
+				&& (field.singers == null || field.singers.indexOf(actor) < 0)) return false;
+			return true;
+		});
+		releaseNightmareVisionHoldActors(released);
+	}
+
+	function retainNightmareVisionHitHold(field:NightmareVisionPlayFieldView,
+		actor:Character, noteOwnerOverride:Bool):Void {
+		if (field == null || actor == null || nightmareVisionInputScope == null
+			|| !field.inControl || !field.playerControls || field.autoPlayed
+			|| !actor.isNightmareVisionSourceActor()) return;
+		var role = nightmareVisionHoldRoleGroup(actor);
+		if (role == null) return;
+		var owner = nightmareVisionInputScope.ownerRoot;
+		if (owner == null || owner == '') return;
+		nightmareVisionHoldLedger.retain(owner, field, role, actor, noteOwnerOverride);
+		actor.holding = true;
 	}
 
 	function publishNightmareVisionReceptorBanks():Void {
@@ -432,7 +514,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function detachNightmareVisionPlayField(field:NightmareVisionPlayFieldView):Void {
-		if (field == null || field.strumline == null) return;
+		if (field == null) return;
+		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearFieldAll(field));
+		if (field.strumline == null) return;
 		var retained = playFields != null && playFields.length > 0
 			&& playFields.members.indexOf(field) >= 0;
 		if (!retained && members != null) {
@@ -448,6 +532,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function nightmareVisionDestroyFieldView(field:NightmareVisionPlayFieldView):Void {
+		if (field != null)
+			releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearFieldAll(field));
 		if (field != null && nightmareVisionRenderers != null) {
 			var renderer = nightmareVisionRenderers.get(field);
 			if (renderer != null) {
@@ -1321,8 +1407,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value, atlas) {
 					var note:Note = cast value;
 					var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
-					return applyNightmareVisionNoteSkin(note, skin,
-						nightmareVisionPaths.getSparrowAtlas(atlas));
+					var frames = nightmareVisionGetOwnerSparrowAtlas(atlas);
+					return frames != null && applyNightmareVisionNoteSkin(note, skin, frames);
 				}, function(value, enabled) {
 					var note:Note = cast value;
 					if (note.nightmareVisionRGB != null) {
@@ -1340,6 +1426,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value) {
 					var note:Note = cast value;
 					return note.nightmareVisionRGB != null && note.nightmareVisionRGB.enabled;
+				}, function(atlas) {
+					return nightmareVisionHasOwnerSparrowAtlas(atlas);
+				}, function(value, message) {
+					var note:Note = cast value;
+					trace('[nightmare-vision-note-atlas] type='
+						+ NightmareVisionNoteTypeRuntime.noteTypeOf(note) + ' ' + message);
 				}));
 		nightmareVisionNoteTypes.loadBeforeNoteGeneration();
 		for (entry in plan.scripts)
@@ -1419,6 +1511,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			case 1:dad = actor;
 			case 2:gf = actor; gf.danceEveryNumBeats *= gfSpeed;
 		}
+		updateNightmareVisionHoldClaims();
 		refreshCharacterHUD();
 		return actor;
 	}
@@ -10083,6 +10176,64 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
 		if (note.nightmareVisionTypeRuntime != null) note.nightmareVisionTypeRuntime.syncNote(note);
 		return true;
+	}
+
+	/** Note reload fallbacks must stay inside the selected owner or its explicit
+	 * same-owner core dependency. Anchoring both paths before using the general
+	 * Paths resolver prevents a same-named family package from supplying a skin. */
+	function nightmareVisionOwnerSparrowPaths(atlas:String):Null<Array<String>> {
+		if (nightmareVisionPaths == null || atlas == null) return null;
+		var clean = atlas.replace('\\', '/');
+		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0
+			|| clean.indexOf('\x00') >= 0 || clean.toLowerCase().endsWith('.png')
+			|| clean.toLowerCase().endsWith('.xml')) return null;
+		for (part in clean.split('/')) if (part == '' || part == '.' || part == '..') return null;
+
+		for (base in [nightmareVisionPaths.root, nightmareVisionPaths.CORE_DIRECTORY]) {
+			var png:String = null;
+			var xml:String = null;
+			try png = nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.png')
+			catch (_:Dynamic) {}
+			try xml = nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.xml')
+			catch (_:Dynamic) {}
+			if (png == null || xml == null || !nightmareVisionPathIsWithin(png, base)
+				|| !nightmareVisionPathIsWithin(xml, base)) continue;
+			if (nightmareVisionPaths.exists(png) && nightmareVisionPaths.exists(xml))
+				return [png, xml];
+		}
+		return null;
+	}
+
+	function nightmareVisionPathIsWithin(path:String, base:String):Bool {
+		var normalizedPath = Path.normalize(path.replace('\\', '/')).replace('\\', '/');
+		var normalizedBase = Path.normalize(base.replace('\\', '/')).replace('\\', '/');
+		#if windows
+		normalizedPath = normalizedPath.toLowerCase();
+		normalizedBase = normalizedBase.toLowerCase();
+		#end
+		return normalizedPath == normalizedBase || normalizedPath.startsWith(normalizedBase + '/');
+	}
+
+	function nightmareVisionHasOwnerSparrowAtlas(atlas:String):Bool
+		return nightmareVisionOwnerSparrowPaths(atlas) != null;
+
+	function nightmareVisionGetOwnerSparrowAtlas(atlas:String):Null<FlxAtlasFrames> {
+		var files = nightmareVisionOwnerSparrowPaths(atlas);
+		if (files == null) return null;
+		var png = files[0];
+		var cacheKey = Path.withoutExtension(png);
+		var cached = nightmareVisionPaths.tempAtlasFramesCache.get(cacheKey);
+		if (cached != null) return cached;
+		var graphic = FNFAssets.getFlxGraphic(png);
+		if (graphic == null) return null;
+		graphic = nightmareVisionPaths.getOwnerAssetCache().trackGraphic(png, graphic, true);
+		if (graphic == null) return null;
+		var frames:FlxAtlasFrames = null;
+		try frames = FlxAtlasFrames.fromSparrow(graphic, FNFAssets.getText(files[1]))
+		catch (error:Dynamic) trace('[nightmare-vision-note-atlas] Invalid owner atlas '
+			+ atlas + ': ' + Std.string(error));
+		if (frames != null) nightmareVisionPaths.tempAtlasFramesCache.set(cacheKey, frames);
+		return frames;
 	}
 
 	/** Source PlayField.addNote assigns the selected field texture through
@@ -20400,11 +20551,17 @@ void main(void) {
 			if (previous != null && previous != daCharacter) {
 				daCharacter.alpha = previous.alpha;
 				previous.alpha = 0.0001;
-				if (destroy) {group.remove(previous, true);previous.destroy();}
+				if (destroy) {
+					group.remove(previous, true);
+					releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearActor(
+						nightmareVisionInputScope == null ? '' : nightmareVisionInputScope.ownerRoot, previous));
+					previous.destroy();
+				}
 			}
 			group.parent = daCharacter;
 			if (type == 0) boyfriend = daCharacter; else if (type == 1) dad = daCharacter; else gf = daCharacter;
 			for (field in nightmareVisionFields) if (field != null && field.owner == previous) field.owner = daCharacter;
+			updateNightmareVisionHoldClaims();
 			refreshCharacterHUD();
 			return;
 		}
@@ -22009,6 +22166,7 @@ void main(void) {
 		// fixed source script clock. Do not also poll native-bank press/release edges.
 		if (nightmareVisionInputScope != null && nightmareVisionInputScope.input != null)
 			nightmareVisionInputScope.input.update();
+		if (nightmareVisionScripts != null) updateNightmareVisionHoldClaims();
 		updateHighwayDim();
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -23677,6 +23835,7 @@ void main(void) {
 		}
 		callNightmareVision('onKeyRelease', [key]);
 		callNightmareVision('onInputRelease', [key]);
+		if (nightmareVisionScripts != null) updateNightmareVisionHoldClaims();
 	}
 
 	private function keyShit(?playerOne:Bool = true, ?sourceLine:CodenameInputLine<Character>):Void {
@@ -25099,7 +25258,7 @@ void main(void) {
 			health += amount;
 		}
 
-		prepareNightmareVisionHitSingers(note, field, fieldID);
+		prepareNightmareVisionHitSingers(note, field, fieldID, !autoAttempt);
 		note.wasGoodHit = true;
 		if (field.playerControls) judgeSourceNote(note);
 		prepareNightmareVisionHitSplash(note, field, fieldID);
@@ -25151,7 +25310,7 @@ void main(void) {
 	}
 
 	function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView,
-		fieldID:Int):Void {
+		fieldID:Int, manualHit:Bool):Void {
 		var actors:Array<Dynamic> = note.forceGfSing ? [gf] : field.singers;
 		var owner:Dynamic = Reflect.getProperty(note, 'owner');
 		if (owner != null) actors = [owner];
@@ -25166,11 +25325,18 @@ void main(void) {
 			var actor:Character = cast actorValue;
 			if (actor == null || note.noAnimation) continue;
 			actor.holdTimer = 0;
+			// The donor PlayField grants Character.holding to actors on a manual,
+			// player-controlled field. CPU hits and non-NV actors never acquire it.
+			if (manualHit && field.playerControls && !field.autoPlayed)
+				retainNightmareVisionHitHold(field, actor, owner == actor);
 			if (NightmareVisionNoteTypeRuntime.noteTypeOf(note) == 'Hey!' && actor.animation.exists('hey')) {
 				actor.playAnimForDuration('hey', 0.6, true);
 				actor.specialAnim = true;
 				continue;
 			}
+			if (!SourceCharacterAnimationLifecycle.shouldPlayNightmareVisionNoteAnimation(
+				actor.isNightmareVisionSourceActor(), actor.vSliceSustains, note.isSustainNote)) continue;
+			// The source updates manual hold state before its V-Slice sustain gate.
 			if (note.isSustainNote && !note.nightmareVisionSustainEnd
 				&& actor.animation.exists(anim + '-hold')) actor.playAnim(anim + '-hold', false);
 			else actor.playAnim(anim, true);
@@ -25606,6 +25772,7 @@ void main(void) {
 	}
 
 	override public function destroy() {
+		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
 		psychVideoHostDestroyed = true;
 		psychMissingIntroRequest = null;
 		psychVideoRequestSerial++;

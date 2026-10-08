@@ -18,6 +18,20 @@ typedef RuntimeOwnerAssetIdentityEntry = {
 	var size:Int;
 	var sha256:String;
 	var candidateOrder:Int;
+	/** Lime AssetHelper's effective entry preload setting. Older v1 indexes
+		remain readable for identity lookup but cannot establish this value. */
+	var preloadState:String;
+}
+
+typedef RuntimeOwnerAssetLibraryLoadProfile = {
+	var library:String;
+	var state:String;
+	var projectOrder:Int;
+	var projectPreloadState:String;
+	var projectPreload:Null<Bool>;
+	var diagnostic:Null<String>;
+	@:optional var projectEmbedState:String;
+	@:optional var projectEmbed:Null<Bool>;
 }
 
 typedef RuntimeOwnerAssetIdentityResult = {
@@ -35,6 +49,12 @@ private typedef RuntimeOwnerAssetIdentityManifestFile = {
 	var path:String;
 	var sha256:String;
 }
+
+#if cpp
+private typedef RuntimeOwnerAssetLibraryViewRef = cpp.vm.WeakRef<PsychOwnerAssetLibraryView>;
+#else
+private typedef RuntimeOwnerAssetLibraryViewRef = PsychOwnerAssetLibraryView;
+#end
 
 /** A small, receipt-bound runtime view of one imported Lime identity catalog.
 	The manager supplies the already inspected commit binding; this class reads
@@ -59,12 +79,22 @@ class RuntimeOwnerAssetIdentity {
 	public final librariesComplete:Bool;
 	public final libraries:Array<String>;
 	public final entries:Array<RuntimeOwnerAssetIdentityEntry>;
+	/** Sidecar schema version. v1 keeps path/ID lookup but has no load contract. */
+	public final indexVersion:Int;
+	public final loadTarget:Null<String>;
+	public final loadProfileComplete:Bool;
+	public final libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile>;
 	final byKey:Map<String, RuntimeOwnerAssetIdentityEntry>;
 	final verified:Bool;
+	var checkedGeneration:Int;
+	var checkedRevision:Int;
+	var libraryViews:Array<RuntimeOwnerAssetLibraryViewRef>;
 
 	function new(owner:String, engine:String, scope:String, generation:Int, revision:Int,
 		transactionId:String, bindingSignature:String, bindingState:String, verified:Bool, complete:Bool,
-		librariesComplete:Bool, libraries:Array<String>, entries:Array<RuntimeOwnerAssetIdentityEntry>) {
+		librariesComplete:Bool, libraries:Array<String>, entries:Array<RuntimeOwnerAssetIdentityEntry>,
+		indexVersion:Int = 0, loadTarget:Null<String> = null, loadProfileComplete:Bool = false,
+		libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile> = null) {
 		this.owner = owner;
 		this.engine = engine;
 		this.scope = scope;
@@ -78,11 +108,19 @@ class RuntimeOwnerAssetIdentity {
 		this.librariesComplete = librariesComplete;
 		this.libraries = libraries == null ? [] : libraries.copy();
 		this.entries = entries == null ? [] : entries.copy();
+		this.indexVersion = indexVersion;
+		this.loadTarget = loadTarget;
+		this.loadProfileComplete = loadProfileComplete;
+		this.libraryLoadProfiles = libraryLoadProfiles == null ? [] : libraryLoadProfiles.copy();
+		checkedGeneration = generation;
+		checkedRevision = revision;
+		libraryViews = [];
 		byKey = new Map();
 		for (entry in this.entries) byKey.set(key(entry.library, entry.id), entry);
 	}
 
-	/** Reuse only while both manager epochs and the committed transaction match. */
+	/** A manager epoch change triggers a fresh proof read. If the exact owner
+		proof is unchanged, keep the existing identity and its library objects. */
 	public static function acquire(ownerRoot:String, engineName:String, assetScope:String):RuntimeOwnerAssetIdentity {
 		var owner = PsychOwnerAssetPath.normalizeOwner(ownerRoot);
 		var engine = ImportRevision.normalizeEngine(engineName);
@@ -94,8 +132,8 @@ class RuntimeOwnerAssetIdentity {
 		var liveGeneration = ImportRefreshManager.generation;
 		var liveRevision = ImportRefreshManager.availabilityRevision();
 		var existing = cache.get(cacheKey);
-		if (existing != null && existing.generation == liveGeneration
-			&& existing.availabilityRevision == liveRevision) return existing;
+		if (existing != null && existing.checkedGeneration == liveGeneration
+			&& existing.checkedRevision == liveRevision) return existing;
 		var rawBinding:Dynamic = ImportRefreshManager.ownerAssetIndexBinding(owner, engine, scope);
 		#else
 		var rawBinding:Dynamic = null;
@@ -106,6 +144,7 @@ class RuntimeOwnerAssetIdentity {
 			var sidecarPath = sidecarRelative == null ? null : owner + '/' + sidecarRelative;
 			var state = sidecarPath != null && FileSystem.exists(sidecarPath) ? 'unverified' : 'no-index';
 			var unavailable = empty(owner, engine, scope, state, liveGeneration, liveRevision);
+			if (existing != null) PsychOwnerAssetLibraryCache.releaseIdentity(existing);
 			cache.set(cacheKey, unavailable);
 			return unavailable;
 			#else
@@ -116,12 +155,16 @@ class RuntimeOwnerAssetIdentity {
 		var generation = intField(rawBinding, 'generation', -1);
 		var revision = intField(rawBinding, 'revision', -1);
 		var transactionId = stringField(rawBinding, 'transactionId');
-		var indexPath = stringField(rawBinding, 'indexPath');
-		var indexHash = lower(stringField(rawBinding, 'indexSha256'));
-		var signature = generation + '|' + revision + '|' + transactionId + '|'
-			+ pathKey(indexPath) + '|' + indexHash;
+		var signature = proofSignature(owner, engine, scope, rawBinding);
 		var loaded = load(owner, engine, scope, rawBinding, generation, revision,
 			transactionId, signature);
+		if (existing != null && existing.bindingState == 'ready' && loaded.bindingState == 'ready'
+			&& existing.bindingSignature == loaded.bindingSignature) {
+			existing.checkedGeneration = liveGeneration;
+			existing.checkedRevision = liveRevision;
+			return existing;
+		}
+		if (existing != null) PsychOwnerAssetLibraryCache.releaseIdentity(existing);
 		cache.set(cacheKey, loaded);
 		return loaded;
 	}
@@ -190,6 +233,48 @@ class RuntimeOwnerAssetIdentity {
 
 	public function hasLibrary(library:String):Bool return libraryState(library) == 'declared';
 
+	/** Keep weak native references to owner views so proof retirement can clear
+		libraries detached by source unload/remove without extending their lifetime. */
+	@:keep public function trackAssetLibraryView(view:PsychOwnerAssetLibraryView):Void {
+		if (view == null) return;
+		#if cpp
+		var live:Array<RuntimeOwnerAssetLibraryViewRef> = [];
+		for (reference in libraryViews) if (reference.get() != null) live.push(reference);
+		live.push(new cpp.vm.WeakRef(view));
+		libraryViews = live;
+		#else
+		if (libraryViews.indexOf(view) < 0) libraryViews.push(view);
+		#end
+	}
+
+	/** Clear all current and detached views when this exact proof is retired. */
+	@:keep public function retireAssetLibraryViews():Void {
+		#if cpp
+		for (reference in libraryViews) {
+			var view = reference.get();
+			if (view != null) view.retire();
+		}
+		#else
+		for (view in libraryViews) if (view != null) view.retire();
+		#end
+		libraryViews = [];
+	}
+
+	/** Profile for the Lime file-backed library loader, if the verified sidecar
+		contains a v2 record for this exact namespace. */
+	public function libraryLoadProfile(libraryValue:String):Null<RuntimeOwnerAssetLibraryLoadProfile> {
+		var library = SourceLimeAssetIdentity.canonicalLibrary(libraryValue);
+		for (profile in libraryLoadProfiles) if (profile.library == library) return profile;
+		return null;
+	}
+
+	public function entriesForLibrary(libraryValue:String):Array<RuntimeOwnerAssetIdentityEntry> {
+		var library = SourceLimeAssetIdentity.canonicalLibrary(libraryValue);
+		var output:Array<RuntimeOwnerAssetIdentityEntry> = [];
+		for (entry in entries) if (entry.library == library) output.push(entry);
+		return output;
+	}
+
 	/** Lime lists raw IDs, so identical IDs from distinct owner libraries remain
 	separate entries in this list. */
 	public function list(?libraryValue:String, ?expectedType:String):Array<String> {
@@ -206,7 +291,8 @@ class RuntimeOwnerAssetIdentity {
 
 	public function release():Void {
 		var prefix = ownerKey(owner) + '|' + engine + '|' + scope;
-		cache.remove(prefix);
+		if (cache.get(prefix) == this) cache.remove(prefix);
+		PsychOwnerAssetLibraryCache.releaseIdentity(this);
 	}
 
 	/** Drop only bindings for the exact selected owner. */
@@ -216,7 +302,11 @@ class RuntimeOwnerAssetIdentity {
 		var prefix = ownerKey(owner) + '|';
 		var remove:Array<String> = [];
 		for (entryOwner in cache.keys()) if (entryOwner.startsWith(prefix)) remove.push(entryOwner);
-		for (entryOwner in remove) cache.remove(entryOwner);
+		for (entryOwner in remove) {
+			var identity = cache.get(entryOwner);
+			if (identity != null) PsychOwnerAssetLibraryCache.releaseIdentity(identity);
+			cache.remove(entryOwner);
+		}
 	}
 
 	static function load(owner:String, engine:String, scope:String, binding:Dynamic,
@@ -297,15 +387,45 @@ class RuntimeOwnerAssetIdentity {
 				|| manifestFile == null || lower(manifestFile.sha256) != hash || seen.exists(entryKey))
 				return empty(owner, engine, scope, 'invalid', generation, revision, transactionId);
 			seen.set(entryKey, true);
+			var preloadState = stringField(rawEntry, 'preloadState');
+			if (preloadState != 'enabled' && preloadState != 'disabled' && preloadState != 'unresolved')
+				preloadState = 'unresolved';
 			entries.push({library:library, id:id, type:upper(stringField(rawEntry, 'type')),
 				ownerRelative:relative, size:intField(rawEntry, 'size', -1), sha256:hash,
-				candidateOrder:intField(rawEntry, 'candidateOrder', -1)});
+				candidateOrder:intField(rawEntry, 'candidateOrder', -1), preloadState:preloadState});
 		}
 
 		var complete = Reflect.field(index, 'complete') == true;
 		var librariesComplete = Reflect.field(index, 'librariesComplete') == true;
+		var indexVersion = intField(index, 'version', 0);
+		var loadTargetValue:Dynamic = Reflect.field(index, 'loadTarget');
+		var loadTarget:Null<String> = Std.isOfType(loadTargetValue, String) ? cast loadTargetValue : null;
+		var loadProfileComplete = Reflect.field(index, 'loadProfileComplete') == true;
+		var libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile> = [];
+		var rawLoadProfiles:Dynamic = Reflect.field(index, 'libraryLoadProfiles');
+		if (Std.isOfType(rawLoadProfiles, Array)) for (rawProfile in (cast rawLoadProfiles:Array<Dynamic>)) {
+			var profileLibrary = SourceLimeAssetIdentity.canonicalLibrary(stringField(rawProfile, 'library'));
+			var profileState = stringField(rawProfile, 'state');
+			if (profileState != 'standard-file' && profileState != 'unsupported' && profileState != 'unknown')
+				profileState = 'unknown';
+			var projectPreloadState = stringField(rawProfile, 'projectPreloadState');
+			if (projectPreloadState != 'known' && projectPreloadState != 'unresolved')
+				projectPreloadState = 'unresolved';
+			var projectPreloadRaw:Dynamic = Reflect.field(rawProfile, 'projectPreload');
+			var projectPreload:Null<Bool> = Std.isOfType(projectPreloadRaw, Bool) ? cast projectPreloadRaw : null;
+			var projectEmbedState = stringField(rawProfile, 'projectEmbedState');
+			if (projectEmbedState != 'known' && projectEmbedState != 'unresolved')
+				projectEmbedState = 'unresolved';
+			var projectEmbedRaw:Dynamic = Reflect.field(rawProfile, 'projectEmbed');
+			var projectEmbed:Null<Bool> = Std.isOfType(projectEmbedRaw, Bool) ? cast projectEmbedRaw : null;
+			libraryLoadProfiles.push({library:profileLibrary, state:profileState,
+				projectOrder:intField(rawProfile, 'projectOrder', -1), projectPreloadState:projectPreloadState,
+				projectPreload:projectPreload, diagnostic:nullableStringField(rawProfile, 'diagnostic'),
+				projectEmbedState:projectEmbedState, projectEmbed:projectEmbed});
+		}
 		return new RuntimeOwnerAssetIdentity(owner, engine, scope, generation, revision,
-			transactionId, signature, 'ready', true, complete, librariesComplete, libraries, entries);
+			transactionId, signature, 'ready', true, complete, librariesComplete, libraries, entries,
+			indexVersion, loadTarget, loadProfileComplete, libraryLoadProfiles);
 	}
 
 	static function committedFiles(binding:Dynamic):Map<String, RuntimeOwnerAssetIdentityManifestFile> {
@@ -353,6 +473,24 @@ class RuntimeOwnerAssetIdentity {
 		return null;
 	}
 
+	/** Stable identity for a fully revalidated owner receipt. Global manager
+		epochs are deliberately excluded so another owner's publication does not
+		retire a still-identical library. */
+	static function proofSignature(owner:String, engine:String, scope:String, binding:Dynamic):String {
+		var fields = [owner, engine, scope, pathKey(stringField(binding, 'owner')),
+			stringField(binding, 'engine'), canonicalScope(stringField(binding, 'engine'), stringField(binding, 'scope')),
+			stringField(binding, 'namespace'), stringField(binding, 'transactionId'),
+			pathKey(stringField(binding, 'indexPath')), lower(stringField(binding, 'indexSha256')),
+			stringField(binding, 'snapshotId'), stringField(binding, 'rootRelative'),
+			lower(stringField(binding, 'projectSha256'))];
+		var signature = '';
+		for (field in fields) {
+			var value = field == null ? '' : field;
+			signature += value.length + ':' + value;
+		}
+		return signature;
+	}
+
 	static function empty(owner:String, engine:String, scope:String, state:String,
 		generation:Int = -1, revision:Int = -1, transactionId:String = ''):RuntimeOwnerAssetIdentity {
 		return new RuntimeOwnerAssetIdentity(owner, engine, scope, generation, revision,
@@ -387,6 +525,10 @@ class RuntimeOwnerAssetIdentity {
 	static function stringField(value:Dynamic, field:String):String {
 		var raw = value == null ? null : Reflect.field(value, field);
 		return raw == null ? '' : Std.string(raw);
+	}
+	static function nullableStringField(value:Dynamic, field:String):Null<String> {
+		var raw = value == null ? null : Reflect.field(value, field);
+		return Std.isOfType(raw, String) ? cast raw : null;
 	}
 	static function intField(value:Dynamic, field:String, fallback:Int):Int {
 		var raw = value == null ? null : Reflect.field(value, field);

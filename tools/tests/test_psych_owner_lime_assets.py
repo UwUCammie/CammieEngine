@@ -89,8 +89,11 @@ class TJSONEncoder {
                 r'''package;
 import lime.utils.Assets;
 import lime.utils.AssetLibrary;
+import lime.media.AudioBuffer;
 import openfl.utils.Assets as NativeOpenFlAssets;
 import openfl.utils.AssetLibrary as NativeOpenFlAssetLibrary;
+import openfl.utils.AssetCache as NativeOpenFlAssetCache;
+import openfl.media.Sound;
 import haxe.crypto.Sha256;
 import haxe.io.Bytes;
 import sys.io.File;
@@ -114,6 +117,29 @@ class PsychOwnerLimeAssetsProbe {
   }
   if (!prefixRejected) throw "bare imports prefix was treated as one valid owner";
   var proxy:Dynamic = PsychOwnerLimeAssets.create(owner);
+  var proxyPeer:Dynamic = PsychOwnerLimeAssets.create(owner);
+  var limeHostCache = Assets.cache;
+  var limeOwnerCache:lime.utils.AssetCache = cast Reflect.field(proxy, "cache");
+  if (limeOwnerCache == limeHostCache || Reflect.field(proxyPeer, "cache") != limeOwnerCache)
+   throw "Lime owner facades did not share a stable private cache object";
+  if (!Reflect.isFunction(Reflect.field(limeOwnerCache, "set"))
+   || !Reflect.isFunction(Reflect.field(limeOwnerCache, "exists"))
+   || !Reflect.isFunction(Reflect.field(limeOwnerCache, "clear")))
+   throw "Lime owner cache did not preserve the native cache API";
+  var hostLimeEnabled = limeHostCache.enabled;
+  var ownerLimeEnabled = limeOwnerCache.enabled;
+  var hostLimeAudio = new AudioBuffer();
+  var ownerLimeAudio = new AudioBuffer();
+  limeHostCache.audio.set("cache-isolation-sentinel", hostLimeAudio);
+  limeOwnerCache.audio.set("cache-isolation-sentinel", ownerLimeAudio);
+  if (limeHostCache.audio.get("cache-isolation-sentinel") != hostLimeAudio
+   || limeOwnerCache.audio.get("cache-isolation-sentinel") != ownerLimeAudio)
+   throw "Lime host and owner caches shared an audio entry map";
+  limeHostCache.enabled = !hostLimeEnabled;
+  if (limeOwnerCache.enabled != ownerLimeEnabled) throw "Lime host cache flag changed the owner cache flag";
+  limeHostCache.enabled = hostLimeEnabled;
+  if (Reflect.field(proxy, "onChange") != Assets.onChange)
+   throw "Lime owner facade changed the native event API object";
   if (Reflect.callMethod(proxy, Reflect.field(proxy, "getText"), ["assets/data/value.txt"]) != "owner-a")
    throw "relative Psych asset did not prefer its selected owner";
   if (!Reflect.callMethod(proxy, Reflect.field(proxy, "exists"), ["data/value.txt"]))
@@ -148,10 +174,30 @@ class PsychOwnerLimeAssetsProbe {
    traversal = Std.string(error).indexOf("outside selected owner") >= 0;
   }
   if (!traversal) throw "asset traversal did not produce an explicit rejection";
-  if (Reflect.field(proxy, "cache") != Assets.cache || Reflect.field(proxy, "onChange") != Assets.onChange)
-   throw "the facade did not preserve Lime's cache/event API objects";
-
   var openfl:Dynamic = PsychOwnerOpenFlAssets.create(owner);
+  var openflPeer:Dynamic = PsychOwnerOpenFlAssets.create(owner);
+  var openFlHostCache = NativeOpenFlAssets.cache;
+  var openFlOwnerCache:NativeOpenFlAssetCache = cast Reflect.field(openfl, "cache");
+  if (openFlOwnerCache == openFlHostCache || Reflect.field(openflPeer, "cache") != openFlOwnerCache)
+   throw "OpenFL owner facades did not share a stable private cache object";
+  if (!Reflect.isFunction(Reflect.field(openFlOwnerCache, "hasSound"))
+   || !Reflect.isFunction(Reflect.field(openFlOwnerCache, "setSound"))
+   || !Reflect.isFunction(Reflect.field(openFlOwnerCache, "removeSound"))
+   || !Reflect.isFunction(Reflect.field(openFlOwnerCache, "clear")))
+   throw "OpenFL owner cache did not preserve the native cache API";
+  var hostOpenFlEnabled = openFlHostCache.enabled;
+  var ownerOpenFlEnabled = openFlOwnerCache.enabled;
+  var hostOpenFlSound = new Sound();
+  var ownerOpenFlSound = new Sound();
+  openFlHostCache.setSound("cache-isolation-sentinel", hostOpenFlSound);
+  openFlOwnerCache.setSound("cache-isolation-sentinel", ownerOpenFlSound);
+  if (openFlHostCache.getSound("cache-isolation-sentinel") != hostOpenFlSound
+   || openFlOwnerCache.getSound("cache-isolation-sentinel") != ownerOpenFlSound)
+   throw "OpenFL host and owner caches shared a sound entry map";
+  openFlHostCache.enabled = !hostOpenFlEnabled;
+  if (openFlOwnerCache.enabled != ownerOpenFlEnabled)
+   throw "OpenFL host cache flag changed the owner cache flag";
+  openFlHostCache.enabled = hostOpenFlEnabled;
   if (Reflect.callMethod(openfl, Reflect.field(openfl, "getText"), ["assets/data/value.txt"]) != "owner-a")
    throw "relative OpenFL asset did not prefer its selected owner";
   if (Reflect.callMethod(openfl, Reflect.field(openfl, "getText"), ["assets/data/native-only.txt"]) != "native")
@@ -187,8 +233,6 @@ class PsychOwnerLimeAssetsProbe {
    movieClipPathRejected = Std.string(error).indexOf("cannot escape the selected owner") >= 0;
   }
   if (!movieClipPathRejected) throw "OpenFL movie-clip lookup accepted a path outside its library ID contract";
-  if (Reflect.field(openfl, "cache") != NativeOpenFlAssets.cache)
-   throw "OpenFL facade did not preserve the native cache API object";
   // A declared owner library is a virtual sidecar view. Mutations must not
   // unload or replace a separate global library registered under the same name.
   var indexPath = owner + "/.cammie-asset-identities/psych.json";
@@ -204,6 +248,19 @@ class PsychOwnerLimeAssetsProbe {
    transactionId:"facade-test",owner:owner,engine:"Psych Engine",scope:"package",namespace:"psych-owner-a",
    snapshotId:index.snapshotId,rootRelative:"content",projectSha256:index.projectSha256,indexPath:indexPath,
    indexSha256:hash(indexBytes),files:[{path:indexPath,sha256:hash(indexBytes)}]};
+  var readyProxyPeer:Dynamic = PsychOwnerLimeAssets.create(owner);
+  var readyOpenFlPeer:Dynamic = PsychOwnerOpenFlAssets.create(owner);
+  if (Reflect.field(proxy, "cache") != limeOwnerCache
+   || Reflect.field(readyProxyPeer, "cache") != limeOwnerCache
+   || Reflect.field(openfl, "cache") != openFlOwnerCache
+   || Reflect.field(readyOpenFlPeer, "cache") != openFlOwnerCache)
+   throw "Owner caches changed identity when the receipt binding became ready";
+  if (limeHostCache.audio.get("cache-isolation-sentinel") != hostLimeAudio
+   || limeOwnerCache.audio.exists("cache-isolation-sentinel"))
+   throw "Lime owner-cache readiness cleared the host entry or retained the pending owner entry";
+  if (openFlHostCache.getSound("cache-isolation-sentinel") != hostOpenFlSound
+   || openFlOwnerCache.hasSound("cache-isolation-sentinel"))
+   throw "OpenFL owner-cache readiness cleared the host entry or retained the pending owner entry";
   var limeGlobal = new AssetLibrary();
   Assets.registerLibrary("lime-declared",limeGlobal);
   if (!Reflect.callMethod(proxy,Reflect.field(proxy,"hasLibrary"),["lime-declared"]))

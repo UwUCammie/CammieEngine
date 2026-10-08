@@ -534,6 +534,55 @@ class PsychAssetProfileTest(unittest.TestCase):
         self.assertEqual(nested_id["assetId"], "logical/path-id")
         self.assertTrue(nested_id["assetIdOverride"])
 
+    def test_lime_library_load_attributes_capture_preload_embed_and_disabled_handlers(self):
+        project = '''<project>
+  <library name="warm" preload="true" embed="false" />
+  <library name="lazy" preload="false" embed="true" />
+  <library name="inactive-handler" handler="custom.Reader" if="false" />
+  <assets path="assets/warm" library="warm" embed="false" />
+  <assets path="assets/lazy" library="lazy" embed="false" />
+</project>'''
+        result, _ = self.run_profile(
+            {"target": "html5", "flags": [], "flagsComplete": True, "command": ""},
+            project_text=project,
+            project_files={
+                "assets/warm/one.txt": b"warm payload",
+                "assets/lazy/two.txt": b"lazy payload",
+            },
+        )
+        profile = result["profile"]
+        self.assertTrue(profile["complete"], profile["diagnostics"])
+        self.assertTrue(profile["librariesComplete"], profile["libraries"])
+        libraries = {item["name"]: item for item in profile["libraries"]}
+        self.assertEqual(set(libraries), {"warm", "lazy"},
+                         "a disabled library handler must have no parser side effect")
+        self.assertEqual(libraries["warm"]["preloadState"], "known")
+        self.assertTrue(libraries["warm"]["preload"])
+        self.assertFalse(libraries["warm"]["embed"])
+        self.assertEqual(libraries["warm"]["embedState"], "known")
+        self.assertFalse(libraries["lazy"]["preload"])
+        self.assertTrue(libraries["lazy"]["embed"])
+        self.assertEqual(libraries["lazy"]["generateState"], "known")
+        self.assertFalse(libraries["lazy"]["generate"])
+        self.assertEqual(libraries["lazy"]["prefix"], "")
+        self.assertEqual({item["library"] for item in profile["candidates"]}, {"warm", "lazy"})
+
+    def test_lime_library_unresolved_preload_is_not_defaulted(self):
+        project = '''<project>
+  <library name="lazy" preload="${UNKNOWN_PRELOAD}" />
+  <assets path="assets/lazy" library="lazy" embed="false" />
+</project>'''
+        result, _ = self.run_profile(
+            {"target": "html5", "flags": [], "flagsComplete": False, "command": ""},
+            project_text=project,
+            project_files={"assets/lazy/two.txt": b"lazy payload"},
+        )
+        self.assertFalse(result["profile"]["complete"], result["profile"]["libraries"])
+        declaration = result["profile"]["libraries"][0]
+        self.assertEqual(declaration["preloadState"], "unresolved")
+        self.assertTrue(result["profile"]["librariesComplete"],
+                        "known library identity remains separate from its unresolved preload value")
+
     def test_source_filter_skips_hashing_non_language_mapped_assets(self):
         result, _ = self.run_profile(EXPLICIT_BUILD, tamper_mapped_non_language=True)
         generic_codes = {item["code"] for item in result["mappedWalk"]["diagnostics"]}
@@ -623,7 +672,7 @@ class PsychAssetProfileTest(unittest.TestCase):
             {"target": "fixture", "flags": [], "values": [], "flagsComplete": True, "command": ""},
             project_text=project, project_files=project_files)
         profile = result["profile"]
-        self.assertEqual(profile["version"], 3)
+        self.assertEqual(profile["version"], 4)
         self.assertTrue(profile["complete"], profile["diagnostics"])
         self.assertEqual(
             [(row["sourceRelative"], row["targetRelative"], row["state"])

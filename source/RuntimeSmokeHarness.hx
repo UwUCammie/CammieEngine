@@ -2067,6 +2067,7 @@ class RuntimeSmokeHarness {
 	/** Drive scrolling/leaving and completion for --smoke-freeplay. */
 	static function freeplayFrame(now:Float):Void {
 		#if sys
+		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeMappedMediaProbe.enabled()) { RuntimeMappedMediaProbe.tick(); return; }
 		if (RuntimeImportAvailabilityProbe.enabled()) { RuntimeImportAvailabilityProbe.tick(); return; }
 		if (RuntimeNvFamilyProbe.enabled()) { RuntimeNvFamilyProbe.tick(); return; }

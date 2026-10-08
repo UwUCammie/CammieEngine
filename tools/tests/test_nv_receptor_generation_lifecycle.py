@@ -249,7 +249,7 @@ class Main {
  public var modManager:Dynamic={receptors:[],keys:4,lanes:3,
  configureDimensions:function(keys:Int,lanes:Int):Void {},
  registerEssentialModifiers:function():Void {},registerDefaultModifiers:function():Void {},registerScriptedModifiers:function():Void {}};
- public var events:Array<String>=[];public var display:Array<Strumline>=[];
+ public var events:Array<String>=[];public var display:Array<Strumline>=[];public var holdClaimUpdateCalls:Int=0;
  public var skin:NightmareVisionNoteSkin=new NightmareVisionNoteSkin();
  public var nightmareVisionPaths:Dynamic={root:"owner"};public var arrowSkins:Array<String>=["A","B","C"];
  public var nightmareVisionNoteSkins:Map<String,NightmareVisionNoteSkin>;
@@ -275,6 +275,7 @@ class Main {
  function nightmareVisionClearFieldReceptors(f:NightmareVisionPlayFieldView):Void f.clearReceptors();
  function attachNightmareVisionPlayField(f:NightmareVisionPlayFieldView):Void {events.push('add:'+f.ID);display.push(f.strumline);syncNightmareVisionPlayFieldCollection();}
  function detachNightmareVisionPlayField(f:NightmareVisionPlayFieldView):Void display.remove(f.strumline);
+ function updateNightmareVisionHoldClaims():Void {holdClaimUpdateCalls++;}
  __METHODS__
  static function check(ok:Bool,msg:String):Void if(!ok)throw msg;
  static function main():Void {
@@ -332,6 +333,7 @@ class Main {
    }
    return 0;
   }));recursive.generatePlayfields();check(recursivePosts==2 && recursive.playFields.length==2 && recursive.nightmareVisionDefaultGenerationDepth==0,'finite source recursive generation is retained');
+  check(recursive.holdClaimUpdateCalls>0,'field collection synchronization keeps hold-claim reconciliation observable');
   check(recursive.playFields.members[0].strumline!=recursive.playFields.members[1].strumline && recursive.playFields.members[0].members!=recursive.playFields.members[1].members,'recursive fields own distinct live banks');
   check(recursive.playFields.members[0]._skin!=recursive.playFields.members[1]._skin,'recursive fields own mutable skins');
   recursive.generatedFields=false;recursive.generatePlayfields();check(recursive.playFields.members[2].strumline!=recursive.playFields.members[1].strumline && recursive.playFields.members[2]._skin!=recursive.playFields.members[1]._skin,'explicit generation reset allocates distinct bank and skin');

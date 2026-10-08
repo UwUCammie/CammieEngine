@@ -85,11 +85,11 @@ class Main {
     projectSha256:projectHash,libraries:[{name:'empty-library',state:'enabled'}],
     candidates:[{library:'alternate',state:'enabled'}]};
   var bytesHash=StringTools.lpad('','c',64);
-  function event(id:String,library:String,type:String,target:String,order:Int):Dynamic {
-   var mapped='assets/'+target;
-   var e:PsychAssetProfileMappedFile={sourcePath:'C:/retained/'+order,sourceRelative:'assets/source-'+order,
+  function event(id:String,library:String,type:String,target:String,order:Int,?embed:String):Dynamic {
+  var mapped='assets/'+target;
+  var e:PsychAssetProfileMappedFile={sourcePath:'C:/retained/'+order,sourceRelative:'assets/source-'+order,
     mappedPath:mapped,ownerRelative:target,candidateOrder:order,size:12,sha256:bytesHash,
-    type:type,library:library,assetId:id,assetIdOverride:true};
+    type:type,library:library,assetId:id,assetIdOverride:true,embed:embed};
    return {event:e,ownerRelative:target};
   }
   var events:Array<Dynamic>=[
@@ -124,6 +124,10 @@ class Main {
   var roundTrip:Dynamic=haxe.Json.parse(serialized);
   var validated=SourceLimeAssetIdentity.validate(roundTrip,owner,'Psych Engine','package','identity-fixture');
   check(validated!=null,'serialized sidecar validates against captured identity');
+  check(validated.version==2 && !validated.loadProfileComplete && validated.loadTarget==null,
+    'identity-only inputs publish v2 with explicit unavailable load metadata');
+  check(validated.libraryLoadProfiles.length==validated.libraries.length,
+    'every actual Lime namespace has a load-profile record');
   eq(findFrom(validated,'named','mod:🧪').ownerRelative,'data/astral.txt','astral identity survives standard JSON round-trip');
   check(SourceLimeAssetIdentity.validate(roundTrip,owner,'Psych Engine','core','identity-fixture')==null,
     'scope mismatch rejects a copied sidecar');
@@ -131,6 +135,95 @@ class Main {
     'reserved sidecar destination is recognized');
   check(!SourceLimeAssetIdentity.isReservedOwnerPath('images/.cammie-asset-identities/icon.png'),
     'nested ordinary asset path is not confused with owner sidecar root');
+
+  var loadProfile:Dynamic={namespace:'identity-fixture',rootRelative:'nested/root',snapshotId:snapshot,
+    projectSha256:projectHash,buildTarget:'html5',complete:true,librariesComplete:true,
+    libraries:[
+      {order:0,name:'warm',state:'enabled',sourcePath:'',type:'',typeState:'known',embed:false,
+        embedState:'known',preload:true,preloadState:'known',generate:false,generateState:'known',prefix:'',prefixState:'known'},
+      {order:1,name:'lazy',state:'enabled',sourcePath:'',type:'',typeState:'known',embed:true,
+        embedState:'known',preload:false,preloadState:'known',generate:false,generateState:'known',prefix:'',prefixState:'known'}
+    ],candidates:[{library:'warm',state:'enabled'},{library:'lazy',state:'enabled'}]};
+  var loadEvents:Array<Dynamic>=[
+    event('assets/warm.txt','warm','text','warm/file.txt',10,'false'),
+    event('assets/lazy.txt','lazy','text','lazy/file.txt',11,'false')
+  ];
+  var loadPublication=SourceLimeAssetIdentity.preparePublication(loadProfile,owner,'Psych Engine','package',
+    loadEvents,[],false,true,true);
+  check(!loadPublication.failed,loadPublication.diagnostics.join('\\n'));
+  var loadIndex=loadPublication.index;
+  check(loadIndex.loadProfileComplete && loadIndex.loadTarget=='html5',
+    'complete retained HTML5 build context publishes a validated file-backed load profile');
+  eq(findFrom(loadIndex,'warm','assets/warm.txt').preloadState,'enabled',
+    'HTML5 explicit warm library preload applies to nonembedded entries');
+  eq(findFrom(loadIndex,'lazy','assets/lazy.txt').preloadState,'disabled',
+    'HTML5 explicit false preload keeps nonembedded entries lazy');
+  var warmProfile:SourceLimeAssetIdentityLibraryLoadProfile=null;
+  for(loadProfileEntry in loadIndex.libraryLoadProfiles)
+    if(loadProfileEntry.library=='warm')warmProfile=loadProfileEntry;
+  check(warmProfile!=null && warmProfile.projectPreload==true
+    && warmProfile.projectEmbedState=='known' && warmProfile.projectEmbed==false,
+    'library-level Project settings remain separate from effective asset preload');
+  var lazyProfile:SourceLimeAssetIdentityLibraryLoadProfile=null;
+  for(loadProfileEntry in loadIndex.libraryLoadProfiles)
+    if(loadProfileEntry.library=='lazy')lazyProfile=loadProfileEntry;
+  check(lazyProfile!=null && lazyProfile.projectEmbedState=='known' && lazyProfile.projectEmbed==true,
+    'sidecar validation accepts explicit Project library embed settings');
+
+  Reflect.deleteField(loadProfile,'buildTarget');
+  var unknownTargetPublication=SourceLimeAssetIdentity.preparePublication(loadProfile,owner,
+    'Psych Engine','package',loadEvents,[],false,true,true);
+  check(!unknownTargetPublication.failed,'missing source target preserves ordinary identity publication');
+  check(!unknownTargetPublication.index.loadProfileComplete
+    && unknownTargetPublication.index.loadTarget==null,
+    'target is never inferred from the runtime host');
+  eq(findFrom(unknownTargetPublication.index,'warm','assets/warm.txt').preloadState,'unresolved',
+    'target-dependent effective preload stays unresolved when Lime target was not captured');
+
+  Reflect.setField(loadProfile,'buildTarget','html5');
+  var loadRoundTrip:Dynamic=haxe.Json.parse(SourceLimeAssetIdentity.serialize(loadIndex));
+  var legacy:Dynamic=haxe.Json.parse(SourceLimeAssetIdentity.serialize(loadIndex));
+  Reflect.setField(legacy,'version',1);
+  Reflect.deleteField(legacy,'loadTarget');
+  Reflect.deleteField(legacy,'loadProfileComplete');
+  Reflect.deleteField(legacy,'libraryLoadProfiles');
+  for(legacyEntry in (cast Reflect.field(legacy,'entries'):Array<Dynamic>))
+    Reflect.deleteField(legacyEntry,'preloadState');
+  var legacyIndex=SourceLimeAssetIdentity.validate(legacy,owner,'Psych Engine','package','identity-fixture');
+  check(legacyIndex!=null && legacyIndex.version==1 && !legacyIndex.loadProfileComplete,
+    'v1 identity indexes stay readable with unavailable load semantics');
+  eq(findFrom(legacyIndex,'warm','assets/warm.txt').preloadState,'unresolved',
+    'v1 entries never acquire guessed preload claims');
+  check(SourceLimeAssetIdentity.validate(loadRoundTrip,owner,'Psych Engine','package','identity-fixture')!=null,
+    'strict v2 load metadata survives a round trip');
+  var smuggledV1:Dynamic=haxe.Json.parse(SourceLimeAssetIdentity.serialize(loadIndex));
+  Reflect.setField(smuggledV1,'version',1);
+  check(SourceLimeAssetIdentity.validate(smuggledV1,owner,'Psych Engine','package','identity-fixture')==null,
+    'v1 cannot claim v2 preload data');
+  Reflect.setField(loadRoundTrip,'loadTarget','custom-unverified-host');
+  check(SourceLimeAssetIdentity.validate(loadRoundTrip,owner,'Psych Engine','package','identity-fixture')==null,
+    'v2 target values must belong to the pinned Lime Platform enum');
+
+  var audioProfile:Dynamic=haxe.Json.parse(haxe.Json.stringify(loadProfile));
+  (cast Reflect.field(audioProfile,'libraries'):Array<Dynamic>).push(
+    {order:2,name:'audio',state:'enabled',sourcePath:'',type:'',typeState:'known',embed:null,
+      embedState:'known',preload:true,preloadState:'known',generate:false,generateState:'known',prefix:'',prefixState:'known'});
+  (cast Reflect.field(audioProfile,'candidates'):Array<Dynamic>).push({library:'audio',state:'enabled'});
+  var audioEvents=loadEvents.copy();
+  audioEvents.push(event('audio/ogg','audio','sound','audio/theme.ogg',12,'false'));
+  audioEvents.push(event('audio/mp3','audio','music','audio/theme.mp3',13,'false'));
+  var audioPublication=SourceLimeAssetIdentity.preparePublication(audioProfile,owner,
+    'Psych Engine','package',audioEvents,[],false,true,true);
+  check(!audioPublication.failed,audioPublication.diagnostics.join('\\n'));
+  check(!audioPublication.index.loadProfileComplete,
+    'HTML5 pathGroup conversion cannot be presented as an ordinary file-backed load profile');
+  var audioLoadProfile:SourceLimeAssetIdentityLibraryLoadProfile=null;
+  for(audioEntry in audioPublication.index.libraryLoadProfiles)
+    if(audioEntry.library=='audio')audioLoadProfile=audioEntry;
+  check(audioLoadProfile!=null && audioLoadProfile.state=='unsupported'
+    && audioLoadProfile.diagnostic.indexOf('pathGroup')>=0,
+    'same-stem HTML5 sound and music entries retain an explicit unsupported diagnostic: '
+      +Std.string(audioLoadProfile)+' / '+Std.string(audioPublication.index.loadProfileComplete));
  }
  static function findFrom(index:SourceLimeAssetIdentityIndex,library:String,id:String):SourceLimeAssetIdentityEntry {
   for(entry in index.entries) if(entry.library==library && entry.id==id)return entry;

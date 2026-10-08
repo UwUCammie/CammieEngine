@@ -44,6 +44,11 @@ class RuntimeSmokeHarness {public static function markStep(s:String):Void {}}
 class ScriptCallbackResult {public static var STOP=1;}
 class EngineCompat {public static function anyFunctionStop(a:Array<Dynamic>):Bool return a.indexOf(1)>=0;}
 class PsychRuntimeBindings {public static function dispatch(h:Dynamic,n:String,a:Array<Dynamic>):Dynamic {var cb:Dynamic=Reflect.field(h,'gateCallback');return cb==null?(Reflect.field(h,'allowCountdown')?0:1):cb();}}
+class HoldLedgerFixture {
+ public var clearCalls=0;
+ public function new() {}
+ public function clearAll():Array<Dynamic> {clearCalls++;return ['held-actor'];}
+}
 class Main {
  var psychMissingIntroRequest:Null<Int>;var psychMissingIntroHandoffUsed=false;
  var isStoryMode=false;var alwaysDoCutscenes=false;var startedCountdown=false;public var gateCallback:Void->Dynamic;
@@ -52,6 +57,8 @@ class Main {
  var inCutscene=false;var endingSong=false;var camOther:Dynamic={};var members:Array<Dynamic>=[];
  var countdowns=0;var ends=0;var allowCountdown=false;var started=false;
  var nightmareVisionScripts:Dynamic=null;var genNotesBeforeCountdown=true;
+ var nightmareVisionHoldLedger:HoldLedgerFixture=new HoldLedgerFixture();
+ var releasedHoldActors:Array<Dynamic>=[];var releaseHoldCalls=0;
  function generatePlayfields():Void throw "Psych video countdown entered NV receptor generation";
  public function new(){FlxG.state=this;}
  function add(v:Dynamic):Void members.push(v);function remove(v:Dynamic,b:Bool):Void members.remove(v);
@@ -62,6 +69,10 @@ class Main {
  __HANDOFF__
  __START__
  function teardown():Void {__TEARDOWN__}
+ function releaseNightmareVisionHoldActors(actors:Array<Dynamic>):Void {
+  releaseHoldCalls++;
+  if(actors!=null)for(actor in actors)releasedHoldActors.push(actor);
+ }
  static function check(v:Bool,label:String):Void if(!v)throw label;
  static function main():Void {
   var h=new Main();var before=NightmareVisionVideoSprite.made;
@@ -84,7 +95,10 @@ class Main {
   h=new Main();h.psychStartVideo('owner','intro',true,true,false,false);v=h.psychSourceVideo;check(v.starts==0&&!h.inCutscene,'mid-song manual play');v.finish();check(h.countdowns==0&&h.ends==0,'mid-song no handoff');
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');v=h.psychSourceVideo;v.finish();
   h.psychStartVideo('owner','intro');h.hxcCountdownHookDispatching=false;FlxTimer.tick();check(h.countdowns==0,'replacement cancels queued old handoff');
-  h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.teardown();FlxTimer.tick();check(h.countdowns==0&&h.ends==0,'destroy cancels');
+  h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.teardown();
+  check(h.nightmareVisionHoldLedger.clearCalls==1&&h.releaseHoldCalls==1
+    &&h.releasedHoldActors.join(',')=='held-actor','destroy releases and records source hold actors');
+  FlxTimer.tick();check(h.countdowns==0&&h.ends==0,'destroy cancels');
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.hxcCountdownHookDispatching=false;FlxG.state={};FlxTimer.tick();check(h.countdowns==0,'state lifetime');
   h=new Main();h.alwaysDoCutscenes=true;
   h.gateCallback=function(){if(!h.allowCountdown){check(!h.psychStartVideo('owner','missing'),'forced missing still false');h.allowCountdown=true;return 1;}return 0;};

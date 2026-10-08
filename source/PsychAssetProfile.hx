@@ -57,6 +57,19 @@ typedef PsychAssetProfileLibrary = {
 	var name:String;
 	var state:String;
 	var sourcePath:String;
+	/** Lime's resolved Library.type; empty means the source field was null. */
+	var type:String;
+	var typeState:String;
+	/** Null means Lime's Library.embed default, not an unresolved value. */
+	var embed:Null<Bool>;
+	var embedState:String;
+	/** Lime's ProjectXMLParser default is false when the attribute is absent. */
+	var preload:Bool;
+	var preloadState:String;
+	var generate:Bool;
+	var generateState:String;
+	var prefix:String;
+	var prefixState:String;
 	var conditions:Array<String>;
 	@:optional var diagnostic:String;
 }
@@ -191,7 +204,7 @@ private typedef PsychAssetProfileWalkContext = {
 	snapshot before using resolveRetained; this class does not publish mapped files.
 */
 class PsychAssetProfile {
-	public static inline var VERSION:Int = 3;
+	public static inline var VERSION:Int = 4;
 	public static inline var ENABLED:String = "enabled";
 	public static inline var DISABLED:String = "disabled";
 	public static inline var UNRESOLVED:String = "unresolved";
@@ -1669,6 +1682,10 @@ class PsychAssetProfile {
 	static function collectLibrary(node:Xml, gate:Dynamic, state:Dynamic,
 		context:SourceProjectContext, projectRelative:String,
 		projectSourceRelative:String):Void {
+		// ProjectXMLParser skips disabled elements entirely, including handler
+		// declarations. Do not let an inactive conversion handler taint the
+		// retained library profile.
+		if (gate.state == DISABLED && node.exists("handler")) return;
 		// Lime's `handler` form registers a library type handler and creates no
 		// Library object. It therefore does not claim a library name.
 		if (node.exists("handler")) {
@@ -1684,6 +1701,16 @@ class PsychAssetProfile {
 		var name = "";
 		var sourcePath = "";
 		var diagnostic = "";
+		var type = "";
+		var typeState = "known";
+		var embed:Null<Bool> = null;
+		var embedState = "known";
+		var preload = false;
+		var preloadState = "known";
+		var generate = false;
+		var generateState = "known";
+		var prefix = "";
+		var prefixState = "known";
 		var nameResolution:Dynamic = null;
 		if (rawName != null && rawName != "") {
 			nameResolution = projectAssetValue(rawName, declarationState, context, state,
@@ -1702,6 +1729,43 @@ class PsychAssetProfile {
 				sourcePath = selectedPath;
 			}
 		}
+		if (gate.state != DISABLED) {
+			var rawType = node.get("type");
+			if (rawType != null) {
+				var typeResolution = projectAssetValue(rawType, gate.state, context, state,
+					projectRelative + ":library-type");
+				type = typeResolution.value;
+				if (typeResolution.state != ENABLED) typeState = "unresolved";
+			}
+			var rawEmbed = node.get("embed");
+			if (rawEmbed != null) {
+				var embedResolution = projectAssetValue(rawEmbed, gate.state, context, state,
+					projectRelative + ":library-embed");
+				if (embedResolution.state == ENABLED) embed = embedResolution.value == "true";
+				else embedState = "unresolved";
+			}
+			var rawPreload = node.get("preload");
+			if (rawPreload != null) {
+				var preloadResolution = projectAssetValue(rawPreload, gate.state, context, state,
+					projectRelative + ":library-preload");
+				if (preloadResolution.state == ENABLED) preload = preloadResolution.value == "true";
+				else preloadState = "unresolved";
+			}
+			var rawGenerate = node.get("generate");
+			if (rawGenerate != null) {
+				var generateResolution = projectAssetValue(rawGenerate, gate.state, context, state,
+					projectRelative + ":library-generate");
+				if (generateResolution.state == ENABLED) generate = generateResolution.value == "true";
+				else generateState = "unresolved";
+			}
+			var rawPrefix = node.get("prefix");
+			if (rawPrefix != null) {
+				var prefixResolution = projectAssetValue(rawPrefix, gate.state, context, state,
+					projectRelative + ":library-prefix");
+				prefix = prefixResolution.value;
+				if (prefixResolution.state != ENABLED) prefixState = "unresolved";
+			}
+		}
 		// lime.tools.Library derives an empty name from the source file basename.
 		// An explicit empty name/id follows the same constructor behavior.
 		if (name == "") {
@@ -1716,11 +1780,21 @@ class PsychAssetProfile {
 			state.result.librariesComplete = false;
 			state.result.complete = false;
 		}
+		if (gate.state != DISABLED && (typeState == "unresolved" || embedState == "unresolved"
+			|| preloadState == "unresolved" || generateState == "unresolved" || prefixState == "unresolved")) {
+			state.result.complete = false;
+			state.result.diagnostics.push("library-load-context-unresolved: A Project library loading attribute could not be resolved from the captured source build context.");
+		}
 		state.result.libraries.push({
 			order:state.result.libraries.length,
 			name:name,
 			state:declarationState,
 			sourcePath:sourcePath,
+			type:type, typeState:typeState,
+			embed:embed, embedState:embedState,
+			preload:preload, preloadState:preloadState,
+			generate:generate, generateState:generateState,
+			prefix:prefix, prefixState:prefixState,
 			conditions:gate.conditions.copy(),
 			diagnostic:diagnostic
 		});

@@ -19,8 +19,16 @@ class RuntimeOwnerAssetIdentityTest(unittest.TestCase):
         fixture = r'''package;
 import haxe.crypto.Sha256;
 import haxe.io.Bytes;
+import lime.utils.AssetLibrary;
 import sys.FileSystem;
 import sys.io.File;
+
+@:access(lime.utils.AssetLibrary)
+class CachedAssetLibrary extends AssetLibrary {
+ public function new() super();
+ public function cacheText(id:String,value:String):Void cachedText.set(id,value);
+ public function hasText(id:String):Bool return cachedText.exists(id);
+}
 
 class Main {
  static function fail(message:String):Void throw message;
@@ -69,6 +77,13 @@ class Main {
   eq(view.libraryState('other'),'unclaimed','complete catalog proves unclaimed library');
   eq(view.list('named','TEXT').join(','),'portrait:small','typed list keeps raw Lime ID');
 
+  ImportRefreshManager.generation++;
+  ImportRefreshManager.revision++;
+  eq(RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package')==view,true,
+   'unrelated global generation and availability epoch changes retain the freshly revalidated owner identity');
+  eq(view.resolve('plain-id','IMAGE').state,'found',
+   'a retained identity remains usable after same-proof revalidation');
+
   ImportRefreshManager.revision++;
   ImportRefreshManager.binding=null;
   eq(RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package').bindingState,'unverified',
@@ -80,7 +95,33 @@ class Main {
    indexSize:null,files:[]};
   eq(RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package').bindingState,'invalid',
    'uncommitted or tampered sidecar cannot be used');
+
+  ImportRefreshManager.revision++;
+  ImportRefreshManager.binding={generation:2,revision:ImportRefreshManager.revision,transactionId:'tx-3',
+   owner:owner,engine:'Psych Engine',scope:'package',namespace:'owner',snapshotId:index.snapshotId,
+   rootRelative:'content',projectSha256:index.projectSha256,indexPath:indexPath,
+   indexSha256:hash(indexBytes),indexSize:null,files:[{path:indexPath,sha256:hash(indexBytes)},
+    {path:owner+'/images/sprite.png',sha256:hash(image)},{path:owner+'/data/message.txt',sha256:hash(text)}]};
+  var current=RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package');
+  eq(current.bindingState,'ready','new committed transaction can replace an invalidated view');
+  view.release();
+  eq(RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package')==current,true,
+   'releasing an old identity removed a newer owner binding');
+
+  var delegate=new CachedAssetLibrary();
+  var detached=new PsychOwnerAssetLibraryView(delegate,function()
+   return RuntimeOwnerAssetIdentity.acquire(owner,'Psych Engine','package')==current);
+  current.trackAssetLibraryView(detached);
+  detached.unload();
+  delegate.cacheText('repopulated','detached text');
+  eq(detached.getText('repopulated'),'detached text',
+   'source unload leaves a detached view usable while its proof remains current');
   RuntimeOwnerAssetIdentity.releaseOwner(owner);
+  eq(delegate.hasText('repopulated'),false,
+   'owner release retires detached views and clears caches they refilled');
+  var detachedRejected=false;
+  try detached.getText('repopulated') catch (_:Dynamic) detachedRejected=true;
+  check(detachedRejected,'owner release makes the detached handle unusable');
   var legacyOwner='assets/imported_mods/legacy';
   FileSystem.createDirectory(legacyOwner);
   ImportRefreshManager.binding=null;
@@ -142,7 +183,7 @@ class TJSONEncoder {
             )
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(work),
-                 "--main", "Main", "--interp"], cwd=work, env=env,
+                 "-lib", "lime", "-lib", "openfl", "--main", "Main", "--interp"], cwd=work, env=env,
                 capture_output=True, text=True, timeout=60,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

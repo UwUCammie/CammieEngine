@@ -60,6 +60,7 @@ class NightmareVisionCharacterRuntimeTest(unittest.TestCase):
         source = (ROOT / 'source/Character.hx').read_text()
         visual_builder = function_body(source, 'loadNightmareVisionCharacterVisual')
         health_color_loader = function_body(source, 'loadNightmareVisionHealthColors')
+        character_flags = function_body(source, 'loadNightmareVisionCharacterFlags')
         health_color_array = function_body(source, 'nightmareVisionColorArrayFromPacked')
         health_colour_getter = function_body(source, 'get_healthColour')
         health_colour_setter = function_body(source, 'set_healthColour')
@@ -147,19 +148,21 @@ class Character {
  public var enemyOffsetY:Int=0; public var playerOffsetY:Int=0; public var gfOffsetY:Int=0;
  public var antialiasing:Bool=true; public var flipX:Bool=false; public var holdTime:Float=4;
  public var beatInterval:Int=2; public var danceEvery:Int=1; public var curCharacter:String='dusk';
+ public var singDuration:Float=4;
  public var danceEveryNumBeats(get,set):Int;
  function get_danceEveryNumBeats():Int return danceEvery;
  function set_danceEveryNumBeats(value:Int):Int return danceEvery=value;
  public var hitboxUpdates:Int=0;
  public var isPlayer:Bool=false; public var playerColor:FlxColor=0xFF66FF33; public var enemyColor:FlxColor=0xFFFF0000;
  public var nightmareVisionCharacterData:Dynamic;
+ public var vSliceSustains:Bool=false;
  var nightmareVisionHealthColour:Null<FlxColor>=null;
  var nightmareVisionHealthColorArray:Array<Int>=[255,0,0];
  public var healthColour(get,set):FlxColor;
  public var healthColorArray(get,set):Array<Int>;
  public function new() {}
  public function updateHitbox():Void hitboxUpdates++;
-''' + visual_builder.replace('function loadNightmareVisionCharacterVisual(', 'public function loadNightmareVisionCharacterVisual(') + '\n' + health_color_loader + '\n' + health_color_array + '\n' + health_colour_getter + '\n' + health_colour_setter + '\n' + health_array_getter + '\n' + health_array_setter + '\n' + number_helper + '\n' + pair_helper + '''
+''' + visual_builder.replace('function loadNightmareVisionCharacterVisual(', 'public function loadNightmareVisionCharacterVisual(') + '\n' + health_color_loader + '\n' + character_flags + '\n' + health_color_array + '\n' + health_colour_getter + '\n' + health_colour_setter + '\n' + health_array_getter + '\n' + health_array_setter + '\n' + number_helper + '\n' + pair_helper + '''
 }
 class Main {
  static function check(value:Bool,message:String):Void if(!value) throw message;
@@ -172,6 +175,7 @@ class Main {
   var ownerRoot=args[3];
   var authoredHealthColors:Array<Int>=[12,34,56];
   var dusk:Dynamic={image:'characters/Dusk', scale:1.5, no_antialiasing:true, flip_x:false,
+   vslice_sustains:true,
    camera_position:[-545,-141], sing_duration:6.1, dance_every:1, position:[450,10],
    healthbar_colors:authoredHealthColors, healthbar_colour:-8751940,
    animations:[
@@ -184,6 +188,7 @@ class Main {
    ]};
   var actor=new Character();
   check(actor.loadNightmareVisionCharacterVisual(dusk,animatePath,ownerRoot),'Animate visual initialization');
+  check(actor.vSliceSustains,'authored vslice_sustains true reaches the live Character flag');
   check(actor.frames!=null && NightmareVisionPaths.lastKey=='characters/Dusk' && NightmareVisionPaths.lastOwnerCheck,
    'Animate atlas goes through owner-scoped paths');
   check(actor.animation.exists('singLEFT') && actor.animation.exists('danceLeft')
@@ -199,6 +204,7 @@ class Main {
   check(actor.enemyOffsetX==450 && actor.playerOffsetX==450 && actor.gfOffsetY==10,
    'CharacterData position becomes the shared stage-slot offset');
   check(actor.holdTime>6 && actor.beatInterval==1 && actor.danceEvery==1,'sing and dance timing preserved');
+  check(actor.singDuration==6.1,'source singDuration is retained as a live Character field');
   check(actor.scale.x==1.5 && actor.hitboxUpdates==1 && !actor.antialiasing && !actor.flipX,
    'scale, antialiasing, and authored flip are applied');
   check(actor.healthColorArray==authoredHealthColors
@@ -211,6 +217,8 @@ class Main {
    animations:[{anim:'idle',name:'idle',indices:[],fps:12,loop:true,offsets:[2,3]}]};
   var sparrowActor=new Character();
   check(sparrowActor.loadNightmareVisionCharacterVisual(sparrow,sparrowPath,ownerRoot),'Sparrow visual initialization');
+  check(!sparrowActor.vSliceSustains && sparrowActor.singDuration==4,
+   'missing source sustain and duration metadata use their defaults');
   check(sparrowActor.frames!=null && NightmareVisionPaths.lastKey=='characters/Sparrow'
    && NightmareVisionPaths.lastOwnerCheck,'Sparrow atlas goes through owner-scoped paths');
   check(sparrowActor.animation.exists('idle') && sparrowActor.animOffsets.get('idle')[1]==3,
@@ -269,6 +277,8 @@ class Main {
         self.assertIn('curCharacter = character;', constructor)
         self.assertIn('requestedCharacter = codename == null', constructor)
         self.assertIn('loadNightmareVisionCharacterVisual(nightmareVisionOwnedCharacter, nightmareVisionImageRoot,', constructor)
+        self.assertIn('loadNightmareVisionCharacterFlags(nightmareVisionOwnedCharacter);', constructor)
+        self.assertIn("Reflect.field(definition, 'vslice_sustains') == true", source)
         self.assertIn('codenameLiveDefinition == null && !nightmareVisionCharacterOwned', constructor)
         self.assertIn('&& !nightmareVisionCharacterOwned && isPlayer && !noFlip', constructor)
         self.assertIn("var findFrameLabels = Reflect.field(animation, 'findFrameLabelIndices')", source)

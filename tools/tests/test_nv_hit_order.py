@@ -329,6 +329,7 @@ class FNFAssets { public static function getSound(path:String):Dynamic return nu
 class Conductor { public static var songPosition:Float = 1; }
 class Main {
  public var events:Array<String> = [];
+ public var singerManualHits:Array<Bool> = [];
  public var nightmareVisionScripts:Scripts;
  public var nightmareVisionNoteTypes:NoteTypes;
  public var sourceScoreNightmare:Bool = true;
@@ -374,8 +375,10 @@ class Main {
  __FIELD_FOR_NOTE__
  __REMOVE_FIELD_NOTE__
  __FIELD_HIT_SIGNAL__
- function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView, id:Int):Void
+ function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView, id:Int, manualHit:Bool):Void {
+  singerManualHits.push(manualHit);
   events.push('singers');
+ }
  function prepareNightmareVisionHitSplash(note:Note, field:NightmareVisionPlayFieldView, id:Int):Void
   events.push('splash');
  function judgeSourceNote(note:Note):Void {
@@ -418,6 +421,8 @@ __AUTO_LOOP__
    'tap phase order/callback mutation/global return changed: ' + events.join('|'));
   check(tap.destroyed && !tap.alive && tap.nightmareVisionHitDispatched,
    'accepted tap did not finish retirement');
+  check(singerManualHits.length == 1 && singerManualHits[0],
+   'manual tap singer preparation lost its manual-hit classification');
 
   var stopped = new Main();
   stopped.nightmareVisionNoteTypes.sideResult = NightmareVisionScriptGroup.STOP_FUNC;
@@ -525,6 +530,8 @@ __AUTO_LOOP__
    check(head.autoAttempts == 1 && head.externalListeners == 1
     && head.destroyed && !head.alive,
     'accepted tap was not one-shot after removal at render rate ' + hz);
+   check(host.singerManualHits.length == 2 && !host.singerManualHits[0] && !host.singerManualHits[1],
+    'auto-played singer preparation must retain auto-hit classification at render rate ' + hz);
    check(sustain.autoAttempts == 1 && sustain.externalListeners == 1
     && sustain.alive && sustain.wasGoodHit,
     'accepted sustain repeated or was retired at render rate ' + hz);
