@@ -117,34 +117,81 @@ class PsychOwnerAssetLibraryCache {
 
 	/** Exact Lime Assets.getAsset behavior for cacheable owner-library entries. */
 	public static function getLimeAsset(view:PsychOwnerAssetLibraryAssetView,
-		type:AssetType, useCache:Bool):Dynamic {
+		type:AssetType, useCache:Bool, ?cacheOverride:LimeAssetCache,
+		?isCurrent:Void->Bool):Dynamic {
 		if (view == null) return null;
-		var cached = cachedLimeAsset(view.identity, view.cacheId, type, useCache);
+		if (isCurrent != null && !isCurrent()) throw staleMessage();
+		var cache = cacheOverride == null ? limeAssetCache(view.identity) : cacheOverride;
+		var cached = cachedLimeAssetIn(cache, view.cacheId, type, useCache);
 		if (cached != null) return cached;
 		var asset = view.library.getAsset(view.id, Std.string(type).toUpperCase());
-		if (useCache && limeCacheable(type) && asset != null && limeAssetCache(view.identity).enabled)
-			storeLimeAsset(view.identity, view.cacheId, type, asset);
+		if (isCurrent != null && !isCurrent()) throw staleMessage();
+		if (useCache && limeCacheable(type) && asset != null && cache.enabled) {
+			if (cacheOverride == null) storeLimeAsset(view.identity, view.cacheId, type, asset);
+			else storeLimeAssetIn(cacheOverride, view.cacheId, type, asset, isCurrent);
+		}
 		return asset;
 	}
 
 	/** Exact Lime Assets.loadAsset behavior, including cache hits and the
 		load-start enabled snapshot used by its completion callback. */
 	public static function loadLimeAsset(view:PsychOwnerAssetLibraryAssetView,
-		type:AssetType, useCache:Bool):Dynamic {
+		type:AssetType, useCache:Bool, ?cacheOverride:LimeAssetCache,
+		?isCurrent:Void->Bool):Dynamic {
 		if (view == null) return null;
+		if (isCurrent != null && !isCurrent()) return Future.withError(staleMessage());
 		var cacheable = limeCacheable(type);
-		var cacheEnabledAtStart = useCache && cacheable && limeAssetCache(view.identity).enabled;
+		var cache = cacheOverride == null ? limeAssetCache(view.identity) : cacheOverride;
+		var cacheEnabledAtStart = useCache && cacheable && cache.enabled;
 		if (cacheEnabledAtStart) {
-			var cached = cachedLimeAsset(view.identity, view.cacheId, type, true);
+			var cached = cachedLimeAssetIn(cache, view.cacheId, type, true);
 			if (cached != null) return Future.withValue(cached);
 		}
 		var future = view.library.loadAsset(view.id, Std.string(type).toUpperCase());
+		if (isCurrent != null) {
+			var promise = new Promise<Dynamic>();
+			future.onProgress(promise.progress);
+			future.onError(promise.error);
+			future.onComplete(function(asset:Dynamic) {
+				if (!isCurrent()) {
+					promise.error(staleMessage());
+					return;
+				}
+				if (cacheEnabledAtStart) storeLimeAssetIn(cache, view.cacheId, type, asset, isCurrent, true);
+				promise.complete(asset);
+			});
+			return promise.future;
+		}
 		if (cacheEnabledAtStart) {
 			future.onComplete(function(asset:Dynamic) {
 				storeLimeAssetIgnoringEnabled(view.identity, view.cacheId, type, asset);
 			});
 		}
 		return future;
+	}
+
+	/** Source Assets.loadAsset writes to the facade cache, whose key is the
+		original ID. Composite NV facades pass their own proof-scoped cache here. */
+	public static function storeLimeAssetIn(cache:LimeAssetCache, id:String,
+		type:AssetType, asset:Dynamic, ?isCurrent:Void->Bool,
+		ignoreEnabled:Bool = false):Void {
+		if (cache == null || asset == null || !limeCacheable(type)
+			|| (isCurrent != null && !isCurrent()) || (!ignoreEnabled && !cache.enabled)) return;
+		try cache.set(id, type, asset) catch (_:Dynamic) {}
+	}
+
+	/** Preserve the underlying Future's progress/error ordering while rejecting
+		results whose selected owner proof or composite winner changed in flight. */
+	public static function guardFuture<T>(future:Future<T>, isCurrent:Void->Bool):Future<T> {
+		if (future == null || isCurrent == null) return future;
+		var promise = new Promise<T>();
+		future.onProgress(promise.progress);
+		future.onError(promise.error);
+		future.onComplete(function(value:T) {
+			if (!isCurrent()) promise.error(staleMessage());
+			else promise.complete(value);
+		});
+		return promise.future;
 	}
 
 	/** Matches Lime Assets.loadAsset: write only after completion and keep the
@@ -169,16 +216,20 @@ class PsychOwnerAssetLibraryCache {
 	}
 
 	public static function storeOpenFlBitmapData(identity:RuntimeOwnerAssetIdentity,
-		id:String, bitmap:BitmapData):Void {
-		if (bitmap == null || !cacheIdentityIsCurrent(identity)) return;
-		var cache = openFlAssetCache(identity);
+		id:String, bitmap:BitmapData, ?cacheOverride:PsychOwnerOpenFlAssetCache,
+		?isCurrent:Void->Bool):Void {
+		if (bitmap == null || !cacheIdentityIsCurrent(identity)
+			|| (isCurrent != null && !isCurrent())) return;
+		var cache = cacheOverride == null ? openFlAssetCache(identity) : cacheOverride;
 		if (cache.enabled) cache.setBitmapData(id, bitmap);
 	}
 
 	public static function storeOpenFlSound(identity:RuntimeOwnerAssetIdentity,
-		id:String, sound:Sound):Void {
-		if (sound == null || !cacheIdentityIsCurrent(identity)) return;
-		var cache = openFlAssetCache(identity);
+		id:String, sound:Sound, ?cacheOverride:PsychOwnerOpenFlAssetCache,
+		?isCurrent:Void->Bool):Void {
+		if (sound == null || !cacheIdentityIsCurrent(identity)
+			|| (isCurrent != null && !isCurrent())) return;
+		var cache = cacheOverride == null ? openFlAssetCache(identity) : cacheOverride;
 		if (cache.enabled) cache.setSound(id, sound);
 	}
 
@@ -189,9 +240,11 @@ class PsychOwnerAssetLibraryCache {
 	}
 
 	public static function storeOpenFlFont(identity:RuntimeOwnerAssetIdentity,
-		id:String, font:Font):Void {
-		if (font == null || !cacheIdentityIsCurrent(identity)) return;
-		var cache = openFlAssetCache(identity);
+		id:String, font:Font, ?cacheOverride:PsychOwnerOpenFlAssetCache,
+		?isCurrent:Void->Bool):Void {
+		if (font == null || !cacheIdentityIsCurrent(identity)
+			|| (isCurrent != null && !isCurrent())) return;
+		var cache = cacheOverride == null ? openFlAssetCache(identity) : cacheOverride;
 		if (cache.enabled) cache.setFont(id, font);
 	}
 
@@ -287,6 +340,7 @@ class PsychOwnerAssetLibraryCache {
 				promise.error(staleMessage());
 				return;
 			}
+			watchLibrary(entry.identity, entry.limeLibrary);
 			promise.complete(entry.limeLibrary);
 		});
 		return entry.loadFuture;
@@ -328,6 +382,7 @@ class PsychOwnerAssetLibraryCache {
 		var entry = entries.get(key);
 		if (entry == null || entry.identity != identity) return;
 		entries.remove(key);
+		unwatchLibrary(identity, entry.limeLibrary);
 		if (unloadContents && entry.sourceLibrary != null) entry.sourceLibrary.unload();
 		entry.openFlLibrary = null;
 	}
@@ -349,6 +404,7 @@ class PsychOwnerAssetLibraryCache {
 		for (key in remove) {
 			var entry = entries.get(key);
 			entries.remove(key);
+			if (entry != null) unwatchLibrary(identity, entry.limeLibrary);
 			if (entry != null && entry.sourceLibrary != null) entry.sourceLibrary.unload();
 		}
 	}
@@ -370,6 +426,7 @@ class PsychOwnerAssetLibraryCache {
 		for (key in remove) {
 			var entry = entries.get(key);
 			entries.remove(key);
+			if (entry != null) unwatchLibrary(entry.identity, entry.limeLibrary);
 			if (entry != null && entry.sourceLibrary != null) entry.sourceLibrary.unload();
 		}
 	}
@@ -500,6 +557,23 @@ class PsychOwnerAssetLibraryCache {
 		if (state == null) return;
 		if (state.lime != null) state.lime.clear();
 		if (state.openFl != null) state.openFl.clear();
+	}
+
+	static function watchLibrary(identity:RuntimeOwnerAssetIdentity, library:AssetLibrary):Void {
+		if (identity == null || library == null) return;
+		var context = contextForIdentity(identity);
+		SourceOwnerAssetsEvents.forContext(context).watchLibrary(library);
+	}
+
+	static function unwatchLibrary(identity:RuntimeOwnerAssetIdentity, library:AssetLibrary):Void {
+		if (identity == null || library == null) return;
+		try SourceOwnerAssetsEvents.forContext(contextForIdentity(identity)).unwatchLibrary(library)
+		catch (_:Dynamic) {}
+	}
+
+	static function contextForIdentity(identity:RuntimeOwnerAssetIdentity):SourceOwnerAssetContext {
+		return identity.engine == 'Psych Engine' ? SourceOwnerAssetContext.psych(identity.owner)
+			: SourceOwnerAssetContext.nightmareVision(identity.owner, identity.scope);
 	}
 
 	static function storeLimeAssetIgnoringEnabled(identity:RuntimeOwnerAssetIdentity,

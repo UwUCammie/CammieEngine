@@ -315,6 +315,128 @@ class ImportRootScanner {
             # contentRoot, not an independent import root.
             self.assertEqual(output.count("Kade Engine|"), 1)
 
+    def test_fresh_stronger_root_evidence_supersedes_stale_retained_engine(self):
+        """Auto must repair a previously misclassified root without overriding an explicit selector."""
+        main = r'''class Main {
+  static function main() {
+    var changed = Sys.args()[0];
+    var stable = Sys.args()[1];
+    var retained = new Map<String, String>();
+    retained.set(changed, ImportEngine.PSYCH);
+    retained.set(stable, ImportEngine.PSYCH);
+    ImportRootScanner.setRetainedSourceEngines(retained);
+
+    var rediscovered = ImportRootScanner.inspectRoot(changed, ImportEngine.AUTO);
+    if (rediscovered == null || rediscovered.engine != ImportEngine.V_SLICE)
+      throw 'strong current V-Slice evidence was hidden by stale retained identity';
+    var explained = false;
+    for (item in rediscovered.evidence)
+      if (item.indexOf('superseded retained engine identity') >= 0) explained = true;
+    if (!explained) throw 'engine rediscovery omitted its retained-identity explanation';
+
+    var explicit = ImportRootScanner.inspectRoot(changed, ImportEngine.PSYCH);
+    if (explicit == null || explicit.engine != ImportEngine.PSYCH)
+      throw 'explicit engine selection was not preserved';
+
+    var retainedRoot = ImportRootScanner.inspectRoot(stable, ImportEngine.AUTO);
+    if (retainedRoot == null || retainedRoot.engine != ImportEngine.PSYCH)
+      throw 'retained engine no longer wins when current evidence is weaker';
+    trace('REDISCOVERED=' + rediscovered.engine + '|RETAINED=' + retainedRoot.engine);
+  }
+}'''
+        with tempfile.TemporaryDirectory() as temp:
+            temp_path = Path(temp)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
+            self.write_scanner(temp_path)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
+
+            changed = temp_path / "changed-polymod"
+            (changed / "data/songs/demo").mkdir(parents=True)
+            (changed / "songs/demo").mkdir(parents=True)
+            (changed / "shared").mkdir()
+            (changed / "_polymod_meta.json").write_text("{}", newline='\n')
+            (changed / "data/songs/demo/demo-metadata.json").write_text("{}", newline='\n')
+            (changed / "data/songs/demo/demo-chart.json").write_text("{}", newline='\n')
+
+            stable = temp_path / "stable-psych"
+            for folder in ("data/songs/demo", "songs/demo", "images"):
+                (stable / folder).mkdir(parents=True, exist_ok=True)
+            (stable / "pack.json").write_text("{}", newline='\n')
+            (stable / "data/songs/demo/demo.json").write_text("{}", newline='\n')
+
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", temp, "--run", "Main",
+                 changed.as_posix(), stable.as_posix()],
+                cwd=temp,
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertIn("REDISCOVERED=V-Slice|RETAINED=Psych Engine", output)
+
+    def test_retained_engine_beats_weak_generic_pack_and_asset_layout(self):
+        main = r'''import sys.io.File;
+class Main {
+  static function check(value:Bool, message:String):Void if (!value) throw message;
+  static function main() {
+    var root = Sys.args()[0];
+    var beforePack = File.getContent(root + '/pack.json');
+    var beforeChart = File.getBytes(root + '/assets/data/demo/demo.json').toString();
+    var beforeAudio = File.getBytes(root + '/assets/songs/demo/Inst.ogg').toString();
+
+    var unretained = ImportRootScanner.inspectRoot(root, ImportEngine.AUTO);
+    check(unretained != null && unretained.engine == ImportEngine.PSYCH,
+      'fixture did not produce a weak generic Psych pack/layout hint');
+
+    var retainedEngines = new Map<String, String>();
+    retainedEngines.set(root, ImportEngine.NIGHTMARE_VISION);
+    var previous = ImportRootScanner.setRetainedSourceEngines(retainedEngines);
+    var retained = ImportRootScanner.inspectRoot(root, ImportEngine.AUTO);
+    check(retained != null && retained.engine == ImportEngine.NIGHTMARE_VISION,
+      'weak generic pack/assets evidence replaced the retained engine identity');
+    var explained = false;
+    for (item in retained.evidence)
+      if (item.indexOf('Engine identity retained from the original source scan') >= 0)
+        explained = true;
+    check(explained, 'retained identity was not shown in root evidence');
+
+    var explicit = ImportRootScanner.inspectRoot(root, ImportEngine.PSYCH);
+    check(explicit != null && explicit.engine == ImportEngine.PSYCH,
+      'explicit importer selection was changed by retained identity');
+    ImportRootScanner.setRetainedSourceEngines(previous);
+
+    check(File.getContent(root + '/pack.json') == beforePack
+      && File.getBytes(root + '/assets/data/demo/demo.json').toString() == beforeChart
+      && File.getBytes(root + '/assets/songs/demo/Inst.ogg').toString() == beforeAudio,
+      'scanner changed source files while weighing retained identity');
+    trace('WEAK_HINT=' + unretained.engine + '|RETAINED=' + retained.engine);
+  }
+}'''
+        with tempfile.TemporaryDirectory() as temporary:
+            temp_path = Path(temporary)
+            (temp_path / "ImportEngine.hx").write_text(self.engine, newline='\n')
+            self.write_scanner(temp_path)
+            (temp_path / "Main.hx").write_text(main, newline='\n')
+
+            root = temp_path / "weak-generic-pack"
+            for folder in ("assets/data/demo", "assets/songs/demo", "assets/images", "assets/scripts"):
+                (root / folder).mkdir(parents=True, exist_ok=True)
+            (root / "pack.json").write_text("{}", newline='\n')
+            (root / "assets/data/demo/demo.json").write_text("{}", newline='\n')
+            (root / "assets/songs/demo/Inst.ogg").write_bytes(b"fixture audio")
+            (root / "assets/scripts/script.lua").write_text("function onCreate() end", newline='\n')
+
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", temp_path, "--run", "Main", root.as_posix()],
+                cwd=temp_path,
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertIn("WEAK_HINT=Psych Engine|RETAINED=Nightmare Vision", output)
+
     def test_progress_callback_can_cancel_without_throwing(self):
         main = """class Main {
   static function main() {

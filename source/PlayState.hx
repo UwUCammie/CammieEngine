@@ -997,6 +997,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.sourceSpriteOwner = spriteOwner;
 		interp.cameraShaders = new NightmareVisionCameraShaders();
 		for (name => value in preset) interp.variables.set(name, value);
+		NightmareVisionStageVisualBindings.install(interp);
+		NightmareVisionAssetsBindings.install(interp, paths);
 		NightmareVisionAlphabetBindings.install(interp, paths);
 		interp.bindImport('flixel.FlxSprite', NightmareVisionFlxSprite);
 		NightmareVisionSpriteBindings.install(interp, paths, spriteOwner);
@@ -2974,6 +2976,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				hscriptFlxSoundLooped.set(resolved, looped);
 			}
 			flxsnd.volume = volume;
+			// Keep script-triggered SFX in the same user-volume group as
+			// FlxG.sound.play().  Adding the sound only to sound.list leaves
+			// its group null, which bypasses the saved volumeSFX multiplier.
+			if (FlxG.sound.defaultSoundGroup != null
+				&& flxsnd.group != FlxG.sound.defaultSoundGroup)
+				FlxG.sound.defaultSoundGroup.add(flxsnd);
 			flxsnd.play(true);
 			return flxsnd;
 		}

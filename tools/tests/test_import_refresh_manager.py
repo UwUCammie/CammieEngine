@@ -45,7 +45,7 @@ class ModuleFunctions {
  public static function setImportBackgroundMode(value:Bool):Void {}
  public static function setImportCancelCallback(value:Dynamic):Void {}
  public static function setImportProgressCallback(value:Dynamic):Void {}
- public static function publishNightmareVisionFamilyMemberRoots(roots:Array<String>):Dynamic {
+ public static function publishNightmareVisionFamilyMemberRoots(roots:Array<String>, ?snapshotRoot:String, ?record:Dynamic):Dynamic {
   familyPublishGeneration++;
   publishedFamilyRoots=roots==null?[]:roots.copy();
   publishedFamilyNamespaces=[];
@@ -2667,9 +2667,9 @@ class ImportRefreshManagerTest(unittest.TestCase):
         shutil_rmtree(donor)
         stale_revisions = [dict(stamp) for stamp in record["revisions"]]
         self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
-        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {9})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {10})
         for stamp in stale_revisions:
-            stamp["engineRevision"] = 8
+            stamp["engineRevision"] = 9
         self.mark_record_stale(record, common_revision=None,
                                record_updates={"revisions": stale_revisions})
 
@@ -2680,7 +2680,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
-        self.assertTrue(any(stamp["engineRevision"] == 9
+        self.assertTrue(any(stamp["engineRevision"] == 10
                             for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())

@@ -9,6 +9,7 @@ import ImportRefreshTransaction.ImportRefreshManifest;
 import ImportRefreshTransaction.ImportRefreshPackageFamilyCatalog;
 import ImportRefreshTransaction.ImportRefreshPackageFamilyCatalogEntry;
 import NightmareVisionModFamilyMember;
+import SourceLimeAssetIdentity;
 
 private typedef ImportPackageFamilyCommittedImport = {
 	var manifest:ImportRefreshManifest;
@@ -26,6 +27,13 @@ private typedef ImportPackageFamilySourceStructure = {
 	var snapshotId:String;
 	var containerRelative:String;
 	var members:Array<ImportPackageFamilySourceMember>;
+}
+
+private typedef ImportPackageFamilyCoreProvider = {
+	var sourceRoot:String;
+	var rootRelative:String;
+	var namespace:String;
+	var projectSha256:String;
 }
 
 /**
@@ -58,6 +66,68 @@ class ImportPackageFamilyCatalog {
 		} catch (_:Dynamic) return [];
 	}
 
+	/** Return the exact retained outer game-root source only when the family is
+	 * nested under its authenticated content/ directory and the scanner's core
+	 * asset resolver selects this snapshot's own assets/ tree. */
+	public static function coreProviderSourceRoot(snapshotRoot:String, record:Dynamic):Null<String> {
+		try {
+			var structure = discoverStructure(snapshotRoot, record);
+			var provider = validatedCoreProvider(snapshotRoot, record, structure);
+			return provider == null ? null : provider.sourceRoot;
+		} catch (_:Dynamic) return null;
+	}
+
+	/** Bind catalog-authorized provider/core edges to the current ImportIO scope.
+	 * A null result means the retained source does not prove this topology; an
+	 * exception means a proven topology could not be bound safely. */
+	public static function bindCoreAssetHandoffs(snapshotRoot:String, record:Dynamic,
+		io:ImportIO):Null<Array<Dynamic>> {
+		if (io == null) return null;
+		var structure = discoverStructure(snapshotRoot, record);
+		var provider = validatedCoreProvider(snapshotRoot, record, structure);
+		if (provider == null) {
+			var priorValue:Dynamic = record == null ? null : Reflect.field(record, "packageFamilyCatalog");
+			if (priorValue != null && Reflect.field(priorValue, "version") == 3) {
+				// A stale v3 claim is never downgraded to a family without a core
+				// index. Transaction validation will separately reject malformed
+				// catalogs, but this check must not let a failed source proof prune
+				// receiver data before that point.
+				throw "The previously committed Nightmare Vision core handoff can no longer be proven from this retained snapshot; refresh stopped to preserve receiver files.";
+			}
+			return null;
+		}
+		var profileBinding = io.assetProfile(provider.sourceRoot, "Nightmare Vision");
+		if (profileBinding == null || profileBinding.profile == null
+			|| Reflect.field(profileBinding.profile, "provenance") != "receipt-bound"
+			|| Reflect.field(profileBinding.profile, "snapshotId") != structure.snapshotId
+			|| Reflect.field(profileBinding.profile, "rootRelative") != ""
+			|| Reflect.field(profileBinding.profile, "namespace") != provider.namespace
+			|| Reflect.field(profileBinding.profile, "projectSha256") != provider.projectSha256)
+			throw "Nightmare Vision core provider profile is not bound to the current retained snapshot.";
+		var result:Array<Dynamic> = [];
+		for (member in structure.members) {
+			ImportWorkScheduler.cooperate();
+			var receiverNamespace = io.resolvedNamespace(member.sourceRoot, "Nightmare Vision");
+			if (receiverNamespace == null || receiverNamespace == "")
+				receiverNamespace = io.resolvedNamespace(Path.join([member.sourceRoot, "assets"]), "Nightmare Vision");
+			if (receiverNamespace == null || receiverNamespace == "")
+				throw "Nightmare Vision core receiver has no resolved package namespace.";
+			var destinationRoot = "assets/imported_mods/" + receiverNamespace;
+			var handoff:Dynamic = {
+				version:1, providerNamespace:provider.namespace, providerRootRelative:"",
+				providerProjectSha256:provider.projectSha256,
+				receiverRootRelative:member.sourceRelative, catalogVersion:3
+			};
+			io.setAssetProfileHandoff(provider.sourceRoot, "Nightmare Vision",
+				destinationRoot, receiverNamespace, handoff);
+			result.push({sourceRoot:provider.sourceRoot, destinationRoot:destinationRoot,
+				receiverSourceRoot:member.sourceRoot,
+				receiverRootRelative:member.sourceRelative, receiverNamespace:receiverNamespace,
+				handoff:handoff});
+		}
+		return result;
+	}
+
 	/** The scanner's accepted outer NMV identities are the authority for a
 	 * content package. Keep this proof shared with path canonicalization so an
 	 * executable-only distribution remains equivalent to a source checkout. */
@@ -69,7 +139,7 @@ class ImportPackageFamilyCatalog {
 		} catch (_:Dynamic) return false;
 	}
 
-	/** Build a v2 catalog only from namespaces resolved by CompatScriptManifest
+	/** Build a v2/v3 catalog only from namespaces resolved by CompatScriptManifest
 	 * during the same ImportIO staging scope, and only when the staged transaction
 	 * owns the package config plus non-core runtime content. */
 	public static function capturePublished(snapshotRoot:String, record:Dynamic, io:ImportIO):Null<ImportRefreshPackageFamilyCatalog> {
@@ -86,9 +156,28 @@ class ImportPackageFamilyCatalog {
 					sourceRelative:sourceMember.sourceRelative, namespace:namespace});
 			}
 			if (members.length < 2) return null;
+			var coreProvider = validatedCoreProvider(snapshotRoot, record, structure);
+			var version = 2;
+			if (coreProvider != null) {
+				for (member in members) {
+					var handoff = io.assetProfileHandoff(coreProvider.sourceRoot, "Nightmare Vision",
+						"assets/imported_mods/" + member.namespace);
+					if (handoff == null || handoff.receiverRootRelative != member.sourceRelative
+						|| handoff.receiverNamespace != member.namespace || handoff.catalogVersion != 3)
+						return null;
+					var coreSidecar = "assets/imported_mods/" + member.namespace + "/"
+						+ SourceLimeAssetIdentity.sidecarRelativePath("Nightmare Vision", "core");
+					if (written.indexOf(coreSidecar) < 0) return null;
+				}
+				version = 3;
+			}
 			var catalog:ImportRefreshPackageFamilyCatalog = {
-				version:2, engine:"Nightmare Vision", snapshotId:structure.snapshotId,
-				containerRelative:structure.containerRelative, members:members
+				version:version, engine:"Nightmare Vision", snapshotId:structure.snapshotId,
+				containerRelative:structure.containerRelative, members:members,
+				coreProvider:coreProvider == null ? null : {
+					rootRelative:coreProvider.rootRelative, namespace:coreProvider.namespace,
+					projectSha256:coreProvider.projectSha256
+				}
 			};
 			return ImportRefreshTransaction.validatePackageFamilyCatalog(catalog, record);
 		} catch (_:Dynamic) return null;
@@ -111,7 +200,7 @@ class ImportPackageFamilyCatalog {
 				|| Reflect.field(oldRecord, "schemaVersion") != 1) return result;
 			var oldCatalog = ImportRefreshTransaction.validatePackageFamilyCatalog(previous.packageFamilyCatalog,
 				oldRecord);
-			if (oldCatalog == null || oldCatalog.version != 2) return result;
+			if (oldCatalog == null || oldCatalog.version < 2) return result;
 			var oldSnapshot = safeChild(Path.join([install, "import-cache"]),
 				"sources/" + Std.string(Reflect.field(oldRecord, "snapshotId")));
 			if (oldSnapshot == null || !safeExistingDirectory(install, oldSnapshot)
@@ -226,7 +315,8 @@ class ImportPackageFamilyCatalog {
 			if (snapshotRoot == null || !safeExistingDirectory(install, snapshotRoot)) continue;
 			var catalog:Null<ImportRefreshPackageFamilyCatalog> = null;
 			var persisted:Dynamic = Reflect.field(manifest, "packageFamilyCatalog");
-			if (persisted != null && Reflect.field(persisted, "version") == 2) {
+			if (persisted != null && Std.isOfType(Reflect.field(persisted, "version"), Int)
+				&& (cast Reflect.field(persisted, "version"):Int) >= 2) {
 				var structure:Null<ImportPackageFamilySourceStructure> = null;
 				try {
 					catalog = ImportRefreshTransaction.validatePackageFamilyCatalog(persisted, record);
@@ -405,9 +495,59 @@ class ImportPackageFamilyCatalog {
 		return false;
 	}
 
+	static function validatedCoreProvider(snapshotRoot:String, record:Dynamic,
+		structure:Null<ImportPackageFamilySourceStructure>):Null<ImportPackageFamilyCoreProvider> {
+		if (structure == null || structure.containerRelative != "content" || record == null)
+			return null;
+		var contentRoot = safeChild(snapshotRoot, "content");
+		if (contentRoot == null || !safeExistingDirectory(snapshotRoot, contentRoot)) return null;
+		var roots:Dynamic = Reflect.field(record, "roots");
+		if (!Std.isOfType(roots, Array)) return null;
+		var providerNamespace:String = null;
+		for (root in (cast roots:Array<Dynamic>)) {
+			ImportWorkScheduler.cooperate();
+			if (root == null || Reflect.field(root, "engine") != "Nightmare Vision"
+				|| Reflect.field(root, "relative") != "") continue;
+			var namespace:Dynamic = Reflect.field(root, "namespace");
+			if (!Std.isOfType(namespace, String) || namespace == "") return null;
+			if (providerNamespace != null && providerNamespace != namespace) return null;
+			providerNamespace = cast namespace;
+		}
+		if (providerNamespace == null) return null;
+		var profileCatalog:Dynamic = Reflect.field(record, "sourceAssetProfiles");
+		var profileRoots:Dynamic = profileCatalog == null ? null : Reflect.field(profileCatalog, "roots");
+		if (!Std.isOfType(profileRoots, Array)) return null;
+		var projectSha:String = null;
+		var profileCount = 0;
+		for (profileEntry in (cast profileRoots:Array<Dynamic>)) {
+			ImportWorkScheduler.cooperate();
+			if (profileEntry == null || Reflect.field(profileEntry, "engine") != "Nightmare Vision"
+				|| Reflect.field(profileEntry, "rootRelative") != ""
+				|| Reflect.field(profileEntry, "namespace") != providerNamespace) continue;
+			var profile:Dynamic = Reflect.field(profileEntry, "profile");
+			if (profile == null || Reflect.field(profile, "provenance") != "receipt-bound"
+				|| Reflect.field(profile, "snapshotId") != structure.snapshotId
+				|| Reflect.field(profile, "sourceEngine") != "Nightmare Vision"
+				|| Reflect.field(profile, "rootRelative") != ""
+				|| Reflect.field(profile, "namespace") != providerNamespace) return null;
+			var candidateSha:Dynamic = Reflect.field(profile, "projectSha256");
+			if (!Std.isOfType(candidateSha, String) || !~/^[a-f0-9]{64}$/.match(Std.string(candidateSha))) return null;
+			if (projectSha != null && projectSha != candidateSha) return null;
+			projectSha = cast candidateSha;
+			profileCount++;
+		}
+		if (profileCount != 1 || projectSha == null) return null;
+		var coreRoot = NightmareVisionAssetCollector.resolveCoreAssetsRoot(contentRoot);
+		var expectedCoreRoot = safeChild(contentRoot, "assets");
+		if (coreRoot == null || expectedCoreRoot == null || !safeExistingDirectory(snapshotRoot, expectedCoreRoot)
+			|| !samePath(canonicalDirectory(coreRoot), canonicalDirectory(expectedCoreRoot))) return null;
+		return {sourceRoot:contentRoot, rootRelative:"", namespace:providerNamespace,
+			projectSha256:projectSha};
+	}
+
 	static function sameSourceStructure(catalog:ImportRefreshPackageFamilyCatalog,
 		structure:Null<ImportPackageFamilySourceStructure>):Bool {
-		if (catalog == null || structure == null || catalog.version != 2
+		if (catalog == null || structure == null || catalog.version < 2
 			|| catalog.snapshotId != structure.snapshotId || catalog.containerRelative != structure.containerRelative
 			|| catalog.members == null || catalog.members.length < 2
 			|| catalog.members.length > structure.members.length) return false;
@@ -560,7 +700,7 @@ class ImportPackageFamilyCatalog {
 		record:Dynamic, catalog:ImportRefreshPackageFamilyCatalog):Array<NightmareVisionModFamilyMember> {
 		var result:Array<NightmareVisionModFamilyMember> = [];
 		if (catalog == null || manifest == null) return result;
-		if (catalog.version == 2) {
+		if (catalog.version >= 2) {
 			if (catalog.members == null) return result;
 			for (member in catalog.members) {
 				var mapping = installedMappingV2(install, manifest, member);
@@ -614,6 +754,12 @@ class ImportPackageFamilyCatalog {
 			if (left.members[index].directory != right.members[index].directory
 				|| left.members[index].sourceRelative != right.members[index].sourceRelative
 				|| left.members[index].namespace != right.members[index].namespace) return false;
+		if (left.version >= 3 || right.version >= 3) {
+			if (left.version != 3 || right.version != 3 || left.coreProvider == null || right.coreProvider == null
+				|| left.coreProvider.rootRelative != right.coreProvider.rootRelative
+				|| left.coreProvider.namespace != right.coreProvider.namespace
+				|| left.coreProvider.projectSha256 != right.coreProvider.projectSha256) return false;
+		}
 		return true;
 	}
 

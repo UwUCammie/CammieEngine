@@ -1,0 +1,13 @@
+# Source owner Assets event contract
+
+`SourceOwnerAssetsEvents` gives one exact owner, source engine, and logical scope its own Lime change event and OpenFL `EventDispatcher`. Repeated facade construction for the same context reuses the provider. Nightmare Vision package, core, and composite contexts remain distinct. The provider never aliases or dispatches the process-global Lime/OpenFL Assets events.
+
+The Lime facade can expose `limeOnChange` and register its exact local `AssetLibrary` views with `watchLibrary`. Each library is subscribed at most once. The composite NV `AssetLibrary` has one bridge from its own `onChange` event to the composite context provider. Loaded package/core libraries forward into the composite event; they do not subscribe directly to the composite provider. Thus both a delegate change and a script's direct `compositeLibrary.onChange.dispatch()` notify composite `Assets.onChange` once. `unload()` detaches delegate forwarding but leaves the bridge on the still-active cached view, while retirement detaches the bridge. The OpenFL surface lazily subscribes to that same provider event when a listener is added, then dispatches an OpenFL `Event.CHANGE`; custom event dispatch, listener removal, `hasEventListener`, and `willTrigger` use the provider's private dispatcher.
+
+`releaseOwner(ownerRoot)` removes the provider from the shared map, detaches its bridge and every watched library callback, clears Lime listeners, and drops the OpenFL dispatcher and its script listener references. Composite view retirement also detaches its provider bridge and delegate callbacks. Other owners keep their providers. The shared lifecycle invokes this from `PsychOwnerAssetPath.releaseOwner`.
+
+## Validation
+
+`python tools/tests/test_source_owner_assets_events.py` passes 1/1. Its Haxe eval compiles against the pinned Lime 8.3.2 `Event` and `AssetLibrary`, and OpenFL 9.5.2 `Event` and `EventDispatcher`. It covers context reuse/isolation, non-aliasing with global Lime `onChange`, deduplicated library subscription, Lime-to-OpenFL change delivery, custom OpenFL dispatch and removal, library detach, and owner release. `python tools/tests/test_source_owner_asset_context.py` covers exact composite event counts for manual dispatch, delegate forwarding, unload, re-watch after reload, and retirement.
+
+The native-source basis is Lime 8.3.2 `Assets.loadLibrary` / `registerLibrary`, which attach an `Assets.onChange` callback to registered libraries, and `removeLibrary`, which detaches it before unload. `AssetLibrary.unload()` clears caches but does not remove event listeners by itself.

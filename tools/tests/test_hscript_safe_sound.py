@@ -26,6 +26,105 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class HscriptSafeSoundTest(unittest.TestCase):
+    def test_cached_script_sfx_uses_saved_default_group_before_first_play(self):
+        source = SOURCE.read_text()
+        methods = "\n".join(
+            extract_method(source, marker).replace("public static function", "static function")
+            for marker in (
+                "public static function hscriptSoundNeedsRebuild(",
+                "public static function resolveHscriptSoundPath(",
+                "public static function preloadHscriptSound(",
+                "public static function hscriptSafePlay(",
+            )
+        )
+        fixture = f'''using StringTools;
+class Sound {{
+  public function new() {{}}
+  public static function fromFile(_path:String):Sound return new Sound();
+}}
+class FNFAssets {{
+  public static function exists(path:String):Bool return path.endsWith('.ogg');
+}}
+class FlxSoundGroup {{
+  public var volume:Float;
+  public var sounds:Array<FlxSound> = [];
+  public function new(volume:Float) this.volume = volume;
+  public function add(sound:FlxSound):Bool {{
+    if (sound.group != null) sound.group.sounds.remove(sound);
+    if (!sounds.contains(sound)) sounds.push(sound);
+    sound.group = this;
+    return true;
+  }}
+  public function remove(sound:FlxSound):Bool {{
+    sound.group = null;
+    return sounds.remove(sound);
+  }}
+  public function getVolume():Float return volume;
+}}
+class FlxSound {{
+  public var exists:Bool = true;
+  public var volume:Float = 1;
+  public var group:FlxSoundGroup;
+  public var plays:Int = 0;
+  public var groupVolumeAtPlay:Float = -1;
+  public var globalVolumeAtPlay:Float = -1;
+  public var effectiveVolumeAtPlay:Float = -1;
+  public function new() {{}}
+  public function loadEmbedded(_sound:Sound, _looped:Bool, _autoDestroy:Bool):FlxSound return this;
+  public function play(_forceRestart:Bool = false):FlxSound {{
+    plays++;
+    groupVolumeAtPlay = group == null ? 1 : group.getVolume();
+    globalVolumeAtPlay = FlxG.sound.volume;
+    effectiveVolumeAtPlay = volume * groupVolumeAtPlay * globalVolumeAtPlay;
+    return this;
+  }}
+}}
+class FlxSoundList {{
+  public var sounds:Array<FlxSound> = [];
+  public function new() {{}}
+  public function add(sound:FlxSound):Bool {{ sounds.push(sound); return true; }}
+}}
+class SoundFrontEnd {{
+  public var list:FlxSoundList = new FlxSoundList();
+  public var defaultSoundGroup:FlxSoundGroup = new FlxSoundGroup(0.25);
+  public var volume:Float = 0.5;
+  public function new() {{}}
+  public function play(_sound:Dynamic, _volume:Float, _looped:Bool):FlxSound return new FlxSound();
+}}
+class FlxG {{ public static var sound:SoundFrontEnd = new SoundFrontEnd(); }}
+class Test {{
+  static var hscriptSoundCache:Map<String,Sound> = new Map();
+  static var hscriptSoundLastPlay:Map<String,Float> = new Map();
+  static var hscriptFlxSounds:Map<String,FlxSound> = new Map();
+  static var hscriptFlxSoundLooped:Map<String,Bool> = new Map();
+{methods}
+  static function main():Void {{
+    var sound = hscriptSafePlay('scrollMenu', 0.8, false);
+    if (sound == null || sound.group != FlxG.sound.defaultSoundGroup
+        || sound.groupVolumeAtPlay != 0.25 || sound.globalVolumeAtPlay != 0.5
+        || sound.volume != 0.8 || Math.abs(sound.effectiveVolumeAtPlay - 0.1) > 0.0001)
+      throw 'first cached script SFX bypassed the saved SFX or master volume';
+    if (FlxG.sound.list.sounds.length != 1 || FlxG.sound.defaultSoundGroup.sounds.length != 1)
+      throw 'cached script SFX was not registered exactly once in both update and volume groups';
+
+    hscriptSoundLastPlay.set('scrollMenu.ogg', Sys.time() - 0.1);
+    FlxG.sound.defaultSoundGroup.volume = 0.4;
+    FlxG.sound.volume = 0.75;
+    var repeated = hscriptSafePlay('scrollMenu', 0.4, false);
+    if (repeated != sound || repeated.plays != 2 || repeated.group != FlxG.sound.defaultSoundGroup
+        || repeated.groupVolumeAtPlay != 0.4 || repeated.globalVolumeAtPlay != 0.75
+        || repeated.volume != 0.4 || Math.abs(repeated.effectiveVolumeAtPlay - 0.12) > 0.0001)
+      throw 'reused script SFX lost its updated group, master, or authored volume';
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as tmp:
+            path = Path(tmp) / 'Test.hx'
+            path.write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', tmp, '--run', 'Test'],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_destroyed_cached_sound_is_rebuilt(self):
         source = SOURCE.read_text()
         start = source.index('\tpublic static function hscriptSoundNeedsRebuild(')

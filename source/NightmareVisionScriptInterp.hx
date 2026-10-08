@@ -3,6 +3,7 @@ package;
 import crowplexus.hscript.Expr;
 import crowplexus.hscript.Interp;
 import crowplexus.hscript.Tools;
+import crowplexus.iris.Iris;
 import crowplexus.iris.utils.UsingEntry.UsingCall;
 #if flixel
 import PsychFlxCameraCompat.PsychFlxCameraCompat;
@@ -115,6 +116,14 @@ class NightmareVisionScriptInterp extends Interp {
 
 	public function bindImport(path:String, value:Dynamic):Void importBindings.set(path, value);
 
+	function hasOwnerImport(path:String):Bool
+		return importBindings.exists(path) || (nativeClassScope != null && nativeClassScope.hasRuntimeClass(path));
+
+	function ownerImport(path:String):Dynamic {
+		if (importBindings.exists(path)) return importBindings.get(path);
+		return nativeClassScope == null ? null : nativeClassScope.resolveClass(path);
+	}
+
 	/** Route construction for one exact imported value without intercepting a
 	 * different class that happens to use the same source name. */
 	public function bindConstructorFactory(type:Dynamic,
@@ -158,7 +167,7 @@ class NightmareVisionScriptInterp extends Interp {
 	override public function getOrImportClass(name:String):Dynamic {
 		if (name == 'FunkinVideoSprite' || name == 'funkin.video.FunkinVideoSprite')
 			return Type.resolveClass('NightmareVisionVideoSprite');
-		return importBindings.exists(name) ? importBindings.get(name) : Tools.getClass(name);
+		return hasOwnerImport(name) ? ownerImport(name) : Tools.getClass(name);
 	}
 
 	/** Custom extension adapters stay local; built-in native extensions retain
@@ -697,6 +706,19 @@ class NightmareVisionScriptInterp extends Interp {
 		curExpr = expression;
 		#end
 		switch (Tools.expr(expression)) {
+			case EImport(path, alias) if (alias != null && !Iris.blocklistImports.contains(path)):
+				// Iris 1.1.3 returns early when its leaf name already exists, before
+				// registering an explicit alias. Resolve through the same owner-aware
+				// method as Iris, preserve the current leaf import, then install the
+				// explicit alias. Unresolved imports keep Iris's normal diagnostics.
+				var importedType = getOrImportClass(path);
+				if (importedType != null) {
+					var shortName = Tools.last(path.split('.'));
+					if (!imports.exists(shortName)) imports.set(shortName, importedType);
+					imports.set(alias, importedType);
+					return null;
+				}
+				return super.expr(expression);
 			case ETry(body, name, _, handler):
 				var old = declared.length;
 				var oldTry = inTry;

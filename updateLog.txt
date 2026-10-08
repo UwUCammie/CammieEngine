@@ -1,6 +1,15 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.20 alpha - CammieEngine
+	- Handle missing or malformed optional Psych animation indices safely during character import.
+	- Let stronger Auto format detection correct stale import identities and explain explicit importer mismatches when a scan finds no songs.
+	- Discover complete V-Slice variation chart and metadata pairs, including packages without a base chart, and refresh older converted imports.
+	- Restore Nightmare Vision's backdrop preset and route legacy RGB palette imports through the shared palette implementation.
+	- Apply saved SFX volume to cached script sounds before their first playback and every restart, including the results score counter.
+	- Share authenticated package/core asset services across Psych and Nightmare Vision, preserving compiled IDs, import aliases, local libraries, typed caches, source events and owner teardown.
+	- Publish verified Nightmare Vision core assets to their authenticated content receivers while preserving provider ownership and retained source receipts.
+
 v0.0.19 alpha - CammieEngine
 	- Respect Nightmare Vision's authored V-Slice sustain animation mode, allowing one-shot event animations to continue while sustain notes score normally.
 	- Restore Nightmare Vision sing-duration and return-animation behavior for player and opponent characters, including manual hold release and live script changes to sing duration.

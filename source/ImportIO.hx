@@ -25,11 +25,29 @@ typedef ImportIOAssetProfile = {
 	var profile:Dynamic;
 }
 
+/** A validated link from the selected retained game-root profile to one
+	transaction-owned family package. The serialized sidecar omits the internal
+	receiver namespace because it is already bound by the sidecar owner path. */
+typedef ImportIOAssetProfileHandoff = {
+	var version:Int;
+	var providerNamespace:String;
+	var providerRootRelative:String;
+	var providerProjectSha256:String;
+	var receiverRootRelative:String;
+	var receiverNamespace:String;
+	var catalogVersion:Int;
+}
+
 private typedef ImportIOAssetProfileEntry = {
 	var contentRoot:String;
 	var profile:Dynamic;
 	var engineLabel:String;
 	var namespace:String;
+}
+
+private typedef ImportIOAssetProfileHandoffEntry = {
+	var destinationRoot:String;
+	var handoff:ImportIOAssetProfileHandoff;
 }
 
 /**
@@ -61,6 +79,7 @@ class ImportIO {
 	var resolvedNamespaces:Map<String, String> = new Map();
 	var sourceLabels:Map<String, String> = new Map();
 	var assetProfiles:Map<String, ImportIOAssetProfileEntry> = new Map();
+	var assetProfileHandoffs:Map<String, ImportIOAssetProfileHandoffEntry> = new Map();
 
 	public function new(installRoot:String, stageRoot:String, ?masked:Array<String>, deferOwnedBaselines:Bool = false,
 		?workCancelled:Void->Bool) {
@@ -118,6 +137,7 @@ class ImportIO {
 		if (context == null)
 			throw "ImportIO.end() called without an active import scope.";
 		context.assetProfiles.clear();
+		context.assetProfileHandoffs.clear();
 		setCurrent(context.parent);
 		context.parent = null;
 	}
@@ -379,6 +399,111 @@ class ImportIO {
 			return null;
 		var copy = cloneAssetProfile(profile);
 		return copy == null ? null : {contentRoot:entry.contentRoot, profile:copy};
+	}
+
+	/** Register one catalog-authorized provider-root to receiver-package edge.
+	 * This never changes the source profile's namespace or provenance. */
+	public function setAssetProfileHandoff(sourceRoot:String, engine:String,
+		destinationRoot:String, receiverNamespace:String, handoff:Dynamic):Void {
+		var binding = assetProfile(sourceRoot, engine);
+		var normalizedEngine = ImportRevision.normalizeEngine(engine);
+		var destination = outputRelative(destinationRoot);
+		var version:Dynamic = handoff == null ? null : Reflect.field(handoff, "version");
+		var providerNamespace:Dynamic = handoff == null ? null : Reflect.field(handoff, "providerNamespace");
+		var providerRelative:Dynamic = handoff == null ? null : Reflect.field(handoff, "providerRootRelative");
+		var providerSha:Dynamic = handoff == null ? null : Reflect.field(handoff, "providerProjectSha256");
+		var receiverRelative:Dynamic = handoff == null ? null : Reflect.field(handoff, "receiverRootRelative");
+		var catalogVersion:Dynamic = handoff == null ? null : Reflect.field(handoff, "catalogVersion");
+		var profile = binding == null ? null : binding.profile;
+		var profileNamespace = profile == null ? null : Reflect.field(profile, "namespace");
+		var profileRelative = profile == null ? null : Reflect.field(profile, "rootRelative");
+		var profileSha = profile == null ? null : Reflect.field(profile, "projectSha256");
+		if (binding == null || profile == null || normalizedEngine != "Nightmare Vision"
+			|| destination == null || !StringTools.startsWith(destination, "assets/imported_mods/")
+			|| receiverNamespace == null || receiverNamespace == ""
+			|| destination != "assets/imported_mods/" + receiverNamespace
+			|| version != 1 || providerNamespace != profileNamespace
+			|| providerRelative != "" || profileRelative != ""
+			|| !isAssetProfileSnapshotId(Std.string(Reflect.field(profile, "snapshotId")))
+			|| providerSha != profileSha || !isLowerSha256(Std.string(providerSha))
+			|| receiverRelative == null || !isSafeFamilyRelative(Std.string(receiverRelative))
+			|| catalogVersion != 3)
+			throw "Nightmare Vision core handoff does not match a receipt-bound provider and receiver.";
+
+		var receiverSourceRoot = Path.join([binding.contentRoot, Std.string(receiverRelative)]);
+		var directNamespace = resolvedNamespace(receiverSourceRoot, engine);
+		var assetsNamespace = resolvedNamespace(Path.join([receiverSourceRoot, "assets"]), engine);
+		if ((directNamespace != null && directNamespace != receiverNamespace)
+			|| (assetsNamespace != null && assetsNamespace != receiverNamespace)
+			|| (directNamespace == null && assetsNamespace == null))
+			throw "Nightmare Vision core handoff receiver is not the exact resolved package namespace.";
+
+		var key = assetProfileHandoffKey(sourceRoot, engine, destination);
+		var value:ImportIOAssetProfileHandoff = {
+			version:1, providerNamespace:Std.string(providerNamespace), providerRootRelative:"",
+			providerProjectSha256:Std.string(providerSha), receiverRootRelative:Std.string(receiverRelative),
+			receiverNamespace:receiverNamespace, catalogVersion:3
+		};
+		var existing = assetProfileHandoffs.get(key);
+		if (existing != null) {
+			if (!sameHandoff(existing.handoff, value))
+				throw "A retained source root cannot hand off core assets to multiple package identities.";
+			return;
+		}
+		assetProfileHandoffs.set(key, {destinationRoot:destination, handoff:value});
+	}
+
+	/** Return a defensive handoff copy only for the exact provider root, engine,
+	 * and receiver namespace selected by this transaction. */
+	public function assetProfileHandoff(sourceRoot:String, engine:String,
+		destinationRoot:String):Null<ImportIOAssetProfileHandoff> {
+		var destination = outputRelative(destinationRoot);
+		var key = assetProfileHandoffKey(sourceRoot, engine, destination);
+		if (key == "") return null;
+		var entry = assetProfileHandoffs.get(key);
+		if (entry == null || entry.destinationRoot != destination) return null;
+		var binding = assetProfile(sourceRoot, engine);
+		if (binding == null || binding.profile == null
+			|| Reflect.field(binding.profile, "namespace") != entry.handoff.providerNamespace
+			|| Reflect.field(binding.profile, "rootRelative") != entry.handoff.providerRootRelative
+			|| Reflect.field(binding.profile, "projectSha256") != entry.handoff.providerProjectSha256)
+			return null;
+		return {
+			version:entry.handoff.version, providerNamespace:entry.handoff.providerNamespace,
+			providerRootRelative:entry.handoff.providerRootRelative,
+			providerProjectSha256:entry.handoff.providerProjectSha256,
+			receiverRootRelative:entry.handoff.receiverRootRelative,
+			receiverNamespace:entry.handoff.receiverNamespace,
+			catalogVersion:entry.handoff.catalogVersion
+		};
+	}
+
+	function assetProfileHandoffKey(sourceRoot:String, engine:String, destination:String):String {
+		var profileKey = assetProfileKey(sourceRoot, engine);
+		return profileKey == "" || destination == null ? "" : profileKey + "\n" + destination;
+	}
+
+	static function sameHandoff(left:ImportIOAssetProfileHandoff,
+		right:ImportIOAssetProfileHandoff):Bool {
+		return left != null && right != null && left.version == right.version
+			&& left.providerNamespace == right.providerNamespace
+			&& left.providerRootRelative == right.providerRootRelative
+			&& left.providerProjectSha256 == right.providerProjectSha256
+			&& left.receiverRootRelative == right.receiverRootRelative
+			&& left.receiverNamespace == right.receiverNamespace
+			&& left.catalogVersion == right.catalogVersion;
+	}
+
+	static function isSafeFamilyRelative(value:String):Bool {
+		if (value == null || value == "" || StringTools.startsWith(value, "/")
+			|| value.indexOf("\\") >= 0 || value.indexOf(":") >= 0 || value.indexOf("\x00") >= 0)
+			return false;
+		for (part in value.split("/")) if (part == "" || part == "." || part == "..") return false;
+		return StringTools.startsWith(value, "content/");
+	}
+
+	static function isLowerSha256(value:String):Bool {
+		return value != null && value.length == 64 && ~/^[0-9a-f]{64}$/.match(value);
 	}
 
 	static function normalizeAssetProfileEngine(value:Dynamic):String {

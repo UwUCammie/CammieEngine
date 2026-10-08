@@ -138,8 +138,13 @@ class PsychOwnerLimeAssetsProbe {
   limeHostCache.enabled = !hostLimeEnabled;
   if (limeOwnerCache.enabled != ownerLimeEnabled) throw "Lime host cache flag changed the owner cache flag";
   limeHostCache.enabled = hostLimeEnabled;
-  if (Reflect.field(proxy, "onChange") != Assets.onChange)
-   throw "Lime owner facade changed the native event API object";
+  var ownerOnChange:lime.app.Event<Void->Void> = cast Reflect.field(proxy, "onChange");
+  if (ownerOnChange == Assets.onChange)
+   throw "Lime owner facade reused the process-global event object";
+  var ownerEventCount = 0;
+  ownerOnChange.add(function() ownerEventCount++);
+  ownerOnChange.dispatch();
+  if (ownerEventCount != 1) throw "Lime owner-local change event did not dispatch listeners";
   if (Reflect.callMethod(proxy, Reflect.field(proxy, "getText"), ["assets/data/value.txt"]) != "owner-a")
    throw "relative Psych asset did not prefer its selected owner";
   if (!Reflect.callMethod(proxy, Reflect.field(proxy, "exists"), ["data/value.txt"]))

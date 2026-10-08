@@ -3,6 +3,7 @@ package;
 import haxe.crypto.Sha256;
 import haxe.io.Bytes;
 import haxe.io.Path;
+import SourceLimeAssetIdentity.SourceLimeAssetIdentityHandoff;
 #if sys
 import sys.FileSystem;
 import sys.io.File;
@@ -84,6 +85,9 @@ class RuntimeOwnerAssetIdentity {
 	public final loadTarget:Null<String>;
 	public final loadProfileComplete:Bool;
 	public final libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile>;
+	/** Present only when a receipt-bound family catalog authorized this
+		provider core to be materialized under the receiver's namespace. */
+	public final handoff:Null<SourceLimeAssetIdentityHandoff>;
 	final byKey:Map<String, RuntimeOwnerAssetIdentityEntry>;
 	final verified:Bool;
 	var checkedGeneration:Int;
@@ -94,7 +98,8 @@ class RuntimeOwnerAssetIdentity {
 		transactionId:String, bindingSignature:String, bindingState:String, verified:Bool, complete:Bool,
 		librariesComplete:Bool, libraries:Array<String>, entries:Array<RuntimeOwnerAssetIdentityEntry>,
 		indexVersion:Int = 0, loadTarget:Null<String> = null, loadProfileComplete:Bool = false,
-		libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile> = null) {
+		libraryLoadProfiles:Array<RuntimeOwnerAssetLibraryLoadProfile> = null,
+		handoff:Null<SourceLimeAssetIdentityHandoff> = null) {
 		this.owner = owner;
 		this.engine = engine;
 		this.scope = scope;
@@ -112,6 +117,7 @@ class RuntimeOwnerAssetIdentity {
 		this.loadTarget = loadTarget;
 		this.loadProfileComplete = loadProfileComplete;
 		this.libraryLoadProfiles = libraryLoadProfiles == null ? [] : libraryLoadProfiles.copy();
+		this.handoff = handoff;
 		checkedGeneration = generation;
 		checkedRevision = revision;
 		libraryViews = [];
@@ -307,6 +313,11 @@ class RuntimeOwnerAssetIdentity {
 			if (identity != null) PsychOwnerAssetLibraryCache.releaseIdentity(identity);
 			cache.remove(entryOwner);
 		}
+		// Retire composite caches and event providers only after each scoped
+		// identity has detached its own library listeners. This also covers NV's
+		// direct releaseOwnerAssets path.
+		SourceOwnerAssetContextCache.releaseOwner(ownerRoot);
+		SourceOwnerAssetsEvents.releaseOwner(ownerRoot);
 	}
 
 	static function load(owner:String, engine:String, scope:String, binding:Dynamic,
@@ -357,7 +368,9 @@ class RuntimeOwnerAssetIdentity {
 		var index:Dynamic = SourceLimeAssetIdentity.validate(indexRaw, owner, engine, scope, namespace);
 		if (index == null || stringField(index, 'snapshotId') != stringField(binding, 'snapshotId')
 			|| stringField(index, 'rootRelative') != stringField(binding, 'rootRelative')
-			|| lower(stringField(index, 'projectSha256')) != lower(stringField(binding, 'projectSha256')))
+			|| lower(stringField(index, 'projectSha256')) != lower(stringField(binding, 'projectSha256'))
+			|| !handoffMatches(Reflect.field(binding, 'handoff'), Reflect.field(index, 'handoff'), namespace,
+				engine, scope))
 			return empty(owner, engine, scope, 'invalid', generation, revision, transactionId);
 
 		var libraries:Array<String> = [];
@@ -423,9 +436,19 @@ class RuntimeOwnerAssetIdentity {
 				projectPreload:projectPreload, diagnostic:nullableStringField(rawProfile, 'diagnostic'),
 				projectEmbedState:projectEmbedState, projectEmbed:projectEmbed});
 		}
+		var handoff:Null<SourceLimeAssetIdentityHandoff> = null;
+		var rawHandoff:Dynamic = Reflect.field(index, 'handoff');
+		if (rawHandoff != null) handoff = {
+			version:1,
+			providerNamespace:stringField(rawHandoff, 'providerNamespace'),
+			providerRootRelative:stringField(rawHandoff, 'providerRootRelative'),
+			providerProjectSha256:stringField(rawHandoff, 'providerProjectSha256'),
+			receiverRootRelative:stringField(rawHandoff, 'receiverRootRelative'),
+			catalogVersion:3
+		};
 		return new RuntimeOwnerAssetIdentity(owner, engine, scope, generation, revision,
 			transactionId, signature, 'ready', true, complete, librariesComplete, libraries, entries,
-			indexVersion, loadTarget, loadProfileComplete, libraryLoadProfiles);
+			indexVersion, loadTarget, loadProfileComplete, libraryLoadProfiles, handoff);
 	}
 
 	static function committedFiles(binding:Dynamic):Map<String, RuntimeOwnerAssetIdentityManifestFile> {
@@ -477,18 +500,37 @@ class RuntimeOwnerAssetIdentity {
 		epochs are deliberately excluded so another owner's publication does not
 		retire a still-identical library. */
 	static function proofSignature(owner:String, engine:String, scope:String, binding:Dynamic):String {
+		var handoff:Dynamic = Reflect.field(binding, 'handoff');
 		var fields = [owner, engine, scope, pathKey(stringField(binding, 'owner')),
 			stringField(binding, 'engine'), canonicalScope(stringField(binding, 'engine'), stringField(binding, 'scope')),
 			stringField(binding, 'namespace'), stringField(binding, 'transactionId'),
 			pathKey(stringField(binding, 'indexPath')), lower(stringField(binding, 'indexSha256')),
 			stringField(binding, 'snapshotId'), stringField(binding, 'rootRelative'),
-			lower(stringField(binding, 'projectSha256'))];
+			lower(stringField(binding, 'projectSha256')),
+			stringField(handoff, 'providerNamespace'), stringField(handoff, 'providerRootRelative'),
+			lower(stringField(handoff, 'providerProjectSha256')),
+			stringField(handoff, 'receiverRootRelative'), stringField(handoff, 'receiverNamespace'),
+			handoff == null ? '' : Std.string(Reflect.field(handoff, 'catalogVersion'))];
 		var signature = '';
 		for (field in fields) {
 			var value = field == null ? '' : field;
 			signature += value.length + ':' + value;
 		}
 		return signature;
+	}
+
+	static function handoffMatches(binding:Dynamic, index:Dynamic, namespace:String,
+		engine:String, scope:String):Bool {
+		if (binding == null || index == null) return binding == null && index == null;
+		if (engine != 'Nightmare Vision' || scope != 'core') return false;
+		return Reflect.field(binding, 'version') == 1
+			&& Reflect.field(binding, 'catalogVersion') == 3
+			&& stringField(binding, 'providerNamespace') == stringField(index, 'providerNamespace')
+			&& stringField(binding, 'providerRootRelative') == stringField(index, 'providerRootRelative')
+			&& lower(stringField(binding, 'providerProjectSha256')) == lower(stringField(index, 'providerProjectSha256'))
+			&& stringField(binding, 'receiverRootRelative') == stringField(index, 'receiverRootRelative')
+			&& stringField(binding, 'receiverNamespace') == namespace
+			&& stringField(index, 'providerNamespace') != namespace;
 	}
 
 	static function empty(owner:String, engine:String, scope:String, state:String,

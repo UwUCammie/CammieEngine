@@ -18,6 +18,7 @@ class PsychOwnerAssetLibraryView extends AssetLibrary {
 	final delegate:AssetLibrary;
 	final identityIsCurrent:Void->Bool;
 	final staleMessage:String;
+	final delegateChangeListener:Void->Void;
 	var guardedLoadFuture:Future<AssetLibrary>;
 	var retired:Bool = false;
 
@@ -31,6 +32,10 @@ class PsychOwnerAssetLibraryView extends AssetLibrary {
 		this.staleMessage = staleMessage == null || staleMessage == ""
 			? "[psych-assets] Selected owner identity changed while its asset library was retained"
 			: staleMessage;
+		delegateChangeListener = function():Void {
+			if (isActive()) onChange.dispatch();
+		};
+		delegate.onChange.add(delegateChangeListener);
 	}
 
 	public override function exists(id:String, type:String):Bool {
@@ -130,6 +135,7 @@ class PsychOwnerAssetLibraryView extends AssetLibrary {
 	@:keep public function retire():Void {
 		if (retired) return;
 		retired = true;
+		delegate.onChange.remove(delegateChangeListener);
 		clearStaleCaches();
 	}
 

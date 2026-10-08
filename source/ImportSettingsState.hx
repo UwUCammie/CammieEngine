@@ -719,6 +719,9 @@ class ImportSettingsState extends MusicBeatState {
 			+ "    Report: " + shortenPath(result.logPath, 90);
 
 		detailLines = [];
+		if (result.importerSuggestions != null)
+			for (suggestion in result.importerSuggestions)
+				detailLines.push("[SUGGESTION] " + shortenPath(suggestion, 88));
 		if (result.detectedRoots != null)
 			for (root in result.detectedRoots) {
 				if (root == null)

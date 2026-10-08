@@ -44,8 +44,10 @@ for(engine in ["Psych Engine","Nightmare Vision","Kade Engine","Modding Plus","F
 var priorNmv={schemaVersion:1,commonRevision:3,sourceEngine:"Nightmare Vision",engineRevision:3};
 if(ImportRevision.assess(priorNmv,"Nightmare Vision").status!=ImportRevision.OUTDATED)
  throw "prior Nightmare Vision package-family receipts were not scheduled for refresh";
-for(engine in ["V-Slice","Codename Engine"])
- if(ImportRevision.current(engine).engineRevision!=1) throw "unaffected converted importer forced refresh";
+if(ImportRevision.current("V-Slice").engineRevision!=2)
+ throw "V-Slice variation discovery revision was not recorded";
+if(ImportRevision.current("Codename Engine").engineRevision!=1)
+ throw "unaffected Codename importer was forced to refresh";
 }}
 '''
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:

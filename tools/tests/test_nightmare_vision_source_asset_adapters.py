@@ -93,6 +93,19 @@ class ImportRefreshManager {
  public static function availabilityRevision():Int return 0;
  public static function ownerAssetIndexBinding(owner:String,engine:String,scope:String):Dynamic return null;
 }''',
+            # RuntimeOwnerAssetIdentity now retires the shared composite cache
+            # and event-provider registries with the owner. These path/read
+            # fixtures do not construct Lime/OpenFL composite Assets views, so
+            # keep those two lifecycle seams isolated instead of importing the
+            # pinned runtime libraries just for teardown.
+            "SourceOwnerAssetContextCache.hx": '''package;
+class SourceOwnerAssetContextCache {
+ public static function releaseOwner(ownerRoot:String):Void {}
+}''',
+            "SourceOwnerAssetsEvents.hx": '''package;
+class SourceOwnerAssetsEvents {
+ public static function releaseOwner(ownerRoot:String):Void {}
+}''',
             # These adapter fixtures exercise NV paths and file reads, not the
             # separate Psych Lime-library loader. Keep the identity teardown
             # hook available without pulling Lime Future/AssetLibrary into this

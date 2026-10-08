@@ -94,6 +94,8 @@ typedef SourceMappedAssetPlan = {
 	var identityOwner:String;
 	var identityEngine:String;
 	var identityScope:String;
+	/** Present only for a retained v3 NV provider-core receiver edge. */
+	@:optional var identityHandoff:Dynamic;
 	var identityPublication:Null<SourceLimeAssetIdentityPublication>;
 }
 
@@ -136,7 +138,7 @@ class SourceMappedAssetPublisher {
 			files:[], diagnostics:[], policies:new Map(), identityEvents:[],
 			identityBlockedKeys:[], identityBlockAll:false, identityComplete:true,
 			identityLibrariesComplete:true, identityOwner:"", identityEngine:"",
-			identityScope:"", identityPublication:null
+			identityScope:"", identityHandoff:null, identityPublication:null
 		};
 		if (policies == null) policies = [];
 		var policyByLabel:Map<String, SourceMappedAssetPolicy> = new Map();
@@ -171,19 +173,6 @@ class SourceMappedAssetPublisher {
 		var recordedEngine = ImportRevision.normalizeEngine(fieldString(profile, "sourceEngine"));
 		var rootRelative = safeRelative(fieldString(profile, "rootRelative"), true);
 		var profileNamespace = fieldString(profile, "namespace");
-		var safeNamespace = safeRelative(profileNamespace, false);
-		var expectedDestinationRoot = safeNamespace == null || safeNamespace != profileNamespace
-			|| profileNamespace.indexOf("/") >= 0 || profileNamespace.indexOf("\\") >= 0
-			? null : Path.normalize(Path.join([CompatScriptManifest.ROOT_PREFIX, profileNamespace]));
-		if (Reflect.field(profile, "provenance") != "receipt-bound"
-			|| expectedEngine == "" || recordedEngine != expectedEngine
-			|| profileNamespace == "" || expectedDestinationRoot == null
-			|| !samePath(Path.normalize(destinationRoot), expectedDestinationRoot)
-			|| rootRelative == null || !samePath(selectedRoot(contentRoot, rootRelative), sourceRoot)) {
-			failAll(plan, "[source-mapped-assets] The receipt-bound profile no longer matches this source root, engine, or exact owner destination; refresh stopped to preserve prior owner data.");
-			return plan;
-		}
-		plan.authoritative = Reflect.field(profile, "complete") == true;
 		var hasIdentityPolicy = false;
 		for (policy in policyByLabel) if (policy.limeIdentity == true) {
 			if (hasIdentityPolicy && policy.limeIdentityScope != plan.identityScope) {
@@ -194,11 +183,38 @@ class SourceMappedAssetPublisher {
 			plan.identityScope = policy.limeIdentityScope == null || policy.limeIdentityScope == ""
 				? "package" : policy.limeIdentityScope;
 		}
+		var safeNamespace = safeRelative(profileNamespace, false);
+		var expectedDestinationRoot = safeNamespace == null || safeNamespace != profileNamespace
+			|| profileNamespace.indexOf("/") >= 0 || profileNamespace.indexOf("\\") >= 0
+			? null : Path.normalize(Path.join([CompatScriptManifest.ROOT_PREFIX, profileNamespace]));
+		var handoff:Dynamic = hasIdentityPolicy && expectedEngine == "Nightmare Vision"
+			&& plan.identityScope == "core" ? context.assetProfileHandoff(sourceRoot, engine, destinationRoot) : null;
+		var handoffNamespace:Dynamic = handoff == null ? null : Reflect.field(handoff, "receiverNamespace");
+		var handoffRelative:Dynamic = handoff == null ? null : Reflect.field(handoff, "receiverRootRelative");
+		var handoffSafe = handoff != null && Reflect.field(handoff, "version") == 1
+			&& Reflect.field(handoff, "catalogVersion") == 3
+			&& Reflect.field(handoff, "providerNamespace") == profileNamespace
+			&& Reflect.field(handoff, "providerRootRelative") == rootRelative
+			&& Reflect.field(handoff, "providerProjectSha256") == fieldString(profile, "projectSha256")
+			&& handoffNamespace != null && handoffNamespace != ""
+			&& handoffRelative != null && safeRelative(Std.string(handoffRelative), false) == handoffRelative
+			&& Path.normalize(destinationRoot) == Path.normalize(Path.join([CompatScriptManifest.ROOT_PREFIX,
+				Std.string(handoffNamespace)]));
+		if (Reflect.field(profile, "provenance") != "receipt-bound"
+			|| expectedEngine == "" || recordedEngine != expectedEngine
+			|| profileNamespace == "" || expectedDestinationRoot == null
+			|| (!handoffSafe && !samePath(Path.normalize(destinationRoot), expectedDestinationRoot))
+			|| rootRelative == null || !samePath(selectedRoot(contentRoot, rootRelative), sourceRoot)) {
+			failAll(plan, "[source-mapped-assets] The receipt-bound profile no longer matches this source root, engine, or exact owner destination; refresh stopped to preserve prior owner data.");
+			return plan;
+		}
+		plan.authoritative = Reflect.field(profile, "complete") == true;
 		if (hasIdentityPolicy) {
 			plan.identityComplete = plan.authoritative;
 			plan.identityLibrariesComplete = Reflect.field(profile, "librariesComplete") == true;
 			plan.identityOwner = destinationRoot;
 			plan.identityEngine = expectedEngine;
+			plan.identityHandoff = handoffSafe ? handoff : null;
 		}
 		for (state in plan.policies) {
 			state.authoritative = plan.authoritative;
@@ -442,7 +458,7 @@ class SourceMappedAssetPublisher {
 			plan.identityPublication = SourceLimeAssetIdentity.preparePublication(profile,
 				destinationRoot, expectedEngine, plan.identityScope, plan.identityEvents,
 				plan.identityBlockedKeys, plan.identityBlockAll, plan.identityComplete,
-				plan.identityLibrariesComplete);
+				plan.identityLibrariesComplete, plan.identityHandoff);
 			if (plan.identityPublication.failed) {
 				plan.failed = true;
 				addDiagnostic(plan, null, "[lime-asset-identity] The owner identity sidecar could not be prepared.");

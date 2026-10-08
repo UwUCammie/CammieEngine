@@ -224,6 +224,42 @@ class Main {
     && audioLoadProfile.diagnostic.indexOf('pathGroup')>=0,
     'same-stem HTML5 sound and music entries retain an explicit unsupported diagnostic: '
       +Std.string(audioLoadProfile)+' / '+Std.string(audioPublication.index.loadProfileComplete));
+
+  var providerProfile:Dynamic={namespace:'provider-game',rootRelative:'',snapshotId:snapshot,
+    projectSha256:projectHash,candidates:[{library:'default',state:'enabled'}]};
+  var receiver='assets/imported_mods/family-receiver';
+  var handoff:Dynamic={version:1,providerNamespace:'provider-game',providerRootRelative:'',
+    providerProjectSha256:projectHash,receiverRootRelative:'content/alpha',
+    receiverNamespace:'family-receiver',catalogVersion:3};
+  var coreEvent=event('assets/core.txt','default','text','__nmv_core/data/core.txt',30,'false');
+  var corePublication=SourceLimeAssetIdentity.preparePublication(providerProfile,receiver,
+    'Nightmare Vision','core',[coreEvent],[],false,true,true,handoff);
+  check(!corePublication.failed,corePublication.diagnostics.join('\\n'));
+  eq(corePublication.path,receiver+'/.cammie-asset-identities/nightmare-vision-core.json',
+    'provider core identity is staged at the receiver-owned core sidecar path');
+  eq(corePublication.index.namespace,'family-receiver',
+    'materialized core index uses the receiver namespace, not the provider profile namespace');
+  eq(corePublication.index.rootRelative,'',
+    'materialized core index keeps the exact provider profile root');
+  check(corePublication.index.handoff!=null
+    && corePublication.index.handoff.providerNamespace=='provider-game'
+    && corePublication.index.handoff.receiverRootRelative=='content/alpha',
+    'core sidecar preserves the catalog-authorized provider and receiver edge');
+  var coreRoundTrip:Dynamic=haxe.Json.parse(SourceLimeAssetIdentity.serialize(corePublication.index));
+  check(SourceLimeAssetIdentity.validate(coreRoundTrip,receiver,'Nightmare Vision','core',
+    'family-receiver')!=null,
+    'receiver-owned core sidecar validates while retaining the provider profile identity');
+  check(SourceLimeAssetIdentity.validate(coreRoundTrip,receiver,'Nightmare Vision','core',
+    'provider-game')==null,
+    'provider namespace cannot be substituted for the receiver owner namespace');
+  var badCore:Dynamic=haxe.Json.parse(haxe.Json.stringify(coreRoundTrip));
+  Reflect.setField(Reflect.field(badCore,'handoff'),'providerProjectSha256',StringTools.lpad('','d',64));
+  check(SourceLimeAssetIdentity.validate(badCore,receiver,'Nightmare Vision','core',
+    'family-receiver')==null,
+    'sidecar handoff cannot claim a Project hash different from its provider profile');
+  check(SourceLimeAssetIdentity.preparePublication(providerProfile,receiver,'Nightmare Vision','package',
+    [coreEvent],[],false,true,true,handoff).failed,
+    'provider-core handoff metadata cannot be published as a package index');
  }
  static function findFrom(index:SourceLimeAssetIdentityIndex,library:String,id:String):SourceLimeAssetIdentityEntry {
   for(entry in index.entries) if(entry.library==library && entry.id==id)return entry;

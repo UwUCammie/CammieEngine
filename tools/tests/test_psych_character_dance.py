@@ -30,6 +30,39 @@ def character_json(name):
 
 
 class PsychCharacterDanceTest(unittest.TestCase):
+    def test_standard_renderer_treats_missing_or_malformed_indices_as_prefix(self):
+        fixture = '''class Main {
+  static function main() {
+    var malformedIndices:Array<Dynamic> = [1];
+    malformedIndices.push('bad');
+    var data:Dynamic = {animations:[
+      {anim:'danceLeft-alt', name:'left', fps:24, loop:false, offsets:[-110,21]},
+      {anim:'danceRight-alt', name:'right', indices:null, fps:24, loop:false, offsets:[-110,21]},
+      {anim:'singUP', name:'up', indices:'not-an-array', fps:24, loop:false, offsets:[0,0]},
+      {anim:'singLEFT', name:'left', indices:[0,2], fps:30, loop:true, offsets:[1,2]},
+      {anim:'idle', name:'idle', indices:[], fps:24, loop:false, offsets:[0,0]},
+      {anim:'singDOWN', name:'down', indices:malformedIndices, fps:24, loop:false, offsets:[0,0]}],
+      flip_x:false, scale:1, no_antialiasing:false, sing_duration:4};
+    var script = PsychCharacterDanceCompat.renderStandardScript(data, false, false, false);
+    for (name in ['danceLeft-alt', 'danceRight-alt', 'singUP', 'idle', 'singDOWN'])
+      if (script.indexOf("char.animation.addByPrefix('" + name + "'") < 0)
+        throw 'missing prefix animation fallback for ' + name + ': ' + script;
+    if (script.indexOf("char.animation.addByIndices('singLEFT', 'left', [0,2]") < 0)
+      throw 'valid indices animation changed: ' + script;
+    if (script.split('char.animation.addByIndices(').length != 2)
+      throw 'malformed index lists should not be emitted: ' + script;
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=TMP) as folder:
+            work = Path(folder)
+            (work / "Main.hx").write_text(fixture, newline='\n')
+            (work / "PsychCharacterDanceCompat.hx").write_bytes(
+                (ROOT / "source/PsychCharacterDanceCompat.hx").read_bytes())
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(work), "--run", "Main"],
+                                    cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_animate_importer_generates_dance_from_authored_animations(self):
         importer = (ROOT / "source/ModuleFunctions.hx").read_text()
         start = importer.index("static function psychToDisAnimateChar(")

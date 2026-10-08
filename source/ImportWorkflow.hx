@@ -93,6 +93,8 @@ typedef ImportScanResult = {
 	/** Roots and engine decisions made by the scanner. */
 	var ?detectedRoots:Array<ImportScanRoot>;
 	var ?detectedEngines:Array<String>;
+	/** Non-fatal format hints when an explicit importer finds no songs. */
+	var ?importerSuggestions:Array<String>;
 	/** Diagnostics from the bounded Auto root walk.  These are retained in
 	 * addition to `errors` so reports and UI can show the exact scan limit and
 	 * number of unvisited queued directories. */
@@ -220,6 +222,7 @@ class ImportWorkflow {
 			detectedRoots: [],
 			globalPacksToImport: 0,
 			detectedEngines: [],
+			importerSuggestions: [],
 			rootScanDiagnostics: [],
 			rootScanTruncated: false,
 			rootDirectoriesScanned: 0,
@@ -956,6 +959,7 @@ class ImportScanJob {
 			importType: ImportSettings.normalizeType(importType),
 			detectedRoots: [],
 			detectedEngines: [],
+			importerSuggestions: [],
 			rootScanDiagnostics: [],
 			rootScanTruncated: false,
 			rootDirectoriesScanned: 0,
@@ -998,6 +1002,33 @@ class ImportScanJob {
 	static function addError(result:ImportScanResult, message:String):Void {
 		if (message != null && StringTools.trim(message) != '')
 			result.errors.push(message);
+	}
+
+	/** Keep an explicit importer selection authoritative, but point out a stronger
+	 * current format match when the selected importer finds no songs. */
+	static function appendImporterFormatSuggestions(result:ImportScanResult,
+		descriptors:Array<ImportRoot>, selectedType:String):Void {
+		if (result == null || descriptors == null || ImportEngine.isAuto(selectedType))
+			return;
+		if (result.importerSuggestions == null)
+			result.importerSuggestions = [];
+		var seen:Map<String, Bool> = new Map<String, Bool>();
+		for (descriptor in descriptors) {
+			if (descriptor == null || descriptor.root == null || StringTools.trim(descriptor.root) == '')
+				continue;
+			var automatic = ImportRootScanner.inspectRoot(descriptor.root, ImportEngine.AUTO);
+			if (automatic == null || automatic.engine == selectedType
+				|| automatic.confidence < 0.2 || automatic.confidence <= descriptor.confidence)
+				continue;
+			var key = ImportRootScanner.canonicalize(descriptor.root) + '|' + automatic.engine;
+			if (seen.exists(key))
+				continue;
+			seen.set(key, true);
+			var suggestion = '[format-mismatch] No songs were recognized as ' + selectedType
+				+ ', but current root evidence favors ' + automatic.engine
+				+ '. Select that importer or Auto-detect, then scan again.';
+			result.importerSuggestions.push(suggestion);
+		}
 	}
 
 	static function findRegistryEntry(root:String, relative:String, name:String):Bool {
@@ -2570,6 +2601,9 @@ class ImportScanJob {
 			}
 		if (result.detectedEngines != null && result.detectedEngines.length > 0)
 			lines.push('Detected engines: ' + result.detectedEngines.join(', '));
+		if (result.importerSuggestions != null)
+			for (suggestion in result.importerSuggestions)
+				lines.push('[SUGGESTION] ' + suggestion);
 		if (result.rootDirectoriesScanned != null) {
 			var rootLimit = result.rootDirectoryLimit == null ? ImportRootScanner.MAX_DIRECTORIES : result.rootDirectoryLimit;
 			var rootQueued = result.rootDirectoriesQueued == null ? 0 : result.rootDirectoriesQueued;
@@ -2801,6 +2835,8 @@ class ImportScanJob {
 			writeReport(result);
 			return result;
 		}
+		if (discovered.length == 0)
+			appendImporterFormatSuggestions(result, descriptors, selectedType);
 		var uniqueKinds:Map<String, Bool> = new Map<String, Bool>();
 		var vsliceAssetSeen:Map<String, Bool> = new Map<String, Bool>();
 		ModuleFunctions.reportImportProgress('scan-songs', '', 0, discovered.length);

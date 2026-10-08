@@ -403,10 +403,9 @@ class ImportRootScanner {
 		var lowerRootEntries:Array<String> = [for (entry in rootEntries) entry.toLowerCase()];
 		var selected = ImportEngine.normalize(requestedEngine);
 		var retainedEngine = retainedSourceEngine(root);
-		if (selected == ImportEngine.AUTO && retainedEngine != '')
-			selected = retainedEngine;
 		var evidenceByEngine:Map<String, Array<String>> = new Map<String, Array<String>>();
 		var scores:Map<String, Int> = new Map<String, Int>();
+		var decisiveEvidenceByEngine:Map<String, Bool> = new Map<String, Bool>();
 		var enginesToScore = [ImportEngine.V_SLICE, ImportEngine.KADE, ImportEngine.MODDING_PLUS,
 			ImportEngine.NIGHTMARE_VISION, ImportEngine.PSYCH, ImportEngine.FPS_PLUS, ImportEngine.CODENAME,
 			ImportEngine.LEGACY_POLYMOD];
@@ -416,6 +415,7 @@ class ImportRootScanner {
 			var result = scoreEngine(root, layout, engine, executableMarkers, rootEntries, lowerRootEntries);
 			scores.set(engine, result.score);
 			evidenceByEngine.set(engine, result.evidence);
+			decisiveEvidenceByEngine.set(engine, result.decisive);
 		}
 
 		var bestEngine = ImportEngine.LEGACY_POLYMOD;
@@ -430,9 +430,25 @@ class ImportRootScanner {
 				bestEngine = engine;
 			}
 		}
+		var retainedIdentityAccepted = false;
 		if (selected != ImportEngine.AUTO) {
 			bestEngine = selected;
 			bestScore = scores.exists(selected) ? scores.get(selected) : 0;
+		} else if (retainedEngine != '') {
+			// Retained identity is useful when current evidence is tied or weak, but
+			// it must not hide a stronger format marker after a previous scan chose
+			// the wrong engine (for example a Polymod chart package recorded as
+			// Psych that now has an unambiguous V-Slice chart pair).
+			var retainedScore:Null<Int> = scores.get(retainedEngine);
+			// Retained source identity survives weak layout hints such as pack.json,
+			// generic assets/manifests, and Lua presence. Only a stronger current
+			// engine-specific identity or format shape can replace it automatically.
+			var currentEvidenceDecisive = decisiveEvidenceByEngine.get(bestEngine) == true;
+			if (retainedScore != null && (retainedScore >= bestScore || !currentEvidenceDecisive)) {
+				bestEngine = retainedEngine;
+				bestScore = retainedScore;
+				retainedIdentityAccepted = true;
+			}
 		}
 		if (selected == ImportEngine.AUTO && nestedNightmareVisionOwner != '') {
 			bestEngine = ImportEngine.NIGHTMARE_VISION;
@@ -440,7 +456,7 @@ class ImportRootScanner {
 		}
 		// A generic data/assets directory with no engine marker is not an
 		// Auto match.  Explicit engine selection may still inspect it.
-		if (selected == ImportEngine.AUTO && bestScore < 20)
+		if (selected == ImportEngine.AUTO && bestScore < 20 && !retainedIdentityAccepted)
 			return null;
 
 		var evidence = evidenceByEngine.get(bestEngine);
@@ -448,6 +464,9 @@ class ImportRootScanner {
 			evidence = [];
 		if (retainedEngine == bestEngine)
 			evidence.push('Engine identity retained from the original source scan');
+		else if (retainedEngine != '' && selected == ImportEngine.AUTO)
+			evidence.push('Stronger current source evidence superseded retained engine identity: '
+				+ retainedEngine + ' -> ' + bestEngine);
 		if (nestedNightmareVisionOwner != '' && bestEngine == ImportEngine.NIGHTMARE_VISION)
 			evidence.push('Nested content package inherits Nightmare Vision identity from its parent game root');
 		var confidence = Math.min(1.0, bestScore / 100.0);
@@ -505,9 +524,10 @@ class ImportRootScanner {
 
 	#if sys
 	static function scoreEngine(root:String, layout:Dynamic, engine:String,
-		executableMarkers:Array<String>, entries:Array<String>, lowerEntries:Array<String>):{score:Int, evidence:Array<String>} {
+		executableMarkers:Array<String>, entries:Array<String>, lowerEntries:Array<String>):{score:Int, evidence:Array<String>, decisive:Bool} {
 		var score = 0;
 		var evidence:Array<String> = [];
+		var decisive = false;
 		var hasAssets = hasDirectory(entries, 'assets');
 		var hasManifest = hasDirectory(entries, 'manifest') || hasFile(entries, 'manifest.json');
 		var hasPolymod = hasFile(entries, '_polymod_meta.json');
@@ -525,9 +545,11 @@ class ImportRootScanner {
 					score += 30;
 					evidence.push('V-Slice/Polymod marker: _polymod_meta.json');
 				}
-				if (hasVSlicelikeCharts(layout.data)) {
+				var hasVSliceChartPair = hasVSlicelikeCharts(layout.data);
+				if (hasVSliceChartPair) {
 					score += 60;
 					evidence.push('V-Slice chart pair: data/songs/*/*-metadata.json and *-chart.json');
+					decisive = true;
 				}
 				if (hasDirectory(entries, 'shared') && directData && directSongs) {
 					score += 10;
@@ -542,10 +564,14 @@ class ImportRootScanner {
 				if (hasKadeExecutable) {
 					score += 90;
 					evidence.push('Kade Engine executable marker');
+					decisive = true;
 				}
-				if (hasMarker(executableMarkers, 'kadedev') || hasMarker(executableMarkers, 'kadeenginedata')) {
+				var hasKadeBinaryMarker = hasMarker(executableMarkers, 'kadedev')
+					|| hasMarker(executableMarkers, 'kadeenginedata');
+				if (hasKadeBinaryMarker) {
 					score += 85;
 					evidence.push('Kade binary marker: KadeDev/KadeEngineData');
+					decisive = true;
 				}
 				if (hasAssets && hasManifest) {
 					score += 10;
@@ -566,14 +592,18 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.MODDING_PLUS:
-				if (hasMarker(executableMarkers, 'modding plus')
-					|| hasMarker(executableMarkers, 'friday night funkin\' modding plus')) {
+				var hasModdingPlusMarker = hasMarker(executableMarkers, 'modding plus')
+					|| hasMarker(executableMarkers, 'friday night funkin\' modding plus');
+				if (hasModdingPlusMarker) {
 					score += 120;
 					evidence.push('Modding Plus executable marker');
+					decisive = true;
 				}
-				if (hasCustomRegistry(layout.images)) {
+				var hasModdingPlusRegistry = hasCustomRegistry(layout.images);
+				if (hasModdingPlusRegistry) {
 					score += 85;
 					evidence.push('Modding Plus custom character/stage/UI registries');
+					decisive = true;
 				}
 				if (hasAssets && layout.data != '' && layout.audio != '') {
 					score += 15;
@@ -584,33 +614,40 @@ class ImportRootScanner {
 				if (hasMarker(executableMarkers, 'com.nmvteam.nightmareengine')) {
 					score += 150;
 					evidence.push('Nightmare Vision executable package marker: com.nmvTeam.nightmareEngine');
+					decisive = true;
 				}
 				if (hasNightmareVisionSourceProject(root, entries)) {
 					score += 150;
 					evidence.push('Nightmare Vision Haxe project package: com.nmvTeam.nightmareEngine');
+					decisive = true;
 				}
 				if (hasNightmareVisionChartFormat(layout.data)) {
 					score += 120;
 					evidence.push('Nightmare Vision chart metadata: format=nmv2');
+					decisive = true;
 				}
 				if (hasNightmareVisionNestedSongChartFormat(root, entries)) {
 					score += 120;
 					evidence.push('Nightmare Vision nested chart metadata: format=nmv2 in songs/<song>/data');
+					decisive = true;
 				}
 
 			case ImportEngine.PSYCH:
-				if (hasMarker(executableMarkers, 'psychlua')
+				var hasPsychRuntimeMarker = hasMarker(executableMarkers, 'psychlua')
 					|| hasMarker(executableMarkers, 'psychanimationcontroller')
-					|| hasMarker(executableMarkers, 'psychengineversion')) {
+					|| hasMarker(executableMarkers, 'psychengineversion');
+				if (hasPsychRuntimeMarker) {
 					// Some Psych forks retain KadeDev/KadeEngineData strings in
 					// shared framework code.  A Psych-specific class marker wins
 					// over that generic legacy string.
 					score += 120;
 					evidence.push('Psych Engine executable marker: Psych Lua/version runtime');
+					decisive = true;
 				}
 				if (hasPsychSourceProject(root, entries)) {
 					score += 120;
 					evidence.push('Psych Engine Haxe source project: Project.xml + source/psychlua/*.hx');
+					decisive = true;
 				}
 				if (hasPack) {
 					score += 45;
@@ -629,19 +666,24 @@ class ImportRootScanner {
 					score += 10;
 					evidence.push('Psych Engine Lua chart/script content');
 				}
-				if (score < 20 && hasThinPsychPackage(root, layout.data)) {
+				var hasThinPsychFormat = score < 20 && hasThinPsychPackage(root, layout.data);
+				if (hasThinPsychFormat) {
 					score += 25;
 					evidence.push('Psych Engine section chart + callback Lua + week metadata');
+					decisive = true;
 				}
 				if (hasPsychSongDataCharts(layout.data)) {
 					score += 85;
 					evidence.push('Psych Engine chart layout: data/songData/<song>/*.json');
+					decisive = true;
 				}
 
 			case ImportEngine.FPS_PLUS:
-				if (hasMeta && metadataMentions(root, 'fps plus', entries)) {
+				var hasFpsPlusMetadata = hasMeta && metadataMentions(root, 'fps plus', entries);
+				if (hasFpsPlusMetadata) {
 					score += 85;
 					evidence.push('FPS Plus meta.json/api marker');
+					decisive = true;
 				} else if (hasMeta) {
 					score += 15;
 					evidence.push('Generic meta.json marker (FPS Plus requires an explicit API/name match)');
@@ -652,21 +694,27 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.CODENAME:
-				if (hasCodenameSongs(layout.audio)) {
+				var hasCodenameSongFolders = hasCodenameSongs(layout.audio);
+				if (hasCodenameSongFolders) {
 					score += 60;
 					evidence.push('Codename song folder: songs/<song>/meta.json + charts/');
+					decisive = true;
 				}
 				// A meta.json beside a Codename chart folder is a strong marker
 				// on its own, but the parsed shape (difficulties + bpm +
 				// stepsPerBeat) is what separates Codename from FPS Plus, which
 				// also drops a meta.json at the root.
-				if (hasCodenameMetaShape(root, layout.audio)) {
+				var hasCodenameMeta = hasCodenameMetaShape(root, layout.audio);
+				if (hasCodenameMeta) {
 					score += 30;
 					evidence.push('Codename meta.json shape: difficulties + bpm + stepsPerBeat');
+					decisive = true;
 				}
-				if (hasCodenameDefinitionXmls(layout.data)) {
+				var hasCodenameDefinitions = hasCodenameDefinitionXmls(layout.data);
+				if (hasCodenameDefinitions) {
 					score += 25;
 					evidence.push('Codename XML definitions: data/characters + data/stages');
+					decisive = true;
 				}
 				if (hasFile(entries, 'modpack.ini') || hasCodenameModpackIni(layout.data)) {
 					score += 15;
@@ -677,9 +725,11 @@ class ImportRootScanner {
 				// folders.  Classify the release as Codename so the importer can
 				// recover the mods content and name the source-download
 				// expectation in its diagnostics.
-				if (hasCodenameModsContentWithEntries(root, entries)) {
+				var hasCodenameModsContent = hasCodenameModsContentWithEntries(root, entries);
+				if (hasCodenameModsContent) {
 					score += 85;
 					evidence.push('Codename compiled release layout: mods/<name> with song meta.json');
+					decisive = true;
 				}
 
 			case ImportEngine.LEGACY_POLYMOD:
@@ -696,7 +746,7 @@ class ImportRootScanner {
 					evidence.push('Legacy FNF assets/data + song audio layout');
 				}
 		}
-		return {score:score, evidence:evidence};
+		return {score:score, evidence:evidence, decisive:decisive};
 	}
 
 	static function hasImportShape(root:String, layout:Dynamic, entries:Array<String>):Bool {

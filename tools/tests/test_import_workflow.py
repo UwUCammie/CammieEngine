@@ -588,6 +588,67 @@ class CandidateCacheFixture {{
         self.assertIn("reportImportProgress('scan-songs', chart.path, discoveredIndex, discovered.length)", scan_body)
         self.assertIn("writeReport(result)", scan_body)
 
+    def test_explicit_zero_song_scan_suggests_stronger_detected_format(self):
+        scan_body = self.source[self.source.index("public static function perform(sourcePath:String, ?importType:String)"):]
+        scan_body = scan_body[:scan_body.index("class ImportImportJob")]
+        self.assertIn("if (discovered.length == 0)", scan_body)
+        self.assertIn("appendImporterFormatSuggestions(result, descriptors, selectedType)", scan_body)
+        self.assertIn("result.importerSuggestions", (ROOT / "source/ImportSettingsState.hx").read_text())
+        method = extract_method(self.source, "static function appendImporterFormatSuggestions")
+        fixture = f'''typedef ImportRoot = {{
+  var root:String; var engine:String; var confidence:Float; var evidence:Array<String>;
+}};
+typedef ImportScanResult = {{ var importerSuggestions:Array<String>; }};
+class ImportEngine {{
+  public static inline var AUTO:String = "Auto";
+  public static function isAuto(value:Dynamic):Bool return Std.string(value) == AUTO;
+}}
+class ImportRootScanner {{
+  public static var automatic:Map<String, ImportRoot> = new Map();
+  public static function inspectRoot(root:String, selected:String):ImportRoot return automatic.get(root);
+  public static function canonicalize(path:String):String return StringTools.replace(path, "\\\\", "/").toLowerCase();
+}}
+class ImportWorkflow {{
+{method}
+}}
+@:access(ImportWorkflow)
+class Main {{
+  static function main() {{
+    var selected:ImportRoot = {{root:"pack", engine:"Psych Engine", confidence:0.1, evidence:[]}};
+    var auto:ImportRoot = {{root:"pack", engine:"V-Slice", confidence:0.8, evidence:["V-Slice chart marker"]}};
+    ImportRootScanner.automatic.set("pack", auto);
+    var result:ImportScanResult = {{importerSuggestions:[]}};
+    ImportWorkflow.appendImporterFormatSuggestions(result, [selected], "Psych Engine");
+    if (result.importerSuggestions.length != 1) throw "missing explicit-selector format hint";
+    if (result.importerSuggestions[0].indexOf("Select that importer or Auto-detect") < 0)
+      throw "format hint omitted a safe next action";
+    var weak:ImportRoot = {{root:"weak", engine:"Psych Engine", confidence:0.8, evidence:[]}};
+    ImportRootScanner.automatic.set("weak", {{root:"weak", engine:"V-Slice", confidence:0.2, evidence:[]}});
+    var unchanged:ImportScanResult = {{importerSuggestions:[]}};
+    ImportWorkflow.appendImporterFormatSuggestions(unchanged, [weak], "Psych Engine");
+    if (unchanged.importerSuggestions.length != 0)
+      throw "weaker alternate evidence produced a misleading hint";
+
+    var automatic:ImportScanResult = {{importerSuggestions:[]}};
+    ImportWorkflow.appendImporterFormatSuggestions(automatic, [selected], "Auto");
+    if (automatic.importerSuggestions.length != 0)
+      throw "Auto mode produced a selector hint";
+    trace("FORMAT_HINT=" + result.importerSuggestions[0]);
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("FORMAT_HINT=[format-mismatch]", result.stdout + result.stderr)
+
     def test_ui_facing_job_api_has_pollable_progress_and_background_worker(self):
         source = self.source
         for api in (

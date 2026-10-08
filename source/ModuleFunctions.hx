@@ -783,14 +783,19 @@ class ModuleFunctions {
 	static function authenticatedNightmareVisionScope(sourceRoot:String,
 		contentRoot:String):String {
 		if (sourceRoot == null || StringTools.trim(sourceRoot) == '') return '';
-		var sourceKey = importPathKey(sourceRoot);
 		var assetRoot = contentRoot;
 		if (assetRoot == null || StringTools.trim(assetRoot) == '') {
 			var candidate = Path.join([sourceRoot, 'assets']);
 			if (FileSystem.isDirectory(candidate)) assetRoot = candidate;
 		}
 		var packageRoot = assetRoot == null ? null : canonicalNightmareVisionPackageRoot(assetRoot);
-		if (packageRoot != null && importPathKey(packageRoot) == sourceKey)
+		// A scanner-selected <game>/content/<package>/assets root is still
+		// package-owned even though its source path is one level below the
+		// canonical package root. The canonical resolver requires the direct
+		// package meta.json, exact assets/content layout, and authenticated outer
+		// game proof, so an app marker copied into the package Project.xml must not
+		// relabel this mapped package profile as engine core.
+		if (packageRoot != null)
 			return SourceMappedMediaPolicy.PACKAGE_SCOPE;
 		if (ImportPackageFamilyCatalog.isAuthenticatedNightmareVisionContainer(sourceRoot))
 			return SourceMappedMediaPolicy.CORE_SCOPE;
@@ -2454,7 +2459,21 @@ class ModuleFunctions {
 	*/
 	static function findVSliceSongPairs(dataFolder:String, folderName:String,
 		metadataPath:String, chartPath:String, diagnostics:Array<String>):Array<Dynamic> {
-		var result:Array<Dynamic> = [{metadataPath: metadataPath, chartPath: chartPath, variation: ''}];
+		var result:Array<Dynamic> = [];
+		if (metadataPath != null && chartPath != null)
+			result.push({metadataPath: metadataPath, chartPath: chartPath, variation: ''});
+		if (metadataPath == null) {
+			var detached = findVSliceDetachedVariationPairs(dataFolder, folderName, diagnostics);
+			if (detached.length > 0 && diagnostics != null)
+				diagnostics.push('[variation-base-metadata-missing] V-Slice folder "' + folderName
+					+ '" has no base metadata; its exact suffixed metadata/chart pairs are imported as separate songs.');
+			for (pair in detached)
+				result.push(pair);
+			return result;
+		}
+		if (chartPath == null && diagnostics != null)
+			diagnostics.push('[variation-base-chart-missing] V-Slice base metadata exists for "' + folderName
+				+ '" but its base chart is absent; declared sibling variations can still be imported.');
 		var metadata:Dynamic = null;
 		try {
 			metadata = CoolUtil.parseJson(File.getContent(metadataPath));
@@ -2481,6 +2500,129 @@ class ModuleFunctions {
 				continue;
 			}
 			result.push({metadataPath: variationMetadata, chartPath: variationChart, variation: variation});
+		}
+		return result;
+	}
+
+	/** Find one exact unvaried V-Slice metadata or chart filename.  A generic
+	 * suffix search can accidentally treat another sibling file as the base. */
+	static function findVSliceSongBaseFile(folder:String, songFolder:String, kind:String):String {
+		if (folder == null || songFolder == null || kind == null)
+			return null;
+		var stem = StringTools.trim(songFolder) + '-' + StringTools.trim(kind);
+		return findImportFile(folder, [stem + '.json', stem + '.jsonc']);
+	}
+
+	/** Enumerate exact `<song>-<kind>-<variation>.json[c]` siblings in stable
+	 * order.  The filename suffix is an identity supplied by the source file,
+	 * not a guess based on an unrelated chart or audio name. */
+	static function findVSliceVariationFiles(folder:String, songFolder:String, kind:String,
+		diagnostics:Array<String>):Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		if (folder == null || songFolder == null || kind == null || !FileSystem.isDirectory(folder))
+			return result;
+		var entries:Array<String>;
+		try {
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(folder));
+		} catch (_:Dynamic) {
+			return result;
+		}
+		entries.sort(function(a, b) {
+			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+			return lower == 0 ? Reflect.compare(a, b) : lower;
+		});
+		var prefix = normalizedImportFileName(songFolder + '-' + kind + '-');
+		var paths:Map<String, String> = new Map<String, String>();
+		var extensions:Map<String, String> = new Map<String, String>();
+		var ambiguous:Map<String, Bool> = new Map<String, Bool>();
+		for (entry in entries) {
+			var lower = normalizedImportFileName(entry);
+			if (!StringTools.startsWith(lower, prefix))
+				continue;
+			var extension = lower.endsWith('.jsonc') ? '.jsonc'
+				: (lower.endsWith('.json') ? '.json' : '');
+			if (extension == '')
+				continue;
+			var rawSuffix = lower.substring(prefix.length, lower.length - extension.length);
+			var suffix = safeVSliceVariationSuffix(rawSuffix);
+			if (suffix == '' || suffix != rawSuffix) {
+				if (diagnostics != null)
+					diagnostics.push('[variation-id-invalid] Ignored V-Slice sibling with an unsafe variation filename: '
+						+ entry + '.');
+				continue;
+			}
+			var path = Path.join([folder, entry]);
+			if (!isImportFile(path))
+				continue;
+			if (paths.exists(suffix)) {
+				var existingExtension = extensions.get(suffix);
+				if (existingExtension == '.jsonc' && extension == '.json') {
+					paths.set(suffix, path);
+					extensions.set(suffix, extension);
+				} else if (existingExtension == extension) {
+					paths.remove(suffix);
+					extensions.remove(suffix);
+					ambiguous.set(suffix, true);
+				}
+			} else if (!ambiguous.exists(suffix)) {
+				paths.set(suffix, path);
+				extensions.set(suffix, extension);
+			}
+		}
+		var suffixes:Array<String> = [];
+		for (suffix in paths.keys())
+			if (!ambiguous.exists(suffix))
+				suffixes.push(suffix);
+		suffixes.sort(function(a, b) {
+			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+			return lower == 0 ? Reflect.compare(a, b) : lower;
+		});
+		for (suffix in suffixes)
+			result.push({variation:suffix, path:paths.get(suffix)});
+		var ambiguousSuffixes:Array<String> = [];
+		for (suffix in ambiguous.keys())
+			ambiguousSuffixes.push(suffix);
+		ambiguousSuffixes.sort(function(a, b) {
+			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+			return lower == 0 ? Reflect.compare(a, b) : lower;
+		});
+		if (diagnostics != null)
+			for (suffix in ambiguousSuffixes)
+				diagnostics.push('[variation-file-ambiguous] More than one V-Slice ' + kind
+					+ ' file normalizes to variation "' + suffix + '" in ' + folder + '.');
+		return result;
+	}
+
+	/** A mod can provide only the suffixed half of a base-game song.  Preserve
+	 * that explicit pair as a standalone native song when there is no local base
+	 * metadata.  Unpaired files and pairs that conflict after safe normalization
+	 * remain diagnostics, not guessed imports. */
+	static function findVSliceDetachedVariationPairs(folder:String, songFolder:String,
+		diagnostics:Array<String>):Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		var metadataFiles = findVSliceVariationFiles(folder, songFolder, 'metadata', diagnostics);
+		var chartFiles = findVSliceVariationFiles(folder, songFolder, 'chart', diagnostics);
+		var charts:Map<String, String> = new Map<String, String>();
+		for (item in chartFiles)
+			charts.set(Std.string(Reflect.field(item, 'variation')),
+				Std.string(Reflect.field(item, 'path')));
+		var matched:Map<String, Bool> = new Map<String, Bool>();
+		for (item in metadataFiles) {
+			var variation = Std.string(Reflect.field(item, 'variation'));
+			if (charts.exists(variation)) {
+				result.push({metadataPath:Reflect.field(item, 'path'), chartPath:charts.get(variation),
+					variation:variation});
+				matched.set(variation, true);
+			} else if (diagnostics != null) {
+				diagnostics.push('[variation-pair-missing] V-Slice metadata sibling for variation "' + variation
+					+ '" has no matching chart file.');
+			}
+		}
+		for (item in chartFiles) {
+			var variation = Std.string(Reflect.field(item, 'variation'));
+			if (!matched.exists(variation) && diagnostics != null)
+				diagnostics.push('[variation-pair-missing] V-Slice chart sibling for variation "' + variation
+					+ '" has no matching metadata file.');
 		}
 		return result;
 	}
@@ -2704,13 +2846,13 @@ class ModuleFunctions {
 			var dataFolder = Path.join([songsData, folderName]);
 			if (!FileSystem.isDirectory(dataFolder))
 				continue;
-			var baseMetadataPath = findVSliceFile(dataFolder, '-metadata.json');
-			var baseChartPath = findVSliceFile(dataFolder, '-chart.json');
-			if (baseMetadataPath == null || baseChartPath == null)
-				continue;
+			var baseMetadataPath = findVSliceSongBaseFile(dataFolder, folderName, 'metadata');
+			var baseChartPath = findVSliceSongBaseFile(dataFolder, folderName, 'chart');
 			var variationDiscoveryDiagnostics:Array<String> = [];
 			var sourcePairs = findVSliceSongPairs(dataFolder, folderName,
 				baseMetadataPath, baseChartPath, variationDiscoveryDiagnostics);
+			if (sourcePairs.length == 0)
+				continue;
 			var usedDestinationKeys:Map<String, Bool> = new Map<String, Bool>();
 			for (pair in sourcePairs) {
 				if (importWorkCancelled())
@@ -2728,7 +2870,8 @@ class ModuleFunctions {
 			}
 			var diagnostics:Array<String> = [];
 			appendVSliceDiagnostics(diagnostics, converted.diagnostics);
-			if (variation == '')
+			if (variation == '' || ((baseMetadataPath == null || baseChartPath == null)
+				&& pair == sourcePairs[0]))
 				for (diagnostic in variationDiscoveryDiagnostics)
 					if (diagnostics.indexOf(diagnostic) < 0)
 						diagnostics.push(diagnostic);
@@ -11353,11 +11496,13 @@ class ModuleFunctions {
 	 * from the retained-source family catalog; this method publishes only a
 	 * package with its own direct meta.json and uses the normal staged namespace,
 	 * asset collectors, collision rules, and shared-core layout. */
-	public static function publishNightmareVisionFamilyMemberRoots(sourceRoots:Array<String>):ImportAssetMergeResult {
+	public static function publishNightmareVisionFamilyMemberRoots(sourceRoots:Array<String>,
+		?snapshotRoot:String, ?record:Dynamic):ImportAssetMergeResult {
 		var result:ImportAssetMergeResult = {copied:0, skipped:0, failed:0, errors:[]};
 		#if sys
 		if (sourceRoots == null) return result;
 		var mappedOwners:Map<String, PreparedMappedAssetOwner> = new Map();
+		var mappedCoreOwners:Map<String, PreparedMappedAssetOwner> = new Map();
 		var preparedKeys:Map<String, Bool> = new Map();
 		for (ownerRoot in sourceRoots) {
 			if (importWorkCancelled()) {
@@ -11389,8 +11534,48 @@ class ModuleFunctions {
 			}
 			if (plan.failed) result.failed++;
 		}
+		var io = ImportIO.current();
+		var coreHandoffs:Null<Array<Dynamic>> = null;
+		if (snapshotRoot != null && record != null)
+			try coreHandoffs = ImportPackageFamilyCatalog.bindCoreAssetHandoffs(snapshotRoot, record, io)
+			catch (error:Dynamic) {
+				result.failed++;
+				result.errors.push("Nightmare Vision core handoff could not be authenticated: " + Std.string(error));
+				return result;
+			}
+		if (coreHandoffs != null) for (handoff in coreHandoffs) {
+			if (importWorkCancelled()) return result;
+			if (handoff == null || handoff.sourceRoot == null || handoff.destinationRoot == null
+				|| handoff.receiverSourceRoot == null || !FileSystem.isDirectory(handoff.sourceRoot)) {
+				result.failed++;
+				result.errors.push("Nightmare Vision core handoff did not resolve its provider or receiver root.");
+				continue;
+			}
+			var plan = SourceMappedMediaPublisher.prepare(handoff.sourceRoot,
+				ImportEngine.NIGHTMARE_VISION, handoff.destinationRoot,
+				SourceMappedMediaPolicy.CORE_SCOPE,
+				function():Bool return importWorkCancelled());
+			var owner:PreparedMappedAssetOwner = {sourceRoot:handoff.sourceRoot,
+				engine:ImportEngine.NIGHTMARE_VISION, scope:SourceMappedMediaPolicy.CORE_SCOPE,
+				destinationRoot:handoff.destinationRoot, plan:plan};
+			var key = mappedAssetOwnerKey(handoff.receiverSourceRoot, ImportEngine.NIGHTMARE_VISION);
+			if (key == '' || mappedCoreOwners.exists(key)) {
+				result.failed++;
+				result.errors.push("Nightmare Vision core handoff has a duplicate or unsafe receiver root.");
+				continue;
+			}
+			mappedCoreOwners.set(key, owner);
+			if (plan.diagnostics != null)
+				for (diagnostic in plan.diagnostics)
+					if (diagnostic != null && StringTools.trim(diagnostic) != '') result.errors.push(diagnostic);
+			if (plan.cancelled || importWorkCancelled()) return result;
+			if (plan.failed) result.failed++;
+		}
 		if (result.failed > 0) return result;
-		for (owner in mappedOwners) {
+		var allMappedOwners:Array<PreparedMappedAssetOwner> = [];
+		for (owner in mappedOwners) allMappedOwners.push(owner);
+		for (owner in mappedCoreOwners) allMappedOwners.push(owner);
+		for (owner in allMappedOwners) {
 			if (importWorkCancelled()) {
 				return result;
 			}
@@ -11440,6 +11625,7 @@ class ModuleFunctions {
 				&& (importPathKey(coreAssetsRoot) == importPathKey(contentRoot)
 					|| importPathKey(coreAssetsRoot) == importPathKey(ownerRoot));
 			var mappedOwner = mappedOwnerPlan(mappedOwners, ownerRoot, ImportEngine.NIGHTMARE_VISION);
+			var mappedCoreOwner = mappedOwnerPlan(mappedCoreOwners, ownerRoot, ImportEngine.NIGHTMARE_VISION);
 			var installedOwnerRoot = mergeCompatScriptTrees(contentRoot, ownerRoot,
 				ImportEngine.NIGHTMARE_VISION, result, null, null,
 				coreIsSelectedRoot ? NightmareVisionAssetCollector.CORE_SUBTREE : null,
@@ -11457,7 +11643,7 @@ class ModuleFunctions {
 			if (coreAssetsRoot != '')
 				mergeNightmareVisionAssetFiles(coreAssetsRoot,
 					Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE]), result,
-					null, coreIsSelectedRoot ? mappedOwner : null);
+				null, coreIsSelectedRoot ? mappedOwner : mappedCoreOwner);
 			var stageDestination = coreIsSelectedRoot
 				? Path.join([installedOwnerRoot, NightmareVisionAssetCollector.CORE_SUBTREE])
 				: installedOwnerRoot;

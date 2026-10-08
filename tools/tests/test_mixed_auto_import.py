@@ -131,8 +131,11 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function vSliceNativeCharacterName",
                 "static function vSliceNativeCharacterReference",
                 "static function findVSliceSongPairs",
+                "static function findVSliceSongBaseFile",
+                "static function findVSliceVariationFiles",
+                "static function findVSliceDetachedVariationPairs",
                 "static function safeVSliceVariationSuffix",
-                "static function findVSliceVariationFile",
+                "static function findVSliceVariationFile(",
                 "static function findVSliceInstrumental",
                 "static function normalizeVSliceVariationDifficulty",
                 "static function vSliceStemMatchesReference",
@@ -324,7 +327,7 @@ class Main {{
     for (root in roots) {{
       seenEngines.set(root.engine, true);
       var found = ModuleFunctions.discoverRoot(root);
-      var expectedFound = root.engine == ImportEngine.V_SLICE ? 2 : 1;
+      var expectedFound = root.engine == ImportEngine.V_SLICE ? 4 : 1;
       if (found.length != expectedFound) fail(root.engine + ' discovered ' + found.length + ' songs');
       var song = found[0];
       if (song.inst == null || !FileSystem.exists(song.inst)) fail(root.engine + ' has no Inst audio');
@@ -430,22 +433,45 @@ class Main {{
             fail('variation vocal stem was not copied: ' + stem.file);
         songs++;
         trace(root.engine + '|' + variant.name);
+        var declaredOnly = found[2];
+        var detachedOnly = found[3];
+        if (declaredOnly.name.toLowerCase() != 'y-declared-funkadelix'
+          || declaredOnly.convertedCharts == null || declaredOnly.convertedCharts.length == 0)
+          fail('declared variation was dropped when the folder had no base chart');
+        if (detachedOnly.name.toLowerCase() != 'z-detached-funkadelix'
+          || detachedOnly.convertedCharts == null || detachedOnly.convertedCharts.length == 0)
+          fail('matched suffixed pair without local base metadata was not preserved');
+        for (extra in [declaredOnly, detachedOnly]) {{
+          if (extra.inst == null || !FileSystem.exists(extra.inst)
+            || !ModuleFunctions.importSong(extra))
+            fail('V-Slice standalone variation import failed: ' + extra.name);
+          var extraTarget = extra.name.toLowerCase();
+          var extraChartPath = Path.join(['assets', 'data', extraTarget, extraTarget + '.json']);
+          if (!FileSystem.exists(extraChartPath))
+            fail('V-Slice standalone variation chart was not written: ' + extraTarget);
+          var writtenExtra:Dynamic = Json.parse(File.getContent(extraChartPath)).song;
+          if (writtenExtra.song != extraTarget || writtenExtra.notes == null
+            || writtenExtra.notes.length == 0)
+            fail('V-Slice standalone variation lost its own chart identity or notes');
+          songs++;
+          trace(root.engine + '|' + extra.name);
+        }}
       }}
     }}
     for (engine in [ImportEngine.PSYCH, ImportEngine.V_SLICE, ImportEngine.KADE,
       ImportEngine.FPS_PLUS, ImportEngine.MODDING_PLUS, ImportEngine.LEGACY_POLYMOD])
       if (!seenEngines.exists(engine)) fail('missing engine ' + engine);
-    if (songs != 7) fail('expected seven importable songs');
+    if (songs != 9) fail('expected nine importable songs');
     var registry:Array<Dynamic> = cast Json.parse(File.getContent('assets/data/freeplaySongJson.jsonc'));
     var registered = 0;
     for (category in registry)
       for (entry in (cast category.songs:Array<Dynamic>))
         registered++;
-    if (registered != 7) fail('expected seven registered songs, got ' + registered);
+    if (registered != 9) fail('expected nine registered songs, got ' + registered);
     var visible = 0;
     for (_ in DifficultyManager.supportedDiff.keys()) visible++;
-    if (visible != 7)
-      fail('expected seven visible songs, got ' + visible);
+    if (visible != 9)
+      fail('expected nine visible songs, got ' + visible);
     trace('SONGS=' + songs);
   }}
 }}
@@ -612,7 +638,7 @@ class DifficultyManager {
             )
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
-            self.assertIn("SONGS=7", output)
+            self.assertIn("SONGS=9", output)
 
     @staticmethod
     def _make_legacy_root(root: Path, song: str, *, direct=False, assets=False,
@@ -675,6 +701,48 @@ class DifficultyManager {
                            "events": [{"t": 700, "e": "FocusCamera", "v": {"x": 5, "y": 7}}]}
         (data / f"{song}-metadata-alt.json").write_text(json.dumps(variation_metadata), newline='\n')
         (data / f"{song}-chart-alt.json").write_text(json.dumps(variation_chart), newline='\n')
+
+        # A source can declare a new variation while omitting the base-game
+        # chart from this root.  It still has a complete metadata/chart pair.
+        declared_data = root / "data/songs/y-declared"
+        declared_audio = root / "songs/y-declared"
+        declared_data.mkdir(parents=True)
+        declared_audio.mkdir(parents=True)
+        declared_base = {
+            "version": "2.2.0", "songName": "Declared Base",
+            "playData": {"songVariations": ["funkadelix"]},
+        }
+        declared_variant = {
+            "version": "2.2.0", "songName": "Declared Funkadelix",
+            "playData": {"songVariations": [], "difficulties": ["normal"],
+                "characters": {"player": "bf", "opponent": "dad", "girlfriend": "gf",
+                    "instrumental": "funkadelix"}, "stage": "stage", "noteStyle": "funkin"},
+            "timeChanges": [{"t": 0, "bpm": 120}],
+        }
+        declared_chart = {"version": "2.0.0", "notes": {"normal": [{"t": 200, "d": 1}]}}
+        (declared_data / "y-declared-metadata.json").write_text(json.dumps(declared_base), newline='\n')
+        (declared_data / "y-declared-metadata-funkadelix.json").write_text(json.dumps(declared_variant), newline='\n')
+        (declared_data / "y-declared-chart-funkadelix.json").write_text(json.dumps(declared_chart), newline='\n')
+        (declared_audio / "Inst-funkadelix.ogg").write_bytes(b"declared-inst")
+
+        # A matched suffixed pair with no local base metadata is retained as a
+        # detached import unit, with diagnostics rather than an invented base.
+        detached_data = root / "data/songs/z-detached"
+        detached_audio = root / "songs/z-detached"
+        detached_data.mkdir(parents=True)
+        detached_audio.mkdir(parents=True)
+        detached_variant = {
+            "version": "2.2.0", "songName": "Detached Funkadelix",
+            "playData": {"songVariations": [], "difficulties": ["normal"],
+                "characters": {"player": "bf", "opponent": "dad", "girlfriend": "gf",
+                    "instrumental": "funkadelix"}, "stage": "stage", "noteStyle": "funkin"},
+            "timeChanges": [{"t": 0, "bpm": 120}],
+        }
+        detached_chart = {"version": "2.0.0", "notes": {"normal": [{"t": 300, "d": 2}]}}
+        (detached_data / "z-detached-metadata-funkadelix.json").write_text(json.dumps(detached_variant), newline='\n')
+        (detached_data / "z-detached-chart-funkadelix.json").write_text(json.dumps(detached_chart), newline='\n')
+        (detached_audio / "Inst-funkadelix.ogg").write_bytes(b"detached-inst")
+
         styles = root / "data/notestyles"
         styles.mkdir(parents=True)
         (styles / "TestStyle.json").write_text(json.dumps({

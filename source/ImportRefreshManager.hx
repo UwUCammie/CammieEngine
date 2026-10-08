@@ -17,6 +17,7 @@ import ImportRefreshAvailabilitySnapshot.ImportRefreshAvailabilitySnapshot;
 import ImportRefreshAvailabilitySnapshot.ImportRefreshPendingSong;
 import ImportRefreshTransaction.ImportRefreshStagedOutput;
 import ImportRefreshTransaction.ImportRefreshManifestFile;
+import ImportRefreshTransaction.ImportRefreshPackageFamilyCatalog;
 import ImportSourceSnapshot.ImportSourceSnapshotResult;
 import PsychAssetProfile.PsychAssetProfileBuild;
 
@@ -561,48 +562,89 @@ class ImportRefreshManager {
 		var profiles:Dynamic = catalog == null ? null : Reflect.field(catalog, "roots");
 		if (profiles == null || !Std.isOfType(profiles, Array)
 			|| files == null || !Std.isOfType(files, Array)) return result;
+		var rawFamily:Dynamic = Reflect.field(record, "packageFamilyCatalog");
+		var rawFamilyVersion:Dynamic = rawFamily == null ? null : Reflect.field(rawFamily, "version");
+		var hasV3Family = rawFamilyVersion == 3;
+		var family:ImportRefreshPackageFamilyCatalog = null;
+		if (rawFamily != null) try family = ImportRefreshTransaction.validatePackageFamilyCatalog(rawFamily, record)
+			catch (_:Dynamic) family = null;
+		if (hasV3Family && family == null) return result;
 		for (root in roots) {
 			ImportWorkScheduler.cooperate();
 			var namespace = root.substr("assets/imported_mods/".length);
+			var owned:Array<Dynamic> = [];
+			var sidecars:Map<String, Dynamic> = new Map();
+			for (entry in (cast files:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
+				if (entry == null || entry.owner != manifest.owner || entry.path == null
+					|| entry.sha256 == null || !~/^[a-f0-9]{64}$/.match(Std.string(entry.sha256))) continue;
+				var path = normalizeInstallRelative(Std.string(entry.path));
+				if (path == null || !StringTools.startsWith(path, root + "/")) continue;
+				owned.push({path:path, sha256:Std.string(entry.sha256)});
+				var relative = path.substr(root.length + 1);
+				if (StringTools.startsWith(relative, SourceLimeAssetIdentity.SIDECAR_DIR + "/"))
+					sidecars.set(relative, entry);
+			}
 			for (engine in ["Psych Engine", "Nightmare Vision"]) {
 				ImportWorkScheduler.cooperate();
-				var selected:Dynamic = null;
-				var ambiguous = false;
-				for (item in (cast profiles:Array<Dynamic>)) {
-					ImportWorkScheduler.cooperate();
-					if (item == null || item.namespace != namespace
-						|| ImportRevision.normalizeEngine(Std.string(item.engine)) != engine) continue;
-					var profile:Dynamic = item.profile;
-					if (profile == null || profile.provenance != "receipt-bound"
-						|| profile.snapshotId != record.snapshotId || profile.namespace != namespace
-						|| profile.rootRelative != item.rootRelative || profile.sourceEngine != engine
-						|| profile.projectSha256 == null
-						|| !~/^[a-f0-9]{64}$/.match(Std.string(profile.projectSha256))) continue;
-					if (selected != null) ambiguous = true;
-					selected = profile;
-				}
-				if (selected == null || ambiguous) continue;
-				var owned:Array<Dynamic> = [];
-				var sidecars:Map<String, Dynamic> = new Map();
-				for (entry in (cast files:Array<Dynamic>)) {
-					ImportWorkScheduler.cooperate();
-					if (entry == null || entry.owner != manifest.owner || entry.path == null
-						|| entry.sha256 == null || !~/^[a-f0-9]{64}$/.match(Std.string(entry.sha256))) continue;
-					var path = normalizeInstallRelative(Std.string(entry.path));
-					if (!StringTools.startsWith(path, root + "/")) continue;
-					owned.push({path:path, sha256:Std.string(entry.sha256)});
-					var relative = path.substr(root.length + 1);
-					if (StringTools.startsWith(relative, SourceLimeAssetIdentity.SIDECAR_DIR + "/"))
-						sidecars.set(relative, entry);
-				}
 				for (scope in (engine == "Psych Engine" ? ["package"] : ["package", "core"])) {
 					ImportWorkScheduler.cooperate();
+					var selected:Dynamic = null;
+					var handoff:Dynamic = null;
+					var ambiguous = false;
+					var selectedMember:Dynamic = null;
+					if (engine == "Nightmare Vision" && scope == "core" && family != null && family.version >= 3) {
+						for (member in family.members)
+							if (member != null && member.namespace == namespace) selectedMember = member;
+					}
+					// A family receiver borrows the authenticated provider profile.
+					// The selected outer provider keeps its ordinary own-scope index.
+					if (selectedMember != null && family.coreProvider != null) {
+						var provider = family.coreProvider;
+						for (item in (cast profiles:Array<Dynamic>)) {
+							ImportWorkScheduler.cooperate();
+							if (item == null || item.namespace != provider.namespace
+								|| item.rootRelative != provider.rootRelative
+								|| ImportRevision.normalizeEngine(Std.string(item.engine)) != engine) continue;
+							var profile:Dynamic = item.profile;
+							if (profile == null || profile.provenance != "receipt-bound"
+								|| profile.snapshotId != record.snapshotId || profile.namespace != provider.namespace
+								|| profile.rootRelative != item.rootRelative || profile.sourceEngine != engine
+								|| profile.projectSha256 != provider.projectSha256
+								|| !~/^[a-f0-9]{64}$/.match(Std.string(profile.projectSha256))) continue;
+							if (selected != null) ambiguous = true;
+							selected = profile;
+						}
+						if (selected != null && !ambiguous) handoff = {
+							version:1, providerNamespace:provider.namespace,
+							providerRootRelative:provider.rootRelative,
+							providerProjectSha256:provider.projectSha256,
+							receiverRootRelative:selectedMember.sourceRelative,
+							receiverNamespace:namespace, catalogVersion:3
+						};
+					} else {
+						for (item in (cast profiles:Array<Dynamic>)) {
+							ImportWorkScheduler.cooperate();
+							if (item == null || item.namespace != namespace
+								|| ImportRevision.normalizeEngine(Std.string(item.engine)) != engine) continue;
+							var profile:Dynamic = item.profile;
+							if (profile == null || profile.provenance != "receipt-bound"
+								|| profile.snapshotId != record.snapshotId || profile.namespace != namespace
+								|| profile.rootRelative != item.rootRelative || profile.sourceEngine != engine
+								|| profile.projectSha256 == null
+								|| !~/^[a-f0-9]{64}$/.match(Std.string(profile.projectSha256))) continue;
+							if (selected != null) ambiguous = true;
+							selected = profile;
+						}
+					}
+					if (selected == null || ambiguous) continue;
 					var sidecar = sidecars.get(SourceLimeAssetIdentity.sidecarRelativePath(engine, scope));
 					if (sidecar == null) continue;
 					result.set(root + "/" + engine + "/" + scope, {
 						owner:root, engine:engine, scope:scope, namespace:namespace,
 						snapshotId:record.snapshotId, rootRelative:selected.rootRelative,
-						projectSha256:selected.projectSha256, transactionId:manifest.transactionId,
+						projectSha256:selected.projectSha256, handoff:handoff,
+						transactionId:manifest.transactionId,
 						indexPath:Std.string(sidecar.path), indexSha256:Std.string(sidecar.sha256),
 						indexSize:null, files:owned
 					});
@@ -645,6 +687,15 @@ class ImportRefreshManager {
 			owner:binding.owner, engine:binding.engine, scope:binding.scope,
 			namespace:binding.namespace, snapshotId:binding.snapshotId,
 			rootRelative:binding.rootRelative, projectSha256:binding.projectSha256,
+			handoff:binding.handoff == null ? null : {
+				version:binding.handoff.version,
+				providerNamespace:binding.handoff.providerNamespace,
+				providerRootRelative:binding.handoff.providerRootRelative,
+				providerProjectSha256:binding.handoff.providerProjectSha256,
+				receiverRootRelative:binding.handoff.receiverRootRelative,
+				receiverNamespace:binding.handoff.receiverNamespace,
+				catalogVersion:binding.handoff.catalogVersion
+			},
 			transactionId:binding.transactionId, indexPath:binding.indexPath,
 			indexSha256:binding.indexSha256, indexSize:null, files:files};
 	}
@@ -2212,7 +2263,8 @@ class ImportRefreshManager {
 			var familySourceRoots = ImportPackageFamilyCatalog.sourceRoots(Path.directory(source), record);
 			if (familySourceRoots.length > 0) {
 				cooperateImportWork(cancel);
-				var familyPublication = ModuleFunctions.publishNightmareVisionFamilyMemberRoots(familySourceRoots);
+				var familyPublication = ModuleFunctions.publishNightmareVisionFamilyMemberRoots(
+					familySourceRoots, Path.directory(source), record);
 				if (familyPublication.failed > 0 || cancel())
 					throw "Nightmare Vision package-family publication did not complete; installed content is unchanged. "
 						+ (familyPublication.errors == null ? "" : familyPublication.errors.join("\n"));

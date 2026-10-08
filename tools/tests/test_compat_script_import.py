@@ -722,6 +722,12 @@ class ImportPackageFamilyCatalog {{
         return true;
     return false;
   }}
+  public static function bindCoreAssetHandoffs(_snapshotRoot:String, _record:Dynamic,
+      _io:Dynamic):Null<Array<Dynamic>> return null;
+}}
+class SourceMappedMediaPolicy {{
+  public static inline var PACKAGE_SCOPE:String = "package";
+  public static inline var CORE_SCOPE:String = "core";
 }}
 typedef SongImport = {{
   var name:String;

@@ -61,12 +61,23 @@ typedef SourceLimeAssetIdentityIndex = {
 	var loadProfileComplete:Bool;
 	var libraryLoadProfiles:Array<SourceLimeAssetIdentityLibraryLoadProfile>;
 	var entries:Array<SourceLimeAssetIdentityEntry>;
+	@:optional var handoff:Null<SourceLimeAssetIdentityHandoff>;
 }
 
 /** Lime's `library:id` symbol, split at the first colon only. */
 typedef SourceLimeAssetIdentityKey = {
 	var library:String;
 	var id:String;
+}
+
+/** Catalog-authorized provider-core materialization for one family receiver. */
+typedef SourceLimeAssetIdentityHandoff = {
+	var version:Int;
+	var providerNamespace:String;
+	var providerRootRelative:String;
+	var providerProjectSha256:String;
+	var receiverRootRelative:String;
+	var catalogVersion:Int;
 }
 
 /** Staged sidecar value, committed through the ordinary import transaction. */
@@ -334,6 +345,7 @@ class SourceLimeAssetIdentity {
 		var loadTargetRaw:Dynamic = Reflect.field(raw, "loadTarget");
 		var loadProfileCompleteRaw:Dynamic = Reflect.field(raw, "loadProfileComplete");
 		var libraryLoadProfilesRaw:Dynamic = Reflect.field(raw, "libraryLoadProfiles");
+		var handoffRaw:Dynamic = Reflect.field(raw, "handoff");
 		var librariesRaw:Dynamic = Reflect.field(raw, "libraries");
 		var entriesRaw:Dynamic = Reflect.field(raw, "entries");
 		var expectedCanonicalEngine = ImportRevision.normalizeEngine(expectedEngine);
@@ -348,6 +360,27 @@ class SourceLimeAssetIdentity {
 			|| projectSha256 == null || !isHex(projectSha256, 64)
 			|| complete == null || librariesComplete == null
 			|| !Std.isOfType(librariesRaw, Array) || !Std.isOfType(entriesRaw, Array)) return null;
+		var handoff:Null<SourceLimeAssetIdentityHandoff> = null;
+		if (handoffRaw != null) {
+			if (version != VERSION || expectedCanonicalEngine != "Nightmare Vision" || expectedScope != "core") return null;
+			var handoffVersion = intField(handoffRaw, "version");
+			var providerNamespace = stringField(handoffRaw, "providerNamespace");
+			var providerRootRelative = stringField(handoffRaw, "providerRootRelative");
+			var providerProjectSha = stringField(handoffRaw, "providerProjectSha256");
+			var receiverRootRelative = stringField(handoffRaw, "receiverRootRelative");
+			var catalogVersion = intField(handoffRaw, "catalogVersion");
+			if (handoffVersion != 1 || !isNamespace(providerNamespace)
+				|| providerNamespace == namespace || providerRootRelative != ""
+				|| providerProjectSha == null || !isHex(providerProjectSha, 64)
+				|| providerProjectSha != providerProjectSha.toLowerCase()
+				|| receiverRootRelative == null || !StringTools.startsWith(receiverRootRelative, "content/")
+				|| normalizeRelative(receiverRootRelative) != receiverRootRelative || catalogVersion != 3
+				|| rootRelative != providerRootRelative || projectSha256.toLowerCase() != providerProjectSha)
+				return null;
+			handoff = {version:1, providerNamespace:providerNamespace,
+				providerRootRelative:providerRootRelative, providerProjectSha256:providerProjectSha,
+				receiverRootRelative:receiverRootRelative, catalogVersion:3};
+		}
 		var legacyV1 = version == 1;
 		var loadTarget:Null<String> = null;
 		var loadProfileComplete = false;
@@ -455,7 +488,8 @@ class SourceLimeAssetIdentity {
 			namespace:namespace, snapshotId:snapshotId, rootRelative:rootRelative,
 			projectSha256:projectSha256, complete:complete, libraries:libraries,
 			librariesComplete:librariesComplete, loadTarget:loadTarget,
-			loadProfileComplete:loadProfileComplete, libraryLoadProfiles:libraryLoadProfiles, entries:entries
+			loadProfileComplete:loadProfileComplete, libraryLoadProfiles:libraryLoadProfiles,
+			entries:entries, handoff:handoff
 		};
 	}
 
@@ -633,7 +667,8 @@ class SourceLimeAssetIdentity {
 		planned physical file, and blocked IDs are omitted rather than guessed. */
 	public static function preparePublication(profile:Dynamic, owner:String, engine:String,
 		scope:String, identityEvents:Array<Dynamic>, blockedKeys:Array<SourceLimeAssetIdentityKey>,
-		blockAll:Bool, complete:Bool, librariesComplete:Bool):SourceLimeAssetIdentityPublication {
+		blockAll:Bool, complete:Bool, librariesComplete:Bool,
+		?handoff:Dynamic):SourceLimeAssetIdentityPublication {
 		var diagnostics:Array<String> = [];
 		var canonicalEngine = ImportRevision.normalizeEngine(engine);
 		var canonicalScope = scope == null || scope == "" ? "package" : scope;
@@ -642,8 +677,35 @@ class SourceLimeAssetIdentity {
 		var rootRelative = stringField(profile, "rootRelative");
 		var snapshotId = stringField(profile, "snapshotId");
 		var projectSha256 = stringField(profile, "projectSha256");
+		var ownerNamespace = owner != null && StringTools.startsWith(owner, "assets/imported_mods/")
+			? owner.substr("assets/imported_mods/".length) : null;
+		var handoffValue:Null<SourceLimeAssetIdentityHandoff> = null;
+		if (handoff != null) {
+			var handoffVersion = intField(handoff, "version");
+			var receiverNamespace = stringField(handoff, "receiverNamespace");
+			var providerNamespace = stringField(handoff, "providerNamespace");
+			var providerRootRelative = stringField(handoff, "providerRootRelative");
+			var providerProjectSha = stringField(handoff, "providerProjectSha256");
+			var receiverRootRelative = stringField(handoff, "receiverRootRelative");
+			var catalogVersion = intField(handoff, "catalogVersion");
+			if (canonicalEngine != "Nightmare Vision" || canonicalScope != "core"
+				|| handoffVersion != 1 || receiverNamespace != ownerNamespace
+				|| !isNamespace(providerNamespace) || providerNamespace != namespace
+				|| providerNamespace == ownerNamespace || providerRootRelative != ""
+				|| providerProjectSha == null || !isHex(providerProjectSha, 64)
+				|| providerProjectSha != providerProjectSha.toLowerCase()
+				|| receiverRootRelative == null || !StringTools.startsWith(receiverRootRelative, "content/")
+				|| normalizeRelative(receiverRootRelative) != receiverRootRelative || catalogVersion != 3
+				|| rootRelative != providerRootRelative || projectSha256 == null
+				|| projectSha256.toLowerCase() != providerProjectSha)
+				return {path:"", content:"", index:null, failed:true,
+					diagnostics:["[lime-asset-identity] The provider-to-receiver handoff is not authorized by this source profile."]};
+			handoffValue = {version:1, providerNamespace:providerNamespace,
+				providerRootRelative:providerRootRelative, providerProjectSha256:providerProjectSha,
+				receiverRootRelative:receiverRootRelative, catalogVersion:3};
+		}
 		if (profile == null || owner == null || sidecar == null || namespace == ""
-			|| owner != "assets/imported_mods/" + namespace
+			|| (handoffValue == null && ownerNamespace != namespace)
 			|| !isSafeOwnerRoot(owner) || snapshotId == null || !isHex(snapshotId, 64)
 			|| projectSha256 == null || !isHex(projectSha256, 64)
 			|| rootRelative == null || (rootRelative != "" && normalizeRelative(rootRelative) != rootRelative)) {
@@ -780,13 +842,14 @@ class SourceLimeAssetIdentity {
 		libraries.sort(Reflect.compare);
 		var index:SourceLimeAssetIdentityIndex = {
 			version:VERSION, owner:owner, engine:canonicalEngine, scope:canonicalScope,
-			namespace:namespace, snapshotId:snapshotId, rootRelative:rootRelative,
+			namespace:ownerNamespace, snapshotId:snapshotId, rootRelative:rootRelative,
 			projectSha256:projectSha256.toLowerCase(), complete:complete,
 			libraries:libraries, librariesComplete:librariesComplete, loadTarget:target,
 			loadProfileComplete:loadProfileComplete, libraryLoadProfiles:libraryLoadProfiles,
-			entries:entries
+			entries:entries, handoff:handoffValue
 		};
-		var validated = validate(index, owner, canonicalEngine, canonicalScope, namespace);
+		var validated = validate(index, owner, canonicalEngine, canonicalScope,
+		handoffValue == null ? namespace : ownerNamespace);
 		if (validated == null) {
 			diagnostics.push("[lime-asset-identity] Generated sidecar failed its own schema validation.");
 			return {path:"", content:"", index:null, failed:true, diagnostics:diagnostics};

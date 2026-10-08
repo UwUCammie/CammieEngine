@@ -22,6 +22,12 @@ import haxe.io.Bytes;
 import haxe.io.Path;
 import ImportRefreshTransaction.ImportRefreshPackageFamilyCatalog;
 import ImportRefreshTransaction.ImportRefreshStagedOutput;
+import PsychAssetProfile;
+import PsychAssetProfile.PsychAssetProfileBuild;
+import SourceMappedAssetPublisher;
+import SourceMappedMediaPolicy;
+import SourceMappedMediaPublisher;
+import SourceLimeAssetIdentity;
 import sys.FileSystem;
 import sys.io.File;
 
@@ -62,7 +68,10 @@ class ImportPackageFamilyCatalogFixture {
   // This outer-root proof intentionally comes from the compiled executable
   // marker, not Project.xml, as in a native packaged game distribution.
   write(Path.join([source,"NightmareVision.exe"]),"com.nmvTeam.nightmareEngine");
+  write(Path.join([source,"Project.xml"]),'<project><app packageName="com.nmvteam.nightmareengine" />'
+   +'<assets path="assets/images" rename="assets/images" /></project>');
   write(Path.join([source,"assets","data","base-game","base.json"]),'{"song":{"bpm":100}}');
+  write(Path.join([source,"assets","images","core.png"]),"provider core image");
   write(Path.join([source,"assets","songs","base-game","Inst.ogg"]),"base audio");
   write(Path.join([source,"content","alpha","meta.json"]),'{"name":"alpha"}');
   write(Path.join([source,"content","alpha","assets","songs","alpha","data","alpha.json"]),'{"format":"nmv2"}');
@@ -268,7 +277,7 @@ class ImportPackageFamilyCatalogFixture {
     for(member in published.members) publishedNamespaces.push(member.namespace);
     publishedNamespaces.sort(Reflect.compare);
     planned.record.packageFamilyCatalog=published;
-    var id=Std.string(planned.record.id);
+    var id=Std.string(Reflect.field(planned.record,"id"));
     var records=Path.join([cache,"records"]);
     ensure(records);
     write(Path.join([records,id+".json"]),Json.stringify({id:id}));
@@ -296,6 +305,124 @@ class ImportPackageFamilyCatalogFixture {
      reusedNamespaces:reusedNamespaces,
      executableProof:ImportPackageFamilyCatalog.isAuthenticatedNightmareVisionContainer(
       Path.join([planned.snapshot.snapshotRoot,"content"]))});
+   case "v3-core-handoff":
+    var source=makeAssetGame("v3-core-handoff-source");
+    var planned=plannerRecord(source);
+    var content=Path.join([planned.snapshot.snapshotRoot,"content"]);
+    var providerNamespace:String=null;
+    for(root in (cast planned.roots:Array<Dynamic>))
+     if(root.engine=="Nightmare Vision"&&root.relative=="") providerNamespace=Std.string(root.namespace);
+    if(providerNamespace==null) throw "retained scanner did not record the authenticated outer game root";
+    var build:PsychAssetProfileBuild=cast {target:"html5",command:"",flags:[],values:[],flagsComplete:true};
+    var providerProfile=PsychAssetProfile.resolveRetained(content,planned.snapshot.snapshotId,"",
+     "Nightmare Vision",providerNamespace,build);
+    if(providerProfile==null||providerProfile.provenance!="receipt-bound"||!providerProfile.complete)
+     throw "outer core Project profile was not resolved from the retained snapshot: "+
+      (providerProfile==null?"null":providerProfile.diagnostics.join("; "))+
+      " content="+content+" project="+FileSystem.exists(Path.join([content,"Project.xml"]));
+    planned.record.sourceAssetProfiles={version:1,snapshotId:planned.snapshot.snapshotId,roots:[
+     {engine:"Nightmare Vision",rootRelative:"",namespace:providerNamespace,profile:providerProfile}]};
+    var stage=Path.join([cache,"staging","v3-core-handoff"]);
+    ensure(stage);
+    var io=ImportIO.begin(install,stage);
+    io.setNamespace(content,"Nightmare Vision",providerNamespace);
+    io.recordResolvedNamespace(content,"Nightmare Vision",providerNamespace);
+    io.setAssetProfile(content,content,planned.snapshot.snapshotId,"","Nightmare Vision",
+     providerNamespace,providerProfile);
+    var members=ImportPackageFamilyCatalog.sourceRoots(planned.snapshot.snapshotRoot,planned.record);
+    if(members.length<2) throw "retained outer source did not prove two family packages";
+    var packageNamespaces:Array<String>=[];
+    for(member in members) {
+     var relative=StringTools.replace(Path.normalize(member),"\\","/");
+     var normalizedContent=StringTools.replace(Path.normalize(content),"\\","/");
+     var memberRelative=relative.substr(normalizedContent.length+1);
+     var namespace:String=null;
+     for(root in (cast planned.roots:Array<Dynamic>))
+      if(root.engine=="Nightmare Vision"&&(root.relative==memberRelative||root.relative==memberRelative+"/assets"))
+       namespace=Std.string(root.namespace);
+     if(namespace==null) throw "family member has no scanner-owned namespace: "+memberRelative;
+     io.setNamespace(member,"Nightmare Vision",namespace);
+     io.recordResolvedNamespace(member,"Nightmare Vision",namespace);
+     packageNamespaces.push(namespace);
+     File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/meta.json"),Json.stringify({name:namespace}));
+     File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/scripts/state.hxs"),"class State {} ");
+    }
+    var handoffs=ImportPackageFamilyCatalog.bindCoreAssetHandoffs(
+     planned.snapshot.snapshotRoot,planned.record,io);
+    if(handoffs==null||handoffs.length!=members.length)
+     throw "catalog-authorized provider did not bind every family receiver";
+    for(handoff in handoffs) {
+     var corePlan=SourceMappedMediaPublisher.prepare(handoff.sourceRoot,"Nightmare Vision",
+      handoff.destinationRoot,SourceMappedMediaPolicy.CORE_SCOPE,function():Bool return false);
+     if(corePlan.failed||corePlan.cancelled||corePlan.identityPublication==null)
+      throw "receiver core identity plan failed: "+corePlan.diagnostics.join("; ");
+     SourceMappedMediaPublisher.publish(corePlan,function(sourcePath:String,destinationPath:String):Void {
+      io.copy(sourcePath,destinationPath);
+     },function():Bool return false,function(path:String,text:String):Void {
+      File.saveContent(io.writePath(path),text);
+     });
+     if(corePlan.failed||corePlan.cancelled)
+      throw "receiver core sidecar publication failed: "+corePlan.diagnostics.join("; ");
+    }
+    var published=ImportPackageFamilyCatalog.capturePublished(planned.snapshot.snapshotRoot,planned.record,io);
+    if(published==null||published.version!=3||published.coreProvider==null)
+     throw "transaction did not capture the authenticated v3 provider-core family";
+    var badCatalog:Dynamic=haxe.Json.parse(Json.stringify(published));
+    Reflect.setField(Reflect.field(badCatalog,"coreProvider"),"projectSha256",hash("wrong provider profile"));
+    var tamperedRejected=false;
+    try ImportRefreshTransaction.validatePackageFamilyCatalog(badCatalog,planned.record)
+     catch(_:Dynamic) tamperedRejected=true;
+    if(!tamperedRejected) throw "v3 catalog accepted a provider Project hash that disagreed with the retained profile";
+    planned.record.packageFamilyCatalog=published;
+    var invalidRefreshRecord:Dynamic=Reflect.copy(planned.record);
+    var changedProfileCatalog:Dynamic=Reflect.copy(planned.record.sourceAssetProfiles);
+    var changedProfileRoots:Array<Dynamic>=cast planned.record.sourceAssetProfiles.roots;
+    var changedProfileRoot:Dynamic=Reflect.copy(changedProfileRoots[0]);
+    var changedProviderProfile:Dynamic=Reflect.copy(changedProfileRoot.profile);
+    changedProviderProfile.provenance="legacy-unverified";
+    changedProfileRoot.profile=changedProviderProfile;
+    Reflect.setField(changedProfileCatalog,"roots",[changedProfileRoot]);
+    Reflect.setField(invalidRefreshRecord,"sourceAssetProfiles",changedProfileCatalog);
+    var missingProviderRejected=false;
+    try ImportPackageFamilyCatalog.bindCoreAssetHandoffs(
+     planned.snapshot.snapshotRoot,invalidRefreshRecord,io) catch(_:Dynamic) missingProviderRejected=true;
+    if(!missingProviderRejected)
+     throw "refresh downgraded a previously published v3 core catalog after its provider profile became unprovable";
+    ImportIO.end();
+    var outputs:Array<ImportRefreshStagedOutput>=[];
+    for(path in io.writtenPaths()) outputs.push({path:path,stagedPath:path});
+    var id=Std.string(Reflect.field(planned.record,"id"));
+    ensure(Path.join([cache,"records"]));
+    write(Path.join([cache,"records",id+".json"]),Json.stringify({id:id}));
+    var owner="retained-import:"+id;
+    var applied=ImportRefreshTransaction.apply(install,stage,Path.join([cache,"state"]),owner,
+     ["assets"],outputs,{importRecord:planned.record,registries:[]});
+    if(applied.status!=ImportRefreshTransaction.STATUS_APPLIED)
+     throw "v3 provider-core family transaction did not commit: "+applied.status;
+    var committed=ImportRefreshTransaction.loadManifest(Path.join([cache,"state"]),owner);
+    if(committed.packageFamilyCatalog==null||committed.packageFamilyCatalog.version!=3)
+     throw "v3 core handoff catalog was not preserved by the committed manifest";
+    var coreSidecars:Array<String>=[];
+    for(namespace in packageNamespaces) {
+     var sidecar="assets/imported_mods/"+namespace+"/"+
+      SourceLimeAssetIdentity.sidecarRelativePath("Nightmare Vision","core");
+     coreSidecars.push(sidecar);
+     var found=false;
+     for(file in committed.files) if(file.path==sidecar) found=true;
+     if(!found) throw "committed owner manifest omitted its receiver core index: "+sidecar;
+     var parsed:Dynamic=Json.parse(File.getContent(Path.join([install,sidecar])));
+     var entries:Dynamic=Reflect.field(parsed,"entries");
+     var mapped=false;
+     if(Std.isOfType(entries,Array)) for(entry in (cast entries:Array<Dynamic>))
+      if(Reflect.field(entry,"id")=="assets/images/core.png"
+       && Reflect.field(entry,"ownerRelative")=="__nmv_core/images/core.png") mapped=true;
+     if(!mapped) throw "receiver sidecar did not preserve the provider Lime ID and receiver core path";
+     if(File.getContent(Path.join([install,"assets/imported_mods/"+namespace+"/__nmv_core/images/core.png"]))
+      !="provider core image") throw "mapped core bytes were not staged below the receiver namespace";
+    }
+    report({version:committed.packageFamilyCatalog.version,providerNamespace:providerNamespace,
+     providerProjectSha256:providerProfile.projectSha256,receiverNamespaces:packageNamespaces,
+     coreSidecars:coreSidecars});
    case "rebase":
     var first=makeDonor("rebase-before");
     var id=hash("stable-family-import");
@@ -432,6 +559,13 @@ class ImportPackageFamilyCatalogTest(unittest.TestCase):
         self.assertEqual(result["members"], ["content/alpha", "content/beta"])
         self.assertEqual(result["publishedNamespaces"], ["scan-root-1", "scan-root-2"])
         self.assertEqual(result["reusedNamespaces"], ["scan-root-1", "scan-root-2"])
+
+    def test_retained_provider_core_is_published_and_committed_under_each_receiver(self):
+        result = self.run_fixture("v3-core-handoff")
+        self.assertEqual(result["version"], 3)
+        self.assertTrue(result["providerNamespace"])
+        self.assertEqual(len(result["receiverNamespaces"]), 2)
+        self.assertEqual(len(result["coreSidecars"]), 2)
 
 
 if __name__ == "__main__":

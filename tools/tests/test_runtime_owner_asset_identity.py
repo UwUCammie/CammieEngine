@@ -122,6 +122,66 @@ class Main {
   var detachedRejected=false;
   try detached.getText('repopulated') catch (_:Dynamic) detachedRejected=true;
   check(detachedRejected,'owner release makes the detached handle unusable');
+
+  var receiver='assets/imported_mods/family-receiver';
+  var coreBytes=Bytes.ofString('provider core text');
+  write(receiver+'/__nmv_core/data/core.txt',coreBytes);
+  var coreHandoff:Dynamic={version:1,providerNamespace:'provider-game',providerRootRelative:'',
+   providerProjectSha256:StringTools.lpad('','2',64),receiverRootRelative:'content/alpha',
+   receiverNamespace:'family-receiver',catalogVersion:3};
+  var coreIndex:Dynamic={version:2,owner:receiver,engine:'Nightmare Vision',scope:'core',
+   namespace:'family-receiver',snapshotId:StringTools.lpad('','3',64),rootRelative:'',
+   projectSha256:coreHandoff.providerProjectSha256,complete:true,libraries:['default'],
+   librariesComplete:true,loadTarget:null,loadProfileComplete:false,
+   libraryLoadProfiles:[{library:'default',state:'unknown',projectOrder:-1,
+    projectPreloadState:'unresolved',projectPreload:null,projectEmbedState:'unresolved',
+    projectEmbed:null,diagnostic:'Fixture has no source target.'}],
+   entries:[{library:'default',id:'core-id',type:'TEXT',ownerRelative:'__nmv_core/data/core.txt',
+    size:coreBytes.length,sha256:hash(coreBytes),candidateOrder:0,preloadState:'unresolved'}],
+   handoff:{version:1,providerNamespace:coreHandoff.providerNamespace,
+    providerRootRelative:coreHandoff.providerRootRelative,
+    providerProjectSha256:coreHandoff.providerProjectSha256,
+    receiverRootRelative:coreHandoff.receiverRootRelative,catalogVersion:3}};
+  var coreIndexPath=receiver+'/.cammie-asset-identities/nightmare-vision-core.json';
+  var coreIndexBytes=Bytes.ofString(haxe.Json.stringify(coreIndex));
+  write(coreIndexPath,coreIndexBytes);
+  var coreFiles=[{path:coreIndexPath,sha256:hash(coreIndexBytes)},
+   {path:receiver+'/__nmv_core/data/core.txt',sha256:hash(coreBytes)}];
+  var coreBinding:Dynamic={generation:ImportRefreshManager.generation,
+   revision:ImportRefreshManager.revision+1,transactionId:'family-core-tx',owner:receiver,
+   engine:'Nightmare Vision',scope:'core',namespace:'family-receiver',
+   snapshotId:coreIndex.snapshotId,rootRelative:'',projectSha256:coreIndex.projectSha256,
+   handoff:coreHandoff,indexPath:coreIndexPath,indexSha256:hash(coreIndexBytes),indexSize:null,
+   files:coreFiles};
+  ImportRefreshManager.revision++;
+  ImportRefreshManager.binding=coreBinding;
+  var receiverCore=RuntimeOwnerAssetIdentity.acquire(receiver,'Nightmare Vision','core');
+  eq(receiverCore.bindingState,'ready','catalog-bound provider core is authenticated under the receiver owner');
+  eq(receiverCore.resolve('core-id','TEXT').state,'found','provider core entry is readable through receiver-owned files');
+  check(receiverCore.handoff!=null && receiverCore.handoff.providerNamespace=='provider-game'
+   && receiverCore.handoff.receiverRootRelative=='content/alpha',
+   'runtime identity retains the matched provider-to-receiver proof');
+  var wrongEdge:Dynamic=Reflect.copy(coreBinding);
+  wrongEdge.handoff=Reflect.copy(coreHandoff);
+  wrongEdge.handoff.receiverRootRelative='content/beta';
+  ImportRefreshManager.revision++;
+  wrongEdge.revision=ImportRefreshManager.revision;
+  ImportRefreshManager.binding=wrongEdge;
+  eq(RuntimeOwnerAssetIdentity.acquire(receiver,'Nightmare Vision','core').bindingState,'invalid',
+   'manager binding cannot redirect the receiver index to a different family member');
+  var missingEdge:Dynamic=Reflect.copy(coreBinding);
+  missingEdge.revision=ImportRefreshManager.revision+1;
+  Reflect.setField(missingEdge,'handoff',null);
+  ImportRefreshManager.revision++;
+  ImportRefreshManager.binding=missingEdge;
+  eq(RuntimeOwnerAssetIdentity.acquire(receiver,'Nightmare Vision','core').bindingState,'invalid',
+   'a v3 receiver sidecar cannot be trusted without its manager catalog edge');
+  ImportRefreshManager.revision++;
+  coreBinding.revision=ImportRefreshManager.revision;
+  ImportRefreshManager.binding=coreBinding;
+  eq(RuntimeOwnerAssetIdentity.acquire(receiver,'Nightmare Vision','core').bindingState,'ready',
+   'restoring the exact committed edge reactivates the receiver core index');
+
   var legacyOwner='assets/imported_mods/legacy';
   FileSystem.createDirectory(legacyOwner);
   ImportRefreshManager.binding=null;
@@ -153,6 +213,21 @@ class PsychOwnerAssetPath {
   var base=Path.normalize(sys.FileSystem.fullPath(owner));
   var file=Path.normalize(sys.FileSystem.fullPath(path));
   return file.startsWith(base+'/');
+ }
+ public static function pathInScope(owner:String,path:String,pathRoot:String,excludedSubtree:String=''):Bool {
+  var normalizedOwner=normalizeOwner(owner);
+  if(normalizedOwner==''||path==null||path=='')return false;
+  var normalizedRoot=Path.normalize(pathRoot==null||pathRoot==''?normalizedOwner:pathRoot);
+  if(!pathIsWithin(normalizedOwner,normalizedRoot)||!pathIsWithin(normalizedOwner,path))return false;
+  if(excludedSubtree!=null&&excludedSubtree!=''
+   &&pathIsWithin(Path.normalize(Path.join([normalizedOwner,excludedSubtree])),path))return false;
+  return withinOwner(normalizedOwner,path)&&withinOwner(normalizedRoot,path);
+ }
+ static function pathIsWithin(root:String,path:String):Bool {
+  if(root==null||root==''||path==null||path=='')return false;
+  var rootKey=Path.normalize(root).toLowerCase();
+  var pathKey=Path.normalize(path).toLowerCase();
+  return pathKey==rootKey||pathKey.startsWith(rootKey.endsWith('/')?rootKey:rootKey+'/');
  }
 }''',
             "FNFAssets.hx": '''package;

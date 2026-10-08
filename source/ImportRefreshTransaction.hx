@@ -10,6 +10,7 @@ import sys.io.File;
 import sys.io.FileInput;
 import sys.io.FileOutput;
 import ImportSourceSnapshot.ImportSnapshotSha256;
+import SourceLimeAssetIdentity;
 
 /** A staged file mapped to one relative destination owned by an import. */
 typedef ImportRefreshStagedOutput = {
@@ -36,6 +37,14 @@ typedef ImportRefreshPackageFamilyCatalogEntry = {
 	@:optional var namespace:String;
 }
 
+/** The authenticated game-root profile which supplies compiled NV core assets
+ * to every member of one retained content family. */
+typedef ImportRefreshPackageFamilyCoreProvider = {
+	var rootRelative:String;
+	var namespace:String;
+	var projectSha256:String;
+}
+
 /** Commit-authenticated description of a bounded, structurally detected family. */
 typedef ImportRefreshPackageFamilyCatalog = {
 	var version:Int;
@@ -43,6 +52,9 @@ typedef ImportRefreshPackageFamilyCatalog = {
 	var snapshotId:String;
 	var containerRelative:String;
 	var members:Array<ImportRefreshPackageFamilyCatalogEntry>;
+	/** Present only in v3, when the exact retained outer game profile can be
+	 * linked to the receiver namespaces below. */
+	@:optional var coreProvider:ImportRefreshPackageFamilyCoreProvider;
 }
 
 /** Persistent receipt describing the current files owned by one import. */
@@ -780,9 +792,10 @@ class ImportRefreshTransaction {
 		var snapshotId:Dynamic = Reflect.field(value, "snapshotId");
 		var container:Dynamic = Reflect.field(value, "containerRelative");
 		var rawMembers:Dynamic = Reflect.field(value, "members");
-		if ((version != 1 && version != 2) || engine != "Nightmare Vision" || !isSha256Text(snapshotId)
+		if ((version != 1 && version != 2 && version != 3) || engine != "Nightmare Vision" || !isSha256Text(snapshotId)
 			|| (version == 1 && container != "content")
-			|| (version == 2 && container != "content" && container != "")
+			|| ((version == 2 || version == 3) && container != "content" && container != "")
+			|| (version == 3 && container != "content")
 			|| !Std.isOfType(rawMembers, Array))
 			throw "Import package-family catalog identity or container is invalid.";
 		var recordId:Dynamic = Reflect.field(record, "snapshotId");
@@ -826,7 +839,7 @@ class ImportRefreshTransaction {
 			seenDirectories.set(folded, true);
 			seenPaths.set(sourceRelative.toLowerCase(), true);
 			var namespace:String = null;
-			if (version == 2) {
+			if (version >= 2) {
 				var namespaceValue:Dynamic = Reflect.field(member, "namespace");
 				if (!Std.isOfType(namespaceValue, String) || namespaceValue == ""
 					|| Std.string(namespaceValue).indexOf("/") >= 0 || Std.string(namespaceValue).indexOf("\\") >= 0)
@@ -842,6 +855,63 @@ class ImportRefreshTransaction {
 			}
 			members.push({directory: directory, sourceRelative: sourceRelative, namespace: namespace});
 		}
+		var coreProvider:ImportRefreshPackageFamilyCoreProvider = null;
+		if (version == 3) {
+			var rawProvider:Dynamic = Reflect.field(value, "coreProvider");
+			var providerRelative:Dynamic = rawProvider == null ? null : Reflect.field(rawProvider, "rootRelative");
+			var providerNamespace:Dynamic = rawProvider == null ? null : Reflect.field(rawProvider, "namespace");
+			var providerProjectSha:Dynamic = rawProvider == null ? null : Reflect.field(rawProvider, "projectSha256");
+			if (!Std.isOfType(providerRelative, String) || providerRelative != ""
+				|| !Std.isOfType(providerNamespace, String) || providerNamespace == ""
+				|| !Std.isOfType(providerProjectSha, String) || !isSha256Text(providerProjectSha)
+				|| Std.string(providerProjectSha) != Std.string(providerProjectSha).toLowerCase())
+				throw "Import package-family core provider identity is invalid.";
+			var safeProviderRoot = normalizeRelative("assets/imported_mods/" + Std.string(providerNamespace));
+			if (safeProviderRoot != "assets/imported_mods/" + Std.string(providerNamespace))
+				throw "Import package-family core provider namespace is invalid.";
+			var providerRootRecorded = false;
+			for (root in (cast rawRoots:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
+				if (root != null && Reflect.field(root, "engine") == "Nightmare Vision"
+					&& Reflect.field(root, "relative") == ""
+					&& Reflect.field(root, "namespace") == providerNamespace)
+					providerRootRecorded = true;
+			}
+			var profileCatalog:Dynamic = Reflect.field(record, "sourceAssetProfiles");
+			var profileRoots:Dynamic = profileCatalog == null ? null : Reflect.field(profileCatalog, "roots");
+			var providerProfileFound = false;
+			if (Std.isOfType(profileRoots, Array)) for (profileEntry in (cast profileRoots:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
+				var profile:Dynamic = profileEntry == null ? null : Reflect.field(profileEntry, "profile");
+				if (profileEntry != null && Reflect.field(profileEntry, "engine") == "Nightmare Vision"
+					&& Reflect.field(profileEntry, "rootRelative") == ""
+					&& Reflect.field(profileEntry, "namespace") == providerNamespace
+					&& profile != null && Reflect.field(profile, "provenance") == "receipt-bound"
+					&& Reflect.field(profile, "snapshotId") == snapshotId
+					&& Reflect.field(profile, "sourceEngine") == "Nightmare Vision"
+					&& Reflect.field(profile, "rootRelative") == ""
+					&& Reflect.field(profile, "namespace") == providerNamespace
+					&& Reflect.field(profile, "projectSha256") == providerProjectSha)
+					providerProfileFound = true;
+			}
+			if (!providerRootRecorded || !providerProfileFound)
+				throw "Import package-family core provider is not the exact retained root profile.";
+			for (member in members) {
+				var receiverRootRecorded = false;
+				for (root in (cast rawRoots:Array<Dynamic>)) {
+					ImportWorkScheduler.cooperate();
+					var relative:Dynamic = root == null ? null : Reflect.field(root, "relative");
+					if (root != null && Reflect.field(root, "engine") == "Nightmare Vision"
+						&& (relative == member.sourceRelative || relative == member.sourceRelative + "/assets")
+						&& Reflect.field(root, "namespace") == member.namespace)
+						receiverRootRecorded = true;
+				}
+				if (!receiverRootRecorded)
+					throw "Import package-family core receiver is not an exact retained member root.";
+			}
+			coreProvider = {rootRelative:"", namespace:cast providerNamespace,
+				projectSha256:Std.string(providerProjectSha)};
+		}
 		members.sort(function(a, b) {
 			var folded = Reflect.compare(a.sourceRelative.toLowerCase(), b.sourceRelative.toLowerCase());
 			return folded != 0 ? folded : Reflect.compare(a.sourceRelative, b.sourceRelative);
@@ -852,7 +922,7 @@ class ImportRefreshTransaction {
 			ImportWorkScheduler.cooperate();
 			if (root == null || Reflect.field(root, "engine") != "Nightmare Vision") continue;
 			hasFamilyEngine = true;
-			if (version == 2) continue;
+			if (version >= 2) continue;
 			var relative:Dynamic = Reflect.field(root, "relative");
 			var label:Dynamic = Reflect.field(root, "label");
 			var namespace:Dynamic = Reflect.field(root, "namespace");
@@ -868,14 +938,15 @@ class ImportRefreshTransaction {
 		}
 		if (version == 1 && !ownsMember)
 			throw "Import package-family catalog does not include an imported source root.";
-		if (version == 2 && !hasFamilyEngine)
+		if (version >= 2 && !hasFamilyEngine)
 			throw "Import package-family catalog has no Nightmare Vision source root.";
 		return {
 			version: cast version,
 			engine: "Nightmare Vision",
 			snapshotId: Std.string(snapshotId).toLowerCase(),
 			containerRelative: cast container,
-			members: members
+			members: members,
+			coreProvider: coreProvider
 		};
 	}
 
@@ -884,7 +955,7 @@ class ImportRefreshTransaction {
 	 * shared engine-core subtree. */
 	static function validatePackageFamilyOutputs(catalog:ImportRefreshPackageFamilyCatalog,
 		files:Array<Dynamic>):Void {
-		if (catalog == null || catalog.version != 2 || catalog.members == null) return;
+		if (catalog == null || catalog.version < 2 || catalog.members == null) return;
 		for (member in catalog.members) {
 			ImportWorkScheduler.cooperate();
 			var prefix = "assets/imported_mods/" + member.namespace + "/";
@@ -903,6 +974,18 @@ class ImportRefreshTransaction {
 			}
 			if (!hasConfig || !hasRuntime)
 				throw "Import package-family member lacks transaction-owned config or runtime files.";
+			if (catalog.version >= 3) {
+				var coreIndexPath = prefix + SourceLimeAssetIdentity.sidecarRelativePath(
+					"Nightmare Vision", "core");
+				var hasCoreIndex = false;
+				for (file in files) {
+					ImportWorkScheduler.cooperate();
+					var path:String = Std.isOfType(file, String) ? cast file : Std.string(Reflect.field(file, "path"));
+					if (pathTextKey(path) == pathTextKey(coreIndexPath)) hasCoreIndex = true;
+				}
+			if (!hasCoreIndex)
+					throw "Import package-family core handoff lacks a receiver-owned identity index.";
+			}
 		}
 	}
 

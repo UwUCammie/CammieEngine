@@ -115,6 +115,30 @@ class PsychCharacterDanceCompat {
 			+ "        char.playAnim('idle');\n}\n";
 	}
 
+	/** Psych character JSON omits `indices` for prefix animations. Treat an
+	 * absent or malformed field as that same prefix form instead of dereferencing
+	 * a missing Dynamic value while generating the imported HScript. */
+	static function safeAnimationIndices(value:Dynamic):Null<Array<Int>> {
+		if (!Std.isOfType(value, Array))
+			return null;
+		var result:Array<Int> = [];
+		for (value in (cast value:Array<Dynamic>)) {
+			if (Std.isOfType(value, Int)) {
+				result.push(cast value);
+				continue;
+			}
+			if (!Std.isOfType(value, Float))
+				return null;
+			var number:Float = cast value;
+			if (Math.isNaN(number) || number == Math.POSITIVE_INFINITY
+				|| number == Math.NEGATIVE_INFINITY || Math.floor(number) != number
+				|| number < -2147483648 || number > 2147483647)
+				return null;
+			result.push(Std.int(number));
+		}
+		return result.length == 0 ? null : result;
+	}
+
 	/** `legacyDance` reproduces the old importer bytes for provenance checks. */
 	public static function renderStandardScript(charJson:Dynamic, isPixel:Bool, isBF:Bool,
 		isGF:Bool, legacyDance:Bool = false, atlasFiles:Array<String> = null):String {
@@ -132,8 +156,9 @@ class PsychCharacterDanceCompat {
 		var animations:Array<Dynamic> = charJson.animations;
 		for (anim in animations) {
 			var addAnimation;
-			if (anim.indices.length >= 1)
-				addAnimation = "char.animation.addByIndices('" + anim.anim + "', '" + anim.name + "', " + anim.indices + ', "", ' + anim.fps + ", " + anim.loop + ");";
+			var indices = safeAnimationIndices(Reflect.field(anim, 'indices'));
+			if (indices != null)
+				addAnimation = "char.animation.addByIndices('" + anim.anim + "', '" + anim.name + "', " + indices + ', "", ' + anim.fps + ", " + anim.loop + ");";
 			else
 				addAnimation = "char.animation.addByPrefix('" + anim.anim + "', '" + anim.name + "', " + anim.fps + ", " + anim.loop + ");";
 			var addOffset = "char.addOffset('" + anim.anim + "', " + anim.offsets[0] + ", " + anim.offsets[1] + ");";

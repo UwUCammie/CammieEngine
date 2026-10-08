@@ -35,6 +35,143 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class VSliceVariationsTest(unittest.TestCase):
+    def test_suffixed_pairs_survive_missing_base_chart_and_detached_metadata(self):
+        module = (ROOT / "source/ModuleFunctions.hx").read_text()
+        methods = "\n".join(
+            extract_method(module, marker)
+            for marker in (
+                "static function normalizedImportFileName",
+                "static function isImportFile",
+                "static function findImportFile",
+                "static function findVSliceSongPairs",
+                "static function findVSliceSongBaseFile",
+                "static function findVSliceVariationFiles",
+                "static function findVSliceDetachedVariationPairs",
+                "static function safeVSliceVariationSuffix",
+                "static function findVSliceVariationFile(",
+            )
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            root = Path(folder)
+            declared = root / "declared"
+            detached = root / "detached"
+            unmatched = root / "unmatched"
+            for directory in (declared, detached, unmatched):
+                directory.mkdir()
+            (declared / "declared-metadata.json").write_text(json.dumps({
+                "playData": {"songVariations": ["funkadelix", "missing"]}
+            }), newline="\n")
+            (declared / "declared-metadata-funkadelix.jsonc").write_text(
+                '{"playData":{"songVariations":[]}}', newline="\n"
+            )
+            (declared / "declared-metadata-funkadelix.json").write_text(
+                '{"playData":{"songVariations":[]}}', newline="\n"
+            )
+            (declared / "declared-chart-funkadelix.json").write_text(
+                '{"notes":{"normal":[]}}', newline="\n"
+            )
+            (declared / "declared-chart-funkadelix.jsonc").write_text(
+                '{"notes":{"normal":[]}}', newline="\n"
+            )
+            (declared / "declared-chart-unpaired.json").write_text(
+                '{"notes":{"normal":[]}}', newline="\n"
+            )
+            (declared / "other-song-metadata.json").write_text(
+                '{"playData":{"songVariations":[]}}', newline="\n"
+            )
+            (detached / "detached-metadata-funkadelix.json").write_text(
+                '{"playData":{"songVariations":[]}}', newline="\n"
+            )
+            (detached / "detached-chart-funkadelix.jsonc").write_text(
+                '{"notes":{"normal":[]}}', newline="\n"
+            )
+            (unmatched / "unmatched-metadata-alt.json").write_text(
+                '{"playData":{"songVariations":[]}}', newline="\n"
+            )
+
+            main = f'''import haxe.Json;
+import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
+using StringTools;
+class ImportDirectoryListing {{
+  public static function normalize(entries:Array<String>):Array<String> return entries == null ? [] : entries.copy();
+}}
+class CoolUtil {{ public static function parseJson(raw:String):Dynamic return Json.parse(raw); }}
+class VSliceImporter {{
+  public static function songVariationReferences(metadata:Dynamic):Array<String> {{
+    var playData = Reflect.field(metadata, 'playData');
+    var values = playData == null ? null : Reflect.field(playData, 'songVariations');
+    return Std.isOfType(values, Array) ? cast values : [];
+  }}
+}}
+class ModuleFunctions {{
+{methods}
+  public static function base(folder:String, song:String, kind:String):String
+    return findVSliceSongBaseFile(folder, song, kind);
+  public static function pairs(folder:String, song:String, metadata:String, chart:String,
+      diagnostics:Array<String>):Array<Dynamic>
+    return findVSliceSongPairs(folder, song, metadata, chart, diagnostics);
+}}
+class Main {{
+  static function fail(message:String):Void throw message;
+  static function main():Void {{
+    var declaredRoot = {haxe_string(str(declared))};
+    var detachedRoot = {haxe_string(str(detached))};
+    var unmatchedRoot = {haxe_string(str(unmatched))};
+    var baseMetadata = ModuleFunctions.base(declaredRoot, 'declared', 'metadata');
+    var baseChart = ModuleFunctions.base(declaredRoot, 'declared', 'chart');
+    if (baseMetadata == null || baseChart != null) fail('base file discovery was not exact');
+    var declaredDiagnostics:Array<String> = [];
+    var declaredPairs = ModuleFunctions.pairs(declaredRoot, 'declared', baseMetadata, baseChart,
+      declaredDiagnostics);
+    if (declaredPairs.length != 1 || declaredPairs[0].variation != 'funkadelix')
+      fail('declared sibling was dropped with no base chart');
+    if (Path.withoutDirectory(declaredPairs[0].metadataPath) != 'declared-metadata-funkadelix.json'
+      || Path.withoutDirectory(declaredPairs[0].chartPath) != 'declared-chart-funkadelix.json')
+      fail('declared pair paths were not matched exactly');
+    var missingVariant = false;
+    var missingBase = false;
+    for (diagnostic in declaredDiagnostics) {{
+      if (diagnostic.indexOf('variation-pair-missing') >= 0) missingVariant = true;
+      if (diagnostic.indexOf('variation-base-chart-missing') >= 0) missingBase = true;
+    }}
+    if (!missingVariant || !missingBase) fail('declared variation gaps were not diagnosed');
+    for (diagnostic in declaredDiagnostics)
+      if (diagnostic.indexOf('variation-file-ambiguous') >= 0)
+        fail('JSON-over-JSONC precedence was mistaken for an ambiguous variation');
+
+    var detachedDiagnostics:Array<String> = [];
+    var detachedPairs = ModuleFunctions.pairs(detachedRoot, 'detached', null, null,
+      detachedDiagnostics);
+    if (detachedPairs.length != 1 || detachedPairs[0].variation != 'funkadelix')
+      fail('matched detached sibling was not preserved');
+    if (detachedDiagnostics.length == 0
+      || detachedDiagnostics[0].indexOf('variation-base-metadata-missing') < 0)
+      fail('detached variation lacks a base metadata diagnostic');
+
+    var unmatchedDiagnostics:Array<String> = [];
+    var unmatchedPairs = ModuleFunctions.pairs(unmatchedRoot, 'unmatched', null, null,
+      unmatchedDiagnostics);
+    if (unmatchedPairs.length != 0) fail('unpaired metadata became an importable song');
+    var mismatch = false;
+    for (diagnostic in unmatchedDiagnostics)
+      if (diagnostic.indexOf('variation-pair-missing') >= 0) mismatch = true;
+    if (!mismatch) fail('unpaired metadata was not diagnosed');
+  }}
+}}
+'''
+            with tempfile.TemporaryDirectory() as build:
+                Path(build, "Main.hx").write_text(main, newline='\n')
+                result = subprocess.run(
+                    [*HAXE_COMMAND, "-cp", str(build), "-main", "Main", "--interp"],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_declared_pairs_select_matching_instrumentals_and_vocal_stems(self):
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
         methods = "\n".join(
@@ -46,8 +183,11 @@ class VSliceVariationsTest(unittest.TestCase):
                 "static function findImportAudio",
                 "static function chartFieldString",
                 "static function findVSliceSongPairs",
+                "static function findVSliceSongBaseFile",
+                "static function findVSliceVariationFiles",
+                "static function findVSliceDetachedVariationPairs",
                 "static function safeVSliceVariationSuffix",
-                "static function findVSliceVariationFile",
+                "static function findVSliceVariationFile(",
                 "static function findVSliceInstrumental",
                 "static function normalizeVSliceVariationDifficulty",
                 "static function findVSliceVoices",
