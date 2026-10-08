@@ -88,7 +88,17 @@ class Main {
   snapshot.handoffPendingOwnerRoots=[];
   check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
    'a safely completed or failed refresh releases the reservation');
+  check(!FreeplaySongAvailability.ownerReadiness(null,owner).ready,
+   'an absent snapshot cannot prove an imported package ready');
+  snapshot.pendingOwnerRoots=[other];
+  check(!FreeplaySongAvailability.ownerReadiness(snapshot,'assets/imported_mods/unknown').ready,
+   'an unchecked owner must stay locked during another queued refresh');
+  check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
+   'a checked owner stays playable while another package refreshes');
+  snapshot.pendingOwnerRoots=[];
   snapshot.inspectionPending=true;
+  check(!FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
+   'old committed receipts cannot bypass a new inspection');
   snapshot.committedOwnerRoots=[];
   check(!FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
    'unvalidated import owners remain gated during inspection');

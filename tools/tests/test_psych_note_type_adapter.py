@@ -58,6 +58,17 @@ class PsychNoteTypeAdapterTest(unittest.TestCase):
     if (NoteTypeCompat.applyVSliceKind(vsliceUnknown, 'duet-owner')
       || Reflect.hasField(vsliceUnknown, 'sourceNoteType'))
       throw 'unknown V-Slice kind was guessed';
+    for (sustain in [false,true]) {
+      var note:Dynamic = {sourceKind:null, isSustainNote:sustain};
+      NoteTypeCompat.applySourceType(note, rows[0]);
+      if (note.sourceKind != 'Alt Animation') throw 'built-in note callback lost its type';
+      NoteTypeCompat.applySourceType(note, [100,0,0,'Custom Authored Type']);
+      if (note.sourceKind != 'Custom Authored Type') throw 'custom callback identity lost';
+      for (selector in ([null, false, true, 0, 1, '']:Array<Dynamic>)) {
+        NoteTypeCompat.applySourceType(note, [100,0,0,selector]);
+        if (note.sourceKind != 'Custom Authored Type') throw 'legacy alt selector replaced note identity';
+      }
+    }
     trace('OK');
   }
 }
@@ -74,6 +85,13 @@ class PsychNoteTypeAdapterTest(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("OK", result.stdout + result.stderr)
+
+    def test_heads_and_sustains_preserve_source_type_before_skin_and_callbacks(self):
+        source = (ROOT / 'source/PlayState.hx').read_text()
+        for name in ['swagNote', 'sustainNote']:
+            identity = source.index(f'NoteTypeCompat.applySourceType({name}, songNotes);')
+            skin = source.index(f'configurePsychNoteSkin({name}, psychSkinRoot);')
+            self.assertLess(identity, skin)
 
     def test_importer_collects_note_definitions_without_rewriting_charts(self):
         source = (ROOT / "source/ModuleFunctions.hx").read_text()

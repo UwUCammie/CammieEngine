@@ -909,6 +909,36 @@ class ImportRefreshManagerFixture {
   var install=args[1];
   Sys.setCwd(install);
   switch(mode) {
+   case "nv-package-core":
+    var selected=args[2];
+    ImportRefreshManager.checked=true;
+    ImportRefreshManager.inspectionPending=false;
+    ImportRefreshManager.inspectionRunning=false;
+    ImportRefreshManager.unresolvedRecovery=false;
+    var type=ImportEngine.NIGHTMARE_VISION;
+    ImportWorkflow.overrideRoots=[{root:selected,engine:type,evidence:[]}];
+    var initialScan=ImportWorkflow.scanNow(selected,type);
+    ImportWorkflow.overrideRootRelatives=["content/alpha"];
+    var expectedNamespace=CompatScriptManifest.namespaceFor(selected,type);
+    var calls=0;
+    var convert=function(retained:String, scan:ImportScanResult, names:Map<String,String>):SongImportBatchResult {
+     calls++;
+     if(scan.detectedRoots.length!=1)throw "sibling roots were added to selection";
+     var packageRoot=Path.join([retained,"content/alpha"]);
+     if(scan.detectedRoots[0].root!=packageRoot)throw "selected package lost its root";
+     if(ImportIO.current().namespace(packageRoot,type)!=expectedNamespace)throw "owner identity changed";
+     if(ImportRootScanner.retainedSourceRootAllowed(Path.join([retained,"content/beta"]),type))
+      throw "sibling package escaped selected root allowlist";
+     var core=NightmareVisionAssetCollector.resolveCoreAssetsRoot(packageRoot);
+     if(core==""||File.getContent(Path.join([core,"images/core.png"]))!="core bytes")
+      throw "retained package lost its authenticated core";
+     ImportFile.saveContent("assets/data/core-check/core-check.json", "{}");
+     return {found:1,imported:1,importedSongs:["core-check"],skipped:0,failed:0,copiedAssets:1,skippedAssets:0,errors:[]};
+    };
+    ImportRefreshManager.importOnce(selected,type,initialScan,new Map(),convert,()->false,progress);
+    var record=ImportRefreshManager.cachedRecords(install)[0];
+    ImportRefreshManager.refreshNow(install,record,convert,()->false,progress);
+    report({calls:calls,roots:record.roots,namespace:expectedNamespace});
    case "cleanup-scheduler":
     ImportWorkScheduler.bindForegroundThread();
     var stage=Path.join([install,"import-cache","staging","cleanup-checkpoint"]);
@@ -1069,6 +1099,16 @@ class ImportRefreshManagerFixture {
     ImportRefreshManager.mutex.release();
     var before=ImportRefreshManager.availabilitySnapshot();
     var unrelatedReady=FreeplaySongAvailability.ownerReadiness(before,unrelated).ready;
+    ImportRefreshManager.active=true;
+    ImportRefreshManager.inspectionRunning=true;
+    ImportRefreshManager.bumpAvailabilityLocked();
+    var runningLocked=!FreeplaySongAvailability.ownerReadiness(ImportRefreshManager.availabilitySnapshot(),unrelated).ready;
+    ImportRefreshManager.inspectionRunning=false;
+    ImportRefreshManager.availabilityRecheckRequested=true;
+    ImportRefreshManager.bumpAvailabilityLocked();
+    var deferredLocked=!FreeplaySongAvailability.ownerReadiness(ImportRefreshManager.availabilitySnapshot(),unrelated).ready;
+    ImportRefreshManager.active=false;
+    ImportRefreshManager.availabilityRecheckRequested=false;
     var accepted=ImportRefreshManager.requestAvailabilityRecheck();
     var startRevision=ImportRefreshManager.availabilityRevision();
     var deadline=Sys.time()+5;
@@ -1089,7 +1129,7 @@ class ImportRefreshManagerFixture {
     deadline=Sys.time()+5;
     while(ImportRefreshManager.inspectionRunning&&Sys.time()<deadline) Sys.sleep(0.005);
     var ownerlessAfter=ImportRefreshManager.availabilitySnapshot();
-    report({accepted:accepted,unrelatedReady:unrelatedReady,beforeRevision:before.revision,
+    report({accepted:accepted,unrelatedReady:unrelatedReady,runningLocked:runningLocked,deferredLocked:deferredLocked,beforeRevision:before.revision,
      startRevision:startRevision,afterRevision:after.revision,pendingBefore:before.pendingOwnerRoots,
      pendingAfter:after.pendingOwnerRoots,scopedAfter:scopedAfterAuthoritative,
      scopedPathsAfter:scopedPathsAfterAuthoritative,
@@ -1527,9 +1567,21 @@ class ImportRefreshManagerFixture {
      FlxG.state=new RuntimeImportSmokeState();
      status=ImportRefreshManager.browseTick();
     }
-    report({status:status,generation:ImportRefreshManager.generation,split:split,
+    var captured=UnicodeSafeJson.stringifyStandard({status:status,generation:ImportRefreshManager.generation,split:split,
      pending:ImportRefreshManager.availabilitySnapshot().pendingOwnerRoots,
      handoffCalls:ModuleFunctions.handoffCalls,records:ImportRefreshManager.cachedRecords(install)});
+    // Keep the mid-refresh evidence above, then let the native worker finish.
+    // Returning from main while it still uses the runtime can race C++ teardown.
+    if(mode=="auto-refresh-dependency") {
+     var drainDeadline=Sys.time()+20;
+     while(ImportRefreshManager.active||ImportRefreshManager.queue.length>0
+      ||ImportRefreshManager.pendingHandoffs.length>0) {
+      if(Sys.time()>=drainDeadline) throw "dependency fixture worker did not finish";
+      ImportRefreshManager.browseTick();
+      Sys.sleep(0.005);
+     }
+    }
+    Sys.println(captured);
    case "legacy-collision":
     var source=args[2];
     try {
@@ -1869,6 +1921,22 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout.strip().splitlines()[-1])
 
+    def test_selected_nv_package_retains_parent_core_without_importing_siblings(self):
+        game = self.scratch / "nv-game"
+        selected = game / "content/alpha"
+        selected.mkdir(parents=True)
+        (game / "content/beta").mkdir()
+        (game / "assets/images").mkdir(parents=True)
+        (game / "assets/data").mkdir()
+        (game / "assets/images/core.png").write_bytes(b"core bytes")
+        (game / "Friday Night Funkin.exe").write_bytes(b"com.nmvteam.nightmareengine")
+        (selected / "meta.json").write_text('{"name":"Alpha"}')
+        result = self.run_fixture("nv-package-core", selected)
+        self.assertEqual(result.get("calls"), 2, result)
+        self.assertEqual(len(result["roots"]), 1, result)
+        self.assertEqual(result["roots"][0]["relative"], "content/alpha")
+        self.assertEqual(result["roots"][0]["namespace"], result["namespace"])
+
     def test_disposable_staging_cleanup_pauses_during_gameplay_and_resumes(self):
         result = self.run_fixture("cleanup-scheduler")
         self.assertFalse(result["completedWhileGameplay"], result)
@@ -1929,6 +1997,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
         blocked = "assets/imported_mods/scoped-owner"
         self.assertTrue(result["accepted"], result)
         self.assertTrue(result["unrelatedReady"], result)
+        self.assertTrue(result["runningLocked"], result)
+        self.assertTrue(result["deferredLocked"], result)
         self.assertEqual(result["pendingBefore"], [blocked], result)
         self.assertEqual(result["pendingAfter"], [blocked], result)
         self.assertFalse(result["scopedAfter"], result)
@@ -2706,7 +2776,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(result["handoffCalls"], 1, "poll bridge must not repeat a manager-owned handoff")
         self.assertEqual(result["generation"], 1)
 
-    def test_refresh_failure_and_cancel_release_reservations_after_recovery(self):
+    def test_refresh_failure_and_cancel_keep_outdated_packages_locked_after_rollback(self):
         for mode in ("refresh-fail", "refresh-cancel"):
             with self.subTest(mode=mode):
                 stable_song = "stable-" + mode
@@ -2720,7 +2790,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
 
                 owner = "assets/imported_mods/" + record["roots"][0]["namespace"]
                 self.assertEqual(result["status"], "error")
-                self.assertEqual(result["pending"], [])
+                self.assertEqual(result["pending"], [owner],
+                    "rollback must not advertise an unrefreshed package as current")
                 self.assertEqual(result["handoff"], [])
                 self.assertEqual(result["committed"], [owner])
                 self.assertEqual((self.install / "assets/songs" / stable_song / "Inst.ogg").read_text(),

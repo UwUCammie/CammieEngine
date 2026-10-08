@@ -1055,6 +1055,10 @@ class ImportRootScanner {
       evidence:['Nightmare Vision Haxe project package: com.nmvTeam.nightmareEngine']};
   }
 }''', newline='\n')
+            scanner = (ROOT / "source/ImportRootScanner.hx").read_text()
+            proof = scanner[scanner.index("public static function hasNightmareVisionContainerProof"):scanner.index("static function hasNightmareVisionExecutable")]
+            scanner_stub = temp / "ImportRootScanner.hx"
+            scanner_stub.write_text(scanner_stub.read_text().replace("class ImportRootScanner {", "class ImportRootScanner {\n" + proof), newline="\n")
             (temp / "CompatScriptManifest.hx").write_text(manifest, newline='\n')
             (temp / "ImportGeneratedOutput.hx").write_text(
                 (ROOT / "source/ImportGeneratedOutput.hx").read_text(), newline='\n')

@@ -37,10 +37,15 @@ class FreeplaySongAvailability {
 			return {ready:false, state:'handoff', reason:'Waiting for this package to finish loading.'};
 		if (containsRoot(snapshot == null ? null : snapshot.pendingOwnerRoots, owner))
 			return {ready:false, state:'pending', reason:'Import, dependency refresh, or recovery is still working on this package.'};
-		if (containsRoot(snapshot == null ? null : snapshot.committedOwnerRoots, owner))
-			return {ready:true, state:'ready', reason:''};
-		if (snapshot != null && snapshot.inspectionPending)
+		// A prior receipt is not proof that the package passed the current
+		// inspection. Failed or still-running inspection keeps imported rows shut.
+		if (snapshot == null || snapshot.inspectionPending)
 			return {ready:false, state:'checking', reason:'Checking whether this imported package is ready.'};
+		if (containsRoot(snapshot.committedOwnerRoots, owner))
+			return {ready:true, state:'ready', reason:''};
+		if ((snapshot.pendingOwnerRoots != null && snapshot.pendingOwnerRoots.length > 0)
+			|| (snapshot.handoffPendingOwnerRoots != null && snapshot.handoffPendingOwnerRoots.length > 0))
+			return {ready:false, state:'checking', reason:'This package has not been verified by the active import refresh.'};
 		// Imports without retained-manager receipts use the established provenance
 		// and chart checks. They are stable once initial receipt inspection ends.
 		return {ready:true, state:'unmanaged', reason:''};

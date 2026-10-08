@@ -37,11 +37,11 @@ class Main {
     engineRevision:1}, "Psych Engine").status == ImportRevision.OUTDATED,
    "shared display metadata changes do not trigger retained-source refresh");
 	 var priorNmv = {schemaVersion:1, commonRevision:3, sourceEngine:"Nightmare Vision",
-	 engineRevision:9};
+	 engineRevision:10};
   check(ImportRevision.assess(priorNmv, "Nightmare Vision").status == ImportRevision.OUTDATED,
-	 "Nightmare Vision revision-9 receipts were not scheduled for core-index refresh");
-  check(ImportRevision.current("Nightmare Vision").engineRevision == 10,
-	 "Nightmare Vision core handoff did not advance the engine revision");
+	 "Nightmare Vision revision-10 receipts were not scheduled for legacy-content refresh");
+  check(ImportRevision.current("Nightmare Vision").engineRevision == 11,
+	 "Nightmare Vision legacy content discovery did not advance the engine revision");
   current.applicationVersion = "0.0.1-alpha.8";
   check(ImportRevision.assess(current, "Psych Engine").status == ImportRevision.CURRENT,
    "app release number incorrectly determined importer compatibility");

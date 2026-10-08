@@ -19347,6 +19347,7 @@ void main(void) {
 					else
 						swagNote = new Note(daStrumTime, runtimeNoteData, oldNote, false, legacyAnimSuffix,
 							CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+					NoteTypeCompat.applySourceType(swagNote, songNotes);
 					swagNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
 					swagNote.sourceDirection = chartAddress.direction;
 					swagNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;
@@ -19454,6 +19455,7 @@ void main(void) {
 								sustainNote.nightmareVisionSustainDuration = nightmareHoldStep;
 								sustainNote.nightmareVisionSustainEnd = susNote == sustainSteps - 1;
 							}
+							NoteTypeCompat.applySourceType(sustainNote, songNotes);
 							sustainNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
 							sustainNote.sourceDirection = chartAddress.direction;
 							sustainNote.sourcePlayfieldPlayerControlled = sourcePlayerControlled;

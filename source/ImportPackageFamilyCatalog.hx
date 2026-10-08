@@ -480,14 +480,8 @@ class ImportPackageFamilyCatalog {
 		return structure;
 	}
 
-	static function hasNmvContainerProof(evidence:Array<String>):Bool {
-		if (evidence == null) return false;
-		for (item in evidence) if (item != null
-			&& (StringTools.startsWith(item, "Nightmare Vision executable package marker:")
-				|| StringTools.startsWith(item, "Nightmare Vision Haxe project package:")
-				|| StringTools.startsWith(item, "Nightmare Vision chart metadata: format=nmv2"))) return true;
-		return false;
-	}
+	static function hasNmvContainerProof(evidence:Array<String>):Bool
+		return ImportRootScanner.hasNightmareVisionContainerProof(evidence);
 
 	static function evidenceContains(evidence:Array<String>, expected:String):Bool {
 		if (evidence == null || expected == null) return false;

@@ -1125,6 +1125,11 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             fixture_path = Path(folder) / "Main.hx"
             fixture_path.write_text(fixture, encoding="utf-8", newline='\n')
+            # The planner's real metadata/path contracts have their own fixtures.
+            # Keep this harness ABI check independent of Flixel options services.
+            (Path(folder) / "ImportPackageNamePrompt.hx").write_text(
+                "class ImportPackageNamePrompt { public static function collectUnnamedRoots(songs:Array<Dynamic>):Array<Dynamic> return []; }",
+                encoding="utf-8", newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(folder), "--interp", "-main", "Main"],
                 cwd=folder,

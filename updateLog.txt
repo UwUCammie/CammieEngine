@@ -1,6 +1,15 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.21 alpha - CammieEngine
+	- Retain the authenticated Nightmare Vision engine core when importing a content package directly, preserving HUD icons, ratings, combo digits and default effect assets through reimport and refresh.
+	- Preserve named built-in note types for shared script callbacks, restoring note-triggered stage text, flashes and other effects.
+	- Keep unchecked imported songs locked during receipt rechecks, and keep failed or cancelled refreshes locked until validated and updated.
+	- Recognize older Nightmare Vision executables in Auto, including content packs whose parent retains inherited Psych markers.
+	- Share Nightmare Vision container proof between detection, package ownership and core asset collection, including older compiled releases.
+	- Discover legacy Nightmare Vision content packs through the shared song adapter with their own chart, audio and asset ownership.
+	- Skip structurally identified bundled Python libraries during runtime media discovery while preserving their retained source files.
+
 v0.0.20 alpha - CammieEngine
 	- Handle missing or malformed optional Psych animation indices safely during character import.
 	- Let stronger Auto format detection correct stale import identities and explain explicit importer mismatches when a scan finds no songs.

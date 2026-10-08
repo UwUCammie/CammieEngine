@@ -154,7 +154,7 @@ class ImportRefreshManager {
 			pendingSongs.sort(function(a, b) return Reflect.compare(a.key, b.key));
 			availabilityCache = {
 				revision:availabilityEpoch,
-				inspectionPending:inspectionPending || unresolvedRecovery,
+				inspectionPending:inspectionPending || inspectionRunning || availabilityRecheckRequested || unresolvedRecovery,
 				pendingOwnerRoots:pendingRoots,
 				handoffPendingOwnerRoots:handoffRoots,
 				committedOwnerRoots:committedRoots,
@@ -1458,6 +1458,7 @@ class ImportRefreshManager {
 			&& !inspectionRunning && !active;
 		if (shouldStart) {
 			inspectionRunning = true;
+			bumpAvailabilityLocked();
 			active = true;
 			availabilityRecheckRequested = false;
 			inspectionSawUnresolvedRecovery = false;
@@ -1609,6 +1610,15 @@ class ImportRefreshManager {
 		var roots:Array<Dynamic> = [];
 		var engines:Array<String> = [];
 		var normalized = FileSystem.fullPath(source);
+		// The snapshot must include the core dependency before the selected
+		// package is moved away from its authenticated enclosing game. Keep the
+		// original scanner roots/namespaces as the conversion allowlist.
+		if (scan != null && scan.detectedRoots != null && scan.detectedRoots.length == 1) {
+			var selected = scan.detectedRoots[0];
+			if (selected != null && ImportRevision.normalizeEngine(selected.engine) == ImportEngine.NIGHTMARE_VISION
+				&& sameCanonicalSourceRoot(canonicalSourceRoot(selected.root), canonicalSourceRoot(normalized)))
+				normalized = NightmareVisionAssetCollector.retentionRoot(normalized);
+		}
 		if (scan != null && scan.detectedRoots != null) for (root in scan.detectedRoots) {
 			if (root == null || ImportRevision.normalizeEngine(root.engine) == "") continue;
 			var relative = relativeTo(root.root, normalized);
@@ -2778,9 +2788,13 @@ class ImportRefreshManager {
 		mutex.acquire();
 		reservation = reservations.get(token);
 		if (reservation != null) {
-			if (conflicts.length > 0) {
+			// Rollback proves the previous files survived, not that an outdated
+			// package passed this refresh. Retain its gate until a receipt recheck
+			// and successful regeneration/handoff resolve the reservation. A clean
+			// cancelled manual import may still release its untouched destination.
+			if (conflicts.length > 0 || !reservation.manual) {
 				reservation.recoveryBlocked = true;
-				var paths:Array<String> = [];
+				var paths:Array<String> = reservation.touchedPaths.copy();
 				for (conflict in conflicts) {
 					var path:Dynamic = Reflect.field(conflict,"path");
 					var normalized = path == null ? "" : normalizeInstallRelative(Std.string(path));

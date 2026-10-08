@@ -391,6 +391,23 @@ class ImportCompat {{
         || directNmvSource.song != Path.join([nestedNmvRoot, 'content/direct-audio-pack/songs/direct-audio-id'])
         || directNmvSource.sourceRoot != Path.join([nestedNmvRoot, 'content/direct-audio-pack']))
       throw 'NMV song-root audio fallback was not preserved';
+    var legacyPack = Path.join([nestedNmvRoot, 'content/legacy-pack']);
+    FileSystem.createDirectory(legacyPack + '/data/old-song');
+    FileSystem.createDirectory(legacyPack + '/songs/old-song');
+    File.saveContent(legacyPack + '/data/old-song/old-song.json',
+      '{{"song":{{"song":"Legacy Song","notes":[],"bpm":120,"speed":1}}}}');
+    File.saveContent(legacyPack + '/songs/old-song/Inst.ogg', 'audio');
+    var mixedResult:Array<SongImport> = [];
+    appendAssetSongImports(mixedResult, new Map<String, Bool>(),
+      nestedNmvRoot + '/assets/data', nestedNmvRoot + '/assets/songs',
+      null, null, nestedNmvRoot, ImportEngine.NIGHTMARE_VISION);
+    if (mixedResult.length != 3) throw 'mixed legacy and nested NV content was not discovered';
+    var legacySong = mixedResult[0];
+    for (song in mixedResult) if (song.name == 'Legacy Song') legacySong = song;
+    if (legacySong.name != 'Legacy Song' || Reflect.field(legacySong, 'sourceRoot') != legacyPack
+        || Reflect.field(legacySong, 'engine') != ImportEngine.NIGHTMARE_VISION
+        || legacySong.inst != legacyPack + '/songs/old-song/Inst.ogg')
+      throw 'legacy NV content lost package identity or its own instrumental';
     var selectedNmvPack = Path.join([nestedNmvRoot, 'content/direct-audio-pack']);
     var selectedNmvResult:Array<SongImport> = [];
     appendAssetSongImports(selectedNmvResult, new Map<String, Bool>(),

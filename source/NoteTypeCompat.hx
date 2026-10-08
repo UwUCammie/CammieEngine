@@ -37,6 +37,15 @@ class NoteTypeCompat {
 		return value != null && Std.isOfType(value, String) && StringTools.trim(Std.string(value)) != '';
 	}
 
+	/** Built-in types need no noteInfo entry, but script callbacks still need
+		their authored identity. Numeric and boolean legacy alt selectors are not
+		note type names. Apply equally to heads and sustain segments. */
+	public static function applySourceType(note:Dynamic, row:Array<Dynamic>):Void {
+		if (note == null || row == null || row.length < 4 || !isStringType(row[3]))
+			return;
+		Reflect.setProperty(note, 'sourceKind', canonical(row[3]));
+	}
+
 	public static function isAlt(value:Dynamic):Bool {
 		return canonical(value).toLowerCase() == 'alt animation';
 	}

@@ -51,6 +51,23 @@ class NightmareVisionAssetCollector {
 		return '';
 	}
 
+	/** Retain an authenticated enclosing game when a selected content package
+		depends on its sibling core. Conversion still uses the original selected
+		root allowlist; sibling packages are not added to the import selection. */
+	public static function retentionRoot(sourceRoot:String):String {
+		#if sys
+		var selected = canonicalExisting(sourceRoot);
+		if (selected == '') return sourceRoot;
+		var core = resolveCoreAssetsRoot(selected);
+		if (core == '') return selected;
+		var container = Path.directory(selected);
+		if (container == null || Path.withoutDirectory(container).toLowerCase() != 'content') return selected;
+		var game = Path.directory(container);
+		if (game != null && core == canonicalExisting(Path.join([game, 'assets']))) return game;
+		#end
+		return sourceRoot;
+	}
+
 	/**
 		Collect all files below the selected content root. NMV's generic Paths API
 		can address arbitrary package-relative files, so this deliberately does not
@@ -155,12 +172,7 @@ class NightmareVisionAssetCollector {
 		var inspected = ImportRootScanner.inspectRoot(resolved, ImportEngine.AUTO);
 		if (inspected == null || inspected.engine != ImportEngine.NIGHTMARE_VISION
 			|| inspected.evidence == null) return false;
-		for (evidence in inspected.evidence)
-			if (evidence != null && (StringTools.startsWith(evidence, 'Nightmare Vision executable package marker:')
-				|| StringTools.startsWith(evidence, 'Nightmare Vision Haxe project package:')
-				|| StringTools.startsWith(evidence, 'Nightmare Vision chart metadata: format=nmv2')))
-				return true;
-		return false;
+		return ImportRootScanner.hasNightmareVisionContainerProof(inspected.evidence);
 	}
 
 	static function canonicalExisting(path:String):String {

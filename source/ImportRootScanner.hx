@@ -611,9 +611,11 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.NIGHTMARE_VISION:
-				if (hasMarker(executableMarkers, 'com.nmvteam.nightmareengine')) {
+				if (hasNightmareVisionExecutable(executableMarkers)) {
 					score += 150;
-					evidence.push('Nightmare Vision executable package marker: com.nmvTeam.nightmareEngine');
+					evidence.push(hasMarker(executableMarkers, 'com.nmvteam.nightmareengine')
+						? 'Nightmare Vision executable package marker: com.nmvTeam.nightmareEngine'
+						: 'Nightmare Vision legacy executable markers: engine label and qualified script runtime');
 					decisive = true;
 				}
 				if (hasNightmareVisionSourceProject(root, entries)) {
@@ -633,6 +635,10 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.PSYCH:
+				// NV is a Psych fork: inherited scripts, packs and version strings
+				// cannot outweigh a proven NV executable, however many are present.
+				if (hasNightmareVisionExecutable(executableMarkers))
+					return {score:0, evidence:['Psych markers inherited by Nightmare Vision'], decisive:false};
 				var hasPsychRuntimeMarker = hasMarker(executableMarkers, 'psychlua')
 					|| hasMarker(executableMarkers, 'psychanimationcontroller')
 					|| hasMarker(executableMarkers, 'psychengineversion');
@@ -820,7 +826,7 @@ class ImportRootScanner {
 		if (hasNightmareVisionSourceProject(ownerRoot, ownerEntries))
 			return ownerRoot;
 		var markers = probeExecutableMarkers(ownerRoot, ownerEntries, executableMarkerCache);
-		return hasMarker(markers, 'com.nmvteam.nightmareengine') ? ownerRoot : '';
+		return hasNightmareVisionExecutable(markers) ? ownerRoot : '';
 	}
 
 	static function retainedSourceEngine(root:String):String {
@@ -1521,10 +1527,30 @@ class ImportRootScanner {
 		return found;
 	}
 
+	/** Specific source evidence that authorizes inheriting an NV container. */
+	public static function hasNightmareVisionContainerProof(evidence:Array<String>):Bool {
+		if (evidence == null) return false;
+		for (item in evidence) if (item != null
+			&& (StringTools.startsWith(item, 'Nightmare Vision executable package marker:')
+				|| StringTools.startsWith(item, 'Nightmare Vision legacy executable markers:')
+				|| StringTools.startsWith(item, 'Nightmare Vision Haxe project package:')
+				|| StringTools.startsWith(item, 'Nightmare Vision chart metadata: format=nmv2')))
+			return true;
+		return false;
+	}
+
+	/** Legacy releases predate the nmvTeam package ID. Require both their
+	 * engine label and qualified script interface, not a mod title or folder. */
+	static function hasNightmareVisionExecutable(markers:Array<String>):Bool {
+		return hasMarker(markers, 'com.nmvteam.nightmareengine')
+			|| (hasMarker(markers, 'nightmare vision engine')
+				&& hasMarker(markers, 'meta.data.scripts.ifunkinscript'));
+	}
+
 	static function probeExecutable(path:String):Array<String> {
 		var wanted = ['kadedev', 'kadeenginedata', 'psychlua', 'psychanimationcontroller',
 			'psychengineversion',
-			'com.nmvteam.nightmareengine',
+			'com.nmvteam.nightmareengine', 'nightmare vision engine', 'meta.data.scripts.ifunkinscript',
 			'friday night funkin\' modding plus', 'modding plus'];
 		var found:Array<String> = [];
 		var input:FileInput = null;

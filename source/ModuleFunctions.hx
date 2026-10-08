@@ -1555,7 +1555,7 @@ class ModuleFunctions {
 	static function appendAssetSongImports(result:Array<SongImport>, seenNames:Map<String, Bool>,
 		dataRoot:String, audioRoot:String, ?musicRoot:String,
 		?sourcePaths:Map<String, SongImportSource>, ?sourceRoot:String, ?engine:String,
-		?rejections:SongImportRejectionCollector):Void {
+		?rejections:SongImportRejectionCollector, includeContentPackages:Bool = true):Void {
 		#if sys
 		if (dataRoot == null || StringTools.trim(dataRoot) == '' || !FileSystem.isDirectory(dataRoot))
 			return;
@@ -1567,6 +1567,7 @@ class ModuleFunctions {
 		var hasAudioDirectory = sourceAudioRoot != null && FileSystem.isDirectory(sourceAudioRoot);
 
 		var dataRoots:Array<String> = [dataRoot];
+		var contentPackages:Array<{root:String, data:String, songs:String}> = [];
 		// FPS Plus and a few older packaged builds put native charts below
 		// data/songs while their audio remains in the sibling songs tree.  Keep
 		// the ordinary data/<song> form too, and only add the nested root when it
@@ -1621,7 +1622,7 @@ class ModuleFunctions {
 				}
 			}
 			var contentRoot = findNamedDirectory(sourceRoot, 'content');
-			if (contentRoot != null && FileSystem.isDirectory(contentRoot)) {
+			if (includeContentPackages && contentRoot != null && FileSystem.isDirectory(contentRoot)) {
 				var packageNames:Array<String>;
 				try packageNames = ImportDirectoryListing.normalize(FileSystem.readDirectory(contentRoot)) catch (_:Dynamic) packageNames = [];
 				packageNames.sort(function(a:String, b:String):Int {
@@ -1636,8 +1637,10 @@ class ModuleFunctions {
 					if (packageRoot == null)
 						continue;
 					var packageSongs = findNamedDirectory(packageRoot, 'songs');
-					if (packageSongs != null && FileSystem.isDirectory(packageSongs))
-						dataRoots.push(packageSongs);
+					var packageData = findNamedDirectory(packageRoot, 'data');
+					if (packageData != null || packageSongs != null)
+						contentPackages.push({root:packageRoot,
+							data:packageData == null ? packageSongs : packageData, songs:packageSongs});
 				}
 			}
 		}
@@ -1851,6 +1854,13 @@ class ModuleFunctions {
 				if (sourcePaths != null) sourcePaths.set(key, sourceInfo);
 			}
 		}
+		// Keep core-first, sorted package discovery stable for both legacy
+		// data/<song> packs and nested songs/<song>/data packs. Each recursion
+		// uses the package's own audio roots, never a sibling or core fallback.
+		// Content is an outer-container boundary, not a recursively nested layout.
+		for (pack in contentPackages)
+			appendAssetSongImports(result, seenNames, pack.data, pack.songs,
+				findNamedDirectory(pack.root, 'music'), sourcePaths, pack.root, engine, rejections, false);
 		#end
 	}
 
@@ -12258,6 +12268,16 @@ class ModuleFunctions {
 				result.errors.push('[psych-media-skip] Could not inspect ' + directory + ': ' + Std.string(error));
 				return;
 			}
+			// Bundled applications can ship a complete Python standard library.
+			// Its nested packages are not FNF library roots. Recognize the
+			// standard-library structure instead of excluding a game's folder.
+			// Retained source snapshots and explicit mapped assets are unaffected.
+			if (entries.indexOf('os.py') >= 0 && entries.indexOf('site.py') >= 0
+				&& entries.indexOf('encodings') >= 0
+				&& !FileSystem.isDirectory(Path.join([directory, 'os.py']))
+				&& !FileSystem.isDirectory(Path.join([directory, 'site.py']))
+				&& FileSystem.isDirectory(Path.join([directory, 'encodings'])))
+				return;
 			for (entry in entries) {
 				if (importWorkCancelled())
 					return;

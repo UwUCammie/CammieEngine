@@ -143,6 +143,7 @@ class RuntimeImportSmokeHarness {
 			duplicateSongs: fieldInt(result, 'duplicateSongs'),
 			missingDependencies: fieldInt(result, 'missingDependencies'),
 			detectedRoots: result == null ? null : Reflect.field(result, 'detectedRoots'),
+			packageNameRequests: result == null ? [] : ImportPackageNamePrompt.collectUnnamedRoots(cast Reflect.field(result, 'songs')),
 			errors: arrayLength(result == null ? null : Reflect.field(result, 'errors')),
 			errorDetails: boundedErrors(result == null ? null : Reflect.field(result, 'errors'))
 		});

@@ -95,6 +95,14 @@ class StageImportFixture {{
     var destination = args[1];
     selectedNamespace = destination;
     var contentRoot = donor;
+    var gameRoot = Path.directory(Path.directory(donor));
+    if (NightmareVisionAssetCollector.retentionRoot(donor) != Path.normalize(FileSystem.fullPath(gameRoot)))
+      throw 'selected package retention omitted authenticated parent core';
+    var untrusted = Path.join([Path.directory(gameRoot), 'untrusted/content/package']);
+    FileSystem.createDirectory(untrusted);
+    FileSystem.createDirectory(Path.join([Path.directory(Path.directory(untrusted)), 'assets']));
+    if (NightmareVisionAssetCollector.retentionRoot(untrusted) != Path.normalize(FileSystem.fullPath(untrusted)))
+      throw 'unproven content parent widened retention';
     if (importPathKey(donor) == importPathKey(destination)
         || importPathIsWithin(destination, donor)) throw 'fixture donor and installed owner must be distinct';
     var expected = compatScriptNamespaceHasExpectedFiles(donor, destination,
@@ -174,6 +182,10 @@ class ImportRootScanner {
       evidence:['Nightmare Vision Haxe project package: com.nmvTeam.nightmareEngine']};
   }
 }''', newline='\n')
+    scanner = (ROOT / "source/ImportRootScanner.hx").read_text()
+    proof = scanner[scanner.index("public static function hasNightmareVisionContainerProof"):scanner.index("static function hasNightmareVisionExecutable")]
+    scanner_stub = temp / "ImportRootScanner.hx"
+    scanner_stub.write_text(scanner_stub.read_text().replace("class ImportRootScanner {", "class ImportRootScanner {\n" + proof), newline="\n")
     (temp / "StageImportFixture.hx").write_text(fixture_source(), newline='\n')
     (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
     (temp / "NightmareVisionAssetCollector.hx").write_text(

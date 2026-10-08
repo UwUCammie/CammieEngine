@@ -73,6 +73,15 @@ class PsychOwnerMediaImportTest(unittest.TestCase):
             write(donor_b, "weekend1/sounds/train_passes.ogg", "owner-b-train")
             write(shared_a, "images/common/atlas.png", "shared-atlas")
             write(work, f"{owner_a}/weekend1/shaders/PhillyGlow.frag", "owner override")
+            # Bundled Python packages exceed the media discovery depth, but
+            # remain intact in the donor and are not runtime library roots.
+            bundled = donor_a / "utility/runtime/python/lib"
+            write(bundled, "os.py", "stdlib")
+            write(bundled, "site.py", "stdlib")
+            write(bundled, "encodings/__init__.py", "stdlib")
+            write(bundled, "site-packages/pkg/a/b/c/d/e/f/images/tool.png", "tool only")
+            # Folder names alone are not enough to suppress authored media.
+            write(donor_a, "python/lib/images/art.png", "authored art")
             external_media = work / "external-media"
             write(external_media, "leak.png", "outside donor")
             escaped_link = donor_a / "weekend1/images/external"
@@ -129,6 +138,11 @@ class Main {
   check(!FileSystem.exists(ownerA + "/weekend1/images/external/leak.png"),
    "symlinked media escaped the selected donor root");
   check(FileSystem.exists(baseA + "/weekend1/images/philly/Animation.json"), "donor file was changed");
+  check(File.getContent(ownerA + "/python/lib/images/art.png") == "authored art",
+   "a directory name alone suppressed authored media");
+  check(!FileSystem.exists(ownerA + "/utility"), "bundled Python was copied as FNF media");
+  check(File.getContent(baseA + "/utility/runtime/python/lib/site-packages/pkg/a/b/c/d/e/f/images/tool.png") == "tool only",
+   "runtime exclusion removed retained donor content");
   var repeat = ModuleFunctions.mergePsychRuntimeMedia(baseA, "", ownerA);
   check(repeat.failed == expectedEscapeRejects && repeat.copied == 0 && repeat.skipped >= 6,
    "repeat import must skip existing owner media");
