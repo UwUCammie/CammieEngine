@@ -2467,14 +2467,25 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			isCameraOnForcedPos = true;
 		}
 	}
+	@:keep public var camTween:FlxTween;
+	@:keep public var camHUDAlphaTween:FlxTween;
+	var nightmareVisionCameraEvents:NightmareVisionLegacyCameraEvents;
+	function historicalNightmareCameraEvent(name:String, value1:String, value2:String):Bool {
+		if (nightmareVisionCameraEvents == null) nightmareVisionCameraEvents = new NightmareVisionLegacyCameraEvents(this);
+		return nightmareVisionCameraEvents.apply(name, value1, value2);
+	}
 	/** A new source fade replaces an unfinished fade on the same HUD camera. */
-	function sourceHudFade(value1:String, value2:String):Void {
-		FlxTween.cancelTweensOf(camHUD, ['alpha']);
+	function sourceHudFade(value1:String, value2:String, ?replace:Void->Void, ?animate:(Float, Float)->Void):Void {
+		if (replace == null) FlxTween.cancelTweensOf(camHUD, ['alpha']);
+		else replace();
 		var alpha = Std.parseFloat(value1);
 		var duration = Std.parseFloat(value2);
 		if (Math.isNaN(alpha)) alpha = 1;
 		if (Math.isNaN(duration)) duration = 1;
-		if (duration > 0) FlxTween.tween(camHUD, {alpha:alpha}, duration);
+		if (duration > 0) {
+			if (animate == null) FlxTween.tween(camHUD, {alpha:alpha}, duration);
+			else animate(alpha, duration);
+		}
 		else camHUD.alpha = alpha;
 	}
 	#if windows
@@ -18472,6 +18483,11 @@ void main(void) {
 			return;
 		}
 
+		if (nightmareVisionLegacyFieldCameras && historicalNightmareCameraEvent(e.name, e.v1, e.v2)) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+
 		// A referenced Psych custom Flash.lua owns the legacy `Flash` event.  The
 		// native alias remains the fallback for charts without that handler, while
 		// canonical `Camera Flash` rows continue through the native event switch.
@@ -21160,6 +21176,7 @@ void main(void) {
 	}
 
 	override function openSubState(SubState:FlxSubState) {
+		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(false);
 		dispatchPsychCompiledStage('openSubState', [SubState]);
 		if (paused) {
 			#if cpp
@@ -21207,6 +21224,7 @@ void main(void) {
 		var codenameClosingSubstate = subState != null;
 		var closingNativePause = paused && subState != null && Std.isOfType(subState, PauseSubState);
 		var resumeEventVideo = paused;
+		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(true);
 		var resumePsychCustom = compatCustomSubstatePausesGame
 			&& subState != null && subState == compatCustomSubstate;
 		// Codename close callbacks inspect the still-open substate and paused
@@ -26444,6 +26462,7 @@ void main(void) {
 			nightmareVisionScripts = null;
 			nightmareVisionConductor.visualPosition = 0;
 		}
+		if (nightmareVisionCameraEvents != null) {nightmareVisionCameraEvents.destroy();nightmareVisionCameraEvents = null;}
 		if (nightmareVisionStageConstructionInterp != null) {
 			nightmareVisionStageConstructionInterp.release();
 			nightmareVisionStageConstructionInterp = null;
