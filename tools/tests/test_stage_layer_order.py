@@ -82,7 +82,7 @@ class LayerOrderTest {
         add_end = source.index("\n\tfunction forgetCutsceneSprite(", add_start)
         add_helper = source[add_start:add_end]
         compat_start = source.index("\tfunction compatAddLuaSprite(")
-        compat_end = source.index("\n\tfunction compatRemoveLuaSprite(", compat_start)
+        compat_end = source.index("\n\tfunction compatAddLuaText(", compat_start)
         compat_helper = source[compat_start:compat_end]
         fixture = """
 class FakeBasic {
@@ -161,7 +161,9 @@ class PsychSpriteLayerTest {
         add_helper = source[add_start:add_end]
         compat_start = source.index("\tfunction compatAddLuaSprite(")
         compat_end = source.index("\n\tfunction compatRunTimer(", compat_start)
-        compat_helper = source[compat_start:compat_end]
+        text_start = source.index("\n\tfunction compatAddLuaText(", compat_start)
+        remove_start = source.index("\n\tfunction compatRemoveLuaSprite(", text_start)
+        compat_helper = source[compat_start:text_start] + source[remove_start:compat_end]
         fixture = """
 class FakeBasic {
  public var cameras:Array<Dynamic> = null;

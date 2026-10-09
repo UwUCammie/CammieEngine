@@ -38,7 +38,7 @@ class PsychLuaTextTest(unittest.TestCase):
             "compatMakeLuaText", "compatRemoveLuaSprite", "compatAddLuaSprite", "compatAddLuaText",
             "compatSetTextString", "compatSetTextSize", "compatSetTextColor",
             "compatSetTextBorder", "compatSetTextFont", "compatSetTextAlignment",
-            "compatGetTextFont",
+            "compatGetTextFont", "compatRemoveLuaText", "compatFindText", "compatRemoveObject",
         )
         methods = "\n".join(extract(source, name) for name in names)
         self.assertIn("interp.variables.set('addLuaText', compatAddLuaText);", source)
@@ -85,6 +85,8 @@ class RuntimeSmokeHarness {
  public static function markStep(_phase:String):Void {}
 }
 class PsychLuaTextFixture {
+ var nightmareVisionLegacyFieldCameras=false;
+ var modchartTexts:Map<String,FlxText>=[];
  var camHUD = new FixtureCamera();
  var haxeSprites:Map<String,FlxSprite> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
@@ -123,6 +125,16 @@ class PsychLuaTextFixture {
   bridge.compatSetTextFont('hpText','NativeOnly.ttf');
   if(bridge.compatGetTextFont('hpText') != 'assets/fonts/NativeOnly.ttf')
    throw 'Lua text font did not fall back to native Paths.font';
+  bridge.nightmareVisionLegacyFieldCameras=true;
+  var sprite=new FlxSprite();bridge.haxeSprites.set('shared',sprite);
+  var first=bridge.compatMakeLuaText('shared','first');bridge.compatAddLuaText('shared');
+  bridge.compatSetTextString('shared','changed');
+  if(first.text!='changed'||sprite.destroyed||bridge.haxeSprites.get('shared')!=sprite)throw 'separate text namespace';
+  bridge.compatRemoveLuaText('shared',false);if(first.destroyed||bridge.modchartTexts.get('shared')!=first)throw 'retained detached text';
+  bridge.compatAddLuaText('shared');if(bridge.members.indexOf(first)<0)throw 'reattach text';
+  var second=bridge.compatMakeLuaText('shared','second');if(!first.destroyed||bridge.members.indexOf(first)>=0||sprite.destroyed)throw 'text-only replacement';
+  bridge.compatRemoveLuaSprite('shared');if(!sprite.destroyed||second.destroyed)throw 'sprite-only removal';
+  bridge.compatRemoveObject('shared');if(!second.destroyed||bridge.modchartTexts.exists('shared'))throw 'text removal';
   Sys.println('OK');
  }
 }'''.replace("__METHODS__", methods)

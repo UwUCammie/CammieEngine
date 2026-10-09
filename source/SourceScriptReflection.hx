@@ -33,6 +33,36 @@ class SourceScriptReflection {
 		return fallback(object, key, value);
 	}
 
+	/** Historical Psych-family paths preserve raw bracket keys and map dispatch. */
+	public static function readLegacyPathPart(object:Dynamic, variable:String,
+		readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = variable.split('[');
+		if (parts.length > 1) {
+			var value:Dynamic = readProperty(object, parts[0]);
+			for (i in 1...parts.length) {
+				var key:Dynamic = parts[i].substr(0, parts[i].length - 1);
+				value = value[key];
+			}
+			return value;
+		}
+		return switch (Type.typeof(object)) {
+			case TClass(haxe.ds.StringMap) | TClass(haxe.ds.ObjectMap) | TClass(haxe.ds.IntMap) | TClass(haxe.ds.EnumValueMap): object.get(variable);
+			default: readProperty(object, variable);
+		};
+	}
+	/** Final fields are literal Reflect property names, including bracket text. */
+	public static function setLegacyProperty(state:Dynamic, path:String, value:Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic,
+		writeProperty:(Dynamic,String,Dynamic)->Void):Void {
+		var parts = path.split('.');
+		var target:Dynamic = state;
+		if (parts.length > 1) {
+			target = resolveObject(parts[0]);
+			for (i in 1...parts.length - 1) target = readLegacyPathPart(target, parts[i], readProperty);
+		}
+		writeProperty(target, parts[parts.length - 1], value);
+	}
+
 	/** Only the explicit instance sentinel is special; ordinary strings survive. */
 	public static function parseInstances(value:Dynamic,
 		resolve:(String, Null<String>)->Dynamic):Dynamic {

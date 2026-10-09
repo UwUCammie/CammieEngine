@@ -117,6 +117,7 @@ class OwnershipTest {
  var compatTimers:Map<String,FakeTimer> = [];
  var compatTweens:Map<String,FakeTween> = [];
  var haxeSprites:Map<String,FakeBasic> = [];
+ var modchartTexts:Map<String,FakeBasic> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
  var haxeSpriteAtlasNamesByObject:Map<FakeBasic,Array<String>> = [];
  var psychGlobalProviderFirstSprite:FakeBasic = null;
@@ -236,6 +237,7 @@ class OwnershipSnapshotTest {
  var compatTimers:Map<String,FakeTimer> = [];
  var compatTweens:Map<String,FakeTween> = [];
  var haxeSprites:Map<String,FakeBasic> = [];
+ var modchartTexts:Map<String,FakeBasic> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
  var haxeSpriteAtlasNamesByObject:Map<FakeBasic,Array<String>> = [];
  var psychGlobalProviderFirstSprite:FakeBasic = null;

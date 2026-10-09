@@ -301,6 +301,8 @@ class EngineCompat {
   public static function legacyCounterName(_root:String):String return '';
 }
 class GameOverPropertyProbe {
+  var nightmareVisionLegacyFieldCameras=false;
+  function getLuaObject(n:String,t:Bool):Dynamic return null;
 __METHODS__
   var sourceScoreOwner:Bool = false;
   var sourceScoreNightmare:Bool = false;

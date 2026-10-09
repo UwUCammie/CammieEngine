@@ -4115,7 +4115,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var psychSourceCallbacks = new PsychSourceCallbackRegistry();
 	public var variables(get, never):Map<String,Dynamic>;
 	function get_variables():Map<String,Dynamic> return psychScriptVariables;
-	public function getLuaObject(tag:String, text:Bool = true):Dynamic return compatFindObject(tag);
+	@:keep public var modchartTexts:Map<String,FlxText> = [];
+	public function getLuaObject(tag:String, text:Bool = true):Dynamic {
+		if (!nightmareVisionLegacyFieldCameras) return compatFindObject(tag);
+		if (modchartObjects.exists(tag)) return modchartObjects.get(tag);
+		if (modchartSprites.exists(tag)) return modchartSprites.get(tag);
+		if (text && modchartTexts.exists(tag)) return modchartTexts.get(tag);
+		return null;
+	}
 	/** Source actor groups are native actors in this host's member list. */
 	@:keep public function addBehindGF(object:FlxBasic):Void {
 		if (nightmareVisionScripts != null) NightmareVisionStageScene.insertBehind(this, stage, gfGroup, object);
@@ -4886,6 +4893,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				tween.cancel();
 		compatTweens.clear();
 		haxeSprites.clear();
+		modchartTexts.clear();
 		haxeSpriteAtlasNames.clear();
 		haxeSpriteAtlasNamesByObject.clear();
 		psychGlobalProviderFirstSprite = null;
@@ -5352,8 +5360,34 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		then keep paths such as camGame.zoom, iconP1.x, and unspawnNotes.length
 		without every imported chart needing a bespoke conversion.
 	*/
+	function historicalReadProperty(target:Dynamic, name:String):Dynamic {
+		if (target == this) {
+			if (sourceHUDIconMode != 0 && (name == 'iconP1' || name == 'iconP2')) return sourceHUDIconAlias(name);
+			if (sourceHUDBarMode != 0 && ['healthBar','healthBarBG','timeBar','timeBarBG'].indexOf(name) >= 0) return sourceHUDBarAlias(name);
+		}
+		return Reflect.getProperty(target, name);
+	}
+	function historicalWriteProperty(target:Dynamic, name:String, value:Dynamic):Void {
+		if (target == this) {
+			if (sourceHUDIconMode != 0 && (name == 'iconP1' || name == 'iconP2')) {writeSourceHUDIconAlias(name,value);return;}
+			if (sourceHUDBarMode != 0 && ['healthBar','healthBarBG','timeBar','timeBarBG'].indexOf(name) >= 0) {writeSourceHUDBarAlias(name,value);return;}
+		}
+		Reflect.setProperty(target, name, value);
+	}
+	function historicalSetProperty(path:String, value:String):Void {
+		SourceScriptReflection.setLegacyProperty(this, path, value, function(name) {
+			var tagged = getLuaObject(name, true);
+			return tagged != null ? tagged : SourceScriptReflection.readLegacyPathPart(
+				isDead ? cast GameOverSubstate.instance : cast this, name, historicalReadProperty);
+		}, historicalReadProperty, historicalWriteProperty);
+	}
+
 	function compatPropertyRoot(name:String):Dynamic {
 		var root = EngineCompat.propertyRoot(name);
+		if (nightmareVisionLegacyFieldCameras) {
+			var tagged = getLuaObject(root, true);
+			if (tagged != null) return tagged;
+		}
 
 		if (sourceGameOverMode() == 1 && isDead && GameOverSubstate.instance != null) {
 			if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
@@ -6660,16 +6694,21 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatMakeLuaText(tag:String, text:String, width:Float = 0, x:Float = 0,
 		y:Float = 0):FlxText {
-		if (tag != null)
-			compatRemoveLuaSprite(tag);
+		if (tag != null) {
+			if (nightmareVisionLegacyFieldCameras) compatRemoveLuaText(tag);
+			else compatRemoveLuaSprite(tag);
+		}
 		var label = new FlxText(x, y, width, text == null ? '' : text, 16);
 		// Psych Lua text starts on the HUD and stays fixed when the game
 		// camera scrolls. setObjectCamera can still override this afterward.
 		label.cameras = [camHUD];
 		label.scrollFactor.set();
-		compatForgetSpriteAtlas(haxeSprites.get(tag));
-		haxeSprites.set(tag, cast label);
-		haxeSpriteAtlasNames.remove(tag);
+		if (nightmareVisionLegacyFieldCameras) modchartTexts.set(tag, label);
+		else {
+			compatForgetSpriteAtlas(haxeSprites.get(tag));
+			haxeSprites.set(tag, cast label);
+			haxeSpriteAtlasNames.remove(tag);
+		}
 		return label;
 	}
 
@@ -6936,13 +6975,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetTextString(name:Dynamic, text:String):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (Std.isOfType(object, FlxText))
 			try (cast object : FlxText).text = text == null ? '' : text catch (_:Dynamic) {}
 	}
 
 	function compatSetTextSize(name:Dynamic, size:Float):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (Std.isOfType(object, FlxText))
 			try (cast object : FlxText).size = Std.int(size) catch (_:Dynamic) {}
 	}
@@ -6992,7 +7031,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetTextColor(name:Dynamic, color:Dynamic):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		var parsed = compatParseColor(color);
 		if (Std.isOfType(object, FlxText) && parsed != null)
 			try (cast object : FlxText).color = cast parsed catch (_:Dynamic) {}
@@ -7008,7 +7047,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetTextBorder(name:Dynamic, size:Float, color:Dynamic):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		var parsed = compatParseColor(color);
 		if (Std.isOfType(object, FlxText))
 			try {
@@ -7020,7 +7059,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetTextFont(name:Dynamic, font:String):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (Std.isOfType(object, FlxText))
 			try {
 				var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
@@ -7138,7 +7177,27 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function compatAddLuaText(tag:String, ?front:Bool = true):Void {
 		// Psych adds Lua text at the top of the scene by default. Keep the
 		// optional donor argument harmless; texts retain their assigned camera.
-		compatAddLuaSprite(tag, true);
+		if (nightmareVisionLegacyFieldCameras) {
+			var label = modchartTexts.get(tag);
+			if (label != null && members.indexOf(label) < 0) addHscriptSprite(label, BEHIND_NONE);
+		} else compatAddLuaSprite(tag, true);
+	}
+	function compatRemoveLuaText(tag:String, ?destroy:Bool = true):Void {
+		if (!nightmareVisionLegacyFieldCameras) {compatRemoveLuaSprite(tag,destroy);return;}
+		var label = modchartTexts.get(tag);
+		if (label == null) return;
+		remove(label, true);
+		if (destroy) {label.destroy();modchartTexts.remove(tag);}
+	}
+	function compatFindText(name:Dynamic):Dynamic {
+		if (nightmareVisionLegacyFieldCameras && Std.isOfType(name,String) && modchartTexts.exists(name)) return modchartTexts.get(name);
+		return compatFindObject(name);
+	}
+
+	function compatRemoveObject(tag:String, ?destroy:Bool = true):Void {
+		if (nightmareVisionLegacyFieldCameras && !haxeSprites.exists(tag) && modchartTexts.exists(tag))
+			compatRemoveLuaText(tag, destroy);
+		else compatRemoveLuaSprite(tag, destroy);
 	}
 
 	function compatRemoveLuaSprite(tag:String, ?destroy:Bool = true):Void {
@@ -7775,7 +7834,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatSetTextAlignment(name:Dynamic, alignment:String):Void {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (!Std.isOfType(object, FlxText) || alignment == null)
 			return;
 		try (cast object : FlxText).alignment = StringTools.trim(alignment).toLowerCase() catch (_:Dynamic) {}
@@ -7789,13 +7848,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** Psych returns nil for an absent text tag, including optional pause labels. */
 	function compatGetTextString(name:Dynamic):Null<String> {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (!Std.isOfType(object, FlxText)) return null;
 		try return (cast object : FlxText).text catch (_:Dynamic) return null;
 	}
 
 	function compatGetTextFont(name:Dynamic):String {
-		var object:Dynamic = compatFindObject(name);
+		var object:Dynamic = compatFindText(name);
 		if (!Std.isOfType(object, FlxText))
 			return '';
 		try return (cast object : FlxText).font catch (_:Dynamic) return '';
@@ -8391,12 +8450,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('addLuaSprite', compatAddLuaSprite);
 		interp.variables.set('addLuaText', compatAddLuaText);
 		interp.variables.set('removeLuaSprite', compatRemoveLuaSprite);
-		interp.variables.set('removeLuaText', compatRemoveLuaSprite);
+		interp.variables.set('removeLuaText', compatRemoveLuaText);
 		// A few old Psych packs use removeObject() as a generic spelling for
 		// their tagged Lua sprite/text registry. Keep it on the same guarded
 		// bridge rather than exposing a raw PlayState.remove() function.
-		interp.variables.set('removeObject', compatRemoveLuaSprite);
-		interp.variables.set('getLuaObject', compatFindObject);
+		interp.variables.set('removeObject', compatRemoveObject);
+		interp.variables.set('getLuaObject', nightmareVisionLegacyFieldCameras ? cast getLuaObject : cast compatFindObject);
 		interp.variables.set('addAnimation', compatAddAnimation);
 		interp.variables.set('addAnimationByPrefix', compatAddAnimationByPrefix);
 		interp.variables.set('addAnimationByIndices', compatAddAnimationByIndices);
@@ -18601,6 +18660,12 @@ void main(void) {
 		// claims only the native side, so stage-specific HXC visuals still run while
 		// the canonical switch executes once at most.
 		if (hxcEvent.nativeHandled == true || hxcEvent.handled == true) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+
+		if (nightmareVisionLegacyFieldCameras && e.name == 'Set Property') {
+			historicalSetProperty(e.v1, e.v2);
 			dispatchPsychCompiledStageEvent(psychStageEvent);
 			return;
 		}

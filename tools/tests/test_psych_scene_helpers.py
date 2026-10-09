@@ -54,6 +54,9 @@ class FlxBasic { public var name:String; public function new(name:String) this.n
 class FlxSprite extends FlxBasic { public function new(name:String) super(name); }
 class FakeHost {
  var nightmareVisionScripts:Dynamic=null;
+ var nightmareVisionLegacyFieldCameras:Bool=false;
+ var modchartObjects:Map<String,Dynamic>=[];
+ var modchartTexts:Map<String,Dynamic>=[];
  // NV container branch is isolated; this fixture executes the native/Psych route.
  var stage:Dynamic=null;
  public var gfGroup:FlxBasic;public var boyfriendGroup:FlxBasic;public var dadGroup:FlxBasic;

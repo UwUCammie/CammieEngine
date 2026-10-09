@@ -34,7 +34,7 @@ class FlxText {
 class PsychGetTextStringFixture {
   var objects:Map<String, Dynamic> = new Map();
   public function new() {}
-  function compatFindObject(name:Dynamic):Dynamic return objects.get(Std.string(name));
+  function compatFindText(name:Dynamic):Dynamic return objects.get(Std.string(name));
 
 __GETTER__
 
