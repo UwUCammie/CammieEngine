@@ -9,19 +9,23 @@ MIXED=r'''
   var plan:NightmareVisionScriptDiscovery.NightmareVisionScriptPlan={root:'owner',baseAssetsRoot:'',song:'fixture',stage:'',coverageNotes:[],scripts:[]};
   var backend=new NightmareVisionGameplayScripts({},plan,function(p)return '',function(i,e,a){},function(n,p,e)throw e);
   var registry:Map<String,NightmareVisionScriptModule>=[];backend.legacyNoteRegistry=function()return registry;
+  var live=new NightmareVisionLegacyScriptRegistry(null,function(n)return registry.exists(n));
+  backend.group.onRegistered=function(s)live.add(s);backend.group.onRemoved=live.remove;
   var addHx=function(name:String):NightmareVisionScriptModule return backend.group.loadSource(name,'function noteMissPress(n){record(n);return result;}',function(i){
    i.variables.set('record',function(n:Int){if(n!=-2)throw 'live lane';log.push(name);});i.variables.set('result',0);
   });
   var addLua=function(name:String):LuaCompatInterp {
    var lua=new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);lua.variables.set('result',0);
    lua.variables.set('noteMissPress',function(n:Int):Dynamic {if(n!=-2)throw 'Lua lane';log.push(name);return lua.variables.get('result');});
-   mixedHost.hscriptStates.set(name,lua);mixedHost.psychRuntimeBindings.push(new PsychRuntimeBindings(mixedHost,lua,name));return lua;
+   mixedHost.hscriptStates.set(name,lua);mixedHost.psychRuntimeBindings.push(new PsychRuntimeBindings(mixedHost,lua,name));
+   live.add(new NightmareVisionLegacyLuaScript(name,lua,function(event,args){
+    if(lua.variables.get('__compatClosed')==true)return 0;
+    return mixedHost.callHscript(event,args,name,true,null,true)?lua.variables.get('__compatLastResult'):0;
+   }),true);return lua;
   };
   var h1=addHx('h1');var l1=addLua('z-lua');var h2=addHx('h2');var l2=addLua('a-lua');
   var dispatch=function():Dynamic {
-   var entries=backend.historicalCalls('noteMissPress',[-2]);
-   for(e in PsychRuntimeBindings.historicalNightmareCalls(mixedHost,'noteMissPress',[-2]))entries.push(e);
-   return NightmareVisionHistoricalBroadcast.call(entries);
+   return live.callOnScripts('noteMissPress',[-2]);
   };
   var vals:Array<Dynamic>=[0,null,1,2,'text',false,0.25];
   for(a in vals)for(b in vals)for(c in vals){

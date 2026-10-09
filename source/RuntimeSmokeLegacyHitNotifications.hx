@@ -14,6 +14,7 @@ class RuntimeSmokeLegacyHitNotifications {
 		var oldScopes = state.hscriptStates;
 		var oldAttachment = note.noteScript;
 		var oldDispatched = note.nightmareVisionHitDispatched;
+		var resetRegistry = RuntimeSmokeLegacyRegistry.isolate(state);
 		var errors:Array<String> = [];
 		var seen:Array<String> = [];
 		var report = function(n:String,p:String,e:Dynamic) errors.push(n+':'+p+':'+Std.string(e));
@@ -22,9 +23,9 @@ class RuntimeSmokeLegacyHitNotifications {
 		state.notetypeScripts = [];state.hscriptStates = [];
 		var restore = function() {
 			note.noteScript = oldAttachment;note.nightmareVisionHitDispatched = oldDispatched;
-			state.scripts = oldScripts;state.eventScripts = oldEvents;
+			state.eventScripts = oldEvents;
 			state.notetypeScripts = oldTypes;state.hscriptStates = oldScopes;
-			group.destroy();
+			group.destroy();resetRegistry();
 		};
 		try {
 			var configure = function(interp:NightmareVisionScriptInterp) {
@@ -52,6 +53,7 @@ class RuntimeSmokeLegacyHitNotifications {
 						seen.push('lua');return 1;
 					});
 				state.hscriptStates.set(key,lua);
+				state.registerHistoricalNightmareLua(key,lua,key+".lua");
 			}
 			var observer = new hscript.Interp();observer.variables.set('__psychScoreGlobals',true);
 			for (callback in ['goodNoteHit','opponentNoteHit']) observer.variables.set(callback,

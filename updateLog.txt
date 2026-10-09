@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV script arrays now preserve live identity, replacement and callback-time loading/removal across the existing HScript and Lua runtimes.
 - Imported Psych/NV characters now expose their authored stunned state independently of the base-game miss-stun preference.
 - Historical NV empty-key misses now preserve ghost-tapping, ending/stunned accounting and source-ordered mixed script notifications through shared services.
 - Historical NV missed notes now preserve duplicate cleanup, fixed miss accounting, source singer locks and Lua/HScript notification order through shared engine services.

@@ -26,6 +26,7 @@ class RuntimeSmokeLegacyMiss {
 		var oldTracks = state.vocalTracks;var oldVoice = state.vocals;
 		var field = state.nightmareVisionLegacyReceptors.player;
 		var oldControl = field.playerControls;
+		var resetRegistry = RuntimeSmokeLegacyRegistry.isolate(state);
 		var errors:Array<String> = [];var seen:Array<String> = [];
 		var group = new NightmareVisionScriptGroup(state, function(n,p,e) errors.push(Std.string(e)));
 		var events = new NightmareVisionScriptGroup(state, function(n,p,e) errors.push(Std.string(e)));
@@ -38,11 +39,11 @@ class RuntimeSmokeLegacyMiss {
 		var restore = function() {
 			for (n in notes.members) if (n != null) n.playField = null;
 			state.nightmareVisionPrefs.view.ghostTapping = oldGhost;state.boyfriend.stunned = oldStunned;state.boyfriend.hasMissAnimations = oldMissAnims;
-			PlayState.misses = oldMisses;state.psychRuntimeBindings = oldBindings;state.notes = oldNotes;state.modchartObjects = oldObjects;state.scripts = oldScripts;state.hscriptStates = oldScopes;
+			PlayState.misses = oldMisses;state.psychRuntimeBindings = oldBindings;state.notes = oldNotes;state.modchartObjects = oldObjects;state.hscriptStates = oldScopes;
 			state.eventScripts = oldEvents;state.notetypeScripts = oldTypes;state.vocalTracks = oldTracks;state.vocals = oldVoice;
 			field.playerControls = oldControl;
 			for (name in saved.keys()) Reflect.setProperty(state, name, saved.get(name));
-			if (api != null) api.release();group.destroy();events.destroy();notes.destroy();voice.destroy();
+			if (api != null) api.release();group.destroy();events.destroy();notes.destroy();voice.destroy();resetRegistry();
 		};
 		try {
 			var note = new Note(100, 2);note.ID = 90001;note.noMissAnimation = true;note.noteScript = null;
@@ -75,6 +76,7 @@ class RuntimeSmokeLegacyMiss {
 			var lua = new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);
 			lua.variables.set('noteMissPress',function(k:Int):Dynamic {if(k!=2)throw 'Native Lua press lane';pressOrder.push('lua');return 1;});
 			state.hscriptStates.set('compat_global_press_probe',lua);
+			state.registerHistoricalNightmareLua('compat_global_press_probe',lua,'__press_probe.lua');
 			state.psychRuntimeBindings.push(new PsychRuntimeBindings(state,lua,'__press_probe.lua'));
 			group.loadSource('__press_later','function noteMissPress(k){record();}',function(i)i.variables.set('record',function()pressOrder.push('later')));
 			state.boyfriend.hasMissAnimations = false;

@@ -8,11 +8,8 @@ class NightmareVisionScriptGroup {
 	public static inline var STOP_FUNC:Int = 1;
 	public static inline var HALT_FUNC:Int = 2;
 
-	var registrationOrders:haxe.ds.ObjectMap<NightmareVisionScriptModule, Int> = new haxe.ds.ObjectMap();
-	public function registrationOrder(script:NightmareVisionScriptModule):Int {
-		if (!registrationOrders.exists(script)) registrationOrders.set(script, SourceScriptRegistrationOrder.next());
-		return registrationOrders.get(script);
-	}
+	public var onRegistered:NightmareVisionScriptModule->Void;
+	public var onRemoved:NightmareVisionScriptModule->Void;
 
 	public var members(default, null):Array<NightmareVisionScriptModule> = [];
 	public var sharedFields(default, null):Map<String, Dynamic> = new Map();
@@ -53,14 +50,15 @@ class NightmareVisionScriptGroup {
 		script.interp.parent = parent;
 		script.interp.sharedFields = sharedFields;
 		members.push(script);
-		registrationOrders.set(script, SourceScriptRegistrationOrder.next());
+		if (onRegistered != null) onRegistered(script);
 		return true;
 	}
 
 	/** Removal transfers ownership without destroying the interpreter. */
 	public function removeScript(script:NightmareVisionScriptModule):Bool {
-		registrationOrders.remove(script);
-		return members.remove(script);
+		var removed = members.remove(script);
+		if (removed && onRemoved != null) onRemoved(script);
+		return removed;
 	}
 
 	public function loadSource(name:String, source:String,
@@ -149,7 +147,7 @@ class NightmareVisionScriptGroup {
 		}
 		while (members.length > 0) {
 			var script = members.shift();
-			if (script != null) registrationOrders.remove(script);
+			if (script != null && onRemoved != null) onRemoved(script);
 			if (script == null) continue;
 			try script.destroy() catch (error:Dynamic) {
 				if (!failed) {
@@ -158,7 +156,6 @@ class NightmareVisionScriptGroup {
 				}
 			}
 		}
-		registrationOrders.clear();
 		if (failed) throw firstError;
 	}
 

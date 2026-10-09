@@ -9,7 +9,6 @@ private typedef PsychRuntimeScope = {var key:String; var interp:Interp;}
 /** Psych Lua and plain HScript share Nightmare Vision's source Iris evaluator. */
 @:access(PlayState)
 class PsychRuntimeBindings {
-	final registrationOrder:Int = SourceScriptRegistrationOrder.next();
 	final host:PlayState;
 	final owner:Interp;
 	final origin:String;
@@ -29,33 +28,6 @@ class PsychRuntimeBindings {
 		if (host == null) return null;
 		return dispatchScopes(host, name, args, family, ignoreStops,
 			hscriptArgs == null ? args : hscriptArgs, null, false, null, null, excludedScopeKeys);
-	}
-
-	/** Historical NV uses the shared Lua scopes but its own non-cancelling broadcast contract. */
-	public static function dispatchHistoricalNightmareLuas(host:PlayState, name:String, args:Array<Dynamic>):Dynamic {
-		var scopes = orderedScopes(host, 'Luas', null, false, null);
-		return NightmareVisionScriptBroadcast.call(scopes, function(entry) {
-			if (host.hscriptStates.get(entry.key) != entry.interp
-				|| entry.interp.variables.get('__compatClosed') == true) return null;
-			return host.callHscript(name, args, entry.key, true, null, true)
-				? entry.interp.variables.get('__compatLastResult') : null;
-		}, false, true, function(entry) return entry.key.startsWith('compat_custom_event_')
-			|| entry.key.startsWith('compat_custom_notetype_'));
-	}
-
-	/** Add Lua entries to the same ordering used by historical source modules. */
-	public static function historicalNightmareCalls(host:PlayState, name:String, args:Array<Dynamic>):Array<NightmareVisionHistoricalBroadcast.HistoricalScriptCall> {
-		var result:Array<NightmareVisionHistoricalBroadcast.HistoricalScriptCall> = [];
-		for (scope in orderedScopes(host, 'Luas', null, false, null)) {
-			var order = 0;
-			for (runtime in host.psychRuntimeBindings) if (runtime.owner == scope.interp) {order = runtime.registrationOrder;break;}
-			if (order == 0) continue; // Read-only host observers are not source registry members.
-			result.push({order:order, excluded:function() return host.hscriptStates.get(scope.key) != scope.interp
-				|| scope.interp.variables.get('__compatClosed') == true || scope.key.startsWith('compat_custom_event_')
-				|| scope.key.startsWith('compat_custom_notetype_'), invoke:function() return host.callHscript(name, args, scope.key, true, null, true)
-					? scope.interp.variables.get('__compatLastResult') : null});
-		}
-		return result;
 	}
 
 	/** Check for a live Psych scope without building the ordered broadcast arrays. */

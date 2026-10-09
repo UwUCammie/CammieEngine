@@ -13,6 +13,9 @@ class NightmareVisionScriptModule {
 
 	public static final H_EXTS:Array<String> = ['hx', 'hxs', 'hscript'];
 	public var name(default, null):String;
+	public var scriptName(get, set):String;
+	function get_scriptName():String return name;
+	function set_scriptName(value:String):String return name = value;
 	@:keep public var scriptType(default, null):String = 'hscript';
 	var sourceInstances:Null<Map<String, NightmareVisionScriptModule>>;
 	public var modFolder:Null<String>;

@@ -866,9 +866,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function broadcastHistoricalNightmareScripts(name:String, args:Array<Dynamic>):Dynamic {
-		var entries = nightmareVisionScripts.historicalCalls(name, args);
-		for (entry in PsychRuntimeBindings.historicalNightmareCalls(this, name, args)) entries.push(entry);
-		return NightmareVisionHistoricalBroadcast.call(entries);
+		return legacyScriptRegistry().callOnScripts(name, args);
 	}
 
 	function retireNightmareVisionLegacyDuplicate(note:Note):Void {
@@ -1068,7 +1066,49 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	@:keep public var stage:flixel.group.FlxGroup.FlxTypedGroup<FlxBasic>;
-	@:keep public var scripts:NightmareVisionScriptGroup;
+	@:keep public var scripts(default, set):NightmareVisionScriptGroup;
+	var nightmareVisionLegacyRegistry:NightmareVisionLegacyScriptRegistry;
+	var nightmareVisionLegacyLuaHandles:haxe.ds.ObjectMap<hscript.Interp, NightmareVisionLegacyLuaScript> = new haxe.ds.ObjectMap();
+	var nightmareVisionLegacyLuaEvents:Map<String, Dynamic> = [];
+	var nightmareVisionLegacyLuaTypes:Map<String, Bool> = [];
+
+	function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry {
+		if (nightmareVisionLegacyRegistry == null) nightmareVisionLegacyRegistry = new NightmareVisionLegacyScriptRegistry(function() {
+			var result:Map<String, Dynamic> = [];
+			if (eventScripts != null) for (script in eventScripts.members) if (script != null) result.set(script.scriptName, script);
+			for (key => script in nightmareVisionLegacyLuaEvents) result.set(key, script);
+			return result;
+		}, function(name) return notetypeScripts.exists(name) || (eventScripts != null && eventScripts.exists(name))
+			|| nightmareVisionLegacyLuaEvents.exists(name) || nightmareVisionLegacyLuaTypes.exists(name));
+		return nightmareVisionLegacyRegistry;
+	}
+	function set_scripts(value:NightmareVisionScriptGroup):NightmareVisionScriptGroup {
+		if (nightmareVisionLegacyFieldCameras && scripts != value) {
+			var registry = legacyScriptRegistry();
+			if (scripts != null) {
+				for (script in scripts.members) registry.remove(script);
+				scripts.onRegistered = null;scripts.onRemoved = null;
+			}
+			if (value != null) {
+				value.onRegistered = function(script) registry.add(script);
+				value.onRemoved = registry.remove;
+				for (script in value.members) registry.add(script);
+			}
+		}
+		return scripts = value;
+	}
+	function registerHistoricalNightmareLua(key:String, interp:hscript.Interp, origin:String):Void {
+		if (!nightmareVisionLegacyFieldCameras || !Std.isOfType(interp, LuaCompatInterp)
+			|| nightmareVisionLegacyLuaHandles.exists(interp)) return;
+		var handle = new NightmareVisionLegacyLuaScript(origin, interp, function(name, args) {
+			if (hscriptStates.get(key) != interp || interp.variables.get('__compatClosed') == true) return 0;
+			return callHscript(name, args, key, true, null, true) ? interp.variables.get('__compatLastResult') : 0;
+		});
+		nightmareVisionLegacyLuaHandles.set(interp, handle);
+		if (StringTools.startsWith(key, 'compat_custom_event_')) nightmareVisionLegacyLuaEvents.set(handle.scriptName, handle);
+		if (StringTools.startsWith(key, 'compat_custom_notetype_')) nightmareVisionLegacyLuaTypes.set(handle.scriptName, true);
+		legacyScriptRegistry().add(handle, true);
+	}
 	@:keep public var eventScripts:NightmareVisionScriptGroup;
 	@:keep public var noteTypeScripts:NightmareVisionScriptGroup;
 	@:keep public var notetypeScripts:Map<String, NightmareVisionScriptModule> = new Map();
@@ -1338,6 +1378,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionLegacyFieldCameras)
 			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
 				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss, nightmareVisionLegacyNoteMissPress);
+		if (nightmareVisionLegacyFieldCameras) NightmareVisionLegacyRegistryBindings.install(interp, this, PlayState, legacyScriptRegistry());
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
@@ -13651,6 +13692,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			for (name in hxcStageBindings.keys())
 				interp.variables.set(name, hxcStageBindings.get(name));
 		hscriptStates.set(usehaxe,interp);
+		registerHistoricalNightmareLua(usehaxe, interp, path + filename);
 		// Only source files that actually came from HXC opt into mutable payload
 		// arguments.  A generated Lua/native HScript fallback must keep the
 		// existing Psych/Modding Plus callback ABI.
@@ -13897,6 +13939,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			PsychOwnerPaths.create(compatPsychOwnerForScript(path + filename), psychStageLibrary));
 		interp.execute(program);
 		hscriptStates.set(usehaxe,interp);
+		registerHistoricalNightmareLua(usehaxe, interp, path + filename);
 		var startGameAlpha = camGame == null ? 1 : camGame.alpha;
 		var startHudAlpha = camHUD == null ? 1 : camHUD.alpha;
 		var startOtherAlpha = camOther == null ? 1 : camOther.alpha;
@@ -25906,8 +25949,8 @@ void main(void) {
 
 	function dispatchHistoricalNightmareNoteHit(note:Note, callback:String):Void {
 		nightmareVisionNoteTypes.legacyHit(note, callback, notes == null ? -1 : notes.members.indexOf(note),
-			function(name, args) return PsychRuntimeBindings.dispatchHistoricalNightmareLuas(this, name, args),
-			function(name, args) return nightmareVisionScripts.callHistorical(name, args));
+			function(name, args) return legacyScriptRegistry().callOnLuas(name, args),
+			function(name, args) return legacyScriptRegistry().callOnHScripts(name, args));
 	}
 
 	/** Source post-hit notifications precede disposal and retain donor family ABIs. */
