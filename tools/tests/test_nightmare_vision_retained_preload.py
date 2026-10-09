@@ -108,6 +108,7 @@ class NightmareVisionRetainedPreloadTest(unittest.TestCase):
 
         fixture = r'''import sys.FileSystem;
 using StringTools;
+class NightmareVisionLegacyCharacterChanges {public static function preload(s:Dynamic,n:String,t:Int):Void throw "historical preload entered modern fixture";}
 class Actor {
  public var requestedCharacter:String;public var curCharacter:String;
  public var alpha:Float=1;
@@ -127,6 +128,7 @@ class RetainedGroup {
  public function addToList(name:String):Actor {var old=map.get(name);if(old!=null)return old;var actor=construct(name);actor.alpha=.00001;map.set(actor.curCharacter,actor);return actor;}
 }
 class Main {
+ var nightmareVisionLegacyFieldCameras=false;
  var nightmareVisionScripts:Dynamic={owner:'nightmare-vision'};
  var characterGroups:Map<Int,RetainedGroup>=new Map();
  var nightmareVisionHiddenGFPlaceholder:Actor;var loaded:Array<String>=[];

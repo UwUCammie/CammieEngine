@@ -188,6 +188,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var boyfriendGroup:NightmareVisionCharacterGroup;
 	@:keep public var dadGroup:NightmareVisionCharacterGroup;
 	@:keep public var gfGroup:NightmareVisionCharacterGroup;
+	@:keep public var boyfriendMap:Map<String,Character> = new Map();
+	@:keep public var dadMap:Map<String,Character> = new Map();
+	@:keep public var gfMap:Map<String,Character> = new Map();
+	@:keep public var focusedChar:Character;
+	@:keep public var bfGhost:FlxSprite;
+	@:keep public var dadGhost:FlxSprite;
+	var nightmareVisionLegacyGhosts:Array<FlxSprite> = [];
+
 	@:keep public var boyfriendPosition:FlxPoint = new FlxPoint(770, 100);
 	@:keep public var dadPosition:FlxPoint = new FlxPoint(100, 100);
 	@:keep public var gfPosition:FlxPoint = new FlxPoint(400, 130);
@@ -1447,6 +1455,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('changeCharacter', function(name:String, type:Int):Void {
 			publishNightmareVisionCharacter(name, type);
 		});
+		if(nightmareVisionLegacyFieldCameras) NightmareVisionLegacyCharacterBindings.install(interp,this,PlayState,
+			function(name,type) addNightmareVisionCharacterToList(name,type),
+			function(name,type) {publishNightmareVisionCharacter(name,type);},startHistoricalCharacterPos,reloadHealthBarColors);
 	}
 
 	function initializeNightmareVisionLegacyNoteSkin():Void {
@@ -1728,6 +1739,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return play == null ? null : {gfPosition:play.gfPosition, playFields:play.playFields};
 	}
 	function initializeNightmareVisionCharacterGroups():Void {
+		if(nightmareVisionLegacyFieldCameras) {
+			dadGhost=new FlxSprite();bfGhost=new FlxSprite();
+			nightmareVisionLegacyGhosts=[dadGhost,bfGhost];
+		}
 		var data:Dynamic = curStage.stageData;
 		boyfriendPosition.set(data.boyfriend[0], data.boyfriend[1]);
 		dadPosition.set(data.opponent[0], data.opponent[1]);
@@ -1763,12 +1778,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return actor;
 	}
 	function addNightmareVisionCharacterToList(name:String, type:Int):Void {
+		if(nightmareVisionLegacyFieldCameras) {NightmareVisionLegacyCharacterChanges.preload(this,name,type);return;}
 		var group = nightmareVisionCharacterGroup(type == 2 && (gf == null || gf == nightmareVisionHiddenGFPlaceholder) ? 1 : type);
 		var actor = group.addToList(name);
 		loadNightmareVisionCharacter(actor);
 	}
 	/** The source caller publishes roles/HUD; group.change itself only changes group/fields. */
 	function publishNightmareVisionCharacter(name:String, type:Int):Character {
+		if(nightmareVisionLegacyFieldCameras) {
+			NightmareVisionLegacyCharacterChanges.change(this,name,type);
+			return type==2 ? gf : type==1 ? dad : boyfriend;
+		}
 		var actor = nightmareVisionCharacterGroup(type).change(name);
 		switch (type) {
 			case 0:boyfriend = actor;
@@ -1779,6 +1799,33 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		refreshCharacterHUD();
 		return actor;
 	}
+	function startHistoricalCharacterPos(actor:Character, gfCheck:Bool = false):Void {
+		NightmareVisionCharacterPlacement.apply(actor,gfCheck,gfPosition);
+	}
+	function setHistoricalCharacterLua(name:String,value:Dynamic):Void {
+		var registry=legacyScriptRegistry();registry.setOnScripts(name,value,registry.luaArray);
+	}
+	function changeHistoricalCharacterIcon(player:Bool,name:String):Void {
+		if(sourceHUDIconMode==2) {
+			var icon:NightmareVisionHealthIcon=cast sourceHUDIconAlias(player?'iconP1':'iconP2');icon.changeIcon(name);
+		} else (player?iconP1:iconP2).changeIcon(name);
+	}
+	@:keep public function reloadHealthBarColors():Void {
+		if(nightmareVisionLegacyFieldCameras) reloadHistoricalHealthBarColors();
+		else updateHealthColors();
+	}
+	function reloadHistoricalHealthBarColors():Void {
+		var bar:Dynamic=sourceHUDBarMode==2 ? sourceHUDBarAlias('healthBar') : healthBar;
+		if(legacyScriptRegistry().callOnHScripts('reloadHealthBarColors',[bar])!=NightmareVisionScriptGroup.STOP_FUNC) {
+			var left=FlxColor.fromRGB(dad.healthColorArray[0],dad.healthColorArray[1],dad.healthColorArray[2]);
+			var right=FlxColor.fromRGB(boyfriend.healthColorArray[0],boyfriend.healthColorArray[1],boyfriend.healthColorArray[2]);
+			if(sourceHUDBarMode==2) {var live:NightmareVisionBar=cast sourceHUDBarAlias('healthBar');live.setColors(left,right);}
+			else healthBar.createFilledBar(left,right);
+		}
+		if(sourceHUDBarMode==2) {var live:NightmareVisionBar=cast sourceHUDBarAlias('healthBar');live.updateBar();}
+		else healthBar.updateBar();
+	}
+
 	@:keep public function refreshZ(?group:Dynamic):Void {
 		if (group == null) group = stage;
 		// Source HUDs may be non-rendering adapters over live display slots.
@@ -14418,7 +14465,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var sourceHiddenGirlfriend = nightmareVisionScripts != null && curStage.stageData.hide_girlfriend == true;
 		gf = nightmareVisionScripts == null ? addCharacter(SONG.gf, 'gf', null, codenameInitialActorIsPlayer('gf', SONG.gf, false))
 			: constructNightmareVisionRole(SONG.gf, 2);
-		if (nightmareVisionScripts != null && !sourceHiddenGirlfriend) {gf.scrollFactor.set(0.95, 0.95);gfGroup.addChar(gf);gfGroup.parent = gf;}
+		if (nightmareVisionScripts != null && !sourceHiddenGirlfriend) {
+			if(nightmareVisionLegacyFieldCameras) {startHistoricalCharacterPos(gf);gf.scrollFactor.set(0.95,0.95);gfGroup.add(gf);}
+			else {gf.scrollFactor.set(0.95,0.95);gfGroup.addChar(gf);}
+			gfGroup.parent = gf;
+		}
 		if (sourceHiddenGirlfriend) {
 			// Host camera/legacy actor paths still require a GF reference. This
 			// hidden state-owned placeholder is outside the source group and map.
@@ -14426,11 +14477,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			gf.visible = false;gf.alpha = 0;add(gf);
 		}
 
-		if (!sourceHiddenGirlfriend) loadNightmareVisionCharacter(gf);
+		if (!sourceHiddenGirlfriend) {
+			loadNightmareVisionCharacter(gf);
+			if(nightmareVisionLegacyFieldCameras) {
+				legacyScriptRegistry().setOnScripts('gf',gf);legacyScriptRegistry().setOnScripts('gfGroup',gfGroup);
+			}
+		}
 		dad = nightmareVisionScripts == null ? addCharacter(SONG.player2, 'dad', null, codenameInitialActorIsPlayer('opponent', SONG.player2, false))
 			: constructNightmareVisionRole(SONG.player2, 1);
+		if(nightmareVisionLegacyFieldCameras) {startHistoricalCharacterPos(dad,true);dadGroup.add(dad);dadGroup.parent=dad;}
 		loadNightmareVisionCharacter(dad);
-		if (nightmareVisionScripts != null) {dadGroup.addChar(dad);dadGroup.parent = dad;}
+		if(nightmareVisionLegacyFieldCameras) dadMap.set(dad.curCharacter,dad);
+		else if (nightmareVisionScripts != null) {dadGroup.addChar(dad);dadGroup.parent = dad;}
 		if (duoMode || opponentPlayer || soloMode)
 			dad.beingControlled = true;
 
@@ -14448,8 +14506,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		boyfriend = nightmareVisionScripts == null ? addCharacter(SONG.player1, 'bf', null, codenameInitialActorIsPlayer('player', SONG.player1, true))
 			: constructNightmareVisionRole(SONG.player1, 0);
+		if(nightmareVisionLegacyFieldCameras) {
+			startHistoricalCharacterPos(boyfriend);boyfriendGroup.add(boyfriend);boyfriendGroup.parent=boyfriend;
+			dadGhost.visible=false;dadGhost.antialiasing=true;dadGhost.alpha=0.6;dadGhost.scale.copyFrom(dad.scale);dadGhost.updateHitbox();
+			bfGhost.visible=false;bfGhost.antialiasing=true;bfGhost.alpha=0.6;bfGhost.scale.copyFrom(boyfriend.scale);bfGhost.updateHitbox();
+			var registry=legacyScriptRegistry();
+			registry.setOnScripts('dad',dad);registry.setOnScripts('dadGroup',dadGroup);registry.setOnScripts('dadGhost',dadGroup);
+			registry.setOnScripts('boyfriend',boyfriend);registry.setOnScripts('boyfriendGroup',boyfriendGroup);registry.setOnScripts('bfGhost',bfGhost);
+		}
 		loadNightmareVisionCharacter(boyfriend);
-		if (nightmareVisionScripts != null) {boyfriendGroup.addChar(boyfriend);boyfriendGroup.parent = boyfriend;}
+		if(nightmareVisionLegacyFieldCameras) boyfriendMap.set(boyfriend.curCharacter,boyfriend);
+		else if (nightmareVisionScripts != null) {boyfriendGroup.addChar(boyfriend);boyfriendGroup.parent = boyfriend;}
 		if (!opponentPlayer && !demoMode)
 			boyfriend.beingControlled = true;
 
@@ -26679,6 +26746,10 @@ void main(void) {
 		psychSourceHealthBar = null; psychSourceTimeBar = null;
 		nightmareVisionSourceHealthBar = null; nightmareVisionSourceTimeBar = null;
 		super.destroy();
+		// A script may have mounted an initial ghost; native teardown already owns it then.
+		for(sprite in nightmareVisionLegacyGhosts) if(sprite.animation!=null) sprite.destroy();
+		nightmareVisionLegacyGhosts=[];bfGhost=null;dadGhost=null;focusedChar=null;
+		boyfriendMap=null;dadMap=null;gfMap=null;
 		for (owner in sourceIconAssetOwners) owner.release();
 		sourceIconAssetOwners.clear();
 		psychSourceIconP1 = null;psychSourceIconP2 = null;

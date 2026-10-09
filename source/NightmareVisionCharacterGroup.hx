@@ -85,19 +85,16 @@ class NightmareVisionCharacterGroup extends FlxSpriteGroup {
 
  public function startPos(?char:Character):Void {
   if (char == null) return;
+  var position:flixel.math.FlxPoint=null;
   if (gfCheck) {
    if (char.curCharacter == null) fail('startPos identity');
    if (StringTools.startsWith(char.curCharacter, 'gf')) {
     var scene = currentScene();
     if (scene != null && scene.gfPosition == null) fail('startPos gfPosition');
-    char.setPosition(scene == null ? 0 : scene.gfPosition.x, scene == null ? 0 : scene.gfPosition.y);
-    char.scrollFactor.set(0.95, 0.95);
-    char.danceEveryNumBeats = 2;
+    position=scene==null?null:scene.gfPosition;
    }
   }
-  if (char.positionArray == null) fail('startPos positionArray');
-  char.x += char.positionArray[0];
-  char.y += char.positionArray[1];
+  NightmareVisionCharacterPlacement.apply(char,gfCheck,position);
  }
 
  function currentScene():Null<NightmareVisionCharacterGroupScene> {

@@ -28,6 +28,7 @@ class CharacterChangeEventTest(unittest.TestCase):
         publish = extract_block(source, 'function publishNightmareVisionCharacter(')
         fixture = r'''
 using StringTools;
+class NightmareVisionLegacyCharacterChanges {public static function change(s:Dynamic,n:String,t:Int):Void throw "historical path entered modern fixture";}
 class Character {
  public var curCharacter:String;public var alpha:Float=1;public var danceEveryNumBeats:Int=2;
  public var animation:Dynamic = {curAnim:{name:'idle',curFrame:0}};
