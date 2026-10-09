@@ -42,6 +42,7 @@ class NoteRatingShapeTest(unittest.TestCase):
         fixture = '''
 class NoteRatingShapeProbe {
   public var nightmareVisionTypeRuntime:Dynamic;
+  public var nightmareVisionLegacyGeometry=false;
   public var sourceTimingMode:Int = 0;
   public var garbage:Bool = false;
   public var sustainSplash:Dynamic;
@@ -96,6 +97,11 @@ class Main {
     var rejected = false;
     try note.ratingMod = 0.5 catch (_:Dynamic) rejected = true;
     check(rejected, "NMV ratingMod writes should direct scripts to rating.ratingMod");
+    note.nightmareVisionLegacyGeometry=true;note.resetSourceRatingState();
+    check(note.rating=="unknown" && note.ratingMod==0,"historical NV source defaults");
+    note.rating="sick";note.ratingMod=.75;
+    check(note.ratingMod==.75 && note.rating=="sick","historical scalar is independently writable");
+    note.resetSourceRatingState();check(note.rating=="unknown" && note.ratingMod==0,"historical recycled rating resets");
   }
 }
 '''.replace("__METHODS__", methods)

@@ -98,7 +98,7 @@ class NightmareVisionHitOrderTest(unittest.TestCase):
     def test_nv_note_render_updates_do_not_preempt_source_auto_admission(self):
         update_auto_hit = extract_method(self.note, "public function updateAutoHit(songPosition:Float):Void")
         fixture = r'''
-class Note {
+class Note {public var noteSplashDisabled=false;
  public var nightmareVisionTypeRuntime:Dynamic;
  public var autoHitSuppressed:Bool = false;
  public var wasGoodHit:Bool = false;
@@ -129,10 +129,10 @@ class Main {
     def test_nv_popup_fresh_judgement_preserves_hit_callback_rating(self):
         popup = extract_method(self.play, "private function popUpScore(")
         judge = extract_method(self.play, "function judgeSourceNote(")
-        self.assertIn("judgeSourceNote(daNote, !sourceScoreNightmare)", popup)
+        self.assertIn("judgeSourceNote(daNote, !sourceScoreNightmare || nightmareVisionLegacyFieldCameras)", popup)
         self.assertIn("daRating = sourceLedger ? sourceRating.name : daNote.rating", popup)
         fixture = r'''
-class Note {
+class Note {public var noteSplashDisabled=false;
  public var strumTime:Float = 100;
  public var rating:Dynamic = 'authored';
  public var ratingMod:Float = 1;
@@ -152,6 +152,7 @@ class Prefs { public var view:Dynamic = {ratingOffset:0}; public function new() 
 class PsychClientPrefsCompat { public static var data:Dynamic = {ratingOffset:0}; }
 class Conductor { public static var songPosition:Float = 100; }
 class Main {
+ public var nightmareVisionLegacyFieldCameras=false;
  public var sourceScoreNightmare:Bool = true;
  public var nightmareVisionPrefs:Prefs = new Prefs();
  public var ratingsData:Dynamic = {};
@@ -165,6 +166,8 @@ class Main {
   var fresh = host.judgeSourceNote(note, !host.sourceScoreNightmare);
   check(fresh.name == 'fresh-judgement' && note.rating == 'authored',
    'NV popup judgement overwrote the rating already observed by hit callbacks');
+  host.nightmareVisionLegacyFieldCameras=true;host.judgeSourceNote(note);
+  check(note.rating==fresh.name && note.ratingMod==fresh.ratingMod,'historical judgement publishes source string and rating modifier');
  }
 }
 '''.replace("__JUDGE__", judge)
@@ -181,7 +184,7 @@ class Main {
         detach = extract_method(self.play, "function detachNightmareVisionTap(")
         auto_loop = extract_method(self.play, "function processNightmareVisionAutoHits(")
         fixture = r'''
-class Note {
+class Note {public var noteSplashDisabled=false;
  public static inline var NOTE_AMOUNT:Int = 4;
  public var id:Int;
  public var events:Array<String>;
@@ -330,6 +333,10 @@ class FNFAssets { public static function getSound(path:String):Dynamic return nu
 class Conductor { public static var songPosition:Float = 1; }
 class Main {
  public var nightmareVisionLegacyFieldCameras=false;
+ public var combo:Int=0;
+ function spawnNoteSplashOnNote(n:NVNote):Void events.push('historical-splash');
+ function setAllHaxeVar(n:String,v:Dynamic):Void {}
+ function popUpScore(t:Float,n:NVNote,p:Bool,f:Bool,field:NightmareVisionPlayFieldView):Void events.push('historical-score');
  public var events:Array<String> = [];
  public var singerManualHits:Array<Bool> = [];
  public var nightmareVisionScripts:Scripts;
@@ -434,6 +441,13 @@ __AUTO_LOOP__
    && stoppedTap.externalListeners == 1,
    'exact side STOP cancelled global only, or incorrectly cancelled host completion');
 
+  var legacy=new Main();legacy.nightmareVisionLegacyFieldCameras=true;legacy.fields[0].showRatings=false;
+  var legacyNote=legacy.newNote(100);legacy.hitNightmareVisionNote(legacyNote,true);
+  check(legacy.events.indexOf('historical-score')>=0 && legacy.events.indexOf('historical-score')<legacy.events.indexOf('health') && legacy.combo==1,'historical score occurs before health and callbacks despite modern showRatings flag');
+  var legacyHazard=new Main();legacyHazard.nightmareVisionLegacyFieldCameras=true;var lh=legacyHazard.newNote(101);lh.hitCausesMiss=true;legacyHazard.hitNightmareVisionNote(lh,true);
+  check(legacyHazard.events.indexOf('historical-splash')>legacyHazard.events.indexOf('hazard-miss') && legacyHazard.events.indexOf('historical-score')<0,'historical hazard splash after miss and without normal scoring');
+  var legacyDisabled=new Main();legacyDisabled.nightmareVisionLegacyFieldCameras=true;var ld=legacyDisabled.newNote(102);ld.hitCausesMiss=true;ld.noteSplashDisabled=true;legacyDisabled.hitNightmareVisionNote(ld,true);
+  check(legacyDisabled.events.indexOf('historical-splash')<0,'historical disabled hazard suppresses splash');
   var extra = new Main();
   var extraNote = extra.newNote(12, 2);
   extra.hitNightmareVisionNote(extraNote, false);

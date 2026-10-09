@@ -610,10 +610,10 @@ class Note extends DynamicSprite {
 	 * changing dontCountNote's separate engine-specific behavior. */
 	@:keep public var ratingDisabled:Bool = false;
 	var storedRatingMod:Float = 0;
-	/** Native/Psych compatibility value; NMV reads this from its live descriptor. */
+	/** Historical NV/Psych store a scalar; modern NV reads its live descriptor. */
 	@:keep public var ratingMod(get, set):Float;
 	function get_ratingMod():Float {
-		if (nightmareVisionTypeRuntime == null) return storedRatingMod;
+		if (nightmareVisionTypeRuntime == null || nightmareVisionLegacyGeometry) return storedRatingMod;
 		if (rating == null) return -1;
 		var raw:Dynamic = null;
 		try raw = Reflect.getProperty(rating, 'ratingMod') catch (_:Dynamic) return -1;
@@ -622,7 +622,7 @@ class Note extends DynamicSprite {
 		return !Math.isFinite(value) || value == 9 ? -1 : value;
 	}
 	function set_ratingMod(value:Float):Float {
-		if (nightmareVisionTypeRuntime != null)
+		if (nightmareVisionTypeRuntime != null && !nightmareVisionLegacyGeometry)
 			throw '[nightmare-vision-note] ratingMod is read-only; change rating.ratingMod instead';
 		storedRatingMod = value;
 		return value;
@@ -635,7 +635,7 @@ class Note extends DynamicSprite {
 			if (parent == null && nightmareVisionTailState != null) nightmareVisionTailState.splash = null;
 		}
 		ratingDisabled = false;
-		rating = nightmareVisionTypeRuntime == null ? 'miss' : null;
+		rating = nightmareVisionLegacyGeometry ? 'unknown' : nightmareVisionTypeRuntime == null ? 'miss' : null;
 		storedRatingMod = 0;
 	}
 	public var isLiftNote:Bool = false;

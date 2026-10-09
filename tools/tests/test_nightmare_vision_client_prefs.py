@@ -47,6 +47,8 @@ class Main {
   var save = new MemoryOwnerSave();
   var prefs = new NightmareVisionClientPrefs('assets/imported_mods/author-mod', save, nativeOptions);
   eq(prefs.view.noteSkin, 'Vanilla', 'historical default');
+  eq(prefs.view.noteSplashes,false,'native splash preference seeds historical owner');
+  prefs.view.noteSplashes=true;
   prefs.view.noteSkin = 'QuantStep';
   eq(prefs.view.autoPause, false, 'native autoPause seed');
   eq(prefs.view.globalAntialiasing, false, 'native antialiasing seed');
@@ -85,6 +87,7 @@ class Main {
   eq(save.flushes, 1, 'owner record flushed');
   var saved = Reflect.field(save.values, NightmareVisionClientPrefs.SAVE_FIELD);
   eq(Reflect.field(Reflect.field(saved, 'values'), 'noteSkin'), 'QuantStep', 'historical preference persisted');
+  eq(Reflect.field(Reflect.field(saved,'values'),'noteSplashes'),true,'historical splash preference persisted');
   eq(Reflect.field(saved, 'version'), NightmareVisionClientPrefs.VERSION, 'record version');
   eq(Reflect.field(Reflect.field(saved, 'values'), 'noteOffset'), 17.75,
    'live owner noteOffset is persisted in its save bucket');
@@ -95,7 +98,7 @@ class Main {
   Reflect.setField(loadedSave.values, NightmareVisionClientPrefs.SAVE_FIELD, {
    version:1,
    values:{
-    flashing:false, noteOffset:0, healthBarAlpha:0.0, showRatings:false, fpsDisplayType:null,
+    noteSplashes:true, flashing:false, noteOffset:0, healthBarAlpha:0.0, showRatings:false, fpsDisplayType:null,
     gameplaySettings:{healthgain:0.0, botplay:false, ownerFlag:'loaded'},
     comboOffset:[0,1,2,3], keyBinds:{custom_action:[65,-1]},
     chartPresets:{Loaded:'owner'}
@@ -103,6 +106,7 @@ class Main {
   });
   var loaded = new NightmareVisionClientPrefs('assets/imported_mods/author-mod', loadedSave, nativeOptions);
   loaded.load();
+  eq(loaded.view.noteSplashes,true,'owner splash setting overlays native seed');
   eq(loaded.view.flashing, false, 'saved false value');
   eq(loaded.view.noteOffset, 0, 'saved owner noteOffset overrides native host seed, including zero');
   eq(loaded.view.healthBarAlpha, 0.0, 'saved float zero');

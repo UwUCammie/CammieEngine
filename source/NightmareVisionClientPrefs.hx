@@ -107,7 +107,7 @@ class NightmareVisionClientPrefs {
 			inDevMode:false, discordEnabled:true, fpsDisplayType:'Simple', streamedMusic:false,
 			autoPause:true, gpuCaching:true, globalAntialiasing:true, lowQuality:false,
 			shaders:true, unlockedFramerate:false, framerate:60, vsyncMode:'Off',
-			noteSplashType:'Both', hideHud:false, showRatings:true, timeBarType:'Time Left',
+			noteSplashes:true, noteSplashType:'Both', hideHud:false, showRatings:true, timeBarType:'Time Left',
 			flashing:true, camZooms:true, scoreZoom:true, healthBarAlpha:1.0,
 			camFollowsCharacters:true, underlayType:'Lane Underlay', underlayOpacity:0.0,
 			mechanics:true, modcharts:true, downScroll:false, middleScroll:false,
@@ -156,6 +156,7 @@ class NightmareVisionClientPrefs {
 		seedBool(options, 'globalAntialiasing', 'antialiasing');
 		seedBool(options, 'shaders', 'gameplayShaders');
 		seedBool(options, 'flashing', 'flashingLights');
+		seedBool(options, 'noteSplashes', 'showNoteSplashes');
 		seedBool(options, 'downScroll', 'downscroll');
 		seedBool(options, 'middleScroll', 'midscroll');
 		// The host offset is fractional; preserve its numeric value in the owner
@@ -238,7 +239,7 @@ class NightmareVisionClientPrefs {
 		return [
 			'inDevMode','discordEnabled','fpsDisplayType','streamedMusic','autoPause','gpuCaching',
 			'globalAntialiasing','lowQuality','shaders','unlockedFramerate','framerate','vsyncMode',
-			'noteSplashType','hideHud','showRatings','timeBarType','flashing','camZooms','scoreZoom',
+			'noteSplashes','noteSplashType','hideHud','showRatings','timeBarType','flashing','camZooms','scoreZoom',
 			'healthBarAlpha','camFollowsCharacters','underlayType','underlayOpacity','mechanics','modcharts',
 			'downScroll','middleScroll','opponentStrums','ghostTapping','noReset','hitsoundVolume',
 			'ratingOffset','useEpicRankings','toggleSplashScreen','epicWindow','sickWindow','goodWindow',

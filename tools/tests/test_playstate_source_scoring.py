@@ -105,6 +105,7 @@ class Note {
 }
 class ScoringHost {
  public var sourceScoreOwner:Bool = false;
+ public var nightmareVisionLegacyFieldCameras=false;
  public var sourceScoreNightmare:Bool = false;
  public var demoMode:Bool = false;
  public var practiceMode:Bool = false;

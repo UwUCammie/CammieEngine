@@ -62,11 +62,19 @@ class Main {
   var tapSeed=seededTap.members[0];tapSeed.update(0.016);ok(tapSeed.animation.curAnim==null&&tapSeed.alive&&tapSeed.exists&&tapSeed.alpha==0,'source no-animation seed survives actual update');var ordinaryTap=seededTap.recycle(NightmareVisionNoteSplash,()->new NightmareVisionNoteSplash());ok(ordinaryTap!=tapSeed&&ordinaryTap.alpha==1&&seededTap.length==2,'inert invisible seed cannot be recycled into invisible ordinary tap');ordinaryTap.animation.play('note0-0',true);ordinaryTap.update(0.016);ok(ordinaryTap.alive,'ordinary tap remains visible through live animation');ordinaryTap.animation.curAnim.finished=true;ordinaryTap.update(0.016);ok(!ordinaryTap.exists&&!ordinaryTap.alive,'actual finished tap retirement preserved');
   h.initializeNightmareVisionFieldSplashes(seeded);ok(seeded.splashLayer==seededLayer,'repeated binding does not reconstruct groups');seeded.displayedSplashLayer=seededLayer;h.members.push(seededLayer);var retainedSus=seededSus.members[0];var retainedTap=seededTap.members[0];h.destroyNightmareVisionFieldSplashes(seeded);ok(h.members.length==0&&retainedSus.destroys==1&&retainedTap.destroys==1&&seededLayer.destroys==1&&seeded.grpSusSplashes==null,'one owner teardown/removed display');h.destroyNightmareVisionFieldSplashes(seeded);ok(retainedSus.destroys==1,'repeated teardown safe');
   var borrowed=new FlxTypedGroup<FlxBasic>();var otherField=new NightmareVisionPlayFieldView();h.initializeNightmareVisionFieldSplashes(otherField);otherField.displayedSplashLayer=borrowed;h.members.push(borrowed);h.destroyNightmareVisionFieldSplashes(otherField);ok(borrowed.destroys==0&&h.members.indexOf(borrowed)>=0,'borrowed layer is not owned/destroyed or detached by this field');
+  var legacy=new Host();legacy.nightmareVisionLegacyFieldCameras=true;
+  var global=new FlxTypedGroup<NightmareVisionNoteSplash>();var globalMember=new NightmareVisionNoteSplash();global.add(globalMember);legacy.grpNoteSplashes=global;
+  var historicalField=new NightmareVisionPlayFieldView();historicalField.grpSusSplashes=null;
+  legacy.initializeNightmareVisionFieldSplashes(historicalField);
+  ok(historicalField.grpNoteSplashes==global&&historicalField.ownedSplashLayer==null&&historicalField.grpSusSplashes==null,'historical field aliases the state pool without extra owned layers');
+  ok(legacy.spawnNightmareVisionSustainSplash(historicalField,new Note())==null,'historical hits do not acquire modern hold covers');
+  legacy.destroyNightmareVisionFieldSplashes(historicalField);
+  ok(global.destroys==0&&globalMember.destroys==0&&global.length==1&&historicalField.grpNoteSplashes==null,'historical field teardown leaves global pool owned by state');
   var layer=new FlxTypedGroup<FlxBasic>();layer.add(g);var taps=new FlxTypedGroup<FlxBasic>();layer.add(taps);f.splashLayer=layer;f.grpSusSplashes=new FlxTypedGroup<NightmareVisionSustainSplash>();ok(layer.members[0]==g&&layer.members[1]==taps,'public group replacement does not rewrite children');f.splashLayer=new FlxTypedGroup<FlxBasic>();ok(layer.members[0]==g&&f.splashLayer!=layer,'public layer pointer does not rewrite captured container');
  }
 }'''}
   files['NightmareVisionLegacyNoteSplash.hx']='class NightmareVisionLegacyNoteSplash extends NightmareVisionNoteSplash {public function new(x=0,y=0,n=0,?owner:Dynamic){super(x,y,n,0,owner);}}'
-  files['Host.hx']=files['Host.hx'].replace('class Host {', 'class Host {public var nightmareVisionLegacyFieldCameras=false;')
+  files['Host.hx']=files['Host.hx'].replace('class Host {', 'class Host {public var nightmareVisionLegacyFieldCameras=false;public var grpNoteSplashes:Dynamic;')
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    work=Path(tmp)
    for name,s in files.items():

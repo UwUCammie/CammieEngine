@@ -28,7 +28,7 @@ class NvReceptorGenerationLifecycleTest(unittest.TestCase):
     def test_creation_countdown_and_empty_bank_integration(self):
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         self.assertNotIn('buildNightmareVisionPlayFields', play)
-        self.assertIn('if (nightmareVisionLegacyFieldCameras) genNotesBeforeCountdown = false;', play)
+        self.assertIn('genNotesBeforeCountdown = false;', method(method(play, 'function initializeNightmareVisionScripts()'), 'if (nightmareVisionLegacyFieldCameras) {'))
         eager = play[play.index("nightmareVisionScripts.loadScope('song');"):]
         self.assertLess(eager.index("callNightmareVision('preNoteGeneration', []);"), eager.index('if (genNotesBeforeCountdown) generatePlayfields();'))
         self.assertLess(eager.index('if (genNotesBeforeCountdown) generatePlayfields();'), eager.index('generateSong(SONG.song);'))
