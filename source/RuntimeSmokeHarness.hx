@@ -2003,6 +2003,7 @@ class RuntimeSmokeHarness {
 			verifyHistoricalNoteAnimations();
 			RuntimeSmokeLegacySplash.verify(note);
 			RuntimeSmokeLegacyFieldHit.verify(note);
+			RuntimeSmokeLegacyNoteScript.verify();
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
@@ -2036,7 +2037,9 @@ class RuntimeSmokeHarness {
 			for (candidate in state.unspawnNotes) if (candidate != null && candidate.isSustainNote == sustain) { note = candidate; break; }
 			if (note == null) throw 'Native animation probe requires tap and sustain notes';
 			var originalType = note.sourceKind;
+			var originalScript = note.noteScript;
 			note.sourceKind = script.name;
+			note.noteScript = script;
 			for (useSuper in [true,false]) {
 				script.callValue('configureProbe',[useSuper]);
 				var oldY = note.scale.y;
@@ -2051,6 +2054,7 @@ class RuntimeSmokeHarness {
 				checked++;
 			}
 			note.sourceKind = originalType;
+			note.noteScript = originalScript;
 			runtime.reloadNote(note);
 		}
 		group.removeScript(script);

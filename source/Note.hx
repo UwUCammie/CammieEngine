@@ -729,6 +729,8 @@ class Note extends DynamicSprite {
 	public function allowsAnimation(miss:Bool = false):Bool {
 		return miss ? !noMissAnimation : !noAnimation;
 	}
+	/** Historical NV retains the assigned type script independently of registry changes. */
+	@:keep public var noteScript:Dynamic;
 	/** Psych Lua exposes the authored type through the mutable noteType field. */
 	public var noteType(get, set):String;
 	function get_noteType():String {

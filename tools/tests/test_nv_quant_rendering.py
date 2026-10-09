@@ -17,7 +17,7 @@ class NvQuantRenderingTest(unittest.TestCase):
  public var quant:Int=4;public var isQuant:Bool=false;public var canQuant:Bool=true;
  public var nightmareVisionQuantInitialized:Bool=false;
  public var prevNote:Note;public var sourceDirection:Int=0;public var noteData:Int=0;
- public var nightmareVisionTypeRuntime:Dynamic;
+ public var nightmareVisionTypeRuntime:Dynamic;public var noteScript:Dynamic;
  public var noteType:String='';public var colorSwap:NightmareVisionLegacyColorSwap;
  public var noteSplashHue:Float=0;public var noteSplashSat:Float=0;public var noteSplashBrt:Float=0;
  public var noteSplashTexture:String="noteSplashes";

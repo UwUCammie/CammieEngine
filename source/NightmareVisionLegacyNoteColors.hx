@@ -45,12 +45,14 @@ class NightmareVisionLegacyNoteColors {
 				note.noteSplashTexture = 'QUANTnoteSplashes';
 		}
 		setHSV(swap, row);
-		if (changed && type == 'Hurt Note') {
+		// Source clears the old attachment before built-in reloads or custom setup.
+		note.noteScript = null;
+		if (note.noteData > -1 && changed && type == 'Hurt Note') {
 			note.reloadNote('HURT');
 			note.noteSplashTexture = 'HURTnoteSplashes';
 			setHSV(swap, [0, 0, 0]);
 		}
-		return !changed || isBuiltin(type) ? 2 : 1;
+		return note.noteData < 0 || !changed || isBuiltin(type) ? 2 : 1;
 	}
 
 	static function isBuiltin(type:String):Bool return switch (type) {

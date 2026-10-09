@@ -1026,6 +1026,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var scripts:NightmareVisionScriptGroup;
 	@:keep public var eventScripts:NightmareVisionScriptGroup;
 	@:keep public var noteTypeScripts:NightmareVisionScriptGroup;
+	@:keep public var notetypeScripts:Map<String, NightmareVisionScriptModule> = new Map();
 	var nightmareVisionStageConstructionInterp:NightmareVisionScriptInterp;
 	static function loadNightmareVisionStageFile(paths:NightmareVisionPaths, prefs:NightmareVisionClientPrefs,
 		plugins:NightmareVisionPluginRuntime, mods:NightmareVisionModsContext,
@@ -1536,6 +1537,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				events:function() return eventScripts, setEvents:function(value) return eventScripts = value,
 				notes:function() return noteTypeScripts, setNotes:function(value) return noteTypeScripts = value
 			});
+		if (nightmareVisionLegacyFieldCameras) nightmareVisionScripts.legacyNoteRegistry = function() return notetypeScripts;
 		initializeNightmareVisionLegacyNoteSkin();
 		// Seed the source default before onCreate can intentionally override it.
 		refreshNightmareVisionNoteKillOffset();
@@ -1591,6 +1593,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 						+ NightmareVisionNoteTypeRuntime.noteTypeOf(note) + ' ' + message);
 				}));
 		if (nightmareVisionLegacyFieldCameras) {
+			nightmareVisionNoteTypes.legacyNoteScripts = true;
 			nightmareVisionNoteTypes.prepareLegacyColors = function(value, force) {
 				var note:Note = cast value;
 				return note.nightmareVisionLegacyColors == null ? 1 : note.nightmareVisionLegacyColors.prepare(note, force);

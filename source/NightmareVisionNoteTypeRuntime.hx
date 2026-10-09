@@ -14,12 +14,13 @@ private typedef NightmareVisionNoteApiState = {
 }
 
 /**
-	Runtime adapter for the source note-type lifecycle. The selected script stays
-	in NightmareVisionGameplayScripts' main group; these targeted calls only run
-	the script whose registered name matches the live note's authored type.
+	Runtime adapter for the source note-type lifecycle. Modern callbacks select
+	the live registered type; historical callbacks use the note's captured script.
+	Both reuse the shared module loader, interpreter and main-group lifetime.
 */
 class NightmareVisionNoteTypeRuntime {
 	public final scripts:NightmareVisionGameplayScripts;
+	public var legacyNoteScripts:Bool = false;
 	public final api:NightmareVisionNoteApiBridge;
 	public var prepareLegacyColors:(Dynamic, Bool)->Int;
 	public var finishLegacyColors:Dynamic->Void;
@@ -48,7 +49,20 @@ class NightmareVisionNoteTypeRuntime {
 
 	function call(note:Dynamic, callback:String, args:Array<Dynamic>, ?receiver:Dynamic):Dynamic {
 		if (scripts == null) return NightmareVisionScriptGroup.CONTINUE_FUNC;
+		if (legacyNoteScripts) {
+			var script = attachedScript(note);
+			if (script == null || !script.exists(callback)) return NightmareVisionScriptGroup.CONTINUE_FUNC;
+			var result = script.callValue(callback, args, receiver);
+			return result == null ? NightmareVisionScriptGroup.CONTINUE_FUNC : result;
+		}
 		return scripts.callNoteType(noteTypeOf(note), callback, args, receiver);
+	}
+
+	function attachedScript(note:Dynamic):NightmareVisionScriptModule {
+		var script:Dynamic = note == null ? null : Reflect.getProperty(note, 'noteScript');
+		if (script != null && !Std.isOfType(script, NightmareVisionScriptModule))
+			throw '[nightmare-vision-note] Unsupported attached noteScript implementation';
+		return cast script;
 	}
 
 	/** Called after the default/chart note skin is configured but before the
@@ -57,6 +71,8 @@ class NightmareVisionNoteTypeRuntime {
 		api.attach(note);
 		var mode = prepareLegacyColors == null ? 1 : prepareLegacyColors(note, force);
 		if (mode == 0) return NightmareVisionScriptGroup.CONTINUE_FUNC;
+		if (legacyNoteScripts) Reflect.setProperty(note, 'noteScript',
+			mode == 1 && scripts != null ? scripts.captureLegacyNoteScript(noteTypeOf(note)) : null);
 		var result = mode == 2 ? NightmareVisionScriptGroup.CONTINUE_FUNC : call(note, 'setupNote', [note], note);
 		if (finishLegacyColors != null) finishLegacyColors(note);
 		api.syncNote(note);
@@ -67,6 +83,7 @@ class NightmareVisionNoteTypeRuntime {
 	 * Call after its chart-skin defaults are established and before note-type
 	 * behavior applies custom colors, flags, or a texture prefix. */
 	public function resetNote(note:Dynamic, rgbEnabled:Bool, canMiss:Bool = false):Void {
+		if (legacyNoteScripts) Reflect.setProperty(note, 'noteScript', null);
 		api.resetNote(note, rgbEnabled, canMiss);
 		var reset = Reflect.field(note, 'resetSourceRatingState');
 		if (reset != null) Reflect.callMethod(note, reset, []);
@@ -131,8 +148,9 @@ class NightmareVisionNoteTypeRuntime {
 
 	/** Historical animation overrides replace the default and may call it through super. */
 	public function loadLegacyAnimations(note:Dynamic, pixel:Bool, fallback:Void->Void):Void {
-		var script = scripts == null || scripts.group.released || scripts.noteTypeGroup.released
-			? null : scripts.noteTypeGroup.getScript(noteTypeOf(note));
+		var script = legacyNoteScripts ? attachedScript(note)
+			: scripts == null || scripts.group.released || scripts.noteTypeGroup.released
+				? null : scripts.noteTypeGroup.getScript(noteTypeOf(note));
 		NightmareVisionLegacyNoteAnimations.dispatch(script, note, pixel, fallback);
 	}
 
@@ -206,7 +224,10 @@ class NightmareVisionNoteTypeRuntime {
 	}
 
 	/** Release sidecar state when the native pooled Note is destroyed/recycled. */
-	public function releaseNote(note:Dynamic):Void api.releaseNote(note);
+	public function releaseNote(note:Dynamic):Void {
+		if (legacyNoteScripts) Reflect.setProperty(note, 'noteScript', null);
+		api.releaseNote(note);
+	}
 
 	public function destroy():Void api.clear();
 }

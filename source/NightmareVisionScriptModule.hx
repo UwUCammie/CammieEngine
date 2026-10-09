@@ -13,6 +13,7 @@ class NightmareVisionScriptModule {
 
 	public static final H_EXTS:Array<String> = ['hx', 'hxs', 'hscript'];
 	public var name(default, null):String;
+	@:keep public var scriptType(default, null):String = 'hscript';
 	var sourceInstances:Null<Map<String, NightmareVisionScriptModule>>;
 	public var modFolder:Null<String>;
 	public var interp(default, null):NightmareVisionScriptInterp;

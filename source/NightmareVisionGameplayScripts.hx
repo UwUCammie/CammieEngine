@@ -36,6 +36,8 @@ class NightmareVisionGameplayScripts {
 	final beforeLoad:NightmareVisionScriptInterp->NightmareVisionScriptEntry->Void;
 	final resolveScript:String->NightmareVisionScriptEntry;
 	var attempted:Map<String, Bool> = [];
+	/** Historical Map identity is script-writable; module loading and lifetime stay shared. */
+	public var legacyNoteRegistry:Void->Map<String, NightmareVisionScriptModule>;
 
 	public function new(parent:Dynamic, plan:NightmareVisionScriptPlan,
 		read:String->String,
@@ -92,7 +94,10 @@ class NightmareVisionGameplayScripts {
 				});
 				if (script != null) {
 					if (scope == 'event') eventGroup.addScript(script);
-					else if (scope == 'notetype') noteTypeGroup.addScript(script);
+					else if (scope == 'notetype') {
+						noteTypeGroup.addScript(script);
+						if (legacyNoteRegistry != null) legacyNoteRegistry().set(entry.name, script);
+					}
 				}
 				// NMV startCharacterScript assigns this variable only after
 				// initFunkinScript has executed the module and called onLoad.
@@ -106,6 +111,12 @@ class NightmareVisionGameplayScripts {
 	 * order and lifetime. */
 	public function loadNoteTypes(?noteType:String):Void
 		loadScope('notetype', noteType);
+
+	/** The historical Note setter captures the current map entry without loading new scripts. */
+	public function captureLegacyNoteScript(name:String):NightmareVisionScriptModule {
+		var registry = legacyNoteRegistry == null ? null : legacyNoteRegistry();
+		return registry == null ? null : registry.get(name);
+	}
 
 	/** Dispatch one callback only to the selected chart note type. The registered
 	 * name is the authored type (for example, "Ice Note"), matching source
