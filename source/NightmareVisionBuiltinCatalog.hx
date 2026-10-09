@@ -25,7 +25,7 @@ class NightmareVisionBuiltinCatalog {
 		return switch(kind) {
 			case 'stealth','mini','perspectiveDONTUSE': true;
 			case 'confusion': objectKind=='note'||objectKind=='receptor';
-			case 'receptorScroll','xmod': objectKind=='note';
+			case 'receptorScroll','xmod','reverse': objectKind=='note';
 			default:false;
 		};
 	}

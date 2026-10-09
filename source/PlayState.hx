@@ -159,6 +159,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return NightmareVisionScrollVelocity.position(time, event);
 	@:keep public function getNoteInitialTime(time:Float):Float return getTimeFromSV(time, getSV(time));
 	@:keep public function getVisualPosition():Float return getTimeFromSV(Conductor.songPosition, currentSV);
+	public function sourceUsesLegacyNoteGeometry():Bool return nightmareVisionLegacyFieldCameras;
 	public function sourceNoteVisualTime(time:Float):Float
 		return nightmareVisionLegacyFieldCameras ? getNoteInitialTime(time) : 0;
 	function updateNightmareVisionVisualPosition():Void {
@@ -1253,6 +1254,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			Conductor.crochet, nightmareVisionPrefs == null ? downscroll : nightmareVisionPrefs.view.downScroll,
 			nightmareVisionPrefs != null && nightmareVisionPrefs.view.lowQuality, nightmareVisionLegacyFieldCameras, SONG.bpm);
 		manager.sourceRenderer = new NightmareVisionModchartRenderer(new NightmareVisionModchartTransform(manager.registry));
+		manager.sourceRenderer.sourceReceptor = function(player, direction) return manager.receptors[player][direction];
 	}
 
 	function reportNightmareVisionModifierError(name:String, phase:String, error:Dynamic):Void {
@@ -3159,14 +3161,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	/** Resize source bodies with rendered speed, including unspawned segments. */
 	function resizePsychSustains(previousSpeed:Float, nextSpeed:Float):Void {
-		if (nightmareVisionScripts != null || sourceNoteTimingMode() != 1
+		var legacy = nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras;
+		if (legacy) {
+			if (!generatedMusic) return;
+		} else if (nightmareVisionScripts != null || sourceNoteTimingMode() != 1
 			|| previousSpeed == nextSpeed || !Math.isFinite(previousSpeed) || previousSpeed <= 0
 			|| !Math.isFinite(nextSpeed) || nextSpeed <= 0) return;
 		var ratio = nextSpeed / previousSpeed;
 		// A segment can temporarily belong to both queues during callbacks.
 		var resized = new haxe.ds.ObjectMap<Note, Bool>();
 		function resize(note:Note):Void {
-			if (!isPsychReceptorNote(note) || resized.exists(note)) return;
+			if (note == null || (!legacy && !isPsychReceptorNote(note)) || resized.exists(note)) return;
 			resized.set(note, true);
 			note.resizeByRatio(ratio);
 		}
@@ -10295,6 +10300,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				renderer.positionOffsets = function(kind, direction, sustain) return NightmareVisionLegacyNoteSkin.positionOffset(
 					kind, direction, sustain, scriptedNoteOffsets, scriptedStrumOffsets, scriptedSustainOffsets, positionOffset);
 			}
+			renderer.sourceReceptor = function(player, direction) return modManager.receptors[player][direction];
 			nightmareVisionRenderers.set(ownerField, renderer);
 		}
 		return renderer;
@@ -10353,6 +10359,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		if (skin == null || !skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames))
 			return false;
+		if (note.nightmareVisionLegacyGeometry && note.isSustainNote && !note.nightmareVisionSustainInitialized) {
+			NightmareVisionLegacySustain.finish(note, note.nightmareVisionSustainInitialWidth,
+				Conductor.stepCrochet, songSpeed, pixelUI, daPixelZoom);
+			note.nightmareVisionSustainInitialized = true;
+		}
 		if (note.nightmareVisionLegacyColors != null) NightmareVisionLegacyFieldScale.captureNote(note);
 		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
 		if (note.nightmareVisionTypeRuntime != null) note.nightmareVisionTypeRuntime.syncNote(note);
@@ -19435,13 +19446,13 @@ void main(void) {
 				RuntimeSmokeHarness.markLoadPhase('notes_constructed_' + noteConstructionCount);
 		};
 
-		var nightmareHoldStep = Math.max(Conductor.stepCrochet / holdSubdivisions, 10);
+		var nightmareHoldStep = nightmareVisionLegacyFieldCameras ? Conductor.stepCrochet : Math.max(Conductor.stepCrochet / holdSubdivisions, 10);
 		var psychSectionBpm = Conductor.bpm;
 		var psychSectionStep = Conductor.stepCrochet;
 		for (section in noteData) {
 			psychSectionBpm = PsychSustainLayout.sectionBpm(psychSectionBpm, section.changeBPM, section.bpm);
 			psychSectionStep = PsychSustainLayout.stepCrochet(psychSectionBpm, Conductor.stepCrochet);
-			if (nightmareVisionScripts != null && section.changeBPM) nightmareHoldStep = 15000 / section.bpm / holdSubdivisions;
+			if (nightmareVisionScripts != null && !nightmareVisionLegacyFieldCameras && section.changeBPM) nightmareHoldStep = 15000 / section.bpm / holdSubdivisions;
 			var coolSection:Int = Std.int(section.lengthInSteps / 4);
 			var rowIndex:Int = 0;
 			for (songNotes in section.sectionNotes) {
@@ -19617,7 +19628,7 @@ void main(void) {
 						oldNote = unspawnNotes[Std.int(unspawnNotes.length - 1)];
 						if (nightmareVisionScripts != null || psychSustain || susLength > susNote) {
 							var segmentTime = nightmareVisionScripts != null
-								? NightmareVisionSustainLayout.segmentTime(daStrumTime, susNote, nightmareHoldStep)
+								? NightmareVisionSustainLayout.segmentTime(daStrumTime, susNote, nightmareHoldStep, nightmareVisionLegacyFieldCameras, songSpeed)
 								: psychSustain ? PsychSustainLayout.segmentTime(daStrumTime, susNote, psychSectionStep)
 								: daStrumTime + Conductor.stepCrochet * (susNote + 1);
 							var sustainNote:Note;
@@ -22275,12 +22286,17 @@ void main(void) {
 					var visualDistance = nightmareVisionLegacyFieldCameras
 						? (daNote.visualTime - nightmareVisionConductor.visualPosition) * effectiveScrollSpeed
 						: 0.45 * diff * effectiveScrollSpeed;
-					var endVisualDistance = nightmareVisionLegacyFieldCameras
-						? (getNoteInitialTime(daNote.strumTime + duration) - nightmareVisionConductor.visualPosition) * effectiveScrollSpeed
-						: 0.45 * (diff + duration) * effectiveScrollSpeed;
+					var endTimeDiff = diff + duration;
+					var endVisualDistance = 0.45 * endTimeDiff * effectiveScrollSpeed;
+					if (nightmareVisionLegacyFieldCameras) {
+						var futureClock = nightmareVisionConductor.visualPosition + Conductor.stepCrochet * 0.001;
+						endTimeDiff = daNote.visualTime - futureClock;
+						endVisualDistance = endTimeDiff * effectiveScrollSpeed;
+						futureBeat = nightmareVisionConductor.getBeat(futureClock);
+					}
 					daNote.nightmareVisionRenderer.updateNote(nightmareContext, daNote, daNote.sourcePlayfieldIndex,
 						visualDistance, diff, endVisualDistance,
-						diff + duration, futureBeat, strum, duration, daNote.nightmareVisionSustainEnd);
+						endTimeDiff, futureBeat, strum, duration, daNote.nightmareVisionSustainEnd);
 				}
 
 				if (daNote.codenameInputLine != null) {

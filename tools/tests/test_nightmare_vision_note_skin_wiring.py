@@ -71,6 +71,7 @@ class NightmareVisionNoteTypeRuntime {
 class NightmareVisionRGBGraphics {public var legacyHSV:Dynamic;public function new(){}}
 class NightmareVisionLegacyNoteColors {public var swap:Dynamic;public function new(p:Dynamic,?s:String){}public static function selectTexture(t:String,p:Dynamic,q:Bool,a:String->Bool):String return t;}
 class Note {
+ public var nightmareVisionLegacyGeometry=false; public var isSustainNote=false; public var nightmareVisionSustainInitialized=false; public var nightmareVisionSustainInitialWidth=0.;
  public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;
  public var nightmareVisionRGB:NightmareVisionRGBGraphics;
  public var colorSwap:Dynamic;
@@ -96,7 +97,10 @@ class RuntimeSmokeHarness {
  public static var marks:Int=0;
  public static function markNightmareVisionNoteVisual(note:Note):Void marks++;
 }
+class Conductor {public static var stepCrochet=125.;}
+class NightmareVisionLegacySustain {public static function finish(n:Dynamic,w:Float,s:Float,v:Float,p:Bool,z:Float):Void throw "unexpected sustain setup in tap fixture";}
 class SkinWiring {
+ var songSpeed=1.;var pixelUI=false;var daPixelZoom=6.;
  var nightmareVisionLegacyFieldCameras=false;
  function nightmareVisionHasOwnerSparrowAtlas(s:String):Bool return false;
  function nightmareVisionGetOwnerSparrowAtlas(s:String):FlxAtlasFrames return null;

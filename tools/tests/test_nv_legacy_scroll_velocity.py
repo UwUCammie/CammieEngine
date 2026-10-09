@@ -118,5 +118,7 @@ class Main {
         update=method(source,'override public function update(')
         self.assertLess(update.index('super.update(elapsed)'),update.index('updateNightmareVisionVisualPosition()'))
         note=(ROOT/'source/Note.hx').read_text()
-        self.assertIn('if (sourceTimingMode == 2) visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime)',note)
+        timing=method(note[note.index('this.strumTime = strumTime;'):], 'if (sourceTimingMode == 2) {')
+        self.assertIn('visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime)',timing)
+        self.assertIn('nightmareVisionLegacyGeometry = PlayState.instance.sourceUsesLegacyNoteGeometry()',timing)
         self.assertGreaterEqual(source.count('nightmareVisionConductor.visualPosition = 0'),2)

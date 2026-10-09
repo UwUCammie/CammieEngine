@@ -45,6 +45,7 @@ class AnimFrame {{ public var name:String; public function new(name:String) this
 class Anim {{ public var curAnim:AnimFrame; public function new(name:String='hold') curAnim=new AnimFrame(name); }}
 class Note {{
  public static var swagWidth:Float = 35;
+ public var nightmareVisionLegacyGeometry=false; public var noteData=0; public var baseScaleY=1.;
  public var sourceTimingMode:Int = 1;
  public var codenameInputLine:Dynamic = null;
  public var copyX:Bool = true; public var copyY:Bool = true; public var copyAngle:Bool = true;
@@ -102,7 +103,7 @@ class Main {{
         ):
             self.assertIn(declaration, self.source)
         constructor = extract_method(self.source, "public function new(strumTime:Float")
-        self.assertIn('if (sourceTimingMode == 1 && codenameInputLine == null)', constructor)
+        self.assertIn('if ((sourceTimingMode == 1 && codenameInputLine == null) || nightmareVisionLegacyGeometry)', constructor)
         self.assertIn('copyAngle = false;', constructor)
         finalizer = extract_method(self.source, 'public function finalizePsychSustainSegment(')
         self.assertIn('offsetX += (startWidth - width) / 2;', finalizer)

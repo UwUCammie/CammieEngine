@@ -8,6 +8,6 @@ class NightmareVisionSustainLayout {
 		return rounded <= 0 ? 0 : rounded + 1;
 	}
 
-	public static function segmentTime(headTime:Float, index:Int, step:Float):Float
-		return headTime + index * step;
+	public static function segmentTime(headTime:Float, index:Int, step:Float, legacy:Bool = false, speed:Float = 1):Float
+		return headTime + index * step + (legacy ? step / (Math.fround(speed * 100) / 100) : 0);
 }

@@ -232,6 +232,7 @@ class PlayState extends SourceSceneFixture {
  var unspawnNotes:Array<Note>=[]; var notes=new Group(); var loaded=0;
  var hxcStrumlineNoteSurface:Dynamic=null;
  var nightmareVisionNoteTypes:Dynamic=null; var nightmareVisionScripts:Dynamic=null;
+ var nightmareVisionLegacyFieldCameras=false; var generatedMusic=true;
  function isPsychReceptorNote(_note:Note):Bool return false;
  function sourceNoteTimingMode():Int return 0;
  var codenameInputLines:Array<Dynamic>=[]; var demoMode=false;

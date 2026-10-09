@@ -95,6 +95,7 @@ class NightmareVisionModchartTransform {
 		beat:Float):Void {
 		if (object == null || position == null) return;
 		object.livePosition = position;
+		object.legacyCoordinates = context.legacyCoordinates;
 		// Historical updateObject only runs modifiers/centering. Gameplay assigns
 		// the resulting position afterward; direct script calls preserve x/y.
 		if (!context.legacyCoordinates) {
@@ -165,10 +166,22 @@ class NightmareVisionModchartTransform {
 		currentFormulaEntry = entry;
 		try { switch (family) {
 			case 'stealth': applyAlpha(context, object);
-			case 'confusion': applyConfusion(object);
+			case 'confusion': applyConfusion(context, object);
+			case 'reverse':
+				if (context.legacyCoordinates && object.kind == NightmareVisionModchartObject.NOTE && object.isSustain && object.legacyClip != null) {
+					if (object.flushLive != null) object.flushLive();
+					object.legacyClip(reverseFactor(context, object.data, object.player), context.noteWidth);
+					if (object.readLive != null) object.readLive();
+				}
 			case 'receptorScroll': applyReceptorScrollObject(context, object);
-			case 'mini': applyScale(object);
-			case 'xmod': applyXMod(object);
+			case 'mini': applyScale(context, object);
+			case 'xmod':
+				applyXMod(object);
+				if (context.legacyCoordinates && object.legacySpeed != null) {
+					if (object.flushLive != null) object.flushLive();
+					object.legacySpeed(object.multSpeed);
+					if (object.readLive != null) object.readLive();
+				}
 			case 'perspectiveDONTUSE': applyPerspectiveScale(object, position);
 			default:
 		} } catch (error:Dynamic) { currentFormulaEntry = previous; throw error; }
@@ -618,9 +631,12 @@ class NightmareVisionModchartTransform {
 		pos.z = z;
 	}
 
-	function applyConfusion(object:NightmareVisionModchartObject):Void {
+	function applyConfusion(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject):Void {
 		var player = object.player;
-		if (object.kind == NightmareVisionModchartObject.NOTE && object.isSustain) return;
+		if (object.kind == NightmareVisionModchartObject.NOTE && object.isSustain) {
+			if (context.legacyCoordinates) object.angle = object.mAngle;
+			return;
+		}
 		if (object.kind != NightmareVisionModchartObject.NOTE
 			&& object.kind != NightmareVisionModchartObject.RECEPTOR) return;
 		var family = 'confusion';
@@ -706,7 +722,7 @@ class NightmareVisionModchartTransform {
 		if (object.wasGoodHit) object.garbage = true;
 	}
 
-	function applyScale(object:NightmareVisionModchartObject):Void {
+	function applyScale(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject):Void {
 		if (object.kind != NightmareVisionModchartObject.NOTE
 			&& object.kind != NightmareVisionModchartObject.RECEPTOR
 			&& object.kind != NightmareVisionModchartObject.NOTE_SPLASH
@@ -720,7 +736,7 @@ class NightmareVisionModchartTransform {
 		var preset = presetX > 0 || presetY > 0;
 		var scaleX = preset && presetX != 0 ? presetX : object.baseScaleX;
 		var scaleY = preset && presetY != 0 ? presetY : object.baseScaleY;
-		var sustainBody = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain && !object.isSustainEnd;
+		var sustainBody = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain && (context.legacyCoordinates || !object.isSustainEnd);
 		var squish = lerp(1, 2, sub(family, 'squish', player) + sub(family, 'squish' + data, player));
 		var stretch = lerp(1, 0.5, sub(family, 'stretch', player) + sub(family, 'stretch' + data, player));
 		if (sustainBody) scaleY = object.baseScaleY;

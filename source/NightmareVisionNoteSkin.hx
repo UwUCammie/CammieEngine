@@ -328,6 +328,8 @@ class NightmareVisionNoteSkin {
 		note.antialiasing = antialiasing;
 		note.resetPsychVisualOffset();
 		note.updateHitbox();
+		if (note.nightmareVisionLegacyGeometry && !note.nightmareVisionSustainInitialized)
+			note.nightmareVisionSustainInitialWidth = note.width;
 		var target = oldAnim != null && note.animation.exists(oldAnim) ? oldAnim
 			: (note.isSustainNote ? 'holdend' : 'Scroll');
 		note.animation.play(target, true);

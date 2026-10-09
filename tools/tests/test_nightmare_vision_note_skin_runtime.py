@@ -63,6 +63,7 @@ import flixel.math.FlxPoint;
 import Strumline.FakeAnimation;
 import Strumline.FakeScale;
 class Note {
+ public var nightmareVisionLegacyGeometry=false; public var nightmareVisionSustainInitialized=false; public var nightmareVisionSustainInitialWidth=0.; public var width=100.;
  public var isSustainNote:Bool=false; public var animation:FakeAnimation=new FakeAnimation();
  public var scale:FakeScale=new FakeScale(); public var baseScale:FlxPoint=new FlxPoint(1,1);
  public var frames:FlxAtlasFrames; public var antialiasing:Bool=true; public var normalSize:Float=1;

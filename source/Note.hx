@@ -323,6 +323,11 @@ class Note extends DynamicSprite {
 	public var sourcePlayfieldAutoPlay:Bool = false;
 	public var sourceTimingMode:Int = 0;
 	@:keep public var visualTime:Float = 0;
+	@:keep public var mAngle:Float = 0;
+	@:keep public var hitsoundDisabled:Bool = false;
+	public var nightmareVisionLegacyGeometry:Bool = false;
+	public var nightmareVisionSustainInitialized:Bool = false;
+	public var nightmareVisionSustainInitialWidth:Float = 0;
 	/** Source chart quant classification is independent of a field's receptor flag. */
 	@:keep public var quant:Int = 4;
 	@:keep public var isQuant:Bool = false;
@@ -349,7 +354,9 @@ class Note extends DynamicSprite {
 	@:keep public function resizeByRatio(ratio:Float):Void {
 		if (isSustainNote && animation != null && animation.curAnim != null
 			&& !animation.curAnim.name.endsWith('end')) {
-			scale.y *= ratio;
+			if (nightmareVisionLegacyGeometry && noteData == 4) return;
+			scale.y *= nightmareVisionLegacyGeometry && noteData > 4 ? ratio / 1.6 : ratio;
+			if (nightmareVisionLegacyGeometry) baseScaleY = scale.y;
 			updateHitbox();
 		}
 	}
@@ -854,7 +861,10 @@ class Note extends DynamicSprite {
 		// MAKE SURE ITS DEFINITELY OFF SCREEN?
 		y -= 2000;
 		this.strumTime = strumTime;
-		if (sourceTimingMode == 2) visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime);
+		if (sourceTimingMode == 2) {
+			visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime);
+			nightmareVisionLegacyGeometry = PlayState.instance.sourceUsesLegacyNoteGeometry();
+		}
 		if (authoredAnimSuffix != null && StringTools.trim(authoredAnimSuffix) != '')
 			animSuffix = StringTools.trim(authoredAnimSuffix);
 
@@ -1307,7 +1317,7 @@ class Note extends DynamicSprite {
 			animation.play('Scroll');
 
 		// trace(prevNote);
-		if (isSustainNote && OptionsHandler.options.downscroll)
+		if (isSustainNote && OptionsHandler.options.downscroll && !nightmareVisionLegacyGeometry)
 			flipY = true;
 		if (isSustainNote && prevNote != null) {
 			noteScore * 0.2;
@@ -1342,7 +1352,7 @@ class Note extends DynamicSprite {
 				coolId = prevNote.coolId;
 			}
 
-			if (sourceTimingMode == 1 && codenameInputLine == null) {
+			if ((sourceTimingMode == 1 && codenameInputLine == null) || nightmareVisionLegacyGeometry) {
 				// Source skin installation happens after construction. Stretch and
 				// center only once its actual atlas/sheet dimensions are available.
 				copyAngle = false;
@@ -1765,7 +1775,7 @@ class Note extends DynamicSprite {
 
 			updateHitbox();
 
-			if ((sourceTimingMode != 1 || codenameInputLine != null) && prevNote.isSustainNote && prevNote.animation != null && prevNote.exists) {
+			if (!nightmareVisionLegacyGeometry && (sourceTimingMode != 1 || codenameInputLine != null) && prevNote.isSustainNote && prevNote.animation != null && prevNote.exists) {
 				prevNote.animation.play('hold');
 
 				prevNote.scale.y *= Conductor.stepCrochet / 100 * 1.5 * PlayState.effectiveScrollSpeed;

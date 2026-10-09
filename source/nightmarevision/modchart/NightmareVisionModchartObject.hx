@@ -42,6 +42,10 @@ class NightmareVisionModchartObject {
 	public var rgbFlash:Float = 0;
 	public var rgbAlpha:Float = 1;
 	public var angle:Float = 0;
+	public var mAngle:Float = 0;
+	public var legacyClip:Null<Float->Float->Void>;
+	public var legacySpeed:Null<Float->Void>;
+	public var legacyCoordinates:Bool = false;
 	public var garbage:Bool = false;
 	public var legacyTypeOffsetX:Float = 0;
 	public var legacyTypeOffsetY:Float = 0;

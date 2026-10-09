@@ -1903,9 +1903,13 @@ class RuntimeSmokeHarness {
 		}
 		if (state.notes == null || state.notes.members == null)
 			return;
+		var captureSustain = false;
+		#if sys
+		captureSustain = Sys.getEnv('CAMMIE_LEGACY_SUSTAIN_SMOKE') == '1';
+		#end
 		for (note in state.notes.members) {
 			if (note == null || !note.exists || !note.visible || !note.active || note.alpha <= 0
-				|| note.isSustainNote || note.frames == null || !note.isOnScreen())
+				|| note.isSustainNote != captureSustain || note.frames == null || !note.isOnScreen())
 				continue;
 			captureNoteRenderReadback(note, visitsStarted);
 			return;
@@ -1994,10 +1998,50 @@ class RuntimeSmokeHarness {
 			});
 			verifyLegacyFieldScale(note);
 			verifyLegacyGeometry(note);
+			verifyLegacySustain(note);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
+		#end
+	}
+
+	/** Source-generated native bodies/caps and post-render raw baseline checks. */
+	static function verifyLegacySustain(note:Note):Void {
+		#if sys
+		if (Sys.getEnv('CAMMIE_LEGACY_SUSTAIN_SMOKE') != '1') return;
+		var state = PlayState.instance;
+		if (note == null || !note.isSustainNote || !note.nightmareVisionSustainInitialized)
+			throw 'Native historical sustain capture missing';
+		var checked = 0;
+		for (entry in state.unspawnNotes) {
+			if (entry == null || !entry.isSustainNote || entry.parent == null) continue;
+			var index = entry.parent.tail.indexOf(entry);
+			var step = entry.nightmareVisionSustainDuration;
+			var expectedTime = entry.parent.strumTime + step * index + step / (Math.fround(state.songSpeed * 100) / 100);
+			if (index < 0 || Math.abs(entry.strumTime - expectedTime) > 0.00001)
+				throw 'Native historical sustain generation timestamp mismatch';
+			var expectedScale = entry.nightmareVisionSustainEnd ? 1 : step / 100 * 1.05 * state.songSpeed;
+			if (Math.abs(entry.baseScaleY - expectedScale) > 0.00001
+				|| Math.abs(entry.defScale.y - expectedScale) > 0.00001)
+				throw 'Native historical raw sustain baseline mismatch: ' + entry.baseScaleY + ' / ' + entry.defScale.y + ' expected ' + expectedScale;
+			if (++checked == 12) break;
+		}
+		if (checked == 0 || note.flipY || !note.hitsoundDisabled || note.copyAngle)
+			throw 'Native historical sustain flags or generation coverage missing';
+		var renderer = @:privateAccess state.nightmareVisionRenderers.get(cast note.playField);
+		var visual = renderer == null ? null : renderer.visualState(note);
+		if (visual == null || !Math.isFinite(visual.position.z) || visual.position.z == 0)
+			throw 'Native historical sustain projection missing';
+		// The source PerspectiveModifier applies 1 / pos.z after ScaleModifier.
+		if (Math.abs(note.baseScaleY - note.defScale.y) > 0.00001)
+			throw 'Native historical snapshot flush overwrote the raw sustain baseline';
+		var expectedRenderedScale = note.defScale.y / visual.position.z;
+		if (Math.abs(note.scale.y - expectedRenderedScale) > 0.00001)
+			throw 'Native historical projected sustain baseline mismatch: scale=' + note.scale.y + ', expected=' + expectedRenderedScale;
+		emit('legacy_sustain_native_verified', {generatedSegments:checked,body:!note.nightmareVisionSustainEnd,
+			scaleY:note.scale.y,rawScaleY:note.baseScaleY,baselineY:note.defScale.y,projectionZ:visual.position.z,mAngle:note.mAngle,angle:note.angle,
+			clip:note.clipRect == null ? null : {y:note.clipRect.y,height:note.clipRect.height},strumTime:note.strumTime});
 		#end
 	}
 

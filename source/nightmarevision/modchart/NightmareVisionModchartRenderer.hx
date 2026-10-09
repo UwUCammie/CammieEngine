@@ -29,6 +29,7 @@ class NightmareVisionModchartRenderer {
 	public var applyVisual:Null<Dynamic->NightmareVisionModchartVisualState->Void>;
 	/** Historical noteskin arrays are live, per-key gameplay position offsets. */
 	public var positionOffsets:Null<String->Int->Bool->NightmareVisionModchartVector>;
+	public var sourceReceptor:Null<Int->Int->Dynamic>;
 	/** Receives features that have no host rendering bridge. */
 	public var onUnsupportedFeature:Null<String->Void>;
 
@@ -69,6 +70,8 @@ class NightmareVisionModchartRenderer {
 			baseline.object.nativeObject = null;
 			baseline.object.flushLive = null;
 			baseline.object.readLive = null;
+			baseline.object.legacyClip = null;
+			baseline.object.legacySpeed = null;
 		}
 		baselines.remove(sprite);
 		warnedUnsupported.remove(sprite);
@@ -81,14 +84,15 @@ class NightmareVisionModchartRenderer {
 		warnedUnsupported = new ObjectMap();
 		applyVisual = null;
 		positionOffsets = null;
+		sourceReceptor = null;
 		onUnsupportedFeature = null;
 		skinOffsets.readLive = null;
 	}
 
 	/**
-		Source PlayState calls getPos/updateObject for the note, then computes the
-		sustain direction and segment length from the exact future endpoint. The
-		caller supplies both endpoint deltas so SV/visual-time behavior is retained.
+		Source PlayState calls getPos/updateObject before its sustain geometry pass.
+		Modern owners stretch to the supplied endpoint; historical owners sample
+		the future visual clock for next-frame orientation without body stretching.
 	*/
 	public function updateNote(context:NightmareVisionModchartContext, note:Dynamic, player:Int,
 		visualDiff:Float, timeDiff:Float, endVisualDiff:Float, endTimeDiff:Float,
@@ -104,14 +108,27 @@ class NightmareVisionModchartRenderer {
 			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
 		if (context.legacyCoordinates) {
-			object.x = position.x + object.sourceOffsetX;
-			object.y = position.y + object.sourceOffsetY;
-			applyPositionOffsets(object);
+			position.x += object.sourceOffsetX;
+			position.y += object.sourceOffsetY;
+			object.x = position.x;
+			object.y = position.y;
 		}
 		copySpriteResult(note, object, position, baseline, NightmareVisionModchartObject.NOTE, !context.legacyCoordinates, context.legacyCoordinates);
 
 		var state = baseline.state;
-		if (object.isSustain) {
+		if (object.isSustain && context.legacyCoordinates) {
+			// Historical source reuses its first getPos scratch vector. Preserve
+			// that alias when modifiers do not return a replacement vector.
+			var future = transform.getPositionInto(context, object, endVisualDiff, endTimeDiff,
+				endBeat, baseline.position, null, object.strumTime);
+			future.x += object.sourceOffsetX;
+			future.y += object.sourceOffsetY;
+			var degrees = Math.atan2(future.y - position.y, future.x - position.x) * 180 / Math.PI;
+			setField(note, 'mAngle', degrees != 0 ? degrees + 90 : 0);
+			state.holdAngle = number(property(note, 'angle'));
+			state.holdSegmentDuration = object.sustainLength;
+			state.isSustainEnd = object.isSustainEnd;
+		} else if (object.isSustain) {
 			var sourceTail = transform.registry.executionNames != null;
 			var tailScratch = sourceTail ? NightmareVisionModchartVector.get() : baseline.tailPosition;
 			if (tailScratch == null) {
@@ -155,6 +172,13 @@ class NightmareVisionModchartRenderer {
 			if (strum != null) applySourceClip(note, strum, context, baseline, state);
 			if (sourceTail || tailPosition != tailScratch) tailPosition.put();
 		}
+		if (context.legacyCoordinates) {
+			object.x = number(property(note, 'x'));
+			object.y = number(property(note, 'y'));
+			applyPositionOffsets(object);
+			setField(note, 'x', object.x);
+			setField(note, 'y', object.y);
+		}
 		applyVisualResult(note, state);
 		return state;
 	}
@@ -184,6 +208,11 @@ class NightmareVisionModchartRenderer {
 		var note = kind == NightmareVisionModchartObject.NOTE;
 		var receptor = kind == NightmareVisionModchartObject.RECEPTOR;
 		var supported = note || receptor || kind == NightmareVisionModchartObject.NOTE_SPLASH || kind == NightmareVisionModchartObject.SUSTAIN_SPLASH;
+		if (family == 'reverse') {
+			if (context.legacyCoordinates && note && property(sprite, 'isSustainNote') == true)
+				applyLegacySourceClip(sprite, position, transform.instanceReverseValue(context, entry, intFieldWithFallbacks(sprite, 'noteData', 'direction', 'ID'), player), context.noteWidth, player);
+			return;
+		}
 		if (family != 'stealth' && family != 'mini' && family != 'perspectiveDONTUSE'
 			&& !(family == 'confusion' && (note || receptor))
 			&& !(note && (family == 'xmod' || family == 'receptorScroll'))) return;
@@ -196,7 +225,8 @@ class NightmareVisionModchartRenderer {
 		if (family != 'perspectiveDONTUSE') object.data = intFieldWithFallbacks(sprite, 'noteData', 'direction', 'ID');
 		if (family == 'confusion' || family == 'mini') {
 			object.isSustain = note && property(sprite, 'isSustainNote') == true;
-			if (family == 'confusion' && object.isSustain) return;
+			if (family == 'confusion' && object.isSustain && !context.legacyCoordinates) return;
+			object.mAngle = number(property(sprite, 'mAngle'));
 		}
 		if (family == 'mini') {
 			object.isSustainEnd = note && property(sprite, 'isSustainEnd') == true;
@@ -351,6 +381,8 @@ class NightmareVisionModchartRenderer {
 				flushLiveObject(sprite, object);
 			};
 			object.readLive = function() readLiveObject(sprite, object, baseline);
+			object.legacyClip = function(reverse, width) applyLegacySourceClip(sprite, object.livePosition, reverse, width, object.player);
+			object.legacySpeed = function(value) setField(sprite, 'multSpeed', value);
 		}
 		// NMV notes carry source-owned miss fades on alphaMod. Other sprite kinds
 		// have separate RGB alpha semantics and retain the source default of 1.
@@ -359,6 +391,7 @@ class NightmareVisionModchartRenderer {
 		object.rgbFlash = 0;
 		object.rgbAlpha = 1;
 		object.angle = 0;
+		object.mAngle = number(property(sprite, 'mAngle'));
 		object.garbage = false;
 		object.spriteOffsetX = 0;
 		object.spriteOffsetY = 0;
@@ -402,6 +435,7 @@ class NightmareVisionModchartRenderer {
 		object.height = number(property(sprite, 'height'), object.height);
 		object.frameHeight = number(property(sprite, 'frameHeight'), object.frameHeight);
 		object.angle = number(property(sprite, 'angle'), object.angle);
+		object.mAngle = number(property(sprite, 'mAngle'));
 		var scale = property(sprite, 'scale');
 		object.scaleX = number(property(scale, 'x'), object.scaleX);
 		object.scaleY = number(property(scale, 'y'), object.scaleY);
@@ -442,7 +476,9 @@ class NightmareVisionModchartRenderer {
 		if (transform.registry.executionEntry == null) return;
 		if (object.kind == NightmareVisionModchartObject.NOTE) {
 			setField(sprite, 'alphaMod', object.alphaMod);
-			setField(sprite, 'multSpeed', object.multSpeed);
+			// Historical XModifier commits its setter at its callback position.
+			// Snapshot flushes must not resize the note again after projection.
+			if (!object.legacyCoordinates) setField(sprite, 'multSpeed', object.multSpeed);
 		}
 		var graphic = property(sprite, 'rgbGraphics');
 		if (graphic != null) {
@@ -498,6 +534,33 @@ class NightmareVisionModchartRenderer {
 		} catch (_:Dynamic) {}
 	}
 
+	/** Historical ReverseModifier clips at its own position in the callback chain. */
+	function applyLegacySourceClip(note:Dynamic, position:NightmareVisionModchartVector, reverse:Float, noteWidth:Float, player:Int):Void {
+		if (sourceReceptor == null) return;
+		var strum = sourceReceptor(player, intFieldWithFallbacks(note, 'noteData', 'direction', 'ID'));
+		if (strum == null || property(strum, 'sustainReduce') != true
+			|| (property(note, 'mustPress') != true && property(note, 'ignoreNote') == true)) return;
+		if (property(note, 'mustPress') == true && property(note, 'wasGoodHit') != true
+			&& !(property(property(note, 'prevNote'), 'wasGoodHit') == true && property(note, 'canBeHit') != true)) return;
+		var y = position.y + number(property(note, 'offsetY'));
+		var scaleY = number(property(property(note, 'scale'), 'y'));
+		var offsetY = number(property(property(note, 'offset'), 'y'));
+		var center = number(property(strum, 'y')) + noteWidth * 0.5;
+		var state = ensureBaseline(note).state;
+		state.clipWidth = number(property(note, 'frameWidth'));
+		var height = number(property(note, 'frameHeight'));
+		if (reverse >= 0.5) {
+			if (!(y - offsetY * scaleY + number(property(note, 'height')) >= center)) return;
+			state.clipHeight = (center - y) / scaleY;
+			state.clipY = height - state.clipHeight;
+		} else {
+			if (!(y + offsetY * scaleY <= center)) return;
+			state.clipY = (center - y) / scaleY;
+			state.clipHeight = height - state.clipY;
+		}
+		applyClipRect(note, state, true);
+	}
+
 	function applySourceClip(note:Dynamic, strum:Dynamic,
 		context:NightmareVisionModchartContext, baseline:NightmareVisionSpriteBaseline,
 		state:NightmareVisionModchartVisualState):Void {
@@ -522,8 +585,8 @@ class NightmareVisionModchartRenderer {
 		applyClipRect(note, state);
 	}
 
-	static function applyClipRect(sprite:Dynamic, state:NightmareVisionModchartVisualState):Void {
-		var rect = field(sprite, 'clipRect');
+	static function applyClipRect(sprite:Dynamic, state:NightmareVisionModchartVisualState, fresh:Bool = false):Void {
+		var rect = fresh ? null : field(sprite, 'clipRect');
 		if (rect == null) {
 			var rectClass = Type.resolveClass('flixel.math.FlxRect');
 			if (rectClass != null) {

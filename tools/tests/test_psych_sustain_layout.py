@@ -61,7 +61,7 @@ class Main {
         count=snippet('var sustainSteps:Int = sustainStepCount(susLength, Conductor.stepCrochet);','\n\n\t\t\t\tsusLength =')
         time_at=source.index('var segmentTime = nightmareVisionScripts != null')
         time=source[time_at:source.index(';',time_at)+1]
-        section=snippet('psychSectionBpm = PsychSustainLayout.sectionBpm','if (nightmareVisionScripts != null && section.changeBPM)')
+        section=snippet('psychSectionBpm = PsychSustainLayout.sectionBpm','if (nightmareVisionScripts != null && !nightmareVisionLegacyFieldCameras && section.changeBPM)')
         normalize=extract_method(source,'public static function normalizeSustainLength(')
         steps=extract_method(source,'public static function sustainStepCount(')
         fixture=r'''
@@ -76,7 +76,7 @@ class Main {
  __STEPS__
  static function generate(mode:Int,length:Float,headTime:Float,changed:Bool,bpm:Float):Dynamic {
   var section={changeBPM:changed,bpm:bpm}; __SECTION__
-  var swagNote=new Note(mode); var nightmareVisionScripts:Dynamic=mode==2?{}:null;
+  var swagNote=new Note(mode); var nightmareVisionScripts:Dynamic=mode>=2?{}:null; var nightmareVisionLegacyFieldCameras=mode==3; var songSpeed=2.;
   var songNotes:Array<Dynamic>=[headTime,0,length];
   __HOLD__
   var susLength=swagNote.sustainLength; var nightmareHoldStep=125.0;
@@ -97,6 +97,7 @@ class Main {
   var native=generate(0,125,5000,false,120); check(native.length==0 && native.times.length==0,'native sentinel changed');
   native=generate(0,156.25,5000,false,120); check(native.times.length==2 && native.times[0]==5125 && native.times[1]==5250,'native ceil/+step placement changed');
   var nv=generate(2,125,6000,false,120); check(nv.length==125 && nv.times.length==2 && nv.times[0]==6000 && nv.times[1]==6125,'NV rounded+one rule changed');
+  var legacy=generate(3,125,6000,false,120); check(legacy.times.length==2 && legacy.times[0]==6062.5 && legacy.times[1]==6187.5,'historical NV first-tail speed offset');
  }
 }
 '''

@@ -40,6 +40,7 @@ class FlxTween {
 class AnimFrame {public var name:String='bluehold'; public function new() {}}
 class Anim {public var curAnim:AnimFrame=new AnimFrame(); public function new() {}}
 class Note {
+ public var nightmareVisionLegacyGeometry=false; public var noteData=0; public var baseScaleY=10.;
  public var sourceTimingMode:Int=1; public var codenameInputLine:Dynamic=null;
  public var isSustainNote:Bool=true; public var animation:Anim=new Anim();
  public var scale:Dynamic={y:10.0}; public var updates:Int=0;
@@ -58,6 +59,7 @@ class Main {
  public var songSpeed(get,set):Float;
  function get_songSpeed():Float return daScrollSpeed;
  public var nightmareVisionScripts:Dynamic=null;
+ public var nightmareVisionLegacyFieldCameras=false; public var generatedMusic=true;
  public var sourceMode:Int=1; function sourceNoteTimingMode():Int return sourceMode;
  public var notes:{members:Array<Note>}={members:[]}; public var unspawnNotes:Array<Note>=[];
  public var noteKillOffset:Float=350; public var playbackRate:Float=1;
@@ -95,7 +97,12 @@ class Main {
   near(body.scale.y,60,'fixed target tween no stretch'); near(daScrollSpeed,10,'fixed target tween retains authored speed');
   dynamicScrollTarget=0;
   game.nightmareVisionScripts={}; game.songSpeed=20; near(body.scale.y,60,'NV exclusion');
-  game.nightmareVisionScripts=null; game.sourceMode=0; game.songSpeed=30; near(body.scale.y,60,'native setter exclusion');
+  game.nightmareVisionLegacyFieldCameras=true; body.nightmareVisionLegacyGeometry=true;
+  game.songSpeed=40; near(body.scale.y,120,'historical body shared speed resizing');near(body.baseScaleY,120,'historical raw baseline');
+  near(cap.scale.y,10,'historical cap remains unchanged');
+  game.generatedMusic=false;game.songSpeed=80;near(body.scale.y,120,'historical generation gate');game.generatedMusic=true;
+  game.nightmareVisionLegacyFieldCameras=false;
+  game.nightmareVisionScripts=null; game.sourceMode=0; game.songSpeed=30; near(body.scale.y,120,'native setter exclusion');
   game.tweenScrollSpeed({scroll:40.,absolute:true,duration:4.});
   check(FlxTween.target==Main && Reflect.hasField(FlxTween.props,'daScrollSpeed'),'native tween unchanged');
  }

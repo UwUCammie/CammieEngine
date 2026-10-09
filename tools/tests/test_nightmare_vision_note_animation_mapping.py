@@ -66,6 +66,7 @@ class FakeAnimation {
 }
 class FakeScale { public var x:Float=1; public var y:Float=1; public function new() {} public function set(x:Float,y:Float):Void {this.x=x;this.y=y;} }
 class Note {
+ public var nightmareVisionLegacyGeometry=false; public var nightmareVisionSustainInitialized=false; public var nightmareVisionSustainInitialWidth=0.;
  public var isSustainNote:Bool;
  public var animation:FakeAnimation;
  public var scale:FakeScale=new FakeScale();
