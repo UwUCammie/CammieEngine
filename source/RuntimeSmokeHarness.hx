@@ -2001,6 +2001,7 @@ class RuntimeSmokeHarness {
 			verifyLegacySustain(note);
 			verifyHistoricalPixelNotes(note);
 			verifyHistoricalNoteAnimations();
+			RuntimeSmokeLegacySplash.verify(note);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));

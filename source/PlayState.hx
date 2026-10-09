@@ -448,7 +448,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function nightmareVisionSustainSplashOwner():NightmareVisionSustainSplash.NightmareVisionSustainSplashOwner {
 		return {spriteOwner:NightmareVisionSpriteRegistry.capture(nightmareVisionPaths), skinForID:nightmareVisionSourceSkinRegistry().getSkinFromID,
-			noteSplashType:function() return nightmareVisionPrefs.view.noteSplashType};
+			noteSplashType:function() return nightmareVisionPrefs.view.noteSplashType,
+			legacySplashTexture:function() return SONG.splashSkin,
+			legacyAntialiasing:function() return nightmareVisionPrefs.view.globalAntialiasing};
 	}
 	function initializeNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {
 		if (field.ownedSplashLayer != null) return;
@@ -457,7 +459,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var layer = new FlxTypedGroup<FlxBasic>();
 		var sustain = new NightmareVisionSustainSplash(0, 0, 0, 0, nightmareVisionSustainSplashOwner());
 		sustain.alpha = 0; sustains.add(sustain);
-		var tap = new NightmareVisionNoteSplash(100, 100, 0, field.player, nightmareVisionSustainSplashOwner());
+		var tap:NightmareVisionNoteSplash = nightmareVisionLegacyFieldCameras
+			? new NightmareVisionLegacyNoteSplash(100, 100, 0, nightmareVisionSustainSplashOwner())
+			: new NightmareVisionNoteSplash(100, 100, 0, field.player, nightmareVisionSustainSplashOwner());
 		tap.alpha = 0; taps.add(tap);
 		layer.add(sustains); layer.add(taps); layer.cameras = [camHUD];
 		field.grpSusSplashes = sustains; field.grpNoteSplashes = taps;
@@ -655,6 +659,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// FlxTypedGroup children inherit instead, until a script overrides them.
 			if (field.legacyGroupCameras && !strum.nightmareVisionSource) strum.cameras = null;
 			strum.nightmareVisionSource = true;
+			if (field.legacyGroupCameras) strum.parent = field;
 			strum.isQuant = field.quants;
 			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
 			strum.alphaMult = field.alpha;
@@ -1313,6 +1318,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return new NightmareVisionNoteSplash(args.length > 0 ? args[0] : 0, args.length > 1 ? args[1] : 0,
 				args.length > 2 ? args[2] : 0, args.length > 3 ? args[3] : 0, nightmareVisionSustainSplashOwner());
 		}, null);
+		interp.bindImport('gameObjects.NoteSplash', NightmareVisionLegacyNoteSplash);
+		interp.sourceClassScope().bindRuntimeClass('gameObjects.NoteSplash', NightmareVisionLegacyNoteSplash);
+		interp.bindConstructorFactory(NightmareVisionLegacyNoteSplash, function(args:Array<Dynamic>):Dynamic {
+			return new NightmareVisionLegacyNoteSplash(args.length > 0 ? args[0] : 0, args.length > 1 ? args[1] : 0,
+				args.length > 2 ? args[2] : 0, nightmareVisionSustainSplashOwner());
+		}, null);
+		if (nightmareVisionLegacyFieldCameras) interp.variables.set('NoteSplash', NightmareVisionLegacyNoteSplash);
 		interp.variables.set('SustainSplash', NightmareVisionSustainSplash);
 		interp.bindImport('funkin.objects.note.SustainSplash', NightmareVisionSustainSplash);
 		interp.sourceClassScope().bindRuntimeClass('funkin.objects.note.SustainSplash', NightmareVisionSustainSplash);
@@ -25644,16 +25656,22 @@ void main(void) {
 			var noteField:NightmareVisionPlayFieldView = cast note.playField;
 			var strum:Strumline.StrumNote = noteField.members[note.noteData];
 			if (strum != null) {
+				var selected = nightmareVisionLegacyFieldCameras
+					? NightmareVisionLegacyNoteSkin.splash(noteskinScript, nightmareVisionKeyCount(), nightmareVisionPrefs.view, note.noteData, note) : null;
 				var group:FlxTypedGroup<NightmareVisionNoteSplash> = cast field.grpNoteSplashes;
 				var splash = group.recycle(NightmareVisionNoteSplash,
-					function() return new NightmareVisionNoteSplash(0, 0, 0, 0, nightmareVisionSustainSplashOwner()));
+					function() return nightmareVisionLegacyFieldCameras
+						? new NightmareVisionLegacyNoteSplash(0, 0, 0, nightmareVisionSustainSplashOwner())
+						: new NightmareVisionNoteSplash(0, 0, 0, 0, nightmareVisionSustainSplashOwner()));
 				if (nightmareVisionLegacyFieldCameras) {
-					var texture = note.noteSplashTexture;
-					if (texture == null) texture = field._skin.splashTexture;
-					splash.setupLegacyNoteSplash(strum, note, texture, field);
+					var offset = selected.offsets[note.noteData];
+					splash.setupLegacyCoordinates(strum.x + offset.x, strum.y + offset.y, note.noteData, selected.texture,
+						selected.hue, selected.saturation, selected.brightness, noteField);
 				} else splash.setupNoteSplash(strum, note, field._skin.splashTexture, note.rgbGraphics, field);
 				group.add(splash);
-				callNightmareVision('onSpawnNoteSplash', [splash, note]);
+				if (nightmareVisionLegacyFieldCameras)
+					callNightmareVision('spawnNoteSplash', [splash, note.noteData, note, note.mustPress, false]);
+				else callNightmareVision('onSpawnNoteSplash', [splash, note]);
 				return note.noteSplash = splash;
 			}
 		}

@@ -530,6 +530,11 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 
 @:build(NightmareVisionSpriteMacro.build())
 class StrumNote extends FlxSprite {
+	/** Historical receptor spacing follows its live source parent. */
+	@:keep public var parent:NightmareVisionPlayFieldView;
+	@:keep public var swagWidth(get, never):Float;
+	function get_swagWidth():Float return parent == null ? Note.swagWidth : parent.swagWidth;
+
 	/** Persistent source scale baseline, refreshed only after source skin loading. */
 	var nightmareVisionBaseScalePoint:FlxPoint;
 	@:keep public var baseScale(get, never):FlxPoint;

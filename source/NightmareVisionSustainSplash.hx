@@ -6,6 +6,8 @@ using StringTools;
 typedef NightmareVisionSustainSplashOwner = {
 	var skinForID:Int->NightmareVisionNoteSkin;
 	var noteSplashType:Void->String;
+	@:optional var legacySplashTexture:Void->String;
+	@:optional var legacyAntialiasing:Void->Bool;
 	@:optional var spriteOwner:Null<NightmareVisionSpriteOwner>;
 }
 

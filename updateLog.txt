@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Restore historical NV splash constructors, coordinate/HSL setup and per-spawn noteskin callbacks through shared sprite and pool services, preserving modern NV behavior.
 	- Restore historical NV custom note animation hooks and source super behavior through shared script execution, retaining custom frames, playback settings and pixel reload ordering.
 	- Apply historical NV pixel-stage metadata before scripts and note generation, share live script/reflection property writes, and restore the authored mode during state exit.
 	- Load historical NV pixel note/receptor sheets through the shared Psych-family frame loader, preserving source animation indices, hold baselines, reload offsets and owner-only quant graphics.

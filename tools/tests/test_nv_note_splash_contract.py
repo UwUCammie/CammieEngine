@@ -66,7 +66,7 @@ class Main {
  static function main(){for(i in 0...12){var expected=scenario(false,i),actual=scenario(true,i);check(actual==expected,"scenario "+i+"\n"+actual+"\nexpected\n"+expected);}
   var legacy=new NightmareVisionNoteSplash(0,0,0,0,{skinForID:NoteUtil.getSkinFromID,noteSplashType:function()return "Both"});
   var note=new Note();note.noteData=2;note.noteSplashHue=.25;note.noteSplashSat=-.2;note.noteSplashBrt=.4;
-  var field=new NightmareVisionPlayFieldView();var receptor=new Strumline.StrumNote();field.scale=2;field.swagWidth=224;
+  var field=new NightmareVisionPlayFieldView();var receptor=new Strumline.StrumNote();field.scale=2;field.swagWidth=224;for(s in field.members)s.swagWidth=224;
   legacy.setupLegacyNoteSplash(receptor,note,"legacy-splash",field);
   check(legacy.colorSwap.hue==.25&&legacy.colorSwap.saturation==-.2&&legacy.colorSwap.lightness==.4,"legacy saved HSL");
   check(legacy.scale.x==3&&legacy.x==receptor.x-224*.95,"source field scalar and lane spacing");
@@ -74,7 +74,7 @@ class Main {
   check(legacy.alpha==1&&legacy.antialiasing&&legacy.offset.x==-20&&legacy.offset.y==-20,"legacy alpha and offsets");
   field.scale=.5;var swap=legacy.colorSwap;legacy.kill();legacy.revive();note.noteData=0;note.noteSplashHue=0;note.noteSplashSat=0;note.noteSplashBrt=0;
   legacy.setupLegacyNoteSplash(receptor,note,"other-splash",field);
-  check(legacy.colorSwap==swap&&swap.hue==0&&swap.saturation==0&&swap.lightness==0&&legacy._textureLoaded=="other-splash","recycled splash resets saved color and texture");
+  check(legacy.colorSwap==swap&&swap.hue==0&&swap.saturation==0&&swap.lightness==0&&legacy.textureLoaded==null&&Paths.loads[Paths.loads.length-1]=="other-splash","recycled splash resets saved color and texture");
   check(legacy.scale.x==1.5,"source splash reuses its existing scale across setup");
   legacy.destroy();check(legacy.colorSwap==null,"legacy shader teardown");
   var s=new NightmareVisionNoteSplash(0,0,0,0,{skinForID:NoteUtil.getSkinFromID,noteSplashType:function()return "Both"});s.draw();check(s.rgbGraphics.applied==1&&s.shader==s.rgbGraphics,"native RGB draw bridge");var p=s.baseScale;s.destroy();check(p.puts==1&&s.skin==null&&s.rgbGraphics==null,"shared offset ownership teardown");

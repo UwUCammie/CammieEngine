@@ -65,6 +65,8 @@ class Main {
   var layer=new FlxTypedGroup<FlxBasic>();layer.add(g);var taps=new FlxTypedGroup<FlxBasic>();layer.add(taps);f.splashLayer=layer;f.grpSusSplashes=new FlxTypedGroup<NightmareVisionSustainSplash>();ok(layer.members[0]==g&&layer.members[1]==taps,'public group replacement does not rewrite children');f.splashLayer=new FlxTypedGroup<FlxBasic>();ok(layer.members[0]==g&&f.splashLayer!=layer,'public layer pointer does not rewrite captured container');
  }
 }'''}
+  files['NightmareVisionLegacyNoteSplash.hx']='class NightmareVisionLegacyNoteSplash extends NightmareVisionNoteSplash {public function new(x=0,y=0,n=0,?owner:Dynamic){super(x,y,n,0,owner);}}'
+  files['Host.hx']=files['Host.hx'].replace('class Host {', 'class Host {public var nightmareVisionLegacyFieldCameras=false;')
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    work=Path(tmp)
    for name,s in files.items():

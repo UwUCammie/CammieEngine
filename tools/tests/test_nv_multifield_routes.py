@@ -141,6 +141,7 @@ class Main {
   check(f0.strumline==h.playerStrums && f1.strumline==h.enemyStrums, 'legacy source fields');
   f0.legacyGroupCameras=true;f0.members[0].nightmareVisionSource=false;h.nightmareVisionConfigureFieldReceptors(f0);
   check(f0.members[0].cameras==null,'source receptors clear only initial native camera assignment');
+  check(f0.members[0].parent==f0,'historical receptor exposes live source parent');
   var explicitCamera=['authored'];f0.members[0].cameras=explicitCamera;h.configureNightmareVisionStrumlines();
   check(f0.members[0].cameras==explicitCamera,'later field configuration preserves explicit child camera');
   check(h.nightmareVisionLegacyReceptors.player==f0&&h.nightmareVisionLegacyReceptors.opponent==f1,'default generation publishes historical field pointers');
@@ -219,6 +220,7 @@ class Strumline {
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }
 }
 class StrumNote {
+ public var parent:NightmareVisionPlayFieldView;
  public var x:Float=0;public var y:Float=0;
  public var width:Float=112;public function setGraphicSize(w:Int):Void width=w;public function updateHitbox():Void {}
  public var colorSwap:Main.NightmareVisionLegacyColorSwap;

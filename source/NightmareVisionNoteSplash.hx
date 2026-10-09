@@ -16,18 +16,30 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 	public var player:Int = 0;
 	public var skin:NightmareVisionNoteSkin;
 	public var _textureLoaded:Null<String>;
+	public var historical(default, null):Bool = false;
+	@:keep public var textureLoaded:Null<String>;
 	var owner:NightmareVisionNoteSplashOwner;
 	var _note:Note;
 	var _strum:StrumNote;
 
 	public function new(x:Float = 0, y:Float = 0, noteData:Int = 0, player:Int = 0,
-		?owner:NightmareVisionNoteSplashOwner) {
+		?owner:NightmareVisionNoteSplashOwner, historical:Bool = false) {
 		super(x, y);
 		if (owner == null) throw '[nightmare-vision-note-splash] Missing selected owner';
 		this.owner = owner;
+		this.historical = historical;
 		NightmareVisionSpriteMethods.bind(this, owner.spriteOwner);
 		data = noteData;
 		this.player = player;
+		if (historical) {
+			skin = owner.skinForID(player);
+			loadLegacyAnims(legacyTexture());
+			colorSwap = new NightmareVisionHSLColorSwap();
+			rgbGraphics.legacyHSL = colorSwap;
+			setupLegacyCoordinates(x, y, noteData);
+			antialiasing = owner.legacyAntialiasing == null ? true : owner.legacyAntialiasing();
+			return;
+		}
 		loadAnims(owner.skinForID(player).splashTexture);
 		var selected = owner.skinForID(player);
 		if (selected != null) {
@@ -37,6 +49,7 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 	}
 
 	function loadAnims(texture:String):Void {
+		if (historical) { loadLegacyAnims(texture); return; }
 		var selected = owner.skinForID(player);
 		frames = selected.loadNoteSplashFrames(texture);
 		var metadata = selected.splashAnims;
@@ -54,8 +67,20 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 		_textureLoaded = texture;
 	}
 
-	public function setupNoteSplash(strum:StrumNote, ?note:Note, ?texture:String,
-		?graphicsInput:NightmareVisionRGBGraphics, ?field:NightmareVisionPlayFieldView):Void {
+	/** Both source signatures share the native sprite and dispatch by source class identity. */
+	public function setupNoteSplash(first:Dynamic, ?second:Dynamic, ?third:Dynamic,
+		?fourth:Dynamic, ?fifth:Dynamic, saturation:Float = 0, brightness:Float = 0,
+		?legacyField:NightmareVisionPlayFieldView):Void {
+		if (historical) {
+			setupLegacyCoordinates(first, second, third == null ? 0 : third, fourth,
+				fifth == null ? 0 : fifth, saturation, brightness, legacyField);
+			return;
+		}
+		var strum:StrumNote = cast first;
+		var note:Note = cast second;
+		var texture:String = cast third;
+		var graphicsInput:NightmareVisionRGBGraphics = cast fourth;
+		var field:NightmareVisionPlayFieldView = cast fifth;
 		rgbGraphics.legacyHSL = null;
 		_note = note;
 		_strum = strum;
@@ -71,31 +96,48 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 		if (!field.trackNoteSplashes) positionOnReceptor();
 	}
 
-	/** Historical PlayField uses HSL splash values captured after note-type setup. */
-	public function setupLegacyNoteSplash(strum:StrumNote, note:Note, texture:String,
-		field:NightmareVisionPlayFieldView):Void {
-		_note = note; _strum = strum; data = note.noteData; player = field.player;
-		skin = owner.skinForID(player);
+	function legacyTexture():String {
+		var texture = owner.legacySplashTexture == null ? null : owner.legacySplashTexture();
+		return texture == null || texture.length == 0 ? 'noteSplashes' : texture;
+	}
+
+	function loadLegacyAnims(texture:String):Void {
+		frames = owner.skinForID(player).loadNoteSplashFrames(texture);
+		var prefixes = ['note splash purple 1', 'note splash blue 1', 'note splash green 1',
+			'note splash red 1', 'note splash purple 1', 'LSLAMSPLASH', 'RSLAMSPLASH'];
+		for (lane in 0...prefixes.length) for (variant in 1...3)
+			animation.addByPrefix('note' + lane + '-' + variant, prefixes[lane], lane >= 5 ? 12 : 24, false);
+		// The pinned historical loadAnims never assigns textureLoaded: repeated setup reloads.
+	}
+
+	public function setupLegacyCoordinates(x:Float, y:Float, lane:Int = 0, ?texture:String,
+		hue:Float = 0, saturation:Float = 0, brightness:Float = 0, ?field:NightmareVisionPlayFieldView):Void {
+		data = lane;
+		if (field != null) {
+			var spacing:Float = Reflect.getProperty(field.members[lane], 'swagWidth');
+			setPosition(x - spacing * 0.95, y - spacing * 0.95);
+		} else setPosition(x - Note.swagWidth * 0.95, y - Note.swagWidth);
+		if (texture == null) texture = legacyTexture();
+		if (textureLoaded != texture) loadLegacyAnims(texture);
+		if (field != null) scale.set(scale.x * field.scale, scale.y * field.scale);
+		baseScale.copyFrom(scale);
 		if (colorSwap == null) colorSwap = new NightmareVisionHSLColorSwap();
 		rgbGraphics.legacyHSL = colorSwap;
-		if (_textureLoaded != texture || animation.getByName('note0-1') == null) {
-			frames = skin.loadNoteSplashFrames(texture);
-			var prefixes = ['note splash purple 1', 'note splash blue 1', 'note splash green 1',
-				'note splash red 1', 'note splash purple 1', 'LSLAMSPLASH', 'RSLAMSPLASH'];
-			for (lane in 0...prefixes.length) for (variant in 1...3)
-				animation.addByPrefix('note' + lane + '-' + variant, prefixes[lane], lane >= 5 ? 12 : 24, false);
-			_textureLoaded = texture;
-		}
-		setPosition(strum.x - field.swagWidth * 0.95, strum.y - field.swagWidth * 0.95);
-		scale.set(scale.x * field.scale, scale.y * field.scale); baseScale.copyFrom(scale);
 		alpha = 1; antialiasing = true;
-		colorSwap.hue = note.noteSplashHue;
-		colorSwap.saturation = note.noteSplashSat;
-		colorSwap.lightness = note.noteSplashBrt;
-		animation.play('note' + data + '-' + flixel.FlxG.random.int(1, 2), true);
+		colorSwap.hue = hue; colorSwap.saturation = saturation; colorSwap.lightness = brightness;
+		animation.play('note' + lane + '-' + flixel.FlxG.random.int(1, 2), true);
 		offset.set(-20, -20);
-		if (animation.curAnim != null) animation.curAnim.frameRate = 24 + flixel.FlxG.random.int(-2, 2);
+		if (animation.curAnim == null) throw '[nightmare-vision-note-splash] Missing historical animation for lane ' + lane + ' in ' + texture;
+		animation.curAnim.frameRate = 24 + flixel.FlxG.random.int(-2, 2);
 		rgbGraphics.apply(this);
+	}
+
+	/** Existing native callers delegate to the same historical coordinate setup. */
+	public function setupLegacyNoteSplash(strum:StrumNote, note:Note, texture:String,
+		field:NightmareVisionPlayFieldView):Void {
+		_note = note; _strum = strum; player = field.player; skin = owner.skinForID(player);
+		setupLegacyCoordinates(strum.x, strum.y, note.noteData, texture,
+			note.noteSplashHue, note.noteSplashSat, note.noteSplashBrt, field);
 	}
 
 	public function setColors(?colors:Array<Int>):Void {

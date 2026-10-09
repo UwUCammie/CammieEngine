@@ -25,6 +25,23 @@ class NightmareVisionLegacyNoteSkin {
 		return out;
 	}
 
+	/** Source splash hooks are evaluated for each spawn, using fresh per-key offsets. */
+	public static function splash(script:NightmareVisionScriptModule, keys:Int, prefs:Dynamic,
+		lane:Int, note:Dynamic):{texture:String, offsets:Array<FlxPoint>, hue:Float, saturation:Float, brightness:Float} {
+		var points = offsets(keys);
+		var texture = 'noteSplashes';
+		var selected:Dynamic = script == null ? null : script.callValue('noteSplash', [points]);
+		if (selected != null) texture = cast selected;
+		var allowed:Dynamic = script == null ? null : script.callValue('quants', []);
+		if ((prefs.noteSkin == 'Quants' || prefs.noteSkin == 'QuantStep') && allowed == true)
+			texture = 'QUANT' + texture;
+		var hsv:Array<Dynamic> = prefs.arrowHSV[lane % 4];
+		return {texture:texture, offsets:points,
+			hue:note == null ? hsv[0] / 360 : note.noteSplashHue,
+			saturation:note == null ? hsv[1] / 100 : note.noteSplashSat,
+			brightness:note == null ? hsv[2] / 100 : note.noteSplashBrt};
+	}
+
 	public function new(path:Null<String>, load:String->NightmareVisionScriptModule,
 		register:NightmareVisionScriptModule->Void, notes:Array<FlxPoint>, receptors:Array<FlxPoint>, sustains:Array<FlxPoint>) {
 		if (path == null) return;
