@@ -2077,6 +2077,9 @@ class RuntimeSmokeHarness {
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }
+		#if cpp
+		if (RuntimeLegacyVideoProbe.enabled()) { RuntimeLegacyVideoProbe.tick(); return; }
+		#end
 		if (RuntimeMappedMediaProbe.enabled()) { RuntimeMappedMediaProbe.tick(); return; }
 		if (RuntimeImportAvailabilityProbe.enabled()) { RuntimeImportAvailabilityProbe.tick(); return; }
 		if (RuntimeNvFamilyProbe.enabled()) { RuntimeNvFamilyProbe.tick(); return; }
