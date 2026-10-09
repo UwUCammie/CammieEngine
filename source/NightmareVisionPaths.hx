@@ -196,6 +196,11 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		return coreLibraryPath(file, currentLevel);
 	}
 
+	/** Same-owner reloads do not follow mutable family selection. */
+	public function getOwnerCorePath(file:String):String {
+		return coreLibraryPath(file, currentLevel);
+	}
+
 	function coreLibraryPath(file:String, level:Null<String>):String {
 		// Validate before constructing IDs, including misses and explicit setters.
 		var preload = scopedPath(CORE_DIRECTORY, file);

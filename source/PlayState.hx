@@ -10263,9 +10263,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		for (base in [nightmareVisionPaths.root, nightmareVisionPaths.CORE_DIRECTORY]) {
 			var png:String = null;
 			var xml:String = null;
-			try png = nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.png')
+			try png = base == nightmareVisionPaths.CORE_DIRECTORY
+				? nightmareVisionPaths.getOwnerCorePath('images/' + clean + '.png')
+				: nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.png')
 			catch (_:Dynamic) {}
-			try xml = nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.xml')
+			try xml = base == nightmareVisionPaths.CORE_DIRECTORY
+				? nightmareVisionPaths.getOwnerCorePath('images/' + clean + '.xml')
+				: nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.xml')
 			catch (_:Dynamic) {}
 			if (png == null || xml == null || !nightmareVisionPathIsWithin(png, base)
 				|| !nightmareVisionPathIsWithin(xml, base)) continue;
