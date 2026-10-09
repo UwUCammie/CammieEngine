@@ -13,7 +13,7 @@ class SourceCharacterDanceLifecycleTest(unittest.TestCase):
     def test_dialect_speed_gate_and_exact_alt_idle_dispatch(self):
         source = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         methods = '\n'.join(method(source, marker) for marker in (
-            'function set_gfSpeed(', 'function applySourceAltIdleAnimation(',
+            'function set_gfSpeed(', 'function sourceAnimationEventActor(', 'function applySourceAltIdleAnimation(',
             'function girlfriendDanceDue(', 'function characterDanceDue(',
         ))
         self.assertIn('public var gfSpeed(default, set):Int = 1;', source)
@@ -25,7 +25,8 @@ class Character {
  public var danceEveryNumBeats(get,set):Int;
  function get_danceEveryNumBeats():Int return danceEvery;
  function set_danceEveryNumBeats(value:Int):Int return danceEvery = value;
- public var animation:Dynamic = {};
+ public var animation:Dynamic = {curAnim:{name:"idle"}};
+ public var stunned=false;
  public var codenameLiveDefinition:Dynamic = null;
  public var idleSuffix:String = '';
  public var recalculations:Int = 0;
@@ -36,6 +37,7 @@ class NightmareVisionCharacterGroup { public function new() {} }
 class Main {
  public var gfSpeed(default,set):Int = 1;
  var nightmareVisionScripts:Dynamic = null;
+ var nightmareVisionLegacyFieldCameras=false;
  var gfGroup:NightmareVisionCharacterGroup;
  var sourceScoreOwner:Bool = false;
  var sourceScoreNightmare:Bool = false;

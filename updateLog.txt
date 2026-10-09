@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV actor events now share animation/Hey/idle helpers with source target rules, and repeated GF speed writes preserve the authored cadence instead of compounding it.
 - Historical NV chained camera events now use live source counters, beat intervals and callback order through the shared event dispatcher, including authored shake timing and script-visible state.
 - Historical NV camera/HUD events now preserve source defaults, zoom limits, live tween handles and replacement behavior through shared camera, tween and HUD services.
 - Historical NV KillNotes now clears active notes through shared retirement and replaces pending queues with source callback order and field ownership preserved.

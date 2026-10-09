@@ -1773,7 +1773,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		switch (type) {
 			case 0:boyfriend = actor;
 			case 1:dad = actor;
-			case 2:gf = actor; gf.danceEveryNumBeats *= gfSpeed;
+			case 2:gf = actor; if (!nightmareVisionLegacyFieldCameras) gf.danceEveryNumBeats *= gfSpeed;
 		}
 		updateNightmareVisionHoldClaims();
 		refreshCharacterHUD();
@@ -3277,9 +3277,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	public var gfSpeed(default, set):Int = 1;
 	function set_gfSpeed(value:Int):Int {
-		// NV's setter multiplies the live actor on every write, including a
+		// Modern NV's setter multiplies the live actor on every write, including a
 		// repeated value. Other dialects retain the host's stored speed gate.
-		if (nightmareVisionScripts != null && gfGroup != null && gf != null)
+		if (nightmareVisionScripts != null && !nightmareVisionLegacyFieldCameras && gfGroup != null && gf != null)
 			gf.danceEveryNumBeats *= value;
 		return gfSpeed = value;
 	}
@@ -16141,7 +16141,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					dad.dance();
 				if (opponentPlayer && boyfriend.codenameLiveDefinition == null)
 					boyfriend.dance();
-				if (gf.codenameLiveDefinition == null) gf.dance();
+				if (nightmareVisionLegacyFieldCameras ? girlfriendDanceDue(tmr.loopsLeft) : gf.codenameLiveDefinition == null) gf.dance();
 
 				var introAssets:Map<String, Array<String>> = new Map<String, Array<String>>();
 
@@ -18496,7 +18496,8 @@ void main(void) {
 			return;
 		}
 
-		if (nightmareVisionLegacyFieldCameras && historicalNightmareCameraEvent(e.name, e.v1, e.v2)) {
+		if (nightmareVisionLegacyFieldCameras && (historicalNightmareCameraEvent(e.name, e.v1, e.v2)
+			|| NightmareVisionLegacyActorEvents.apply(this, e.name, e.v1, e.v2))) {
 			dispatchPsychCompiledStageEvent(psychStageEvent);
 			return;
 		}
@@ -18680,12 +18681,7 @@ void main(void) {
 				}
 			case 'Play Animation':
 				var t = charForEventTarget(e.v2);
-				if (t != null) {
-					t.playAnim(e.v1, true);
-					// Nightmare Vision's event holds this animation through its last
-					// frame; native beat dancing and note singing consult specialAnim.
-					if (nightmareVisionScripts != null) t.specialAnim = true;
-				}
+				playSourceEventAnimation(t, e.v1, nightmareVisionScripts != null);
 			case 'Set Health Icon':
 				applyCompatHealthIcon(e.v1, e.v2, e.v3);
 			case 'Change Character':
@@ -18719,20 +18715,7 @@ void main(void) {
 				if (selectedPsychSkinRoot() != null) {
 					var target = PsychHeyEventCompat.target(e.v1);
 					var duration = PsychHeyEventCompat.duration(e.v2);
-					if (target != 0) {
-						var cheerActor = dad != null && dad.curCharacter != null
-							&& dad.curCharacter.startsWith('gf') ? dad : gf;
-						if (cheerActor != null) {
-							cheerActor.playAnim('cheer', true);
-							cheerActor.specialAnim = true;
-							cheerActor.heyTimer = duration;
-						}
-					}
-					if (target != 1 && boyfriend != null) {
-						boyfriend.playAnim('hey', true);
-						boyfriend.specialAnim = true;
-						boyfriend.heyTimer = duration;
-					}
+					sourceHeyEvent(target, duration);
 				} else if (e.v1 != null && e.v1.toLowerCase() == 'bf')
 					boyfriend.playAnim('hey', true);
 				else if (gf != null && gf.animation.getByName('cheer') != null)
@@ -26222,24 +26205,45 @@ void main(void) {
 	}
 
 
-	/** Source target selection and suffix writes do not use Kade's reset aliases. */
-	function applySourceAltIdleAnimation(value1:String, value2:String):Bool {
-		if (!sourceScoreOwner) return false;
-		var actor:Character = dad;
-		var target = value1 == null ? '' : value1.toLowerCase();
-		// Psych trims target names; NV deliberately compares the raw name.
-		if (!sourceScoreNightmare) target = StringTools.trim(target);
-		switch (target) {
-			case 'gf' | 'girlfriend': actor = gf;
-			case 'boyfriend' | 'bf': actor = boyfriend;
-			default:
-				var index = value1 == null ? null : Std.parseInt(value1);
-				switch (index) {
-					case 1: actor = boyfriend;
-					case 2: actor = gf;
-					default:
-				}
+	function playSourceEventAnimation(actor:Character, name:String, special:Bool):Void {
+		if (actor == null) return;
+		actor.playAnim(name, true);
+		if (special) actor.specialAnim = true;
+	}
+
+	function sourceHeyEvent(target:Int, duration:Float, strict:Bool = false):Void {
+		if (target != 0) {
+			var cheerActor = (strict || dad != null && dad.curCharacter != null)
+				&& dad.curCharacter.startsWith('gf') ? dad : gf;
+			if (cheerActor != null) {
+				playSourceEventAnimation(cheerActor, 'cheer', true);
+				cheerActor.heyTimer = duration;
+			}
 		}
+		if (target != 1 && (strict || boyfriend != null)) {
+			// Historical source requires its boyfriend slot when this target is used.
+			if (strict && boyfriend == null) throw 'Historical Hey event requires boyfriend';
+			playSourceEventAnimation(boyfriend, 'hey', true);
+			boyfriend.heyTimer = duration;
+		}
+	}
+
+	function sourceAnimationEventActor(value:String, trim:Bool, strict:Bool = false):Character {
+		var target = !strict && value == null ? '' : value.toLowerCase();
+		if (trim) target = StringTools.trim(target);
+		return switch (target) {
+			case 'gf' | 'girlfriend': gf;
+			case 'boyfriend' | 'bf': boyfriend;
+			default:
+				var index = value == null ? null : Std.parseInt(value);
+				switch (index) {case 1: boyfriend;case 2: gf;default: dad;}
+		};
+	}
+
+	/** Source target selection and suffix writes do not use Kade's reset aliases. */
+	function applySourceAltIdleAnimation(value1:String, value2:String, strict:Bool = false):Bool {
+		if (!sourceScoreOwner && !strict) return false;
+		var actor = sourceAnimationEventActor(value1, !sourceScoreNightmare && !strict, strict);
 		if (actor != null) {
 			actor.idleSuffix = value2;
 			actor.recalculateDanceIdle();
@@ -26248,7 +26252,11 @@ void main(void) {
 	}
 
 	function girlfriendDanceDue(beat:Int):Bool {
-		// NV already folds gfSpeed into the actor's live interval in its setter.
+		if (nightmareVisionLegacyFieldCameras) {
+			return gf != null && beat % Math.round(gfSpeed * gf.danceEveryNumBeats) == 0
+				&& gf.animation.curAnim != null && !gf.animation.curAnim.name.startsWith('sing') && !gf.stunned;
+		}
+		// Modern NV folds gfSpeed into the actor's live interval in its setter.
 		if (nightmareVisionScripts != null) return characterDanceDue(gf, beat);
 		if (sourceScoreOwner && !sourceScoreNightmare) {
 			if (gf == null || gf.animation == null || gf.codenameLiveDefinition != null) return false;

@@ -23,6 +23,8 @@ class CodenameCountdownDanceTest(unittest.TestCase):
 class Main {
  var dad=new Actor(); var boyfriend=new Actor(); var gf=new Actor();
  var duoMode=false; var opponentPlayer=false;
+ var nightmareVisionLegacyFieldCameras=false;var tmr={loopsLeft:3};var due=false;
+ function girlfriendDanceDue(beat:Int):Bool {if(beat!=tmr.loopsLeft)throw 'countdown passed wrong beat';return due;}
  public function new() {}
  function countdown():Void {''' + body + '''}
  static function main() {
@@ -40,6 +42,8 @@ class Main {
   state.gf.codenameLiveDefinition=null;state.countdown();
   if(state.gf.calls!=3 || state.dad.calls!=2)
    throw 'mixed source/native actors must remain independent';
+  state.nightmareVisionLegacyFieldCameras=true;state.countdown();if(state.gf.calls!=3)throw 'historical countdown ignored source gate';
+  state.due=true;state.countdown();if(state.gf.calls!=4)throw 'historical countdown did not consume source gate';
  }
 }
 '''

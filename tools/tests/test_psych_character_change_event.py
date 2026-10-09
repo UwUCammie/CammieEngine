@@ -41,6 +41,7 @@ class GroupFixture {
  public function change(name:String):Character {if(parent.curCharacter!=name){var next=addToList(name);var alpha=parent.alpha;parent.alpha=.0001;parent=next;parent.alpha=alpha;}return parent;}
 }
 class Main {
+ var nightmareVisionLegacyFieldCameras=false;
  var boyfriend=new Character('player');var dad=new Character('opponent');var gf=new Character('support');var gfSpeed=2;
  var groups:Map<Int,GroupFixture>=new Map();var hud=0;var holdClaimUpdates=0;
  function new(){}
