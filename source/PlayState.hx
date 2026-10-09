@@ -13302,7 +13302,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				if (!nightmareVisionLegacyFieldCameras) return false;
 				playHistoricalNightmareVideo(value1, false);
 			case 'Change Character':
-				var role = NightmareVisionCharacterEvent.preloadRole(value1);
+				var role = NightmareVisionCharacterEvent.preloadRole(value1, nightmareVisionLegacyFieldCameras);
 				addNightmareVisionCharacterToList(value2, role);
 			case 'Change Noteskin':
 				if (nightmareVisionLegacyFieldCameras) return false;
@@ -20791,17 +20791,22 @@ void main(void) {
 		} catch (_:Dynamic) {}
 	}
 
-	/** Source NV extends Psych's cached switch with related-identity animation carry. */
+	/** Shared event choreography; historical NV checks the requested animation. */
 	function changeNightmareVisionCharacterEvent(role:String, name:String):Void {
 		var type = PsychCharacterChangeEvent.role(role);
-		var previous:Character = type == 0 ? boyfriend : type == 1 ? dad : gf;
-		var anim = previous == null ? null : previous.animation.curAnim;
-		var carry = previous != null && name != null && previous.curCharacter != null
-			&& (name.startsWith(previous.curCharacter) || previous.curCharacter.startsWith(name));
+		var previous:Character = type == 2 ? gf : type == 1 ? dad : boyfriend;
+		var carry = nightmareVisionLegacyFieldCameras
+			? name.startsWith(previous.curCharacter) || previous.curCharacter.startsWith(name)
+			: previous != null && name != null && previous.curCharacter != null
+				&& (name.startsWith(previous.curCharacter) || previous.curCharacter.startsWith(name));
+		var anim = previous == null || previous.animation == null ? null : previous.animation.curAnim;
 		var animationName = carry && anim != null ? anim.name : '';
 		var frame = carry && anim != null ? anim.curFrame : 0;
-		var next:Character = publishNightmareVisionCharacter(name, type);
-		if (animationName != '' && next != null && next.animation.curAnim != null) {
+		publishNightmareVisionCharacter(name, type);
+		// Publication callbacks can replace the role again. Read it after they finish.
+		var next:Character = type == 2 ? gf : type == 1 ? dad : boyfriend;
+		if (animationName != '' && (nightmareVisionLegacyFieldCameras
+			? next.animation.getByName(animationName) != null : next != null && next.animation != null && next.animation.curAnim != null)) {
 			next.playAnim(animationName, true);
 			next.animation.curAnim.curFrame = frame;
 		}

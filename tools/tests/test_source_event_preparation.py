@@ -120,7 +120,7 @@ class PsychRuntimeBindings {
 }
 class NightmareVisionScriptGroup { public static inline var CONTINUE_FUNC:Int = 0; }
 class NightmareVisionCharacterEvent {
- public static function preloadRole(value:String):Int return value == 'gf' ? 2 : 1;
+ public static function preloadRole(value:String, strict:Bool = false):Int return value == 'gf' ? 2 : 1;
 }
 class NightmareVisionCharacterBank {
  var host:PlayState; var role:Int;
