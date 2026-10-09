@@ -322,6 +322,7 @@ class Note extends DynamicSprite {
 	/** Source fields can autoplay independently of the user's botplay setting. */
 	public var sourcePlayfieldAutoPlay:Bool = false;
 	public var sourceTimingMode:Int = 0;
+	@:keep public var visualTime:Float = 0;
 	/** Source chart quant classification is independent of a field's receptor flag. */
 	@:keep public var quant:Int = 4;
 	@:keep public var isQuant:Bool = false;
@@ -853,6 +854,7 @@ class Note extends DynamicSprite {
 		// MAKE SURE ITS DEFINITELY OFF SCREEN?
 		y -= 2000;
 		this.strumTime = strumTime;
+		if (sourceTimingMode == 2) visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime);
 		if (authoredAnimSuffix != null && StringTools.trim(authoredAnimSuffix) != '')
 			animSuffix = StringTools.trim(authoredAnimSuffix);
 

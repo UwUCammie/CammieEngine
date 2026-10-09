@@ -151,6 +151,21 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var nightmareVisionDefaultGenerationDepth:Int = 0;
 	var nightmareVisionLegacyFieldCameras:Bool = false;
 	var nightmareVisionLegacyReceptors = new NightmareVisionLegacyReceptors();
+	@:keep public var speedChanges:Array<NightmareVisionScrollVelocity.NightmareVisionSpeedEvent> = [NightmareVisionScrollVelocity.initial()];
+	@:keep public var currentSV:NightmareVisionScrollVelocity.NightmareVisionSpeedEvent = NightmareVisionScrollVelocity.initial();
+	@:keep public function getSV(time:Float):NightmareVisionScrollVelocity.NightmareVisionSpeedEvent
+		return NightmareVisionScrollVelocity.select(time, speedChanges);
+	@:keep public function getTimeFromSV(time:Float, event:NightmareVisionScrollVelocity.NightmareVisionSpeedEvent):Float
+		return NightmareVisionScrollVelocity.position(time, event);
+	@:keep public function getNoteInitialTime(time:Float):Float return getTimeFromSV(time, getSV(time));
+	@:keep public function getVisualPosition():Float return getTimeFromSV(Conductor.songPosition, currentSV);
+	public function sourceNoteVisualTime(time:Float):Float
+		return nightmareVisionLegacyFieldCameras ? getNoteInitialTime(time) : 0;
+	function updateNightmareVisionVisualPosition():Void {
+		if (!nightmareVisionLegacyFieldCameras) return;
+		currentSV = getSV(Conductor.songPosition);
+		nightmareVisionConductor.visualPosition = getVisualPosition();
+	}
 	/** One real native receptor bank per declared Nightmare Vision field. */
 	var nightmareVisionStrumlines:Array<Strumline> = [];
 	/** Includes detached/replaced banks so PlayState still disposes its owned sprites. */
@@ -1433,6 +1448,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var ownerHost = NightmareVisionPluginHost.activeHost;
 		nightmareVisionPaths = ownerHost != null && ownerHost.runtime.canReuseFor(root) && ownerHost.assetPaths != null
 			? ownerHost.assetPaths : new NightmareVisionPaths(root, null, nightmareVisionPrefs.view, pathSourceDirectory);
+		nightmareVisionConductor.visualPosition = 0;
 		nightmareVisionLegacyFieldCameras = NightmareVisionStageBindings.defaultIsLegacy(nightmareVisionPaths);
 		if (nightmareVisionLegacyFieldCameras) genNotesBeforeCountdown = false;
 		nightmareVisionPaths.bindModFamily(nightmareVisionActiveMods);
@@ -12976,8 +12992,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	/** These source built-ins own preparation and do not call module onPush.
-	 * Unsupported SV behavior remains an explicit gap rather than invoking an
-	 * unrelated event script as a substitute. */
+	 * Historical velocity changes are prepared before note visual timestamps. */
 	function precacheNightmareVisionSourceEvent(event:SourceEventNote):Bool {
 		switch (event.event) {
 			case 'Change Character':
@@ -12994,7 +13009,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					skin.precacheEffects();
 				} catch (error:Dynamic) trace('[nightmare-vision-event-precache-error] ' + event.event + ': ' + Std.string(error));
 			case 'Mult SV', 'Constant SV':
-				trace('[nightmare-vision-event-unsupported] ' + event.event + ': source scroll-velocity timeline is not implemented');
+				if (nightmareVisionLegacyFieldCameras)
+					NightmareVisionScrollVelocity.push(speedChanges, event.event, event.value1, event.strumTime, songSpeed);
+				else trace('[nightmare-vision-event-unsupported] ' + event.event + ': modern source scroll-velocity timeline is not implemented');
 			default: return false;
 		}
 		return true;
@@ -19399,6 +19416,12 @@ void main(void) {
 		// NEW SHIT
 		noteData = songData.notes;
 
+		if (nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras) {
+			// Historical notes capture their initial visual position in the constructor.
+			generatedMusic = false;
+			prepareNightmareVisionSourceEvents();
+			speedChanges.sort(NightmareVisionScrollVelocity.sort);
+		}
 		var daSection:Int = 0;
 		var traceNoteConstruction = RuntimeSmokeHarness.enabled();
 		var generateChartNotes:Void->Void = function():Void {
@@ -21316,6 +21339,7 @@ void main(void) {
 			}
 		}
 		super.update(elapsed);
+		updateNightmareVisionVisualPosition();
 		updateSourceHUDHealthPhase(elapsed);
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
@@ -22248,8 +22272,14 @@ void main(void) {
 					var duration = daNote.nightmareVisionSustainDuration;
 					var futureBeat = nightmareVisionConductor.getBeat(nightmareVisionConductor.getBeat(Conductor.songPosition + duration));
 					var strum = daNoteStrums.members[daNote.sourceDirection];
+					var visualDistance = nightmareVisionLegacyFieldCameras
+						? (daNote.visualTime - nightmareVisionConductor.visualPosition) * effectiveScrollSpeed
+						: 0.45 * diff * effectiveScrollSpeed;
+					var endVisualDistance = nightmareVisionLegacyFieldCameras
+						? (getNoteInitialTime(daNote.strumTime + duration) - nightmareVisionConductor.visualPosition) * effectiveScrollSpeed
+						: 0.45 * (diff + duration) * effectiveScrollSpeed;
 					daNote.nightmareVisionRenderer.updateNote(nightmareContext, daNote, daNote.sourcePlayfieldIndex,
-						0.45 * diff * effectiveScrollSpeed, diff, 0.45 * (diff + duration) * effectiveScrollSpeed,
+						visualDistance, diff, endVisualDistance,
 						diff + duration, futureBeat, strum, duration, daNote.nightmareVisionSustainEnd);
 				}
 
@@ -25985,6 +26015,7 @@ void main(void) {
 			try nightmareVisionScripts.destroy() catch (error:Dynamic)
 				trace('[nightmare-vision-script-release-error] ' + Std.string(error));
 			nightmareVisionScripts = null;
+			nightmareVisionConductor.visualPosition = 0;
 		}
 		if (nightmareVisionStageConstructionInterp != null) {
 			nightmareVisionStageConstructionInterp.release();

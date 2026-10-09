@@ -383,9 +383,12 @@ class Main {
         self.assertLess(note_type_load, generation,
                         "chart-selected note-type modules must load before note generation")
         generate_song = extract_block(source, "private function generateSong(")
-        event_prepare_call = generate_song.index("prepareNightmareVisionSourceEvents();")
+        event_prepare_call = generate_song.rindex("prepareNightmareVisionSourceEvents();")
         self.assertLess(generate_song.index("generatedMusic = true;"), event_prepare_call,
-                        "event callbacks should run after the native event queue is generated")
+                        "modern event callbacks remain after note generation")
+        self.assertLess(generate_song.index("prepareNightmareVisionSourceEvents();"),
+                        generate_song.index("var generateChartNotes:Void->Void"),
+                        "historical visual timestamps require the prepared velocity timeline")
         event_prepare = extract_block(source, "function prepareNightmareVisionSourceEvents():Void")
         self.assertIn("nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);", event_prepare)
         self.assertIn("nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);", event_prepare)

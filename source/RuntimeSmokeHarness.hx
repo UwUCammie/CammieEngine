@@ -2021,6 +2021,26 @@ class RuntimeSmokeHarness {
 				|| Math.abs(state.modManager.getBaseVisPosD(100, speed) - 45 * speed) > 0.000001)
 				throw 'Owner manager did not preserve historical visual-distance helpers';
 		}
+		var capturedVisualTime = state.getNoteInitialTime(note.strumTime);
+		if (Math.abs(note.visualTime - capturedVisualTime) > 0.000001)
+			throw 'Historical note constructor lost its captured visual timestamp';
+		var originalChanges = state.speedChanges;
+		var originalSV = state.currentSV;
+		try {
+			state.speedChanges = [NightmareVisionScrollVelocity.initial()];
+			NightmareVisionScrollVelocity.push(state.speedChanges, 'Mult SV', '2', 100, state.songSpeed);
+			NightmareVisionScrollVelocity.push(state.speedChanges, 'Mult SV', '-1', 200, state.songSpeed);
+			if (Math.abs(state.getNoteInitialTime(300) - 90) > 0.000001)
+				throw 'Native historical SV continuity failed';
+			state.currentSV = state.getSV(300);
+			if (state.currentSV != state.speedChanges[2]) throw 'Native currentSV lost event identity';
+			state.currentSV.speed = 0;
+			if (state.getTimeFromSV(300, state.currentSV) != 135) throw 'Native live SV mutation failed';
+		} catch (error:Dynamic) {state.speedChanges = originalChanges;state.currentSV = originalSV;throw error;}
+		state.speedChanges = originalChanges;
+		state.currentSV = originalSV;
+		emit('legacy_visual_clock_native_verified', {visualTime:note.visualTime,strumTime:note.strumTime,
+			visualPosition:state.getVisualPosition(),events:state.speedChanges.length,checks:4});
 		emit('legacy_geometry_native_verified', {coordinates:checked,visualDistanceChecks:5,noteX:note.x,noteY:note.y,
 			positionOffset:[note.offsetX,note.offsetY],drawOffset:[note.typeOffsetX,note.typeOffsetY]});
 		#end

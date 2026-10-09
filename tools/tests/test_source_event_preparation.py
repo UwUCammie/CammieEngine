@@ -79,6 +79,13 @@ class SourceEventPreparationTest(unittest.TestCase):
             (temp / "Main.hx").write_text(main_source, newline="\n")
             for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
+            velocity = (ROOT / "source/NightmareVisionScrollVelocity.hx").read_text()
+            velocity = velocity.replace("import nightmarevision.modchart.NightmareVisionModchartTransform;", "")
+            transform = (ROOT / "source/nightmarevision/modchart/NightmareVisionModchartTransform.hx").read_text()
+            distance = transform[transform.index("public static function visualPosition("):]
+            distance = distance[:distance.index(";")+1]
+            (temp / "NightmareVisionScrollVelocity.hx").write_text(velocity)
+            (temp / "NightmareVisionModchartTransform.hx").write_text("class NightmareVisionModchartTransform {"+distance+"}")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "Main", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,
@@ -160,6 +167,9 @@ class PlayState {
  public var psychSourceEventsPrepared:Bool = false;
  public var psychSourceEventsFinalized:Bool = false;
  public var nightmareVisionSourceEventsPrepared:Bool = false;
+ public var nightmareVisionLegacyFieldCameras:Bool = false;
+ public var songSpeed:Float = 2;
+ public var speedChanges:Array<NightmareVisionScrollVelocity.NightmareVisionSpeedEvent> = [NightmareVisionScrollVelocity.initial()];
  public var sourceEventPreparationInProgress:Bool = false;
  public var nightmareVisionScripts:Dynamic = null;
  public var nightmareVisionPrefs:NvPrefs = null;
@@ -289,6 +299,26 @@ class Main {
   OptionsHandler.options.offset = 8.25;
   check(psych.exerciseChartNoteTime(100) == 108.25,
    'native chart note offset must stay live when no Nightmare Vision owner view exists');
+
+  var historical = new PlayState();
+  historical.nightmareVisionLegacyFieldCameras = true;
+  historical.nightmareVisionScripts = new NvScriptHost(historical);
+  historical.nightmareVisionPrefs = new NvPrefs();
+  historical.nightmareVisionPrefs.view.noteOffset = 5;
+  historical.songEvents = [new SourceRow(100, 'Mult SV', '2', '', 0), new SourceRow(200, 'Constant SV', '4', '', 1)];
+  historical.nvModuleOffsets.set('Mult SV', 10.);
+  historical.exerciseNvPrepare();
+  check(historical.speedChanges.length == 3 && historical.speedChanges[1].songTime == 95,
+   'Historical SV must capture source noteOffset and early timing before note constructors');
+  check(historical.speedChanges[2].position == 141.75 && historical.speedChanges[2].speed == .5,
+   'Historical SV continuity or source Constant SV conversion changed');
+  check(historical.nvModuleCalls.filter(c -> c.callback == 'onPush').length == 0,
+   'Built-in SV preparation must not run a second event-module handler');
+  historical.exerciseNvPrepare();
+  check(historical.speedChanges.length == 3, 'SV preparation should not repeat after generation');
+  var modern = new PlayState();modern.nightmareVisionScripts = new NvScriptHost(modern);
+  modern.songEvents = [new SourceRow(100, 'Mult SV', '2', '', 0)];modern.exerciseNvPrepare();
+  check(modern.speedChanges.length == 1, 'Historical clock must not change modern owners');
 
   var nv = new PlayState();
   nv.nightmareVisionScripts = new NvScriptHost(nv);

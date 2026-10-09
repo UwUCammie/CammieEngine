@@ -31,6 +31,8 @@ class NightmareVisionConductor {
 		Conductor.bpmChangeMap = cast value;
 		return value;
 	}
+	/** Historical source visual clock; reset at each gameplay owner boundary. */
+	public var visualPosition:Float = 0;
 	public var ROWS_PER_BEAT:Int = 48;
 	public var BEATS_PER_MEASURE:Int = 4;
 	public var ROWS_PER_MEASURE:Int = 192;
