@@ -184,6 +184,7 @@ class FNFAssets {
             (work / 'NightmareVisionRGBGraphics.hx').write_text('class NightmareVisionRGBGraphics {public function new(palette:Dynamic) {}}', newline='\n')
             (work / 'Strumline.hx').write_text('''class Strumline {public var noAnims:Bool=false; public function new() {}}
 class StrumNote extends Sprite {
+ public var colorSwap:Dynamic=null;
   public var nightmareVisionSource:Bool=false;
   public var nightmareVisionRGB:NightmareVisionRGBGraphics=null;
   public var nightmareVisionOffsets:Map<String,Array<Float>>=null;
@@ -203,7 +204,7 @@ class StrumNote extends Sprite {
   public function markReceptorVisual():Void {}
   public function new() {super();}
   // NV-only color hookup is inert in this Psych-only extracted fixture.
-  public function handleColors(anim:String=''):Void {}
+  public function handleColors(anim:String='',?note:Note):Void {}
 ''' + strum_methods + '\n}', newline='\n')
             owner = work / 'assets/imported_mods/one/images'
             owner.mkdir(parents=True)

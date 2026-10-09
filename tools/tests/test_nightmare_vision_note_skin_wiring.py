@@ -34,6 +34,7 @@ class NightmareVisionPaths {
  public function new(root:String) this.root=root;
 }
 class NightmareVisionNoteSkin {
+ public var noteTexture="NOTE_assets";public var splashTexture="noteSplashes";
  public var paths:NightmareVisionPaths; public var name:String;
  public var applied:Array<Int>=[];
  public var quantsEnabled:Bool=true;
@@ -50,7 +51,7 @@ class NightmareVisionQuantRendering {
  public static var classifiedNote:Note; public static var appliedNote:Note;
  public static var classifiedPrefs:Dynamic; public static var appliedPrefs:Dynamic;
  public static var appliedSkin:NightmareVisionNoteSkin; public static var classifiedBeat:Float=0;
- public static function classify(note:Note,prefs:Dynamic,beat:Float):Void {
+ public static function classify(note:Note,prefs:Dynamic,beat:Float,legacy:Bool=false):Void {
   if (note==null || note.nightmareVisionQuantInitialized) return;
   note.nightmareVisionQuantInitialized=true;
   classifyCalls++; classifiedNote=note; classifiedPrefs=prefs; classifiedBeat=beat;
@@ -66,7 +67,12 @@ class NightmareVisionNoteTypeRuntime {
  public function setupNote(note:Note):Void {}
  public function syncNote(note:Note):Void {}
 }
+class NightmareVisionRGBGraphics {public var legacyHSV:Dynamic;public function new(){}}
+class NightmareVisionLegacyNoteColors {public var swap:Dynamic;public function new(p:Dynamic,?s:String){}public static function selectTexture(t:String,p:Dynamic,q:Bool,a:String->Bool):String return t;}
 class Note {
+ public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;
+ public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+ public var colorSwap:Dynamic;
  public static inline var NOTE_AMOUNT:Int=4;
  public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
  public var quant:Int=4; public var isQuant:Bool=false; public var canQuant:Bool=true;
@@ -90,6 +96,9 @@ class RuntimeSmokeHarness {
  public static function markNightmareVisionNoteVisual(note:Note):Void marks++;
 }
 class SkinWiring {
+ var nightmareVisionLegacyFieldCameras=false;
+ function nightmareVisionHasOwnerSparrowAtlas(s:String):Bool return false;
+ function nightmareVisionGetOwnerSparrowAtlas(s:String):FlxAtlasFrames return null;
  var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime;
  var nightmareVisionPaths:NightmareVisionPaths;
  var nightmareVisionNoteSkins:Map<String,NightmareVisionNoteSkin>;

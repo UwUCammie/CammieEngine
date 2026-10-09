@@ -635,7 +635,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			strum.isQuant = field.quants;
 			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
 			strum.alphaMult = field.alpha;
-			if (skin != null) skin.applyReceptor(strum, strum.ID);
+			if (skin != null) {
+				var frames:FlxAtlasFrames = null;
+				if (nightmareVisionLegacyFieldCameras) {
+					if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics();
+					if (strum.colorSwap == null) strum.colorSwap = new NightmareVisionLegacyColorSwap();
+					var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
+						true, nightmareVisionHasOwnerSparrowAtlas);
+					strum.isQuant = selected != skin.noteTexture;
+					if (strum.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
+				}
+				skin.applyReceptor(strum, strum.ID, frames);
+			}
 		}
 		if (skin != null) field.strumline.resetStrums();
 	}
@@ -764,7 +775,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var skin = field._skin == null ? nightmareVisionSkinForField(field.ID) : field._skin;
 		if (skin != null) {
 			NightmareVisionQuantRendering.classify(note, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view,
-				nightmareVisionConductor.getBeat(note.strumTime));
+				nightmareVisionConductor.getBeat(note.strumTime), nightmareVisionLegacyFieldCameras);
 			applyNightmareVisionFieldNoteSkin(note, skin);
 		}
 	}
@@ -1471,6 +1482,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value, atlas) {
 					var note:Note = cast value;
 					var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+					if (note.nightmareVisionLegacyColors != null) {
+						var selected = NightmareVisionLegacyNoteColors.selectTexture(atlas, nightmareVisionPrefs.view,
+							note.canQuant, nightmareVisionHasOwnerSparrowAtlas);
+						note.isQuant = selected != atlas;
+						atlas = selected;
+					}
 					var frames = nightmareVisionGetOwnerSparrowAtlas(atlas);
 					return frames != null && applyNightmareVisionNoteSkin(note, skin, frames);
 				}, function(value, enabled) {
@@ -1497,6 +1514,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					trace('[nightmare-vision-note-atlas] type='
 						+ NightmareVisionNoteTypeRuntime.noteTypeOf(note) + ' ' + message);
 				}));
+		if (nightmareVisionLegacyFieldCameras) {
+			nightmareVisionNoteTypes.prepareLegacyColors = function(value, force) {
+				var note:Note = cast value;
+				return note.nightmareVisionLegacyColors == null ? 1 : note.nightmareVisionLegacyColors.prepare(note, force);
+			};
+			nightmareVisionNoteTypes.finishLegacyColors = function(value) {
+				var note:Note = cast value;
+				if (note.nightmareVisionLegacyColors != null) note.nightmareVisionLegacyColors.finish(note);
+			};
+		}
 		nightmareVisionNoteTypes.loadBeforeNoteGeneration();
 		for (entry in plan.scripts)
 			if (entry.scope == 'character_event')
@@ -10222,10 +10249,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (note == null || note.sourcePlayfieldIndex < 0) return;
 		NightmareVisionSpriteMethods.bind(note, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
 		var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+		if (nightmareVisionLegacyFieldCameras && note.nightmareVisionLegacyColors == null) {
+			note.nightmareVisionLegacyColors = new NightmareVisionLegacyNoteColors(nightmareVisionPrefs.view,
+				skin == null ? 'noteSplashes' : skin.splashTexture);
+			if (note.nightmareVisionRGB == null) note.nightmareVisionRGB = new NightmareVisionRGBGraphics();
+			note.nightmareVisionRGB.legacyHSV = note.colorSwap;
+		}
 		if (skin != null) {
 			NightmareVisionQuantRendering.classify(note, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view,
 				nightmareVisionConductor.getBeat(note.strumTime
-					- (nightmareVisionPrefs == null ? 0 : nightmareVisionPrefs.view.noteOffset)));
+					- (nightmareVisionPrefs == null ? 0 : nightmareVisionPrefs.view.noteOffset)), nightmareVisionLegacyFieldCameras);
 			if (applyNightmareVisionNoteSkin(note, skin)) RuntimeSmokeHarness.markNightmareVisionNoteVisual(note);
 		}
 		if (nightmareVisionNoteTypes != null) {
@@ -10237,11 +10270,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				note.resetSourceRatingState();
 				note.ratingDisabled = disabled;
 			}
+			if (nightmareVisionLegacyFieldCameras) nightmareVisionNoteTypes.setupNote(note);
 		}
 	}
 
 	function applyNightmareVisionNoteSkin(note:Note, skin:NightmareVisionNoteSkin,
 		?frames:FlxAtlasFrames):Bool {
+		if (skin != null && frames == null && note.nightmareVisionLegacyColors != null) {
+			var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
+				note.canQuant, nightmareVisionHasOwnerSparrowAtlas);
+			note.isQuant = selected != skin.noteTexture;
+			if (note.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
+		}
 		if (skin == null || !skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames))
 			return false;
 		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
@@ -25381,7 +25421,10 @@ void main(void) {
 		// Keep the admitting bank while using its live source direction.
 		if (strum != null) {
 			strum.lastNote = note;
-			if (activeField.playAnims) strum.playConfirm(note.isSustainNote, true);
+			if (activeField.playAnims) {
+				if (nightmareVisionLegacyFieldCameras) strum.playAnim('confirm', true, note);
+				else strum.playConfirm(note.isSustainNote, true);
+			}
 			if (activeField.autoPlayed)
 				strum.resetAnim = (0.15 + (note.isSustainNote && !note.nightmareVisionSustainEnd ? 0.15 : 0)) / playbackRate;
 			if (note.isSustainNote) strum.coyoteTime = activeField.holdDropLeniency;
@@ -25442,7 +25485,11 @@ void main(void) {
 				var group:FlxTypedGroup<NightmareVisionNoteSplash> = cast field.grpNoteSplashes;
 				var splash = group.recycle(NightmareVisionNoteSplash,
 					function() return new NightmareVisionNoteSplash(0, 0, 0, 0, nightmareVisionSustainSplashOwner()));
-				splash.setupNoteSplash(strum, note, field._skin.splashTexture, note.rgbGraphics, field);
+				if (nightmareVisionLegacyFieldCameras) {
+					var texture = note.noteSplashTexture;
+					if (texture == null) texture = field._skin.splashTexture;
+					splash.setupLegacyNoteSplash(strum, note, texture, field);
+				} else splash.setupNoteSplash(strum, note, field._skin.splashTexture, note.rgbGraphics, field);
 				group.add(splash);
 				callNightmareVision('onSpawnNoteSplash', [splash, note]);
 				return note.noteSplash = splash;

@@ -334,8 +334,8 @@ class NightmareVisionNoteSkin {
 		return true;
 	}
 
-	public function applyReceptor(strum:StrumNote, lane:Int):Bool {
-		var frames = refreshNoteFrames();
+	public function applyReceptor(strum:StrumNote, lane:Int, ?overrideFrames:FlxAtlasFrames):Bool {
+		var frames = overrideFrames == null ? refreshNoteFrames() : overrideFrames;
 		if (frames == null) return false;
 		var entries = laneItems(receptorAnims, lane);
 		var needed = ['static', 'pressed', 'confirm'];

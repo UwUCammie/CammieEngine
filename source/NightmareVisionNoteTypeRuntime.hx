@@ -21,6 +21,8 @@ private typedef NightmareVisionNoteApiState = {
 class NightmareVisionNoteTypeRuntime {
 	public final scripts:NightmareVisionGameplayScripts;
 	public final api:NightmareVisionNoteApiBridge;
+	public var prepareLegacyColors:(Dynamic, Bool)->Int;
+	public var finishLegacyColors:Dynamic->Void;
 
 	public function new(scripts:NightmareVisionGameplayScripts,
 		?api:NightmareVisionNoteApiBridge) {
@@ -51,9 +53,12 @@ class NightmareVisionNoteTypeRuntime {
 
 	/** Called after the default/chart note skin is configured but before the
 	 * source onSpawnNote gate and before the note enters the live note group. */
-	public function setupNote(note:Dynamic):Dynamic {
+	public function setupNote(note:Dynamic, force:Bool = false):Dynamic {
 		api.attach(note);
-		var result = call(note, 'setupNote', [note], note);
+		var mode = prepareLegacyColors == null ? 1 : prepareLegacyColors(note, force);
+		if (mode == 0) return NightmareVisionScriptGroup.CONTINUE_FUNC;
+		var result = mode == 2 ? NightmareVisionScriptGroup.CONTINUE_FUNC : call(note, 'setupNote', [note], note);
+		if (finishLegacyColors != null) finishLegacyColors(note);
 		api.syncNote(note);
 		return result;
 	}

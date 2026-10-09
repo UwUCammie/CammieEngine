@@ -562,6 +562,12 @@ class StrumNote extends FlxSprite {
 	}
 
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics = null;
+	@:keep public var colorSwap(get, set):NightmareVisionLegacyColorSwap;
+	function get_colorSwap():NightmareVisionLegacyColorSwap return nightmareVisionRGB == null ? null : nightmareVisionRGB.legacyHSV;
+	function set_colorSwap(value:NightmareVisionLegacyColorSwap):NightmareVisionLegacyColorSwap {
+		getNightmareVisionRGB().legacyHSV = value;
+		return value;
+	}
 	/** Marks this receptor as source-owned even when its skin disables coloring. */
 	@:keep public var nightmareVisionSource(default, set):Bool = false;
 	@:keep public var isQuant:Bool = false;
@@ -637,6 +643,18 @@ class StrumNote extends FlxSprite {
 	}
 	/** Match the source receptor's lane/last-note fallback and pressed override. */
 	@:keep public function handleColors(anim:String = '', ?note:Note):Void {
+		if (colorSwap != null) {
+			if (animation.curAnim == null || animation.curAnim.name == 'static')
+				NightmareVisionLegacyNoteColors.setHSV(colorSwap, [0, 0, 0]);
+			else if (note != null && note.colorSwap != null) {
+				colorSwap.hue = note.colorSwap.hue;
+				colorSwap.saturation = note.colorSwap.saturation;
+				colorSwap.brightness = note.colorSwap.brightness;
+			} else NightmareVisionLegacyNoteColors.setHSV(colorSwap,
+				NightmareVisionLegacyNoteColors.laneHSV(nightmareVisionQuantPrefs, ID));
+			nightmareVisionRGB.apply(this);
+			return;
+		}
 		if (!nightmareVisionSource || !useRGBShader) return;
 		if (note == null) note = lastNote;
 		lastNote = note;
@@ -902,20 +920,21 @@ class StrumNote extends FlxSprite {
 		scrollFactor.set();
 	}
 
-	public function playAnim(anim:String, force:Bool = false, reversed:Bool = false, frame:Int = 0) {
+	public function playAnim(anim:String, force:Bool = false, reversed:Dynamic = false, frame:Int = 0) {
 		if (parentLine != null && parentLine.noAnims)
 			return;
 
 		if (anim == 'confirm' || anim == 'confirmHold')
 			confirmationGeneration++;
-		animation.play(anim, force, reversed, frame);
+		var legacyNote:Note = colorSwap != null && Std.isOfType(reversed, Note) ? cast reversed : null;
+		animation.play(anim, force, reversed == true, frame);
 		refreshPsychRGB();
 		if (nightmareVisionOffsets != null) {
 			centerOffsets();
 			centerOrigin();
 			var authored = nightmareVisionOffsets.get(anim);
 			if (authored != null) offset.set(offset.x + authored[0], offset.y + authored[1]);
-			handleColors(anim);
+			handleColors(anim, legacyNote);
 			return;
 		}
 		if (psychSkinOwner != null) {

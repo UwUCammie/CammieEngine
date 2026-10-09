@@ -36,6 +36,8 @@ class PsychNoteTypeAliasTest(unittest.TestCase):
         ))
         fixture = '''
 class PsychNoteTypeAliasFixture {
+ public var nightmareVisionLegacyColors:Dynamic=null;
+ public var nightmareVisionTypeRuntime:Dynamic=null;
   public var sourceKind(default, set):Null<String> = null;
   public var sourceTimingMode:Int = 0;
   public var hitPriority:Int = 1;

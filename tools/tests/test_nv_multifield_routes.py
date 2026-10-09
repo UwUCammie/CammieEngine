@@ -45,11 +45,14 @@ class NvMultifieldRoutesTest(unittest.TestCase):
         lane_start = note.index('@:keep public var lane(get, set):Int;')
         lane_end = note.index('\n\t/** Direction', lane_start)
         fixture = r'''
+class FlxAtlasFrames {}
+class NightmareVisionLegacyColorSwap {public function new(){}}
+class NightmareVisionLegacyNoteColors {public static function selectTexture(t:String,p:Dynamic,q:Bool,a:String->Bool):String return t;}
 class PsychRGBShaderReference { public function new() {} }
 class NightmareVisionRGBGraphics {
  public var alpha:Float = 1;
  public var colors:Array<Int>=[];
- public function new(palette:Dynamic) {}
+ public function new(?palette:Dynamic) {}
  public function setColors(colors:Array<Int>):Void this.colors=colors;
  public function getColors():Array<Int> return colors;
 }
@@ -66,6 +69,8 @@ class Note {
  __LANE__
 }
 class Main {
+ function nightmareVisionHasOwnerSparrowAtlas(s:String):Bool return false;
+ function nightmareVisionGetOwnerSparrowAtlas(s:String):FlxAtlasFrames return null;
  public var nightmareVisionPaths:Dynamic=null;
  public var modifiersRegistered=false;
  public var modManager:Dynamic={configureDimensions:function(keys:Int,lanes:Int):Void {},registerEssentialModifiers:function():Void {},registerDefaultModifiers:function():Void {},registerScriptedModifiers:function():Void {}};
@@ -213,6 +218,7 @@ class Strumline {
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }
 }
 class StrumNote {
+ public var colorSwap:Main.NightmareVisionLegacyColorSwap;
  public var ID:Int=0;
  public var alphaMult:Float=1;
  public var animation:Dynamic={curAnim:{name:'static'}};
@@ -238,8 +244,8 @@ class StrumNote {
             (work / 'Strumline.hx').write_text(line_fixture, newline='\n')
             write_nv_field_dependencies(work)
             (work / 'NightmareVisionNoteSkin.hx').write_text(
-                'class NightmareVisionNoteSkin { public function new() {} '
-                'public function applyReceptor(s:Dynamic, id:Int):Void {} }', newline='\n')
+                'class NightmareVisionNoteSkin { public var noteTexture="NOTE_assets"; public function new() {} '
+                'public function applyReceptor(s:Dynamic, id:Int, ?frames:Dynamic):Void {} }', newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', directory,
                                      '-main', 'Main', '--interp'], capture_output=True, text=True, timeout=45)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

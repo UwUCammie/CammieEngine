@@ -4,6 +4,9 @@ package;
 @:keep
 class NightmareVisionRGBGraphics {
 	public var palette(default, null):PsychRGBPalette;
+	/** Optional historical shader; RGB storage remains available to modern APIs. */
+	public var legacyHSV:NightmareVisionLegacyColorSwap;
+	public var legacyHSL:NightmareVisionHSLColorSwap;
 	public var enabled:Bool = true;
 	public var alpha:Float = 1;
 	public var flash:Float = 0;
@@ -32,6 +35,16 @@ class NightmareVisionRGBGraphics {
 
 	/** Per-object uniforms are never written into the shared lane palette. */
 	public function apply(sprite:flixel.FlxSprite):Void {
+		if (legacyHSV != null) {
+			legacyHSV.daAlpha = alpha;
+			legacyHSV.flash = flash;
+			sprite.shader = legacyHSV.shader;
+			return;
+		}
+		if (legacyHSL != null) {
+			sprite.shader = legacyHSL.shader;
+			return;
+		}
 		palette.shader.mult.value = [enabled ? palette.mult : 0];
 		palette.shader.u_alpha.value = [alpha];
 		palette.shader.u_flash.value = [flash];

@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Render historical NV notes and receptors with their source HSV colors, preserving scripted overrides and owner-specific quant preferences.
+	- Use historical HSL splash coloring and note-authored splash textures through the shared note renderer and splash pool.
 	- Resolve note-type reload atlases through the same owner-scoped historical library lookup as field skins, preserving complete PNG/XML ownership.
 	- Share base library lookup ordering with historical NV core assets, resolving retained library atlases through authenticated owner identities.
 	- Resolve omitted historical NV note and splash textures through the verified flat core asset layout, preserving authored paths.

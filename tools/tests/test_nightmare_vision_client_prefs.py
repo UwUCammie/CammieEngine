@@ -46,6 +46,8 @@ class Main {
   };
   var save = new MemoryOwnerSave();
   var prefs = new NightmareVisionClientPrefs('assets/imported_mods/author-mod', save, nativeOptions);
+  eq(prefs.view.noteSkin, 'Vanilla', 'historical default');
+  prefs.view.noteSkin = 'QuantStep';
   eq(prefs.view.autoPause, false, 'native autoPause seed');
   eq(prefs.view.globalAntialiasing, false, 'native antialiasing seed');
   eq(prefs.view.shaders, false, 'native shader seed');
@@ -82,6 +84,7 @@ class Main {
   eq(nativeOptions.showNoteSplashes, false, 'unrelated native setting untouched');
   eq(save.flushes, 1, 'owner record flushed');
   var saved = Reflect.field(save.values, NightmareVisionClientPrefs.SAVE_FIELD);
+  eq(Reflect.field(Reflect.field(saved, 'values'), 'noteSkin'), 'QuantStep', 'historical preference persisted');
   eq(Reflect.field(saved, 'version'), NightmareVisionClientPrefs.VERSION, 'record version');
   eq(Reflect.field(Reflect.field(saved, 'values'), 'noteOffset'), 17.75,
    'live owner noteOffset is persisted in its save bucket');

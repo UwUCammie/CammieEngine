@@ -8,6 +8,7 @@ typedef NightmareVisionNoteSplashOwner = NightmareVisionSustainSplash.NightmareV
 @:keep
 class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 	public var rgbGraphics:NightmareVisionRGBGraphics = new NightmareVisionRGBGraphics();
+	public var colorSwap:NightmareVisionHSLColorSwap;
 	public var noteData:Int = 0;
 	public var data(get, set):Int;
 	function get_data():Int return noteData;
@@ -55,6 +56,7 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 
 	public function setupNoteSplash(strum:StrumNote, ?note:Note, ?texture:String,
 		?graphicsInput:NightmareVisionRGBGraphics, ?field:NightmareVisionPlayFieldView):Void {
+		rgbGraphics.legacyHSL = null;
 		_note = note;
 		_strum = strum;
 		data = note == null ? 0 : note.noteData;
@@ -67,6 +69,34 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 		playAnim('note$data', true);
 		setColors(graphicsInput == null ? null : graphicsInput.getColors());
 		if (!field.trackNoteSplashes) positionOnReceptor();
+	}
+
+	/** Historical PlayField uses HSL splash values captured after note-type setup. */
+	public function setupLegacyNoteSplash(strum:StrumNote, note:Note, texture:String,
+		field:NightmareVisionPlayFieldView):Void {
+		_note = note; _strum = strum; data = note.noteData; player = field.player;
+		skin = owner.skinForID(player);
+		if (colorSwap == null) colorSwap = new NightmareVisionHSLColorSwap();
+		rgbGraphics.legacyHSL = colorSwap;
+		if (_textureLoaded != texture || animation.getByName('note0-1') == null) {
+			frames = skin.loadNoteSplashFrames(texture);
+			var prefixes = ['note splash purple 1', 'note splash blue 1', 'note splash green 1',
+				'note splash red 1', 'note splash purple 1', 'LSLAMSPLASH', 'RSLAMSPLASH'];
+			for (lane in 0...prefixes.length) for (variant in 1...3)
+				animation.addByPrefix('note' + lane + '-' + variant, prefixes[lane], lane >= 5 ? 12 : 24, false);
+			_textureLoaded = texture;
+		}
+		setPosition(strum.x - Note.swagWidth * 0.95, strum.y - Note.swagWidth * 0.95);
+		// Historical field-wide scaling is tracked as a separate layout contract.
+		scale.set(1, 1); baseScale.copyFrom(scale);
+		alpha = 1; antialiasing = true;
+		colorSwap.hue = note.noteSplashHue;
+		colorSwap.saturation = note.noteSplashSat;
+		colorSwap.lightness = note.noteSplashBrt;
+		animation.play('note' + data + '-' + flixel.FlxG.random.int(1, 2), true);
+		offset.set(-20, -20);
+		if (animation.curAnim != null) animation.curAnim.frameRate = 24 + flixel.FlxG.random.int(-2, 2);
+		rgbGraphics.apply(this);
 	}
 
 	public function setColors(?colors:Array<Int>):Void {
@@ -89,7 +119,7 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 	}
 	override public function draw():Void { rgbGraphics.apply(this); super.draw(); }
 	override public function destroy():Void {
-		owner = null; _note = null; _strum = null; skin = null; rgbGraphics = null;
+		owner = null; colorSwap = null; _note = null; _strum = null; skin = null; rgbGraphics = null;
 		super.destroy();
 	}
 }

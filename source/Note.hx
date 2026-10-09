@@ -501,6 +501,20 @@ class Note extends DynamicSprite {
 	var pendingSourceCanMiss:Bool = false;
 	public var nightmareVisionRenderer:nightmarevision.modchart.NightmareVisionModchartRenderer;
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+	public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;
+	@:keep public var noteSplashTexture:String = 'noteSplashes';
+	@:keep public var noteSplashHue:Float = 0;
+	@:keep public var noteSplashSat:Float = 0;
+	@:keep public var noteSplashBrt:Float = 0;
+	@:keep public var colorSwap(get, set):NightmareVisionLegacyColorSwap;
+	function get_colorSwap():NightmareVisionLegacyColorSwap
+		return nightmareVisionLegacyColors == null ? null : nightmareVisionLegacyColors.swap;
+	function set_colorSwap(value:NightmareVisionLegacyColorSwap):NightmareVisionLegacyColorSwap {
+		if (nightmareVisionLegacyColors == null) throw '[nightmare-vision-hsv] Not a historical note';
+		nightmareVisionLegacyColors.swap = value;
+		if (nightmareVisionRGB != null) nightmareVisionRGB.legacyHSV = value;
+		return value;
+	}
 	@:keep public var canMiss(get, set):Bool;
 	function get_canMiss():Bool return nightmareVisionTypeRuntime != null && nightmareVisionTypeRuntime.api.canMiss(this);
 	function set_canMiss(value:Bool):Bool {
@@ -700,6 +714,8 @@ class Note extends DynamicSprite {
 	}
 	function set_noteType(value:String):String {
 		sourceKind = value;
+		if (nightmareVisionLegacyColors != null && nightmareVisionTypeRuntime != null)
+			nightmareVisionTypeRuntime.setupNote(this, true);
 		return value;
 	}
 	/** Original authored strumline/note identity, independent of input modifiers. */
@@ -1485,6 +1501,7 @@ class Note extends DynamicSprite {
 		if (nightmareVisionTailState != null) nightmareVisionTailState.notes.remove(this);
 		nightmareVisionTailState = null;
 		nightmareVisionRGB = null;
+		nightmareVisionLegacyColors = null;
 		// FunkinSprite does not pool its baseScale point in destroy(). Scripts
 		// may retain the point, so do not return it to FlxPoint's pool.
 		nightmareVisionBaseScalePoint = null;

@@ -27,6 +27,8 @@ class NightmareVisionQuantColorCompat {
 		return QUANTS[QUANTS.length - 1];
 	}
 
+	public static function quantIndex(quant:Int):Int return QUANTS.indexOf(quant);
+
 	/** Return a fresh copy of NoteUtil.quantDefaultColors for one subdivision. */
 	@:keep public static function defaultColors(quant:Int):Array<Int> {
 		var index = QUANTS.indexOf(quant);

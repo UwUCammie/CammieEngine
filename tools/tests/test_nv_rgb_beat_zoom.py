@@ -69,6 +69,8 @@ class Main {
 '''.replace('__ALIAS__', play[start:end]).replace('__HELPER__', helper)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
+            (work / 'NightmareVisionLegacyColorSwap.hx').write_text('class NightmareVisionLegacyColorSwap {public var shader:Dynamic;public var daAlpha:Float=1;public var flash:Float=0;}', newline='\n')
+            (work / 'NightmareVisionHSLColorSwap.hx').write_text('class NightmareVisionHSLColorSwap {public var shader:Dynamic;}', newline='\n')
             (work / 'Main.hx').write_text(fixture, newline='\n')
             (work / 'NightmareVisionRGBGraphics.hx').write_text((ROOT / 'source/NightmareVisionRGBGraphics.hx').read_text(), newline='\n')
             (work / 'PsychRGBPalette.hx').write_text('''class PsychRGBPalette {

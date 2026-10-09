@@ -2041,7 +2041,13 @@ class RuntimeSmokeHarness {
 				b: noteRenderShaderParameter(shader, 'b'),
 				mult: noteRenderShaderParameter(shader, 'mult'),
 				u_alpha: noteRenderShaderParameter(shader, 'u_alpha'),
-				u_flash: noteRenderShaderParameter(shader, 'u_flash')
+				u_flash: noteRenderShaderParameter(shader, 'u_flash'),
+				uTime: noteRenderShaderParameter(shader, 'uTime'),
+				daAlpha: noteRenderShaderParameter(shader, 'daAlpha'),
+				flash: noteRenderShaderParameter(shader, 'flash'),
+				hue: noteRenderShaderParameter(shader, 'hue'),
+				saturation: noteRenderShaderParameter(shader, 'saturation'),
+				lightness: noteRenderShaderParameter(shader, 'lightness')
 			}
 		};
 	}
@@ -2077,6 +2083,7 @@ class RuntimeSmokeHarness {
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }
+		if (RuntimeLegacyNoteColorProbe.enabled()) { RuntimeLegacyNoteColorProbe.tick(); return; }
 		#if cpp
 		if (RuntimeLegacyVideoProbe.enabled()) { RuntimeLegacyVideoProbe.tick(); return; }
 		#end

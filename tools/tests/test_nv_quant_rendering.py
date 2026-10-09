@@ -18,7 +18,13 @@ class NvQuantRenderingTest(unittest.TestCase):
  public var nightmareVisionQuantInitialized:Bool=false;
  public var prevNote:Note;public var sourceDirection:Int=0;public var noteData:Int=0;
  public var nightmareVisionTypeRuntime:Dynamic;
+ public var noteType:String='';public var colorSwap:NightmareVisionLegacyColorSwap;
+ public var noteSplashHue:Float=0;public var noteSplashSat:Float=0;public var noteSplashBrt:Float=0;
+ public var noteSplashTexture:String="noteSplashes";
+ public function reloadNote(prefix:String):Void {}
  public function new(''', 1)
+        stubs['NightmareVisionLegacyColorSwap.hx'] = 'class NightmareVisionLegacyColorSwap { public var hue:Float=0;public var saturation:Float=0;public var brightness:Float=0;public function new(){} }'
+        stubs['NightmareVisionRGBGraphics.hx'] = stubs['NightmareVisionRGBGraphics.hx'].replace(' public var palette:', ' public var legacyHSV:NightmareVisionLegacyColorSwap; public var palette:',1)
         # Extend the shared RGB facade without replacing its updated apply method.
         stubs['NightmareVisionRGBGraphics.hx'] = stubs['NightmareVisionRGBGraphics.hx'].replace(
             ' public function new(', """
@@ -34,7 +40,7 @@ class NvQuantRenderingTest(unittest.TestCase):
         stubs['Strumline.hx'] = stubs['Strumline.hx'].replace(' public function new() {}', '''
  public var nightmareVisionSource:Bool=true;
  public var isQuant:Bool=false;public var nightmareVisionQuantPrefs:Dynamic;
- public var lastNote:Note;
+ public var lastNote:Note;public var colorSwap:NightmareVisionLegacyColorSwap;public var ID:Int=0;
  function getNightmareVisionRGB():NightmareVisionRGBGraphics {
   if(nightmareVisionRGB==null)nightmareVisionRGB=new NightmareVisionRGBGraphics(nightmareVisionPalette);
   return nightmareVisionRGB;
@@ -99,6 +105,15 @@ class Main {
   receptor.handleColors('static');check(!receptor.nightmareVisionRGB.enabled,'static disables recoloring');
   receptor.useRGBShader=false;var before=receptor.nightmareVisionRGB.palette.r;
   receptor.handleColors('pressed');check(receptor.nightmareVisionRGB.palette.r==before,'explicit disabled shader retained');
+  for(mode in ['Quants','QuantStep']) {
+   var historical:Dynamic={noteSkin:mode,quants:false};var head=new Note();head.prevNote=note;
+   NightmareVisionQuantRendering.classify(head,historical,0.5,true);check(head.quant==8,'historical head classifies its own beat');
+   var tail=new Note();tail.isSustainNote=true;tail.prevNote=head;
+   NightmareVisionQuantRendering.classify(tail,historical,0.25,true);check(tail.quant==8,'historical sustain inherits head');
+   var disabled=new Note();disabled.canQuant=false;NightmareVisionQuantRendering.classify(disabled,historical,0.5,true);check(disabled.quant==4,'historical canQuant gate');
+  }
+  var legacy=new Note();skin.applyNote(legacy,0);legacy.nightmareVisionRGB.legacyHSV=new NightmareVisionLegacyColorSwap();legacy.nightmareVisionRGB.legacyHSV.hue=.6;
+  legacy.isQuant=true;NightmareVisionQuantRendering.apply(legacy,skin,other);check(legacy.isQuant&&legacy.nightmareVisionRGB.legacyHSV.hue==.6,'RGB pass preserves historical variant and script HSV');
   trace('NV_QUANT_RENDERING_OK');
  }
 }

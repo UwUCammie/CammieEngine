@@ -114,7 +114,7 @@ class NightmareVisionClientPrefs {
 			opponentStrums:true, ghostTapping:true, noReset:false, hitsoundVolume:0.0,
 			ratingOffset:0, useEpicRankings:true, toggleSplashScreen:true,
 			epicWindow:22.5, sickWindow:45.0, goodWindow:90.0, badWindow:135.0,
-			safeFrames:10.0, noteOffset:0, quants:false, comboOffset:[0, 0, 0, 0],
+			safeFrames:10.0, noteOffset:0, quants:false, noteSkin:'Vanilla', comboOffset:[0, 0, 0, 0],
 			gameplaySettings:gameplayDefaults(),
 			arrowRGBdef:[
 				[0xFFC24B99, 0xFFFFFFFF, 0xFF3C1F56],
@@ -242,7 +242,7 @@ class NightmareVisionClientPrefs {
 			'healthBarAlpha','camFollowsCharacters','underlayType','underlayOpacity','mechanics','modcharts',
 			'downScroll','middleScroll','opponentStrums','ghostTapping','noReset','hitsoundVolume',
 			'ratingOffset','useEpicRankings','toggleSplashScreen','epicWindow','sickWindow','goodWindow',
-			'badWindow','safeFrames','noteOffset','quants','comboOffset','gameplaySettings','arrowRGBdef',
+			'badWindow','safeFrames','noteOffset','quants','noteSkin','comboOffset','gameplaySettings','arrowRGBdef',
 			'arrowRGBquant','arrowHSV','quantHSV','quantStepmania','editorUIColor','editorGradColors',
 			'editorBoxColors','editorGradVis','chartPresetList','chartPresets','keyBinds','gamepadBinds'
 		];

@@ -50,6 +50,7 @@ class FakeStrum {
   public var coyoteTime = 0.0;
   var order:Array<String>;
   public function new(id:Int, order:Array<String>) { ID=id; this.order=order; }
+  public function playAnim(name:String,force:Bool,note:Note):Void playConfirm(note.isSustainNote,force);
   public function playConfirm(sustain:Bool, force:Bool):Void {
     playConfirms++;
     order.push("confirm");
@@ -98,6 +99,7 @@ class PsychRuntimeBindings {
 }
 class FakeSourceRating { public var name:String; public function new(name:String) this.name=name; }
 class TestState {
+ public var nightmareVisionLegacyFieldCameras=false;
   public var notes = new FakeNotes();
   public var methods:Array<String> = [];
   public var order:Array<String> = [];

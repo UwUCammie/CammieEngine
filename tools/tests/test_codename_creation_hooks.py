@@ -156,6 +156,7 @@ class FakeAnimation {
 }''',
             "Note.hx": r'''import flixel.math.FlxPoint;
 class Note extends flixel.FlxSprite {
+ public var nightmareVisionLegacyColors:Dynamic=null;
  public var codenameFrameOffset:FlxPoint=null;public var codenameFrameOffsetOwned:Bool=false;
  public var nightmareVisionTypeRuntime:Dynamic=null;public var nightmareVisionRenderer:Dynamic=null;
  public var nightmareVisionTailState:Dynamic=null;public var nightmareVisionRGB:Dynamic=null;

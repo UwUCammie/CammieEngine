@@ -242,6 +242,7 @@ class Strum {
  public function new(id:Int, events:Array<String>) { ID=id; this.events=events; }
  function get_lastNote():Note return _lastNote;
  function set_lastNote(value:Note):Note { _lastNote=value; events.push('receptor:' + ID); return value; }
+ public function playAnim(name:String,force:Bool,note:Note):Void events.push('confirm:' + ID);
  public function playConfirm(sustain:Bool, reset:Bool):Void events.push('confirm:' + ID);
 }
 class Strumline {
@@ -328,6 +329,7 @@ class FlxG { public static var sound:SoundApi = new SoundApi(); }
 class FNFAssets { public static function getSound(path:String):Dynamic return null; }
 class Conductor { public static var songPosition:Float = 1; }
 class Main {
+ public var nightmareVisionLegacyFieldCameras=false;
  public var events:Array<String> = [];
  public var singerManualHits:Array<Bool> = [];
  public var nightmareVisionScripts:Scripts;
