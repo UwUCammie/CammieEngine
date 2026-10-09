@@ -68,6 +68,15 @@ class Main {
   sprite.x=31;sprite.y=47;renderer.applyObject(legacy,sprite,'note',0,0,new Vector3(900,600));near(sprite.x,31,'source updateObject preserves x');near(sprite.y,47,'source updateObject preserves y');
   var receptor=fake();visual=renderer.updateReceptor(legacy,receptor,0);near(receptor.x,donor.getBaseX(2,0),'receptor top-left');near(receptor.y,50,'receptor top Y');
   sprite=fake();visual=renderer.updateNote(modern,sprite,0,100,0,100,0,0);near(sprite.x,NightmareVisionModchartTransform.baseX(modern,2,0)-45,'modern centered X');near(sprite.y,166,'modern centered Y');near(visual.spriteOffsetX,11,'modern offset remains draw offset');
+  var liveX=7.;var liveY=9.;
+  renderer.positionOffsets=function(kind,dir,hold)return new Vector3(kind=='receptor'?3:liveX,hold?liveY+20:liveY);
+  sprite=fake();renderer.updateNote(legacy,sprite,0,100,0,100,0,0);near(sprite.x,donor.getBaseX(2,0)+18,'live note position offset');near(sprite.y,176,'live note Y');
+  liveX=13;renderer.updateNote(legacy,sprite,0,100,0,100,0,0);near(sprite.x,donor.getBaseX(2,0)+24,'live replacement without accumulation');
+  sprite.isSustainNote=true;renderer.updateNote(legacy,sprite,0,100,0,100,0,0);near(sprite.x,donor.getBaseX(2,0)+24,'hold note offset');
+  receptor=fake();renderer.updateReceptor(legacy,receptor,0);near(receptor.x,donor.getBaseX(2,0)+3,'independent strum offsets');near(receptor.y,59,'strum Y');
+  sprite=fake();renderer.updateNote(modern,sprite,0,100,0,100,0,0);near(sprite.x,NightmareVisionModchartTransform.baseX(modern,2,0)-45,'modern ignores legacy arrays');
+  sprite.x=31;sprite.y=47;renderer.applyObject(legacy,sprite,'note',0,0,new Vector3(900,600));near(sprite.x,31,'public updateObject ignores gameplay offsets');
+  renderer.destroy();check(renderer.positionOffsets==null,'release offset reader');
   near(NightmareVisionPlayfieldLayout.legacyEntranceX(960,0,112,false),734,'initial source X');
   near(NightmareVisionPlayfieldLayout.legacyEntranceX(640,0,112,true),78,'middle left split');
   near(NightmareVisionPlayfieldLayout.legacyEntranceX(640,3,112,true),1086,'middle right split');

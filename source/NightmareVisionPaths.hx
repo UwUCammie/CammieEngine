@@ -323,7 +323,27 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		return getPath('shaders/' + key + '.vert', null, checkMods);
 	public function textureAtlas(key:String, ?parentFolder:String, checkMods:Bool = true):String
 		return getPath('images/' + key, parentFolder, checkMods);
+	public function modsNoteskin(key:String):String return modFolders('noteskins/' + key);
+
+	/** Historical noteskin scripts interleave mod/core lookup by extension. */
+	public function legacyNoteskinScript(key:String):Null<String> {
+		var useDefault = key == null || key == '' || key == 'default';
+		if (useDefault) key = 'default';
+		for (extension in scriptExtensions) {
+			var relative = 'noteskins/' + key + '.' + extension;
+			var mod = modFolders(relative);
+			if (exists(mod)) return mod;
+			var core = getOwnerCorePath(relative);
+			if (exists(core)) return core;
+			// The historical default branch attempts only its first extension.
+			if (useDefault) return null;
+		}
+		return null;
+	}
+
 	public function noteskin(key:String, ?parentFolder:String, checkMods:Bool = true):String {
+		if (hudProfile != null && hudProfile.name == 'legacy-shared')
+			return getPath('noteskins/' + key, parentFolder, false);
 		var path = getPath('data/noteskins/' + key + '.json', parentFolder, checkMods);
 		return exists(path) ? path : getPath('noteskins/' + key + '.json', parentFolder, checkMods);
 	}

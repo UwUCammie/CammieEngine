@@ -82,6 +82,14 @@ class NightmareVisionNoteSkin {
 		refreshNoteFrames();
 	}
 
+	/** Historical script callbacks return texture IDs, not JSON skin names. */
+	public static function fromLegacyTexture(paths:NightmareVisionPaths, texture:String, keys:Int, id:Int):NightmareVisionNoteSkin {
+		var skin = new NightmareVisionNoteSkin(paths, 'default', keys, id);
+		skin.name = texture;
+		skin.noteTexture = texture == null || texture == '' ? 'NOTE_assets' : texture;
+		return skin;
+	}
+
 	/** Exact source static helper: defaults are filled in place and null-only. */
 	@:keep public static function resolveData(data:Dynamic):Void
 		NightmareVisionNoteSkinDefaults.resolveData(data);

@@ -192,7 +192,7 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
             write_nv_field_dependencies(work)
-            (work / 'NightmareVisionNoteSkin.hx').write_text('class NightmareVisionNoteSkin {public var name:String;public function new(path:Dynamic=null,name:String="custom",keys:Int=4,lane:Int=0)this.name=name;public function stringField(key:String,fallback:String):String return fallback;}', encoding='utf-8')
+            (work / 'NightmareVisionNoteSkin.hx').write_text('class NightmareVisionNoteSkin {public static function fromLegacyTexture(paths:Dynamic,texture:String,keys:Int,id:Int):NightmareVisionNoteSkin return new NightmareVisionNoteSkin(paths,texture,keys,id);public var name:String;public function new(path:Dynamic=null,name:String="custom",keys:Int=4,lane:Int=0)this.name=name;public function stringField(key:String,fallback:String):String return fallback;}', encoding='utf-8')
             (work / 'Main.hx').write_text(main, encoding='utf-8')
             (work / 'Strumline.hx').write_text(LINE, encoding='utf-8')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', str(work), '-main', 'Main', '--interp'], capture_output=True, text=True, timeout=45)

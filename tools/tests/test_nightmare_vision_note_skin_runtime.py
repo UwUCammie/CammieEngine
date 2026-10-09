@@ -158,6 +158,10 @@ class Main {
    check(authored.sustainSplashTexture=="custom/hold","explicit authored path overrides every layout");
   }
   FNFAssets.content="";
+  var legacy=NightmareVisionNoteSkin.fromLegacyTexture(firstPaths,"notes/source-texture",4,7);
+  check(legacy.noteTexture=="notes/source-texture" && legacy.name=="notes/source-texture" && legacy.ID==7 && legacy.paths==firstPaths,"legacy callback returns owner-local texture, not JSON skin name");
+  var fallback=NightmareVisionNoteSkin.fromLegacyTexture(firstPaths,"",4,0);
+  check(fallback.noteTexture=="NOTE_assets","legacy empty texture fallback");
   var skin=new NightmareVisionNoteSkin(firstPaths,"",4,9);
   skin.sustainSplashTexture="private-cover";
   firstPaths.atlasRequests=[];

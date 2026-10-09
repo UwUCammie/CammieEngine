@@ -27,6 +27,8 @@ class NightmareVisionModchartRenderer {
 	public final skinOffsets:NightmareVisionModchartSkinOffsets;
 	/** Optional bridge into the selected sprite's owner-local RGB graphics. */
 	public var applyVisual:Null<Dynamic->NightmareVisionModchartVisualState->Void>;
+	/** Historical noteskin arrays are live, per-key gameplay position offsets. */
+	public var positionOffsets:Null<String->Int->Bool->NightmareVisionModchartVector>;
 	/** Receives features that have no host rendering bridge. */
 	public var onUnsupportedFeature:Null<String->Void>;
 
@@ -78,6 +80,7 @@ class NightmareVisionModchartRenderer {
 		baselines = new ObjectMap();
 		warnedUnsupported = new ObjectMap();
 		applyVisual = null;
+		positionOffsets = null;
 		onUnsupportedFeature = null;
 		skinOffsets.readLive = null;
 	}
@@ -103,6 +106,7 @@ class NightmareVisionModchartRenderer {
 		if (context.legacyCoordinates) {
 			object.x = position.x + object.sourceOffsetX;
 			object.y = position.y + object.sourceOffsetY;
+			applyPositionOffsets(object);
 		}
 		copySpriteResult(note, object, position, baseline, NightmareVisionModchartObject.NOTE, !context.legacyCoordinates, context.legacyCoordinates);
 
@@ -281,10 +285,17 @@ class NightmareVisionModchartRenderer {
 		var position = transform.getPositionInto(context, object, visualDiff, timeDiff,
 			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
-		if (context.legacyCoordinates) { object.x = position.x; object.y = position.y; }
+		if (context.legacyCoordinates) { object.x = position.x; object.y = position.y; applyPositionOffsets(object); }
 		copySpriteResult(sprite, object, position, baseline, kind, !context.legacyCoordinates, context.legacyCoordinates);
 		applyVisualResult(sprite, baseline.state);
 		return baseline.state;
+	}
+
+	function applyPositionOffsets(object:NightmareVisionModchartObject):Void {
+		if (positionOffsets == null) return;
+		var value = positionOffsets(object.kind, object.data, object.isSustain);
+		object.x += value.x;
+		object.y += value.y;
 	}
 
 	function configureSprite(sprite:Dynamic):NightmareVisionModchartVisualState {

@@ -142,6 +142,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var modifiersRegistered:Bool = false;
 	@:keep public var genNotesBeforeCountdown:Bool = true;
 	@:keep public var arrowSkins:Array<String>;
+	@:keep public var arrowSkin:String;
+	@:keep public var noteskinScript:NightmareVisionScriptModule;
+	@:keep public var scriptedNoteOffsets:Array<FlxPoint> = [];
+	@:keep public var scriptedStrumOffsets:Array<FlxPoint> = [];
+	@:keep public var scriptedSustainOffsets:Array<FlxPoint> = [];
 	@:keep public var skipArrowStartTween:Bool = false;
 	var nightmareVisionDefaultGenerationDepth:Int = 0;
 	var nightmareVisionLegacyFieldCameras:Bool = false;
@@ -1331,6 +1336,20 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		});
 	}
 
+	function initializeNightmareVisionLegacyNoteSkin():Void {
+		if (!nightmareVisionLegacyFieldCameras) return;
+		scriptedNoteOffsets = NightmareVisionLegacyNoteSkin.offsets(nightmareVisionKeyCount());
+		scriptedStrumOffsets = NightmareVisionLegacyNoteSkin.offsets(nightmareVisionKeyCount());
+		scriptedSustainOffsets = NightmareVisionLegacyNoteSkin.offsets(nightmareVisionKeyCount());
+		arrowSkin = SONG.arrowSkin;
+		var selected = new NightmareVisionLegacyNoteSkin(nightmareVisionPaths.legacyNoteskinScript(arrowSkin),
+			function(path) return nightmareVisionScripts.fromOwnerFile(path, 'noteskin', scripts.sharedFields),
+			function(script) { scripts.addScript(script); }, scriptedNoteOffsets, scriptedStrumOffsets, scriptedSustainOffsets);
+		noteskinScript = selected.script;
+		arrowSkins = selected.textures;
+		if (noteskinScript != null && !noteskinScript.parsingFailed()) arrowSkin = selected.arrowSkin;
+	}
+
 	function initializeNightmareVisionScripts():Void {
 		#if sys
 		var root = nightmareVisionSelectedRoot();
@@ -1487,6 +1506,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				events:function() return eventScripts, setEvents:function(value) return eventScripts = value,
 				notes:function() return noteTypeScripts, setNotes:function(value) return noteTypeScripts = value
 			});
+		initializeNightmareVisionLegacyNoteSkin();
 		// Seed the source default before onCreate can intentionally override it.
 		refreshNightmareVisionNoteKillOffset();
 		NightmareVisionStageScene.load(stage, nightmareVisionScripts.group);
@@ -10177,14 +10197,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var names = arrowSkins;
 		var name = names != null && field >= 0 && field < names.length
 			&& names[field] != null && StringTools.trim(names[field]) != ''
-			? names[field] : 'default';
+			? names[field] : nightmareVisionLegacyFieldCameras ? 'NOTE_assets' : 'default';
 		if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
 		// Source fields own mutable skin instances, even when their JSON name matches.
 		var skinKey = field + ':' + nightmareVisionKeyCount() + ':' + name;
 		var skin = reuseCached ? nightmareVisionNoteSkins.get(skinKey) : null;
 		if (skin == null) {
 			try {
-				skin = new NightmareVisionNoteSkin(nightmareVisionPaths, name, nightmareVisionKeyCount(), field);
+				skin = nightmareVisionLegacyFieldCameras
+					? NightmareVisionNoteSkin.fromLegacyTexture(nightmareVisionPaths, name, nightmareVisionKeyCount(), field)
+					: new NightmareVisionNoteSkin(nightmareVisionPaths, name, nightmareVisionKeyCount(), field);
 				if (reuseCached) nightmareVisionNoteSkins.set(skinKey, skin);
 				trace('[nightmare-vision-note-skin] loaded owner=' + nightmareVisionPaths.root
 					+ ' field=' + field + ' skin=' + name
@@ -10252,6 +10274,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					sprite.offset.x += x * Math.cos(angle) - y * Math.sin(angle);
 					sprite.offset.y += x * Math.sin(angle) + y * Math.cos(angle);
 				});
+			if (nightmareVisionLegacyFieldCameras) {
+				var positionOffset = new nightmarevision.modchart.NightmareVisionModchartVector();
+				renderer.positionOffsets = function(kind, direction, sustain) return NightmareVisionLegacyNoteSkin.positionOffset(
+					kind, direction, sustain, scriptedNoteOffsets, scriptedStrumOffsets, scriptedSustainOffsets, positionOffset);
+			}
 			nightmareVisionRenderers.set(ownerField, renderer);
 		}
 		return renderer;

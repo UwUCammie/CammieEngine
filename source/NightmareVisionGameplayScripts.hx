@@ -60,7 +60,12 @@ class NightmareVisionGameplayScripts {
 	/** Stage.fromFile executes an unregistered handle. The source filename is
 	 * also its default name; injection, onLoad and registration belong to Stage. */
 	public function fromStageFile(path:String, shared:Map<String, Dynamic>):NightmareVisionScriptModule {
-		var entry:NightmareVisionScriptEntry = {scope:'stage', name:path, path:path, relative:path};
+		return fromOwnerFile(path, 'stage', shared);
+	}
+
+	/** Load an owner-validated file without automatic group/onLoad side effects. */
+	public function fromOwnerFile(path:String, scope:String, shared:Map<String, Dynamic>):NightmareVisionScriptModule {
+		var entry:NightmareVisionScriptEntry = {scope:scope, name:path, path:path, relative:path};
 		return NightmareVisionScriptModule.fromSource(path, read(path), group.parent, shared,
 			function(interp) {configure(interp, entry, null); bindDynamicLoader(interp);}, report);
 	}
