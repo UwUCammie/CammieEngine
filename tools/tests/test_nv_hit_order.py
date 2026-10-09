@@ -273,7 +273,7 @@ class NightmareVisionPlayFieldView {
  public var onNoteHit:FieldHitSignal = new FieldHitSignal();
  public function new(id:Int, playerControls:Bool) { ID=id; this.playerControls=playerControls; }
  public function addNote(note:NVNote):Void notes.push(note);
- public function removeNote(note:NVNote):Void { notes.remove(note); }
+ public function removeNote(note:NVNote,removeFromHost:Bool=true):Void { notes.remove(note); }
 }
 class FieldHitSignal {
  var listeners:Array<Dynamic->NightmareVisionPlayFieldView->Void> = [];

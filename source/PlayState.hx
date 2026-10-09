@@ -423,7 +423,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			generateReceptors:nightmareVisionGenerateFieldReceptors,
 			clearReceptors:nightmareVisionClearFieldReceptors,
 			addNote:nightmareVisionAttachFieldNote,
-			removeNote:nightmareVisionRemoveFieldNote,
+			removeNote:function(field, note) nightmareVisionRemoveFieldNote(field, note),
+			detachNote:function(field, note) nightmareVisionRemoveFieldNote(field, note, false),
 			disposeNote:nightmareVisionDisposeFieldNote,
 			hit:nightmareVisionFieldHitSignal,
 			miss:nightmareVisionFieldMissSignal,
@@ -811,7 +812,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (field.legacyGroupCameras) NightmareVisionLegacyFieldScale.note(note, field.scale);
 	}
 
-	function nightmareVisionRemoveFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
+	function nightmareVisionRemoveFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic, removeFromHost:Bool = true):Void {
 		if (value == null || !Std.isOfType(value, Note)) return;
 		var note:Note = cast value;
 		if (nightmareVisionNoteFields.get(note) == field) nightmareVisionNoteFields.remove(note);
@@ -819,7 +820,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (field != null && field.legacyGroupCameras) NightmareVisionLegacyFieldScale.remove(note);
 		else if (note.scale != null && note.baseScale != null) note.scale.copyFrom(note.baseScale);
 		note.updateHitbox();
-		if (notes != null) notes.remove(note, true);
+		if (removeFromHost && notes != null) notes.remove(note, true);
 	}
 
 	function nightmareVisionDisposeFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
@@ -829,10 +830,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		nightmareVisionRemoveFieldNote(field, note);
 	}
 
-	function nightmareVisionRemoveFieldNoteMembership(note:Note):Void {
+	function nightmareVisionRemoveFieldNoteMembership(note:Note, hostAlreadyRemoved:Bool = false):Void {
 		if (note == null || nightmareVisionNoteFields == null) return;
 		var field = nightmareVisionNoteFields.get(note);
-		if (field != null) field.removeNote(note);
+		if (field != null) field.removeNote(note, !hostAlreadyRemoved);
 	}
 
 	function nightmareVisionFieldForNote(note:Note):NightmareVisionPlayFieldView {
@@ -869,11 +870,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return legacyScriptRegistry().callOnScripts(name, args);
 	}
 
-	function retireNightmareVisionLegacyDuplicate(note:Note):Void {
+	function retireNightmareVisionLegacyNote(note:Note):Void {
 		modchartObjects.remove('note' + note.ID);
 		note.kill();
-		nightmareVisionRemoveFieldNoteMembership(note);
 		notes.remove(note, true);
+		nightmareVisionRemoveFieldNoteMembership(note, true);
 		note.destroy();
 	}
 
@@ -13222,6 +13223,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionLegacyEventVideo.play(this, nightmareVisionPaths, camHUD, name, visible);
 	}
 
+	/** Source KillNotes walks the live group, then replaces pending arrays. */
+	function killHistoricalNightmareNotes():Void {
+		while (notes.length > 0) {
+			var note = notes.members[0];
+			note.active = false;
+			note.visible = false;
+			retireNightmareVisionLegacyNote(note);
+		}
+		unspawnNotes = [];
+		legacyScriptRegistry().eventNotes = [];
+	}
+
 	function historicalNightmareVisionEventApi():Dynamic {
 		var registry = legacyScriptRegistry();
 		var scripts = function() return registry.eventScripts;
@@ -13229,6 +13242,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			visitHistoricalNightmareVisionEvents, sourceChartNoteOffset, scripts, registry.callScript)) entry.event];
 		return {
 			checkEventNote:function() dispatchHistoricalSongEvents(),
+			KillNotes:killHistoricalNightmareNotes,
 			playVideo:playHistoricalNightmareVideo,
 			eventPushed:function(event:Dynamic) NightmareVisionLegacyEventPreparation.pushed(event, scripts, registry.callScript, precacheNightmareVisionSourceEvent),
 			getEvents:collect,

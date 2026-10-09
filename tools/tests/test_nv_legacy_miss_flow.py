@@ -13,7 +13,7 @@ class LegacyMissFlowTest(unittest.TestCase):
   ref=extract_method(src,'function noteMiss(').replace('function noteMiss(', 'public function sourceMiss(').replace('songMisses','PlayState.misses').replace('.gfNote','.forceGfSing')
   press=extract_method(src,'function noteMissPress(').replace('function noteMissPress(', 'public function sourcePress(').replace('songMisses','PlayState.misses').replace('ClientPrefs.ghostTapping','nightmareVisionPrefs.view.ghostTapping')
   press=press.replace("FlxG.sound.play(Paths.soundRandom('missnote', 1, 3), FlxG.random.float(0.1, 0.2));", 'playHistoricalNightmareMissSound();')
-  retire=extract_method((ROOT/'source/PlayState.hx').read_text(),'function retireNightmareVisionLegacyDuplicate(').replace('function retire','public function retire')
+  retire=extract_method((ROOT/'source/PlayState.hx').read_text(),'function retireNightmareVisionLegacyNote(').replace('function retire','public function retire')
   host=r'''
 class PlayState {
  public var events:Array<String>=[];public var notes:Group;public var vocals:Voice;
@@ -36,7 +36,7 @@ class PlayState {
  public function callScript(s:Dynamic,n:String,a:Array<Dynamic>){}
  public function dispatchHistoricalNightmareNoteHit(n:Note,c:String){callOnLuas(c,[notes.members.indexOf(n),n.noteData,n.noteType,n.isSustainNote,n.ID]);callOnHScripts(c,[n]);}
  public function publishHistoricalNightmareMiss(n:Note){}
- public function nightmareVisionRemoveFieldNoteMembership(n:Note){n.member=false;}
+ public function nightmareVisionRemoveFieldNoteMembership(n:Note,hostAlreadyRemoved:Bool=false){n.member=false;}
  __RETIRE__
 }
 class Voice {public var volume(default,set):Float=1;var log:Array<String>;public function new(l){log=l;}function set_volume(v:Float){log.push('voice:'+v);return volume=v;}}

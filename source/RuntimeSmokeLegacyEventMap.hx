@@ -46,6 +46,7 @@ class RuntimeSmokeLegacyEventMap {
 			verifyQueue(state, registry, api);
 			verifyNotification(state, registry);
 			verifyDiscovery(state, registry, api);
+			verifyKillNotes(state, registry, api);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
@@ -168,6 +169,40 @@ class RuntimeSmokeLegacyEventMap {
 		} catch(error:Dynamic){restore();throw error;}
 		restore();
 		#end
+	}
+
+	static function verifyKillNotes(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
+		var oldNotes = state.notes;var oldUnspawn = state.unspawnNotes;var oldEvents = registry.eventNotes;var oldObjects = state.modchartObjects;
+		var group = new flixel.group.FlxGroup.FlxTypedGroup<Note>();
+		var field = state.nightmareVisionLegacyReceptors.player;
+		var pending:Note = null;
+		var restore = function() {
+			for (note in group.members.copy()) if (note != null) state.retireNightmareVisionLegacyNote(note);
+			state.notes = oldNotes;state.unspawnNotes = oldUnspawn;registry.eventNotes = oldEvents;state.modchartObjects = oldObjects;
+			if (pending != null) pending.destroy();group.destroy();
+		};
+		state.notes = group;state.modchartObjects = [];
+		try {
+			for (form in ['KillNotes();','game.KillNotes();','PlayState.KillNotes();','Reflect.callMethod(game,Reflect.field(game,"KillNotes"),[]);']) {
+				var note = new Note(100, 0);note.ID = 90101;
+				group.add(note);field.addNote(note);state.modchartObjects.set('note90101', note);
+				var removed = function(n:Note) {if (n != note || field.notes.indexOf(n) < 0 || state.modchartObjects.exists('note90101')) throw 'Group removal must precede field detach and follow alias removal';};
+				group.memberRemoved.add(removed);
+				pending = new Note(10000, 1);pending.ID = 90102;
+				var queued = [pending];var queuedEvents:Array<Dynamic> = [{strumTime:0,event:'pending',value1:'',value2:''}];
+				state.unspawnNotes = queued;registry.eventNotes = queuedEvents;
+				api.variables.set('__oldUnspawn', queued);api.variables.set('__oldEvents', queuedEvents);
+				api.execute(new NightmareVisionScriptParser().parseString(form + 'if(unspawnNotes==__oldUnspawn||eventNotes==__oldEvents||game.unspawnNotes.length!=0||PlayState.eventNotes.length!=0)throw "native KillNotes array identity";', '__kill_notes'));
+				if (group.length != 0 || note.active || note.visible || note.alive || note.exists || note.animation != null
+					|| field.notes.indexOf(note) >= 0 || state.nightmareVisionNoteFields.exists(note) || state.modchartObjects.exists('note90101')
+					|| queued.length != 1 || queued[0].animation == null || queuedEvents.length != 1)
+					throw 'Native KillNotes lifetime or ownership: ' + form + ' ' + haxe.Json.stringify({length:group.length,active:note.active,visible:note.visible,alive:note.alive,exists:note.exists,destroyed:note.animation==null,fieldMember:field.notes.indexOf(note),mapped:state.nightmareVisionNoteFields.exists(note),alias:state.modchartObjects.exists('note90101'),pendingAlive:queued[0].animation!=null});
+				group.memberRemoved.remove(removed);
+				pending.destroy();pending = null;
+			}
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_kill_notes_native_verified', {publicForms:4,liveArrayAliases:true,fieldRemoval:true,aliasRemoval:true,activeDestroyed:true,pendingNotDestroyed:true});
+		} catch(error:Dynamic) {restore();throw error;}
+		restore();
 	}
 
 }

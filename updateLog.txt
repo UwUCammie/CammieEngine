@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV KillNotes now clears active notes through shared retirement and replaces pending queues with source callback order and field ownership preserved.
 - Historical NV eventPushed and playVideo now share preparation and owner-scoped media services, restoring hidden preparation, visible HUD playback and source chroma-key rendering.
 - Historical NV event preparation now discovers callback-added event handlers with source file precedence and shares the existing Lua/HScript loaders.
 - Historical NV events now notify the shared live script registry after built-in effects, retaining callback-time handler changes without duplicate Lua notifications.

@@ -9,7 +9,7 @@ class NightmareVisionLegacyMissFlow {
 		state.notes.forEachAlive(function(candidate:Note) {
 			var field:NightmareVisionPlayFieldView = cast note.playField;
 			if (SourceMissDuplicates.matches(note, candidate, field != null && field.playerControls))
-				state.retireNightmareVisionLegacyDuplicate(candidate);
+				state.retireNightmareVisionLegacyNote(candidate);
 		});
 		state.combo = 0;
 		state.health -= note.missHealth * state.healthLoss;

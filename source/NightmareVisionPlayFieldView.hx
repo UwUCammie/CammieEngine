@@ -11,6 +11,7 @@ typedef NightmareVisionPlayFieldHooks = {
 	?clearReceptors:NightmareVisionPlayFieldView->Void,
 	?addNote:(NightmareVisionPlayFieldView, Dynamic)->Void,
 	?removeNote:(NightmareVisionPlayFieldView, Dynamic)->Void,
+	?detachNote:(NightmareVisionPlayFieldView, Dynamic)->Void,
 	?disposeNote:(NightmareVisionPlayFieldView, Dynamic)->Void,
 	?hit:(Dynamic, NightmareVisionPlayFieldView)->Void,
 	?miss:(Dynamic, NightmareVisionPlayFieldView)->Void,
@@ -204,10 +205,14 @@ class NightmareVisionPlayFieldView {
 		noteMembers.push(note);
 		nativeHooks.addNote(this, note);
 	}
-	public function removeNote(note:Dynamic):Void {
+	public function removeNote(note:Dynamic, removeFromHost:Bool = true):Void {
 		if (nativeHooks == null || nativeHooks.removeNote == null) missingHook('removeNote');
 		noteMembers.remove(note);
-		nativeHooks.removeNote(this, note);
+		if (removeFromHost) nativeHooks.removeNote(this, note);
+		else {
+			if (nativeHooks.detachNote == null) missingHook('detachNote');
+			nativeHooks.detachNote(this, note);
+		}
 	}
 	public function disposeNote(note:Dynamic):Void {
 		if (nativeHooks == null || nativeHooks.disposeNote == null) missingHook('disposeNote');

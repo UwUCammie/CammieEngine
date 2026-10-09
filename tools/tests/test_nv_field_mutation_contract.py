@@ -117,6 +117,7 @@ class Main {
    clearReceptors:function(f) {cleared++;f.strumline.members.resize(0);},
    addNote:function(f,n) {events.push('attach');Reflect.setField(n,'playField',f);},
    removeNote:function(f,n) {events.push('detach');Reflect.setField(n,'playField',null);},
+   detachNote:function(f,n) {events.push('detach-only');Reflect.setField(n,'playField',null);},
    disposeNote:function(f,n) {disposed++;n.alive=false;Reflect.setField(n,'playField',null);},
    hit:function(n,f)events.push('native-hit'),miss:function(n,f)events.push('native-miss'),
    missPress:function(key)events.push('native-press:'+key),
@@ -151,6 +152,7 @@ class Main {
   field.onNoteHit.dispatch(tap,field);field.onNoteHit.dispatch(tap,field);
   check(once==1,'real source signal once/removal behavior');
   field.removeNote(tap);check(!field.notes.contains(tap)&&tap.playField==null,'native/global detach hook');
+  field.addNote(tap);field.removeNote(tap,false);check(events[events.length-1]=='detach-only'&&!field.notes.contains(tap),'retirement detaches membership without another host removal');
   field.disposeNote(hold);check(disposed==1&&!hold.alive&&!field.notes.contains(hold),'dispose hook owns note kill/unlink');
   field.clearReceptors();check(cleared==1&&line.members.length==0,'receptor clear hook');
   field.keyCount=4;check(generated==1,'empty bank key count setter should not regenerate');

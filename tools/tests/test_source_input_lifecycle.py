@@ -127,7 +127,7 @@ class InputField {
  public var onMissPress:InputMissPressSignal = new InputMissPressSignal();
  public function new() {}
  public function canInput():Bool return input;
- public function removeNote(note:Note):Void notes.remove(note);
+ public function removeNote(note:Note,removeFromHost:Bool=true):Void notes.remove(note);
 }
 class InputPrefsView { public var ghostTapping:Bool = false; public function new() {} }
 class InputPrefs { public var view:InputPrefsView = new InputPrefsView(); public function new() {} }

@@ -54,6 +54,7 @@ API=r'''class Host {
  public var registry=new NightmareVisionLegacyScriptRegistry();public var groups:Array<Dynamic>=[[100.,[['E','keep',null],['E','reject',null]]]];
  public var videos:Array<String>=[];
  public function new(){}
+ function killHistoricalNightmareNotes():Void {}
  function playHistoricalNightmareVideo(name:String,visible:Bool=true):Void videos.push(name+':'+visible);
  function precacheNightmareVisionSourceEvent(event:Dynamic):Bool {if(Reflect.getProperty(event,'event')!='Play Video')return false;playHistoricalNightmareVideo(Reflect.getProperty(event,'value1'),false);return true;}
  function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry return registry;
