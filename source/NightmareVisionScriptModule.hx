@@ -21,6 +21,7 @@ class NightmareVisionScriptModule {
 	public var modFolder:Null<String>;
 	public var interp(default, null):NightmareVisionScriptInterp;
 	public var initialized(default, null):Bool = false;
+	public var historicalCalls:Bool = false;
 	public var parsingException:Dynamic = null;
 	public var released(default, null):Bool = false;
 	final report:String->String->Dynamic->Void;
@@ -99,9 +100,16 @@ class NightmareVisionScriptModule {
 	}
 
 	public function parsingFailed():Bool return parsingException != null;
-	public function get(field:String):Dynamic return interp == null ? false : interp.variables.get(field);
+	function requireHistoricalInterpreter():Void {
+		if (historicalCalls && interp == null) throw '[nightmare-vision-script] Script has stopped: ' + name;
+	}
+	public function get(field:String):Dynamic {
+		requireHistoricalInterpreter();
+		return interp == null ? false : interp.variables.get(field);
+	}
 	public function set(field:String, value:Dynamic, allowOverride:Bool = true):Void {
-		if (interp != null && (allowOverride || !interp.variables.exists(field))) interp.variables.set(field, value);
+		requireHistoricalInterpreter();
+		if (interp != null && (historicalCalls || allowOverride || !interp.variables.exists(field))) interp.variables.set(field, value);
 	}
 
 	/** Standalone source loading does not register or call onLoad. Stage owns
@@ -121,8 +129,9 @@ class NightmareVisionScriptModule {
 		return script;
 	}
 
-	/** The public source call returns the actual Iris result record. */
-	public function call(callback:String, ?args:Array<Dynamic>):IrisCall {
+	/** Modern calls return Iris records; historical calls expose the raw value. */
+	public function call(callback:String, ?args:Array<Dynamic>):Dynamic {
+		if (historicalCalls) return callValue(callback, args);
 		if (interp == null) return null;
 		if (!exists(callback)) {
 			report(name, callback, 'Function does not exist: ' + callback);
@@ -139,6 +148,10 @@ class NightmareVisionScriptModule {
 
 	/** Internal gameplay consumers retain raw values and quiet missing hooks. */
 	public function callValue(callback:String, ?args:Array<Dynamic>, ?receiver:Dynamic):Dynamic {
+		if (historicalCalls) {
+			var value = executeFunc(callback, args, receiver == null ? this : receiver);
+			return value == null ? 0 : value;
+		}
 		var result = invoke(callback, args, receiver);
 		return result == null ? null : result.returnValue;
 	}
@@ -162,6 +175,7 @@ class NightmareVisionScriptModule {
 	}
 
 	public function exists(callback:String):Bool {
+		requireHistoricalInterpreter();
 		return !released && interp != null && interp.variables.exists(callback);
 	}
 
@@ -192,6 +206,9 @@ class NightmareVisionScriptModule {
 			return null;
 		}
 	}
+
+	/** Historical stop releases the interpreter without dispatching onDestroy. */
+	public function stop():Void destroy();
 
 	/** onDestroy belongs to the group's clear/call contract, not this release. */
 	public function destroy():Void {

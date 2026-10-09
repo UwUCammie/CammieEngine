@@ -1369,6 +1369,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function seedNightmareVision(interp:NightmareVisionScriptInterp,
 		entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry, actor:Dynamic):Void {
 		var currentModule:NightmareVisionScriptModule = cast interp.variables.get('script');
+		if (currentModule != null) currentModule.historicalCalls = nightmareVisionLegacyFieldCameras;
 		if (currentModule != null && entry.scope != 'standalone' && entry.scope != 'stage-standalone')
 			currentModule.modFolder = StringTools.startsWith(entry.relative, '__nmv_core/') ? '' : nightmareVisionPaths.getModFolder(entry.path, 'scripts');
 		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins,

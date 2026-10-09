@@ -58,6 +58,18 @@ class RuntimeSmokeLegacyRegistry {
 			run('callOnScripts("registryProbe",[]);');
 			if (log.join(',') != 'first,late' || state.legacyScriptRegistry().hscriptArray.length != 1) throw 'Native callback removal order: '+log.join(',');
 			first.destroy();
+			var handle = group.loadSource('__historical_handle',
+				'function identity(){return this==script;} function nested(){return script.call("identity",[]);} function nothing(){return;}',
+				function(i) state.seedNightmareVision(i,{scope:'song',name:'__historical_handle',relative:'__historical_handle.hx',path:state.nightmareVisionPaths.root+'/__historical_handle.hx'},null));
+			if (handle == null || !handle.historicalCalls || handle.call('identity',[]) != true || handle.call('nested',[]) != true
+				|| handle.call('nothing',[]) != 0 || handle.call('missing',[]) != 0) throw 'Native historical script handle contract';
+			api.variables.set('probeHandle',handle);
+			run('var savedCall=probeHandle.call;if(savedCall("identity",[])!=true||Reflect.callMethod(probeHandle,Reflect.field(probeHandle,"call"),["identity",[]])!=true)throw "native reflected script call";');
+			var globals = handle.interp.variables;
+			run('probeHandle.stop();probeHandle.stop();');
+			var stoppedError = false;try handle.call('identity',[]) catch(error:Dynamic) stoppedError = true;
+			if (!stoppedError || handle.interp != null || globals.iterator().hasNext()) throw 'Native stopped handle retained interpreter';
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_script_handle_native_verified',{sourceProfile:true,rawReturn:true,nestedReceiver:true,missingAndVoidContinue:true,savedAndReflected:true,stopReleases:true,stoppedAccessFails:true});
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_registry_native_verified',{liveIdentity:true,reflectedReplacement:true,independentFamilies:true,mixedOrder:true,callbackLoad:true,callbackRemoval:true,sharedSetter:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
