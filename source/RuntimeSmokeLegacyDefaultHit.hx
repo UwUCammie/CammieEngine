@@ -5,7 +5,8 @@ package;
 class RuntimeSmokeLegacyDefaultHit {
 	public static function verify(note:Note):Void {
 		#if sys
-		if (Sys.getEnv('CAMMIE_LEGACY_DEFAULT_HIT_SMOKE') != '1') return;
+		var scriptCalls = Sys.getEnv('CAMMIE_LEGACY_HIT_API_SMOKE') == '1';
+		if (!scriptCalls && Sys.getEnv('CAMMIE_LEGACY_DEFAULT_HIT_SMOKE') != '1') return;
 		var state = PlayState.instance;
 		var player = state.nightmareVisionLegacyReceptors.player;
 		var opponent = state.nightmareVisionLegacyReceptors.opponent;
@@ -24,6 +25,7 @@ class RuntimeSmokeLegacyDefaultHit {
 		var oldOpponentControl = opponent.playerControls;
 		var oldPlayerAuto = player.autoPlayed;
 		var oldOpponentAuto = opponent.autoPlayed;
+		var api:NightmareVisionScriptInterp = null;
 		var errors:Array<String> = [];
 		var seen:Array<String> = [];
 		var group = new NightmareVisionScriptGroup(state, function(n,p,e) errors.push(Std.string(e)));
@@ -34,6 +36,7 @@ class RuntimeSmokeLegacyDefaultHit {
 			for (name in saved.keys()) Reflect.setProperty(note, name, saved.get(name));
 			player.playerControls = oldPlayerControl;opponent.playerControls = oldOpponentControl;
 			player.autoPlayed = oldPlayerAuto;opponent.autoPlayed = oldOpponentAuto;
+			if (api != null) api.release();
 			group.destroy();
 		};
 		try {
@@ -63,6 +66,28 @@ class RuntimeSmokeLegacyDefaultHit {
 				throw 'Historical fixed family/flag mismatch: '+seen.join(',')+' '+errors.join(',');
 			NightmareVisionLegacyHitFlow.updateFlags(note);
 			if (!note.wasGoodHit) throw 'Historical opponent update did not commit wasGoodHit';
+			if (scriptCalls) {
+				api = new NightmareVisionScriptInterp(state);
+				state.seedNightmareVision(api, {scope:'song',name:'__hit_api',relative:'__hit_api.hx',
+					path:state.nightmareVisionPaths.root + '/__hit_api.hx'}, null);
+				api.variables.set('probeNote', note);
+				var forms = ['HANDLER(probeNote,probeField);', 'game.HANDLER(probeNote,probeField);',
+					'PlayState.HANDLER(probeNote,probeField);',
+					'Reflect.callMethod(game,Reflect.getProperty(game,"HANDLER"),[probeNote,probeField]);'];
+				for (isPlayer in [true, false]) for (form in forms) {
+					note.wasGoodHit = false;note.hitByOpponent = false;note.doAutoSustain = false;
+					note.nightmareVisionHitDispatched = false;
+					api.variables.set('probeField', isPlayer ? player : opponent);
+					var beforeHealth = state.health;var beforeCount = seen.length;
+					var text = StringTools.replace(form, 'HANDLER', isPlayer ? 'goodNoteHit' : 'opponentNoteHit');
+					api.execute(new NightmareVisionScriptParser().parseString(text, '__hit_api'));
+					if (seen.length != beforeCount + 1 || seen[beforeCount] != (isPlayer ? 'good' : 'opponent')
+						|| Math.abs(state.health - beforeHealth - (isPlayer ? 0.05 : 0)) > 0.00001 || errors.length > 0)
+						throw 'Historical script entrypoint mismatch: ' + text;
+				}
+				@:privateAccess RuntimeSmokeHarness.emit('legacy_hit_api_native_verified',
+					{bare:true,instance:true,classAlias:true,reflection:true,sourceSignature:true,families:2,calls:8});
+			}
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_default_hit_native_verified',
 				{fixedFamilies:true,playerHealth:true,playerRepeatGuard:true,callbackFlagTiming:true,deferredOpponentFlag:true,widerLaneAutoSustain:true});
 		} catch(error:Dynamic) {restore();throw error;}

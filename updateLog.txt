@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV scripts can call the source goodNoteHit/opponentNoteHit signatures through bare, instance, class and reflected access, sharing the normal field handlers.
 - Historical NV characters now preserve source special/Hey expiry, opponent sing timeout, loop and hold-start ordering, and exact idle selection through shared animation services.
 	- Restore historical NV singer locks, GF/Hey handling, chord rows and animated ghost effects through shared character and sprite services.
 	- Keep historical NV player/opponent default hit handlers independent of mutable field controls, with source health, hazard, receptor and hit-flag timing.

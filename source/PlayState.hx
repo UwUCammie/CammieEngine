@@ -1300,6 +1300,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock, entry);
 		interp.bindClassParent(PlayState);
 		bindNightmareVisionPixelStage(interp);
+		if (nightmareVisionLegacyFieldCameras)
+			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
+				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit);
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
