@@ -2016,7 +2016,12 @@ class RuntimeSmokeHarness {
 				throw 'Owner manager did not select historical coordinate profile';
 			checked++;
 		}
-		emit('legacy_geometry_native_verified', {coordinates:checked,noteX:note.x,noteY:note.y,
+		for (speed in [0.0, 0.5, 1.0, 2.0, -1.0]) {
+			if (Math.abs(state.modManager.getVisPos(100, 200, speed) - 45) > 0.000001
+				|| Math.abs(state.modManager.getBaseVisPosD(100, speed) - 45 * speed) > 0.000001)
+				throw 'Owner manager did not preserve historical visual-distance helpers';
+		}
+		emit('legacy_geometry_native_verified', {coordinates:checked,visualDistanceChecks:5,noteX:note.x,noteY:note.y,
 			positionOffset:[note.offsetX,note.offsetY],drawOffset:[note.typeOffsetX,note.typeOffsetY]});
 		#end
 	}

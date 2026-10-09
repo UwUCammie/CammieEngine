@@ -236,3 +236,50 @@ class Main {
  }
 }
 ''')
+
+    def test_historical_visual_distance_matches_pinned_source_and_is_owner_scoped(self):
+        donor=Path(ROOT).parent/'fnf_sources/NightmareVision'
+        if not donor.is_dir():
+            self.skipTest('pinned historical donor repository is unavailable')
+        source=subprocess.check_output(['git','show','7f96eb3b5a60352413229bf134bd348b79ad5fe6:source/modchart/ModManager.hx'],cwd=donor,text=True)
+        methods='\n'.join(method(source,sig) for sig in ['public inline function getBaseVisPosD(', 'public inline function getVisPos('])
+        self.run_haxe(r'''
+import nightmarevision.modchart.NightmareVisionModchartContext;
+class Donor {public function new(){} __METHODS__}
+class Main {
+ static function near(a:Float,b:Float,m:String):Void if(Math.abs(a-b)>.000001)throw m+': '+a+' != '+b;
+ static function main(){
+  var historical=new NightmareVisionModManager(null,4,2,false);
+  historical.renderContext=()->new NightmareVisionModchartContext(1280,720,4,112,0,0,1,500,false,false,true);
+  var modern=new NightmareVisionModManager(null,4,2,false);
+  modern.renderContext=()->new NightmareVisionModchartContext(1280,720,4,112);
+  var standalone=new NightmareVisionModManager(null,4,2,false);
+  var donor=new Donor();
+  for(now in [-500.,0.,100.,5000.])for(hit in [-500.,0.,200.,5000.])for(speed in [-2.,0.,.5,1.,2.,4.]){
+   near(historical.getVisPos(now,hit,speed),donor.getVisPos(now,hit,speed),'pinned historical public distance');
+   near(historical.getBaseVisPosD(now-hit,speed),donor.getBaseVisPosD(now-hit,speed),'pinned base distance retains speed');
+   near(modern.getVisPos(now,hit,speed),-.45*(now-hit)*speed,'modern speed contract');
+   near(standalone.getVisPos(now,hit,speed),modern.getVisPos(now,hit,speed),'standalone default contract');
+  }
+  var registry=new nightmarevision.modchart.NightmareVisionModifierRegistry(4);
+  registry.setSubmodValue('stealth','randomVanish',1,0);
+  var transform=new nightmarevision.modchart.NightmareVisionModchartTransform(registry);
+  var note=new nightmarevision.modchart.NightmareVisionModchartObject('note');note.strumTime=600;note.multSpeed=1;
+  var pos=new nightmarevision.modchart.NightmareVisionModchartVector();
+  for(speed in [.5,1.,2.]){
+   transform.updateObject(new NightmareVisionModchartContext(1280,720,4,112,0,0,speed,500,false,false,true),note,pos,0);
+   near(note.alphaMod,2./3,'historical fade samples source unscaled distance');
+  }
+  transform.updateObject(new NightmareVisionModchartContext(1280,720,4,112,0,0,.5),note,pos,0);
+  near(note.alphaMod,0,'modern slow fade remains speed-sensitive');
+  transform.updateObject(new NightmareVisionModchartContext(1280,720,4,112,0,0,2),note,pos,0);
+  near(note.alphaMod,1,'modern fast fade remains speed-sensitive');
+  near(historical.getVisPos(),donor.getVisPos(),'default arguments');
+  var interp=new NightmareVisionScriptInterp();interp.variables.set('manager',historical);
+  interp.execute(new NightmareVisionScriptParser().parseString('result=manager.getVisPos(100,200,3);base=manager.getBaseVisPosD(100,3);'));
+  near(interp.variables.get('result'),45,'script-facing historical call');near(interp.variables.get('base'),135,'script-facing base call');
+  historical.renderContext=modern.renderContext;near(historical.getVisPos(100,200,3),135,'no stale global profile');
+  historical.destroy();modern.destroy();standalone.destroy();interp.release();
+ }
+}
+'''.replace('__METHODS__',methods))

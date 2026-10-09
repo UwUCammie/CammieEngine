@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Share historical NV visual-distance semantics between public helpers and note fading without changing modern NV scroll-speed behavior.
 	- Load historical NV noteskin scripts through the shared owner-scoped interpreter before stage setup, preserving texture callbacks and live per-key position offsets.
 	- Match historical NV receptor entrances, top-left gameplay coordinates and reverse positioning through the shared modifier renderer.
 	- Keep historical note position offsets separate from type and animation draw offsets, preserving modern coordinate behavior.

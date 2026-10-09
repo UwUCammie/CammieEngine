@@ -43,8 +43,8 @@ class NightmareVisionModchartTransform {
 	public static function baseY(noteWidth:Float):Float return noteWidth * 0.5 + 50;
 
 	/** Source ModManager.getVisPos, used by donor alpha and note construction. */
-	public static function visualPosition(songPosition:Float, strumTime:Float, songSpeed:Float):Float
-		return -0.45 * (songPosition - strumTime) * songSpeed;
+	public static function visualPosition(songPosition:Float, strumTime:Float, songSpeed:Float, legacyCoordinates:Bool = false):Float
+		return -0.45 * (songPosition - strumTime) * (legacyCoordinates ? 1 : songSpeed);
 
 	/**
 		Run the source getPos chain, in the source ModifierOrder and registration
@@ -637,7 +637,7 @@ class NightmareVisionModchartTransform {
 		if (object.kind == NightmareVisionModchartObject.NOTE) {
 			player = object.player; // donor Note.lane selects the owning playfield.
 			var speed = context.songSpeed * object.multSpeed;
-			var yPos = visualPosition(context.songPosition, object.strumTime, speed) + 50;
+			var yPos = visualPosition(context.songPosition, object.strumTime, speed, context.legacyCoordinates) + 50;
 			object.rgbFlash = 0;
 			var alphaMultiplier = (1 - sub(family, 'alpha', player))
 				* (1 - sub(family, 'alpha' + object.data, player))

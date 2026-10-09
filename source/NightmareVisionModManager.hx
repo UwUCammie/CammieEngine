@@ -340,8 +340,14 @@ class NightmareVisionModManager {
 		var noteWidth:Float = #if flixel Note.swagWidth #else 112 #end;
 		return noteWidth * .5 + 50;
 	}
-	public function getBaseVisPosD(diff:Float, songSpeed:Float = 1):Float return .45 * diff * songSpeed;
-	public function getVisPos(songPos:Float = 0, strumTime:Float = 0, songSpeed:Float = 1):Float return -getBaseVisPosD(songPos - strumTime, songSpeed);
+	public function getBaseVisPosD(diff:Float, songSpeed:Float = 1):Float
+		return -nightmarevision.modchart.NightmareVisionModchartTransform.visualPosition(diff, 0, songSpeed);
+	public function getVisPos(songPos:Float = 0, strumTime:Float = 0, songSpeed:Float = 1):Float {
+		// Historical public getVisPos ignores its speed argument; the base helper does not.
+		var ownerContext = renderContext == null ? null : renderContext();
+		return nightmarevision.modchart.NightmareVisionModchartTransform.visualPosition(songPos, strumTime,
+			songSpeed, ownerContext != null && ownerContext.legacyCoordinates);
+	}
 	function objectKind(obj:Dynamic):String {
 		if (Reflect.hasField(obj, 'isSustainNote')) return 'note';
 		#if flixel
