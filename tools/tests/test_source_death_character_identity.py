@@ -126,6 +126,7 @@ class NightmareVisionCharacterData {
 }
 
 class Character {
+ public var sourceStunnedState=false;public var nightmareVisionLegacyActor=false;
  public var curCharacter:String='';
  public var requestedCharacter:String='';
  public var isPlayer:Bool=false;
@@ -190,6 +191,7 @@ class Main {
   psychExact.resolveDeathIdentity('psych-dead','psych-owner',ImportEngine.PSYCH);
   check(psychExact.curCharacter=='psych-dead' && psychExact.requestedCharacter=='psych-dead',
    'Psych source death identity must stay authored');
+  check(psychExact.sourceStunnedState,'Psych source stun profile missing');
   check(psychExact.lastVisualCharacterId=='psych-dead' && Song.manifestCalls.join(',')=='psych-dead',
    'complete exact Psych death visual must win without consulting bf');
 
@@ -203,6 +205,7 @@ class Main {
   nvExact.sourceHealthIconAssigned=true;
   nvExact.sourceHealthIconValue='previous-script-icon';
   nvExact.resolveDeathIdentity('nv-dead','nv-owner',ImportEngine.NIGHTMARE_VISION);
+  check(nvExact.sourceStunnedState,'NV source stun profile missing');
   check(!nvExact.sourceHealthIconAssigned,
    'new source death definition must clear a previous scripted icon override');
   check(nvExact.curCharacter=='nv-dead' && nvExact.lastVisualCharacterId=='nv-dead',
@@ -253,6 +256,7 @@ class Main {
    Song.currentSongResolution=complete(testCase.expected);
    var legacy=new Character();
    legacy.resolveDeathIdentity(testCase.requested,testCase.root,testCase.engine);
+   check(!legacy.sourceStunnedState,"native/unrelated actor acquired Psych/NV stun profile");
    check(legacy.curCharacter==testCase.expected && legacy.lastVisualCharacterId==testCase.expected,
     testCase.label+' legacy -dead id must keep the established suffix-stripping behavior');
    check(Song.manifestCalls.length==0 && Song.currentSongCalls.join(',')==testCase.expected,

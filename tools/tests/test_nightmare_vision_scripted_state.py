@@ -355,7 +355,7 @@ class NightmareVisionScriptedStateTest(unittest.TestCase):
                 "NightmareVisionMusicBeatState.hx",
                 "NightmareVisionStateScriptLoadResult.hx",
                 "NightmareVisionScriptedState.hx",
-                "NightmareVisionScriptBroadcast.hx", "NightmareVisionScriptGroup.hx",
+                "NightmareVisionScriptBroadcast.hx", "NightmareVisionScriptGroup.hx", "SourceScriptRegistrationOrder.hx",
             ):
                 shutil.copyfile(ROOT / "source" / source_name, work / source_name)
             result = subprocess.run(

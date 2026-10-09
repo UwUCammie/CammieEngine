@@ -8,6 +8,12 @@ class NightmareVisionScriptGroup {
 	public static inline var STOP_FUNC:Int = 1;
 	public static inline var HALT_FUNC:Int = 2;
 
+	var registrationOrders:haxe.ds.ObjectMap<NightmareVisionScriptModule, Int> = new haxe.ds.ObjectMap();
+	public function registrationOrder(script:NightmareVisionScriptModule):Int {
+		if (!registrationOrders.exists(script)) registrationOrders.set(script, SourceScriptRegistrationOrder.next());
+		return registrationOrders.get(script);
+	}
+
 	public var members(default, null):Array<NightmareVisionScriptModule> = [];
 	public var sharedFields(default, null):Map<String, Dynamic> = new Map();
 	public var scriptShareables(get, set):Map<String, Dynamic>;
@@ -47,11 +53,15 @@ class NightmareVisionScriptGroup {
 		script.interp.parent = parent;
 		script.interp.sharedFields = sharedFields;
 		members.push(script);
+		registrationOrders.set(script, SourceScriptRegistrationOrder.next());
 		return true;
 	}
 
 	/** Removal transfers ownership without destroying the interpreter. */
-	public function removeScript(script:NightmareVisionScriptModule):Bool return members.remove(script);
+	public function removeScript(script:NightmareVisionScriptModule):Bool {
+		registrationOrders.remove(script);
+		return members.remove(script);
+	}
 
 	public function loadSource(name:String, source:String,
 		?configure:NightmareVisionScriptInterp->Void,
@@ -87,7 +97,7 @@ class NightmareVisionScriptGroup {
 		}
 		addScript(script, allowDupeNames);
 		if (!script.executeProgram(program)) {
-			members.remove(script);
+			removeScript(script);
 			script.destroy();
 			return null;
 		}
@@ -95,7 +105,7 @@ class NightmareVisionScriptGroup {
 			if (beforeLoad != null) beforeLoad(interp);
 		} catch (error:Dynamic) {
 			report(name, 'bindings', error);
-			members.remove(script);
+			removeScript(script);
 			script.destroy();
 			return null;
 		}
@@ -139,6 +149,7 @@ class NightmareVisionScriptGroup {
 		}
 		while (members.length > 0) {
 			var script = members.shift();
+			if (script != null) registrationOrders.remove(script);
 			if (script == null) continue;
 			try script.destroy() catch (error:Dynamic) {
 				if (!failed) {
@@ -147,6 +158,7 @@ class NightmareVisionScriptGroup {
 				}
 			}
 		}
+		registrationOrders.clear();
 		if (failed) throw firstError;
 	}
 

@@ -182,6 +182,9 @@ class PsychRuntimeBindings {
 class InputFixture {
  public var events:Array<String> = [];
  public var nightmareVisionScripts:Dynamic = null;
+ public var nightmareVisionLegacyFieldCameras=false;
+ public function broadcastHistoricalNightmareScripts(n:String,a:Array<Dynamic>):Dynamic return callNightmareVision(n,a);
+ public function nightmareVisionLegacyNoteMissPress(k:Int):Void {events.push('legacyMiss:'+k);broadcastHistoricalNightmareScripts('noteMissPress',[k]);}
  public var holdClaimUpdateCount:Int = 0;
  public var notes:NoteGroup = new NoteGroup();
  public var strumsBlocked:Array<Bool> = [false, false, false, false];
@@ -402,6 +405,14 @@ class Main {
     check(at(nv.events, 'nv:onGhostTap') < at(nv.events, 'miss:0:true')
      && at(nv.events, 'miss:1:false') < at(nv.events, 'nv:noteMissPress'),
      'NV ghost/miss direction fanout order changed');
+  }
+
+  for(enabled in [false,true]){
+   var legacy=new InputFixture();legacy.nightmareVisionLegacyFieldCameras=true;
+   legacy.nightmareVisionPrefs.view.ghostTapping=enabled;legacy.exerciseNvPress(0);
+   var calls=0;for(e in legacy.events)if(e=='nv:noteMissPress')calls++;
+   check(legacy.misses.length==0&&calls==(enabled?0:2),'historical handler and input each notify, without field fanout');
+   check(has(legacy.events,'legacyMiss:0')==!enabled,'historical default press route');
   }
 
   var nvSustain = new InputFixture();

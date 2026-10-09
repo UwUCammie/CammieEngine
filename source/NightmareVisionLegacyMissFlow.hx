@@ -33,4 +33,28 @@ class NightmareVisionLegacyMissFlow {
 		state.dispatchHistoricalNightmareNoteHit(note, 'noteMiss');
 		state.publishHistoricalNightmareMiss(note);
 	}
+	public static function press(state:PlayState, direction:Int = 1, anim:Bool = true):Void {
+		if (state.nightmareVisionPrefs.view.ghostTapping == true) return;
+		if (!state.boyfriend.stunned) {
+			state.health -= SourceHealthDelta.pressMiss(state.healthLoss);
+			if (state.instakillOnMiss) {
+				state.setSourceVocalVolume('player', 0);
+				state.doDeathCheck(true);
+			}
+			if (state.combo > 5 && state.gf != null && state.gf.animOffsets.exists('sad')) state.gf.playAnim('sad');
+			state.combo = 0;
+			var delta = SourceScoreLedger.miss(true, state.practiceMode, state.endingSong, true);
+			state.songScore += delta.score;
+			PlayState.misses += delta.missDelta;
+			state.totalPlayed += delta.played;
+			state.refreshSourceAccuracy();
+			state.RecalculateRating();
+			state.playHistoricalNightmareMissSound();
+			if (state.boyfriend.hasMissAnimations && anim && state.boyfriend.animTimer <= 0 && !state.boyfriend.voicelining)
+				state.boyfriend.playAnim(state.singAnimations[Std.int(Math.abs(direction))] + 'miss', true);
+			state.setSourceVocalVolume('player', 0);
+		}
+		state.broadcastHistoricalNightmareScripts('noteMissPress', [direction]);
+	}
+
 }

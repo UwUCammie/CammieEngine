@@ -3,9 +3,10 @@ package;
 /** Historical script signatures over the same default handlers used by fields. */
 class NightmareVisionLegacyHitBindings {
 	public static function install(interp:NightmareVisionScriptInterp, state:Dynamic, stateClass:Dynamic,
-		good:Dynamic, opponent:Dynamic, ?miss:Dynamic):Void {
+		good:Dynamic, opponent:Dynamic, ?miss:Dynamic, ?press:Dynamic):Void {
 		var entries = [{name:'goodNoteHit', callback:good}, {name:'opponentNoteHit', callback:opponent}];
 		if (miss != null) entries.push({name:'noteMiss', callback:miss});
+		if (press != null) entries.push({name:'noteMissPress', callback:press});
 		for (entry in entries) {
 			var callback = entry.callback;
 			var read = function():Dynamic return callback;

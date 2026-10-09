@@ -63,6 +63,9 @@ class InputPrefs { public var view:InputPrefsView=new InputPrefsView(); public f
 
 class InputFixture {
  public var events:Array<String>=[];
+ public var nightmareVisionLegacyFieldCameras=false;
+ public function broadcastHistoricalNightmareScripts(n:String,a:Array<Dynamic>):Dynamic return callNightmareVision(n,a);
+ public function nightmareVisionLegacyNoteMissPress(k:Int):Void {events.push('legacyMiss:'+k);broadcastHistoricalNightmareScripts('noteMissPress',[k]);}
  public var callbackTimes:Map<String,Array<Float>>=new Map();
  public var notes:NoteGroup=new NoteGroup();
  public var nightmareVisionFields:Array<InputField>=[];

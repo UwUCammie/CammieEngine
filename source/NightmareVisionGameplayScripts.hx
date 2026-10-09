@@ -205,6 +205,18 @@ class NightmareVisionGameplayScripts {
 		});
 	}
 
+	public function historicalCalls(event:String, args:Array<Dynamic>):Array<NightmareVisionHistoricalBroadcast.HistoricalScriptCall> {
+		var result:Array<NightmareVisionHistoricalBroadcast.HistoricalScriptCall> = [];
+		var owner = group;
+		for (script in owner.members) if (script != null) result.push({order:owner.registrationOrder(script),
+			invoke:function() return script.callValue(event, args), excluded:function() {
+				var registry = legacyNoteRegistry == null ? null : legacyNoteRegistry();
+				return script.released || owner.released || owner.members.indexOf(script) < 0
+					|| (registry != null && registry.exists(script.name)) || (eventGroup != null && eventGroup.exists(script.name));
+			}});
+		return result;
+	}
+
 	/** Names of loaded note-type modules for calls which broadcast a generic
 	 * note event. Those modules share `group` for lifecycle callbacks, but their
 	 * note callbacks must remain selected by the live note's type. */

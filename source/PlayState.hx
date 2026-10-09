@@ -857,6 +857,20 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionLegacyMissFlow.miss(this, note);
 	}
 
+	function nightmareVisionLegacyNoteMissPress(direction:Int = 1, anim:Bool = true):Void {
+		NightmareVisionLegacyMissFlow.press(this, direction, anim);
+	}
+
+	function playHistoricalNightmareMissSound():Void {
+		FlxG.sound.play(nightmareVisionPaths.soundRandom('missnote', 1, 3), FlxG.random.float(0.1, 0.2));
+	}
+
+	function broadcastHistoricalNightmareScripts(name:String, args:Array<Dynamic>):Dynamic {
+		var entries = nightmareVisionScripts.historicalCalls(name, args);
+		for (entry in PsychRuntimeBindings.historicalNightmareCalls(this, name, args)) entries.push(entry);
+		return NightmareVisionHistoricalBroadcast.call(entries);
+	}
+
 	function retireNightmareVisionLegacyDuplicate(note:Note):Void {
 		modchartObjects.remove('note' + note.ID);
 		note.kill();
@@ -1323,7 +1337,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindNightmareVisionPixelStage(interp);
 		if (nightmareVisionLegacyFieldCameras)
 			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
-				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss);
+				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss, nightmareVisionLegacyNoteMissPress);
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
@@ -24166,8 +24180,13 @@ void main(void) {
 				});
 			}
 			if (anyInput && ghostTapped) {
-				callNightmareVision('onGhostTap', [key]);
-				if (nightmareVisionPrefs.view.ghostTapping != true) {
+				if (nightmareVisionLegacyFieldCameras) broadcastHistoricalNightmareScripts('onGhostTap', [key]);
+				else callNightmareVision('onGhostTap', [key]);
+				if (nightmareVisionLegacyFieldCameras && nightmareVisionPrefs.view.ghostTapping != true) {
+					nightmareVisionLegacyNoteMissPress(key);
+					// Historical key input broadcasts again after its default handler.
+					broadcastHistoricalNightmareScripts('noteMissPress', [key]);
+				} else if (nightmareVisionPrefs.view.ghostTapping != true) {
 					for (field in nightmareVisionFields)
 						if (field != null && field.canInput()) field.onMissPress.dispatch(key);
 					callNightmareVision('noteMissPress', [key]);
@@ -25052,8 +25071,9 @@ void main(void) {
 
 	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
 		?sourceLine:CodenameInputLine<Character>):Void {
-		if (nightmareVisionLegacyFieldCameras && note != null) {
-			nightmareVisionLegacyNoteMiss(note);
+		if (nightmareVisionLegacyFieldCameras) {
+			if (note != null) nightmareVisionLegacyNoteMiss(note);
+			else nightmareVisionLegacyNoteMissPress(direction);
 			return;
 		}
 		if (sourceScoreNightmare && nightmareVisionScripts != null && note != null) {

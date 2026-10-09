@@ -46,10 +46,10 @@ class SourceScoreLedger {
 
 	/** Return the effects of one committed miss or non-ghost empty press. */
 	public static function miss(nightmare:Bool = false, practice:Bool = false,
-		ending:Bool = false):Dynamic {
+		ending:Bool = false, emptyPress:Bool = false):Dynamic {
 		return {
 			score: nightmare && practice ? 0 : -10,
-			missDelta: nightmare || !ending ? 1 : 0,
+			missDelta: (nightmare && !emptyPress) || !ending ? 1 : 0,
 			played: 1,
 			recalculate: true
 		};

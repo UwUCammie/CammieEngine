@@ -11,6 +11,8 @@ class LegacyMissFlowTest(unittest.TestCase):
   if not donor.is_dir(): self.skipTest('pinned historical source unavailable')
   src=subprocess.check_output(['git','show',REV+':source/meta/states/PlayState.hx'],cwd=donor,text=True)
   ref=extract_method(src,'function noteMiss(').replace('function noteMiss(', 'public function sourceMiss(').replace('songMisses','PlayState.misses').replace('.gfNote','.forceGfSing')
+  press=extract_method(src,'function noteMissPress(').replace('function noteMissPress(', 'public function sourcePress(').replace('songMisses','PlayState.misses').replace('ClientPrefs.ghostTapping','nightmareVisionPrefs.view.ghostTapping')
+  press=press.replace("FlxG.sound.play(Paths.soundRandom('missnote', 1, 3), FlxG.random.float(0.1, 0.2));", 'playHistoricalNightmareMissSound();')
   retire=extract_method((ROOT/'source/PlayState.hx').read_text(),'function retireNightmareVisionLegacyDuplicate(').replace('function retire','public function retire')
   host=r'''
 class PlayState {
@@ -18,9 +20,12 @@ class PlayState {
  public var modchartObjects:Map<String,Dynamic>=[];public var health=1.;public var healthLoss=2.;public var combo=8;
  public var instakillOnMiss=false;public var practiceMode=false;public var endingSong=true;
  public static var misses=2;public var songScore=70;public var totalPlayed=3;
- public var boyfriend:Character;public var gf:Character;
+ public var boyfriend:Character;public var gf:Character;public var nightmareVisionPrefs:Dynamic={view:{ghostTapping:false}};
  public var singAnimations=['LEFT','DOWN','UP','RIGHT','EXTRA'];
  public function new(){notes=new Group(events);vocals=new Voice(events);boyfriend=new Character('bf',events);gf=new Character('gf',events);}
+ public function playHistoricalNightmareMissSound(){events.push('sound');}
+ public function broadcastHistoricalNightmareScripts(n:String,a:Array<Dynamic>):Dynamic {events.push(n+':'+a[0]);return 2;}
+ public function callOnScripts(n:String,a:Array<Dynamic>):Dynamic return broadcastHistoricalNightmareScripts(n,a);
  public function updateScoreBar(){events.push('bar:'+combo+':'+songScore);}
  public function setSourceVocalVolume(role:String,v:Float){vocals.volume=v;}
  public function doDeathCheck(v:Bool){events.push('death:'+health+':'+misses);return false;}
@@ -53,7 +58,7 @@ class Note {
  public function destroy(){log.push('destroy:'+ID);}
 }
 '''
-  char='class Character {public var hasMissAnimations=true;public var animTimer=0.;public var voicelining=false;public var stunned=true;var name:String;var log:Array<String>;public function new(n,l){name=n;log=l;}public function playAnim(a:String,f:Bool){log.push(name+":"+a+":"+f);}}'
+  char='class Character {public var animOffsets:Map<String,Array<Dynamic>>=[];public var hasMissAnimations=true;public var animTimer=0.;public var voicelining=false;public var stunned=true;var name:String;var log:Array<String>;public function new(n,l){name=n;log=l;}public function playAnim(a:String,f:Bool=false){log.push(name+":"+a+":"+f);}}'
   main=r'''
 class Main {
  static function setup(s:PlayState,mask:Int,negative:Bool):Note {
@@ -78,13 +83,28 @@ class Main {
   if(!an.alive||!an.exists)throw 'missed note retired early';
   for(i in 2...10)if(a.modchartObjects.exists('note'+i)!=b.modchartObjects.exists('note'+i))throw 'stale duplicate alias';
   if(a.notes.members.length!=b.notes.members.length)throw 'duplicate count';
- }}
+ }
+ for(mask in 0...2048)for(anim in [false,true])for(direction in [-2,2]){
+  var a=new PlayState(),b=new Reference();
+  for(s in [a,b]){
+   s.nightmareVisionPrefs.view.ghostTapping=mask&1!=0;s.boyfriend.stunned=mask&2!=0;
+   s.practiceMode=mask&4!=0;s.endingSong=mask&8!=0;s.instakillOnMiss=mask&16!=0;
+   s.combo=mask&32!=0?5:6;s.boyfriend.hasMissAnimations=mask&64!=0;
+   s.boyfriend.animTimer=mask&128!=0?1:0;s.boyfriend.voicelining=mask&256!=0;
+   if(mask&512!=0)s.gf=null;else if(mask&1024!=0)s.gf.animOffsets.set('sad',[]);
+  }
+  PlayState.misses=2;NightmareVisionLegacyMissFlow.press(a,direction,anim);var gotMisses=PlayState.misses;
+  PlayState.misses=2;b.sourcePress(direction,anim);
+  if(a.events.join('|')!=b.events.join('|'))throw 'press order '+mask+': '+a.events+' != '+b.events;
+  if(a.health!=b.health||a.combo!=b.combo||a.songScore!=b.songScore||gotMisses!=PlayState.misses||a.totalPlayed!=b.totalPlayed)throw 'press accounting';
+ }
+ }
 }
 '''
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
-   files={'Main':main,'PlayState':host,'Reference':'class Reference extends PlayState {public function new(){super();}'+ref+'}','Note':note,'Character':char,'NightmareVisionPlayFieldView':'class NightmareVisionPlayFieldView {public var playerControls=true;public function new(){}}'}
-   for name in ['NightmareVisionLegacyMissFlow','SourceMissDuplicates','SourceScoreLedger']:files[name]=(ROOT/'source'/f'{name}.hx').read_text()
+   files={'Main':main,'PlayState':host,'Reference':'class Reference extends PlayState {public function new(){super();}'+ref+press+'}','Note':note,'Character':char,'NightmareVisionPlayFieldView':'class NightmareVisionPlayFieldView {public var playerControls=true;public function new(){}}'}
+   for name in ['NightmareVisionLegacyMissFlow','SourceMissDuplicates','SourceScoreLedger','SourceHealthDelta']:files[name]=(ROOT/'source'/f'{name}.hx').read_text()
    for name,text in files.items():(work/f'{name}.hx').write_text(text,encoding='utf-8')
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],cwd=ROOT,text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)

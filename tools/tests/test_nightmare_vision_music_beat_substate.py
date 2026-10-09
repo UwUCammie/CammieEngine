@@ -212,7 +212,7 @@ class FlxSubState extends FlxState {
                 "NightmareVisionMusicBeatState.hx",
                 "NightmareVisionMusicBeatSubstate.hx",
                 "NightmareVisionStateScriptLoadResult.hx",
-                "NightmareVisionScriptBroadcast.hx", "NightmareVisionScriptGroup.hx",
+                "NightmareVisionScriptBroadcast.hx", "NightmareVisionScriptGroup.hx", "SourceScriptRegistrationOrder.hx",
             ):
                 shutil.copyfile(ROOT / "source" / source_name, work / source_name)
             result = subprocess.run(

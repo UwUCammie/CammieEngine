@@ -83,6 +83,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var extraOffset:FlxPoint = FlxPoint.get();
 	@:keep public var ghostDraw:Bool = false;
 	public var nightmareVisionLegacyActor:Bool = false;
+	var sourceStunnedState:Bool = false;
 	@:keep public var mostRecentRow:Int = 0;
 	@:keep public var voicelining:Bool = false;
 	@:keep public var doubleGhosts:Array<FlxSprite> = SourceCharacterGhosts.create();
@@ -963,7 +964,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		return stunned = value;
 	}
 	function get_stunned():Bool {
-		if (codenameLiveDefinition != null) return stunned;
+		if (codenameLiveDefinition != null || sourceStunnedState) return stunned;
 		if (OptionsHandler.options.useMissStun)
 			return stunned;
 		return false;
@@ -1227,6 +1228,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		var sourceOwnsDeathIdentity = sourceCharacterOwnerRoot != ''
 			&& (sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.PSYCH.toLowerCase()
 				|| sourceCharacterOwnerEngine.toLowerCase() == ImportEngine.NIGHTMARE_VISION.toLowerCase());
+		sourceStunnedState = sourceOwnsDeathIdentity || nightmareVisionLegacyActor;
 		if (StringTools.endsWith(curCharacter, "-dead")) {
 			isDie = true;
 			if (sourceOwnsDeathIdentity)

@@ -27,7 +27,7 @@ class CodenameStunTimingTest(unittest.TestCase):
         main = '''class OptionsHandler { public static var options={useMissStun:false}; }
 class Actor {
  @:isVar public var stunned(get,set):Bool=false; var codenameStunnedTime:Float=0;
- public var codenameLiveDefinition:Dynamic={};
+ public var codenameLiveDefinition:Dynamic={};public var sourceStunnedState=false;
  var codenameRuntime={call:function(name:String,args:Array<Dynamic>) {}};
  var codenameAnimationLock=false;var lastAnimContext='DANCE';
  public function new(){}
@@ -49,6 +49,8 @@ class Main {
    a.codenameLiveDefinition=null;a.stunned=true;check(!a.stunned,'native option changed');
    OptionsHandler.options.useMissStun=true;check(a.stunned,'native stun changed');
    OptionsHandler.options.useMissStun=false;
+   a.sourceStunnedState=true;check(a.stunned,'Psych/NV source stun masked by native option');
+   a.stunned=false;check(!a.stunned,'source stun failed to clear');
   }
  }
 }'''
