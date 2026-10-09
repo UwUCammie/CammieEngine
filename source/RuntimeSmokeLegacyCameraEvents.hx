@@ -15,11 +15,11 @@ class RuntimeSmokeLegacyCameraEvents {
 	public static function verify(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
 		var saved:Map<String, Dynamic> = [];
 		for (name in ['camGame','camHUD','camFollow','defaultCamZoom','isCameraOnForcedPos','camTween','camHUDAlphaTween',
-			'boyfriendCameraOffset','girlfriendCameraOffset','opponentCameraOffset','nightmareVisionCameraEvents']) saved.set(name, Reflect.getProperty(state,name));
+			'curBeat','lastBeatHit','totalBeat','totalShake','timeBeat','gameZ','hudZ','gameShake','hudShake','shakeTime','hscriptStates','boyfriendCameraOffset','girlfriendCameraOffset','opponentCameraOffset','nightmareVisionCameraEvents']) saved.set(name, Reflect.getProperty(state,name));
 		var oldPrimary = FlxG.camera;var oldManager = FlxTween.globalManager;var oldPref = state.nightmareVisionPrefs.view.camZooms;
 		var oldMain = registry.funkyScripts;var oldHx = registry.hscriptArray;var oldLua = registry.luaArray;var oldEvents = registry.eventScripts;
 		var manager = new FlxTweenManager();var game = new CompatCamera();var hud = new FlxCamera();var follow = new FlxObject();
-		var observer:NightmareVisionScriptModule = null;var notifications = 0;
+		var observer:NightmareVisionScriptModule = null;var notifications = 0;var chainLog:Array<String> = [];var observingChain = false;
 		var restore = function() {
 			if (state.nightmareVisionCameraEvents != null) state.nightmareVisionCameraEvents.destroy();
 			registry.funkyScripts = oldMain;registry.hscriptArray = oldHx;registry.luaArray = oldLua;registry.eventScripts = oldEvents;
@@ -33,8 +33,9 @@ class RuntimeSmokeLegacyCameraEvents {
 		state.boyfriendCameraOffset = [0,0];state.girlfriendCameraOffset = [0,0];state.opponentCameraOffset = [0,0];
 		registry.funkyScripts = [];registry.hscriptArray = [];registry.luaArray = [];registry.eventScripts = [];
 		try {
-			observer = NightmareVisionScriptModule.fromSource('__camera_events', 'var defaultCamZoom=-1;function onEvent(n,a,b){record(n);}', state,null,
+			observer = NightmareVisionScriptModule.fromSource('__camera_events', 'var defaultCamZoom=-1;function onEvent(n,a,b){record(n);}function onBeatHit(){record("beat:"+curBeat);}', state,null,
 				function(i) {var h:NightmareVisionScriptModule=cast i.variables.get('script');h.historicalCalls=true;i.variables.set('record',function(n:String) {
+					if (observingChain) chainLog.push(n+':'+state.totalBeat+':'+state.lastBeatHit);
 					notifications++;if(n=='HUD Fade' && state.camHUDAlphaTween == null) throw 'Notification preceded owned fade';
 				});},function(n,c,e)throw e);
 			registry.add(observer);
@@ -61,6 +62,21 @@ class RuntimeSmokeLegacyCameraEvents {
 			state.triggerEventNote('Set Cam Pos','23,45','bf');check(state.boyfriendCameraOffset[0]==23&&state.boyfriendCameraOffset[1]==45,'Native actor offsets');
 			state.triggerEventNote('Game Flash','#FF0000','');check(near(game._fxFlashDuration,.5),'Native flash default');
 			state.triggerEventNote('Screen Shake','0.5,0.02,extra','0.2,0.01');check(near(game._fxShakeDuration,.5)&&near(hud._fxShakeDuration,.2),'Native shake accepts source extra fields');
+			state.hscriptStates = [];observingChain = true;
+			api.execute(new NightmareVisionScriptParser().parseString('gameZ=0.2;hudZ=0.3;totalShake=7;timeBeat=2;game.shakeTime=true;Reflect.setProperty(game,"totalBeat",2);if(game.totalBeat!=2||game.gameZ!=gameZ||PlayState.totalShake!=7)throw "chain aliases";','__chain_aliases'));
+			game.zoom = .8;hud.zoom = 1;state.curBeat = 2;state.gameShake = .006;state.hudShake = .008;
+			var bpm = Conductor.bpm;
+			state.finishHistoricalNightmareBeat();
+			check(state.totalBeat==1&&state.totalShake==7&&state.lastBeatHit==2&&observer.get('curBeat')==2,'Native chain counter consumption and published beat');
+			check(near(game.zoom,1)&&near(hud.zoom,1.3),'Native chain uses live amplitudes');
+			check(near(game._fxShakeDuration,60/bpm),'Native chain shake uses current BPM and interval');
+			check(chainLog.join('|')=='Add Camera Zoom:2:2|Screen Shake:1:2|beat:2:1:2','Native event/count/beat publication order: '+chainLog.join('|'));
+			chainLog=[];state.curBeat=3;state.finishHistoricalNightmareBeat();check(state.totalBeat==1&&chainLog.join('|')=='beat:3:1:3','Native off-interval beat notification');
+			state.triggerEventNote('Camera Zoom Chain','2,3,0.01,0.02','2,1');
+			check(near(state.gameZ,.015)&&near(state.hudZ,.03)&&state.totalBeat==2&&state.timeBeat==1&&state.shakeTime,'Native chain setup');
+			state.triggerEventNote('Screen Shake Chain','0.05,0.06','9');check(state.totalShake==9&&near(state.gameShake,.05)&&near(state.hudShake,.06),'Native shake-chain state');
+			observingChain = false;
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_camera_chain_native_verified',{liveBindings:true,beatPublication:true,reentrantDispatcher:true,remainingCount:true,bpmDuration:true,offInterval:true,shakeState:true});
 			state.triggerEventNote('HUD Fade','0','2');var retired = state.camHUDAlphaTween;state.nightmareVisionCameraEvents.destroy();state.nightmareVisionCameraEvents = null;
 			check(!retired.active&&state.camHUDAlphaTween==null,'Native owner teardown');
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_camera_events_native_verified',{events:8,notifications:notifications,sourceDefaults:true,publicTweenHandles:true,ownedPauseResume:true,unrelatedTweenPreserved:true,replacement:true,completion:true,teardown:true});

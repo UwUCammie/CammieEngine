@@ -115,6 +115,8 @@ class PsychRuntimeBindings {
 
 class SourceDeathWiringFixture {
   public var sourceScoreNightmare:Bool = false;
+  public var nightmareVisionLegacyFieldCameras:Bool = false;
+  public var totalBeat:Int = 3;
   public var health:Float = 0;
   public var sourceDeathBounds:Array<Float> = [0, 2];
   public var healthBounds:Dynamic = {min: 0.0, max: 2.0};
@@ -210,6 +212,7 @@ class SourceDeathWiringTestMain {
     state.health = 0;
     state.psychDelay = 0.75;
     check(state.doDeathCheck(), 'eligible Psych death should start transition');
+    check(state.totalBeat == 3, 'non-historical death leaves chain state alone');
     check(state.callbackSnapshot[0] == false && state.callbackSnapshot[1] == 0
       && state.callbackSnapshot[2] == false && state.callbackSnapshot[3] == true
       && state.callbackSnapshot[4] == true, 'Psych callback must run before death effects');
@@ -253,10 +256,12 @@ class SourceDeathWiringTestMain {
     DeathTrace.reset();
     var inverted = new SourceDeathWiringFixture();
     inverted.sourceScoreNightmare = true;
+    inverted.nightmareVisionLegacyFieldCameras = true;
     inverted.health = 2.5;
     inverted.healthBounds = {min: 2.0, max: 0.0};
     inverted.cpuControlled = true;
     check(inverted.doDeathCheck(), 'inverted NV bounds should trigger at health >= min');
+    check(inverted.totalBeat == 0, 'accepted historical death clears remaining camera chain');
     check(inverted.callbackSnapshot[0] == false && inverted.callbackSnapshot[1] == 0
       && inverted.callbackSnapshot[2] == false && inverted.callbackSnapshot[3] == true
       && inverted.callbackSnapshot[4] == true, 'NV callback must run before transition state');
@@ -282,8 +287,10 @@ class SourceDeathWiringTestMain {
     var state = new SourceDeathWiringFixture();
     state.sourceScoreNightmare = true;
     state.health = 0;
+    state.nightmareVisionLegacyFieldCameras = true;
     state.nightmareResult = NightmareVisionScriptGroup.STOP_FUNC;
     check(!state.doDeathCheck(), 'NV STOP_FUNC should cancel death transition');
+    check(state.totalBeat == 3, 'cancelled death preserves camera chain');
     equal(DeathTrace.events.join(','), 'callback:onGameOver', 'NV STOP_FUNC should prevent transition effects');
     check(state.callbackSnapshot[0] == false && state.callbackSnapshot[1] == 0
       && state.callbackSnapshot[2] == false && state.callbackSnapshot[3] == true

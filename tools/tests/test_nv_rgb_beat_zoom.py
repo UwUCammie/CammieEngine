@@ -32,6 +32,8 @@ class Main {
  public var camZoomRate:Int=4;
  __ALIAS__
  var nightmareVisionScripts:Dynamic={};
+ var nightmareVisionLegacyFieldCameras=false;
+ var camZoomingMult:Float=2;
  var camZooming:Bool=true;
  var enabled:Bool=true;
  var curBeat:Int=0;
@@ -63,7 +65,10 @@ class Main {
   h.curBeat=8;var replaced:Dynamic={zoom:1.5};FlxG.camera=replaced;FlxTween.game=replaced;
   h.applyNightmareVisionBeatZoom();near(replaced.zoom,1.53,'source uses replaced live camera');near(h.camGame.zoom,2.06,'replacement leaves native camera alone');
   FlxTween.gameTween=true;h.applyNightmareVisionBeatZoom();near(replaced.zoom,1.53,'replacement tween guards live camera');
-  h.nightmareVisionScripts=null;h.applyNightmareVisionBeatZoom();near(replaced.zoom,1.53,'non NV source helper inert');
+  h.nightmareVisionLegacyFieldCameras=true;FlxTween.hudTween=true;
+  h.applyNightmareVisionBeatZoom();near(replaced.zoom,1.56,'historical bop is not suppressed by a tween');near(h.camHUD.zoom,1.18,'historical HUD bop is not suppressed by a tween');
+  h.nightmareVisionLegacyFieldCameras=false;
+  h.nightmareVisionScripts=null;h.applyNightmareVisionBeatZoom();near(replaced.zoom,1.56,'non NV source helper inert');
  }
 }
 '''.replace('__ALIAS__', play[start:end]).replace('__HELPER__', helper)

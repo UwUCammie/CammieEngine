@@ -2390,6 +2390,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			});
 		} else openSourceGameOver(actor);
 		isDead = true;
+		if (nightmareVisionLegacyFieldCameras) totalBeat = 0;
 		setAllHaxeVar('paused', paused);
 		return true;
 	}
@@ -2467,6 +2468,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			isCameraOnForcedPos = true;
 		}
 	}
+	@:keep public var totalBeat:Int = 0;
+	@:keep public var totalShake:Int = 0;
+	@:keep public var timeBeat:Float = 1;
+	@:keep public var gameZ:Float = 0.015;
+	@:keep public var hudZ:Float = 0.03;
+	@:keep public var gameShake:Float = 0.003;
+	@:keep public var hudShake:Float = 0.003;
+	@:keep public var shakeTime:Bool = false;
+	@:keep public var lastBeatHit:Int = -1;
 	@:keep public var camTween:FlxTween;
 	@:keep public var camHUDAlphaTween:FlxTween;
 	var nightmareVisionCameraEvents:NightmareVisionLegacyCameraEvents;
@@ -3070,6 +3080,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return value;
 	}
 	public var camZoomIntensity:Float = 1;
+	@:keep public var camZoomingMult(get, set):Float;
+	function get_camZoomingMult():Float return camZoomIntensity;
+	function set_camZoomingMult(value:Float):Float return camZoomIntensity = value;
 	// TAKEOVER's AddCamZoomPsych event uses this donor spelling for the same
 	// multiplier that native beat camera bops call camZoomIntensity. Expose a
 	// live property alias so routed HXC/Psych code changes the real multiplier
@@ -26262,6 +26275,11 @@ void main(void) {
 		if (beatsPerZoom == 0) beatsPerZoom = 4;
 		if (!camZooming || !sourceLivePreference('camZooms', true) || curBeat % beatsPerZoom != 0) return;
 		var camera = FlxG.camera;
+		if (nightmareVisionLegacyFieldCameras) {
+			camera.zoom += 0.015 * camZoomingMult;
+			camHUD.zoom += 0.03 * camZoomingMult;
+			return;
+		}
 		@:privateAccess if (camera != null && !FlxTween.globalManager.containsTweensOf(camera, ['zoom'])) {
 			if (camera == camGame) setGameCameraZoom(camera.zoom + 0.015 * camZoomIntensity);
 			else camera.zoom += 0.015 * camZoomIntensity;
@@ -26270,9 +26288,18 @@ void main(void) {
 			camHUD.zoom += 0.03 * camZoomIntensity;
 	}
 
+	function finishHistoricalNightmareBeat():Void {
+		lastBeatHit = curBeat;
+		NightmareVisionLegacyCameraEvents.consumeBeat(this);
+		setAllHaxeVar('curBeat', curBeat);
+		legacyScriptRegistry().setOnScripts('curBeat', curBeat);
+		broadcastHistoricalNightmareScripts('onBeatHit', []);
+	}
+
 	override function beatHit() {
-		if (endingSong) return;
+		if (endingSong && !nightmareVisionLegacyFieldCameras) return;
 		super.beatHit();
+		if (nightmareVisionLegacyFieldCameras && lastBeatHit >= curBeat) return;
 		dispatchPsychCompiledStage('beatHit', []);
 		
 		if (generatedMusic)
@@ -26296,7 +26323,7 @@ void main(void) {
 				boyfriend.dance();
 		}
 
-		setAllHaxeVar('curBeat', curBeat);
+		if (!nightmareVisionLegacyFieldCameras) setAllHaxeVar('curBeat', curBeat);
 		// Some imported charts perform their own camera bump in beatHit().
 		// Capture that mutation before applying the engine's stock bump so both
 		// paths do not stack into an unintended double zoom.
@@ -26310,8 +26337,10 @@ void main(void) {
 		}
 		sourceHealthIconBeat();
 		applyNightmareVisionBeatZoom();
-		callNightmareVision('onBeatHit', []);
-		callAllHScript('beatHit', [curBeat]);
+		if (nightmareVisionLegacyFieldCameras) {
+			finishHistoricalNightmareBeat();
+		} else callNightmareVision('onBeatHit', []);
+		callAllHScript('beatHit', [curBeat], false, null, null, false, nightmareVisionLegacyFieldCameras);
 		refreshCodenameCharacterScopes();
 		for (scope in codenameCharacterScopes.copy()) scope.actor.codenameBeatHit(curBeat);
 		callCodenameScripts('beatHit', [curBeat]);

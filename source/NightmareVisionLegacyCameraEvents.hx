@@ -37,6 +37,17 @@ class NightmareVisionLegacyCameraEvents {
 		state.camHUDAlphaTween = null;
 		state = null;
 	}
+	/** Reenter the normal event dispatcher so callbacks can mutate this live chain. */
+	public static function consumeBeat(state:PlayState):Void {
+		if (state.totalBeat > 0 && state.curBeat % state.timeBeat == 0) {
+			state.triggerEventNote('Add Camera Zoom', '' + state.gameZ, '' + state.hudZ);
+			state.totalBeat -= 1;
+			if (state.shakeTime) {
+				state.triggerEventNote('Screen Shake', (((1 / (Conductor.bpm / 60)) / 2) * state.timeBeat) + ', ' + state.gameShake,
+					(((1 / (Conductor.bpm / 60)) / 2) * state.timeBeat) + ', ' + state.hudShake);
+			}
+		}
+	}
 	public function apply(name:String, value1:String, value2:String):Bool {
 		switch (name) {
 			case 'Game Flash':
@@ -89,6 +100,36 @@ class NightmareVisionLegacyCameraEvents {
 					if (Math.isNaN(intensity)) intensity = 0;
 					if (duration > 0 && intensity != 0) cameras[i].shake(intensity, duration);
 				}
+			case 'Camera Zoom Chain':
+				var split = value1.split(',');
+				var game = Std.parseFloat(StringTools.trim(split[0]));
+				var hud = Std.parseFloat(StringTools.trim(split[1]));
+				// The historical source resets valid amplitudes to these defaults.
+				if (!Math.isNaN(game)) state.gameZ = 0.015;
+				if (!Math.isNaN(hud)) state.hudZ = 0.03;
+				if (split.length == 4) {
+					var gameShake = Std.parseFloat(StringTools.trim(split[2]));
+					var hudShake = Std.parseFloat(StringTools.trim(split[3]));
+					if (!Math.isNaN(gameShake)) state.gameShake = gameShake;
+					if (!Math.isNaN(hudShake)) state.hudShake = hudShake;
+					state.shakeTime = true;
+				} else state.shakeTime = false;
+				var timing = value2.split(',');
+				var count:Int = Std.parseInt(StringTools.trim(timing[0]));
+				var interval = Std.parseFloat(StringTools.trim(timing[1]));
+				if (Math.isNaN(count)) count = 4;
+				if (Math.isNaN(interval)) interval = 1;
+				state.totalBeat = count;
+				state.timeBeat = interval;
+			case 'Screen Shake Chain':
+				var split = value1.split(',');
+				var game = Std.parseFloat(StringTools.trim(split[0]));
+				var hud = Std.parseFloat(StringTools.trim(split[1]));
+				if (!Math.isNaN(game)) state.gameShake = game;
+				if (!Math.isNaN(hud)) state.hudShake = hud;
+				var count:Int = Std.parseInt(value2);
+				if (!Math.isNaN(count)) state.totalShake = 4;
+				state.totalShake = count;
 			case 'Set Cam Zoom':
 				state.defaultCamZoom = Std.parseFloat(value1);
 			case 'Set Cam Pos':
