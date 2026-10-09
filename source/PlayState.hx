@@ -5362,6 +5362,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	*/
 	function historicalReadProperty(target:Dynamic, name:String):Dynamic {
 		if (target == this) {
+			if (NightmareVisionLegacyReceptors.hasProperty(name)) return nightmareVisionLegacyReceptors.readProperty(name, playFields == null ? null : playFields.members);
 			if (sourceHUDIconMode != 0 && (name == 'iconP1' || name == 'iconP2')) return sourceHUDIconAlias(name);
 			if (sourceHUDBarMode != 0 && ['healthBar','healthBarBG','timeBar','timeBarBG'].indexOf(name) >= 0) return sourceHUDBarAlias(name);
 		}
@@ -5369,17 +5370,28 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	function historicalWriteProperty(target:Dynamic, name:String, value:Dynamic):Void {
 		if (target == this) {
+			if (NightmareVisionLegacyReceptors.hasProperty(name)) {nightmareVisionLegacyReceptors.writeProperty(name, value);return;}
 			if (sourceHUDIconMode != 0 && (name == 'iconP1' || name == 'iconP2')) {writeSourceHUDIconAlias(name,value);return;}
 			if (sourceHUDBarMode != 0 && ['healthBar','healthBarBG','timeBar','timeBarBG'].indexOf(name) >= 0) {writeSourceHUDBarAlias(name,value);return;}
 		}
 		Reflect.setProperty(target, name, value);
 	}
+	function historicalPropertyInstance():Dynamic {
+		return isDead ? cast GameOverSubstate.instance : cast this;
+	}
+	function historicalPropertyObject(name:String):Dynamic {
+		var tagged = getLuaObject(name, true);
+		return tagged != null ? tagged : SourceScriptReflection.readLegacyPathPart(historicalPropertyInstance(), name, historicalReadProperty);
+	}
 	function historicalSetProperty(path:String, value:String):Void {
-		SourceScriptReflection.setLegacyProperty(this, path, value, function(name) {
-			var tagged = getLuaObject(name, true);
-			return tagged != null ? tagged : SourceScriptReflection.readLegacyPathPart(
-				isDead ? cast GameOverSubstate.instance : cast this, name, historicalReadProperty);
-		}, historicalReadProperty, historicalWriteProperty);
+		SourceScriptReflection.setLegacyProperty(this, path, value, historicalPropertyObject, historicalReadProperty, historicalWriteProperty);
+	}
+	function installHistoricalLuaProperties(interp:Interp, resultsObserver:Bool):Void {
+		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
+		interp.variables.set('getProperty', function(path:String):Dynamic
+			return SourceScriptReflection.getLegacyLuaProperty(path, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty));
+		interp.variables.set('setProperty', function(path:String, value:Dynamic):Bool
+			return SourceScriptReflection.setLegacyLuaProperty(path, value, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty, historicalWriteProperty));
 	}
 
 	function compatPropertyRoot(name:String):Dynamic {
@@ -8668,6 +8680,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		// Convert Lua results after the source reflection overlay has installed
 		// its final getters; HScript retains the native array API unchanged.
+		installHistoricalLuaProperties(interp, resultsObserver);
 		PsychLuaApiResults.install(interp);
 	}
 

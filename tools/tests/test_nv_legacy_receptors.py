@@ -67,6 +67,11 @@ class Main {
   var first:Array<Dynamic>=cast i.variables.get('first'),second:Array<Dynamic>=cast i.variables.get('second'),again:Array<Dynamic>=cast i.variables.get('again');
   check(first.length==2&&second.length==3&&second[0]==player.members[0]&&first!=second&&again!=second,'flattened array freshly follows field order and membership');
   check(state.playerStrums=='native'&&state.strumLineNotes=='native','native gameplay pointers unchanged');
+  check(refs.readProperty('opponentStrums',fields)==opponent,'shared property route reads captured source pointer');
+  refs.writeProperty('opponentStrums',third);i.execute(parser.parseString("sharedWrite=opponentStrums;"));check(i.variables.get('sharedWrite')==third,'shared writes visible to HScript');
+  refs.writeProperty('opponentStrums',opponent);
+  var combined:Array<Dynamic>=cast refs.readProperty('strumLineNotes',fields);check(combined.length==3&&combined[0]==player.members[0],'shared flattened field order');
+
   var blocked=false;try i.execute(parser.parseString("Reflect.setProperty(game,'strumLineNotes',[]);"))catch(_:Dynamic)blocked=true;
   check(blocked&&state.strumLineNotes=='native','read-only reflected getter');
   var late=new NightmareVisionPlayFieldView(3,function()return false);late.legacyGroupCameras=true;late.cameras=[world];late.strumline=new Strumline();late.strumline.members.push(new StrumNote());late.strumline.group.draw();check(late.members[0].seen=='world','camera assignment before bank binding retained');

@@ -50,16 +50,52 @@ class SourceScriptReflection {
 			default: readProperty(object, variable);
 		};
 	}
+	public static function writeLegacyPathPart(object:Dynamic, variable:String, value:Dynamic,
+		readProperty:(Dynamic,String)->Dynamic, writeProperty:(Dynamic,String,Dynamic)->Void):Void {
+		var parts = variable.split('[');
+		if (parts.length > 1) {
+			var target:Dynamic = readProperty(object, parts[0]);
+			for (i in 1...parts.length) {
+				var key:Dynamic = parts[i].substr(0, parts[i].length - 1);
+				if (i == parts.length - 1) target[key] = value;
+				else target = target[key];
+			}
+			return;
+		}
+		switch (Type.typeof(object)) {
+			case TClass(haxe.ds.StringMap) | TClass(haxe.ds.ObjectMap) | TClass(haxe.ds.IntMap) | TClass(haxe.ds.EnumValueMap): object.set(variable, value);
+			default: writeProperty(object, variable, value);
+		}
+	}
+
+	static function legacyPathOwner(parts:Array<String>, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		if (parts.length == 1) return instance();
+		var target = resolveObject(parts[0]);
+		for (i in 1...parts.length - 1) target = readLegacyPathPart(target, parts[i], readProperty);
+		return target;
+	}
+
+	public static function getLegacyLuaProperty(path:String, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = path.split('.');
+		return readLegacyPathPart(legacyPathOwner(parts, instance, resolveObject, readProperty), parts[parts.length - 1], readProperty);
+	}
+
+	public static function setLegacyLuaProperty(path:String, value:Dynamic, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic,
+		writeProperty:(Dynamic,String,Dynamic)->Void):Bool {
+		var parts = path.split('.');
+		writeLegacyPathPart(legacyPathOwner(parts, instance, resolveObject, readProperty), parts[parts.length - 1], value, readProperty, writeProperty);
+		return true;
+	}
+
 	/** Final fields are literal Reflect property names, including bracket text. */
 	public static function setLegacyProperty(state:Dynamic, path:String, value:Dynamic,
 		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic,
 		writeProperty:(Dynamic,String,Dynamic)->Void):Void {
 		var parts = path.split('.');
-		var target:Dynamic = state;
-		if (parts.length > 1) {
-			target = resolveObject(parts[0]);
-			for (i in 1...parts.length - 1) target = readLegacyPathPart(target, parts[i], readProperty);
-		}
+		var target = legacyPathOwner(parts, function() return state, resolveObject, readProperty);
 		writeProperty(target, parts[parts.length - 1], value);
 	}
 

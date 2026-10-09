@@ -39,6 +39,15 @@ class RuntimeSmokeLegacyPropertyEvent {
 			var dead:GameOverSubstate=Type.createEmptyInstance(GameOverSubstate);dead.boyfriend=state.dad;GameOverSubstate.instance=dead;state.isDead=true;
 			state.triggerEventNote('Set Property','boyfriend.curCharacter','__property_dead');check(state.dad.curCharacter=='__property_dead'&&state.boyfriend!=state.dad,'Historical game-over root');
 			check(notifications==8,'Post-effect notification count: '+notifications);
+			var lua = new LuaCompatInterp();state.seedEngineCompat(lua);
+			lua.variables.set('__expectedActor',state.dad);lua.variables.set('__replacementActor',state.boyfriend);
+			lua.execute(new hscript.Parser().parseString('if(getProperty("boyfriend")!=__expectedActor)throw "Lua game-over direct root";if(setProperty("boyfriend",__replacementActor)!=true||getProperty("boyfriend")!=__replacementActor)throw "Lua direct write result";if(setProperty("__tree.inner.value",false)!=true||getProperty("__tree.inner.value")!=false)throw "Lua raw boolean";if(setProperty("__tree.list[0].value","lua")!=true||getProperty("__tree.list[0].value")!="lua")throw "Lua nested array";if(setProperty("__tree.list[0]",42)!=true||getProperty("__tree.list[0]")!=42)throw "Lua final array";','__lua_properties'));
+			check(tree.list[0]==42&&Reflect.field(tree,'list[0]')=='literal'&&dead.boyfriend==state.boyfriend,'Lua and event final token policies');
+			state.isDead=false;
+			lua.variables.set('__sourceOpponent',state.nightmareVisionLegacyReceptors.opponent);
+			lua.execute(new hscript.Parser().parseString('if(getProperty("opponentStrums")!=__sourceOpponent)throw "Lua source field identity";if(setProperty("opponentStrums",__sourceOpponent)!=true||getProperty("opponentStrums")!=__sourceOpponent)throw "Lua shared field write";if(getProperty("strumLineNotes")==getProperty("strumLineNotes"))throw "Lua flattened field array must be fresh";','__lua_field_properties'));
+			lua.variables.clear();
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_lua_property_native_verified',{publicBindings:true,rawValues:true,finalArray:true,gameOverDirectRoot:true,setReturn:true,eventPolicyDistinct:true,sharedFieldAliases:true});
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_property_event_native_verified',{tagPriority:true,textNamespace:true,rawValues:true,nestedIndex:true,literalFinalField:true,sourceHudIdentity:true,gameOverRoot:true,notifications:true});
 		} catch(error:Dynamic){restore();throw error;}
 		restore();

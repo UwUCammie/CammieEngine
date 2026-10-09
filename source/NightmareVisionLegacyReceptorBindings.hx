@@ -5,14 +5,10 @@ class NightmareVisionLegacyReceptorBindings {
 	public static function install(interp:NightmareVisionScriptInterp, state:Dynamic, refs:NightmareVisionLegacyReceptors,
 		fields:Void->Array<NightmareVisionPlayFieldView>):Void {
 		var target = function() return state;
-		bind(interp, state, 'playerStrums', function() return refs.player, function(value) return refs.player = cast value, target);
-		bind(interp, state, 'opponentStrums', function() return refs.opponent, function(value) return refs.opponent = cast value, target);
-		bind(interp, state, 'strumLineNotes', function():Dynamic {
-			var notes:Array<Dynamic> = [];
-			var collection = fields();
-			if (collection != null) for (field in collection) for (note in field.members) notes.push(note);
-			return notes;
-		}, null, target);
+		for (name in ['playerStrums','opponentStrums','strumLineNotes']) {
+			bind(interp, state, name, function() return refs.readProperty(name, fields()),
+				name == 'strumLineNotes' ? null : function(value) return refs.writeProperty(name, value), target);
+		}
 	}
 	static function bind(interp:NightmareVisionScriptInterp, state:Dynamic, name:String,
 		read:Void->Dynamic, write:Dynamic->Dynamic, target:Void->Dynamic):Void {

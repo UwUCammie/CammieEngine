@@ -15,7 +15,7 @@ class HistoricalPropertyEventTest(unittest.TestCase):
   case=next(c for c in cases if c.startswith("\t\t\tcase 'Set Property':"))
   case=case.split('\n\t\t}',1)[0]
   reference='function sourceEvent(value1:String,value2:String){switch("Set Property"){'+case+'}notifications++;}'
-  actual=extract_method(play,'function historicalSetProperty(')
+  actual='\n'.join(extract_method(play,'function '+name+'(') for name in ['historicalSetProperty','historicalPropertyInstance','historicalPropertyObject'])
   lookup=extract_method(play,'public function getLuaObject(')
   host=r'''import Type.ValueType;
 class GameOverSubstate {public static var instance:Dynamic;}
