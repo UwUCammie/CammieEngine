@@ -156,14 +156,6 @@ class Main {
    'expiration clamps the timer and requests dance(forceDance)');
   check(!nv.canPlayAnimations,'timer does not alter the separate Bopper animation lock');
 
-  var legacy=new SourceCharacterProbe();
-  legacy.nightmareVisionLegacyActor=true;
-  legacy.animation=new FakeController('singLEFT-return');
-  legacy.animTimer=0.2;
-  legacy.tickTimer(0.3);
-  check(legacy.animTimer==0 && legacy.danceRequests==1,
-   'historical timer runs without modern metadata and does not pause on return');
-
   var native=new SourceCharacterProbe();
   native.animation=new FakeController('singLEFT');
   native.animTimer=1;

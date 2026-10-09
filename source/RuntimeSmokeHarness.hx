@@ -1858,8 +1858,10 @@ class RuntimeSmokeHarness {
 			try {
 				var state:PlayState = cast FlxG.state;
 				if (!noteRenderReadbackVisits.exists(visitsStarted)
-					&& (config().sceneRenderReadback || noteRenderCandidate(state) != null))
+					&& (config().sceneRenderReadback || noteRenderCandidate(state) != null)) {
+					RuntimeSmokeLegacyCharacterLifecycle.verify(state);
 					RuntimeSmokeLegacySinging.prepare(state);
+				}
 			}
 			catch (error:Dynamic) fail('legacy-singing-prepare', Std.string(error));
 		}

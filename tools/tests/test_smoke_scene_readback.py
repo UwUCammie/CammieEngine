@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from test_runtime_note_render_readback import extract_method
 from haxe_test_support import HAXE_COMMAND, TEST_TMP, FixturePath
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,7 @@ class SmokeSceneReadbackTest(unittest.TestCase):
             depth += (source[end] == '{') - (source[end] == '}')
             end += 1
         method = source[start:end].replace('lime.graphics.RenderContext', 'Dynamic')
+        method += '\n' + extract_method(source, 'static function noteRenderCandidate(')
         fixture = r'''
 class FlxG { public static var state:Dynamic; }
 class Conductor { public static var songPosition:Float = 62000; }

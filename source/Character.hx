@@ -1641,9 +1641,17 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			codenameUpdateAfterSuper(elapsed);
 			return;
 		}
+		if (nightmareVisionLegacyActor) {
+			NightmareVisionLegacyCharacterLifecycle.beforeUpdate(this, elapsed, Conductor.stepCrochet);
+			callInterp("update", [elapsed, this]);
+			for (ghost in doubleGhosts) if (ghost != null) ghost.update(elapsed);
+			super.update(elapsed);
+			NightmareVisionLegacyCharacterLifecycle.afterUpdate(this);
+			return;
+		}
 		updateNightmareVisionAnimationTimer(elapsed);
 		if (heyTimer > 0) {
-			var rate = nightmareVisionLegacyActor || PlayState.instance == null ? 1 : PlayState.instance.playbackRate;
+			var rate = PlayState.instance == null ? 1 : PlayState.instance.playbackRate;
 			heyTimer -= elapsed * rate;
 			if (heyTimer <= 0) {
 				heyTimer = 0;
@@ -1741,9 +1749,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		super.update(elapsed);
 	}
 	function updateNightmareVisionAnimationTimer(elapsed:Float):Void {
-		if ((!nightmareVisionLegacyActor && nightmareVisionCharacterData == null) || debugMode || animTimer <= 0
+		if (nightmareVisionCharacterData == null || debugMode || animTimer <= 0
 			|| animation == null || animation.curAnim == null
-			|| (!nightmareVisionLegacyActor && StringTools.endsWith(animation.curAnim.name, '-return'))) return;
+			|| StringTools.endsWith(animation.curAnim.name, '-return')) return;
 		animTimer -= elapsed;
 		if (animTimer <= 0) {
 			animTimer = 0;
@@ -1800,6 +1808,15 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	}
 	public function dance(forced:Bool = false) {
 		if (skipDance || (nightmareVisionLegacyActor && (debugMode || specialAnim || animTimer > 0 || voicelining))) return;
+		if (nightmareVisionLegacyActor) {
+			if (animation == null) return;
+			if (danceIdle) {
+				danced = !danced;
+				playAnim((danced ? 'danceRight' : 'danceLeft') + idleSuffix);
+			} else if (animation.getByName('idle' + idleSuffix) != null)
+				playAnim('idle' + idleSuffix);
+			return;
+		}
 		if (sourceDanceNightmare && specialAnim) return;
 		// A script can retain an actor after its visual is destroyed or fails to
 		// resolve. The next beat must not dereference its animation controller.

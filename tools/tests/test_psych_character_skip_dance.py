@@ -50,7 +50,7 @@ class FakeAnimation {
   public var curAnim:Dynamic = null;
   public function new() {}
   public function exists(_name:String):Bool return false;
-  public function getByName(_name:String):Dynamic return null;
+  public function getByName(_name:String):Dynamic return _name == "idle" ? {} : null;
 }
 class FlxColor { public static inline var WHITE:Int = 0xFFFFFFFF; }
 class SourceCharacterAnimationLifecycle {
@@ -73,6 +73,7 @@ class Character {
   public var codenameLiveDefinition:Dynamic = null;
   var codenameVisualBuilding:Bool = false;
   public var codenameRuntime:FakeRuntime = new FakeRuntime();
+  public var danceIdle:Bool = false;
   public var danced:Bool = false;
   public var animation:FakeAnimation = new FakeAnimation();
   public var idleSuffix:String = '';
@@ -138,7 +139,7 @@ class Main {
       legacy.animTimer = (mask & 8) != 0 ? 0.5 : 0;
       legacy.voicelining = (mask & 16) != 0;
       legacy.dance(true);
-      if (legacy.danceCalls != (mask == 0 ? 1 : 0)) throw 'historical dance lock '+mask;
+      if (legacy.plays.length != (mask == 0 ? 1 : 0)) throw 'historical dance lock '+mask;
     }
     var modern = new Character('modern');
     modern.animTimer = 0.5; modern.voicelining = true;
