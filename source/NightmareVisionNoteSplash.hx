@@ -86,9 +86,8 @@ class NightmareVisionNoteSplash extends NightmareVisionSplashSprite {
 				animation.addByPrefix('note' + lane + '-' + variant, prefixes[lane], lane >= 5 ? 12 : 24, false);
 			_textureLoaded = texture;
 		}
-		setPosition(strum.x - Note.swagWidth * 0.95, strum.y - Note.swagWidth * 0.95);
-		// Historical field-wide scaling is tracked as a separate layout contract.
-		scale.set(1, 1); baseScale.copyFrom(scale);
+		setPosition(strum.x - field.swagWidth * 0.95, strum.y - field.swagWidth * 0.95);
+		scale.set(scale.x * field.scale, scale.y * field.scale); baseScale.copyFrom(scale);
 		alpha = 1; antialiasing = true;
 		colorSwap.hue = note.noteSplashHue;
 		colorSwap.saturation = note.noteSplashSat;

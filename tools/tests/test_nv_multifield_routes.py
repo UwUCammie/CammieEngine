@@ -218,6 +218,7 @@ class Strumline {
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }
 }
 class StrumNote {
+ public var width:Float=112;public function setGraphicSize(w:Int):Void width=w;public function updateHitbox():Void {}
  public var colorSwap:Main.NightmareVisionLegacyColorSwap;
  public var ID:Int=0;
  public var alphaMult:Float=1;

@@ -16,6 +16,8 @@ typedef NightmareVisionPlayFieldHooks = {
 	?miss:(Dynamic, NightmareVisionPlayFieldView)->Void,
 	?missPress:Int->Void,
 	?alpha:(NightmareVisionPlayFieldView, Float)->Void,
+	?scale:(NightmareVisionPlayFieldView, Float)->Void,
+	?noteWidth:Void->Float,
 	?quants:(NightmareVisionPlayFieldView, Bool)->Void,
 	?changeSkin:(NightmareVisionPlayFieldView, NightmareVisionNoteSkin)->Void,
 	?fadeIn:(NightmareVisionPlayFieldView, Bool)->Void,
@@ -62,6 +64,16 @@ class NightmareVisionPlayFieldView {
 		return nativeHooks.spawnSusSplash(this, note, isPlayer);
 	}
 
+	public var scale(default, set):Float = 1;
+	public var swagWidth(get, never):Float;
+	function get_swagWidth():Float {
+		if (nativeHooks == null || nativeHooks.noteWidth == null) missingHook('noteWidth');
+		return nativeHooks.noteWidth() * scale;
+	}
+	function set_scale(value:Float):Float {
+		if (legacyGroupCameras && nativeHooks != null && nativeHooks.scale != null) nativeHooks.scale(this, value);
+		return scale = value;
+	}
 	public var baseAlpha:Float = 1;
 	public var holdDropLeniency:Float = 1 / 3;
 	/** Source PlayField's mutable, field-owned FIELD underlay sprite. */

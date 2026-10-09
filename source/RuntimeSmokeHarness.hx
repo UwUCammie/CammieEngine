@@ -1992,10 +1992,39 @@ class RuntimeSmokeHarness {
 					displayText: Main.fpsCounter == null ? null : Main.fpsCounter.text
 				}
 			});
+			verifyLegacyFieldScale(note);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
+		#end
+	}
+
+	/** Optional native API round trip on the disposable gameplay fixture only. */
+	static function verifyLegacyFieldScale(note:Note):Void {
+		#if sys
+		if (note == null || Sys.getEnv('CAMMIE_LEGACY_FIELD_SCALE_SMOKE') != '1') return;
+		var field:NightmareVisionPlayFieldView = cast note.playField;
+		if (field == null || !field.legacyGroupCameras) throw 'Historical field scale probe requires an active historical note';
+		var original = field.scale;
+		var checked = 0;
+		try {
+			Reflect.setProperty(field, 'scale', 0.5);
+			if (Math.abs(field.swagWidth - Note.swagWidth * 0.5) > 0.000001) throw 'Field spacing getter lost scalar';
+			for (entry in field.notes) {
+				var value:Note = cast entry;
+				var expectedY = value.baseScaleY * (value.isSustainNote ? 1 : 0.5);
+				if (Math.abs(value.scale.x - value.baseScaleX * 0.5) > 0.000001
+					|| Math.abs(value.scale.y - expectedY) > 0.000001
+					|| Math.abs(value.defScale.x - value.scale.x) > 0.000001)
+					throw 'Native field-scale note baseline mismatch';
+				checked++;
+			}
+			if (checked == 0) throw 'No live field notes validated';
+		} catch (error:Dynamic) {Reflect.setProperty(field, 'scale', original);throw error;}
+		Reflect.setProperty(field, 'scale', original);
+		emit('legacy_field_scale_native_verified', {notes:checked,scalar:0.5,restored:original,
+			noteBaseScale:[note.baseScaleX,note.baseScaleY],defScale:[note.defScale.x,note.defScale.y]});
 		#end
 	}
 

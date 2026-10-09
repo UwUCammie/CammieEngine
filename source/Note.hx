@@ -502,6 +502,8 @@ class Note extends DynamicSprite {
 	public var nightmareVisionRenderer:nightmarevision.modchart.NightmareVisionModchartRenderer;
 	public var nightmareVisionRGB:NightmareVisionRGBGraphics;
 	public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;
+	@:keep public var baseScaleX:Float = 1;
+	@:keep public var baseScaleY:Float = 1;
 	@:keep public var noteSplashTexture:String = 'noteSplashes';
 	@:keep public var noteSplashHue:Float = 0;
 	@:keep public var noteSplashSat:Float = 0;

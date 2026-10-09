@@ -408,6 +408,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			miss:nightmareVisionFieldMissSignal,
 			missPress:function(key) nightmareVisionFieldMissPressSignal(field, key),
 			alpha:function(changed, value) nightmareVisionSetFieldAlpha(changed, value),
+			scale:function(changed, value) NightmareVisionLegacyFieldScale.apply(cast changed.members, changed.notes, value),
+			noteWidth:function() return Note.swagWidth,
 			quants:function(changed, value) nightmareVisionSetFieldQuants(changed, value),
 			changeSkin:function(changed, skin) nightmareVisionChangeFieldSkin(changed, skin),
 			fadeIn:function(changed, skip) nightmareVisionFadeField(changed, skip),
@@ -649,6 +651,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 		}
 		if (skin != null) field.strumline.resetStrums();
+		if (field.legacyGroupCameras) for (strum in field.members) if (strum != null) {
+			strum.setGraphicSize(Std.int(strum.width * field.scale));
+			strum.updateHitbox();
+		}
 	}
 
 	function nightmareVisionGenerateFieldReceptors(field:NightmareVisionPlayFieldView):Void {
@@ -725,7 +731,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (skip) receptor.alpha = field.baseAlpha;
 			else {
 				receptor.alpha = 0;
-				FlxTween.tween(receptor, {alpha:field.baseAlpha}, 1,
+				var target:Dynamic = {alpha:field.baseAlpha};
+				if (field.legacyGroupCameras) {
+					Reflect.setField(target, 'y', receptor.y);
+					receptor.y -= receptor.downScroll ? -10 : 10;
+				}
+				FlxTween.tween(receptor, target, 1,
 					{ease:FlxEase.circOut, startDelay:0.5 + 0.2 * index});
 			}
 		}
@@ -778,6 +789,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				nightmareVisionConductor.getBeat(note.strumTime), nightmareVisionLegacyFieldCameras);
 			applyNightmareVisionFieldNoteSkin(note, skin);
 		}
+		if (field.legacyGroupCameras) NightmareVisionLegacyFieldScale.note(note, field.scale);
 	}
 
 	function nightmareVisionRemoveFieldNote(field:NightmareVisionPlayFieldView, value:Dynamic):Void {
@@ -785,7 +797,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var note:Note = cast value;
 		if (nightmareVisionNoteFields.get(note) == field) nightmareVisionNoteFields.remove(note);
 		if (note.playField == field) Reflect.setField(note, 'playField', null);
-		if (note.scale != null && note.baseScale != null) note.scale.copyFrom(note.baseScale);
+		if (field != null && field.legacyGroupCameras) NightmareVisionLegacyFieldScale.remove(note);
+		else if (note.scale != null && note.baseScale != null) note.scale.copyFrom(note.baseScale);
 		note.updateHitbox();
 		if (notes != null) notes.remove(note, true);
 	}
@@ -10284,6 +10297,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		if (skin == null || !skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames))
 			return false;
+		if (note.nightmareVisionLegacyColors != null) NightmareVisionLegacyFieldScale.captureNote(note);
 		NightmareVisionQuantRendering.apply(note, skin, nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view);
 		if (note.nightmareVisionTypeRuntime != null) note.nightmareVisionTypeRuntime.syncNote(note);
 		return true;
