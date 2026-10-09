@@ -50,6 +50,7 @@ class RuntimeSmokeLegacyEventMap {
 			RuntimeSmokeLegacyCameraEvents.verify(state, registry, api);
 			RuntimeSmokeLegacyActorEvents.verify(state, registry);
 			RuntimeSmokeLegacyCharacterCarry.verify(state,api);
+			RuntimeSmokeLegacyScrollStorage.verify(state,api);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();

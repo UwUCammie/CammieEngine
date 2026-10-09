@@ -208,6 +208,7 @@ class FlxRect {public function new(_x:Float,_y:Float,_width:Float,_height:Float)
 class Group {
  public var members:Array<Note>=[];
  public function new() {}
+ public function iterator():Iterator<Note> return members.filter(function(n)return n!=null).iterator();
  public function add(n:Note) {members.push(n);}
  public function insert(index:Int,n:Note) {members.insert(index,n);}
 }

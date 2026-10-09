@@ -49,6 +49,11 @@ class Note {
  __RESIZE__
  __MULTIPLIER__
 }
+class Group {
+ public var members:Array<Note>=[];
+ public function new() {}
+ public function iterator():Iterator<Note> return members.filter(function(n)return n!=null).iterator();
+}
 class Main {
  public static var daScrollSpeed:Float=2;
  public static var dynamicScrollTarget:Float=0;
@@ -61,7 +66,7 @@ class Main {
  public var nightmareVisionScripts:Dynamic=null;
  public var nightmareVisionLegacyFieldCameras=false; public var generatedMusic=true;
  public var sourceMode:Int=1; function sourceNoteTimingMode():Int return sourceMode;
- public var notes:{members:Array<Note>}={members:[]}; public var unspawnNotes:Array<Note>=[];
+ public var notes:Group=new Group(); public var unspawnNotes:Array<Note>=[];
  public var noteKillOffset:Float=350; public var playbackRate:Float=1;
  public static var SONG={speed:2.0};
  function tweenVSliceScrollSpeed(a:Dynamic,b:Dynamic,c:Dynamic,d:Dynamic):Void {}
@@ -98,11 +103,12 @@ class Main {
   dynamicScrollTarget=0;
   game.nightmareVisionScripts={}; game.songSpeed=20; near(body.scale.y,60,'NV exclusion');
   game.nightmareVisionLegacyFieldCameras=true; body.nightmareVisionLegacyGeometry=true;
-  game.songSpeed=40; near(body.scale.y,120,'historical body shared speed resizing');near(body.baseScaleY,120,'historical raw baseline');
+  game.unspawnNotes=[body,queued];
+  game.songSpeed=40; near(body.scale.y,240,'historical body shared speed resizing');near(body.baseScaleY,240,'historical raw baseline');
   near(cap.scale.y,10,'historical cap remains unchanged');
-  game.generatedMusic=false;game.songSpeed=80;near(body.scale.y,120,'historical generation gate');game.generatedMusic=true;
+  game.generatedMusic=false;game.songSpeed=80;near(body.scale.y,240,'historical generation gate');game.generatedMusic=true;
   game.nightmareVisionLegacyFieldCameras=false;
-  game.nightmareVisionScripts=null; game.sourceMode=0; game.songSpeed=30; near(body.scale.y,120,'native setter exclusion');
+  game.nightmareVisionScripts=null; game.sourceMode=0; game.songSpeed=30; near(body.scale.y,240,'native setter exclusion');
   game.tweenScrollSpeed({scroll:40.,absolute:true,duration:4.});
   check(FlxTween.target==Main && Reflect.hasField(FlxTween.props,'daScrollSpeed'),'native tween unchanged');
  }

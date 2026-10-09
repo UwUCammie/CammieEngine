@@ -123,6 +123,7 @@ class PlayState {
  function get_playbackRate():Float return 1;
  public var noteKillOffset:Float = 350;
  public var nightmareVisionScripts:Dynamic;
+ public var nightmareVisionLegacyFieldCameras=false;
  public var sourceMode:Int=0;
  function sourceNoteTimingMode():Int return sourceMode;
  // This retirement-only fixture has no active or queued sustain notes.

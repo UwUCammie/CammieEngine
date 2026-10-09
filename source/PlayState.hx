@@ -199,6 +199,26 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var boyfriendPosition:FlxPoint = new FlxPoint(770, 100);
 	@:keep public var dadPosition:FlxPoint = new FlxPoint(100, 100);
 	@:keep public var gfPosition:FlxPoint = new FlxPoint(400, 130);
+	// Historical stage baselines share native storage, not live group positions.
+	@:keep public var BF_X(get, set):Float;
+	function get_BF_X():Float return boyfriendPosition.x;
+	function set_BF_X(value:Float):Float return boyfriendPosition.x = value;
+	@:keep public var BF_Y(get, set):Float;
+	function get_BF_Y():Float return boyfriendPosition.y;
+	function set_BF_Y(value:Float):Float return boyfriendPosition.y = value;
+	@:keep public var DAD_X(get, set):Float;
+	function get_DAD_X():Float return dadPosition.x;
+	function set_DAD_X(value:Float):Float return dadPosition.x = value;
+	@:keep public var DAD_Y(get, set):Float;
+	function get_DAD_Y():Float return dadPosition.y;
+	function set_DAD_Y(value:Float):Float return dadPosition.y = value;
+	@:keep public var GF_X(get, set):Float;
+	function get_GF_X():Float return gfPosition.x;
+	function set_GF_X(value:Float):Float return gfPosition.x = value;
+	@:keep public var GF_Y(get, set):Float;
+	function get_GF_Y():Float return gfPosition.y;
+	function set_GF_Y(value:Float):Float return gfPosition.y = value;
+
 	// Borrowed role classification only: never an extra destruction/cleanup list.
 	var nightmareVisionRoleGroups:Array<NightmareVisionCharacterGroup> = [];
 	var nightmareVisionStageCleanup:Bool = false;
@@ -3338,6 +3358,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var scrollSpeed(get, set):Float;
 	function get_scrollSpeed():Float return daScrollSpeed;
 	function set_scrollSpeed(value:Float):Float {
+		if (nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras) {
+			// Historical callbacks observe the old speed until both queues finish.
+			resizePsychSustains(daScrollSpeed, value);
+			daScrollSpeed = value;
+			refreshNightmareVisionNoteKillOffset();
+			return value;
+		}
 		var previousSpeed = effectiveScrollSpeed;
 		daScrollSpeed = value;
 		resizePsychSustains(previousSpeed, effectiveScrollSpeed);
@@ -3349,6 +3376,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var legacy = nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras;
 		if (legacy) {
 			if (!generatedMusic) return;
+			var ratio = nextSpeed / previousSpeed;
+			// Use the native group iterator (null skipping and captured length).
+			// The raw pending queue and repeated references retain source semantics.
+			for (note in notes) note.resizeByRatio(ratio);
+			for (note in unspawnNotes) note.resizeByRatio(ratio);
+			return;
 		} else if (nightmareVisionScripts != null || sourceNoteTimingMode() != 1
 			|| previousSpeed == nextSpeed || !Math.isFinite(previousSpeed) || previousSpeed <= 0
 			|| !Math.isFinite(nextSpeed) || nextSpeed <= 0) return;
@@ -3356,7 +3389,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// A segment can temporarily belong to both queues during callbacks.
 		var resized = new haxe.ds.ObjectMap<Note, Bool>();
 		function resize(note:Note):Void {
-			if (note == null || (!legacy && !isPsychReceptorNote(note)) || resized.exists(note)) return;
+			if (note == null || !isPsychReceptorNote(note) || resized.exists(note)) return;
 			resized.set(note, true);
 			note.resizeByRatio(ratio);
 		}
@@ -3370,6 +3403,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** Keep source note retirement in step with Psych/NV's songSpeed setter. */
 	function refreshNightmareVisionNoteKillOffset():Void {
+		if (nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras) {
+			noteKillOffset = 350 / songSpeed;
+			return;
+		}
 		if (nightmareVisionScripts == null && sourceNoteTimingMode() != 1) return;
 		noteKillOffset = Math.max(Conductor.stepCrochet, 350 / effectiveScrollSpeed * playbackRate);
 	}
