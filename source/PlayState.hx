@@ -13218,6 +13218,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		SongEvents.visitSourceGroups(songData.events, visit, order);
 	}
 
+	function playHistoricalNightmareVideo(name:String, visible:Bool = true):Void {
+		NightmareVisionLegacyEventVideo.play(this, nightmareVisionPaths, camHUD, name, visible);
+	}
+
 	function historicalNightmareVisionEventApi():Dynamic {
 		var registry = legacyScriptRegistry();
 		var scripts = function() return registry.eventScripts;
@@ -13225,6 +13229,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			visitHistoricalNightmareVisionEvents, sourceChartNoteOffset, scripts, registry.callScript)) entry.event];
 		return {
 			checkEventNote:function() dispatchHistoricalSongEvents(),
+			playVideo:playHistoricalNightmareVideo,
+			eventPushed:function(event:Dynamic) NightmareVisionLegacyEventPreparation.pushed(event, scripts, registry.callScript, precacheNightmareVisionSourceEvent),
 			getEvents:collect,
 			shouldPush:function(event:Dynamic) return NightmareVisionLegacyEventPreparation.shouldPush(event, scripts, registry.callScript),
 			firstEventPush:function(event:Dynamic) NightmareVisionLegacyEventPreparation.firstPush(event, scripts, registry.callScript),
@@ -13248,26 +13254,33 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** These source built-ins own preparation and do not call module onPush.
 	 * Historical velocity changes are prepared before note visual timestamps. */
-	function precacheNightmareVisionSourceEvent(event:SourceEventNote):Bool {
-		switch (event.event) {
+	function precacheNightmareVisionSourceEvent(event:Dynamic):Bool {
+		var name:String = Reflect.getProperty(event, 'event');
+		var value1:String = Reflect.getProperty(event, 'value1');
+		var value2:String = Reflect.getProperty(event, 'value2');
+		var time:Float = Reflect.getProperty(event, 'strumTime');
+		switch (name) {
+			case 'Play Video':
+				if (!nightmareVisionLegacyFieldCameras) return false;
+				playHistoricalNightmareVideo(value1, false);
 			case 'Change Character':
-				var role = NightmareVisionCharacterEvent.preloadRole(event.value1);
-				addNightmareVisionCharacterToList(event.value2, role);
+				var role = NightmareVisionCharacterEvent.preloadRole(value1);
+				addNightmareVisionCharacterToList(value2, role);
 			case 'Change Noteskin':
 				if (nightmareVisionLegacyFieldCameras) return false;
 				try {
 					if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
-					var skin = nightmareVisionNoteSkins.get(event.value1);
+					var skin = nightmareVisionNoteSkins.get(value1);
 					if (skin == null) {
-						skin = new NightmareVisionNoteSkin(nightmareVisionPaths, event.value1);
-						nightmareVisionNoteSkins.set(event.value1, skin);
+						skin = new NightmareVisionNoteSkin(nightmareVisionPaths, value1);
+						nightmareVisionNoteSkins.set(value1, skin);
 					}
 					skin.precacheEffects();
-				} catch (error:Dynamic) trace('[nightmare-vision-event-precache-error] ' + event.event + ': ' + Std.string(error));
+				} catch (error:Dynamic) trace('[nightmare-vision-event-precache-error] ' + name + ': ' + Std.string(error));
 			case 'Mult SV', 'Constant SV':
 				if (nightmareVisionLegacyFieldCameras)
-					NightmareVisionScrollVelocity.push(speedChanges, event.event, event.value1, event.strumTime, songSpeed);
-				else trace('[nightmare-vision-event-unsupported] ' + event.event + ': modern source scroll-velocity timeline is not implemented');
+					NightmareVisionScrollVelocity.push(speedChanges, name, value1, time, songSpeed);
+				else trace('[nightmare-vision-event-unsupported] ' + name + ': modern source scroll-velocity timeline is not implemented');
 			default: return false;
 		}
 		return true;
@@ -18822,39 +18835,43 @@ void main(void) {
 				// tween lifetime belong to this PlayState instance.
 				applyHxcVignetteEvent(e);
 			case 'Play Video':
-				// V-Slice's generic event supplies a path plus optional packed
-				// playback options. Event videos deliberately use a separate native
-				// owner from intro cutscenes: the chart keeps running, and HUD/audio/
-				// controls are restored when the clip ends.
-				var videoName = StringTools.trim(e.v1);
-				var videoOptions = EngineCompat.eventOptions(e.v2);
-				if (videoOptions == null)
-					videoOptions = EngineCompat.eventOptions(e.v3);
-				if (videoName == '' && videoOptions != null) {
-					for (field in ['path', 'video', 'file', 'name']) {
-						var option = Reflect.field(videoOptions, field);
-						if (option != null && StringTools.trim(Std.string(option)) != '') {
-							videoName = StringTools.trim(Std.string(option));
-							break;
+				if (nightmareVisionLegacyFieldCameras) {
+					playHistoricalNightmareVideo(e.v1);
+				} else {
+					// V-Slice's generic event supplies a path plus optional packed
+					// playback options. Event videos deliberately use a separate native
+					// owner from intro cutscenes: the chart keeps running, and HUD/audio/
+					// controls are restored when the clip ends.
+					var videoName = StringTools.trim(e.v1);
+					var videoOptions = EngineCompat.eventOptions(e.v2);
+					if (videoOptions == null)
+						videoOptions = EngineCompat.eventOptions(e.v3);
+					if (videoName == '' && videoOptions != null) {
+						for (field in ['path', 'video', 'file', 'name']) {
+							var option = Reflect.field(videoOptions, field);
+							if (option != null && StringTools.trim(Std.string(option)) != '') {
+								videoName = StringTools.trim(Std.string(option));
+								break;
+							}
 						}
 					}
-				}
-				if (videoName != '') {
-					#if cpp
-					var videoPath = compatEventVideoPath(videoName);
-					var eventTime = e.time == null ? Conductor.songPosition : Std.parseFloat(Std.string(e.time));
-					if (Math.isNaN(eventTime))
-						eventTime = Conductor.songPosition;
-					var videoOffset = eventVideoBool(videoOptions, 'resync', true)
-						? Math.max(0, Conductor.songPosition - eventTime) : 0;
-					if (videoPath == null)
-						trace('[hxc-video-missing] Play Video has no selected-owner media for ' + videoName);
-					else playCompatEventVideo(videoPath, videoOptions, videoOffset, eventTime);
-					#else
-					trace('Play Video is not supported on this target: ' + videoName);
-					#end
-				} else {
-					trace('Play Video skipped: event has no video path');
+					if (videoName != '') {
+						#if cpp
+						var videoPath = compatEventVideoPath(videoName);
+						var eventTime = e.time == null ? Conductor.songPosition : Std.parseFloat(Std.string(e.time));
+						if (Math.isNaN(eventTime))
+							eventTime = Conductor.songPosition;
+						var videoOffset = eventVideoBool(videoOptions, 'resync', true)
+							? Math.max(0, Conductor.songPosition - eventTime) : 0;
+						if (videoPath == null)
+							trace('[hxc-video-missing] Play Video has no selected-owner media for ' + videoName);
+						else playCompatEventVideo(videoPath, videoOptions, videoOffset, eventTime);
+						#else
+						trace('Play Video is not supported on this target: ' + videoName);
+						#end
+					} else {
+						trace('Play Video skipped: event has no video path');
+					}
 				}
 			case 'Custom Flash':
 				// agoti-style flash variants: 1 = white, 2 = blue, 3 = red

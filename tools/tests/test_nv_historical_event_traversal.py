@@ -52,7 +52,10 @@ class Main {
 }'''
 API=r'''class Host {
  public var registry=new NightmareVisionLegacyScriptRegistry();public var groups:Array<Dynamic>=[[100.,[['E','keep',null],['E','reject',null]]]];
+ public var videos:Array<String>=[];
  public function new(){}
+ function playHistoricalNightmareVideo(name:String,visible:Bool=true):Void videos.push(name+':'+visible);
+ function precacheNightmareVisionSourceEvent(event:Dynamic):Bool {if(Reflect.getProperty(event,'event')!='Play Video')return false;playHistoricalNightmareVideo(Reflect.getProperty(event,'value1'),false);return true;}
  function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry return registry;
  function dispatchHistoricalSongEvents():Void {NightmareVisionLegacyEventQueue.drain(function()return registry.eventNotes,function()return 0.,function(e){});}
  function sourceChartNoteOffset():Float return 5.;
@@ -63,11 +66,11 @@ API=r'''class Host {
 @:access(Host) class Main {
  static function main(){
  var owner=new Host();var other=new Host();
- var script=NightmareVisionScriptModule.fromSource('E','var saved=null;function shouldPush(e){saved=e;e.value2="edited";return e.value1!="reject";}function firstPush(e){e.value1="first";}function getOffset(e){e.strumTime=321;return 12.5;}',owner,null,
+ var script=NightmareVisionScriptModule.fromSource('E','var saved=null;function shouldPush(e){saved=e;e.value2="edited";return e.value1!="reject";}function firstPush(e){e.value1="first";}function onPush(e){e.value2="pushed";}function getOffset(e){e.strumTime=321;return 12.5;}',owner,null,
   function(i){var m:NightmareVisionScriptModule=cast i.variables.get('script');m.historicalCalls=true;owner.bind(i);},function(n,c,e)throw e);
  owner.registry.eventScripts.set('E',script);
  var i=new NightmareVisionScriptInterp(owner);owner.bind(i);var j=new NightmareVisionScriptInterp(other);other.bind(j);
- var code='var events=getEvents();if(events.length!=1||events[0].value2!="edited"||events[0].strumTime!=105)throw "getEvents";var raw={strumTime:100,event:"E",value1:"keep",value2:null};if(!game.shouldPush(raw)||raw.value2!="edited")throw "plain event admission";if(PlayState.eventNoteEarlyTrigger(raw)!=12.5||raw.strumTime!=321)throw "offset mutation";Reflect.callMethod(game,Reflect.field(game,"firstEventPush"),[raw]);if(raw.value1!="first")throw "first push";if(game.getEvents()[0]==events[0])throw "fresh events";';
+ var code='var events=getEvents();if(events.length!=1||events[0].value2!="edited"||events[0].strumTime!=105)throw "getEvents";var raw={strumTime:100,event:"E",value1:"keep",value2:null};if(!game.shouldPush(raw)||raw.value2!="edited")throw "plain event admission";if(PlayState.eventNoteEarlyTrigger(raw)!=12.5||raw.strumTime!=321)throw "offset mutation";Reflect.callMethod(game,Reflect.field(game,"firstEventPush"),[raw]);if(raw.value1!="first")throw "first push";if(game.getEvents()[0]==events[0])throw "fresh events";eventPushed(raw);if(raw.value2!="pushed")throw "public push identity";Reflect.callMethod(game,Reflect.field(game,"eventPushed"),[{strumTime:0,event:"Play Video",value1:"clip",value2:""}]);PlayState.playVideo("clip");game.playVideo("hidden",false);if(game.videos.join(",")!="clip:false,clip:true,hidden:false")throw "public video defaults";';
  i.execute(new NightmareVisionScriptParser().parseString(code,'event-api'));
  j.execute(new NightmareVisionScriptParser().parseString('if(getEvents().length!=2||PlayState.getEvents()[0].value2!=null)throw "owner isolation";'));
  i.release();j.release();script.destroy();trace('real Iris public event API verified');

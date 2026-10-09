@@ -31,6 +31,13 @@ class NightmareVisionLegacyEventPreparation {
 		return Reflect.getProperty(event, 'event') == 'Kill Henchmen' ? 280 : 0;
 	}
 
+	/** Public eventPushed and generation share builtin ownership and callback arguments. */
+	public static function pushed(event:Dynamic, scripts:Void->Map<String, Dynamic>,
+		call:(Dynamic, String, Array<Dynamic>)->Dynamic, builtin:Dynamic->Bool):Void {
+		if (!builtin(event) && scripts().exists(Reflect.getProperty(event, 'event')))
+			invoke(event, 'onPush', scripts, call);
+	}
+
 	/** Admission runs during traversal, before the next source row is read. */
 	public static function collect(visit:(Dynamic->Void)->Void, noteOffset:Void->Float,
 		scripts:Void->Map<String, Dynamic>, call:(Dynamic, String, Array<Dynamic>)->Dynamic):Array<{row:Dynamic, event:SourceEventNote}> {
@@ -45,7 +52,7 @@ class NightmareVisionLegacyEventPreparation {
 	public static function prepare(visit:(Dynamic->Void)->Void, noteOffset:Void->Float,
 		scripts:Void->Map<String, Dynamic>, call:(Dynamic, String, Array<Dynamic>)->Dynamic,
 		global:(String, Array<Dynamic>)->Dynamic, load:String->Void,
-		publish:(Dynamic, SourceEventNote)->Void, builtin:SourceEventNote->Bool, ?pushedNames:Void->Map<String, Bool>):Void {
+		publish:(Dynamic, SourceEventNote)->Void, builtin:Dynamic->Bool, ?pushedNames:Void->Map<String, Bool>):Void {
 		var names:Map<String, Bool> = [];
 		if (pushedNames == null) pushedNames = function() return names;
 		for (entry in collect(visit, noteOffset, scripts, call)) {
@@ -62,7 +69,7 @@ class NightmareVisionLegacyEventPreparation {
 			var time = event.strumTime;
 			event.strumTime = time - earlyTrigger(event, scripts, call, global);
 			publish(entry.row, event);
-			if (!builtin(event) && scripts().exists(event.event)) invoke(event, 'onPush', scripts, call);
+			pushed(event, scripts, call, builtin);
 		}
 	}
 }

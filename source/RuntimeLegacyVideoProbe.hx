@@ -23,6 +23,8 @@ class RuntimeLegacyVideoProbe {
 	static var pausedTime:Int = 0;
 	static var restartTime:Int = 0;
 	static var failures:Array<String> = [];
+	static var eventFormats:Int = 0;
+	static var eventShaderReady:Bool = false;
 	public static function enabled():Bool
 		return RuntimeSmokeHarness.enabled() && Sys.getEnv('CAMMIE_LEGACY_VIDEO_SMOKE') == '1';
 	static function check(value:Bool, message:String):Void if (!value) throw message;
@@ -48,6 +50,17 @@ class RuntimeLegacyVideoProbe {
 				if (!Std.isOfType(FlxG.state, FreeplayState) || ImportRefreshManager.browseTick().busy) return;
 				check(FlxG.sound.muted && Sys.getEnv('CAMMIE_SMOKE_SAVE_ROOT') != null, 'Muted private saves required');
 				began = now; FlxG.autoPause = true;
+				if (Sys.getEnv('CAMMIE_LEGACY_EVENT_VIDEO_SMOKE') == '1') {
+					var paths = new NightmareVisionPaths('assets/imported_mods/generated-video-a');
+					first = NightmareVisionLegacyEventVideo.play(FlxG.state, paths, FlxG.camera, 'clip', false);
+					other = NightmareVisionLegacyEventVideo.play(FlxG.state, paths, FlxG.camera, 'clip');
+					for (video in [first, other]) {
+						video.addCallback('onFormat', function() eventFormats++);
+						video.addCallback('onEnd', function() ends++);
+						video.bitmap.onEncounteredError.add(function(error) failures.push(error));
+					}
+					move(10); return;
+				}
 				otherState = new FlxState(); FlxG.state.add(otherState);
 				firstInterp = interpreter(FlxG.state, 'assets/imported_mods/generated-video-a');
 				otherInterp = interpreter(otherState, 'assets/imported_mods/generated-video-b');
@@ -111,6 +124,24 @@ class RuntimeLegacyVideoProbe {
 					RuntimeSmokeHarness.emit('legacy_video_native_verified', {starts:starts, formats:formats, ends:ends,
 						scopedPause:true, explicitPauseFocus:true, restart:true, restartAfterEnd:true, hostPauseResume:true,
 						ownerTeardown:true, focusHandlersRemoved:true, elapsedSeconds:now-began});
+					RuntimeSmokeHarness.succeed();
+				case 10:
+					if (eventFormats < 2) return;
+					check(!first.visible && other.visible, 'Hidden preparation and visible playback');
+					for (video in [first, other]) {
+						check(video.cameras[0] == FlxG.camera && video.scrollFactor.x == 0 && video.scrollFactor.y == 0, 'Video camera and scroll factor');
+						check(Math.abs(video.height - FlxG.height) < 1 && video.x == 0 && video.y == 0, 'Source height fit and position');
+						check(Std.isOfType(video.shader, NightmareVisionGreenScreenShader), 'Source chroma-key shader');
+					}
+					if (Reflect.field(other.shader, 'glProgram') == null) return;
+					eventShaderReady = true; move(11);
+				case 11:
+					if (ends < 2) return;
+					check(!first.exists && first.bitmap == null && !other.exists && other.bitmap == null, 'End releases both decoders');
+					check(NightmareVisionLegacyVideoSprite.forOwner(FlxG.state, 'assets/imported_mods/generated-video-a').length == 0, 'Event video registry released');
+					RuntimeSmokeHarness.emit('legacy_event_video_native_verified', {formats:eventFormats, ends:ends,
+						hiddenPreparation:true, visiblePlayback:true, sourceGeometry:true, shaderProgramReady:eventShaderReady,
+						ownerTeardown:true, elapsedSeconds:now-began});
 					RuntimeSmokeHarness.succeed();
 				default:
 			}

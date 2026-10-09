@@ -128,6 +128,7 @@ class Main {
     def test_real_interpreter_import_reflection_and_owner_static_bindings(self):
         from test_nv_sprite_integration import sprite_integration_files, NVSpriteIntegrationTest
         files=sprite_integration_files()
+        files['NightmareVisionGreenScreenShader.hx']='class NightmareVisionGreenScreenShader { public function new() {} }'
         files['NightmareVisionLegacyVideoSprite.hx']="""class NightmareVisionLegacyVideoSprite {
  public static var heldVideos:Array<NightmareVisionLegacyVideoSprite>=[];
  public var ownerState:Dynamic;public var ownerRoot:String;public var destroyOnUse:Bool;public var pauses=0;public var resumes=0;
@@ -152,7 +153,7 @@ class Main {
   NightmareVisionLegacyVideoBindings.install(a.i,new NightmareVisionPaths('owner-a','owner-a'),a.owner);
   check(NightmareVisionLegacyVideoSprite.refs==2,'reinstall releases old lease without retaining extra owner');
   var parser=new NightmareVisionScriptParser();
-  a.i.execute(parser.parseString("import gameObjects.PsychVideoSprite; first=new PsychVideoSprite(false);cls=Type.resolveClass('gameObjects.PsychVideoSprite');second=Type.createInstance(cls,[]);held=Reflect.field(cls,'heldVideos');onStart=VidCallbacks.ONSTART;"));
+  a.i.execute(parser.parseString("import gameObjects.shader.GreenScreenShader; shader=new GreenScreenShader();shaderClass=Type.resolveClass('gameObjects.shader.GreenScreenShader'); import gameObjects.PsychVideoSprite; first=new PsychVideoSprite(false);cls=Type.resolveClass('gameObjects.PsychVideoSprite');second=Type.createInstance(cls,[]);held=Reflect.field(cls,'heldVideos');onStart=VidCallbacks.ONSTART;"));
   b.i.execute(parser.parseString("foreign=new PsychVideoSprite(false);"));
   var first:NightmareVisionLegacyVideoSprite=cast a.i.variables.get('first');
   var second:NightmareVisionLegacyVideoSprite=cast a.i.variables.get('second');
@@ -162,6 +163,7 @@ class Main {
   a.i.execute(parser.parseString("PsychVideoSprite.globalPause();Reflect.field(cls,'globalResume')();"));
   check(first.pauses==1&&second.pauses==1&&foreign.pauses==0&&first.resumes==1&&foreign.resumes==0,'global source methods cannot affect foreign owner in same state');
   check(a.i.variables.get('onStart')=='onStart','source enum abstract constants');
+  check(Std.isOfType(a.i.variables.get('shader'),NightmareVisionGreenScreenShader)&&a.i.variables.get('shaderClass')==NightmareVisionGreenScreenShader,'shader import and reflective class identity');
   a.owner.release();var refused=false;
   try a.i.createSourceInstance(NightmareVisionLegacyVideoSprite,[]) catch(_:Dynamic)refused=true;
   check(refused,'released constructor cannot create another video');

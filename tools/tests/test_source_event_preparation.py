@@ -232,11 +232,13 @@ class PlayState {
   return Std.isOfType(result, Int) ? result : NightmareVisionScriptGroup.CONTINUE_FUNC;
  }
  // Event-pipeline fixture records the source caller boundary, not renderer membership.
+ function playHistoricalNightmareVideo(name:String,visible:Bool=true):Void {log.push("video:"+name+":"+visible);}
  function addNightmareVisionCharacterToList(name:String,role:Int):Void {
   log.push('nv-precache-character:' + role + ':' + name);
  }
  public function exercisePsychPrepare():Void preparePsychSourceEvents();
  public function exercisePsychFinalize():Void finalizePsychSourceEvents();
+ public function exercisePushed(e:Dynamic):Void {NightmareVisionLegacyEventPreparation.pushed(e,function()return registry.eventScripts,registry.callScript,precacheNightmareVisionSourceEvent);}
  public function exerciseNvPrepare():Void {historicalRows=songEvents;prepareNightmareVisionSourceEvents();}
  public function exerciseChartNoteTime(authored:Float):Float return authored + sourceChartNoteOffset();
  public function exerciseOffset(value:Dynamic, name:String):Null<Float>
@@ -338,6 +340,22 @@ class Main {
   var modern = new PlayState();modern.nightmareVisionScripts = new NvScriptHost(modern);
   modern.songEvents = [new SourceRow(100, 'Mult SV', '2', '', 0)];modern.exerciseNvPrepare();
   check(modern.speedChanges.length == 1, 'Historical clock must not change modern owners');
+
+  var videoHost = new PlayState();videoHost.nightmareVisionLegacyFieldCameras = true;
+  videoHost.nightmareVisionScripts = new NvScriptHost(videoHost);
+  videoHost.songEvents = [new SourceRow(123, 'Play Video', 'clip', '', 0)];videoHost.exerciseNvPrepare();
+  check(videoHost.log.filter(v -> v == 'video:clip:false').length == 1
+   && videoHost.nvModuleCalls.filter(c -> c.callback == 'onPush').length == 0,
+   'historical generation plays hidden video and suppresses custom onPush');
+  var count = videoHost.songEvents.length;
+  videoHost.exercisePushed({strumTime:456.,event:'Play Video',value1:'second',value2:''});
+  check(videoHost.log.indexOf('video:second:false') >= 0 && videoHost.songEvents.length == count,
+   'public eventPushed prepares a plain object without appending to the queue');
+  var modernVideo = new PlayState();modernVideo.nightmareVisionScripts = new NvScriptHost(modernVideo);
+  modernVideo.songEvents = [new SourceRow(123, 'Play Video', 'clip', '', 0)];modernVideo.exerciseNvPrepare();
+  check(modernVideo.log.filter(v -> v.indexOf('video:') == 0).length == 0
+   && modernVideo.nvModuleCalls.filter(c -> c.callback == 'onPush').length == 1,
+   'modern owners retain custom event preparation');
 
   var nv = new PlayState();
   nv.nightmareVisionScripts = new NvScriptHost(nv);

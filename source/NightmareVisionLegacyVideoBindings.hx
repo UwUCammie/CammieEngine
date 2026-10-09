@@ -25,6 +25,9 @@ class NightmareVisionLegacyVideoBindings {
 		scope.bindStaticField(type, 'globalResume', function() return function() {
 			for (video in held().copy()) if (video != null && video.ownerState == state && video.ownerRoot == paths.root) video.resume();
 		}, null);
+		scope.bindRuntimeClass('gameObjects.shader.GreenScreenShader', NightmareVisionGreenScreenShader);
+		interp.bindImport('gameObjects.shader.GreenScreenShader', NightmareVisionGreenScreenShader);
+		interp.variables.set('GreenScreenShader', NightmareVisionGreenScreenShader);
 		var callbacks = {ONEND:'onEnd', ONSTART:'onStart', ONFORMAT:'onFormat'};
 		interp.bindImport('gameObjects.PsychVideoSprite.VidCallbacks', callbacks);
 		interp.variables.set('VidCallbacks', callbacks);
