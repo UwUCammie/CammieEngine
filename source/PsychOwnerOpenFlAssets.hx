@@ -586,8 +586,12 @@ class PsychOwnerOpenFlAssets {
 		var resolved = resolveForContext(context, id, expectedType);
 		if (resolved.blocked)
 			throw '[psych-assets] Refused asset outside selected owner: ' + Std.string(id);
-		if (resolved.unavailable)
-			throw '[psych-assets] Asset is unavailable in selected owner: ' + Std.string(id);
+		if (resolved.unavailable) {
+			var lookup = context.lookupAsset(id, expectedType);
+			throw '[psych-assets] Asset is unavailable in selected owner: ' + Std.string(id)
+				+ ' (owner=' + context.ownerRoot + ', scope=' + (lookup == null ? context.scope : lookup.identity.scope)
+				+ ', state=' + (lookup == null ? 'no-lookup' : lookup.result.state) + ')';
+		}
 		if (resolved.path == null)
 			throw '[psych-assets] Asset is unavailable to selected owner: ' + Std.string(id);
 		return resolved;

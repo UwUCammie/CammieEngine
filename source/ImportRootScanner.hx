@@ -1515,6 +1515,11 @@ class ImportRootScanner {
 				executableMarkers = probeExecutable(path);
 				cache.set(cacheKey, executableMarkers.copy());
 			}
+			// Class names alone do not identify an engine and must not make a
+			// helper executable hide the actual game executable later in the list.
+			var engineMarker = false;
+			for (marker in executableMarkers) if (marker.charAt(0) != "\n") engineMarker = true;
+			if (!engineMarker) continue;
 			for (marker in executableMarkers) {
 				if (!hasMarker(found, marker))
 					found.push(marker);
@@ -1525,6 +1530,16 @@ class ImportRootScanner {
 				break;
 		}
 		return found;
+	}
+
+	/** Qualified native class identity, only from an authenticated NV executable.
+	 * Missing or mixed class identities do not establish a Stage API version. */
+	public static function nightmareVisionStageApi(root:String):String {
+		var markers = probeExecutableMarkers(root, readDirectory(root));
+		if (!hasNightmareVisionExecutable(markers)) return 'unknown';
+		var legacy = hasMarker(markers, '\ngameobjects.stage\n');
+		var modern = hasMarker(markers, '\nfunkin.objects.stage\n');
+		return legacy == modern ? 'unknown' : legacy ? 'legacy-group' : 'modern-container';
 	}
 
 	/** Specific source evidence that authorizes inheriting an NV container. */
@@ -1551,7 +1566,7 @@ class ImportRootScanner {
 		var wanted = ['kadedev', 'kadeenginedata', 'psychlua', 'psychanimationcontroller',
 			'psychengineversion',
 			'com.nmvteam.nightmareengine', 'nightmare vision engine', 'meta.data.scripts.ifunkinscript',
-			'friday night funkin\' modding plus', 'modding plus'];
+			'friday night funkin\' modding plus', 'modding plus', '\ngameobjects.stage\n', '\nfunkin.objects.stage\n'];
 		var found:Array<String> = [];
 		var input:FileInput = null;
 		try {

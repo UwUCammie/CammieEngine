@@ -63,6 +63,7 @@ class NightmareVisionSaveData { public function getField(_field:String):Dynamic 
 class NightmareVisionSaveFacade {}
 // Audio-only fixture: actual class scopes are covered by connected integration.
 class BaseInterp {
+ function sourceCameraMutation(_object:Dynamic,_field:String):Dynamic throw 'audio read selected camera mutation';
  var nativeClassScope:Dynamic=null;
  var liveValues:Map<String,{read:Void->Dynamic,write:Dynamic->Dynamic,target:Void->Dynamic}> = new Map();
  public function new() {}
@@ -105,6 +106,9 @@ class NightmareVisionPsychAudioGetterTest(unittest.TestCase):
         fixture = MAIN.replace("GET_METHOD", getter)
         with tempfile.TemporaryDirectory(prefix="psych-audio-getter-", dir=ROOT / "tmp") as scratch:
             work = Path(scratch)
+            camera_type = work / "flixel/system/frontEnds/CameraFrontEnd.hx"
+            camera_type.parent.mkdir(parents=True, exist_ok=True)
+            camera_type.write_text("package flixel.system.frontEnds;class CameraFrontEnd {public function new(){}}", encoding="utf-8")
             (work / "NightmareVisionPsychAudioGetterMain.hx").write_text(
                 fixture, encoding="utf-8", newline="\n"
             )

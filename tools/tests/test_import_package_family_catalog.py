@@ -305,8 +305,17 @@ class ImportPackageFamilyCatalogFixture {
      reusedNamespaces:reusedNamespaces,
      executableProof:ImportPackageFamilyCatalog.isAuthenticatedNightmareVisionContainer(
       Path.join([planned.snapshot.snapshotRoot,"content"]))});
-   case "v3-core-handoff":
+   case "v3-core-handoff", "v3-container-only", "v3-legacy-runtime":
     var source=makeAssetGame("v3-core-handoff-source");
+    if(mode=="v3-legacy-runtime") {
+     for(label in ["alpha","beta"]) {
+      FileSystem.deleteFile(Path.join([source,"content",label,"meta.json"]));
+      var nested=Path.join([source,"content",label,"assets"]);
+      for(name in FileSystem.readDirectory(nested))
+       FileSystem.rename(Path.join([nested,name]),Path.join([source,"content",label,name]));
+      FileSystem.deleteDirectory(nested);
+     }
+    }
     var planned=plannerRecord(source);
     var content=Path.join([planned.snapshot.snapshotRoot,"content"]);
     var providerNamespace:String=null;
@@ -340,12 +349,16 @@ class ImportPackageFamilyCatalogFixture {
      for(root in (cast planned.roots:Array<Dynamic>))
       if(root.engine=="Nightmare Vision"&&(root.relative==memberRelative||root.relative==memberRelative+"/assets"))
        namespace=Std.string(root.namespace);
+     if(namespace==null && mode=="v3-legacy-runtime") namespace="legacy-package-"+packageNamespaces.length;
      if(namespace==null) throw "family member has no scanner-owned namespace: "+memberRelative;
      io.setNamespace(member,"Nightmare Vision",namespace);
      io.recordResolvedNamespace(member,"Nightmare Vision",namespace);
      packageNamespaces.push(namespace);
-     File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/meta.json"),Json.stringify({name:namespace}));
-     File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/scripts/state.hxs"),"class State {} ");
+     if(mode!="v3-legacy-runtime")
+      File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/meta.json"),Json.stringify({name:namespace}));
+     File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/.cammie-owner.json"),'{"engine":"Nightmare Vision","version":1}');
+     if(mode!="v3-legacy-runtime")
+      File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/scripts/state.hxs"),"class State {} ");
     }
     var handoffs=ImportPackageFamilyCatalog.bindCoreAssetHandoffs(
      planned.snapshot.snapshotRoot,planned.record,io);
@@ -364,6 +377,16 @@ class ImportPackageFamilyCatalogFixture {
      if(corePlan.failed||corePlan.cancelled)
       throw "receiver core sidecar publication failed: "+corePlan.diagnostics.join("; ");
     }
+    if(mode=="v3-container-only" || mode=="v3-legacy-runtime") {
+     var oldRoots:Array<Dynamic>=cast planned.record.roots;
+     planned.record.roots=oldRoots.filter(function(root) return root.relative=="");
+    }
+    if(mode=="v3-legacy-runtime") {
+     if(ImportPackageFamilyCatalog.capturePublished(planned.snapshot.snapshotRoot,planned.record,io)!=null)
+      throw "owner markers and core sidecars alone enrolled an empty package";
+     for(namespace in packageNamespaces)
+      File.saveContent(io.writePath("assets/imported_mods/"+namespace+"/scripts/state.hxs"),"class State {} ");
+    }
     var published=ImportPackageFamilyCatalog.capturePublished(planned.snapshot.snapshotRoot,planned.record,io);
     if(published==null||published.version!=3||published.coreProvider==null)
      throw "transaction did not capture the authenticated v3 provider-core family";
@@ -373,6 +396,31 @@ class ImportPackageFamilyCatalogFixture {
     try ImportRefreshTransaction.validatePackageFamilyCatalog(badCatalog,planned.record)
      catch(_:Dynamic) tamperedRejected=true;
     if(!tamperedRejected) throw "v3 catalog accepted a provider Project hash that disagreed with the retained profile";
+    if(mode=="v3-container-only" || mode=="v3-legacy-runtime") {
+     var migratedRoots:Array<Dynamic>=cast planned.record.roots;
+     if(migratedRoots.length!=3) throw "container-only receipt did not retain its two proven receivers";
+     var retained:Map<String,String>=new Map();
+     for(root in migratedRoots) retained.set(Path.join([content,root.relative]),root.engine);
+     var priorRoots=ImportRootScanner.setRetainedSourceRoots(retained);
+     var priorEngines=ImportRootScanner.setRetainedSourceEngines(retained);
+     var rescanned=ImportRootScanner.scan(content,"Nightmare Vision");
+     ImportRootScanner.setRetainedSourceRoots(priorRoots);
+     ImportRootScanner.setRetainedSourceEngines(priorEngines);
+     planned.record.packageFamilyCatalog=published;
+     for(root in migratedRoots) {
+      var found=false;
+      for(candidate in rescanned) if(Path.normalize(candidate.root)==Path.normalize(Path.join([content,root.relative]))) found=true;
+      if(!found) found=ImportPackageFamilyCatalog.scanCoversMaterializedRoot(
+       planned.snapshot.snapshotRoot,planned.record,root,rescanned);
+      if(!found) throw "next retained rescan lost migrated root: "+root.relative;
+     }
+     var conflicting:Dynamic=haxe.Json.parse(Json.stringify(planned.record));
+     conflicting.roots[1].namespace="conflicting-receiver";
+     var before=Json.stringify(conflicting);
+     if(ImportPackageFamilyCatalog.capturePublished(planned.snapshot.snapshotRoot,conflicting,io)!=null)
+      throw "conflicting retained receiver namespace was accepted";
+     if(Json.stringify(conflicting)!=before) throw "failed migration mutated its input receipt";
+    }
     planned.record.packageFamilyCatalog=published;
     var invalidRefreshRecord:Dynamic=Reflect.copy(planned.record);
     var changedProfileCatalog:Dynamic=Reflect.copy(planned.record.sourceAssetProfiles);
@@ -419,6 +467,14 @@ class ImportPackageFamilyCatalogFixture {
      if(!mapped) throw "receiver sidecar did not preserve the provider Lime ID and receiver core path";
      if(File.getContent(Path.join([install,"assets/imported_mods/"+namespace+"/__nmv_core/images/core.png"]))
       !="provider core image") throw "mapped core bytes were not staged below the receiver namespace";
+    }
+    var installedFamily=ImportPackageFamilyCatalog.forOwner("assets/imported_mods/"+packageNamespaces[0]);
+    if(installedFamily.length!=2) throw "committed family did not resolve its installed runtime members";
+    if(mode=="v3-legacy-runtime") {
+     for(namespace in packageNamespaces)
+      FileSystem.deleteFile(Path.join([install,"assets/imported_mods/"+namespace+"/scripts/state.hxs"]));
+     if(ImportPackageFamilyCatalog.forOwner("assets/imported_mods/"+packageNamespaces[0]).length!=0)
+      throw "owner markers and core outputs kept a payload-free family available";
     }
     report({version:committed.packageFamilyCatalog.version,providerNamespace:providerNamespace,
      providerProjectSha256:providerProfile.projectSha256,receiverNamespaces:packageNamespaces,
@@ -566,6 +622,17 @@ class ImportPackageFamilyCatalogTest(unittest.TestCase):
         self.assertTrue(result["providerNamespace"])
         self.assertEqual(len(result["receiverNamespaces"]), 2)
         self.assertEqual(len(result["coreSidecars"]), 2)
+
+    def test_container_only_receipt_retains_newly_published_core_receivers(self):
+        result = self.run_fixture("v3-container-only")
+        self.assertEqual(result["version"], 3)
+        self.assertEqual(len(result["receiverNamespaces"]), 2)
+        self.assertEqual(len(result["coreSidecars"]), 2)
+
+    def test_legacy_metadata_free_packages_require_owned_noncore_payload(self):
+        result = self.run_fixture("v3-legacy-runtime")
+        self.assertEqual(result["version"], 3)
+        self.assertEqual(len(result["receiverNamespaces"]), 2)
 
 
 if __name__ == "__main__":

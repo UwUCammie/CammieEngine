@@ -174,6 +174,36 @@ class Main {
   presentation.popUpScore('bad', 99, note);
   check(callbackLog.length==6, 'hideHud returns before source callbacks');
 
+  // Legacy PlayState writes before HUD creation survive attachment and use
+  // this existing renderer. Modern HUD defaults survive an untouched owner.
+  hidden=false;
+  var legacy = new NightmareVisionLegacyHudControls();
+  legacy.showRating=false; legacy.showCombo=false;
+  legacy.bind(presentation);
+  paths.calls.resize(0);
+  presentation.popUpScore('bad', 99, note);
+  check(paths.calls.length==0 && !presentation.showRatingNum,
+   'legacy switches suppress ratings and combo digits through the real renderer');
+  legacy.showCombo=true;
+  paths.calls.resize(0);
+  presentation.popUpScore('bad', 12, note);
+  check(paths.calls.length==3 && paths.calls[0]=='owner/combo/num0',
+   'legacy combo restores digits independently of rating');
+  legacy.showRating=true; legacy.showCombo=false;
+  paths.calls.resize(0);
+  presentation.popUpScore('bad', 12, note);
+  check(paths.calls.join(',')=='owner/ratings/bad',
+   'legacy rating restores independently of combo');
+  var untouched = new NightmareVisionLegacyHudControls();
+  var other:Dynamic={showRating:false,showCombo:false,showRatingNum:false};
+  untouched.bind(other);
+  check(!other.showRating && !other.showRatingNum && untouched.showRating,
+   'untouched legacy defaults do not override HUD preferences or inherit another owner');
+  legacy.release();
+  var rejected=false; try legacy.showCombo=true catch (_:Dynamic) rejected=true;
+  check(rejected && !presentation.showRatingNum, 'released controls cannot mutate old HUD');
+  untouched.release();
+
   // Release builds with flat engine assets expose one prefix for both types.
   // Pixel suffixes and subsequent script mutations must affect digits too.
   paths.usesSharedRatingPrefix=true;

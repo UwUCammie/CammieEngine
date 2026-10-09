@@ -77,6 +77,12 @@ class Main {
   same(template.camera_girlfriend, [0,0], 'template girlfriend camera offset');
   check(template.stageObjects == null && template.dadZIndex == null,
    'template leaves optional fields unset like source');
+  check(NightmareVisionStageData.getLegacyStageFile(owner, 'demo').origin == 'legacy-flat', 'legacy ignores modern directory alternatives');
+  check(NightmareVisionStageData.getLegacyStageFile(owner, 'legacy') == null, 'legacy does not invent directory fallback');
+  check(NightmareVisionStageData.getLegacyStageFile(owner, 'core-only').origin == 'core-only', 'legacy authenticated core fallback');
+  check(NightmareVisionStageData.getLegacyStageFile(owner, '../other-owner/sibling-only') == null, 'legacy owner boundary');
+  var legacyTemplate = NightmareVisionStageData.getLegacyTemplateStageFile();
+  check(legacyTemplate.directory == '' && legacyTemplate.isPixelStage == false, 'legacy template fields');
   Sys.println('nightmare-vision-stage-data-ok');
  }
 }

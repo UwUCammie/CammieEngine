@@ -208,9 +208,12 @@ class SourceMappedAssetPublisher {
 			failAll(plan, "[source-mapped-assets] The receipt-bound profile no longer matches this source root, engine, or exact owner destination; refresh stopped to preserve prior owner data.");
 			return plan;
 		}
-		plan.authoritative = Reflect.field(profile, "complete") == true;
+		// Compiled catalogs declare Assets IDs but omit disk-based mod files.
+		// Keep the latter eligible for the existing raw media collection.
+		plan.authoritative = Reflect.field(profile, "complete") == true
+			&& Reflect.field(profile, "compiledManifests") != true;
 		if (hasIdentityPolicy) {
-			plan.identityComplete = plan.authoritative;
+			plan.identityComplete = Reflect.field(profile, "complete") == true;
 			plan.identityLibrariesComplete = Reflect.field(profile, "librariesComplete") == true;
 			plan.identityOwner = destinationRoot;
 			plan.identityEngine = expectedEngine;

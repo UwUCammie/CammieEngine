@@ -67,6 +67,66 @@ class NVSpriteIntegrationTest(unittest.TestCase):
                 result = subprocess.run(command + target, cwd=ROOT, env=env, capture_output=True, text=True, timeout=40)
                 self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-5000:])
 
+    def test_actual_camera_manager_getter_guards_direct_and_captured_mutations(self):
+        files = sprite_integration_files()
+        files['Main.hx'] = r'''
+class Main {
+ static function ok(value:Bool,message:String) {if(!value)throw message;}
+ static function main() {
+  var manager=new flixel.system.frontEnds.CameraFrontEnd();
+  var interp=new NightmareVisionScriptInterp({});
+  var errors:Array<String>=[];
+  interp.sourceError=function(message,pos)errors.push(message);
+  interp.variables.set('manager',manager);
+  var a={tag:'a'},b={tag:'b'};
+  interp.variables.set('a',a);interp.variables.set('b',b);
+  interp.execute(new NightmareVisionScriptParser().parseString(
+   "var borrowed=manager.add;manager.add(null);borrowed(null);manager.insert(null,0);first=borrowed(a);second=manager.insert(b,0,false);"));
+  ok(errors.length==3,'each rejected null mutation is diagnosed');
+  for(error in errors)ok(error.indexOf('[source-camera-assignment]')>=0,'camera diagnostic code');
+  ok(manager.list.length==2&&manager.list[0]==b&&manager.list[1]==a,'valid restoration continues in source order');
+  ok(interp.variables.get('first')==a&&interp.variables.get('second')==b,'valid return identity preserved');
+ }
+}
+'''
+        self.run_haxe(files)
+
+    def test_legacy_sheet_constructor_animation_controls_and_owner_capture(self):
+        files = sprite_integration_files()
+        files['Main.hx'] = r'''
+class Main {
+ static function ok(value:Bool,message:String) {if(!value)throw message;}
+ static function main() {
+  NightmareVisionSpriteRegistry.enterSession('sheet');
+  var paths=new NightmareVisionPaths('sheet','selected');var other=new NightmareVisionPaths('other','other');
+  var owner=NightmareVisionSpriteRegistry.setup(paths);var aa=false;
+  var interp=new NightmareVisionScriptInterp({});interp.sourceSpriteOwner=owner;
+  NightmareVisionSpriteBindings.install(interp,paths,owner,function()return aa);
+  NightmareVisionSpriteRegistry.setup(other);
+  var parser=new NightmareVisionScriptParser();
+  interp.execute(parser.parseString("sheet=new SpriteFromSheet(12,34,'stage/atlas','A bold');"));
+  var sheet:NightmareVisionSpriteFromSheet=cast interp.variables.get('sheet');
+  ok(paths.calls.join('|')=='selected:atlas:stage/atlas'&&other.calls.length==0,'construction captures selected owner before atlas lookup');
+  ok(sheet.x==12&&sheet.y==34&&!sheet.antialiasing&&sheet.active,'source coordinates, preference and active default');
+  ok(sheet.animation.curAnim.name=='A bold'&&Math.abs(sheet.animation.curAnim.frameDuration-1/30)<0.00001&&sheet.animation.curAnim.looped,'native constructor animation defaults');
+  sheet.frames.frames.push(sheet.frames.frames[sheet.animation.curAnim.frames[0]]);
+  sheet.adjust(12,false,true);
+  ok(Math.abs(sheet.animation.curAnim.frameDuration-1/12)<0.00001&&!sheet.animation.curAnim.looped,'adjust replaces the definition and restarts');
+  sheet.play(true,true,1);
+  ok(sheet.animation.curAnim.reversed&&sheet.animation.curAnim.curFrame==sheet.animation.curAnim.numFrames-2,'public forced/reversed/frame arguments reach native playback');
+  aa=true;
+  interp.execute(parser.parseString("import Type; type=Type.resolveClass('gameObjects.SpriteFromSheet'); second=Type.createInstance(type,[0,0,'other/atlas','A bold']);"));
+  var second:NightmareVisionSpriteFromSheet=cast interp.variables.get('second');
+  ok(second.antialiasing&&interp.variables.get('type')==NightmareVisionSpriteFromSheet,'qualified reflection and current owner preference');
+  sheet.destroy();ok(sheet.ownerPaths==null,'shared sprite destruction clears captured paths');
+  owner.release();var rejected=false;
+  try interp.execute(parser.parseString("new SpriteFromSheet(0,0,'bad','A bold');")) catch (_:Dynamic) rejected=true;
+  ok(rejected&&paths.calls.length==2,'released factory cannot perform atlas IO');
+ }
+}
+'''
+        self.run_haxe(files)
+
     def test_actual_iris_factories_and_provider_lifetime(self):
         files = sprite_integration_files()
         files['Main.hx'] = r'''
@@ -131,7 +191,7 @@ class Main {
         self.assertNotIn('NightmareVisionSpriteMacro', (ROOT / 'source/NightmareVisionCharacterGroupCompat.hx').read_text(encoding='utf-8'))
         ps = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         common = method(ps, 'static function seedNightmareVisionCommon(')
-        self.assertIn('NightmareVisionSpriteBindings.install(interp, paths, spriteOwner)', common)
+        self.assertIn('NightmareVisionSpriteBindings.install(interp, paths, spriteOwner, function() return prefs.view.globalAntialiasing)', common)
         self.assertIn('NightmareVisionSpriteRegistry.setup(paths)', common)
         renderer = (ROOT / 'source/nightmarevision/modchart/NightmareVisionModchartRenderer.hx').read_text(encoding='utf-8')
         self.assertIn("transform.registry.executionEntry == null ? baseline.frameHeight : number(property(note, 'frameHeight')", renderer)

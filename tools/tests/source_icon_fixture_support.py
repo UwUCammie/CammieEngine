@@ -7,6 +7,19 @@ ROOT=Path(__file__).resolve().parents[2]
 
 def source_icon_fixture_files():
     files = bar_fixture_files()
+    files['flixel/system/frontEnds/CameraFrontEnd.hx'] = """package flixel.system.frontEnds;
+class CameraFrontEnd {
+ public var list:Array<Dynamic>=[];
+ public function new() {}
+ public function add(camera:Dynamic,defaultDrawTarget:Bool=true):Dynamic {
+  if(camera==null)throw "fixture native add received null";
+  list.push(camera);return camera;
+ }
+ public function insert(camera:Dynamic,position:Int,defaultDrawTarget:Bool=true):Dynamic {
+  if(camera==null)throw "fixture native insert received null";
+  list.insert(position,camera);return camera;
+ }
+}"""
     flixel = ROOT / '.haxelib/flixel/6,1,2/flixel'
     controller = (flixel / 'animation/FlxAnimationController.hx').read_text()
     animation = (flixel / 'animation/FlxAnimation.hx').read_text()

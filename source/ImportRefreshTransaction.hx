@@ -951,7 +951,7 @@ class ImportRefreshTransaction {
 	}
 
 	/** A v2 namespace is authoritative only when this transaction owns the
-	 * package-local config and at least one package runtime file outside the
+	 * at least one package runtime file outside the
 	 * shared engine-core subtree. */
 	static function validatePackageFamilyOutputs(catalog:ImportRefreshPackageFamilyCatalog,
 		files:Array<Dynamic>):Void {
@@ -959,21 +959,15 @@ class ImportRefreshTransaction {
 		for (member in catalog.members) {
 			ImportWorkScheduler.cooperate();
 			var prefix = "assets/imported_mods/" + member.namespace + "/";
-			var configPath = prefix + "meta.json";
-			var hasConfig = false;
 			var hasRuntime = false;
 			for (file in files) {
 				ImportWorkScheduler.cooperate();
 				var path:String = Std.isOfType(file, String) ? cast file : Std.string(Reflect.field(file, "path"));
-				var key = pathTextKey(path);
-				if (key == pathTextKey(configPath)) hasConfig = true;
-				if (StringTools.startsWith(key, pathTextKey(prefix))
-					&& key != pathTextKey(configPath)
-					&& !StringTools.startsWith(key, pathTextKey(prefix + "__nmv_core/")))
+				if (ImportPackageRuntimeOwnership.isPayload(path, "assets/imported_mods/" + member.namespace))
 					hasRuntime = true;
 			}
-			if (!hasConfig || !hasRuntime)
-				throw "Import package-family member lacks transaction-owned config or runtime files.";
+			if (!hasRuntime)
+				throw "Import package-family member lacks transaction-owned runtime files.";
 			if (catalog.version >= 3) {
 				var coreIndexPath = prefix + SourceLimeAssetIdentity.sidecarRelativePath(
 					"Nightmare Vision", "core");

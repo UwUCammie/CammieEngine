@@ -76,6 +76,7 @@ typedef RuntimeSmokeOptions = {
 	    then send the accept and continue through ModifierState into PlayState
 	    when the modifier menu is enabled. Empty uses --smoke-freeplay-accept-ms. */
 	var freeplayAcceptSong:String;
+	var freeplayWaitMs:Int;
 	/** Emit player-one hit owner and animation state for a focused diagnostic run. */
 	var tracePlayerHits:Bool;
 	/** Exercise normal player-hit callbacks without desktop input; implies practice. */
@@ -202,6 +203,7 @@ class RuntimeSmokeHarness {
 			freeplayLeaveMs: 0,
 			freeplayAcceptMs: 0,
 			freeplayAcceptSong: '',
+			freeplayWaitMs: 0,
 			tracePlayerHits: false,
 			playerHits: false,
 			playerHitDelayMs: 0,
@@ -312,6 +314,9 @@ class RuntimeSmokeHarness {
 				case '--smoke-freeplay-accept-ms':
 					smokeArgumentsSeen = true;
 					result.freeplayAcceptMs = parseInt(value, result.freeplayAcceptMs);
+				case '--smoke-freeplay-wait-ms':
+					smokeArgumentsSeen = true;
+					result.freeplayWaitMs = Std.int(Math.max(0, Math.min(1800000, parseInt(value, 0))));
 				case '--smoke-freeplay-select':
 					smokeArgumentsSeen = true;
 					result.freeplayAcceptSong = safeToken(value);
@@ -696,8 +701,9 @@ class RuntimeSmokeHarness {
 		introRenderReadbackVisits = new Map();
 		runToken = Std.string(haxe.Timer.stamp());
 		#if sys
-		deadline = Sys.time() + config().durationMs / 1000.0;
-		watchdogDeadline = Sys.time() + (config().durationMs / 1000.0) * config().playstateVisits
+		deadline = Sys.time() + initialWindowMs() / 1000.0;
+		watchdogDeadline = Sys.time() + initialWindowMs() / 1000.0
+			+ (config().durationMs / 1000.0) * (config().playstateVisits - 1)
 			+ 120;
 		#end
 		emit('startup', {
@@ -1568,7 +1574,7 @@ class RuntimeSmokeHarness {
 		#if sys
 		var expired = playStateReady ? Sys.time() >= playDeadline : Sys.time() >= watchdogDeadline;
 		#else
-		var startupBudgetMs = config().durationMs * config().playstateVisits + 120000;
+		var startupBudgetMs = initialWindowMs() + config().durationMs * (config().playstateVisits - 1) + 120000;
 		var expired = playStateReady ? elapsedMs >= playDeadline : elapsedMs >= startupBudgetMs;
 		#end
 		if (!expired)
@@ -1717,6 +1723,7 @@ class RuntimeSmokeHarness {
 	static var pacingCountersConfigured:Bool = false;
 	static var freeplaySeen:Bool = false;
 	static var freeplaySeenAt:Float = 0;
+	static var freeplayTargetMissingSince:Float = -1;
 	static var leftFreeplay:Bool = false;
 	static var leaveInitiated:Bool = false;
 	static var acceptInitiated:Bool = false;
@@ -2069,6 +2076,7 @@ class RuntimeSmokeHarness {
 		#if sys
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
+		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }
 		if (RuntimeMappedMediaProbe.enabled()) { RuntimeMappedMediaProbe.tick(); return; }
 		if (RuntimeImportAvailabilityProbe.enabled()) { RuntimeImportAvailabilityProbe.tick(); return; }
 		if (RuntimeNvFamilyProbe.enabled()) { RuntimeNvFamilyProbe.tick(); return; }
@@ -2209,15 +2217,18 @@ class RuntimeSmokeHarness {
 				lastScrollAt = now;
 				scrollSelection();
 			}
-			if (targetSong != '' && !matched && !acceptInitiated
-				&& now - freeplaySeenAt >= 20000) {
+			if (freeplayTargetSearchExpired(targetSong, matched, acceptInitiated, now)) {
+				emit('freeplay_launch_observation', observation);
 				fail('freeplay-target-not-found', 'Target was never selected: ' + targetSong);
 				return;
 			}
 			var acceptDue = targetSong != ''
 				? matched
 				: (cfg.freeplayAcceptMs > 0 && now - freeplaySeenAt >= cfg.freeplayAcceptMs);
-			if (!acceptInitiated && acceptDue && popup == null) {
+			// Real Freeplay rejects confirmation while receipt inspection is pending.
+			// Wait for the same row gate instead of losing the harness's only key press.
+			var selectionReady = observation.availability != null && observation.availability.ready == true;
+			if (!acceptInitiated && acceptDue && popup == null && selectionReady) {
 				acceptInitiated = true;
 				emit('freeplay_accept_begin', observation);
 				simulateAccept();
@@ -2230,6 +2241,7 @@ class RuntimeSmokeHarness {
 		}
 		if (Sys.time() >= deadline) {
 			emitFrameSummary();
+			if (inFreeplay && cfg.freeplayAcceptSong != '') emit('freeplay_launch_observation', acceptObservation());
 			if (cfg.freeplayAcceptSong != '' && acceptInitiated) {
 				if (playStateReady)
 					return; // PlayState.tick owns the gameplay window and its timeout.
@@ -2312,6 +2324,9 @@ class RuntimeSmokeHarness {
 				observation.song = song == null ? '' : Std.string(Reflect.field(song, 'songName'));
 				observation.title = song == null ? '' : Reflect.field(song, 'displayTitle');
 				observation.sourceLabel = song == null ? '' : Reflect.field(song, 'sourceLabel');
+				var availability = Reflect.field(FlxG.state, 'rowAvailabilityDecision');
+				if (availability != null && Reflect.isFunction(availability))
+					observation.availability = Reflect.callMethod(FlxG.state, availability, [selectedIndex]);
 				observation.previousSong = selectedIndex > 0
 					? Reflect.field(songs[selectedIndex - 1], 'songName') : '';
 				observation.nextSong = selectedIndex + 1 < songs.length
@@ -2620,6 +2635,24 @@ class RuntimeSmokeHarness {
 		if (FlxG.sound.music != null)
 			FlxG.sound.music.pitch = rate;
 		#end
+	}
+
+	/** Refresh can rebuild the list after a long readiness wait. Give each
+	 * uninterrupted search its own window instead of expiring on one moved row. */
+	static function freeplayTargetSearchExpired(target:String, matched:Bool, accepted:Bool, now:Float):Bool {
+		if (target == '' || matched || accepted) {
+			freeplayTargetMissingSince = -1;
+			return false;
+		}
+		if (freeplayTargetMissingSince < 0) freeplayTargetMissingSince = now;
+		return now - freeplayTargetMissingSince >= 20000;
+	}
+
+	/** Import inspection may take longer than the requested gameplay sample. */
+	static function initialWindowMs():Int {
+		var cfg = config();
+		return cfg.freeplay && cfg.freeplayAcceptSong != ''
+			? Std.int(Math.max(cfg.durationMs, cfg.freeplayWaitMs)) : cfg.durationMs;
 	}
 
 	static function boundedDuration(value:Int):Int {

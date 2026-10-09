@@ -259,7 +259,7 @@ class PsychAssetProfileTest(unittest.TestCase):
         selected.mkdir(parents=True)
         if isinstance(project_text, bytes):
             (selected / "Project.xml").write_bytes(project_text)
-        else:
+        elif project_text is not None:
             (selected / "Project.xml").write_text(project_text, encoding="utf-8", newline="\n")
         (source / "other/root").mkdir(parents=True)
         (source / "other/root/Project.xml").write_text(

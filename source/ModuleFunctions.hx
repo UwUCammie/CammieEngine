@@ -11251,6 +11251,8 @@ class ModuleFunctions {
 		// runtime trees; the shared content-container config is a distinct source
 		// boundary and is never substituted for a package config.
 		if (engine == ImportEngine.NIGHTMARE_VISION) {
+			writeImportContentNonOverwriting(NightmareVisionStageImportProfile.capture(sourceRoot, destination),
+				Path.join([destination, NightmareVisionStageProfile.FILE_NAME]), result, true);
 			var packageConfig = findImportFile(sourceRoot, ['meta.json']);
 			if (packageConfig != null)
 				copyImportFileNonOverwriting(packageConfig, Path.join([destination, 'meta.json']), result);

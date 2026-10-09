@@ -219,6 +219,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var modManager:NightmareVisionModManager;
 	var nightmareVisionConstructedModManagers:Array<NightmareVisionModManager> = [];
 	@:keep public var playHUD:NightmareVisionHUDAdapter;
+	var nightmareVisionLegacyHudControls = new NightmareVisionLegacyHudControls();
 	@:keep public var curDecStep:Float = 0;
 	@:keep public var curDecBeat:Float = 0;
 	var nightmareVisionAddActors:Bool = true;
@@ -924,7 +925,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			: nightmareVisionScripts.callEvent(name, callback, args);
 	}
 
-	@:keep public var stage:NightmareVisionStage;
+	@:keep public var stage:flixel.group.FlxGroup.FlxTypedGroup<FlxBasic>;
 	@:keep public var scripts:NightmareVisionScriptGroup;
 	@:keep public var eventScripts:NightmareVisionScriptGroup;
 	@:keep public var noteTypeScripts:NightmareVisionScriptGroup;
@@ -1001,7 +1002,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionAssetsBindings.install(interp, paths);
 		NightmareVisionAlphabetBindings.install(interp, paths);
 		interp.bindImport('flixel.FlxSprite', NightmareVisionFlxSprite);
-		NightmareVisionSpriteBindings.install(interp, paths, spriteOwner);
+		NightmareVisionSpriteBindings.install(interp, paths, spriteOwner, function() return prefs.view.globalAntialiasing);
+		NightmareVisionLegacyAnimateBindings.install(interp, paths, spriteOwner);
 		NightmareVisionCharacterGroupBindings.install(interp, paths, function() {
 			return nightmareVisionCharacterScene();
 		});
@@ -1018,6 +1020,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('ColorSwap', NightmareVisionColorSwap);
 		interp.bindImport('funkin.game.shaders.ColorSwap', NightmareVisionColorSwap);
 		interp.sourceClassScope().bindRuntimeClass('funkin.game.shaders.ColorSwap', NightmareVisionColorSwap);
+		// Historical qualified imports retain their own uniforms and outline behavior.
+		interp.bindImport('gameObjects.shader.ColorSwap', NightmareVisionLegacyColorSwap);
+		interp.sourceClassScope().bindRuntimeClass('gameObjects.shader.ColorSwap', NightmareVisionLegacyColorSwap);
+		for (name in ['gameObjects.shader.ColorSwapShader', 'gameObjects.shader.ColorSwap.ColorSwapShader']) {
+			interp.bindImport(name, NightmareVisionLegacyColorSwap.NightmareVisionLegacyColorSwapShader);
+			interp.sourceClassScope().bindRuntimeClass(name, NightmareVisionLegacyColorSwap.NightmareVisionLegacyColorSwapShader);
+		}
 		interp.bindImport('funkin.game.shaders.DropShadowShader', shaders.DropShadowShader);
 		interp.bindImport('flixel.FlxG', preset.get('FlxG'));
 		interp.bindImport('flixel.text.FlxTextAlign', preset.get('FlxTextAlign'));
@@ -1220,6 +1229,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				args.length > 2 ? args[2] : 0, args.length > 3 ? args[3] : 0, nightmareVisionSustainSplashOwner());
 		}, null);
 		interp.variables.set('game', this);
+		interp.bindLiveValue('showRating', function() return nightmareVisionLegacyHudControls.showRating,
+			function(value) return nightmareVisionLegacyHudControls.showRating = value, function() return this);
+		interp.bindLiveValue('showCombo', function() return nightmareVisionLegacyHudControls.showCombo,
+			function(value) return nightmareVisionLegacyHudControls.showCombo = value, function() return this);
 		bindSourceBarClass(interp, true);
 		interp.variables.set('getFieldFromID', getNightmareVisionField);
 		interp.variables.set('callNoteTypeScript', callNoteTypeScript);
@@ -1363,13 +1376,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionPlugins, nightmareVisionActiveMods, nightmareVisionActiveDifficulty);
 		var capturedPlugins = nightmareVisionPlugins;
 		var capturedStageLease = NightmareVisionSpriteRegistry.capture(ownerPaths);
+		var legacyStage = NightmareVisionStageBindings.defaultIsLegacy(ownerPaths);
 		var stageOwner = NightmareVisionStageBindings.owner(nightmareVisionStageConstructionInterp, ownerPaths,
 			function() return ownerPrefs.view.globalAntialiasing,
 			function(path, shared) return loadNightmareVisionStageFile(ownerPaths, ownerPrefs,
-				capturedPlugins, ownerMods, ownerDifficulty, capturedStageLease, path, shared));
-		stage = new NightmareVisionStage(SONG.stage, stageOwner);
-		curStage.stageData = stage.stageData;
-		var data:Dynamic = stage.stageData;
+				capturedPlugins, ownerMods, ownerDifficulty, capturedStageLease, path, shared), legacyStage);
+		stage = NightmareVisionStageScene.create(SONG.stage, stageOwner, legacyStage);
+		curStage.stageData = NightmareVisionStageScene.data(stage);
+		var data:Dynamic = NightmareVisionStageScene.data(stage);
 		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
 		setGameCameraZoom(defaultCamZoom);
 		psychCameraCompatibilityActive = true;
@@ -1391,14 +1405,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			});
 		// Seed the source default before onCreate can intentionally override it.
 		refreshNightmareVisionNoteKillOffset();
-		stage.buildStage();
-		if (stage.runScript(nightmareVisionScripts.group)) nightmareVisionScripts.group.addScript(stage.script);
+		NightmareVisionStageScene.load(stage, nightmareVisionScripts.group);
 		nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups', []) != NightmareVisionScriptGroup.STOP_FUNC;
 		if (nightmareVisionAddActors) {
-			add(stage);
-			stage.add(gfGroup);
-			stage.add(dadGroup);
-			stage.add(boyfriendGroup);
+			NightmareVisionStageScene.mount(this, stage, [gfGroup, dadGroup, boyfriendGroup]);
 		}
 		nightmareVisionScripts.loadScope('global');
 		nightmareVisionNoteTypes = new NightmareVisionNoteTypeRuntime(nightmareVisionScripts,
@@ -1995,6 +2005,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			removeDisplay:function(object, splice) return remove(cast object, splice),
 			insertDisplay:function(index, object) return insert(index, cast object)
 		});
+		nightmareVisionLegacyHudControls.bind(playHUD);
 		if (prefs.hideHud) playHUD.visible = false;
 		var receptorBanks:Array<Array<Dynamic>> = [];
 		for (field in nightmareVisionFields)
@@ -3721,15 +3732,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public function getLuaObject(tag:String, text:Bool = true):Dynamic return compatFindObject(tag);
 	/** Source actor groups are native actors in this host's member list. */
 	@:keep public function addBehindGF(object:FlxBasic):Void {
-		if (nightmareVisionScripts != null) stage.insert(stage.members.indexOf(gfGroup), object);
+		if (nightmareVisionScripts != null) NightmareVisionStageScene.insertBehind(this, stage, gfGroup, object);
 		else insert(members.indexOf(gf), object);
 	}
 	@:keep public function addBehindBF(object:FlxBasic):Void {
-		if (nightmareVisionScripts != null) stage.insert(stage.members.indexOf(boyfriendGroup), object);
+		if (nightmareVisionScripts != null) NightmareVisionStageScene.insertBehind(this, stage, boyfriendGroup, object);
 		else insert(members.indexOf(boyfriend), object);
 	}
 	@:keep public function addBehindDad(object:FlxBasic):Void {
-		if (nightmareVisionScripts != null) stage.insert(stage.members.indexOf(dadGroup), object);
+		if (nightmareVisionScripts != null) NightmareVisionStageScene.insertBehind(this, stage, dadGroup, object);
 		else insert(members.indexOf(dad), object);
 	}
 	// Keep Sparrow names parsed from the source XML alongside each imported
@@ -15265,25 +15276,24 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var ownerPlugins = nightmareVisionPlugins, ownerMods = nightmareVisionActiveMods;
 		var ownerDifficulty = nightmareVisionActiveDifficulty;
 		var capturedStageLease = NightmareVisionSpriteRegistry.capture(ownerPaths);
+		var legacyStage = NightmareVisionStageBindings.defaultIsLegacy(ownerPaths);
 		var owner = NightmareVisionStageBindings.owner(nightmareVisionStageConstructionInterp, ownerPaths,
 			function() return ownerPrefs.view.globalAntialiasing,
 			function(path, shared) return loadNightmareVisionStageFile(ownerPaths, ownerPrefs,
-				ownerPlugins, ownerMods, ownerDifficulty, capturedStageLease, path, shared));
+				ownerPlugins, ownerMods, ownerDifficulty, capturedStageLease, path, shared), legacyStage);
 		var available = owner.stageFile(name) != null;
-		if (!available) for (candidate in ['data/stages/' + name + '/script', 'data/stages/' + name,
-			'stages/' + name + '/script', 'stages/' + name]) {
-			if (owner.scriptExists(owner.scriptPath(candidate))) {available = true;break;}
+		if (!available) for (candidate in (legacyStage ? ['stages/' + name] : ['data/stages/' + name + '/script', 'data/stages/' + name,
+			'stages/' + name + '/script', 'stages/' + name])) {
+			var path = owner.scriptPath(candidate);
+			if (path != null && owner.scriptExists(path)) {available = true;break;}
 		}
 		if (!available) return false;
 		var previous = stage;
 		var index = previous == null ? -1 : members.indexOf(previous);
-		if (previous != null) {
-			var script = previous.script;
-			if (script != null && nightmareVisionScripts.group.removeScript(script)) {
-				if (script.exists('onDestroy')) script.call('onDestroy');
-				script.destroy();
-			}
-		}
+		NightmareVisionStageScene.releaseScripts(previous, nightmareVisionScripts.group);
+		var previousFront = NightmareVisionStageScene.foreground(previous);
+		var frontIndex = previousFront == null ? -1 : members.indexOf(previousFront);
+		if (frontIndex >= 0) {remove(previousFront, true);previousFront.destroy();}
 		var transferred:Array<NightmareVisionCharacterGroup> = [];
 		if (previous != null && previous.members != null) {
 			for (member in previous.members.copy()) if (isNightmareVisionRoleGroup(member)) {
@@ -15293,10 +15303,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (index >= 0) remove(previous, true);
 			previous.destroy();
 		}
-		stage = new NightmareVisionStage(name, owner);
+		stage = NightmareVisionStageScene.create(name, owner, legacyStage);
 		curStage = new StageHelper(name);
-		curStage.stageData = stage.stageData;
-		var data = stage.stageData;
+		curStage.stageData = NightmareVisionStageScene.data(stage);
+		var data:Dynamic = NightmareVisionStageScene.data(stage);
 		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
 		applyPsychStageCameraOffsets(data);
 		for (slot in [{role:'bf',field:'boyfriend'}, {role:'dad',field:'opponent'}, {role:'gf',field:'girlfriend'}]) {
@@ -15306,10 +15316,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		boyfriendPosition.set(data.boyfriend[0], data.boyfriend[1]);
 		dadPosition.set(data.opponent[0], data.opponent[1]);
 		gfPosition.set(data.girlfriend[0], data.girlfriend[1]);
-		stage.buildStage();
-		if (stage.runScript(nightmareVisionScripts.group)) nightmareVisionScripts.group.addScript(stage.script);
+		NightmareVisionStageScene.load(stage, nightmareVisionScripts.group);
 		if (index >= 0) insert(index, stage);
-		for (group in transferred) stage.add(group);
+		for (group in transferred) {
+			if (legacyStage && index >= 0) insert(members.indexOf(stage) + 1, group);
+			else stage.add(group);
+		}
+		var nextFront = NightmareVisionStageScene.foreground(stage);
+		if (nextFront != null && frontIndex >= 0) insert(frontIndex, nextFront);
 		refreshNightmareVisionStage();
 		return true;
 	}
@@ -25861,6 +25875,7 @@ void main(void) {
 			try modManager.destroy() catch (error:Dynamic) trace('[nightmare-vision-modifier-error] manager#destroy: ' + Std.string(error));
 			modManager = null;
 		}
+		nightmareVisionLegacyHudControls.release();
 		if (playHUD != null) {
 			playHUD.release();
 			playHUD = null;

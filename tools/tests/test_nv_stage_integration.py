@@ -15,7 +15,7 @@ def integration_files():
  paths=paths.replace('public var scriptExtensions=', 'public var scriptExtensions(default,null)=')
  paths=paths.replace('getPath(p:String,?a:Dynamic,?b:Bool)', 'getPath(p:String,?a:String,b:Bool=false)')
  files['NightmareVisionPaths.hx']=paths
- files['NightmareVisionStageData.hx']='class NightmareVisionStageData {public static function load(r:String,n:String):Dynamic return StageIO.current.data;public static function getTemplateStageFile():Dynamic return StageIO.current.data;}'
+ files['NightmareVisionStageData.hx']='class NightmareVisionStageData {public static function load(r:String,n:String):Dynamic return StageIO.current.data;public static function getLegacyStageFile(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getLegacyTemplateStageFile():Dynamic return StageIO.current.data;public static function getTemplateStageFile():Dynamic return StageIO.current.data;}'
  files['HxcCompatRuntime.hx']='class HxcCompatRuntime {public static function getZIndex(o:Dynamic):Int return o.zIndex;public static function setZIndex(o:Dynamic,v:Int):Int return o.zIndex=v;}'
  character=files['Character.hx'].replace('class Character extends flixel.FlxSprite {','class Character extends animate.FlxAnimate {public function enableNightmareVisionStageSprite():Void {}public function loadAtlas(p:String):Void {}public function addAnimByPrefix(n:String,p:String,f:Int=24,l:Bool=true,x:Bool=false,y:Bool=false):Void {}public function addAnimByIndices(n:String,p:String,i:Array<Int>,f:Int=24,l:Bool=true,x:Bool=false,y:Bool=false):Void {}public function addOffset(n:String,x:Float,y:Float):Void {}public function playAnim(n:String):Void {}')
  files['Character.hx']=character
@@ -30,7 +30,7 @@ class StageIntegrationTest(unittest.TestCase):
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    files=integration_files();files.update(overrides or {});files['Main.hx']=main
    for name,code in files.items():
-    path=Path(tmp)/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(code,encoding='utf-8')
+    path=Path(tmp)/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(code.replace('FIXTURE_ROOT',Path(tmp).as_posix()),encoding='utf-8')
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/hscript-iris/1,1,3'),'-cp',tmp,'-main','Main','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=45)
    self.assertEqual(result.returncode,0,(result.stdout+result.stderr)[-5000:])
    if not cpp:return
@@ -118,11 +118,11 @@ class Main {
   from test_source_event_preparation import extract_method
   method=extract_method((ROOT/'source/PlayState.hx').read_text(),'function swapNightmareVisionStage(')
   helpers={'StageHelper.hx': 'class StageHelper {public var stageData:Dynamic;public var defaultZoom:Float;public function new(n:String){}public function getInfo(r:String):Dynamic return {x:0.,y:0.};}',
-   'NightmareVisionStageData.hx':'class NightmareVisionStageData {public static function normalizeStageId(n:String):String return n==null?"":StringTools.trim(n);public static function load(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getTemplateStageFile():Dynamic return StageIO.current.data;}'}
+   'NightmareVisionStageData.hx':'class NightmareVisionStageData {public static function normalizeStageId(n:String):String return n==null?"":StringTools.trim(n);public static function load(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getLegacyStageFile(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getLegacyTemplateStageFile():Dynamic return StageIO.current.data;public static function getTemplateStageFile():Dynamic return StageIO.current.data;}'}
   main=r'''
 import flixel.FlxBasic;import flixel.group.FlxContainer.FlxTypedContainer;
 class Host extends FlxTypedContainer<FlxBasic> {
- public var stage:NightmareVisionStage;public var curStage:StageHelper;public var defaultCamZoom=1.;
+ public var stage:flixel.group.FlxGroup.FlxTypedGroup<FlxBasic>;public var curStage:StageHelper;public var defaultCamZoom=1.;
  public var nightmareVisionPaths:NightmareVisionPaths;public var nightmareVisionPrefs={view:{globalAntialiasing:false}};
  public var nightmareVisionPlugins:Dynamic;public var nightmareVisionActiveMods:Dynamic;public var nightmareVisionActiveDifficulty:Dynamic;
  public var nightmareVisionStageConstructionInterp:NightmareVisionScriptInterp;public var nightmareVisionScripts:{group:NightmareVisionScriptGroup};
@@ -153,8 +153,19 @@ class Main {static function ok(v:Bool,m:String):Void {if(!v)throw m;}static func
  ok(host.members[originalSlot]==host.stage&&host.stage.members.indexOf(role)>=0&&role.container==host.stage&&host.members.indexOf(role)<0,"outer slot and sole native ownership");
  ok(actor.x==x&&actor.y==y&&role.x==100&&role.y==200&&role.alpha==.6&&role.map.get("cached")==actor&&actor.destroyed==0,"cache/transform preserved");
  ok(detached.container==null&&unmounted.destroyed==0&&mapOnly.destroyed==0&&host.stage.members.indexOf(detached)<0,"unmounted/map-only refs neither adopted nor destroyed");
- ok(host.nightmareVisionScripts.group.members.length==1&&host.nightmareVisionScripts.group.members[0]==host.stage.script,"new actual script registered");
+ ok(host.nightmareVisionScripts.group.members.length==1&&host.nightmareVisionScripts.group.members[0]==(cast host.stage:NightmareVisionStage).script,"new actual script registered");
  host.nightmareVisionScripts.group.destroy();host.destroy();detached.destroy();mapOnly.destroy();host.nightmareVisionStageConstructionInterp.release();NightmareVisionSpriteRegistry.enterSession(null);
 }}
 '''
   self.run_haxe(main,cpp=False,overrides=helpers)
+  # Execute the same host replacement method with the historical scene layout.
+  legacy=main.replace('var io=new StageIO();NightmareVisionSpriteRegistry', 'var io=new StageIO();io.paths.root="FIXTURE_ROOT";sys.io.File.saveContent(io.paths.root+"/"+NightmareVisionStageProfile.FILE_NAME,haxe.Json.stringify({version:1,owner:io.paths.root,stageApi:"legacy-group"}));NightmareVisionSpriteRegistry')
+  legacy=legacy.replace('function()return false,io.load);', 'function()return false,io.load,true);')
+  legacy=legacy.replace('var old=new NightmareVisionStage("old",owner);host.stage=old;io.data.stageObjects=[{id:"oldProp"}];old.buildStage();var prop=old.members[0];', 'var old=new NightmareVisionLegacyStage("old",owner);host.stage=old;var prop=new FlxBasic();old.add(prop);var frontProp=new FlxBasic();old.foreground.add(frontProp);')
+  legacy=legacy.replace('old.add(role);host.add(new FlxBasic());host.add(old);host.add(new FlxBasic());', 'host.add(new FlxBasic());host.add(old);host.add(role);host.add(old.foreground);host.add(new FlxBasic());')
+  legacy=legacy.replace('old.script=module;', 'old.stageScripts.push(module);old.hscriptArray.push(module);')
+  legacy=legacy.replace('old.members.indexOf(role)>=0', 'host.members.indexOf(role)>=0')
+  legacy=legacy.replace('data/stages/next/script.hx', 'stages/next.hx')
+  legacy=legacy.replace('host.stage.members.indexOf(role)>=0&&role.container==host.stage&&host.members.indexOf(role)<0', 'host.stage.members.indexOf(role)<0&&role.container==host&&host.members.indexOf(role)==originalSlot+1&&host.members[originalSlot+2]==NightmareVisionStageScene.foreground(host.stage)&&frontProp.destroyed==1')
+  legacy=legacy.replace('(cast host.stage:NightmareVisionStage).script', '(cast host.stage:NightmareVisionLegacyStage).stageScripts[0]')
+  self.run_haxe(legacy,cpp=False,overrides=helpers)

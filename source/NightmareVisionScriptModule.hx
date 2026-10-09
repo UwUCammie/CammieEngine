@@ -29,6 +29,16 @@ class NightmareVisionScriptModule {
 		this.interp = interp;
 		this.report = report;
 		interp.variables.set('script', this);
+		interp.variables.set('addHaxeLibrary', function(libName:String, libPackage:String = ''):Void {
+			if (released) return;
+			var path = libPackage == '' ? libName : libPackage + '.' + libName;
+			try {
+				var value = this.interp.resolveSourceImport(path, true);
+				// Older NV replaces the short global even when resolution is null.
+				this.interp.variables.set(libName, value);
+				if (value == null) report(name, 'addHaxeLibrary', 'Unresolved source class: ' + path);
+			} catch (error:Dynamic) report(name, 'addHaxeLibrary', error);
+		});
 	}
 
 	/** Source execute can run the stored program again and returns its value. */

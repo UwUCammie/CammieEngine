@@ -139,8 +139,9 @@ class Main {
 
   static function main():Void {
     var config:Dynamic = Json.parse(RawFile.getContent("config.json"));
+    var engine:String = config.engine == null ? "Psych Engine" : config.engine;
     var capture = ImportSourceSnapshot.capture(config.sourceRoot, config.cacheRoot,
-      "Psych Engine", "0.0.17", {workerCount:1});
+      engine, "0.0.17", {workerCount:1});
     check(capture.status == "complete" && capture.complete,
       "snapshot capture failed: " + capture.error);
     ImportSourceSnapshot.verify(capture.snapshotRoot, capture.snapshotId, null, null, 1);
@@ -153,14 +154,14 @@ class Main {
         ? [{name:"UNKNOWN_FLAG", state:"unresolved", provenance:"fixture"}] : [];
     var build:PsychAssetProfileBuild = cast {command:"", flagsComplete:false, flags:buildFlags};
     var profile = PsychAssetProfile.resolveRetained(content, capture.snapshotId,
-      config.rootRelative, "Psych Engine", config.namespace, build);
+      config.rootRelative, engine, config.namespace, build);
     var install:String = config.install;
     var stage:String = config.stage;
     var masked:Array<String> = cast config.masked;
     var io = ImportIO.begin(install, stage, masked, true);
-    io.setNamespace(selected, "Psych Engine", config.namespace);
+    io.setNamespace(selected, engine, config.namespace);
     io.setAssetProfile(selected, content, capture.snapshotId, config.rootRelative,
-      "Psych Engine", config.namespace, profile);
+      engine, config.namespace, profile);
     if (config.mode == "tampered-file" || config.mode == "candidate-aware")
       RawFile.saveContent(Path.join([selected, config.tamperRelative]), "tampered retained file bytes");
     var owner = "assets/imported_mods/" + config.namespace;
@@ -185,15 +186,15 @@ class Main {
         SourceMappedMediaPolicy.limeIdentity("Psych Engine", "package")];
       case "identity-legacy", "identity-legacy-deferred": policies = [
         SourceMappedMediaPolicy.limeIdentity("Psych Engine", "package")];
-      case "identity-runtime-types": policies = [];
+      case "identity-runtime-types", "compiled-identity": policies = [];
       case "unknown-owner-scope": policies = [unresolvedOwnerScopePolicy()];
       case "cancel": policies = [language, media];
       case "publish-cancel": policies = [media];
       default: throw "unknown mode " + config.mode;
     }
     var cancelled:Void->Bool = config.mode == "cancel" ? function() return true : function() return false;
-    var plan:SourceMappedAssetPlan = config.mode == "identity-runtime-types"
-      ? SourceMappedMediaPublisher.prepare(selected, "Psych Engine", destinationRoot)
+    var plan:SourceMappedAssetPlan = config.mode == "identity-runtime-types" || config.mode == "compiled-identity"
+      ? SourceMappedMediaPublisher.prepare(selected, engine, destinationRoot, config.scope)
       : SourceMappedAssetPublisher.prepareMany(selected, "Psych Engine", destinationRoot, policies, cancelled);
     var singleView:Null<SourceMappedAssetPolicyView> = config.mode == "single"
       ? SourceMappedAssetPublisher.prepare(selected, "Psych Engine", destinationRoot, language, cancelled)
@@ -201,6 +202,28 @@ class Main {
     var languageView = SourceMappedAssetPublisher.policyView(plan, "language");
     var mediaView = SourceMappedAssetPublisher.policyView(plan, "media");
     var published = 0;
+    if (config.mode == "compiled-identity") {
+      check(!plan.failed && !plan.authoritative && plan.identityPublication != null,
+        "compiled catalog must publish identities without claiming all disk files: " + plan.diagnostics.join("\n"));
+      check(!SourceMappedMediaPublisher.skipIdentityLegacy(plan,
+        Path.join([selected,"assets/images/unlisted.png"]), Path.join([owner,"images/unlisted.png"])),
+        "unlisted disk mod asset was suppressed by the compiled catalog");
+      SourceMappedMediaPublisher.publish(plan, function(source:String,destination:String):Void {
+        io.copy(source,destination); published++;
+      }, function() return false, function(path:String,content:String):Void {
+        RawFile.saveContent(io.writePath(path),content);
+      });
+      check(!plan.failed && !plan.cancelled && published == 2,"compiled files failed publication");
+      var index = haxe.Json.parse(RawFile.getContent(io.readPath(plan.identityPublication.path)));
+      check(index.complete == profile.complete && !index.librariesComplete && index.entries.length == 2,
+        "compiled identity completeness or entry count differs from profile");
+      var ids = [for (entry in (cast index.entries:Array<Dynamic>)) entry.library + ":" + entry.id];
+      check(ids.indexOf("default:atlas-json") >= 0 && ids.indexOf("shared:atlas-image") >= 0,
+        "default and named library identities were not preserved: " + Json.stringify(ids));
+      for (entry in (cast index.entries:Array<Dynamic>))
+        check(RawFile.getContent(io.readPath(owner + "/" + entry.ownerRelative)) == "fixture bytes",
+          "identity references a different physical output");
+    }
     if (config.mode == "identity-legacy") {
       var acceptedSource = Path.join([selected, "assets/images/icon.png"]);
       check(SourceMappedMediaPublisher.skipIdentityLegacy(plan, acceptedSource,
@@ -569,14 +592,15 @@ def write_bytes(root, relative, data):
 
 class SourceMappedAssetPublisherTest(unittest.TestCase):
     def run_fixture(self, mode, project, files, *, masked=(), destination_root=None,
-                    tamper_relative="assets/audio-source/theme.ogg"):
+                    tamper_relative="assets/audio-source/theme.ogg", engine="Psych Engine", scope="package"):
         TEST_TMP.mkdir(parents=True, exist_ok=True)
         temporary = tempfile.TemporaryDirectory(prefix="source-mapped-assets-", dir=TEST_TMP)
         self.addCleanup(temporary.cleanup)
         work = Path(temporary.name)
         source = work / "donor"
         source.mkdir()
-        (source / "Project.xml").write_text(project, encoding="utf-8", newline="\n")
+        if project is not None:
+            (source / "Project.xml").write_text(project, encoding="utf-8", newline="\n")
         for relative, data in files.items():
             write_bytes(source, relative, data)
         install = work / "install"
@@ -592,6 +616,7 @@ class SourceMappedAssetPublisherTest(unittest.TestCase):
             masked_paths.append(relative)
         config = {
             "mode": mode,
+            "engine": engine, "scope": scope,
             "sourceRoot": str(source),
             "cacheRoot": str(install / "import-cache/sources"),
             "rootRelative": "",

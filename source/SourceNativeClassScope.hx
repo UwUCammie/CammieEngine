@@ -21,6 +21,10 @@ class SourceNativeClassScope {
 		}
 		statics.push({type:type, name:name, read:read, write:write});
 	}
+	/** Release per-instance native field routes when their source object dies. */
+	public function unbindStaticFields(type:Dynamic):Void {
+		statics = statics.filter(function(binding) return binding.type != type);
+	}
 	public function hasBinding(type:Dynamic, name:String):Bool {
 		for (binding in statics) if (binding.type == type && binding.name == name) return true;
 		return false;

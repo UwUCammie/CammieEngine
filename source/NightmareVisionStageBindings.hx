@@ -6,7 +6,7 @@ import NightmareVisionStageOwner.NightmareVisionStageBopper;
 /** Real source Stage construction uses the caller's class scope and paths. */
 class NightmareVisionStageBindings {
 	public static function owner(interp:NightmareVisionScriptInterp, paths:NightmareVisionPaths,
-		antialiasing:Void->Bool, fromFile:(String, Null<Map<String, Dynamic>>)->NightmareVisionScriptModule):NightmareVisionStageOwner {
+		antialiasing:Void->Bool, fromFile:(String, Null<Map<String, Dynamic>>)->NightmareVisionScriptModule, legacy:Bool = false):NightmareVisionStageOwner {
 		var classes = interp.sourceClassScope().captureClassMap();
 		var factories = interp.captureSourceConstructors();
 		var lease = NightmareVisionSpriteRegistry.capture(paths);
@@ -14,8 +14,8 @@ class NightmareVisionStageBindings {
 		selected = {
 			paths:paths,
 			requireActive:lease.requireActive,
-			stageFile:function(name) {lease.requireActive(); return cast NightmareVisionStageData.load(paths.root, name);},
-			template:function() return cast NightmareVisionStageData.getTemplateStageFile(),
+			stageFile:function(name) {lease.requireActive(); return cast (legacy ? NightmareVisionStageData.getLegacyStageFile(paths.root, name) : NightmareVisionStageData.load(paths.root, name));},
+			template:function() return cast (legacy ? NightmareVisionStageData.getLegacyTemplateStageFile() : NightmareVisionStageData.getTemplateStageFile()),
 			antialiasing:antialiasing,
 			resolveClass:function(name) return cast (classes.exists(name) ? classes.get(name) : Type.resolveClass(name)),
 			createInstance:function(type:Class<Dynamic>, args:Array<Dynamic>):Dynamic {
@@ -27,13 +27,25 @@ class NightmareVisionStageBindings {
 			setZIndex:function(object, value) HxcCompatRuntime.setZIndex(object, value),
 			setProperty:setNestedProperty,
 			warn:function(message) trace('[nightmare-vision-stage] ' + message),
-			scriptPath:function(logical) {lease.requireActive(); return NightmareVisionScriptBindings.getPath(logical, paths);},
+			scriptPath:function(logical) {lease.requireActive(); return legacy ? legacyScriptPath(logical, paths) : NightmareVisionScriptBindings.getPath(logical, paths);},
 			scriptExists:paths.exists,
 			fromFile:function(path, shared) {lease.requireActive(); return fromFile(path, shared);},
 			bopper:characterOperations
 		};
 		return selected;
 	}
+	public static function defaultIsLegacy(paths:NightmareVisionPaths):Bool
+		return NightmareVisionStageProfile.read(paths.root) == NightmareVisionStageProfile.LEGACY;
+
+	/** Extensions take precedence over owner/core selection in historical Stage. */
+	public static function legacyScriptPath(logical:String, paths:NightmareVisionPaths):Null<String> {
+		for (extension in ['hx', 'hscript', 'hxs', 'lua']) {
+			var path = paths.getPath(logical + '.' + extension, null, true);
+			if (paths.exists(path)) return path;
+		}
+		return null;
+	}
+
 	/** Pinned ReflectUtil.setProperty walks dots; bracket segments remain literal. */
 	public static function setNestedProperty(object:Dynamic, field:String, value:Dynamic):Void {
 		if (field.indexOf('.') < 0) {Reflect.setProperty(object, field, value); return;}
@@ -57,12 +69,18 @@ class NightmareVisionStageBindings {
 	}
 	public static function install(interp:NightmareVisionScriptInterp, paths:NightmareVisionPaths,
 		antialiasing:Void->Bool, fromFile:(String, Null<Map<String, Dynamic>>)->NightmareVisionScriptModule):Void {
-		interp.variables.set('Stage', NightmareVisionStage);
+		interp.variables.set('Stage', defaultIsLegacy(paths) ? NightmareVisionLegacyStage : NightmareVisionStage);
 		interp.bindImport('funkin.objects.Stage', NightmareVisionStage);
 		interp.sourceClassScope().bindRuntimeClass('funkin.objects.Stage', NightmareVisionStage);
+		interp.bindImport('gameObjects.Stage', NightmareVisionLegacyStage);
+		interp.sourceClassScope().bindRuntimeClass('gameObjects.Stage', NightmareVisionLegacyStage);
 		var selected = owner(interp, paths, antialiasing, fromFile);
 		interp.bindConstructorFactory(NightmareVisionStage, function(args) {
 			return new NightmareVisionStage(args.length > 0 ? args[0] : 'stage', selected);
+		}, null);
+		var historical = owner(interp, paths, antialiasing, fromFile, true);
+		interp.bindConstructorFactory(NightmareVisionLegacyStage, function(args) {
+			return new NightmareVisionLegacyStage(args.length > 0 ? args[0] : 'stage', historical);
 		}, null);
 	}
 }

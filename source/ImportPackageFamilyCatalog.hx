@@ -57,7 +57,7 @@ class ImportPackageFamilyCatalog {
 
 	/** Direct source roots which were proved to belong to one retained NMV
 	 * content container. Callers may materialize their package runtime files, but
-	 * must still require transaction-owned config and runtime outputs before
+	 * must still require transaction-owned runtime outputs before
 	 * publishing a v2 mapping. */
 	public static function sourceRoots(snapshotRoot:String, record:Dynamic):Array<String> {
 		try {
@@ -141,7 +141,7 @@ class ImportPackageFamilyCatalog {
 
 	/** Build a v2/v3 catalog only from namespaces resolved by CompatScriptManifest
 	 * during the same ImportIO staging scope, and only when the staged transaction
-	 * owns the package config plus non-core runtime content. */
+	 * owns non-core runtime content within that exact package namespace. */
 	public static function capturePublished(snapshotRoot:String, record:Dynamic, io:ImportIO):Null<ImportRefreshPackageFamilyCatalog> {
 		if (io == null) return null;
 		try {
@@ -179,8 +179,53 @@ class ImportPackageFamilyCatalog {
 					projectSha256:coreProvider.projectSha256
 				}
 			};
-			return ImportRefreshTransaction.validatePackageFamilyCatalog(catalog, record);
+			// Older receipts recorded only the outer game root. The current source
+			// proof and staged package outputs above establish newly materialized
+			// receivers; retain those exact roots with their committed handoff.
+			// Validate a detached record first so a rejected catalog changes nothing.
+			var updated:Dynamic = Reflect.copy(record);
+			var roots:Array<Dynamic> = (cast Reflect.field(record, "roots"):Array<Dynamic>).copy();
+			if (version == 3) for (member in members) {
+				var recorded = false;
+				for (root in roots) if (Reflect.field(root, "engine") == "Nightmare Vision"
+					&& (Reflect.field(root, "relative") == member.sourceRelative
+						|| Reflect.field(root, "relative") == member.sourceRelative + "/assets")) {
+					if (Reflect.field(root, "namespace") != member.namespace) return null;
+					recorded = true;
+				}
+				if (!recorded) roots.push({relative:member.sourceRelative, engine:"Nightmare Vision",
+					namespace:member.namespace, label:member.directory, name:null, evidence:[FAMILY_EVIDENCE]});
+			}
+			Reflect.setField(updated, "roots", roots);
+			var validated = ImportRefreshTransaction.validatePackageFamilyCatalog(catalog, updated);
+			if (validated != null) Reflect.setField(record, "roots", roots);
+			return validated;
 		} catch (_:Dynamic) return null;
+	}
+
+	/** A full-container scan intentionally collapses its content packages.
+	 * A previously committed materialized receiver is covered only when the
+	 * exact authenticated provider is still selected and its family still matches. */
+	public static function scanCoversMaterializedRoot(snapshotRoot:String, record:Dynamic,
+		expected:Dynamic, scanned:Array<{root:String, engine:String}>):Bool {
+		try {
+			var catalog = ImportRefreshTransaction.validatePackageFamilyCatalog(
+				Reflect.field(record, "packageFamilyCatalog"), record);
+			if (catalog == null || catalog.version != 3 || catalog.coreProvider == null
+				|| expected == null || Reflect.field(expected, "engine") != "Nightmare Vision"
+				|| scanned == null) return false;
+			var memberFound = false;
+			for (member in catalog.members)
+				if (member.namespace == Reflect.field(expected, "namespace")
+					&& (member.sourceRelative == Reflect.field(expected, "relative")
+						|| member.sourceRelative + "/assets" == Reflect.field(expected, "relative"))) memberFound = true;
+			if (!memberFound) return false;
+			var provider = canonicalDirectory(Path.join([snapshotRoot, "content"]));
+			var providerFound = false;
+			for (root in scanned) if (root.engine == "Nightmare Vision"
+				&& samePath(canonicalDirectory(root.root), provider)) providerFound = true;
+			return providerFound && sameSourceStructure(catalog, discoverStructure(snapshotRoot, record));
+		} catch (_:Dynamic) return false;
 	}
 
 	/** Carry verified per-package namespaces forward when an import recaptures
@@ -555,19 +600,12 @@ class ImportPackageFamilyCatalog {
 		return true;
 	}
 
+
 	static function hasStagedMemberOutputs(namespace:String, written:Array<String>):Bool {
 		if (namespace == null || written == null) return false;
-		var prefix = "assets/imported_mods/" + namespace + "/";
-		var configPath = prefix + "meta.json";
-		var hasConfig = false;
-		var hasRuntime = false;
-		for (path in written) {
-			var key = pathKey(path);
-			if (key == pathKey(configPath)) hasConfig = true;
-			if (StringTools.startsWith(key, pathKey(prefix)) && key != pathKey(configPath)
-				&& !StringTools.startsWith(key, pathKey(prefix + "__nmv_core/"))) hasRuntime = true;
-		}
-		return hasConfig && hasRuntime;
+		for (path in written)
+			if (ImportPackageRuntimeOwnership.isPayload(path, "assets/imported_mods/" + namespace)) return true;
+		return false;
 	}
 
 	static function discover(snapshotRoot:String, record:Dynamic):Null<ImportRefreshPackageFamilyCatalog> {
@@ -686,7 +724,7 @@ class ImportPackageFamilyCatalog {
 		for (rootValue in manifest.ownedRoots)
 			if (destination == rootValue || StringTools.startsWith(destination, rootValue + "/")) owned = true;
 		if (!owned) return null;
-		if (!manifestHasMemberConfigAndRuntime(install, manifest, destination)) return null;
+		if (!manifestHasMemberRuntime(install, manifest, destination)) return null;
 		return {directory:directory, root:destination};
 	}
 
@@ -719,24 +757,20 @@ class ImportPackageFamilyCatalog {
 		for (root in manifest.ownedRoots)
 			if (destination == root || StringTools.startsWith(destination, root + "/")) ownedRoot = true;
 		if (!ownedRoot) return null;
-		if (!manifestHasMemberConfigAndRuntime(install, manifest, destination)) return null;
+		if (!manifestHasMemberRuntime(install, manifest, destination)) return null;
 		return {directory:member.directory, root:destination};
 	}
 
-	static function manifestHasMemberConfigAndRuntime(install:String, manifest:ImportRefreshManifest,
+	static function manifestHasMemberRuntime(install:String, manifest:ImportRefreshManifest,
 		destination:String):Bool {
-		var hasConfig = false;
-		var hasRuntime = false;
-		for (file in manifest.files) {
-			var live = safeChild(install, file.path);
-			if (live == null || !isRegularFile(live)) continue;
-			if (pathKey(file.path) == pathKey(destination + "/meta.json")) hasConfig = true;
-			if (StringTools.startsWith(pathKey(file.path), pathKey(destination + "/"))
-				&& pathKey(file.path) != pathKey(destination + "/meta.json")
-				&& !StringTools.startsWith(pathKey(file.path), pathKey(destination + "/__nmv_core/"))) hasRuntime = true;
-		}
 		var absolute = safeChild(install, destination);
-		return hasConfig && hasRuntime && absolute != null && safeExistingDirectory(install, absolute);
+		if (absolute == null || !safeExistingDirectory(install, absolute)) return false;
+		for (file in manifest.files) {
+			if (!ImportPackageRuntimeOwnership.isPayload(file.path, destination)) continue;
+			var live = safeChild(install, file.path);
+			if (live != null && isRegularFile(live)) return true;
+		}
+		return false;
 	}
 
 	static function sameCatalog(left:ImportRefreshPackageFamilyCatalog,

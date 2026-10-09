@@ -79,7 +79,7 @@ class FlxG { public static var state:Dynamic=null; }''',
     "RuntimeImportSmokeState.hx": r'''class RuntimeImportSmokeState { public function new() {} }''',
     "ImportWorkflow.hx": r'''import ModuleFunctions.SongImportBatchResult;
 typedef ImportScanResult = {
- var detectedRoots:Array<Dynamic>;
+ var detectedRoots:Array<{root:String,engine:String,?evidence:Array<String>}>;
  var detectedEngines:Array<String>;
  var rootScanDiagnostics:Array<Dynamic>;
  var packageScanDiagnostics:Array<Dynamic>;
@@ -164,7 +164,7 @@ class ImportWorkflow {
    else if(Reflect.field(song,"duplicate")==true) duplicateSongs++;
   }
   return {
-   detectedRoots:detected, detectedEngines:[type],
+   detectedRoots:cast detected, detectedEngines:[type],
    rootScanDiagnostics:rootDiagnostics.copy(), packageScanDiagnostics:packageDiagnostics.copy(),
    rootScanTruncated:rootTruncated, packageScanTruncated:packageTruncated,
    missingDependencies:missing.length, errors:scanErrors.copy(), songs:songs,
@@ -232,6 +232,8 @@ class ImportRefreshManagerFixture {
  static var cancelAfterWrite:Bool=false;
  static var delayOwner:String="";
  static var delayMillis:Int=0;
+ static var dependencyEntered:sys.thread.Lock;
+ static var dependencyResume:sys.thread.Lock;
  static var registryPauseSignal:Lock=null;
  static var registryPauseContinue:Lock=null;
  static var registryPauseAnnounced:Bool=false;
@@ -263,8 +265,12 @@ class ImportRefreshManagerFixture {
    var spec:Dynamic=Json.parse(File.getContent(Path.join([source,"package.json"])));
    var songNames:Array<String>=cast (useNextSongs ? spec.nextSongs : spec.initialSongs);
    var version:String=Std.string(useNextSongs ? spec.nextVersion : spec.initialVersion);
-   if(useNextSongs&&delayMillis>0&&Std.string(spec.ownerKey)==delayOwner)
-    Sys.sleep(delayMillis/1000.0);
+   if(useNextSongs&&delayMillis>0&&Std.string(spec.ownerKey)==delayOwner) {
+    if(dependencyResume!=null) {
+     dependencyEntered.release();
+     if(!dependencyResume.wait(15)) throw "dependency fixture observer did not release conversion";
+    } else Sys.sleep(delayMillis/1000.0);
+   }
 
    var registry:Dynamic={};
    if(ImportFileSystem.exists(REGISTRY)) {
@@ -1532,6 +1538,11 @@ class ImportRefreshManagerFixture {
     ImportRefreshManager.status={busy:false,label:"",fraction:0.0,complete:false,changed:false,blocked:false};
     delayOwner=(mode=="auto-refresh-sequence"||mode=="auto-refresh-dependency")?args[2]:"";
     delayMillis=(mode=="auto-refresh-sequence"||mode=="auto-refresh-dependency")?1200:0;
+    // Observe the first conversion before publication, even under compiler load.
+    // A fixed sleep can expire before the main test thread is scheduled.
+    if(mode=="auto-refresh-dependency") {
+     dependencyEntered=new sys.thread.Lock();dependencyResume=new sys.thread.Lock();
+    }
     if(mode=="auto-refresh-in-game"||mode=="auto-refresh-in-smoke") FlxG.state=new PlayState();
     var deadline=Sys.time()+20;
     var split:Dynamic=null;
@@ -1543,8 +1554,7 @@ class ImportRefreshManagerFixture {
       if(split==null) split={pending:view.pendingOwnerRoots,handoff:view.handoffPendingOwnerRoots,
        committed:view.committedOwnerRoots,revision:view.revision};
      }
-     if(mode=="auto-refresh-dependency"&&ImportRefreshManager.active
-      &&StringTools.startsWith(status.label,"Refreshing import:")) {
+     if(mode=="auto-refresh-dependency"&&dependencyEntered.wait(0)) {
       split={pending:view.pendingOwnerRoots,handoff:view.handoffPendingOwnerRoots,
        committed:view.committedOwnerRoots,revision:view.revision};
       break;
@@ -1559,6 +1569,7 @@ class ImportRefreshManagerFixture {
       &&ImportRefreshManager.queue.length==0) break;
      Sys.sleep(0.005);
     }
+    if(mode=="auto-refresh-dependency") dependencyResume.release();
     if(mode=="auto-refresh-in-game"&&split!=null) {
      FlxG.state=null;
      status=ImportRefreshManager.browseTick();
@@ -2737,7 +2748,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         shutil_rmtree(donor)
         stale_revisions = [dict(stamp) for stamp in record["revisions"]]
         self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
-        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {10})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {11})
         for stamp in stale_revisions:
             stamp["engineRevision"] = 9
         self.mark_record_stale(record, common_revision=None,
@@ -2750,7 +2761,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
-        self.assertTrue(any(stamp["engineRevision"] == 10
+        self.assertTrue(any(stamp["engineRevision"] == 11
                             for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())

@@ -31,6 +31,15 @@ def extract_method(source: str, marker: str) -> str:
     raise AssertionError(marker)
 
 
+def install_nv_stage_profile_support(work):
+    for name in ('NightmareVisionStageProfile', 'NightmareVisionStageImportProfile', 'NightmareVisionAssetCollector'):
+        (work / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
+    scanner = work / 'ImportRootScanner.hx'
+    if not scanner.exists():
+        scanner.write_text('class ImportRootScanner {public static function inspectRoot(r:String,e:String):Dynamic return null; public static function hasNightmareVisionContainerProof(e:Array<String>):Bool return false;}')
+    scanner.write_text(scanner.read_text().replace('class ImportRootScanner {', 'class ImportRootScanner {public static function nightmareVisionStageApi(root:String):String return "unknown";'), newline='\n')
+
+
 class CompatScriptImportTest(unittest.TestCase):
     def test_script_trees_are_copied_below_the_manifest_namespace(self):
         source = (ROOT / "source/ModuleFunctions.hx").read_text()
@@ -219,6 +228,7 @@ class CopyFixture {{
             (temp / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline='\n')
             (temp / "PsychLuaScriptDependencies.hx").write_text(
                 (ROOT / "source/PsychLuaScriptDependencies.hx").read_text(), newline='\n')
+            install_nv_stage_profile_support(temp)
             (temp / "CopyFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             donor.mkdir()
@@ -339,6 +349,7 @@ class RepairFixture {{
             temp = Path(folder)
             install_import_io_dependencies(temp)
             install_directory_listing_helper(temp)
+            install_nv_stage_profile_support(temp)
             (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             (temp / "assets/songs/Repair-Key").mkdir(parents=True)
             (temp / "assets/songs/Repair-Key/Inst.ogg").write_bytes(b"existing-audio")
@@ -819,6 +830,9 @@ class RepairFixture {{
 
     var result:ImportAssetMergeResult = {{copied:0, skipped:0, failed:0}};
     var mergedDestination = mergeCompatScriptTrees(donor, donor, ImportEngine.NIGHTMARE_VISION, result);
+    var apiProfile = haxe.Json.parse(File.getContent(Path.join([mergedDestination, NightmareVisionStageProfile.FILE_NAME])));
+    if (apiProfile.owner != mergedDestination || apiProfile.stageApi != 'unknown') throw 'owner Stage profile was not published';
+
     if (mergedDestination != destination || result.failed != 0)
       throw 'NMV owner copy failed: ' + Std.string(result.errors);
     if (File.getContent(Path.join([destination, 'meta.json'])) != '{{"name":"single package"}}')
@@ -1070,6 +1084,7 @@ class ImportRootScanner {
                 (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
             for helper in ("ImportEngine", "PsychLuaScriptDependencies", "NightmareVisionAssetCollector"):
                 (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
+            install_nv_stage_profile_support(temp)
             (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "scripts").mkdir(parents=True)

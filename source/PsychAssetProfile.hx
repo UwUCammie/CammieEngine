@@ -95,6 +95,8 @@ typedef PsychAssetProfileCandidate = {
 }
 
 typedef PsychAssetProfileResult = {
+	/** Emitted Lime IDs are complete only for Assets, not arbitrary disk-based mod files. */
+	@:optional var compiledManifests:Bool;
 	var version:Int;
 	/** receipt-bound, legacy-unverified, or invalid. */
 	var provenance:String;
@@ -264,7 +266,11 @@ class PsychAssetProfile {
 		if (selectedRoot == "")
 			return fail(result, "source-root-outside-snapshot", "The recorded source root is missing or leaves retained content.");
 		var projectPath = directProjectFile(selectedRoot, result);
-		if (projectPath == "") return result;
+		if (projectPath == "") {
+			if (result.diagnostics.length == 1 && StringTools.startsWith(result.diagnostics[0], "project-xml-missing:"))
+				return SourceCompiledAssetProfile.resolve(content,selectedRoot,receipt,result,cancelled);
+			return result;
+		}
 		var projectName = Path.withoutDirectory(projectPath);
 		var projectRelative = joinRelative(relative, projectName);
 		var fileEntry = receiptFile(receipt, projectRelative, result);

@@ -154,6 +154,10 @@ class Main {
         with tempfile.TemporaryDirectory(prefix="psych-scene-helpers-", dir=ROOT / "tmp") as folder:
             scratch = Path(folder)
             write_flixel_point_stub(scratch)
+            # This fixture exercises Psych's native scene branch; NV's group
+            # insertion is executed by test_nv_legacy_stage/integration.
+            (scratch / "NightmareVisionStageScene.hx").write_text('class NightmareVisionStageScene {public static function insertBehind(scene:Dynamic,stage:Dynamic,actor:Dynamic,object:Dynamic):Void {stage.insert(stage.members.indexOf(actor),object);}}', newline="\n")
+
             (scratch / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
             runtime_stub = '''class HxcCompatRuntime {
  public static function getZIndex(_target:Dynamic):Dynamic return 0;

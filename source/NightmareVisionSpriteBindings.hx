@@ -6,9 +6,18 @@ import flixel.group.FlxSpriteGroup;
  * preserving the existing native generic group Class for subtype checks. */
 class NightmareVisionSpriteBindings {
 	public static function install(interp:NightmareVisionScriptInterp, paths:NightmareVisionPaths,
-		owner:NightmareVisionSpriteOwner):Void {
+		owner:NightmareVisionSpriteOwner, ?antialiasing:Void->Bool):Void {
 		var scope = interp.sourceClassScope();
 		scope.bindRuntimeClass('flixel.FlxSprite', NightmareVisionFlxSprite);
+		scope.bindRuntimeClass('gameObjects.SpriteFromSheet', NightmareVisionSpriteFromSheet);
+		interp.bindImport('gameObjects.SpriteFromSheet', NightmareVisionSpriteFromSheet);
+		interp.variables.set('SpriteFromSheet', NightmareVisionSpriteFromSheet);
+		interp.bindConstructorFactory(NightmareVisionSpriteFromSheet, function(args) {
+			owner.requireActive();
+			if (args.length < 4) throw '[nightmare-vision-sprite] SpriteFromSheet requires an atlas and animation';
+			return new NightmareVisionSpriteFromSheet(args[0], args[1], args[2], args[3], paths,
+				antialiasing == null ? true : antialiasing());
+		}, null);
 		scope.bindRuntimeClass('funkin.objects.FunkinSprite', NightmareVisionFunkinSprite);
 		interp.bindImport('funkin.objects.FunkinSprite', NightmareVisionFunkinSprite);
 		interp.variables.set('FunkinSprite', NightmareVisionFunkinSprite);

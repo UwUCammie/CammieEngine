@@ -158,9 +158,9 @@ class Main {static function ok(value:Bool,message:String):Void if(!value)throw m
     def test_scene_initialization_aliases_and_native_boundaries(self):
         source = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         init = method(source, 'function initializeNightmareVisionScripts(')
-        self.assertLess(init.index('initializeNightmareVisionCharacterGroups();'), init.index("stage.runScript(nightmareVisionScripts.group)"))
-        self.assertLess(init.index("onAddSpriteGroups"), init.index('stage.add(gfGroup)'))
-        self.assertLess(init.index('stage.add(boyfriendGroup)'), init.index("nightmareVisionScripts.loadScope('global')"))
+        self.assertLess(init.index('initializeNightmareVisionCharacterGroups();'), init.index("NightmareVisionStageScene.load(stage, nightmareVisionScripts.group)"))
+        self.assertLess(init.index("onAddSpriteGroups"), init.index('NightmareVisionStageScene.mount(this, stage, [gfGroup, dadGroup, boyfriendGroup])'))
+        self.assertLess(init.index('NightmareVisionStageScene.mount(this, stage, [gfGroup, dadGroup, boyfriendGroup])'), init.index("nightmareVisionScripts.loadScope('global')"))
         self.assertNotIn('nightmareVisionCharacterBank', source)
         self.assertNotIn('NightmareVisionCharacterGroupCompat', source)
         initial = source[source.index('initializeNightmareVisionScripts();', source.index('daScrollSpeed =')):]

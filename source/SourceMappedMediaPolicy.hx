@@ -140,8 +140,15 @@ class SourceMappedMediaPolicy {
 				if (routed == null)
 					return {state:"defer", ownerRelative:relative,
 						reason:"The mapped media path conflicts with the selected runtime owner scope."};
-				if (media.state == "defer")
+				if (media.state == "defer") {
+					// Lime TEXT/BINARY assets can live in any authored directory.
+					// In the composite plan their exact bytes/type are handled by
+					// the identity publisher, not inferred from a media folder name.
+					var declared = event.type == null ? "" : event.type.toLowerCase();
+					if (identityAliasesAvailable && (declared == "text" || declared == "binary"))
+						return {state:"ignore"};
 					return {state:"defer", ownerRelative:routed, reason:media.reason};
+				}
 				if (!identityAliasesAvailable && (event.assetId == null || event.assetId != event.mappedPath))
 					return {state:"defer", ownerRelative:routed,
 						reason:"The Lime asset id differs from the authored target path; this standalone media policy has no verified id alias index."};

@@ -420,14 +420,11 @@ class Main {
         self.assertNotIn("entry.scope == 'notetype'", initialization,
                          "notetype scripts are supported by NightmareVisionNoteTypeRuntime")
 
-        # Source Stage is the sole displayed container, populated only after
-        # the callback accepts group mounting. Its script registers after run.
-        self.assertIn("stage.buildStage();", initialization)
-        self.assertLess(initialization.index("stage.runScript(nightmareVisionScripts.group)"),
-                        initialization.index("nightmareVisionScripts.group.addScript(stage.script)"))
+        # Both dialects load/register before deciding whether to mount actors.
+        self.assertLess(initialization.index("NightmareVisionStageScene.load(stage, nightmareVisionScripts.group)"),
+                        initialization.index("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'"))
         self.assertLess(initialization.index("nightmareVisionAddActors = callNightmareVision('onAddSpriteGroups'"),
-                        initialization.index("add(stage);"))
-        self.assertIn("stage.add(gfGroup);", initialization)
+                        initialization.index("NightmareVisionStageScene.mount(this, stage, [gfGroup, dadGroup, boyfriendGroup])"))
         self.assertNotIn("curStage.add(gfGroup);", initialization)
         self.assertNotIn("add(curStage)", initialization)
 

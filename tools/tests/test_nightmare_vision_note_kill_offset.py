@@ -77,7 +77,7 @@ class NightmareVisionNoteKillOffsetTest(unittest.TestCase):
         self.assertLess(initializer.index("nightmareVisionScripts = new"),
                         initializer.index("refreshNightmareVisionNoteKillOffset();"))
         self.assertLess(initializer.index("refreshNightmareVisionNoteKillOffset();"),
-                        initializer.index("stage.runScript(nightmareVisionScripts.group)"))
+                        initializer.index("NightmareVisionStageScene.load(stage, nightmareVisionScripts.group)"))
         self.assertIn("onUpdate: function(_) refreshNightmareVisionNoteKillOffset()", tween)
         self.assertIn("refreshNightmareVisionNoteKillOffset();", setter)
         self.assertIn("@:keep public var songSpeed(get, set):Float;", play_state)

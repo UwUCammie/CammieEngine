@@ -1,6 +1,19 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.22 alpha - CammieEngine
+	- Migrate older container-only Nightmare Vision receipts to retain verified child-package roots, so published core asset identities remain usable at runtime.
+	- Read compiled Lime asset manifests for retained Psych and Nightmare Vision packages without Project.xml, preserving exact file-backed IDs, library namespaces and receipt ownership. Embedded executable assets and custom library loaders remain explicitly unsupported.
+	- Load historical Animate spritemaps in source order using their declared image filename, including packages with incomplete asset catalogs.
+	- Add historical Nightmare Vision Animate playback over the shared renderer, preserving source frame timing, callbacks, stage transforms and owner-scoped atlas loading. Advanced timeline APIs remain in progress.
+	- Support the historical Nightmare Vision ColorSwap class, vector uniforms, alpha/flash controls and optional outline through the shared shader renderer.
+	- Detect historical Nightmare Vision Stage APIs from authenticated executable class evidence during import, then use the matching shared scene integration for background, characters and foreground. Refresh retained imports to publish owner-scoped API metadata.
+	- Support the explicit legacy Nightmare Vision gameObjects.Stage HScript constructor, callback arguments and separate foreground ownership, preserving the modern Stage container contract.
+	- Support the legacy Nightmare Vision SpriteFromSheet constructor and animation controls using owner-scoped atlas paths and preferences.
+	- Route legacy Nightmare Vision PlayState rating and combo visibility controls into the existing HUD, including writes made before HUD creation.
+	- Reject uninitialized camera entries from shared Psych/Nightmare Vision script assignments and camera-manager calls before they can crash native rendering.
+	- Support legacy Nightmare Vision addHaxeLibrary through shared owner-local class resolution, including scoped missing-class diagnostics and teardown.
+
 v0.0.21 alpha - CammieEngine
 	- Retain the authenticated Nightmare Vision engine core when importing a content package directly, preserving HUD icons, ratings, combo digits and default effect assets through reimport and refresh.
 	- Preserve named built-in note types for shared script callbacks, restoring note-triggered stage text, flashes and other effects.

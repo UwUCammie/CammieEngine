@@ -2246,6 +2246,8 @@ class ImportRefreshManager {
 					if (ImportRevision.normalizeEngine(root.engine) == ImportRevision.normalizeEngine(Std.string(expected.engine))
 						&& Path.normalize(FileSystem.fullPath(root.root)) == expectedPath) found = true;
 				}
+				if (!found) found = ImportPackageFamilyCatalog.scanCoversMaterializedRoot(
+					Path.directory(source), record, expected, scan.detectedRoots);
 				if (!found) throw "Import rescan lost a previously detected source root; installed content is unchanged.";
 			}
 			cooperateImportWork(cancel);

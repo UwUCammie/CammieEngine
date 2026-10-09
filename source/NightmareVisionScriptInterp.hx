@@ -164,10 +164,15 @@ class NightmareVisionScriptInterp extends Interp {
 
 	/** Preserve Iris's native-class fallback without consulting another
 	 * imported owner's process-global proxy table. */
-	override public function getOrImportClass(name:String):Dynamic {
+	override public function getOrImportClass(name:String):Dynamic return resolveSourceImport(name);
+
+	/** Shared owner-first lookup. Legacy addHaxeLibrary accepts exact classes,
+	 * while language imports additionally support Iris enum/module lookup. */
+	public function resolveSourceImport(name:String, classOnly:Bool = false):Dynamic {
+		if (hasOwnerImport(name)) return ownerImport(name);
 		if (name == 'FunkinVideoSprite' || name == 'funkin.video.FunkinVideoSprite')
 			return Type.resolveClass('NightmareVisionVideoSprite');
-		return hasOwnerImport(name) ? ownerImport(name) : Tools.getClass(name);
+		return classOnly ? Type.resolveClass(name) : Tools.getClass(name);
 	}
 
 	/** Custom extension adapters stay local; built-in native extensions retain
@@ -454,6 +459,9 @@ class NightmareVisionScriptInterp extends Interp {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot read ' + field + ' on null';
 		#if flixel
+		if ((field == 'add' || field == 'insert')
+			&& Std.isOfType(object, flixel.system.frontEnds.CameraFrontEnd))
+			return sourceCameraMutation(object, field);
 		if (object == PsychFlxGCompat) return PsychFlxGCompat.getField(field);
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).getField(field);
@@ -492,10 +500,35 @@ class NightmareVisionScriptInterp extends Interp {
 		return super.get(object, field);
 	}
 
+	/** Validate even a method borrowed from FlxG.cameras before hxcpp casts its
+	 * generic camera argument. Keep restoration loops running past bad entries. */
+	public function sourceCameraMutation(object:Dynamic, field:String):Dynamic {
+		var method = Reflect.getProperty(object, field);
+		return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			if (args.length == 0 || args[0] == null) {
+				var message = '[source-camera-assignment] Cannot ' + field + ' an uninitialized camera';
+				if (sourceError != null) sourceError(message, posInfos());
+				else crowplexus.iris.Iris.error(message, posInfos());
+				return null;
+			}
+			return Reflect.callMethod(object, method, args);
+		});
+	}
+
+	/** Null means default cameras; a null entry would crash Flixel's draw loop.
+	 * Validate before assignment so a failed source callback leaves it intact. */
+	public static function validateCameraArray(value:Dynamic):Void {
+		if (value == null || !Std.isOfType(value, Array)) return;
+		var cameras:Array<Dynamic> = cast value;
+		for (camera in cameras) if (camera == null)
+			throw '[source-camera-assignment] Camera array contains an uninitialized camera';
+	}
+
 	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot write ' + field + ' on null';
 		#if flixel
+		if (field == 'cameras' && Std.isOfType(object, flixel.FlxBasic)) validateCameraArray(value);
 		if (object == PsychFlxGCompat) return PsychFlxGCompat.setField(field, value);
 		if (Std.isOfType(object, PsychFlxCameraCompat))
 			return (cast object:PsychFlxCameraCompat).setField(field, value);

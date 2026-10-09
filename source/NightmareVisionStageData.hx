@@ -19,6 +19,25 @@ class NightmareVisionStageData {
 		return getStageFile(ownerRoot, stageId);
 	}
 
+	/** Historical StageData only reads stages/<name>.json, with strict JSON. */
+	public static function getLegacyStageFile(ownerRoot:String, stageId:String):Dynamic {
+		var stage = normalizeStageId(stageId);
+		if (stage == '') return null;
+		var path = resolveWithCore(ownerRoot, 'stages/' + stage + '.json');
+		#if sys
+		return path == null ? null : haxe.Json.parse(File.getContent(path));
+		#else
+		return null;
+		#end
+	}
+
+	public static function getLegacyTemplateStageFile():Dynamic {
+		var value:Dynamic = getTemplateStageFile();
+		value.directory = '';
+		value.isPixelStage = false;
+		return value;
+	}
+
 	/** Return the authored stage object, or null when no owner-local file exists. */
 	public static function getStageFile(ownerRoot:String, stageId:String,
 		?parseJson:String->Dynamic):Dynamic {
