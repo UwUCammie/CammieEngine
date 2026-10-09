@@ -142,10 +142,11 @@ class NightmareVisionNoteTypeRuntime {
 		return result;
 	}
 
-	/** Historical hit notifications never use a returned value to cancel another family. */
+	/** Historical hit/miss notifications never use a returned value to cancel another family. */
 	public function legacyHit(note:Dynamic, callback:String, groupSlot:Int,
 		lua:(String, Array<Dynamic>)->Dynamic, hscript:(String, Array<Dynamic>)->Dynamic):Void {
-		var luaArgs:Array<Dynamic> = [groupSlot, Math.abs(Reflect.getProperty(note, 'noteData')),
+		var direction:Dynamic = Reflect.getProperty(note, 'noteData');
+		var luaArgs:Array<Dynamic> = [groupSlot, callback == 'noteMiss' ? direction : Math.abs(direction),
 			noteTypeOf(note), Reflect.getProperty(note, 'isSustainNote'), Reflect.getProperty(note, 'ID')];
 		var hscriptArgs:Array<Dynamic> = [note];
 		lua(callback, luaArgs);

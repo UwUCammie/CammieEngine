@@ -2022,6 +2022,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokeLegacyNoteScript.verify();
 			RuntimeSmokeLegacyHitNotifications.verify(note);
 			RuntimeSmokeLegacyDefaultHit.verify(note);
+			RuntimeSmokeLegacyMiss.verify();
 			RuntimeSmokeLegacySinging.verify();
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);

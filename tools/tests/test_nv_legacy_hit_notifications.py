@@ -21,6 +21,9 @@ class HistoricalHitNotificationTest(unittest.TestCase):
         hit = method(source, 'function goodNoteHit(')
         hit = hit[hit.index('var luaArgs:Array<Dynamic>'):hit.index('if (!note.isSustainNote)', hit.index('var luaArgs:Array<Dynamic>'))]
         hit = hit.replace("'goodNoteHit'", 'callback').replace('"goodNoteHit"', 'callback')
+        miss = method(source, 'function noteMiss(')
+        miss = miss[miss.index("callOnLuas('noteMiss'"):].rstrip()[:-1]
+        miss = miss.replace('daNote', 'note')
         fixture = r"""
 class Globals {public static var Function_Continue=0;public static var Function_Stop=1;public static var Function_Halt=2;}
 class Entry {
@@ -40,7 +43,7 @@ class Reference {
  function callOnLuas(n:String,a:Array<Dynamic>):Dynamic return lua(n,a);
  function callOnHScripts(n:String,a:Array<Dynamic>):Dynamic return hscript(n,a);
  function callScript(s:NightmareVisionScriptModule,n:String,a:Array<Dynamic>):Dynamic return s.callValue(n,a);
- public function notify(note:Dynamic,callback:String):Void {__HIT__}
+ public function notify(note:Dynamic,callback:String):Void {if(callback=="noteMiss"){__MISS__}else{__HIT__}}
 }
 class Main {
  static function check(ok:Bool,m:String):Void if(!ok)throw m;
@@ -59,19 +62,19 @@ class Main {
   var plan:NightmareVisionScriptDiscovery.NightmareVisionScriptPlan={root:'owner',baseAssetsRoot:'',song:'fixture',stage:'',coverageNotes:[],scripts:[]};
   var scripts=new NightmareVisionGameplayScripts({},plan,function(p)return '',function(i,e,a){},function(n,p,e)errors.push(Std.string(e)));
   var registry:Map<String,NightmareVisionScriptModule>=[];scripts.legacyNoteRegistry=function()return registry;
-  var global=scripts.group.loadSource('global',"function goodNoteHit(n){n.events.push('global');n.noteScript=replacement;return 2;} function opponentNoteHit(n){return goodNoteHit(n);}");
-  var original=scripts.group.loadSource('original',"function goodNoteHit(n){n.events.push('WRONG-original');} function opponentNoteHit(n){goodNoteHit(n);}");
-  var attached=scripts.group.loadSource('replacement',"function goodNoteHit(n){n.events.push('attached');return 1;} function opponentNoteHit(n){return goodNoteHit(n);}");
-  var event=scripts.group.loadSource('event',"function goodNoteHit(n){n.events.push('WRONG-event');} function opponentNoteHit(n){goodNoteHit(n);}");
-  var later=scripts.group.loadSource('later',"function goodNoteHit(n){n.events.push('WRONG-after-halt');} function opponentNoteHit(n){goodNoteHit(n);}");
+  var global=scripts.group.loadSource('global',"function goodNoteHit(n){n.events.push('global');n.noteScript=replacement;return 2;} function noteMiss(n){return goodNoteHit(n);} function opponentNoteHit(n){return goodNoteHit(n);}");
+  var original=scripts.group.loadSource('original',"function goodNoteHit(n){n.events.push('WRONG-original');} function noteMiss(n){return goodNoteHit(n);} function opponentNoteHit(n){goodNoteHit(n);}");
+  var attached=scripts.group.loadSource('replacement',"function goodNoteHit(n){n.events.push('attached');return 1;} function noteMiss(n){return goodNoteHit(n);} function opponentNoteHit(n){return goodNoteHit(n);}");
+  var event=scripts.group.loadSource('event',"function goodNoteHit(n){n.events.push('WRONG-event');} function noteMiss(n){return goodNoteHit(n);} function opponentNoteHit(n){goodNoteHit(n);}");
+  var later=scripts.group.loadSource('later',"function goodNoteHit(n){n.events.push('WRONG-after-halt');} function noteMiss(n){return goodNoteHit(n);} function opponentNoteHit(n){goodNoteHit(n);}");
   global.set('replacement',attached);registry.set('original',original);registry.set('replacement',attached);scripts.eventGroup.addScript(event);
   var runtime=new NightmareVisionNoteTypeRuntime(scripts);runtime.legacyNoteScripts=true;
-  for(callback in ['goodNoteHit','opponentNoteHit']) for(ret in values) for(clear in [false,true]) {
+  for(callback in ['goodNoteHit','opponentNoteHit','noteMiss']) for(ret in values) for(clear in [false,true]) {
    var actual:Dynamic={noteData:-3,noteType:'original',isSustainNote:true,ID:91,noteScript:original,events:[]};
    var expected:Dynamic={noteData:-3,noteType:'original',isSustainNote:true,ID:91,noteScript:original,events:[]};
    global.set('replacement',clear?null:attached);
    var lua=function(note:Dynamic):(String,Array<Dynamic>)->Dynamic return function(n,args){
-    check(n==callback&&haxe.Json.stringify(args)=='[1,3,"original",true,91]','five scalar Lua arguments');
+    check(n==callback&&haxe.Json.stringify(args)==(callback=='noteMiss'?'[1,-3,"original",true,91]':'[1,3,"original",true,91]'),'five scalar Lua arguments');
     note.events.push('lua');note.noteType='changed-by-lua';return ret;
    };
    var hs=function(n:String,args:Array<Dynamic>):Dynamic {
@@ -93,7 +96,7 @@ class Main {
   check(errors.length==0,errors.join(','));scripts.destroy();
  }
 }
-""".replace('__BROADCAST__', broadcast).replace('__HIT__', hit)
+""".replace('__BROADCAST__', broadcast).replace('__HIT__', hit).replace('__MISS__', miss)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             work = FixturePath(directory)
             write_flixel_point_stub(work)

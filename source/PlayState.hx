@@ -851,6 +851,27 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			context != null && context.field == field ? context.sourceHold : false);
 	}
 
+	@:keep public var modchartObjects:Map<String, Dynamic> = [];
+
+	function nightmareVisionLegacyNoteMiss(note:Note):Void {
+		NightmareVisionLegacyMissFlow.miss(this, note);
+	}
+
+	function retireNightmareVisionLegacyDuplicate(note:Note):Void {
+		modchartObjects.remove('note' + note.ID);
+		note.kill();
+		nightmareVisionRemoveFieldNoteMembership(note);
+		notes.remove(note, true);
+		note.destroy();
+	}
+
+	function publishHistoricalNightmareMiss(note:Note):Void {
+		setAllHaxeVar('misses', misses);setAllHaxeVar('combo', combo);setAllHaxeVar('songScore', songScore);
+		if (note.noteMiss != null) callHscript(note.noteMiss, [note], 'modchart');
+		callAllHScript('playerOneMiss', [], false, null, null, true);
+		callAllHScript('noteMiss', [note, true, note.noteData], true, null, null, true);
+	}
+
 	function nightmareVisionLegacyGoodNoteHit(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
 		if (value == null || !Std.isOfType(value, Note) || field == null) return;
 		NightmareVisionLegacyHitFlow.hit(this, cast value, field, true);
@@ -1302,7 +1323,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindNightmareVisionPixelStage(interp);
 		if (nightmareVisionLegacyFieldCameras)
 			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
-				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit);
+				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss);
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
@@ -25031,6 +25052,10 @@ void main(void) {
 
 	function noteMiss(direction:Int = 1, playerOne:Bool, ?note:Null<Note>, ?playMissSound:Bool = true,
 		?sourceLine:CodenameInputLine<Character>):Void {
+		if (nightmareVisionLegacyFieldCameras && note != null) {
+			nightmareVisionLegacyNoteMiss(note);
+			return;
+		}
 		if (sourceScoreNightmare && nightmareVisionScripts != null && note != null) {
 			var field = nightmareVisionFieldForNote(note);
 			if (field != null) {
