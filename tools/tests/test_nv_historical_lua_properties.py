@@ -43,6 +43,10 @@ class PlayState {
   api=new LuaCompatInterp();installHistoricalLuaProperties(api,false);
  }
  function compatFindObject(tag:String):Dynamic return null;
+ function historicalPropertyGroup(value:Dynamic):Bool return false;
+ function historicalRemoveGroupMember(group:Dynamic,item:Dynamic):Void{}
+ function historicalClassAliases():Map<String,Dynamic> return [];
+ function compatResolveClass(name:String):Dynamic return Type.resolveClass(name);
  function historicalReadProperty(o:Dynamic,k:String):Dynamic return Reflect.getProperty(o,k);
  function historicalWriteProperty(o:Dynamic,k:String,v:Dynamic):Void Reflect.setProperty(o,k,v);
  __METHODS__

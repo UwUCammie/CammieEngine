@@ -1206,6 +1206,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.sourceSpriteOwner = spriteOwner;
 		interp.cameraShaders = new NightmareVisionCameraShaders();
 		for (name => value in preset) interp.variables.set(name, value);
+		for (name => value in NightmareVisionLegacyClassAliases.create(PlayState, GameOverSubstate, nightmareVisionConductor, prefs.view, paths, CoolUtil)) {
+			interp.bindImport(name, value);
+			interp.sourceClassScope().bindRuntimeClass(name, value);
+		}
 		NightmareVisionStageVisualBindings.install(interp);
 		NightmareVisionAssetsBindings.install(interp, paths);
 		NightmareVisionAlphabetBindings.install(interp, paths);
@@ -5386,12 +5390,44 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function historicalSetProperty(path:String, value:String):Void {
 		SourceScriptReflection.setLegacyProperty(this, path, value, historicalPropertyObject, historicalReadProperty, historicalWriteProperty);
 	}
+	function historicalPropertyGroup(value:Dynamic):Bool {
+		return Std.isOfType(value, FlxTypedGroup) || Std.isOfType(value, NightmareVisionPlayFieldView);
+	}
+	function historicalRemoveGroupMember(group:Dynamic, item:Dynamic):Void {
+		if (Std.isOfType(group, NightmareVisionPlayFieldView)) {
+			var field:NightmareVisionPlayFieldView = cast group;
+			field.strumline.remove(cast item, true);
+		} else group.remove(item, true);
+	}
+	function historicalClassAliases():Map<String,Dynamic> {
+		return NightmareVisionLegacyClassAliases.create(PlayState, GameOverSubstate, nightmareVisionConductor,
+			nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view, nightmareVisionPaths, CoolUtil);
+	}
 	function installHistoricalLuaProperties(interp:Interp, resultsObserver:Bool):Void {
 		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
 		interp.variables.set('getProperty', function(path:String):Dynamic
 			return SourceScriptReflection.getLegacyLuaProperty(path, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty));
 		interp.variables.set('setProperty', function(path:String, value:Dynamic):Bool
 			return SourceScriptReflection.setLegacyLuaProperty(path, value, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty, historicalWriteProperty));
+		interp.variables.set('getPropertyFromGroup', function(path:String, index:Int, field:Dynamic):Dynamic {
+			var group = SourceScriptReflection.legacyGroupRoot(path, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty);
+			return SourceScriptReflection.getLegacyGroupProperty(group, index, field, historicalPropertyGroup, historicalReadProperty,
+				function() trace('[script] Object #' + index + ' from group: ' + path + " doesn't exist!"));
+		});
+		interp.variables.set('setPropertyFromGroup', function(path:String, index:Int, field:Dynamic, value:Dynamic):Void {
+			var group = SourceScriptReflection.legacyGroupRoot(path, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty);
+			SourceScriptReflection.setLegacyGroupProperty(group, index, field, value, historicalPropertyGroup, historicalReadProperty, historicalWriteProperty);
+		});
+		interp.variables.set('removeFromGroup', function(path:String, index:Int, dontDestroy:Bool = false):Void {
+			SourceScriptReflection.removeLegacyGroupMember(function() return historicalReadProperty(historicalPropertyInstance(), path), index, dontDestroy,
+				historicalPropertyGroup, historicalRemoveGroupMember);
+		});
+		var classes = historicalClassAliases();
+		var resolve = function(name:String):Dynamic return classes.exists(name) ? classes.get(name) : compatResolveClass(name);
+		interp.variables.set('getPropertyFromClass', function(name:String, path:String):Dynamic
+			return SourceScriptReflection.getLegacyClassProperty(resolve(name), path, historicalReadProperty));
+		interp.variables.set('setPropertyFromClass', function(name:String, path:String, value:Dynamic):Bool
+			return SourceScriptReflection.setLegacyClassProperty(resolve(name), path, value, historicalReadProperty, historicalWriteProperty));
 	}
 
 	function compatPropertyRoot(name:String):Dynamic {

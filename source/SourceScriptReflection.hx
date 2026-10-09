@@ -45,9 +45,12 @@ class SourceScriptReflection {
 			}
 			return value;
 		}
+		return readLegacyField(object, variable, readProperty);
+	}
+	static function readLegacyField(object:Dynamic, key:String, readProperty:(Dynamic,String)->Dynamic):Dynamic {
 		return switch (Type.typeof(object)) {
-			case TClass(haxe.ds.StringMap) | TClass(haxe.ds.ObjectMap) | TClass(haxe.ds.IntMap) | TClass(haxe.ds.EnumValueMap): object.get(variable);
-			default: readProperty(object, variable);
+			case TClass(haxe.ds.StringMap) | TClass(haxe.ds.ObjectMap) | TClass(haxe.ds.IntMap) | TClass(haxe.ds.EnumValueMap): object.get(key);
+			default: readProperty(object, key);
 		};
 	}
 	public static function writeLegacyPathPart(object:Dynamic, variable:String, value:Dynamic,
@@ -87,6 +90,80 @@ class SourceScriptReflection {
 		writeProperty:(Dynamic,String,Dynamic)->Void):Bool {
 		var parts = path.split('.');
 		writeLegacyPathPart(legacyPathOwner(parts, instance, resolveObject, readProperty), parts[parts.length - 1], value, readProperty, writeProperty);
+		return true;
+	}
+
+	public static function legacyGroupRoot(path:String, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = path.split('.');
+		var result = readProperty(instance(), path);
+		if (parts.length > 1) {
+			result = resolveObject(parts[0]);
+			for (i in 1...parts.length) result = readLegacyPathPart(result, parts[i], readProperty);
+		}
+		return result;
+	}
+	static function legacyGroupFieldOwner(object:Dynamic, parts:Array<String>, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		for (i in 0...parts.length - 1) object = readProperty(object, parts[i]);
+		return object;
+	}
+	public static function readLegacyGroupField(object:Dynamic, field:String, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = field.split('.');
+		var owner = legacyGroupFieldOwner(object, parts, readProperty);
+		var key = parts[parts.length - 1];
+		return readLegacyField(owner, key, readProperty);
+	}
+	public static function writeLegacyGroupField(object:Dynamic, field:String, value:Dynamic,
+		readProperty:(Dynamic,String)->Dynamic, writeProperty:(Dynamic,String,Dynamic)->Void):Void {
+		var parts = field.split('.');
+		writeProperty(legacyGroupFieldOwner(object, parts, readProperty), parts[parts.length - 1], value);
+	}
+	public static function getLegacyGroupProperty(group:Dynamic, index:Int, field:Dynamic,
+		isGroup:Dynamic->Bool, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Dynamic {
+		if (isGroup(group)) return readLegacyGroupField(group.members[index], field, readProperty);
+		var item:Dynamic = group[index];
+		if (item != null) {
+			if (Type.typeof(field) == TInt) return item[field];
+			return readLegacyGroupField(item, field, readProperty);
+		}
+		missing();
+		return null;
+	}
+	public static function setLegacyGroupProperty(group:Dynamic, index:Int, field:Dynamic, value:Dynamic,
+		isGroup:Dynamic->Bool, readProperty:(Dynamic,String)->Dynamic, writeProperty:(Dynamic,String,Dynamic)->Void):Void {
+		if (isGroup(group)) {writeLegacyGroupField(group.members[index], field, value, readProperty, writeProperty);return;}
+		var item:Dynamic = group[index];
+		if (item != null) {
+			if (Type.typeof(field) == TInt) {item[field] = value;return;}
+			writeLegacyGroupField(item, field, value, readProperty, writeProperty);
+		}
+	}
+	/** Read the live root at each source access; kill/remove hooks may replace it. */
+	public static function removeLegacyGroupMember(root:()->Dynamic, index:Int, dontDestroy:Bool,
+		isGroup:Dynamic->Bool, removeGroup:(Dynamic,Dynamic)->Void):Void {
+		if (isGroup(root())) {
+			var item:Dynamic = root().members[index];
+			if (!dontDestroy) item.kill();
+			removeGroup(root(), item);
+			if (!dontDestroy) item.destroy();
+			return;
+		}
+		var receiver:Dynamic = root();
+		var item:Dynamic = root()[index];
+		receiver.remove(item);
+	}
+	public static function getLegacyClassProperty(type:Dynamic, path:String, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = path.split('.');
+		var result = type;
+		for (part in parts) result = readLegacyPathPart(result, part, readProperty);
+		return result;
+	}
+	public static function setLegacyClassProperty(type:Dynamic, path:String, value:Dynamic,
+		readProperty:(Dynamic,String)->Dynamic, writeProperty:(Dynamic,String,Dynamic)->Void):Bool {
+		var parts = path.split('.');
+		var target = type;
+		for (i in 0...parts.length - 1) target = readLegacyPathPart(target, parts[i], readProperty);
+		writeLegacyPathPart(target, parts[parts.length - 1], value, readProperty, writeProperty);
 		return true;
 	}
 

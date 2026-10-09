@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV Lua group and class properties now preserve source indexing and raw writes; group removal follows source kill/remove/destroy order over shared native objects.
 - Historical NV Lua property helpers now preserve source array/map writes, exact paths, successful return values and live game-over roots through shared reflection.
 - Historical NV Set Property events now preserve raw paths and values through shared reflection, including separate sprite/text tags and source game-over lookup.
 - Historical NV scroll-speed events now preserve source defaults, constant-mode notification exits and overlapping live tweens through shared speed and tween services.
