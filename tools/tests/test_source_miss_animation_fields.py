@@ -87,6 +87,7 @@ class FakeController { public var curAnim:FakeAnimation; public function new(nam
 class SourceCharacterProbe {
  public var animation:FakeController;
  public var debugMode:Bool=false;
+ public var nightmareVisionLegacyActor:Bool=false;
  public var nightmareVisionCharacterData:Dynamic;
  public var canPlayAnimations:Bool=true;
  public var danceRequests:Int=0;
@@ -154,6 +155,14 @@ class Main {
   check(nv.animTimer==0 && nv.danceRequests==1 && nv.lastDanceForced,
    'expiration clamps the timer and requests dance(forceDance)');
   check(!nv.canPlayAnimations,'timer does not alter the separate Bopper animation lock');
+
+  var legacy=new SourceCharacterProbe();
+  legacy.nightmareVisionLegacyActor=true;
+  legacy.animation=new FakeController('singLEFT-return');
+  legacy.animTimer=0.2;
+  legacy.tickTimer(0.3);
+  check(legacy.animTimer==0 && legacy.danceRequests==1,
+   'historical timer runs without modern metadata and does not pause on return');
 
   var native=new SourceCharacterProbe();
   native.animation=new FakeController('singLEFT');

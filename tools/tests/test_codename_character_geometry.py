@@ -94,6 +94,7 @@ class FakeSprite {
  }
 }
 class Character extends FakeSprite {
+ public var doubleGhosts:Array<Dynamic>=[];
  var sourceStageAnimOffset:Null<FlxPoint>=null;
  var sourceStageOffsetBase:Null<FlxPoint>=null;
  var sourceStageOffsetScratch:Null<FlxPoint>=null;

@@ -82,6 +82,17 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	@:keep public var frameOffsetAngle:Null<Float> = null;
 	@:keep public var extraOffset:FlxPoint = FlxPoint.get();
 	@:keep public var ghostDraw:Bool = false;
+	public var nightmareVisionLegacyActor:Bool = false;
+	@:keep public var mostRecentRow:Int = 0;
+	@:keep public var voicelining:Bool = false;
+	@:keep public var doubleGhosts:Array<FlxSprite> = SourceCharacterGhosts.create();
+	@:keep public var ghostTweenGRP:Array<FlxTween> = [];
+	@:keep public var ghostID:Int = 0;
+	@:keep public var ghostAnim:String = '';
+	@:keep public function playGhostAnim(ghostID:Int = 0, AnimName:String, Force:Bool = false,
+		Reversed:Bool = false, Frame:Int = 0):Void {
+		SourceCharacterGhosts.play(this, ghostID, AnimName, Force, Reversed, Frame);
+	}
 	@:keep public var playerOffsets:Bool = false;
 	@:keep public var holdTime:Float = 4;
 	/** NV's source-facing CharacterData duration. Keep the legacy holdTime
@@ -1178,6 +1189,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		animOffsets = new Map<String, Array<Dynamic>>();
 		camOffsets = new Map<String, Array<Dynamic>>();
 		super(x, y);
+		nightmareVisionLegacyActor = PlayState.instance != null && PlayState.instance.sourceUsesLegacyNoteGeometry();
 		if (sourceConstruction != null) NightmareVisionSpriteMethods.bind(this, sourceConstruction.spriteOwner);
 		onAnimationFinish = new FlxSignal();
 		animation.onFinish.add(function(_animationName:String):Void onAnimationFinish.dispatch());
@@ -1631,7 +1643,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		}
 		updateNightmareVisionAnimationTimer(elapsed);
 		if (heyTimer > 0) {
-			var rate = PlayState.instance == null ? 1 : PlayState.instance.playbackRate;
+			var rate = nightmareVisionLegacyActor || PlayState.instance == null ? 1 : PlayState.instance.playbackRate;
 			heyTimer -= elapsed * rate;
 			if (heyTimer <= 0) {
 				heyTimer = 0;
@@ -1725,12 +1737,13 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			playAnim(animation.curAnim.name + '-hold');
 		
 		callInterp("update", [elapsed, this]);
+		for (ghost in doubleGhosts) if (ghost != null) ghost.update(elapsed);
 		super.update(elapsed);
 	}
 	function updateNightmareVisionAnimationTimer(elapsed:Float):Void {
-		if (nightmareVisionCharacterData == null || debugMode || animTimer <= 0
+		if ((!nightmareVisionLegacyActor && nightmareVisionCharacterData == null) || debugMode || animTimer <= 0
 			|| animation == null || animation.curAnim == null
-			|| StringTools.endsWith(animation.curAnim.name, '-return')) return;
+			|| (!nightmareVisionLegacyActor && StringTools.endsWith(animation.curAnim.name, '-return'))) return;
 		animTimer -= elapsed;
 		if (animTimer <= 0) {
 			animTimer = 0;
@@ -1786,7 +1799,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		return value;
 	}
 	public function dance(forced:Bool = false) {
-		if (skipDance) return;
+		if (skipDance || (nightmareVisionLegacyActor && (debugMode || specialAnim || animTimer > 0 || voicelining))) return;
 		if (sourceDanceNightmare && specialAnim) return;
 		// A script can retain an actor after its visual is destroyed or fails to
 		// resolve. The next beat must not dereference its animation controller.
@@ -1809,7 +1822,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			var currentName = animation.curAnim == null ? null : animation.curAnim.name;
 			var returnName = SourceCharacterAnimationLifecycle.returnAnimation(currentName,
 				currentName != null && animation.exists(currentName + '-return'),
-				sourceDanceNightmare, debugMode, specialAnim);
+				sourceDanceNightmare && !nightmareVisionLegacyActor, debugMode, specialAnim);
 			if (returnName != null) {
 				playAnim(returnName, forced);
 				return;
@@ -2089,6 +2102,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	}
 
 	override public function draw():Void {
+		for (ghost in doubleGhosts) if (ghost != null && ghost.visible) ghost.draw();
 		if (codenameLiveDefinition == null) { super.draw(); return; }
 		var smokeProfileAt = RuntimeSmokeHarness.profileEnabled() ? haxe.Timer.stamp() : 0.0;
 		var event = new CodenameCharacterEvent();
@@ -2119,6 +2133,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	override public function destroy():Void {
 		if (characterDestroyed) return;
 		characterDestroyed = true;
+		SourceCharacterGhosts.destroy(doubleGhosts, ghostTweenGRP);
 		forcedAnimationTimer.cancel();
 		forcedAnimationTimer.destroy();
 		if (onAnimationFinish != null) {

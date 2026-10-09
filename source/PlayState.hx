@@ -3915,6 +3915,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var psychScriptVariables:Map<String, Dynamic> = [];
 	/** Source direction names are also read by Lua's reflective property API. */
 	@:keep public var singAnimations:Array<String> = ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
+	@:keep public var ghostsAllowed:Bool = true;
+	@:keep public var noteRows:Array<Array<Array<Note>>> = [[], []];
 	var psychRuntimeBindings:Array<PsychRuntimeBindings> = [];
 	var psychSourceCallbacks = new PsychSourceCallbackRegistry();
 	public var variables(get, never):Map<String,Dynamic>;
@@ -19650,6 +19652,12 @@ void main(void) {
 					else
 						swagNote = new Note(daStrumTime, runtimeNoteData, oldNote, false, legacyAnimSuffix,
 							CodenameNoteMetadata.read(songNotes, section.mustHitSection, Note.NOTE_AMOUNT), gottaHitNote);
+					if (nightmareVisionLegacyFieldCameras) {
+						swagNote.row = nightmareVisionConductor.secsToRow(daStrumTime);
+						var rows = noteRows[gottaHitNote ? 0 : 1];
+						if (rows[swagNote.row] == null) rows[swagNote.row] = [];
+						rows[swagNote.row].push(swagNote);
+					}
 					NoteTypeCompat.applySourceType(swagNote, songNotes);
 					swagNote.sourcePlayfieldIndex = chartAddress.playfieldIndex;
 					swagNote.sourceDirection = chartAddress.direction;
@@ -25679,6 +25687,13 @@ void main(void) {
 			actor.playAnim('hurt', true);
 			actor.specialAnim = true;
 		}
+	}
+
+	function prepareNightmareVisionLegacyHitSingers(note:Note, field:NightmareVisionPlayFieldView, player:Bool):Void {
+		var sectionAlt:Null<Bool> = curSection < 0 || curSection >= SONG.notes.length || SONG.notes[curSection] == null
+			? null : SONG.notes[curSection].altAnim;
+		NightmareVisionLegacySinging.sing(note, cast field.owner, gf, player, singAnimations, noteRows,
+			ghostsAllowed, sectionAlt, function(name, value) return nightmareVisionScripts.callHistorical('onGhostAnim', [name, value]));
 	}
 
 	function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView,

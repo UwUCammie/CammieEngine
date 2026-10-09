@@ -29,7 +29,7 @@ class PsychCharacterSkipDanceTest(unittest.TestCase):
         dance = extract_method(character_source, "public function dance(forced:Bool = false)")
 
         self.assertIn("public var skipDance:Bool = false;", character_source)
-        self.assertLess(dance.index("if (skipDance) return;"),
+        self.assertLess(dance.index("if (skipDance ||"),
                         dance.index('callInterp("dance", [this])'))
         self.assertIn("PsychCharacterDanceCompat.renderStandardScript(charJson", module_source)
         self.assertIn("PsychCharacterDanceCompat.renderAnimateDance(charJson)", module_source)
@@ -65,6 +65,9 @@ class PlayState {
 }
 class Character {
   public var skipDance:Bool = false;
+  public var nightmareVisionLegacyActor:Bool = false;
+  public var animTimer:Float = 0;
+  public var voicelining:Bool = false;
   var sourceDanceNightmare:Bool = false;
   public var nightmareVisionCharacterData:Dynamic = null;
   public var codenameLiveDefinition:Dynamic = null;
@@ -125,6 +128,22 @@ class Main {
     stage.execute(new Parser().parseString('char.skipDance = true; char.dance();'));
     if (animate.skipDance != true || animate.danceCalls != 1)
       throw 'Animate imports should use the same runtime gate';
+
+    for (mask in 0...32) {
+      var legacy = new Character('legacy');
+      legacy.nightmareVisionLegacyActor = true;
+      legacy.skipDance = (mask & 1) != 0;
+      legacy.debugMode = (mask & 2) != 0;
+      legacy.specialAnim = (mask & 4) != 0;
+      legacy.animTimer = (mask & 8) != 0 ? 0.5 : 0;
+      legacy.voicelining = (mask & 16) != 0;
+      legacy.dance(true);
+      if (legacy.danceCalls != (mask == 0 ? 1 : 0)) throw 'historical dance lock '+mask;
+    }
+    var modern = new Character('modern');
+    modern.animTimer = 0.5; modern.voicelining = true;
+    modern.dance();
+    if (modern.danceCalls != 1) throw 'historical locks leaked into modern dance';
 
     // A retired FlxSprite can remain in an owner callback list for one beat.
     // Its animation controller is already cleared by destroy().

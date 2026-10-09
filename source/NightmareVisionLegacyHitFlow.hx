@@ -26,7 +26,7 @@ class NightmareVisionLegacyHitFlow {
 			state.health += note.hitHealth * state.healthGain;
 		} else state.camZooming = true;
 
-		state.prepareNightmareVisionHitSingers(note, field, field.ID, false);
+		state.prepareNightmareVisionLegacyHitSingers(note, field, player);
 		if (player) note.wasGoodHit = true;
 		if (player || PlayState.SONG.needsVoices) state.setSourceVocalVolume('player', 1);
 		if (!player) {

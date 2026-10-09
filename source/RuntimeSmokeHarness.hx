@@ -1853,6 +1853,16 @@ class RuntimeSmokeHarness {
 
 	static function onFramePreDraw():Void {
 		drawStart = nowMs();
+		if (!finished && playStateReady && songStartObserved && config().noteRenderReadback
+			&& Conductor.songPosition >= config().noteRenderAfterMs && Std.isOfType(FlxG.state, PlayState)) {
+			try {
+				var state:PlayState = cast FlxG.state;
+				if (!noteRenderReadbackVisits.exists(visitsStarted)
+					&& (config().sceneRenderReadback || noteRenderCandidate(state) != null))
+					RuntimeSmokeLegacySinging.prepare(state);
+			}
+			catch (error:Dynamic) fail('legacy-singing-prepare', Std.string(error));
+		}
 	}
 
 	static function onFramePostDraw():Void {
@@ -1901,8 +1911,12 @@ class RuntimeSmokeHarness {
 			captureNoteRenderReadback(null, visitsStarted);
 			return;
 		}
-		if (state.notes == null || state.notes.members == null)
-			return;
+		var note = noteRenderCandidate(state);
+		if (note != null) captureNoteRenderReadback(note, visitsStarted);
+	}
+
+	static function noteRenderCandidate(state:PlayState):Note {
+		if (state.notes == null || state.notes.members == null) return null;
 		var captureSustain = false;
 		#if sys
 		captureSustain = Sys.getEnv('CAMMIE_LEGACY_SUSTAIN_SMOKE') == '1' || Sys.getEnv('CAMMIE_LEGACY_PIXEL_SMOKE') == '1';
@@ -1911,9 +1925,9 @@ class RuntimeSmokeHarness {
 			if (note == null || !note.exists || !note.visible || !note.active || note.alpha <= 0
 				|| note.isSustainNote != captureSustain || note.frames == null || !note.isOnScreen())
 				continue;
-			captureNoteRenderReadback(note, visitsStarted);
-			return;
+			return note;
 		}
+		return null;
 	}
 
 	/** Optional visual evidence while an authored script holds the countdown. */
@@ -2006,6 +2020,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokeLegacyNoteScript.verify();
 			RuntimeSmokeLegacyHitNotifications.verify(note);
 			RuntimeSmokeLegacyDefaultHit.verify(note);
+			RuntimeSmokeLegacySinging.verify();
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));

@@ -71,6 +71,7 @@ class PlayState {
  public function hurtNightmareVisionLegacySinger(n:Note,f:NightmareVisionPlayFieldView){if(!n.noMissAnimation&&n.noteType=='Hurt Note')events.push('hurt');}
  public function popUpScore(n:Dynamic,?note:Note,p:Bool=true,b:Bool=false,?f:NightmareVisionPlayFieldView){events.push('score');}
  public function prepareNightmareVisionHitSingers(n:Note,f:NightmareVisionPlayFieldView,id:Int,b:Bool){events.push('sing');}
+ public function prepareNightmareVisionLegacyHitSingers(n:Note,f:NightmareVisionPlayFieldView,p:Bool){events.push('sing');}
  public function setSourceVocalVolume(role:String,v:Float){vocals.volume=v;}
  public function dispatchHistoricalNightmareNoteHit(n:Note,callback:String){callOnLuas(callback,[]);}
  public function callOnLuas(callback:String,args:Array<Dynamic>):Dynamic {

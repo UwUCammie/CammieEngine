@@ -471,6 +471,8 @@ class Note extends DynamicSprite {
 	/** NMV source marker, separate from native retirement and liveness. */
 	@:keep public var garbage:Bool = false;
 	public var prevNote:Note;
+	@:keep public var nextNote:Note;
+	@:keep public var row:Int = 0;
 	/** Source note/hold views keep the authored chain available to scripts. */
 	@:keep public var parent:Note = null;
 	@:keep public var tail:Array<Note> = [];
@@ -896,6 +898,10 @@ class Note extends DynamicSprite {
 		if (sourceTimingMode == 2) {
 			visualTime = PlayState.instance.sourceNoteVisualTime(this.strumTime);
 			nightmareVisionLegacyGeometry = PlayState.instance.sourceUsesLegacyNoteGeometry();
+			if (nightmareVisionLegacyGeometry) {
+				if (!isSustainNote) this.prevNote = this;
+				this.prevNote.nextNote = this;
+			}
 		}
 		if (authoredAnimSuffix != null && StringTools.trim(authoredAnimSuffix) != '')
 			animSuffix = StringTools.trim(authoredAnimSuffix);
