@@ -84,6 +84,8 @@ class NightmareVisionPlayFieldView {
 	/** Stable live membership array, synchronized by the host when notes enter/leave. */
 	public var notes(get, never):Array<Dynamic>;
 	var noteMembers:Array<Dynamic> = [];
+	/** Historical fields use an assignable callback, independently of modern signals. */
+	@:keep public var noteHitCallback:(Dynamic, NightmareVisionPlayFieldView)->Void;
 	public var onNoteHit:FlxTypedSignal<(Dynamic, NightmareVisionPlayFieldView)->Void>;
 	public var onNoteMiss:FlxTypedSignal<(Dynamic, NightmareVisionPlayFieldView)->Void>;
 	public var onMissPress:FlxTypedSignal<Int->Void>;
@@ -133,6 +135,18 @@ class NightmareVisionPlayFieldView {
 	public function bindNativeLifecycle(hooks:NightmareVisionPlayFieldHooks):Void {
 		if (destroyed) throw '[nightmare-vision-playfield] Cannot bind a destroyed field';
 		nativeHooks = hooks;
+	}
+	/** Called by input after admission; replacing the historical callback replaces all hit effects. */
+	public function dispatchNoteHit(note:Dynamic):Void {
+		if (legacyGroupCameras) {
+			if (noteHitCallback == null) throw '[nightmare-vision-playfield] Historical noteHitCallback is null';
+			noteHitCallback(note, this);
+		} else onNoteHit.dispatch(note, this);
+	}
+	/** Historical sustains use their source hit window; modern fields wait for the timestamp. */
+	public function canAutoHit(note:Dynamic, position:Float):Bool {
+		return inControl && autoPlayed && !note.wasGoodHit && !note.ignoreNote
+			&& (legacyGroupCameras && note.isSustainNote ? Reflect.getProperty(note, 'canBeHit') == true : note.strumTime <= position);
 	}
 	function missingHook(name:String):Void
 		throw '[nightmare-vision-playfield] Unbound native lifecycle: ' + name;
@@ -203,7 +217,7 @@ class NightmareVisionPlayFieldView {
 	public function getNotes(dir:Int, ?get:Dynamic->Bool):Array<Dynamic> {
 		var collected:Array<Dynamic> = [];
 		for (note in notes) if (note != null && note.alive && note.noteData == dir
-			&& !note.wasGoodHit && !note.tooLate && note.canBeHit && (get == null || get(note))) collected.push(note);
+			&& !note.wasGoodHit && !note.tooLate && Reflect.getProperty(note, 'canBeHit') == true && (get == null || get(note))) collected.push(note);
 		return collected;
 	}
 	public function getTapNotes(dir:Int):Array<Dynamic>
@@ -227,6 +241,7 @@ class NightmareVisionPlayFieldView {
 			underlaySpr.destroy();
 			underlaySpr = null;
 		}
+		noteHitCallback = null;
 		nativeHooks = null;
 		defaultAuto = null;
 		noteMembers.resize(0);

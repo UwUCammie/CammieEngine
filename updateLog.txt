@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Honor historical NV playfield hit callback replacement and sustain hit-window admission through the shared field adapter, without invoking modern signal effects after a replacement.
 	- Restore historical NV public splash spawning, global pool ownership and source hit timing through shared services; preserve owner-local preferences and writable historical rating values.
 	- Restore historical NV splash constructors, coordinate/HSL setup and per-spawn noteskin callbacks through shared sprite and pool services, preserving modern NV behavior.
 	- Restore historical NV custom note animation hooks and source super behavior through shared script execution, retaining custom frames, playback settings and pixel reload ordering.

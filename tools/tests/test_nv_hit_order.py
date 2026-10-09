@@ -266,6 +266,10 @@ class NightmareVisionPlayFieldView {
  public var notes:Array<NVNote> = [];
  public var spawnTrace:Array<String>;
  public function spawnSusSplash(note:Dynamic,isPlayer:Bool=false):Dynamic {spawnTrace.push('sustain-splash');return null;}
+ public var legacyGroupCameras=false;
+ public var noteHitCallback:(Dynamic,NightmareVisionPlayFieldView)->Void;
+ __FIELD_DISPATCH__
+ __FIELD_AUTO__
  public var onNoteHit:FieldHitSignal = new FieldHitSignal();
  public function new(id:Int, playerControls:Bool) { ID=id; this.playerControls=playerControls; }
  public function addNote(note:NVNote):Void notes.push(note);
@@ -376,7 +380,7 @@ class Main {
   fields[0].strumline = playerStrums;
   fields[1].strumline = enemyStrums;
   fields[2].strumline = new Strumline([new Strum(0, events), new Strum(1, events)]);
-  for (field in fields) field.onNoteHit.add(function(note, selectedField) nightmareVisionFieldHitSignal(note, selectedField));
+  for (field in fields) {field.noteHitCallback=nightmareVisionFieldHitSignal;field.onNoteHit.add(function(note, selectedField) nightmareVisionFieldHitSignal(note, selectedField));}
   notes = new NoteGroup(events);
   FlxG.sound.events = events;
  }
@@ -441,12 +445,35 @@ __AUTO_LOOP__
    && stoppedTap.externalListeners == 1,
    'exact side STOP cancelled global only, or incorrectly cancelled host completion');
 
-  var legacy=new Main();legacy.nightmareVisionLegacyFieldCameras=true;legacy.fields[0].showRatings=false;
+  var replaced=new Main();replaced.nightmareVisionLegacyFieldCameras=true;
+  var bank=replaced.fields[0];bank.legacyGroupCameras=true;bank.autoPlayed=true;
+  var custom=replaced.newNote(98);custom.strumTime=100;custom.isSustainNote=true;
+  var previous:Dynamic={sentinel:true};replaced.nightmareVisionFieldHitContext=previous;
+  var calls=0;
+  bank.noteHitCallback=function(n,f) {
+   calls++;check(n==custom&&f==bank,'historical callback identity');
+   check(replaced.nightmareVisionFieldHitContext.field==bank,'missing current hit context');
+  };
+  replaced.hitNightmareVisionNote(custom,true,true);
+  check(calls==1 && replaced.events.length==0 && !custom.wasGoodHit && !custom.nightmareVisionHitDispatched,
+   'source hold window callback was skipped or native effects ran after replacement');
+  check(replaced.nightmareVisionFieldHitContext==previous,'hit context not restored');
+  custom.canBeHit=false;replaced.hitNightmareVisionNote(custom,true,true);
+  replaced.hitNightmareVisionNote(custom,true,false,true);
+  check(calls==1,'historical callback admitted out-of-window automatic or manual sustain');
+  custom.canBeHit=true;custom.isSustainNote=false;replaced.hitNightmareVisionNote(custom,true,true);
+  check(calls==1,'historical automatic tap admitted before its timestamp');
+  custom.strumTime=0;bank.noteHitCallback=function(n,f)throw 'authored-hit';
+  var thrown=false;try replaced.hitNightmareVisionNote(custom,true,true)catch(e:Dynamic)thrown=Std.string(e)=='authored-hit';
+  check(thrown && replaced.nightmareVisionFieldHitContext==previous && replaced.events.length==0,
+   'source callback error swallowed, context leaked, or native fallback ran');
+
+  var legacy=new Main();legacy.nightmareVisionLegacyFieldCameras=true;legacy.fields[0].legacyGroupCameras=true;legacy.fields[0].showRatings=false;
   var legacyNote=legacy.newNote(100);legacy.hitNightmareVisionNote(legacyNote,true);
   check(legacy.events.indexOf('historical-score')>=0 && legacy.events.indexOf('historical-score')<legacy.events.indexOf('health') && legacy.combo==1,'historical score occurs before health and callbacks despite modern showRatings flag');
-  var legacyHazard=new Main();legacyHazard.nightmareVisionLegacyFieldCameras=true;var lh=legacyHazard.newNote(101);lh.hitCausesMiss=true;legacyHazard.hitNightmareVisionNote(lh,true);
+  var legacyHazard=new Main();legacyHazard.nightmareVisionLegacyFieldCameras=true;legacyHazard.fields[0].legacyGroupCameras=true;var lh=legacyHazard.newNote(101);lh.hitCausesMiss=true;legacyHazard.hitNightmareVisionNote(lh,true);
   check(legacyHazard.events.indexOf('historical-splash')>legacyHazard.events.indexOf('hazard-miss') && legacyHazard.events.indexOf('historical-score')<0,'historical hazard splash after miss and without normal scoring');
-  var legacyDisabled=new Main();legacyDisabled.nightmareVisionLegacyFieldCameras=true;var ld=legacyDisabled.newNote(102);ld.hitCausesMiss=true;ld.noteSplashDisabled=true;legacyDisabled.hitNightmareVisionNote(ld,true);
+  var legacyDisabled=new Main();legacyDisabled.nightmareVisionLegacyFieldCameras=true;legacyDisabled.fields[0].legacyGroupCameras=true;var ld=legacyDisabled.newNote(102);ld.hitCausesMiss=true;ld.noteSplashDisabled=true;legacyDisabled.hitNightmareVisionNote(ld,true);
   check(legacyDisabled.events.indexOf('historical-splash')<0,'historical disabled hazard suppresses splash');
   var extra = new Main();
   var extraNote = extra.newNote(12, 2);
@@ -568,5 +595,8 @@ __AUTO_LOOP__
         # Source PlayState references Note.NOTE_AMOUNT when mapping flattened
         # field lanes. Keep the fixture's Note model local without loading the
         # full sprite class and its Flixel dependencies.
+        field_source = (ROOT / "source/NightmareVisionPlayFieldView.hx").read_text(encoding="utf-8")
+        fixture = fixture.replace("__FIELD_DISPATCH__", extract_method(field_source, "public function dispatchNoteHit("))
+        fixture = fixture.replace("__FIELD_AUTO__", extract_method(field_source, "public function canAutoHit("))
         fixture = re.sub(r"\bNote\b", "NVNote", fixture)
         self.compile_haxe(fixture)

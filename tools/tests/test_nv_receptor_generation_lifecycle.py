@@ -233,6 +233,7 @@ class Scripts {
  __DISPATCH__
 }
 class Main {
+ function nightmareVisionFieldHitSignal(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
  public var SONG:Dynamic={lanes:3,uiType:'normal'};
  public var nightmareVisionScripts:Scripts=new Scripts();
  public var nightmareVisionPrefs:Dynamic={view:{quants:false,opponentStrums:true,middleScroll:false}};
@@ -362,6 +363,8 @@ class Main {
      var p=old.nightmareVisionLegacyReceptors.player,o=old.nightmareVisionLegacyReceptors.opponent;
      check(p!=null&&o!=null&&p.members.length==0&&o.members.length==0&&old.playFields.length==0,'both empty captured fields before pre');
      check(o.baseAlpha==(!shown?0:middle?0.35:1),'opponent visibility set before authored pre');
+     check(p.noteHitCallback!=null&&o.noteHitCallback!=null,'historical callbacks installed before source pre hook');
+     o.noteHitCallback=null;
      var replaced=old.createNightmareVisionDefaultField(0);replaced.ID=9;replaced.keyCount=3;
      old.nightmareVisionLegacyReceptors.player=replaced;o.baseAlpha=0.7;
      return 1;
@@ -371,6 +374,7 @@ class Main {
      var p=old.nightmareVisionLegacyReceptors.player,o=old.nightmareVisionLegacyReceptors.opponent;
      check(old.playFields.members[0]==o&&old.playFields.members[1]==p,'historical opponent/player display order');
      check(p.ID==9&&p.members.length==3&&o.members.length==4&&o.baseAlpha==0.7,'live pointer replacement and pre mutations retained');
+     check(p.noteHitCallback==null&&o.noteHitCallback==null,'publication overwrote authored callback or invented one on replacement field');
      old.playFields.members.reverse();old.syncNightmareVisionPlayFieldCollection();
      check(old.modManager.receptors==previousBanks,'post callback still precedes modifier-bank publication');
     }

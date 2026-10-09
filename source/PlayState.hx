@@ -939,6 +939,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (!nightmareVisionPrefs.view.opponentStrums) opponent.baseAlpha = 0;
 			else if (nightmareVisionPrefs.view.middleScroll) opponent.baseAlpha = 0.35;
 		}
+		nightmareVisionLegacyReceptors.player.noteHitCallback = nightmareVisionFieldHitSignal;
+		nightmareVisionLegacyReceptors.opponent.noteHitCallback = nightmareVisionFieldHitSignal;
 		callNightmareVision('preReceptorGeneration', []);
 		// Resolve the live pointers at each step: source callbacks can replace them.
 		nightmareVisionLegacyReceptors.opponent.generateReceptors();
@@ -22597,7 +22599,7 @@ void main(void) {
 
 	/**
 	 * Nightmare Vision's PlayState loop dispatches each due, non-ignored
-	 * autoplay note through the same PlayField hit signal as manual input.
+	 * autoplay note through the same source field dispatcher as manual input.
 	 * Drive this admission on the compatibility source clock so uncapped render
 	 * rates cannot repeat early-return hazard callbacks thousands of times.
 	 */
@@ -22612,8 +22614,7 @@ void main(void) {
 			note.sourcePlayfieldPlayerControlled = field.playerControls;
 			note.sourcePlayfieldAutoPlay = field.autoPlayed;
 			note.autoHitSuppressed = !field.inControl;
-			if (!field.inControl || !field.autoPlayed || note.wasGoodHit || note.ignoreNote
-				|| note.strumTime > Conductor.songPosition) continue;
+			if (!field.canAutoHit(note, Conductor.songPosition)) continue;
 			hitNightmareVisionNote(note, field.playerControls, true);
 		}
 	}
@@ -25508,10 +25509,15 @@ void main(void) {
 			|| note.sourcePlayfieldIndex < 0) return;
 		var field = nightmareVisionFieldForNote(note);
 		if (field == null) return;
+		// The historical callback can replace native effects completely, so admit
+		// input before invoking it. Do not run the modern signal as a fallback.
+		if (nightmareVisionLegacyFieldCameras && (!field.inControl
+			|| (autoAttempt ? !field.canAutoHit(note, Conductor.songPosition)
+				: note.wasGoodHit || !note.canBeHit || note.tooLate))) return;
 		var previous = nightmareVisionFieldHitContext;
 		nightmareVisionFieldHitContext = {field:field, playerOne:playerOne,
 			autoAttempt:autoAttempt, sourceHold:sourceHold};
-		try field.onNoteHit.dispatch(note, field) catch (error:Dynamic) {
+		try field.dispatchNoteHit(note) catch (error:Dynamic) {
 			nightmareVisionFieldHitContext = previous;
 			throw error;
 		}
