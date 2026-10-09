@@ -36,7 +36,8 @@ class NightmareVisionModchartTransform {
 		return noteWidth * (data - (keys / 2) + 0.5);
 
 	public static function baseX(context:NightmareVisionModchartContext, data:Int, player:Int):Float
-		return centerX(context.width, context.noteWidth, context.keys, player)
+		return context.legacyCoordinates ? NightmareVisionPlayfieldLayout.legacyBaseX(data, player, context.width, context.noteWidth)
+			: centerX(context.width, context.noteWidth, context.keys, player)
 			+ strumX(context.noteWidth, context.keys, data);
 
 	public static function baseY(noteWidth:Float):Float return noteWidth * 0.5 + 50;
@@ -65,7 +66,7 @@ class NightmareVisionModchartTransform {
 		if (object == null || !liveActive(object)) return pos;
 		pos.z = 0;
 		pos.x = baseX(context, object.data, object.player);
-		pos.y = baseY(context.noteWidth) + visualDiff;
+		pos.y = (context.legacyCoordinates ? 50 : baseY(context.noteWidth)) + visualDiff;
 
 		for (name in registry.executionList(object.player)) {
 			if (!liveActive(object) || exclusions != null && exclusions.indexOf(name) >= 0) continue;
@@ -94,9 +95,13 @@ class NightmareVisionModchartTransform {
 		beat:Float):Void {
 		if (object == null || position == null) return;
 		object.livePosition = position;
-		object.x = position.x - object.width * 0.5;
-		object.y = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain
-			? position.y : position.y - object.height * 0.5;
+		// Historical updateObject only runs modifiers/centering. Gameplay assigns
+		// the resulting position afterward; direct script calls preserve x/y.
+		if (!context.legacyCoordinates) {
+			object.x = position.x - object.width * 0.5;
+			object.y = object.kind == NightmareVisionModchartObject.NOTE && object.isSustain
+				? position.y : position.y - object.height * 0.5;
+		}
 
 		for (name in registry.executionList(object.player)) {
 			if (!liveActive(object)) continue;
@@ -114,8 +119,8 @@ class NightmareVisionModchartTransform {
 
 		object.centerOriginAndOffsets = true;
 		if (object.kind == NightmareVisionModchartObject.NOTE) {
-			object.spriteOffsetX = object.typeOffsetX;
-			object.spriteOffsetY = object.typeOffsetY;
+			object.spriteOffsetX = context.legacyCoordinates ? object.legacyTypeOffsetX : object.typeOffsetX;
+			object.spriteOffsetY = context.legacyCoordinates ? object.legacyTypeOffsetY : object.typeOffsetY;
 		}
 	}
 
@@ -320,11 +325,24 @@ class NightmareVisionModchartTransform {
 	function applyReverse(context:NightmareVisionModchartContext, object:NightmareVisionModchartObject,
 		pos:NightmareVisionModchartVector, visualDiff:Float):Void {
 		var reverse = reverseFactor(context, object.data, object.player);
-		var shift = scale(reverse, 0, 1, 50 + context.noteWidth * 0.5,
-			context.height - 50 - context.noteWidth * 0.5);
-		shift = scale(sub('reverse', 'centered', object.player), 0, 1, shift, context.height / 2);
+		var shift = scale(reverse, 0, 1, context.legacyCoordinates ? 50 : 50 + context.noteWidth * 0.5,
+			context.legacyCoordinates ? context.height - 150 : context.height - 50 - context.noteWidth * 0.5);
+		shift = scale(sub('reverse', 'centered', object.player), 0, 1, shift, context.height / 2 - (context.legacyCoordinates ? 56 : 0));
 		var multiplier = scale(reverse, 0, 1, 1, -1);
 		pos.y = shift + visualDiff * multiplier;
+		if (context.legacyCoordinates && object.kind == NightmareVisionModchartObject.NOTE && object.isSustain && reverse > 0) {
+			var crochet = 60000 / context.songBpm;
+			var speed = context.songSpeed * object.multSpeed;
+			var adjusted = pos.y;
+			if (object.isSustainEnd) {
+				adjusted += 10.5 * (crochet * 0.0025) * 1.5 * speed + 46 * (speed - 1);
+				adjusted -= 46 * (1 - crochet / 600) * speed;
+				adjusted -= 19;
+			}
+			adjusted += context.noteWidth * 0.5 - 60.5 * (speed - 1);
+			adjusted += 27.5 * (context.songBpm * 0.01 - 1) * (speed - 1);
+			pos.y = lerp(pos.y, adjusted, reverse);
+		}
 	}
 
 	function applyOpponentSwap(context:NightmareVisionModchartContext,

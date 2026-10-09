@@ -105,7 +105,7 @@ class Main {
  function initializeNightmareVisionFieldSplashes(field:NightmareVisionPlayFieldView):Void {}
  function bindNightmareVisionPlayFieldLifecycle(field:NightmareVisionPlayFieldView):Void {
   nightmareVisionOwnedFields.push(field);
-  field.bindNativeLifecycle({generateReceptors:function(f) {
+  field.bindNativeLifecycle({noteWidth:function()return Note.swagWidth,generateReceptors:function(f) {
    f.strumline.regenerate(); nightmareVisionConfigureFieldReceptors(f);
   },clearReceptors:function(f) f.strumline.members.resize(0),fadeIn:function(f,skip) {}});
  }
@@ -218,6 +218,7 @@ class Strumline {
  public function forEachReceptor(fn:StrumNote->Void) { for(s in members) fn(s); }
 }
 class StrumNote {
+ public var x:Float=0;public var y:Float=0;
  public var width:Float=112;public function setGraphicSize(w:Int):Void width=w;public function updateHitbox():Void {}
  public var colorSwap:Main.NightmareVisionLegacyColorSwap;
  public var ID:Int=0;

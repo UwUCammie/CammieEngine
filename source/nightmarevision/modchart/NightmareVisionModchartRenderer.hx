@@ -100,7 +100,11 @@ class NightmareVisionModchartRenderer {
 		var position = transform.getPositionInto(context, object, visualDiff, timeDiff,
 			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
-		copySpriteResult(note, object, position, baseline, NightmareVisionModchartObject.NOTE);
+		if (context.legacyCoordinates) {
+			object.x = position.x + object.sourceOffsetX;
+			object.y = position.y + object.sourceOffsetY;
+		}
+		copySpriteResult(note, object, position, baseline, NightmareVisionModchartObject.NOTE, !context.legacyCoordinates, context.legacyCoordinates);
 
 		var state = baseline.state;
 		if (object.isSustain) {
@@ -160,6 +164,11 @@ class NightmareVisionModchartRenderer {
 		var object = new NightmareVisionModchartObject(kind);
 		object.data = data;
 		object.player = player;
+		if (context.legacyCoordinates && sprite != null) {
+			object.isSustain = property(sprite, 'isSustainNote') == true;
+			object.isSustainEnd = StringTools.endsWith(currentAnimation(sprite), 'end');
+			object.multSpeed = number(property(sprite, 'multSpeed'), 1);
+		}
 		return transform.applyInstancePosition(context, entry, object, position, time, diff, timeDiff, beat);
 	}
 
@@ -245,7 +254,7 @@ class NightmareVisionModchartRenderer {
 		var object = snapshot(sprite, kind, player, baseline, new NightmareVisionModchartObject(kind));
 		readLiveObject(sprite, object, baseline);
 		transform.updateObject(context, object, position, beat);
-		copySpriteResult(sprite, object, position, baseline, kind, false);
+		copySpriteResult(sprite, object, position, baseline, kind, false, context.legacyCoordinates);
 		applyVisualResult(sprite, baseline.state);
 	}
 
@@ -272,7 +281,8 @@ class NightmareVisionModchartRenderer {
 		var position = transform.getPositionInto(context, object, visualDiff, timeDiff,
 			context.beat, baseline.position);
 		transform.updateObject(context, object, position, context.beat);
-		copySpriteResult(sprite, object, position, baseline, kind);
+		if (context.legacyCoordinates) { object.x = position.x; object.y = position.y; }
+		copySpriteResult(sprite, object, position, baseline, kind, !context.legacyCoordinates, context.legacyCoordinates);
 		applyVisualResult(sprite, baseline.state);
 		return baseline.state;
 	}
@@ -361,6 +371,10 @@ class NightmareVisionModchartRenderer {
 		object.scaleY = baseline.scaleY;
 		object.x = number(field(sprite, 'x'));
 		object.y = number(field(sprite, 'y'));
+		object.sourceOffsetX = number(property(sprite, 'offsetX'));
+		object.sourceOffsetY = number(property(sprite, 'offsetY'));
+		object.legacyTypeOffsetX = number(property(sprite, 'typeOffsetX'));
+		object.legacyTypeOffsetY = number(property(sprite, 'typeOffsetY'));
 		object.typeOffsetX = numberFieldWithFallback(sprite, 'offsetX', 'typeOffsetX');
 		object.typeOffsetY = numberFieldWithFallback(sprite, 'offsetY', 'typeOffsetY');
 		if (transform.registry.executionEntry != null) readLiveObject(sprite, object, baseline);
@@ -386,6 +400,10 @@ class NightmareVisionModchartRenderer {
 		object.multSpeed = number(property(sprite, 'multSpeed'), object.multSpeed);
 		object.wasGoodHit = property(sprite, 'wasGoodHit') == true;
 		object.strumTime = number(property(sprite, 'strumTime'), object.strumTime);
+		object.sourceOffsetX = number(property(sprite, 'offsetX'));
+		object.sourceOffsetY = number(property(sprite, 'offsetY'));
+		object.legacyTypeOffsetX = number(property(sprite, 'typeOffsetX'));
+		object.legacyTypeOffsetY = number(property(sprite, 'typeOffsetY'));
 		object.typeOffsetX = numberFieldWithFallback(sprite, 'offsetX', 'typeOffsetX');
 		object.typeOffsetY = numberFieldWithFallback(sprite, 'offsetY', 'typeOffsetY');
 		if (object.kind == NightmareVisionModchartObject.NOTE)
@@ -424,8 +442,9 @@ class NightmareVisionModchartRenderer {
 
 	function copySpriteResult(sprite:Dynamic, object:NightmareVisionModchartObject,
 		position:NightmareVisionModchartVector, baseline:NightmareVisionSpriteBaseline,
-		kind:String, applySkinOffsets:Bool = true):Void {
+		kind:String, applySkinOffsets:Bool = true, legacyCoordinates:Bool = false):Void {
 		var state = baseline.state;
+		state.legacyCoordinates = legacyCoordinates;
 		state.position = position.copy();
 		state.baseScaleX = object.baseScaleX;
 		state.baseScaleY = object.baseScaleY;
@@ -451,9 +470,10 @@ class NightmareVisionModchartRenderer {
 			setField(sprite, 'angle', object.angle);
 
 		if (object.centerOriginAndOffsets) {
+			if (legacyCoordinates && kind == NightmareVisionModchartObject.NOTE) callNoArg(sprite, 'updateHitbox');
 			callNoArg(sprite, 'centerOrigin');
 			callNoArg(sprite, 'centerOffsets');
-			if (kind == NightmareVisionModchartObject.NOTE && object.isSustain) {
+			if (!legacyCoordinates && kind == NightmareVisionModchartObject.NOTE && object.isSustain) {
 				setNestedField(sprite, 'origin', 'y', 0);
 				setNestedField(sprite, 'offset', 'y', 0);
 			}

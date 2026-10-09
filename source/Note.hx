@@ -333,6 +333,8 @@ class Note extends DynamicSprite {
 	@:keep public var copyX:Bool = true;
 	@:keep public var copyY:Bool = true;
 	@:keep public var copyAngle:Bool = true;
+	@:keep public var typeOffsetX:Float = 0;
+	@:keep public var typeOffsetY:Float = 0;
 	@:keep public var offsetX:Float = 0;
 	@:keep public var offsetY:Float = 0;
 	@:keep public var offsetAngle:Float = 0;

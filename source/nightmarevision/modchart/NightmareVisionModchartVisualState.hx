@@ -3,6 +3,7 @@ package nightmarevision.modchart;
 /** Source-shaped render values retained when the host sprite has no matching field. */
 class NightmareVisionModchartVisualState {
 	public var position:NightmareVisionModchartVector = new NightmareVisionModchartVector();
+	public var legacyCoordinates:Bool = false;
 	public var alphaMod:Float = 1;
 	public var rgbFlash:Float = 0;
 	public var rgbAlpha:Float = 1;

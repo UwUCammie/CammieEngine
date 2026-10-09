@@ -654,6 +654,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (field.legacyGroupCameras) for (strum in field.members) if (strum != null) {
 			strum.setGraphicSize(Std.int(strum.width * field.scale));
 			strum.updateHitbox();
+			strum.x = NightmareVisionPlayfieldLayout.legacyEntranceX(field.baseX, strum.ID, field.swagWidth, field.offsetReceptors);
+			strum.y = field.baseY;
 		}
 	}
 
@@ -949,6 +951,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (field.underlaySpr != null) NightmareVisionSpriteMethods.bind(field.underlaySpr, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
 		field.baseX = NightmareVisionPlayfieldLayout.centerX(lane, nightmareVisionKeyCount(), FlxG.width, Note.swagWidth);
 		field.baseY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height, Note.swagWidth, downscroll);
+		if (nightmareVisionLegacyFieldCameras) {
+			var middle = nightmareVisionPrefs != null && nightmareVisionPrefs.view.middleScroll;
+			field.baseX = FlxG.width * (middle ? 0.5 : lane == 0 ? 0.75 : 0.25);
+			field.baseY = downscroll ? FlxG.height - 150 : 50;
+			field.offsetReceptors = lane == 1 && middle;
+		}
 		field.owner = lane == 1 ? dad : boyfriend;
 		field.player = lane;
 		field.isPlayer = lane != 1;
@@ -1223,7 +1231,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		manager.renderContext = function() return new NightmareVisionModchartContext(FlxG.width, FlxG.height,
 			manager.keys, Note.swagWidth, Conductor.songPosition, curDecBeat, effectiveScrollSpeed,
 			Conductor.crochet, nightmareVisionPrefs == null ? downscroll : nightmareVisionPrefs.view.downScroll,
-			nightmareVisionPrefs != null && nightmareVisionPrefs.view.lowQuality);
+			nightmareVisionPrefs != null && nightmareVisionPrefs.view.lowQuality, nightmareVisionLegacyFieldCameras, SONG.bpm);
 		manager.sourceRenderer = new NightmareVisionModchartRenderer(new NightmareVisionModchartTransform(manager.registry));
 	}
 
@@ -10232,6 +10240,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 						graphic.apply(cast sprite);
 					}
 					if (Std.isOfType(sprite, NightmareVisionSustainSplash) || Std.isOfType(sprite, NightmareVisionNoteSplash)) return;
+					if (state.legacyCoordinates) {
+						sprite.offset.x += state.spriteOffsetX + animationX;
+						sprite.offset.y += state.spriteOffsetY + animationY;
+						return;
+					}
 					// FunkinSprite subtracts transformed sprite/animation offsets in screen coordinates.
 					var x = (state.spriteOffsetX + animationX) * sprite.scale.x / state.baseScaleX;
 					var y = (state.spriteOffsetY + animationY) * sprite.scale.y / state.baseScaleY;
@@ -10246,7 +10259,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function nightmareVisionRenderContext():NightmareVisionModchartContext {
 		return new NightmareVisionModchartContext(FlxG.width, FlxG.height, modManager == null ? Note.NOTE_AMOUNT : modManager.keys, Note.swagWidth,
-			Conductor.songPosition, curDecBeat, effectiveScrollSpeed, Conductor.crochet, downscroll, false);
+			Conductor.songPosition, curDecBeat, effectiveScrollSpeed, Conductor.crochet, downscroll, false, nightmareVisionLegacyFieldCameras, SONG.bpm);
 	}
 
 	function syncNightmareVisionFollowingCameras():Void {

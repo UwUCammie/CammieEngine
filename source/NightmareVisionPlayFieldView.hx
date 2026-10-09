@@ -74,6 +74,7 @@ class NightmareVisionPlayFieldView {
 		if (legacyGroupCameras && nativeHooks != null && nativeHooks.scale != null) nativeHooks.scale(this, value);
 		return scale = value;
 	}
+	public var offsetReceptors:Bool = false;
 	public var baseAlpha:Float = 1;
 	public var holdDropLeniency:Float = 1 / 3;
 	/** Source PlayField's mutable, field-owned FIELD underlay sprite. */

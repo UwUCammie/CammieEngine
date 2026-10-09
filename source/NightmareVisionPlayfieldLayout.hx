@@ -6,6 +6,20 @@ package;
 	field ID uses the source engine's centered fallback.
 */
 class NightmareVisionPlayfieldLayout {
+	/** Historical getBaseX uses top-left positions and fixed four-column offsets. */
+	public static function legacyBaseX(direction:Int, player:Int, width:Float, noteWidth:Float):Float {
+		var x = width * 0.5 - noteWidth - 54 + noteWidth * direction;
+		if (player == 0) x += width * 0.5 - noteWidth * 2 - 100;
+		else if (player == 1) x -= width * 0.5 - noteWidth * 2 - 100;
+		return x - 56;
+	}
+
+	/** Initial source placement precedes the independent modifier-space position. */
+	public static function legacyEntranceX(baseX:Float, direction:Int, noteWidth:Float, split:Bool):Float {
+		var x = baseX - noteWidth * 0.5 - noteWidth * 2 + noteWidth * direction + 54;
+		return x + (split ? noteWidth * (direction > 1 ? 3 : -3) : 0);
+	}
+
 	public static inline function centerX(field:Int, keys:Int, screenWidth:Float, swagWidth:Float):Float {
 		return switch (field) {
 			case 0: screenWidth - swagWidth * (keys / 2) - 100 - 3;

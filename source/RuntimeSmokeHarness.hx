@@ -1993,10 +1993,31 @@ class RuntimeSmokeHarness {
 				}
 			});
 			verifyLegacyFieldScale(note);
+			verifyLegacyGeometry(note);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
+		#end
+	}
+
+	/** Check the active owner's actual manager context, not only pure formulas. */
+	static function verifyLegacyGeometry(note:Note):Void {
+		#if sys
+		if (Sys.getEnv('CAMMIE_LEGACY_GEOMETRY_SMOKE') != '1') return;
+		var state = PlayState.instance;
+		if (state == null || state.modManager == null || note == null) throw 'Missing native geometry context';
+		var field:NightmareVisionPlayFieldView = cast note.playField;
+		if (field == null || !field.legacyGroupCameras) throw 'Geometry probe requires historical owner';
+		var checked = 0;
+		for (player in 0...2) for (direction in 0...4) {
+			var expected = NightmareVisionPlayfieldLayout.legacyBaseX(direction, player, FlxG.width, Note.swagWidth);
+			if (Math.abs(state.modManager.getBaseX(direction, player) - expected) > 0.000001)
+				throw 'Owner manager did not select historical coordinate profile';
+			checked++;
+		}
+		emit('legacy_geometry_native_verified', {coordinates:checked,noteX:note.x,noteY:note.y,
+			positionOffset:[note.offsetX,note.offsetY],drawOffset:[note.typeOffsetX,note.typeOffsetY]});
 		#end
 	}
 

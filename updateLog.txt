@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Match historical NV receptor entrances, top-left gameplay coordinates and reverse positioning through the shared modifier renderer.
+	- Keep historical note position offsets separate from type and animation draw offsets, preserving modern coordinate behavior.
 	- Restore historical NV field scaling across receptors, taps, sustains and note removal through one shared compatibility helper.
 	- Preserve historical splash spacing/scaling and receptor entrance movement.
 	- Render historical NV notes and receptors with their source HSV colors, preserving scripted overrides and owner-specific quant preferences.
