@@ -1069,17 +1069,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var scripts(default, set):NightmareVisionScriptGroup;
 	var nightmareVisionLegacyRegistry:NightmareVisionLegacyScriptRegistry;
 	var nightmareVisionLegacyLuaHandles:haxe.ds.ObjectMap<hscript.Interp, NightmareVisionLegacyLuaScript> = new haxe.ds.ObjectMap();
-	var nightmareVisionLegacyLuaEvents:Map<String, Dynamic> = [];
 	var nightmareVisionLegacyLuaTypes:Map<String, Bool> = [];
 
 	function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry {
-		if (nightmareVisionLegacyRegistry == null) nightmareVisionLegacyRegistry = new NightmareVisionLegacyScriptRegistry(function() {
-			var result:Map<String, Dynamic> = [];
-			if (eventScripts != null) for (script in eventScripts.members) if (script != null) result.set(script.scriptName, script);
-			for (key => script in nightmareVisionLegacyLuaEvents) result.set(key, script);
-			return result;
-		}, function(name) return notetypeScripts.exists(name) || (eventScripts != null && eventScripts.exists(name))
-			|| nightmareVisionLegacyLuaEvents.exists(name) || nightmareVisionLegacyLuaTypes.exists(name));
+		if (nightmareVisionLegacyRegistry == null) nightmareVisionLegacyRegistry = new NightmareVisionLegacyScriptRegistry(null,
+			function(name) return notetypeScripts.exists(name) || nightmareVisionLegacyRegistry.eventScripts.exists(name)
+				|| nightmareVisionLegacyLuaTypes.exists(name));
 		return nightmareVisionLegacyRegistry;
 	}
 	function set_scripts(value:NightmareVisionScriptGroup):NightmareVisionScriptGroup {
@@ -1105,7 +1100,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return callHscript(name, args, key, true, null, true) ? interp.variables.get('__compatLastResult') : 0;
 		});
 		nightmareVisionLegacyLuaHandles.set(interp, handle);
-		if (StringTools.startsWith(key, 'compat_custom_event_')) nightmareVisionLegacyLuaEvents.set(handle.scriptName, handle);
+		if (StringTools.startsWith(key, 'compat_custom_event_')) legacyScriptRegistry().eventScripts.set(handle.scriptName, handle);
 		if (StringTools.startsWith(key, 'compat_custom_notetype_')) nightmareVisionLegacyLuaTypes.set(handle.scriptName, true);
 		legacyScriptRegistry().add(handle, true);
 	}
@@ -1627,7 +1622,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				events:function() return eventScripts, setEvents:function(value) return eventScripts = value,
 				notes:function() return noteTypeScripts, setNotes:function(value) return noteTypeScripts = value
 			});
-		if (nightmareVisionLegacyFieldCameras) nightmareVisionScripts.legacyNoteRegistry = function() return notetypeScripts;
+		if (nightmareVisionLegacyFieldCameras) {
+			nightmareVisionScripts.legacyNoteRegistry = function() return notetypeScripts;
+			nightmareVisionScripts.legacyEventRegistry = function() return legacyScriptRegistry().eventScripts;
+		}
 		initializeNightmareVisionLegacyNoteSkin();
 		// Seed the source default before onCreate can intentionally override it.
 		refreshNightmareVisionNoteKillOffset();
@@ -13161,6 +13159,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			sourceEventViews.push(event);
 			if (!pushedNames.exists(event.event)) {
 				var firstName = event.event;
+				if (nightmareVisionLegacyFieldCameras) nightmareVisionScripts.loadScope('event', firstName);
 				nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);
 				pushedNames.set(firstName, true);
 			}

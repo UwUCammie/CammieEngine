@@ -151,6 +151,12 @@ class Main {
   var reflected:NightmareVisionScriptModule=cast interpreter.variables.get("reflected");
   check(Std.isOfType(typeMade,NightmareVisionScriptModule) && Std.isOfType(reflected,NightmareVisionScriptModule),"actual source constructor paths");
   check(interpreter.sourceClassScope().resolveClass("funkin.scripts.FunkinScript")==NightmareVisionScriptModule,"real runtime Class identity");
+  var sentinel=new NightmareVisionScriptModule("same",new NightmareVisionScriptInterp(),context.report);paths.scriptInstances.set("same",sentinel);
+  var historical=NightmareVisionScriptModule.fromSource("same","function identity()return script.scriptName;",null,[],function(i){var m:NightmareVisionScriptModule=cast i.variables.get("script");m.historicalCalls=true;NightmareVisionScriptBindings.install(i,context);},context.report);
+  var modern=NightmareVisionScriptModule.fromSource("same","",null,[],context.configure,context.report);
+  check(historical.scriptName=="same"&&historical.call("identity",[])=="same"&&paths.scriptInstances.get("same")==sentinel,"historical authored names bypass modern uniqueness");
+  check(modern.scriptName=="same_1"&&paths.scriptInstances.get("same_1")==modern,"modern uniqueness preserved");
+  historical.destroy();check(paths.scriptInstances.get("same")==sentinel,"historical release does not remove modern entry");modern.destroy();paths.scriptInstances.remove("same");sentinel.destroy();
   var prior=reads;active=false;var failure:Dynamic=null;
   try interpreter.execute(new NightmareVisionScriptParser().parseString('FunkinScript.fromFile("owner/found.custom");')) catch(e:Dynamic) failure=e;
   check(failure=="released" && reads==prior,"stale captured factory fails before file IO");

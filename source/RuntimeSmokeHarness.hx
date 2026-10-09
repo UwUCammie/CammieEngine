@@ -2024,6 +2024,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokeLegacyDefaultHit.verify(note);
 			RuntimeSmokeLegacyMiss.verify();
 			RuntimeSmokeLegacyRegistry.verify();
+			RuntimeSmokeLegacyEventMap.verify();
 			RuntimeSmokeLegacySinging.verify();
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);

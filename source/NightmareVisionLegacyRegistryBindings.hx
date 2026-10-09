@@ -4,7 +4,7 @@ package;
 class NightmareVisionLegacyRegistryBindings {
 	public static function install(interp:NightmareVisionScriptInterp, state:Dynamic, stateClass:Dynamic,
 		registry:NightmareVisionLegacyScriptRegistry):Void {
-		for (name in ['funkyScripts','hscriptArray','luaArray']) {
+		for (name in ['funkyScripts','hscriptArray','luaArray','eventScripts']) {
 			var read = function():Dynamic return Reflect.getProperty(registry, name);
 			var write = function(value:Dynamic):Dynamic {Reflect.setProperty(registry, name, value);return value;};
 			interp.bindLiveValue(name, read, write, function() return state);

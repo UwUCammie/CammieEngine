@@ -28,7 +28,10 @@ class NightmareVisionScriptBindings {
 	public static function install(interp:NightmareVisionScriptInterp, context:NightmareVisionScriptContext):Void {
 		var scope = interp.sourceClassScope();
 		var current = interp.variables.get('script');
-		if (Std.isOfType(current, NightmareVisionScriptModule)) (cast current:NightmareVisionScriptModule).bindSourceInstances(context.paths.scriptInstances);
+		if (Std.isOfType(current, NightmareVisionScriptModule)) {
+			var module:NightmareVisionScriptModule = cast current;
+			if (!module.historicalCalls) module.bindSourceInstances(context.paths.scriptInstances);
+		}
 		interp.variables.set('FunkinScript', NightmareVisionScriptModule);
 		interp.bindImport('funkin.scripts.FunkinScript', NightmareVisionScriptModule);
 		scope.bindRuntimeClass('funkin.scripts.FunkinScript', NightmareVisionScriptModule);

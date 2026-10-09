@@ -40,7 +40,7 @@ class RuntimeSmokeLegacyHitNotifications {
 			var global = group.loadSource('global', "function goodNoteHit(n){record('global',n);n.noteScript=next;return 2;} function opponentNoteHit(n){return goodNoteHit(n);}",configure);
 			group.loadSource('later', "function goodNoteHit(n){record('WRONG-halt',n);} function opponentNoteHit(n){goodNoteHit(n);}",configure);
 			state.notetypeScripts.set('original',original);state.notetypeScripts.set('attached',attached);
-			state.eventScripts.addScript(event);global.set('next',attached);
+			state.eventScripts.addScript(event);state.legacyScriptRegistry().eventScripts.set(event.scriptName,event);global.set('next',attached);
 			for (key in ['compat_global_smoke','compat_custom_event_smoke','compat_custom_notetype_smoke']) {
 				var lua = new LuaCompatInterp();
 				lua.variables.set('__psychScoreGlobals',true);

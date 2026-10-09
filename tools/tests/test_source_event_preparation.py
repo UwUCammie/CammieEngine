@@ -146,6 +146,7 @@ class NvGlobalCall {
 class NvScriptHost {
  public var owner:PlayState;
  public function new(owner:PlayState) this.owner = owner;
+ public function loadScope(scope:String,name:String):Void owner.log.push("nv-load:"+scope+":"+name);
  public function callEvent(name:String, callback:String, args:Array<Dynamic>):Dynamic {
   owner.log.push('nv-module:' + callback + ':' + name);
   owner.nvModuleCalls.push(new NvCall(name, callback, args));
@@ -308,6 +309,7 @@ class Main {
   historical.songEvents = [new SourceRow(100, 'Mult SV', '2', '', 0), new SourceRow(200, 'Constant SV', '4', '', 1)];
   historical.nvModuleOffsets.set('Mult SV', 10.);
   historical.exerciseNvPrepare();
+  check(historical.log.indexOf('nv-load:event:Mult SV') < historical.log.indexOf('nv-module:onFirstPush:Mult SV') && historical.log.filter(v -> v.indexOf('nv-load:')==0).length==2,'historical preparation loads before dispatch exactly once per authored name');
   check(historical.speedChanges.length == 3 && historical.speedChanges[1].songTime == 95,
    'Historical SV must capture source noteOffset and early timing before note constructors');
   check(historical.speedChanges[2].position == 141.75 && historical.speedChanges[2].speed == .5,

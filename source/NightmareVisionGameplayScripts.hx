@@ -38,6 +38,7 @@ class NightmareVisionGameplayScripts {
 	var attempted:Map<String, Bool> = [];
 	/** Historical Map identity is script-writable; module loading and lifetime stay shared. */
 	public var legacyNoteRegistry:Void->Map<String, NightmareVisionScriptModule>;
+	public var legacyEventRegistry:Void->Map<String, Dynamic>;
 
 	public function new(parent:Dynamic, plan:NightmareVisionScriptPlan,
 		read:String->String,
@@ -80,12 +81,16 @@ class NightmareVisionGameplayScripts {
 				|| attempted.exists(entry.relative)) continue;
 			attempted.set(entry.relative, true);
 			try {
-				// Source initFunkinScript registers and initializes every script in
+				// Modern initFunkinScript registers and initializes each script in
 				// the main group first. Event and note-type registries then add that
 				// same instance, rebinding shared fields only after onLoad completes.
 				var scriptName = (scope == 'event' || scope == 'notetype')
 					&& entry.name != null && entry.name != ''
 					? entry.name : entry.relative;
+				if (scope == 'event' && legacyEventRegistry != null) {
+					loadHistoricalEvent(entry, scriptName);
+					continue;
+				}
 				var script = group.loadSource(scriptName, read(entry.path), function(interp) {
 					configure(interp, entry, null);
 					bindDynamicLoader(interp);
@@ -104,6 +109,19 @@ class NightmareVisionGameplayScripts {
 				if (script != null && actor != null) script.interp.variables.set('parent', actor);
 			} catch (error:Dynamic) report(entry.relative, 'load', error);
 		}
+	}
+
+	/** Historical HScript construction precedes map insertion; onLoad sees that
+	 * map entry before the same module joins the main/family arrays. */
+	function loadHistoricalEvent(entry:NightmareVisionScriptEntry, name:String):Void {
+		var script = NightmareVisionScriptModule.fromSource(name, read(entry.path), group.parent, group.sharedFields,
+			function(interp) {configure(interp, entry, null);bindDynamicLoader(interp);}, report);
+		if (script.parsingFailed()) {script.destroy();return;}
+		legacyEventRegistry().set(entry.name, script);
+		if (beforeLoad != null) beforeLoad(script.interp, entry);
+		script.callValue('onLoad', [entry.name]);
+		group.addScript(script, true);
+		eventGroup.addScript(script, true);
 	}
 
 	/** Load chart-selected note-type modules before note creation. They remain in
@@ -179,6 +197,10 @@ class NightmareVisionGameplayScripts {
 
 	/** Presence alone cannot claim an effect: the selected live value must be callable. */
 	public function hasEventCallback(name:String, callback:String):Bool {
+		if (legacyEventRegistry != null) {
+			var registry = legacyEventRegistry();
+			return registry.exists(name) && Reflect.isFunction(NightmareVisionScriptHandle.get(registry.get(name), callback));
+		}
 		var script = selectedEventScript(name);
 		return script != null && script.exists(callback)
 			&& Reflect.isFunction(script.interp.variables.get(callback));
@@ -186,6 +208,10 @@ class NightmareVisionGameplayScripts {
 
 	/** Event scripts receive onTrigger only for their own event. */
 	public function callEvent(name:String, callback:String, ?args:Array<Dynamic>):Dynamic {
+		if (legacyEventRegistry != null) {
+			var registry = legacyEventRegistry();
+			return registry.exists(name) ? NightmareVisionScriptHandle.call(registry.get(name), callback, args) : 0;
+		}
 		var script = selectedEventScript(name);
 		if (script == null || !script.exists(callback)) return NightmareVisionScriptGroup.CONTINUE_FUNC;
 		var result = script.callValue(callback, args);
@@ -201,7 +227,7 @@ class NightmareVisionGameplayScripts {
 		return group.callFiltered(event, args, ignoreStops, null, true, function(script) {
 			var registry = legacyNoteRegistry == null ? null : legacyNoteRegistry();
 			return (registry != null && registry.exists(script.name))
-				|| (eventGroup != null && eventGroup.exists(script.name));
+				|| (legacyEventRegistry != null ? legacyEventRegistry().exists(script.name) : eventGroup != null && eventGroup.exists(script.name));
 		});
 	}
 

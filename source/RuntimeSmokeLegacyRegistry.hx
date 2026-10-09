@@ -7,20 +7,19 @@ class RuntimeSmokeLegacyRegistry {
 		var scripts = state.scripts;
 		var registry = state.nightmareVisionLegacyRegistry;
 		var handles = state.nightmareVisionLegacyLuaHandles;
-		var events = state.nightmareVisionLegacyLuaEvents;
 		var types = state.nightmareVisionLegacyLuaTypes;
 		var historical = state.nightmareVisionLegacyFieldCameras;
 		state.nightmareVisionLegacyFieldCameras = false;state.scripts = null;
 		state.nightmareVisionLegacyFieldCameras = historical;
 		state.nightmareVisionLegacyRegistry = null;
 		state.nightmareVisionLegacyLuaHandles = new haxe.ds.ObjectMap();
-		state.nightmareVisionLegacyLuaEvents = [];state.nightmareVisionLegacyLuaTypes = [];
+		state.nightmareVisionLegacyLuaTypes = [];
 		return function() {
 			state.nightmareVisionLegacyFieldCameras = false;state.scripts = scripts;
 			state.nightmareVisionLegacyFieldCameras = historical;
 			state.nightmareVisionLegacyRegistry = registry;
 			state.nightmareVisionLegacyLuaHandles = handles;
-			state.nightmareVisionLegacyLuaEvents = events;state.nightmareVisionLegacyLuaTypes = types;
+			state.nightmareVisionLegacyLuaTypes = types;
 		};
 	}
 	public static function verify():Void {

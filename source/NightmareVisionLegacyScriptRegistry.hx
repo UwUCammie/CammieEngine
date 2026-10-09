@@ -5,12 +5,13 @@ class NightmareVisionLegacyScriptRegistry {
 	public var funkyScripts:Array<Dynamic> = [];
 	public var hscriptArray:Array<Dynamic> = [];
 	public var luaArray:Array<Dynamic> = [];
+	public var eventScripts:Map<String, Dynamic> = [];
 	public var events:Void->Map<String, Dynamic>;
 	public var special:String->Bool;
 
 	public function new(?events:Void->Map<String, Dynamic>, ?special:String->Bool) {
-		this.events = events == null ? function() return new Map<String, Dynamic>() : events;
-		this.special = special == null ? function(_) return false : special;
+		this.events = events == null ? function() return this.eventScripts : events;
+		this.special = special == null ? function(name) return this.eventScripts.exists(name) : special;
 	}
 	public function add(script:Dynamic, lua:Bool = false):Void {
 		funkyScripts.push(script);
@@ -23,10 +24,6 @@ class NightmareVisionLegacyScriptRegistry {
 		if (script == null) throw 'Null historical script registry entry';
 		return Reflect.getProperty(script, 'scriptName');
 	}
-	static function invoke(script:Dynamic, event:String, args:Array<Dynamic>):Dynamic {
-		if (Std.isOfType(script, NightmareVisionScriptModule)) return (cast script:NightmareVisionScriptModule).callValue(event, args);
-		return Reflect.callMethod(script, Reflect.field(script, 'call'), [event, args]);
-	}
 	public function callOnScripts(event:String, args:Array<Dynamic>, ignoreStops:Bool = false,
 		?exclusions:Array<String>, ?scriptArray:Array<Dynamic>, ignoreSpecialShit:Bool = true):Dynamic {
 		if (scriptArray == null) {
@@ -34,7 +31,7 @@ class NightmareVisionLegacyScriptRegistry {
 			for (script in events()) scriptArray.push(script);
 		}
 		if (exclusions == null) exclusions = [];
-		return NightmareVisionScriptBroadcast.call(scriptArray, function(script) return invoke(script, event, args),
+		return NightmareVisionScriptBroadcast.call(scriptArray, function(script) return NightmareVisionScriptHandle.call(script, event, args),
 			ignoreStops, true, function(script) {
 				var key = name(script);
 				return exclusions.indexOf(key) >= 0 || (ignoreSpecialShit && special(key));
