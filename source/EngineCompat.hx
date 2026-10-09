@@ -306,7 +306,7 @@ class EngineCompat {
 				case 'splashalpha' | 'data.splashalpha': return 'splashAlpha';
 			}
 		}
-		if (cls == 'playstate' || cls == 'states.playstate') {
+		if (cls == 'playstate' || cls == 'states.playstate' || cls == 'meta.states.playstate' || cls == 'funkin.states.playstate') {
 			switch (clean) {
 				case 'ispixelstage': return 'isPixelStage';
 				case 'chartingmode': return 'chartingMode';

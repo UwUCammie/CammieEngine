@@ -2012,8 +2012,23 @@ class RuntimeSmokeHarness {
 		#if sys
 		if (!enabled() || Sys.getEnv('CAMMIE_LEGACY_PIXEL_SMOKE') != '1') return;
 		if (!state.sourceUsesLegacyNoteGeometry()) throw 'Pixel probe requires historical owner';
-		@:privateAccess state.pixelUI = true;
-		emit('legacy_pixel_probe_enabled', {syntheticStageFlag:true});
+		var authored = state.curStage.stageData.isPixelStage == true;
+		if (state.isPixelStage != authored) throw 'Historical stage pixel data was not applied before notes';
+		var interp = new NightmareVisionScriptInterp(state);
+		@:privateAccess state.bindNightmareVisionPixelStage(interp);
+		interp.bindClassParent(PlayState);
+		interp.variables.set('PlayState', PlayState);
+		interp.variables.set('game', state);
+		interp.variables.set('Reflect', interp.sourceClassScope().reflectFacade());
+		var parser = new NightmareVisionScriptParser();
+		interp.execute(parser.parseString("isPixelStage = true; if (!game.isPixelStage) throw 'pixel instance binding'; Reflect.setProperty(PlayState, 'isPixelStage', false); if (isPixelStage) throw 'pixel reflected binding';"));
+		state.isPixelStage = !authored;
+		@:privateAccess state.restoreNightmareVisionPixelStage();
+		if (state.isPixelStage != authored) throw 'Historical stage pixel restore mismatch';
+		interp.execute(parser.parseString("PlayState.isPixelStage = true;"));
+		if (!state.isPixelStage) throw 'Native historical pixel class binding mismatch';
+		interp.release();
+		emit('legacy_pixel_probe_enabled', {syntheticStageFlag:true,sourcePropertyWrites:true,authoredInitialPixel:authored,stageRestore:true});
 		#end
 	}
 

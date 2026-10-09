@@ -224,6 +224,7 @@ class SourcePreferenceReflectionTest(unittest.TestCase):
             "function sourceGameOverSettingKey(",
         ):
             methods.append(extract_method(play_state, marker))
+        methods.append(play_state[play_state.index('\t@:keep public var isPixelStage'):play_state.index('\n\tfunction restoreNightmareVisionPixelStage')])
         fixture = FIXTURE.replace("__METHODS__", "\n\n".join(methods))
 
         TEST_TMP.mkdir(parents=True, exist_ok=True)

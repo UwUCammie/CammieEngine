@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Apply historical NV pixel-stage metadata before scripts and note generation, share live script/reflection property writes, and restore the authored mode during state exit.
 	- Load historical NV pixel note/receptor sheets through the shared Psych-family frame loader, preserving source animation indices, hold baselines, reload offsets and owner-only quant graphics.
 	- Restore historical NV hold generation, raw body/cap baselines, previous-frame orientation and source-ordered hit clipping through shared compatibility rendering.
 	- Restore historical NV scroll-velocity event preparation, live visual-clock APIs and per-note visual timestamps through shared compatibility services.

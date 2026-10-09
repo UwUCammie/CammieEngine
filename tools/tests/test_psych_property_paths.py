@@ -162,6 +162,7 @@ __METHODS__
         for marker in (
             "public static function propertyPath",
             "public static function propertyRoot",
+            "public static function legacyClassProperty",
         ):
             engine_methods.append(extract_method(engine_compat, marker))
         fixture = """
@@ -195,16 +196,6 @@ class RuntimeSmokeHarness {
 }
 class EngineCompat {
 __ENGINE_METHODS__
-  public static function legacyClassProperty(className:String, path:String):String {
-    if (className == null || path == null) return '';
-    if (className.toLowerCase() != 'clientprefs' && className.toLowerCase() != 'backend.clientprefs') return '';
-    return switch (path.toLowerCase()) {
-      case 'sickwindow' | 'data.sickwindow': 'sickWindow';
-      case 'goodwindow' | 'data.goodwindow': 'goodWindow';
-      case 'badwindow' | 'data.badwindow': 'badWindow';
-      default: '';
-    };
-  }
   public static function psychHealthColorArray(_actor:Dynamic, _player:Dynamic,
       _opponent:Dynamic, _girlfriend:Dynamic, _playerIcon:Dynamic,
       _opponentIcon:Dynamic):Array<Int> return [255, 255, 255];
@@ -228,6 +219,7 @@ __METHODS__
   var iconP1:Dynamic;
   var iconP2:Dynamic;
   var pixelUI:Bool = false;
+__PIXEL_ACCESSORS__
   var sourceLedger:Bool = false;
   var psychFlxGGameTicksProbeEmitted:Bool = false;
   public var lastWriteTarget:Dynamic;
@@ -243,6 +235,12 @@ __METHODS__
   }
   static function main() {
     var compat = new PsychClassPathCompat();
+    for (name in ['PlayState','states.PlayState','meta.states.PlayState','funkin.states.PlayState']) {
+      compat.compatSetPropertyFromClass(name,'isPixelStage',true);
+      if (!compat.pixelUI || compat.compatGetPropertyFromClass(name,'isPixelStage')!=true) throw 'pixel class write/read '+name;
+      compat.compatSetPropertyFromClass(name,'isPixelStage',false);
+      if (compat.pixelUI) throw 'pixel class reset '+name;
+    }
     if (EngineCompat.propertyPath('game.ticks') != 'ticks')
       throw 'ordinary Psych property normalization changed';
     if (compatClassPropertyPath(FlxG, 'game.ticks') != 'game.ticks')
@@ -268,6 +266,8 @@ __METHODS__
 }
 """.replace("__METHODS__", "\n".join(methods)).replace(
             "__ENGINE_METHODS__", "\n".join(engine_methods))
+        accessors = play_state[play_state.index('\t@:keep public var isPixelStage'):play_state.index('\n\tfunction restoreNightmareVisionPixelStage')]
+        fixture = fixture.replace('__PIXEL_ACCESSORS__', accessors)
         self.run_haxe(fixture, "PsychClassPathCompat")
 
     def test_gameover_property_roots_follow_psych_owner_without_rebinding_hscript_game(self):

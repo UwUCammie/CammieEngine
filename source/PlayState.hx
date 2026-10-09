@@ -1279,6 +1279,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		seedNightmareVisionCommon(interp, nightmareVisionPaths, nightmareVisionPrefs, nightmareVisionPlugins,
 			nightmareVisionActiveMods, nightmareVisionActiveDifficulty, compatScriptClock, entry);
 		interp.bindClassParent(PlayState);
+		bindNightmareVisionPixelStage(interp);
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
@@ -1493,6 +1494,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				capturedPlugins, ownerMods, ownerDifficulty, capturedStageLease, path, shared), legacyStage);
 		stage = NightmareVisionStageScene.create(SONG.stage, stageOwner, legacyStage);
 		curStage.stageData = NightmareVisionStageScene.data(stage);
+		restoreNightmareVisionPixelStage();
 		var data:Dynamic = NightmareVisionStageScene.data(stage);
 		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
 		setGameCameraZoom(defaultCamZoom);
@@ -3251,6 +3253,25 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	private var compatHealthBarRight:Null<Int> = null;
 	private var barShowingPoison:Bool = false;
 	private var pixelUI:Bool = false;
+	/** Source stage mode shares the native pixel renderer without process-global leakage. */
+	@:keep public var isPixelStage(get, set):Bool;
+	function get_isPixelStage():Bool return pixelUI;
+	function set_isPixelStage(value:Bool):Bool return pixelUI = value;
+
+	function restoreNightmareVisionPixelStage():Void {
+		if (nightmareVisionLegacyFieldCameras && curStage != null && curStage.stageData != null)
+			isPixelStage = curStage.stageData.isPixelStage == true;
+	}
+
+	function bindNightmareVisionPixelStage(interp:NightmareVisionScriptInterp):Void {
+		if (!nightmareVisionLegacyFieldCameras) return;
+		var read = function():Dynamic return isPixelStage;
+		var write = function(value:Dynamic):Dynamic return isPixelStage = value == true;
+		interp.bindLiveValue('isPixelStage', read, write, function() return this);
+		interp.sourceClassScope().bindStaticField(this, 'isPixelStage', read, write);
+		interp.sourceClassScope().bindStaticField(PlayState, 'isPixelStage', read, write);
+	}
+
 	#if (windows && cpp)
 	// Discord RPC variables
 	var iconRPC:String = "";
@@ -5818,6 +5839,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var name = value == null ? '' : StringTools.trim(Std.string(value));
 			if (name == '') psychGameOverOverrides.remove(gameOverKey);
 			else psychGameOverOverrides.set(gameOverKey, name);
+			return;
+		}
+		if (EngineCompat.legacyClassProperty(Std.string(className), Std.string(path)) == 'isPixelStage') {
+			isPixelStage = value == true;
 			return;
 		}
 		if (EngineCompat.legacyClassProperty(Std.string(className), Std.string(path)) == 'chartingMode') {
@@ -26030,6 +26055,7 @@ void main(void) {
 	}
 
 	public override function startOutro(onOutroComplete:Void->Void):Void {
+		restoreNightmareVisionPixelStage();
 		if (nightmareVisionStartupRedirect) {onOutroComplete(); return;}
 		super.startOutro(onOutroComplete);
 	}
