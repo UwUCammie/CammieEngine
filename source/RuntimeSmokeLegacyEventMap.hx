@@ -44,12 +44,14 @@ class RuntimeSmokeLegacyEventMap {
 			if (backend.hasEventCallback('Alias','onTrigger') || state.callEventScript('Alias','onTrigger',[]) != 0) throw 'Native removed event was recreated';
 			verifyPreparation(state, registry, api);
 			verifyQueue(state, registry, api);
+			verifyNotification(state, registry);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
 		#end
 	}
 	static function verifyPreparation(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
+		var oldMain = registry.funkyScripts.copy();
 		var handle = NightmareVisionScriptModule.fromSource('__event_prepare',
 			'var first = null; var kept = null; function shouldPush(e){e.value2="admitted";return e.value1 != "reject";} function firstPush(e){first=e;e.value1="first-only";} function getOffset(e){return 0;} function onPush(e){kept=e;e.value2="pushed";}',
 			state, null, function(i) {var module:NightmareVisionScriptModule=cast i.variables.get('script');module.historicalCalls=true;}, function(n,c,e) throw e);
@@ -72,12 +74,13 @@ class RuntimeSmokeLegacyEventMap {
 			PlayState.SONG = oldSong;
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_public_api_native_verified', {sourceBindings:true,plainObjects:true,getEvents:true,shouldPush:true,firstPush:true,earlyTrigger:true});
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_preparation_native_verified', {admission:true,freshPasses:true,zeroOffsetOverridesGlobal:true,duplicates:true,retainedIdentity:true});
-		} catch(error:Dynamic) {PlayState.SONG = oldSong;handle.destroy();throw error;}
-		handle.destroy();
+		} catch(error:Dynamic) {PlayState.SONG = oldSong;registry.funkyScripts=oldMain;handle.destroy();throw error;}
+		registry.funkyScripts=oldMain;handle.destroy();
 	}
 
 	static function verifyQueue(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
 		var oldIndex = state.songEventIndex;
+		var oldMain = registry.funkyScripts.copy();
 		var seen:Array<String> = [];
 		var handle = NightmareVisionScriptModule.fromSource('E',
 			'function onTrigger(a,b){record(a+":"+b);if(a=="first")registry.eventNotes=[{strumTime:-1000,event:"E",value1:"skipped",value2:null},{strumTime:-1000,event:"E",value1:"second",value2:null}];}',
@@ -87,8 +90,44 @@ class RuntimeSmokeLegacyEventMap {
 			api.execute(new NightmareVisionScriptParser().parseString('eventNotes=[{strumTime:-1000,event:"E",value1:"first",value2:null},{strumTime:-1000,event:"E",value1:"old-tail",value2:null}];var originalQueue=eventNotes;if(eventNotes!=game.eventNotes||eventNotes!=PlayState.eventNotes||eventNotes!=Reflect.getProperty(game,"eventNotes"))throw "native queue identity";checkEventNote();if(eventNotes.length!=0||originalQueue.length!=2)throw "native queue replacement";', '__event_queue_api'));
 			if (seen.join(',') != 'first:,second:' || state.songEventIndex != oldIndex + 2) throw 'Native historical queue shift order';
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_queue_native_verified', {liveAliases:true,callbackReplacement:true,postCallbackShift:true,nullValues:true,sharedEventDispatch:true,discoveryReleased:true});
-		} catch(error:Dynamic) {state.songEventIndex=oldIndex;handle.destroy();throw error;}
-		state.songEventIndex=oldIndex;handle.destroy();
+		} catch(error:Dynamic) {state.songEventIndex=oldIndex;registry.funkyScripts=oldMain;handle.destroy();throw error;}
+		state.songEventIndex=oldIndex;registry.funkyScripts=oldMain;handle.destroy();
+	}
+
+	static function verifyNotification(state:PlayState, registry:NightmareVisionLegacyScriptRegistry):Void {
+		var oldScopes=state.hscriptStates;var oldSpeed=state.gfSpeed;
+		var oldMain=registry.funkyScripts;var oldHx=registry.hscriptArray;var oldLua=registry.luaArray;var oldEvents=registry.eventScripts;
+		state.hscriptStates=[];registry.funkyScripts=[];registry.hscriptArray=[];registry.luaArray=[];registry.eventScripts=[];
+		var log:Array<String>=[];var handles:Array<NightmareVisionScriptModule>=[];
+		var make=function(name:String, code:String) {
+			var h=NightmareVisionScriptModule.fromSource(name,code,state,null,function(i){
+				var m:NightmareVisionScriptModule=cast i.variables.get('script');m.historicalCalls=true;
+				i.variables.set('record',function(text:String){if(state.gfSpeed!=7)throw 'Notification preceded effect';log.push(text);});
+			},function(n,c,e)throw e);handles.push(h);return h;
+		};
+		var first=make('__notify_first','function onEvent(n,a,b){record("hscript:"+n+":"+a+":"+b);}');registry.add(first);
+		var selected=make('__notify_selected','function onTrigger(a,b){record("trigger:"+a+":"+b);}');
+		var stop=false;var lua=new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);
+		var unexpected=0;
+		lua.variables.set('songEvent',function(e:Dynamic){unexpected++;});
+		lua.variables.set('onEvent',function(n:String,a:String,b:String):Dynamic {
+			if(state.gfSpeed!=7)throw 'Lua notification preceded effect';log.push('lua:'+n+':'+a+':'+b);
+			registry.eventScripts=['Set GF Speed'=>selected];return stop?2:0;
+		});
+		state.hscriptStates.set('compat_global_event_notify',lua);
+		state.registerHistoricalNightmareLua('compat_global_event_notify',lua,'__notify.lua');
+		registry.add(make('__notify_last','function onEvent(n,a,b){record("last");}'));
+		var restore=function(){state.hscriptStates=oldScopes;state.gfSpeed=oldSpeed;registry.funkyScripts=oldMain;registry.hscriptArray=oldHx;registry.luaArray=oldLua;registry.eventScripts=oldEvents;state.nightmareVisionLegacyLuaHandles.remove(lua);for(h in handles)h.destroy();};
+		try {
+			for(halt in [false,true]) {
+				stop=halt;log.resize(0);state.gfSpeed=1;registry.eventScripts=[];
+				state.triggerEventNote('Set GF Speed','7','');
+				var expected='hscript:Set GF Speed:7:,lua:Set GF Speed:7:,'+(halt?'':'last,')+'trigger:7:';
+				if(log.join(',')!=expected||unexpected!=0)throw 'Native event notification order: '+log.join(',');
+			}
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_notification_native_verified',{builtinBeforeCallbacks:true,mixedRegistrationOrder:true,noPrematureLua:true,noForeignSongEvent:true,stopRetainsSelectedEvent:true,liveMapReplacement:true,scalarArguments:true,sharedTriggerEntry:true});
+		} catch(error:Dynamic){restore();throw error;}
+		restore();
 	}
 
 }

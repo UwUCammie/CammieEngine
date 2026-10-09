@@ -51,6 +51,14 @@ class NightmareVisionLegacyScriptRegistry {
 		if (scriptArray == null) scriptArray = funkyScripts;
 		for (script in scriptArray) Reflect.callMethod(script, Reflect.field(script, 'set'), [variable, value]);
 	}
+	/** Source effects precede notification; callbacks may replace the selected map. */
+	public function notifyEvent(eventName:String, value1:Dynamic, value2:Dynamic):Void {
+		callOnScripts('onEvent', [eventName, value1, value2]);
+		if (eventScripts.exists(eventName)) {
+			var script = eventScripts.get(eventName);
+			callScript(script, 'onTrigger', [value1, value2]);
+		}
+	}
 	public function callScript(script:Dynamic, event:String, args:Array<Dynamic>):Dynamic {
 		if (Std.isOfType(script, NightmareVisionScriptModule) || Std.isOfType(script, NightmareVisionLegacyLuaScript))
 			return callOnScripts(event, args, true, [], [script], false);

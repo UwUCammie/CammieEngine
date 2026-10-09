@@ -124,6 +124,8 @@ class CodenameEventDispatchTest(unittest.TestCase):
  // covered by the dedicated actor-runtime tests.
  function reconcileCodenameScriptLineActors():Void {}
  function applyCodenameNativeEvent(e:Dynamic):Bool return false;
+ var nightmareVisionLegacyFieldCameras=false;
+ function legacyScriptRegistry():Dynamic throw 'Unexpected historical NV branch';
  function fireNativeSongEvent(e:Dynamic):Void {nativeEvents.push(e);log.push("native");}
  function callCodenameScript(scope:Dynamic,name:String,args:Array<Dynamic>):Bool {
   var i:hscript.Interp=scope.interp;

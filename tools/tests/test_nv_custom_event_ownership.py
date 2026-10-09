@@ -17,7 +17,7 @@ class NVCustomEventOwnershipTest(unittest.TestCase):
             write_flixel_point_stub(work)
             (work / 'Main.hx').write_text(source, encoding='utf-8')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
-                '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'),
+                '-cp', str(ROOT / '.haxelib/hscript-iris/1,1,3'), '-cp', str(ROOT / '.haxelib/hscript/2,5,0'),
                 '-cp', str(work), '-main', 'Main', '--interp'], cwd=ROOT,
                 capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, (result.stdout + result.stderr)[-5000:])
@@ -115,6 +115,8 @@ class Main {
  function dispatchPsychCompiledStageEvent(e:Dynamic):Void compiledStage++;
  // Rendering and unrelated HXC/legacy phases are an explicit boundary. The
  // guard/return and entire outer dispatch below are exact production bodies.
+ var nightmareVisionLegacyFieldCameras=false;
+ function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry return new NightmareVisionLegacyScriptRegistry();
  function fireNativeSongEvent(e:Dynamic):Void {
   var psychStageEvent=e;psychObservations++;
  ''' + guard + '''

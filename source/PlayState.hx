@@ -18350,6 +18350,10 @@ void main(void) {
 		}
 		fireNativeSongEvent(e);
 		if (e != null) {
+			if (nightmareVisionLegacyFieldCameras) {
+				legacyScriptRegistry().notifyEvent(e.name, e.v1, e.v2);
+				return;
+			}
 			callNightmareVision('onEvent', [e.name, e.v1, e.v2]);
 			if (nightmareVisionScripts != null)
 				nightmareVisionScripts.callEvent(e.name == null ? '' : Std.string(e.name), 'onTrigger', [e.v1, e.v2]);
@@ -18399,14 +18403,17 @@ void main(void) {
 		// library modcharts declare onEvent(name, v1, v2, v3) and hscript
 		// rejects short calls, while extra args are truncated harmlessly.
 		trace('event: ${e.name} @ ${Math.round(e.time)}ms v1=${e.v1} v2=${e.v2}');
-		callAllHScript('onEvent', [e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3]);
+		// Historical source scripts receive onEvent after effects through their live registry.
+		callAllHScript('onEvent', [e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3],
+			false, null, null, nightmareVisionLegacyFieldCameras, nightmareVisionLegacyFieldCameras);
 		// HXC/V-Slice song scripts use onSongEvent(event) and receive a single
 		// structured payload. Keep that lifecycle alongside the legacy Psych
 		// onEvent broadcast; EngineCompat.callbackArguments performs the payload
 		// adaptation without changing the chart's event row.
 		var hxcEvent = EngineCompat.hxcSongEventPayload(
 			[e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3, e.time]);
-		callAllHScript('songEvent', [hxcEvent]);
+		callAllHScript('songEvent', [hxcEvent], false, null, null,
+			nightmareVisionLegacyFieldCameras, nightmareVisionLegacyFieldCameras);
 		// HXC's eventCanceled flag is intentionally honored only for this donor
 		// lifecycle. Psych's onEvent remains observational and keeps the legacy
 		// event pump's behavior unchanged.
