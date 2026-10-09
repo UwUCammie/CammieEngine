@@ -1004,6 +1004,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('flixel.FlxSprite', NightmareVisionFlxSprite);
 		NightmareVisionSpriteBindings.install(interp, paths, spriteOwner, function() return prefs.view.globalAntialiasing);
 		NightmareVisionLegacyAnimateBindings.install(interp, paths, spriteOwner);
+		NightmareVisionLegacyVideoBindings.install(interp, paths, spriteOwner);
 		NightmareVisionCharacterGroupBindings.install(interp, paths, function() {
 			return nightmareVisionCharacterScene();
 		});

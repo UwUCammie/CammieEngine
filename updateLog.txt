@@ -1,6 +1,11 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.23 alpha - CammieEngine
+	- Add the historical Nightmare Vision PsychVideoSprite constructor, decoder callbacks, restart and focus behavior over the shared owner-scoped video service.
+	- Keep historical video registries and global pause/resume methods scoped to the calling mod, including reflected imports and constructors.
+	- Reset format/completion state when reusable shared video sprites load another clip.
+
 v0.0.22 alpha - CammieEngine
 	- Migrate older container-only Nightmare Vision receipts to retain verified child-package roots, so published core asset identities remain usable at runtime.
 	- Read compiled Lime asset manifests for retained Psych and Nightmare Vision packages without Project.xml, preserving exact file-backed IDs, library namespaces and receipt ownership. Embedded executable assets and custom library loaders remain explicitly unsupported.

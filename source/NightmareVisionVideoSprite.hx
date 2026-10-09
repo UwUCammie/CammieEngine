@@ -91,6 +91,11 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 			finish('load-failed');
 			return false;
 		}
+		// Reusable sprites start a new callback cycle for every accepted load.
+		// Keep path resolution and decoder ownership shared by source dialects.
+		if (startTimer != null) {startTimer.cancel(); startTimer = null;}
+		formatted = false;
+		finished = false;
 		resolvedPath = resolved;
 		try {
 			loaded = super.load(resolved, options);
@@ -275,6 +280,8 @@ import flixel.FlxSprite;
 	is unavailable on the current target. */
 @:build(NightmareVisionSpriteMacro.build())
 class NightmareVisionVideoSprite extends FlxSprite {
+	public static inline var looping:String = ':input-repeat=65535';
+	public static inline var muted:String = ':no-audio';
 	static var live:Array<NightmareVisionVideoSprite> = [];
 	public var ownerState(default, null):Dynamic;
 	public var ownerRoot(default, null):String;

@@ -14,6 +14,7 @@ private typedef NightmareVisionConstructorBinding = {
 	var type:Dynamic;
 	var create:Array<Dynamic>->Dynamic;
 	var owner:Dynamic;
+	var releaseOnReplace:Bool;
 }
 
 /**
@@ -127,20 +128,30 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Route construction for one exact imported value without intercepting a
 	 * different class that happens to use the same source name. */
 	public function bindConstructorFactory(type:Dynamic,
-		create:Array<Dynamic>->Dynamic, owner:Dynamic):Void {
+		create:Array<Dynamic>->Dynamic, owner:Dynamic, releaseOnReplace:Bool = false):Void {
 		if (type == null || create == null) throw '[nightmare-vision-script] Invalid constructor binding';
 		for (binding in constructorBindings) if (binding.type == type) {
+			if (binding.releaseOnReplace) releaseConstructorOwner(binding);
+			binding.releaseOnReplace = releaseOnReplace;
 			binding.create = create;
 			binding.owner = owner;
 			return;
 		}
-		constructorBindings.push({type:type, create:create, owner:owner});
+		constructorBindings.push({type:type, create:create, owner:owner, releaseOnReplace:releaseOnReplace});
+	}
+
+	// Most factories borrow an owner shared by other constructors. A private
+	// lease opts into replacement/unbind cleanup without retiring those owners.
+	function releaseConstructorOwner(binding:NightmareVisionConstructorBinding):Void {
+		var releaseOwner:Dynamic = binding.owner == null ? null : Reflect.field(binding.owner, 'release');
+		if (Reflect.isFunction(releaseOwner)) Reflect.callMethod(binding.owner, releaseOwner, []);
 	}
 
 	/** Remove one identity binding when its owner-local API is replaced. */
 	public function unbindConstructorFactory(type:Dynamic):Void {
 		for (index in 0...constructorBindings.length) if (constructorBindings[index].type == type) {
-			constructorBindings.splice(index, 1);
+			var binding = constructorBindings.splice(index, 1)[0];
+			if (binding.releaseOnReplace) releaseConstructorOwner(binding);
 			return;
 		}
 	}
@@ -207,11 +218,8 @@ class NightmareVisionScriptInterp extends Interp {
 		sourceError = null;
 		var saveError:Dynamic = null;
 		for (binding in constructorBindings) {
-			var releaseOwner:Dynamic = binding.owner == null ? null : Reflect.field(binding.owner, 'release');
-			if (Reflect.isFunction(releaseOwner)) {
-				try Reflect.callMethod(binding.owner, releaseOwner, []) catch (error:Dynamic) {
-					if (saveError == null) saveError = error;
-				}
+			try releaseConstructorOwner(binding) catch (error:Dynamic) {
+				if (saveError == null) saveError = error;
 			}
 		}
 		constructorBindings.resize(0);
