@@ -225,6 +225,11 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		return resolved.exists(selected) ? resolved.get(selected) : preload;
 	}
 
+	/** Historical preparation resolves admitted names, including callback-added events. */
+	public function resolveHistoricalEvent(name:String, extensions:Array<String>):NightmareVisionScriptDiscovery.NightmareVisionScriptEntry
+		return NightmareVisionLegacyEventLoader.select(name, extensions, modFolders,
+			function(file) return scopedPath(CORE_DIRECTORY, file), exists);
+
 	/** FunkinScript.getPath extension precedence within this owner/core. */
 	public function resolveScript(path:String):NightmareVisionScriptDiscovery.NightmareVisionScriptEntry {
 		if (path == null || path == '') return null;

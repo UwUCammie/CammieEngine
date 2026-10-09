@@ -1628,6 +1628,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionLegacyFieldCameras) {
 			nightmareVisionScripts.legacyNoteRegistry = function() return notetypeScripts;
 			nightmareVisionScripts.legacyEventRegistry = function() return legacyScriptRegistry().eventScripts;
+			nightmareVisionScripts.resolveHistoricalEvent = function(name) return nightmareVisionPaths.resolveHistoricalEvent(name, legacyScriptRegistry().hscriptExts);
+			nightmareVisionScripts.loadHistoricalLuaEvent = loadHistoricalNightmareLuaEvent;
 		}
 		initializeNightmareVisionLegacyNoteSkin();
 		// Seed the source default before onCreate can intentionally override it.
@@ -13188,6 +13190,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		sourceEventPreparationInProgress = false;
 	}
 
+	function loadHistoricalNightmareLuaEvent(entry:NightmareVisionScriptDiscovery.NightmareVisionScriptEntry):Void {
+		var scope = compatibleScriptKey('historical_event');
+		// FunkinLua construction/onCreate precedes source registration and onLoad.
+		makeHaxeState(scope, Path.directory(entry.path) + '/', Path.withoutDirectory(entry.path),
+			null, null, null, null, null, true);
+		var interp = hscriptStates.get(scope);
+		registerHistoricalNightmareLua(scope, interp, entry.name);
+		var handle = nightmareVisionLegacyLuaHandles.get(interp);
+		if (handle == null) throw 'Historical event did not create a Lua interpreter: ' + entry.path;
+		legacyScriptRegistry().eventScripts.set(entry.name, handle);
+		legacyScriptRegistry().callScript(handle, 'onLoad', [entry.name]);
+	}
+
 	function visitHistoricalNightmareVisionEvents(visit:Dynamic->Void):Void {
 		// Capture the source song object before companion admission, but read its
 		// event array afterward so callbacks can replace that array during the visit.
@@ -13313,7 +13328,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function makeHaxeState(usehaxe:String, path:String, filename:String, ?sourceOverride:String,
 			?characterRole:String, ?characterOverride:Character, ?metadataSink:Dynamic,
-			?extraPsychOwnerRoot:String) {
+			?extraPsychOwnerRoot:String, historicalEvent:Bool = false) {
 		trace("opening a haxe state (because we are cool :))");
 		var parser = new ParserEx();
 		if (metadataSink != null)
@@ -13742,7 +13757,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			for (name in hxcStageBindings.keys())
 				interp.variables.set(name, hxcStageBindings.get(name));
 		hscriptStates.set(usehaxe,interp);
-		registerHistoricalNightmareLua(usehaxe, interp, path + filename);
+		if (!historicalEvent) registerHistoricalNightmareLua(usehaxe, interp, path + filename);
 		// Only source files that actually came from HXC opt into mutable payload
 		// arguments.  A generated Lua/native HScript fallback must keep the
 		// existing Psych/Modding Plus callback ABI.
@@ -13793,7 +13808,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// Selected Psych scripts receive their post phase as one source-ordered
 			// broadcast after scene setup and the initial rating/display refresh.
 			// Native/Kade scopes retain their existing per-module post phase.
-			if (selectedPsychSkinRoot() == null || interp.variables.get('__psychScoreGlobals') != true)
+			if (!historicalEvent && (selectedPsychSkinRoot() == null || interp.variables.get('__psychScoreGlobals') != true))
 				callHscript("createPost", [], usehaxe, true);
 		} catch (error:Dynamic) {
 			if (bindCharacterStart) {

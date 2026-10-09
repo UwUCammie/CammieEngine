@@ -39,6 +39,8 @@ class NightmareVisionGameplayScripts {
 	/** Historical Map identity is script-writable; module loading and lifetime stay shared. */
 	public var legacyNoteRegistry:Void->Map<String, NightmareVisionScriptModule>;
 	public var legacyEventRegistry:Void->Map<String, Dynamic>;
+	public var resolveHistoricalEvent:String->NightmareVisionScriptEntry;
+	public var loadHistoricalLuaEvent:NightmareVisionScriptEntry->Void;
 
 	public function new(parent:Dynamic, plan:NightmareVisionScriptPlan,
 		read:String->String,
@@ -76,7 +78,12 @@ class NightmareVisionGameplayScripts {
 	/** A failed module is diagnosed once per state; other modules still load. */
 	public function loadScope(scope:String, ?character:String, ?actor:Dynamic):Void {
 		if (group.released) return;
-		for (entry in plan.scripts) {
+		var entries = plan.scripts;
+		if (scope == 'event' && legacyEventRegistry != null && resolveHistoricalEvent != null && character != null) {
+			var selected = resolveHistoricalEvent(character);
+			entries = selected == null ? [] : [selected];
+		}
+		for (entry in entries) {
 			if (entry.scope != scope || (character != null && entry.name != character)
 				|| attempted.exists(entry.relative)) continue;
 			attempted.set(entry.relative, true);
@@ -88,7 +95,10 @@ class NightmareVisionGameplayScripts {
 					&& entry.name != null && entry.name != ''
 					? entry.name : entry.relative;
 				if (scope == 'event' && legacyEventRegistry != null) {
-					loadHistoricalEvent(entry, scriptName);
+					if (StringTools.endsWith(entry.path.toLowerCase(), '.lua')) {
+						if (loadHistoricalLuaEvent == null) throw 'Historical Lua event loader unavailable';
+						loadHistoricalLuaEvent(entry);
+					} else loadHistoricalEvent(entry, scriptName);
 					continue;
 				}
 				var script = group.loadSource(scriptName, read(entry.path), function(interp) {

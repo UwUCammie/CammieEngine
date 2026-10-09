@@ -18,7 +18,7 @@ class RuntimeSmokeLegacyEventMap {
 		var sentinel = new NightmareVisionScriptModule(entry.name,new NightmareVisionScriptInterp(),function(n,c,e) throw e);
 		instances.set(entry.name,sentinel);
 		var backend = new NightmareVisionGameplayScripts(state,{root:state.nightmareVisionPaths.root,baseAssetsRoot:'',song:'probe',stage:'',coverageNotes:[],scripts:[entry]},
-			function(path) return 'record("top",eventScripts.exists("__native_event_probe"),funkyScripts.indexOf(script)>=0);function onLoad(n){record("load",eventScripts.get(n)==script,hscriptArray.indexOf(script)>=0);}function onTrigger(a,b){return a+":"+b;}',
+			function(path) return sys.FileSystem.exists(path) ? sys.io.File.getContent(path) : 'record("top",eventScripts.exists("__native_event_probe"),funkyScripts.indexOf(script)>=0);function onLoad(n){record("load",eventScripts.get(n)==script,hscriptArray.indexOf(script)>=0);}function onTrigger(a,b){return a+":"+b;}',
 			function(i,e,a) {state.seedNightmareVision(i,e,a);i.variables.set('record',function(n:String,m:Bool,r:Bool)phases.push(n+":"+m+":"+r));},
 			function(n,c,e) throw e);
 		state.scripts = backend.group;state.nightmareVisionScripts = backend;
@@ -45,6 +45,7 @@ class RuntimeSmokeLegacyEventMap {
 			verifyPreparation(state, registry, api);
 			verifyQueue(state, registry, api);
 			verifyNotification(state, registry);
+			verifyDiscovery(state, registry, api);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
@@ -128,6 +129,45 @@ class RuntimeSmokeLegacyEventMap {
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_notification_native_verified',{builtinBeforeCallbacks:true,mixedRegistrationOrder:true,noPrematureLua:true,noForeignSongEvent:true,stopRetainsSelectedEvent:true,liveMapReplacement:true,scalarArguments:true,sharedTriggerEntry:true});
 		} catch(error:Dynamic){restore();throw error;}
 		restore();
+	}
+
+	static function verifyDiscovery(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
+		#if sys
+		var backend=state.nightmareVisionScripts;var oldResolve=backend.resolveHistoricalEvent;var oldLoad=backend.loadHistoricalLuaEvent;
+		var oldMain=registry.funkyScripts.copy();var oldHx=registry.hscriptArray.copy();var oldLua=registry.luaArray.copy();var oldEvents=registry.eventScripts;var oldExts=registry.hscriptExts;
+		var oldSpeed=state.gfSpeed;var oldScopes=state.hscriptStates;state.hscriptStates=[];registry.eventScripts=[];
+		var names=['__cammie_event_discovery_hx','__cammie_event_discovery_lua'];
+		var files:Array<String>=[];var lua:Dynamic=null;
+		var restore=function(){
+			if(lua!=null)state.nightmareVisionLegacyLuaHandles.remove(lua);
+			state.hscriptStates=oldScopes;state.gfSpeed=oldSpeed;registry.funkyScripts=oldMain;registry.hscriptArray=oldHx;registry.luaArray=oldLua;registry.eventScripts=oldEvents;registry.hscriptExts=oldExts;
+			backend.resolveHistoricalEvent=oldResolve;backend.loadHistoricalLuaEvent=oldLoad;
+			for(file in files)if(sys.FileSystem.exists(file))sys.FileSystem.deleteFile(file);
+		};
+		try {
+			for(index in 0...2){
+				var file=state.nightmareVisionPaths.modFolders('custom_events/'+names[index]+(index==0?'.hxs':'.lua'));
+				if(sys.FileSystem.exists(file))throw 'Discovery fixture already exists: '+file;
+				sys.FileSystem.createDirectory(haxe.io.Path.directory(file));files.push(file);
+				var code=index==0?'if(eventScripts.exists("'+names[0]+'"))throw "map before constructor";function onLoad(n){if(eventScripts.get(n)!=script||hscriptArray.indexOf(script)>=0)throw "HScript load order";game.gfSpeed=8;}':
+					'created = 0; loaded = 0; post = 0; function onCreate() created = created + 1; setProperty("gfSpeed", 6); end; function onCreatePost() post = post + 1; end; function onLoad(name) loaded = loaded + 1; loadedName = name; setProperty("gfSpeed", 7); end';
+				sys.io.File.saveContent(file,code);
+			}
+			backend.resolveHistoricalEvent=function(name)return state.nightmareVisionPaths.resolveHistoricalEvent(name,registry.hscriptExts);
+			backend.loadHistoricalLuaEvent=state.loadHistoricalNightmareLuaEvent;
+			api.execute(new NightmareVisionScriptParser().parseString('hscriptExts=["hxs"];if(game.hscriptExts!=hscriptExts||PlayState.hscriptExts!=hscriptExts)throw "extension aliases";','__event_extensions'));
+			backend.loadScope('event',names[0]);
+			if(state.gfSpeed!=8||!registry.eventScripts.exists(names[0]))throw 'Native unplanned HScript event discovery: speed='+state.gfSpeed+', registered='+registry.eventScripts.exists(names[0]);
+			backend.loadScope('event',names[1]);
+			var handle:NightmareVisionLegacyLuaScript=cast registry.eventScripts.get(names[1]);
+			if(handle==null)throw 'Native unplanned Lua event discovery';lua=handle.interp;
+			backend.loadScope('event',names[1]);
+			if(state.gfSpeed!=7||handle.get('created')!=1||handle.get('loaded')!=1||handle.get('post')!=0||handle.get('loadedName')!=names[1]
+				||registry.luaArray.indexOf(handle)<0||registry.funkyScripts.indexOf(handle)<0)throw 'Native Lua event initialization or identity';
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_discovery_native_verified',{unplannedHscript:true,unplannedLua:true,sharedRuntimes:true,hscriptOrder:true,luaCreateOnce:true,luaLoadOnce:true,noPrematurePost:true,authoredName:true,mutableExtensionAliases:true});
+		} catch(error:Dynamic){restore();throw error;}
+		restore();
+		#end
 	}
 
 }

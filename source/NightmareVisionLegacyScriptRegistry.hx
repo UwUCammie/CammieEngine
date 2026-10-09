@@ -7,6 +7,7 @@ class NightmareVisionLegacyScriptRegistry {
 	public var luaArray:Array<Dynamic> = [];
 	public var eventScripts:Map<String, Dynamic> = [];
 	public var eventNotes:Array<Dynamic> = [];
+	public var hscriptExts:Array<String> = ['hx', 'hxs', 'hscript'];
 	public var eventPushedMap:Map<String, Bool> = [];
 	public var events:Void->Map<String, Dynamic>;
 	public var special:String->Bool;

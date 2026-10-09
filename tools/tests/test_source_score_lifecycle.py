@@ -552,9 +552,10 @@ class SourceScoreLifecycleTest(unittest.TestCase):
         loader_start = play_state.index("function makeHaxeState(")
         module_start = play_state.index('startSucceeded = callHscript("start", [SONG.song], usehaxe, true);', loader_start)
         module_post = play_state.index('callHscript("createPost", [], usehaxe, true);', module_start)
-        module_guard_start = play_state.rfind("if (selectedPsychSkinRoot() == null", module_start, module_post)
+        module_guard_start = play_state.rfind("if (", module_start, module_post)
         module_guard = play_state[module_guard_start:module_post]
         self.assertIn("selectedPsychSkinRoot() == null || interp.variables.get('__psychScoreGlobals') != true", module_guard)
+        self.assertIn("!historicalEvent", module_guard)
         self.assertLess(module_start, module_guard_start)
         self.assertLess(module_guard_start, module_post)
 
