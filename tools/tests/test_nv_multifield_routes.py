@@ -69,6 +69,7 @@ class Note {
  __LANE__
 }
 class Main {
+ function applyNightmareVisionReceptorSkin(strum:Strumline.StrumNote,skin:NightmareVisionNoteSkin):Bool {if(skin!=null)throw "unexpected skin in field routing fixture";return false;}
  function nightmareVisionHasOwnerSparrowAtlas(s:String):Bool return false;
  function nightmareVisionGetOwnerSparrowAtlas(s:String):FlxAtlasFrames return null;
  public var nightmareVisionPaths:Dynamic=null;

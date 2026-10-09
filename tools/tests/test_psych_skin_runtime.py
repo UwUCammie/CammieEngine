@@ -40,7 +40,7 @@ class PsychSkinRuntimeTest(unittest.TestCase):
                          'native uniforms are initialized after the constructor returns')
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             work = Path(folder)
-            for name in ('PsychSkinRuntime.hx', 'PsychSkinResolver.hx', 'NoteTypeCompat.hx', 'NoteOffsetState.hx'):
+            for name in ('SourcePixelNoteFrames.hx', 'PsychSkinRuntime.hx', 'PsychSkinResolver.hx', 'NoteTypeCompat.hx', 'NoteOffsetState.hx'):
                 shutil.copyfile(ROOT / 'source' / name, work / name)
             flixel = work / 'flixel/graphics/frames'
             flixel.mkdir(parents=True)

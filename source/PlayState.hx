@@ -658,18 +658,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			strum.isQuant = field.quants;
 			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
 			strum.alphaMult = field.alpha;
-			if (skin != null) {
-				var frames:FlxAtlasFrames = null;
-				if (nightmareVisionLegacyFieldCameras) {
-					if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics();
-					if (strum.colorSwap == null) strum.colorSwap = new NightmareVisionLegacyColorSwap();
-					var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
-						true, nightmareVisionHasOwnerSparrowAtlas);
-					strum.isQuant = selected != skin.noteTexture;
-					if (strum.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
-				}
-				skin.applyReceptor(strum, strum.ID, frames);
-			}
+			applyNightmareVisionReceptorSkin(strum, skin);
 		}
 		if (skin != null) field.strumline.resetStrums();
 		if (field.legacyGroupCameras) for (strum in field.members) if (strum != null) {
@@ -735,7 +724,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var rgbEnabled = strum.nightmareVisionRGB != null && strum.nightmareVisionRGB.enabled;
 			strum.isQuant = value;
 			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
-			if (skin != null && skin.applyReceptor(strum, strum.ID) && renderer != null) renderer.release(strum);
+			if (skin != null && applyNightmareVisionReceptorSkin(strum, skin) && renderer != null) renderer.release(strum);
 			if (animation != null) strum.playAnim(animation, true);
 			strum.resetAnim = resetAnim;
 			if (!strum.useRGBShader && strum.nightmareVisionRGB != null) {
@@ -771,7 +760,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		nightmareVisionSourceSkinRegistry().noteskins[field.player] = skin;
 		var renderer = nightmareVisionRenderers == null ? null : nightmareVisionRenderers.get(field);
 		for (strum in field.members) if (strum != null) {
-			if (skin.applyReceptor(strum, strum.ID) && renderer != null) renderer.release(strum);
+			if (applyNightmareVisionReceptorSkin(strum, skin) && renderer != null) renderer.release(strum);
 			strum.resetAnim = 0;
 		}
 		for (value in field.notes) if (value != null && Std.isOfType(value, Note)) {
@@ -1541,6 +1530,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				}, function(value, atlas) {
 					var note:Note = cast value;
 					var skin = nightmareVisionSkinForField(note.sourcePlayfieldIndex);
+					if (nightmareVisionLegacyFieldCameras && pixelUI)
+						return applyNightmareVisionNoteSkin(note, skin, null, atlas);
 					if (note.nightmareVisionLegacyColors != null) {
 						var selected = NightmareVisionLegacyNoteColors.selectTexture(atlas, nightmareVisionPrefs.view,
 							note.canQuant, nightmareVisionHasOwnerSparrowAtlas);
@@ -1567,6 +1558,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					var note:Note = cast value;
 					return note.nightmareVisionRGB != null && note.nightmareVisionRGB.enabled;
 				}, function(atlas) {
+					if (nightmareVisionLegacyFieldCameras && pixelUI)
+						return nightmareVisionLegacyPixelGraphic(atlas, false, true) != null
+							|| nightmareVisionLegacyPixelGraphic(atlas, true, true) != null;
 					return nightmareVisionHasOwnerSparrowAtlas(atlas);
 				}, function(value, message) {
 					var note:Note = cast value;
@@ -10350,15 +10344,24 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function applyNightmareVisionNoteSkin(note:Note, skin:NightmareVisionNoteSkin,
-		?frames:FlxAtlasFrames):Bool {
-		if (skin != null && frames == null && note.nightmareVisionLegacyColors != null) {
-			var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
-				note.canQuant, nightmareVisionHasOwnerSparrowAtlas);
-			note.isQuant = selected != skin.noteTexture;
-			if (note.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
+		?frames:FlxAtlasFrames, ?legacyTexture:String):Bool {
+		if (skin == null) return false;
+		if (nightmareVisionLegacyFieldCameras && pixelUI) {
+			var sheet = nightmareVisionLegacyPixelGraphic(legacyTexture == null ? skin.noteTexture : legacyTexture,
+				note.isSustainNote, note.canQuant);
+			if (sheet == null) return false;
+			note.isQuant = sheet.quant;
+			if (!NightmareVisionLegacyPixelSkin.applyNote(note, sheet.graphic,
+				note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, daPixelZoom)) return false;
+		} else {
+			if (frames == null && note.nightmareVisionLegacyColors != null) {
+				var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
+					note.canQuant, nightmareVisionHasOwnerSparrowAtlas);
+				note.isQuant = selected != skin.noteTexture;
+				if (note.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
+			}
+			if (!skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames)) return false;
 		}
-		if (skin == null || !skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames))
-			return false;
 		if (note.nightmareVisionLegacyGeometry && note.isSustainNote && !note.nightmareVisionSustainInitialized) {
 			NightmareVisionLegacySustain.finish(note, note.nightmareVisionSustainInitialWidth,
 				Conductor.stepCrochet, songSpeed, pixelUI, daPixelZoom);
@@ -10374,30 +10377,62 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	 * same-owner core dependency. Anchoring both paths before using the general
 	 * Paths resolver prevents a same-named family package from supplying a skin. */
 	function nightmareVisionOwnerSparrowPaths(atlas:String):Null<Array<String>> {
+		return nightmareVisionOwnerImagePaths(atlas, ['png', 'xml']);
+	}
+
+	/** A sheet or atlas must resolve entirely within one authenticated owner root. */
+	function nightmareVisionOwnerImagePaths(atlas:String, extensions:Array<String>):Null<Array<String>> {
 		if (nightmareVisionPaths == null || atlas == null) return null;
 		var clean = atlas.replace('\\', '/');
 		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0
 			|| clean.indexOf('\x00') >= 0 || clean.toLowerCase().endsWith('.png')
 			|| clean.toLowerCase().endsWith('.xml')) return null;
 		for (part in clean.split('/')) if (part == '' || part == '.' || part == '..') return null;
-
 		for (base in [nightmareVisionPaths.root, nightmareVisionPaths.CORE_DIRECTORY]) {
-			var png:String = null;
-			var xml:String = null;
-			try png = base == nightmareVisionPaths.CORE_DIRECTORY
-				? nightmareVisionPaths.getOwnerCorePath('images/' + clean + '.png')
-				: nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.png')
-			catch (_:Dynamic) {}
-			try xml = base == nightmareVisionPaths.CORE_DIRECTORY
-				? nightmareVisionPaths.getOwnerCorePath('images/' + clean + '.xml')
-				: nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.xml')
-			catch (_:Dynamic) {}
-			if (png == null || xml == null || !nightmareVisionPathIsWithin(png, base)
-				|| !nightmareVisionPathIsWithin(xml, base)) continue;
-			if (nightmareVisionPaths.exists(png) && nightmareVisionPaths.exists(xml))
-				return [png, xml];
+			var files:Array<String> = [];
+			for (extension in extensions) {
+				var path:String = null;
+				try path = base == nightmareVisionPaths.CORE_DIRECTORY
+					? nightmareVisionPaths.getOwnerCorePath('images/' + clean + '.' + extension)
+					: nightmareVisionPaths.scopeAssetPath(base + '/images/' + clean + '.' + extension)
+				catch (_:Dynamic) {}
+				if (path == null || !nightmareVisionPathIsWithin(path, base) || !nightmareVisionPaths.exists(path)) break;
+				files.push(path);
+			}
+			if (files.length == extensions.length) return files;
 		}
 		return null;
+	}
+
+	function nightmareVisionLegacyPixelGraphic(texture:String, sustain:Bool, canQuant:Bool):Dynamic {
+		var end = sustain ? 'ENDS' : '';
+		var selected = NightmareVisionLegacyNoteColors.selectTexture(texture, nightmareVisionPrefs.view, canQuant,
+			function(key) return nightmareVisionOwnerImagePaths('pixelUI/' + key + end, ['png']) != null);
+		var files = nightmareVisionOwnerImagePaths('pixelUI/' + selected + end, ['png']);
+		if (files == null) return null;
+		var graphic = FNFAssets.getFlxGraphic(files[0]);
+		if (graphic != null) graphic = nightmareVisionPaths.getOwnerAssetCache().trackGraphic(files[0], graphic, true);
+		return graphic == null ? null : {graphic:graphic, quant:selected != texture};
+	}
+
+	function applyNightmareVisionReceptorSkin(strum:Strumline.StrumNote, skin:NightmareVisionNoteSkin):Bool {
+		if (skin == null) return false;
+		var frames:FlxAtlasFrames = null;
+		if (nightmareVisionLegacyFieldCameras) {
+			if (strum.nightmareVisionRGB == null) strum.nightmareVisionRGB = new NightmareVisionRGBGraphics();
+			if (strum.colorSwap == null) strum.colorSwap = new NightmareVisionLegacyColorSwap();
+			if (pixelUI) {
+				var sheet = nightmareVisionLegacyPixelGraphic(skin.noteTexture, false, true);
+				if (sheet == null) return false;
+				strum.isQuant = sheet.quant;
+				return NightmareVisionLegacyPixelSkin.applyReceptor(strum, skin, sheet.graphic, strum.ID, daPixelZoom);
+			}
+			var selected = NightmareVisionLegacyNoteColors.selectTexture(skin.noteTexture, nightmareVisionPrefs.view,
+				true, nightmareVisionHasOwnerSparrowAtlas);
+			strum.isQuant = selected != skin.noteTexture;
+			if (strum.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
+		}
+		return skin.applyReceptor(strum, strum.ID, frames);
 	}
 
 	function nightmareVisionPathIsWithin(path:String, base:String):Bool {
@@ -19446,6 +19481,7 @@ void main(void) {
 				RuntimeSmokeHarness.markLoadPhase('notes_constructed_' + noteConstructionCount);
 		};
 
+		RuntimeSmokeHarness.prepareHistoricalPixelNotes(this);
 		var nightmareHoldStep = nightmareVisionLegacyFieldCameras ? Conductor.stepCrochet : Math.max(Conductor.stepCrochet / holdSubdivisions, 10);
 		var psychSectionBpm = Conductor.bpm;
 		var psychSectionStep = Conductor.stepCrochet;

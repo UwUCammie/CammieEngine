@@ -328,6 +328,8 @@ class Note extends DynamicSprite {
 	public var nightmareVisionLegacyGeometry:Bool = false;
 	public var nightmareVisionSustainInitialized:Bool = false;
 	public var nightmareVisionSustainInitialWidth:Float = 0;
+	@:keep public var originalHeightForCalcs:Float = 6;
+	@:keep public var lastNoteOffsetXForPixelAutoAdjusting:Float = 0;
 	/** Source chart quant classification is independent of a field's receptor flag. */
 	@:keep public var quant:Int = 4;
 	@:keep public var isQuant:Bool = false;

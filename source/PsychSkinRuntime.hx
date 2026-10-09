@@ -40,18 +40,14 @@ class PsychSkinRuntime {
 		if (pixel) {
 			markDiagnostic(diagnostics, 'reload:pixel-sheet');
 			var bitmap = FNFAssets.getBitmapData(note.isSustainNote ? descriptor.endsImage : descriptor.image);
-			note.loadGraphic(bitmap, true, Std.int(bitmap.width / 4), Std.int(bitmap.height / (note.isSustainNote ? 2 : 5)));
+			SourcePixelNoteFrames.install(note, bitmap, note.isSustainNote ? 2 : 5, PlayState.daPixelZoom);
 			if (note.isSustainNote) note.originalHeight = bitmap.height / 2;
-			note.setGraphicSize(Std.int(note.width * PlayState.daPixelZoom));
 			if (note.isSustainNote) {
 				note.offsetX += note.psychLastNoteOffX;
 				note.psychLastNoteOffX = (note.width - 7) * (PlayState.daPixelZoom / 2);
 				note.offsetX -= note.psychLastNoteOffX;
 			}
-			if (note.isSustainNote) {
-				note.animation.add('holdend', [lane + 4], 24, true);
-				note.animation.add('hold', [lane], 24, true);
-			} else note.animation.add('Scroll', [lane + 4], 24, true);
+			SourcePixelNoteFrames.noteAnimations(note, lane, note.isSustainNote);
 		} else {
 			markDiagnostic(diagnostics, 'reload:install-atlas');
 			note.frames = frames;
@@ -101,11 +97,8 @@ class PsychSkinRuntime {
 		var oldAnim = strum.animation.curAnim == null ? null : strum.animation.curAnim.name;
 		if (pixel) {
 			var bitmap = FNFAssets.getBitmapData(descriptor.image);
-			strum.loadGraphic(bitmap, true, Std.int(bitmap.width / 4), Std.int(bitmap.height / 5));
-			strum.animation.add('static', [lane]);
-			strum.animation.add('pressed', [lane + 4, lane + 8], 12, false);
-			strum.animation.add('confirm', [lane + 12, lane + 16], lane == 2 ? 12 : 24, false);
-			strum.setGraphicSize(Std.int(strum.width * PlayState.daPixelZoom));
+			SourcePixelNoteFrames.install(strum, bitmap, 5, PlayState.daPixelZoom);
+			SourcePixelNoteFrames.receptorAnimations(strum, lane);
 		} else {
 			strum.frames = frames;
 			strum.animation.addByPrefix('static', receptorIdle[lane]);

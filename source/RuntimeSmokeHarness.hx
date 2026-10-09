@@ -1905,7 +1905,7 @@ class RuntimeSmokeHarness {
 			return;
 		var captureSustain = false;
 		#if sys
-		captureSustain = Sys.getEnv('CAMMIE_LEGACY_SUSTAIN_SMOKE') == '1';
+		captureSustain = Sys.getEnv('CAMMIE_LEGACY_SUSTAIN_SMOKE') == '1' || Sys.getEnv('CAMMIE_LEGACY_PIXEL_SMOKE') == '1';
 		#end
 		for (note in state.notes.members) {
 			if (note == null || !note.exists || !note.visible || !note.active || note.alpha <= 0
@@ -1999,10 +1999,55 @@ class RuntimeSmokeHarness {
 			verifyLegacyFieldScale(note);
 			verifyLegacyGeometry(note);
 			verifyLegacySustain(note);
+			verifyHistoricalPixelNotes(note);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
+		#end
+	}
+
+	/** Synthetic pixel-stage coverage uses the owner's retained sheets, never donor edits. */
+	public static function prepareHistoricalPixelNotes(state:PlayState):Void {
+		#if sys
+		if (!enabled() || Sys.getEnv('CAMMIE_LEGACY_PIXEL_SMOKE') != '1') return;
+		if (!state.sourceUsesLegacyNoteGeometry()) throw 'Pixel probe requires historical owner';
+		@:privateAccess state.pixelUI = true;
+		emit('legacy_pixel_probe_enabled', {syntheticStageFlag:true});
+		#end
+	}
+
+	static function verifyHistoricalPixelNotes(note:Note):Void {
+		#if sys
+		if (Sys.getEnv('CAMMIE_LEGACY_PIXEL_SMOKE') != '1') return;
+		var state = PlayState.instance;
+		if (!note.isSustainNote || note.antialiasing || note.frameWidth != 7 || note.frameHeight != 6)
+			throw 'Native historical pixel tail sheet mismatch';
+		var checked = 0;
+		for (entry in state.unspawnNotes) {
+			if (entry == null) continue;
+			if (entry.antialiasing || entry.frameWidth != (entry.isSustainNote ? 7 : 17)
+				|| entry.frameHeight != (entry.isSustainNote ? 6 : 17)) throw 'Native pixel frame slicing mismatch';
+			var expectedScale = !entry.isSustainNote || entry.nightmareVisionSustainEnd ? PlayState.daPixelZoom
+				: PlayState.daPixelZoom * entry.nightmareVisionSustainDuration / 100 * 1.05 * state.songSpeed * 1.19;
+			if (Math.abs(entry.baseScaleY - expectedScale) > 0.00001) throw 'Native pixel raw baseline mismatch';
+			if (++checked == 12) break;
+		}
+		var field:NightmareVisionPlayFieldView = cast note.playField;
+		for (value in field.members) {
+			var strum:Strumline.StrumNote = cast value;
+			if (strum.frameWidth != 17 || strum.frameHeight != 17 || !strum.isPixel || strum.antialiasing)
+				throw 'Native pixel receptor sheet mismatch';
+			if (strum.animation.getByName('confirm').frameRate != (strum.ID == 2 ? 12 : 24))
+				throw 'Native pixel confirmation frame rate mismatch';
+		}
+		var renderer = @:privateAccess state.nightmareVisionRenderers.get(field);
+		var visual = renderer.visualState(note);
+		if (Math.abs(note.scale.y - note.defScale.y / visual.position.z) > 0.00001)
+			throw 'Native projected pixel hold mismatch';
+		emit('legacy_pixel_native_verified', {checked:checked,frameWidth:note.frameWidth,frameHeight:note.frameHeight,
+			scaleY:note.scale.y,rawScaleY:note.baseScaleY,projectionZ:visual.position.z,
+			graphic:note.graphic.key,receptors:field.members.length});
 		#end
 	}
 

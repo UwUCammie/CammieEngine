@@ -12,14 +12,21 @@ class SourceLibraryPathsTest(unittest.TestCase):
   core=method(nv,'function coreLibraryPath(file:String')
   play=(ROOT/'source/PlayState.hx').read_text()
   pair=method(play,'function nightmareVisionOwnerSparrowPaths(').replace('function nightmareVisionOwner','public function nightmareVisionOwner',1)
+  pair+='\n'+method(play,'function nightmareVisionOwnerImagePaths(').replace('function nightmareVisionOwner','public function nightmareVisionOwner',1)
+  pair+='\n'+method(play,'function nightmareVisionLegacyPixelGraphic(').replace('function nightmareVisionLegacyPixelGraphic','public function nightmareVisionLegacyPixelGraphic',1)
   within=method(play,'function nightmareVisionPathIsWithin(')
   ownercore=method(nv,'public function getOwnerCorePath(')
   label=method(nv,'static function validDirectoryLabel(')
   base=method((ROOT/'source/Paths.hx').read_text(),'static function getPath(').replace('static function','public static function',1)
+  colors=(ROOT/'source/NightmareVisionLegacyNoteColors.hx').read_text()
+  quant=colors[colors.index('public static function quantMode'):colors.index('public static function setHSV')]
   fixture=r"""import haxe.io.Path;
  using StringTools;
  typedef AssetType=String;
+ class FNFAssets {public static function getFlxGraphic(path:String):Dynamic return {path:path};}
+ class NightmareVisionLegacyNoteColors {__QUANT__}
  class Game {
+ public var nightmareVisionPrefs:Dynamic={view:{noteSkin:"Quants"}};
  public var nightmareVisionPaths:Main;public function new(p:Main)nightmareVisionPaths=p;
  __PAIR__
  __WITHIN__
@@ -42,6 +49,7 @@ class SourceLibraryPathsTest(unittest.TestCase):
  public var currentLevel:String='shared';
  public function new(){}
  public function scopeAssetPath(path:String):String return path;
+ public function getOwnerAssetCache():Dynamic return {trackGraphic:function(path:String,g:Dynamic,persist:Bool):Dynamic {check(path==g.path&&persist,"retain owner pixel graphic");return g;}};
  __OWNERCORE__
  __LABEL__
  function scopedPath(base:String,file:String):String {if(file.indexOf('..')>=0||file.indexOf(':')>=0||StringTools.startsWith(file,'/'))throw 'unsafe';return base+'/'+file;}
@@ -76,6 +84,21 @@ class SourceLibraryPathsTest(unittest.TestCase):
   p.files.push('owner/core/shared/images/note.png');
   check(game.nightmareVisionOwnerSparrowPaths('note').join('|')=='owner/core/shared/images/note.png|owner/core/shared/images/note.xml','reload pair follows shared library');
   p.files.push('owner/images/note.xml');check(game.nightmareVisionOwnerSparrowPaths('note')[0]=='owner/images/note.png','complete mod override wins');
+  p.files.push('owner/images/pixelUI/note.png');check(game.nightmareVisionOwnerImagePaths('pixelUI/note',['png'])[0]=='owner/images/pixelUI/note.png','pixel sheet needs no XML');
+  check(game.nightmareVisionOwnerImagePaths('../note',['png'])==null,'pixel sheet rejects traversal');
+  p.files=['owner/images/pixelUI/note.png','owner/images/pixelUI/noteENDS.png','owner/core/shared/images/pixelUI/QUANTnote.png'];
+  var sheet=game.nightmareVisionLegacyPixelGraphic('note',false,true);
+  check(sheet.quant&&sheet.graphic.path=='owner/core/shared/images/pixelUI/QUANTnote.png','quant tap uses authenticated core PNG without XML');
+  sheet=game.nightmareVisionLegacyPixelGraphic('note',true,true);
+  check(!sheet.quant&&sheet.graphic.path=='owner/images/pixelUI/noteENDS.png','missing quant tail falls back independently');
+  p.files.push('owner/images/pixelUI/QUANTnoteENDS.png');
+  check(game.nightmareVisionLegacyPixelGraphic('note',true,true).quant,'quant tail selected when available');
+  check(!game.nightmareVisionLegacyPixelGraphic('note',false,false).quant,'canQuant opt-out respected');
+  game.nightmareVisionPrefs.view.noteSkin='Vanilla';
+  check(!game.nightmareVisionLegacyPixelGraphic('note',false,true).quant,'vanilla ignores available quant sheet');
+  p.files=['sibling/images/pixelUI/note.png'];
+  check(game.nightmareVisionLegacyPixelGraphic('note',false,true)==null,'pixel loader never borrows sibling graphic');
+
   p.files=['sibling/images/note.png','sibling/images/note.xml'];check(game.nightmareVisionOwnerSparrowPaths('note')==null,'never borrow sibling pair');
   p.files=['owner/core/shared/images/note.png','owner/core/shared/images/note.xml'];
   RuntimeOwnerAssetIdentity.results.set(shared,{state:'missing',path:null});check(game.nightmareVisionOwnerSparrowPaths('note')==null,'catalog denial also blocks reload availability');
@@ -88,7 +111,7 @@ class SourceLibraryPathsTest(unittest.TestCase):
   blocked=false;try p.coreLibraryPath(f,'../other')catch(_:Dynamic)blocked=true;check(blocked,'reject unsafe library before lookup');
  }
  }
- """.replace('__OWNERCORE__',ownercore).replace('__PAIR__',pair).replace('__WITHIN__',within).replace('__LABEL__',label).replace('__CORE__',core).replace('__BASE__',base)
+ """.replace('__QUANT__',quant).replace('__OWNERCORE__',ownercore).replace('__PAIR__',pair).replace('__WITHIN__',within).replace('__LABEL__',label).replace('__CORE__',core).replace('__BASE__',base)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as directory:
    work=FixturePath(directory);(work/'Main.hx').write_text(fixture)
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'--main','Main','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=45)

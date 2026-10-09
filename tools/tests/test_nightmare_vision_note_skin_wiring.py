@@ -97,11 +97,13 @@ class RuntimeSmokeHarness {
  public static var marks:Int=0;
  public static function markNightmareVisionNoteVisual(note:Note):Void marks++;
 }
+class NightmareVisionLegacyPixelSkin {public static function applyNote(n:Dynamic,g:Dynamic,l:Int,z:Float):Bool throw "non-pixel fixture used pixel loader";}
 class Conductor {public static var stepCrochet=125.;}
 class NightmareVisionLegacySustain {public static function finish(n:Dynamic,w:Float,s:Float,v:Float,p:Bool,z:Float):Void throw "unexpected sustain setup in tap fixture";}
 class SkinWiring {
  var songSpeed=1.;var pixelUI=false;var daPixelZoom=6.;
  var nightmareVisionLegacyFieldCameras=false;
+ function nightmareVisionLegacyPixelGraphic(s:String,h:Bool,q:Bool):Dynamic return null;
  function nightmareVisionHasOwnerSparrowAtlas(s:String):Bool return false;
  function nightmareVisionGetOwnerSparrowAtlas(s:String):FlxAtlasFrames return null;
  var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime;
@@ -186,7 +188,7 @@ class SkinWiring {
         source = (ROOT / "source/PlayState.hx").read_text()
         for note in ("swagNote", "sustainNote"):
             self.assertIn(f"configureNightmareVisionNoteSkin({note});", source)
-        self.assertIn("skin.applyReceptor(strum, strum.ID)", source)
+        self.assertIn("applyNightmareVisionReceptorSkin(strum, skin)", source)
 
 
 if __name__ == "__main__":
