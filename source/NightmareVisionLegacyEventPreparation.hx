@@ -45,16 +45,17 @@ class NightmareVisionLegacyEventPreparation {
 	public static function prepare(visit:(Dynamic->Void)->Void, noteOffset:Void->Float,
 		scripts:Void->Map<String, Dynamic>, call:(Dynamic, String, Array<Dynamic>)->Dynamic,
 		global:(String, Array<Dynamic>)->Dynamic, load:String->Void,
-		publish:(Dynamic, SourceEventNote)->Void, builtin:SourceEventNote->Bool):Void {
+		publish:(Dynamic, SourceEventNote)->Void, builtin:SourceEventNote->Bool, ?pushedNames:Void->Map<String, Bool>):Void {
 		var names:Map<String, Bool> = [];
+		if (pushedNames == null) pushedNames = function() return names;
 		for (entry in collect(visit, noteOffset, scripts, call)) {
 			var event = entry.event;
-			if (!names.exists(event.event)) {
-				names.set(event.event, true);
+			if (!pushedNames().exists(event.event)) {
+				pushedNames().set(event.event, true);
 				firstPush(event, scripts, call);
 			}
 		}
-		for (name in names.keys()) load(name);
+		for (name in pushedNames().keys()) load(name);
 		for (entry in collect(visit, noteOffset, scripts, call)) {
 			var event = entry.event;
 			// Match compound-assignment evaluation: callbacks may mutate the view.

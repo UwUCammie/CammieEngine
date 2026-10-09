@@ -185,6 +185,7 @@ class RuntimeSmokeSeekTest(unittest.TestCase):
         self.assertIn("daNote.prevNote.wasGoodHit && !daNote.canBeHit", self.play_state)
         self.assertIn("daNote.prevNote.alive && daNote.prevNote.isSustainNote", self.play_state)
         fixture = {
+            "NightmareVisionLegacyEventQueue.hx": (ROOT / "source/NightmareVisionLegacyEventQueue.hx").read_text(),
             "Conductor.hx": """class Conductor {
   public static var songPosition:Float = 1800;
   public static var lastSongPos:Float = 1800;
@@ -254,6 +255,10 @@ class NoteGroup {
   public function remove(note:NoteStub, splice:Bool):Void members.remove(note);
 }
 class SeekHost {
+  public var nightmareVisionLegacyFieldCameras=false;
+  public var registry:Dynamic={eventNotes:[]};
+  function legacyScriptRegistry():Dynamic return registry;
+  __HISTORICAL_DRAIN__
   public var startingSong:Bool=false;
   public var endingSong:Bool=false;
   public var compatEventVideo:Dynamic=null;
@@ -293,7 +298,7 @@ class SeekHost {
   __SMOKE_METHOD__
 }
 """.replace("__SEEK_METHOD__", seek_method).replace("__SMOKE_METHOD__", smoke_method)
-            .replace("__REPAIR_METHOD__", repair_method),
+            .replace("__REPAIR_METHOD__", repair_method).replace("__HISTORICAL_DRAIN__", extract_haxe_method(self.play_state, "function dispatchHistoricalSongEvents(")),
             "SeekIntegrationTest.hx": """import SeekHost.NoteStub;
 class SeekIntegrationTest {
   static function check(ok:Bool,label:String):Void if(!ok) throw label;

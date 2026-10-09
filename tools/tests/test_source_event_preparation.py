@@ -78,7 +78,7 @@ class SourceEventPreparationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             (temp / "Main.hx").write_text(main_source, newline="\n")
-            for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx", "NightmareVisionLegacyEventPreparation.hx"):
+            for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx", "NightmareVisionLegacyEventPreparation.hx", "NightmareVisionLegacyEventQueue.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
             velocity = (ROOT / "source/NightmareVisionScrollVelocity.hx").read_text()
             velocity = velocity.replace("import nightmarevision.modchart.NightmareVisionModchartTransform;", "")
@@ -166,7 +166,7 @@ class NvScriptHost {
  }
 }
 class FixtureRegistry {
- public var eventScripts:Map<String,Dynamic>=[];var owner:PlayState;
+ public var eventScripts:Map<String,Dynamic>=[];public var eventNotes:Array<Dynamic>=[];public var eventPushedMap:Map<String,Bool>=[];var owner:PlayState;
  public function new(owner:PlayState)this.owner=owner;
  public function callScript(script:Dynamic,callback:String,args:Array<Dynamic>):Dynamic {
   owner.nvModuleCalls.push(new NvCall(script.name,callback,args));

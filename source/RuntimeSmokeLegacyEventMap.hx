@@ -8,6 +8,7 @@ class RuntimeSmokeLegacyEventMap {
 		if (Sys.getEnv('CAMMIE_LEGACY_EVENT_MAP_SMOKE') != '1') return;
 		var state = PlayState.instance;
 		if (!state.nightmareVisionLegacyFieldCameras) throw 'Historical event map profile unavailable';
+		if (state.legacyScriptRegistry().eventPushedMap != null) throw 'Historical discovery map was not released after generation';
 		var reset = RuntimeSmokeLegacyRegistry.isolate(state);
 		var oldBackend = state.nightmareVisionScripts;
 		var phases:Array<String> = [];
@@ -42,6 +43,7 @@ class RuntimeSmokeLegacyEventMap {
 			replacement.remove('Alias');
 			if (backend.hasEventCallback('Alias','onTrigger') || state.callEventScript('Alias','onTrigger',[]) != 0) throw 'Native removed event was recreated';
 			verifyPreparation(state, registry, api);
+			verifyQueue(state, registry, api);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
@@ -72,6 +74,21 @@ class RuntimeSmokeLegacyEventMap {
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_preparation_native_verified', {admission:true,freshPasses:true,zeroOffsetOverridesGlobal:true,duplicates:true,retainedIdentity:true});
 		} catch(error:Dynamic) {PlayState.SONG = oldSong;handle.destroy();throw error;}
 		handle.destroy();
+	}
+
+	static function verifyQueue(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
+		var oldIndex = state.songEventIndex;
+		var seen:Array<String> = [];
+		var handle = NightmareVisionScriptModule.fromSource('E',
+			'function onTrigger(a,b){record(a+":"+b);if(a=="first")registry.eventNotes=[{strumTime:-1000,event:"E",value1:"skipped",value2:null},{strumTime:-1000,event:"E",value1:"second",value2:null}];}',
+			state, null, function(i) {var module:NightmareVisionScriptModule=cast i.variables.get('script');module.historicalCalls=true;i.variables.set('registry',registry);i.variables.set('record',function(value:String)seen.push(value));}, function(n,c,e) throw e);
+		registry.eventScripts = ['E'=>handle];
+		try {
+			api.execute(new NightmareVisionScriptParser().parseString('eventNotes=[{strumTime:-1000,event:"E",value1:"first",value2:null},{strumTime:-1000,event:"E",value1:"old-tail",value2:null}];var originalQueue=eventNotes;if(eventNotes!=game.eventNotes||eventNotes!=PlayState.eventNotes||eventNotes!=Reflect.getProperty(game,"eventNotes"))throw "native queue identity";checkEventNote();if(eventNotes.length!=0||originalQueue.length!=2)throw "native queue replacement";', '__event_queue_api'));
+			if (seen.join(',') != 'first:,second:' || state.songEventIndex != oldIndex + 2) throw 'Native historical queue shift order';
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_queue_native_verified', {liveAliases:true,callbackReplacement:true,postCallbackShift:true,nullValues:true,sharedEventDispatch:true,discoveryReleased:true});
+		} catch(error:Dynamic) {state.songEventIndex=oldIndex;handle.destroy();throw error;}
+		state.songEventIndex=oldIndex;handle.destroy();
 	}
 
 }

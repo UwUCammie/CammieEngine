@@ -25,7 +25,7 @@ class PlayStateEventDrainTest(unittest.TestCase):
             raise AssertionError(name)
 
         helpers = '\n'.join(method(name) for name in (
-            'dispatchDueSongEvents', 'dueSongEventCount', 'handleSongAudioComplete'))
+            'dispatchDueSongEvents', 'dispatchHistoricalSongEvents', 'totalSongEventCount', 'dueSongEventCount', 'handleSongAudioComplete'))
         self.assertIn(
             'FlxG.sound.music.onComplete = function() handleSongAudioComplete();',
             source,
@@ -42,6 +42,9 @@ class RuntimeSmokeHarness {
   dispatched:Int,total:Int,due:Int):Void {lastDue=due;}
 }
 class Main {
+ var nightmareVisionLegacyFieldCameras:Bool=false;
+ var registry:Dynamic={eventNotes:[]};
+ function legacyScriptRegistry():Dynamic return registry;
  var songEvents:Array<Dynamic> = [];
  var songEventIndex:Int = 0;
  var songLength:Float = 0;
@@ -116,12 +119,24 @@ class Main {
   Conductor.songPosition = 200;
   dispatchDueSongEvents();
   if (log.join(",") != "demo-tail") throw "demo final-frame event was lost";
+  nightmareVisionLegacyFieldCameras=true;demoMode=false;log=[];songEventIndex=0;songLength=10;
+  songEvents=[{time:999.,name:"metadata-only"}];
+  registry.eventNotes=[{strumTime:5.,event:"source-five",value1:null,value2:null},{strumTime:10.,event:"source-tail",value1:"",value2:""},{strumTime:11.,event:"source-future",value1:"",value2:""}];
+  Conductor.songPosition=5;dispatchDueSongEvents();
+  if(log.join(",")!="source-five"||songEventIndex!=1||registry.eventNotes.length!=2||totalSongEventCount()!=3||dueSongEventCount(10)!=2)throw "historical queue must override native metadata";
+  handleSongAudioComplete();
+  if(log.join(",")!="source-five,source-tail,end"||registry.eventNotes.length!=1||RuntimeSmokeHarness.lastDue!=2)throw "historical completion lost its live tail";
+  registry.eventNotes=[{strumTime:7.,event:"replacement",value1:null,value2:null}];
+  Conductor.songPosition=10;dispatchDueSongEvents();
+  if(log[log.length-1]!="replacement"||registry.eventNotes.length!=0)throw "historical cursor blocked a replacement queue";
+
  }
  static function main():Void new Main().run();
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as work:
             directory = Path(work)
             (directory / 'Main.hx').write_text(fixture, newline='\n')
+            (directory / 'NightmareVisionLegacyEventQueue.hx').write_text((ROOT / 'source/NightmareVisionLegacyEventQueue.hx').read_text())
             result = subprocess.run(
                 [*HAXE_COMMAND, '-cp', str(directory),
                  '--run', 'Main'], cwd=ROOT, text=True, capture_output=True,

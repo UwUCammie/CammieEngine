@@ -54,6 +54,7 @@ API=r'''class Host {
  public var registry=new NightmareVisionLegacyScriptRegistry();public var groups:Array<Dynamic>=[[100.,[['E','keep',null],['E','reject',null]]]];
  public function new(){}
  function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry return registry;
+ function dispatchHistoricalSongEvents():Void {NightmareVisionLegacyEventQueue.drain(function()return registry.eventNotes,function()return 0.,function(e){});}
  function sourceChartNoteOffset():Float return 5.;
  function visitHistoricalNightmareVisionEvents(visit:Dynamic->Void):Void {SongEvents.visitSourceGroups(groups,visit);}
  __API__

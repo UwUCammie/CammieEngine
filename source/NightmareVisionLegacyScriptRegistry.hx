@@ -6,12 +6,18 @@ class NightmareVisionLegacyScriptRegistry {
 	public var hscriptArray:Array<Dynamic> = [];
 	public var luaArray:Array<Dynamic> = [];
 	public var eventScripts:Map<String, Dynamic> = [];
+	public var eventNotes:Array<Dynamic> = [];
+	public var eventPushedMap:Map<String, Bool> = [];
 	public var events:Void->Map<String, Dynamic>;
 	public var special:String->Bool;
 
 	public function new(?events:Void->Map<String, Dynamic>, ?special:String->Bool) {
 		this.events = events == null ? function() return this.eventScripts : events;
 		this.special = special == null ? function(name) return this.eventScripts.exists(name) : special;
+	}
+	public function finishEventDiscovery():Void {
+		eventPushedMap.clear();
+		eventPushedMap = null;
 	}
 	public function add(script:Dynamic, lua:Bool = false):Void {
 		funkyScripts.push(script);

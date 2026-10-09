@@ -248,6 +248,7 @@ __METHOD__
                                 'public function skipCompatEventVideoToEnd(', 1)
         files = {
             'EventVideoSkip.hx': (ROOT / 'source/EventVideoSkip.hx').read_text(),
+            'NightmareVisionLegacyEventQueue.hx': (ROOT / 'source/NightmareVisionLegacyEventQueue.hx').read_text(),
             'Conductor.hx': '''class Conductor {
                 public static var songPosition:Float=500;
                 public static var lastSongPos:Float=500;
@@ -302,6 +303,10 @@ __METHOD__
                 public function remove(note:NoteStub, splice:Bool):Void members.remove(note);
             }
             class SeekHost {
+                public var nightmareVisionLegacyFieldCameras=false;
+                public var registry:Dynamic={eventNotes:[]};
+                function legacyScriptRegistry():Dynamic return registry;
+                __HISTORICAL_DRAIN__
                 public var startingSong=false;
                 public var endingSong=false;
                 public var songLength:Float=140000;
@@ -339,7 +344,7 @@ __METHOD__
                 __SEEK_METHOD__
                 __SKIP_METHOD__
             }'''.replace('__SEEK_METHOD__', seek_method).replace('__SKIP_METHOD__', method)
-                .replace('__REPAIR_METHOD__', repair_method),
+                .replace('__REPAIR_METHOD__', repair_method).replace('__HISTORICAL_DRAIN__', self.extract_method(play_state, 'function dispatchHistoricalSongEvents(')),
             'SkipIntegrationTest.hx': '''import SeekHost.NoteStub;
             class SkipIntegrationTest {
                 static function check(ok:Bool,label:String):Void if(!ok) throw label;
@@ -375,6 +380,12 @@ __METHOD__
                     host.skipCompatEventVideoToEnd(0,20840);
                     check(host.replayed.length==3 && host.pausedVocals==1,
                         "repeat skip replayed events or audio");
+                    var legacy=new SeekHost();legacy.nightmareVisionLegacyFieldCameras=true;
+                    legacy.registry.eventNotes=[{strumTime:100.,event:"Focus Camera",value1:null,value2:null},{strumTime:200.,event:"Play Video",value1:null,value2:null},{strumTime:20840.,event:"At Boundary",value1:null,value2:null}];
+                    Conductor.songPosition=500;FlxG.sound.music.time=500;
+                    legacy.skipCompatEventVideoToEnd(0,20840);
+                    check(legacy.replayed.join(",")=="Focus Camera" && legacy.registry.eventNotes.length==1 && legacy.registry.eventNotes[0].event=="At Boundary" && legacy.songEventIndex==3,"historical skip must use the live queue and preserve its exclusive boundary");
+
                 }
             }'''
         }

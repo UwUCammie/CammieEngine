@@ -13209,6 +13209,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var collect = function():Array<SourceEventNote> return [for (entry in NightmareVisionLegacyEventPreparation.collect(
 			visitHistoricalNightmareVisionEvents, sourceChartNoteOffset, scripts, registry.callScript)) entry.event];
 		return {
+			checkEventNote:function() dispatchHistoricalSongEvents(),
 			getEvents:collect,
 			shouldPush:function(event:Dynamic) return NightmareVisionLegacyEventPreparation.shouldPush(event, scripts, registry.callScript),
 			firstEventPush:function(event:Dynamic) NightmareVisionLegacyEventPreparation.firstPush(event, scripts, registry.callScript),
@@ -13225,7 +13226,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			function() return registry.eventScripts, registry.callScript,
 			function(name, args) return registry.callOnScripts(name, args),
 			function(name) nightmareVisionScripts.loadScope('event', name),
-			function(row, event) {songEvents.push(row); sourceEventViews.push(event);}, precacheNightmareVisionSourceEvent);
+			function(row, event) {songEvents.push(row); sourceEventViews.push(event);registry.eventNotes.push(event);},
+			precacheNightmareVisionSourceEvent, function() return registry.eventPushedMap);
+		NightmareVisionLegacyEventQueue.sort(registry.eventNotes);
 	}
 
 	/** These source built-ins own preparation and do not call module onPush.
@@ -14833,6 +14836,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			callNightmareVision('preNoteGeneration', []);
 			if (genNotesBeforeCountdown) generatePlayfields();
 			generateSong(SONG.song);
+			if (nightmareVisionLegacyFieldCameras) {
+				var registry = legacyScriptRegistry();
+				registry.finishEventDiscovery();
+			}
 			RuntimeSmokeHarness.markLoadPhase('chart_generated');
 			preloadSwapCharacters();
 			RuntimeSmokeHarness.markLoadPhase('swap_characters_preloaded');
@@ -15201,7 +15208,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// frame. Do the same here so camera, stage, and character state reach the
 		// authored endpoint. Another video event is omitted to avoid opening a
 		// new clip while disposing the one the player just skipped.
-		while (songEventIndex < songEvents.length && songEvents[songEventIndex].time < target) {
+		if (nightmareVisionLegacyFieldCameras) {
+			dispatchHistoricalSongEvents(target, function(event) {
+				var video = EngineCompat.eventName(event.name) == 'Play Video';
+				if (captureSmokeState) {if (video) skippedVideoEvents++;else firedEvents++;}
+				return !video;
+			}, true);
+		} else while (songEventIndex < songEvents.length && songEvents[songEventIndex].time < target) {
 			var event = songEvents[songEventIndex++];
 			if (EngineCompat.eventName(event.name) != 'Play Video') {
 				fireSongEvent(event);
@@ -16204,11 +16217,26 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var previousFrameTime:Int = 0;
 	var songTime:Float = 0;
 
+	function dispatchHistoricalSongEvents(?throughTime:Null<Float>, ?accept:Dynamic->Bool, exclusive:Bool = false):Void {
+		var registry = legacyScriptRegistry();
+		NightmareVisionLegacyEventQueue.drain(function() return registry.eventNotes,
+			function() return throughTime == null ? Conductor.songPosition : throughTime,
+			function(event) {if (accept == null || accept(event)) fireSongEvent(event);}, function() songEventIndex++, exclusive);
+	}
+
+	function totalSongEventCount():Int {
+		return nightmareVisionLegacyFieldCameras ? songEventIndex + legacyScriptRegistry().eventNotes.length : songEvents.length;
+	}
+
 	/** Dispatch events through a chart-time bound while advancing the cursor
 	 * before callbacks. A callback may end the song or re-enter this pump; the
 	 * current row must not be delivered twice. With no explicit bound, sample
 	 * Conductor for each row to preserve scripts which seek during an event. */
 	function dispatchDueSongEvents(?throughTime:Null<Float>):Void {
+		if (nightmareVisionLegacyFieldCameras) {
+			dispatchHistoricalSongEvents(throughTime);
+			return;
+		}
 		if (throughTime != null && Math.isNaN(throughTime))
 			return;
 		while (songEventIndex < songEvents.length) {
@@ -16235,6 +16263,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** Source charts may contain authored events after their instrumental ends.
 	 * The native check counts only rows that can fire before audio completion. */
 	function dueSongEventCount(throughTime:Float):Int {
+		if (nightmareVisionLegacyFieldCameras)
+			return songEventIndex + NightmareVisionLegacyEventQueue.due(legacyScriptRegistry().eventNotes, throughTime);
 		var count = 0;
 		if (Math.isNaN(throughTime)) return count;
 		for (event in songEvents) {
@@ -16260,7 +16290,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		dispatchDueSongEvents(songLength);
 		RuntimeSmokeHarness.markNaturalSongEnd(SONG == null ? '' : SONG.song,
-			songLength, Conductor.songPosition, songEventIndex, songEvents.length,
+			songLength, Conductor.songPosition, songEventIndex, totalSongEventCount(),
 			dueSongEventCount(songLength));
 		if (codenameInstFacade != null && codenameInstFacade.onComplete != null) {
 			try {
@@ -22666,7 +22696,7 @@ void main(void) {
 		if (demoSongFinished && !endingSong) {
 			demoSongFinished = false;
 			RuntimeSmokeHarness.markNaturalSongEnd(SONG == null ? '' : SONG.song,
-				songLength, Conductor.songPosition, songEventIndex, songEvents.length,
+				songLength, Conductor.songPosition, songEventIndex, totalSongEventCount(),
 				dueSongEventCount(songLength));
 			endSong();
 		}
