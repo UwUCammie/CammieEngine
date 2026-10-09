@@ -93,6 +93,31 @@ class SourceScriptReflection {
 		return true;
 	}
 
+	/** Object-order roots are read twice for nested paths, as in the source callbacks. */
+	static function legacyOrderObject(path:String, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = path.split('.');
+		var object = resolveObject(parts[0]);
+		if (parts.length > 1)
+			object = readLegacyPathPart(legacyPathOwner(parts, instance, resolveObject, readProperty), parts[parts.length - 1], readProperty);
+		return object;
+	}
+	public static function getLegacyObjectOrder(path:String, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Int {
+		var object = legacyOrderObject(path, instance, resolveObject, readProperty);
+		if (object != null) return instance().members.indexOf(object);
+		missing();
+		return -1;
+	}
+	public static function setLegacyObjectOrder(path:String, position:Int, instance:()->Dynamic,
+		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Void {
+		var object = legacyOrderObject(path, instance, resolveObject, readProperty);
+		if (object == null) {missing();return;}
+		instance().remove(object, true);
+		// Removal listeners can change the active scene before insertion.
+		instance().insert(position, object);
+	}
+
 	public static function legacyGroupRoot(path:String, instance:()->Dynamic,
 		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
 		var parts = path.split('.');

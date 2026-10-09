@@ -5403,6 +5403,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return NightmareVisionLegacyClassAliases.create(PlayState, GameOverSubstate, nightmareVisionConductor,
 			nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view, nightmareVisionPaths, CoolUtil);
 	}
+	function installHistoricalLuaObjectOrder(interp:Interp, resultsObserver:Bool):Void {
+		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
+		interp.variables.set('getObjectOrder', function(path:String):Int
+			return SourceScriptReflection.getLegacyObjectOrder(path, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty,
+				function() trace('[script] Object ' + path + " doesn't exist!")));
+		interp.variables.set('setObjectOrder', function(path:String, position:Int):Void
+			SourceScriptReflection.setLegacyObjectOrder(path, position, historicalPropertyInstance, historicalPropertyObject, historicalReadProperty,
+				function() trace('[script] Object ' + path + " doesn't exist!")));
+	}
 	function installHistoricalLuaProperties(interp:Interp, resultsObserver:Bool):Void {
 		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
 		interp.variables.set('getProperty', function(path:String):Dynamic
@@ -8717,6 +8726,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// Convert Lua results after the source reflection overlay has installed
 		// its final getters; HScript retains the native array API unchanged.
 		installHistoricalLuaProperties(interp, resultsObserver);
+		installHistoricalLuaObjectOrder(interp, resultsObserver);
 		PsychLuaApiResults.install(interp);
 	}
 
