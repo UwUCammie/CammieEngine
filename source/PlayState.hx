@@ -851,6 +851,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			context != null && context.field == field ? context.sourceHold : false);
 	}
 
+	function nightmareVisionLegacyGoodNoteHit(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
+		if (value == null || !Std.isOfType(value, Note) || field == null) return;
+		NightmareVisionLegacyHitFlow.hit(this, cast value, field, true);
+	}
+
+	function nightmareVisionLegacyOpponentNoteHit(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
+		if (value == null || !Std.isOfType(value, Note) || field == null) return;
+		NightmareVisionLegacyHitFlow.hit(this, cast value, field, false);
+	}
+
 	function nightmareVisionFieldMissSignal(value:Dynamic, field:NightmareVisionPlayFieldView):Void {
 		if (field == null) return;
 		var note:Note = value != null && Std.isOfType(value, Note) ? cast value : null;
@@ -939,8 +949,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (!nightmareVisionPrefs.view.opponentStrums) opponent.baseAlpha = 0;
 			else if (nightmareVisionPrefs.view.middleScroll) opponent.baseAlpha = 0.35;
 		}
-		nightmareVisionLegacyReceptors.player.noteHitCallback = nightmareVisionFieldHitSignal;
-		nightmareVisionLegacyReceptors.opponent.noteHitCallback = nightmareVisionFieldHitSignal;
+		nightmareVisionLegacyReceptors.player.noteHitCallback = nightmareVisionLegacyGoodNoteHit;
+		nightmareVisionLegacyReceptors.opponent.noteHitCallback = nightmareVisionLegacyOpponentNoteHit;
 		callNightmareVision('preReceptorGeneration', []);
 		// Resolve the live pointers at each step: source callbacks can replace them.
 		nightmareVisionLegacyReceptors.opponent.generateReceptors();
@@ -25642,6 +25652,35 @@ void main(void) {
 		}
 	}
 
+	function playNightmareVisionLegacyHitSound(note:Note):Void {
+		var volume:Float = nightmareVisionPrefs.view.hitsoundVolume;
+		if (volume > 0 && !note.hitsoundDisabled)
+			FlxG.sound.play(nightmareVisionPaths.sound('hitsound'), volume);
+	}
+
+	function confirmNightmareVisionLegacyHit(note:Note, field:NightmareVisionPlayFieldView):Void {
+		var direction = Std.int(Math.abs(note.noteData));
+		if (field.autoPlayed) {
+			var lane = direction % nightmareVisionKeyCount();
+			var strum = lane < field.members.length ? field.members[lane] : null;
+			if (strum != null) {
+				strum.playAnim('confirm', true, note);
+				strum.resetAnim = 0.15 + (note.isSustainNote && note.animation.curAnim != null
+					&& !note.animation.curAnim.name.endsWith('end') ? 0.15 : 0);
+			}
+		} else for (strum in field.members)
+			if (strum != null && strum.ID == direction) strum.playAnim('confirm', true, note);
+	}
+
+	function hurtNightmareVisionLegacySinger(note:Note, field:NightmareVisionPlayFieldView):Void {
+		var actor:Character = cast field.owner;
+		if (!note.noMissAnimation && note.noteType == 'Hurt Note' && actor != null
+			&& actor.animation.exists('hurt')) {
+			actor.playAnim('hurt', true);
+			actor.specialAnim = true;
+		}
+	}
+
 	function prepareNightmareVisionHitSingers(note:Note, field:NightmareVisionPlayFieldView,
 		fieldID:Int, manualHit:Bool):Void {
 		var actors:Array<Dynamic> = note.forceGfSing ? [gf] : field.singers;
@@ -25732,9 +25771,9 @@ void main(void) {
 	/** Later PlayState signal listeners run only after the source field callback. */
 	function finishNightmareVisionExternalHit(note:Note, playerOne:Bool,
 		field:NightmareVisionPlayFieldView, fieldID:Int, accepted:Bool, autoAttempt:Bool):Void {
-		if (fieldID == 1) camZooming = true;
+		if (!nightmareVisionLegacyFieldCameras && fieldID == 1) camZooming = true;
 		var sharedVoice = vocalTracks == null || !vocalTracks.hasRole('opponent');
-		if (field.playerControls || sharedVoice) {
+		if (!nightmareVisionLegacyFieldCameras && (field.playerControls || sharedVoice)) {
 			if (nightmareVisionAudioApi != null) nightmareVisionAudioApi.setTrackVolumeState();
 			else setSourceVocalVolume('player', 1);
 		}
@@ -25746,7 +25785,7 @@ void main(void) {
 		if (!accepted) return;
 
 		if (hxcStrumlineNoteSurface != null) hxcStrumlineNoteSurface.hit(note);
-		var observerPlayer = field.playerControls;
+		var observerPlayer = nightmareVisionLegacyFieldCameras ? playerOne : field.playerControls;
 		if (observerPlayer) player1GoodHitSignal.trigger(note);
 		else player2GoodHitSignal.trigger(note);
 		dispatchPsychCompiledStage(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit', [note]);

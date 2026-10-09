@@ -234,7 +234,8 @@ class Scripts {
  __DISPATCH__
 }
 class Main {
- function nightmareVisionFieldHitSignal(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
+ function nightmareVisionLegacyGoodNoteHit(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
+ function nightmareVisionLegacyOpponentNoteHit(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
  public var SONG:Dynamic={lanes:3,uiType:'normal'};
  public var nightmareVisionScripts:Scripts=new Scripts();
  public var nightmareVisionPrefs:Dynamic={view:{quants:false,opponentStrums:true,middleScroll:false}};

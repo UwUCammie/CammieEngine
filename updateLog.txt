@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Keep historical NV player/opponent default hit handlers independent of mutable field controls, with source health, hazard, receptor and hit-flag timing.
 	- Match historical NV hit notification order and source argument counts, filter type/event scripts from global hit broadcasts, and avoid modern Pre/type-hit and duplicate Lua notifications.
 	- Match historical NV note-type assignment order, nested setup callbacks and built-in type effects through the shared note runtime.
 	- Preserve historical NV note-script attachments across registry changes and share their update/reload/animation callbacks through the existing interpreter; honor explicit pointer replacement and clearing.

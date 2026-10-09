@@ -4,6 +4,7 @@ from haxe_test_support import HAXE_COMMAND
 import subprocess
 import tempfile
 import unittest
+from test_nv_hit_order import extract_method
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
 
@@ -18,9 +19,7 @@ class HxcAutoHitRouteTest(unittest.TestCase):
         start = state.index("\tfunction dispatchHxcAutoNoteHit(")
         end = state.index("\n\tfunction goodNoteHit(", start)
         method = state[start:end]
-        pre_start = state.index("\tfunction dispatchNightmareVisionNoteHitPre(")
-        pre_end = state.index("\n\tfunction prepareNightmareVisionHitSingers(", pre_start)
-        pre_method = state[pre_start:pre_end]
+        pre_method = extract_method(state, "function dispatchNightmareVisionNoteHitPre(")
         main = r'''
 class Note {
   public static inline var NOTE_AMOUNT = 4;

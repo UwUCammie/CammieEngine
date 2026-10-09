@@ -5,6 +5,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from test_nv_hit_order import extract_method
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,6 +40,7 @@ class OptionsHandler { public static var options = {useKadeHealth:false}; }
 class TestNote extends Base {
  public var mustPress=false; public var oppMode=false; public var duoMode=false;
  public var nightmareVisionTypeRuntime:Dynamic=null; public var canMiss=false;
+ public var nightmareVisionLegacyGeometry=false;public var hitByOpponent=false;
  public var sourcePlayfieldPlayerControlled:Null<Bool>=null;
  public var sourcePlayfieldAutoPlay=false;
  public var codenameInputLine:Dynamic=null;
@@ -234,6 +236,11 @@ class TestNoteAI {
   check(!scaled.canBeHit&&!scaled.tooLate,
    "Codename per-note late scale does not change miss threshold");
 
+  var historical=new TestNote();historical.nightmareVisionLegacyGeometry=true;historical.hitByOpponent=true;
+  historical.nightmareVisionTypeRuntime={update:function(n:TestNote,e:Float){check(!n.wasGoodHit,"historical update callback precedes opponent commit");}};
+  historical.update(0);check(historical.wasGoodHit,"historical Note.update commits opponent hit");
+  var modern=new TestNote();modern.hitByOpponent=true;modern.autoHitSuppressed=true;
+  modern.update(0);check(!modern.wasGoodHit,"modern Note does not inherit historical opponent commit");
   var sourcePsych = new TestNote(); sourcePsych.mustPress=true;
   sourcePsych.sourceTimingMode=1; sourcePsych.strumTime=980;
   Conductor.songPosition=1000; Conductor.safeZoneOffset=20;
@@ -246,6 +253,8 @@ class TestNoteAI {
  }
 }
 '''
+        flags = extract_method((ROOT/'source/NightmareVisionLegacyHitFlow.hx').read_text(), 'public static function updateFlags(').replace('note:Note', 'note:Dynamic')
+        fixture += '\nclass NightmareVisionLegacyHitFlow {' + flags + '}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'TestNoteAI.hx').write_text(fixture, newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', folder,

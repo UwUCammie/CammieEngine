@@ -504,6 +504,7 @@ class Note extends DynamicSprite {
 	public var nightmareVisionHitDispatched:Bool = false;
 	/** Psych sustains stay alive after their one successful notification. */
 	@:keep public var hitByOpponent:Bool = false;
+	@:keep public var doAutoSustain:Bool = false;
 	public var psychHitDispatched:Bool = false;
 	public var psychHitCallbackArgs:Array<Dynamic>;
 	public var nightmareVisionMissDispatched:Bool = false;
@@ -1867,6 +1868,7 @@ class Note extends DynamicSprite {
 	override function update(elapsed:Float) {
 		super.update(elapsed);
 		if (nightmareVisionTypeRuntime != null) nightmareVisionTypeRuntime.update(this, elapsed);
+		if (nightmareVisionLegacyGeometry) NightmareVisionLegacyHitFlow.updateFlags(this);
 		// if we are player one and it's bf's note or we are duo mode or we are player two and it's p2's note
 		// and it isn't demo mode
 		if (!isAutoPlayed()) {
