@@ -14,7 +14,7 @@ class RuntimeSmokeLegacyCameraEvents {
 	static function near(a:Float, b:Float):Bool return Math.abs(a-b) < 0.00001;
 	public static function verify(state:PlayState, registry:NightmareVisionLegacyScriptRegistry, api:NightmareVisionScriptInterp):Void {
 		var saved:Map<String, Dynamic> = [];
-		for (name in ['camGame','camHUD','camFollow','defaultCamZoom','isCameraOnForcedPos','camTween','camHUDAlphaTween',
+		for (name in ['camGame','camHUD','camFollow','defaultCamZoom','isCameraOnForcedPos','camTween','camHUDAlphaTween','songSpeedTween',
 			'curBeat','lastBeatHit','totalBeat','totalShake','timeBeat','gameZ','hudZ','gameShake','hudShake','shakeTime','hscriptStates','boyfriendCameraOffset','girlfriendCameraOffset','opponentCameraOffset','nightmareVisionCameraEvents']) saved.set(name, Reflect.getProperty(state,name));
 		var oldPrimary = FlxG.camera;var oldManager = FlxTween.globalManager;var oldPref = state.nightmareVisionPrefs.view.camZooms;
 		var oldMain = registry.funkyScripts;var oldHx = registry.hscriptArray;var oldLua = registry.luaArray;var oldEvents = registry.eventScripts;

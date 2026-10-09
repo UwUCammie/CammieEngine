@@ -99,7 +99,7 @@ class Main {
             result = subprocess.run([str(haxe),'-cp',str(ROOT/'source'),'-cp',folder,'--main','Main','--interp'],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         source = (ROOT/'source/PlayState.hx').read_text()
-        native_dispatch = extract_block(source, 'function fireNativeSongEvent(e:Dynamic)')
+        native_dispatch = extract_block(source, 'function fireNativeSongEvent(')
         event_start = native_dispatch.index("case 'Change Character':")
         event_end = native_dispatch.index("case 'Change Stage':", event_start)
         event = native_dispatch[event_start:event_end]

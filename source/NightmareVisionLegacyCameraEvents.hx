@@ -35,7 +35,21 @@ class NightmareVisionLegacyCameraEvents {
 		for (t in owned.copy()) cancel(t);
 		state.camTween = null;
 		state.camHUDAlphaTween = null;
+		state.songSpeedTween = null;
 		state = null;
+	}
+	/** False is the source triggerEventNote early return, including notifications. */
+	public function changeScrollSpeed(value1:String, value2:String):Bool {
+		if (state.songSpeedType == 'constant') return false;
+		var multiplier = Std.parseFloat(value1);
+		var duration = Std.parseFloat(value2);
+		if (Math.isNaN(multiplier)) multiplier = 1;
+		if (Math.isNaN(duration)) duration = 0;
+		var target = PlayState.SONG.speed * state.nightmareVisionPrefs.getGameplaySetting('scrollspeed', 1) * multiplier;
+		if (duration <= 0) state.songSpeed = target;
+		else state.songSpeedTween = tween(state, {songSpeed:target}, duration, FlxEase.linear,
+			function() state.songSpeedTween = null);
+		return true;
 	}
 	/** Reenter the normal event dispatcher so callbacks can mutate this live chain. */
 	public static function consumeBeat(state:PlayState):Void {

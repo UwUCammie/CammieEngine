@@ -3398,6 +3398,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	/** Nightmare Vision's source PlayState names the live speed `songSpeed`. */
 	@:keep public var songSpeed(get, set):Float;
+	@:keep public var songSpeedType:String = 'multiplicative';
+	@:keep public var songSpeedTween:FlxTween;
 	function get_songSpeed():Float return daScrollSpeed;
 	function set_songSpeed(value:Float):Float return scrollSpeed = value;
 
@@ -18518,8 +18520,11 @@ void main(void) {
 				return;
 			}
 		}
-		fireNativeSongEvent(e);
-		if (e != null) {
+		var notify = true;
+		if (nightmareVisionLegacyFieldCameras)
+			fireNativeSongEvent(e, function() notify = false);
+		else fireNativeSongEvent(e);
+		if (e != null && notify) {
 			if (nightmareVisionLegacyFieldCameras) {
 				legacyScriptRegistry().notifyEvent(e.name, e.v1, e.v2);
 				return;
@@ -18552,7 +18557,7 @@ void main(void) {
 			nightmare ? ImportEngine.NIGHTMARE_VISION : ImportEngine.PSYCH, name, callable);
 	}
 
-	function fireNativeSongEvent(e:Dynamic) {
+	function fireNativeSongEvent(e:Dynamic, ?suppressHistoricalNotification:Void->Void) {
 		var psychStageEvent:Dynamic = e;
 		var eventNameLower = e == null || e.name == null ? ''
 			: StringTools.trim(Std.string(e.name)).toLowerCase();
@@ -18596,6 +18601,16 @@ void main(void) {
 		// claims only the native side, so stage-specific HXC visuals still run while
 		// the canonical switch executes once at most.
 		if (hxcEvent.nativeHandled == true || hxcEvent.handled == true) {
+			dispatchPsychCompiledStageEvent(psychStageEvent);
+			return;
+		}
+
+		if (nightmareVisionLegacyFieldCameras && e.name == 'Change Scroll Speed') {
+			if (nightmareVisionCameraEvents == null) nightmareVisionCameraEvents = new NightmareVisionLegacyCameraEvents(this);
+			if (!nightmareVisionCameraEvents.changeScrollSpeed(e.v1, e.v2)) {
+				if (suppressHistoricalNotification != null) suppressHistoricalNotification();
+				return;
+			}
 			dispatchPsychCompiledStageEvent(psychStageEvent);
 			return;
 		}
@@ -19785,7 +19800,14 @@ void main(void) {
 		return playerOne ? boyfriend : getOpponentSinger();
 	}
 
+	function initializeHistoricalSongSpeed():Void {
+		if (nightmareVisionScripts == null || !nightmareVisionLegacyFieldCameras) return;
+		songSpeedType = nightmareVisionPrefs.getGameplaySetting('scrolltype', 'multiplicative');
+		// This historical revision stores chart speed here, without the preference multiplier.
+		songSpeed = SONG.speed;
+	}
 	private function generateSong(dataPath:String):Void {
+		initializeHistoricalSongSpeed();
 		var psychSkinRoot = selectedPsychSkinRoot();
 		preparePsychNoteDefinitions(psychSkinRoot);
 		var songData = SONG;

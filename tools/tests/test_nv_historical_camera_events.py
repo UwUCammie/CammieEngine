@@ -8,6 +8,7 @@ EVENTS=['Game Flash','Add Camera Zoom','Camera Zoom','HUD Fade','Camera Follow P
 
 HOST=r'''import flixel.FlxG;import flixel.FlxCamera;import flixel.tweens.FlxTween;import flixel.tweens.FlxEase;import flixel.util.FlxColor;using StringTools;
 class PlayState {
+ public static var SONG={speed:2.};public var songSpeed=2.;public var songSpeedType='multiplicative';public var songSpeedTween:FlxTween;
  public var camGame=new FlxCamera('game');public var camHUD=new FlxCamera('hud');
  public var camFollow:Dynamic={x:12.,y:34.};public var isCameraOnForcedPos=true;
  public var defaultCamZoom=0.8;public var camTween:FlxTween;public var camHUDAlphaTween:FlxTween;

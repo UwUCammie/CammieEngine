@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV scroll-speed events now preserve source defaults, constant-mode notification exits and overlapping live tweens through shared speed and tween services.
 - Historical NV speed writes now preserve sustain queue order and source note-retirement timing; character coordinate fields share the native stage baselines.
 - Historical NV character changes now retain independent state caches, transfer playfields and focus by actor identity, and publish icons, script references and health-bar color callbacks in source order.
 - NV character-change events now restore animations on the live post-callback actor, with historical requested-animation checks that preserve valid replacement frames.

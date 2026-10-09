@@ -117,7 +117,7 @@ class Main {
  // guard/return and entire outer dispatch below are exact production bodies.
  var nightmareVisionLegacyFieldCameras=false;
  function legacyScriptRegistry():NightmareVisionLegacyScriptRegistry return new NightmareVisionLegacyScriptRegistry();
- function fireNativeSongEvent(e:Dynamic):Void {
+ function fireNativeSongEvent(e:Dynamic, ?suppressHistoricalNotification:Void->Void):Void {
   var psychStageEvent=e;psychObservations++;
  ''' + guard + '''
   nativeEffects++;
