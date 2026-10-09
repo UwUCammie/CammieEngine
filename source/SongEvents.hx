@@ -354,6 +354,21 @@ class SongEvents {
 		}
 	}
 
+	/** Visit explicit Psych-style groups live. The outer iterator observes appended
+	 * groups, while each inner numeric range captures its length once, as in source.
+	 * Keep row reads inside that range so admission can edit later rows/timestamps. */
+	public static function visitSourceGroups(groups:Array<Dynamic>, visit:Dynamic->Void, firstOrder:Int = 0):Int {
+		var order = firstOrder;
+		for (group in groups) {
+			var length:Int = group[1].length;
+			for (index in 0...length) {
+				var values:Array<Dynamic> = group[1][index];
+				visit({time:group[0], name:values[0], v1:values[1], v2:values[2], v3:'', order:order++});
+			}
+		}
+		return order;
+	}
+
 	/** Source engines visit the companion chart first, retain repeated authored
 	 * rows in Psych, and sort only after event preparation. NV removes copies
 	 * using its two-value/epsilon contract. Native/editor callers keep

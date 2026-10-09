@@ -32,7 +32,7 @@ MAIN=r'''@:access(Reference) class Main {
  for(language in ['hscript','lua'])for(reject in [false,true]) {
   var expected=new Reference(reject,language);expected.run();
   var actual=new Reference(reject,language);var rows:Array<Dynamic>=[];var views:Array<SourceEventNote>=[];
-  NightmareVisionLegacyEventPreparation.prepare(function(){actual.pass++;return [for(v in ['zero','reject','zero']){time:100.,name:'E',v1:v,v2:null,order:0}];},function()return actual.offset,
+  NightmareVisionLegacyEventPreparation.prepare(function(visit){actual.pass++;for(v in ['zero','reject','zero'])visit({time:100.,name:'E',v1:v,v2:null,order:0});},function()return actual.offset,
    function()return actual.eventScripts,actual.callScript,actual.callOnScripts,function(n)actual.log.push('load:'+n),
    function(r,e){rows.push(r);views.push(e);actual.accepted.push(cast e);},function(e)return false);
   check(actual.log.join('|')==expected.log.join('|'),'pinned callback sequence '+language+' '+actual.log.join('|')+' != '+expected.log.join('|'));
@@ -41,7 +41,7 @@ MAIN=r'''@:access(Reference) class Main {
  }
  // Fresh admission completes before offset callbacks; map replacement stays live.
  var map:Map<String,Dynamic>=[];var loaded=false;var calls:Array<String>=[];var kept:Array<SourceEventNote>=[];
- NightmareVisionLegacyEventPreparation.prepare(function()return [{time:100.,name:'E',v1:'x',v2:null,order:0}],function()return 0.,function()return map,
+ NightmareVisionLegacyEventPreparation.prepare(function(visit)visit({time:100.,name:'E',v1:'x',v2:null,order:0}),function()return 0.,function()return map,
   function(s,n,a):Dynamic {calls.push(n);return n=='shouldPush'?false:0;},function(n,a)return 0,function(n){loaded=true;map=['E'=>{scriptType:'hscript'}];},function(r,e)kept.push(e),function(e)return false);
  check(loaded&&kept.length==0&&calls.join(',')=='shouldPush','newly loaded module can reject the second pass');
  trace('historical event preparation verified');

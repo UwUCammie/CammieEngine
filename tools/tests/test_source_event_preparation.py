@@ -180,7 +180,7 @@ class PlayState {
  public var historicalRows:Array<Dynamic> = [];
  public var registry:FixtureRegistry;
  function legacyScriptRegistry():FixtureRegistry return registry;
- function collectHistoricalNightmareVisionEvents():Array<Dynamic> return [for(r in historicalRows) {time:r.time,name:r.name,v1:r.v1,v2:r.v2,order:r.order}];
+ function visitHistoricalNightmareVisionEvents(visit:Dynamic->Void):Void {for(r in historicalRows)visit({time:r.time,name:r.name,v1:r.v1,v2:r.v2,order:r.order});}
  public var sourceEventViews:Array<SourceEventNote> = [];
  public var psychSourceEventsPrepared:Bool = false;
  public var psychSourceEventsFinalized:Bool = false;

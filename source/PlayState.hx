@@ -1374,7 +1374,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionLegacyFieldCameras)
 			NightmareVisionLegacyHitBindings.install(interp, this, PlayState,
 				nightmareVisionLegacyGoodNoteHit, nightmareVisionLegacyOpponentNoteHit, nightmareVisionLegacyNoteMiss, nightmareVisionLegacyNoteMissPress);
-		if (nightmareVisionLegacyFieldCameras) NightmareVisionLegacyRegistryBindings.install(interp, this, PlayState, legacyScriptRegistry());
+		if (nightmareVisionLegacyFieldCameras) {
+			NightmareVisionLegacyRegistryBindings.install(interp, this, PlayState, legacyScriptRegistry());
+			NightmareVisionLegacyEventBindings.install(interp, this, PlayState, historicalNightmareVisionEventApi());
+		}
 		interp.variables.set('GameOverSubstate', GameOverSubstate);
 		interp.bindImport('funkin.states.substates.GameOverSubstate', GameOverSubstate);
 		// These are chart-local source snapshots. Persistent plugins receive only
@@ -13185,19 +13188,40 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		sourceEventPreparationInProgress = false;
 	}
 
-	function collectHistoricalNightmareVisionEvents():Array<Dynamic> {
-		var companion:Array<Dynamic> = null;
+	function visitHistoricalNightmareVisionEvents(visit:Dynamic->Void):Void {
+		// Capture the source song object before companion admission, but read its
+		// event array afterward so callbacks can replace that array during the visit.
+		var songData = SONG;
+		var order = 0;
 		var path = currentSongDataPath('events.json');
-		if (FNFAssets.exists(path)) companion = SongEvents.fromSong(CoolUtil.parseJson(FNFAssets.getText(path)), false);
-		// Historical NV retains duplicate explicit events and has no negative-note adapter.
-		return SongEvents.collect(SongEvents.fromSong(SONG, false), companion, true);
+		if (FNFAssets.exists(path)) {
+			var data:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
+			var song:Dynamic = Reflect.field(data, 'song');
+			if (song != null) data = song;
+			order = SongEvents.visitSourceGroups(Reflect.field(data, 'events'), visit, order);
+		}
+		SongEvents.visitSourceGroups(songData.events, visit, order);
+	}
+
+	function historicalNightmareVisionEventApi():Dynamic {
+		var registry = legacyScriptRegistry();
+		var scripts = function() return registry.eventScripts;
+		var collect = function():Array<SourceEventNote> return [for (entry in NightmareVisionLegacyEventPreparation.collect(
+			visitHistoricalNightmareVisionEvents, sourceChartNoteOffset, scripts, registry.callScript)) entry.event];
+		return {
+			getEvents:collect,
+			shouldPush:function(event:Dynamic) return NightmareVisionLegacyEventPreparation.shouldPush(event, scripts, registry.callScript),
+			firstEventPush:function(event:Dynamic) NightmareVisionLegacyEventPreparation.firstPush(event, scripts, registry.callScript),
+			eventNoteEarlyTrigger:function(event:Dynamic) return NightmareVisionLegacyEventPreparation.earlyTrigger(event, scripts, registry.callScript,
+				function(name, args) return registry.callOnScripts(name, args))
+		};
 	}
 
 	function prepareHistoricalNightmareVisionSourceEvents():Void {
 		songEvents = [];
 		sourceEventViews = [];
 		var registry = legacyScriptRegistry();
-		NightmareVisionLegacyEventPreparation.prepare(collectHistoricalNightmareVisionEvents, sourceChartNoteOffset,
+		NightmareVisionLegacyEventPreparation.prepare(visitHistoricalNightmareVisionEvents, sourceChartNoteOffset,
 			function() return registry.eventScripts, registry.callScript,
 			function(name, args) return registry.callOnScripts(name, args),
 			function(name) nightmareVisionScripts.loadScope('event', name),
