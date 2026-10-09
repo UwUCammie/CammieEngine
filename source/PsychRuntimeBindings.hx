@@ -30,6 +30,18 @@ class PsychRuntimeBindings {
 			hscriptArgs == null ? args : hscriptArgs, null, false, null, null, excludedScopeKeys);
 	}
 
+	/** Historical NV uses the shared Lua scopes but its own non-cancelling broadcast contract. */
+	public static function dispatchHistoricalNightmareLuas(host:PlayState, name:String, args:Array<Dynamic>):Dynamic {
+		var scopes = orderedScopes(host, 'Luas', null, false, null);
+		return NightmareVisionScriptBroadcast.call(scopes, function(entry) {
+			if (host.hscriptStates.get(entry.key) != entry.interp
+				|| entry.interp.variables.get('__compatClosed') == true) return null;
+			return host.callHscript(name, args, entry.key, true, null, true)
+				? entry.interp.variables.get('__compatLastResult') : null;
+		}, false, true, function(entry) return entry.key.startsWith('compat_custom_event_')
+			|| entry.key.startsWith('compat_custom_notetype_'));
+	}
+
 	/** Check for a live Psych scope without building the ordered broadcast arrays. */
 	public static function hasScripts(host:PlayState):Bool {
 		if (host == null || host.hscriptStates == null) return false;

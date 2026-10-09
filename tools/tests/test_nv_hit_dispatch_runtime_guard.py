@@ -42,6 +42,8 @@ class NightmareVisionNoteTypeRuntime {
  public function extraNoteHit(note:Note,id:Int):Int {calls.push('extra:'+id);return stop?1:0;}
 }
 class Main {
+ var nightmareVisionLegacyFieldCameras=false;
+ function dispatchHistoricalNightmareNoteHit(n:Note,c:String):Void throw "modern guard entered historical dispatch";
  var nightmareVisionScripts:Scripts=null;
  var nightmareVisionNoteTypes:NightmareVisionNoteTypeRuntime=null;
  var lookups:Int=0;

@@ -142,6 +142,19 @@ class NightmareVisionNoteTypeRuntime {
 		return result;
 	}
 
+	/** Historical hit notifications never use a returned value to cancel another family. */
+	public function legacyHit(note:Dynamic, callback:String, groupSlot:Int,
+		lua:(String, Array<Dynamic>)->Dynamic, hscript:(String, Array<Dynamic>)->Dynamic):Void {
+		var luaArgs:Array<Dynamic> = [groupSlot, Math.abs(Reflect.getProperty(note, 'noteData')),
+			noteTypeOf(note), Reflect.getProperty(note, 'isSustainNote'), Reflect.getProperty(note, 'ID')];
+		var hscriptArgs:Array<Dynamic> = [note];
+		lua(callback, luaArgs);
+		hscript(callback, hscriptArgs);
+		// A global callback may replace or clear the attachment before this phase.
+		call(note, callback, hscriptArgs);
+		api.syncNote(note);
+	}
+
 	/** Source calls this after the native miss health/animation effects. */
 	public function noteMiss(note:Dynamic, fieldID:Int):Dynamic {
 		var result = call(note, 'noteMiss', [note, fieldID]);

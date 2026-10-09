@@ -182,7 +182,8 @@ class Main {
             'public function generatePlayfields():Void', 'function generateNightmareVisionLegacyDefaultFields():Void', 'function createNightmareVisionDefaultField(lane:Int)',
             'function syncNightmareVisionPlayFieldCollection(', 'function publishNightmareVisionReceptorBanks():Void', 'function initializeNightmareVisionPlayFields():Void',
             'function nightmareVisionLaneCount():Int', 'function nightmareVisionKeyCount():Int', 'function nightmareVisionDefaultSkinForField(field:Int'])
-        dispatch = method((ROOT / 'source/NightmareVisionScriptGroup.hx').read_text(encoding='utf-8'), 'public function call(event:String')
+        group_source = (ROOT / 'source/NightmareVisionScriptGroup.hx').read_text(encoding='utf-8')
+        dispatch = method(group_source, 'public function call(event:String') + '\n' + method(group_source, 'public function callFiltered(').replace('NightmareVisionScriptModule', 'Module')
         countdown = method(play, 'public function startCountdown():Void')
         tail = countdown[countdown.index('var sourceCountdownStopped ='):countdown.index('\n\t\tif (duoMode)')]
         main = MAIN.replace('__METHODS__', methods).replace('__DISPATCH__', dispatch).replace('__COUNTDOWN__', tail)

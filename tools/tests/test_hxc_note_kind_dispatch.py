@@ -67,6 +67,14 @@ class Main {
     state.callHxcNoteHScript('noteHit', [null]);
     if (state.received.length != 1 || state.received[0] != 'hxc:hxc')
       throw 'non-HXC scope entered early HXC dispatch';
+    state.hscriptStates.get('psych').variables.set('__psychScoreGlobals',true);
+    var lua=new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);
+    state.hscriptStates.set('lua',lua);state.received=[];
+    state.callAllHScript('goodNoteHit',[null,true],true,null,null,false,true);
+    if(state.received.join(',')!='psych:legacy')throw 'Lua suppression also dropped host HScript observer';
+    state.received=[];state.callAllHScript('goodNoteHit',[null,true],true);
+    if(state.received.length!=2)throw 'default observer dispatch changed';
+
   }
 }'''
         with tempfile.TemporaryDirectory() as tmp:

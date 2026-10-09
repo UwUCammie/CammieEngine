@@ -336,6 +336,7 @@ class FlxG { public static var sound:SoundApi = new SoundApi(); }
 class FNFAssets { public static function getSound(path:String):Dynamic return null; }
 class Conductor { public static var songPosition:Float = 1; }
 class Main {
+ function dispatchHistoricalNightmareNoteHit(n:NVNote,c:String):Void events.push("legacy-notify:"+c);
  public var nightmareVisionLegacyFieldCameras=false;
  public var combo:Int=0;
  function spawnNoteSplashOnNote(n:NVNote):Void events.push('historical-splash');
@@ -471,6 +472,7 @@ __AUTO_LOOP__
   var legacy=new Main();legacy.nightmareVisionLegacyFieldCameras=true;legacy.fields[0].legacyGroupCameras=true;legacy.fields[0].showRatings=false;
   var legacyNote=legacy.newNote(100);legacy.hitNightmareVisionNote(legacyNote,true);
   check(legacy.events.indexOf('historical-score')>=0 && legacy.events.indexOf('historical-score')<legacy.events.indexOf('health') && legacy.combo==1,'historical score occurs before health and callbacks despite modern showRatings flag');
+  check(legacy.events.indexOf('pre:goodNoteHitPre:0')<0 && legacy.events.indexOf('legacy-notify:goodNoteHit')>=0,'historical callback skips modern Pre and selects legacy notification adapter');
   var legacyHazard=new Main();legacyHazard.nightmareVisionLegacyFieldCameras=true;legacyHazard.fields[0].legacyGroupCameras=true;var lh=legacyHazard.newNote(101);lh.hitCausesMiss=true;legacyHazard.hitNightmareVisionNote(lh,true);
   check(legacyHazard.events.indexOf('historical-splash')>legacyHazard.events.indexOf('hazard-miss') && legacyHazard.events.indexOf('historical-score')<0,'historical hazard splash after miss and without normal scoring');
   var legacyDisabled=new Main();legacyDisabled.nightmareVisionLegacyFieldCameras=true;legacyDisabled.fields[0].legacyGroupCameras=true;var ld=legacyDisabled.newNote(102);ld.hitCausesMiss=true;ld.noteSplashDisabled=true;legacyDisabled.hitNightmareVisionNote(ld,true);

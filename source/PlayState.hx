@@ -4067,7 +4067,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 	}
 	function callAllHScript(func_name:String, args:Array<Dynamic>, ?skipHxc:Bool = false,
-		?returnValues:Array<Dynamic>, ?hxcArgs:Array<Dynamic>, ?skipPsych:Bool = false) {
+		?returnValues:Array<Dynamic>, ?hxcArgs:Array<Dynamic>, ?skipPsych:Bool = false, ?skipLua:Bool = false) {
 		// A character callback can synchronously swap actors, which may load a new
 		// companion interpreter. Iterate a stable key list so that adding/removing
 		// scopes during the broadcast cannot invalidate the map iterator.
@@ -4091,6 +4091,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				&& hxcPayloadStates.get(key) != true;
 			if (skipPsych && psych) continue;
 			var lua = Std.isOfType(target, LuaCompatInterp);
+			if (skipLua && lua) continue;
 			if (psych && (lua ? stopLua : stopHscript)) continue;
 			var values:Array<Dynamic> = returnValues;
 			callHscript(func_name, hxcArgs != null && hxcPayloadStates.get(key) == true ? hxcArgs : args,
@@ -25611,7 +25612,7 @@ void main(void) {
 		var originalNoteData = note.noteData;
 		var line = activeField.strumline;
 		// The source broadcasts Pre to the whole group and ignores its return.
-		nightmareVisionScripts.call(family + 'Pre', [note, id]);
+		if (!nightmareVisionLegacyFieldCameras) nightmareVisionScripts.call(family + 'Pre', [note, id]);
 		// The bank/family are admitted before Pre, but the donor indexes that
 		// bank with live note.noteData afterwards. Imported rows flatten fields into
 		// lane blocks, so remove the captured bank block while preserving host
@@ -25756,9 +25757,9 @@ void main(void) {
 				[observerPlayer, note, false, hxcEvent]);
 			EngineCompat.hxcApplyNoteCallbackPayload(hxcEvent);
 		}
-		callAllHScript('noteHit', [observerPlayer, note, note.wasGoodHit, hxcEvent], true, null, null, false);
+		callAllHScript('noteHit', [observerPlayer, note, note.wasGoodHit, hxcEvent], true, null, null, false, nightmareVisionLegacyFieldCameras);
 		callAllHScript(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit',
-			[note, observerPlayer], true, null, null, false);
+			[note, observerPlayer], true, null, null, false, nightmareVisionLegacyFieldCameras);
 		if (observerPlayer) callAllHScript('playerOneSing', []);
 		else {
 			callAllHScript('playerTwoSing', []);
@@ -25783,6 +25784,10 @@ void main(void) {
 			callback = field.playerControls ? 'goodNoteHit' : fieldID == 1 ? 'opponentNoteHit' : 'extraNoteHit';
 		}
 		note.nightmareVisionHitDispatched = true;
+		if (nightmareVisionLegacyFieldCameras) {
+			dispatchHistoricalNightmareNoteHit(note, callback);
+			return;
+		}
 		var result:Dynamic = NightmareVisionScriptGroup.CONTINUE_FUNC;
 		if (nightmareVisionNoteTypes != null) {
 			nightmareVisionNoteTypes.hit(note, fieldID);
@@ -25795,6 +25800,12 @@ void main(void) {
 		if (result != NightmareVisionScriptGroup.STOP_FUNC && nightmareVisionScripts != null)
 			nightmareVisionScripts.call(callback, [note, fieldID], false,
 				[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+	}
+
+	function dispatchHistoricalNightmareNoteHit(note:Note, callback:String):Void {
+		nightmareVisionNoteTypes.legacyHit(note, callback, notes == null ? -1 : notes.members.indexOf(note),
+			function(name, args) return PsychRuntimeBindings.dispatchHistoricalNightmareLuas(this, name, args),
+			function(name, args) return nightmareVisionScripts.callHistorical(name, args));
 	}
 
 	/** Source post-hit notifications precede disposal and retain donor family ABIs. */

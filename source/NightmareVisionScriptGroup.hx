@@ -112,20 +112,18 @@ class NightmareVisionScriptGroup {
 	 * and retains the preceding result. Non-Int returns never change it. */
 	public function call(event:String, ?args:Array<Dynamic>, ignoreStops:Bool = false,
 		?exclusions:Array<String>):Dynamic {
-		var result:Dynamic = CONTINUE_FUNC;
-		if (released) return result;
-		for (script in members) {
-			if (script == null || (exclusions != null && exclusions.indexOf(script.name) >= 0)) continue;
-			var returned:Dynamic = script.callValue(event, args);
-			if (Std.isOfType(returned, Int)) {
-				if (returned == HALT_FUNC) {
-					returned = result;
-					if (!ignoreStops) return result;
-				}
-				if (returned != CONTINUE_FUNC) result = returned;
-			}
-		}
-		return result;
+		return callFiltered(event, args, ignoreStops, exclusions);
+	}
+
+	/** Filter live registry membership at each invocation rather than snapshotting names. */
+	public function callFiltered(event:String, ?args:Array<Dynamic>, ignoreStops:Bool = false,
+		?exclusions:Array<String>, historical:Bool = false,
+		?excluded:NightmareVisionScriptModule->Bool):Dynamic {
+		if (released) return CONTINUE_FUNC;
+		return NightmareVisionScriptBroadcast.call(members,
+			function(script) return script.callValue(event, args), ignoreStops, historical,
+			function(script) return (exclusions != null && exclusions.indexOf(script.name) >= 0)
+				|| (excluded != null && excluded(script)));
 	}
 
 	/** clear can be reused for another song; shared fields persist in source. */

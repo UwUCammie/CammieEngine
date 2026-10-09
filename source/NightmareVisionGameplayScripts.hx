@@ -196,6 +196,15 @@ class NightmareVisionGameplayScripts {
 		?exclusions:Array<String>):Dynamic
 		return group.call(event, args, ignoreStops, exclusions);
 
+	/** Historical global notifications exclude every live type/event registry name. */
+	public function callHistorical(event:String, args:Array<Dynamic>, ignoreStops:Bool = false):Dynamic {
+		return group.callFiltered(event, args, ignoreStops, null, true, function(script) {
+			var registry = legacyNoteRegistry == null ? null : legacyNoteRegistry();
+			return (registry != null && registry.exists(script.name))
+				|| (eventGroup != null && eventGroup.exists(script.name));
+		});
+	}
+
 	/** Names of loaded note-type modules for calls which broadcast a generic
 	 * note event. Those modules share `group` for lifecycle callbacks, but their
 	 * note callbacks must remain selected by the live note's type. */
