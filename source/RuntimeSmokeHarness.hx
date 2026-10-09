@@ -2000,10 +2000,60 @@ class RuntimeSmokeHarness {
 			verifyLegacyGeometry(note);
 			verifyLegacySustain(note);
 			verifyHistoricalPixelNotes(note);
+			verifyHistoricalNoteAnimations();
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));
 		}
+		#end
+	}
+
+	/** Generated hooks exercise the live reload path without changing retained source files. */
+	static function verifyHistoricalNoteAnimations():Void {
+		#if sys
+		if (Sys.getEnv('CAMMIE_LEGACY_NOTE_ANIM_SMOKE') != '1') return;
+		var state = PlayState.instance;
+		var runtime = @:privateAccess state.nightmareVisionNoteTypes;
+		var group = runtime.scripts.noteTypeGroup;
+		var errors:Array<String> = [];
+		var script = NightmareVisionScriptModule.fromSource('__native_animation_probe',
+			"var useSuper = true; var events = []; var names = ['purple','blue','green','red'];"
+			+ "function configureProbe(value) { useSuper = value; events = []; } function probeEvents() { return events.join(','); }"
+			+ "function onReloadNote(n,p,t,s) { events.push('pre'); return 0; }"
+			+ "function customize(n) { if (this != n) throw 'receiver mismatch'; events.push('hook'); "
+			+ "if (n.isSustainNote) { n.animation.add(names[n.noteData]+'hold', [1],17,false,true); n.animation.add(names[n.noteData]+'holdend',[2],19,false); }"
+			+ "else n.animation.add(names[n.noteData]+'Scroll',[1],17,false,true); n.scale.set(1.25,2.5); n.updateHitbox(); }"
+			+ "function loadNoteAnims(n) { if(useSuper) super(); customize(n); }"
+			+ "function loadPixelNoteAnims(n) { if(useSuper) super(); customize(n); }"
+			+ "function postReloadNote(n,p,t,s) { events.push('post'); }",
+			state, null, null, function(n,p,e) errors.push(p+': '+Std.string(e)));
+		if (!group.addScript(script)) throw 'Native animation probe registration failed';
+		var checked = 0;
+		for (sustain in [false,true]) {
+			var note:Note = null;
+			for (candidate in state.unspawnNotes) if (candidate != null && candidate.isSustainNote == sustain) { note = candidate; break; }
+			if (note == null) throw 'Native animation probe requires tap and sustain notes';
+			var originalType = note.sourceKind;
+			note.sourceKind = script.name;
+			for (useSuper in [true,false]) {
+				script.callValue('configureProbe',[useSuper]);
+				var oldY = note.scale.y;
+				if (!runtime.reloadNote(note)) throw 'Native animation reload failed: '+script.callValue('probeEvents')+' / '+errors.join(',');
+				var alias = note.animation.getByName(sustain ? 'hold' : 'Scroll');
+				if (alias == null || alias.frames[0] != 1 || alias.frameRate != 17 || alias.looped || !alias.flipX)
+					throw 'Native source animation alias lost custom frames or playback settings';
+				if (Math.abs(note.baseScaleX-1.25)>0.000001 || Math.abs(note.baseScaleY-(sustain?oldY:2.5))>0.000001)
+					throw 'Native animation callback scale/finalization mismatch';
+				if (script.callValue('probeEvents') != 'pre,hook,post' || errors.length != 0)
+					throw 'Native animation callback order/error: '+script.callValue('probeEvents')+' / '+errors.join(',');
+				checked++;
+			}
+			note.sourceKind = originalType;
+			runtime.reloadNote(note);
+		}
+		group.removeScript(script);
+		script.destroy();
+		emit('legacy_note_animation_native_verified', {checked:checked,pixel:state.isPixelStage,superAndReplacement:true,sourceAliases:true});
 		#end
 	}
 

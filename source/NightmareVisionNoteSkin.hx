@@ -288,9 +288,32 @@ class NightmareVisionNoteSkin {
 		return Std.parseInt(Std.string(raw));
 	}
 
+	static function applyLegacyNoteAtlas(note:Note, frames:FlxAtlasFrames, antialiasing:Bool):Void {
+		var previous = note.animation.curAnim == null ? null : note.animation.curAnim.name;
+		var oldScaleY = note.scale.y;
+		note.frames = frames;
+		note.loadNoteAnims();
+		note.antialiasing = antialiasing;
+		if (note.isSustainNote) note.scale.y = oldScaleY;
+		note.resetPsychVisualOffset();
+		note.updateHitbox();
+		if (!note.nightmareVisionSustainInitialized) note.nightmareVisionSustainInitialWidth = note.width;
+		NightmareVisionLegacyFieldScale.captureNote(note);
+		note.baseScale.copyFrom(note.scale);
+		if (previous != null) note.animation.play(previous, true);
+		else note.animation.play(note.isSustainNote ? 'holdend' : 'Scroll', true);
+		note.normalSize = note.scale.x;
+	}
+
 	public function applyNote(note:Note, lane:Int, ?overrideFrames:FlxAtlasFrames):Bool {
 		var frames = overrideFrames == null ? refreshNoteFrames() : overrideFrames;
 		if (frames == null) return false;
+		if (note.nightmareVisionLegacyGeometry) {
+			applyLegacyNoteAtlas(note, frames, antialiasing);
+			note.nightmareVisionRGB = refreshRGB(note.nightmareVisionRGB, lane);
+			note.nightmareVisionRGB.apply(note);
+			return true;
+		}
 		var direction = noteAnims == null ? lane : laneIndex(noteAnims.length, lane);
 		var entries = laneItems(noteAnims, lane);
 		var needed = note.isSustainNote ? ['hold', 'holdend'] : ['scroll'];

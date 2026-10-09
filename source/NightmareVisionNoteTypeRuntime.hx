@@ -129,6 +129,13 @@ class NightmareVisionNoteTypeRuntime {
 		return result;
 	}
 
+	/** Historical animation overrides replace the default and may call it through super. */
+	public function loadLegacyAnimations(note:Dynamic, pixel:Bool, fallback:Void->Void):Void {
+		var script = scripts == null || scripts.group.released || scripts.noteTypeGroup.released
+			? null : scripts.noteTypeGroup.getScript(noteTypeOf(note));
+		NightmareVisionLegacyNoteAnimations.dispatch(script, note, pixel, fallback);
+	}
+
 	/** Source Note.reloadNote gives type scripts a cancellable pre-hook and a
 	 * post-hook around the owner-scoped atlas reload. */
 	public function reloadNote(note:Dynamic, prefix:String = '', texture:String = '',

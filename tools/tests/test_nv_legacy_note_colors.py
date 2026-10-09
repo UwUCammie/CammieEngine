@@ -7,13 +7,14 @@ ROOT=Path(__file__).resolve().parents[2]
 class LegacyNoteColorsTest(unittest.TestCase):
  def test_hsv_state_lifecycle_and_rgb_non_regression(self):
   files={
+   'NightmareVisionLegacyNoteAnimations.hx':'class NightmareVisionLegacyNoteAnimations {public static function dispatch(s:Dynamic,n:Dynamic,p:Bool,f:Void->Void):Void throw \"animation path entered in color-only test\";}',
    'flixel/system/FlxAssets.hx':'''package flixel.system;
 class FlxAssets {} class Uniform<T>{public var value:Array<T>=[];public function new(){}}
 class FlxShader {public var uTime=new Uniform<Float>();public var daAlpha=new Uniform<Float>();public var flash=new Uniform<Float>();public var awesomeOutline=new Uniform<Bool>();public var hue=new Uniform<Float>();public var saturation=new Uniform<Float>();public var lightness=new Uniform<Float>();public var mult=new Uniform<Float>();public var u_alpha=new Uniform<Float>();public var u_flash=new Uniform<Float>();public function new(){}}''',
    'flixel/FlxSprite.hx':'package flixel; class FlxSprite {public var shader:Dynamic;public function new(){}}',
    'PsychRGBPalette.hx':'''class PsychRGBPalette {public var r:Int=1;public var g:Int=2;public var b:Int=3;public var mult:Float=1;public var shader=new flixel.system.FlxAssets.FlxShader();public function new(){}public function copy():PsychRGBPalette return new PsychRGBPalette();public function copyValues(p:PsychRGBPalette):Void{r=p.r;g=p.g;b=p.b;}}''',
-   'NightmareVisionScriptGroup.hx':'class NightmareVisionScriptGroup {public static var CONTINUE_FUNC=0;public static var STOP_FUNC=1;}',
-   'NightmareVisionGameplayScripts.hx':'''class NightmareVisionGameplayScripts {public var calls=0;public function new(){}public function loadNoteTypes():Void{}public function callNoteType(type:String,callback:String,args:Array<Dynamic>,?receiver:Dynamic):Dynamic {if(callback=='setupNote'){calls++;var n:Note=cast args[0];if(type=='custom'){n.colorSwap.hue=0.75;n.noteSplashTexture='custom-splash';}}return 0;}}''',
+   'NightmareVisionScriptGroup.hx':'class NightmareVisionScriptGroup {public static var CONTINUE_FUNC=0;public static var STOP_FUNC=1;public var released=false;public function new(){}public function getScript(n:String):Dynamic return null;}',
+   'NightmareVisionGameplayScripts.hx':'''class NightmareVisionGameplayScripts {public var group=new NightmareVisionScriptGroup();public var noteTypeGroup=new NightmareVisionScriptGroup();public var calls=0;public function new(){}public function loadNoteTypes():Void{}public function callNoteType(type:String,callback:String,args:Array<Dynamic>,?receiver:Dynamic):Dynamic {if(callback=='setupNote'){calls++;var n:Note=cast args[0];if(type=='custom'){n.colorSwap.hue=0.75;n.noteSplashTexture='custom-splash';}}return 0;}}''',
    'Note.hx':'''class Note extends flixel.FlxSprite {
  public var noteSplashTexture='';public var noteType='';public var noteData=0;public var quant=8;public var isQuant=false;
  public var noteSplashHue:Float=0;public var noteSplashSat:Float=0;public var noteSplashBrt:Float=0;

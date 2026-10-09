@@ -548,6 +548,14 @@ class Note extends DynamicSprite {
 		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
 		nightmareVisionTypeRuntime.api.setCustomColor(this, colors);
 	}
+	@:keep public function loadNoteAnims():Void {
+		if (!nightmareVisionLegacyGeometry) throw '[nightmare-vision-note] Historical animation API requires the historical source profile';
+		NightmareVisionLegacyNoteAnimations.load(this, false, PlayState.SONG.keys);
+	}
+	@:keep public function loadPixelNoteAnims():Void {
+		if (!nightmareVisionLegacyGeometry) throw '[nightmare-vision-note] Historical animation API requires the historical source profile';
+		NightmareVisionLegacyNoteAnimations.load(this, true, PlayState.SONG.keys);
+	}
 	@:keep public function reloadNote(prefix:String = '', texture:String = '', suffix:String = ''):Void {
 		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
 		nightmareVisionTypeRuntime.reloadNote(this, prefix, texture, suffix);

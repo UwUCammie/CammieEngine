@@ -10385,6 +10385,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				note.isQuant = selected != skin.noteTexture;
 				if (note.isQuant) frames = nightmareVisionGetOwnerSparrowAtlas(selected);
 			}
+			if (note.nightmareVisionLegacyGeometry) skin.antialiasing = nightmareVisionPrefs.view.globalAntialiasing;
 			if (!skin.applyNote(note, note.sourceDirection >= 0 ? note.sourceDirection : note.noteData, frames)) return false;
 		}
 		if (note.nightmareVisionLegacyGeometry && note.isSustainNote && !note.nightmareVisionSustainInitialized) {

@@ -8,14 +8,14 @@ class NightmareVisionLegacyPixelSkin {
 		var animation = note.animation.curAnim == null ? null : note.animation.curAnim.name;
 		var oldScaleY = note.scale.y;
 		if (!SourcePixelNoteFrames.install(note, graphic, note.isSustainNote ? 2 : 5, zoom)) return false;
+		if (note.isSustainNote) note.originalHeightForCalcs = graphic.height / 2;
+		note.loadPixelNoteAnims();
+		note.antialiasing = false;
 		if (note.isSustainNote) {
-			note.originalHeightForCalcs = graphic.height / 2;
 			note.offsetX += note.lastNoteOffsetXForPixelAutoAdjusting;
 			note.lastNoteOffsetXForPixelAutoAdjusting = (note.width - 7) * (zoom / 2);
 			note.offsetX -= note.lastNoteOffsetXForPixelAutoAdjusting;
 		}
-		SourcePixelNoteFrames.noteAnimations(note, lane, note.isSustainNote, true);
-		note.antialiasing = false;
 		if (note.isSustainNote) note.scale.y = oldScaleY;
 		note.resetPsychVisualOffset();
 		note.updateHitbox();

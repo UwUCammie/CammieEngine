@@ -90,6 +90,7 @@ class Note {
  public function centerOrigin():Void {}
 }
 class NightmareVisionNoteSkin {
+ static function applyLegacyNoteAtlas(note:Note,frames:FlxAtlasFrames,aa:Bool):Void throw "historical branch entered in modern metadata test";
  public var data:Dynamic;
  public var paths:NightmareVisionPaths=new NightmareVisionPaths();
  public var name:String="ourple";

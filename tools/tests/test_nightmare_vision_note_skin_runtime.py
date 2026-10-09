@@ -22,6 +22,7 @@ class FlxFrame { public var name:String; public function new(name:String) this.n
 class FlxPoint {
  public var x:Float; public var y:Float;
  public function new(x:Float=0,y:Float=0) {this.x=x;this.y=y;}
+ public function copyFrom(p:Dynamic):FlxPoint {x=p.x;y=p.y;return this;}
  public function set(x:Float=0,y:Float=0):FlxPoint {this.x=x;this.y=y;return this;}
 }
 class FlxCallbackPoint extends FlxPoint {
@@ -63,6 +64,7 @@ import flixel.math.FlxPoint;
 import Strumline.FakeAnimation;
 import Strumline.FakeScale;
 class Note {
+ public function loadNoteAnims():Void throw "historical default called in modern skin fixture";
  public var nightmareVisionLegacyGeometry=false; public var nightmareVisionSustainInitialized=false; public var nightmareVisionSustainInitialWidth=0.; public var width=100.;
  public var isSustainNote:Bool=false; public var animation:FakeAnimation=new FakeAnimation();
  public var scale:FakeScale=new FakeScale(); public var baseScale:FlxPoint=new FlxPoint(1,1);

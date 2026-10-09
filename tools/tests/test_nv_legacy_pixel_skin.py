@@ -13,7 +13,7 @@ class LegacyPixelSkinTest(unittest.TestCase):
   def source(path):return subprocess.check_output(['git','show',REV+':'+path],cwd=donor,text=True)
   note=source('source/gameObjects/Note.hx')
   pixel=method(note[note.index('public function reloadNote'):], 'if(PlayState.isPixelStage)')
-  anim=method(note,'function _loadPixelNoteAnims()').replace('function _loadPixelNoteAnims()','public function loadPixelNoteAnims()')
+  anim=method(note,'function _loadPixelNoteAnims()').replace('function _loadPixelNoteAnims()','public override function loadPixelNoteAnims()')
   strum=source('source/gameObjects/StrumNote.hx')
   receptor=method(strum,'if(PlayState.isPixelStage)')
   files={
@@ -24,6 +24,7 @@ class Note extends FakeSprite {
  public var nightmareVisionSustainInitialized=false;public var nightmareVisionSustainInitialWidth=0.;
  public var baseScaleX=1.;public var baseScaleY=1.;public var baseScale=new FlxPoint();public var defScale(get,never):FlxPoint;function get_defScale():FlxPoint return baseScale;
  public var normalSize=1.;public var nightmareVisionRGB:NightmareVisionRGBGraphics;
+ public function loadPixelNoteAnims():Void SourcePixelNoteFrames.noteAnimations(this,noteData,isSustainNote,true);
  public function resetPsychVisualOffset():Void {}
  public function new(){super();}
 }

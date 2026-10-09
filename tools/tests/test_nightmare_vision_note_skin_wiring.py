@@ -34,7 +34,7 @@ class NightmareVisionPaths {
  public var root:String;
  public function new(root:String) this.root=root;
 }
-class NightmareVisionNoteSkin {public static function fromLegacyTexture(paths:Dynamic,texture:String,keys:Int,id:Int):NightmareVisionNoteSkin return new NightmareVisionNoteSkin(paths,texture,keys,id);
+class NightmareVisionNoteSkin {public var antialiasing=true; public static function fromLegacyTexture(paths:Dynamic,texture:String,keys:Int,id:Int):NightmareVisionNoteSkin return new NightmareVisionNoteSkin(paths,texture,keys,id);
  public var noteTexture="NOTE_assets";public var splashTexture="noteSplashes";
  public var paths:NightmareVisionPaths; public var name:String;
  public var applied:Array<Int>=[];
