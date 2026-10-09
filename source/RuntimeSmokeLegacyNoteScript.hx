@@ -20,15 +20,17 @@ class RuntimeSmokeLegacyNoteScript {
 			note.noteSplashHue, note.noteSplashSat, note.noteSplashBrt];
 		var originalSplash = note.noteSplashTexture;
 		var events:Array<String> = [];
+		var visibleTypes:Array<String> = [];
 		var errors:Array<String> = [];
 		var modules:Array<NightmareVisionScriptModule> = [];
-		var names = ['__native_note_owner_one', '__native_note_owner_two'];
+		var names = ['__native_note_owner_one', '__native_note_owner_two', '__native_note_owner_nested'];
 		for (name in names) {
 			if (state.notetypeScripts.exists(name)) throw 'Native note probe registry collision';
 			var module = NightmareVisionScriptModule.fromSource(name,
-				"function registryCheck() { return notetypeScripts == game.notetypeScripts && Reflect.getProperty(game,'notetypeScripts') == notetypeScripts; }"
+				(name == names[2] ? "function setupNote(n){record('nested-before',n);n.noteType='__native_note_owner_one';record('nested-after',n);}" : '')
+				+ "function registryCheck() { return notetypeScripts == game.notetypeScripts && Reflect.getProperty(game,'notetypeScripts') == notetypeScripts; }"
 				+ "function assign(n,name) { n.noteType=name; } function attach(n,m) { Reflect.setProperty(n,'noteScript',m); }"
-				+ "function setupNote(n) { if(this!=n || n.noteScript!=script || script.scriptType!='hscript') throw 'setup attachment'; record('setup',n); }"
+				+ (name == names[2] ? '' : "function setupNote(n) { if(this!=n || n.noteScript!=script || script.scriptType!='hscript') throw 'setup attachment'; record('setup',n); }")
 				+ "function update(n,e) { if(this!=n) throw 'update receiver'; record('update',n); }"
 				+ "function loadNoteAnims(n) { if(this!=n) throw 'animation receiver'; record('animation',n); }",
 				state, null, function(interp) {
@@ -36,6 +38,7 @@ class RuntimeSmokeLegacyNoteScript {
 					interp.variables.set('record', function(phase:String,n:Note) {
 						if (n != note) throw 'Native attached callback note identity mismatch';
 						events.push(phase+':'+name);
+						visibleTypes.push(n.noteType);
 					});
 				}, function(n,p,e) errors.push(p+': '+Std.string(e)));
 			modules.push(module);state.notetypeScripts.set(name,module);
@@ -63,8 +66,16 @@ class RuntimeSmokeLegacyNoteScript {
 			var expected=['setup:'+names[0],'update:'+names[0],'setup:'+names[1],'update:'+names[0],'animation:'+names[0]];
 			if (events.join(',') != expected.join(',') || errors.length > 0)
 				throw 'Native historical attachment sequence mismatch: '+events.join(',')+' '+errors.join(',');
+			if (visibleTypes.join(',') != [originalType,names[0],names[0],names[1],names[1]].join(','))
+				throw 'Native setup did not retain the old type until commit: '+visibleTypes.join(',');
+			events.resize(0);visibleTypes.resize(0);
+			modules[0].callValue('assign',[note,names[2]]);
+			if (events.join(',') != ['nested-before:'+names[2],'setup:'+names[1],'nested-after:'+names[2]].join(',')
+				|| visibleTypes.join(',') != [names[1],names[1],names[0]].join(',')
+				|| note.noteType != names[2] || note.noteScript != modules[1])
+				throw 'Native nested assignment ordering mismatch';
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_note_script_native_verified',
-				{registryIdentity:true,capturedIdentity:true,sameTypeClear:true,reflectedAttachment:true,receiverIdentity:true,animationAttachment:true,callbacks:events.length});
+				{registryIdentity:true,capturedIdentity:true,sameTypeClear:true,reflectedAttachment:true,receiverIdentity:true,animationAttachment:true,oldTypeVisibility:true,nestedCommit:true,callbacks:8});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
 		#end

@@ -731,16 +731,35 @@ class Note extends DynamicSprite {
 	}
 	/** Historical NV retains the assigned type script independently of registry changes. */
 	@:keep public var noteScript:Dynamic;
+	@:keep public var doSlam:Bool = true;
 	/** Psych Lua exposes the authored type through the mutable noteType field. */
 	public var noteType(get, set):String;
 	function get_noteType():String {
 		return sourceKind == null ? '' : sourceKind;
 	}
 	function set_noteType(value:String):String {
-		sourceKind = value;
-		if (nightmareVisionLegacyColors != null && nightmareVisionTypeRuntime != null)
-			nightmareVisionTypeRuntime.setupNote(this, true);
+		if (nightmareVisionLegacyColors != null && nightmareVisionTypeRuntime != null
+			&& nightmareVisionTypeRuntime.legacyNoteScripts) {
+			var changesType = noteData > -1 && get_noteType() != value;
+			var mode = nightmareVisionLegacyColors.prepareAssignment(this, value);
+			nightmareVisionTypeRuntime.assignLegacyType(this, value, mode, function() {
+				// Commit after setup without reapplying another source profile's type effects.
+				if (changesType) @:bypassAccessor sourceKind = value;
+				nightmareVisionLegacyColors.recordAssignment(get_noteType());
+			});
+		} else {
+			sourceKind = value;
+			if (nightmareVisionLegacyColors != null && nightmareVisionTypeRuntime != null)
+				nightmareVisionTypeRuntime.setupNote(this, true);
+		}
 		return value;
+	}
+	/** First generation exposes the source default type until authored setup returns. */
+	public function initializeLegacyNoteType():Void {
+		if (nightmareVisionLegacyColors == null || nightmareVisionLegacyColors.hasAssignment()) return;
+		var authored = get_noteType();
+		@:bypassAccessor sourceKind = '';
+		set_noteType(authored);
 	}
 	/** Original authored strumline/note identity, independent of input modifiers. */
 	@:keep public var codenameOrigin:CodenameNoteOrigin = null;

@@ -10388,7 +10388,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				note.resetSourceRatingState();
 				note.ratingDisabled = disabled;
 			}
-			if (nightmareVisionLegacyFieldCameras) nightmareVisionNoteTypes.setupNote(note);
+			if (nightmareVisionLegacyFieldCameras) {
+				note.initializeLegacyNoteType();
+				nightmareVisionNoteTypes.setupNote(note);
+			}
 		}
 	}
 

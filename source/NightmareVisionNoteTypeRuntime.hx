@@ -70,10 +70,21 @@ class NightmareVisionNoteTypeRuntime {
 	public function setupNote(note:Dynamic, force:Bool = false):Dynamic {
 		api.attach(note);
 		var mode = prepareLegacyColors == null ? 1 : prepareLegacyColors(note, force);
+		return finishSetup(note, noteTypeOf(note), mode);
+	}
+
+	/** Keep the requested type separate from the value callbacks can currently read. */
+	public function assignLegacyType(note:Dynamic, value:String, mode:Int, commit:Void->Void):Dynamic {
+		api.attach(note);
+		return finishSetup(note, value, mode, commit);
+	}
+
+	function finishSetup(note:Dynamic, type:String, mode:Int, ?commit:Void->Void):Dynamic {
 		if (mode == 0) return NightmareVisionScriptGroup.CONTINUE_FUNC;
 		if (legacyNoteScripts) Reflect.setProperty(note, 'noteScript',
-			mode == 1 && scripts != null ? scripts.captureLegacyNoteScript(noteTypeOf(note)) : null);
+			mode == 1 && scripts != null ? scripts.captureLegacyNoteScript(type) : null);
 		var result = mode == 2 ? NightmareVisionScriptGroup.CONTINUE_FUNC : call(note, 'setupNote', [note], note);
+		if (commit != null) commit();
 		if (finishLegacyColors != null) finishLegacyColors(note);
 		api.syncNote(note);
 		return result;

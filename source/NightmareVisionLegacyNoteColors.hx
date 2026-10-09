@@ -34,7 +34,19 @@ class NightmareVisionLegacyNoteColors {
 		var type = note.noteType;
 		var changed = assignedType != type;
 		if (!changed && !force) return 0;
+		var result = prepareType(note, type, changed);
 		assignedType = type;
+		return result;
+	}
+
+	/** Explicit setters compare the still-visible old value, including nested assignments. */
+	public function prepareAssignment(note:Note, value:String):Int
+		return prepareType(note, value, note.noteType != value);
+
+	public function recordAssignment(value:String):Void assignedType = value;
+	public function hasAssignment():Bool return assignedType != null;
+
+	function prepareType(note:Note, type:String, changed:Bool):Int {
 		note.noteSplashTexture = defaultSplashTexture;
 		var row = laneHSV(prefs, note.noteData);
 		if (note.isQuant && quantMode(prefs)) {
@@ -47,10 +59,19 @@ class NightmareVisionLegacyNoteColors {
 		setHSV(swap, row);
 		// Source clears the old attachment before built-in reloads or custom setup.
 		note.noteScript = null;
-		if (note.noteData > -1 && changed && type == 'Hurt Note') {
-			note.reloadNote('HURT');
-			note.noteSplashTexture = 'HURTnoteSplashes';
-			setHSV(swap, [0, 0, 0]);
+		if (note.noteData > -1 && changed) switch (type) {
+			case 'Hurt Note':
+				note.ignoreNote = note.mustPress;
+				note.reloadNote('HURT');
+				note.noteSplashTexture = 'HURTnoteSplashes';
+				setHSV(swap, [0, 0, 0]);
+				note.missHealth = note.isSustainNote ? 0.1 : 0.3;
+				note.hitCausesMiss = true;
+			case 'No Animation': note.noAnimation = true; note.noMissAnimation = true;
+			case 'GF Sing': note.forceGfSing = true;
+			case 'Ghost Note': note.alpha = 0.8; note.color = 0xFFA19F9F;
+			case 'Normal Slam', 'Half Slam Lane 1', 'Half Slam Lane 2', 'Half Slam Lane 3', 'Half Slam Lane 4': note.doSlam = false;
+			default:
 		}
 		return note.noteData < 0 || !changed || isBuiltin(type) ? 2 : 1;
 	}

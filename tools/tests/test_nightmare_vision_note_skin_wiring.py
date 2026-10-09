@@ -75,6 +75,7 @@ class Note {
  public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;
  public var nightmareVisionRGB:NightmareVisionRGBGraphics;
  public var colorSwap:Dynamic;
+ public function initializeLegacyNoteType():Void throw "modern skin fixture entered historical assignment";
  public static inline var NOTE_AMOUNT:Int=4;
  public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;
  public var quant:Int=4; public var isQuant:Bool=false; public var canQuant:Bool=true;

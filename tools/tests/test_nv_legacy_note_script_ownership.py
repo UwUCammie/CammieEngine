@@ -18,6 +18,10 @@ class HistoricalNoteScriptOwnershipTest(unittest.TestCase):
             self.skipTest("pinned source unavailable")
         source = subprocess.check_output(["git", "show", REV + ":source/gameObjects/Note.hx"], cwd=donor, text=True)
         setter = method(source, "private function set_noteType(").replace("private function set_noteType", "public function assign")
+        native = (ROOT / 'source/Note.hx').read_text()
+        native_setter = method(native, 'function set_noteType(')
+        native_getter = method(native, 'function get_noteType(')
+        native_initialize = method(native, 'public function initializeLegacyNoteType(')
         base = r'''
  public var noteScript:NightmareVisionScriptModule;
  public var noteType=''; public var noteData=0; public var inEditor=false;
@@ -25,22 +29,22 @@ class HistoricalNoteScriptOwnershipTest(unittest.TestCase):
  public var noteSplashHue=0.;public var noteSplashSat=0.;public var noteSplashBrt=0.;
  public var ignoreNote=false;public var mustPress=true;public var isSustainNote=false;
  public var missHealth=0.;public var hitCausesMiss=false;public var noAnimation=false;public var noMissAnimation=false;
- public var gfNote=false;public var alpha=1.;public var color=0;public var doSlam=true;
+ public var forceGfSing=false;public var gfNote(get,set):Bool;function get_gfNote()return forceGfSing;function set_gfNote(v:Bool)return forceGfSing=v;public var alpha=1.;public var color=0;public var doSlam=true;
  public var events:Array<String>=[];
 '''
         files = {
             "NightmareVisionLegacyColorSwap.hx": "class NightmareVisionLegacyColorSwap {public var hue=0.;public var saturation=0.;public var brightness=0.;public function new(){}}",
             "PlayState.hx": "class PlayState {public static var SONG:Dynamic={splashSkin:'noteSplashes'};public static var instance:Dynamic;} class ChartingState {public static var instance:Dynamic;}",
             "ClientPrefs.hx": "class ClientPrefs {public static var noteSkin='Vanilla';public static var arrowHSV=[[0.,0.,0.],[0.,0.,0.],[0.,0.,0.],[0.,0.,0.]];public static var quantHSV=[[0.,0.,0.]];public static var quantStepmania=[[0.,0.,0.]];}",
-            "Donor.hx": "import PlayState.ChartingState;typedef FunkinHScript=NightmareVisionScriptModule;class Donor {" + base + "public var colorSwap=new NightmareVisionLegacyColorSwap();public function new(){}public function reloadNote(s:String){events.push('reload:'+s+':'+(noteScript==null));}" + setter + "}",
-            "Note.hx": "class Note {" + base + r'''
- public var runtime:NightmareVisionNoteTypeRuntime;
- public var colors:NightmareVisionLegacyNoteColors;
+            "Donor.hx": "import PlayState.ChartingState;typedef FunkinHScript=NightmareVisionScriptModule;class Donor {" + base + "public var colorSwap=new NightmareVisionLegacyColorSwap();public function new(){}public function reloadNote(s:String){events.push('reload:'+s+':'+(noteScript==null)+':'+noteType+':'+ignoreNote+':'+missHealth+':'+hitCausesMiss);}" + setter + "}",
+            "Note.hx": "class Note {" + base.replace("public var noteType='';", "public var noteType(get,set):String; public var sourceKind(default,set):String='';public var sourceKindWrites=0;function set_sourceKind(v:String):String{sourceKindWrites++;sourceKind=v;return v;}") + native_setter + native_getter + native_initialize + r'''
+ public var nightmareVisionTypeRuntime:NightmareVisionNoteTypeRuntime;public var runtime(get,set):NightmareVisionNoteTypeRuntime;function get_runtime()return nightmareVisionTypeRuntime;function set_runtime(v) return nightmareVisionTypeRuntime=v;
+ public var nightmareVisionLegacyColors:NightmareVisionLegacyNoteColors;public var colors(get,set):NightmareVisionLegacyNoteColors;function get_colors()return nightmareVisionLegacyColors;function set_colors(v)return nightmareVisionLegacyColors=v;
  public var colorSwap(get,never):NightmareVisionLegacyColorSwap;
  function get_colorSwap()return colors.swap;
  public function new(prefs:Dynamic)colors=new NightmareVisionLegacyNoteColors(prefs);
- public function reloadNote(s:String){events.push('reload:'+s+':'+(noteScript==null));}
- public function assign(s:String){noteType=s;runtime.setupNote(this,true);}
+ public function reloadNote(s:String){events.push('reload:'+s+':'+(noteScript==null)+':'+noteType+':'+ignoreNote+':'+missHealth+':'+hitCausesMiss);}
+ public function assign(s:String){noteType=s;}
 }''',
             "Main.hx": r'''
 import NightmareVisionNoteTypeRuntime.NightmareVisionNoteApiBridge;
@@ -98,11 +102,54 @@ class Main {
   check(actual.events.join(',')=='swap,atlas,post:two','post-reload did not reread the authored attachment');
   actual.events.resize(0);actual.noteScript=null;runtime.reloadNote(actual);
   check(actual.events.join(',')=='atlas','cleared script unexpectedly revived by noteType');
+
+  // Execute the native getter/setter alongside the pinned donor, including reentrant setup.
+  var nesting=NightmareVisionScriptModule.fromSource('nesting',
+   "function setupNote(n){n.events.push('outer-before:'+n.noteType);n.assign('two');n.events.push('outer-after:'+n.noteType);n.colorSwap.hue=.625;}",null,null,null,
+   function(n,p,e)errors.push(Std.string(e)));
+  var inspect=NightmareVisionScriptModule.fromSource('inspect',
+   "function setupNote(n){n.events.push('inner:'+n.noteType);n.colorSwap.hue=.375;}",null,null,null,
+   function(n,p,e)errors.push(Std.string(e)));
+  map=['nesting'=>nesting,'two'=>inspect];PlayState.instance={notetypeScripts:map};
+  actual=new Note(prefs);actual.runtime=runtime;expected=new Donor();
+  actual.assign('nesting');expected.assign('nesting');compare('nested assignment source order');
+  check(actual.noteType==expected.noteType&&actual.noteType=='nesting','outer assignment commits last');
+  check(actual.noteScript==inspect&&actual.noteSplashHue==expected.noteSplashHue&&actual.noteSplashHue==.625,
+   'inner attachment survives outer commit, splash captures final callback HSV');
+  check(actual.events.join(',')=='outer-before:,inner:,outer-after:two','setup observes old type until each nested commit');
+  for(kind in ['Hurt Note','Hurt Note','No Animation','GF Sing','Ghost Note','Normal Slam','Half Slam Lane 1','Half Slam Lane 2','Half Slam Lane 3','Half Slam Lane 4','absent']) {
+   actual.assign(kind);expected.assign(kind);compare('built-in '+kind);
+   check(actual.noteType==expected.noteType&&actual.hitCausesMiss==expected.hitCausesMiss&&actual.ignoreNote==expected.ignoreNote
+    &&actual.missHealth==expected.missHealth&&actual.noAnimation==expected.noAnimation&&actual.noMissAnimation==expected.noMissAnimation
+    &&actual.forceGfSing==expected.forceGfSing&&actual.alpha==expected.alpha&&actual.color==expected.color&&actual.doSlam==expected.doSlam,
+    'built-in side effects '+kind);
+  }
+  actual=new Note(prefs);actual.runtime=runtime;actual.sourceKind='nesting';expected=new Donor();
+  actual.initializeLegacyNoteType();expected.assign('nesting');compare('first authored generation');
+  var count=actual.events.length;actual.initializeLegacyNoteType();runtime.setupNote(actual);
+  check(actual.events.length==count&&actual.noteScript==inspect,'repeated skin setup preserves nested attachment');
+  for(pressed in [false,true]) for(sustain in [false,true]) {
+   actual=new Note(prefs);actual.runtime=runtime;expected=new Donor();
+   actual.mustPress=expected.mustPress=pressed;actual.isSustainNote=expected.isSustainNote=sustain;
+   actual.assign('Hurt Note');expected.assign('Hurt Note');compare('hurt reload ordering');
+   check(actual.ignoreNote==expected.ignoreNote&&actual.missHealth==expected.missHealth&&actual.hitCausesMiss==expected.hitCausesMiss,
+    'player/opponent tap/hold damage');
+  }
+  var laneChange=NightmareVisionScriptModule.fromSource('laneChange',"function setupNote(n){n.noteData=-1;}",null,null,null,
+   function(n,p,e)errors.push(Std.string(e)));
+  map.set('laneChange',laneChange);actual=new Note(prefs);actual.runtime=runtime;expected=new Donor();
+  actual.assign('laneChange');expected.assign('laneChange');compare('admission captured before callback');
+  check(actual.noteType==expected.noteType&&actual.noteType=='laneChange','callback lane mutation must not change assignment admission');
+  check(actual.sourceKindWrites==0,'historical commit must not replay other profile effects');
+  laneChange.destroy();
+  nesting.destroy();inspect.destroy();
   // Modern lookup intentionally follows its registry and remains independent of noteScript.
-  var modern=new NightmareVisionNoteTypeRuntime(scripts,api);actual.noteType='two';actual.events.resize(0);
+  var modern=new NightmareVisionNoteTypeRuntime(scripts,api);actual.noteData=0;actual.noteType='two';actual.events.resize(0);
   modern.update(actual,.1);check(actual.events.join(',')=='update:two','modern registry lookup changed');
   actual.noteScript=two;runtime.resetNote(actual,true);check(actual.noteScript==null&&!two.released,'reset owns pointer, not module');
   actual.noteScript=two;runtime.releaseNote(actual);check(actual.noteScript==null&&!two.released,'release destroyed shared module');
+  actual.nightmareVisionLegacyColors=null;actual.runtime=modern;actual.noteType='modern';
+  check(actual.noteType=='modern'&&actual.sourceKindWrites==1,'modern setter keeps existing profile effects');
   check(errors.length==0,errors.join(','));swap.destroy();scripts.destroy();
   check(one.released&&two.released,'shared main group retains final module ownership');
  }

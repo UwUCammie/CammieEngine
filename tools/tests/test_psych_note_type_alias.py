@@ -40,6 +40,7 @@ class PsychNoteTypeAliasFixture {
  public var nightmareVisionTypeRuntime:Dynamic=null;
   public var sourceKind(default, set):Null<String> = null;
   public var sourceTimingMode:Int = 0;
+  public var noteData:Int = 0;
   public var hitPriority:Int = 1;
   public var noAnimation:Bool = false;
   public var noMissAnimation:Bool = false;
