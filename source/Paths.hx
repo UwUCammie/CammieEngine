@@ -23,21 +23,9 @@ class Paths
 
 	static function getPath(file:String, type:AssetType, library:Null<String>)
 	{
-		if (library != null)
-			return getLibraryPath(file, library);
-
-		if (currentLevel != null)
-		{
-			var levelPath = getLibraryPathForce(file, currentLevel);
-			if (OpenFlAssets.exists(levelPath, type))
-				return levelPath;
-
-			levelPath = getLibraryPathForce(file, "shared");
-			if (OpenFlAssets.exists(levelPath, type))
-				return levelPath;
-		}
-
-		return getPreloadPath(file);
+		var selected = SourceLibraryPaths.select(file, currentLevel, library,
+			function(id) return OpenFlAssets.exists(id, type));
+		return selected == 'assets/' + file ? getPreloadPath(file) : selected;
 	}
 
 	static public function getLibraryPath(file:String, library = "preload")
@@ -47,7 +35,7 @@ class Paths
 
 	inline static function getLibraryPathForce(file:String, library:String)
 	{
-		return '$library:assets/$library/$file';
+		return SourceLibraryPaths.forcedPath(file, library);
 	}
 
 	inline static function getPreloadPath(file:String)

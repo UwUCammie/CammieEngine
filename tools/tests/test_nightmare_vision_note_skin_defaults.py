@@ -20,16 +20,16 @@ MAIN = r'''class Main {
  static function main():Void {
   var first:Dynamic = {};
   var legacy:Dynamic={};NightmareVisionNoteSkinDefaults.resolveOwnerData(legacy,true);
-  check(legacy.sustainSplashTexture=="sustainHold"&&legacy.splashTexture=="UI/notes/noteSplashes",
-   "legacy owner selection must change only its omitted sustain default");
+  check(legacy.sustainSplashTexture=="sustainHold"&&legacy.splashTexture=="noteSplashes"&&legacy.noteTexture=="NOTE_assets",
+   "legacy owner selection uses flat omitted texture defaults");
   for(value in ["", "effects/customHold", "UI/notes/sustainHold"]){
-   var explicit:Dynamic={sustainSplashTexture:value};NightmareVisionNoteSkinDefaults.resolveOwnerData(explicit,true);
-   check(explicit.sustainSplashTexture==value,"explicit sustain paths must remain exact");
+   var explicit:Dynamic={noteTexture:value,splashTexture:value,sustainSplashTexture:value};NightmareVisionNoteSkinDefaults.resolveOwnerData(explicit,true);
+   check(explicit.sustainSplashTexture==value&&explicit.noteTexture==value&&explicit.splashTexture==value,"explicit texture paths must remain exact");
   }
-  var nullable:Dynamic={sustainSplashTexture:null};NightmareVisionNoteSkinDefaults.resolveOwnerData(nullable,true);
-  check(nullable.sustainSplashTexture=="sustainHold","null default follows legacy owner");
+  var nullable:Dynamic={noteTexture:null,splashTexture:null,sustainSplashTexture:null};NightmareVisionNoteSkinDefaults.resolveOwnerData(nullable,true);
+  check(nullable.sustainSplashTexture=="sustainHold"&&nullable.noteTexture=="NOTE_assets"&&nullable.splashTexture=="noteSplashes","null defaults follow legacy owner");
   var modern:Dynamic={};NightmareVisionNoteSkinDefaults.resolveOwnerData(modern,false);
-  check(modern.sustainSplashTexture=="UI/notes/sustainHold","modern and unknown owners retain source default");
+  check(modern.sustainSplashTexture=="UI/notes/sustainHold"&&modern.noteTexture=="UI/notes/NOTE_assets"&&modern.splashTexture=="UI/notes/noteSplashes","modern and unknown owners retain source defaults");
   NightmareVisionNoteSkinDefaults.resolveData(first);
   check(first.noteTexture == "UI/notes/NOTE_assets"
    && first.splashTexture == "UI/notes/noteSplashes"

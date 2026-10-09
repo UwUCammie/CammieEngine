@@ -33,7 +33,7 @@ class NvMultifieldRoutesTest(unittest.TestCase):
             'function initializeNightmareVisionPlayFields():Void',
             'public function getNightmareVisionField(id:Int)',
             'function nightmareVisionFieldForNote(note:Note)',
-            'public function generatePlayfields():Void',
+            'public function generatePlayfields():Void', 'function generateNightmareVisionLegacyDefaultFields():Void',
             'function createNightmareVisionDefaultField(lane:Int)',
             'function nightmareVisionConfigureFieldReceptors(field:NightmareVisionPlayFieldView):Void',
             'function configureNightmareVisionStrumlines():Void',
@@ -120,7 +120,7 @@ class Main {
  __METHODS__
  static function check(ok:Bool, label:String) { if (!ok) throw label; }
  static function main() {
-  var h=new Main();h.nightmareVisionLegacyFieldCameras=true;
+  var h=new Main();
   h.initializeNightmareVisionPlayFields();
   check(h.playFields.length==0 && h.getNightmareVisionField(0)==null, 'pre-generation source fields empty');
   h.generatePlayfields();
@@ -133,6 +133,7 @@ class Main {
    && f2.strumline.x==f2.baseX-224 && f2.strumline.y==f2.baseY-56,
    'receptor banks use their live field base coordinates');
   check(f0.strumline==h.playerStrums && f1.strumline==h.enemyStrums, 'legacy source fields');
+  f0.legacyGroupCameras=true;f0.members[0].nightmareVisionSource=false;h.nightmareVisionConfigureFieldReceptors(f0);
   check(f0.members[0].cameras==null,'source receptors clear only initial native camera assignment');
   var explicitCamera=['authored'];f0.members[0].cameras=explicitCamera;h.configureNightmareVisionStrumlines();
   check(f0.members[0].cameras==explicitCamera,'later field configuration preserves explicit child camera');

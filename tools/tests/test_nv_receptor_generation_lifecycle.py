@@ -28,6 +28,7 @@ class NvReceptorGenerationLifecycleTest(unittest.TestCase):
     def test_creation_countdown_and_empty_bank_integration(self):
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         self.assertNotIn('buildNightmareVisionPlayFields', play)
+        self.assertIn('if (nightmareVisionLegacyFieldCameras) genNotesBeforeCountdown = false;', play)
         eager = play[play.index("nightmareVisionScripts.loadScope('song');"):]
         self.assertLess(eager.index("callNightmareVision('preNoteGeneration', []);"), eager.index('if (genNotesBeforeCountdown) generatePlayfields();'))
         self.assertLess(eager.index('if (genNotesBeforeCountdown) generatePlayfields();'), eager.index('generateSong(SONG.song);'))
@@ -37,7 +38,7 @@ class NvReceptorGenerationLifecycleTest(unittest.TestCase):
         transitions = countdown[countdown.index("markStep('countdown:strum-transitions-begin')"):countdown.index("markStep('countdown:strum-transitions-complete')")]
         self.assertIn('if (nightmareVisionScripts == null)', transitions)
         generation = method(play, 'public function generatePlayfields():Void')
-        order = ["callNightmareVision('postReceptorGeneration', [])", 'modManager.configureDimensions', 'modManager.registerEssentialModifiers()', 'modManager.registerDefaultModifiers()', 'modManager.registerScriptedModifiers()', 'modifiersRegistered = true', "callNightmareVision('postModifierRegister', [])"]
+        order = ["callNightmareVision('postReceptorGeneration',", 'modManager.configureDimensions', 'modManager.registerEssentialModifiers()', 'modManager.registerDefaultModifiers()', 'modManager.registerScriptedModifiers()', 'modifiersRegistered = true', "callNightmareVision('postModifierRegister', [])"]
         indices = [generation.index(token) for token in order]
         self.assertEqual(indices, sorted(indices))
         self.assertIn('nightmareVisionDefaultGenerationDepth == 0', method(play, 'function syncNightmareVisionPlayFieldCollection('))
@@ -178,7 +179,7 @@ class Main {
     def test_executed_default_generation_mutations_publication_and_countdown(self):
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         methods = '\n'.join(method(play, sig) for sig in [
-            'public function generatePlayfields():Void', 'function createNightmareVisionDefaultField(lane:Int)',
+            'public function generatePlayfields():Void', 'function generateNightmareVisionLegacyDefaultFields():Void', 'function createNightmareVisionDefaultField(lane:Int)',
             'function syncNightmareVisionPlayFieldCollection(', 'function publishNightmareVisionReceptorBanks():Void', 'function initializeNightmareVisionPlayFields():Void',
             'function nightmareVisionLaneCount():Int', 'function nightmareVisionKeyCount():Int', 'function nightmareVisionDefaultSkinForField(field:Int'])
         dispatch = method((ROOT / 'source/NightmareVisionScriptGroup.hx').read_text(encoding='utf-8'), 'public function call(event:String')
@@ -351,6 +352,47 @@ class Main {
   var failed=new Main();failed.nightmareVisionScripts.members.push(new Module(function(event,args){if(event=='preReceptorGeneration')throw 'authored';return 0;}));
   var caught='';try failed.generatePlayfields() catch(e:Dynamic)caught=Std.string(e);
   check(caught=='authored' && !failed.generatedFields && failed.nightmareVisionDefaultGenerationDepth==0,'throw cleanup preserves error and pending flag');
+  for(middle in [false,true]) for(shown in [false,true]) {
+   var old=new Main();old.nightmareVisionLegacyFieldCameras=true;old.skipCountdown=true;
+   old.nightmareVisionPrefs.view.middleScroll=middle;old.nightmareVisionPrefs.view.opponentStrums=shown;
+   var preCalls=0,postCalls=0;var previousBanks=old.modManager.receptors;
+   old.nightmareVisionScripts.members.push(new Module(function(event,args){
+    if(event=='preReceptorGeneration') {
+     preCalls++;old.events.push('legacy-pre');check(args.length==0,'historical single pre hook has no arguments');
+     var p=old.nightmareVisionLegacyReceptors.player,o=old.nightmareVisionLegacyReceptors.opponent;
+     check(p!=null&&o!=null&&p.members.length==0&&o.members.length==0&&old.playFields.length==0,'both empty captured fields before pre');
+     check(o.baseAlpha==(!shown?0:middle?0.35:1),'opponent visibility set before authored pre');
+     var replaced=old.createNightmareVisionDefaultField(0);replaced.ID=9;replaced.keyCount=3;
+     old.nightmareVisionLegacyReceptors.player=replaced;o.baseAlpha=0.7;
+     return 1;
+    }
+    if(event=='postReceptorGeneration') {
+     postCalls++;old.events.push('legacy-post');check(args.length==1&&args[0]==true,'historical post receives skip flag');
+     var p=old.nightmareVisionLegacyReceptors.player,o=old.nightmareVisionLegacyReceptors.opponent;
+     check(old.playFields.members[0]==o&&old.playFields.members[1]==p,'historical opponent/player display order');
+     check(p.ID==9&&p.members.length==3&&o.members.length==4&&o.baseAlpha==0.7,'live pointer replacement and pre mutations retained');
+     old.playFields.members.reverse();old.syncNightmareVisionPlayFieldCollection();
+     check(old.modManager.receptors==previousBanks,'post callback still precedes modifier-bank publication');
+    }
+    if(event=='preModifierRegister') {
+     old.events.push('legacy-modifiers');check(args.length==0&&postCalls==1,'pre modifier callback after post');
+     check(old.modManager.receptors[0]==old.nightmareVisionLegacyReceptors.player.members&&old.modManager.receptors[1]==old.nightmareVisionLegacyReceptors.opponent.members,'modifier slots use player/opponent pointers despite order/ID changes');
+    }
+    return 0;
+   }));
+   old.generatePlayfields();check(preCalls==1&&postCalls==1&&old.nightmareVisionLaneCount()==2,'historical two fields and one hook pair');
+   var order=['legacy-pre','generate:1','generate:0','fade:0:true','fade:1:true','add:1','add:9','legacy-post','legacy-modifiers'];
+   var last=-1;for(e in order){var at=old.events.indexOf(e);check(at>last,'historical generation ordering '+e);last=at;}
+   check(old.nightmareVisionDefaultGenerationDepth==0&&old.generatedFields&&old.modifiersRegistered,'historical lifecycle completed');
+   old.generatePlayfields();check(preCalls==1,'historical repeated generation is idempotent');
+  }
+  var delayedOld=new Main();delayedOld.nightmareVisionLegacyFieldCameras=true;delayedOld.genNotesBeforeCountdown=false;
+  delayedOld.completeCountdown([1]);check(!delayedOld.generatedFields&&delayedOld.playFields.length==0,'historical cancelled countdown does not generate fields');
+  delayedOld.completeCountdown([0]);check(delayedOld.generatedFields&&delayedOld.playFields.length==2,'historical accepted countdown generates both fields');
+  var failedOld=new Main();failedOld.nightmareVisionLegacyFieldCameras=true;
+  failedOld.nightmareVisionScripts.members.push(new Module(function(event,args){if(event=='postReceptorGeneration')throw 'historical-post';return 0;}));
+  caught='';try failedOld.generatePlayfields()catch(e:Dynamic)caught=Std.string(e);
+  check(caught=='historical-post'&&failedOld.nightmareVisionDefaultGenerationDepth==0,'historical post throw releases publication guard');
   trace('NV_RECEPTOR_LIFECYCLE_OK');
  }
 }

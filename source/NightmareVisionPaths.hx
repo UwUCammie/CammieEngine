@@ -36,6 +36,9 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	final clientPrefs:Dynamic;
 	public var usesSharedRatingPrefix(default, null):Bool;
 	public var DEFAULT_FONT:String = 'vcr.ttf';
+	/** Owner-local historical library selection; modern paths keep a flat core. */
+	public var currentLevel:String;
+	public function setCurrentLevel(name:String):Void currentLevel = name.toLowerCase();
 	public var COMBO_PREFIX:String;
 	public var RATINGS_PREFIX:String;
 	public var COUNTDOWN_PREFIX:String;
@@ -84,6 +87,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		this.sourceDirectory = validDirectoryLabel(sourceDirectory) ? sourceDirectory : null;
 		if (!CORE_DIRECTORY.startsWith(this.root + '/'))
 			throw '[nightmare-vision-asset] Core dependency must belong to the selected owner';
+		if (NightmareVisionStageProfile.read(this.root) == NightmareVisionStageProfile.LEGACY) currentLevel = 'shared';
 		hudProfile = NightmareVisionHUDProfile.detect(this);
 		usesSharedRatingPrefix = hudProfile.usesSharedRatingPrefix;
 		COMBO_PREFIX = hudProfile.comboPrefix;
@@ -188,7 +192,32 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 
 	public function getCorePath(file:String = ''):String {
 		var provider = selectedProvider();
-		return provider != null && provider != this ? provider.getCorePath(file) : scopedPath(CORE_DIRECTORY, file);
+		if (provider != null && provider != this) return provider.coreLibraryPath(file, currentLevel);
+		return coreLibraryPath(file, currentLevel);
+	}
+
+	function coreLibraryPath(file:String, level:Null<String>):String {
+		// Validate before constructing IDs, including misses and explicit setters.
+		var preload = scopedPath(CORE_DIRECTORY, file);
+		if (level == null) return preload;
+		if (!validDirectoryLabel(level) || level.indexOf(':') >= 0) throw '[nightmare-vision-asset] Invalid library: ' + level;
+		var resolved:Map<String, String> = new Map();
+		var selected = SourceLibraryPaths.select(file, level, null, function(id) {
+			var identity = RuntimeOwnerAssetIdentity.lookup(root, 'Nightmare Vision', 'core', id, null);
+			if (identity.state == 'found') {
+				resolved.set(id, identity.path);
+				return true;
+			}
+			if (identity.state != 'no-index' && identity.state != 'unclaimed') return false;
+			// Older retained packages without an index still have a scoped core.
+			// Only the declared level/shared path is eligible, never siblings.
+			var relative = id.substr(id.indexOf(':assets/') + 8);
+			var candidate = scopedPath(CORE_DIRECTORY, relative);
+			if (!exists(candidate)) return false;
+			resolved.set(id, candidate);
+			return true;
+		});
+		return resolved.exists(selected) ? resolved.get(selected) : preload;
 	}
 
 	/** FunkinScript.getPath extension precedence within this owner/core. */

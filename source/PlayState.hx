@@ -253,6 +253,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function nightmareVisionLaneCount():Int {
+		if (nightmareVisionLegacyFieldCameras) return 2;
 		var authored:Null<Int> = SONG == null ? null : SONG.lanes;
 		return authored != null && authored >= 1 ? authored : 2;
 	}
@@ -364,7 +365,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function publishNightmareVisionReceptorBanks():Void {
 		if (modManager != null) {
 			var banks:Array<Array<Dynamic>> = [];
-			for (field in nightmareVisionFields)
+			if (nightmareVisionLegacyFieldCameras) {
+				// Historical display order is opponent/player, but modifiers retain
+				// player/opponent slots, independently of mutable IDs and ordering.
+				if (nightmareVisionLegacyReceptors.player != null || nightmareVisionLegacyReceptors.opponent != null)
+					for (field in [nightmareVisionLegacyReceptors.player, nightmareVisionLegacyReceptors.opponent])
+						banks.push(field == null ? [] : cast field.members);
+			} else for (field in nightmareVisionFields)
 				if (field != null && field.strumline != null) banks.push(cast field.strumline.members);
 			modManager.receptors = banks;
 		}
@@ -829,7 +836,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (skipCountdown || startOnTime > 0) skipArrowStartTween = true;
 		nightmareVisionDefaultGenerationDepth++;
 		try {
-			for (lane in 0...nightmareVisionLaneCount()) {
+			if (nightmareVisionLegacyFieldCameras) generateNightmareVisionLegacyDefaultFields();
+			else for (lane in 0...nightmareVisionLaneCount()) {
 				var field = createNightmareVisionDefaultField(lane);
 				nightmareVisionLegacyReceptors.capture(lane, field);
 				// These return values are deliberately ignored by the donor. HALT can
@@ -851,21 +859,51 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			throw error;
 		}
 		syncNightmareVisionPlayFieldCollection();
-		nightmareVisionDefaultGenerationDepth--;
+		if (!nightmareVisionLegacyFieldCameras) nightmareVisionDefaultGenerationDepth--;
 		// A finite recursive source generation still publishes its own completed
 		// table before post, even while an outer generation remains active.
-		publishNightmareVisionReceptorBanks();
+		if (!nightmareVisionLegacyFieldCameras) publishNightmareVisionReceptorBanks();
 		if (nightmareVisionLaneCount() == 1 && enemyStrums != null) enemyStrums.visible = false;
 		generatedFields = true;
 		comboBreakThingies(0);
 		comboBreakThingies(1);
-		callNightmareVision('postReceptorGeneration', []);
+		if (nightmareVisionLegacyFieldCameras) {
+			try callNightmareVision('postReceptorGeneration', [isStoryMode || skipArrowStartTween])
+			catch (error:Dynamic) {nightmareVisionDefaultGenerationDepth--; throw error;}
+			nightmareVisionDefaultGenerationDepth--;
+			publishNightmareVisionReceptorBanks();
+			callNightmareVision('preModifierRegister', []);
+		} else callNightmareVision('postReceptorGeneration', []);
 		modManager.configureDimensions(nightmareVisionKeyCount(), nightmareVisionLaneCount());
 		modManager.registerEssentialModifiers();
 		modManager.registerDefaultModifiers();
 		modManager.registerScriptedModifiers();
 		modifiersRegistered = true;
 		callNightmareVision('postModifierRegister', []);
+	}
+
+	/** Historical NV creates both fields before its one zero-argument hook. */
+	function generateNightmareVisionLegacyDefaultFields():Void {
+		for (lane in 0...2) {
+			var field = createNightmareVisionDefaultField(lane);
+			field.ID = lane;
+			field.showRatings = true;
+			field.noteSplashes = lane == 0;
+			nightmareVisionLegacyReceptors.capture(lane, field);
+		}
+		var opponent = nightmareVisionLegacyReceptors.opponent;
+		if (nightmareVisionPrefs != null) {
+			if (!nightmareVisionPrefs.view.opponentStrums) opponent.baseAlpha = 0;
+			else if (nightmareVisionPrefs.view.middleScroll) opponent.baseAlpha = 0.35;
+		}
+		callNightmareVision('preReceptorGeneration', []);
+		// Resolve the live pointers at each step: source callbacks can replace them.
+		nightmareVisionLegacyReceptors.opponent.generateReceptors();
+		nightmareVisionLegacyReceptors.player.generateReceptors();
+		nightmareVisionLegacyReceptors.player.fadeIn(isStoryMode || skipArrowStartTween);
+		nightmareVisionLegacyReceptors.opponent.fadeIn(isStoryMode || skipArrowStartTween);
+		playFields.add(nightmareVisionLegacyReceptors.opponent);
+		playFields.add(nightmareVisionLegacyReceptors.player);
 	}
 
 	function createNightmareVisionDefaultField(lane:Int):NightmareVisionPlayFieldView {
@@ -1345,6 +1383,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		nightmareVisionPaths = ownerHost != null && ownerHost.runtime.canReuseFor(root) && ownerHost.assetPaths != null
 			? ownerHost.assetPaths : new NightmareVisionPaths(root, null, nightmareVisionPrefs.view, pathSourceDirectory);
 		nightmareVisionLegacyFieldCameras = NightmareVisionStageBindings.defaultIsLegacy(nightmareVisionPaths);
+		if (nightmareVisionLegacyFieldCameras) genNotesBeforeCountdown = false;
 		nightmareVisionPaths.bindModFamily(nightmareVisionActiveMods);
 		if (nightmareVisionActiveMods.nativeConfig == null) {
 			new NightmareVisionModConfigRuntime(nightmareVisionActiveMods, nightmareVisionPaths);

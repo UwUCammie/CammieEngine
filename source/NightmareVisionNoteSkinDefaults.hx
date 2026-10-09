@@ -5,8 +5,11 @@ package;
 class NightmareVisionNoteSkinDefaults {
 	/** Retained older cores use a flat image namespace. Explicit paths stay exact. */
 	public static function resolveOwnerData(data:Dynamic, legacyLayout:Bool):Void {
-		if (legacyLayout && data != null && !Std.isOfType(data, Array))
+		if (legacyLayout && data != null && !Std.isOfType(data, Array)) {
+			setDefault(data, 'noteTexture', 'NOTE_assets');
+			setDefault(data, 'splashTexture', 'noteSplashes');
 			setDefault(data, 'sustainSplashTexture', 'sustainHold');
+		}
 		resolveData(data);
 	}
 	public static inline var DEFAULT_TEXTURE:String = 'UI/notes/NOTE_assets';
