@@ -13138,7 +13138,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function sortSourceSongEvents():Void {
-		songEvents.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1 : a.order - b.order);
+		songEvents.sort(function(a, b) return a.time < b.time ? -1 : a.time > b.time ? 1
+			: nightmareVisionLegacyFieldCameras ? 0 : a.order - b.order);
 	}
 
 	function sourceChartNoteOffset():Float {
@@ -13146,20 +13147,21 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			: psychClientPrefs != null ? psychClientPrefs.data.noteOffset : OptionsHandler.options.offset;
 	}
 
-	/** NV loads a module at its first authored occurrence, before early timing.
-	 * Preparation notifications never cancel insertion into the native queue. */
+	/** Source profiles retain their own preparation ABI over the shared queue. */
 	function prepareNightmareVisionSourceEvents():Void {
 		if (nightmareVisionSourceEventsPrepared || nightmareVisionScripts == null) return;
 		nightmareVisionSourceEventsPrepared = true;
 		sourceEventPreparationInProgress = true;
 		try {
+		if (nightmareVisionLegacyFieldCameras) {
+			prepareHistoricalNightmareVisionSourceEvents();
+		} else {
 		var pushedNames:Map<String, Bool> = new Map();
 		for (row in songEvents) {
 			var event = new SourceEventNote(row, sourceChartNoteOffset());
 			sourceEventViews.push(event);
 			if (!pushedNames.exists(event.event)) {
 				var firstName = event.event;
-				if (nightmareVisionLegacyFieldCameras) nightmareVisionScripts.loadScope('event', firstName);
 				nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);
 				pushedNames.set(firstName, true);
 			}
@@ -13174,12 +13176,32 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);
 			callNightmareVision('onEventPush', [event]);
 		}
+		}
 		sortSourceSongEvents();
 		} catch (error:Dynamic) {
 			sourceEventPreparationInProgress = false;
 			throw error;
 		}
 		sourceEventPreparationInProgress = false;
+	}
+
+	function collectHistoricalNightmareVisionEvents():Array<Dynamic> {
+		var companion:Array<Dynamic> = null;
+		var path = currentSongDataPath('events.json');
+		if (FNFAssets.exists(path)) companion = SongEvents.fromSong(CoolUtil.parseJson(FNFAssets.getText(path)), false);
+		// Historical NV retains duplicate explicit events and has no negative-note adapter.
+		return SongEvents.collect(SongEvents.fromSong(SONG, false), companion, true);
+	}
+
+	function prepareHistoricalNightmareVisionSourceEvents():Void {
+		songEvents = [];
+		sourceEventViews = [];
+		var registry = legacyScriptRegistry();
+		NightmareVisionLegacyEventPreparation.prepare(collectHistoricalNightmareVisionEvents, sourceChartNoteOffset,
+			function() return registry.eventScripts, registry.callScript,
+			function(name, args) return registry.callOnScripts(name, args),
+			function(name) nightmareVisionScripts.loadScope('event', name),
+			function(row, event) {songEvents.push(row); sourceEventViews.push(event);}, precacheNightmareVisionSourceEvent);
 	}
 
 	/** These source built-ins own preparation and do not call module onPush.
@@ -13190,6 +13212,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				var role = NightmareVisionCharacterEvent.preloadRole(event.value1);
 				addNightmareVisionCharacterToList(event.value2, role);
 			case 'Change Noteskin':
+				if (nightmareVisionLegacyFieldCameras) return false;
 				try {
 					if (nightmareVisionNoteSkins == null) nightmareVisionNoteSkins = new Map();
 					var skin = nightmareVisionNoteSkins.get(event.value1);

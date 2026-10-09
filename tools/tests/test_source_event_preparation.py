@@ -70,6 +70,7 @@ class SourceEventPreparationTest(unittest.TestCase):
             extract_method(cls.play, "function sortSourceSongEvents("),
             extract_method(cls.play, "function sourceChartNoteOffset("),
             extract_method(cls.play, "function prepareNightmareVisionSourceEvents("),
+            extract_method(cls.play, "function prepareHistoricalNightmareVisionSourceEvents("),
             extract_method(cls.play, "function precacheNightmareVisionSourceEvent("),
         ))
 
@@ -77,7 +78,7 @@ class SourceEventPreparationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             (temp / "Main.hx").write_text(main_source, newline="\n")
-            for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx"):
+            for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx", "NightmareVisionLegacyEventPreparation.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
             velocity = (ROOT / "source/NightmareVisionScrollVelocity.hx").read_text()
             velocity = velocity.replace("import nightmarevision.modchart.NightmareVisionModchartTransform;", "")
@@ -145,8 +146,10 @@ class NvGlobalCall {
 }
 class NvScriptHost {
  public var owner:PlayState;
- public function new(owner:PlayState) this.owner = owner;
- public function loadScope(scope:String,name:String):Void owner.log.push("nv-load:"+scope+":"+name);
+ public function new(owner:PlayState) {this.owner = owner;owner.historicalRows=owner.songEvents;}
+ public function loadScope(scope:String,name:String):Void {
+  owner.log.push("nv-load:"+scope+":"+name);owner.registry.eventScripts.set(name,{scriptType:'hscript',name:name});
+ }
  public function callEvent(name:String, callback:String, args:Array<Dynamic>):Dynamic {
   owner.log.push('nv-module:' + callback + ':' + name);
   owner.nvModuleCalls.push(new NvCall(name, callback, args));
@@ -162,8 +165,22 @@ class NvScriptHost {
   return null;
  }
 }
+class FixtureRegistry {
+ public var eventScripts:Map<String,Dynamic>=[];var owner:PlayState;
+ public function new(owner:PlayState)this.owner=owner;
+ public function callScript(script:Dynamic,callback:String,args:Array<Dynamic>):Dynamic {
+  owner.nvModuleCalls.push(new NvCall(script.name,callback,args));
+  if(callback=='getOffset')return owner.nvModuleOffsets.exists(script.name)?owner.nvModuleOffsets.get(script.name):0;
+  return 0;
+ }
+ public function callOnScripts(name:String,args:Array<Dynamic>):Dynamic return 0;
+}
 class PlayState {
  public var songEvents:Array<Dynamic> = [];
+ public var historicalRows:Array<Dynamic> = [];
+ public var registry:FixtureRegistry;
+ function legacyScriptRegistry():FixtureRegistry return registry;
+ function collectHistoricalNightmareVisionEvents():Array<Dynamic> return [for(r in historicalRows) {time:r.time,name:r.name,v1:r.v1,v2:r.v2,order:r.order}];
  public var sourceEventViews:Array<SourceEventNote> = [];
  public var psychSourceEventsPrepared:Bool = false;
  public var psychSourceEventsFinalized:Bool = false;
@@ -189,7 +206,7 @@ class PlayState {
  public var mutateFirstPushName:String = '';
  public var firstNvPushTime:Null<Float> = null;
  public var stageSawNullValues:Bool = false;
- public function new() {}
+ public function new() {registry=new FixtureRegistry(this);}
  function selectedPsychSkinRoot():String return 'fixture-psych-root';
  function compatAddCharacterToList(value2:Dynamic, value1:Dynamic):Void
   log.push('psych-precache-character:' + Std.string(value1) + ':' + Std.string(value2));
@@ -220,7 +237,7 @@ class PlayState {
  }
  public function exercisePsychPrepare():Void preparePsychSourceEvents();
  public function exercisePsychFinalize():Void finalizePsychSourceEvents();
- public function exerciseNvPrepare():Void prepareNightmareVisionSourceEvents();
+ public function exerciseNvPrepare():Void {historicalRows=songEvents;prepareNightmareVisionSourceEvents();}
  public function exerciseChartNoteTime(authored:Float):Float return authored + sourceChartNoteOffset();
  public function exerciseOffset(value:Dynamic, name:String):Null<Float>
   return sourceEventEarlyOffset(value, name);
@@ -309,7 +326,7 @@ class Main {
   historical.songEvents = [new SourceRow(100, 'Mult SV', '2', '', 0), new SourceRow(200, 'Constant SV', '4', '', 1)];
   historical.nvModuleOffsets.set('Mult SV', 10.);
   historical.exerciseNvPrepare();
-  check(historical.log.indexOf('nv-load:event:Mult SV') < historical.log.indexOf('nv-module:onFirstPush:Mult SV') && historical.log.filter(v -> v.indexOf('nv-load:')==0).length==2,'historical preparation loads before dispatch exactly once per authored name');
+  check(historical.log.filter(v -> v.indexOf('nv-load:')==0).length==2 && historical.nvModuleCalls.filter(c -> c.callback=='onFirstPush' || c.callback=='firstPush').length==0,'historical first pass precedes custom event loading');
   check(historical.speedChanges.length == 3 && historical.speedChanges[1].songTime == 95,
    'Historical SV must capture source noteOffset and early timing before note constructors');
   check(historical.speedChanges[2].position == 141.75 && historical.speedChanges[2].speed == .5,

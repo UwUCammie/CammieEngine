@@ -41,9 +41,30 @@ class RuntimeSmokeLegacyEventMap {
 				throw 'Native event map replacement/ownership';
 			replacement.remove('Alias');
 			if (backend.hasEventCallback('Alias','onTrigger') || state.callEventScript('Alias','onTrigger',[]) != 0) throw 'Native removed event was recreated';
+			verifyPreparation(state, registry);
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_map_native_verified',{sourceProfile:true,authoredNamePreserved:true,constructorBeforeMap:true,onLoadBeforeArrays:true,liveAliases:true,reflectedReplacement:true,unplannedAlias:true,removedEntryStaysRemoved:true,sharedModule:true});
 		} catch(error:Dynamic) {restore();throw error;}
 		restore();
 		#end
 	}
+	static function verifyPreparation(state:PlayState, registry:NightmareVisionLegacyScriptRegistry):Void {
+		var handle = NightmareVisionScriptModule.fromSource('__event_prepare',
+			'var first = null; var kept = null; function shouldPush(e){return e.value1 != "reject";} function firstPush(e){first=e;e.value1="first-only";} function getOffset(e){return 0;} function onPush(e){kept=e;e.value2="pushed";}',
+			state, null, function(i) {var module:NightmareVisionScriptModule=cast i.variables.get('script');module.historicalCalls=true;}, function(n,c,e) throw e);
+		registry.eventScripts = ['E'=>handle];
+		var rows:Array<Dynamic> = [];var views:Array<SourceEventNote> = [];var loads = 0;
+		try {
+			NightmareVisionLegacyEventPreparation.prepare(function() return [for(v in ['keep','reject','keep']) {time:100.,name:'E',v1:v,v2:null,order:0}],
+				function() return 5., function() return registry.eventScripts, registry.callScript,
+				function(n,a) return 30., function(n) loads++, function(r,e) {rows.push(r);views.push(e);}, function(e) return false);
+			var first:SourceEventNote = cast handle.get('first');var kept:SourceEventNote = cast handle.get('kept');
+			if (loads != 1 || rows.length != 2 || views[0].strumTime != 105 || views[0].value1 != 'keep'
+				|| views[0].value2 != 'pushed' || first == views[0] || kept != views[1]) throw 'Native historical event preparation';
+			kept.value2 = 'retained';rows[1].time = 23.;
+			if (rows[1].v2 != 'retained' || kept.strumTime != 23) throw 'Native historical event view identity';
+			@:privateAccess RuntimeSmokeHarness.emit('legacy_event_preparation_native_verified', {admission:true,freshPasses:true,zeroOffsetOverridesGlobal:true,duplicates:true,retainedIdentity:true});
+		} catch(error:Dynamic) {handle.destroy();throw error;}
+		handle.destroy();
+	}
+
 }

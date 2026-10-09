@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Historical NV event preparation now uses source admission passes, callback names and Lua/HScript arguments, preserving duplicate events and live queue edits.
 - Historical NV event scripts now share a writable live map with dispatch, preserving map edits and source HScript initialization order.
 - Historical NV HScript handles now preserve raw callback returns, nested script receivers and stop behavior through the shared interpreter.
 - Historical NV script arrays now preserve live identity, replacement and callback-time loading/removal across the existing HScript and Lua runtimes.
