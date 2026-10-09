@@ -218,7 +218,7 @@ class Strumline {
 class NightmareVisionPlayFieldView {
 	public var underlaySpr:Dynamic = null;
 	public var ID:Int;
-	public var strumline:Strumline;
+	public var legacyGroupCameras=false;public var strumline:Strumline;
 	public var owner:Dynamic;
 	public var baseX:Float = 0;
 	public var baseY:Float = 0;
@@ -268,6 +268,7 @@ class FakeCollection {
 }
 
 class FakePlayState {
+	public var nightmareVisionLegacyFieldCameras=false;
 	public var nightmareVisionPaths:Dynamic;
 	public var nightmareVisionPrefs:Dynamic;
 	public var SONG:Dynamic;

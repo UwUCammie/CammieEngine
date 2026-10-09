@@ -236,6 +236,8 @@ class Main {
  public var nightmareVisionScripts:Scripts=new Scripts();
  public var nightmareVisionPrefs:Dynamic={view:{quants:false,opponentStrums:true,middleScroll:false}};
  public var modifiersRegistered=false;public var generatedFields=false;public var genNotesBeforeCountdown=true;public var skipArrowStartTween=false;
+ public var nightmareVisionLegacyFieldCameras=false;
+ public var nightmareVisionLegacyReceptors = new NightmareVisionLegacyReceptors();
  public var nightmareVisionDefaultGenerationDepth=0;
  public var skipCountdown=false;public var startOnTime=0.;public var isStoryMode=false;
  public var playerStrums:Strumline=new Strumline(0,0,'normal',false,false);

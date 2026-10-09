@@ -144,6 +144,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public var arrowSkins:Array<String>;
 	@:keep public var skipArrowStartTween:Bool = false;
 	var nightmareVisionDefaultGenerationDepth:Int = 0;
+	var nightmareVisionLegacyFieldCameras:Bool = false;
+	var nightmareVisionLegacyReceptors = new NightmareVisionLegacyReceptors();
 	/** One real native receptor bank per declared Nightmare Vision field. */
 	var nightmareVisionStrumlines:Array<Strumline> = [];
 	/** Includes detached/replaced banks so PlayState still disposes its owned sprites. */
@@ -493,6 +495,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var line = new Strumline(spec.x, spec.y, SONG == null ? 'normal' : SONG.uiType);
 		var field = new NightmareVisionPlayFieldView(line.ID, function() return false);
 		field.strumline = line;
+		field.legacyGroupCameras = nightmareVisionLegacyFieldCameras;
 		if (field.underlaySpr != null) NightmareVisionSpriteMethods.bind(field.underlaySpr, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
 		field.baseX = spec.x;
 		field.baseY = spec.y;
@@ -564,7 +567,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (field == null || field.strumline == null) return;
 		var line = field.strumline;
 		line.sourceFieldBeforeDraw = function() drawNightmareVisionFieldUnderlay(field);
-		if (line.cameras == null || line.cameras.length == 0) line.cameras = [camHUD];
+		field.initializeCameras([camHUD]);
 		if (line.noteHoldCovers != null && (line.noteHoldCovers.cameras == null
 			|| line.noteHoldCovers.cameras.length == 0)) line.noteHoldCovers.cameras = [camHUD];
 		if (members.indexOf(line) < 0) {
@@ -582,7 +585,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var prefs = nightmareVisionPrefs.view;
 		if (sprite == null || !sprite.exists || prefs.underlayType != 'Lane Underlay'
 			|| prefs.underlayOpacity <= 0) return;
-		var cameras = field.strumline.cameras;
+		var cameras:Array<FlxCamera> = cast field.cameras;
 		var camera = cameras == null || cameras.length == 0 ? camHUD : cameras[0];
 		if (camera == null) return;
 		var bounds = NightmareVisionFieldUnderlay.measure(cast field.members, field.notes,
@@ -618,6 +621,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var skin = field._skin == null ? nightmareVisionSkinForField(field.ID) : field._skin;
 		for (strum in field.strumline.members) if (strum != null) {
 			NightmareVisionSpriteMethods.bind(strum, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
+			// Native SpriteGroup construction supplies explicit HUD cameras. Source
+			// FlxTypedGroup children inherit instead, until a script overrides them.
+			if (field.legacyGroupCameras && !strum.nightmareVisionSource) strum.cameras = null;
 			strum.nightmareVisionSource = true;
 			strum.isQuant = field.quants;
 			strum.nightmareVisionQuantPrefs = nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view;
@@ -825,6 +831,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		try {
 			for (lane in 0...nightmareVisionLaneCount()) {
 				var field = createNightmareVisionDefaultField(lane);
+				nightmareVisionLegacyReceptors.capture(lane, field);
 				// These return values are deliberately ignored by the donor. HALT can
 				// stop later listeners, but does not cancel receptor generation.
 				callNightmareVision('preReceptorGeneration', [field, lane]);
@@ -876,6 +883,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		NightmareVisionSpriteMethods.bind(line, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
 		var field = new NightmareVisionPlayFieldView(line.ID, function():Bool return false);
 		field.strumline = line;
+		field.legacyGroupCameras = nightmareVisionLegacyFieldCameras;
 		if (field.underlaySpr != null) NightmareVisionSpriteMethods.bind(field.underlaySpr, NightmareVisionSpriteRegistry.capture(nightmareVisionPaths));
 		field.baseX = NightmareVisionPlayfieldLayout.centerX(lane, nightmareVisionKeyCount(), FlxG.width, Note.swagWidth);
 		field.baseY = NightmareVisionPlayfieldLayout.receptorCenterY(FlxG.height, Note.swagWidth, downscroll);
@@ -895,7 +903,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		field._skin = nightmareVisionDefaultSkinForField(lane, false);
 		nightmareVisionSourceSkinRegistry().noteskins.push(field._skin);
 		field.quants = nightmareVisionPrefs != null && nightmareVisionPrefs.view.quants == true;
-		line.cameras = [camHUD];
+		field.initializeCameras([camHUD]);
 		line.noteHoldCovers.cameras = [camHUD];
 		initializeNightmareVisionFieldSplashes(field);
 		return field;
@@ -976,6 +984,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			'StringMap' => haxe.ds.StringMap, 'IntMap' => haxe.ds.IntMap, 'ObjectMap' => haxe.ds.ObjectMap,
 			'FlxMath' => FlxMath, 'FlxTimer' => FlxTimer, 'FlxTween' => FlxTween,
 			'FlxEase' => FlxEase, 'FlxSound' => FlxSound, 'FlxText' => FlxText,
+			'setTxtFormat' => NightmareVisionTextHelpers.setTxtFormat,
 			'FlxCamera' => FlxCamera, 'FlxAxes' => {X:FlxAxes.X, Y:FlxAxes.Y, XY:FlxAxes.XY, NONE:FlxAxes.NONE},
 			'FlxColor' => NightmareVisionColor,
 			'FlxTextAlign' => {LEFT:FlxTextAlign.LEFT, CENTER:FlxTextAlign.CENTER,
@@ -1235,6 +1244,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindLiveValue('showCombo', function() return nightmareVisionLegacyHudControls.showCombo,
 			function(value) return nightmareVisionLegacyHudControls.showCombo = value, function() return this);
 		bindSourceBarClass(interp, true);
+		if (nightmareVisionLegacyFieldCameras)
+			NightmareVisionLegacyReceptorBindings.install(interp, this, nightmareVisionLegacyReceptors, function() return playFields == null ? null : playFields.members);
 		interp.variables.set('getFieldFromID', getNightmareVisionField);
 		interp.variables.set('callNoteTypeScript', callNoteTypeScript);
 		interp.variables.set('callEventScript', callEventScript);
@@ -1333,6 +1344,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var ownerHost = NightmareVisionPluginHost.activeHost;
 		nightmareVisionPaths = ownerHost != null && ownerHost.runtime.canReuseFor(root) && ownerHost.assetPaths != null
 			? ownerHost.assetPaths : new NightmareVisionPaths(root, null, nightmareVisionPrefs.view, pathSourceDirectory);
+		nightmareVisionLegacyFieldCameras = NightmareVisionStageBindings.defaultIsLegacy(nightmareVisionPaths);
 		nightmareVisionPaths.bindModFamily(nightmareVisionActiveMods);
 		if (nightmareVisionActiveMods.nativeConfig == null) {
 			new NightmareVisionModConfigRuntime(nightmareVisionActiveMods, nightmareVisionPaths);
@@ -25852,6 +25864,7 @@ void main(void) {
 		for (renderer in nightmareVisionRenderers) renderer.destroy();
 		nightmareVisionRenderers.clear();
 		var ownedNightmareVisionLines = nightmareVisionOwnedStrumlines.copy();
+		nightmareVisionLegacyReceptors.release();
 		if (playFields != null) playFields.destroy();
 		for (field in nightmareVisionOwnedFields) if (field != null) field.destroy();
 		nightmareVisionOwnedFields = [];

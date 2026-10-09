@@ -30,7 +30,12 @@ class NightmareVisionPlayFieldView {
 	@:keep public var ID(get, set):Int;
 	var sourceID:Int = 0;
 	/** The native line owns and updates the receptors; this view never copies them. */
-	@:keep public var strumline:Strumline;
+	@:keep public var strumline(default, set):Strumline;
+	/** The source group changes draw defaults, never explicit child cameras. */
+	@:keep public var cameras(get, set):Dynamic;
+	public var legacyGroupCameras:Bool = false;
+	var sourceCameras:Dynamic;
+	var camerasAssigned:Bool = false;
 	/** Source PlayField.members is the live receptor array for this field. */
 	@:keep public var members(get, never):Array<Strumline.StrumNote>;
 	public var owner(default, set):Dynamic;
@@ -215,7 +220,28 @@ class NightmareVisionPlayFieldView {
 		owner = null;
 		singers.resize(0);
 		strumline = null;
+		sourceCameras = null; camerasAssigned = false;
 		_skin = null;
+	}
+	function cameraGroup():Dynamic return strumline == null ? null
+		: legacyGroupCameras ? Reflect.field(strumline, 'group') : strumline;
+	function set_strumline(value:Strumline):Strumline {
+		strumline = value;
+		if (camerasAssigned && cameraGroup() != null) Reflect.setProperty(cameraGroup(), 'cameras', sourceCameras);
+		return value;
+	}
+	function get_cameras():Dynamic {
+		var group = cameraGroup();
+		return group == null ? sourceCameras : Reflect.getProperty(group, 'cameras');
+	}
+	function set_cameras(value:Dynamic):Dynamic {
+		camerasAssigned = true; sourceCameras = value;
+		var group = cameraGroup();
+		if (group != null) Reflect.setProperty(group, 'cameras', value);
+		return value;
+	}
+	public function initializeCameras(value:Dynamic):Void {
+		if (!camerasAssigned) cameras = value;
 	}
 	function get_members():Array<Strumline.StrumNote>
 		return strumline == null ? [] : strumline.members;

@@ -75,6 +75,8 @@ class Main {
  public var generatedFields:Bool=false; public var genNotesBeforeCountdown:Bool=true;
  public var skipArrowStartTween:Bool=false; public var skipCountdown:Bool=false;
  public var startOnTime:Float=0; public var isStoryMode:Bool=false;
+ public var nightmareVisionLegacyFieldCameras=false;
+ public var nightmareVisionLegacyReceptors = new NightmareVisionLegacyReceptors();
  public var nightmareVisionDefaultGenerationDepth:Int=0;
  public var playFields:NightmareVisionPlayFields;
  public var nightmareVisionFields:Array<NightmareVisionPlayFieldView>=[];
@@ -118,7 +120,7 @@ class Main {
  __METHODS__
  static function check(ok:Bool, label:String) { if (!ok) throw label; }
  static function main() {
-  var h=new Main();
+  var h=new Main();h.nightmareVisionLegacyFieldCameras=true;
   h.initializeNightmareVisionPlayFields();
   check(h.playFields.length==0 && h.getNightmareVisionField(0)==null, 'pre-generation source fields empty');
   h.generatePlayfields();
@@ -131,6 +133,10 @@ class Main {
    && f2.strumline.x==f2.baseX-224 && f2.strumline.y==f2.baseY-56,
    'receptor banks use their live field base coordinates');
   check(f0.strumline==h.playerStrums && f1.strumline==h.enemyStrums, 'legacy source fields');
+  check(f0.members[0].cameras==null,'source receptors clear only initial native camera assignment');
+  var explicitCamera=['authored'];f0.members[0].cameras=explicitCamera;h.configureNightmareVisionStrumlines();
+  check(f0.members[0].cameras==explicitCamera,'later field configuration preserves explicit child camera');
+  check(h.nightmareVisionLegacyReceptors.player==f0&&h.nightmareVisionLegacyReceptors.opponent==f1,'default generation publishes historical field pointers');
   check(f2.strumline!=f0.strumline && f2.strumline!=f1.strumline, 'extra bank must be distinct');
   check(f2.members==f2.strumline.members && f2.members!=f0.members, 'live unique receptor arrays');
   var extra=new Strumline.StrumNote(); f2.strumline.members.push(extra);
@@ -210,7 +216,7 @@ class StrumNote {
  public var alphaMult:Float=1;
  public var animation:Dynamic={curAnim:{name:'static'}};
  public var resetAnim:Float=0;
- public var nightmareVisionSource:Bool=false;
+ public var cameras:Dynamic=['native'];public var nightmareVisionSource:Bool=false;
  public var nightmareVisionPalette:Dynamic=null;
  public var nightmareVisionRGB:Main.NightmareVisionRGBGraphics=null;
  public var psychRGBShader:Main.PsychRGBShaderReference=new Main.PsychRGBShaderReference();

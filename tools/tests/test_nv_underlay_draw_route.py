@@ -14,7 +14,7 @@ class NvUnderlayDrawRouteTest(unittest.TestCase):
         play = (ROOT / 'source/PlayState.hx').read_text()
         strums = (ROOT / 'source/Strumline.hx').read_text()
         draw = method(play, 'function drawNightmareVisionFieldUnderlay(').replace(
-            'field:NightmareVisionPlayFieldView', 'field:Dynamic')
+            'field:NightmareVisionPlayFieldView', 'field:Field').replace('Array<FlxCamera>', 'Array<Dynamic>')
         attach = method(play, 'function attachNightmareVisionFieldDisplay(').replace(
             'field:NightmareVisionPlayFieldView', 'field:Dynamic')
         enable = method(play, 'function enableNightmareVisionFieldAttachment():Void')
@@ -51,6 +51,20 @@ class Bank extends BankBase {
  public function new() super();
  function drawAttachedEffects():Void Main.events.push('effects');
  __BANK_DRAW__
+}
+@:keep
+class Field {
+ public var ID:Int=0;public var _skin:Dynamic;public var keyCount:Int=4;
+ public var baseX:Float=0;public var baseY:Float=0;
+ public var strumline:Bank;public var underlaySpr:Sprite;public var underlayAlphaMult:Float;
+ public var members:Array<Dynamic>;public var notes:Array<Dynamic>;public var player:Int;
+ public var displayedSplashLayer:Dynamic;public var splashLayer:Dynamic;
+ public var cameras(get,never):Array<Dynamic>;
+ public function new(bank:Bank,?sprite:Sprite,mult:Float=1,?members:Array<Dynamic>,?notes:Array<Dynamic>,player:Int=0){
+  strumline=bank;underlaySpr=sprite;underlayAlphaMult=mult;this.members=members;this.notes=notes;this.player=player;
+ }
+ function get_cameras()return strumline.cameras;
+ public function initializeCameras(value:Array<Dynamic>):Void {if(strumline.cameras==null||strumline.cameras.length==0)strumline.cameras=value;}
 }
 class Manager {
  public var calls:Array<String>=[];
@@ -89,19 +103,17 @@ class Main {
  static function main():Void {
   var ordered=new Main();ordered.nightmareVisionDefaultGenerationDepth=1;
   var hud={};ordered.members=[ordered.grpNoteSplashes,hud];var generatedBank=new Bank();
-  ordered.attachNightmareVisionFieldDisplay({strumline:generatedBank});
+  ordered.attachNightmareVisionFieldDisplay(new Field(generatedBank));
   check(ordered.members[0]==generatedBank && ordered.members[1]==ordered.grpNoteSplashes && ordered.members[2]==hud,
    'late default generation retains existing bank slot before splash and HUD');
   var host=new Main();var bank=new Bank();var sprite=new Sprite();
   var receptor:Dynamic={x:100.0,width:50.0,exists:true,visible:true};
   var note:Dynamic={x:50.0,width:20.0,exists:true,alive:true,isOnScreen:function()return true};
-  var field:Dynamic={strumline:bank,underlaySpr:sprite,underlayAlphaMult:0.75,
-   members:[receptor],notes:[note],player:7};
+  var field:Dynamic=new Field(bank,sprite,0.75,[receptor],[note],7);
   // Default fields register before the existing setup adds banks/notes/covers.
   var otherBank=new Bank();var otherSprite=new Sprite();
   bank.noteHoldCovers={cameras:[]};otherBank.noteHoldCovers={cameras:[]};
-  var other:Dynamic={strumline:otherBank,underlaySpr:otherSprite,underlayAlphaMult:1.0,
-   members:[{x:500.0,width:50.0,exists:true,visible:true}],notes:[],player:1};
+  var other:Dynamic=new Field(otherBank,otherSprite,1.0,[{x:500.0,width:50.0,exists:true,visible:true}],[],1);
   host.nightmareVisionFields=[field,other,null];
   host.attachNightmareVisionPlayField(field);host.attachNightmareVisionPlayField(other);
   check(bank.sourceFieldBeforeDraw==null && otherBank.sourceFieldBeforeDraw==null && host.members.length==0,

@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+	- Restore historical Nightmare Vision receptor globals and flattened note arrays with stable field identity, reflected access and source-selected group camera inheritance.
+	- Add the historical setTxtFormat preset helper through native shared text formatting.
 	- Add the historical Nightmare Vision PsychVideoSprite constructor, decoder callbacks, restart and focus behavior over the shared owner-scoped video service.
 	- Keep historical video registries and global pause/resume methods scoped to the calling mod, including reflected imports and constructors.
 	- Reset format/completion state when reusable shared video sprites load another clip.
