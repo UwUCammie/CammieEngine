@@ -5403,6 +5403,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return NightmareVisionLegacyClassAliases.create(PlayState, GameOverSubstate, nightmareVisionConductor,
 			nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view, nightmareVisionPaths, CoolUtil);
 	}
+	function installHistoricalLuaTextLifecycle(interp:Interp, resultsObserver:Bool):Void {
+		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
+		// The native helper returns the object to engine callers; source Lua construction is void.
+		interp.variables.set('makeLuaText', function(tag:String, text:String, width:Int = 0, x:Float = 0, y:Float = 0):Void {
+			compatMakeLuaText(tag, text, width, x, y);
+		});
+		interp.variables.set('addLuaText', function(tag:String):Void {compatAddLuaText(tag);});
+		interp.variables.set('removeLuaText', function(tag:String, destroy:Bool = true):Void {compatRemoveLuaText(tag, destroy);});
+	}
 	function installHistoricalLuaObjectOrder(interp:Interp, resultsObserver:Bool):Void {
 		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;
 		interp.variables.set('getObjectOrder', function(path:String):Int
@@ -6751,21 +6760,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatMakeLuaText(tag:String, text:String, width:Float = 0, x:Float = 0,
 		y:Float = 0):FlxText {
-		if (tag != null) {
-			if (nightmareVisionLegacyFieldCameras) compatRemoveLuaText(tag);
-			else compatRemoveLuaSprite(tag);
-		}
+		if (nightmareVisionLegacyFieldCameras)
+			return SourceScriptTextLifecycle.create(tag, function() return modchartTexts, function() return this,
+				function() return new SourceModchartText(x, y, text, width, nightmareVisionPaths.font('vcr.ttf'), camHUD));
+		if (tag != null) compatRemoveLuaSprite(tag);
 		var label = new FlxText(x, y, width, text == null ? '' : text, 16);
 		// Psych Lua text starts on the HUD and stays fixed when the game
 		// camera scrolls. setObjectCamera can still override this afterward.
 		label.cameras = [camHUD];
 		label.scrollFactor.set();
-		if (nightmareVisionLegacyFieldCameras) modchartTexts.set(tag, label);
-		else {
-			compatForgetSpriteAtlas(haxeSprites.get(tag));
-			haxeSprites.set(tag, cast label);
-			haxeSpriteAtlasNames.remove(tag);
-		}
+		compatForgetSpriteAtlas(haxeSprites.get(tag));
+		haxeSprites.set(tag, cast label);
+		haxeSpriteAtlasNames.remove(tag);
 		return label;
 	}
 
@@ -7234,20 +7240,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function compatAddLuaText(tag:String, ?front:Bool = true):Void {
 		// Psych adds Lua text at the top of the scene by default. Keep the
 		// optional donor argument harmless; texts retain their assigned camera.
-		if (nightmareVisionLegacyFieldCameras) {
-			var label = modchartTexts.get(tag);
-			if (label != null && members.indexOf(label) < 0) addHscriptSprite(label, BEHIND_NONE);
-		} else compatAddLuaSprite(tag, true);
+		if (nightmareVisionLegacyFieldCameras)
+			SourceScriptTextLifecycle.add(tag, function() return modchartTexts, historicalPropertyInstance);
+		else compatAddLuaSprite(tag, true);
 	}
 	function compatRemoveLuaText(tag:String, ?destroy:Bool = true):Void {
 		if (!nightmareVisionLegacyFieldCameras) {compatRemoveLuaSprite(tag,destroy);return;}
-		var label = modchartTexts.get(tag);
-		if (label == null) return;
-		remove(label, true);
-		if (destroy) {label.destroy();modchartTexts.remove(tag);}
+		SourceScriptTextLifecycle.remove(tag, destroy, function() return modchartTexts, historicalPropertyInstance);
 	}
 	function compatFindText(name:Dynamic):Dynamic {
-		if (nightmareVisionLegacyFieldCameras && Std.isOfType(name,String) && modchartTexts.exists(name)) return modchartTexts.get(name);
+		if (nightmareVisionLegacyFieldCameras)
+			return modchartTexts.exists(name) ? modchartTexts.get(name) : historicalReadProperty(this, name);
 		return compatFindObject(name);
 	}
 
@@ -8727,6 +8730,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// its final getters; HScript retains the native array API unchanged.
 		installHistoricalLuaProperties(interp, resultsObserver);
 		installHistoricalLuaObjectOrder(interp, resultsObserver);
+		installHistoricalLuaTextLifecycle(interp, resultsObserver);
 		PsychLuaApiResults.install(interp);
 	}
 

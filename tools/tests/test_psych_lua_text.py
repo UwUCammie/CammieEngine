@@ -53,7 +53,7 @@ class FlxBasic {
  function get_cameras():Array<FixtureCamera> return assigned;
  function set_cameras(value:Array<FixtureCamera>):Array<FixtureCamera> {cameraWrites++; return assigned=value;}
 }
-class FlxSprite extends FlxBasic { public var destroyed:Bool=false; public function new() {super();} public function destroy():Void destroyed=true; }
+class FlxSprite extends FlxBasic { public var destroyed:Bool=false; public function new() {super();} public function destroy():Void destroyed=true; public function kill():Void {} }
 class FlxText extends FlxSprite {
  public var scrollFactor = new Scroll();
  public var text(default,set):String = '';
@@ -86,6 +86,10 @@ class RuntimeSmokeHarness {
 }
 class PsychLuaTextFixture {
  var nightmareVisionLegacyFieldCameras=false;
+ var nightmareVisionPaths = {font:function(name:String):String return "assets/fonts/"+name};
+ function historicalPropertyInstance():Dynamic return this;
+ function historicalReadProperty(o:Dynamic,k:String):Dynamic return Reflect.getProperty(o,k);
+ function add(o:FlxSprite):Void {if(members.indexOf(o)<0)members.push(o);}
  var modchartTexts:Map<String,FlxText>=[];
  var camHUD = new FixtureCamera();
  var haxeSprites:Map<String,FlxSprite> = [];
@@ -140,6 +144,14 @@ class PsychLuaTextFixture {
 }'''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / "PsychLuaTextFixture.hx").write_text(fixture, newline='\n')
+            (Path(folder) / "SourceScriptTextLifecycle.hx").write_text((ROOT / "source/SourceScriptTextLifecycle.hx").read_text())
+            (Path(folder) / "SourceModchartText.hx").write_text("""import PsychLuaTextFixture.FlxText;
+import PsychLuaTextFixture.FixtureCamera;
+class SourceModchartText extends FlxText {
+ public var wasAdded=false;
+ public function new(x:Float,y:Float,text:String,width:Float,font:String,camera:FixtureCamera){super(x,y,width,text,16);cameras=[camera];scrollFactor.set();}
+}
+""")
             (Path(folder) / "PsychFontPath.hx").write_text(
                 (ROOT / "source/PsychFontPath.hx").read_text(), newline='\n')
             (Path(folder) / "FNFAssets.hx").write_text('''
