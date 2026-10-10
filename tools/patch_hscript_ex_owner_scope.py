@@ -1324,6 +1324,33 @@ PATCHES["InterpEx.hx"].append((
 ))
 
 
+PATCHES["InterpEx.hx"].extend([
+    ("    override function assign( e1 : Expr, e2 : Expr ) : Dynamic {",
+     """    override function assign( e1 : Expr, e2 : Expr ) : Dynamic {
+        // dp-owner-native-member-array-write: keep the base evaluator's value,
+        // receiver and index evaluation order and the original array identity.
+        switch (Tools.expr(e1)) {
+            case EArray(receiver, indexExpr):
+                var value = expr(e2);
+                var collection:Dynamic = expr(receiver);
+                var index:Dynamic = expr(indexExpr);
+                if (isMap(collection)) setMapValue(collection, index, value);
+                else collection[index] = _classScope == null ? value : _classScope.nativeArrayValue(collection, value);
+                return value;
+            default:
+        }
+""", "dp-owner-native-member-array-write"),
+    ("    override public function expr(e:Expr):Dynamic {",
+     """    override function makeIterator(value:Dynamic):Iterator<Dynamic> {
+        var iterator = super.makeIterator(value);
+        if (_classScope == null) return iterator;
+        return {hasNext:iterator.hasNext, next:function():Dynamic return _classScope.unwrapIndexedMember(iterator.next())};
+    } // dp-owner-native-member-iteration
+
+    override public function expr(e:Expr):Dynamic {""", "dp-owner-native-member-iteration"),
+])
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text

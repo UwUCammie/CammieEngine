@@ -64,6 +64,7 @@ class FlxGroup extends FlxTypedGroup<FlxBasic> { public function new() super(); 
 import flixel.FlxSprite;
 typedef FlxSpriteGroup = FlxTypedSpriteGroup<FlxSprite>;
 class FlxTypedSpriteGroup<T:FlxSprite> extends FlxSprite {
+ public var group:flixel.group.FlxGroup.FlxTypedGroup<T>;
  public var members:Array<T>=[];
  public function new(x:Float=0,y:Float=0,?maxSize:Int=0) { super(x,y); }
  public function add(value:T):T { members.push(value); return value; }

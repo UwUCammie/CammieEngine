@@ -23,9 +23,11 @@ class RuntimeSmokePsychIrisClasses {
 		var recycleGroup = new flixel.group.FlxGroup.FlxTypedGroup<flixel.FlxBasic>();
 		var recycleOwner:CodenameScriptClassLoader = null;
 		var spriteGroup = new flixel.group.FlxSpriteGroup(12, 14);
+		var memberGroup = new flixel.group.FlxSpriteGroup(50, 60);
 		var cleanup = function() {
 			if (nativeTween != null) nativeTween.cancel();if (nativeGroup != null) nativeGroup.destroy();
 			if (spriteGroup != null) spriteGroup.destroy();
+			memberGroup.destroy();
 			recycleGroup.destroy();if (recycleOwner != null) recycleOwner.scope.release();
 			plain.release();if (runtime != null) runtime.release();
 			if (session != null) session.release();
@@ -93,6 +95,21 @@ class RuntimeSmokePsychIrisClasses {
 			plain.evaluate('sourcePanelProbe.label.text="updated native text";', 'native-text-change');
 			nativePanel.draw();
 			check(nativeLabel.textField.text == 'updated native text', 'Source text writes use native formatting/rendering');
+			plain.variables.set('memberProbeGroup', memberGroup);
+			plain.evaluate('capturedSpriteRecycle=memberProbeGroup.recycle; recycledSprite=capturedSpriteRecycle(NativeSprite);', 'sprite-recycle-probe');
+			var recycledSprite = plain.variables.get('recycledSprite');
+			check(memberGroup.members[0].x == 2 && memberGroup.members[0].y == 3, 'Sprite-group recycle preserves native no-preAdd behavior');
+			memberGroup.members[0].kill();
+			plain.evaluate('reusedSprite=capturedSpriteRecycle(NativeSprite); replacementSprite=new NativeSprite(); capturedReplace=Reflect.field(memberProbeGroup,"replace"); replacedSprite=Reflect.callMethod(memberProbeGroup,capturedReplace,[reusedSprite,replacementSprite]);', 'sprite-replacement-probe');
+			check(plain.variables.get('reusedSprite') == recycledSprite && plain.variables.get('replacedSprite') == plain.variables.get('replacementSprite')
+				&& memberGroup.members[0].x == 52 && memberGroup.members[0].y == 63, 'Reflected replacement applies native group transforms once');
+			plain.evaluate('rawMembers=memberProbeGroup.members; writeResult=rawMembers[0]=recycledSprite; memberTicks=0; for (value in rawMembers) memberTicks+=value.ticks; memberKeys=0; for (key=>value in rawMembers) {memberKeys+=key+1; memberTicks+=value.ticks;} rawMembers[0].ticks=7;', 'sprite-member-array-probe');
+			check(plain.variables.get('writeResult') == recycledSprite && plain.variables.get('memberTicks') == 0
+				&& plain.variables.get('memberKeys') == 1 && session.read(recycledSprite, 'ticks') == 7
+				&& memberGroup.members[0].x == 2, 'Raw indexed writes and both loops preserve source identity without add transforms');
+			memberGroup.members[0].kill();
+			plain.evaluate('factoryReused=memberProbeGroup.recycle(null,function() {return new NativeSprite();});', 'sprite-factory-recycle-probe');
+			check(plain.variables.get('factoryReused') == recycledSprite, 'Factory-only recycle reuses native available source member');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -111,7 +128,7 @@ class RuntimeSmokePsychIrisClasses {
 			var rejected = false;try session.read(item, 'count') catch (_:Dynamic) rejected = true;
 			check(rejected, 'State session release rejects retained objects');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

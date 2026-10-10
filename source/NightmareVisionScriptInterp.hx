@@ -590,7 +590,7 @@ class NightmareVisionScriptInterp extends Interp {
 				if (isMap(collection))
 					setMapValue(collection, index, value);
 				else
-					collection[index] = value;
+					collection[index] = sourceClasses == null ? value : sourceClasses.nativeArrayValue(collection, value);
 				return value;
 			default:
 				return super.assign(left, right);
@@ -613,7 +613,7 @@ class NightmareVisionScriptInterp extends Interp {
 				if (isMap(collection))
 					setMapValue(collection, index, value);
 				else
-					collection[index] = value;
+					collection[index] = sourceClasses == null ? value : sourceClasses.nativeArrayValue(collection, value);
 				return value;
 			default:
 				return super.evalAssignOp(op, operation, left, right);
@@ -737,13 +737,13 @@ class NightmareVisionScriptInterp extends Interp {
 		var hasNext:Void->Bool = iterator.hasNext;
 		while (hasNext()) {
 			var value:Dynamic = next();
-			if (valueName == null) locals.set(name, {r:value, const:false});
+			if (valueName == null) locals.set(name, {r:sourceClasses == null ? value : sourceClasses.nativeValue(value), const:false});
 			else {
 				// These checks deliberately follow the source's null rejection.
 				if (value.key == null) error(ECustom(valueName + ' has no field key'));
 				if (value.value == null) error(ECustom(valueName + ' has no field value'));
 				locals.set(name, {r:value.key, const:false});
-				locals.set(valueName, {r:value.value, const:false});
+				locals.set(valueName, {r:sourceClasses == null ? value.value : sourceClasses.nativeValue(value.value), const:false});
 			}
 			try expr(body) catch (signal:Dynamic) {
 				switch (controlSignal(signal)) {

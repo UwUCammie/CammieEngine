@@ -51,6 +51,7 @@ class ScriptClassScope {
 	final nativeBasicBridges:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassBasicBridge> = new haxe.ds.ObjectMap();
 	final ownedNativeBasicBridges:Array<PsychScriptClassBasicBridge> = [];
 	final nativeSprites:haxe.ds.ObjectMap<ScriptClass, SourceSpriteClassLifecycle> = new haxe.ds.ObjectMap();
+	final nativeMemberArrays:haxe.ds.ObjectMap<Dynamic, Bool> = new haxe.ds.ObjectMap();
 	#end
 	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
 		before:ScriptClass->Void, after:ScriptClass->Dynamic->Void, initializedFields:Array<String>, prepare:Dynamic->Void
@@ -414,15 +415,28 @@ class ScriptClassScope {
 	/** Recycle explicitly shared source classes without transferring their ownership. */
 	public function recycleScriptClass(receiver:Dynamic, args:Array<Dynamic>):{handled:Bool, value:Dynamic} {
 		#if flixel
-		if (!Std.isOfType(receiver, FlxTypedGroup) || args == null || args.length == 0
-			|| !Std.isOfType(args[0], ScriptClassSymbol)) return {handled:false, value:null};
+		if ((!Std.isOfType(receiver, FlxTypedGroup) && !Std.isOfType(receiver, FlxTypedSpriteGroup)) || args == null || args.length == 0) return {handled:false, value:null};
+		if (!Std.isOfType(args[0], ScriptClassSymbol)) {
+			if (args.length < 2 || !Reflect.isFunction(args[1])) return {handled:false, value:null};
+			ensureActive();
+			var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
+			var group:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
+			var factory = function():Dynamic {
+				var value = Reflect.callMethod(null, args[1], []);
+				ensureActive();
+				return nativeGroupValue(value, sprites, true);
+			};
+			return {handled:true, value:unwrapIndexedMember(group.recycle(cast args[0], factory,
+				args.length > 2 && args[2] == true, args.length <= 3 || args[3] != false))};
+		}
 		ensureActive();
 		var symbol:ScriptClassSymbol = cast args[0];
 		var classOwner = symbol.scope;
 		if (classOwner == null || !classOwner.isActive()
 			|| classOwner.findDescriptor(symbol.fullName) != symbol.descriptor)
 			throw '[hscript-class-scope] recycle received an unowned or released source class';
-		var group:FlxTypedGroup<Dynamic> = cast receiver;
+		var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
+		var group:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
 		var objectFactory:Dynamic = args.length > 1 ? args[1] : null;
 		var force = args.length > 2 && args[2] == true;
 		var revive = args.length <= 3 || args[3] != false;
@@ -434,11 +448,7 @@ class ScriptClassScope {
 			// newly created member after its caller or requested class was released.
 			ensureActive();
 			classOwner.ensureActive();
-			if (Std.isOfType(value, ScriptClass)) {
-				var proxy:ScriptClass = cast value;
-				return actualOwner(proxy).bridgeOwnedFlxBasic(proxy);
-			}
-			return value;
+			return nativeGroupValue(value, sprites, true);
 		};
 
 		// Preserve FlxGroup's rotating behavior at positive capacity. It ignores
@@ -488,9 +498,14 @@ class ScriptClassScope {
 	 * the same argument conversion and return the authored member identity. */
 	public function bindNativeMethod(receiver:Dynamic, name:String, method:Dynamic):Dynamic {
 		#if flixel
+		var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
+		var group = Std.isOfType(receiver, FlxTypedGroup) || sprites;
+		if (group && name == 'members' && Std.isOfType(method, Array))
+			nativeMemberArrays.set(method, sprites || nativeMemberArrays.get(method) == true);
+		else if (sprites && name == 'group' && Std.isOfType(method, FlxTypedGroup))
+			nativeMemberArrays.set((cast method:FlxTypedGroup<Dynamic>).members, true);
 		if (!Reflect.isFunction(method)) return method;
-		var group = Std.isOfType(receiver, FlxTypedGroup) || Std.isOfType(receiver, FlxTypedSpriteGroup);
-		var supported = group && ['add', 'insert', 'remove', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
+		var supported = group && ['add', 'insert', 'remove', 'replace', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
 		if (!supported && !(receiver == FlxTween && NATIVE_TWEEN_TARGET_METHODS.indexOf(name) >= 0)) return method;
 		ensureActive();
 		var methods = nativeMethods.get(receiver);
@@ -543,28 +558,46 @@ class ScriptClassScope {
 			};
 			return adapted;
 		}
-		if ((method != 'add' && method != 'insert' && method != 'remove')
+		if ((method != 'add' && method != 'insert' && method != 'remove' && method != 'replace')
 			|| !nativeGroup) return args;
 
 		var result = args.copy();
+		var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
 		for (index in 0...result.length) {
-			var value = result[index];
-			if (Std.isOfType(value, ScriptClass)) {
-				var proxy:ScriptClass = cast value;
-				var scope = actualOwner(proxy);
-				if (Std.isOfType(receiver, FlxTypedGroup) && method != 'remove')
-					result[index] = scope.bridgeOwnedFlxBasic(proxy);
-				else if (Std.isOfType(receiver, FlxTypedGroup) && method == 'remove')
-					result[index] = scope.nativeBasicBridges.get(proxy) == null
-						? scope.unwrapOwnedFlxBasic(proxy) : scope.nativeBasicBridges.get(proxy);
-				else
-					result[index] = scope.unwrapOwnedFlxBasic(proxy);
-			}
+			if (Std.isOfType(result[index], ScriptClass))
+				result[index] = nativeGroupValue(result[index], sprites,
+					method != 'remove' && !(method == 'replace' && index == 0));
 		}
 		return result;
 		#else
 		return args;
 		#end
+	}
+
+	#if flixel
+	function nativeGroupValue(value:Dynamic, sprites:Bool, adding:Bool):Dynamic {
+		if (Std.isOfType(value, ScriptClass)) {
+			var owner:ScriptClass = cast value;
+			var scope = actualOwner(owner);
+			if (sprites) value = scope.unwrapOwnedFlxBasic(owner);
+			else if (adding) value = scope.bridgeOwnedFlxBasic(owner);
+			else value = scope.nativeBasicBridges.get(owner) == null
+				? scope.unwrapOwnedFlxBasic(owner) : scope.nativeBasicBridges.get(owner);
+		}
+		if (sprites && value != null && !Std.isOfType(value, FlxSprite))
+			throw '[hscript-class-scope] Sprite group member must have a native FlxSprite base';
+		return value;
+	}
+	#end
+
+	/** A tracked members array retains its original storage and native element type. */
+	public function nativeArrayValue(collection:Dynamic, value:Dynamic):Dynamic {
+		ensureActive();
+		#if flixel
+		if (collection != null && nativeMemberArrays.exists(collection))
+			return nativeGroupValue(value, nativeMemberArrays.get(collection), true);
+		#end
+		return value;
 	}
 
 	/** Indexed reads from a native Flixel group's `members` array expose its
@@ -762,6 +795,7 @@ class ScriptClassScope {
 			}
 		}
 		nativeSprites.clear();
+		nativeMemberArrays.clear();
 		ownedNativeBasicBridges.resize(0);
 		nativeBasicBridges.clear();
 		#end

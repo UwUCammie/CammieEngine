@@ -11,6 +11,7 @@ interface SourceClassAccess {
 	function call(value:Dynamic, field:String, args:Array<Dynamic>):Dynamic;
 	function nativeMethod(value:Dynamic, field:String, method:Dynamic):Dynamic;
 	function nativeValue(value:Dynamic):Dynamic;
+	function nativeArrayValue(collection:Dynamic, value:Dynamic):Dynamic;
 	function classOf(value:Dynamic):Dynamic;
 	function className(value:Dynamic):String;
 }
