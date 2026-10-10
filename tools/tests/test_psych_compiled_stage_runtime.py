@@ -358,6 +358,9 @@ class PackageRelativeStage extends BaseStage {
    throw 'owner stage failed to create: '+runtime.diagnostics;
   if(Reflect.field(host,'defaultCamZoom')!=1.35 || added.join(',')!='created')
    throw 'BaseStage create properties or scene operations did not reach the host: '+added;
+  var stage=runtime.sourceObject;
+  if(host.stages.length!=1 || host.stages[0]!=stage) throw 'source stage registration lost identity';
+  if(PsychStageObject.read(stage,'curSection')!=0) throw 'stage timing must start at source zero';
   if(!runtime.createPost()) throw 'createPost did not dispatch';
   if(!runtime.dispatch('countdownTick',[PsychBaseStageCountdown.THREE,0]))
    throw 'typed Psych countdown callback did not dispatch';
@@ -366,13 +369,23 @@ class PackageRelativeStage extends BaseStage {
   if(!runtime.dispatch('eventCalled',['Glow','source-value','',null,null,123.0]))
    throw 'event callback did not dispatch';
   Reflect.setField(host,'curStep',17);
+  Reflect.setField(host,'curDecStep',17.5);
   if(!runtime.dispatch('stepHit',[])) throw 'step callback did not dispatch';
   if(!runtime.dispatch('openSubState',[{}]) || !runtime.dispatch('closeSubState',[]))
    throw 'substate callbacks did not dispatch';
-  if(added.join(',')!='created,post-created,countdown:THREE:0,song-start,update:0.25,event:Glow:source-value,step:17:9')
+  if(added.join(',')!='created,post-created,countdown:THREE:0,song-start,update:0.25,event:Glow:source-value,step:17:0')
    throw 'BaseStage callbacks were reordered or lost: '+added;
   if(added.indexOf('host-open')>=0 || added.indexOf('host-close')>=0)
    throw 'default substate callbacks must not recurse into the PlayState host';
+  if(PsychStageObject.read(stage,'curDecStep')!=17.5) throw 'fractional step not published';
+  Reflect.setField(host,'curSection',3);
+  runtime.dispatch('sectionHit',[]);
+  if(PsychStageObject.read(stage,'curSection')!=3) throw 'section publication not callback-bound';
+  PsychStageObject.write(stage,'active',false);var size=added.length;
+  if(!runtime.update(.5)||added.length!=size||!runtime.active) throw 'inactive source stage retired or called';
+  PsychStageObject.write(stage,'active',true);PsychStageObject.write(stage,'exists',false);
+  if(!runtime.update(.5)||added.length!=size) throw 'nonexistent source stage called';
+  PsychStageObject.write(stage,'exists',true);
   runtime.destroy();
   if(runtime.active || added[added.length-1]!='destroyed')
    throw 'destroy hook or owner scope teardown did not run';

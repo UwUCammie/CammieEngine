@@ -24,7 +24,7 @@ class PsychMusicBeatStateTest(unittest.TestCase):
   donor=body(donor).replace('timePassedOnState','MusicBeatState.timePassedOnState')
   bpm=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),'public static function getBPMFromSeconds(')
   files={
-   'Host.hx':'import Conductor.BPMChangeEvent;class Host extends Base {'+fields+actual+'}',
+   'Host.hx':'import Conductor.BPMChangeEvent;class Host extends Base {'+fields+actual+'public function dispatchSourceStages(n:String,a:Array<Dynamic>):Void{}}',
    'Donor.hx':'class Donor extends Base {'+fields+donor+'public function stagesFunc(f:Dynamic->Void):Void {}}',
    'Base.hx':"class Base {public function new(){}public function update(e:Float):Void Main.log.push('children');}",
    'BaseStage.hx':'class BaseStage {public var curStep:Int;public var curBeat:Int;public var curDecStep:Float;public var curDecBeat:Float;public var curSection:Int;public function update(e:Float):Void{}public function stepHit():Void{}public function beatHit():Void{}public function sectionHit():Void{}}',

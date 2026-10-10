@@ -35,12 +35,12 @@ class PsychStageSceneOrderTest(unittest.TestCase):
         ))
         methods += "\n\tpublic function beginPostCreate():Void creatingBackground = false;"
         runtime = (ROOT / "source/PsychCompiledStageRuntime.hx").read_text()
-        post_gate = runtime.index("if (name == 'createPost') {")
-        self.assertLess(post_gate, runtime.index("baseStage.beginPostCreate();", post_gate))
-        self.assertLess(
-            runtime.index("baseStage.beginPostCreate();", post_gate),
-            runtime.index("stageClass.callFunction(name", post_gate),
-        )
+        post_phase = runtime.index("if (name == 'createPost') beginPostCreate();")
+        self.assertLess(post_phase, runtime.index("!SourceStageCallbacks.enabled", post_phase))
+        self.assertLess(post_phase, runtime.index("stageClass.callFunction(name", post_phase))
+        play = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
+        dispatch = extract_method(play, "function dispatchPsychCompiledStage(")
+        self.assertLess(dispatch.index("psychCompiledStageRuntime.beginPostCreate();"), dispatch.index("stagesFunc("))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             main = Path(folder) / "Main.hx"
             main.write_text("""class Main {

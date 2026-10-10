@@ -30,6 +30,7 @@ class MusicBeatState extends FlxUIState {
 	@:keep public var curDecStep:Float = 0;
 	@:keep public var curDecBeat:Float = 0;
 	@:keep var stepsToDo:Int = 0;
+	@:keep public var stages:Array<Dynamic> = [];
 	/** Read-only timing aliases for isolated imported state wrappers. */
 	public var hxcCurrentStep(get, never):Int;
 	public var hxcCurrentBeat(get, never):Int;
@@ -124,6 +125,7 @@ class MusicBeatState extends FlxUIState {
 				}
 			}
 			if (FlxG.save.data != null) FlxG.save.data.fullscreen = FlxG.fullscreen;
+			dispatchSourceStages('update', [elapsed]);
 			super.update(elapsed);
 			return;
 		}
@@ -180,15 +182,27 @@ class MusicBeatState extends FlxUIState {
 		function() return PlayState.SONG.notes.length,
 		function(index) return PlayState.SONG.notes[index] != null, getBeatsOnSection, sectionHit);
 	@:keep function getBeatsOnSection():Float return PsychBeatClock.sectionBeats(curSection);
-	@:keep public function sectionHit():Void {}
+	@:keep public function stagesFunc(visit:Dynamic->Void):Void
+		SourceStageCallbacks.each(stages, PsychStageObject.read, visit);
+	public function dispatchSourceStages(callback:String, args:Array<Dynamic>):Void {
+		stagesFunc(function(stage) {
+			SourceStageCallbacks.publish(this, stage, callback, PsychStageObject.read, PsychStageObject.write);
+			PsychStageObject.call(stage, callback, args);
+		});
+	}
+	@:keep public function sectionHit():Void {
+		if (psychSourceTiming) dispatchSourceStages('sectionHit', []);
+	}
 
 	public function stepHit():Void {
+		if (psychSourceTiming) dispatchSourceStages('stepHit', []);
 		if (curStep % 4 == 0)
 			beatHit();
 		if (!psychSourceTiming) NightmareVisionPluginHost.callActive('onStepHit');
 	}
 
 	public function beatHit():Void {
+		if (psychSourceTiming) dispatchSourceStages('beatHit', []);
 		if (!psychSourceTiming) NightmareVisionPluginHost.callActive('onBeatHit');
 	}
 }

@@ -13334,19 +13334,27 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function dispatchPsychCompiledStage(callback:String, ?args:Array<Dynamic>):Bool {
-		if (psychCompiledStageRuntime == null || !psychCompiledStageRuntime.active)
-			return false;
-		var runtime = psychCompiledStageRuntime;
-		var dispatched = runtime.dispatch(callback, args);
-		reportPsychCompiledStageRuntimeDiagnostics();
-		if (!runtime.active) {
-			runtime.destroy();
-			psychCompiledStageRuntimeError = runtime.diagnostics.join('; ');
+		if (callback == 'createPost' && psychCompiledStageRuntime != null) psychCompiledStageRuntime.beginPostCreate();
+		var dispatched = false;
+		stagesFunc(function(stage) {
+			var runtime = psychCompiledStageRuntime;
+			if (runtime == null || stage != runtime.sourceObject) {
+				SourceStageCallbacks.publish(this, stage, callback, PsychStageObject.read, PsychStageObject.write);
+				PsychStageObject.call(stage, callback, args == null ? [] : args);
+				dispatched = true;
+				return;
+			}
+			if (runtime.dispatch(callback, args, true)) dispatched = true;
 			reportPsychCompiledStageRuntimeDiagnostics();
-			if (curStage != null)
-				curStage.fallbackDiagnostic = '[psych-stage-runtime-error] ' + psychCompiledStageRuntimeError;
-			psychCompiledStageRuntime = null;
-		}
+			if (!runtime.active) {
+				runtime.destroy();
+				psychCompiledStageRuntimeError = runtime.diagnostics.join('; ');
+				reportPsychCompiledStageRuntimeDiagnostics();
+				if (curStage != null)
+					curStage.fallbackDiagnostic = '[psych-stage-runtime-error] ' + psychCompiledStageRuntimeError;
+				psychCompiledStageRuntime = null;
+			}
+		});
 		return dispatched;
 	}
 
@@ -21992,7 +22000,11 @@ void main(void) {
 			curDecStep = NightmareVisionDecimalStep.getStep(Conductor.songPosition, SONG.bpm,
 				cast Conductor.bpmChangeMap, nightmareVisionPrefs.view.noteOffset);
 			curDecBeat = curDecStep / 4;
-
+		} else if (stages.length > 0) {
+			// Source stages receive the current fractional clock before beat/step callbacks.
+			// Preserve the host's integer catch-up cursor and the NV modifier clock above.
+			curDecStep = PsychBeatClock.getDecimalStep();
+			curDecBeat = curDecStep / 4;
 		}
 		if (nightmareVisionScripts != null && notes != null) {
 			for (note in notes.members) if (note != null && note.alive) {
@@ -26908,8 +26920,14 @@ void main(void) {
 		// switches state during that same frame; Flixel destroys those with it.
 		finishedHxcEventSprites.resize(0);
 		hxcStrumlineNoteSurface = null;
-		if (psychCompiledStageRuntime != null) {
-			psychCompiledStageRuntime.destroy();
+		var stageRuntime = psychCompiledStageRuntime;
+		stagesFunc(function(stage) {
+			if (stageRuntime != null && stage == stageRuntime.sourceObject) stageRuntime.destroy(true);
+			else PsychStageObject.call(stage, 'destroy', []);
+		});
+		if (stageRuntime != null) {
+			// Inactive stages skip authored teardown but still release the owned interpreter.
+			stageRuntime.destroy();
 			reportPsychCompiledStageRuntimeDiagnostics();
 			psychCompiledStageRuntime = null;
 		}

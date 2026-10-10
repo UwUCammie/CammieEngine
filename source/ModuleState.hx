@@ -64,7 +64,7 @@ class ModuleState extends MusicBeatState {
 
 	var songs:Array<String> = [];
 	var characters:Array<String> = [];
-	var stages:Array<String> = [];
+	var moduleStages:Array<String> = [];
 	var weeks:Array<String> = [];
 
 	var songBoxes:Array<ModuleBox> = [];
@@ -584,7 +584,7 @@ class ModuleState extends MusicBeatState {
 			var path = haxe.io.Path.join([daFolding, stage]);
 			if (sys.FileSystem.isDirectory(path)) {
 				if (moduleMode != 'Import' || (moduleMode == 'Import' && FileSystem.exists(haxe.io.Path.join([path, 'info.txt'])))) {
-					stages.push(path);
+					moduleStages.push(path);
 					var stageName = 'null';
 					if (moduleMode == 'Import') {
 						var info = ModuleFunctions.processInfo(haxe.io.Path.join([path, 'info.txt']));
@@ -612,7 +612,7 @@ class ModuleState extends MusicBeatState {
 						importButton: null,
 						miscButton: null
 					}; 
-					daBox.background = new FlxSprite(650 + FlxG.width*2, 10 + (180 * stages.indexOf(path))).loadGraphic('assets/images/plainbox.png');
+					daBox.background = new FlxSprite(650 + FlxG.width*2, 10 + (180 * moduleStages.indexOf(path))).loadGraphic('assets/images/plainbox.png');
 					daBox.icon = new HealthIcon('bf');
 					daBox.icon.x = daBox.background.x + 5;
 					daBox.icon.scrollFactor.set(1, 1);

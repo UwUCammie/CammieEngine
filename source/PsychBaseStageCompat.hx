@@ -10,7 +10,8 @@ import hscript.ScriptClassScope;
 	state fields and scene operations are delegated through the selected owner
 	host supplied by PsychCompiledStageRuntime.
 */
-class PsychBaseStageCompat {
+@:keep
+class PsychBaseStageCompat extends FlxBasic {
 	var stageHost:Dynamic;
 	var ownerClassScope:ScriptClassScope;
 	var compatBoyfriendGroup:PsychBaseStageActorGroupCompat;
@@ -19,6 +20,7 @@ class PsychBaseStageCompat {
 	var creatingBackground:Bool = true;
 
 	public function new(?stageHost:Dynamic) {
+		super();
 		this.stageHost = stageHost;
 	}
 
@@ -138,30 +140,15 @@ class PsychBaseStageCompat {
 	public var camFollow(get, never):Dynamic;
 	function get_camFollow():Dynamic return readField('camFollow');
 
-	public var curBeat(get, never):Int;
-	function get_curBeat():Int return intField('curBeat', 0);
-
-	public var curDecBeat(get, never):Float;
-	function get_curDecBeat():Float return floatField('curDecBeat', 0);
-
-	public var curStep(get, never):Int;
-	function get_curStep():Int return intField('curStep', 0);
-
-	public var curDecStep(get, never):Float;
-	function get_curDecStep():Float return floatField('curDecStep', 0);
-
-	public var curSection(get, never):Int;
-	function get_curSection():Int {
-		// Psych refreshes section ownership before its stage callbacks. This fork
-		// updates PlayState.curSection later in stepHit(), so query its pure
-		// section calculation when the host exposes one without mutating state.
-		var section = callHost('getSection', []);
-		return Std.isOfType(section, Int) ? cast section : intField('curSection', 0);
-	}
+	public var curBeat:Int = 0;
+	public var curDecBeat:Float = 0;
+	public var curStep:Int = 0;
+	public var curDecStep:Float = 0;
+	public var curSection:Int = 0;
 
 	public function create():Void {}
 	public function createPost():Void {}
-	public function update(_elapsed:Float):Void {}
+	override public function update(_elapsed:Float):Void {}
 	public function countdownTick(_count:Dynamic, _num:Int):Void {}
 	public function startSong():Void {}
 	public function beatHit():Void {}
@@ -179,7 +166,7 @@ class PsychBaseStageCompat {
 	public function opponentNoteHit(_note:Dynamic):Void {}
 	public function noteMiss(_note:Dynamic):Void {}
 	public function noteMissPress(_direction:Int):Void {}
-	public function destroy():Void {}
+	override public function destroy():Void super.destroy();
 
 	public function add(object:Dynamic):Dynamic {
 		var nativeObject = sceneObject(object, true);

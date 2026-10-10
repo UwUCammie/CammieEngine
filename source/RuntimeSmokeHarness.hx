@@ -2029,6 +2029,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokeLegacyEventMap.verify();
 			RuntimeSmokeLegacySinging.verify();
 			RuntimeSmokePsychSubstateClock.verify(PlayState.instance);
+			RuntimeSmokePsychStageCallbacks.verify(PlayState.instance);
 			RuntimeSmokePsychCustomTransitions.begin(PlayState.instance);
 			RuntimeSmokePsychCustomTeardown.begin(PlayState.instance);
 		} catch (error:Dynamic) {

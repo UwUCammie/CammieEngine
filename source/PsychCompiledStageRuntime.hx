@@ -50,6 +50,8 @@ class PsychCompiledStageRuntime {
 	public var sourceUseDiagnostics(get, never):Array<String>;
 	function get_sourceUseDiagnostics():Array<String> return _sourceUseDiagnostics.copy();
 
+	public var sourceObject(get, never):Dynamic;
+	function get_sourceObject():Dynamic return stageClass;
 	public var active(get, never):Bool;
 	function get_active():Bool return created && !destroyed && !faulted && stageClass != null;
 
@@ -108,6 +110,9 @@ class PsychCompiledStageRuntime {
 			baseStage = cast superClass;
 			baseStage.attachHost(stageHost);
 			baseStage.attachScriptClassScope(classScope);
+			var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
+			if (stages == null) {stages = [];Reflect.setProperty(stageHost, 'stages', stages);}
+			stages.push(stageClass);
 			created = true;
 			var membersBeforeCreate = snapshotHostMembers();
 			if (!dispatch('create', [])) {
@@ -123,19 +128,23 @@ class PsychCompiledStageRuntime {
 		}
 	}
 
+	public function beginPostCreate():Void {if (baseStage != null) baseStage.beginPostCreate();}
+
 	/** Psych calls createPost after actors, notes and state members are ready. */
 	public function createPost():Bool return dispatch('createPost', []);
 
 	public function update(elapsed:Float):Bool return dispatch('update', [elapsed]);
 
 	/** Dispatch a named Psych BaseStage callback with the authored argument list. */
-	public function dispatch(name:String, ?args:Array<Dynamic>):Bool {
+	public function dispatch(name:String, ?args:Array<Dynamic>, admitted:Bool = false):Bool {
 		if (!active) return false;
 		if (CALLBACKS.indexOf(name) < 0)
 			return fail('unsupported BaseStage callback ' + Std.string(name));
 		try {
+			if (name == 'createPost') beginPostCreate();
+			if (name != 'create' && !admitted && !SourceStageCallbacks.enabled(stageClass, PsychStageObject.read)) return true;
+			SourceStageCallbacks.publish(stageHost, stageClass, name, PsychStageObject.read, PsychStageObject.write);
 			if (name == 'createPost') {
-				if (baseStage != null) baseStage.beginPostCreate();
 				if (!prepareSourceMappedCharacterAnims()) return false;
 			}
 			stageClass.callFunction(name, args == null ? [] : args);
@@ -224,13 +233,14 @@ class PsychCompiledStageRuntime {
 	}
 
 	/** Run the authored destroy hook once and release every owner class descriptor. */
-	public function destroy():Void {
+	public function destroy(admitted:Bool = false):Void {
 		if (destroyed) return;
 		destroyed = true;
 		if (created && stageClass != null) {
-			try stageClass.callFunction('destroy', []) catch (error:Dynamic)
+			try {if (admitted || SourceStageCallbacks.enabled(stageClass, PsychStageObject.read)) stageClass.callFunction('destroy', []);} catch (error:Dynamic)
 				fail('callback destroy failed: ' + Std.string(error));
 		}
+		if (baseStage != null) baseStage.exists = false;
 		created = false;
 		stageClass = null;
 		baseStage = null;

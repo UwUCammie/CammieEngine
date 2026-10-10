@@ -23,6 +23,7 @@ class PlayState {public static var SONG:Dynamic=null;}
 class TitleState { public static var initialized=true; }
 class BeatTest extends Base {
  static var timePassedOnState:Float=0;
+ function dispatchSourceStages(n:String,a:Array<Dynamic>):Void{}
  var psychSourceTiming=false;function updateSection(){}function rollbackSection(){}
  var curStep=0; var maxStepCatchUp=32; var targetStep=200;
  var steps:Array<Int>=[]; var beats:Array<Int>=[];
