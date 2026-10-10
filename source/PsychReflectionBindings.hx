@@ -24,6 +24,7 @@ class PsychReflectionBindings {
 		else if (paths != null && Reflect.isFunction(Reflect.field(paths, '__sourceOwnerRoot')))
 			nativeClasses = host.psychLuaNativeClassScope(paths);
 		else nativeClasses = new SourceNativeClassScope();
+		PsychStateClassBindings.installScope(nativeClasses);
 		var previousGet = interp.variables.get('getProperty');
 		var previousSet = interp.variables.get('setProperty');
 		interp.variables.set('getProperty', function(path:Dynamic, allowMaps:Bool = false):Dynamic {

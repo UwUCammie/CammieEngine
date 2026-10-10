@@ -106,6 +106,8 @@ class Main {
   embedded.evaluator.release();check(replacement.animation!=null,'interpreter release does not destroy borrowed HUD sprite');
  }
 }'''.replace('__METHODS__', methods).replace('function sourceHealthIconOwner(', 'public function sourceHealthIconOwner(')
+        # Native state registration is tested by the connected state-registry probe.
+        files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             temp = Path(directory)
             for name, content in files.items():

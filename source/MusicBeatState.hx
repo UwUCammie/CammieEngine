@@ -9,6 +9,15 @@ import flixel.math.FlxRect;
 import flixel.util.FlxTimer;
 
 class MusicBeatState extends FlxUIState {
+	/** One native variable registry per state, shared by source scripts and host adapters. */
+	@:keep public var variables:Map<String, Dynamic> = [];
+	@:keep public static function getState():MusicBeatState {
+		return cast (FlxG.state, MusicBeatState);
+	}
+	@:keep public static function getVariables():Map<String, Dynamic> {
+		return getState().variables;
+	}
+
 	private var lastBeat:Float = 0;
 	private var lastStep:Float = 0;
 

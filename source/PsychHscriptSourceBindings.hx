@@ -37,6 +37,7 @@ class PsychHscriptSourceBindings {
 		PsychAchievementsIntegration.installHscript(host, interp, origin);
 		PsychStandardServices.installHscript(host, interp, origin);
 		if (Std.isOfType(interp, SourceIrisBridge)) {
+			PsychStateClassBindings.install((cast interp:SourceIrisBridge).evaluator);
 			var paths:Dynamic = variables.get('Paths');
 			var root = host.compatPsychOwnerForScript(origin);
 			if (paths == null && root != null) paths = PsychOwnerPaths.create(root, host.psychStageLibrary);

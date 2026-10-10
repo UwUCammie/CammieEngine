@@ -4110,15 +4110,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function get_modchartSprites():Map<String, FlxSprite> return haxeSprites;
 	function set_modchartSprites(value:Map<String, FlxSprite>):Map<String, FlxSprite> return haxeSprites = value;
 	/** Per-scene variables shared by Psych Lua and HScript modules. */
-	public var psychScriptVariables:Map<String, Dynamic> = [];
+	@:keep public var psychScriptVariables(get, set):Map<String, Dynamic>;
+	function get_psychScriptVariables():Map<String, Dynamic> {return variables;}
+	function set_psychScriptVariables(value:Map<String, Dynamic>):Map<String, Dynamic> {return variables = value;}
 	/** Source direction names are also read by Lua's reflective property API. */
 	@:keep public var singAnimations:Array<String> = ['singLEFT', 'singDOWN', 'singUP', 'singRIGHT'];
 	@:keep public var ghostsAllowed:Bool = true;
 	@:keep public var noteRows:Array<Array<Array<Note>>> = [[], []];
 	var psychRuntimeBindings:Array<PsychRuntimeBindings> = [];
 	var psychSourceCallbacks = new PsychSourceCallbackRegistry();
-	public var variables(get, never):Map<String,Dynamic>;
-	function get_variables():Map<String,Dynamic> return psychScriptVariables;
 	@:keep public var modchartTexts:Map<String,FlxText> = [];
 	public function getLuaObject(tag:String, text:Bool = true):Dynamic {
 		if (!nightmareVisionLegacyFieldCameras) return compatFindObject(tag);

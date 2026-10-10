@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Native state variables are shared by Psych class APIs and Lua/HScript callbacks, with one registry per state and live MusicBeatState lookups.
 - Psych Lua sprites, Animate sprites and text share one variable registry, with source-specific replacement, mounting, removal and existence checks.
 - Modern Psych Lua text now shares native formatting defaults and source-ordered creation, replacement and active-scene removal through its variable registry.
 - Psych and historical NV text properties now share native setters while retaining source return values, getter defaults, alignment, border and color rules.

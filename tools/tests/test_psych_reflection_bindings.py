@@ -92,6 +92,8 @@ class PsychReflectionBindingsTest(unittest.TestCase):
             host = HOST.replace(' public function new() {}', ' public var psychStageLibrary:String;public function selectedPsychSkinRoot():String return null;public function psychLuaNativeClassScope(p:Dynamic):SourceNativeClassScope return new SourceNativeClassScope(); public function new() {}', 1)
             (root / 'PsychOwnerPaths.hx').write_text('class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return null;}')
             (root / 'SourceIrisBridge.hx').write_text('class SourceIrisBridge extends hscript.Interp {public var evaluator:Dynamic;}')
+            # State-class registration is covered by the connected state registry probe.
+            (root / 'PsychStateClassBindings.hx').write_text('class PsychStateClassBindings {public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}')
             (root / 'PlayState.hx').write_text(host)
             (root / 'Main.hx').write_text(MAIN)
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
