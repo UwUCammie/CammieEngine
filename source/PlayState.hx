@@ -13277,7 +13277,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		psychCompiledStageRuntimeError = '';
 		psychCompiledStageDiagnosticsReported = 0;
 		psychCompiledStageRuntime = new PsychCompiledStageRuntime(ownerRoot, source.modulePath, this,
-			PsychCompiledStageBindings.create(ownerRoot, psychStageLibrary, psychClientPrefs));
+			PsychCompiledStageBindings.create(ownerRoot, psychStageLibrary, psychClientPrefs), null, PsychObjectProviders.stageContext());
 		if (!psychCompiledStageRuntime.create()) {
 			var diagnostics = psychCompiledStageRuntime.diagnostics;
 			psychCompiledStageRuntimeError = diagnostics.join('; ');

@@ -6,6 +6,10 @@ class PsychObjectProviders {
 	static var reflection=new SourcePsychReflection(MusicBeatState.getVariables,MusicBeatState.getState,
 		function():Dynamic return PlayState.instance,target,function(value)return Std.isOfType(value,MusicBeatState),
 		Type.resolveClass,Reflect.getProperty,Reflect.setProperty,function(value)return value,function(message)trace(message));
+	static final stages = new SourceStageContext(MusicBeatState.getState,
+		function():Dynamic return PlayState.instance, function(value) return Std.isOfType(value, PlayState),
+		function(name) return Reflect.field(PlayState, name == 'seenCutscene' ? 'watchedCutscene' : name));
+	public static function stageContext():SourceStageContext return stages;
 	public static function target():Dynamic {
 		var play=PlayState.instance;
 		return play==null ? MusicBeatState.getState() : play.isDead ? GameOverSubstate.instance : play;

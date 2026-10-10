@@ -23,6 +23,8 @@ class PsychCompiledStageRuntime {
 	final ownerRoot:String;
 	final className:String;
 	final stageHost:Dynamic;
+	final context:SourceStageContext;
+	final stageRegistries:Array<Array<Dynamic>> = [];
 	final providedBindings:Map<String, Dynamic>;
 	final providedSymbols:Map<String, Dynamic>;
 	var classScope:ScriptClassScope;
@@ -40,10 +42,11 @@ class PsychCompiledStageRuntime {
 	final _sourceUseDiagnostics:Array<String> = [];
 
 	public function new(ownerRoot:String, className:String, stageHost:Dynamic,
-		?bindings:Map<String, Dynamic>, ?symbols:Map<String, Dynamic>) {
+		?bindings:Map<String, Dynamic>, ?symbols:Map<String, Dynamic>, ?context:SourceStageContext) {
 		this.ownerRoot = ownerRoot;
 		this.className = className;
 		this.stageHost = stageHost;
+		this.context = context;
 		providedBindings = copyMap(bindings);
 		providedSymbols = copyMap(symbols);
 	}
@@ -96,7 +99,8 @@ class PsychCompiledStageRuntime {
 		classScope = loaded.scope;
 		classScope.bindNativeConstruction(PsychBaseStageCompat, registerStage, createStage,
 			['ID', 'active', 'visible', 'alive', 'exists', 'curStep', 'curDecStep', 'curBeat', 'curDecBeat', 'curSection'], attachStage);
-		var membersBeforeCreate = snapshotHostMembers();
+		var creationHost = context == null ? stageHost : context.state();
+		var membersBeforeCreate = snapshotHostMembers(creationHost);
 		try {
 			stageClass = classScope.createInstance(className, [stageHost]);
 			var nativeBase = stageClass == null ? null : classScope.unwrapNativeArgument(stageClass);
@@ -108,16 +112,17 @@ class PsychCompiledStageRuntime {
 		} catch (error:Dynamic) {
 			fail('could not instantiate ' + className + ': ' + Std.string(error));
 			destroy();
-			var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
-			if (stages != null) for (stage in ownedStages) stages.remove(stage);
-			cleanupMembersAddedSince(membersBeforeCreate);
+			for (i in 0...ownedStages.length) stageRegistries[i].remove(ownedStages[i]);
+			cleanupMembersAddedSince(membersBeforeCreate, creationHost);
 			return false;
 		}
 	}
 
 	function registerStage(stage:ScriptClass):Void {
-		var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
-		if (stages == null) {stages = [];Reflect.setProperty(stageHost, 'stages', stages);}
+		var host = context == null ? stageHost : context.state();
+		var stages:Array<Dynamic> = Reflect.getProperty(host, 'stages');
+		if (stages == null) {stages = [];Reflect.setProperty(host, 'stages', stages);}
+		stageRegistries.push(stages);
 		ownedStages.push(stage);
 		stages.push(stage);
 	}
@@ -126,6 +131,7 @@ class PsychCompiledStageRuntime {
 		var adapter:PsychBaseStageCompat = cast nativeBase;
 		ownedAdapters.push(adapter);
 		adapter.attachHost(stageHost);
+		adapter.attachContext(context);
 		adapter.attachScriptClassScope(classScope);
 		if (postCreatePhase) adapter.beginPostCreate();
 	}
@@ -295,22 +301,22 @@ class PsychCompiledStageRuntime {
 	 * Successful stages remain owned by the parent state and are destroyed with
 	 * its normal member teardown after this runtime releases its class scope.
 	 */
-	function snapshotHostMembers():Array<Dynamic> {
-		if (stageHost == null) return [];
+	function snapshotHostMembers(host:Dynamic):Array<Dynamic> {
+		if (host == null) return [];
 		var value:Dynamic = null;
-		try value = Reflect.field(stageHost, 'members') catch (_:Dynamic) return [];
+		try value = Reflect.field(host, 'members') catch (_:Dynamic) return [];
 		if (!Std.isOfType(value, Array)) return [];
 		return (cast value:Array<Dynamic>).copy();
 	}
 
-	function cleanupMembersAddedSince(before:Array<Dynamic>):Void {
-		if (stageHost == null) return;
-		var after = snapshotHostMembers();
+	function cleanupMembersAddedSince(before:Array<Dynamic>, host:Dynamic):Void {
+		if (host == null) return;
+		var after = snapshotHostMembers(host);
 		var remove:Dynamic = null;
-		try remove = Reflect.field(stageHost, 'remove') catch (_:Dynamic) {}
+		try remove = Reflect.field(host, 'remove') catch (_:Dynamic) {}
 		for (object in after) {
 			if (object == null || (before != null && before.indexOf(object) >= 0)) continue;
-			if (Reflect.isFunction(remove)) try Reflect.callMethod(stageHost, remove, [object, true]) catch (_:Dynamic) {}
+			if (Reflect.isFunction(remove)) try Reflect.callMethod(host, remove, [object, true]) catch (_:Dynamic) {}
 			var destroy:Dynamic = null;
 			try destroy = Reflect.field(object, 'destroy') catch (_:Dynamic) {}
 			if (Reflect.isFunction(destroy)) try Reflect.callMethod(object, destroy, []) catch (_:Dynamic) {}

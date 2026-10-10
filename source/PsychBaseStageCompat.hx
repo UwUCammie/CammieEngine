@@ -8,15 +8,14 @@ import hscript.ScriptClassScope;
 	The donor BaseStage source depends on native Character, Note, FlxBasic and
 	PlayState types. HScript stage classes instead inherit this adapter; live
 	state fields and scene operations are delegated through the selected owner
-	host supplied by PsychCompiledStageRuntime.
+	context supplied by PsychCompiledStageRuntime; assets retain their owner scope.
 */
 @:keep
 class PsychBaseStageCompat extends FlxBasic {
 	var stageHost:Dynamic;
 	var ownerClassScope:ScriptClassScope;
-	var compatBoyfriendGroup:PsychBaseStageActorGroupCompat;
-	var compatDadGroup:PsychBaseStageActorGroupCompat;
-	var compatGfGroup:PsychBaseStageActorGroupCompat;
+	var context:SourceStageContext;
+	final actorGroups:haxe.ds.ObjectMap<Dynamic, Map<String, PsychBaseStageActorGroupCompat>> = new haxe.ds.ObjectMap();
 	var creatingBackground:Bool = true;
 
 	public function new(?stageHost:Dynamic) {
@@ -36,8 +35,10 @@ class PsychBaseStageCompat extends FlxBasic {
 		ownerClassScope = scope;
 	}
 
+	public function attachContext(value:SourceStageContext):Void context = value;
+
 	public var game(get, never):Dynamic;
-	function get_game():Dynamic return stageHost;
+	function get_game():Dynamic return context == null ? stageHost : context.state();
 
 	@:keep public var controls(get, never):Dynamic;
 	function get_controls():Dynamic {
@@ -46,7 +47,7 @@ class PsychBaseStageCompat extends FlxBasic {
 	}
 
 	public var onPlayState(get, never):Bool;
-	function get_onPlayState():Bool return boolField('onPlayState', stageHost != null);
+	function get_onPlayState():Bool return context == null ? boolField('onPlayState', stageHost != null) : context.isPlay(context.state());
 
 	public var paused(get, never):Bool;
 	function get_paused():Bool return boolField('paused', false);
@@ -55,6 +56,8 @@ class PsychBaseStageCompat extends FlxBasic {
 	function get_songName():String {
 		// Psych sets songName from the chart's SONG.song. This fork also has a
 		// HUD FlxText named songName, which must never become the source stage id.
+		var sourceName = readField('songName');
+		if (Std.isOfType(sourceName, String)) return cast sourceName;
 		var song = staticField('SONG');
 		if (song == null) song = readField('SONG');
 		var value = song == null ? null : Reflect.field(song, 'song');
@@ -66,7 +69,7 @@ class PsychBaseStageCompat extends FlxBasic {
 	function get_isStoryMode():Bool return staticBoolField('isStoryMode', false);
 
 	public var seenCutscene(get, never):Bool;
-	function get_seenCutscene():Bool return staticBoolField('watchedCutscene', false);
+	function get_seenCutscene():Bool return staticBoolField(context == null ? 'watchedCutscene' : 'seenCutscene', false);
 
 	public var inCutscene(get, set):Bool;
 	function get_inCutscene():Bool return boolField('inCutscene', false);
@@ -92,27 +95,22 @@ class PsychBaseStageCompat extends FlxBasic {
 	function get_gf():Dynamic return readField('gf');
 
 	public var boyfriendGroup(get, never):Dynamic;
-	function get_boyfriendGroup():Dynamic {
-		var nativeGroup = readField('boyfriendGroup');
-		if (nativeGroup != null) return nativeGroup;
-		if (compatBoyfriendGroup == null) compatBoyfriendGroup = new PsychBaseStageActorGroupCompat(stageHost, 'bf');
-		return compatBoyfriendGroup;
-	}
+	function get_boyfriendGroup():Dynamic return actorGroup('bf', 'boyfriendGroup');
 
 	public var dadGroup(get, never):Dynamic;
-	function get_dadGroup():Dynamic {
-		var nativeGroup = readField('dadGroup');
-		if (nativeGroup != null) return nativeGroup;
-		if (compatDadGroup == null) compatDadGroup = new PsychBaseStageActorGroupCompat(stageHost, 'dad');
-		return compatDadGroup;
-	}
+	function get_dadGroup():Dynamic return actorGroup('dad', 'dadGroup');
 
 	public var gfGroup(get, never):Dynamic;
-	function get_gfGroup():Dynamic {
-		var nativeGroup = readField('gfGroup');
-		if (nativeGroup != null) return nativeGroup;
-		if (compatGfGroup == null) compatGfGroup = new PsychBaseStageActorGroupCompat(stageHost, 'gf');
-		return compatGfGroup;
+	function get_gfGroup():Dynamic return actorGroup('gf', 'gfGroup');
+
+	function actorGroup(role:String, field:String):Dynamic {
+		var host = game;
+		var nativeGroup = readField(field);
+		if (nativeGroup != null || host == null) return nativeGroup;
+		var groups = actorGroups.get(host);
+		if (groups == null) {groups = new Map();actorGroups.set(host, groups);}
+		if (!groups.exists(role)) groups.set(role, new PsychBaseStageActorGroupCompat(host, role));
+		return groups.get(role);
 	}
 
 	public var unspawnNotes(get, never):Array<Dynamic>;
@@ -134,7 +132,7 @@ class PsychBaseStageCompat extends FlxBasic {
 	function get_defaultCamZoom():Float return floatField('defaultCamZoom', 1.05);
 	function set_defaultCamZoom(value:Float):Float {
 		writeField('defaultCamZoom', value);
-		return value;
+		return get_defaultCamZoom();
 	}
 
 	public var camFollow(get, never):Dynamic;
@@ -231,29 +229,32 @@ class PsychBaseStageCompat extends FlxBasic {
 	}
 
 	public function setDefaultGF(name:String):Void {
-		if (callHost('setDefaultGF', [name]) != null) return;
-		var song:Dynamic = readField('SONG');
-		if (song == null) song = staticField('SONG');
-		if (song == null) song = readField('songData');
-		if (song == null || Reflect.field(song, 'gfVersion') != null) return;
-		Reflect.setField(song, 'gfVersion', name);
+		var song:Dynamic = staticField('SONG');
+		if (song == null && context == null) song = readField('SONG');
+		if (song == null && context == null) song = readField('songData');
+		if (song == null) return;
+		var current:Dynamic = Reflect.field(song, 'gfVersion');
+		if (current == null || current.length < 1) Reflect.setField(song, 'gfVersion', name);
 	}
 
 	public function getStageObject(name:String):Dynamic {
-		var direct = callHost('getStageObject', [name]);
-		if (direct != null) return direct;
 		var variables:Dynamic = readField('variables');
-		if (variables != null && Reflect.isFunction(Reflect.field(variables, 'get')))
-			return Reflect.callMethod(variables, Reflect.field(variables, 'get'), [name]);
-		return null;
+		return SourceScriptReflection.read(variables, name, true, function(registry, key) {
+			var get = Reflect.field(registry, 'get');
+			return Reflect.isFunction(get) ? Reflect.callMethod(registry, get, [key]) : null;
+		});
 	}
 
-	public function setStartCallback(callback:Dynamic):Void callHost('setStartCallback', [callback]);
-	public function setEndCallback(callback:Dynamic):Void callHost('setEndCallback', [callback]);
-	public function startCountdown():Dynamic return callHost('startCountdown', []);
-	public function endSong():Dynamic return callHost('endSong', []);
-	public function moveCameraSection():Void callHost('moveCameraSection', []);
-	public function moveCamera(isDad:Bool):Void callHost('moveCamera', [isDad]);
+	public function setStartCallback(callback:Dynamic):Void {if (onPlayState) callPlay('setStartCallback', [callback]);}
+	public function setEndCallback(callback:Dynamic):Void {if (onPlayState) callPlay('setEndCallback', [callback]);}
+	public function startCountdown():Dynamic return onPlayState ? callPlay('startCountdown', []) : false;
+	public function endSong():Dynamic return onPlayState ? callPlay('endSong', []) : false;
+	public function moveCameraSection():Void {if (onPlayState) callPlay('moveCameraSection', []);}
+	public function moveCamera(isDad:Bool):Void {if (onPlayState) callPlay('moveCamera', [isDad]);}
+
+	function callPlay(name:String, args:Array<Dynamic>):Dynamic {
+		return callTarget(context == null ? game : context.play(), name, args);
+	}
 
 	/** HScript-ex classes compose their native superclass in `superClass`; they
 	 * are not themselves FlxBasic instances. Unwrap only those script proxies at
@@ -274,11 +275,13 @@ class PsychBaseStageCompat extends FlxBasic {
 	}
 
 	function readField(name:String):Dynamic {
-		if (stageHost == null) return null;
-		try return Reflect.getProperty(stageHost, name) catch (_:Dynamic) return null;
+		var host = game;
+		if (host == null) return null;
+		try return Reflect.getProperty(host, name) catch (_:Dynamic) return null;
 	}
 
 	function staticField(name:String):Dynamic {
+		if (context != null) return context.staticValue(name);
 		if (stageHost == null) return null;
 		try {
 			var owner = Type.getClass(stageHost);
@@ -294,8 +297,9 @@ class PsychBaseStageCompat extends FlxBasic {
 	}
 
 	function writeField(name:String, value:Dynamic):Void {
-		if (stageHost == null) return;
-		try Reflect.setProperty(stageHost, name, value) catch (_:Dynamic) {}
+		var host = game;
+		if (host == null) return;
+		try Reflect.setProperty(host, name, value) catch (_:Dynamic) {}
 	}
 
 	function boolField(name:String, fallback:Bool):Bool {
@@ -318,12 +322,14 @@ class PsychBaseStageCompat extends FlxBasic {
 		return Std.isOfType(value, Int) || Std.isOfType(value, Float) ? cast value : fallback;
 	}
 
-	function callHost(name:String, args:Array<Dynamic>):Dynamic {
-		if (stageHost == null) return null;
+	function callHost(name:String, args:Array<Dynamic>):Dynamic return callTarget(game, name, args);
+
+	function callTarget(host:Dynamic, name:String, args:Array<Dynamic>):Dynamic {
+		if (host == null) return null;
 		var callback:Dynamic = null;
-		try callback = Reflect.field(stageHost, name) catch (_:Dynamic) return null;
+		try callback = Reflect.field(host, name) catch (_:Dynamic) return null;
 		if (!Reflect.isFunction(callback)) return null;
-		try return Reflect.callMethod(stageHost, callback, args) catch (error:Dynamic) {
+		try return Reflect.callMethod(host, callback, args) catch (error:Dynamic) {
 			throw '[psych-stage] host ' + name + ' failed: ' + Std.string(error);
 		}
 	}
