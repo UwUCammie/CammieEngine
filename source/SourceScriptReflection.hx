@@ -242,27 +242,52 @@ class SourceScriptReflection {
 		}
 		return value;
 	}
-	/** LuaUtils.getVarInArray with its default allowMaps=false, used by instance args. */
+	/** Source raw field/index reads, shared by argument parsing and public reflection. */
 	public static function readPsychInstancePart(instance:Dynamic, variable:String,
-		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic, allowMaps:Bool = false):Dynamic {
 		var parts = variable.split('[');
 		if (parts.length > 1) {
-			var target:Dynamic = null;
-			if (registry().exists(parts[0])) {
-				var value:Dynamic = registry().get(parts[0]);
-				if (value != null) target = value;
-			} else target = readProperty(instance, parts[0]);
+			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
 			for (i in 1...parts.length) {
 				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
 				target = target[index];
 			}
 			return target;
 		}
+		if (allowMaps && isPsychMap(instance)) return instance.get(variable);
 		if (isState(instance) && registry().exists(variable)) {
 			var value:Dynamic = registry().get(variable);
 			if (value != null) return value;
 		}
 		return readProperty(instance, variable);
+	}
+
+	static function psychArrayTarget(instance:Dynamic, name:String, registry:()->Dynamic,
+		readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		if (registry().exists(name)) {
+			var value:Dynamic=registry().get(name);
+			return value;
+		}
+		return readProperty(instance,name);
+	}
+	public static function isPsychMap(value:Dynamic):Bool {
+		return value.exists != null && value.keyValueIterator != null;
+	}
+	public static function writePsychPathPart(instance:Dynamic, variable:String, value:Dynamic,
+		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic,
+		writeProperty:(Dynamic,String,Dynamic)->Void, allowMaps:Bool = false):Dynamic {
+		var parts = variable.split('[');
+		if (parts.length > 1) {
+			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
+			for (i in 1...parts.length) {
+				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
+				if (i >= parts.length - 1) target[index] = value; else target = target[index];
+			}
+			return target;
+		}
+		if (allowMaps && isPsychMap(instance)) {instance.set(variable,value);return value;}
+		if (isState(instance) && registry().exists(variable)) {registry().set(variable,value);return value;}
+		writeProperty(instance,variable,value);return value;
 	}
 
 	/** Keep the actual receiver for nested calls, including anonymous methods. */

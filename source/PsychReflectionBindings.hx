@@ -25,6 +25,52 @@ class PsychReflectionBindings {
 			nativeClasses = host.psychLuaNativeClassScope(paths);
 		else nativeClasses = new SourceNativeClassScope();
 		PsychStateClassBindings.installScope(nativeClasses);
+		if (host.nightmareVisionLegacyFieldCameras) installLegacyProperties();
+		else PsychPropertyBindings.install(host,interp,nativeClasses,parse);
+		interp.variables.set('getPropertyFromGroup', function(group:Dynamic, index:Dynamic,
+			property:Dynamic, allowMaps:Bool = false):Dynamic {
+			return readPath(member(group, index), propertyPath(property), allowMaps);
+		});
+		interp.variables.set('setPropertyFromGroup', function(group:Dynamic, index:Dynamic,
+			property:Dynamic, value:Dynamic, allowMaps:Bool = false,
+			allowInstances:Bool = false):Dynamic {
+			if (allowInstances) value = parse(value);
+			writePath(member(group, index), propertyPath(property), value, allowMaps);
+			return value;
+		});
+		interp.variables.set('instanceArg', function(path:String, ?type:String):String {
+			return SourceScriptReflection.INSTANCE_PREFIX + path + (type == null ? '' : '::' + type);
+		});
+		interp.variables.set('createInstance', function(name:String, type:String,
+			?args:Array<Dynamic>):Bool {
+			name = StringTools.replace(StringTools.trim(name), '.', '');
+			if (host.psychScriptVariables.get(name) != null) return false;
+			var resolved = resolveClass(type);
+			if (resolved == null) return false;
+			var object:Dynamic = nativeClasses.createInstance(resolved, parsedArgs(args));
+			if (object == null) return false;
+			host.psychScriptVariables.set(name, object);
+			return true;
+		});
+		interp.variables.set('addInstance', function(name:String, front:Bool = false):Void {
+			var object = host.psychScriptVariables.get(name);
+			if (!Std.isOfType(object, FlxBasic)) return;
+			host.addHscriptSprite(cast object, front ? DisplayLayer.BEHIND_NONE : DisplayLayer.BEHIND_ALL);
+		});
+		interp.variables.set('addToGroup', function(group:String, tag:String, index:Int = -1):Void {
+			var object = root(tag);
+			if (object == null || !Reflect.isFunction(Reflect.getProperty(object, 'destroy'))) return;
+			SourceScriptReflection.addToGroup(get(group, true), object, index);
+		});
+		interp.variables.set('removeFromGroup', function(group:String, index:Int = -1,
+			?tag:String, destroy:Bool = true):Void {
+			var object = tag == null ? null : root(tag);
+			if (tag != null && object == null) return;
+			SourceScriptReflection.removeFromGroup(get(group, true), index, object, destroy);
+		});
+	}
+
+	function installLegacyProperties():Void {
 		var previousGet = interp.variables.get('getProperty');
 		var previousSet = interp.variables.get('setProperty');
 		interp.variables.set('getProperty', function(path:Dynamic, allowMaps:Bool = false):Dynamic {
@@ -37,17 +83,6 @@ class PsychReflectionBindings {
 			if (allowInstances) value = parse(value);
 			if (allowMaps || host.psychScriptVariables.exists(host.compatPathTokens(EngineCompat.propertyPath(path))[0])) set(path, value, allowMaps);
 			else Reflect.callMethod(null, previousSet, [path, value]);
-			return value;
-		});
-		interp.variables.set('getPropertyFromGroup', function(group:Dynamic, index:Dynamic,
-			property:Dynamic, allowMaps:Bool = false):Dynamic {
-			return readPath(member(group, index), propertyPath(property), allowMaps);
-		});
-		interp.variables.set('setPropertyFromGroup', function(group:Dynamic, index:Dynamic,
-			property:Dynamic, value:Dynamic, allowMaps:Bool = false,
-			allowInstances:Bool = false):Dynamic {
-			if (allowInstances) value = parse(value);
-			writePath(member(group, index), propertyPath(property), value, allowMaps);
 			return value;
 		});
 		var previousClassGet = interp.variables.get('getPropertyFromClass');
@@ -83,36 +118,6 @@ class PsychReflectionBindings {
 			?args:Array<Dynamic>):Dynamic {
 			return SourceScriptReflection.call(resolveClass(type),
 				host.compatPathTokens(path), parsedArgs(args), readPart);
-		});
-		interp.variables.set('instanceArg', function(path:String, ?type:String):String {
-			return SourceScriptReflection.INSTANCE_PREFIX + path + (type == null ? '' : '::' + type);
-		});
-		interp.variables.set('createInstance', function(name:String, type:String,
-			?args:Array<Dynamic>):Bool {
-			name = StringTools.replace(StringTools.trim(name), '.', '');
-			if (host.psychScriptVariables.get(name) != null) return false;
-			var resolved = resolveClass(type);
-			if (resolved == null) return false;
-			var object:Dynamic = nativeClasses.createInstance(resolved, parsedArgs(args));
-			if (object == null) return false;
-			host.psychScriptVariables.set(name, object);
-			return true;
-		});
-		interp.variables.set('addInstance', function(name:String, front:Bool = false):Void {
-			var object = host.psychScriptVariables.get(name);
-			if (!Std.isOfType(object, FlxBasic)) return;
-			host.addHscriptSprite(cast object, front ? DisplayLayer.BEHIND_NONE : DisplayLayer.BEHIND_ALL);
-		});
-		interp.variables.set('addToGroup', function(group:String, tag:String, index:Int = -1):Void {
-			var object = root(tag);
-			if (object == null || !Reflect.isFunction(Reflect.getProperty(object, 'destroy'))) return;
-			SourceScriptReflection.addToGroup(get(group, true), object, index);
-		});
-		interp.variables.set('removeFromGroup', function(group:String, index:Int = -1,
-			?tag:String, destroy:Bool = true):Void {
-			var object = tag == null ? null : root(tag);
-			if (tag != null && object == null) return;
-			SourceScriptReflection.removeFromGroup(get(group, true), index, object, destroy);
 		});
 	}
 

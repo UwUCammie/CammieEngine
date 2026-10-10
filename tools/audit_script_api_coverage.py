@@ -2355,7 +2355,7 @@ def _engine_inventory(
         "PlayState.hx", "PluginManager.hx", "LuaCompatInterp.hx", "PsychHscriptCompat.hx",
         "NightmareVisionScriptInterp.hx", "PsychRuntimeBindings.hx", "PsychSourceBindings.hx",
         "PsychReflectionBindings.hx", "PsychScoreScriptGlobals.hx", "SourceIrisBridge.hx",
-        "SourceScriptTextBindings.hx",
+        "SourceScriptTextBindings.hx", "PsychPropertyBindings.hx",
     }
     for path, code in code_by_path.items():
         if path.name in binding_files:

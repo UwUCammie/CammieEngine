@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Psych public property and method callbacks now use source path, state-root, raw map/index and setter return semantics through shared reflection.
 - Psych instance arguments preserve single-value versus recursive parsing and source variable/property lookup precedence.
 - Psych and NV variable callbacks now follow their source-specific live state registry, preserving map replacement and language return values.
 - Native state variables are shared by Psych class APIs and Lua/HScript callbacks, with one registry per state and live MusicBeatState lookups.

@@ -97,6 +97,7 @@ class PsychReflectionBindingsTest(unittest.TestCase):
             (root / 'PsychStateClassBindings.hx').write_text('class PsychStateClassBindings {public static function registry(h:Dynamic):Dynamic return h.psychScriptVariables;public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}')
             # Historical reflection extensions are separate from the native Psych parser oracle.
             (root / 'PsychInstanceArguments.hx').write_text('class PsychInstanceArguments {public static function parse(v:Dynamic,r:Bool,c:Dynamic,?p:Dynamic):Dynamic throw \"Unexpected modern parser\";}')
+            (root / 'PsychPropertyBindings.hx').write_text('class PsychPropertyBindings {public static function install(h:Dynamic,i:Dynamic,c:Dynamic,p:Dynamic):Void {}}')
             (root / 'PlayState.hx').write_text(host)
             (root / 'Main.hx').write_text(MAIN)
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
