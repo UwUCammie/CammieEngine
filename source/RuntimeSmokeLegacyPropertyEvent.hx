@@ -69,6 +69,7 @@ class RuntimeSmokeLegacyPropertyEvent {
 			RuntimeSmokeLegacyObjectOrder.verify(state,lua);
 			RuntimeSmokeLegacyTextLifecycle.verify(state,lua);
 			RuntimeSmokeTextProperties.verify(state,lua);
+			RuntimeSmokePsychTextLifecycle.verify(state);
 			lua.variables.clear();
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_lua_property_native_verified',{publicBindings:true,rawValues:true,finalArray:true,gameOverDirectRoot:true,setReturn:true,eventPolicyDistinct:true,sharedFieldAliases:true});
 			@:privateAccess RuntimeSmokeHarness.emit('legacy_property_event_native_verified',{tagPriority:true,textNamespace:true,rawValues:true,nestedIndex:true,literalFinalField:true,sourceHudIdentity:true,gameOverRoot:true,notifications:true});

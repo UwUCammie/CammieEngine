@@ -10,9 +10,6 @@ class SourceModchartText extends FlxText {
 	public var wasAdded:Bool = false;
 	public function new(x:Float, y:Float, text:String, width:Float, font:String, camera:FlxCamera) {
 		super(x, y, width, text, 16);
-		setFormat(font, 16, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
-		cameras = [camera];
-		scrollFactor.set();
-		borderSize = 2;
+		SourceTextDefaults.apply(this, font, camera, true);
 	}
 }

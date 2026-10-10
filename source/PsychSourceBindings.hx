@@ -168,6 +168,7 @@ class PsychSourceBindings {
 		variables.set('getScreenPositionY', function(name:String, ?camera:String = 'game'):Float
 			return screenPositionComponent(name, camera, 'y'));
 
+		installTextLifecycle(variables);
 		new SourceScriptTextBindings(false, psychObject, function(name) return PsychFontPath.resolve(name, ownerRoot),
 			SourceTextStyle.psychColor, SourceTextStyle.border, function(message) trace('[psych-text] ' + message)).install(variables);
 
@@ -508,6 +509,32 @@ class PsychSourceBindings {
 		}
 		if (point != null) point.put();
 		return value;
+	}
+
+	function installTextLifecycle(variables:Map<String,Dynamic>):Void {
+		if (host.nightmareVisionLegacyFieldCameras) return;
+		var registry = function():Dynamic return host.psychScriptVariables;
+		var scene = function():Dynamic return host.historicalPropertyInstance();
+		variables.set('makeLuaText', function(tag:String, text:String = '', width:Int = 0, x:Float = 0, y:Float = 0):Void {
+			SourceScriptTextLifecycle.create(tag, registry, scene, function() {
+				var label = new FlxText(x, y, width, text, 16);
+				SourceTextDefaults.apply(label, PsychFontPath.resolve('vcr.ttf', ownerRoot), host.camHUD);
+				return label;
+			}, true);
+		});
+		variables.set('addLuaText', function(tag:String):Void {
+			SourceScriptTextLifecycle.add(tag, registry, scene, true);
+		});
+		var remove = function(tag:String, destroy:Bool = true):Void {
+			SourceScriptTextLifecycle.remove(tag, destroy, registry,
+				function():Dynamic return host.compatCustomSubstate != null ? host.compatCustomSubstate : scene(), true);
+		};
+		variables.set('removeLuaText', remove);
+		// Preserve the host's generic removal spelling for modern variable-owned text.
+		variables.set('removeObject', function(tag:String, destroy:Bool = true):Void {
+			if (Std.isOfType(host.psychScriptVariables.get(tag), FlxText)) remove(tag, destroy);
+			else host.compatRemoveObject(tag, destroy);
+		});
 	}
 
 	function psychText(tag:Dynamic):FlxText {

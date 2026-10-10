@@ -16,6 +16,7 @@ class HistoricalTextLifecycleTest(unittest.TestCase):
   helpers='public static '+extract_method(donor,'function resetTextTag(')+'\npublic static '+extract_method(donor,'function getTextObject(')
   source_text=extract_method(donor,'class ModchartText extends FlxText')
   actual_text=(ROOT/'source/SourceModchartText.hx').read_text();actual_text=actual_text[actual_text.index('class SourceModchartText'):]
+  defaults=(ROOT/'source/SourceTextDefaults.hx').read_text();actual_text+='\n'+defaults[defaults.index('class SourceTextDefaults'):]
   # Native enum constants have identical string representations in this constructor double.
   def constants(text):return text.replace('FlxTextBorderStyle.OUTLINE','"outline"').replace(', CENTER,',', "center",').replace(', OUTLINE,',', "outline",')
   play=(ROOT/'source/PlayState.hx').read_text()
