@@ -784,7 +784,7 @@ import PsychFlxColorScriptAccess;
     
     public function new(c:ClassDeclEx, args:Array<Dynamic>, ?classScope:ScriptClassScope) {
         _c = c;
-        _classScope = classScope;
+        _classScope = classScope; // dp-owner-class-scope-ctor
         _interp = new InterpEx(this, classScope);
         if (classScope != null) classScope.seedInterpreter(_interp);
         buildCaches();""",
@@ -1107,13 +1107,43 @@ import PsychFlxColorScriptAccess;
 }
 
 
+# Construction hooks are scoped to the importing owner. Existing native classes
+# keep Type.createInstance; only explicitly registered adapters observe super().
+PATCHES["ScriptClass.hx"].extend([
+    ("    public var superClass:Dynamic = null;",
+     """    public var superClass:Dynamic = null;
+    private var derivedClass:ScriptClass; // dp-owner-construction-root
+    public function constructionRoot():ScriptClass {
+        return derivedClass == null ? this : derivedClass.constructionRoot();
+    }""", "dp-owner-construction-root"),
+    ("public function new(c:ClassDeclEx, args:Array<Dynamic>, ?classScope:ScriptClassScope) {",
+     """public function new(c:ClassDeclEx, args:Array<Dynamic>, ?classScope:ScriptClassScope, ?derived:ScriptClass) {
+        derivedClass = derived; // dp-owner-construction-link
+        if (derived != null) derived.superClass = this;""", "dp-owner-construction-link"),
+    ("new ScriptClass(classDescriptor, args, _classScope);",
+     "new ScriptClass(classDescriptor, args, _classScope, this); // dp-owner-super-construction-link",
+     "dp-owner-super-construction-link"),
+    ("            try superClass = Type.createInstance(c, args) catch (error:Dynamic)",
+     """            try {
+                // dp-owner-native-construction-hooks
+                if (_classScope == null) superClass = Type.createInstance(c, args);
+                else _classScope.constructNativeSuper(this, c, args);
+            } catch (error:Dynamic)""", "dp-owner-native-construction-hooks"),
+])
+PATCHES["InterpEx.hx"].append((
+    '        } else if (id == "this" && _proxy != null) {\n            return _proxy;',
+    '        } else if (id == "this" && _proxy != null) {\n            return _proxy.constructionRoot(); // dp-owner-derived-this-identity',
+    'dp-owner-derived-this-identity'))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
     # Add a durable marker to owner-scope installs made before this marker
     # existed, so later focused patch additions remain safely idempotent.
     if ("dp-owner-class-scope-ctor" not in text
-        and "private var _classScope:ScriptClassScope = null;" in text
+        and ("private var _classScope:ScriptClassScope = null;" in text
+             or "private var _classScope:ScriptClassScope;" in text)
         and "_classScope = classScope;" in text):
         text = text.replace("_classScope = classScope;", "_classScope = classScope; // dp-owner-class-scope-ctor", 1)
     if ("dp-psych-flxcolor-property-get" not in text

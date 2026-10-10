@@ -44,9 +44,42 @@ class ScriptClassScope {
 	final nativeBasicBridges:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassBasicBridge> = new haxe.ds.ObjectMap();
 	final ownedNativeBasicBridges:Array<PsychScriptClassBasicBridge> = [];
 	#end
+	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
+		before:ScriptClass->Void, after:ScriptClass->Dynamic->Void, initializedFields:Array<String>, prepare:Dynamic->Void
+	}> = new haxe.ds.ObjectMap();
 	var active:Bool = true;
 
 	public function new() {}
+
+	/** Observe a native super constructor without replacing its class identity. */
+	public function bindNativeConstruction(type:Dynamic, before:ScriptClass->Void,
+		after:ScriptClass->Dynamic->Void, ?initializedFields:Array<String>, ?prepare:Dynamic->Void):Void {
+		ensureActive();
+		nativeConstructionHooks.set(type, {before: before, after: after, initializedFields: initializedFields, prepare: prepare});
+	}
+
+	public function constructNativeSuper(owner:ScriptClass, type:Dynamic, args:Array<Dynamic>):Void {
+		ensureActive();
+		var hooks = nativeConstructionHooks.get(type);
+		var root = owner.constructionRoot();
+		if (hooks != null && hooks.before != null) hooks.before(root);
+		owner.superClass = Type.createInstance(type, args);
+		if (hooks != null) {
+			if (hooks.prepare != null) hooks.prepare(owner.superClass);
+			// A virtual callback inside super() can observe pre-super assignments
+			// from every source class, including the most derived constructor.
+			var current = owner;
+			while (current != null) {
+				// Native field initializers run during super(), overwriting
+				// earlier assignments. Forwarding properties are not reset.
+				if (hooks.initializedFields != null)
+					for (name in hooks.initializedFields) current.pendingSuperFields.remove(name);
+				current.applyPendingSuperFields();
+				current = current.derivedClass;
+			}
+			if (hooks.after != null) hooks.after(root, owner.superClass);
+		}
+	}
 
 	public function seed(name:String, value:Dynamic):Void {
 		if (!active || name == null || name == '') return;
@@ -577,6 +610,7 @@ class ScriptClassScope {
 		nativeBasicBridges.clear();
 		#end
 		active = false;
+		nativeConstructionHooks.clear();
 		descriptors.clear();
 		aliases.clear();
 		ambiguousAliases.clear();

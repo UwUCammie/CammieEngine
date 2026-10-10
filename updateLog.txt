@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Psych source stages now create inside super(), register inherited and nested stages, and keep sibling callbacks alive through shared owner cleanup.
 - Psych source stages now retain per-stage timing, honor activity gates and share ordered registry callbacks with source states.
 - Source-constructed Psych states now share fractional timing, section traversal and live controls with source substates; native gameplay retains crossed-step callbacks.
 - Support Psych substate fractional timing, sections and source controls; share section traversal with NV states.

@@ -26922,12 +26922,12 @@ void main(void) {
 		hxcStrumlineNoteSurface = null;
 		var stageRuntime = psychCompiledStageRuntime;
 		stagesFunc(function(stage) {
-			if (stageRuntime != null && stage == stageRuntime.sourceObject) stageRuntime.destroy(true);
+			if (stageRuntime != null && stage == stageRuntime.sourceObject) stageRuntime.destroy(true, false);
 			else PsychStageObject.call(stage, 'destroy', []);
 		});
 		if (stageRuntime != null) {
-			// Inactive stages skip authored teardown but still release the owned interpreter.
-			stageRuntime.destroy();
+			// Inactive or removed stages skip callbacks; release their owned interpreter.
+			stageRuntime.releaseAfterHostTraversal();
 			reportPsychCompiledStageRuntimeDiagnostics();
 			psychCompiledStageRuntime = null;
 		}

@@ -46,6 +46,22 @@ class RuntimeSmokePsychStageCallbacks {
 			check(log.length == count, 'Nonexistent stage skips callbacks');
 			PsychStageObject.write(stage, 'exists', true);runtime.destroy();
 			check(log[log.length - 1] == 'destroy' && PsychStageObject.read(stage, 'exists') == false, 'Stage teardown retires native lifetime');
+			runtime.destroy();state.stages = [];
+			var ctorLog:Array<String> = [];
+			var bindings:Map<String, Dynamic> = new Map();
+			bindings.set('record', function(message:String):Void {ctorLog.push(message);});
+			runtime = new PsychCompiledStageRuntime('tmp/source-stage-callback-probe', 'demo.ConstructorProbe', state, bindings);
+			check(runtime.create(), 'Native nested stage construction: ' + runtime.diagnostics.join('; '));
+			check(ctorLog.join('|') == 'child-before|middle-before|create:0|leaf:1|middle-after|child-after', 'Virtual create must run inside super: ' + ctorLog);
+			check(state.stages.length == 2 && state.stages[0] == runtime.sourceObject, 'Nested native registry identity');
+			runtime.beginPostCreate();runtime.dispatch('stepHit', []);
+			check(state.stages.length == 3 && ctorLog[6] == 'leaf:2', 'Callback-created native sibling');
+			runtime.destroy(true, false);
+			PsychStageObject.call(state.stages[1], 'destroy', []);
+			PsychStageObject.call(state.stages[2], 'destroy', []);
+			runtime.destroy();
+			check(ctorLog.slice(7).join('|') == 'root-destroy|leaf-destroy|leaf-destroy', 'Nested cleanup must retain the owner scope');
+			@:privateAccess RuntimeSmokeHarness.emit('psych_stage_construction_native_verified', {superOrder:true,nestedRegistration:true,callbackCreation:true,siblingCleanup:true});
 			@:privateAccess RuntimeSmokeHarness.emit('psych_stage_callbacks_native_verified', {sourceIdentity:true,registration:true,storedTiming:true,activityGates:true,singleCallback:true,lifetime:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();

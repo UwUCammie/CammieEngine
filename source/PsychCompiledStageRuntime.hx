@@ -1,6 +1,7 @@
 package;
 
 import hscript.AbstractScriptClass;
+import hscript.ScriptClass;
 import hscript.ScriptClassScope;
 import haxe.io.Path;
 #if sys
@@ -27,6 +28,9 @@ class PsychCompiledStageRuntime {
 	var classScope:ScriptClassScope;
 	var stageClass:AbstractScriptClass;
 	var baseStage:PsychBaseStageCompat;
+	final ownedStages:Array<Dynamic> = [];
+	final ownedAdapters:Array<PsychBaseStageCompat> = [];
+	var postCreatePhase:Bool = false;
 	var attempted:Bool = false;
 	var created:Bool = false;
 	var destroyed:Bool = false;
@@ -90,45 +94,52 @@ class PsychCompiledStageRuntime {
 			return false;
 		}
 		classScope = loaded.scope;
+		classScope.bindNativeConstruction(PsychBaseStageCompat, registerStage, createStage,
+			['ID', 'active', 'visible', 'alive', 'exists', 'curStep', 'curDecStep', 'curBeat', 'curDecBeat', 'curSection'], attachStage);
+		var membersBeforeCreate = snapshotHostMembers();
 		try {
-			// The donor BaseStage constructor calls create() virtually. The compat
-			// adapter deliberately leaves that timing to this runtime, after the
-			// subclass and its owner scope exist.
 			stageClass = classScope.createInstance(className, [stageHost]);
-			if (stageClass == null) {
-				fail('owner module did not register class ' + className);
-				releaseScope();
-				return false;
-			}
-			var superClass:Dynamic = stageClass.superClass;
-			if (!Std.isOfType(superClass, PsychBaseStageCompat)) {
-				fail('owner class ' + className + ' does not extend the Psych BaseStage adapter');
-				releaseScope();
-				stageClass = null;
-				return false;
-			}
-			baseStage = cast superClass;
-			baseStage.attachHost(stageHost);
-			baseStage.attachScriptClassScope(classScope);
-			var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
-			if (stages == null) {stages = [];Reflect.setProperty(stageHost, 'stages', stages);}
-			stages.push(stageClass);
+			var nativeBase = stageClass == null ? null : classScope.unwrapNativeArgument(stageClass);
+			if (!Std.isOfType(nativeBase, PsychBaseStageCompat))
+				throw 'owner class ' + className + ' does not extend the Psych BaseStage adapter';
+			baseStage = cast nativeBase;
 			created = true;
-			var membersBeforeCreate = snapshotHostMembers();
-			if (!dispatch('create', [])) {
-				destroy();
-				cleanupMembersAddedSince(membersBeforeCreate);
-				return false;
-			}
 			return true;
 		} catch (error:Dynamic) {
 			fail('could not instantiate ' + className + ': ' + Std.string(error));
 			destroy();
+			var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
+			if (stages != null) for (stage in ownedStages) stages.remove(stage);
+			cleanupMembersAddedSince(membersBeforeCreate);
 			return false;
 		}
 	}
 
-	public function beginPostCreate():Void {if (baseStage != null) baseStage.beginPostCreate();}
+	function registerStage(stage:ScriptClass):Void {
+		var stages:Array<Dynamic> = Reflect.getProperty(stageHost, 'stages');
+		if (stages == null) {stages = [];Reflect.setProperty(stageHost, 'stages', stages);}
+		ownedStages.push(stage);
+		stages.push(stage);
+	}
+
+	function attachStage(nativeBase:Dynamic):Void {
+		var adapter:PsychBaseStageCompat = cast nativeBase;
+		ownedAdapters.push(adapter);
+		adapter.attachHost(stageHost);
+		adapter.attachScriptClassScope(classScope);
+		if (postCreatePhase) adapter.beginPostCreate();
+	}
+
+	function createStage(stage:ScriptClass, _nativeBase:Dynamic):Void {
+		// Source BaseStage invokes create inside super(), even if inactive.
+		// The scope hook covers nested source constructors as well as the root.
+		stage.callFunction('create', []);
+	}
+
+	public function beginPostCreate():Void {
+		postCreatePhase = true;
+		for (adapter in ownedAdapters) adapter.beginPostCreate();
+	}
 
 	/** Psych calls createPost after actors, notes and state members are ready. */
 	public function createPost():Bool return dispatch('createPost', []);
@@ -233,18 +244,32 @@ class PsychCompiledStageRuntime {
 	}
 
 	/** Run the authored destroy hook once and release every owner class descriptor. */
-	public function destroy(admitted:Bool = false):Void {
-		if (destroyed) return;
-		destroyed = true;
-		if (created && stageClass != null) {
-			try {if (admitted || SourceStageCallbacks.enabled(stageClass, PsychStageObject.read)) stageClass.callFunction('destroy', []);} catch (error:Dynamic)
-				fail('callback destroy failed: ' + Std.string(error));
+	public function destroy(admitted:Bool = false, release:Bool = true):Void {
+		if (!destroyed) {
+			destroyed = true;
+			// Host list traversal owns callback order. Keep the scope alive until
+			// it has visited nested siblings after the selected stage.
+			var targets:Array<Dynamic> = release ? ownedStages : [stageClass];
+			for (stage in targets) {
+				try {
+					if (stage != null && ((stage == stageClass && admitted)
+						|| SourceStageCallbacks.enabled(stage, PsychStageObject.read)))
+						PsychStageObject.call(stage, 'destroy', []);
+				} catch (error:Dynamic) fail('callback destroy failed: ' + Std.string(error));
+			}
 		}
-		if (baseStage != null) baseStage.exists = false;
+		if (!release) return;
+		for (adapter in ownedAdapters) adapter.exists = false;
 		created = false;
 		stageClass = null;
 		baseStage = null;
 		releaseScope();
+	}
+
+	/** Host traversal already chose and invoked its live stage callbacks. */
+	public function releaseAfterHostTraversal():Void {
+		destroyed = true;
+		destroy();
 	}
 
 	function bindExact(bindings:Map<String, Dynamic>, path:String, value:Dynamic):Bool {
