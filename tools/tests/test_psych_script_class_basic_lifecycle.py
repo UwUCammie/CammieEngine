@@ -149,8 +149,8 @@ class PsychScriptClassBasicLifecycleProbe {
   var log:Array<String>=[];
   var handler=loaded.scope.createInstance('demo.CutsceneProbe',[log]);
   check(handler!=null && state.members.length==1,'FlxG.state.add inserts the owner class member');
-  check(Std.isOfType(state.members[0],PsychScriptClassBasicBridge),
-   'native Flixel group stores the lifecycle bridge');
+  check(Std.isOfType(state.members[0],PsychScriptClassBasic),
+   'native Flixel group stores the native lifecycle adapter');
   var handlerBridge=state.members[0];
 
   state.update(0.1);

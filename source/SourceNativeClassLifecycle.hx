@@ -3,8 +3,8 @@ package;
 import hscript.ScriptClass;
 import hscript.ScriptClassScope;
 
-/** One callback and resource lifetime shared by every native sprite adapter. */
-class SourceSpriteClassLifecycle {
+/** One callback and resource lifetime shared by every native Flixel adapter. */
+class SourceNativeClassLifecycle {
 	public var owner(default, null):ScriptClass;
 	var scope:ScriptClassScope;
 	var nativeBase:(String, Array<Dynamic>)->Dynamic;
@@ -18,13 +18,13 @@ class SourceSpriteClassLifecycle {
 		this.nativeBase = nativeBase;
 	}
 	public function noteOwnerDestroyCalled():Void ownerDestroyed = true;
-	public static function hasNativeSuper(name:String):Bool {
-		return ['update', 'draw', 'updateAnimation', 'kill', 'revive', 'destroy'].indexOf(name) >= 0;
+	public static function hasNativeSuper(name:String, animation:Bool):Bool {
+		return name == 'updateAnimation' ? animation : ['update', 'draw', 'kill', 'revive', 'destroy'].indexOf(name) >= 0;
 	}
 	public function dispatch(name:String, args:Array<Dynamic>):Void {
 		if (name == 'destroy') {destroy();return;}
 		if (!nativeDestroyed && !destroying && owner != null && scope != null && scope.isActive())
-			owner.callFunction(name, args);
+			scope.callNativeLifecycle(owner, name, args);
 	}
 	public function callNativeSuper(name:String, args:Array<Dynamic>):Dynamic {
 		if (name == 'destroy') destroyNative();
@@ -41,11 +41,11 @@ class SourceSpriteClassLifecycle {
 		destroying = true;
 		var failure:Dynamic = null;
 		if (scope != null && scope.isActive() && !ownerDestroyed) {
-			try owner.callFunction('destroy', []) catch (error:Dynamic) failure = error;
+			try scope.callNativeLifecycle(owner, 'destroy', []) catch (error:Dynamic) failure = error;
 		}
 		// Complete native cleanup even when an authored hook omits super.
 		try destroyNative() catch (error:Dynamic) {if (failure == null) failure = error;}
-		if (scope != null) scope.forgetNativeSprite(this);
+		if (scope != null) scope.forgetNativeAdapter(this);
 		owner = null;
 		scope = null;
 		nativeBase = null;

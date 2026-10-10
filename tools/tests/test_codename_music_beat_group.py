@@ -27,6 +27,8 @@ class FlxBasic {
  public function revive():Void { alive=true; exists=true; }
  public function destroy():Void { destroys++; exists=false; }
 }''',
+                "flixel/FlxObject.hx": """package flixel;
+class FlxObject extends FlxBasic {public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) super();}""",
                 "flixel/FlxSprite.hx": '''package flixel;
 class FlxSprite extends FlxBasic {
  public var x:Float=0; public var y:Float=0;

@@ -24,10 +24,13 @@ class RuntimeSmokePsychIrisClasses {
 		var recycleOwner:CodenameScriptClassLoader = null;
 		var spriteGroup = new flixel.group.FlxSpriteGroup(12, 14);
 		var memberGroup = new flixel.group.FlxSpriteGroup(50, 60);
+		var coreGroup = new flixel.group.FlxGroup.FlxTypedGroup<flixel.FlxBasic>();
+		var reentrantOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var cleanup = function() {
 			if (nativeTween != null) nativeTween.cancel();if (nativeGroup != null) nativeGroup.destroy();
 			if (spriteGroup != null) spriteGroup.destroy();
 			memberGroup.destroy();
+			coreGroup.destroy();if (reentrantOwner != null) reentrantOwner.scope.release();
 			recycleGroup.destroy();if (recycleOwner != null) recycleOwner.scope.release();
 			plain.release();if (runtime != null) runtime.release();
 			if (session != null) session.release();
@@ -121,6 +124,33 @@ class RuntimeSmokePsychIrisClasses {
 				check(plain.variables.get(key) == true, 'Native group query contract: ' + key);
 			check(plain.variables.get('queryLastIndex') == 0 && nativeGroup.length == 1, 'Native predicate index and recycling length');
 			var retainedGroupIterator:Dynamic = plain.variables.get('queryIterator');
+			plain.variables.set('coreProbeGroup', coreGroup);
+			plain.evaluate('import demo.NativeCluster; coreSource=new NativeCluster(); coreProbeGroup.add(coreSource); coreVisited=0; coreProbeGroup.forEachOfType(FlxObject,function(value) {coreVisited++;},true);', 'source-core-bases-probe');
+			var coreSource = plain.variables.get('coreSource');
+			var coreBasic = session.read(coreSource, 'basic'), coreActor = session.read(coreSource, 'actor');
+			var coreNative:PsychScriptClassGroup = cast coreGroup.members[0];
+			var coreNativeActor:PsychScriptClassObject = cast coreNative.members[1];
+			check(Std.isOfType(coreNative.members[0], PsychScriptClassBasic) && plain.variables.get('coreVisited') == 1, 'Native core class identities and recursive source group traversal');
+			coreGroup.update(0.1);coreNative.kill();coreNative.revive();
+			plain.evaluate('coreSource.basic.kill();', 'source-basic-direct-kill');
+			check(!coreNative.members[0].exists && session.read(coreBasic, 'kills') == 2 && session.read(coreBasic, 'revives') == 1
+				&& session.read(coreBasic, 'ticks') == 1 && session.read(coreActor, 'ticks') == 1, 'Shared core callbacks and immediate native state');
+			coreNative.destroy();
+			check(coreNative.members == null && coreNativeActor.velocity == null && session.read(coreBasic, 'destroyed') == 1
+				&& session.read(coreActor, 'destroyed') == 1, 'Killed core members release native resources exactly once');
+			reentrantOwner = CodenameScriptClassLoader.load(root, ['demo.NativeCluster'], ['flixel.FlxBasic'=>flixel.FlxBasic,
+				'flixel.FlxObject'=>flixel.FlxObject, 'flixel.group.FlxGroup'=>flixel.group.FlxGroup.FlxTypedGroup], new Map());
+			check(reentrantOwner.diagnostics.length == 0, 'Reentrant native owner imports');
+			var reentrantSource = reentrantOwner.scope.createInstance('demo.NativeCluster');
+			@:privateAccess var reentrantNative:PsychScriptClassGroup = cast reentrantOwner.scope.unwrapOwnedFlxBasic(reentrantSource);
+			var reentrantBasic:PsychScriptClassBasic = cast reentrantNative.members[0];
+			var reentrantSourceBasic = reentrantBasic.scriptOwner();
+			var continued = false, reentrantDestroyed = 0;
+			@:privateAccess reentrantSourceBasic._interp.variables.set('onUpdate', function() {reentrantOwner.scope.release();continued = reentrantOwner.scope.isActive();});
+			@:privateAccess reentrantSourceBasic._interp.variables.set('onDestroy', function() {reentrantDestroyed++;reentrantOwner.scope.release();});
+			reentrantNative.update(0.1);reentrantNative.update(0.1);reentrantNative.destroy();
+			check(continued && !reentrantOwner.scope.isActive() && reentrantDestroyed == 1 && reentrantNative.members == null,
+				'Native callback release is deferred, nonrecursive and leaves inert adapters');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -143,7 +173,7 @@ class RuntimeSmokePsychIrisClasses {
 			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

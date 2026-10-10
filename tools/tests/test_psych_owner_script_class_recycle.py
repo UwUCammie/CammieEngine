@@ -88,10 +88,10 @@ class PsychOwnerScriptClassRecycleProbe {
   check(loaded.scope.findDescriptor('demo.parts.Particle')!=null,
    'wildcard import did not register its referenced owner class');
   check(firstProxy.callFunction('label',[])=='owner-particle','recycled owner script method did not resolve');
-  check(group.members.length==1 && Std.isOfType(group.members[0],PsychScriptClassBasicBridge),
-   'recycled owner class was not added to the native Flx group through its bridge');
+  check(group.members.length==1 && Std.isOfType(group.members[0],PsychScriptClassBasic),
+   'recycled owner class was not added to the native Flx group through its native adapter');
 
-  var bridge:PsychScriptClassBasicBridge=cast group.members[0];
+  var bridge:PsychScriptClassBasic=cast group.members[0];
   bridge.kill();
   var second:Dynamic=host.callFunction('spawn',[]);
   check(second==first,'recycle did not reuse the dead bridge for its requested owner class');

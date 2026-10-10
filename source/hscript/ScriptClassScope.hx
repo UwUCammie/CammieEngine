@@ -9,13 +9,17 @@ import hscript.Expr.CType;
 #if flixel
 import PsychScriptClassBasicBridge;
 import PsychScriptClassSprite;
+import PsychScriptClassBasic;
+import PsychScriptClassObject;
+import PsychScriptClassGroup;
 import PsychScriptClassText;
 import PsychScriptClassSpriteGroup;
-import SourceSpriteClassAdapter;
-import SourceSpriteClassLifecycle;
+import SourceNativeClassAdapter;
+import SourceNativeClassLifecycle;
 import flixel.text.FlxText;
 import flixel.FlxSprite;
 import flixel.FlxBasic;
+import flixel.FlxObject;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 import flixel.tweens.FlxTween;
@@ -50,7 +54,7 @@ class ScriptClassScope {
 	#if flixel
 	final nativeBasicBridges:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassBasicBridge> = new haxe.ds.ObjectMap();
 	final ownedNativeBasicBridges:Array<PsychScriptClassBasicBridge> = [];
-	final nativeSprites:haxe.ds.ObjectMap<ScriptClass, SourceSpriteClassLifecycle> = new haxe.ds.ObjectMap();
+	final nativeAdapters:haxe.ds.ObjectMap<ScriptClass, SourceNativeClassLifecycle> = new haxe.ds.ObjectMap();
 	final nativeMemberArrays:haxe.ds.ObjectMap<Dynamic, Bool> = new haxe.ds.ObjectMap();
 	#end
 	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
@@ -58,6 +62,9 @@ class ScriptClassScope {
 	}> = new haxe.ds.ObjectMap();
 	final nativeFactories:haxe.ds.ObjectMap<Dynamic, Array<Dynamic>->Dynamic> = new haxe.ds.ObjectMap();
 	var active:Bool = true;
+	var releasing:Bool = false;
+	var nativeCallbackDepth:Int = 0;
+	var releaseRequested:Bool = false;
 	var valueAccess:InterpEx;
 	final nativeMethods:haxe.ds.ObjectMap<Dynamic, Map<String, {method:Dynamic, wrapped:Dynamic}>> = new haxe.ds.ObjectMap();
 
@@ -90,12 +97,15 @@ class ScriptClassScope {
 		#if flixel
 		var adapter:Dynamic = type == FlxSprite ? PsychScriptClassSprite
 			: type == FlxText ? PsychScriptClassText
-			: type == FlxTypedSpriteGroup ? PsychScriptClassSpriteGroup : null;
+			: type == FlxTypedSpriteGroup ? PsychScriptClassSpriteGroup
+			: type == FlxBasic ? PsychScriptClassBasic
+			: type == FlxObject ? PsychScriptClassObject
+			: type == FlxTypedGroup ? PsychScriptClassGroup : null;
 		if (adapter != null) {
-			var sprite:SourceSpriteClassAdapter = Type.createInstance(adapter, args);
-			owner.superClass = sprite;
-			sprite.bind(root, this);
-			nativeSprites.set(root, sprite.sourceLifecycle);
+			var instance:SourceNativeClassAdapter = Type.createInstance(adapter, args);
+			owner.superClass = instance;
+			instance.bind(root, this);
+			nativeAdapters.set(root, instance.sourceLifecycle);
 		} else
 		#end
 		owner.superClass = Type.createInstance(type, args);
@@ -710,11 +720,11 @@ class ScriptClassScope {
 	public function unwrapIndexedMember(value:Dynamic):Dynamic {
 		#if flixel
 		if (!active) return value;
-		if (Std.isOfType(value, SourceSpriteClassAdapter)) {
-			var sprite:SourceSpriteClassAdapter = cast value;
+		if (Std.isOfType(value, SourceNativeClassAdapter)) {
+			var sprite:SourceNativeClassAdapter = cast value;
 			var owner = sprite.scriptOwner();
 			if (owner == null) return value;
-			return actualOwner(owner).nativeSprites.get(owner) == sprite.sourceLifecycle ? owner : value;
+			return actualOwner(owner).nativeAdapters.get(owner) == sprite.sourceLifecycle ? owner : value;
 		}
 		if (!Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
 		var bridge:PsychScriptClassBasicBridge = cast value;
@@ -785,7 +795,7 @@ class ScriptClassScope {
 		var existing = nativeBasicBridges.get(proxy);
 		if (existing != null) return existing;
 		var basic:FlxBasic = cast unwrapOwnedFlxBasic(proxy);
-		if (Std.isOfType(basic, SourceSpriteClassAdapter)) return basic;
+		if (Std.isOfType(basic, SourceNativeClassAdapter)) return basic;
 		var bridge = new PsychScriptClassBasicBridge(proxy, basic, this);
 		nativeBasicBridges.set(proxy, bridge);
 		ownedNativeBasicBridges.push(bridge);
@@ -799,7 +809,7 @@ class ScriptClassScope {
 		if (!active || proxy == null) return;
 		var bridge = nativeBasicBridges.get(proxy);
 		if (bridge != null) bridge.noteOwnerDestroyCalled();
-		var sprite = nativeSprites.get(proxy.constructionRoot());
+		var sprite = nativeAdapters.get(proxy.constructionRoot());
 		if (sprite != null) sprite.noteOwnerDestroyCalled();
 	}
 
@@ -811,9 +821,9 @@ class ScriptClassScope {
 		if (owner != null && nativeBasicBridges.get(owner) == bridge) nativeBasicBridges.remove(owner);
 	}
 
-	public function forgetNativeSprite(sprite:SourceSpriteClassLifecycle):Void {
+	public function forgetNativeAdapter(sprite:SourceNativeClassLifecycle):Void {
 		var owner = sprite.owner;
-		if (owner != null && nativeSprites.get(owner) == sprite) nativeSprites.remove(owner);
+		if (owner != null && nativeAdapters.get(owner) == sprite) nativeAdapters.remove(owner);
 	}
 
 	function unwrapOwnedFlxBasic(value:Dynamic):Dynamic {
@@ -860,11 +870,11 @@ class ScriptClassScope {
 	/** Only adapter lifecycle methods need a nonvirtual native super entry. */
 	public function nativeSuperMethod(receiver:Dynamic, name:String):Dynamic {
 		#if flixel
-		if (Std.isOfType(receiver, SourceSpriteClassAdapter) && SourceSpriteClassLifecycle.hasNativeSuper(name)) {
+		if (Std.isOfType(receiver, SourceNativeClassAdapter) && (cast receiver:SourceNativeClassAdapter).supportsNativeSuper(name)) {
 			ensureActive();
 			return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
 				ensureActive();
-				return (cast receiver:SourceSpriteClassAdapter).callNativeSuper(name, args);
+				return (cast receiver:SourceNativeClassAdapter).callNativeSuper(name, args);
 			});
 		}
 		#end
@@ -876,10 +886,26 @@ class ScriptClassScope {
 			: Reflect.callMethod(null, method, args);
 	}
 
+	/** Finish the current native lifecycle traversal before releasing its owner. */
+	public function callNativeLifecycle(owner:ScriptClass, name:String, args:Array<Dynamic>):Dynamic {
+		ensureActive();
+		nativeCallbackDepth++;
+		var result:Dynamic = null, failure:Dynamic = null;
+		var failed = false;
+		try result = owner.callFunction(name, args) catch (error:Dynamic) {failed = true;failure = error;}
+		nativeCallbackDepth--;
+		if (nativeCallbackDepth == 0 && releaseRequested) {releaseRequested = false;release();}
+		if (failed) throw failure;
+		return result;
+	}
+
 	public function isActive():Bool return active;
 
 	public function release():Void {
-		if (!active) return;
+		if (!active || releasing) return;
+		if (nativeCallbackDepth > 0) {releaseRequested = true;return;}
+		releasing = true;
+		releaseRequested = false;
 		#if flixel
 		var firstBridgeFailure:Dynamic = null;
 		#end
@@ -891,13 +917,13 @@ class ScriptClassScope {
 				if (firstBridgeFailure == null) firstBridgeFailure = error;
 			}
 		}
-		var sprites = [for (sprite in nativeSprites) sprite];
-		for (sprite in sprites) {
-			try sprite.destroy() catch (error:Dynamic) {
+		var adapters = [for (lifecycle in nativeAdapters) lifecycle];
+		for (lifecycle in adapters) {
+			try lifecycle.destroy() catch (error:Dynamic) {
 				if (firstBridgeFailure == null) firstBridgeFailure = error;
 			}
 		}
-		nativeSprites.clear();
+		nativeAdapters.clear();
 		nativeMemberArrays.clear();
 		ownedNativeBasicBridges.resize(0);
 		nativeBasicBridges.clear();
