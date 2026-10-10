@@ -147,6 +147,7 @@ class Main {static function main() {
  def run_haxe(self,files,cpp=False):
   from psych_standard_fixture_support import STANDARD_SERVICES
   files['PsychStandardServices.hx'] = STANDARD_SERVICES
+  files['PsychCustomSubstate.hx']="class PsychCustomSubstate {public static var name='unnamed';public static var instance:Dynamic;}"
   files['PsychPropertyBindings.hx']='class PsychPropertyBindings {public static function install(h:Dynamic,i:Dynamic,c:Dynamic,p:Dynamic):Void {}}'
   # Alphabet fixtures isolate native argument parsing, covered by the source oracle.
   files['PsychInstanceArguments.hx']='class PsychInstanceArguments {public static function parse(v:Dynamic,r:Bool,c:Dynamic,?p:Dynamic):Dynamic return v;}'

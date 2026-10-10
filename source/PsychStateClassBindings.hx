@@ -8,6 +8,7 @@ class PsychStateClassBindings {
 	}
 	public static function installScope(scope:SourceNativeClassScope):Void {
 		if (!scope.hasRuntimeClass('backend.MusicBeatState')) scope.bindRuntimeClass('backend.MusicBeatState', MusicBeatState);
+		if (!scope.hasRuntimeClass('psychlua.CustomSubstate')) scope.bindRuntimeClass('psychlua.CustomSubstate', PsychCustomSubstate);
 		if (!scope.hasRuntimeClass('states.PlayState')) scope.bindRuntimeClass('states.PlayState', PlayState);
 	}
 	public static function install(interp:NightmareVisionScriptInterp):Void {
@@ -16,5 +17,6 @@ class PsychStateClassBindings {
 		interp.variables.set('PlayState', PlayState);
 		interp.bindImport('backend.MusicBeatState', MusicBeatState);
 		interp.bindImport('states.PlayState', PlayState);
+		interp.bindImport('psychlua.CustomSubstate', PsychCustomSubstate);
 	}
 }

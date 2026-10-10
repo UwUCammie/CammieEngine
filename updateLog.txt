@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Psych Lua and HScript custom substates now share native class identity, live callbacks, insertion and published-instance lifecycle semantics.
 - Psych sprite and text callbacks now follow live state registries, scene targets and published custom substates while retaining mod-owned assets.
 - Psych instance creation now follows live state registries and source scene placement, sharing native construction and character anchors.
 - Shared Psych group APIs now preserve source root lookup, map fields, setter returns and object removal lifetime.

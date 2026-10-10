@@ -8157,7 +8157,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** Psych's callbacks are emitted by the real FlxSubState, including while
 	 * PlayState.persistentUpdate is false. Script objects remain in their existing
 	 * PlayState registry unless explicitly inserted into the substate. */
-	function compatOpenCustomSubstate(name:String, pauseGame:Bool = false):Void {
+	function compatOpenCustomSubstate(name:String, pauseGame:Bool = false, sourceSemantics:Bool = false):Void {
+		if (sourceSemantics) {
+			var next = new PsychCustomSubstate(name, this, pauseGame);
+			if (compatCustomSubstate != null && !compatCustomSubstate.lifecycleCreated)
+				compatCustomSubstate.cancelBeforeCreate();
+			compatCustomSubstate = next;
+			compatCustomSubstateName = name;
+			compatCustomSubstateOpen = true;
+			compatCustomSubstatePausesGame = pauseGame;
+			openSubState(next);
+			return;
+		}
 		if (name == null) name = '';
 		var previous = compatCustomSubstate;
 		if (previous != null && !previous.lifecycleCreated)
@@ -8186,7 +8197,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (previous != null && previous.pausesGame
 				&& FlxG.sound.music != null && !startingSong) resyncVocals();
 		}
-		compatCustomSubstate = new PsychCustomSubstate(this, name, pauseGame);
+		compatCustomSubstate = new PsychCustomSubstate(name, this, pauseGame, false);
 		openSubState(compatCustomSubstate);
 	}
 
@@ -8239,13 +8250,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			callAllHScript('customSubstateUpdatePost', [state.customName, elapsed]);
 	}
 
-	public function psychCustomSubstateDestroy(state:PsychCustomSubstate):Void {
-		callAllHScript('customSubstateDestroy', [state.customName]);
+	public function psychCustomSubstateFinished(state:PsychCustomSubstate):Void {
 		if (compatCustomSubstate != state) return;
 		compatCustomSubstate = null;
 		compatCustomSubstateOpen = false;
 		compatCustomSubstateName = '';
 		compatCustomSubstatePausesGame = false;
+	}
+
+	public function psychCustomSubstateDestroy(state:PsychCustomSubstate):Void {
+		callAllHScript('customSubstateDestroy', [state.customName]);
+		if (compatCustomSubstate != state) return;
+		psychCustomSubstateFinished(state);
 		setAllHaxeVar('customSubstate', null);
 		setAllHaxeVar('customSubstateName', 'unnamed');
 	}
@@ -21495,7 +21511,7 @@ void main(void) {
 		var resumeEventVideo = paused;
 		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(true);
 		var resumePsychCustom = compatCustomSubstatePausesGame
-			&& subState != null && subState == compatCustomSubstate;
+			&& subState != null && subState == compatCustomSubstate && !compatCustomSubstate.sourceLifecycle;
 		// Codename close callbacks inspect the still-open substate and paused
 		// flag before the host resumes gameplay.
 		if (codenameClosingSubstate) callCodenameScripts('onSubstateClose', [new CodenameGameEvent()]);

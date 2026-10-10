@@ -75,7 +75,7 @@ class Main {
             'compatOpenCustomSubstate', 'compatCloseCustomSubstate',
             'psychCustomSubstateCreate', 'psychCustomSubstateCreatePost',
             'psychCustomSubstateUpdate', 'psychCustomSubstateUpdatePost',
-            'psychCustomSubstateDestroy'))
+            'psychCustomSubstateDestroy', 'psychCustomSubstateFinished'))
         fixture = r'''
 class Task {public var active=true; public var finished=false; public function new() {}}
 class Manager<T> {public var tasks:Array<T>=[]; public function new() {}
@@ -87,7 +87,7 @@ class FlxG {public static var sound={music:new Sound()};}
 class PsychCustomSubstate {
  public var lifecycleCreated=false;public var pausesGame:Bool;public var customName:String;
  public var canceled=false;
- public function new(owner:Main,name:String,pauseGame:Bool){customName=name;pausesGame=pauseGame;}
+ public function new(name:String,owner:Main,pauseGame:Bool,sourceLifecycle:Bool=true){customName=name;pausesGame=pauseGame;}
  public function cancelBeforeCreate(){canceled=true;}
 }
 class HostBase {
@@ -147,6 +147,9 @@ class Main extends HostBase {
   s.psychCustomSubstateDestroy(second);
   check(s.compatCustomSubstateName=='overlay'&&s.compatCustomSubstateOpen,'old destroy cleared replacement');
   s.compatCloseCustomSubstate();
+  s.paused=true;s.persistentUpdate=false;FlxG.sound.music.paused=true;var before=s.resumes;
+  s.compatOpenCustomSubstate('source-overlay',false,true);
+  check(s.paused&&!s.persistentUpdate&&FlxG.sound.music.paused&&s.resumes==before,'source nonpausing open must not resume an already paused host');
  }
 }
 '''.replace('METHODS', methods)

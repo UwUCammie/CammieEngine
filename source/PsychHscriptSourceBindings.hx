@@ -47,7 +47,8 @@ class PsychHscriptSourceBindings {
 		variables.set('Countdown', PsychBaseStageCountdown);
 		variables.set('Rating', PsychRatingCompat);
 		variables.set('PsychCamera', PsychHscriptCamera);
-		variables.set('CustomSubstate', new PsychHscriptCustomSubstateFacade(host));
+		variables.set('CustomSubstate', host.nightmareVisionLegacyFieldCameras
+			? cast new PsychHscriptCustomSubstateFacade(host) : cast PsychCustomSubstate);
 		variables.set('parentLua', parentLua);
 		var selfFactory = callbackBridge == null ? null : Reflect.field(callbackBridge, 'selfFacade');
 		if (Reflect.isFunction(selfFactory))
@@ -55,9 +56,9 @@ class PsychHscriptSourceBindings {
 				[origin, interp, parentLua]));
 		variables.set('game', host);
 		variables.set('buildTarget', sourceBuildTarget());
-		variables.set('customSubstate', host.compatCustomSubstate);
-		variables.set('customSubstateName', host.compatCustomSubstate == null
-			? 'unnamed' : host.compatCustomSubstate.customName);
+		variables.set('customSubstate', host.nightmareVisionLegacyFieldCameras ? host.compatCustomSubstate : PsychCustomSubstate.instance);
+		variables.set('customSubstateName', host.nightmareVisionLegacyFieldCameras
+			? (host.compatCustomSubstate == null ? 'unnamed' : host.compatCustomSubstate.customName) : PsychCustomSubstate.name);
 
 		variables.set('setVar', function(name:String, value:Dynamic):Dynamic {
 			return SourceScriptVariables.set(function() return PsychStateClassBindings.registry(host), name, value);

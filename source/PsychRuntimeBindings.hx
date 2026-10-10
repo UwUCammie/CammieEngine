@@ -30,6 +30,13 @@ class PsychRuntimeBindings {
 			hscriptArgs == null ? args : hscriptArgs, null, false, null, null, excludedScopeKeys);
 	}
 
+	/** Shared source-family publication for callbacks and native lifecycle globals. */
+	public static function publish(host:PlayState, name:String, value:Dynamic, family:String,
+		?owner:Interp, ignoreSelf:Bool = false, ?exclusions:Array<String>):Void {
+		for (target in host.hscriptStates) if (eligible(target, family, owner, ignoreSelf, exclusions))
+			target.variables.set(name, value);
+	}
+
 	/** Check for a live Psych scope without building the ordered broadcast arrays. */
 	public static function hasScripts(host:PlayState):Bool {
 		if (host == null || host.hscriptStates == null) return false;
@@ -93,8 +100,7 @@ class PsychRuntimeBindings {
 			var family = kind;
 			owner.variables.set('setOn' + family, function(name:String, value:Dynamic,
 				ignoreSelf:Bool = false, ?exclusions:Array<String>):Void {
-				for (target in host.hscriptStates) if (eligible(target, family, owner, ignoreSelf, exclusions))
-					target.variables.set(name, value);
+				publish(host, name, value, family, owner, ignoreSelf, exclusions);
 			});
 			owner.variables.set('callOn' + family, function(name:String, ?args:Array<Dynamic>,
 				ignoreStops:Bool = false, ignoreSelf:Bool = true, ?exclusions:Array<String>,

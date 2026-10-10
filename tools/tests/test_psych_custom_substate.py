@@ -16,6 +16,7 @@ class PsychCustomSubstateTest(unittest.TestCase):
             'flixel/FlxG.hx': r'''
 package flixel;
 class FlxG {
+ public static var camera={followLerp:1.0};public static var sound:{music:Dynamic}={music:null};
  public static var cameras:{list:Array<Dynamic>}={list:['game','hud']};
 }
 ''',
@@ -26,6 +27,7 @@ class FlxSubState {
  public var cameras:Array<Dynamic>;
  public var destroyed:Bool=false;
  public function new() {}
+ public function add(o:Dynamic):Dynamic return o;public function insert(p:Int,o:Dynamic):Dynamic return o;
  public function create():Void { Main.order.push('superCreate'); }
  public function update(elapsed:Float):Void { Main.order.push('superUpdate:'+elapsed); }
  public function destroy():Void {
@@ -35,8 +37,13 @@ class FlxSubState {
  }
 }
 ''',
+            'MusicBeatSubstate.hx': 'class MusicBeatSubstate extends flixel.FlxSubState {public function new(){super();}}',
+            'PsychRuntimeBindings.hx': "class PsychRuntimeBindings {public static function publish(h:PlayState,n:String,v:Dynamic,f:String):Void h.setAllHaxeVar(n,v);public static function dispatch(h:PlayState,n:String,a:Array<Dynamic>):Void h.callAllHScript(n,a);}",
+            'MusicBeatState.hx': 'class MusicBeatState {public static function getVariables():Map<String,Dynamic> return [];}',
+            'flixel/FlxObject.hx': 'package flixel; class FlxObject {public function new(){}}',
             'PlayState.hx': r'''
 class PlayState {
+ public static var instance:PlayState;public var persistentUpdate:Bool;public var persistentDraw:Bool;public var paused:Bool;public function pauseVocals():Void{}public function closeSubState():Void{}public function compatOpenCustomSubstate(n:String,p:Bool,s:Bool):Void{}public function setAllHaxeVar(n:String,v:Dynamic):Void{}public function callAllHScript(n:String,a:Array<Dynamic>):Void{}public function psychCustomSubstateFinished(s:PsychCustomSubstate):Void{}
  public function new() {}
  public function psychCustomSubstateCreate(s:PsychCustomSubstate):Void {if(PsychCustomSubstate.instance!=s)throw 'create publication order';Main.order.push('create:'+s.customName);}
  public function psychCustomSubstateCreatePost(s:PsychCustomSubstate):Void Main.order.push('createPost:'+s.customName);
@@ -51,20 +58,20 @@ class Main {
  static function check(ok:Bool, why:String):Void if(!ok) throw why;
  static function main():Void {
   var owner=new PlayState();
-  var queued=new PsychCustomSubstate(owner,'queued',true);
+  var queued=new PsychCustomSubstate('queued',owner,true,false);
   check(queued.cameras.length==1 && queued.cameras[0]=='hud','substate camera');
   check(PsychCustomSubstate.instance==null,'queued substate published too early');
   queued.cancelBeforeCreate();
   check(order.join(',')=='superDestroy','queued open dispatched source callbacks');
   order=[];
-  var s=new PsychCustomSubstate(owner,'pause',true);
+  var s=new PsychCustomSubstate('pause',owner,true,false);
   s.create();check(PsychCustomSubstate.instance==s,'created substate not published');s.update(.25);s.notifyBeforeParentDestroy();s.destroy();check(PsychCustomSubstate.instance==null,'destroyed substate still published');
   check(order.join(',')=='create:pause,superCreate,createPost:pause,update:0.25,superUpdate:0.25,updatePost:0.25,destroy:pause,superDestroy',
    'callback order or duplicate destroy: '+order.join(','));
   order=[];
-  var old=new PsychCustomSubstate(owner,'old',false);
+  var old=new PsychCustomSubstate('old',owner,false,false);
   old.create();old.destroy();
-  var next=new PsychCustomSubstate(owner,'next',false);
+  var next=new PsychCustomSubstate('next',owner,false,false);
   next.create();next.destroy();
   check(order.join(',')=='create:old,superCreate,createPost:old,destroy:old,superDestroy,create:next,superCreate,createPost:next,destroy:next,superDestroy',
    'replacement lifecycle: '+order.join(','));
@@ -92,6 +99,8 @@ class Main {
         self.assertIn("case 'oncustomsubstateupdatepost' | 'customsubstateupdatepost'", bridge)
         self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*updateNightmareVisionScreenUnderlay\(\);\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
+        self.assertIn('subState == compatCustomSubstate && !compatCustomSubstate.sourceLifecycle', source)
+        self.assertIn('if (!resumePsychCustom && startTimer != null && !startTimer.finished)', source)
         self.assertIn('super.openSubState(null);', source)
 
 

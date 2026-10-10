@@ -315,6 +315,10 @@ class PsychSourceBindings {
 			if (doPause && wasPlaying) sound.play();
 		});
 
+		if (!host.nightmareVisionLegacyFieldCameras) {
+			variables.set('openCustomSubstate', PsychCustomSubstate.openCustomSubstate);
+			variables.set('closeCustomSubstate', PsychCustomSubstate.closeCustomSubstate);
+		}
 		variables.set('insertToCustomSubstate', function(tag:String, ?position:Int = -1):Bool
 			return insertToCustomSubstate(tag, position));
 
@@ -742,6 +746,7 @@ class PsychSourceBindings {
 	}
 
 	function insertToCustomSubstate(tag:String, position:Int):Bool {
+		if (!host.nightmareVisionLegacyFieldCameras) return PsychCustomSubstate.insertToCustomSubstate(tag, position);
 		var substate = host.compatCustomSubstate;
 		var object:Dynamic = host.compatFindObject(tag);
 		if (substate == null || object == null || !Std.isOfType(object, FlxObject)) return false;

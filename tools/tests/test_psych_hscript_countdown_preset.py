@@ -30,6 +30,7 @@ MAIN_TEMPLATE = r'''package;
 import hscript.Interp;
 
 class FakeHost {
+ public var nightmareVisionLegacyFieldCameras:Bool=false;
  public var compatCustomSubstate:Dynamic = {customName:"fixture"};
  public var psychScriptVariables:Map<String,Dynamic> = [];
  public function new() {}
@@ -60,6 +61,7 @@ class PsychHscriptSourceBindings {
 class PsychHscriptCustomSubstateFacade {
  public function new(_host:FakeHost) {}
 }
+class PsychCustomSubstate {public static var name='unnamed';public static var instance:Dynamic;}
 class PsychRatingCompat {}
 class PsychHscriptCamera {}
 class PsychHscriptErrorHandledRuntimeShader {}

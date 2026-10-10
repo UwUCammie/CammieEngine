@@ -49,6 +49,7 @@ class PsychRuntimeBindings {
  function attachCallbackScope(i:Interp):Void{}
  public function current():SourceIrisBridge return module();
 }'''.replace('__MODULE__', method(runtime, 'function module():SourceIrisBridge')).replace('__PRESET__', method(runtime, 'function installHscriptPreset('))
+        files['PsychCustomSubstate.hx'] = "class PsychCustomSubstate {public static var name='unnamed';public static var instance:Dynamic;}"
         files['PsychCamera.hx'] = 'class PsychCamera {}'
         files['PsychBaseStageActorGroupCompat.hx'] = 'class PsychBaseStageActorGroupCompat {}'
         files['PsychOwnerPaths.hx'] = 'class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return {};}'
@@ -60,7 +61,7 @@ class PsychRuntimeBindings {
         files['PsychHscriptCamera.hx'] = 'class PsychHscriptCamera {}'
         files['PsychHscriptCustomSubstateFacade.hx'] = 'class PsychHscriptCustomSubstateFacade {public function new(v:Dynamic){}}'
         files['Main.hx'] = r'''import flixel.FlxSprite;import flixel.graphics.FlxGraphic;import hscript.Interp;
-class Host {
+class Host {public var nightmareVisionLegacyFieldCameras:Bool=false;
  public var sourceHUDIconMode=1;public var psychSourceIconP1:PsychSourceHealthIcon;public var psychSourceIconP2:PsychSourceHealthIcon;
  public var nightmareVisionSourceIconP1:NightmareVisionHealthIcon;public var nightmareVisionSourceIconP2:NightmareVisionHealthIcon;
  public var playHUD:Dynamic;public var iconP1=new FlxSprite();public var iconP2=new FlxSprite();

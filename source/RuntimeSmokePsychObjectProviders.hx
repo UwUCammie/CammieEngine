@@ -20,7 +20,7 @@ class RuntimeSmokePsychObjectProviders {
 		play.gf=state.dad;play.dad=state.dad;play.boyfriend=state.boyfriend;play.variables=[];play.camHUD=state.camGame;play.isDead=false;
 		var dead:GameOverSubstate=Type.createEmptyInstance(GameOverSubstate);
 		@:privateAccess dead.members=[];@:privateAccess dead.length=0;
-		var custom=new PsychCustomSubstate(null,'published-probe',false);var queued=new PsychCustomSubstate(null,'queued-probe',false);
+		var custom=new PsychCustomSubstate('published-probe',null,false,false);var queued=new PsychCustomSubstate('queued-probe',null,false,false);
 		var lua=new LuaCompatInterp();var created:Array<FlxSprite>=[];var armed=false;
 		var cleanup=function(){
 			armed=false;
