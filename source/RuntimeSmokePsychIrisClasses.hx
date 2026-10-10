@@ -110,6 +110,12 @@ class RuntimeSmokePsychIrisClasses {
 			memberGroup.members[0].kill();
 			plain.evaluate('factoryReused=memberProbeGroup.recycle(null,function() {return new NativeSprite();});', 'sprite-factory-recycle-probe');
 			check(plain.variables.get('factoryReused') == recycledSprite, 'Factory-only recycle reuses native available source member');
+			plain.evaluate('rawMembers.resize(0); capturedArrayPush=Reflect.field(rawMembers,"push"); Reflect.callMethod(rawMembers,capturedArrayPush,[recycledSprite]); rawMembers.unshift(replacementSprite); rawMembers.insert(1,recycledSprite); sourceIterator=rawMembers.iterator(); iteratorIdentity=sourceIterator.next()==replacementSprite; pairIdentity=rawMembers.keyValueIterator().next().value==replacementSprite; arrayMapped=rawMembers.map(function(value) {return value.ticks;}).join(":"); arrayFiltered=rawMembers.filter(function(value) {return value.ticks>0;})[0]==recycledSprite; rawMembers.sort(function(left,right) {return left.ticks-right.ticks;}); arrayPopped=rawMembers.pop()==recycledSprite; arrayShifted=rawMembers.shift()==replacementSprite; arraySpliced=rawMembers.splice(0,1)[0]==recycledSprite; innerMemberGroup=memberProbeGroup.group; replacementMembers=[replacementSprite,recycledSprite]; Reflect.setProperty(innerMemberGroup,"members",replacementMembers); replacementIdentity=innerMemberGroup.members==replacementMembers; retainedArrayIterator=innerMemberGroup.members.iterator();', 'source-array-helpers-probe');
+			for (key in ['iteratorIdentity', 'pairIdentity', 'arrayFiltered', 'arrayPopped', 'arrayShifted', 'arraySpliced', 'replacementIdentity'])
+				check(plain.variables.get(key) == true, 'Native array operation source identity: ' + key);
+			check(plain.variables.get('arrayMapped') == '0:7:7' && memberGroup.members[0].x == 52
+				&& memberGroup.members[1].x == 2, 'Array callbacks and whole replacement retain source data and native storage');
+			var retainedArrayIterator:Dynamic = plain.variables.get('retainedArrayIterator');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -127,8 +133,10 @@ class RuntimeSmokePsychIrisClasses {
 			session.release();
 			var rejected = false;try session.read(item, 'count') catch (_:Dynamic) rejected = true;
 			check(rejected, 'State session release rejects retained objects');
+			rejected = false;try retainedArrayIterator.hasNext() catch (_:Dynamic) rejected = true;
+			check(rejected, 'Released owner rejects retained native array iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

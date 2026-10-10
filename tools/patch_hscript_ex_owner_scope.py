@@ -1351,6 +1351,31 @@ PATCHES["InterpEx.hx"].extend([
 ])
 
 
+PATCHES["InterpEx.hx"].append((
+    "return super.set(o, f, v);",
+    "return super.set(o, f, _classScope == null ? v : _classScope.nativePropertyValue(o, f, v)); // dp-owner-member-property-write",
+    "dp-owner-member-property-write",
+))
+
+
+PATCHES["InterpEx.hx"].extend([
+    ("Reflect.setProperty(_proxy.superClass, id, v);",
+     "Reflect.setProperty(_proxy.superClass, id, _classScope == null ? v : _classScope.nativePropertyValue(_proxy.superClass, id, v)); // dp-owner-implicit-member-write",
+     "dp-owner-implicit-member-write"),
+    ("Reflect.setProperty(proxy.superClass, f, v);",
+     "Reflect.setProperty(proxy.superClass, f, proxy._classScope == null ? v : proxy._classScope.nativePropertyValue(proxy.superClass, f, v)); // dp-owner-instance-member-write dp-owner-inherited-native-properties-set",
+     "dp-owner-instance-member-write"),
+])
+PATCHES["ScriptClass.hx"].extend([
+    ("                Reflect.setProperty(superClass, name, value);",
+     "                Reflect.setProperty(superClass, name, _classScope == null ? value : _classScope.nativePropertyValue(superClass, name, value)); // dp-owner-pending-member-write",
+     "dp-owner-pending-member-write"),
+    ("else if (hasNativeSuperField(name, true)) Reflect.setProperty(superClass, name, value);",
+     "else if (hasNativeSuperField(name, true)) Reflect.setProperty(superClass, name, _classScope == null ? value : _classScope.nativePropertyValue(superClass, name, value)); // dp-owner-super-member-write",
+     "dp-owner-super-member-write"),
+])
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
@@ -1470,6 +1495,7 @@ def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     # Preserve durable markers on their unchanged branch headers for upgrades.
     for anchor, marker in [
         ('} else if (proxy.hasNativeSuperField(f, false)) {', 'dp-owner-inherited-native-properties-get'),
+        ('} else if (proxy.hasNativeSuperField(f, true)) {', 'dp-owner-inherited-native-properties-set'),
         ('} else if (_proxy != null && _proxy.hasNativeSuperField(id, false)) {', 'dp-owner-class-scope-pending-read'),
     ]:
         if anchor in text and marker not in text:

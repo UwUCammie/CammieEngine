@@ -572,7 +572,7 @@ class NightmareVisionScriptInterp extends Interp {
 			return (cast object:NightmareVisionSaveData).setField(field, value);
 		if (Std.isOfType(object, NightmareVisionSaveFacade) && field == 'data')
 			throw '[nightmare-vision-save] Refused to replace owner save data';
-		return super.set(object, field, value);
+		return super.set(object, field, sourceClasses == null ? value : sourceClasses.nativePropertyValue(object, field, value));
 	}
 
 	override function assign(left:Expr, right:Expr):Dynamic {

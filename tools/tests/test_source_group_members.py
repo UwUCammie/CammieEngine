@@ -20,19 +20,43 @@ class Runner {
  public function write(group:Dynamic,value:Dynamic):Dynamic {var members=group.members;return members[0]=value;}
  public function writeInner(group:Dynamic,value:Dynamic):Dynamic {var members=group.group.members;return members[0]=value;}
  public function sum(group:Dynamic):Int {var result=0;for (member in group.members) if(member!=null) result+=member.value();return result;}
+ public function arrayOps(group:Dynamic,a:Dynamic,b:Dynamic):String {
+  var members=group.members;var out=[];members.resize(0);
+  var push=members.push;out.push(push(a));members.unshift(b);members.insert(1,a);
+  var it=members.iterator();out.push(it.next()==b);
+  var kv=members.keyValueIterator().next();out.push(kv.key==0 && kv.value==b);
+  out.push(members.contains(a));out.push(members.indexOf(a));out.push(members.lastIndexOf(a));
+  out.push(members.map(function(value){return value.value();}).join(":"));
+  out.push(members.filter(function(value){return value.value()>2;})[0]==a);
+  out.push(members.copy()[0]==b);out.push(members.slice(1,2)[0]==a);
+  members.sort(function(left,right){return left.value()-right.value();});
+  out.push(members.pop()==a);out.push(members.shift()==b);out.push(members.splice(0,1)[0]==a);
+  out.push(members.concat([a,b])[1]==b);members.push(a);out.push(members.remove(a));out.push(members.length);
+  return out.join("|");
+ }
+ public function replaceMembers(group:Dynamic,values:Dynamic):Bool {group.members=values;return group.members==values;}
  public function plain(value:Dynamic):Bool {var members=[];members[0]=value;return members[0]==value;}
  public function recycle(group:Dynamic,type:Dynamic):Dynamic {var captured=group.recycle;return captured(type);}
 }
 """
    (module/'Member.hx').write_text(member,encoding='utf-8');(module/'Runner.hx').write_text(runner,encoding='utf-8')
+   (module/'OwnedGroup.hx').write_text('''package demo;import flixel.group.FlxGroup;
+class OwnedGroup extends FlxGroup {
+ public function new(){super();}
+ public function writeBare(values:Dynamic):Bool {members=values;return members==values;}
+ public function writeThis(values:Dynamic):Bool {this.members=values;return this.members==values;}
+ public function first():Dynamic {return members[0];}
+}
+''',encoding='utf-8')
    (base/'Member.hx').write_text(member.replace('package demo;','package;'),encoding='utf-8')
+   (base/'Runner.hx').write_text(runner.replace('package demo;','package;').replace('for (member in group.members)', 'for (member in (cast group.members:Array<Dynamic>))').replace('public function arrayOps(group:Dynamic,a:Dynamic,b:Dynamic)', 'public function arrayOps(group:flixel.group.FlxSpriteGroup,a:Member,b:Member)').replace('var members=group.members;var out=[];', 'var members:Array<Member>=cast group.members;var out:Array<Dynamic>=[];'),encoding='utf-8')
    (base/'Main.hx').write_text(r'''import flixel.FlxSprite;import flixel.FlxBasic;import flixel.group.FlxSpriteGroup;
 import flixel.group.FlxGroup.FlxTypedGroup;
 class Main {
  static function check(ok:Bool,why:String):Void {if(!ok) throw why;}
  static function main():Void {
-  var bindings:Map<String,Dynamic>=['flixel.FlxSprite'=>FlxSprite];
-  var a=CodenameScriptClassLoader.load(Sys.args()[0],['demo.Runner'],bindings,new Map());
+  var bindings:Map<String,Dynamic>=['flixel.FlxSprite'=>FlxSprite,'flixel.group.FlxGroup'=>FlxTypedGroup];
+  var a=CodenameScriptClassLoader.load(Sys.args()[0],['demo.Runner','demo.OwnedGroup'],bindings,new Map());
   var b=CodenameScriptClassLoader.load(Sys.args()[0],['demo.Member'],bindings,new Map());
   check(a.diagnostics.concat(b.diagnostics).length==0,'load');
   var runner=a.scope.createInstance('demo.Runner');var type=b.scope.resolveClassSymbol('demo.Member');
@@ -63,8 +87,23 @@ class Main {
   check(runner.callFunction('recycle',[capped,type])==first && capped.length==1,'native capped rotation');
   var basics=new FlxTypedGroup<FlxBasic>();
   basics.add(new FlxBasic());check(runner.callFunction('write',[basics,member])==member && runner.callFunction('sum',[basics])==9,'basic group indexed write');
+  var arrays=new FlxSpriteGroup(),nativeArrays=new FlxSpriteGroup();
+  @:privateAccess replacement._interp.variables.set('custom',2);nativeReplacement.custom=2;
+  var result=runner.callFunction('arrayOps',[arrays,member,replacement]);
+  var nativeResult=new Runner().arrayOps(nativeArrays,cast oracle,nativeReplacement);
+  check(result==nativeResult,'structural array operations differ: '+result+' / '+nativeResult);
+  var values:Array<Dynamic>=[member,replacement];
+  check(runner.callFunction('replaceMembers',[basics,values]),'whole members replacement preserves input array identity');
+  check(runner.callFunction('sum',[basics])==11 && basics.members[0]!=member,'whole replacement retains native storage and source reads');
+  var owned=a.scope.createInstance('demo.OwnedGroup');
+  check(owned.callFunction('writeBare',[[member]]) && owned.callFunction('first',[])==member,'inherited bare members replacement');
+  check(owned.callFunction('writeThis',[[replacement]]) && owned.callFunction('first',[])==replacement,'inherited explicit members replacement');
+  var iterator=a.scope.bindNativeMethod(arrays.members,'iterator',Reflect.field(arrays.members,'iterator'));
+  var retained=Reflect.callMethod(null,iterator,[]);
   // Raw array assignment intentionally leaves group length management to native behavior.
   a.scope.release();check(b.scope.isActive(),'borrower release changed ownership');
+  var rejected=false;try retained.hasNext() catch (_:Dynamic) rejected=true;check(rejected,'retained iterator accepted released caller');
+  arrays.destroy();nativeArrays.destroy();
   group.destroy();factories.destroy();capped.destroy();basics.destroy();expected.destroy();b.scope.release();
   Sys.println('source group member operations passed');
  }

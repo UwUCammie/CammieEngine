@@ -50,6 +50,7 @@ class SourceNativeClassScope {
 		if (sourceObjects != null && sourceObjects.handles(type)) return sourceObjects.write(type, name, value);
 		for (binding in statics) if (binding.type == type && binding.name == name && binding.write != null)
 			return binding.write(value);
+		if (sourceObjects != null) value = sourceObjects.nativePropertyValue(type, name, value);
 		if (property) Reflect.setProperty(type, name, value); else Reflect.setField(type, name, value);
 		return value;
 	}

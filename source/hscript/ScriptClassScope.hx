@@ -505,7 +505,10 @@ class ScriptClassScope {
 		else if (sprites && name == 'group' && Std.isOfType(method, FlxTypedGroup))
 			nativeMemberArrays.set((cast method:FlxTypedGroup<Dynamic>).members, true);
 		if (!Reflect.isFunction(method)) return method;
-		var supported = group && ['add', 'insert', 'remove', 'replace', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
+		var arrayMethod = Std.isOfType(receiver, Array) && nativeMemberArrays.exists(receiver)
+			&& ['push', 'unshift', 'insert', 'remove', 'contains', 'indexOf', 'lastIndexOf', 'pop', 'shift',
+				'splice', 'slice', 'copy', 'concat', 'filter', 'map', 'sort', 'reverse', 'resize', 'iterator', 'keyValueIterator'].indexOf(name) >= 0;
+		var supported = arrayMethod || group && ['add', 'insert', 'remove', 'replace', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
 		if (!supported && !(receiver == FlxTween && NATIVE_TWEEN_TARGET_METHODS.indexOf(name) >= 0)) return method;
 		ensureActive();
 		var methods = nativeMethods.get(receiver);
@@ -514,6 +517,7 @@ class ScriptClassScope {
 		if (previous != null && Reflect.compareMethods(previous.method, method)) return previous.wrapped;
 		var wrapped = Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
 			ensureActive();
+			if (arrayMethod) return callNativeMemberArray(receiver, name, method, args);
 			if (name == 'recycle') {
 				var result = recycleScriptClass(receiver, args);
 				if (result.handled) return result.value;
@@ -589,6 +593,66 @@ class ScriptClassScope {
 		return value;
 	}
 	#end
+
+	#if flixel
+	function callNativeMemberArray(receiver:Dynamic, name:String, method:Dynamic, args:Array<Dynamic>):Dynamic {
+		var sprites = nativeMemberArrays.get(receiver);
+		var adapted = args.copy();
+		switch (name) {
+			case 'push' | 'unshift' | 'insert':
+				var index = name == 'insert' ? 1 : 0;
+				if (adapted.length > index) adapted[index] = nativeGroupValue(adapted[index], sprites, true);
+			case 'remove' | 'contains' | 'indexOf' | 'lastIndexOf':
+				if (adapted.length > 0) adapted[0] = nativeGroupValue(adapted[0], sprites, false);
+			case 'map' | 'filter':
+				var callback = adapted[0];
+				adapted[0] = function(value:Dynamic):Dynamic {
+					ensureActive();
+					return Reflect.callMethod(null, callback, [unwrapIndexedMember(value)]);
+				};
+			case 'sort':
+				var callback = adapted[0];
+				adapted[0] = function(left:Dynamic, right:Dynamic):Int {
+					ensureActive();
+					return Reflect.callMethod(null, callback, [unwrapIndexedMember(left), unwrapIndexedMember(right)]);
+				};
+			default:
+		}
+		var result:Dynamic = Reflect.callMethod(receiver, method, adapted);
+		switch (name) {
+			case 'pop' | 'shift': return unwrapIndexedMember(result);
+			case 'splice' | 'slice' | 'copy' | 'concat' | 'filter':
+				var values:Array<Dynamic> = cast result;
+				return [for (value in values) unwrapIndexedMember(value)];
+			case 'iterator' | 'keyValueIterator':
+				var iterator:Dynamic = result;
+				return {hasNext:function():Bool {ensureActive();return iterator.hasNext();}, next:function():Dynamic {
+					ensureActive();
+					var value:Dynamic = iterator.next();
+					if (name == 'keyValueIterator') {value.value = unwrapIndexedMember(value.value);return value;}
+					return unwrapIndexedMember(value);
+				}};
+			default:
+		}
+		return result;
+	}
+	#end
+
+	/** Preserve native property semantics and array identity during reflected writes. */
+	public function nativePropertyValue(receiver:Dynamic, name:String, value:Dynamic):Dynamic {
+		ensureActive();
+		#if flixel
+		if (name == 'members' && Std.isOfType(receiver, FlxTypedGroup) && Std.isOfType(value, Array)) {
+			var group:FlxTypedGroup<Dynamic> = cast receiver;
+			var sprites = nativeMemberArrays.get(group.members) == true;
+			var values:Array<Dynamic> = cast value;
+			var converted = [for (item in values) nativeGroupValue(item, sprites, true)];
+			for (index in 0...values.length) values[index] = converted[index];
+			nativeMemberArrays.set(values, sprites);
+		}
+		#end
+		return value;
+	}
 
 	/** A tracked members array retains its original storage and native element type. */
 	public function nativeArrayValue(collection:Dynamic, value:Dynamic):Dynamic {
