@@ -51,7 +51,7 @@ class NightmareVisionMusicBeatState extends FlxUIState {
 	public var sourceHost(default, null):NightmareVisionMusicBeatStateHost;
 	public var sourceSession(default, null):Dynamic;
 
-	var stepsToDo:Int = 0;
+	@:keep var stepsToDo:Int = 0;
 	var curDecStep:Float = 0;
 	var curDecBeat:Float = 0;
 	var stateResourcesReleased:Bool = false;
@@ -180,28 +180,9 @@ class NightmareVisionMusicBeatState extends FlxUIState {
 		sourceHost.callPlugins('onSectionHit', []);
 	}
 
-	function updateSection():Void {
-		if (stepsToDo < 1) stepsToDo = Math.round(getBeatsOnSection() * 4);
-		while (curStep >= stepsToDo) {
-			curSection++;
-			stepsToDo += Math.round(getBeatsOnSection() * 4);
-			sectionHit();
-		}
-	}
-
-	function rollbackSection():Void {
-		if (curStep < 0) return;
-		var lastSection = curSection;
-		curSection = 0;
-		stepsToDo = 0;
-		for (index in 0...sourceHost.sectionCount()) {
-			if (!sourceHost.hasSection(index)) continue;
-			stepsToDo += Math.round(getBeatsOnSection() * 4);
-			if (stepsToDo > curStep) break;
-			curSection++;
-		}
-		if (curSection > lastSection) sectionHit();
-	}
+	function updateSection():Void SourceBeatSections.advance(this, getBeatsOnSection, sectionHit);
+	function rollbackSection():Void SourceBeatSections.rollback(this, function() return sourceHost.sectionCount(),
+		function(index) return sourceHost.hasSection(index), getBeatsOnSection, sectionHit);
 
 	function getBeatsOnSection():Float return sourceHost.sectionBeats(curSection);
 

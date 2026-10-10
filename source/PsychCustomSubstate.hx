@@ -5,7 +5,7 @@ import flixel.FlxObject;
 
 /** Native Psych substate, with an explicit historical owner-clock adapter. */
 @:access(PlayState)
-class PsychCustomSubstate extends MusicBeatSubstate {
+class PsychCustomSubstate extends PsychMusicBeatSubstate {
 	@:keep public static var name:String = 'unnamed';
 	@:keep public static var instance:PsychCustomSubstate;
 	public var customName(default, null):String;
@@ -24,7 +24,7 @@ class PsychCustomSubstate extends MusicBeatSubstate {
 			PsychCustomSubstate.name = name;
 			PsychRuntimeBindings.publish(PlayState.instance, 'customSubstateName', name, 'HScript');
 		}
-		super();
+		super(sourceLifecycle);
 		bgColor = 0x00000000;
 		if (sourceLifecycle || FlxG.cameras.list.length > 0)
 			cameras = [FlxG.cameras.list[FlxG.cameras.list.length - 1]];

@@ -9,6 +9,7 @@ import flixel.math.FlxRect;
 import flixel.util.FlxTimer;
 
 class MusicBeatState extends FlxUIState {
+	@:keep public static var timePassedOnState:Float = 0;
 	/** One native variable registry per state, shared by source scripts and host adapters. */
 	@:keep public var variables:Map<String, Dynamic> = [];
 	@:keep public static function getState():MusicBeatState {
@@ -47,6 +48,7 @@ class MusicBeatState extends FlxUIState {
 		super.create();
 		CodenameMusicBeatTransition.startPendingIncoming(this);
 		NightmareVisionPluginHost.callActive('onStateCreate');
+		timePassedOnState = 0;
 	}
 
 	/** Start the source-compatible Codename transition for this active owner.
@@ -101,6 +103,7 @@ class MusicBeatState extends FlxUIState {
 	}
 
 	override function update(elapsed:Float) {
+		timePassedOnState += elapsed;
 		//everyStep();
 		var oldStep:Int = curStep;
 

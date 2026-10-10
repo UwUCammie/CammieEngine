@@ -173,7 +173,7 @@ class PsychHscriptCompat {
 			'backend.ClientPrefs' => 'ClientPrefs', 'backend.CoolUtil' => 'CoolUtil',
 			'backend.Controls' => 'Controls', 'backend.BaseStage' => 'BaseStage',
 			'backend.BaseStage.Countdown' => 'Countdown', 'backend.Difficulty' => 'Difficulty',
-			'backend.MusicBeatState' => 'MusicBeatState', 'states.PlayState' => 'PlayState',
+			'backend.MusicBeatState' => 'MusicBeatState', 'backend.MusicBeatSubstate' => 'MusicBeatSubstate', 'states.PlayState' => 'PlayState',
 			'objects.Character' => 'Character', 'objects.Alphabet' => 'Alphabet',
 			'objects.Note' => 'Note', 'objects.HealthIcon' => 'HealthIcon',
 			'psychlua.CustomSubstate' => 'CustomSubstate',

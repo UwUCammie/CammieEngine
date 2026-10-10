@@ -125,6 +125,7 @@ class Main {
    throw 'static ClientPrefs bridge stayed pinned to a previous owner';
   PlayState.instance=null;
   var detached=PsychClientPrefsCompat.data;
+  if(detached.noteOffset!=0 || PsychClientPrefsCompat.defaultData.noteOffset!=0) throw 'detached source note offset';
   if(detached!=PsychClientPrefsCompat.data) throw 'standalone fallback was not stable';
   loaded.scope.release(); prefs.release(); next.release();
  }

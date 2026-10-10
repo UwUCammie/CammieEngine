@@ -17,16 +17,16 @@ class MusicBeatSubstate extends FlxSubState
 	private var lastBeat:Float = 0;
 	private var lastStep:Float = 0;
 
-	private var curStep:Int = 0;
-	private var curBeat:Int = 0;
+	@:keep private var curStep:Int = 0;
+	@:keep private var curBeat:Int = 0;
 	/** Read-only timing aliases for isolated imported substate wrappers. */
 	public var hxcCurrentStep(get, never):Int;
 	public var hxcCurrentBeat(get, never):Int;
 	inline function get_hxcCurrentStep():Int return curStep;
 	inline function get_hxcCurrentBeat():Int return curBeat;
-	private var controls(get, never):Controls;
+	private var controls(get, never):Dynamic;
 
-	inline function get_controls():Controls
+	function get_controls():Dynamic
 		return PlayerSettings.player1.controls;
 
 	override function create()
@@ -50,8 +50,11 @@ class MusicBeatSubstate extends FlxSubState
 			stepHit();
 
 
-		super.update(elapsed);
+		updateSubstateChildren(elapsed);
 	}
+
+	/** Shared native child update for source dialects with their own beat clock. */
+	function updateSubstateChildren(elapsed:Float):Void super.update(elapsed);
 
 	private function updateCurStep():Void
 	{

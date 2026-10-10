@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Support Psych substate fractional timing, sections and source controls; share section traversal with NV states.
 - Dispose Psych custom menus before releasing parent scripts, including abandoned queued replacements.
 - Modern Psych pause transitions now suspend and resume unfinished global timers/tweens through shared source semantics, including custom substates.
 - Psych Lua and HScript custom substates now share native class identity, live callbacks, insertion and published-instance lifecycle semantics.

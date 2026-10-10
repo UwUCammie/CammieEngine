@@ -12,6 +12,7 @@ typedef BPMChangeEvent =
 	var stepTime:Int;
 	var songTime:Float;
 	var bpm:Float;
+	@:optional var stepCrochet:Float;
 }
 /**
  * Class that handles song position and timing. 
@@ -62,10 +63,14 @@ class Conductor {
 	@:keep public static function judgeNote(arr:Array<SourceRating>, diff:Float = 0):SourceRating {
 		return SourceRating.judge(arr, diff);
 	}
-	/**
-	 * Map BPM changes of song.
-	 * @param song Song to map. 
-	 */
+	/** Select the live source BPM segment using unadjusted song milliseconds. */
+	@:keep public static function getBPMFromSeconds(time:Float):BPMChangeEvent {
+		var lastChange:BPMChangeEvent = {stepTime:0, songTime:0, bpm:bpm, stepCrochet:stepCrochet};
+		for (change in bpmChangeMap) if (time >= change.songTime) lastChange = change;
+		return lastChange;
+	}
+
+	/** Map BPM changes of a song, retaining source step duration for each segment. */
 	public static function mapBPMChanges(song:SwagSong) {
 		bpmChangeMap = [];
 
@@ -78,6 +83,7 @@ class Conductor {
 				var event:BPMChangeEvent = {
 					stepTime: totalSteps,
 					songTime: totalPos,
+					stepCrochet: (60 / curBPM) * 1000 / 4,
 					bpm: curBPM
 				};
 				bpmChangeMap.push(event);

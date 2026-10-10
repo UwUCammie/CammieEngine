@@ -352,7 +352,7 @@ class NightmareVisionScriptedStateTest(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(contents, encoding="utf-8")
             for source_name in (
-                "NightmareVisionMusicBeatState.hx",
+                "NightmareVisionMusicBeatState.hx", "SourceBeatSections.hx",
                 "NightmareVisionStateScriptLoadResult.hx",
                 "NightmareVisionScriptedState.hx",
                 "NightmareVisionScriptBroadcast.hx", "NightmareVisionScriptGroup.hx",

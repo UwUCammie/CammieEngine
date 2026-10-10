@@ -35,7 +35,7 @@ class PsychClientPrefsCompat {
 			try options = Reflect.getProperty(optionClass, 'options') catch (_:Dynamic) {}
 		}
 		fallbackData = {
-			noteSkin:'Default',
+			noteSkin:'Default', noteOffset:0.0,
 			ratingOffset:0.0, sickWindow:45.0, goodWindow:90.0, badWindow:135.0, safeFrames:10.0,
 			// This engine has no lowQuality preference or matching quality mode.
 			lowQuality:false,
@@ -57,7 +57,7 @@ class PsychClientPrefsCompat {
 		var owner = currentOwner();
 		if (owner != null) return Reflect.getProperty(owner, 'defaultData');
 		if (fallbackDefaultData == null)
-			fallbackDefaultData = {noteSkin:'Default', ratingOffset:0.0, sickWindow:45.0, goodWindow:90.0, badWindow:135.0, safeFrames:10.0, lowQuality:false, scoreZoom:true, antialiasing:true, shaders:true};
+			fallbackDefaultData = {noteSkin:'Default', noteOffset:0.0, ratingOffset:0.0, sickWindow:45.0, goodWindow:90.0, badWindow:135.0, safeFrames:10.0, lowQuality:false, scoreZoom:true, antialiasing:true, shaders:true};
 		return fallbackDefaultData;
 	}
 

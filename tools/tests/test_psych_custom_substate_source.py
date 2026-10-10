@@ -13,7 +13,8 @@ class PsychCustomSubstateSourceTest(unittest.TestCase):
    'flixel/FlxG.hx':"package flixel; class FlxG {public static var camera={followLerp:1.0};public static var sound:{music:Dynamic}={music:null};public static var cameras:{list:Array<Dynamic>}={list:['game','hud']};}",
    'PsychRuntimeBindings.hx': "class PsychRuntimeBindings {public static function publish(h:PlayState,n:String,v:Dynamic,f:String):Void h.setAllHaxeVar(n,v);public static function dispatch(h:PlayState,n:String,a:Array<Dynamic>):Void h.callAllHScript(n,a);}",
    'MusicBeatState.hx':'class MusicBeatState {public static var vars:Map<String,Dynamic>=[];public static function getVariables():Map<String,Dynamic>{Main.log.push("registry");return vars;}}',
-   'MusicBeatSubstate.hx':r"""
+   'PsychMusicBeatSubstate.hx':'class PsychMusicBeatSubstate extends MusicBeatSubstate {public function new(sourceTiming:Bool=true){super();}}',
+'MusicBeatSubstate.hx':r"""
 class MusicBeatSubstate {
  public var bgColor:Int;public var cameras:Array<Dynamic>;
  public function new(){Main.log.push('superNew');}

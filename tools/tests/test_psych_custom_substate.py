@@ -37,7 +37,8 @@ class FlxSubState {
  }
 }
 ''',
-            'MusicBeatSubstate.hx': 'class MusicBeatSubstate extends flixel.FlxSubState {public function new(){super();}}',
+            'PsychMusicBeatSubstate.hx':'class PsychMusicBeatSubstate extends MusicBeatSubstate {public function new(sourceTiming:Bool=true){super();}}',
+'MusicBeatSubstate.hx': 'class MusicBeatSubstate extends flixel.FlxSubState {public function new(){super();}}',
             'PsychRuntimeBindings.hx': "class PsychRuntimeBindings {public static function publish(h:PlayState,n:String,v:Dynamic,f:String):Void h.setAllHaxeVar(n,v);public static function dispatch(h:PlayState,n:String,a:Array<Dynamic>):Void h.callAllHScript(n,a);}",
             'MusicBeatState.hx': 'class MusicBeatState {public static function getVariables():Map<String,Dynamic> return [];}',
             'flixel/FlxObject.hx': 'package flixel; class FlxObject {public function new(){}}',

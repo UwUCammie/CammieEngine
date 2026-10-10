@@ -20,6 +20,7 @@ class FlxG {
 }
 class TitleState { public static var initialized=true; }
 class BeatTest extends Base {
+ static var timePassedOnState:Float=0;
  var curStep=0; var maxStepCatchUp=32; var targetStep=200;
  var steps:Array<Int>=[]; var beats:Array<Int>=[];
  function updateCurStep() {curStep=targetStep;}
@@ -28,7 +29,8 @@ class BeatTest extends Base {
 ''' + method + '''
  static function main() {
   var demo=new BeatTest(); demo.maxStepCatchUp=0;
-  demo.update(0);
+  demo.update(.25);
+  if(timePassedOnState!=.25) throw "State elapsed clock";
   if(demo.steps.length!=200 || demo.beats.length!=50) throw "Accelerated demo dropped beat hooks";
   for(i in 0...200) if(demo.steps[i]!=i+1) throw "Steps must stay ordered";
   demo.update(0);
