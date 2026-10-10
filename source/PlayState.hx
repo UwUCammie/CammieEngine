@@ -8154,6 +8154,33 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		compatCustomPausedSnapshot = false;
 	}
 
+	/** Dispose a mounted source menu while its scripts and audio still exist.
+	 * Flixel queues replacements separately; an uncreated target is abandoned
+	 * when its parent exits and must not replace the menu during teardown. */
+	function destroyPsychCustomSubstates():Void {
+		var abandoned:Array<PsychCustomSubstate> = [];
+		if (compatCustomSubstate != null && !compatCustomSubstate.lifecycleCreated)
+			abandoned.push(compatCustomSubstate);
+		@:privateAccess var requested = _requestedSubState;
+		if (Std.isOfType(requested, PsychCustomSubstate)) {
+			var custom:PsychCustomSubstate = cast requested;
+			if (!custom.lifecycleCreated && abandoned.indexOf(custom) < 0) abandoned.push(custom);
+		}
+		if (PsychCustomSubstate.instance != null && PsychCustomSubstate.instance.sourceLifecycle) {
+			super.openSubState(null);
+			closeSubState();
+			resetSubState();
+		} else if (Std.isOfType(subState, PsychCustomSubstate)) {
+			(cast subState:PsychCustomSubstate).notifyBeforeParentDestroy();
+		}
+		for (queued in abandoned) {
+			super.openSubState(null);
+			queued.cancelBeforeCreate();
+			psychCustomSubstateFinished(queued);
+		}
+		if (compatCustomSubstate != null) compatCustomSubstate.notifyBeforeParentDestroy();
+	}
+
 	/** Psych's callbacks are emitted by the real FlxSubState, including while
 	 * PlayState.persistentUpdate is false. Script objects remain in their existing
 	 * PlayState registry unless explicitly inserted into the substate. */
@@ -26775,6 +26802,7 @@ void main(void) {
 	}
 
 	override public function destroy() {
+		destroyPsychCustomSubstates();
 		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
 		psychVideoHostDestroyed = true;
 		psychMissingIntroRequest = null;
@@ -26792,11 +26820,6 @@ void main(void) {
 		vSliceScrollTargets.resize(0);
 		var codenameTransitionOwner = codenameSelectedRoot();
 		var smokeActors:Dynamic = runtimeSmokeActorTracking() ? runtimeSmokeActorSummary() : null;
-		if (compatCustomSubstate != null) {
-			if (compatCustomSubstate.lifecycleCreated)
-				compatCustomSubstate.notifyBeforeParentDestroy();
-			else compatCustomSubstate.cancelBeforeCreate();
-		}
 		resumePsychCustomTimeline();
 		if (hxcCutsceneTimelineRuntime != null) {
 			hxcCutsceneTimelineRuntime.cancel(false);

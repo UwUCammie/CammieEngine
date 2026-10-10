@@ -1670,6 +1670,7 @@ class RuntimeSmokeHarness {
 
 	/** Report a bounded successful smoke window and terminate cleanly. */
 	public static function succeed():Void {
+		if (RuntimeSmokePsychCustomTeardown.pending) {fail('psych-custom-teardown-timeout', 'Parent teardown probe did not finish');return;}
 		if (RuntimeSmokePsychCustomTransitions.pending) {fail('psych-custom-transition-timeout', 'Mounted transition probe did not finish');return;}
 		if (!enabled() || finished)
 			return;
@@ -2028,6 +2029,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokeLegacyEventMap.verify();
 			RuntimeSmokeLegacySinging.verify();
 			RuntimeSmokePsychCustomTransitions.begin(PlayState.instance);
+			RuntimeSmokePsychCustomTeardown.begin(PlayState.instance);
 		} catch (error:Dynamic) {
 			if (window != null) window.onRender.remove(onNoteRenderReadbackRendered);
 			fail('note-render-readback', Std.string(error));

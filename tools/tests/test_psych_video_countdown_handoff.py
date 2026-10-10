@@ -59,6 +59,8 @@ class Main {
  var nightmareVisionScripts:Dynamic=null;var genNotesBeforeCountdown=true;
  var nightmareVisionHoldLedger:HoldLedgerFixture=new HoldLedgerFixture();
  var releasedHoldActors:Array<Dynamic>=[];var releaseHoldCalls=0;
+ var customTeardownCalls=0;
+ function destroyPsychCustomSubstates():Void {if(psychVideoHostDestroyed)throw "substate teardown ran after video release";customTeardownCalls++;}
  function generatePlayfields():Void throw "Psych video countdown entered NV receptor generation";
  public function new(){FlxG.state=this;}
  function add(v:Dynamic):Void members.push(v);function remove(v:Dynamic,b:Bool):Void members.remove(v);
@@ -96,7 +98,7 @@ class Main {
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');v=h.psychSourceVideo;v.finish();
   h.psychStartVideo('owner','intro');h.hxcCountdownHookDispatching=false;FlxTimer.tick();check(h.countdowns==0,'replacement cancels queued old handoff');
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.teardown();
-  check(h.nightmareVisionHoldLedger.clearCalls==1&&h.releaseHoldCalls==1
+  check(h.customTeardownCalls==1&&h.nightmareVisionHoldLedger.clearCalls==1&&h.releaseHoldCalls==1
     &&h.releasedHoldActors.join(',')=='held-actor','destroy releases and records source hold actors');
   FlxTimer.tick();check(h.countdowns==0&&h.ends==0,'destroy cancels');
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.hxcCountdownHookDispatching=false;FlxG.state={};FlxTimer.tick();check(h.countdowns==0,'state lifetime');
