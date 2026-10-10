@@ -392,27 +392,32 @@ class ScriptClassScope {
 		return new ScriptClass(descriptor, args == null ? [] : args, this);
 	}
 
-	/** Adapt a selected-owner source class passed to FlxTypedGroup.recycle. */
+	/** Recycle explicitly shared source classes without transferring their ownership. */
 	public function recycleScriptClass(receiver:Dynamic, args:Array<Dynamic>):{handled:Bool, value:Dynamic} {
 		#if flixel
-		if (!active || !Std.isOfType(receiver, FlxTypedGroup) || args == null || args.length == 0
+		if (!Std.isOfType(receiver, FlxTypedGroup) || args == null || args.length == 0
 			|| !Std.isOfType(args[0], ScriptClassSymbol)) return {handled:false, value:null};
+		ensureActive();
 		var symbol:ScriptClassSymbol = cast args[0];
-		if (symbol.scope != this)
-			throw '[hscript-class-scope] recycle received a source class from another owner';
+		var classOwner = symbol.scope;
+		if (classOwner == null || !classOwner.isActive()
+			|| classOwner.findDescriptor(symbol.fullName) != symbol.descriptor)
+			throw '[hscript-class-scope] recycle received an unowned or released source class';
 		var group:FlxTypedGroup<Dynamic> = cast receiver;
 		var objectFactory:Dynamic = args.length > 1 ? args[1] : null;
 		var force = args.length > 2 && args[2] == true;
 		var revive = args.length <= 3 || args[3] != false;
 		var factory:Void->Dynamic = function():Dynamic {
 			var value:Dynamic = objectFactory == null
-				? createInstance(symbol.fullName, [])
+				? classOwner.createInstance(symbol.fullName, [])
 				: Reflect.callMethod(null, objectFactory, []);
+			// Authored factories can release a participating scope. Never publish a
+			// newly created member after its caller or requested class was released.
+			ensureActive();
+			classOwner.ensureActive();
 			if (Std.isOfType(value, ScriptClass)) {
 				var proxy:ScriptClass = cast value;
-				if (!ownsScriptClassProxy(proxy))
-					throw '[hscript-class-scope] recycle factory returned a source object from another owner';
-				return bridgeOwnedFlxBasic(proxy);
+				return actualOwner(proxy).bridgeOwnedFlxBasic(proxy);
 			}
 			return value;
 		};
@@ -422,36 +427,30 @@ class ScriptClassScope {
 		// only when the group needs a new owner object.
 		if (group.maxSize > 0) {
 			var result:Dynamic = group.recycle(cast PsychScriptClassBasicBridge, factory, force, revive);
-			return {handled:true, value:ownerForRecycleResult(result)};
+			return {handled:true, value:unwrapIndexedMember(result)};
 		}
 
 		for (member in group.members) {
 			if (member == null || member.exists || !Std.isOfType(member, PsychScriptClassBasicBridge)) continue;
 			var bridge:PsychScriptClassBasicBridge = cast member;
 			var owner = bridge.scriptOwner();
-			if (owner == null || nativeBasicBridges.get(owner) != bridge
-				|| !matchesRecycleClass(owner, symbol.descriptor, force)) continue;
+			if (owner == null) continue;
+			var memberOwner = actualOwner(owner);
+			if (memberOwner.nativeBasicBridges.get(owner) != bridge
+				|| !memberOwner.matchesRecycleClass(owner, symbol.descriptor, force)) continue;
 			if (revive) bridge.revive();
 			return {handled:true, value:owner};
 		}
 
 		var created = factory();
 		if (created != null) group.add(cast created);
-		return {handled:true, value:ownerForRecycleResult(created)};
+		return {handled:true, value:unwrapIndexedMember(created)};
 		#else
 		return {handled:false, value:null};
 		#end
 	}
 
 	#if flixel
-	function ownerForRecycleResult(value:Dynamic):Dynamic {
-		if (!Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
-		var bridge:PsychScriptClassBasicBridge = cast value;
-		var owner = bridge.scriptOwner();
-		if (owner == null) return value;
-		var scope = actualOwner(owner);
-		return scope.nativeBasicBridges.get(owner) == bridge ? owner : value;
-	}
 
 	function matchesRecycleClass(owner:ScriptClass, requested:ClassDeclEx, force:Bool):Bool {
 		var current:ClassDeclEx = owner._c;

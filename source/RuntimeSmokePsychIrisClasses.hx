@@ -20,8 +20,11 @@ class RuntimeSmokePsychIrisClasses {
 		var session:PsychSourceClassSession = null;
 		var nativeGroup = new flixel.group.FlxGroup.FlxTypedGroup<flixel.FlxBasic>();
 		var nativeTween:flixel.tweens.FlxTween = null;
+		var recycleGroup = new flixel.group.FlxGroup.FlxTypedGroup<flixel.FlxBasic>();
+		var recycleOwner:CodenameScriptClassLoader = null;
 		var cleanup = function() {
 			if (nativeTween != null) nativeTween.cancel();if (nativeGroup != null) nativeGroup.destroy();
+			recycleGroup.destroy();if (recycleOwner != null) recycleOwner.scope.release();
 			plain.release();if (runtime != null) runtime.release();
 			if (session != null) session.release();
 			state.psychSourceClassSessions.remove(root);
@@ -53,6 +56,19 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.read(member, 'x') == 25, 'Captured native tween targets source superclass');
 			nativeGroup.update(0.1);
 			check(session.read(member, 'ticks') == 1, 'Native group drives source lifecycle');
+			recycleOwner = CodenameScriptClassLoader.open(root, ['flixel.FlxObject'=>flixel.FlxObject], new Map());
+			var recycleLoaded = recycleOwner.importClasses(['demo.NativeMember']);
+			check(recycleLoaded.diagnostics.length == 0, 'Native recycle owner imports');
+			plain.variables.set('foreignRecycleClass', recycleOwner.scope.resolveClassSymbol('demo.NativeMember'));
+			plain.variables.set('recycleProbeGroup', recycleGroup);
+			plain.evaluate('capturedRecycleProbe=recycleProbeGroup.recycle; recycledProbe=capturedRecycleProbe(foreignRecycleClass);', 'recycle-probe');
+			var recycled = plain.variables.get('recycledProbe');
+			recycleGroup.members[0].kill();
+			plain.evaluate('reusedProbe=capturedRecycleProbe(foreignRecycleClass,null,false,false);', 'recycle-reuse-probe');
+			check(plain.variables.get('reusedProbe') == recycled && !recycleGroup.members[0].exists, 'Native Iris foreign recycle identity and revive false');
+			plain.evaluate('recycleProbeGroup.recycle(foreignRecycleClass);', 'recycle-revive-probe');
+			recycleGroup.update(0.1);
+			check(session.read(recycled, 'ticks') == 1, 'Foreign recycled member retains actual source lifecycle');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -66,7 +82,7 @@ class RuntimeSmokePsychIrisClasses {
 			var rejected = false;try session.read(item, 'count') catch (_:Dynamic) rejected = true;
 			check(rejected, 'State session release rejects retained objects');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

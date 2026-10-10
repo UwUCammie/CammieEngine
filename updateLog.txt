@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Shared source-class recycling now preserves the actual owner across script sessions, including subclass filters, factory-created objects and fixed-size group reuse.
 - Psych HScript and imported source classes now share captured/reflected native group and tween calls, retaining source member identity and actual ownership across explicitly shared objects.
 - Secondary mod services can load saved preferences without activating or replacing volume shortcuts.
 - Ordinary Psych HScript and embedded runHaxeCode now share owner-scoped source-class imports, object access and core reflection; stage callbacks remain alive after their importing script closes.
