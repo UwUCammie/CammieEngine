@@ -27,17 +27,6 @@ class PsychReflectionBindings {
 		PsychStateClassBindings.installScope(nativeClasses);
 		if (host.nightmareVisionLegacyFieldCameras) installLegacyProperties();
 		else PsychPropertyBindings.install(host,interp,nativeClasses,parse);
-		interp.variables.set('getPropertyFromGroup', function(group:Dynamic, index:Dynamic,
-			property:Dynamic, allowMaps:Bool = false):Dynamic {
-			return readPath(member(group, index), propertyPath(property), allowMaps);
-		});
-		interp.variables.set('setPropertyFromGroup', function(group:Dynamic, index:Dynamic,
-			property:Dynamic, value:Dynamic, allowMaps:Bool = false,
-			allowInstances:Bool = false):Dynamic {
-			if (allowInstances) value = parse(value);
-			writePath(member(group, index), propertyPath(property), value, allowMaps);
-			return value;
-		});
 		interp.variables.set('instanceArg', function(path:String, ?type:String):String {
 			return SourceScriptReflection.INSTANCE_PREFIX + path + (type == null ? '' : '::' + type);
 		});
@@ -57,6 +46,21 @@ class PsychReflectionBindings {
 			if (!Std.isOfType(object, FlxBasic)) return;
 			host.addHscriptSprite(cast object, front ? DisplayLayer.BEHIND_NONE : DisplayLayer.BEHIND_ALL);
 		});
+
+	}
+
+	function installLegacyProperties():Void {
+		interp.variables.set('getPropertyFromGroup', function(group:Dynamic, index:Dynamic,
+			property:Dynamic, allowMaps:Bool = false):Dynamic {
+			return readPath(member(group, index), propertyPath(property), allowMaps);
+		});
+		interp.variables.set('setPropertyFromGroup', function(group:Dynamic, index:Dynamic,
+			property:Dynamic, value:Dynamic, allowMaps:Bool = false,
+			allowInstances:Bool = false):Dynamic {
+			if (allowInstances) value = parse(value);
+			writePath(member(group, index), propertyPath(property), value, allowMaps);
+			return value;
+		});
 		interp.variables.set('addToGroup', function(group:String, tag:String, index:Int = -1):Void {
 			var object = root(tag);
 			if (object == null || !Reflect.isFunction(Reflect.getProperty(object, 'destroy'))) return;
@@ -68,9 +72,6 @@ class PsychReflectionBindings {
 			if (tag != null && object == null) return;
 			SourceScriptReflection.removeFromGroup(get(group, true), index, object, destroy);
 		});
-	}
-
-	function installLegacyProperties():Void {
 		var previousGet = interp.variables.get('getProperty');
 		var previousSet = interp.variables.get('setProperty');
 		interp.variables.set('getProperty', function(path:Dynamic, allowMaps:Bool = false):Dynamic {

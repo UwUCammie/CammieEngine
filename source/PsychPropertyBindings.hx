@@ -10,6 +10,10 @@ class PsychPropertyBindings {
 			function(name) return classes.hasRuntimeClass(name)?classes.resolveClass(name):host.compatResolveClass(name),
 			function(object,key) return classes.read(object,key),
 			function(object,key,value):Void {classes.write(object,key,value);},parse,function(message) trace('[psych-reflection] '+message));
+		interp.variables.set('getPropertyFromGroup',service.getGroup);
+		interp.variables.set('setPropertyFromGroup',service.setGroup);
+		interp.variables.set('addToGroup',service.addGroup);
+		interp.variables.set('removeFromGroup',service.removeGroup);
 		interp.variables.set('getProperty',service.get);
 		interp.variables.set('setProperty',service.set);
 		interp.variables.set('getPropertyFromClass',service.getClass);

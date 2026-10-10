@@ -128,20 +128,20 @@ class SourceScriptReflection {
 		}
 		return result;
 	}
-	static function legacyGroupFieldOwner(object:Dynamic, parts:Array<String>, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+	public static function groupFieldOwner(object:Dynamic, parts:Array<String>, readProperty:(Dynamic,String)->Dynamic):Dynamic {
 		for (i in 0...parts.length - 1) object = readProperty(object, parts[i]);
 		return object;
 	}
 	public static function readLegacyGroupField(object:Dynamic, field:String, readProperty:(Dynamic,String)->Dynamic):Dynamic {
 		var parts = field.split('.');
-		var owner = legacyGroupFieldOwner(object, parts, readProperty);
+		var owner = groupFieldOwner(object, parts, readProperty);
 		var key = parts[parts.length - 1];
 		return readLegacyField(owner, key, readProperty);
 	}
 	public static function writeLegacyGroupField(object:Dynamic, field:String, value:Dynamic,
 		readProperty:(Dynamic,String)->Dynamic, writeProperty:(Dynamic,String,Dynamic)->Void):Void {
 		var parts = field.split('.');
-		writeProperty(legacyGroupFieldOwner(object, parts, readProperty), parts[parts.length - 1], value);
+		writeProperty(groupFieldOwner(object, parts, readProperty), parts[parts.length - 1], value);
 	}
 	public static function getLegacyGroupProperty(group:Dynamic, index:Int, field:Dynamic,
 		isGroup:Dynamic->Bool, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Dynamic {
