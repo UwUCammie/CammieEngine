@@ -454,6 +454,12 @@ class CodenameScriptClassLoader {
 						continue;
 					}
 					bodyStart = skipWhitespace(mask, returnType.end);
+					// A function-valued return type can contain several simple arrow types.
+					while (mask.substr(bodyStart, 2) == '->') {
+						returnType = readGenericType(mask, skipWhitespace(mask, bodyStart + 2));
+						if (returnType.error != '') break;
+						bodyStart = skipWhitespace(mask, returnType.end);
+					}
 				}
 				if (isWordAt(mask, bodyStart, 'return') || isDirectExpressionBody(mask, bodyStart)
 					|| isWordAt(mask, bodyStart, 'if')) {
@@ -894,9 +900,8 @@ class CodenameScriptClassLoader {
 
 	/** ParserEx class fields do not consume a trailing semicolon after an
 	 * expression-bodied method. Haxe permits the compact constructor spelling
-	 * `function new(...) super(...);`; removing only that field terminator keeps
-	 * the same single superclass-constructor call and avoids rewriting arbitrary
-	 * expression bodies. */
+	 * `function new(...) super(...);`; wrap the complete statement so later
+	 * expression-body normalization cannot consume the following class field. */
 	static function normalizeSuperConstructorBodies(source:String):{source:String, error:String} {
 		var mask = codeMask(source);
 		var edits:Array<{start:Int, end:Int, value:String}> = [];
@@ -920,7 +925,8 @@ class CodenameScriptClassLoader {
 			var next = skipWhitespace(mask, terminator + 1);
 			if (next < mask.length && mask.charAt(next) != '}'
 				&& !startsClassField(mask, next)) continue;
-			edits.push({start:terminator, end:terminator + 1, value:' '});
+			edits.push({start:body, end:body, value:'{'});
+			edits.push({start:terminator + 1, end:terminator + 1, value:'}'});
 		}
 		return {source:applyEdits(source, edits), error:''};
 	}

@@ -2031,6 +2031,7 @@ class RuntimeSmokeHarness {
 			RuntimeSmokePsychSubstateClock.verify(PlayState.instance);
 			RuntimeSmokePsychStageCallbacks.verify(PlayState.instance);
 			RuntimeSmokePsychStageContext.verify(PlayState.instance);
+			RuntimeSmokeSourceVirtualMethods.verify();
 			RuntimeSmokePsychCustomTransitions.begin(PlayState.instance);
 			RuntimeSmokePsychCustomTeardown.begin(PlayState.instance);
 		} catch (error:Dynamic) {

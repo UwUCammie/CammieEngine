@@ -1136,6 +1136,61 @@ PATCHES["InterpEx.hx"].append((
     'dp-owner-derived-this-identity'))
 
 
+PATCHES["ScriptClass.hx"].append((
+    "    public function hasDeclaredField(name:String):Bool {",
+    """    // dp-owner-virtual-method-owner
+    public function virtualMethodOwner(name:String):ScriptClass {
+        var lexical:ScriptClass = this;
+        while (lexical != null) {
+            var field = lexical.findField(name);
+            if (field != null) {
+                if (lexical.findFunction(name) == null) return null;
+                if (field.access.indexOf(AStatic) >= 0 || name == "new") return lexical;
+                break;
+            }
+            lexical = Std.isOfType(lexical.superClass, ScriptClass) ? cast lexical.superClass : null;
+        }
+        if (lexical == null) return null;
+        var current = constructionRoot();
+        while (current != null) {
+            if (current.findFunction(name) != null) return current;
+            current = Std.isOfType(current.superClass, ScriptClass) ? cast current.superClass : null;
+        }
+        return lexical;
+    }
+
+    public function hasDeclaredField(name:String):Bool {""",
+    "dp-owner-virtual-method-owner"))
+PATCHES["InterpEx.hx"].append((
+    """            if (_proxy != null && _proxy.findFunction(id) != null) {
+                _nextCallObject = _proxy;
+                return _proxy.resolveField(id);""",
+    """            var methodOwner:AbstractScriptClass = _proxy == null ? null : _proxy.virtualMethodOwner(id);
+            if (methodOwner != null) { // dp-owner-virtual-bare-method
+                _nextCallObject = methodOwner;
+                return methodOwner.resolveField(id);""",
+    "dp-owner-virtual-bare-method"))
+PATCHES["AbstractScriptClass.hx"].append((
+    """                    var fn = this.findFunction(name);
+                    var nargs = 0;
+                    if (fn.args != null) {
+                        nargs = fn.args.length;
+                    }
+                    switch (nargs) {
+                        case 0:     return this.callFunction0.bind(name);
+                        case 1:     return this.callFunction1.bind(name, _);
+                        case 2:     return this.callFunction2.bind(name, _, _);
+                        case 3:     return this.callFunction3.bind(name, _, _, _);
+                        case 4:     return this.callFunction4.bind(name, _, _, _, _);
+                        case _:     @:privateAccess this._interp.error(ECustom("only 4 params allowed in script class functions (.bind limitation)"));
+                    }""",
+    """                    // dp-owner-method-reference-arity
+                    return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+                        return this.callFunction(name, args);
+                    });""",
+    "dp-owner-method-reference-arity"))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text

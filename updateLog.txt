@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Shared imported source classes now dispatch inherited calls to child overrides, preserve explicit super/static calls, and support captured methods with more than four arguments.
+- Fix compact source constructors followed by another method and expression bodies returning function references.
 - Psych stage helpers now follow the active state while gameplay callbacks and story/cutscene values use their source-specific shared providers.
 - Psych source stages now create inside super(), register inherited and nested stages, and keep sibling callbacks alive through shared owner cleanup.
 - Psych source stages now retain per-stage timing, honor activity gates and share ordered registry callbacks with source states.
