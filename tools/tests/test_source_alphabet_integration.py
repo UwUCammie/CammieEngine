@@ -147,6 +147,9 @@ class Main {static function main() {
  def run_haxe(self,files,cpp=False):
   from psych_standard_fixture_support import STANDARD_SERVICES
   files['PsychStandardServices.hx'] = STANDARD_SERVICES
+  # Alphabet fixtures isolate native argument parsing, covered by the source oracle.
+  files['PsychInstanceArguments.hx']='class PsychInstanceArguments {public static function parse(v:Dynamic,r:Bool,c:Dynamic,?p:Dynamic):Dynamic return v;}'
+  if 'PlayState.hx' in files and 'var nightmareVisionLegacyFieldCameras' not in files['PlayState.hx']: files['PlayState.hx']=files['PlayState.hx'].replace('class PlayState {','class PlayState {public var nightmareVisionLegacyFieldCameras:Bool=false;')
   files['PsychAlphabetOwnerAccess.hx'] = (ROOT/'source/PsychAlphabetOwnerAccess.hx').read_text(encoding='utf-8')
   # Native state registration is tested by the connected state-registry probe.
   files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function registry(h:Dynamic):Dynamic return h.psychScriptVariables;public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'

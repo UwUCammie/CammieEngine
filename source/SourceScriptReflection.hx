@@ -217,6 +217,54 @@ class SourceScriptReflection {
 			: resolve(text.substr(0, separator), text.substr(separator + 2));
 	}
 
+	/** Current Psych parses a single value for setVar and recursively for arguments. */
+	public static function parsePsychInstances(value:Dynamic, play:()->Dynamic,
+		resolveClass:String->Dynamic, readPart:(Dynamic,String)->Dynamic):Dynamic {
+		if (value == null) return null;
+		if (Std.isOfType(value, Array)) {
+			var values:Array<Dynamic> = cast value;
+			return [for (item in values) parsePsychInstances(item, play, resolveClass, readPart)];
+		}
+		return parsePsychSingleInstance(value, play, resolveClass, readPart);
+	}
+	public static function parsePsychSingleInstance(value:Dynamic, play:()->Dynamic,
+		resolveClass:String->Dynamic, readPart:(Dynamic,String)->Dynamic):Dynamic {
+		var text:String = cast value;
+		if (text != null && text.length > INSTANCE_PREFIX.length - 2) {
+			var index = text.indexOf('::');
+			if (index > -1) {
+				text = text.substring(index + 2);
+				var last = text.lastIndexOf('::');
+				var parts = (last > -1 ? text.substring(0, last) : text).split('.');
+				value = last > -1 ? resolveClass(text.substring(last + 2)) : play();
+				for (part in parts) value = readPart(value, StringTools.trim(part));
+			}
+		}
+		return value;
+	}
+	/** LuaUtils.getVarInArray with its default allowMaps=false, used by instance args. */
+	public static function readPsychInstancePart(instance:Dynamic, variable:String,
+		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic):Dynamic {
+		var parts = variable.split('[');
+		if (parts.length > 1) {
+			var target:Dynamic = null;
+			if (registry().exists(parts[0])) {
+				var value:Dynamic = registry().get(parts[0]);
+				if (value != null) target = value;
+			} else target = readProperty(instance, parts[0]);
+			for (i in 1...parts.length) {
+				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
+				target = target[index];
+			}
+			return target;
+		}
+		if (isState(instance) && registry().exists(variable)) {
+			var value:Dynamic = registry().get(variable);
+			if (value != null) return value;
+		}
+		return readProperty(instance, variable);
+	}
+
 	/** Keep the actual receiver for nested calls, including anonymous methods. */
 	public static function call(object:Dynamic, tokens:Array<String>, args:Array<Dynamic>,
 		readPart:(Dynamic, String)->Dynamic):Dynamic {

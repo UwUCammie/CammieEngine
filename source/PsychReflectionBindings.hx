@@ -193,6 +193,8 @@ class PsychReflectionBindings {
 	}
 
 	function parse(value:Dynamic):Dynamic {
+		if (!host.nightmareVisionLegacyFieldCameras) return PsychInstanceArguments.parse(value, true, resolveClass,
+			function(object,key) return nativeClasses.read(object,key));
 		return SourceScriptReflection.parseInstances(value, function(path, type) {
 			return type == null ? get(path, true) : readPath(resolveClass(type), path, true);
 		});

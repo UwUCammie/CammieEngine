@@ -989,6 +989,7 @@ class PsychSourceBindings {
 	}
 
 	function storePsychVariable(value:Dynamic):Dynamic {
+		if (!host.nightmareVisionLegacyFieldCameras) return PsychInstanceArguments.parse(value, false, host.compatResolveClass);
 		return SourceScriptReflection.parseInstances(value, resolveInstancePath);
 	}
 

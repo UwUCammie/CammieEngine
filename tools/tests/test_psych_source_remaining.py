@@ -92,8 +92,9 @@ class BindingFixture {
     def test_lua_setvar_resolves_only_explicit_instance_markers(self):
         source = (ROOT / "source/PsychSourceBindings.hx").read_text()
         methods = "\n".join(extract(source, name) for name in ("setVar", "storePsychVariable"))
-        fixture = r'''class PsychStateClassBindings {public static function registry(host:Dynamic):Dynamic return host.psychScriptVariables;}
-class FakeHost { public var psychScriptVariables:Map<String,Dynamic>=[]; public function new() {} }
+        fixture = r'''class PsychInstanceArguments {public static function parse(v:Dynamic,r:Bool,c:Dynamic):Dynamic throw 'Unexpected modern parser in historical extension test';}
+class PsychStateClassBindings {public static function registry(host:Dynamic):Dynamic return host.psychScriptVariables;}
+class FakeHost { public var nightmareVisionLegacyFieldCameras:Bool=true;public function compatResolveClass(n:String):Dynamic return null;public var psychScriptVariables:Map<String,Dynamic>=[]; public function new() {} }
 class BindingFixture {
  var host:FakeHost;
  var resolved:Array<Array<Dynamic>>=[];
