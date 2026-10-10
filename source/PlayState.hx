@@ -21460,7 +21460,13 @@ void main(void) {
 		callCodenameScripts('onFocusLost', []);
 	}
 
+	function psychSourceSubstateSemantics(target:FlxSubState):Bool {
+		return (Std.isOfType(target, PsychCustomSubstate) && (cast target:PsychCustomSubstate).sourceLifecycle)
+			|| (sourceNoteTimingMode() == 1 && !nightmareVisionLegacyFieldCameras);
+	}
+
 	override function openSubState(SubState:FlxSubState) {
+		var psychSourcePause = psychSourceSubstateSemantics(SubState);
 		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(false);
 		dispatchPsychCompiledStage('openSubState', [SubState]);
 		if (paused) {
@@ -21473,6 +21479,7 @@ void main(void) {
 				FlxG.sound.music.pause();
 				pauseVocals();
 			}
+			if (psychSourcePause) SourcePauseTasks.setActive(false);
 			controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 			#if windows
 			var ae = FNFAssets.getText("assets/discord/presence/playpause.txt");
@@ -21489,7 +21496,7 @@ void main(void) {
 				+ " | Misses: "
 				+ misses, iconRPC, null, null, playingAsRpc);
 			#end
-			if (startTimer != null && !startTimer.finished)
+			if (!psychSourcePause && startTimer != null && !startTimer.finished)
 				startTimer.active = false;
 		}
 
@@ -21506,6 +21513,7 @@ void main(void) {
 	}
 
 	override function closeSubState() {
+		var psychSourcePause = psychSourceSubstateSemantics(subState);
 		var codenameClosingSubstate = subState != null;
 		var closingNativePause = paused && subState != null && Std.isOfType(subState, PauseSubState);
 		var resumeEventVideo = paused;
@@ -21515,24 +21523,35 @@ void main(void) {
 		// Codename close callbacks inspect the still-open substate and paused
 		// flag before the host resumes gameplay.
 		if (codenameClosingSubstate) callCodenameScripts('onSubstateClose', [new CodenameGameEvent()]);
+		if (psychSourcePause) {
+			callNightmareVision('onSubstateClose', []);
+			super.closeSubState();
+			dispatchPsychCompiledStage('closeSubState', []);
+		}
 		if (paused) {
-			if (FlxG.sound.music != null && !startingSong)
+			if (FlxG.sound.music != null && !startingSong && (!psychSourcePause || canResync))
 				resyncVocals();
 			if (!opponentPlayer && !duoMode)
 				controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 			if (duoMode)
 				controls.setKeyboardScheme(Duo(true));
-			if (!resumePsychCustom && startTimer != null && !startTimer.finished)
+			if (psychSourcePause) SourcePauseTasks.setActive(true);
+			if (!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer.finished)
 				startTimer.active = true;
 			paused = false;
 			applyDemoPlaybackRate();
 			setAllHaxeVar("paused", paused);
-			callAllHScript('onResume', []);
-			callNightmareVision('onResume', []);
+			if (psychSourcePause) PsychRuntimeBindings.dispatch(this, 'onResume', []);
+			else {
+				callAllHScript('onResume', []);
+				callNightmareVision('onResume', []);
+			}
 
-			CoolUtil.resumeTween(curCamPos);
-			CoolUtil.resumeTween(curCamZoom);
-			for (tween in vSliceScrollTweens) CoolUtil.resumeTween(tween);
+			if (!psychSourcePause) {
+				CoolUtil.resumeTween(curCamPos);
+				CoolUtil.resumeTween(curCamZoom);
+				for (tween in vSliceScrollTweens) CoolUtil.resumeTween(tween);
+			}
 
 			var currentIconState = "";
 			if (opponentPlayer) {
@@ -21584,9 +21603,11 @@ void main(void) {
 		}
 
 		callAllHScript('subStateCloseBegin', [EngineCompat.hxcLifecyclePayload('subStateCloseBegin', {targetState: this})]);
-		callNightmareVision('onSubstateClose', []);
-		super.closeSubState();
-		dispatchPsychCompiledStage('closeSubState', []);
+		if (!psychSourcePause) {
+			callNightmareVision('onSubstateClose', []);
+			super.closeSubState();
+			dispatchPsychCompiledStage('closeSubState', []);
+		}
 		if (closingNativePause) RuntimeSmokeHarness.markPauseTransition('pause_resume');
 		if (resumePsychCustom) resumePsychCustomTimeline();
 		if (resumeEventVideo) setCodenameScriptsPaused(false);

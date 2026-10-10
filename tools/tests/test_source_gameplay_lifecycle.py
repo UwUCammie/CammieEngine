@@ -322,6 +322,11 @@ class Main {
         self.assertIn(close_hook, closing)
         self.assertLess(opening.index(open_hook), opening.index("super.openSubState(SubState)"))
         self.assertLess(closing.index(close_hook), closing.index("super.closeSubState()"))
+        source_branch = extract_method(closing, "if (psychSourcePause)")
+        host_branch = extract_method(closing, "if (!psychSourcePause) {\n\t\t\tcallNightmareVision")
+        for branch in (source_branch, host_branch):
+            self.assertLess(branch.index(close_hook), branch.index("super.closeSubState()"))
+            self.assertEqual(branch.count(close_hook), 1)
         self.assertNotIn("return " + open_hook, opening)
         self.assertNotIn("return " + close_hook, closing)
 

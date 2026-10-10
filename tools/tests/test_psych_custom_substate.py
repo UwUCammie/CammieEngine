@@ -100,7 +100,7 @@ class Main {
         self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*updateNightmareVisionScreenUnderlay\(\);\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
         self.assertIn('subState == compatCustomSubstate && !compatCustomSubstate.sourceLifecycle', source)
-        self.assertIn('if (!resumePsychCustom && startTimer != null && !startTimer.finished)', source)
+        self.assertIn('if (!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer.finished)', source)
         self.assertIn('super.openSubState(null);', source)
 
 
