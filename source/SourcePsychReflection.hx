@@ -33,6 +33,11 @@ class SourcePsychReflection {
 		for(i in 1...end) object=read(object,parts[i],maps);
 		return object;
 	}
+	/** Text/object callbacks use a direct root even for a single-token path. */
+	public function object(path:String):Dynamic {
+		var parts=path.split('.');
+		return parts.length>1 ? read(loop(parts),parts[parts.length-1]) : direct(parts[0]);
+	}
 	public function get(path:String,maps:Bool=false):Dynamic {
 		var parts=path.split('.');
 		return parts.length>1 ? read(loop(parts,true,maps),parts[parts.length-1],maps) : read(target(),path,maps);

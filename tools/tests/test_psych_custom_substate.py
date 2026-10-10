@@ -38,11 +38,11 @@ class FlxSubState {
             'PlayState.hx': r'''
 class PlayState {
  public function new() {}
- public function psychCustomSubstateCreate(s:PsychCustomSubstate):Void Main.order.push('create:'+s.customName);
+ public function psychCustomSubstateCreate(s:PsychCustomSubstate):Void {if(PsychCustomSubstate.instance!=s)throw 'create publication order';Main.order.push('create:'+s.customName);}
  public function psychCustomSubstateCreatePost(s:PsychCustomSubstate):Void Main.order.push('createPost:'+s.customName);
  public function psychCustomSubstateUpdate(s:PsychCustomSubstate,e:Float):Void Main.order.push('update:'+e);
  public function psychCustomSubstateUpdatePost(s:PsychCustomSubstate,e:Float):Void Main.order.push('updatePost:'+e);
- public function psychCustomSubstateDestroy(s:PsychCustomSubstate):Void Main.order.push('destroy:'+s.customName);
+ public function psychCustomSubstateDestroy(s:PsychCustomSubstate):Void {if(PsychCustomSubstate.instance!=s)throw 'destroy publication order';Main.order.push('destroy:'+s.customName);}
 }
 ''',
             'Main.hx': r'''
@@ -53,11 +53,12 @@ class Main {
   var owner=new PlayState();
   var queued=new PsychCustomSubstate(owner,'queued',true);
   check(queued.cameras.length==1 && queued.cameras[0]=='hud','substate camera');
+  check(PsychCustomSubstate.instance==null,'queued substate published too early');
   queued.cancelBeforeCreate();
   check(order.join(',')=='superDestroy','queued open dispatched source callbacks');
   order=[];
   var s=new PsychCustomSubstate(owner,'pause',true);
-  s.create();s.update(.25);s.notifyBeforeParentDestroy();s.destroy();
+  s.create();check(PsychCustomSubstate.instance==s,'created substate not published');s.update(.25);s.notifyBeforeParentDestroy();s.destroy();check(PsychCustomSubstate.instance==null,'destroyed substate still published');
   check(order.join(',')=='create:pause,superCreate,createPost:pause,update:0.25,superUpdate:0.25,updatePost:0.25,destroy:pause,superDestroy',
    'callback order or duplicate destroy: '+order.join(','));
   order=[];

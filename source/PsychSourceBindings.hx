@@ -170,7 +170,7 @@ class PsychSourceBindings {
 
 		installTextLifecycle(variables);
 		installSpriteLifecycle(variables);
-		new SourceScriptTextBindings(false, psychObject, function(name) return PsychFontPath.resolve(name, ownerRoot),
+		new SourceScriptTextBindings(false, psychTextObject, function(name) return PsychFontPath.resolve(name, ownerRoot),
 			SourceTextStyle.psychColor, SourceTextStyle.border, function(message) trace('[psych-text] ' + message)).install(variables);
 
 		variables.set('addAnimationByIndicesLoop', function(tag:String, name:String, prefix:String,
@@ -215,12 +215,12 @@ class PsychSourceBindings {
 			return true;
 		});
 		variables.set('luaSpriteExists', function(tag:String):Bool {
-			var object:Dynamic = host.nightmareVisionLegacyFieldCameras ? host.compatFindObject(tag) : host.psychScriptVariables.get(tag);
+			var object:Dynamic = host.nightmareVisionLegacyFieldCameras ? host.compatFindObject(tag) : MusicBeatState.getVariables().get(tag);
 			return host.nightmareVisionLegacyFieldCameras ? Std.isOfType(object, FlxSprite)
 				: Std.isOfType(object, PsychModchartSprite) || Std.isOfType(object, PsychModchartAnimateSprite);
 		});
 		variables.set('luaTextExists', function(tag:String):Bool return host.nightmareVisionLegacyFieldCameras
-			? psychText(tag) != null : Std.isOfType(host.psychScriptVariables.get(tag), FlxText));
+			? psychText(tag) != null : Std.isOfType(MusicBeatState.getVariables().get(tag), FlxText));
 		variables.set('luaSoundExists', function(tag:String):Bool return psychSound(tag) != null);
 		variables.set('setTimeBarColors', function(left:String, right:String):Void setTimeBarColors(left, right));
 		variables.set('objectsOverlap', function(first:String, second:String):Bool {
@@ -516,8 +516,8 @@ class PsychSourceBindings {
 
 	function installSpriteLifecycle(variables:Map<String,Dynamic>):Void {
 		if (host.nightmareVisionLegacyFieldCameras) return;
-		var registry = function():Dynamic return host.psychScriptVariables;
-		var scene = function():Dynamic return host.historicalPropertyInstance();
+		var registry = MusicBeatState.getVariables;
+		var scene = PsychObjectProviders.target;
 		variables.set('makeLuaSprite', function(tag:String, image:String = null, x:Float = 0, y:Float = 0):Void {
 			SourceScriptSpriteLifecycle.create(tag, registry, scene, function() {
 				var sprite = new PsychModchartSprite(x, y, textSpriteAntialiasing());
@@ -536,7 +536,7 @@ class PsychSourceBindings {
 			}, false);
 		});
 		variables.set('makeFlxAnimateSprite', function(tag:String, x:Float = 0, y:Float = 0, loadFolder:String = null):Void {
-			SourceScriptSpriteLifecycle.createAnimate(tag, registry, function():Dynamic return host, function() {
+			SourceScriptSpriteLifecycle.createAnimate(tag, registry, function():Dynamic return PlayState.instance, function() {
 				var sprite = new PsychModchartAnimateSprite(x, y);
 				sprite.antialiasing = textSpriteAntialiasing();
 				if (loadFolder != null) host.compatLoadAnimateAtlasObject(ownerRoot, sprite, loadFolder);
@@ -544,16 +544,16 @@ class PsychSourceBindings {
 			});
 		});
 		variables.set('addLuaSprite', function(tag:String, front:Bool = false):Void {
-			SourceScriptSpriteLifecycle.add(tag, front, registry, scene, lowestSpriteAnchor, function() return host.isDead, function():Dynamic return GameOverSubstate.instance);
+			SourceScriptSpriteLifecycle.add(tag, front, registry, scene, lowestSpriteAnchor, function() return PlayState.instance != null && PlayState.instance.isDead, function():Dynamic return GameOverSubstate.instance);
 		});
 		variables.set('removeLuaSprite', function(tag:String, destroy:Bool = true, group:String = null):Void {
-			SourceScriptSpriteLifecycle.remove(tag, destroy, group, psychObject, registry, scene);
+			SourceScriptSpriteLifecycle.remove(tag, destroy, group, PsychObjectProviders.direct, registry, scene);
 		});
 		var previousRemove = variables.get('removeObject');
 		variables.set('removeObject', function(tag:String, destroy:Bool = true):Void {
 			var object = registry().get(tag);
 			if (Std.isOfType(object, FlxSprite) && !Std.isOfType(object, FlxText))
-				SourceScriptSpriteLifecycle.remove(tag, destroy, null, psychObject, registry, scene);
+				SourceScriptSpriteLifecycle.remove(tag, destroy, null, PsychObjectProviders.direct, registry, scene);
 			else Reflect.callMethod(null, previousRemove, [tag, destroy]);
 		});
 	}
@@ -561,18 +561,19 @@ class PsychSourceBindings {
 		return host.psychClientPrefs == null ? OptionsHandler.options.antialiasing : host.psychClientPrefs.data.antialiasing;
 	}
 	function lowestSpriteAnchor():Dynamic {
-		if (host.isDead) return Reflect.getProperty(GameOverSubstate.instance, 'boyfriend');
-		return PsychSceneAnchors.lowestCharacter(host);
+		return PsychSceneAnchors.lowestCharacter(PlayState.instance);
 	}
 
 	function installTextLifecycle(variables:Map<String,Dynamic>):Void {
 		if (host.nightmareVisionLegacyFieldCameras) return;
-		var registry = function():Dynamic return host.psychScriptVariables;
-		var scene = function():Dynamic return host.historicalPropertyInstance();
+		var registry = MusicBeatState.getVariables;
+		var scene = PsychObjectProviders.target;
 		variables.set('makeLuaText', function(tag:String, text:String = '', width:Int = 0, x:Float = 0, y:Float = 0):Void {
 			SourceScriptTextLifecycle.create(tag, registry, scene, function() {
 				var label = new FlxText(x, y, width, text, 16);
-				SourceTextDefaults.apply(label, PsychFontPath.resolve('vcr.ttf', ownerRoot), host.camHUD);
+				SourceTextDefaults.apply(label, PsychFontPath.resolve('vcr.ttf', ownerRoot), null, false, function() {
+					if(PlayState.instance!=null)label.cameras=[PlayState.instance.camHUD];
+				});
 				return label;
 			}, true);
 		});
@@ -581,16 +582,19 @@ class PsychSourceBindings {
 		});
 		var remove = function(tag:String, destroy:Bool = true):Void {
 			SourceScriptTextLifecycle.remove(tag, destroy, registry,
-				function():Dynamic return host.compatCustomSubstate != null ? host.compatCustomSubstate : scene(), true);
+				PsychObjectProviders.textRemovalTarget, true);
 		};
 		variables.set('removeLuaText', remove);
 		// Preserve the host's generic removal spelling for modern variable-owned text.
 		variables.set('removeObject', function(tag:String, destroy:Bool = true):Void {
-			if (Std.isOfType(host.psychScriptVariables.get(tag), FlxText)) remove(tag, destroy);
+			if (Std.isOfType(registry().get(tag), FlxText)) remove(tag, destroy);
 			else host.compatRemoveObject(tag, destroy);
 		});
 	}
 
+	function psychTextObject(tag:String):Dynamic {
+		return host.nightmareVisionLegacyFieldCameras ? psychObject(tag) : PsychObjectProviders.text(tag);
+	}
 	function psychText(tag:Dynamic):FlxText {
 		var object = psychObject(tag);
 		return Std.isOfType(object, FlxText) ? cast object : null;

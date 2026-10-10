@@ -13,6 +13,11 @@ class PsychPublicReflectionTest(unittest.TestCase):
   callbacks=[]
   for name in names:
    start=reflect.index('function(',reflect.index('"'+name+'"'));callbacks.append('public static var '+name+'='+extract_method(reflect[start:],'function(')+';')
+  text_source=source('source/psychlua/TextFunctions.hx')
+  start=text_source.index('function(',text_source.index('"getTextSize"'))
+  lookup=extract_method(text_source[start:],'function(')
+  lookup=lookup[:lookup.index('if(obj != null)')]+'return obj;}'
+  callbacks.append('public static var object='+lookup.replace('obj:FlxText','obj:Dynamic')+';')
   methods='\n'.join('public static '+extract_method(utils,'function '+name+'(') for name in ['getVarInArray','setVarInArray','getPropertyLoop','getObjectDirectly','getTargetInstance','isMap'])
   call='public static '+extract_method(reflect,'function callMethodFromObject(')
   fixture=r'''import haxe.Constraints.Function;
@@ -49,17 +54,17 @@ class Main {
   if(mode==2)PlayState.instance=null;
   var service=new SourcePsychReflection(registry,MusicBeatState.getState,play,target,function(v)return Std.isOfType(v,MusicBeatState),resolve,prop,write,parse,warn);
   var result:Dynamic;var type=instances?"missing":"Fixture";
-  try {result=source?switch(op){case 0:Donor.getProperty(path,maps);case 1:Donor.setProperty(path,"raw",maps,instances);case 2:Donor.getPropertyFromClass(type,path,maps);case 3:Donor.setPropertyFromClass(type,path,"raw",maps,instances);case 4:Donor.callMethod(path,instances?null:[3]);default:Donor.callMethodFromClass(type,path,instances?null:[3]);}:switch(op){case 0:service.get(path,maps);case 1:service.set(path,"raw",maps,instances);case 2:service.getClass(type,path,maps);case 3:service.setClass(type,path,"raw",maps,instances);case 4:service.call(path,instances?null:[3]);default:service.callClass(type,path,instances?null:[3]);};}catch(e:Dynamic){result="error";}
+  try {result=source?switch(op){case 0:Donor.getProperty(path,maps);case 1:Donor.setProperty(path,"raw",maps,instances);case 2:Donor.getPropertyFromClass(type,path,maps);case 3:Donor.setPropertyFromClass(type,path,"raw",maps,instances);case 4:Donor.callMethod(path,instances?null:[3]);case 6:Donor.object(path);default:Donor.callMethodFromClass(type,path,instances?null:[3]);}:switch(op){case 0:service.get(path,maps);case 1:service.set(path,"raw",maps,instances);case 2:service.getClass(type,path,maps);case 3:service.setClass(type,path,"raw",maps,instances);case 4:service.call(path,instances?null:[3]);case 6:service.object(path);default:service.callClass(type,path,instances?null:[3]);};}catch(e:Dynamic){result="error";}
   return events.join("|")+"=>"+Std.string(result)+";state="+Std.string(current.health)+";play="+(PlayState.instance==null?"null":Std.string(PlayState.instance.health))+";health="+Std.string(vars.get("health"));
  }
- static function main(){var count=0;for(op in 0...6){var paths=op<4?["health","nested.value","nested.rows[0][0]","rows[0][0]","this.nested.value","game.nested.value","instance.nested.value","map.key","missing.child","",null]:["plus","nested.plus","fn"," fn ","missing","nested.missing","",null];for(path in paths)for(mode in 0...4)for(maps in [false,true])for(instances in [false,true]){var expected=run(true,op,path,mode,maps,instances),actual=run(false,op,path,mode,maps,instances);if(expected!=actual)throw op+":"+path+":"+mode+":"+maps+":"+instances+" expected "+expected+" got "+actual;count++;}}trace("public-reflection-cases:"+count);}
+ static function main(){var count=0;for(op in 0...7){var paths=(op<4||op==6)?["health","nested.value","nested.rows[0][0]","rows[0][0]","this.nested.value","game.nested.value","instance.nested.value","map.key","missing.child","",null]:["plus","nested.plus","fn"," fn ","missing","nested.missing","",null];for(path in paths)for(mode in 0...4)for(maps in [false,true])for(instances in [false,true]){var expected=run(true,op,path,mode,maps,instances),actual=run(false,op,path,mode,maps,instances);if(expected!=actual)throw op+":"+path+":"+mode+":"+maps+":"+instances+" expected "+expected+" got "+actual;count++;}}trace("public-reflection-cases:"+count);}
 }
 '''.replace('__METHODS__',methods.replace('Reflect.getProperty','Main.prop').replace('Reflect.setProperty','Main.write')).replace('__CALLBACKS__','\n'.join(callbacks).replace('Type.resolveClass','Main.resolve')).replace('__CALL__',call)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=Path(folder);(work/'Main.hx').write_text(fixture)
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],capture_output=True,text=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-   self.assertIn('public-reflection-cases:960',result.stdout)
+   self.assertIn('public-reflection-cases:1136',result.stdout)
 
  def test_inventory_records_shared_public_binding_location(self):
   import audit_script_api_coverage as audit

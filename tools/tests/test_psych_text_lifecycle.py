@@ -48,6 +48,10 @@ class MusicBeatState {public static function getVariables():Map<String,Dynamic> 
 class Paths {public static function font(s:String):String return 'owner/fonts/'+s;}
 class PsychFontPath {public static function resolve(s:String,owner:String):String return 'owner/fonts/'+s;}
 class LuaUtils {public static function getTargetInstance():Dynamic return PlayState.instance.historicalPropertyInstance();__RESET__}
+class PsychObjectProviders {
+ public static function target():Dynamic return LuaUtils.getTargetInstance();
+ public static function textRemovalTarget():Dynamic return CustomSubstate.instance!=null?CustomSubstate.instance:target();
+}
 class Oracle {__CALLBACKS__}
 __DEFAULTS__
 class Actual {

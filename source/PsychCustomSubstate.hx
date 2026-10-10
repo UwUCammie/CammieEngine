@@ -6,6 +6,7 @@ import flixel.FlxSubState;
 /** Psych's script-owned substate. Its callbacks run from Flixel's substate
  * clock, which continues while PlayState's update is suspended. */
 class PsychCustomSubstate extends FlxSubState {
+	@:keep public static var instance:PsychCustomSubstate;
 	public var customName(default, null):String;
 	public var pausesGame(default, null):Bool;
 	public var lifecycleCreated(default, null):Bool = false;
@@ -23,6 +24,7 @@ class PsychCustomSubstate extends FlxSubState {
 	}
 
 	override function create():Void {
+		instance = this;
 		lifecycleCreated = true;
 		if (owner != null) owner.psychCustomSubstateCreate(this);
 		super.create();
@@ -51,6 +53,7 @@ class PsychCustomSubstate extends FlxSubState {
 
 	override function destroy():Void {
 		notifyBeforeParentDestroy();
+		instance = null;
 		owner = null;
 		super.destroy();
 	}

@@ -12,7 +12,7 @@ class RuntimeSmokePsychTextLifecycle {
 		var oldLegacy = state.nightmareVisionLegacyFieldCameras;
 		var oldDead = state.isDead;
 		var oldGameOver = GameOverSubstate.instance;
-		var oldCustom = state.compatCustomSubstate;
+		var oldCustom = state.compatCustomSubstate;var oldPublished=PsychCustomSubstate.instance;
 		var dead:GameOverSubstate = Type.createEmptyInstance(GameOverSubstate);
 		var custom:PsychCustomSubstate = Type.createEmptyInstance(PsychCustomSubstate);
 		@:privateAccess dead.members = [];@:privateAccess dead.length = 0;
@@ -22,10 +22,10 @@ class RuntimeSmokePsychTextLifecycle {
 		var cleanup = function() {
 			for (label in texts) {dead.remove(label, true);custom.remove(label, true);if (label.animation != null) label.destroy();}
 			state.psychScriptVariables = oldVariables;state.isDead = oldDead;state.nightmareVisionLegacyFieldCameras = oldLegacy;
-			GameOverSubstate.instance = oldGameOver;state.compatCustomSubstate = oldCustom;lua.variables.clear();
+			GameOverSubstate.instance = oldGameOver;state.compatCustomSubstate = oldCustom;PsychCustomSubstate.instance=oldPublished;lua.variables.clear();
 		};
 		try {
-			state.nightmareVisionLegacyFieldCameras = false;state.psychScriptVariables = [];state.isDead = true;GameOverSubstate.instance = dead;state.compatCustomSubstate = custom;
+			state.nightmareVisionLegacyFieldCameras = false;state.psychScriptVariables = [];state.isDead = true;GameOverSubstate.instance = dead;state.compatCustomSubstate = custom;PsychCustomSubstate.instance=custom;
 			new PsychSourceBindings(state).install(lua);
 			lua.execute(new hscript.Parser().parseString('if(makeLuaText("__modern.text","Native text",180,12,34)!=null)throw "Psych constructor result";', '__psych_text_create'));
 			var label:FlxText = cast state.psychScriptVariables.get('__moderntext');texts.push(label);
@@ -41,7 +41,7 @@ class RuntimeSmokePsychTextLifecycle {
 			dead.remove(label, true);custom.add(label);
 			lua.execute(new hscript.Parser().parseString('removeLuaText("__moderntext",false);', '__psych_text_retain'));
 			check(label.container == null && label.exists && label.animation != null && state.psychScriptVariables.get('__moderntext') == label, 'Custom substate removal retains tag');
-			state.compatCustomSubstate = null;
+			state.compatCustomSubstate = null;PsychCustomSubstate.instance=null;
 			var removedBeforeDestroy = false;
 			dead.memberRemoved.add(function(item) {if (item == label) removedBeforeDestroy = label.exists && label.textField != null && label.animation != null;});
 			lua.execute(new hscript.Parser().parseString('addLuaText("__moderntext");makeLuaText("__modern.text");', '__psych_text_replace'));

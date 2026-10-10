@@ -5,7 +5,7 @@ package;
 class PsychPropertyBindings {
 	public static function install(host:PlayState, interp:hscript.Interp, classes:SourceNativeClassScope, parse:Dynamic->Dynamic):Void {
 		var resolve=function(name:String):Dynamic return classes.hasRuntimeClass(name)?classes.resolveClass(name):host.compatResolveClass(name);
-		var target=function():Dynamic {var play=PlayState.instance;return play==null ? MusicBeatState.getState() : play.isDead ? GameOverSubstate.instance : play;};
+		var target=PsychObjectProviders.target;
 		var warn=function(message:String):Void trace('[psych-reflection] '+message);
 		interp.variables.set('createInstance',function(name:String,type:String,?args:Array<Dynamic>):Bool {
 			return SourceScriptInstances.create(name,type,args,MusicBeatState.getVariables,resolve,parse,classes.createInstance,warn);
