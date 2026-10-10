@@ -712,7 +712,7 @@ import PsychFlxColorScriptAccess;
         if ((o is ScriptClass)) {""",
          "dp-smoke-hscript-ex-alpha-set"),
         ("""    private static var _scriptClassDescriptors:Map<String, ClassDeclEx> = new Map<String, ClassDeclEx>();""",
-         """    private function evaluateOwnerStaticInitializer(symbol:ScriptClassSymbol, initializer:Expr):Dynamic {
+         """    private function evaluateOwnerStaticInitializer(symbol:ScriptClassSymbol, initializer:Expr):Dynamic { // dp-owner-static-field-init-helper
         var previousRequester = _staticInitializerRequester;
         _staticInitializerRequester = symbol.descriptor;
         try {
@@ -1199,9 +1199,74 @@ PATCHES["InterpEx.hx"].append((
     'dp-owner-native-direct-factory'))
 
 
+
+PATCHES["InterpEx.hx"].extend([
+    ("    private function getOwnerStaticDuringInitialization(field:String):{handled:Bool, value:Dynamic} {",
+     """    private function ownerStaticSymbol(field:String):Null<ScriptClassSymbol> {
+        if (_classScope == null) return null;
+        var requester = _staticInitializerRequester != null ? _staticInitializerRequester
+            : _proxy == null ? null : _proxy._c;
+        return _classScope.findStaticFieldSymbol(field, requester);
+    }
+
+    override function setVar(name:String, value:Dynamic) {
+        var symbol = ownerStaticSymbol(name);
+        if (symbol != null && _classScope.setStaticField(symbol, name, value)) return;
+        super.setVar(name, value);
+    } // dp-owner-lexical-static-write
+
+    private function getOwnerStaticDuringInitialization(field:String):{handled:Bool, value:Dynamic} {""",
+     "dp-owner-lexical-static-write"),
+    ("""        if (_staticInitializerRequester == null || _classScope == null)
+            return {handled:false, value:null};
+        var symbol = _classScope.resolveClassSymbol(_staticInitializerRequester.name,
+            _staticInitializerRequester);""",
+     """        var symbol = ownerStaticSymbol(field); // dp-owner-lexical-static-symbol""",
+     "dp-owner-lexical-static-symbol"),
+    ('        if (_staticInitializerRequester != null && _classScope != null) {',
+     '        if (_classScope != null && (_staticInitializerRequester != null || _proxy != null)) { // dp-owner-lexical-static-read',
+     'dp-owner-lexical-static-read'),
+    ("""                if (locals.get(id) == null && _classMethodLocals.indexOf(id) < 0) { // dp-owner-class-local-write-priority
+                    if (_proxy != null""",
+     """                if (locals.get(id) == null && _classMethodLocals.indexOf(id) < 0) { // dp-owner-class-local-write-priority
+                    if (ownerStaticSymbol(id) != null) {
+                        var value = expr(e2);setVar(id, value);return value;
+                    } // dp-owner-lexical-static-assignment
+                    if (_proxy != null""",
+     "dp-owner-lexical-static-assignment"),
+    ("""                if (variables.exists(id)) {
+                    return {value:variables.get(id), write:function(value:Dynamic) { variables.set(id, value); }};
+                }""",
+     """                if (ownerStaticSymbol(id) != null) {
+                    return {value:resolve(id), write:function(value:Dynamic) {setVar(id, value);}};
+                } // dp-owner-lexical-static-lvalue
+                if (variables.exists(id)) {
+                    return {value:variables.get(id), write:function(value:Dynamic) { variables.set(id, value); }};
+                }""",
+     "dp-owner-lexical-static-lvalue"),
+])
+
+
+
+# A caller comparing a source result to an Int must not specialize every
+# interpreted method's return type on hxcpp. This is a dynamic API boundary.
+for arity in range(5):
+    args = ''.join(f', arg{i}:Dynamic' for i in range(arity))
+    old = f'private inline function callFunction{arity}(name:String{args}) {{'
+    new = f'private inline function callFunction{arity}(name:String{args}):Dynamic {{ // dp-owner-dynamic-result-{arity}'
+    PATCHES["ScriptClass.hx"].append((old, new, f'dp-owner-dynamic-result-{arity}'))
+PATCHES["ScriptClass.hx"].append((
+    'public function callFunction(name:String, args:Array<Dynamic> = null) {',
+    'public function callFunction(name:String, args:Array<Dynamic> = null):Dynamic { // dp-owner-dynamic-call-result dp-owner-class-scope-release-guard',
+    'dp-owner-dynamic-call-result'))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
+    if "dp-owner-static-field-init-helper" not in text and "private function evaluateOwnerStaticInitializer" in text:
+        text = text.replace("private function evaluateOwnerStaticInitializer(symbol:ScriptClassSymbol, initializer:Expr):Dynamic {",
+                            "private function evaluateOwnerStaticInitializer(symbol:ScriptClassSymbol, initializer:Expr):Dynamic { // dp-owner-static-field-init-helper", 1)
     # Add a durable marker to owner-scope installs made before this marker
     # existed, so later focused patch additions remain safely idempotent.
     if ("dp-owner-class-scope-ctor" not in text

@@ -49,7 +49,7 @@ class CodenameScriptClassLoader {
 	final ownerRoot:String;
 	final ownerUsesStringTools:Bool;
 	final bindings:Map<String, Dynamic>;
-	final scope:ScriptClassScope;
+	public final scope:ScriptClassScope;
 	final loaded:Map<String, Bool> = new Map();
 	final loading:Map<String, Bool> = new Map();
 	final diagnostics:Array<String> = [];
@@ -81,6 +81,15 @@ class CodenameScriptClassLoader {
 
 	public static function load(ownerRoot:String, imports:Array<String>,
 		bindings:Map<String, Dynamic>, symbols:Map<String, Dynamic>):CodenameScriptClassLoad {
+		return open(ownerRoot, bindings, symbols).loadBatch(imports);
+	}
+
+	/** Keep a single owner's class identities across successive script imports. */
+	public static function open(ownerRoot:String, bindings:Map<String, Dynamic>,
+		symbols:Map<String, Dynamic>):CodenameScriptClassLoader {
+		// A caller changing its import aliases must not mutate this session's
+		// native binding policy after source classes have already been admitted.
+		bindings = bindings == null ? new Map() : bindings.copy();
 		var scope = new ScriptClassScope();
 		scope.seedFrom(symbols);
 		scope.seedFrom(bindings);
@@ -95,25 +104,52 @@ class CodenameScriptClassLoader {
 			if ((symbols != null && symbols.exists(shortName)) || bindings.exists(shortName)) continue;
 			scope.bindImport(name.split('.'), bindings.get(name));
 		}
-		var loader = new CodenameScriptClassLoader(ownerRoot, bindings, scope);
+		return new CodenameScriptClassLoader(ownerRoot, bindings, scope);
+	}
+
+	/** Add imports atomically without replacing earlier descriptors or statics.
+	 * A rejected batch can be corrected and retried in the same owner session. */
+	public function importClasses(imports:Array<String>):CodenameScriptClassLoad {
+		if (!scope.isActive()) throw '[hscript-class-scope] owner class scope has been released';
+		var oldLoaded = loaded.copy(), oldLoading = loading.copy(), oldAliases = aliases.copy();
+		var oldCount = moduleCount;
+		var rollback = function() {
+			loaded.clear();for (key => value in oldLoaded) loaded.set(key, value);
+			loading.clear();for (key => value in oldLoading) loading.set(key, value);
+			aliases.clear();for (key => value in oldAliases) aliases.set(key, value);
+			moduleCount = oldCount;
+		};
+		var result:CodenameScriptClassLoad = null;
+		var admitted:Bool;
+		try admitted = scope.registerImports(function() {
+			result = loadBatch(imports);
+			return result.diagnostics.length == 0;
+		}) catch (error:Dynamic) {rollback();throw error;}
+		if (!admitted) {rollback();result.imports.clear();}
+		return result;
+	}
+
+	function loadBatch(imports:Array<String>):CodenameScriptClassLoad {
+		if (!scope.isActive()) throw '[hscript-class-scope] owner class scope has been released';
+		diagnostics.resize(0);sourceUseDiagnostics.resize(0);
 		var classImports:Map<String, Dynamic> = new Map();
 		if (imports != null) for (path in imports) {
 			if (bindings != null && bindings.exists(path) && bindings.get(path) != null) {
 				scope.bindImport(path.split('.'), bindings.get(path));
 				continue;
 			}
-			var resolved = loader.loadImport(path, 0);
+			var resolved = loadImport(path, 0);
 			if (resolved.loaded) {
 				classImports.set(path, {__codenameScriptClass:true});
 			} else if (resolved.expectedSource) {
 				scope.markUnavailableImport(path, resolved.reason);
 			} else if (resolved.reason == '') {
 				var diagnostic = 'no explicit owner binding or source module for import ' + path;
-				if (loader.diagnostics.indexOf(diagnostic) < 0) loader.diagnostics.push(diagnostic);
+				if (diagnostics.indexOf(diagnostic) < 0) diagnostics.push(diagnostic);
 			}
 		}
-		return {scope:scope, imports:classImports, diagnostics:loader.diagnostics,
-			sourceUseDiagnostics:loader.sourceUseDiagnostics};
+		return {scope:scope, imports:classImports, diagnostics:diagnostics.copy(),
+			sourceUseDiagnostics:sourceUseDiagnostics.copy()};
 	}
 
 	/** Load selected-owner class imports, bind only successfully registered

@@ -120,6 +120,30 @@ class ScriptClassScope {
 		}
 	}
 
+	/** Atomic descriptor/binding registration, before any class code executes.
+	 * Existing instances, symbols and static storage retain their identities. */
+	public function registerImports(action:Void->Bool):Bool {
+		ensureActive();
+		var oldDescriptors = descriptors.copy(), oldAliases = aliases.copy();
+		var oldAmbiguousAliases = ambiguousAliases.copy(), oldBindings = bindings.copy();
+		var oldAmbiguousBindings = ambiguousBindings.copy(), oldUnavailable = unavailableImports.copy();
+		var rollback = function() {
+			restoreImports(descriptors, oldDescriptors);restoreImports(aliases, oldAliases);
+			restoreImports(ambiguousAliases, oldAmbiguousAliases);restoreImports(bindings, oldBindings);
+			restoreImports(ambiguousBindings, oldAmbiguousBindings);restoreImports(unavailableImports, oldUnavailable);
+		};
+		try {
+			if (action()) return true;
+		} catch (error:Dynamic) {rollback();throw error;}
+		rollback();
+		return false;
+	}
+
+	static function restoreImports<T>(target:Map<String, T>, previous:Map<String, T>):Void {
+		target.clear();
+		for (key => value in previous) target.set(key, value);
+	}
+
 	public function registerModule(module:Array<ModuleDecl>):Void {
 		ensureActive();
 		if (module == null) throw 'HScript class module is missing';
@@ -226,6 +250,23 @@ class ScriptClassScope {
 		var symbol = new ScriptClassSymbol(this, descriptor, fullName);
 		classSymbols.set(fullName, symbol);
 		return symbol;
+	}
+
+	/** Resolve only the lexical class: Haxe does not inherit static fields. */
+	public function findStaticFieldSymbol(name:String, requester:ClassDeclEx):Null<ScriptClassSymbol> {
+		ensureActive();
+		if (requester == null) return null;
+		for (field in requester.fields) if (field.name == name) {
+			if (field.access.indexOf(AStatic) < 0) return null;
+			switch (field.kind) {
+				case KVar(_):
+					var full = requester.pkg == null || requester.pkg.length == 0 ? requester.name
+						: requester.pkg.join('.') + '.' + requester.name;
+					return resolveClassSymbol(full);
+				case _: return null;
+			}
+		}
+		return null;
 	}
 
 	/** Read a declared static var from an owner source class, initializing it once. */
