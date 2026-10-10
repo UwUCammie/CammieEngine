@@ -65,6 +65,7 @@ class NightmareVisionSaveFacade {}
 class BaseInterp {
  function sourceCameraMutation(_object:Dynamic,_field:String):Dynamic throw 'audio read selected camera mutation';
  var nativeClassScope:Dynamic=null;
+ var sourceClasses:Dynamic=null;
  var liveValues:Map<String,{read:Void->Dynamic,write:Dynamic->Dynamic,target:Void->Dynamic}> = new Map();
  public function new() {}
  function liveField(object:Dynamic,field:String):Bool {

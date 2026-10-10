@@ -55,6 +55,11 @@ class Main {
    autoPause:false, antialiasing:false, gameplayShaders:false, zoomCamera:false,
    offset:1.75, fpsCap:240
   };
+  var detached = new PsychOwnerClientPrefs('assets/imported_mods/detached', new MemoryOwnerSave({version:1,values:{data:{language:'fr-FR'}}}), native);
+  detached.loadStoredPrefs();
+  check(detached.data.language=='fr-FR', 'detached owner did not load saved data');
+  var requiresDevice=false;try detached.loadPrefs() catch (_:Dynamic) requiresDevice=true;
+  check(requiresDevice, 'public preference reload lost its device operation');detached.release();
   var prefs = new PsychOwnerClientPrefs('assets/imported_mods/prefs-a', storage, native);
   var defaults = prefs.defaultData;
   check((cast Reflect.getProperty(prefs, '__hscriptStringFieldPaths'):Array<String>).join('|')

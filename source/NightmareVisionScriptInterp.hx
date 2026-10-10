@@ -32,6 +32,12 @@ class NightmareVisionScriptInterp extends Interp {
 	/** Owner-local constructor factories keyed by the imported class identity. */
 	var constructorBindings:Array<NightmareVisionConstructorBinding> = [];
 	public var nativeClassScope(default, null):SourceNativeClassScope;
+	public var sourceClasses(default, null):SourceClassAccess;
+	public function bindSourceClasses(value:SourceClassAccess):Void {
+		if (sourceClasses != null && sourceClasses != value) throw '[source-class] Interpreter cannot change owner sessions';
+		sourceClasses = value;
+		sourceClassScope().sourceObjects = value;
+	}
 	#if flixel
 	public var sourceSpriteOwner:Null<NightmareVisionSpriteOwner>;
 	#end
@@ -57,6 +63,7 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	public function createSourceInstance(type:Dynamic, args:Array<Dynamic>):Dynamic {
+		if (sourceClasses != null && sourceClasses.isClass(type)) return sourceClasses.construct(type, args);
 		for (binding in constructorBindings) if (binding.type == type) return finishSourceConstruction(binding.create(args));
 		return finishSourceConstruction(Type.createInstance(type, args));
 	}
@@ -181,6 +188,7 @@ class NightmareVisionScriptInterp extends Interp {
 	 * while language imports additionally support Iris enum/module lookup. */
 	public function resolveSourceImport(name:String, classOnly:Bool = false):Dynamic {
 		if (hasOwnerImport(name)) return ownerImport(name);
+		if (sourceClasses != null) {var value = sourceClasses.importClass(name);if (value != null) return value;}
 		if (name == 'FunkinVideoSprite' || name == 'funkin.video.FunkinVideoSprite')
 			return Type.resolveClass('NightmareVisionVideoSprite');
 		return classOnly ? Type.resolveClass(name) : Tools.getClass(name);
@@ -227,6 +235,7 @@ class NightmareVisionScriptInterp extends Interp {
 		sourceSpriteOwner = null;
 		#end
 		if (nativeClassScope != null) {nativeClassScope.release(); nativeClassScope = null;}
+		sourceClasses = null;
 		liveValues.clear();
 		if (cameraShaders != null) {
 			cameraShaders.release();
@@ -267,6 +276,7 @@ class NightmareVisionScriptInterp extends Interp {
 			try requestedType = resolve(cl) catch (_:Dynamic) {}
 			if (requestedType == null) requestedType = Type.resolveClass(cl);
 		}
+		if (sourceClasses != null && sourceClasses.isClass(requestedType)) return sourceClasses.construct(requestedType, args);
 		if (requestedType != null) for (binding in constructorBindings)
 			if (binding.type == requestedType) return finishSourceConstruction(binding.create(args));
 
@@ -464,6 +474,7 @@ class NightmareVisionScriptInterp extends Interp {
 	 * Keep reads and writes on the same owner-aware compatibility side table used
 	 * by HXC and V-Slice scripts. */
 	override function get(object:Dynamic, field:String):Dynamic {
+		if (sourceClasses != null && sourceClasses.handles(object)) return sourceClasses.read(object, field);
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot read ' + field + ' on null';
 		#if flixel
@@ -533,6 +544,7 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	override function set(object:Dynamic, field:String, value:Dynamic):Dynamic {
+		if (sourceClasses != null && sourceClasses.handles(object)) return sourceClasses.write(object, field, value);
 		if (object == null)
 			throw '[nightmare-vision-script-null-access] Cannot write ' + field + ' on null';
 		#if flixel
@@ -649,6 +661,7 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	override function fcall(object:Dynamic, field:String, args:Array<Dynamic>):Dynamic {
+		if (sourceClasses != null && sourceClasses.handles(object)) return sourceClasses.call(object, field, args);
 		if ((field == 'addShader' || field == 'removeShader') && cameraShaders != null
 			&& cameraShaders.isCamera(object)) {
 			switch (field) {

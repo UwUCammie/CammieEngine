@@ -2,6 +2,8 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Secondary mod services can load saved preferences without activating or replacing volume shortcuts.
+- Ordinary Psych HScript and embedded runHaxeCode now share owner-scoped source-class imports, object access and core reflection; stage callbacks remain alive after their importing script closes.
 - Imported source methods now share lexical static fields across instances and qualified class access, preserving local/argument shadowing.
 - Keep source method return values dynamic on native builds, preventing numeric callers from corrupting string or object results.
 - Nested Psych stage helpers now share initial scenery placement without moving later props or props in other scenes behind the actors.

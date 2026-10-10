@@ -49,6 +49,7 @@ class ScriptClassScope {
 	}> = new haxe.ds.ObjectMap();
 	final nativeFactories:haxe.ds.ObjectMap<Dynamic, Array<Dynamic>->Dynamic> = new haxe.ds.ObjectMap();
 	var active:Bool = true;
+	var valueAccess:InterpEx;
 
 	public function new() {}
 
@@ -645,6 +646,13 @@ class ScriptClassScope {
 		for (name in bindings.keys()) interp.variables.set(name, bindings.get(name));
 	}
 
+	/** Other interpreters delegate source-object semantics to the same evaluator. */
+	public function accessInterpreter():InterpEx {
+		ensureActive();
+		if (valueAccess == null) {valueAccess = new InterpEx(null, this);seedInterpreter(valueAccess);}
+		return valueAccess;
+	}
+
 	public function isActive():Bool return active;
 
 	public function release():Void {
@@ -664,6 +672,8 @@ class ScriptClassScope {
 		nativeBasicBridges.clear();
 		#end
 		active = false;
+		if (valueAccess != null) valueAccess.variables.clear();
+		valueAccess = null;
 		nativeConstructionHooks.clear();
 		nativeFactories.clear();
 		descriptors.clear();

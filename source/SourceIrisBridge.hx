@@ -190,6 +190,15 @@ class SourceIrisBridge extends hscript.Interp {
 		if (packagePath == null || StringTools.trim(packagePath) == '')
 			throw '[psych-hscript-import] Empty import path';
 
+		var sourceClass = evaluator.sourceClasses == null ? null : evaluator.sourceClasses.importClass(packagePath);
+		if (sourceClass != null) {
+			var alias = name == null || StringTools.trim(name) == '' ? packagePath.substr(packagePath.lastIndexOf('.') + 1) : StringTools.trim(name);
+			if (variables.exists(alias) && variables.get(alias) != sourceClass)
+				throw '[psych-hscript-import] Conflicting source class alias: ' + alias + ' (' + packagePath + ')';
+			variables.set(alias, sourceClass);evaluator.bindImport(packagePath, sourceClass);
+			return sourceClass;
+		}
+
 		var aliases = PsychHscriptCompat.importBindings();
 		var shortName = name == null || StringTools.trim(name) == ''
 			? aliases.get(packagePath) : StringTools.trim(name);

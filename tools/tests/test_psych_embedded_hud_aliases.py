@@ -69,6 +69,7 @@ class Host {public var nightmareVisionLegacyFieldCameras:Bool=false;
  public var psychSourceCallbacks:Dynamic={bridge:function(r:String,s:hscript.Interp,o:String,p:hscript.Interp):Dynamic {return null;}};
  public var installedPaths:Dynamic;public var attachmentCalls=0;public var alphabetCalls=0;public var members:Array<FlxSprite>;
  public function new(){psychSourceIconP1=new PsychSourceHealthIcon('bf',false,true,sourceHealthIconOwner(false));psychSourceIconP2=new PsychSourceHealthIcon('dad',false,true,sourceHealthIconOwner(false));members=[psychSourceIconP1,psychSourceIconP2];}
+ public function sourceClassSession(root:String):SourceClassAccess return null;
  public function compatPsychOwnerForScript(o:String):String return 'owner';
  function sourceNoteTimingMode():Int return 1;
  function sourceHealthIconOwner(n:Bool,?p:Dynamic):SourceHealthIconOwner return {image:(key,gpu)->new FlxGraphic(300,150),exists:p->true,uiPrefix:()->'',antialiasing:()->true};

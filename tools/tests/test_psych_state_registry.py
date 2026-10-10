@@ -61,7 +61,7 @@ class Main {
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
    for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','PsychBaseStageCompat','PsychStageConstruction','PsychObjectProviders','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
-   for name in ['SourceNativeClassScope','PsychStateClassBindings']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
+   for name in ['SourceClassAccess','SourceNativeClassScope','PsychStateClassBindings']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
    self.assertIn('state-registry-contract:80',result.stdout)

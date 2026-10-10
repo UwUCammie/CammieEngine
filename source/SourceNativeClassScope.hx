@@ -10,6 +10,7 @@ class SourceNativeClassScope {
 	var classNames:Array<{type:Dynamic, name:String}> = [];
 	var enumNames:Array<{type:Dynamic, name:String}> = [];
 	public var construct:Dynamic->Array<Dynamic>->Dynamic;
+	public var sourceObjects:SourceClassAccess;
 	var reflectView:Dynamic;
 	var typeView:Dynamic;
 
@@ -39,11 +40,13 @@ class SourceNativeClassScope {
 		return false;
 	}
 	public function read(type:Dynamic, name:String, property:Bool = true):Dynamic {
+		if (sourceObjects != null && sourceObjects.handles(type)) return sourceObjects.read(type, name);
 		for (binding in statics) if (binding.type == type && binding.name == name) return binding.read();
 		if (property) for (binding in instanceProperties) if (binding.name == name && Std.isOfType(type, binding.type)) return binding.read(type);
 		return property ? Reflect.getProperty(type, name) : Reflect.field(type, name);
 	}
 	public function write(type:Dynamic, name:String, value:Dynamic, property:Bool = true):Dynamic {
+		if (sourceObjects != null && sourceObjects.handles(type)) return sourceObjects.write(type, name, value);
 		for (binding in statics) if (binding.type == type && binding.name == name && binding.write != null)
 			return binding.write(value);
 		if (property) Reflect.setProperty(type, name, value); else Reflect.setField(type, name, value);
@@ -58,12 +61,17 @@ class SourceNativeClassScope {
 	/** Independently retained aliases for an actual source object owner. */
 	public function captureClassMap():Map<String, Dynamic> return runtimeClasses.copy();
 
-	public function resolveClass(name:String):Dynamic
-		return runtimeClasses.exists(name) ? runtimeClasses.get(name) : Type.resolveClass(name);
+	public function resolveClass(name:String):Dynamic {
+		if (runtimeClasses.exists(name)) return runtimeClasses.get(name);
+		if (sourceObjects != null) {var value = sourceObjects.importClass(name);if (value != null) return value;}
+		return Type.resolveClass(name);
+	}
 	public function resolveEnum(name:String):Dynamic
 		return runtimeEnums.exists(name) ? runtimeEnums.get(name) : Type.resolveEnum(name);
-	public function createInstance(type:Dynamic, args:Array<Dynamic>):Dynamic
+	public function createInstance(type:Dynamic, args:Array<Dynamic>):Dynamic {
+		if (sourceObjects != null && sourceObjects.isClass(type)) return sourceObjects.construct(type, args);
 		return construct == null ? Type.createInstance(type, args) : construct(type, args);
+	}
 	public function reflectFacade():Dynamic {
 		if (reflectView != null) return reflectView;
 		reflectView = {};
@@ -87,7 +95,11 @@ class SourceNativeClassScope {
 		Reflect.setField(typeView, 'resolveClass', resolveClass);
 		Reflect.setField(typeView, 'resolveEnum', resolveEnum);
 		Reflect.setField(typeView, 'createInstance', createInstance);
+		Reflect.setField(typeView, 'getClass', function(value:Dynamic):Dynamic {
+			return sourceObjects != null && sourceObjects.handles(value) ? sourceObjects.classOf(value) : Type.getClass(value);
+		});
 		Reflect.setField(typeView, 'getClassName', function(type:Dynamic):String {
+			if (sourceObjects != null && sourceObjects.isClass(type)) return sourceObjects.className(type);
 			for (binding in classNames) if (binding.type == type) return binding.name;
 			return Type.getClassName(type);
 		});
@@ -114,6 +126,6 @@ class SourceNativeClassScope {
 	public function release():Void {
 		statics.resize(0); instanceProperties.resize(0); runtimeClasses.clear(); runtimeEnums.clear();
 		classNames.resize(0); enumNames.resize(0);
-		construct = null; reflectView = null; typeView = null;
+		construct = null; reflectView = null; typeView = null;sourceObjects = null;
 	}
 }

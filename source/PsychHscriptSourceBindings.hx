@@ -40,6 +40,7 @@ class PsychHscriptSourceBindings {
 			PsychStateClassBindings.install((cast interp:SourceIrisBridge).evaluator);
 			var paths:Dynamic = variables.get('Paths');
 			var root = host.compatPsychOwnerForScript(origin);
+			if (root != null) (cast interp:SourceIrisBridge).evaluator.bindSourceClasses(host.sourceClassSession(root));
 			if (paths == null && root != null) paths = PsychOwnerPaths.create(root, host.psychStageLibrary);
 			if (paths != null && Reflect.isFunction(Reflect.field(paths, '__sourceOwnerRoot')))
 				host.bindSourceBarClass((cast interp:SourceIrisBridge).evaluator, false, paths);

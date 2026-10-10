@@ -77,7 +77,7 @@ class PsychStandardServices {
 		var ownsPrefs = prefs == null || !prefs.canReuseFor(resolved.root);
 		if (ownsPrefs) {
 			prefs = new PsychOwnerClientPrefs(resolved.root, new CodenameOwnerSaveData(resolved.root), OptionsHandler.options);
-			prefs.loadPrefs();
+			prefs.loadStoredPrefs();
 		}
 		var owner:PsychStandardOwner = {root:resolved.root, paths:resolved.paths, prefs:prefs,
 			ownsPrefs:ownsPrefs, language:null, discord:null, released:false, epoch:epoch};

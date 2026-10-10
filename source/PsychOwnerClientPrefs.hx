@@ -87,15 +87,19 @@ class PsychOwnerClientPrefs {
 
 	/** Read and overlay this owner's saved preferences without binding process globals. */
 	public function loadPrefs():Void {
+		loadStoredPrefs();
+		reloadVolumeKeys();
+	}
+
+	/** Detached language/service owners read saved data without borrowing device keys. */
+	public function loadStoredPrefs():Void {
 		ensureAlive();
 		var record:Dynamic = callOwnerSave('getField', [SAVE_FIELD]);
 		if (record == null) {
-			reloadVolumeKeys();
 			return;
 		}
 		var version:Dynamic = field(record, 'version');
 		if (version != VERSION) {
-			reloadVolumeKeys();
 			return;
 		}
 		var values:Dynamic = field(record, 'values');
@@ -121,7 +125,6 @@ class PsychOwnerClientPrefs {
 		}
 		mergeKnownControls(keyBinds, field(values, 'keyBinds'));
 		mergeKnownControls(gamepadBinds, field(values, 'gamepadBinds'));
-		reloadVolumeKeys();
 	}
 
 	/** Store this owner's data and controls together in one versioned bucket. */

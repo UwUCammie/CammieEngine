@@ -2122,6 +2122,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 	}
 	var psychNativeClassScopes:Array<SourceNativeClassScope> = [];
+	var psychSourceClassSessions:Map<String, PsychSourceClassSession> = new Map();
+	function sourceClassSession(root:String):PsychSourceClassSession {
+		var key = StringTools.replace(root, '\\', '/');
+		var existing = psychSourceClassSessions.get(key);
+		if (existing != null) return existing;
+		var bindings = PsychCompiledStageBindings.create(root, psychStageLibrary, psychClientPrefs);
+		var session = new PsychSourceClassSession(root, this, bindings, PsychObjectProviders.stageContext());
+		psychSourceClassSessions.set(key, session);
+		return session;
+	}
 	function sourceAlphabetOwner(paths:Dynamic):PsychAlphabetOwner {
 		var prefs = psychClientPrefs;
 		return PsychAlphabetOwnerAccess.create(paths,
@@ -26931,6 +26941,8 @@ void main(void) {
 			reportPsychCompiledStageRuntimeDiagnostics();
 			psychCompiledStageRuntime = null;
 		}
+		for (session in psychSourceClassSessions) session.release();
+		psychSourceClassSessions.clear();
 		for (videoModule in hxcVideoModuleHosts.copy())
 			if (videoModule != null)
 				videoModule.destroy();

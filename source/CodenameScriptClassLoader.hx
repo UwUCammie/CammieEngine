@@ -2027,6 +2027,9 @@ class CodenameScriptClassLoader {
 		return {expectedSource:true, loaded:false, reason:message};
 	}
 
+	public function hasSourceModule(importPath:String):Bool
+		return validImport(importPath) && findSourceModule(importPath) != null;
+
 	function findSourceModule(importPath:String):Null<String> {
 		var parts = importPath.split('.');
 		var candidates:Array<String> = ['source/' + parts.join('/') + '.hx'];

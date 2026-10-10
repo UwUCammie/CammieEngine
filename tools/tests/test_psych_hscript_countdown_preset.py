@@ -33,6 +33,7 @@ class FakeHost {
  public var nightmareVisionLegacyFieldCameras:Bool=false;
  public var compatCustomSubstate:Dynamic = {customName:"fixture"};
  public var psychScriptVariables:Map<String,Dynamic> = [];
+ public function sourceClassSession(root:String):SourceClassAccess return null;
  public function new() {}
 }
 
