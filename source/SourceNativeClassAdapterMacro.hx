@@ -46,6 +46,9 @@ class SourceNativeClassAdapterMacro {
 		if (animation) {
 			var extra = macro class SpriteAnimationCallback extends flixel.FlxSprite {
 				override function updateAnimation(elapsed:Float):Void dispatchSource('updateAnimation', [elapsed]);
+				override public function updateHitbox():Void dispatchSource('updateHitbox', []);
+				override function drawSimple(camera:flixel.FlxCamera):Void dispatchSource('drawSimple', [camera]);
+				override function drawComplex(camera:flixel.FlxCamera):Void dispatchSource('drawComplex', [camera]);
 			};
 			adapter.fields = adapter.fields.concat(extra.fields);
 			for (field in adapter.fields) if (field.name == 'callNativeBase') switch (field.kind) {
@@ -53,6 +56,9 @@ class SourceNativeClassAdapterMacro {
 					case EBlock(expressions): switch (expressions[0].expr) {
 						case ESwitch(subject, cases, fallback):
 							cases.push({values:[macro 'updateAnimation'], guard:null, expr:macro super.updateAnimation(args[0])});
+							cases.push({values:[macro 'updateHitbox'], guard:null, expr:macro super.updateHitbox()});
+							cases.push({values:[macro 'drawSimple'], guard:null, expr:macro super.drawSimple(args[0])});
+							cases.push({values:[macro 'drawComplex'], guard:null, expr:macro super.drawComplex(args[0])});
 						default:
 					}
 					default:

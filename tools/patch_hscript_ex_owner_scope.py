@@ -1376,6 +1376,38 @@ PATCHES["ScriptClass.hx"].extend([
 ])
 
 
+
+PATCHES["ScriptClass.hx"].append((
+    '    public function setFieldValue(name:String, value:Dynamic):Void {',
+    """    public function sourceFieldOwner(name:String):ScriptClass {
+        if (findVar(name) != null) return this;
+        return Std.isOfType(superClass, ScriptClass) ? cast(superClass, ScriptClass).sourceFieldOwner(name) : null;
+    } // dp-owner-inherited-source-field-owner
+
+    public function setFieldValue(name:String, value:Dynamic):Void {""",
+    'dp-owner-inherited-source-field-owner'))
+PATCHES["InterpEx.hx"].extend([
+    ('        super.setVar(name, value);',
+     """        if (_proxy != null && locals.get(name) == null && _classMethodLocals.indexOf(name) < 0) {
+            var owner = _proxy.sourceFieldOwner(name);
+            if (owner != null) {owner.setFieldValue(name, value);return;}
+        } // dp-owner-inherited-source-variable-write
+        super.setVar(name, value);""",
+     'dp-owner-inherited-source-variable-write'),
+    ('                    } // dp-owner-lexical-static-assignment',
+     """                    } // dp-owner-lexical-static-assignment
+                    if (_proxy != null && _proxy.sourceFieldOwner(id) != null) {
+                        var value = expr(e2);setVar(id, value);return value;
+                    } // dp-owner-inherited-source-assignment""",
+     'dp-owner-inherited-source-assignment'),
+    ('            } else if (proxy.hasNativeSuperField(f, true)) {',
+     """            } else if (proxy.sourceFieldOwner(f) != null) {
+                proxy.setFieldValue(f, v); // dp-owner-inherited-source-explicit-write
+            } else if (proxy.hasNativeSuperField(f, true)) {""",
+     'dp-owner-inherited-source-explicit-write'),
+])
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
