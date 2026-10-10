@@ -169,6 +169,7 @@ class PsychSourceBindings {
 			return screenPositionComponent(name, camera, 'y'));
 
 		installTextLifecycle(variables);
+		installSpriteLifecycle(variables);
 		new SourceScriptTextBindings(false, psychObject, function(name) return PsychFontPath.resolve(name, ownerRoot),
 			SourceTextStyle.psychColor, SourceTextStyle.border, function(message) trace('[psych-text] ' + message)).install(variables);
 
@@ -214,10 +215,12 @@ class PsychSourceBindings {
 			return true;
 		});
 		variables.set('luaSpriteExists', function(tag:String):Bool {
-			var object:Dynamic = host.compatFindObject(tag);
-			return Std.isOfType(object, FlxSprite) && object != null;
+			var object:Dynamic = host.nightmareVisionLegacyFieldCameras ? host.compatFindObject(tag) : host.psychScriptVariables.get(tag);
+			return host.nightmareVisionLegacyFieldCameras ? Std.isOfType(object, FlxSprite)
+				: Std.isOfType(object, PsychModchartSprite) || Std.isOfType(object, PsychModchartAnimateSprite);
 		});
-		variables.set('luaTextExists', function(tag:String):Bool return psychText(tag) != null);
+		variables.set('luaTextExists', function(tag:String):Bool return host.nightmareVisionLegacyFieldCameras
+			? psychText(tag) != null : Std.isOfType(host.psychScriptVariables.get(tag), FlxText));
 		variables.set('luaSoundExists', function(tag:String):Bool return psychSound(tag) != null);
 		variables.set('setTimeBarColors', function(left:String, right:String):Void setTimeBarColors(left, right));
 		variables.set('objectsOverlap', function(first:String, second:String):Bool {
@@ -511,6 +514,64 @@ class PsychSourceBindings {
 		return value;
 	}
 
+	function installSpriteLifecycle(variables:Map<String,Dynamic>):Void {
+		if (host.nightmareVisionLegacyFieldCameras) return;
+		var registry = function():Dynamic return host.psychScriptVariables;
+		var scene = function():Dynamic return host.historicalPropertyInstance();
+		variables.set('makeLuaSprite', function(tag:String, image:String = null, x:Float = 0, y:Float = 0):Void {
+			SourceScriptSpriteLifecycle.create(tag, registry, scene, function() {
+				var sprite = new PsychModchartSprite(x, y, textSpriteAntialiasing());
+				if (image != null && image.length > 0 && host.compatPsychOwnerFallbackAllowed(ownerRoot, image)) {
+					var graphic = host.compatPsychPathCall(ownerRoot, 'image', [host.compatPsychAssetKey(image, '.png')]);
+					if (graphic != null) sprite.loadGraphic(cast graphic);
+				}
+				return sprite;
+			}, true);
+		});
+		variables.set('makeAnimatedLuaSprite', function(tag:String, image:String = null, x:Float = 0, y:Float = 0, spriteType:String = 'auto'):Void {
+			SourceScriptSpriteLifecycle.create(tag, registry, scene, function() {
+				var sprite = new PsychModchartSprite(x, y, textSpriteAntialiasing());
+				if (image != null && image.length > 0) loadFramesObject(sprite, image, spriteType);
+				return sprite;
+			}, false);
+		});
+		variables.set('makeFlxAnimateSprite', function(tag:String, x:Float = 0, y:Float = 0, loadFolder:String = null):Void {
+			SourceScriptSpriteLifecycle.createAnimate(tag, registry, function():Dynamic return host, function() {
+				var sprite = new PsychModchartAnimateSprite(x, y);
+				sprite.antialiasing = textSpriteAntialiasing();
+				if (loadFolder != null) host.compatLoadAnimateAtlasObject(ownerRoot, sprite, loadFolder);
+				return sprite;
+			});
+		});
+		variables.set('addLuaSprite', function(tag:String, front:Bool = false):Void {
+			SourceScriptSpriteLifecycle.add(tag, front, registry, scene, lowestSpriteAnchor, function() return host.isDead, function():Dynamic return GameOverSubstate.instance);
+		});
+		variables.set('removeLuaSprite', function(tag:String, destroy:Bool = true, group:String = null):Void {
+			SourceScriptSpriteLifecycle.remove(tag, destroy, group, psychObject, registry, scene);
+		});
+		var previousRemove = variables.get('removeObject');
+		variables.set('removeObject', function(tag:String, destroy:Bool = true):Void {
+			var object = registry().get(tag);
+			if (Std.isOfType(object, FlxSprite) && !Std.isOfType(object, FlxText))
+				SourceScriptSpriteLifecycle.remove(tag, destroy, null, psychObject, registry, scene);
+			else Reflect.callMethod(null, previousRemove, [tag, destroy]);
+		});
+	}
+	function textSpriteAntialiasing():Bool {
+		return host.psychClientPrefs == null ? OptionsHandler.options.antialiasing : host.psychClientPrefs.data.antialiasing;
+	}
+	function lowestSpriteAnchor():Dynamic {
+		if (host.isDead) return Reflect.getProperty(GameOverSubstate.instance, 'boyfriend');
+		// Native host scenes may keep actors directly until source groups are mounted.
+		var bf:Dynamic = host.boyfriendGroup == null ? host.boyfriend : host.boyfriendGroup;
+		var dad:Dynamic = host.dadGroup == null ? host.dad : host.dadGroup;
+		var gf:Dynamic = host.gfGroup == null ? host.gf : host.gfGroup;
+		var hidden = host.curStage != null && host.curStage.stageData != null && host.curStage.stageData.hide_girlfriend == true;
+		var group:Dynamic = hidden ? bf : gf;
+		for (candidate in [bf, dad]) if (host.members.indexOf(candidate) < host.members.indexOf(group)) group = candidate;
+		return group;
+	}
+
 	function installTextLifecycle(variables:Map<String,Dynamic>):Void {
 		if (host.nightmareVisionLegacyFieldCameras) return;
 		var registry = function():Dynamic return host.psychScriptVariables;
@@ -735,7 +796,10 @@ class PsychSourceBindings {
 	}
 
 	function loadFrames(tag:String, image:String, spriteType:String):Void {
-		var sprite = psychObject(tag);
+		loadFramesObject(psychObject(tag), image, spriteType);
+	}
+
+	function loadFramesObject(sprite:Dynamic, image:String, spriteType:String):Void {
 		if (!Std.isOfType(sprite, FlxSprite) || image == null || StringTools.trim(image) == '') return;
 		if (!host.compatPsychOwnerFallbackAllowed(ownerRoot, image)) return;
 		var key = host.compatPsychAssetKey(image, '.png');
@@ -748,7 +812,11 @@ class PsychSourceBindings {
 		};
 		var atlas:Dynamic = host.compatPsychPathCall(ownerRoot, method, [key]);
 		if (atlas == null) return;
-		try (cast sprite:FlxSprite).frames = cast atlas catch (_:Dynamic) {}
+		try {
+			(cast sprite:FlxSprite).frames = cast atlas;
+			if (Std.isOfType(sprite, PsychModchartSprite))
+				(cast sprite:PsychModchartSprite).sourceAtlasNames = host.compatPsychSpriteFrameNames(ownerRoot, key, method);
+		} catch (_:Dynamic) {}
 	}
 
 	function loadMultipleFrames(tag:String, images:Array<String>):Void {

@@ -6361,6 +6361,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** Resolve authored atlas names after the tag has become a live object. */
 	function compatSpriteAtlasNames(name:Dynamic, object:Dynamic):Array<String> {
+		if (Std.isOfType(object, PsychModchartSprite)) return (cast object:PsychModchartSprite).sourceAtlasNames;
 		var names:Array<String> = name == null ? null : haxeSpriteAtlasNames.get(Std.string(name));
 		if (names == null && object != null && Std.isOfType(object, FlxSprite))
 			names = haxeSpriteAtlasNamesByObject.get(cast object);
@@ -6590,6 +6591,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return names;
 	}
 
+	function compatPsychSpriteFrameNames(ownerRoot:String, key:String, method:String):Array<String> {
+		if (method == 'getAtlas' || method == 'getSparrowAtlas') {
+			var xmlPath:Dynamic = compatPsychPathCall(ownerRoot, 'file', ['images/' + key + '.xml']);
+			if (xmlPath != null && FNFAssets.exists(Std.string(xmlPath)))
+				return compatReadSparrowFrameNames(FNFAssets.getText(Std.string(xmlPath)));
+		}
+		return [];
+	}
+
 	/**
 		Psych keeps animated Lua sprites on Sparrow atlases.  Loading only the PNG
 		(as the generic makeLuaSprite route does) leaves addAnimationByPrefix with
@@ -6683,11 +6693,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				sprite.destroy();
 				return compatMakeAnimatedLuaSprite(tag, image, x, y);
 			}
-			if (atlasMethod == 'getAtlas' || atlasMethod == 'getSparrowAtlas') {
-				var xmlPath:Dynamic = compatPsychPathCall(ownerRoot, 'file', ['images/' + key + '.xml']);
-				if (xmlPath != null && FNFAssets.exists(Std.string(xmlPath)))
-					atlasNames = compatReadSparrowFrameNames(FNFAssets.getText(Std.string(xmlPath)));
-			}
+			atlasNames = compatPsychSpriteFrameNames(ownerRoot, key, atlasMethod);
 		}
 		if (tag != null) {
 			compatForgetSpriteAtlas(haxeSprites.get(tag));
@@ -6713,7 +6719,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	/** Load one Animate atlas only from the calling Psych script's import owner. */
 	function compatLoadAnimateAtlas(ownerRoot:Null<String>, tag:Dynamic, folderOrImage:Dynamic,
 		?spriteJson:Dynamic, ?animationJson:Dynamic):Bool {
-		var object = compatFindObject(tag);
+		return compatLoadAnimateAtlasObject(ownerRoot, compatFindObject(tag), folderOrImage, spriteJson, animationJson);
+	}
+
+	function compatLoadAnimateAtlasObject(ownerRoot:Null<String>, object:Dynamic, folderOrImage:Dynamic,
+		?spriteJson:Dynamic, ?animationJson:Dynamic):Bool {
 		if (!Std.isOfType(object, FlxAnimate)) return false;
 		if (ownerRoot == null) {
 			trace('[psych-flxanimate-owner-missing] loadAnimateAtlas requires a validated calling Psych owner');
@@ -6726,7 +6736,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			Reflect.callMethod(paths, load, [object, folderOrImage, spriteJson, animationJson]);
 			return (cast object : FlxAnimate).frames != null;
 		} catch (error:Dynamic) {
-			trace('[psych-flxanimate-load-failed] ' + Std.string(tag) + ': ' + Std.string(error));
+			trace('[psych-flxanimate-load-failed] ' + Std.string(folderOrImage) + ': ' + Std.string(error));
 			return false;
 		}
 	}
@@ -7025,6 +7035,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		try {
 			if (Std.isOfType(object, Character))
 				(cast object : Character).playAnim(animation, forced, reversed, startFrame);
+			else if (Std.isOfType(object, PsychModchartSprite))
+				(cast object : PsychModchartSprite).playAnim(animation, forced, reversed, startFrame);
 			else if (Std.isOfType(object, PsychModchartAnimateSprite))
 				(cast object : PsychModchartAnimateSprite).playAnim(animation, forced, reversed, startFrame);
 			else if (Std.isOfType(object, FlxAnimate))

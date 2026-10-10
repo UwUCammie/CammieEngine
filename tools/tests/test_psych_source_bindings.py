@@ -30,7 +30,7 @@ class PsychSourceBindingTest(unittest.TestCase):
         if not (ROOT / ".tools/haxe/haxe.exe").is_file() and not (ROOT / ".tools/haxe/haxe").is_file():
             self.skipTest("portable Haxe interpreter is unavailable")
         methods = "\n".join(extract(haxe.read_text(), name) for name in (
-            "psychObject", "loadFrames", "loadMultipleFrames", "addAnimationBySymbolIndices",
+            "psychObject", "loadFrames", "loadFramesObject", "loadMultipleFrames", "addAnimationBySymbolIndices",
         ))
         fixture = r'''class FlxAtlasFrames {
  public var parent:String;
@@ -42,6 +42,7 @@ class PsychSourceBindingTest(unittest.TestCase):
  }
 }
 class FlxSprite { public var frames:FlxAtlasFrames; public var anim:Dynamic; public function new() {} }
+class PsychModchartSprite extends FlxSprite {public var sourceAtlasNames:Array<String>;}
 class FixtureAnimateController {
  public var curSymbol:Dynamic=null;
  public var call:Array<Dynamic>=null;
@@ -67,6 +68,7 @@ class FixtureHost {
   frames.names=[Std.string(args[0])];
   return frames;
  }
+ public function compatPsychSpriteFrameNames(owner:String,key:String,method:String):Array<String> return ['frame2','frame1'];
  public function compatPlayAnim(tag:String,name:String,forced:Bool):Bool {played=[tag,name,forced];return true;}
 }
 class PsychSourceBindingsFixture {
@@ -83,6 +85,7 @@ class PsychSourceBindingsFixture {
   if(host.calls.length!=1 || host.calls[0][0]!='getSparrowAtlas') throw 'Sparrow alias mapped to the wrong Paths loader';
   bridge.loadFrames('sprite','assets/imported_mods/other/ui/menu','auto');
   if(host.calls.length!=1) throw 'cross-owner frame reference reached the path facade';
+  var modern=new PsychModchartSprite();host.objects.set('modern',modern);bridge.loadFrames('modern','ui/menu','auto');if(modern.sourceAtlasNames.join(',')!='frame2,frame1')throw 'source frame metadata order';
   bridge.loadMultipleFrames('sprite',['base','extra']);
   if(sprite.frames==null || sprite.frames.names.join(',')!='base,extra') throw 'multi-atlas merge lost Psych frame order';
   var animate=new FlxSprite(); var controller=new FixtureAnimateController(); animate.anim=controller; host.objects.set('anim',animate);
