@@ -21,13 +21,20 @@ class SourceNativeClassLifecycle {
 	public static function hasNativeSuper(name:String, animation:Bool, initialization:Bool, spriteGroup:Bool = false):Bool {
 		if (name == 'initGroup') return spriteGroup;
 		if (name == 'initVars') return initialization;
-		return ['graphicLoaded', 'drawFrame', 'updateAnimation', 'updateHitbox', 'drawSimple', 'drawComplex'].indexOf(name) >= 0
+		return ['loadGraphic', 'set_clipRect', 'set_alpha', 'graphicLoaded', 'drawFrame', 'updateAnimation', 'updateHitbox', 'drawSimple', 'drawComplex'].indexOf(name) >= 0
 			? animation : ['update', 'draw', 'kill', 'revive', 'destroy'].indexOf(name) >= 0;
 	}
 	public function dispatch(name:String, args:Array<Dynamic>):Void {
 		if (name == 'destroy') {destroy();return;}
 		if (!nativeDestroyed && !destroying && owner != null && scope != null && scope.isActive())
 			scope.callNativeLifecycle(owner, name, args);
+	}
+	/** Return native values while keeping conversion inside the owner lifetime boundary. */
+	public function dispatchResult(name:String, args:Array<Dynamic>):Dynamic {
+		if (nativeDestroyed) return destroying && nativeBase != null ? nativeBase(name, args) : null;
+		if (owner != null && scope != null && scope.isActive())
+			return scope.callNativeLifecycle(owner, name, args, true);
+		return null;
 	}
 	public function callNativeSuper(name:String, args:Array<Dynamic>):Dynamic {
 		if (name == 'destroy') destroyNative();

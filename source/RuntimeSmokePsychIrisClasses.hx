@@ -18,6 +18,7 @@ class RuntimeSmokePsychIrisClasses {
 		var originalStageError = state.psychCompiledStageRuntimeError;
 		var originalStageDiagnostics = state.psychCompiledStageDiagnosticsReported;
 		var selectedRuntime:PsychCompiledStageRuntime = null;
+		var accessorSprite:flixel.FlxSprite = null;
 		var plain = new SourceIrisBridge(state);
 		var lua = new LuaCompatInterp();
 		var runtime:PsychRuntimeBindings = null;
@@ -33,6 +34,7 @@ class RuntimeSmokePsychIrisClasses {
 		var reentrantOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var constructionOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var cleanup = function() {
+			if (accessorSprite != null) accessorSprite.destroy();
 			if (selectedRuntime != null) selectedRuntime.destroy();
 			state.psychCompiledStageRuntime = originalStageRuntime;
 			state.psychCompiledStageRuntimeError = originalStageError;
@@ -110,6 +112,23 @@ class RuntimeSmokePsychIrisClasses {
 			hookSprite.frames = hookSprite.frames;
 			check(session.read(sourceSprite, 'graphicLoads') == 2 && session.read(sourceSprite, 'derivedLoads') == 2,
 				'Native frame reassignment reaches source graphic-loaded override once');
+
+			plain.variables.set('accessorGraphicProbe', hookSprite.graphic);
+			plain.evaluate('import demo.NativeAccessors; accessorSourceProbe=new NativeAccessors(accessorGraphicProbe);', 'native-accessor-probe');
+			var accessorSource = plain.variables.get('accessorSourceProbe');
+			accessorSprite = cast session.loader.scope.unwrapNativeArgument(accessorSource);
+			check(session.read(accessorSource, 'loadCalls') == 1 && accessorSprite.loadGraphic(hookSprite.graphic) == accessorSprite
+				&& session.read(accessorSource, 'loadCalls') == 2, 'Native constructor and loadGraphic preserve source return identity');
+			var clip = new flixel.math.FlxRect(1.25, 2.75, 3.5, 4.25);
+			accessorSprite.clipRect = clip;
+			check(accessorSprite.clipRect == clip && clip.x == 1.25 && session.read(accessorSource, 'clipCalls') == 1,
+				'Native donor-style setter preserves fractional backing storage without recursion');
+			@:privateAccess var accessorResult = accessorSprite.set_alpha(0.25);
+			check(accessorResult == 1 && accessorSprite.alpha == 0.5 && session.read(accessorSource, 'alphaCalls') == 1,
+				'Native setter result and compound backing writes retain Haxe semantics');
+			check(session.call(accessorSource, 'runEscaped', []) == 0.625 && accessorSprite.alpha == 0.625
+				&& session.read(accessorSource, 'alphaCalls') == 1, 'Escaped source callback retains lexical accessor storage');
+			accessorSprite.cameras = [renderCamera];accessorSprite.draw();accessorSprite.destroy();accessorSprite = null;
 
 			plain.evaluate('import demo.NativePanel; sourcePanelProbe=new NativePanel(); panelAddProbe=nativeSpriteGroup.add(sourcePanelProbe);', 'native-text-panel-probe');
 			var sourcePanel = plain.variables.get('sourcePanelProbe');
@@ -234,7 +253,7 @@ class RuntimeSmokePsychIrisClasses {
 			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				nativeGroupInitialization:true,nativeGraphicLoaded:true,derivedGraphicLoaded:true,selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				nativeReturnValues:true,nativeFractionalClip:true,nativeAccessorBacking:true,nativeAccessorClosure:true,nativeGroupInitialization:true,nativeGraphicLoaded:true,derivedGraphicLoaded:true,selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

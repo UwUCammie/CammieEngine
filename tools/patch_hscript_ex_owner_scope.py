@@ -1408,6 +1408,107 @@ PATCHES["InterpEx.hx"].extend([
 ])
 
 
+# Accessor context is lexical, including escaped closures, rather than a global
+# "currently setting" flag that would suppress writes to other objects.
+PATCHES["ScriptClass.hx"].append((
+    "r = _interp.executeClassMethod(fn.expr,",
+    "r = _interp.executeAccessorMethod(name, fn.expr, // dp-owner-native-accessor-method",
+    "dp-owner-native-accessor-method"))
+PATCHES["InterpEx.hx"].extend([
+    ("    private var _nextCallObject:Dynamic = null;",
+     """    private var _nativeAccessorField:String = null;
+
+    function withNativeAccessor(field:String, callback:Void->Dynamic):Dynamic {
+        var saved = _nativeAccessorField;
+        _nativeAccessorField = field;
+        try {
+            var result = callback();_nativeAccessorField = saved;return result;
+        } catch (error:Dynamic) {_nativeAccessorField = saved;throw error;}
+    }
+
+    public function executeAccessorMethod(name:String, body:Expr, ?localNames:Array<String>,
+        ?providedArgs:Array<Dynamic>, ?defaultValues:Array<Expr>):Dynamic {
+        var field = name != null && (StringTools.startsWith(name, "set_") || StringTools.startsWith(name, "get_")) ? name.substr(4) : null;
+        return withNativeAccessor(field, function():Dynamic return executeClassMethod(body, localNames, providedArgs, defaultValues));
+    }
+
+    function nativeBackingObject(e:Expr):Dynamic {
+        if (_nativeAccessorField == null || _classScope == null || _proxy == null
+            || _proxy.sourceFieldOwner(_nativeAccessorField) != null) return null;
+        var own = switch (Tools.expr(e)) {
+            case EIdent(name): name == _nativeAccessorField && locals.get(name) == null && _classMethodLocals.indexOf(name) < 0;
+            case EField(receiver, name): name == _nativeAccessorField && switch (Tools.expr(receiver)) {case EIdent("this"): true;default: false;};
+            default: false;
+        };
+        return own ? _classScope.nativeAccessorBacking(_proxy, _nativeAccessorField) : null;
+    }
+
+    override function increment(e:Expr, prefix:Bool, delta:Int):Dynamic {
+        var backing = nativeBackingObject(e);
+        if (backing == null) return super.increment(e, prefix, delta);
+        var before:Dynamic = Reflect.field(backing, _nativeAccessorField);
+        var after:Dynamic = before + delta;
+        Reflect.setField(backing, _nativeAccessorField, after);
+        return prefix ? after : before;
+    } // dp-owner-native-accessor-backing
+
+    private var _nextCallObject:Dynamic = null;""",
+     "dp-owner-native-accessor-backing"),
+    ("    override public function expr(e:Expr):Dynamic {",
+     """    override public function expr(e:Expr):Dynamic {
+        var backing = nativeBackingObject(e);
+        if (backing != null) return Reflect.field(backing, _nativeAccessorField);
+        switch (Tools.expr(e)) {
+            case EFunction(params, body, name, type):
+                var field = _nativeAccessorField;
+                var callable:Dynamic = super.expr(e);
+                var wrapped = Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic
+                    return withNativeAccessor(field, function():Dynamic return Reflect.callMethod(null, callable, args)));
+                if (name != null) {
+                    if (depth == 0) variables.set(name, wrapped);
+                    else {var local = locals.get(name);if (local != null) local.r = wrapped;}
+                }
+                return wrapped;
+            default:
+        } // dp-owner-native-accessor-closure
+""",
+     "dp-owner-native-accessor-closure"),
+    ("    override function assign( e1 : Expr, e2 : Expr ) : Dynamic {",
+     """    override function assign( e1 : Expr, e2 : Expr ) : Dynamic {
+        var backing = nativeBackingObject(e1);
+        if (backing != null) {
+            var value = expr(e2);
+            Reflect.setField(backing, _nativeAccessorField, _classScope.nativePropertyValue(backing, _nativeAccessorField, value));
+            return value;
+        } // dp-owner-native-accessor-assign""",
+     "dp-owner-native-accessor-assign"),
+    ("    override function evalAssignOp(op, fop, e1, e2):Dynamic {",
+     """    override function evalAssignOp(op, fop, e1, e2):Dynamic {
+        var backing = nativeBackingObject(e1);
+        if (backing != null) {
+            var value = fop(Reflect.field(backing, _nativeAccessorField), expr(e2));
+            Reflect.setField(backing, _nativeAccessorField, _classScope.nativePropertyValue(backing, _nativeAccessorField, value));
+            return value;
+        } // dp-owner-native-accessor-compound""",
+     "dp-owner-native-accessor-compound"),
+])
+
+
+PATCHES["InterpEx.hx"].append((
+    "            case EFunction(params, body, name, type):\n                var field = _nativeAccessorField;",
+    "            case EFunction(params, body, name, type):\n                if (_proxy == null || _classScope == null) return super.expr(e); // dp-owner-accessor-class-closures-only\n                var field = _nativeAccessorField;",
+    "dp-owner-accessor-class-closures-only"))
+
+
+
+PATCHES["InterpEx.hx"].append((
+    "Reflect.setProperty(proxy.superClass, f, proxy._classScope == null ? v : proxy._classScope.nativePropertyValue(proxy.superClass, f, v));",
+    """Reflect.setProperty(proxy.superClass, f, proxy._classScope == null ? v : proxy._classScope.nativePropertyValue(proxy.superClass, f, v));
+            } else if (Std.isOfType(proxy.superClass, ScriptClass)) {
+                proxy.setFieldValue(f, v); // dp-owner-inherited-native-explicit-write""",
+    'dp-owner-inherited-native-explicit-write'))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text

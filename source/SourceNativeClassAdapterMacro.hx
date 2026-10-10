@@ -30,6 +30,8 @@ class SourceNativeClassAdapterMacro {
 				if (sourceLifecycle == null) callNativeBase(name, args);
 				else sourceLifecycle.dispatch(name, args);
 			}
+			function dispatchSourceResult(name:String, args:Array<Dynamic>):Dynamic
+				return sourceLifecycle == null ? callNativeBase(name, args) : sourceLifecycle.dispatchResult(name, args);
 			override public function update(elapsed:Float):Void dispatchSource('update', [elapsed]);
 			override public function draw():Void dispatchSource('draw', []);
 			override public function kill():Void dispatchSource('kill', []);
@@ -70,6 +72,11 @@ class SourceNativeClassAdapterMacro {
 				override function updateAnimation(elapsed:Float):Void dispatchSource('updateAnimation', [elapsed]);
 				override public function drawFrame(force:Bool = false):Void dispatchSource('drawFrame', [force]);
 				override public function graphicLoaded():Void dispatchSource('graphicLoaded', []);
+				override public function loadGraphic(graphic:flixel.system.FlxAssets.FlxGraphicAsset, animated:Bool = false, frameWidth:Int = 0, frameHeight:Int = 0, unique:Bool = false, ?key:String):flixel.FlxSprite
+					return cast dispatchSourceResult('loadGraphic', [graphic, animated, frameWidth, frameHeight, unique, key]);
+				override function set_clipRect(rect:flixel.math.FlxRect):flixel.math.FlxRect
+					return cast dispatchSourceResult('set_clipRect', [rect]);
+				override function set_alpha(value:Float):Float return cast dispatchSourceResult('set_alpha', [value]);
 				override public function updateHitbox():Void dispatchSource('updateHitbox', []);
 				override function drawSimple(camera:flixel.FlxCamera):Void dispatchSource('drawSimple', [camera]);
 				override function drawComplex(camera:flixel.FlxCamera):Void dispatchSource('drawComplex', [camera]);
@@ -78,6 +85,9 @@ class SourceNativeClassAdapterMacro {
 				{values:[macro 'updateAnimation'], guard:null, expr:macro super.updateAnimation(args[0])},
 				{values:[macro 'drawFrame'], guard:null, expr:macro super.drawFrame(args[0])},
 				{values:[macro 'graphicLoaded'], guard:null, expr:macro super.graphicLoaded()},
+				{values:[macro 'loadGraphic'], guard:null, expr:macro return super.loadGraphic(args[0], args[1], args[2], args[3], args[4], args[5])},
+				{values:[macro 'set_clipRect'], guard:null, expr:macro return super.set_clipRect(args[0])},
+				{values:[macro 'set_alpha'], guard:null, expr:macro return super.set_alpha(args[0])},
 				{values:[macro 'updateHitbox'], guard:null, expr:macro super.updateHitbox()},
 				{values:[macro 'drawSimple'], guard:null, expr:macro super.drawSimple(args[0])},
 				{values:[macro 'drawComplex'], guard:null, expr:macro super.drawComplex(args[0])}

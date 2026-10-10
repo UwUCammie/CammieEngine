@@ -389,6 +389,7 @@ class UnusedExternalImport {
 import openfl.utils.AssetType;
 class UsedExternalEnumImport {
 	public var kind:AssetType;
+	public function used():Dynamic return true ? null : AssetType.IMAGE;
 	public function new() {}
 }''',
                 "source/demo/parts/OwnerImportKeeper.hx": '''package demo.parts;
@@ -446,6 +447,7 @@ class ParenthesizedCast {
 class MissingCastOperand {
 	public function read():Dynamic return cast;
 }''',
+                "source/demo/parts/ExternalInterface.hx": "package demo.parts; import missing.Interface; class ExternalInterface implements Interface {}",
                 "source/demo/parts/BadFinal.hx": '''package demo.parts;
 class BadFinal {
 	public function read():Int {
@@ -553,6 +555,11 @@ class Main {
   if(usedEnum.diagnostics.length!=1 || usedEnum.diagnostics[0]!=expectedEnumDiagnostic)
    throw "a used, unsupported enum abstract lost its exact import diagnostic: "+usedEnum.diagnostics;
   usedEnum.scope.release();
+
+  var externalInterface=CodenameScriptClassLoader.load(root,["demo.parts.ExternalInterface"],new Map(),new Map());
+  if(externalInterface.diagnostics.length!=1 || externalInterface.diagnostics[0].indexOf("missing.Interface")<0)
+   throw "implemented interface was erased as a type-only import: "+externalInterface.diagnostics;
+  externalInterface.scope.release();
 
   var ownerImport=CodenameScriptClassLoader.load(root,["demo.parts.OwnerImportKeeper"],new Map(),new Map());
   if(ownerImport.diagnostics.length!=0 || ownerImport.scope.findDescriptor("demo.parts.Widget")==null)

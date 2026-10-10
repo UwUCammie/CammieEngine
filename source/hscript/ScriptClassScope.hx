@@ -707,6 +707,19 @@ class ScriptClassScope {
 	}
 	#end
 
+	/** Only explicit native accessor hooks expose their lexical backing storage. */
+	public function nativeAccessorBacking(value:Dynamic, field:String):Dynamic {
+		ensureActive();
+		#if flixel
+		var receiver = unwrapNativeArgument(value);
+		if (Std.isOfType(receiver, SourceNativeClassAdapter)) {
+			var adapter:SourceNativeClassAdapter = cast receiver;
+			if (adapter.supportsNativeSuper('set_' + field) || adapter.supportsNativeSuper('get_' + field)) return receiver;
+		}
+		#end
+		return null;
+	}
+
 	/** Preserve native property semantics and array identity during reflected writes. */
 	public function nativePropertyValue(receiver:Dynamic, name:String, value:Dynamic):Dynamic {
 		ensureActive();
@@ -907,8 +920,11 @@ class ScriptClassScope {
 	}
 
 	/** Finish the current native lifecycle traversal before releasing its owner. */
-	public function callNativeLifecycle(owner:ScriptClass, name:String, args:Array<Dynamic>):Dynamic {
-		return withNativeLifetime(function():Dynamic return owner.callFunction(name, args));
+	public function callNativeLifecycle(owner:ScriptClass, name:String, args:Array<Dynamic>, nativeResult:Bool = false):Dynamic {
+		return withNativeLifetime(function():Dynamic {
+			var result = owner.callFunction(name, args);
+			return nativeResult ? unwrapNativeArgument(result) : result;
+		});
 	}
 
 	/** Source constructors and native callbacks share one deferred-release boundary. */

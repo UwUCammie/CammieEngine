@@ -27,6 +27,7 @@ class FlxBasic {
  public function revive():Void { alive=true; exists=true; }
  public function destroy():Void { destroys++; exists=false; }
 }''',
+                "flixel/math/FlxRect.hx": "package flixel.math; class FlxRect {}",
                 "flixel/FlxCamera.hx": "package flixel; class FlxCamera {}",
                 "flixel/FlxObject.hx": """package flixel;
 class FlxObject extends FlxBasic {public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) super();function initVars():Void {}}""",
@@ -37,6 +38,9 @@ class FlxSprite extends FlxBasic {
  function initVars():Void {}
  public function drawFrame(force:Bool=false):Void {}
  public function graphicLoaded():Void {}
+ public function loadGraphic(graphic:Dynamic,animated:Bool=false,frameWidth:Int=0,frameHeight:Int=0,unique:Bool=false,?key:String):FlxSprite return this;
+ function set_clipRect(rect:flixel.math.FlxRect):flixel.math.FlxRect return rect;
+ function set_alpha(value:Float):Float return value;
  function updateAnimation(elapsed:Float):Void {}
  public function updateHitbox():Void {}
  function drawSimple(camera:FlxCamera):Void {}

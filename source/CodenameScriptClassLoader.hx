@@ -251,6 +251,7 @@ class CodenameScriptClassLoader {
 			try module = parserForRuntimeSource().parseModule(source, relative) catch (error:Dynamic)
 				return fail(importPath, relative, 'could not parse native position defaults: ' + Std.string(error));
 		}
+		var typeOnlyImports:Array<ModuleDecl> = [];
 		var classCount = 0;
 		var sourcePackage = '';
 		var requestedClassDeclared = false;
@@ -281,6 +282,7 @@ class CodenameScriptClassLoader {
 							'unavailable imported class dependency ' + dependency + ': ' + nested.reason);
 					}
 					if (!nested.expectedSource) {
+						if (!moduleUsesRuntimeName(module, path[path.length - 1])) {typeOnlyImports.push(decl);continue;}
 						loading.remove(relative);
 						return fail(importPath, relative,
 							'no explicit owner binding or source module for import ' + dependency);
@@ -293,6 +295,7 @@ class CodenameScriptClassLoader {
 				// object. Importing a typedef as the requested class still fails the
 				// requestedClassDeclared check below.
 		}
+		module = [for (decl in module) if (typeOnlyImports.indexOf(decl) < 0) decl];
 		if (classCount == 0) return fail(importPath, relative, 'source module contains no runtime class declaration');
 		if (!requestedClassDeclared)
 			return fail(importPath, relative, 'owner source module does not declare requested class ' + importPath);
@@ -307,6 +310,37 @@ class CodenameScriptClassLoader {
 		loading.remove(relative);
 		loaded.set(relative, true);
 		return {expectedSource:true, loaded:true, reason:''};
+	}
+
+	/** Imported annotation types are erased, but expression and base-class uses need values. */
+	static function moduleUsesRuntimeName(module:Array<ModuleDecl>, name:String):Bool {
+		var used = false;
+		function visit(expr:hscript.Expr):Void {
+			if (expr == null || used) return;
+			switch (hscript.Tools.expr(expr)) {
+				case EIdent(id): if (id == name) used = true;
+				case ENew(path, _): if (path == name || path.startsWith(name + '.')) used = true;
+				default:
+			}
+			hscript.Tools.iter(expr, visit);
+		}
+		for (decl in module) switch (decl) {
+			case DClass(type):
+				var bases = type.implement == null ? [] : type.implement.copy();
+				if (type.extend != null) bases.push(type.extend);
+				for (parent in bases) {
+					var base = new Printer().typeToString(parent);
+					if (base == name || base.startsWith(name + '.') || base.startsWith(name + '<')) return true;
+				}
+				for (field in type.fields) switch (field.kind) {
+					case KVar(variable): visit(variable.expr);
+					case KFunction(fn):
+						visit(fn.expr);
+						for (arg in fn.args) visit(arg.value);
+				}
+			default:
+		}
+		return used;
 	}
 
 	/** HScript's parser starts with no target defines. Mirror only capabilities

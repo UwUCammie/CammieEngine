@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Source graphic-loading and clipping/alpha overrides now preserve native return values and lexical backing-field writes, including escaped callbacks; annotation-only external imports no longer require runtime class objects.
 - Imported source sprite groups now preserve authored group initialization, and sprite/text/group classes receive graphic-loaded hooks through the shared native adapter.
 - Selected Psych/Nightmare Vision source stages now share class identity and static storage with ordinary and embedded scripts, while preserving stage placement, owner bindings and ordered cleanup.
 - Source native subclasses now bind before super construction, preserving authored initialization and frame hooks; owner teardown waits for the full source constructor and rejects disposed results.
