@@ -46,6 +46,9 @@ class PsychSourceClassSession implements SourceClassAccess {
 	public function write(value:Dynamic, field:String, item:Dynamic):Dynamic return scopeOf(value).accessInterpreter().set(value, field, item);
 	public function call(value:Dynamic, field:String, args:Array<Dynamic>):Dynamic
 		return scopeOf(value).accessInterpreter().fcall(value, field, args == null ? [] : args);
+	public function nativeMethod(value:Dynamic, field:String, method:Dynamic):Dynamic
+		return loader.scope.bindNativeMethod(value, field, method);
+	public function nativeValue(value:Dynamic):Dynamic return loader.scope.unwrapIndexedMember(value);
 	public function classOf(value:Dynamic):Dynamic {
 		if (isClass(value)) return null;
 		var descriptor = (cast value:ScriptClass)._c;

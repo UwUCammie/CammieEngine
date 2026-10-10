@@ -43,7 +43,8 @@ class SourceNativeClassScope {
 		if (sourceObjects != null && sourceObjects.handles(type)) return sourceObjects.read(type, name);
 		for (binding in statics) if (binding.type == type && binding.name == name) return binding.read();
 		if (property) for (binding in instanceProperties) if (binding.name == name && Std.isOfType(type, binding.type)) return binding.read(type);
-		return property ? Reflect.getProperty(type, name) : Reflect.field(type, name);
+		var value = property ? Reflect.getProperty(type, name) : Reflect.field(type, name);
+		return sourceObjects == null ? value : sourceObjects.nativeMethod(type, name, value);
 	}
 	public function write(type:Dynamic, name:String, value:Dynamic, property:Bool = true):Dynamic {
 		if (sourceObjects != null && sourceObjects.handles(type)) return sourceObjects.write(type, name, value);

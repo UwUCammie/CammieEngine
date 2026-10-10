@@ -50,6 +50,7 @@ class ScriptClassScope {
 	final nativeFactories:haxe.ds.ObjectMap<Dynamic, Array<Dynamic>->Dynamic> = new haxe.ds.ObjectMap();
 	var active:Bool = true;
 	var valueAccess:InterpEx;
+	final nativeMethods:haxe.ds.ObjectMap<Dynamic, Map<String, {method:Dynamic, wrapped:Dynamic}>> = new haxe.ds.ObjectMap();
 
 	public function new() {}
 
@@ -447,7 +448,9 @@ class ScriptClassScope {
 		if (!Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
 		var bridge:PsychScriptClassBasicBridge = cast value;
 		var owner = bridge.scriptOwner();
-		return owner != null && nativeBasicBridges.get(owner) == bridge ? owner : value;
+		if (owner == null) return value;
+		var scope = actualOwner(owner);
+		return scope.nativeBasicBridges.get(owner) == bridge ? owner : value;
 	}
 
 	function matchesRecycleClass(owner:ScriptClass, requested:ClassDeclEx, force:Bool):Bool {
@@ -464,9 +467,46 @@ class ScriptClassScope {
 	}
 	#end
 
+	/** Capture a native method once so direct, reflected and borrowed calls use
+	 * the same argument conversion and return the authored member identity. */
+	public function bindNativeMethod(receiver:Dynamic, name:String, method:Dynamic):Dynamic {
+		#if flixel
+		if (!Reflect.isFunction(method)) return method;
+		var group = Std.isOfType(receiver, FlxTypedGroup) || Std.isOfType(receiver, FlxTypedSpriteGroup);
+		var supported = group && ['add', 'insert', 'remove', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
+		if (!supported && !(receiver == FlxTween && NATIVE_TWEEN_TARGET_METHODS.indexOf(name) >= 0)) return method;
+		ensureActive();
+		var methods = nativeMethods.get(receiver);
+		if (methods == null) {methods = new Map();nativeMethods.set(receiver, methods);}
+		var previous = methods.get(name);
+		if (previous != null && Reflect.compareMethods(previous.method, method)) return previous.wrapped;
+		var wrapped = Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			ensureActive();
+			if (name == 'recycle') {
+				var result = recycleScriptClass(receiver, args);
+				if (result.handled) return result.value;
+			}
+			var adapted = unwrapNativeGroupArguments(receiver, name, args);
+			adapted = unwrapNativeTweenArguments(receiver, name, adapted);
+			return unwrapIndexedMember(Reflect.callMethod(receiver, method, adapted));
+		});
+		methods.set(name, {method:method, wrapped:wrapped});
+		return wrapped;
+		#else
+		return method;
+		#end
+	}
+
+	function actualOwner(proxy:ScriptClass):ScriptClassScope {
+		var scope = proxy._classScope;
+		if (scope == null || !scope.isActive() || !scope.ownsScriptClassProxy(proxy))
+			throw '[hscript-class-scope] Native call received an unowned or released source object';
+		return scope;
+	}
+
 	/**
 	 * HScript-ex classes compose a native Flixel superclass instead of being
-	 * instances of it. Convert owner-local script objects at native Flixel
+	 * instances of it. Convert explicitly supplied source objects through their actual owner at native Flixel
 	 * group mutation and sprite drawing calls that take a FlxBasic argument.
 	 * Leave other calls and values untouched.
 	 */
@@ -482,14 +522,7 @@ class ScriptClassScope {
 			var callback = args[0];
 			var adapted = args.copy();
 			adapted[0] = function(member:Dynamic):Void {
-				var value:Dynamic = member;
-				if (Std.isOfType(member, PsychScriptClassBasicBridge)) {
-					var bridge:PsychScriptClassBasicBridge = cast member;
-					var owner = bridge.scriptOwner();
-					if (owner != null && nativeBasicBridges.get(owner) == bridge)
-						value = owner;
-				}
-				Reflect.callMethod(null, callback, [value]);
+				Reflect.callMethod(null, callback, [unwrapIndexedMember(member)]);
 			};
 			return adapted;
 		}
@@ -501,13 +534,14 @@ class ScriptClassScope {
 			var value = result[index];
 			if (Std.isOfType(value, ScriptClass)) {
 				var proxy:ScriptClass = cast value;
+				var scope = actualOwner(proxy);
 				if (Std.isOfType(receiver, FlxTypedGroup) && method != 'remove')
-					result[index] = bridgeOwnedFlxBasic(proxy);
+					result[index] = scope.bridgeOwnedFlxBasic(proxy);
 				else if (Std.isOfType(receiver, FlxTypedGroup) && method == 'remove')
-					result[index] = nativeBasicBridges.get(proxy) == null
-						? unwrapOwnedFlxBasic(proxy) : nativeBasicBridges.get(proxy);
+					result[index] = scope.nativeBasicBridges.get(proxy) == null
+						? scope.unwrapOwnedFlxBasic(proxy) : scope.nativeBasicBridges.get(proxy);
 				else
-					result[index] = unwrapOwnedFlxBasic(proxy);
+					result[index] = scope.unwrapOwnedFlxBasic(proxy);
 			}
 		}
 		return result;
@@ -525,7 +559,9 @@ class ScriptClassScope {
 		if (!active || !Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
 		var bridge:PsychScriptClassBasicBridge = cast value;
 		var owner = bridge.scriptOwner();
-		return owner != null && nativeBasicBridges.get(owner) == bridge ? owner : value;
+		if (owner == null) return value;
+		var scope = actualOwner(owner);
+		return scope.nativeBasicBridges.get(owner) == bridge ? owner : value;
 		#else
 		return value;
 		#end
@@ -566,7 +602,7 @@ class ScriptClassScope {
 
 	/** FlxTween keeps and reflects on its first target argument after the call
 	 * returns. Owner script classes compose native FlxBasic instances, so unwrap
-	 * only same-scope script targets at these exact native tween target methods.
+	 * script targets through their actual owner at these exact native tween target methods.
 	 * Other FlxTween arguments and ordinary calls retain their original values.
 	 */
 	public function unwrapNativeTweenArguments(receiver:Dynamic, method:String,
@@ -577,7 +613,7 @@ class ScriptClassScope {
 			|| !Std.isOfType(args[0], ScriptClass)) return args;
 
 		var result = args.copy();
-		result[0] = unwrapOwnedFlxBasic(args[0]);
+		result[0] = actualOwner(args[0]).unwrapOwnedFlxBasic(args[0]);
 		return result;
 		#else
 		return args;
@@ -674,6 +710,7 @@ class ScriptClassScope {
 		active = false;
 		if (valueAccess != null) valueAccess.variables.clear();
 		valueAccess = null;
+		nativeMethods.clear();
 		nativeConstructionHooks.clear();
 		nativeFactories.clear();
 		descriptors.clear();

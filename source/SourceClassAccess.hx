@@ -9,6 +9,8 @@ interface SourceClassAccess {
 	function read(value:Dynamic, field:String):Dynamic;
 	function write(value:Dynamic, field:String, item:Dynamic):Dynamic;
 	function call(value:Dynamic, field:String, args:Array<Dynamic>):Dynamic;
+	function nativeMethod(value:Dynamic, field:String, method:Dynamic):Dynamic;
+	function nativeValue(value:Dynamic):Dynamic;
 	function classOf(value:Dynamic):Dynamic;
 	function className(value:Dynamic):String;
 }

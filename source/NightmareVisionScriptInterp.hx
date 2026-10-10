@@ -516,7 +516,8 @@ class NightmareVisionScriptInterp extends Interp {
 			return (cast object:NightmareVisionSaveData).getField(field);
 		// This is host lifecycle plumbing, not part of the source FlxSave API.
 		if (Std.isOfType(object, NightmareVisionSaveFacade) && field == 'release') return null;
-		return super.get(object, field);
+		var value = super.get(object, field);
+		return sourceClasses == null ? value : sourceClasses.nativeMethod(object, field, value);
 	}
 
 	/** Validate even a method borrowed from FlxG.cameras before hxcpp casts its
@@ -811,7 +812,8 @@ class NightmareVisionScriptInterp extends Interp {
 				var collection:Dynamic = expr(collectionExpr);
 				var index:Dynamic = expr(indexExpr);
 				requireIndexedCollection(collection, 'read');
-				return isMap(collection) ? getMapValue(collection, index) : collection[index];
+				var value:Dynamic = isMap(collection) ? getMapValue(collection, index) : collection[index];
+				return sourceClasses == null ? value : sourceClasses.nativeValue(value);
 			default:
 				return super.expr(expression);
 		}

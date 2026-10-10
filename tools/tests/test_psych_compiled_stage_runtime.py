@@ -151,9 +151,10 @@ class PsychNativeGroupIndexProbe {
    throw 'foreign owner fixture source did not load: ' + foreign.diagnostics;
   var foreignOwner = foreign.scope.createInstance('demo.IndexedSprite');
   var foreignBridge = foreign.scope.nativeFlixelSceneObject(foreignOwner,true);
-  if (loaded.scope.unwrapIndexedMember(foreignBridge) != foreignBridge)
-   throw 'indexed member unwrapped a bridge owned by another scope';
+  if (loaded.scope.unwrapIndexedMember(foreignBridge) != foreignOwner)
+   throw 'indexed member lost its actual owner across scopes';
   foreign.scope.release();
+  if (loaded.scope.unwrapIndexedMember(foreignBridge) == foreignOwner) throw 'released bridge revived a source object';
   group.destroy();
   loaded.scope.release();
  }
@@ -868,7 +869,7 @@ class PsychNativeGroupBridgeProbe {
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_flxtween_unwraps_only_same_owner_native_script_targets(self):
+    def test_flxtween_uses_actual_owner_for_explicitly_shared_targets(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
             owner = base / "owner"
@@ -960,10 +961,9 @@ class PsychNativeTweenBridgeProbe {
   if (foreignLoad.diagnostics.length > 0)
    throw 'foreign owner proxy fixture failed to load: ' + foreignLoad.diagnostics;
   var foreign = foreignLoad.scope.createInstance('demo.ForeignSprite');
-  var rejected = false;
-  try primaryLoad.scope.unwrapNativeTweenArguments(FlxTween,'tween',[foreign])
-  catch (_:Dynamic) rejected = true;
-  if (!rejected) throw 'native tween accepted a ScriptClass target from a different owner scope';
+  var foreignNative = primaryLoad.scope.unwrapNativeTweenArguments(FlxTween,'tween',[foreign]);
+  if (foreignNative[0] != (cast foreign:hscript.ScriptClass).superClass || !foreignLoad.scope.isActive())
+   throw 'native tween failed to retain the explicitly shared target owner';
   var nonTargetArgs:Array<Dynamic> = [foreign, 1.0, 2.0];
   if (primaryLoad.scope.unwrapNativeTweenArguments(FlxTween,'num',nonTargetArgs)[0] != foreign)
    throw 'non-target FlxTween methods changed their first argument';
@@ -971,8 +971,11 @@ class PsychNativeTweenBridgeProbe {
   if (nativePrimary[0] != (cast primary:hscript.ScriptClass).superClass
    || !Std.isOfType(nativePrimary[0],FlxBasic))
    throw 'same-scope helper did not return the native FlxBasic target';
-  primaryLoad.scope.release();
   foreignLoad.scope.release();
+  var rejected = false;
+  try primaryLoad.scope.unwrapNativeTweenArguments(FlxTween,'tween',[foreign]) catch (_:Dynamic) rejected=true;
+  if (!rejected) throw 'native tween accepted a released owner';
+  primaryLoad.scope.release();
   runtime.destroy();
  }
 }'''

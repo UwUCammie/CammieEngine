@@ -318,7 +318,7 @@ import PsychFlxColorScriptAccess;
          "dp-psych-flxcolor-compound-field-assignment"),
         ("""            } else if (proxy.superClass != null && Reflect.hasField(proxy.superClass, f)) {
                 return Reflect.getProperty(proxy.superClass, f);""",
-         """            } else if (proxy.hasNativeSuperField(f, false)) {
+         """            } else if (proxy.hasNativeSuperField(f, false)) { // dp-owner-inherited-native-properties-get
                 return Reflect.getProperty(proxy.superClass, f);""",
          "dp-owner-inherited-native-properties-get"),
         ("""            } else if (proxy.superClass != null && Reflect.hasField(proxy.superClass, f)) {
@@ -330,7 +330,7 @@ import PsychFlxColorScriptAccess;
                 _nextCallObject = _proxy.superClass;
                 return Reflect.getProperty(_proxy.superClass, id);
             } else if (_proxy != null) {""",
-         """            } else if (_proxy != null && _proxy.hasNativeSuperField(id, false)) {
+         """            } else if (_proxy != null && _proxy.hasNativeSuperField(id, false)) { // dp-owner-class-scope-pending-read
                 _nextCallObject = _proxy.superClass;
                 _nextCallMethod = id;
                 return Reflect.getProperty(_proxy.superClass, id);
@@ -1261,6 +1261,23 @@ PATCHES["ScriptClass.hx"].append((
     'dp-owner-dynamic-call-result'))
 
 
+PATCHES["InterpEx.hx"].append((
+    "return super.get(o, f);",
+    "var nativeValue = super.get(o, f);\n        return _classScope == null ? nativeValue : _classScope.bindNativeMethod(o, f, nativeValue); // dp-owner-captured-native-method",
+    "dp-owner-captured-native-method",
+))
+
+
+PATCHES["InterpEx.hx"].extend([
+    ("return Reflect.getProperty(proxy.superClass, f);",
+     "var inheritedValue = Reflect.getProperty(proxy.superClass, f);\n                return _classScope == null ? inheritedValue : _classScope.bindNativeMethod(proxy.superClass, f, inheritedValue); // dp-owner-captured-native-property",
+     "dp-owner-captured-native-property"),
+    ("return Reflect.getProperty(_proxy.superClass, id);",
+     "var inheritedValue = Reflect.getProperty(_proxy.superClass, id);\n                return _classScope == null ? inheritedValue : _classScope.bindNativeMethod(_proxy.superClass, id, inheritedValue); // dp-owner-captured-native-resolve",
+     "dp-owner-captured-native-resolve"),
+])
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
@@ -1376,6 +1393,14 @@ def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
         if prior_fcall in text:
             text = text.replace(prior_fcall, canonical_fcall, 1)
             break
+    # Later native-call adapters replace the return lines in these older blocks.
+    # Preserve durable markers on their unchanged branch headers for upgrades.
+    for anchor, marker in [
+        ('} else if (proxy.hasNativeSuperField(f, false)) {', 'dp-owner-inherited-native-properties-get'),
+        ('} else if (_proxy != null && _proxy.hasNativeSuperField(id, false)) {', 'dp-owner-class-scope-pending-read'),
+    ]:
+        if anchor in text and marker not in text:
+            text = text.replace(anchor, anchor + ' // ' + marker, 1)
     for old, new, marker in patches:
         if marker in text or new in text:
             continue
