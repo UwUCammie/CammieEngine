@@ -4,12 +4,22 @@ package;
 @:access(PlayState)
 class PsychPropertyBindings {
 	public static function install(host:PlayState, interp:hscript.Interp, classes:SourceNativeClassScope, parse:Dynamic->Dynamic):Void {
+		var resolve=function(name:String):Dynamic return classes.hasRuntimeClass(name)?classes.resolveClass(name):host.compatResolveClass(name);
+		var target=function():Dynamic {var play=PlayState.instance;return play==null ? MusicBeatState.getState() : play.isDead ? GameOverSubstate.instance : play;};
+		var warn=function(message:String):Void trace('[psych-reflection] '+message);
+		interp.variables.set('createInstance',function(name:String,type:String,?args:Array<Dynamic>):Bool {
+			return SourceScriptInstances.create(name,type,args,MusicBeatState.getVariables,resolve,parse,classes.createInstance,warn);
+		});
+		interp.variables.set('addInstance',function(name:String,front:Bool=false):Void {
+			SourceScriptInstances.add(name,front,MusicBeatState.getVariables,target,function():Dynamic return PlayState.instance,
+				function():Dynamic return GameOverSubstate.instance,function() return PsychSceneAnchors.lowestCharacter(PlayState.instance),warn);
+		});
 		var service=new SourcePsychReflection(MusicBeatState.getVariables,MusicBeatState.getState,function() return PlayState.instance,
-			function():Dynamic {var play=PlayState.instance;return play==null ? MusicBeatState.getState() : play.isDead ? GameOverSubstate.instance : play;},
+			target,
 			function(value) return Std.isOfType(value,MusicBeatState),
-			function(name) return classes.hasRuntimeClass(name)?classes.resolveClass(name):host.compatResolveClass(name),
+			resolve,
 			function(object,key) return classes.read(object,key),
-			function(object,key,value):Void {classes.write(object,key,value);},parse,function(message) trace('[psych-reflection] '+message));
+			function(object,key,value):Void {classes.write(object,key,value);},parse,warn);
 		interp.variables.set('getPropertyFromGroup',service.getGroup);
 		interp.variables.set('setPropertyFromGroup',service.setGroup);
 		interp.variables.set('addToGroup',service.addGroup);

@@ -30,6 +30,10 @@ class PsychReflectionBindings {
 		interp.variables.set('instanceArg', function(path:String, ?type:String):String {
 			return SourceScriptReflection.INSTANCE_PREFIX + path + (type == null ? '' : '::' + type);
 		});
+
+	}
+
+	function installLegacyProperties():Void {
 		interp.variables.set('createInstance', function(name:String, type:String,
 			?args:Array<Dynamic>):Bool {
 			name = StringTools.replace(StringTools.trim(name), '.', '');
@@ -47,9 +51,6 @@ class PsychReflectionBindings {
 			host.addHscriptSprite(cast object, front ? DisplayLayer.BEHIND_NONE : DisplayLayer.BEHIND_ALL);
 		});
 
-	}
-
-	function installLegacyProperties():Void {
 		interp.variables.set('getPropertyFromGroup', function(group:Dynamic, index:Dynamic,
 			property:Dynamic, allowMaps:Bool = false):Dynamic {
 			return readPath(member(group, index), propertyPath(property), allowMaps);

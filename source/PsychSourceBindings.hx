@@ -562,14 +562,7 @@ class PsychSourceBindings {
 	}
 	function lowestSpriteAnchor():Dynamic {
 		if (host.isDead) return Reflect.getProperty(GameOverSubstate.instance, 'boyfriend');
-		// Native host scenes may keep actors directly until source groups are mounted.
-		var bf:Dynamic = host.boyfriendGroup == null ? host.boyfriend : host.boyfriendGroup;
-		var dad:Dynamic = host.dadGroup == null ? host.dad : host.dadGroup;
-		var gf:Dynamic = host.gfGroup == null ? host.gf : host.gfGroup;
-		var hidden = host.curStage != null && host.curStage.stageData != null && host.curStage.stageData.hide_girlfriend == true;
-		var group:Dynamic = hidden ? bf : gf;
-		for (candidate in [bf, dad]) if (host.members.indexOf(candidate) < host.members.indexOf(group)) group = candidate;
-		return group;
+		return PsychSceneAnchors.lowestCharacter(host);
 	}
 
 	function installTextLifecycle(variables:Map<String,Dynamic>):Void {

@@ -24,7 +24,10 @@ class SourceScriptSpriteLifecycle {
 		var target:Dynamic = scene();
 		if (front) target.add(sprite);
 		else if (!isDead()) target.insert(target.members.indexOf(anchor()), sprite);
-		else gameOver().insert(gameOver().members.indexOf(Reflect.getProperty(gameOver(), 'boyfriend')), sprite);
+		else insertGameOver(sprite,gameOver);
+	}
+	public static function insertGameOver(object:Dynamic,gameOver:()->Dynamic):Void {
+		gameOver().insert(Reflect.getProperty(gameOver(), 'members').indexOf(Reflect.getProperty(gameOver(), 'boyfriend')),object);
 	}
 	public static function remove(tag:String, destroy:Bool, group:String, resolve:String->Dynamic, registry:()->Dynamic, scene:()->Dynamic):Void {
 		var sprite:Dynamic = resolve(tag);
