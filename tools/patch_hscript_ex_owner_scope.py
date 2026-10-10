@@ -1278,6 +1278,42 @@ PATCHES["InterpEx.hx"].extend([
 ])
 
 
+PATCHES["ScriptClass.hx"].append((
+    "                r = Reflect.callMethod(superClass, Reflect.field(superClass, name), fixedArgs);",
+    "                r = _classScope == null ? Reflect.callMethod(superClass, Reflect.field(superClass, name), fixedArgs)\n                    : _classScope.callNativeSuper(superClass, name, fixedArgs); // dp-owner-nonvirtual-native-super",
+    "dp-owner-nonvirtual-native-super",
+))
+PATCHES["InterpEx.hx"].append((
+    "    override public function expr(e:Expr):Dynamic {",
+    """    override public function expr(e:Expr):Dynamic {
+        // dp-owner-explicit-native-super: preserve lexical super dispatch even
+        // when the native superclass is an adapter for authored callbacks.
+        if (_proxy != null && _classScope != null) switch (Tools.expr(e)) {
+            case ECall(target, arguments):
+                switch (Tools.expr(target)) {
+                    case EField(receiver, name):
+                        switch (Tools.expr(receiver)) {
+                            case EIdent("super"):
+                                var method = _classScope.nativeSuperMethod(_proxy.superClass, name);
+                                if (method != null) return Reflect.callMethod(null, method, [for (arg in arguments) expr(arg)]);
+                            default:
+                        }
+                    default:
+                }
+            case EField(receiver, name):
+                switch (Tools.expr(receiver)) {
+                    case EIdent("super"):
+                        var method = _classScope.nativeSuperMethod(_proxy.superClass, name);
+                        if (method != null) return method;
+                    default:
+                }
+            default:
+        }
+""",
+    "dp-owner-explicit-native-super",
+))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text

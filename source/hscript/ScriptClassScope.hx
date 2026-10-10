@@ -8,6 +8,8 @@ import hscript.Expr.Expr;
 import hscript.Expr.CType;
 #if flixel
 import PsychScriptClassBasicBridge;
+import PsychScriptClassSprite;
+import flixel.FlxSprite;
 import flixel.FlxBasic;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
@@ -43,6 +45,7 @@ class ScriptClassScope {
 	#if flixel
 	final nativeBasicBridges:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassBasicBridge> = new haxe.ds.ObjectMap();
 	final ownedNativeBasicBridges:Array<PsychScriptClassBasicBridge> = [];
+	final nativeSprites:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassSprite> = new haxe.ds.ObjectMap();
 	#end
 	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
 		before:ScriptClass->Void, after:ScriptClass->Dynamic->Void, initializedFields:Array<String>, prepare:Dynamic->Void
@@ -78,6 +81,14 @@ class ScriptClassScope {
 		var hooks = nativeConstructionHooks.get(type);
 		var root = owner.constructionRoot();
 		if (hooks != null && hooks.before != null) hooks.before(root);
+		#if flixel
+		if (type == FlxSprite) {
+			var sprite:PsychScriptClassSprite = Type.createInstance(PsychScriptClassSprite, args);
+			owner.superClass = sprite;
+			sprite.bind(root, this);
+			nativeSprites.set(root, sprite);
+		} else
+		#end
 		owner.superClass = Type.createInstance(type, args);
 		if (hooks != null) {
 			if (hooks.prepare != null) hooks.prepare(owner.superClass);
@@ -431,14 +442,13 @@ class ScriptClassScope {
 		}
 
 		for (member in group.members) {
-			if (member == null || member.exists || !Std.isOfType(member, PsychScriptClassBasicBridge)) continue;
-			var bridge:PsychScriptClassBasicBridge = cast member;
-			var owner = bridge.scriptOwner();
-			if (owner == null) continue;
+			if (member == null || member.exists) continue;
+			var value = unwrapIndexedMember(member);
+			if (!Std.isOfType(value, ScriptClass)) continue;
+			var owner:ScriptClass = cast value;
 			var memberOwner = actualOwner(owner);
-			if (memberOwner.nativeBasicBridges.get(owner) != bridge
-				|| !memberOwner.matchesRecycleClass(owner, symbol.descriptor, force)) continue;
-			if (revive) bridge.revive();
+			if (!memberOwner.matchesRecycleClass(owner, symbol.descriptor, force)) continue;
+			if (revive) member.revive();
 			return {handled:true, value:owner};
 		}
 
@@ -555,7 +565,14 @@ class ScriptClassScope {
 	 */
 	public function unwrapIndexedMember(value:Dynamic):Dynamic {
 		#if flixel
-		if (!active || !Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
+		if (!active) return value;
+		if (Std.isOfType(value, PsychScriptClassSprite)) {
+			var sprite:PsychScriptClassSprite = cast value;
+			var owner = sprite.scriptOwner();
+			if (owner == null) return value;
+			return actualOwner(owner).nativeSprites.get(owner) == sprite ? owner : value;
+		}
+		if (!Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
 		var bridge:PsychScriptClassBasicBridge = cast value;
 		var owner = bridge.scriptOwner();
 		if (owner == null) return value;
@@ -624,6 +641,7 @@ class ScriptClassScope {
 		var existing = nativeBasicBridges.get(proxy);
 		if (existing != null) return existing;
 		var basic:FlxBasic = cast unwrapOwnedFlxBasic(proxy);
+		if (Std.isOfType(basic, PsychScriptClassSprite)) return basic;
 		var bridge = new PsychScriptClassBasicBridge(proxy, basic, this);
 		nativeBasicBridges.set(proxy, bridge);
 		ownedNativeBasicBridges.push(bridge);
@@ -637,6 +655,8 @@ class ScriptClassScope {
 		if (!active || proxy == null) return;
 		var bridge = nativeBasicBridges.get(proxy);
 		if (bridge != null) bridge.noteOwnerDestroyCalled();
+		var sprite = nativeSprites.get(proxy.constructionRoot());
+		if (sprite != null) sprite.noteOwnerDestroyCalled();
 	}
 
 	/** Called by the bridge when Flixel or the owner scope disposes it. */
@@ -645,6 +665,11 @@ class ScriptClassScope {
 		ownedNativeBasicBridges.remove(bridge);
 		var owner = bridge.scriptOwner();
 		if (owner != null && nativeBasicBridges.get(owner) == bridge) nativeBasicBridges.remove(owner);
+	}
+
+	public function forgetNativeSprite(sprite:PsychScriptClassSprite):Void {
+		var owner = sprite.scriptOwner();
+		if (owner != null && nativeSprites.get(owner) == sprite) nativeSprites.remove(owner);
 	}
 
 	function unwrapOwnedFlxBasic(value:Dynamic):Dynamic {
@@ -688,6 +713,25 @@ class ScriptClassScope {
 		return valueAccess;
 	}
 
+	/** Only adapter lifecycle methods need a nonvirtual native super entry. */
+	public function nativeSuperMethod(receiver:Dynamic, name:String):Dynamic {
+		#if flixel
+		if (Std.isOfType(receiver, PsychScriptClassSprite) && PsychScriptClassSprite.hasNativeSuper(name)) {
+			ensureActive();
+			return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+				ensureActive();
+				return (cast receiver:PsychScriptClassSprite).callNativeSuper(name, args);
+			});
+		}
+		#end
+		return null;
+	}
+	public function callNativeSuper(receiver:Dynamic, name:String, args:Array<Dynamic>):Dynamic {
+		var method = nativeSuperMethod(receiver, name);
+		return method == null ? Reflect.callMethod(receiver, Reflect.field(receiver, name), args)
+			: Reflect.callMethod(null, method, args);
+	}
+
 	public function isActive():Bool return active;
 
 	public function release():Void {
@@ -703,6 +747,13 @@ class ScriptClassScope {
 				if (firstBridgeFailure == null) firstBridgeFailure = error;
 			}
 		}
+		var sprites = [for (sprite in nativeSprites) sprite];
+		for (sprite in sprites) {
+			try sprite.destroy() catch (error:Dynamic) {
+				if (firstBridgeFailure == null) firstBridgeFailure = error;
+			}
+		}
+		nativeSprites.clear();
 		ownedNativeBasicBridges.resize(0);
 		nativeBasicBridges.clear();
 		#end

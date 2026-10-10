@@ -15,6 +15,7 @@ class CodenameMusicBeatGroupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             base = Path(directory)
             stubs = {
+                "flixel/system/FlxAssets.hx": 'package flixel.system; typedef FlxGraphicAsset = Dynamic;',
                 "flixel/FlxBasic.hx": '''package flixel;
 class FlxBasic {
  public var updates:Int=0; public var destroys:Int=0; public var exists:Bool=true;
@@ -29,7 +30,8 @@ class FlxBasic {
                 "flixel/FlxSprite.hx": '''package flixel;
 class FlxSprite extends FlxBasic {
  public var x:Float=0; public var y:Float=0;
- public function new(x:Float=0,y:Float=0) { super(); this.x=x; this.y=y; }
+ public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
+ function updateAnimation(elapsed:Float):Void {}
 }''',
                 "flixel/ProbeSprite.hx": '''package flixel;
 class ProbeSprite extends FlxSprite {

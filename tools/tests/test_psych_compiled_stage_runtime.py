@@ -134,10 +134,10 @@ class PsychNativeGroupIndexProbe {
   var scriptProbe:hscript.AbstractScriptClass = cast probe;
   var group:FlxTypedGroup<FlxBasic> = cast scriptProbe.memberGroup;
   if (group.members.length != 1
-   || !Std.isOfType(group.members[0],PsychScriptClassBasicBridge)
+   || !Std.isOfType(group.members[0],PsychScriptClassSprite)
    || Std.isOfType(group.members[0],hscript.ScriptClass))
    throw 'indexed property access replaced the native bridge in group storage';
-  var bridge:PsychScriptClassBasicBridge = cast group.members[0];
+  var bridge:PsychScriptClassSprite = cast group.members[0];
   var scriptOwner = loaded.scope.unwrapIndexedMember(bridge);
   if (scriptOwner != bridge.scriptOwner())
    throw 'indexed member did not resolve to its owner-scoped script object';
@@ -943,8 +943,9 @@ class PsychNativeTweenBridgeProbe {
   var tween = tweens[0];
   var tweenTarget = Reflect.field(tween,'_object');
   if (nativeAdded.length != 1
-   || !Std.isOfType(nativeAdded[0],PsychScriptClassBasicBridge)
-   || (cast nativeAdded[0]:PsychScriptClassBasicBridge).scriptOwner().superClass != tweenTarget
+   || !Std.isOfType(nativeAdded[0],PsychScriptClassSprite)
+   || nativeAdded[0] != tweenTarget
+   || (cast nativeAdded[0]:PsychScriptClassSprite).scriptOwner().superClass != tweenTarget
    || !Std.isOfType(tweenTarget,FlxSprite)
    || Std.isOfType(tweenTarget,hscript.ScriptClass))
    throw 'FlxTween did not receive the native target of the stage lifecycle bridge';
