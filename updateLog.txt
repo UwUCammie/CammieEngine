@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Source FlxText and sprite-group subclasses now share sprite lifecycle dispatch while retaining native text layout, nested transforms and cleanup; source super constructors forward all arguments.
 - Imported FlxSprite subclasses now retain authored lifecycle callbacks in native sprite groups while sharing native graphics, motion and transforms; explicit super calls no longer bypass or replay the authored override.
 - Shared source-class recycling now preserves the actual owner across script sessions, including subclass filters, factory-created objects and fixed-size group reuse.
 - Psych HScript and imported source classes now share captured/reflected native group and tween calls, retaining source member identity and actual ownership across explicitly shared objects.

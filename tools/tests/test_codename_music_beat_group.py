@@ -33,6 +33,10 @@ class FlxSprite extends FlxBasic {
  public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
  function updateAnimation(elapsed:Float):Void {}
 }''',
+                "flixel/text/FlxText.hx": """package flixel.text;
+class FlxText extends flixel.FlxSprite {
+ public function new(x:Float=0,y:Float=0,width:Float=0,?text:String,size:Int=8,embedded:Bool=true) super(x,y);
+}""",
                 "flixel/ProbeSprite.hx": '''package flixel;
 class ProbeSprite extends FlxSprite {
  public var beats:Int=0; public var steps:Int=0; public var measures:Int=0;

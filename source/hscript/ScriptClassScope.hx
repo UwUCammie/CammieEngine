@@ -9,6 +9,11 @@ import hscript.Expr.CType;
 #if flixel
 import PsychScriptClassBasicBridge;
 import PsychScriptClassSprite;
+import PsychScriptClassText;
+import PsychScriptClassSpriteGroup;
+import SourceSpriteClassAdapter;
+import SourceSpriteClassLifecycle;
+import flixel.text.FlxText;
 import flixel.FlxSprite;
 import flixel.FlxBasic;
 import flixel.group.FlxGroup.FlxTypedGroup;
@@ -45,7 +50,7 @@ class ScriptClassScope {
 	#if flixel
 	final nativeBasicBridges:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassBasicBridge> = new haxe.ds.ObjectMap();
 	final ownedNativeBasicBridges:Array<PsychScriptClassBasicBridge> = [];
-	final nativeSprites:haxe.ds.ObjectMap<ScriptClass, PsychScriptClassSprite> = new haxe.ds.ObjectMap();
+	final nativeSprites:haxe.ds.ObjectMap<ScriptClass, SourceSpriteClassLifecycle> = new haxe.ds.ObjectMap();
 	#end
 	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
 		before:ScriptClass->Void, after:ScriptClass->Dynamic->Void, initializedFields:Array<String>, prepare:Dynamic->Void
@@ -82,11 +87,14 @@ class ScriptClassScope {
 		var root = owner.constructionRoot();
 		if (hooks != null && hooks.before != null) hooks.before(root);
 		#if flixel
-		if (type == FlxSprite) {
-			var sprite:PsychScriptClassSprite = Type.createInstance(PsychScriptClassSprite, args);
+		var adapter:Dynamic = type == FlxSprite ? PsychScriptClassSprite
+			: type == FlxText ? PsychScriptClassText
+			: type == FlxTypedSpriteGroup ? PsychScriptClassSpriteGroup : null;
+		if (adapter != null) {
+			var sprite:SourceSpriteClassAdapter = Type.createInstance(adapter, args);
 			owner.superClass = sprite;
 			sprite.bind(root, this);
-			nativeSprites.set(root, sprite);
+			nativeSprites.set(root, sprite.sourceLifecycle);
 		} else
 		#end
 		owner.superClass = Type.createInstance(type, args);
@@ -566,11 +574,11 @@ class ScriptClassScope {
 	public function unwrapIndexedMember(value:Dynamic):Dynamic {
 		#if flixel
 		if (!active) return value;
-		if (Std.isOfType(value, PsychScriptClassSprite)) {
-			var sprite:PsychScriptClassSprite = cast value;
+		if (Std.isOfType(value, SourceSpriteClassAdapter)) {
+			var sprite:SourceSpriteClassAdapter = cast value;
 			var owner = sprite.scriptOwner();
 			if (owner == null) return value;
-			return actualOwner(owner).nativeSprites.get(owner) == sprite ? owner : value;
+			return actualOwner(owner).nativeSprites.get(owner) == sprite.sourceLifecycle ? owner : value;
 		}
 		if (!Std.isOfType(value, PsychScriptClassBasicBridge)) return value;
 		var bridge:PsychScriptClassBasicBridge = cast value;
@@ -641,7 +649,7 @@ class ScriptClassScope {
 		var existing = nativeBasicBridges.get(proxy);
 		if (existing != null) return existing;
 		var basic:FlxBasic = cast unwrapOwnedFlxBasic(proxy);
-		if (Std.isOfType(basic, PsychScriptClassSprite)) return basic;
+		if (Std.isOfType(basic, SourceSpriteClassAdapter)) return basic;
 		var bridge = new PsychScriptClassBasicBridge(proxy, basic, this);
 		nativeBasicBridges.set(proxy, bridge);
 		ownedNativeBasicBridges.push(bridge);
@@ -667,8 +675,8 @@ class ScriptClassScope {
 		if (owner != null && nativeBasicBridges.get(owner) == bridge) nativeBasicBridges.remove(owner);
 	}
 
-	public function forgetNativeSprite(sprite:PsychScriptClassSprite):Void {
-		var owner = sprite.scriptOwner();
+	public function forgetNativeSprite(sprite:SourceSpriteClassLifecycle):Void {
+		var owner = sprite.owner;
 		if (owner != null && nativeSprites.get(owner) == sprite) nativeSprites.remove(owner);
 	}
 
@@ -716,11 +724,11 @@ class ScriptClassScope {
 	/** Only adapter lifecycle methods need a nonvirtual native super entry. */
 	public function nativeSuperMethod(receiver:Dynamic, name:String):Dynamic {
 		#if flixel
-		if (Std.isOfType(receiver, PsychScriptClassSprite) && PsychScriptClassSprite.hasNativeSuper(name)) {
+		if (Std.isOfType(receiver, SourceSpriteClassAdapter) && SourceSpriteClassLifecycle.hasNativeSuper(name)) {
 			ensureActive();
 			return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
 				ensureActive();
-				return (cast receiver:PsychScriptClassSprite).callNativeSuper(name, args);
+				return (cast receiver:SourceSpriteClassAdapter).callNativeSuper(name, args);
 			});
 		}
 		#end

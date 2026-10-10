@@ -79,6 +79,20 @@ class RuntimeSmokePsychIrisClasses {
 			plain.evaluate('sourceSpriteProbe.update(0.1);', 'sprite-direct-update');
 			check(session.read(sourceSprite, 'ticks') == 2 && session.read(sourceSprite, 'draws') == 1, 'Native source sprite callbacks and explicit super run once');
 			check(spriteGroup.members[0].x == 20 && spriteGroup.members[0].y == 17 && spriteGroup.members[0].frameWidth == 8, 'Native sprite transform, motion and graphic preserved');
+			plain.evaluate('import demo.NativePanel; sourcePanelProbe=new NativePanel(); panelAddProbe=nativeSpriteGroup.add(sourcePanelProbe);', 'native-text-panel-probe');
+			var sourcePanel = plain.variables.get('sourcePanelProbe');
+			var sourceLabel = session.read(sourcePanel, 'label');
+			var nativePanel:flixel.group.FlxSpriteGroup = cast spriteGroup.members[1];
+			var nativeLabel:flixel.text.FlxText = cast nativePanel.members[0];
+			check(plain.variables.get('panelAddProbe') == sourcePanel && session.nativeValue(nativeLabel) == sourceLabel, 'Native nested text/group identity');
+			nativePanel.update(0.1);nativePanel.draw();
+			check(session.read(sourcePanel, 'ticks') == 1 && session.read(sourcePanel, 'draws') == 1
+				&& session.read(sourceLabel, 'ticks') == 1 && session.read(sourceLabel, 'draws') == 1, 'Native nested source callbacks and super traversal once');
+			check(nativePanel.x == 26 && nativeLabel.x == 29 && nativeLabel.y == 38
+				&& nativeLabel.size == 14 && !nativeLabel.textField.embedFonts && nativeLabel.frameWidth > 0, 'Native text constructor and nested transforms');
+			plain.evaluate('sourcePanelProbe.label.text="updated native text";', 'native-text-change');
+			nativePanel.draw();
+			check(nativeLabel.textField.text == 'updated native text', 'Source text writes use native formatting/rendering');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -89,12 +103,15 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.read(member, 'ticks') == 2 && session.read(member, 'destroyed') == 1, 'Native source member survives script closure and destroys once');
 			spriteGroup.update(0.1);spriteGroup.destroy();spriteGroup = null;
 			check(session.read(sourceSprite, 'ticks') == 3 && session.read(sourceSprite, 'destroyed') == 1, 'Source sprite survives script closure and destroys once');
+			check(session.read(sourcePanel, 'ticks') == 2 && session.read(sourceLabel, 'ticks') == 2
+				&& session.read(sourcePanel, 'destroyed') == 1 && session.read(sourceLabel, 'destroyed') == 1
+				&& nativeLabel.textField == null && nativePanel.group == null, 'Source text/group native teardown after script closure');
 			state.stagesFunc(function(value) PsychStageObject.call(value, 'destroy', []));
 			session.release();
 			var rejected = false;try session.read(item, 'count') catch (_:Dynamic) rejected = true;
 			check(rejected, 'State session release rejects retained objects');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

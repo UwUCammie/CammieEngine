@@ -1314,6 +1314,16 @@ PATCHES["InterpEx.hx"].append((
 ))
 
 
+PATCHES["InterpEx.hx"].append((
+    "                return _proxy.superConstructor;",
+    """                return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+                    _proxy.createSuperClass(args);
+                    return null;
+                }); // dp-owner-variadic-super-constructor""",
+    "dp-owner-variadic-super-constructor",
+))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
