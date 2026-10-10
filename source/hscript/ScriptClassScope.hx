@@ -77,6 +77,17 @@ class ScriptClassScope {
 		nativeConstructionHooks.set(type, {before: before, after: after, initializedFields: initializedFields, prepare: prepare});
 	}
 
+	/** Restore a temporary native constructor policy without replacing class identity. */
+	public function captureNativeConstruction(type:Dynamic):Void->Void {
+		ensureActive();
+		var hook = nativeConstructionHooks.get(type), factory = nativeFactories.get(type);
+		return function():Void {
+			if (!active) return;
+			if (hook == null) nativeConstructionHooks.remove(type); else nativeConstructionHooks.set(type, hook);
+			if (factory == null) nativeFactories.remove(type); else nativeFactories.set(type, factory);
+		};
+	}
+
 	/** Direct native construction uses the same explicit imported class identity. */
 	public function bindNativeFactory(type:Dynamic, create:Array<Dynamic>->Dynamic):Void {
 		ensureActive();

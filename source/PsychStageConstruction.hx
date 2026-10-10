@@ -32,7 +32,7 @@ class PsychStageConstruction {
 	public static function createNative(context:SourceStageContext, ?host:Dynamic):PsychBaseStageCompat
 		return new PsychBaseStageCompat(host, context, true);
 
-	public function bind(scope:ScriptClassScope):Void {
+	public function bind(scope:ScriptClassScope, activate:Bool = true):Void {
 		if (this.scope != null) {
 			if (this.scope != scope) throw '[psych-stage] Construction scope cannot change owners';
 			return;
@@ -40,9 +40,23 @@ class PsychStageConstruction {
 		this.scope = scope;
 		// Capture the live scene at construction, not the retained asset owner.
 		placement = new PsychStagePlacement(context == null ? host : context.state(), initialBackground && !postCreate);
+		if (activate) install();
+	}
+
+	function install():Void {
 		scope.bindNativeFactory(PsychBaseStageCompat, createOwnedNative);
 		scope.bindNativeConstruction(PsychBaseStageCompat, before, after,
 			['ID', 'active', 'visible', 'alive', 'exists', 'curStep', 'curDecStep', 'curBeat', 'curDecBeat', 'curSection'], attach);
+	}
+
+	/** Keep selected-stage construction local to its call, including nested stages. */
+	public function withActive<T>(callback:Void->T):T {
+		if (scope == null) throw '[psych-stage] Construction scope is not bound';
+		var restore = scope.captureNativeConstruction(PsychBaseStageCompat);
+		install();
+		try {
+			var result = callback();restore();return result;
+		} catch (error:Dynamic) {restore();throw error;}
 	}
 
 	function createOwnedNative(args:Array<Dynamic>):Dynamic {

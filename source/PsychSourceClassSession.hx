@@ -9,14 +9,27 @@ import hscript.ScriptClassScope;
 @:access(hscript.InterpEx)
 class PsychSourceClassSession implements SourceClassAccess {
 	public final loader:CodenameScriptClassLoader;
+	final ownerRoot:String;
 	final bindings:Map<String, Dynamic>;
 	final construction:PsychStageConstruction;
 
 	public function new(root:String, host:Dynamic, bindings:Map<String, Dynamic>, ?context:SourceStageContext) {
+		ownerRoot = normalizeRoot(root);
 		this.bindings = bindings == null ? new Map() : bindings.copy();
 		loader = CodenameScriptClassLoader.open(root, this.bindings, new Map());
 		construction = new PsychStageConstruction(host, context);
 		construction.bind(loader.scope);
+	}
+
+	static function normalizeRoot(root:String):String
+		return root == null ? '' : haxe.io.Path.normalize(StringTools.replace(root, '\\', '/'));
+
+	/** Selected stages import into the same transactional descriptor/static registry. */
+	public function importStageClasses(root:String, imports:Array<String>):CodenameScriptClassLoader.CodenameScriptClassLoad {
+		if (normalizeRoot(root) != ownerRoot) throw '[psych-source-class] Stage and session owners differ';
+		if (loader.scope.findBinding('backend.BaseStage') != PsychBaseStageCompat)
+			throw '[psych-source-class] Stage session requires the Psych BaseStage binding';
+		return loader.importClasses(imports);
 	}
 
 	public function importClass(path:String):Dynamic {

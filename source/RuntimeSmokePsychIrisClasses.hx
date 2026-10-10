@@ -14,6 +14,10 @@ class RuntimeSmokePsychIrisClasses {
 		var manifest = state.cachedCompatScriptManifest;
 		var originalStages = state.stages;
 		var originalCallbacks = state.psychSourceCallbacks;
+		var originalStageRuntime = state.psychCompiledStageRuntime;
+		var originalStageError = state.psychCompiledStageRuntimeError;
+		var originalStageDiagnostics = state.psychCompiledStageDiagnosticsReported;
+		var selectedRuntime:PsychCompiledStageRuntime = null;
 		var plain = new SourceIrisBridge(state);
 		var lua = new LuaCompatInterp();
 		var runtime:PsychRuntimeBindings = null;
@@ -29,6 +33,10 @@ class RuntimeSmokePsychIrisClasses {
 		var reentrantOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var constructionOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var cleanup = function() {
+			if (selectedRuntime != null) selectedRuntime.destroy();
+			state.psychCompiledStageRuntime = originalStageRuntime;
+			state.psychCompiledStageRuntimeError = originalStageError;
+			state.psychCompiledStageDiagnosticsReported = originalStageDiagnostics;
 			if (nativeTween != null) nativeTween.cancel();if (nativeGroup != null) nativeGroup.destroy();
 			if (spriteGroup != null) spriteGroup.destroy();
 			renderCamera.destroy();
@@ -185,6 +193,16 @@ class RuntimeSmokePsychIrisClasses {
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
+			check(state.startPsychCompiledStage(root, {stage:'probe',className:'ExtraStage',modulePath:'demo.ExtraStage',
+				sourcePath:root + '/source/demo/ExtraStage.hx',dispatchPath:''}), 'Selected stage uses production startup: ' + state.psychCompiledStageRuntimeError);
+			selectedRuntime = state.psychCompiledStageRuntime;
+			var selectedStage = selectedRuntime.sourceObject;
+			plain.variables.set('selectedStageProbe', selectedStage);
+			plain.evaluate('selectedSame=Type.getClass(selectedStageProbe)==ExtraStage; selectedCreated=ExtraStage.created;', 'selected-stage-identity');
+			check(plain.variables.get('selectedSame') == true && plain.variables.get('selectedCreated') == 2 && state.stages.length == 4,
+				'Selected stage and ordinary Iris share native class identity and static storage');
+			var embeddedCreated = Reflect.callMethod(null, run, ['import demo.ExtraStage; ExtraStage.created;', {}]);
+			check(embeddedCreated == 2, 'Embedded Iris sees selected stage static writes');
 			plain.release();runtime.release();
 			state.stagesFunc(function(value) PsychStageObject.call(value, 'stepHit', []));
 			check(session.read(stage, 'ticks') == 11, 'Native source callback survives both scripts closing');
@@ -195,7 +213,13 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.read(sourcePanel, 'ticks') == 2 && session.read(sourceLabel, 'ticks') == 2
 				&& session.read(sourcePanel, 'destroyed') == 1 && session.read(sourceLabel, 'destroyed') == 1
 				&& nativeLabel.textField == null && nativePanel.group == null, 'Source text/group native teardown after script closure');
-			state.stagesFunc(function(value) PsychStageObject.call(value, 'destroy', []));
+			state.stagesFunc(function(value) {
+				if (value == selectedStage) selectedRuntime.destroy(true, false);
+				else PsychStageObject.call(value, 'destroy', []);
+			});
+			selectedRuntime.releaseAfterHostTraversal();
+			check(session.read(session.importClass('demo.ExtraStage'), 'destroyed') == 2 && session.call(item, 'current', []) == 3,
+				'Selected teardown preserves owner classes until ordered state release');
 			session.release();
 			var rejected = false;try session.read(item, 'count') catch (_:Dynamic) rejected = true;
 			check(rejected, 'State session release rejects retained objects');
@@ -204,7 +228,7 @@ class RuntimeSmokePsychIrisClasses {
 			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

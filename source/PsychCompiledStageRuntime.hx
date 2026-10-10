@@ -25,6 +25,7 @@ class PsychCompiledStageRuntime {
 	final stageHost:Dynamic;
 	final context:SourceStageContext;
 	final construction:PsychStageConstruction;
+	final sharedSession:PsychSourceClassSession;
 	final providedBindings:Map<String, Dynamic>;
 	final providedSymbols:Map<String, Dynamic>;
 	var classScope:ScriptClassScope;
@@ -39,11 +40,12 @@ class PsychCompiledStageRuntime {
 	final _sourceUseDiagnostics:Array<String> = [];
 
 	public function new(ownerRoot:String, className:String, stageHost:Dynamic,
-		?bindings:Map<String, Dynamic>, ?symbols:Map<String, Dynamic>, ?context:SourceStageContext) {
+		?bindings:Map<String, Dynamic>, ?symbols:Map<String, Dynamic>, ?context:SourceStageContext, ?session:PsychSourceClassSession) {
 		this.ownerRoot = ownerRoot;
 		this.className = className;
 		this.stageHost = stageHost;
 		this.context = context;
+		sharedSession = session;
 		construction = new PsychStageConstruction(stageHost, context, true);
 		providedBindings = copyMap(bindings);
 		providedSymbols = copyMap(symbols);
@@ -69,17 +71,6 @@ class PsychCompiledStageRuntime {
 		if (className == null || className.trim() == '')
 			return fail('an owner class path is required');
 
-		var bindings = copyMap(providedBindings);
-		if (!bindExact(bindings, 'BaseStage', PsychBaseStageCompat)
-			|| !bindExact(bindings, 'backend.BaseStage', PsychBaseStageCompat)
-			|| !bindExact(bindings, 'ClientPrefs', PsychClientPrefsCompat)
-			|| !bindExact(bindings, 'backend.ClientPrefs', PsychClientPrefsCompat))
-			return false;
-		var symbols = copyMap(providedSymbols);
-		symbols.set('BaseStage', PsychBaseStageCompat);
-		symbols.set('backend.BaseStage', PsychBaseStageCompat);
-		for (name in bindings.keys()) symbols.set(name, bindings.get(name));
-
 		var ownerImports = [className];
 		// Haxe's source/import.hx contributes this module to every Psych source
 		// file, but it is not written in StageWeek1/PhillyStreets themselves.
@@ -87,19 +78,37 @@ class PsychCompiledStageRuntime {
 		// retained it; never borrow the module from another root.
 		if (PsychSourceStageCompat.sourceModuleExists(ownerRoot, 'objects.BGSprite'))
 			ownerImports.push('objects.BGSprite');
-		var loaded = CodenameScriptClassLoader.load(ownerRoot, ownerImports, bindings, symbols);
+		var loaded:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
+		if (sharedSession != null) {
+			if (providedBindings.keys().hasNext() || providedSymbols.keys().hasNext())
+				return fail('shared stage sessions use their established binding policy');
+			try loaded = sharedSession.importStageClasses(ownerRoot, ownerImports)
+			catch (error:Dynamic) return fail(Std.string(error));
+		} else {
+			var bindings = copyMap(providedBindings);
+			if (!bindExact(bindings, 'BaseStage', PsychBaseStageCompat)
+				|| !bindExact(bindings, 'backend.BaseStage', PsychBaseStageCompat)
+				|| !bindExact(bindings, 'ClientPrefs', PsychClientPrefsCompat)
+				|| !bindExact(bindings, 'backend.ClientPrefs', PsychClientPrefsCompat))
+				return false;
+			var symbols = copyMap(providedSymbols);
+			symbols.set('BaseStage', PsychBaseStageCompat);
+			symbols.set('backend.BaseStage', PsychBaseStageCompat);
+			for (name in bindings.keys()) symbols.set(name, bindings.get(name));
+			loaded = CodenameScriptClassLoader.load(ownerRoot, ownerImports, bindings, symbols);
+		}
 		for (diagnostic in loaded.diagnostics) _diagnostics.push(diagnostic);
 		for (diagnostic in loaded.sourceUseDiagnostics) _sourceUseDiagnostics.push(diagnostic);
 		if (_diagnostics.length > 0) {
-			loaded.scope.release();
+			if (sharedSession == null) loaded.scope.release();
 			return false;
 		}
 		classScope = loaded.scope;
-		construction.bind(classScope);
+		construction.bind(classScope, sharedSession == null);
 		var creationHost = context == null ? stageHost : context.state();
 		var membersBeforeCreate = snapshotHostMembers(creationHost);
 		try {
-			stageClass = classScope.createInstance(className, [stageHost]);
+			stageClass = construction.withActive(function() return classScope.createInstance(className, [stageHost]));
 			var nativeBase = stageClass == null ? null : classScope.unwrapNativeArgument(stageClass);
 			if (!Std.isOfType(nativeBase, PsychBaseStageCompat))
 				throw 'owner class ' + className + ' does not extend the Psych BaseStage adapter';
@@ -134,7 +143,7 @@ class PsychCompiledStageRuntime {
 			if (name == 'createPost') {
 				if (!prepareSourceMappedCharacterAnims()) return false;
 			}
-			stageClass.callFunction(name, args == null ? [] : args);
+			construction.withActive(function() return stageClass.callFunction(name, args == null ? [] : args));
 			return true;
 		} catch (error:Dynamic) {
 			return fail('callback ' + name + ' failed: ' + Std.string(error));
@@ -219,7 +228,7 @@ class PsychCompiledStageRuntime {
 		return true;
 	}
 
-	/** Run the authored destroy hook once and release every owner class descriptor. */
+	/** Run authored destruction once; shared descriptors live until owner-session teardown. */
 	public function destroy(admitted:Bool = false, release:Bool = true):Void {
 		if (!destroyed) {
 			destroyed = true;
@@ -230,7 +239,7 @@ class PsychCompiledStageRuntime {
 				try {
 					if (stage != null && ((stage == stageClass && admitted)
 						|| SourceStageCallbacks.enabled(stage, PsychStageObject.read)))
-						PsychStageObject.call(stage, 'destroy', []);
+						construction.withActive(function() return PsychStageObject.call(stage, 'destroy', []));
 				} catch (error:Dynamic) fail('callback destroy failed: ' + Std.string(error));
 			}
 		}
@@ -256,7 +265,7 @@ class PsychCompiledStageRuntime {
 	}
 
 	function releaseScope():Void {
-		if (classScope != null) classScope.release();
+		if (classScope != null && sharedSession == null) classScope.release();
 		classScope = null;
 	}
 
