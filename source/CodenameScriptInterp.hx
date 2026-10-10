@@ -754,6 +754,8 @@ static function shaderFloatLength(parameterType:ShaderParameterType):Int {
 					function(basic:FlxBasic):Void claimSceneObject(basic));
 				return scriptClass;
 			}
+			var native = scriptClassScope.tryConstructNative(name, args);
+			if (native.handled) return native.value;
 		}
 		if (flxG != null && (name == 'FlxCamera' || name == 'flixel.FlxCamera'))
 			return flxG.cameras.adoptCreated(Type.createInstance(FlxCamera, args));

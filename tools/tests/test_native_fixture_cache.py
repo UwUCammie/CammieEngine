@@ -15,6 +15,29 @@ from windows_native_import_fixture import _capture_engine_sources, _tree_identit
 
 
 class NativeFixtureCacheTest(unittest.TestCase):
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows rename locks')
+    def test_publication_retries_sharing_lock_without_rebuilding(self):
+        from unittest.mock import patch
+        real_replace = os.replace
+        attempts = []
+        calls = []
+
+        def transient(source, destination):
+            if Path(source).name.startswith('.building-'):
+                attempts.append(source)
+                if len(attempts) == 1:
+                    raise self._winerror(32)
+            return real_replace(source, destination)
+
+        with patch('native_fixture_cache.os.replace', side_effect=transient):
+            result = get_or_build(self.cache, {'fixture': 'publication-lock'},
+                                  'cpp/fixture.exe', self._builder(b'complete', calls))
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result.executable.read_bytes(), b'complete')
+        self.assertFalse(result.reused)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows directory junctions')
     def test_junction_namespace_is_rejected_without_symlink_privilege(self):
         import _winapi

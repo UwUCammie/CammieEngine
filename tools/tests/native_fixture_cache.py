@@ -286,7 +286,7 @@ def get_or_build(cache_root: Path | str, fingerprint: Mapping[str, Any],
                     "buildMetadata": dict(build_metadata or {}),
                 }
                 _write_ready_marker(staging / "READY.json", record)
-                os.replace(staging, entry)
+                _replace_with_retry(staging, entry)
             except BaseException:
                 if staging.exists() or staging.is_symlink():
                     _remove_owned_directory(staging, namespace, f".building-{key}-")

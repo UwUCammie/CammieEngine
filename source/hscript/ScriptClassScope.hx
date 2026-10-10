@@ -47,6 +47,7 @@ class ScriptClassScope {
 	final nativeConstructionHooks:haxe.ds.ObjectMap<Dynamic, {
 		before:ScriptClass->Void, after:ScriptClass->Dynamic->Void, initializedFields:Array<String>, prepare:Dynamic->Void
 	}> = new haxe.ds.ObjectMap();
+	final nativeFactories:haxe.ds.ObjectMap<Dynamic, Array<Dynamic>->Dynamic> = new haxe.ds.ObjectMap();
 	var active:Bool = true;
 
 	public function new() {}
@@ -56,6 +57,18 @@ class ScriptClassScope {
 		after:ScriptClass->Dynamic->Void, ?initializedFields:Array<String>, ?prepare:Dynamic->Void):Void {
 		ensureActive();
 		nativeConstructionHooks.set(type, {before: before, after: after, initializedFields: initializedFields, prepare: prepare});
+	}
+
+	/** Direct native construction uses the same explicit imported class identity. */
+	public function bindNativeFactory(type:Dynamic, create:Array<Dynamic>->Dynamic):Void {
+		ensureActive();
+		nativeFactories.set(type, create);
+	}
+
+	public function tryConstructNative(name:String, args:Array<Dynamic>, ?requester:ClassDeclEx):{handled:Bool, value:Dynamic} {
+		var type = findBinding(name, requester);
+		var factory = type == null ? null : nativeFactories.get(type);
+		return factory == null ? {handled:false, value:null} : {handled:true, value:factory(args == null ? [] : args)};
 	}
 
 	public function constructNativeSuper(owner:ScriptClass, type:Dynamic, args:Array<Dynamic>):Void {
@@ -611,6 +624,7 @@ class ScriptClassScope {
 		#end
 		active = false;
 		nativeConstructionHooks.clear();
+		nativeFactories.clear();
 		descriptors.clear();
 		aliases.clear();
 		ambiguousAliases.clear();

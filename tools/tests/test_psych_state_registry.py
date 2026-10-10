@@ -19,6 +19,10 @@ class DonorMusicBeatState {public var variables:Map<String,Dynamic>=[];public fu
 class PsychControlsCompat {public static var instance:Dynamic='source';}
 class PsychCustomSubstate {}
 class PsychMusicBeatSubstate {}
+class PsychBaseStageCompat {public function new(){}}
+class PsychStageConstruction {public static function createNative(context:Dynamic):PsychBaseStageCompat return new PsychBaseStageCompat();}
+class PsychObjectProviders {public static function stageContext():Dynamic return null;}
+
 class PlayState extends MusicBeatState {public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
 class NightmareVisionScriptInterp {
  public var variables:Map<String,Dynamic>=[];public var imports:Map<String,Dynamic>=[];var scope=new SourceNativeClassScope();
@@ -56,7 +60,7 @@ class Main {
 '''.replace('__NATIVE__',native).replace('__SOURCE__',(source_get+'\n'+source_state).replace('MusicBeatState','DonorMusicBeatState').replace('FlxG','DonorFlxG')).replace('__ALIAS__',alias)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
-   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
+   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','PsychBaseStageCompat','PsychStageConstruction','PsychObjectProviders','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
    for name in ['SourceNativeClassScope','PsychStateClassBindings']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)

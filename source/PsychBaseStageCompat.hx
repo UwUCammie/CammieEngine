@@ -18,9 +18,19 @@ class PsychBaseStageCompat extends FlxBasic {
 	final actorGroups:haxe.ds.ObjectMap<Dynamic, Map<String, PsychBaseStageActorGroupCompat>> = new haxe.ds.ObjectMap();
 	var creatingBackground:Bool = true;
 
-	public function new(?stageHost:Dynamic) {
-		super();
+	public function new(?stageHost:Dynamic, ?context:SourceStageContext, register:Bool = false) {
 		this.stageHost = stageHost;
+		this.context = context;
+		// Direct source construction uses ordinary scene insertion. Only the
+		// selected compiled stage needs the host actor-order adaptation.
+		if (register) creatingBackground = false;
+		if (register && PsychStageConstruction.register(game, this) == null) {
+			flixel.FlxG.log.error('Invalid state for the stage added!');
+			destroy();
+			return;
+		}
+		super();
+		if (register) create();
 	}
 
 	public function attachHost(stageHost:Dynamic):Void {

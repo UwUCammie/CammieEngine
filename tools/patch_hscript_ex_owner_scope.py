@@ -1191,6 +1191,14 @@ PATCHES["AbstractScriptClass.hx"].append((
     "dp-owner-method-reference-arity"))
 
 
+PATCHES["InterpEx.hx"].append((
+    '            // Never fall through to hscript-ex\'s process-global class registry.',
+    """            var native = _classScope.tryConstructNative(cl, args, _proxy == null ? null : _proxy._c);
+            if (native.handled) return native.value; // dp-owner-native-direct-factory
+            // Never fall through to hscript-ex's process-global class registry.""",
+    'dp-owner-native-direct-factory'))
+
+
 def patch_file(path: Path, patches: list[tuple[str, str, str]]) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text

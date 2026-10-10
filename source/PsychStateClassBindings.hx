@@ -12,7 +12,7 @@ class PsychStateClassBindings {
 		if (!scope.hasRuntimeClass('backend.MusicBeatState')) {
 			scope.bindRuntimeClass('backend.MusicBeatState', MusicBeatState);
 			var previous = scope.construct;
-			scope.construct = function(type, args) {
+			scope.construct = function(type:Dynamic, args:Array<Dynamic>):Dynamic {
 				if (type == MusicBeatState) {
 					var state:MusicBeatState = previous == null ? createState(args) : previous(type, args);
 					state.psychSourceTiming = true;
@@ -21,10 +21,21 @@ class PsychStateClassBindings {
 				return previous == null ? Type.createInstance(type, args) : previous(type, args);
 			};
 		}
+		if (!scope.hasRuntimeClass('backend.BaseStage')) {
+			scope.bindRuntimeClass('backend.BaseStage', PsychBaseStageCompat);
+			var previous = scope.construct;
+			scope.construct = function(type:Dynamic, args:Array<Dynamic>):Dynamic {
+				if (type == PsychBaseStageCompat) return createStage(args);
+				return previous == null ? Type.createInstance(type, args) : previous(type, args);
+			};
+		}
 		if (!scope.hasRuntimeClass('backend.MusicBeatSubstate')) scope.bindRuntimeClass('backend.MusicBeatSubstate', PsychMusicBeatSubstate);
 		if (!scope.hasRuntimeClass('psychlua.CustomSubstate')) scope.bindRuntimeClass('psychlua.CustomSubstate', PsychCustomSubstate);
 		if (!scope.hasRuntimeClass('states.PlayState')) scope.bindRuntimeClass('states.PlayState', PlayState);
 	}
+	static function createStage(args:Array<Dynamic>):PsychBaseStageCompat
+		return PsychStageConstruction.createNative(PsychObjectProviders.stageContext());
+
 	static function createState(args:Array<Dynamic>):MusicBeatState {
 		var state = Type.createInstance(MusicBeatState, args);
 		state.psychSourceTiming = true;
@@ -32,6 +43,9 @@ class PsychStateClassBindings {
 	}
 	public static function install(interp:NightmareVisionScriptInterp):Void {
 		installScope(interp.sourceClassScope());
+		interp.variables.set('BaseStage', PsychBaseStageCompat);
+		interp.bindImport('backend.BaseStage', PsychBaseStageCompat);
+		interp.bindConstructorFactory(PsychBaseStageCompat, createStage, null);
 		interp.variables.set('MusicBeatState', MusicBeatState);
 		interp.bindConstructorFactory(MusicBeatState, createState, null);
 		interp.variables.set('MusicBeatSubstate', PsychMusicBeatSubstate);

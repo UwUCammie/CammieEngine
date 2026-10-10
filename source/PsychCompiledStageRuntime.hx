@@ -24,15 +24,12 @@ class PsychCompiledStageRuntime {
 	final className:String;
 	final stageHost:Dynamic;
 	final context:SourceStageContext;
-	final stageRegistries:Array<Array<Dynamic>> = [];
+	final construction:PsychStageConstruction;
 	final providedBindings:Map<String, Dynamic>;
 	final providedSymbols:Map<String, Dynamic>;
 	var classScope:ScriptClassScope;
 	var stageClass:AbstractScriptClass;
 	var baseStage:PsychBaseStageCompat;
-	final ownedStages:Array<Dynamic> = [];
-	final ownedAdapters:Array<PsychBaseStageCompat> = [];
-	var postCreatePhase:Bool = false;
 	var attempted:Bool = false;
 	var created:Bool = false;
 	var destroyed:Bool = false;
@@ -47,6 +44,7 @@ class PsychCompiledStageRuntime {
 		this.className = className;
 		this.stageHost = stageHost;
 		this.context = context;
+		construction = new PsychStageConstruction(stageHost, context);
 		providedBindings = copyMap(bindings);
 		providedSymbols = copyMap(symbols);
 	}
@@ -97,8 +95,7 @@ class PsychCompiledStageRuntime {
 			return false;
 		}
 		classScope = loaded.scope;
-		classScope.bindNativeConstruction(PsychBaseStageCompat, registerStage, createStage,
-			['ID', 'active', 'visible', 'alive', 'exists', 'curStep', 'curDecStep', 'curBeat', 'curDecBeat', 'curSection'], attachStage);
+		construction.bind(classScope);
 		var creationHost = context == null ? stageHost : context.state();
 		var membersBeforeCreate = snapshotHostMembers(creationHost);
 		try {
@@ -112,40 +109,13 @@ class PsychCompiledStageRuntime {
 		} catch (error:Dynamic) {
 			fail('could not instantiate ' + className + ': ' + Std.string(error));
 			destroy();
-			for (i in 0...ownedStages.length) stageRegistries[i].remove(ownedStages[i]);
+			for (i in 0...construction.stages.length) construction.registries[i].remove(construction.stages[i]);
 			cleanupMembersAddedSince(membersBeforeCreate, creationHost);
 			return false;
 		}
 	}
 
-	function registerStage(stage:ScriptClass):Void {
-		var host = context == null ? stageHost : context.state();
-		var stages:Array<Dynamic> = Reflect.getProperty(host, 'stages');
-		if (stages == null) {stages = [];Reflect.setProperty(host, 'stages', stages);}
-		stageRegistries.push(stages);
-		ownedStages.push(stage);
-		stages.push(stage);
-	}
-
-	function attachStage(nativeBase:Dynamic):Void {
-		var adapter:PsychBaseStageCompat = cast nativeBase;
-		ownedAdapters.push(adapter);
-		adapter.attachHost(stageHost);
-		adapter.attachContext(context);
-		adapter.attachScriptClassScope(classScope);
-		if (postCreatePhase) adapter.beginPostCreate();
-	}
-
-	function createStage(stage:ScriptClass, _nativeBase:Dynamic):Void {
-		// Source BaseStage invokes create inside super(), even if inactive.
-		// The scope hook covers nested source constructors as well as the root.
-		stage.callFunction('create', []);
-	}
-
-	public function beginPostCreate():Void {
-		postCreatePhase = true;
-		for (adapter in ownedAdapters) adapter.beginPostCreate();
-	}
+	public function beginPostCreate():Void construction.beginPostCreate();
 
 	/** Psych calls createPost after actors, notes and state members are ready. */
 	public function createPost():Bool return dispatch('createPost', []);
@@ -255,7 +225,7 @@ class PsychCompiledStageRuntime {
 			destroyed = true;
 			// Host list traversal owns callback order. Keep the scope alive until
 			// it has visited nested siblings after the selected stage.
-			var targets:Array<Dynamic> = release ? ownedStages : [stageClass];
+			var targets:Array<Dynamic> = release ? construction.stages : [stageClass];
 			for (stage in targets) {
 				try {
 					if (stage != null && ((stage == stageClass && admitted)
@@ -265,7 +235,7 @@ class PsychCompiledStageRuntime {
 			}
 		}
 		if (!release) return;
-		for (adapter in ownedAdapters) adapter.exists = false;
+		for (adapter in construction.adapters) adapter.exists = false;
 		created = false;
 		stageClass = null;
 		baseStage = null;
