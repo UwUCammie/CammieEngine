@@ -58,6 +58,8 @@ class PsychStageSceneOrderTest(unittest.TestCase):
 }
 class StageProbe {
  public var creatingBackground:Bool=true;
+ public var placement:Dynamic=null;
+ public var game:Dynamic=null;
  public var members:Array<Dynamic>=['base','gf','dad','bf','hud'];
  public function new() {}
  function readField(name:String):Dynamic return switch(name) {

@@ -90,6 +90,7 @@ class RuntimeSmokePsychStageContext {
 				&& Std.isOfType(other.stages[6], PsychBaseStageCompat), 'Native construction inside a source method shares registration');
 			var nestedNative:PsychBaseStageCompat = other.stages[6];factoryRuntime.destroy();
 			check(!nestedNative.exists, 'Source owner releases nested native stage lifetime');
+			RuntimeSmokePsychStagePlacement.verify();
 			@:privateAccess RuntimeSmokeHarness.emit('psych_direct_stage_native_verified', {reflection:true,irisConstructor:true,irisReflection:true,singleRegistration:true,liveContext:true,nativeIdentity:true,nestedNative:true,ownedCleanup:true});
 			@:privateAccess RuntimeSmokeHarness.emit('psych_stage_context_native_verified', {activeState:true,playInstance:true,gates:true,statics:true,typedRegistry:true,sceneMembership:true,nestedRegistration:true});
 		} catch (error:Dynamic) {cleanup();throw error;}

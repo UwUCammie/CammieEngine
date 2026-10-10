@@ -17,6 +17,7 @@ class PsychBaseStageCompat extends FlxBasic {
 	var context:SourceStageContext;
 	final actorGroups:haxe.ds.ObjectMap<Dynamic, Map<String, PsychBaseStageActorGroupCompat>> = new haxe.ds.ObjectMap();
 	var creatingBackground:Bool = true;
+	var placement:PsychStagePlacement;
 
 	public function new(?stageHost:Dynamic, ?context:SourceStageContext, register:Bool = false) {
 		this.stageHost = stageHost;
@@ -46,6 +47,12 @@ class PsychBaseStageCompat extends FlxBasic {
 	}
 
 	public function attachContext(value:SourceStageContext):Void context = value;
+
+	public function attachPlacement(value:PsychStagePlacement):Void {
+		if (placement != null && placement != value)
+			throw '[psych-stage] Placement phase cannot change owners';
+		placement = value;
+	}
 
 	public var game(get, never):Dynamic;
 	function get_game():Dynamic return context == null ? stageHost : context.state();
@@ -182,7 +189,8 @@ class PsychBaseStageCompat extends FlxBasic {
 		// engine constructs actors first, so preserve Psych's draw order by
 		// inserting create() props ahead of the earliest actor. createPost() and
 		// later callbacks append as authored; addBehind* uses explicit insert().
-		var actorIndex = creatingBackground ? firstActorMemberIndex() : -1;
+		var beforeActors = placement == null ? creatingBackground : placement.beforeActors(game);
+		var actorIndex = beforeActors ? firstActorMemberIndex() : -1;
 		var result = actorIndex < 0 ? callHost('add', [nativeObject])
 			: callHost('insert', [actorIndex, nativeObject]);
 		return nativeObject == object ? result : object;

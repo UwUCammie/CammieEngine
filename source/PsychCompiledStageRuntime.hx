@@ -44,7 +44,7 @@ class PsychCompiledStageRuntime {
 		this.className = className;
 		this.stageHost = stageHost;
 		this.context = context;
-		construction = new PsychStageConstruction(stageHost, context);
+		construction = new PsychStageConstruction(stageHost, context, true);
 		providedBindings = copyMap(bindings);
 		providedSymbols = copyMap(symbols);
 	}
