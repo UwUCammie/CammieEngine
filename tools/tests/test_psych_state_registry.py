@@ -16,7 +16,7 @@ class PsychStateRegistryTest(unittest.TestCase):
 class DonorFlxG {public static var state:Dynamic;}
 class MusicBeatState {public var variables:Map<String,Dynamic>=[];public function new(){} __NATIVE__}
 class DonorMusicBeatState {public var variables:Map<String,Dynamic>=[];public function new(){} __SOURCE__}
-class PlayState extends MusicBeatState {public function new(){super();}__ALIAS__}
+class PlayState extends MusicBeatState {public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
 class NightmareVisionScriptInterp {
  public var variables:Map<String,Dynamic>=[];public var imports:Map<String,Dynamic>=[];var scope=new SourceNativeClassScope();
  public function new(){}public function sourceClassScope():SourceNativeClassScope return scope;public function bindImport(n:String,t:Dynamic):Void imports.set(n,t);

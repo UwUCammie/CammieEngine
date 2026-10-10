@@ -107,7 +107,7 @@ class Main {
  }
 }'''.replace('__METHODS__', methods).replace('function sourceHealthIconOwner(', 'public function sourceHealthIconOwner(')
         # Native state registration is tested by the connected state-registry probe.
-        files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'
+        files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function registry(h:Dynamic):Dynamic return h.psychScriptVariables;public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
             temp = Path(directory)
             for name, content in files.items():

@@ -139,8 +139,8 @@ class PsychSourceBindings {
 		variables.set('setVar', function(name:String, value:Dynamic):Dynamic {
 			return setVar(name, value);
 		});
-		variables.set('getVar', function(name:String):Dynamic return host.psychScriptVariables.get(name));
-		variables.set('removeVar', function(name:String):Bool return host.psychScriptVariables.remove(name));
+		variables.set('getVar', function(name:String):Dynamic return SourceScriptVariables.get(function() return PsychStateClassBindings.registry(host), name));
+		variables.set('removeVar', function(name:String):Bool return SourceScriptVariables.remove(function() return PsychStateClassBindings.registry(host), name, false));
 		variables.set('getPropertyLuaSprite', function(tag:String, variable:String):Dynamic
 			return getPropertyLuaSprite(tag, variable));
 		variables.set('setPropertyLuaSprite', function(tag:String, variable:String, value:Dynamic):Bool
@@ -985,8 +985,7 @@ class PsychSourceBindings {
 
 	/** setVar resolves Psych's explicit instanceArg marker, then returns its input. */
 	function setVar(name:String, value:Dynamic):Dynamic {
-		host.psychScriptVariables.set(name, storePsychVariable(value));
-		return value;
+		return SourceScriptVariables.set(function() return PsychStateClassBindings.registry(host), name, value, storePsychVariable);
 	}
 
 	function storePsychVariable(value:Dynamic):Dynamic {

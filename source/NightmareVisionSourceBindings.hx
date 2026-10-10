@@ -71,7 +71,7 @@ class NightmareVisionSourceBindings {
 	 * must be its owner-scoped dynamic script loader and is exposed with the
 	 * donor's Void return contract. */
 	public static function bindGameplay(interp:Dynamic, state:Dynamic, inPlaystate:Bool,
-		fields:Map<String, Dynamic>, initScript:String->Dynamic):Void {
+		fields:Map<String, Dynamic>, initScript:String->Dynamic, ?registry:()->Dynamic):Void {
 		var vars = variablesOf(interp);
 		set(vars, 'inGameOver', false);
 		set(vars, 'game', state);
@@ -80,14 +80,14 @@ class NightmareVisionSourceBindings {
 		if (state == null) throw '[nightmare-vision-bindings] Gameplay globals require the live PlayState';
 		for (name in gameplayNames) if (fields != null && fields.exists(name)) set(vars, name, fields.get(name));
 
-		// PlayState exposes this as `variables(get, never)`, so Reflect.field
-		// misses the live map even though normal property access sees it.
+		// The global alias captures the initial map; callbacks resolve their live provider.
 		var stateVariables:Dynamic = Reflect.getProperty(state, 'variables');
 		if (stateVariables == null)
 			throw '[nightmare-vision-bindings] Live PlayState has no source variable map';
 		set(vars, 'global', stateVariables);
-		set(vars, 'setVar', function(name:String, value:Dynamic):Void setMapValue(stateVariables, name, value));
-		set(vars, 'getVar', function(name:String):Dynamic return getMapValue(stateVariables, name));
+		if (registry == null) registry = function() return Reflect.getProperty(state, 'variables');
+		set(vars, 'setVar', function(name:String, value:Dynamic):Void SourceScriptVariables.write(registry, name, value));
+		set(vars, 'getVar', function(name:String):Dynamic return SourceScriptVariables.get(registry, name));
 
 		var constants:Dynamic = get(vars, 'ScriptConstants');
 		var getInstance:Dynamic = constants == null ? null : Reflect.field(constants, 'getInstance');
@@ -107,14 +107,6 @@ class NightmareVisionSourceBindings {
 	static function set(vars:Map<String, Dynamic>, name:String, value:Dynamic):Void vars.set(name, value);
 
 	static function get(vars:Map<String, Dynamic>, name:String):Dynamic return vars.get(name);
-
-	static function setMapValue(values:Dynamic, name:String, value:Dynamic):Void {
-		if (values != null) (cast values:Map<String, Dynamic>).set(name, value);
-	}
-
-	static function getMapValue(values:Dynamic, name:String):Dynamic {
-		return values == null ? null : (cast values:Map<String, Dynamic>).get(name);
-	}
 
 	static function bindImport(interp:Dynamic, path:String, value:Dynamic):Void {
 		var binder:Dynamic = interp == null ? null : Reflect.field(interp, 'bindImport');

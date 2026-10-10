@@ -149,7 +149,7 @@ class Main {static function main() {
   files['PsychStandardServices.hx'] = STANDARD_SERVICES
   files['PsychAlphabetOwnerAccess.hx'] = (ROOT/'source/PsychAlphabetOwnerAccess.hx').read_text(encoding='utf-8')
   # Native state registration is tested by the connected state-registry probe.
-  files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'
+  files['PsychStateClassBindings.hx'] = 'class PsychStateClassBindings {public static function registry(h:Dynamic):Dynamic return h.psychScriptVariables;public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}'
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    for name,content in files.items():
     path=Path(tmp)/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)

@@ -170,7 +170,7 @@ class PsychAchievementsIntegration {
 """, encoding="utf-8", newline="\n")
             (scratch / "PsychOwnerPaths.hx").write_text('class PsychOwnerPaths {public static function create(r:String,?l:String):Dynamic return null;}')
             # State-class registration has an independent connected contract probe.
-            (scratch / 'PsychStateClassBindings.hx').write_text('class PsychStateClassBindings {public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}')
+            (scratch / 'PsychStateClassBindings.hx').write_text('class PsychStateClassBindings {public static function registry(h:Dynamic):Dynamic return h.psychScriptVariables;public static function installScope(s:Dynamic):Void {} public static function install(i:Dynamic):Void {}}')
             (scratch / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
             command = [*HAXE_COMMAND, "-cp", str(ROOT / "source"),
                        "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),

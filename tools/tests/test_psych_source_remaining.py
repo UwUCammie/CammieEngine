@@ -92,7 +92,8 @@ class BindingFixture {
     def test_lua_setvar_resolves_only_explicit_instance_markers(self):
         source = (ROOT / "source/PsychSourceBindings.hx").read_text()
         methods = "\n".join(extract(source, name) for name in ("setVar", "storePsychVariable"))
-        fixture = r'''class FakeHost { public var psychScriptVariables:Map<String,Dynamic>=[]; public function new() {} }
+        fixture = r'''class PsychStateClassBindings {public static function registry(host:Dynamic):Dynamic return host.psychScriptVariables;}
+class FakeHost { public var psychScriptVariables:Map<String,Dynamic>=[]; public function new() {} }
 class BindingFixture {
  var host:FakeHost;
  var resolved:Array<Array<Dynamic>>=[];
@@ -115,8 +116,7 @@ class BindingFixture {
     def test_hscript_shared_vars_callback_bridge_and_build_targets(self):
         source = (ROOT / "source/PsychHscriptSourceBindings.hx").read_text()
         methods = "\n".join(extract(source, name) for name in (
-            "invokeBridge", "registerLocal", "registerGlobal", "setSharedVar",
-            "getSharedVar", "removeSharedVar", "platformBuildTarget",
+            "invokeBridge", "registerLocal", "registerGlobal", "platformBuildTarget",
         ))
         fixture = r'''class FakeBridge {
  public var calls:Array<Array<Dynamic>>=[];
@@ -132,8 +132,8 @@ class BindingFixture {
  static function main() {
   var binding=new BindingFixture();
   var vars:Map<String,Dynamic>=[];
-  if(binding.setSharedVar(vars,'x',17)!=17 || binding.getSharedVar(vars,'x')!=17) throw 'shared set/get mismatch';
-  if(!binding.removeSharedVar(vars,'x') || binding.removeSharedVar(vars,'x')) throw 'remove existence result mismatch';
+  if(SourceScriptVariables.set(function() return vars,'x',17)!=17 || SourceScriptVariables.get(function() return vars,'x',true)!=17) throw 'shared set/get mismatch';
+  if(!SourceScriptVariables.remove(function() return vars,'x') || SourceScriptVariables.remove(function() return vars,'x')) throw 'remove existence result mismatch';
   var bridge=new FakeBridge(); var owner={id:'interp'}; var cb=function() return 2;
   var parent=binding.invokeBridge(bridge,'parentFacade',['owner/song.lua',owner]);
   var self=binding.invokeBridge(bridge,'selfFacade',['owner/song.lua',owner,parent]);

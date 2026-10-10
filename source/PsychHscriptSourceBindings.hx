@@ -60,13 +60,13 @@ class PsychHscriptSourceBindings {
 			? 'unnamed' : host.compatCustomSubstate.customName);
 
 		variables.set('setVar', function(name:String, value:Dynamic):Dynamic {
-			return setSharedVar(host.psychScriptVariables, name, value);
+			return SourceScriptVariables.set(function() return PsychStateClassBindings.registry(host), name, value);
 		});
 		variables.set('getVar', function(name:String):Dynamic {
-			return getSharedVar(host.psychScriptVariables, name);
+			return SourceScriptVariables.get(function() return PsychStateClassBindings.registry(host), name, true);
 		});
 		variables.set('removeVar', function(name:String):Bool {
-			return removeSharedVar(host.psychScriptVariables, name);
+			return SourceScriptVariables.remove(function() return PsychStateClassBindings.registry(host), name);
 		});
 		variables.set('createGlobalCallback', function(name:String, func:Dynamic):Void {
 			registerGlobal(callbackBridge, origin, name, func);
@@ -100,20 +100,6 @@ class PsychHscriptSourceBindings {
 	static function registerGlobal(bridge:Dynamic, origin:String, name:String,
 		func:Dynamic):Void {
 		invokeBridge(bridge, 'registerGlobal', [origin, name, func]);
-	}
-
-	static function setSharedVar(variables:Map<String, Dynamic>, name:String,
-		value:Dynamic):Dynamic {
-		variables.set(name, value);
-		return value;
-	}
-
-	static function getSharedVar(variables:Map<String, Dynamic>, name:String):Dynamic {
-		return variables.get(name);
-	}
-
-	static function removeSharedVar(variables:Map<String, Dynamic>, name:String):Bool {
-		return variables.remove(name);
 	}
 
 	static function platformBuildTarget(platform:String, x86:Bool = false):String {

@@ -3,6 +3,7 @@ from haxe_test_support import HAXE_COMMAND
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
 import subprocess
+import re
 import tempfile
 import unittest
 
@@ -102,6 +103,16 @@ class Main {
   check(state.variableReads==1,'global binding reads PlayState.variables through its getter');
   invoke(interp.variables,'setVar',['written',27]);
   check(invoke(interp.variables,'getVar',['written'])==27 && sourceVars.get('written')==27,'setVar/getVar operate on current PlayState variables');
+  var currentVariables:Map<String,Dynamic>=sourceVars;
+  NightmareVisionSourceBindings.bindGameplay(interp,state,true,fields,function(path:String):Dynamic {loaded.push(path);return null;},function() return currentVariables);
+  var cachedSet=interp.variables.get('setVar'),cachedGet=interp.variables.get('getVar');
+  currentVariables=new Map();
+  var sourceSet=(name:String,value:Dynamic)->currentVariables.set(name,value);
+  var expectedSet=Reflect.callMethod(null,sourceSet,['source',41]);
+  var actualSet=Reflect.callMethod(null,cachedSet,['later',41]);
+  check(actualSet==expectedSet,'NV source setter result: '+Std.string(expectedSet)+' actual '+Std.string(actualSet));
+  check(Reflect.callMethod(null,cachedGet,['later'])==41&&!sourceVars.exists('later'),'cached NV callbacks follow live PlayState provider');
+  check(interp.variables.get('global')==sourceVars,'global retains the source initial-map alias');
   invoke(interp.variables,'initScript',['events/example']);
   check(loaded.join(',')=='events/example','initScript delegates to owner-scoped loader');
   check(invoke(interp.variables,'getInstance',[])==current,'getInstance delegates to ScriptConstants');
@@ -116,6 +127,11 @@ class Main {
  }
 }
 '''
+        donor = subprocess.check_output(['git', '-C', str(ROOT.parent / 'fnf_sources/NightmareVision'), 'show',
+            '733165c42ca71eb0961a70e4173b2d81ba4a29ea:source/funkin/scripts/FunkinScript.hx'], text=True)
+        source_set = re.search(r"set\('setVar', (.*)\);", donor).group(1)
+        fixture = fixture.replace('(name:String,value:Dynamic)->currentVariables.set(name,value)',
+            source_set.replace('PlayState.instance.variables', 'currentVariables'))
         stubs = {
             "flixel/input/keyboard/FlxKey.hx": '''package flixel.input.keyboard;
 enum abstract FlxKey(Int) from Int to Int {

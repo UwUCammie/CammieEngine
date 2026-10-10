@@ -1428,7 +1428,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			'mustHitSection' => firstSection == null ? false : firstSection.mustHitSection
 		];
 		NightmareVisionSourceBindings.bindGameplay(interp, this, true, fields,
-			function(path:String):Dynamic return nightmareVisionScripts == null ? null : nightmareVisionScripts.loadDynamic(path));
+			function(path:String):Dynamic return nightmareVisionScripts == null ? null : nightmareVisionScripts.loadDynamic(path), function() return PlayState.instance.variables);
 		if (entry.scope != 'stage' && entry.scope != 'stage-standalone') interp.bindLiveValue('stage', function() return stage, function(value) return stage = cast value, function() return this);
 		var audioView = nightmareVisionAudioView();
 		interp.variables.set('audio', audioView);
