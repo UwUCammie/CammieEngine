@@ -102,10 +102,14 @@ class ScriptClassScope {
 			: type == FlxObject ? PsychScriptClassObject
 			: type == FlxTypedGroup ? PsychScriptClassGroup : null;
 		if (adapter != null) {
-			var instance:SourceNativeClassAdapter = Type.createInstance(adapter, args);
-			owner.superClass = instance;
-			instance.bind(root, this);
-			nativeAdapters.set(root, instance.sourceLifecycle);
+			var bind = function(instance:SourceNativeClassAdapter):Void {
+				owner.superClass = instance;
+				instance.bind(root, this);
+				nativeAdapters.set(root, instance.sourceLifecycle);
+			};
+			var nativeArgs:Array<Dynamic> = [bind];
+			if (args != null) nativeArgs = nativeArgs.concat(args);
+			Type.createInstance(adapter, nativeArgs);
 		} else
 		#end
 		owner.superClass = Type.createInstance(type, args);
@@ -419,7 +423,12 @@ class ScriptClassScope {
 				throw '[codename-class-module] ' + unavailable;
 			return null;
 		}
-		return new ScriptClass(descriptor, args == null ? [] : args, this);
+		var instance:AbstractScriptClass = cast withNativeLifetime(function():Dynamic {
+			return new ScriptClass(descriptor, args == null ? [] : args, this);
+		});
+		// A constructor may request owner teardown. Do not publish a disposed object.
+		ensureActive();
+		return instance;
 	}
 
 	/** Recycle through one source/native class matcher while keeping native capacity rotation. */
@@ -888,11 +897,16 @@ class ScriptClassScope {
 
 	/** Finish the current native lifecycle traversal before releasing its owner. */
 	public function callNativeLifecycle(owner:ScriptClass, name:String, args:Array<Dynamic>):Dynamic {
+		return withNativeLifetime(function():Dynamic return owner.callFunction(name, args));
+	}
+
+	/** Source constructors and native callbacks share one deferred-release boundary. */
+	function withNativeLifetime(callback:Void->Dynamic):Dynamic {
 		ensureActive();
 		nativeCallbackDepth++;
 		var result:Dynamic = null, failure:Dynamic = null;
 		var failed = false;
-		try result = owner.callFunction(name, args) catch (error:Dynamic) {failed = true;failure = error;}
+		try result = callback() catch (error:Dynamic) {failed = true;failure = error;}
 		nativeCallbackDepth--;
 		if (nativeCallbackDepth == 0 && releaseRequested) {releaseRequested = false;release();}
 		if (failed) throw failure;

@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Source native subclasses now bind before super construction, preserving authored initialization and frame hooks; owner teardown waits for the full source constructor and rejects disposed results.
 - Inherited source fields now share parent storage for plain, compound and increment writes from child methods, including explicit this.field assignments.
 - Source sprite subclasses now preserve authored hitbox and simple/complex render overrides during native calls, sharing Flixel geometry and explicit super dispatch.
 - Source FlxBasic, FlxObject and FlxGroup subclasses now share native lifecycle adapters, restoring recursive traversal, immediate state changes, authored kill/revive and killed-object cleanup.

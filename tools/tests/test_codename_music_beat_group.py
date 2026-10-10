@@ -29,11 +29,13 @@ class FlxBasic {
 }''',
                 "flixel/FlxCamera.hx": "package flixel; class FlxCamera {}",
                 "flixel/FlxObject.hx": """package flixel;
-class FlxObject extends FlxBasic {public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) super();}""",
+class FlxObject extends FlxBasic {public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) super();function initVars():Void {}}""",
                 "flixel/FlxSprite.hx": '''package flixel;
 class FlxSprite extends FlxBasic {
  public var x:Float=0; public var y:Float=0;
  public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
+ function initVars():Void {}
+ public function drawFrame(force:Bool=false):Void {}
  function updateAnimation(elapsed:Float):Void {}
  public function updateHitbox():Void {}
  function drawSimple(camera:FlxCamera):Void {}

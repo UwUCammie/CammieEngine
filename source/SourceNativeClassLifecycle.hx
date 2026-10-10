@@ -18,8 +18,9 @@ class SourceNativeClassLifecycle {
 		this.nativeBase = nativeBase;
 	}
 	public function noteOwnerDestroyCalled():Void ownerDestroyed = true;
-	public static function hasNativeSuper(name:String, animation:Bool):Bool {
-		return ['updateAnimation', 'updateHitbox', 'drawSimple', 'drawComplex'].indexOf(name) >= 0
+	public static function hasNativeSuper(name:String, animation:Bool, initialization:Bool):Bool {
+		if (name == 'initVars') return initialization;
+		return ['drawFrame', 'updateAnimation', 'updateHitbox', 'drawSimple', 'drawComplex'].indexOf(name) >= 0
 			? animation : ['update', 'draw', 'kill', 'revive', 'destroy'].indexOf(name) >= 0;
 	}
 	public function dispatch(name:String, args:Array<Dynamic>):Void {
