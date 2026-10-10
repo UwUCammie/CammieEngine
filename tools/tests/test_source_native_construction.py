@@ -9,6 +9,7 @@ class SourceNativeConstructionTest(unittest.TestCase):
    classes={}
    for name,native,ctor in [('Body','flixel.FlxObject','super(2,3,14,15);'),('Shape','flixel.FlxSprite','super(2,3);'),('Label','flixel.text.FlxText',"super(2,3,120,'constructor',14,false);"),('Panel','flixel.group.FlxSpriteGroup','super(2,3,4);')]:
     before='x=99;' if name=='Body' else ''
+    group='' if name!='Panel' else "override function initGroup(maxSize:Int):Void {order+='group-before>';super.initGroup(maxSize+2);order+='group-after>'; }"
     frames='' if name=='Body' else 'override public function drawFrame(force:Bool=false):Void {framesSeen++;super.drawFrame(force);}'
     classes[name]=f"""package demo;import {native};
 class {name} extends {native.split('.')[-1]} {{
@@ -16,6 +17,7 @@ class {name} extends {native.split('.')[-1]} {{
  public function new(){{order+='before>';{before}{ctor}order+='after>';}}
  override function initVars():Void {{order+='init-before>';initCalls++;super.initVars();order+='init-after>';}}
  {frames}
+ {group}
  public function stats():String return order+initCalls+':'+framesSeen;
 }}
 """
@@ -25,6 +27,14 @@ class Child extends Body {
  public function new(){super();}
  override function initVars():Void {childCalls++;super.initVars();}
  override public function stats():String return super.stats()+':'+childCalls;
+}
+"""
+   classes['PanelChild']="""package demo;import demo.Panel;
+class PanelChild extends Panel {
+ public var seenSize:Int=0;
+ public function new(){super();}
+ override function initGroup(maxSize:Int):Void {seenSize=maxSize;super.initGroup(maxSize+3);}
+ override public function stats():String return super.stats()+':'+seenSize+':'+maxSize;
 }
 """
    classes['Reentrant']="""package demo;import flixel.FlxObject;
@@ -43,21 +53,22 @@ class Broken extends FlxObject {
 """
    for name,code in classes.items():
     (module/(name+'.hx')).write_text(code,encoding='utf-8')
-    if name not in ('Reentrant','Broken'):(base/(name+'.hx')).write_text(code.replace('package demo;','package;').replace('import demo.Body;','import Body;'),encoding='utf-8')
+    if name not in ('Reentrant','Broken'):(base/(name+'.hx')).write_text(code.replace('package demo;','package;').replace('import demo.Body;','import Body;').replace('import demo.Panel;','import Panel;'),encoding='utf-8')
    (base/'Main.hx').write_text(r"""import flixel.FlxObject;import flixel.FlxSprite;import flixel.text.FlxText;import flixel.group.FlxSpriteGroup.FlxTypedSpriteGroup;
 class Main {
  static function check(ok:Bool,why:String):Void {if(!ok)throw why;}
  static function main():Void {
   var bindings:Map<String,Dynamic>=['flixel.FlxObject'=>FlxObject,'flixel.FlxSprite'=>FlxSprite,'flixel.text.FlxText'=>FlxText,'flixel.group.FlxSpriteGroup'=>FlxTypedSpriteGroup];
-  var loaded=CodenameScriptClassLoader.load(Sys.args()[0],['demo.Body','demo.Shape','demo.Label','demo.Panel','demo.Child'],bindings,new Map());
+  var loaded=CodenameScriptClassLoader.load(Sys.args()[0],['demo.Body','demo.Shape','demo.Label','demo.Panel','demo.Child','demo.PanelChild'],bindings,new Map());
   check(loaded.diagnostics.length==0,'load '+loaded.diagnostics);
-  var types:Array<Class<Dynamic>>=[Body,Shape,Label,Panel,Child];var names=['Body','Shape','Label','Panel','Child'];
+  var types:Array<Class<Dynamic>>=[Body,Shape,Label,Panel,Child,PanelChild];var names=['Body','Shape','Label','Panel','Child','PanelChild'];
   for(i in 0...names.length){
    var source=loaded.scope.createInstance('demo.'+names[i]),expected:Dynamic=Type.createInstance(types[i],[]);
    var actual=source.callFunction('stats',[]),want=Reflect.callMethod(expected,Reflect.field(expected,'stats'),[]);
    check(actual==want,'construction '+names[i]+': '+actual+' vs '+want);
    @:privateAccess var native:FlxObject=cast loaded.scope.unwrapOwnedFlxBasic(source);
    check(native.x==expected.x && native.y==expected.y && native.velocity!=null,'native constructor state '+names[i]);
+   if(names[i]=='Panel' || names[i]=='PanelChild') check((cast native:FlxTypedSpriteGroup<FlxSprite>).maxSize==(cast expected:FlxTypedSpriteGroup<FlxSprite>).maxSize,'authored initGroup argument and storage');
    native.destroy();expected.destroy();
   }
   loaded.scope.release();

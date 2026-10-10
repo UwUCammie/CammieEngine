@@ -91,6 +91,7 @@ class RuntimeSmokePsychIrisClasses {
 			plain.variables.set('nativeSpriteGroup', spriteGroup);
 			plain.evaluate('import demo.NativeSprite; import demo.NativeSpriteDerived; sourceSpriteProbe=new NativeSpriteDerived(); spriteAddProbe=nativeSpriteGroup.add(sourceSpriteProbe); spriteIndexProbe=nativeSpriteGroup.members[0];', 'sprite-group-probe');
 			var sourceSprite = plain.variables.get('sourceSpriteProbe');
+			check(session.read(sourceSprite, 'graphicLoads') == 1 && session.read(sourceSprite, 'derivedLoads') == 1, 'Native constructor graphic load reaches most-derived source hook');
 			check(session.read(sourceSprite, 'initCalls') == 1 && session.read(sourceSprite, 'derivedInit') == 1, 'Native constructor dispatches most-derived source initVars exactly once');
 			check(plain.variables.get('spriteAddProbe') == sourceSprite && plain.variables.get('spriteIndexProbe') == sourceSprite, 'Native sprite group source identity');
 			spriteGroup.members[0].cameras = [renderCamera];
@@ -106,6 +107,9 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.read(sourceSprite, 'hitboxes') == 1 && hookSprite.width == 16 && hookSprite.height == 24 && hookSprite.offset.x == 3,
 				'Native hitbox uses authored adjustment after Flixel scaling');
 			hookSprite.scale.set(1, 1);hookSprite.updateHitbox();
+			hookSprite.frames = hookSprite.frames;
+			check(session.read(sourceSprite, 'graphicLoads') == 2 && session.read(sourceSprite, 'derivedLoads') == 2,
+				'Native frame reassignment reaches source graphic-loaded override once');
 
 			plain.evaluate('import demo.NativePanel; sourcePanelProbe=new NativePanel(); panelAddProbe=nativeSpriteGroup.add(sourcePanelProbe);', 'native-text-panel-probe');
 			var sourcePanel = plain.variables.get('sourcePanelProbe');
@@ -113,6 +117,8 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.read(sourcePanel, 'initCalls') == 1 && session.read(sourceLabel, 'initCalls') == 1 && session.read(sourceLabel, 'frameCalls') > 0, 'Native group/text constructors retain source initialization and frame hooks');
 			var nativePanel:flixel.group.FlxSpriteGroup = cast spriteGroup.members[1];
 			var nativeLabel:flixel.text.FlxText = cast nativePanel.members[0];
+			check(session.read(sourcePanel, 'groupInitCalls') == 1 && nativePanel.maxSize == 4 && nativePanel.length == 1,
+				'Source initGroup changes actual native group storage before super initialization');
 			check(plain.variables.get('panelAddProbe') == sourcePanel && session.nativeValue(nativeLabel) == sourceLabel, 'Native nested text/group identity');
 			nativePanel.update(0.1);nativePanel.draw();
 			check(session.read(sourcePanel, 'ticks') == 1 && session.read(sourcePanel, 'draws') == 1
@@ -228,7 +234,7 @@ class RuntimeSmokePsychIrisClasses {
 			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				nativeGroupInitialization:true,nativeGraphicLoaded:true,derivedGraphicLoaded:true,selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

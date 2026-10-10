@@ -8,7 +8,7 @@ import haxe.macro.Expr;
 /** Generate only native super trampolines; runtime ownership is shared. */
 class SourceNativeClassAdapterMacro {
 	#if macro
-	public static function build(animation:Bool = true, object:Bool = false):Array<Field> {
+	public static function build(animation:Bool = true, object:Bool = false, spriteGroup:Bool = false):Array<Field> {
 		var fields = Context.getBuildFields();
 		// Bind the actual instance before native super() can dispatch virtual hooks.
 		for (field in fields) if (field.name == 'new') switch (field.kind) {
@@ -35,7 +35,7 @@ class SourceNativeClassAdapterMacro {
 			override public function kill():Void dispatchSource('kill', []);
 			override public function revive():Void dispatchSource('revive', []);
 			override public function destroy():Void dispatchSource('destroy', []);
-			public function supportsNativeSuper(name:String):Bool return SourceNativeClassLifecycle.hasNativeSuper(name, $v{animation}, $v{animation || object});
+			public function supportsNativeSuper(name:String):Bool return SourceNativeClassLifecycle.hasNativeSuper(name, $v{animation}, $v{animation || object}, $v{spriteGroup});
 			public function callNativeSuper(name:String, args:Array<Dynamic>):Dynamic {
 				return sourceLifecycle == null ? callNativeBase(name, args) : sourceLifecycle.callNativeSuper(name, args);
 			}
@@ -69,6 +69,7 @@ class SourceNativeClassAdapterMacro {
 			var extra = macro class SpriteCallbacks extends flixel.FlxSprite {
 				override function updateAnimation(elapsed:Float):Void dispatchSource('updateAnimation', [elapsed]);
 				override public function drawFrame(force:Bool = false):Void dispatchSource('drawFrame', [force]);
+				override public function graphicLoaded():Void dispatchSource('graphicLoaded', []);
 				override public function updateHitbox():Void dispatchSource('updateHitbox', []);
 				override function drawSimple(camera:flixel.FlxCamera):Void dispatchSource('drawSimple', [camera]);
 				override function drawComplex(camera:flixel.FlxCamera):Void dispatchSource('drawComplex', [camera]);
@@ -76,10 +77,17 @@ class SourceNativeClassAdapterMacro {
 			addCallbacks(extra, [
 				{values:[macro 'updateAnimation'], guard:null, expr:macro super.updateAnimation(args[0])},
 				{values:[macro 'drawFrame'], guard:null, expr:macro super.drawFrame(args[0])},
+				{values:[macro 'graphicLoaded'], guard:null, expr:macro super.graphicLoaded()},
 				{values:[macro 'updateHitbox'], guard:null, expr:macro super.updateHitbox()},
 				{values:[macro 'drawSimple'], guard:null, expr:macro super.drawSimple(args[0])},
 				{values:[macro 'drawComplex'], guard:null, expr:macro super.drawComplex(args[0])}
 			]);
+		}
+		if (spriteGroup) {
+			var extra = macro class GroupInitializationCallback extends flixel.group.FlxSpriteGroup {
+				override function initGroup(maxSize:Int):Void dispatchSource('initGroup', [maxSize]);
+			};
+			addCallbacks(extra, [{values:[macro 'initGroup'], guard:null, expr:macro super.initGroup(args[0])}]);
 		}
 		if (animation || object) {
 			var extra = macro class ObjectInitializationCallback extends flixel.FlxObject {

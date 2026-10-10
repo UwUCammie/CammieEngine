@@ -36,6 +36,7 @@ class FlxSprite extends FlxBasic {
  public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
  function initVars():Void {}
  public function drawFrame(force:Bool=false):Void {}
+ public function graphicLoaded():Void {}
  function updateAnimation(elapsed:Float):Void {}
  public function updateHitbox():Void {}
  function drawSimple(camera:FlxCamera):Void {}
@@ -74,6 +75,7 @@ class FlxGroup extends FlxTypedGroup<FlxBasic> { public function new() super(); 
 import flixel.FlxSprite;
 typedef FlxSpriteGroup = FlxTypedSpriteGroup<FlxSprite>;
 class FlxTypedSpriteGroup<T:FlxSprite> extends FlxSprite {
+ function initGroup(maxSize:Int):Void {}
  public var group:flixel.group.FlxGroup.FlxTypedGroup<T>;
  public var members:Array<T>=[];
  public function new(x:Float=0,y:Float=0,?maxSize:Int=0) { super(x,y); }
