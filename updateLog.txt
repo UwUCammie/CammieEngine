@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Psych and historical NV text properties now share native setters while retaining source return values, getter defaults, alignment, border and color rules.
 - Historical NV Lua text now keeps source formatting defaults, normalized tags and mounting flags, with shared native replacement and removal lifecycle.
 - Historical NV object ordering now uses the live scene and shared raw tag/path lookup, preserving removal callbacks and native insertion positions.
 - Historical NV Lua group and class properties now preserve source indexing and raw writes; group removal follows source kill/remove/destroy order over shared native objects.

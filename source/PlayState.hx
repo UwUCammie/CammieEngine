@@ -5411,6 +5411,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		});
 		interp.variables.set('addLuaText', function(tag:String):Void {compatAddLuaText(tag);});
 		interp.variables.set('removeLuaText', function(tag:String, destroy:Bool = true):Void {compatRemoveLuaText(tag, destroy);});
+		new SourceScriptTextBindings(true, compatFindText, function(name) return nightmareVisionPaths.font(name),
+			SourceTextStyle.historicalColor, SourceTextStyle.border, function(message) trace('[script] ' + message)).install(interp.variables);
 	}
 	function installHistoricalLuaObjectOrder(interp:Interp, resultsObserver:Bool):Void {
 		if (!nightmareVisionLegacyFieldCameras || resultsObserver || !Std.isOfType(interp, LuaCompatInterp)) return;

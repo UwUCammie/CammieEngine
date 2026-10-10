@@ -168,20 +168,8 @@ class PsychSourceBindings {
 		variables.set('getScreenPositionY', function(name:String, ?camera:String = 'game'):Float
 			return screenPositionComponent(name, camera, 'y'));
 
-		variables.set('setTextWidth', function(tag:String, width:Float):Bool return setTextProperty(tag, 'fieldWidth', width));
-		variables.set('setTextHeight', function(tag:String, height:Float):Bool return setTextProperty(tag, 'fieldHeight', height));
-		variables.set('setTextAutoSize', function(tag:String, enabled:Bool):Bool return setTextProperty(tag, 'autoSize', enabled));
-		variables.set('setTextItalic', function(tag:String, enabled:Bool):Bool return setTextProperty(tag, 'italic', enabled));
-		variables.set('setTextBorder', function(tag:String, size:Float, color:String,
-			?style:String = 'outline'):Bool return setTextBorder(tag, size, color, style));
-		variables.set('getTextSize', function(tag:String):Int {
-			var text = psychText(tag);
-			return text == null ? -1 : text.size;
-		});
-		variables.set('getTextWidth', function(tag:String):Float {
-			var text = psychText(tag);
-			return text == null ? 0 : text.fieldWidth;
-		});
+		new SourceScriptTextBindings(false, psychObject, function(name) return PsychFontPath.resolve(name, ownerRoot),
+			SourceTextStyle.psychColor, SourceTextStyle.border, function(message) trace('[psych-text] ' + message)).install(variables);
 
 		variables.set('addAnimationByIndicesLoop', function(tag:String, name:String, prefix:String,
 			indices:Dynamic, framerate:Int = 24):Bool {
@@ -525,36 +513,6 @@ class PsychSourceBindings {
 	function psychText(tag:Dynamic):FlxText {
 		var object = psychObject(tag);
 		return Std.isOfType(object, FlxText) ? cast object : null;
-	}
-
-	function setTextProperty(tag:String, property:String, value:Dynamic):Bool {
-		var text = psychText(tag);
-		if (text == null) return false;
-		try {
-			Reflect.setProperty(text, property, value);
-			return true;
-		} catch (_:Dynamic) {
-			return false;
-		}
-	}
-
-	function setTextBorder(tag:String, size:Float, color:String, style:String):Bool {
-		var text = psychText(tag);
-		if (text == null) return false;
-		try {
-			text.borderStyle = switch (size > 0 && style != null ? StringTools.trim(style).toLowerCase() : 'none') {
-				case 'shadow': FlxTextBorderStyle.SHADOW;
-				case 'outline': FlxTextBorderStyle.OUTLINE;
-				case 'outline_fast', 'outlinefast': FlxTextBorderStyle.OUTLINE_FAST;
-				default: FlxTextBorderStyle.NONE;
-			};
-			if (size > 0) text.borderSize = size;
-			var parsed = host.compatParseColor(color);
-			if (parsed != null) text.borderColor = cast parsed;
-			return true;
-		} catch (_:Dynamic) {
-			return false;
-		}
 	}
 
 	function setTimeBarColors(left:String, right:String):Void {
