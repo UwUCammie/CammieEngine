@@ -2,6 +2,7 @@ CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
 v0.0.23 alpha - CammieEngine
+- Native group lookup and recycling now share source-aware class filters; predicates, typed callbacks, sorting and manual group iterators retain authored object identity.
 - Imported source classes share native member-array methods, callback identity and manual iterators; reflected member-array replacement preserves storage identity and native element types.
 - Source-class group replacement, sprite-group recycling and indexed member writes now share native storage and transforms; member loops preserve authored object methods and identity.
 - Source FlxText and sprite-group subclasses now share sprite lifecycle dispatch while retaining native text layout, nested transforms and cleanup; source super constructors forward all arguments.

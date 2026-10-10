@@ -54,6 +54,8 @@ class FlxTypedGroup<T:FlxBasic> extends FlxBasic {
  public function add(value:T):T { members.push(value); return value; }
  public function insert(index:Int,value:T):T { members.insert(index,value); return value; }
  public function remove(value:T,splice:Bool=false):T { members.remove(value); return value; }
+ public function forEach(callback:T->Void,recurse:Bool=false):Void { for(member in members) if(member!=null) callback(member); }
+ public function getFirst(test:T->Bool):T { for(member in members) if(member!=null && test(member)) return member;return null; }
  public function recycle(?objectClass:Class<T>,?objectFactory:Void->T,force=false,revive=true):T {
   var value:T=objectFactory==null ? Type.createInstance(objectClass,[]) : objectFactory();
   return add(value);

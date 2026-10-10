@@ -116,6 +116,11 @@ class RuntimeSmokePsychIrisClasses {
 			check(plain.variables.get('arrayMapped') == '0:7:7' && memberGroup.members[0].x == 52
 				&& memberGroup.members[1].x == 2, 'Array callbacks and whole replacement retain source data and native storage');
 			var retainedArrayIterator:Dynamic = plain.variables.get('retainedArrayIterator');
+			plain.evaluate('import flixel.FlxObject; nativeMemberProbe.kill(); sourceClassAvailable=nativeProbeGroup.getFirstAvailable(NativeMember)==nativeMemberProbe; nativeClassAvailable=nativeProbeGroup.getFirstAvailable(FlxObject)==nativeMemberProbe; exactNativeExcluded=nativeProbeGroup.getFirstAvailable(FlxObject,true)==null; nativeReused=nativeProbeGroup.recycle(FlxObject)==nativeMemberProbe; queryFirst=nativeProbeGroup.getFirst(function(value) {return value.ticks==1;})==nativeMemberProbe; queryLastIndex=nativeProbeGroup.getLastIndex(function(value) {return value.ticks==1;}); queryTypedIdentity=false; nativeProbeGroup.forEachOfType(FlxObject,function(value) {queryTypedIdentity=value==nativeMemberProbe;}); queryIterator=nativeProbeGroup.iterator(function(value) {return value.ticks==1;}); queryIteratorIdentity=queryIterator.next()==nativeMemberProbe; queryPairIdentity=nativeProbeGroup.keyValueIterator().next().value==nativeMemberProbe; memberProbeGroup.sort(function(order,left,right) {return order*(left.ticks-right.ticks);},-1); querySortIdentity=memberProbeGroup.members[0]==recycledSprite;', 'source-group-query-probe');
+			for (key in ['sourceClassAvailable', 'nativeClassAvailable', 'exactNativeExcluded', 'nativeReused', 'queryFirst', 'queryTypedIdentity', 'queryIteratorIdentity', 'queryPairIdentity', 'querySortIdentity'])
+				check(plain.variables.get(key) == true, 'Native group query contract: ' + key);
+			check(plain.variables.get('queryLastIndex') == 0 && nativeGroup.length == 1, 'Native predicate index and recycling length');
+			var retainedGroupIterator:Dynamic = plain.variables.get('queryIterator');
 			plain.evaluate('import demo.ExtraStage; createdStageProbe=new ExtraStage();', 'stage-probe');
 			var stage = plain.variables.get('createdStageProbe');
 			check(state.stages.length == 2 && state.stages[0] == stage, 'Automatic source stage/native helper registration: count=' + state.stages.length + ', found=' + (stage != null));
@@ -135,8 +140,10 @@ class RuntimeSmokePsychIrisClasses {
 			check(rejected, 'State session release rejects retained objects');
 			rejected = false;try retainedArrayIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native array iterators');
+			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
+			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

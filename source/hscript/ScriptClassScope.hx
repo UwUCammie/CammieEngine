@@ -412,73 +412,76 @@ class ScriptClassScope {
 		return new ScriptClass(descriptor, args == null ? [] : args, this);
 	}
 
-	/** Recycle explicitly shared source classes without transferring their ownership. */
+	/** Recycle through one source/native class matcher while keeping native capacity rotation. */
 	public function recycleScriptClass(receiver:Dynamic, args:Array<Dynamic>):{handled:Bool, value:Dynamic} {
 		#if flixel
-		if ((!Std.isOfType(receiver, FlxTypedGroup) && !Std.isOfType(receiver, FlxTypedSpriteGroup)) || args == null || args.length == 0) return {handled:false, value:null};
-		if (!Std.isOfType(args[0], ScriptClassSymbol)) {
-			if (args.length < 2 || !Reflect.isFunction(args[1])) return {handled:false, value:null};
-			ensureActive();
-			var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
-			var group:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
-			var factory = function():Dynamic {
-				var value = Reflect.callMethod(null, args[1], []);
-				ensureActive();
-				return nativeGroupValue(value, sprites, true);
-			};
-			return {handled:true, value:unwrapIndexedMember(group.recycle(cast args[0], factory,
-				args.length > 2 && args[2] == true, args.length <= 3 || args[3] != false))};
-		}
+		if (!Std.isOfType(receiver, FlxTypedGroup) && !Std.isOfType(receiver, FlxTypedSpriteGroup)) return {handled:false, value:null};
 		ensureActive();
-		var symbol:ScriptClassSymbol = cast args[0];
-		var classOwner = symbol.scope;
-		if (classOwner == null || !classOwner.isActive()
-			|| classOwner.findDescriptor(symbol.fullName) != symbol.descriptor)
-			throw '[hscript-class-scope] recycle received an unowned or released source class';
+		if (args == null) args = [];
+		var requested:Dynamic = args.length > 0 ? args[0] : null;
+		validateMemberClass(requested);
 		var sprites = Std.isOfType(receiver, FlxTypedSpriteGroup);
 		var group:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
 		var objectFactory:Dynamic = args.length > 1 ? args[1] : null;
 		var force = args.length > 2 && args[2] == true;
 		var revive = args.length <= 3 || args[3] != false;
 		var factory:Void->Dynamic = function():Dynamic {
-			var value:Dynamic = objectFactory == null
-				? classOwner.createInstance(symbol.fullName, [])
-				: Reflect.callMethod(null, objectFactory, []);
-			// Authored factories can release a participating scope. Never publish a
-			// newly created member after its caller or requested class was released.
-			ensureActive();
-			classOwner.ensureActive();
+			var value:Dynamic = null;
+			if (objectFactory != null) value = Reflect.callMethod(null, objectFactory, []);
+			else if (Std.isOfType(requested, ScriptClassSymbol)) {
+				var symbol:ScriptClassSymbol = cast requested;
+				value = symbol.scope.createInstance(symbol.fullName, []);
+			} else if (requested != null) value = Type.createInstance(cast requested, []);
+			ensureActive();validateMemberClass(requested);
 			return nativeGroupValue(value, sprites, true);
 		};
-
-		// Preserve FlxGroup's rotating behavior at positive capacity. It ignores
-		// the class filter once full, and the factory supplies a native bridge
-		// only when the group needs a new owner object.
-		if (group.maxSize > 0) {
-			var result:Dynamic = group.recycle(cast PsychScriptClassBasicBridge, factory, force, revive);
-			return {handled:true, value:unwrapIndexedMember(result)};
+		if (group.maxSize > 0)
+			return {handled:true, value:unwrapIndexedMember(group.recycle(null, factory, force, revive))};
+		var available = firstAvailableMember(group, requested, force);
+		if (available != null) {
+			if (revive) available.revive();
+			return {handled:true, value:unwrapIndexedMember(available)};
 		}
-
-		for (member in group.members) {
-			if (member == null || member.exists) continue;
-			var value = unwrapIndexedMember(member);
-			if (!Std.isOfType(value, ScriptClass)) continue;
-			var owner:ScriptClass = cast value;
-			var memberOwner = actualOwner(owner);
-			if (!memberOwner.matchesRecycleClass(owner, symbol.descriptor, force)) continue;
-			if (revive) member.revive();
-			return {handled:true, value:owner};
-		}
-
 		var created = factory();
-		if (created != null) group.add(cast created);
-		return {handled:true, value:unwrapIndexedMember(created)};
+		return {handled:true, value:unwrapIndexedMember(created == null ? null : group.add(cast created))};
 		#else
 		return {handled:false, value:null};
 		#end
 	}
 
 	#if flixel
+
+	function validateMemberClass(requested:Dynamic):Void {
+		if (!Std.isOfType(requested, ScriptClassSymbol)) return;
+		var symbol:ScriptClassSymbol = cast requested;
+		if (symbol.scope == null || !symbol.scope.isActive() || symbol.scope.findDescriptor(symbol.fullName) != symbol.descriptor)
+			throw '[hscript-class-scope] Native group received an unowned or released source class';
+	}
+
+	function nativeMemberBase(member:Dynamic):Dynamic {
+		var value = unwrapIndexedMember(member);
+		return Std.isOfType(value, ScriptClass) ? actualOwner(cast value).unwrapOwnedFlxBasic(cast value) : member;
+	}
+
+	function memberMatchesClass(member:Dynamic, requested:Dynamic, force:Bool):Bool {
+		if (requested == null) return !force;
+		var value = unwrapIndexedMember(member);
+		if (Std.isOfType(requested, ScriptClassSymbol)) {
+			if (!Std.isOfType(value, ScriptClass)) return false;
+			return actualOwner(cast value).matchesRecycleClass(cast value, (cast requested:ScriptClassSymbol).descriptor, force);
+		}
+		if (Std.isOfType(value, ScriptClass))
+			return !force && Std.isOfType(nativeMemberBase(member), requested);
+		return Std.isOfType(member, requested)
+			&& (!force || Type.getClassName(Type.getClass(member)) == Type.getClassName(requested));
+	}
+
+	function firstAvailableMember(group:FlxTypedGroup<Dynamic>, requested:Dynamic, force:Bool):Dynamic {
+		return group.getFirst(function(member:Dynamic):Bool {
+			var basic:FlxBasic = cast nativeMemberBase(member);
+			return !basic.exists && memberMatchesClass(member, requested, force);
+		});
+	}
 
 	function matchesRecycleClass(owner:ScriptClass, requested:ClassDeclEx, force:Bool):Bool {
 		var current:ClassDeclEx = owner._c;
@@ -508,7 +511,9 @@ class ScriptClassScope {
 		var arrayMethod = Std.isOfType(receiver, Array) && nativeMemberArrays.exists(receiver)
 			&& ['push', 'unshift', 'insert', 'remove', 'contains', 'indexOf', 'lastIndexOf', 'pop', 'shift',
 				'splice', 'slice', 'copy', 'concat', 'filter', 'map', 'sort', 'reverse', 'resize', 'iterator', 'keyValueIterator'].indexOf(name) >= 0;
-		var supported = arrayMethod || group && ['add', 'insert', 'remove', 'replace', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'recycle'].indexOf(name) >= 0;
+		var supported = arrayMethod || group && ['add', 'insert', 'remove', 'replace', 'forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'forEachOfType', 'recycle',
+			'getFirstAvailable', 'getFirstExisting', 'getFirstAlive', 'getFirstDead', 'getFirst', 'getLast', 'getFirstIndex', 'getLastIndex',
+			'any', 'every', 'getRandom', 'iterator', 'keyValueIterator', 'sort'].indexOf(name) >= 0;
 		if (!supported && !(receiver == FlxTween && NATIVE_TWEEN_TARGET_METHODS.indexOf(name) >= 0)) return method;
 		ensureActive();
 		var methods = nativeMethods.get(receiver);
@@ -522,9 +527,31 @@ class ScriptClassScope {
 				var result = recycleScriptClass(receiver, args);
 				if (result.handled) return result.value;
 			}
+			if (group && (name == 'getFirstAvailable' || name == 'forEachOfType')) {
+				var requested:Dynamic = args.length > 0 ? args[0] : null;
+				validateMemberClass(requested);
+				var native:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
+				if (name == 'getFirstAvailable') return unwrapIndexedMember(firstAvailableMember(native, requested, args.length > 1 && args[1] == true));
+				var callback = args[1];
+				native.forEach(function(member:Dynamic):Void {
+					ensureActive();validateMemberClass(requested);
+					if (requested != null && memberMatchesClass(member, requested, false))
+						Reflect.callMethod(null, callback, [unwrapIndexedMember(member)]);
+				}, args.length > 2 && args[2] == true);
+				return null;
+			}
+			if (group && ['getFirstExisting', 'getFirstAlive', 'getFirstDead'].indexOf(name) >= 0) {
+				var native:FlxTypedGroup<Dynamic> = sprites ? (cast receiver:FlxTypedSpriteGroup<FlxSprite>).group : cast receiver;
+				return unwrapIndexedMember(native.getFirst(function(member:Dynamic):Bool {
+					var basic:FlxBasic = cast nativeMemberBase(member);
+					return name == 'getFirstDead' ? !basic.alive : basic.exists && (name != 'getFirstAlive' || basic.alive);
+				}));
+			}
 			var adapted = unwrapNativeGroupArguments(receiver, name, args);
 			adapted = unwrapNativeTweenArguments(receiver, name, adapted);
-			return unwrapIndexedMember(Reflect.callMethod(receiver, method, adapted));
+			var result = Reflect.callMethod(receiver, method, adapted);
+			return group && (name == 'iterator' || name == 'keyValueIterator')
+				? nativeMemberIterator(result, name == 'keyValueIterator') : unwrapIndexedMember(result);
 		});
 		methods.set(name, {method:method, wrapped:wrapped});
 		return wrapped;
@@ -552,13 +579,22 @@ class ScriptClassScope {
 		if (!active || receiver == null || args == null || args.length == 0) return args;
 		var nativeGroup = Std.isOfType(receiver, FlxTypedGroup)
 			|| Std.isOfType(receiver, FlxTypedSpriteGroup);
-		if (nativeGroup && (method == 'forEach' || method == 'forEachAlive'
-			|| method == 'forEachDead' || method == 'forEachExists')
+		if (nativeGroup && ['forEach', 'forEachAlive', 'forEachDead', 'forEachExists', 'getFirst', 'getLast',
+			'getFirstIndex', 'getLastIndex', 'any', 'every', 'iterator'].indexOf(method) >= 0
 			&& Reflect.isFunction(args[0])) {
 			var callback = args[0];
 			var adapted = args.copy();
-			adapted[0] = function(member:Dynamic):Void {
-				Reflect.callMethod(null, callback, [unwrapIndexedMember(member)]);
+			adapted[0] = function(member:Dynamic):Dynamic {
+				ensureActive();
+				return Reflect.callMethod(null, callback, [unwrapIndexedMember(member)]);
+			};
+			return adapted;
+		}
+		if (nativeGroup && method == 'sort' && Reflect.isFunction(args[0])) {
+			var callback = args[0], adapted = args.copy();
+			adapted[0] = function(order:Int, left:Dynamic, right:Dynamic):Int {
+				ensureActive();
+				return Reflect.callMethod(null, callback, [order, unwrapIndexedMember(left), unwrapIndexedMember(right)]);
 			};
 			return adapted;
 		}
@@ -595,6 +631,15 @@ class ScriptClassScope {
 	#end
 
 	#if flixel
+	function nativeMemberIterator(iterator:Dynamic, keyValue:Bool):Dynamic {
+		return {hasNext:function():Bool {ensureActive();return iterator.hasNext();}, next:function():Dynamic {
+			ensureActive();
+			var value:Dynamic = iterator.next();
+			if (keyValue) {value.value = unwrapIndexedMember(value.value);return value;}
+			return unwrapIndexedMember(value);
+		}};
+	}
+
 	function callNativeMemberArray(receiver:Dynamic, name:String, method:Dynamic, args:Array<Dynamic>):Dynamic {
 		var sprites = nativeMemberArrays.get(receiver);
 		var adapted = args.copy();
@@ -625,13 +670,7 @@ class ScriptClassScope {
 				var values:Array<Dynamic> = cast result;
 				return [for (value in values) unwrapIndexedMember(value)];
 			case 'iterator' | 'keyValueIterator':
-				var iterator:Dynamic = result;
-				return {hasNext:function():Bool {ensureActive();return iterator.hasNext();}, next:function():Dynamic {
-					ensureActive();
-					var value:Dynamic = iterator.next();
-					if (name == 'keyValueIterator') {value.value = unwrapIndexedMember(value.value);return value;}
-					return unwrapIndexedMember(value);
-				}};
+				return nativeMemberIterator(result, name == 'keyValueIterator');
 			default:
 		}
 		return result;
