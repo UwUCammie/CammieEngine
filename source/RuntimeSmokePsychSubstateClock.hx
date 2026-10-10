@@ -1,7 +1,10 @@
 package;
 
+import flixel.FlxG;
+
 /** Native source import, fractional clock and shared section traversal checks. */
 @:access(MusicBeatSubstate)
+@:access(MusicBeatState)
 class RuntimeSmokePsychSubstateClock {
 	static function check(ok:Bool, message:String):Void {if (!ok) throw message;}
 	public static function verify(state:PlayState):Void {
@@ -19,10 +22,16 @@ class RuntimeSmokePsychSubstateClock {
 		var oldOffset:Dynamic = prefs.noteOffset;
 		var iris = new SourceIrisBridge(state);
 		var probe:PsychMusicBeatSubstate = null;
+		var sourceState:MusicBeatState = null;
+		var reflectedState:MusicBeatState = null;
+		var oldFullscreen:Dynamic = FlxG.save.data == null ? null : FlxG.save.data.fullscreen;
 		var cleanup = function() {
 			PlayState.SONG = oldSong;Conductor.songPosition = oldPosition;Conductor.bpmChangeMap = oldMap;
 			Conductor.stepCrochet = oldStep;MusicBeatState.timePassedOnState = oldTime;prefs.noteOffset = oldOffset;
 			if (probe != null) probe.destroy();
+			if (sourceState != null) sourceState.destroy();
+			if (reflectedState != null) reflectedState.destroy();
+			if (FlxG.save.data != null) FlxG.save.data.fullscreen = oldFullscreen;
 			iris.release();
 		};
 		try {
@@ -49,6 +58,26 @@ class RuntimeSmokePsychSubstateClock {
 			check(probe.curStep == 0 && probe.curSection == 0 && MusicBeatState.timePassedOnState == 0.25, 'Rollback and persistent-update elapsed rule');
 			probe.sourceTiming = false;
 			check(probe.controls == PlayerSettings.player1.controls, 'Historical native controls remain distinct');
+			iris.variables.set('madeState', null);
+			iris.variables.set('stateControls', null);
+			iris.evaluate('import backend.MusicBeatState; madeState = new MusicBeatState(); stateControls = madeState.controls;', '__source_state_clock');
+			sourceState = cast iris.variables.get('madeState');
+			check(Type.getClass(sourceState) == MusicBeatState && sourceState.psychSourceTiming, 'Source state keeps native identity and selects source clock');
+			check(iris.variables.get('stateControls') == PsychControlsCompat.instance && !state.psychSourceTiming, 'Source controls isolated from gameplay host');
+			var scope = new SourceNativeClassScope();
+			PsychStateClassBindings.installScope(scope);
+			PsychStateClassBindings.installScope(scope);
+			reflectedState = scope.createInstance(scope.resolveClass('backend.MusicBeatState'), []);
+			check(reflectedState.psychSourceTiming, 'Reflection constructor source mode');
+			scope.release();
+			MusicBeatState.timePassedOnState = 0;
+			Conductor.songPosition = 1000;sourceState.update(0.125);
+			check(sourceState.curStep == 7 && Math.abs(sourceState.curDecBeat - 1.925) < 0.00001 && sourceState.curSection == 1, 'State fractional clock and section');
+			Conductor.songPosition = 3500;sourceState.update(0.125);
+			check(sourceState.curStep == 22 && sourceState.curSection == 2, 'State forward sections');
+			Conductor.songPosition = 100;sourceState.update(0.125);
+			check(sourceState.curStep == 0 && sourceState.curSection == 0 && MusicBeatState.timePassedOnState == 0.375, 'State rollback and elapsed');
+			@:privateAccess RuntimeSmokeHarness.emit('psych_state_clock_native_verified', {sourceImport:true,reflection:true,nativeIdentity:true,hostIsolation:true,fractionalTiming:true,sectionTraversal:true,rollback:true});
 			@:privateAccess RuntimeSmokeHarness.emit('psych_substate_clock_native_verified', {sourceImport:true,liveControls:true,fractionalTiming:true,sectionTraversal:true,rollback:true,elapsedRule:true,historicalControls:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();

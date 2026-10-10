@@ -271,8 +271,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var nightmareVisionConstructedModManagers:Array<NightmareVisionModManager> = [];
 	@:keep public var playHUD:NightmareVisionHUDAdapter;
 	var nightmareVisionLegacyHudControls = new NightmareVisionLegacyHudControls();
-	@:keep public var curDecStep:Float = 0;
-	@:keep public var curDecBeat:Float = 0;
 	var nightmareVisionAddActors:Bool = true;
 	static var nightmareVisionActiveMods:NightmareVisionModsContext;
 	static var nightmareVisionActiveDifficulty:NightmareVisionDifficultyAdapter;
@@ -2767,7 +2765,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var currentKey = null;
 
 	public var strumLine:FlxSprite;
-	private var curSection:Int = 0;
 	var totalNotesHit:Float = 0;
 	var totalPlayed:Int = 0;
 	var totalNotesHitDefault:Float = 0;

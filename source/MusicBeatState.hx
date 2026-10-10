@@ -22,8 +22,14 @@ class MusicBeatState extends FlxUIState {
 	private var lastBeat:Float = 0;
 	private var lastStep:Float = 0;
 
-	private var curStep:Int = 0;
-	private var curBeat:Int = 0;
+	@:keep private var curStep:Int = 0;
+	@:keep private var curBeat:Int = 0;
+	/** Only source-constructed Psych states use the source clock. Gameplay keeps catch-up. */
+	@:keep public var psychSourceTiming:Bool = false;
+	@:keep public var curSection:Int = 0;
+	@:keep public var curDecStep:Float = 0;
+	@:keep public var curDecBeat:Float = 0;
+	@:keep var stepsToDo:Int = 0;
 	/** Read-only timing aliases for isolated imported state wrappers. */
 	public var hxcCurrentStep(get, never):Int;
 	public var hxcCurrentBeat(get, never):Int;
@@ -110,6 +116,18 @@ class MusicBeatState extends FlxUIState {
 		updateCurStep();
 		updateBeat();
 
+		if (psychSourceTiming) {
+			if (oldStep != curStep) {
+				if (curStep > 0) stepHit();
+				if (PlayState.SONG != null) {
+					if (oldStep < curStep) updateSection(); else rollbackSection();
+				}
+			}
+			if (FlxG.save.data != null) FlxG.save.data.fullscreen = FlxG.fullscreen;
+			super.update(elapsed);
+			return;
+		}
+
 		if (FlxG.keys.justPressed.ESCAPE && FlxG.keys.pressed.SHIFT) {
 			TitleState.initialized = false;
 			FlxG.resetGame();
@@ -139,9 +157,11 @@ class MusicBeatState extends FlxUIState {
 
 	private function updateBeat():Void {
 		curBeat = Math.floor(curStep / 4);
+		if (psychSourceTiming) curDecBeat = curDecStep / 4;
 	}
 
 	private function updateCurStep():Void {
+		if (psychSourceTiming) {PsychBeatClock.updateStep(this);return;}
 		var lastChange:BPMChangeEvent = {
 			stepTime: 0,
 			songTime: 0,
@@ -155,13 +175,20 @@ class MusicBeatState extends FlxUIState {
 		curStep = lastChange.stepTime + Math.floor((Conductor.songPosition - lastChange.songTime) / Conductor.stepCrochet);
 	}
 
+	@:keep function updateSection():Void SourceBeatSections.advance(this, getBeatsOnSection, sectionHit);
+	@:keep function rollbackSection():Void SourceBeatSections.rollback(this,
+		function() return PlayState.SONG.notes.length,
+		function(index) return PlayState.SONG.notes[index] != null, getBeatsOnSection, sectionHit);
+	@:keep function getBeatsOnSection():Float return PsychBeatClock.sectionBeats(curSection);
+	@:keep public function sectionHit():Void {}
+
 	public function stepHit():Void {
 		if (curStep % 4 == 0)
 			beatHit();
-		NightmareVisionPluginHost.callActive('onStepHit');
+		if (!psychSourceTiming) NightmareVisionPluginHost.callActive('onStepHit');
 	}
 
 	public function beatHit():Void {
-		NightmareVisionPluginHost.callActive('onBeatHit');
+		if (!psychSourceTiming) NightmareVisionPluginHost.callActive('onBeatHit');
 	}
 }

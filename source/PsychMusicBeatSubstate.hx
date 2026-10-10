@@ -32,21 +32,13 @@ class PsychMusicBeatSubstate extends MusicBeatSubstate {
 	}
 	override function updateCurStep():Void {
 		if (!sourceTiming) {super.updateCurStep();return;}
-		var change = Conductor.getBPMFromSeconds(Conductor.songPosition);
-		var fraction = ((Conductor.songPosition - PsychClientPrefsCompat.data.noteOffset) - change.songTime) / change.stepCrochet;
-		curDecStep = change.stepTime + fraction;
-		curStep = change.stepTime + Math.floor(fraction);
+		PsychBeatClock.updateStep(this);
 	}
 	function updateBeat():Void {curBeat = Math.floor(curStep / 4);curDecBeat = curDecStep / 4;}
 	function updateSection():Void SourceBeatSections.advance(this, getBeatsOnSection, sectionHit);
 	function rollbackSection():Void SourceBeatSections.rollback(this,
 		function() return PlayState.SONG.notes.length,
 		function(index) return PlayState.SONG.notes[index] != null, getBeatsOnSection, sectionHit);
-	function getBeatsOnSection():Float {
-		var value:Null<Float> = 4;
-		if (PlayState.SONG != null && PlayState.SONG.notes[curSection] != null)
-			value = Reflect.field(PlayState.SONG.notes[curSection], 'sectionBeats');
-		return value == null ? 4 : value;
-	}
+	function getBeatsOnSection():Float return PsychBeatClock.sectionBeats(curSection);
 	public function sectionHit():Void {}
 }

@@ -4,6 +4,7 @@ package;
  * or class identities are replaced by owner metadata. */
 class SourceNativeClassScope {
 	var statics:Array<{type:Dynamic, name:String, read:Void->Dynamic, write:Dynamic->Dynamic}> = [];
+	var instanceProperties:Array<{type:Dynamic, name:String, read:Dynamic->Dynamic}> = [];
 	var runtimeClasses:Map<String, Dynamic> = new Map();
 	var runtimeEnums:Map<String, Dynamic> = new Map();
 	var classNames:Array<{type:Dynamic, name:String}> = [];
@@ -21,16 +22,25 @@ class SourceNativeClassScope {
 		}
 		statics.push({type:type, name:name, read:read, write:write});
 	}
+	/** Source property views preserve native typed callers and apply across interpreters. */
+	public function bindInstanceProperty(type:Dynamic, name:String, read:Dynamic->Dynamic):Void {
+		for (binding in instanceProperties) if (binding.type == type && binding.name == name) {
+			binding.read = read; return;
+		}
+		instanceProperties.push({type:type, name:name, read:read});
+	}
 	/** Release per-instance native field routes when their source object dies. */
 	public function unbindStaticFields(type:Dynamic):Void {
 		statics = statics.filter(function(binding) return binding.type != type);
 	}
 	public function hasBinding(type:Dynamic, name:String):Bool {
 		for (binding in statics) if (binding.type == type && binding.name == name) return true;
+		for (binding in instanceProperties) if (binding.name == name && Std.isOfType(type, binding.type)) return true;
 		return false;
 	}
 	public function read(type:Dynamic, name:String, property:Bool = true):Dynamic {
 		for (binding in statics) if (binding.type == type && binding.name == name) return binding.read();
+		if (property) for (binding in instanceProperties) if (binding.name == name && Std.isOfType(type, binding.type)) return binding.read(type);
 		return property ? Reflect.getProperty(type, name) : Reflect.field(type, name);
 	}
 	public function write(type:Dynamic, name:String, value:Dynamic, property:Bool = true):Dynamic {
@@ -102,7 +112,7 @@ class SourceNativeClassScope {
 		}
 	}
 	public function release():Void {
-		statics.resize(0); runtimeClasses.clear(); runtimeEnums.clear();
+		statics.resize(0); instanceProperties.resize(0); runtimeClasses.clear(); runtimeEnums.clear();
 		classNames.resize(0); enumNames.resize(0);
 		construct = null; reflectView = null; typeView = null;
 	}

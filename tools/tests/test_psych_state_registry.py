@@ -14,8 +14,9 @@ class PsychStateRegistryTest(unittest.TestCase):
   alias='public var psychScriptVariables(get,set):Map<String,Dynamic>;\n'+'\n'.join(extract_method(play,'function '+name+'(') for name in ['get_psychScriptVariables','set_psychScriptVariables'])
   fixture=r'''class FlxG {public static var state:Dynamic;}
 class DonorFlxG {public static var state:Dynamic;}
-class MusicBeatState {public var variables:Map<String,Dynamic>=[];public function new(){} __NATIVE__}
+class MusicBeatState {public var controls:Dynamic='native';public var psychSourceTiming:Bool=false;public var variables:Map<String,Dynamic>=[];public function new(){} __NATIVE__}
 class DonorMusicBeatState {public var variables:Map<String,Dynamic>=[];public function new(){} __SOURCE__}
+class PsychControlsCompat {public static var instance:Dynamic='source';}
 class PsychCustomSubstate {}
 class PsychMusicBeatSubstate {}
 class PlayState extends MusicBeatState {public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
@@ -40,6 +41,14 @@ class Main {
   check(first.imports.get('backend.MusicBeatState')==MusicBeatState&&first.sourceClassScope().resolveClass('states.PlayState')==PlayState,'native source class identities');
   check(first.imports.get('backend.MusicBeatSubstate')==PsychMusicBeatSubstate&&first.sourceClassScope().resolveClass('backend.MusicBeatSubstate')==PsychMusicBeatSubstate,'source substate class identity');
   check(first.constructorType==PsychMusicBeatSubstate,'source constructor identity overrides the native short-name collision');
+  var constructed:MusicBeatState=first.sourceClassScope().createInstance(MusicBeatState,[]);check(constructed.psychSourceTiming&&!a.psychSourceTiming,'source construction is scoped, native host remains unchanged');
+  check(first.sourceClassScope().read(constructed,'controls')=='source'&&second.sourceClassScope().read(constructed,'controls')=='source','source controls apply across interpreter scopes');
+  check(first.sourceClassScope().read(a,'controls')=='native'&&constructed.controls=='native','native typed controls stay isolated');
+  check(first.sourceClassScope().read(constructed,'controls',false)=='native','raw field reads do not invoke source properties');
+  var scope=new SourceNativeClassScope();var calls=0;scope.construct=function(type,args){calls++;return Type.createInstance(type,args);};
+  PsychStateClassBindings.installScope(scope);PsychStateClassBindings.installScope(scope);
+  var fromFactory:MusicBeatState=scope.createInstance(MusicBeatState,[]);check(calls==1&&fromFactory.psychSourceTiming,'existing constructor runs once through repeated installation');
+  var untouched:PlayState=scope.createInstance(PlayState,[]);check(calls==2&&!untouched.psychSourceTiming,'other constructors preserve their native mode');
   first.variables.set('MusicBeatState',null);check(second.variables.get('MusicBeatState')==MusicBeatState,'interpreter-local import ownership');
   trace('state-registry-contract:80');
  }
@@ -47,7 +56,7 @@ class Main {
 '''.replace('__NATIVE__',native).replace('__SOURCE__',(source_get+'\n'+source_state).replace('MusicBeatState','DonorMusicBeatState').replace('FlxG','DonorFlxG')).replace('__ALIAS__',alias)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
-   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychCustomSubstate','PsychMusicBeatSubstate','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
+   for name in ['FlxG','DonorFlxG','MusicBeatState','DonorMusicBeatState','PlayState','PsychControlsCompat','PsychCustomSubstate','PsychMusicBeatSubstate','NightmareVisionScriptInterp','Main']:(work/(name+'.hx')).write_text(extract_method(fixture,'class '+name+' '))
    for name in ['SourceNativeClassScope','PsychStateClassBindings']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)

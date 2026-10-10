@@ -70,7 +70,6 @@ class ChartingState extends MusicBeatState {
 	 * Array of notes showing when each section STARTS in STEPS
 	 * Usually rounded up??
 	 */
-	var curSection:Int = 0;
 	var stepperSection:FlxUINumericStepper;
 	var copySecLock:Bool = false;
 

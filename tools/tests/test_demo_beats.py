@@ -15,12 +15,15 @@ class DemoBeatTest(unittest.TestCase):
         fixture = '''
 class Base { public function new() {} public function update(elapsed:Float) {} }
 class FlxG {
+ public static var save:Dynamic={data:{}};public static var fullscreen=false;
  public static var keys={justPressed:{ESCAPE:false},pressed:{SHIFT:false}};
  public static function resetGame() {}
 }
+class PlayState {public static var SONG:Dynamic=null;}
 class TitleState { public static var initialized=true; }
 class BeatTest extends Base {
  static var timePassedOnState:Float=0;
+ var psychSourceTiming=false;function updateSection(){}function rollbackSection(){}
  var curStep=0; var maxStepCatchUp=32; var targetStep=200;
  var steps:Array<Int>=[]; var beats:Array<Int>=[];
  function updateCurStep() {curStep=targetStep;}
