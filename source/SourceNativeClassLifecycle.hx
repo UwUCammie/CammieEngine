@@ -20,10 +20,13 @@ class SourceNativeClassLifecycle {
 	public function noteOwnerDestroyCalled():Void ownerDestroyed = true;
 	public static function hasNativeSuper(name:String, animation:Bool, initialization:Bool, spriteGroup:Bool = false):Bool {
 		if (name == 'initGroup') return spriteGroup;
-		if (name == 'initVars') return initialization;
+		if (['initVars', 'set_x', 'set_y', 'set_width', 'set_height', 'get_width', 'get_height'].indexOf(name) >= 0) return initialization;
 		return ['loadGraphic', 'set_clipRect', 'set_alpha', 'graphicLoaded', 'drawFrame', 'updateAnimation', 'updateHitbox', 'drawSimple', 'drawComplex'].indexOf(name) >= 0
-			? animation : ['update', 'draw', 'kill', 'revive', 'destroy'].indexOf(name) >= 0;
+			? animation : ['update', 'draw', 'kill', 'revive', 'destroy', 'set_visible', 'set_active', 'set_exists', 'set_alive', 'get_camera', 'set_camera', 'get_cameras', 'set_cameras'].indexOf(name) >= 0;
 	}
+	/** Computed camera properties use accessors, not physical same-name storage. */
+	public static function hasBackingStorage(field:String):Bool
+		return ['alpha', 'clipRect', 'visible', 'active', 'exists', 'alive', 'x', 'y', 'width', 'height'].indexOf(field) >= 0;
 	public function dispatch(name:String, args:Array<Dynamic>):Void {
 		if (name == 'destroy') {destroy();return;}
 		if (!nativeDestroyed && !destroying && owner != null && scope != null && scope.isActive())

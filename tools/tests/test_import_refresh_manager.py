@@ -1145,6 +1145,48 @@ class ImportRefreshManagerFixture {
      emptyScopedPreserved:ImportRefreshManager.scopedUnavailableOwnersByToken.exists("refresh:empty-scan"),
      emptyPathsPreserved:ImportRefreshManager.scopedUnavailablePathsByToken.exists("refresh:empty-scan"),
      emptyCommittedPreserved:ownerlessAfter.committedOwnerRoots.indexOf(unrelated)>=0});
+   case "handoff-batches":
+    ImportRefreshManager.checked=true;
+    ImportRefreshManager.inspectionPending=false;
+    ImportRefreshManager.inspectionRunning=false;
+    var owner="assets/imported_mods/batched-owner";
+    var unrelated="assets/imported_mods/ready-owner";
+    var names=[for(i in 0...11) "song-"+i];
+    ImportRefreshManager.mutex.acquire();
+    var reservation=ImportRefreshManager.reserveLocked("batched", "", [owner], null, true);
+    ImportRefreshManager.setReservationCommittedRootsLocked(reservation,[owner]);
+    ImportRefreshManager.setCommittedRootsLocked([unrelated]);
+    ImportRefreshManager.queueHandoffLocked("batched",names);
+    ImportRefreshManager.mutex.release();
+    FlxG.state=new FreeplayState();
+    var first=ImportRefreshManager.completeInitialImportHandoff(names);
+    var before=ImportRefreshManager.availabilitySnapshot();
+    var prefix=ModuleFunctions.handoffNames.copy();
+    var generationBefore=ImportRefreshManager.generation;
+    FlxG.state=new PlayState();
+    var gameplay=ImportRefreshManager.tryHandoff("batched");
+    var gameplayCalls=ModuleFunctions.handoffCalls;
+    FlxG.state=new FreeplayState();
+    ModuleFunctions.handoffFailure="invalidation failed";
+    var failed=false;
+    try ImportRefreshManager.tryHandoff("batched") catch(_:Dynamic) failed=true;
+    var offsetAfterFailure=ImportRefreshManager.handoffOffsets.get("batched");
+    ModuleFunctions.handoffFailure=null;
+    // The UI bridge may poll with another array. It must not replace a batch
+    // whose first part has already been applied.
+    var second=ImportRefreshManager.completeInitialImportHandoff(["wrong-late-name"]);
+    var middle=ImportRefreshManager.availabilitySnapshot();
+    var third=ImportRefreshManager.completeInitialImportHandoff(names);
+    var after=ImportRefreshManager.availabilitySnapshot();
+    var repeat=ImportRefreshManager.completeInitialImportHandoff(names);
+    report({first:first,second:second,third:third,repeat:repeat,prefix:prefix,
+     beforeLocked:!FreeplaySongAvailability.ownerReadiness(before,owner).ready,
+     unrelatedReady:FreeplaySongAvailability.ownerReadiness(before,unrelated).ready,
+     middleLocked:!FreeplaySongAvailability.ownerReadiness(middle,owner).ready,
+     afterReady:FreeplaySongAvailability.ownerReadiness(after,owner).ready,
+     generationBefore:generationBefore,generationAfter:ImportRefreshManager.generation,
+     gameplay:gameplay,gameplayCalls:gameplayCalls,failed:failed,offsetAfterFailure:offsetAfterFailure,
+     batches:ModuleFunctions.handoffNames,offsetRetained:ImportRefreshManager.handoffOffsets.exists("batched")});
    case "handoff-cycle":
     ImportRefreshManager.checked=true;
     ImportRefreshManager.active=false;
@@ -2024,6 +2066,23 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertTrue(result["emptyScopedPreserved"], result)
         self.assertTrue(result["emptyPathsPreserved"], result)
         self.assertTrue(result["emptyCommittedPreserved"], result)
+
+    def test_batched_handoff_keeps_package_locked_across_gameplay_and_retry(self):
+        result = self.run_fixture("handoff-batches")
+        self.assertFalse(result["first"], result)
+        self.assertFalse(result["second"], result)
+        self.assertTrue(result["third"] and result["repeat"], result)
+        self.assertEqual(result["batches"], [[f"song-{i}" for i in range(start, end)]
+                                         for start, end in ((0, 4), (4, 8), (8, 11))])
+        self.assertTrue(result["beforeLocked"] and result["middleLocked"], result)
+        self.assertTrue(result["unrelatedReady"] and result["afterReady"], result)
+        self.assertEqual(result["generationBefore"], 0)
+        self.assertEqual(result["generationAfter"], 1)
+        self.assertFalse(result["gameplay"], result)
+        self.assertEqual(result["gameplayCalls"], 1)
+        self.assertTrue(result["failed"], result)
+        self.assertEqual(result["offsetAfterFailure"], 4)
+        self.assertFalse(result["offsetRetained"], result)
 
     def test_committed_cyclic_dependencies_drain_handoffs_without_deadlock(self):
         result = self.run_fixture("handoff-cycle")

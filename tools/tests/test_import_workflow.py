@@ -31,6 +31,71 @@ class ImportWorkflowTest(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (ROOT / "source/ImportWorkflow.hx").read_text()
 
+    def test_duplicate_asset_references_do_not_repeat_candidate_expansion(self):
+        methods = "\n".join(extract_method(self.source, marker) for marker in (
+            "static function dependency(result", "static function inspectAssetReference",
+            "static function inspectJsonValue"))
+        fixture = r'''using StringTools;
+typedef ImportScanDependency = {var kind:String; var reference:String; var found:Bool; var searched:Array<String>; var origin:String;};
+typedef ImportScanSong = {var dependencies:Array<ImportScanDependency>; var missing:Array<ImportScanDependency>; var diagnostics:Array<String>;};
+typedef ImportScanResult = {var missingDependencies:Int;};
+class EngineCompat {
+ public static function resolveStageAlias(v:String):String return v;
+ public static function resolveLegacyAssetPath(v:String):String return v;
+ public static function planVisualFallback(k:String,r:String,o:String,c:Array<String>,i:String,?f:String):Dynamic
+  return {diagnostic:{message:k+":"+r+":"+o}};
+}
+class LazyDependencyFixture {
+ static var expansions = 0;
+ static function scriptCandidatesForToken(roots:Array<String>,path:String,ref:String,token:String):Array<String> {
+  expansions++; return [roots[0]+"/"+ref];
+ }
+ static function exists(path:String):Bool return path.indexOf("present") >= 0;
+ static function characterImplementationFound(c:Array<String>):Bool return false;
+ static function destinationBuiltinDependency(k:String,r:String):Bool return false;
+ static function addSongDiagnostic(s:ImportScanSong,v:String):Void s.diagnostics.push(v);
+ METHODS
+ static function main() {
+  var result:ImportScanResult = {missingDependencies:0};
+  var song:ImportScanSong = {dependencies:[],missing:[],diagnostics:[]};
+  var data:Dynamic = {image:"present", healthicon:"absent", animations:[{texture:"present"}]};
+  for (i in 0...1000) inspectJsonValue(result,song,data,"","first.json",["owner"]);
+  if (expansions != 2 || song.dependencies.length != 2 || result.missingDependencies != 1)
+   throw "repeated JSON references repeated lookup or changed counts";
+  inspectJsonValue(result,song,{image:"PRESENT", healthicon:"ABSENT"},"","later.json",["other"]);
+  if (expansions != 2 || song.missing.length != 1 || song.diagnostics.length != 1)
+   throw "case variants changed dependency identity";
+  for (entry in song.dependencies) {
+   if (entry.origin != "first.json" || entry.searched[0] != "owner/"+entry.reference
+    || entry.found != (entry.reference == "present"))
+    throw "first origin, searched paths or status changed";
+  }
+  for (ref in ["", "none", "NULL"])
+   inspectAssetReference(result,song,"script-asset",ref,"ignored.hscript",["owner"],"loadGraphic");
+  if (expansions != 2) throw "empty/sentinel references expanded";
+  inspectAssetReference(result,song,"script-asset","present","stage.hscript",["owner"],"loadGraphic");
+  if (expansions != 3) throw "different dependency kind was suppressed";
+  var next:ImportScanSong = {dependencies:[],missing:[],diagnostics:[]};
+  inspectJsonValue(result,next,data,"","next.json",["next-owner"]);
+  if (expansions != 5) throw "new song reused another song's dependency";
+  for (entry in next.dependencies)
+   if (entry.searched[0] != "next-owner/"+entry.reference) throw "new song lost owner-scoped resolution";
+  var retried:ImportScanSong = {dependencies:[],missing:[],diagnostics:[]};
+  var caught = false;
+  try dependency(result,retried,"json-asset","retry","retry.json",null,false,false,null,null,
+   function():Array<String> { throw "transient failure"; }) catch (_:Dynamic) caught = true;
+  if (!caught || retried.dependencies.length != 0) throw "failed resolution published a partial record";
+  inspectAssetReference(result,retried,"json-asset","retry","retry.json",["retry-owner"],"image");
+  if (expansions != 6 || retried.dependencies.length != 1) throw "failed resolution was not retried";
+ }
+}
+'''.replace("METHODS", methods)
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "LazyDependencyFixture.hx").write_text(fixture, newline="\n")
+            result = subprocess.run([*HAXE_COMMAND, "-cp", folder, "--run", "LazyDependencyFixture"],
+                                    cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_scan_plan_reports_duplicates_and_dependency_locations(self):
         source = self.source
         for field in (
@@ -61,12 +126,14 @@ class ImportWorkflowTest(unittest.TestCase):
                 "static function normalized",
                 "static function pathKey",
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function uniquePush",
+                "static function uniquePushKeyed",
                 "static function exists",
                 "static function file",
                 "static function caseInsensitiveFile",
                 "static function caseInsensitivePath",
-                "static function directory",
+                "static function directory(",
                 "static function canonicalLegacyCharacter",
                 "static function scriptCandidatesForToken",
             )
@@ -89,6 +156,7 @@ class EngineCompat {{
 
 class HscriptPathFixture {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
 {methods}
   static function main() {{
@@ -122,6 +190,78 @@ class HscriptPathFixture {{
                 text=True,
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_directory_index_reuses_listing_preserves_order_and_resets_per_scan(self):
+        methods = "\n".join(extract_method(self.source, marker) for marker in (
+            "static function resolutionCacheKey", "static function directoryCaseCandidates",
+            "static function clearResolutionCaches", "public static function perform(sourcePath:String"))
+        start = self.source.index("static var caseInsensitivePathCache")
+        end = self.source.index("static function clearResolutionCaches", start)
+        declarations = self.source[start:end]
+        fixture = """import haxe.io.Path;
+typedef ImportScanResult = Dynamic;
+class LegacyCharacterAtlasImporter { public static function clearCache():Void {} }
+class FileSystem {
+ public static var calls:Int=0;
+ public static var fail:Bool=false;
+ public static var entries:Array<String>=[];
+ public static function readDirectory(path:String):Array<String> {
+  calls++;
+  if(fail) throw 'unreadable';
+  return entries.copy();
+ }
+}
+class DirectoryIndexFixture {
+""" + declarations + methods + """
+ static function check(value:Bool, reason:String):Void {if(!value) throw reason;}
+ static function performScan(sourcePath:String, ?importType:String):ImportScanResult {
+  directoryCaseCandidates('scan','fresh.png');
+  if(sourcePath=='fail') throw 'scan failed';
+  return {ok:true};
+ }
+ static function main():Void {
+  clearResolutionCaches();
+  FileSystem.entries=['same.json','SAME.JSON','Same.Json'];
+  for(i in 0...1000) FileSystem.entries.push('Asset'+i+'.PNG');
+  for(i in 0...1000) {
+   var actual=directoryCaseCandidates('root/images','asset'+i+'.png');
+   check(actual.length==1 && actual[0]=='Asset'+i+'.PNG','wrong candidate');
+  }
+  check(FileSystem.calls==1,'directory listed for every unique asset');
+  var names=directoryCaseCandidates('root/images','SAME.json');
+  check(names.join('|')=='SAME.JSON|Same.Json|same.json','case collision order changed');
+  check(directoryCaseCandidates('root/images','missing').length==0,'missing candidate');
+  FileSystem.entries=['Fresh.png'];
+  clearResolutionCaches();
+  check(directoryCaseCandidates('root/images','fresh.png')[0]=='Fresh.png','next scan missed new file');
+  check(directoryCaseCandidates('root/images','asset1.png').length==0,'next scan retained old file');
+  check(FileSystem.calls==2,'scan reset did not refresh exactly once');
+  FileSystem.fail=true;
+  var failed=false;
+  try directoryCaseCandidates('different/root','fresh.png') catch(_:Dynamic) failed=true;
+  check(failed,'listing failure was hidden');
+  FileSystem.fail=false;
+  check(directoryCaseCandidates('different/root','fresh.png')[0]=='Fresh.png','failed listing was cached');
+  check(FileSystem.calls==4,'failure was not retried');
+  perform('ok');
+  check(directoryCaseIndex==null,'successful scan retained directory index');
+  var failure=false;
+  try perform('fail') catch(_:Dynamic) failure=true;
+  check(failure && directoryCaseIndex==null,'failed scan retained directory index');
+  FileSystem.entries=['First.png'];
+  check(directoryCaseCandidates('scan','first.png')[0]=='First.png','uncached lookup failed');
+  FileSystem.entries=['Second.png'];
+  check(directoryCaseCandidates('scan','second.png')[0]=='Second.png','outside scan hid a new file');
+  Sys.println('OK');
+ }
+}
+"""
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "DirectoryIndexFixture.hx").write_text(fixture, encoding="utf-8", newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, "-cp", folder, "--run", "DirectoryIndexFixture"],
+                                    cwd=ROOT, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('OK', result.stdout)
 
     def test_path_identity_preserves_linux_case_and_normalizes_windows_separators(self):
         methods = "\n".join(
@@ -189,11 +329,12 @@ class ImportWorkflow {{
                 "static function normalized",
                 "static function pathKey",
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function exists",
                 "static function file",
                 "static function caseInsensitiveFile",
                 "static function caseInsensitivePath",
-                "static function directory",
+                "static function directory(",
                 "static function uniquePush",
                 "static function uniquePushKeyed",
                 "static function field",
@@ -234,6 +375,7 @@ class EngineCompat {{
 }}
 class DependencyFixture {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -357,9 +499,10 @@ class KeyedCandidateFixture {{
             extract_method(source, marker)
             for marker in (
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function exists",
                 "static function file",
-                "static function directory",
+                "static function directory(",
                 "static function caseInsensitivePath",
                 "static function caseInsensitiveFile",
                 "static function registryDocument",
@@ -379,6 +522,7 @@ class ImportSettings {{
 class CoolUtil {{ public static function parseJson(raw:String):Dynamic return Json.parse(raw); }}
 class MixedCaseFixture {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -424,6 +568,7 @@ class MixedCaseFixture {{
             extract_method(self.source, marker)
             for marker in (
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function clearResolutionCaches",
                 "static function registryDocument",
                 "static function registryValue",
@@ -446,6 +591,7 @@ class CoolUtil {{
 }}
 class RegistryCacheFixture {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -499,6 +645,7 @@ class RegistryCacheFixture {{
                 "static function normalized",
                 "static function pathKey",
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function clearResolutionCaches",
                 "static function dependencyCandidateCacheKey",
                 "static function cachedDependencyCandidates",
@@ -517,6 +664,7 @@ class ImportSettings {{
 }}
 class CandidateCacheFixture {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -1288,10 +1436,11 @@ class CoolUtil {
                 "static function normalized",
                 "static function pathKey",
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function uniquePush",
                 "static function exists",
                 "static function file",
-                "static function directory",
+                "static function directory(",
                 "static function caseInsensitivePath",
                 "static function field(value",
                 "static function caseInsensitiveFile",
@@ -1344,6 +1493,7 @@ class EngineCompat {{
 }}
 class ImportCompat {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -1433,10 +1583,11 @@ class ImportCompat {{
                 "static function normalized",
                 "static function pathKey",
                 "static function resolutionCacheKey",
+                "static function directoryCaseCandidates",
                 "static function uniquePush",
                 "static function exists",
                 "static function file",
-                "static function directory",
+                "static function directory(",
                 "static function caseInsensitivePath",
                 "static function registryDocument",
                 "static function registryValue",
@@ -1460,6 +1611,7 @@ class ImportSettings {{
 class CoolUtil {{ public static function parseJson(raw:String):Dynamic return Json.parse(raw); }}
 class AtlasFallbackCompat {{
   static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+  static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = new Map();
   static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
   static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
   static var registryDocumentCache:Map<String, Dynamic> = new Map<String, Dynamic>();

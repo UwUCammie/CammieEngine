@@ -300,6 +300,7 @@ class ImportScanJob {
 	// scoped to one scan and clear them before the next scan so they cannot hide
 	// files created by a later import.
 	static var caseInsensitivePathCache:Map<String, String> = new Map<String, String>();
+	static var directoryCaseIndex:Map<String, Map<String, Array<String>>> = null;
 	static var caseInsensitiveFileCache:Map<String, String> = new Map<String, String>();
 	static var registryValueCache:Map<String, Dynamic> = new Map<String, Dynamic>();
 	static var registryValueCacheKnown:Map<String, Bool> = new Map<String, Bool>();
@@ -312,6 +313,7 @@ class ImportScanJob {
 
 	static function clearResolutionCaches():Void {
 		caseInsensitivePathCache = new Map<String, String>();
+		directoryCaseIndex = new Map();
 		caseInsensitiveFileCache = new Map<String, String>();
 		registryValueCache = new Map<String, Dynamic>();
 		registryValueCacheKnown = new Map<String, Bool>();
@@ -598,6 +600,31 @@ class ImportScanJob {
 		return exists(path) && !FileSystem.isDirectory(path);
 	}
 
+	/** Reuse one ordered directory index within the current scan. Candidate
+	 * existence/type checks remain live; a new scan clears every index. */
+	static function directoryCaseCandidates(parent:String, name:String):Array<String> {
+		var key = resolutionCacheKey(parent);
+		var index = directoryCaseIndex == null ? null : directoryCaseIndex.get(key);
+		if (index == null) {
+			// Publish only a complete listing; a failed read can be retried later.
+			var entries = FileSystem.readDirectory(parent);
+			entries.sort(function(a:String, b:String):Int {
+				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+				return lower == 0 ? Reflect.compare(a, b) : lower;
+			});
+			index = new Map();
+			for (entry in entries) {
+				var lower = entry.toLowerCase();
+				var matches = index.get(lower);
+				if (matches == null) {matches = [];index.set(lower, matches);}
+				matches.push(entry);
+			}
+			if (directoryCaseIndex != null) directoryCaseIndex.set(key, index);
+		}
+		var matches = index.get(name.toLowerCase());
+		return matches == null ? [] : matches;
+	}
+
 	/** Resolve a file name the way the importer resolves chart/audio folders.
 	 * Windows packs frequently refer to `Boyfriend` while shipping
 	 * `boyfriend.json`; requiring the source spelling here made the read-only
@@ -628,12 +655,7 @@ class ImportScanJob {
 			return result == '' ? '//' : '//' + result;
 		};
 		try {
-			var entries = FileSystem.readDirectory(resolvedParent);
-			entries.sort(function(a:String, b:String):Int {
-				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
-				return lower == 0 ? Reflect.compare(a, b) : lower;
-			});
-			for (entry in entries) {
+			for (entry in directoryCaseCandidates(resolvedParent, name)) {
 				if (entry.toLowerCase() == name.toLowerCase()) {
 					var candidate = Path.join([resolvedParent, entry]);
 					if (file(candidate)) {
@@ -689,12 +711,7 @@ class ImportScanJob {
 				return missingParent;
 			}
 		try {
-			var entries = FileSystem.readDirectory(resolvedParent);
-			entries.sort(function(a:String, b:String):Int {
-				var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
-				return lower == 0 ? Reflect.compare(a, b) : lower;
-			});
-			for (entry in entries) {
+			for (entry in directoryCaseCandidates(resolvedParent, name)) {
 				if (entry.toLowerCase() == name.toLowerCase()) {
 					var candidate = Path.join([resolvedParent, entry]);
 					if (exists(candidate)) {
@@ -1241,7 +1258,7 @@ class ImportScanJob {
 
 	static function dependency(result:ImportScanResult, song:ImportScanSong, kind:String, reference:String,
 		origin:String, candidates:Array<String>, registryFound:Bool = false, forceMissing:Bool = false,
-		?fallbackClassification:String, ?fallbackImpact:String):Void {
+		?fallbackClassification:String, ?fallbackImpact:String, ?candidateResolver:Void->Array<String>):Void {
 		var ref = StringTools.trim(reference == null ? '' : reference);
 		if (ref == '' || ref.toLowerCase() == 'none' || ref.toLowerCase() == 'null')
 			return;
@@ -1249,6 +1266,11 @@ class ImportScanJob {
 		for (existing in song.dependencies)
 			if (existing.kind + '|' + existing.reference.toLowerCase() == unique)
 				return;
+		// Candidate expansion can touch many owner-scoped asset paths. Defer it
+		// until this song actually needs a new dependency record; later
+		// difficulties retain the first origin, searched paths and diagnostics.
+		if (candidateResolver != null)
+			candidates = candidateResolver();
 		var found = false;
 		if (!forceMissing) {
 			found = registryFound || destinationBuiltinDependency(kind, ref);
@@ -1303,31 +1325,20 @@ class ImportScanJob {
 	 * a concrete sprite fallback. */
 	static function characterImplementationFound(candidates:Array<String>):Bool {
 		for (candidate in candidates) {
-			if (!file(candidate))
+			if (candidate == null)
 				continue;
 			var lower = candidate.toLowerCase().replace('\\', '/');
-			if (lower.indexOf('/characters/') >= 0 && lower.endsWith('.png'))
-				return true;
-			// Character.characterExists does not accept a sprite/atlas by itself;
-			// it needs the implementation script or JSON below.  Keep char.png in
-			// the searched list so reports explain why a visual-only folder is
-			// incomplete, but do not let it satisfy the dependency.
-			if (lower.endsWith('/char.png') || lower.endsWith('/char.xml')) {
-				// A registry-backed Sparrow pair is a valid native character source;
-				// the XML/PNG pair is intentionally considered together below rather
-				// than allowing either half to satisfy a dependency on its own.
-				var folder = Path.directory(candidate);
-				var pairedPng = caseInsensitivePath(Path.join([folder, 'char.png']));
-				var pairedXml = caseInsensitivePath(Path.join([folder, 'char.xml']));
-				if (file(pairedPng) && file(pairedXml))
-					continue;
+			var legacySprite = lower.indexOf('/characters/') >= 0 && lower.endsWith('.png');
+			var implementation = lower.endsWith('.hscript') || lower.endsWith('.json')
+				|| lower.endsWith('.jsonc') || lower.endsWith('.hxc');
+			// Keep all searched paths for diagnostics, but do not stat descriptors
+			// or native atlas halves that cannot satisfy this implementation check.
+			// Registry-backed sprite/atlas validation stays in characterRegistryVisualFound.
+			if ((!legacySprite && !implementation) || !file(candidate))
 				continue;
-			}
-			// Native custom-char aliases are valid when their implementation is a
-			// top-level script (`custom_chars/parents.hscript`) rather than a
-			// same-named directory.  Character.characterExists() accepts this
-			// layout and the importer preserves it; requiring a sibling directory
-			// made destination-provided aliases look absent.
+			if (legacySprite)
+				return true;
+			// Native custom-char aliases can be top-level implementation scripts.
 			if (lower.indexOf('/images/custom_chars/') >= 0 && lower.endsWith('.hscript'))
 				return true;
 			if (lower.endsWith('/animation.json') && directory(Path.directory(candidate)))
@@ -1660,6 +1671,7 @@ class ImportScanJob {
 	static function scriptCandidatesForToken(sourceRoots:Array<String>, scriptPath:String, reference:String,
 		token:String):Array<String> {
 		var result:Array<String> = [];
+		var resultKeys:Map<String, Bool> = new Map();
 		var raw = StringTools.trim(reference);
 		if (raw == '')
 			return result;
@@ -1684,16 +1696,16 @@ class ImportScanJob {
 		var addWithExtensions = function(base:String):Void {
 			if (base == null || StringTools.trim(base) == '')
 				return;
-			uniquePush(result, caseInsensitivePath(base));
+			uniquePushKeyed(result, resultKeys, caseInsensitivePath(base));
 			if (Path.extension(base) == '')
 				for (extension in extensions)
-					uniquePush(result, caseInsensitivePath(base + extension));
+					uniquePushKeyed(result, resultKeys, caseInsensitivePath(base + extension));
 			// SpriteSheetPacker stores frame rectangles in a sibling TXT file while
 			// the HScript call normally names the PNG first.  Keep the companion in
 			// the read-only search even when the script does not spell its path as a
 			// separate asset token.
 			if (tokenLower.indexOf('spritesheetpacker') >= 0 && Path.extension(base).toLowerCase() == '.png')
-				uniquePush(result, caseInsensitivePath(Path.withoutExtension(base) + '.txt'));
+				uniquePushKeyed(result, resultKeys, caseInsensitivePath(Path.withoutExtension(base) + '.txt'));
 		};
 		if (absolute) {
 			addWithExtensions(raw);
@@ -1744,6 +1756,12 @@ class ImportScanJob {
 		return result;
 	}
 
+	static function inspectAssetReference(result:ImportScanResult, song:ImportScanSong, kind:String,
+		reference:String, path:String, roots:Array<String>, token:String):Void {
+		dependency(result, song, kind, reference, path, null, false, false, null, null,
+			function() return scriptCandidatesForToken(roots, path, reference, token));
+	}
+
 	static function inspectScript(result:ImportScanResult, song:ImportScanSong, path:String, roots:Array<String>):Void {
 		if (!file(path) || pathKey(path) == '')
 			return;
@@ -1766,8 +1784,7 @@ class ImportScanJob {
 				for (reference in references) {
 					if (reference == null || StringTools.trim(reference) == '')
 						continue;
-					var candidates = scriptCandidatesForToken(roots, path, reference, token);
-					dependency(result, song, 'script-asset', reference, path, candidates);
+					inspectAssetReference(result, song, 'script-asset', reference, path, roots, token);
 				}
 			}
 		}
@@ -1814,8 +1831,7 @@ class ImportScanJob {
 				var reference = extractQuotedAfter(line, 'spritePath');
 				if (reference == null || StringTools.trim(reference) == '')
 					continue;
-				dependency(result, song, 'script-asset', reference, candidate,
-					scriptCandidatesForToken(roots, candidate, reference, 'spritePath'));
+				inspectAssetReference(result, song, 'script-asset', reference, candidate, roots, 'spritePath');
 			}
 		}
 		#end
@@ -1844,8 +1860,7 @@ class ImportScanJob {
 				// `json-asset` findings and obscured genuinely missing icons.
 				var dependencyKind = hint == 'healthicon' || hint == 'health_icon' || hint == 'health-icon'
 					? 'health-icon' : 'json-asset';
-				dependency(result, song, dependencyKind, reference, path,
-					scriptCandidatesForToken(roots, path, reference, keyHint));
+				inspectAssetReference(result, song, dependencyKind, reference, path, roots, keyHint);
 			}
 			return;
 		}
@@ -2722,6 +2737,17 @@ class ImportScanJob {
 	public static function perform(sourcePath:String, ?importType:String):ImportScanResult {
 		LegacyCharacterAtlasImporter.clearCache();
 		clearResolutionCaches();
+		try {
+			var result = performScan(sourcePath, importType);
+			directoryCaseIndex = null;
+			return result;
+		} catch (error:Dynamic) {
+			directoryCaseIndex = null;
+			throw error;
+		}
+	}
+
+	static function performScan(sourcePath:String, ?importType:String):ImportScanResult {
 		var source = normalized(sourcePath);
 		var selectedType = ImportSettings.normalizeType(importType);
 		var result = makeResult(source, selectedType);
@@ -2806,6 +2832,9 @@ class ImportScanJob {
 		try {
 			var discovery:SongImportDiscoveryResult = ModuleFunctions.discoverSongImportsDetailed(source, null,
 				selectedType, descriptors);
+			var discoveryScope = ImportIO.current();
+			if (discoveryScope != null && discoveryScope.discoveryReuse != null)
+				discoveryScope.discoveryReuse.capture(source, selectedType, discovery);
 			discovered = discovery == null || discovery.songs == null ? [] : cast discovery.songs;
 			var packageScan = discovery == null ? null : discovery.packageDiscovery;
 			if (discovery != null) {

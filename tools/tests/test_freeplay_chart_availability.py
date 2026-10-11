@@ -133,7 +133,7 @@ public function new(s:String,d:Int){diff=d;} public function checkStar():Void{} 
                 'FlxTween.hx': 'class FlxTween {public static function cancelTweensOf(v:Dynamic):Void{}}',
                 'OptionsHandler.hx': 'class OptionsHandler {public static var options={style:false};}',
                 'FNFAssets.hx': '''class FNFAssets {public static var chartReads=0;
-public static function exists(p:String):Bool return sys.FileSystem.exists(p);
+public static function exists(p:String, ?ext:Dynamic, ?directoryEntries:Map<String, Map<String, String>>):Bool return sys.FileSystem.exists(p);
 public static function getText(p:String):String {if(p.indexOf("/songs/")>=0) chartReads++;return sys.io.File.getContent(p);}
 public static function resolveCaseInsensitivePath(p:String):String return p;}''',
                 'CoolUtil.hx': 'class CoolUtil {public static function parseJson(s:String):Dynamic return haxe.Json.parse(s);}',

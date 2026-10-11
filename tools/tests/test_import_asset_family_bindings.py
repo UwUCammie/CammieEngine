@@ -38,7 +38,12 @@ class ImportRefreshTransaction {
  }
 }
 class BindingBuilder {
- static function normalizeInstallRelative(value:String):String return value;
+ public static var normalized:Int=0;
+ static function normalizeInstallRelative(value:String):String {
+  normalized++;
+  if(value.indexOf("..")>=0) return null;
+  return StringTools.replace(value,"\\","/");
+ }
 __METHOD__
 }
 class Main {
@@ -81,6 +86,45 @@ class Main {
   var packageBinding=bindings.get(receiver+"/Nightmare Vision/package");
   check(packageBinding!=null&&packageBinding.handoff==null&&packageBinding.projectSha256==memberSha,
    "receiver package index incorrectly uses the provider profile");
+  // Every valid file is normalized once, independent of root count. Nested
+  // roots receive their own ordered subset, without matching sibling prefixes.
+  var nested=receiver+"/nested";
+  var sibling=receiver+"-extra";
+  var entries:Array<Dynamic>=cast record.sourceAssetProfiles.roots;
+  entries.push(profile("receiver/nested","nested",memberSha,snapshot));
+  entries.push(profile("receiver-extra","sibling",memberSha,snapshot));
+  function file(path:String,?sha:String,?owner:String):Dynamic return {
+   path:path,sha256:sha==null?memberSha:sha,owner:owner==null?"selection":owner};
+  var sidecar=SourceLimeAssetIdentity.sidecarRelativePath("Nightmare Vision","package");
+  var nestedSidecar=nested+"/"+sidecar;
+  files.push(file(nestedSidecar));
+  files.push(file(nested+"/first.png"));
+  files.push(file(nested+"/first.png"));
+  files.push(file(sibling+"/"+sidecar));
+  files.push(file(receiver+"/../escape.png"));
+  files.push(file(receiver+"/wrong.png",null,"other-owner"));
+  files.push(file(receiver+"/invalid.png","INVALID"));
+  files.push(null);
+  files.push(file(receiver.toUpperCase()+"/wrong-case.png"));
+  files.push(file(nestedSidecar,providerSha));
+  BindingBuilder.normalized=0;
+  var routed=BindingBuilder.buildAssetIndexBindings(manifest,[provider,receiver,nested,sibling,receiver]);
+  check(BindingBuilder.normalized==files.length-3,"normalized files repeatedly per root");
+  var child=routed.get(nested+"/Nightmare Vision/package");
+  check(child.files.length==4 && child.files[1].path==nested+"/first.png"
+   && child.files[2].path==nested+"/first.png" && child.indexSha256==providerSha,
+   "nested ordering, duplicates, or last sidecar precedence changed");
+  var parent=routed.get(receiver+"/Nightmare Vision/package");
+  check(parent.files.length==6,"parent included sibling, wrong owner/case, or invalid paths");
+  check(routed.get(sibling+"/Nightmare Vision/package").files.length==1,"sibling prefix leaked");
+  files.splice(files.length-1,1);
+  var next=BindingBuilder.buildAssetIndexBindings(manifest,[provider,receiver,nested,sibling]);
+  check(next.get(nested+"/Nightmare Vision/package").indexSha256==memberSha,
+   "prior invocation cached a removed sidecar");
+  check(child.indexSha256==providerSha && child.files.length==4,"next call mutated prior output");
+  entries.push(profile("receiver/nested","nested",memberSha,snapshot));
+  check(!BindingBuilder.buildAssetIndexBindings(manifest,[nested]).iterator().hasNext(),
+   "ambiguous profiles accepted");
   family.rejected=true;
   check(!BindingBuilder.buildAssetIndexBindings(manifest,[provider,receiver]).iterator().hasNext(),
    "a rejected v3 catalog fell back to ordinary bindings");

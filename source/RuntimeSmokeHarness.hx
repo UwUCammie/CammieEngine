@@ -117,6 +117,7 @@ class RuntimeSmokeHarness {
 	static var playStateStarted:Bool = false;
 	static var playStateReady:Bool = false;
 	static var refreshReadbackCount:Int = 0;
+	static var lastRefreshObservationMs:Float = -1;
 	static var finished:Bool = false;
 	static var elapsedMs:Float = 0;
 	static var deadline:Float = 0;
@@ -2396,18 +2397,22 @@ class RuntimeSmokeHarness {
 			return;
 		}
 		#if sys
-		if (inFreeplay && Sys.getEnv("CAMMIE_IMPORT_REFRESH_STOP_ON_COMPLETE") == "1") {
+		if (inFreeplay && refreshProbeEnabled()) {
 			var refresh = ImportRefreshManager.browseTick();
-			if (!refresh.busy && refresh.blocked) {
-				fail("import-refresh", refresh.label);
-				return;
+			if (lastRefreshObservationMs < 0 || now - lastRefreshObservationMs >= 2000) {
+				lastRefreshObservationMs = now;
+				emit("import_refresh_progress", {refresh:refresh});
 			}
-			if (!refresh.busy && refresh.complete && refresh.changed && refresh.queueRemaining == 0) {
-				emitFrameSummary();
-				succeed();
-				return;
+			switch (refreshProbeOutcome(refresh, Sys.time() >= deadline)) {
+				case 'blocked': fail('import-refresh', refresh.label); return;
+				case 'complete':
+					emit('import_refresh_complete', {refresh:refresh});
+					emitFrameSummary(); succeed(); return;
+				case 'timeout': fail('import-refresh-timeout', 'Refresh did not finish within the requested wait'); return;
+				default:
 			}
 		}
+
 		// Opt-in native refresh UI evidence. Keep screenshots off ordinary
 		// launches and default smoke/performance runs.
 		if (inFreeplay && refreshReadbackCount < 2
@@ -2428,6 +2433,7 @@ class RuntimeSmokeHarness {
 			} else refreshReadbackCount = 2;
 		}
 		#end
+		if (inFreeplay && refreshProbeEnabled()) return;
 		// Return mode observes the real post-song menu without scrolling,
 		// accepting a row, leaving, or applying the standalone Freeplay deadline.
 		if (cfg.returnFreeplay)
@@ -2925,10 +2931,27 @@ class RuntimeSmokeHarness {
 		return now - freeplayTargetMissingSince >= 20000;
 	}
 
+	static function refreshProbeEnabled():Bool {
+		#if sys
+		return Sys.getEnv('CAMMIE_IMPORT_REFRESH_STOP_ON_COMPLETE') == '1';
+		#else
+		return false;
+		#end
+	}
+
+	static function refreshProbeOutcome(refresh:Dynamic, timedOut:Bool):String {
+		if (refresh != null && refresh.busy == false) {
+			if (refresh.blocked == true) return 'blocked';
+			if (refresh.complete == true && refresh.changed == true && refresh.queueRemaining == 0)
+				return 'complete';
+		}
+		return timedOut ? 'timeout' : 'pending';
+	}
+
 	/** Import inspection may take longer than the requested gameplay sample. */
 	static function initialWindowMs():Int {
 		var cfg = config();
-		return cfg.freeplay && cfg.freeplayAcceptSong != ''
+		return cfg.freeplay && (cfg.freeplayAcceptSong != '' || refreshProbeEnabled())
 			? Std.int(Math.max(cfg.durationMs, cfg.freeplayWaitMs)) : cfg.durationMs;
 	}
 

@@ -5191,7 +5191,14 @@ class ModuleFunctions {
 		// per import transaction, without caching it across later imports.
 		var stagedCompatOwnerRoots:Map<String, Bool> = new Map<String, Bool>();
 		var selectedType = ImportSettings.normalizeType(importType);
-		var songs = discoverSongImports(normalizedSource, importedSources, selectedType);
+		var discoveryScope = ImportIO.current();
+		var prepared:SongImportDiscoveryResult = discoveryScope == null || discoveryScope.discoveryReuse == null
+			? null : cast discoveryScope.discoveryReuse.take(normalizedSource, selectedType);
+		var songs = prepared == null ? discoverSongImports(normalizedSource, importedSources, selectedType) : prepared.songs;
+		if (prepared != null) for (song in songs) {
+			if (!song.sourceDuplicate && song.importSourceInfo != null)
+				importedSources.set(StringTools.trim(song.name).toLowerCase(), song.importSourceInfo);
+		}
 		applyPackageDisplayNames(songs, packageNames);
 		ImportSongOwnership.setSourceFingerprintHints(cast songs);
 		result.found = songs.length;

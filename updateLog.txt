@@ -1,6 +1,23 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.24 alpha - CammieEngine
+- Auto import recognizes supported game roots packaged directly inside bin or dist while continuing to prune unrelated build and SDK trees.
+- Import completion rebuilds difficulty support in small menu-frame batches, keeping each package locked until every song is ready and resuming safely after gameplay or a failed handoff.
+- Retained imports reuse discovery within one verified refresh transaction, avoiding repeated chart/visual conversion while rechecking source hashes and preserving current naming, collisions, ownership and cancellation.
+- Shared shader compilation reuses repeated pure integer-coordinate calculations while retaining authored samples, floating arithmetic and graphics; unsupported or precision-sensitive shaders keep their original code.
+- Import refresh asset bindings validate each committed file once across mod roots, retaining exact ownership and profile checks while reducing repeated work and allocation.
+- Import completion reuses per-song asset directory lookups and publishes multi-root file ownership without repeated path-list scans, preserving difficulty availability, shared owners and atomic readiness.
+- Imported source subclasses preserve native visibility, activity, lifetime, camera and geometry property overrides through shared adapters, including reflected writes and escaped setter callbacks.
+- Shared shader loading reduces repeated nearest-distance square roots without reducing samples, effect resolution or authored graphics; opt-in asynchronous GPU timings now separate GPU frame elapsed time from CPU frame timings.
+- Windows imports and refreshes use system-accelerated streaming SHA-256 with the existing portable fallback. Source verification, ownership checks, local-edit protection and transaction rechecks remain enabled.
+- Snapshot capture, verification and file hashing size their buffers to small files, reducing temporary allocation pressure across large imported libraries without skipping byte checks.
+- Import scans reuse sorted directory listings across asset lookups, preserving case-collision order and clearing the index on success or failure so later conversion sees new files.
+- Repeated JSON and script asset references reuse the song's recorded dependency before expanding search paths again, retaining the original diagnostics and owner scope.
+- Import transactions reuse bounded lexical path routing while keeping filesystem state, staged-file precedence, ownership and symlink checks live.
+- Character dependency discovery skips filesystem probes for candidate types that cannot establish an implementation, preserving live valid-file checks and full searched-path diagnostics.
+- Script and JSON asset searches reuse shared keyed path deduplication, reducing large import scan work while preserving candidate order, owner scope and diagnostics.
+
 v0.0.23 alpha - CammieEngine
 - Source graphic-loading and clipping/alpha overrides now preserve native return values and lexical backing-field writes, including escaped callbacks; annotation-only external imports no longer require runtime class objects.
 - Imported source sprite groups now preserve authored group initialization, and sprite/text/group classes receive graphic-loaded hooks through the shared native adapter.

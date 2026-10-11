@@ -66,7 +66,7 @@ class FNFAssets {
 
 	#if sys
 	/** Resolve a real runtime file without consulting the OpenFL asset index. */
-	static function resolveDiskPath(id:String):Null<String> {
+	static function resolveDiskPath(id:String, ?directoryEntries:Map<String, Map<String, String>>):Null<String> {
 		if (id == null || StringTools.trim(id) == '' || id.indexOf(String.fromCharCode(0)) >= 0)
 			return null;
 		var normalized = Path.normalize(id);
@@ -95,17 +95,32 @@ class FNFAssets {
 		for (part in relative.split('/')) {
 			if (part == '' || part == '.' || part == '..' || !FileSystem.isDirectory(current))
 				return null;
-			var matches:Array<String> = [];
+			var match:String = null;
 			try {
-				for (entry in FileSystem.readDirectory(current))
-					if (entry.toLowerCase() == part.toLowerCase())
-						matches.push(entry);
+				if (directoryEntries == null) {
+					var matches:Array<String> = [];
+					for (entry in FileSystem.readDirectory(current))
+						if (entry.toLowerCase() == part.toLowerCase())
+							matches.push(entry);
+					if (matches.length == 1) match = matches[0];
+				} else {
+					var entries = directoryEntries.get(current);
+					if (entries == null) {
+						entries = new Map();
+						for (entry in FileSystem.readDirectory(current)) {
+							var folded = entry.toLowerCase();
+							// Null records an ambiguous spelling, including a third match.
+							entries.set(folded, entries.exists(folded) ? null : entry);
+						}
+						directoryEntries.set(current, entries);
+					}
+					match = entries.get(part.toLowerCase());
+				}
 			} catch (_:Dynamic) {
 				return null;
 			}
-			if (matches.length != 1)
-				return null;
-			current = Path.join([current, matches[0]]);
+			if (match == null) return null;
+			current = Path.join([current, match]);
 		}
 		if (!FileSystem.exists(current))
 			return null;
@@ -267,7 +282,9 @@ class FNFAssets {
 	 * @param ext Extension to auto check against. For fine tune control use "existsAmbig"
      * @return Bool If file exists, true.
      */
-    static public function exists(id:String, ?ext:Extensions):Bool {
+    // An optional caller-owned directory index is valid only for one synchronous
+    // read-only batch. Never retain it between frames or import handoffs.
+    static public function exists(id:String, ?ext:Extensions, ?directoryEntries:Map<String, Map<String, String>>):Bool {
 		switch (ext) {
 			case Json: 
 				return existsAmbig([id], CoolUtil.JSON_EXT) != '';
@@ -276,7 +293,7 @@ class FNFAssets {
 			default: 
 				#if sys
 				if (ImportIO.current() != null) return ImportFileSystem.exists(id);
-				return resolveDiskPath(id) != null || Assets.exists(id);
+				return resolveDiskPath(id, directoryEntries) != null || Assets.exists(id);
 				#else
 				return Assets.exists(id);
 				#end

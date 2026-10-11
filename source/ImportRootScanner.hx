@@ -132,6 +132,23 @@ class ImportRootScanner {
 		return previous;
 	}
 
+	/** Stable value of this worker's exact root and engine restrictions. */
+	public static function retainedDiscoveryContextKey():String {
+		#if target.threaded
+		var maps = [retainedEngines.value, retainedRoots.value];
+		#else
+		var maps = [retainedEngines, retainedRoots];
+		#end
+		var rows:Array<Dynamic> = [];
+		for (map in maps) {
+			if (map == null) { rows.push(null); continue; }
+			var keys = [for (key in map.keys()) key];
+			keys.sort(Reflect.compare);
+			rows.push([for (key in keys) [key, map.get(key)]]);
+		}
+		return haxe.Json.stringify(rows);
+	}
+
 	/** True when a discovered root is in the active retained import selection.
 	 * This also gates legacy package discovery that can otherwise bypass the
 	 * root scanner by walking a selected parent directly. */
@@ -213,7 +230,7 @@ class ImportRootScanner {
 			};
 
 		var selected = ImportEngine.normalize(requestedEngine);
-		var queue:Array<{path:String, depth:Int}> = [{path:root, depth:0}];
+		var queue:Array<{path:String, depth:Int, ?distributionOnly:Bool}> = [{path:root, depth:0}];
 		var visited:Map<String, Bool> = new Map<String, Bool>();
 		var roots:Map<String, Bool> = new Map<String, Bool>();
 		var executableMarkerCache:Map<String, Array<String>> = new Map();
@@ -241,6 +258,10 @@ class ImportRootScanner {
 			// instead of rereading the same directory for each engine candidate.
 			var entries = readDirectory(current);
 			var match = inspectRootWithEntries(current, selected, entries, executableMarkerCache);
+			// bin/dist can be actual downloaded game roots. Inspect the boundary
+			// once, but never descend into an unrecognized SDK/build tree.
+			if (item.distributionOnly == true && match == null)
+				continue;
 			if (match != null) {
 				// A compiled Codename release classifies as Codename through its
 				// mods/ content tree, but the expectation stays "import the mod
@@ -308,12 +329,13 @@ class ImportRootScanner {
 					break;
 				}
 				var lower = entry.toLowerCase();
-				if (shouldSkipDirectory(lower))
+				var distributionOnly = match == null && (lower == 'bin' || lower == 'dist');
+				if (shouldSkipDirectory(lower) && !distributionOnly)
 					continue;
 				var child = Path.join([current, entry]);
 				try {
 					if (FileSystem.isDirectory(child))
-						queue.push({path:child, depth:item.depth + 1});
+						queue.push({path:child, depth:item.depth + 1, distributionOnly:distributionOnly});
 				} catch (_:Dynamic) {}
 			}
 		}

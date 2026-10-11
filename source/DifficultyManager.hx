@@ -80,10 +80,13 @@ class DifficultyManager {
 		supportedDiff.set(key, []);
 		if (diffJson == null || diffJson.difficulties == null)
 			return;
+		// Missing difficulties share the same directory walks. Keep this index
+		// local to one support rebuild so later imports and edits remain visible.
+		var directoryEntries:Map<String, Map<String, String>> = new Map();
 		for (diff in 0...diffJson.difficulties.length) {
 			var difficultyName = Std.string(Reflect.field(diffJson.difficulties[diff], 'name'));
 			var chartPath = 'assets/data/${key}/${key + getDiffEnding(diff)}.json';
-			if (FNFAssets.exists(chartPath)
+			if (FNFAssets.exists(chartPath, null, directoryEntries)
 				&& NightmareVisionDifficultyCompat.allows(sourceRules.selectable, difficultyName)
 				&& (sourceRules.unsupported == null
 					|| !NightmareVisionDifficultyCompat.allows(sourceRules.unsupported, difficultyName)

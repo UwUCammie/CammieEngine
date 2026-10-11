@@ -17,6 +17,7 @@ class CodenameShaderSource {
 	public static function normalizeOpenFL(source:String):String {
 		if (source == null) return null;
 		source = requireOpenFLShaderVersion(source);
+		source = ShaderSourceOptimizer.optimize(source);
 		// Preserve the existing declaration-context case: GLSL ES 1.00 rejects
 		// an integer literal at the start of a float initializer expression.
 		var leadingFloat = ~/^([ \t]*float[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*)([0-9]+)([ \t]*[+\-][ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\()/gm;

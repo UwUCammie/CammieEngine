@@ -15,6 +15,7 @@ IMPORT_IO_MODULES = (
     "ImportRevision.hx",
     "ImportSourceSnapshot.hx",
     "ImportIO.hx",
+    "ImportDiscoveryReuse.hx",
     "ImportFile.hx",
     "ImportGeneratedOutput.hx",
     "ImportFileSystem.hx",

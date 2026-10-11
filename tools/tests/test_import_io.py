@@ -88,6 +88,7 @@ class ImportIOFixture {
     if (FileSystem.exists(install + "/assets/images/generated-empty"))
       throw "staged deleteDirectory did not hide the directory";
     var symlinkRejected = false;
+    @:privateAccess ctx.route(stage + "/assets/images/link/escape.txt");
     try File.saveContent(stage + "/assets/images/link/escape.txt", "blocked")
       catch (_:Dynamic) symlinkRejected = true;
     if (!symlinkRejected) throw "staged write followed a symlink outside its root";
@@ -152,7 +153,22 @@ class ImportIOFixture {
     try ctx.setAssetProfile(profileRoot, profileContent, profileSnapshot, "maps", "Psych Engine", "profile-space", badProfile)
       catch (_:Dynamic) mismatchRejected = true;
     if (!mismatchRejected) throw "profile with a different snapshot was accepted";
+    var discoveryData:Dynamic={songs:[{name:"fixture"}],packageDiscovery:{truncated:false,cancelled:false}};
+    var createReuse=function() return new ImportDiscoveryReuse("snapshot","Auto",
+      function() return ImportIO.current()==ctx ? ctx.discoveryContextKey() : null,
+      function(){},function()return false);
+    var beforeContext=ctx.discoveryContextKey();
+    ctx.discoveryReuse=createReuse();ctx.discoveryReuse.capture("snapshot","Auto",discoveryData);ctx.discoveryReuse.accept();
+    ctx.setSourceLabel(sourceRoot,"renamed");
+    if(ctx.discoveryContextKey()==beforeContext || ctx.discoveryReuse.take("snapshot","Auto")!=null)
+      throw "changed label retained discovery";
+    ctx.discoveryReuse=createReuse();ctx.discoveryReuse.capture("snapshot","Auto",discoveryData);ctx.discoveryReuse.accept();
+    ctx.setNamespace(sourceRoot,"Psych Engine","changed-space");
+    if(ctx.discoveryReuse.take("snapshot","Auto")!=null)throw "changed namespace retained discovery";
+    ctx.discoveryReuse=createReuse();ctx.discoveryReuse.capture("snapshot","Auto",discoveryData);ctx.discoveryReuse.accept();
     var nested = ImportIO.begin(install, nestedStage);
+    if(nested.discoveryReuse!=null || ctx.discoveryReuse.take("snapshot","Auto")!=null)
+      throw "discovery crossed nested transaction";
     var nestedProfile = haxe.Json.parse(haxe.Json.stringify(profile));
     Reflect.setField(nestedProfile, "namespace", "nested-space");
     nested.setAssetProfile(profileRoot, profileContent, profileSnapshot, "maps", "Psych Engine", "nested-space", nestedProfile);
@@ -163,7 +179,11 @@ class ImportIOFixture {
       throw "ending a nested scope did not clear and restore the profile context";
     if (Reflect.field(ctx.assetProfile(profileRoot, "Psych Engine").profile, "namespace") != "profile-space")
       throw "nested profile scope changed its parent profile";
+    ctx.discoveryReuse=createReuse();ctx.discoveryReuse.capture("snapshot","Auto",discoveryData);ctx.discoveryReuse.accept();
+    var retainedReuse=ctx.discoveryReuse;
     ImportIO.end();
+    if(ctx.discoveryReuse!=null || retainedReuse.take("snapshot","Auto")!=null)
+      throw "ended transaction retained discovery";
     if (ctx.assetProfile(profileRoot, "Psych Engine") != null || ImportIO.current() != null)
       throw "ending a scope did not clear its asset profile";
     if (File.getContent(existing) != "{\"old\":1}") throw "install tree changed during staging";
@@ -322,6 +342,71 @@ class ImportIOTest(unittest.TestCase):
     def setUpClass(cls):
         if not HAXE.is_file():
             raise unittest.SkipTest("portable Haxe interpreter is unavailable")
+
+    def test_lexical_route_cache_is_bounded_scoped_and_keeps_filesystem_state_live(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:
+            base = Path(temporary)
+            install = base / "install"
+            stage = install / "import-cache/staging/outer"
+            inner_stage = install / "import-cache/staging/inner"
+            (install / "assets/data").mkdir(parents=True)
+            stage.mkdir(parents=True)
+            inner_stage.mkdir(parents=True)
+            (install / "assets/data/value.txt").write_text("installed")
+            (base / "Main.hx").write_text(r'''import ImportFile as File;
+import ImportFileSystem as FS;
+@:access(ImportIO)
+class Main {
+ static function check(ok:Bool, label:String):Void if (!ok) throw label;
+ static function main():Void {
+  var args=Sys.args(); var io=ImportIO.begin(args[0],args[1],["assets/data/value.txt"]);
+  var paths=["assets/data/value.txt",args[0]+"/assets/data/value.txt",args[1]+"/assets/data/value.txt",
+   args[0]+"/import-cache/sources/missing/content/file.json","external.txt","./assets/data/other.txt"];
+  for(path in paths) {
+   var a=io.route(path), b=io.computeRoute(path);
+   check(a.relative==b.relative && a.external==b.external && a.stageAbsolute==b.stageAbsolute,"route changed: "+path);
+   check(a==io.route(path),"same route was recomputed");
+  }
+  var count=io.routeCacheCount;
+  for(i in 0...1000) for(path in paths) io.route(path);
+  check(io.routeCacheCount==count,"repeated route entries accumulated");
+  check(!FS.exists("assets/data/value.txt"),"mask bypassed");
+  File.saveContent("assets/data/value.txt","staged");
+  check(FS.exists("assets/data/value.txt") && File.getContent("assets/data/value.txt")=="staged","cached missing/masked result");
+  File.saveContent("assets/data/value.txt","changed");
+  check(File.getContent("assets/data/value.txt")=="changed","cached content");
+  FS.deleteFile("assets/data/value.txt");
+  check(!FS.exists("assets/data/value.txt"),"cached present result");
+  File.saveContent("assets/data/value.txt","revived");
+  check(File.getContent("assets/data/value.txt")=="revived","delete mask was cached");
+  var inner=ImportIO.begin(args[0],args[2]);
+  check(inner.routeCacheCount==0,"nested cache reused");
+  check(File.getContent("assets/data/value.txt")=="installed","inner scope leaked outer stage");
+  File.saveContent("assets/data/value.txt","inner");
+  ImportIO.end();
+  check(inner.routeCacheCount==0 && !inner.routeCache.iterator().hasNext(),"ended cache retained");
+  check(File.getContent("assets/data/value.txt")=="revived","nested teardown lost outer route");
+  #if windows
+  var drive=args[0].substr(0,2);
+  for(path in [drive+"relative.txt","/root-relative.txt"]) {
+   io.route(path); check(!io.routeCache.exists(path),"cwd-dependent absolute route cached");
+  }
+  #end
+  for(i in 0...(ImportIO.MAX_ROUTE_CACHE+10)) io.route("assets/data/probe"+i);
+  check(io.routeCacheCount<=ImportIO.MAX_ROUTE_CACHE,"route cache unbounded");
+  check(File.getContent("assets/data/value.txt")=="revived","cache eviction changed routing");
+  for(path in [null,"","assets/../../escape.txt"]) {
+   var rejected=false; try io.route(path) catch(_:Dynamic) rejected=true;
+   check(rejected,"invalid route accepted");
+  }
+  ImportIO.end(); check(io.routeCacheCount==0,"outer cache retained");
+  Sys.println("OK");
+ }
+}''', encoding="utf-8")
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(base),
+                "--run", "Main", str(install), str(stage), str(inner_stage)], cwd=ROOT,
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_owned_refresh_defer_preserves_registry_baselines_and_ownership_boundaries(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temporary:

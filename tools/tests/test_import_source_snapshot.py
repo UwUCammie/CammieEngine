@@ -170,6 +170,42 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
         return json.loads(process.stdout.strip().splitlines()[-1])
 
+    def test_small_and_chunk_boundary_files_preserve_snapshot_and_stream_hashes(self):
+        source = self.base / "donor"
+        source.mkdir()
+        expected = {}
+        for size in (0, 1, 63, 4095, 4096, 4097, 65535, 65536, 65537):
+            data = bytes((i * 31 + (i >> 8)) & 255 for i in range(size))
+            name = f"size-{size}.bin"
+            (source / name).write_bytes(data)
+            expected[name] = hashlib.sha256(data).hexdigest()
+        capture = self.run_capture(source, self.base / "snapshots", worker_count=3, threaded=True)["capture"]
+        self.assertTrue(capture["complete"], capture)
+        receipt = json.loads(Path(capture["receiptPath"]).read_text())
+        self.assertEqual({entry["path"]: entry["sha256"] for entry in receipt["files"]}, expected)
+        self.assertTrue(self.verify_snapshot(capture["snapshotRoot"], capture["snapshotId"], worker_count=3, threaded=True)["ok"])
+        fixture = self.base / "BufferHash.hx"
+        fixture.write_text(r'''class BufferHash {
+ static function main() {
+  var result = {};
+  for (name in sys.FileSystem.readDirectory(Sys.args()[0])) {
+   var path = Sys.args()[0] + "/" + name;
+   var digest = ImportSourceSnapshot.sha256File(path);
+   if (ImportSourceSnapshot.sha256File(path, 4096) != digest) throw "chunk size changed digest";
+   Reflect.setField(result, name, digest);
+  }
+  Sys.println(haxe.Json.stringify(result));
+ }
+}''', encoding="utf-8", newline='\n')
+        process = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(self.base),
+                                  "--run", "BufferHash", str(source)],
+                                 cwd=self.base, text=True, capture_output=True, timeout=30)
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        self.assertEqual(json.loads(process.stdout.strip().splitlines()[-1]), expected)
+        retained = Path(capture["snapshotRoot"]) / "content/size-1.bin"
+        retained.write_bytes(b"x")
+        self.assertFalse(self.verify_snapshot(capture["snapshotRoot"], capture["snapshotId"])["ok"])
+
     def test_streaming_sha256_known_vectors_and_chunk_boundaries(self):
         fixture = self.base / "HashMain.hx"
         fixture.write_text(HASH_MAIN, encoding="utf-8", newline='\n')
@@ -185,6 +221,32 @@ class ImportSourceSnapshotTest(unittest.TestCase):
         self.assertEqual(actual["short"], "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
         self.assertEqual(actual["repeated"], "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
         self.assertEqual(actual["streamedFile"], "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
+
+    def test_streaming_sha256_rejects_invalid_ranges_and_reuse(self):
+        fixture = self.base / "HashSafety.hx"
+        fixture.write_text(r'''import haxe.io.Bytes;
+import ImportSourceSnapshot.ImportSnapshotSha256;
+class HashSafety {
+ static function main() {
+  var bytes = Bytes.ofString("!abc?");
+  var hash = new ImportSnapshotSha256();
+  for (range in [[-1,1],[0,-1],[4,2],[2147483647,2],[1,2147483647]]) {
+   var rejected = false;
+   try hash.update(bytes,range[0],range[1]) catch (_:Dynamic) rejected=true;
+   if (!rejected) throw "invalid range accepted";
+  }
+  var rejected=false;try hash.update(null,0,0) catch (_:Dynamic) rejected=true;
+  if(!rejected)throw "null accepted";
+  hash.update(bytes,1,3);hash.update(bytes,5,0);
+  if(hash.digestHex() != haxe.crypto.Sha256.encode("abc"))throw "slice mismatch";
+  rejected=false;try hash.digestHex() catch (_:Dynamic) rejected=true;
+  if(!rejected)throw "repeated finish accepted";
+  rejected=false;try hash.update(bytes,0,0) catch (_:Dynamic) rejected=true;
+  if(!rejected)throw "update after finish accepted";
+ }
+}''', encoding="utf-8")
+        result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(self.base), "--run", "HashSafety"], cwd=self.base, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     @staticmethod
     def tree_fingerprint(root):

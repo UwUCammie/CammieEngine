@@ -375,7 +375,7 @@ class ImportSourceSnapshot {
 				var input:FileInput = null;
 				var target:FileOutput = null;
 				var fileHash = new ImportSnapshotSha256();
-				var buffer = Bytes.alloc(chunkSize);
+				var buffer = Bytes.alloc(fileBufferSize(entry.size, chunkSize));
 				var remaining = entry.size;
 				try {
 					input = File.read(entry.sourcePath, true);
@@ -556,6 +556,11 @@ class ImportSourceSnapshot {
 		}
 	}
 
+	// Small scripts and metadata do not need a full media-sized allocation.
+	// Keep a nonempty buffer for empty files and preserve chunk/cancellation boundaries.
+	static inline function fileBufferSize(size:Int, chunkSize:Int):Int
+		return size <= 0 ? 1 : (size < chunkSize ? size : chunkSize);
+
 	/** Hash one regular file with bounded memory. The optional callback lets a
 	 * worker leave a gameplay-paused checkpoint promptly when cancelled. */
 	public static function sha256File(path:String, ?chunkSize:Int, ?cancelled:Void->Bool):String {
@@ -566,7 +571,7 @@ class ImportSourceSnapshot {
 		if (!isRegularFileMode(stat.mode)) throw "Cannot hash a non-regular filesystem node: " + path;
 		var remaining = stat.size;
 		var input = File.read(path, true);
-		var buffer = Bytes.alloc(chunkSize);
+		var buffer = Bytes.alloc(fileBufferSize(remaining, chunkSize));
 		try {
 			while (remaining > 0) {
 				if (!ImportWorkScheduler.cooperate(cancelled)) throw new ImportWorkCancelled();
@@ -1007,7 +1012,7 @@ class ImportSourceSnapshot {
 		if (!isRegularFileMode(before.mode)) throw "Snapshot entry is not a regular file: " + relative;
 		var input:FileInput = null;
 		var hash = new ImportSnapshotSha256();
-		var buffer = Bytes.alloc(DEFAULT_CHUNK_SIZE);
+		var buffer = Bytes.alloc(fileBufferSize(before.size, DEFAULT_CHUNK_SIZE));
 		var remaining = before.size;
 		try {
 			input = File.read(path, true);
@@ -1257,6 +1262,11 @@ private class ImportSnapshotWorkerState {
 /** Independent streaming SHA-256 so snapshot capture does not depend on the
  * updater's private implementation or buffer full packages in memory. */
 class ImportSnapshotSha256 {
+	@:allow(RuntimeImportPerformanceProbe)
+	static var forcePortable:Bool = false;
+	#if (cpp && windows)
+	var nativeHash:NativeStreamingSha256;
+	#end
 	static var K:Array<Int> = [
 		0x428A2F98,0x71374491,0xB5C0FBCF,0xE9B5DBA5,0x3956C25B,0x59F111F1,0x923F82A4,0xAB1C5ED5,
 		0xD807AA98,0x12835B01,0x243185BE,0x550C7DC3,0x72BE5D74,0x80DEB1FE,0x9BDC06A7,0xC19BF174,
@@ -1276,9 +1286,16 @@ class ImportSnapshotSha256 {
 	var buffered:Int = 0;
 	var totalBytes:Float = 0;
 	var finished:Bool = false;
-	public function new() {}
+	public function new() {
+		#if (cpp && windows)
+		nativeHash = forcePortable ? null : NativeStreamingSha256.create();
+		#end
+	}
 	public function update(bytes:Bytes, position:Int, length:Int):Void {
-		if (finished || length < 0 || position < 0 || position + length > bytes.length) throw "Invalid snapshot SHA-256 input.";
+		if (finished || bytes == null || length < 0 || position < 0 || position > bytes.length - length) throw "Invalid snapshot SHA-256 input.";
+		#if (cpp && windows)
+		if (nativeHash != null) {nativeHash.update(bytes, position, length);return;}
+		#end
 		totalBytes += length;
 		var offset = 0;
 		while (offset < length) {
@@ -1293,6 +1310,9 @@ class ImportSnapshotSha256 {
 	public function digestHex():String {
 		if (finished) throw "Snapshot SHA-256 was already finalized.";
 		finished = true;
+		#if (cpp && windows)
+		if (nativeHash != null) return nativeHash.digestHex();
+		#end
 		var bitLength = totalBytes * 8.0;
 		var bitLow:Float = bitLength % 4294967296.0;
 		var bitHigh:Float = Math.floor(bitLength / 4294967296.0);

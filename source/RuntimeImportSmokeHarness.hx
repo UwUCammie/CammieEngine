@@ -36,6 +36,8 @@ class RuntimeImportSmokeHarness {
 	static var finished:Bool = false;
 	static var startedAt:Float = 0;
 	static var timeoutReported:Bool = false;
+	static var lastProgressAt:Float = -1;
+	static var lastProgressStage:String = '';
 	/** RuntimeImportSmokeState already initialized the shared game services. */
 	static var preparedRuntimeForPlay:Bool = false;
 
@@ -133,6 +135,18 @@ class RuntimeImportSmokeHarness {
 
 	public static function timeoutCancellationRequested():Bool
 		return timeoutReported;
+
+	/** Sample worker phase progress without logging once per rendered frame. */
+	public static function reportProgress(stage:String, snapshot:Dynamic):Void {
+		if (!enabled() || finished || snapshot == null) return;
+		var now:Float = #if sys Sys.time() #else 0 #end;
+		if (stage == lastProgressStage && lastProgressAt >= 0 && now - lastProgressAt < 2) return;
+		lastProgressAt = now;
+		lastProgressStage = stage;
+		emit('progress', {stage:stage, phase:Reflect.field(snapshot, 'phase'),
+			current:Reflect.field(snapshot, 'current'), completed:fieldInt(snapshot, 'completed'),
+			total:fieldInt(snapshot, 'total'), elapsedSeconds:now - startedAt});
+	}
 
 	public static function markScanReady(result:Dynamic):Void {
 		if (!enabled() || finished)

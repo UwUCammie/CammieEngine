@@ -18,8 +18,18 @@ class CodenameMusicBeatGroupTest(unittest.TestCase):
                 "flixel/system/FlxAssets.hx": 'package flixel.system; typedef FlxGraphicAsset = Dynamic;',
                 "flixel/FlxBasic.hx": '''package flixel;
 class FlxBasic {
- public var updates:Int=0; public var destroys:Int=0; public var exists:Bool=true;
- public var active:Bool=true; public var visible:Bool=true; public var alive:Bool=true;
+ public var updates:Int=0; public var destroys:Int=0; public var exists(default,set):Bool=true;
+ public var active(default,set):Bool=true; public var visible(default,set):Bool=true; public var alive(default,set):Bool=true;
+ public var camera(get,set):FlxCamera; public var cameras(get,set):Array<FlxCamera>;
+ var _cameras:Array<FlxCamera>=[];
+ function set_visible(value:Bool):Bool return visible=value;
+ function set_active(value:Bool):Bool return active=value;
+ function set_exists(value:Bool):Bool return exists=value;
+ function set_alive(value:Bool):Bool return alive=value;
+ function get_camera():FlxCamera return _cameras[0];
+ function set_camera(value:FlxCamera):FlxCamera { _cameras=[value]; return value; }
+ function get_cameras():Array<FlxCamera> return _cameras;
+ function set_cameras(value:Array<FlxCamera>):Array<FlxCamera> return _cameras=value;
  public function new() {}
  public function update(elapsed:Float):Void updates++;
  public function draw():Void {}
@@ -30,12 +40,23 @@ class FlxBasic {
                 "flixel/math/FlxRect.hx": "package flixel.math; class FlxRect {}",
                 "flixel/FlxCamera.hx": "package flixel; class FlxCamera {}",
                 "flixel/FlxObject.hx": """package flixel;
-class FlxObject extends FlxBasic {public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) super();function initVars():Void {}}""",
-                "flixel/FlxSprite.hx": '''package flixel;
-class FlxSprite extends FlxBasic {
- public var x:Float=0; public var y:Float=0;
- public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
+class FlxObject extends FlxBasic {
+ public var x(default,set):Float=0; public var y(default,set):Float=0;
+ public var width(get,set):Float; public var height(get,set):Float;
+ var _width:Float=0; var _height:Float=0;
+ public function new(x:Float=0,y:Float=0,w:Float=0,h:Float=0) {super();this.x=x;this.y=y;this.width=w;this.height=h;}
+ function set_x(v:Float):Float return x=v;
+ function set_y(v:Float):Float return y=v;
+ function set_width(v:Float):Float return _width=v;
+ function set_height(v:Float):Float return _height=v;
+ function get_width():Float return _width;
+ function get_height():Float return _height;
  function initVars():Void {}
+}""",
+                "flixel/FlxSprite.hx": '''package flixel;
+class FlxSprite extends FlxObject {
+ public function new(x:Float=0,y:Float=0,?graphic:Dynamic) { super(); this.x=x; this.y=y; }
+ override function initVars():Void {}
  public function drawFrame(force:Bool=false):Void {}
  public function graphicLoaded():Void {}
  public function loadGraphic(graphic:Dynamic,animated:Bool=false,frameWidth:Int=0,frameHeight:Int=0,unique:Bool=false,?key:String):FlxSprite return this;

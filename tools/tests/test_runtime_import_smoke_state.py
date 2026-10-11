@@ -109,6 +109,7 @@ class ImportRefreshManager {
   public static function start():Void {}
   public static function expired():Bool return timeout;
   public static function requestTimeoutCancellation():Void events.push('timeout');
+  public static function reportProgress(_stage:String, _snapshot:Dynamic):Void {}
   public static function markScanReady(_result:Dynamic):Void events.push('scan_ready');
   public static function finishScan(_result:Dynamic):Void events.push('scan_success');
   public static function markImportStart():Void events.push('import_start');

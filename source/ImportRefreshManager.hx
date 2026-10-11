@@ -101,6 +101,11 @@ class ImportRefreshManager {
 	static var reservations:Map<String, ImportRefreshAvailabilityReservation> = new Map();
 	static var pendingHandoffs:Array<String> = [];
 	static var handoffInProgress:Map<String, Bool> = new Map();
+	// Keep package readiness reserved while its main-thread support map is
+	// rebuilt in small batches. No filesystem/cache work moves to a worker.
+	static var handoffOffsets:Map<String, Int> = new Map();
+	static inline var HANDOFF_SONGS_PER_POLL:Int = 4;
+	static inline var HANDOFF_POLL_SECONDS:Float = 0.004;
 	static var committedOwnerRoots:Map<String, Bool> = new Map();
 	static var committedPathOwners:Map<String, Array<String>> = new Map();
 	static var committedPathsByOwner:Map<String, Array<String>> = new Map();
@@ -373,6 +378,7 @@ class ImportRefreshManager {
 		reservation.committed = true;
 		reservation.handoffPending = true;
 		reservation.handoffNames = names == null ? [] : names.copy();
+		handoffOffsets.remove(token);
 		setCommittedRootsLocked(reservation.committedRoots);
 		if (pendingHandoffs.indexOf(token) < 0) pendingHandoffs.push(token);
 		bumpAvailabilityLocked();
@@ -419,6 +425,7 @@ class ImportRefreshManager {
 	static function releaseReservationLocked(token:String):Void {
 		if (reservations.remove(token)) {
 			pendingHandoffs = removeToken(pendingHandoffs, token);
+			handoffOffsets.remove(token);
 			handoffInProgress.remove(token);
 			bumpAvailabilityLocked();
 		}
@@ -494,47 +501,53 @@ class ImportRefreshManager {
 		// These maps are read from gameplay and owner asset lookup. Check before
 		// taking their mutex so a worker never waits for gameplay while holding it.
 		ImportWorkScheduler.cooperate();
-		var nextPathsByRoot:Map<String, Array<String>> = new Map();
+		var nextPaths:Array<String> = [];
+		var seenPaths:Map<String, Bool> = new Map();
 		var nextOwnersByPath:Map<String, Array<String>> = new Map();
-		for (root in ownerRoots) {
-			ImportWorkScheduler.cooperate();
-			nextPathsByRoot.set(root, []);
-		}
 		for (entry in (cast files:Array<Dynamic>)) {
 			ImportWorkScheduler.cooperate();
 			var path:Dynamic = Reflect.field(entry, "path");
 			if (path == null) continue;
 			var relative = normalizeInstallRelative(Std.string(path));
 			if (relative == "" || isRegistry(relative)) continue;
+			if (!seenPaths.exists(relative)) {
+				seenPaths.set(relative, true);
+				nextPaths.push(relative);
+			}
 			var key = ownerPathKey(relative);
 			var newOwners = nextOwnersByPath.get(key);
 			if (newOwners == null) newOwners = [];
 			for (root in ownerRoots) {
 				if (newOwners.indexOf(root) < 0) newOwners.push(root);
-				var paths = nextPathsByRoot.get(root);
-				if (paths != null && paths.indexOf(relative) < 0) paths.push(relative);
 			}
 			newOwners.sort(Reflect.compare);
 			nextOwnersByPath.set(key, newOwners);
 		}
-		for (root in ownerRoots) {
-			var paths = nextPathsByRoot.get(root);
-			if (paths != null) paths.sort(Reflect.compare);
-		}
+		nextPaths.sort(Reflect.compare);
 		var nextAssetBindings = buildAssetIndexBindings(manifest, ownerRoots);
 		mutex.acquire();
+		// A package can own the same file through many roots. Retire its old
+		// owners once per path, rather than filtering the same list for each root
+		// while menu readers wait for this mutex.
+		var replacedRoots:Map<String, Bool> = new Map();
+		var oldPathsToRemove:Map<String, Bool> = new Map();
 		for (root in ownerRoots) {
+			if (replacedRoots.exists(root)) continue;
+			replacedRoots.set(root, true);
 			var oldPaths = committedPathsByOwner.get(root);
-			if (oldPaths != null) for (oldPath in oldPaths) {
-				var oldKey = ownerPathKey(oldPath);
-				var oldOwners = committedPathOwners.get(oldKey);
-				if (oldOwners == null) continue;
-				oldOwners = oldOwners.filter(function(value) return value != root);
-				if (oldOwners.length == 0) committedPathOwners.remove(oldKey);
-				else committedPathOwners.set(oldKey, oldOwners);
-			}
-			var nextPaths = nextPathsByRoot.get(root);
-			committedPathsByOwner.set(root, nextPaths == null ? [] : nextPaths.copy());
+			if (oldPaths != null) for (oldPath in oldPaths) oldPathsToRemove.set(oldPath, true);
+			committedPathsByOwner.set(root, nextPaths.copy());
+		}
+		var removedKeys:Map<String, Bool> = new Map();
+		for (oldPath in oldPathsToRemove.keys()) {
+			var oldKey = ownerPathKey(oldPath);
+			if (removedKeys.exists(oldKey)) continue;
+			removedKeys.set(oldKey, true);
+			var oldOwners = committedPathOwners.get(oldKey);
+			if (oldOwners == null) continue;
+			oldOwners = oldOwners.filter(function(value) return !replacedRoots.exists(value));
+			if (oldOwners.length == 0) committedPathOwners.remove(oldKey);
+			else committedPathOwners.set(oldKey, oldOwners);
 		}
 		for (key in nextOwnersByPath.keys()) {
 			var known = committedPathOwners.get(key);
@@ -569,22 +582,40 @@ class ImportRefreshManager {
 		if (rawFamily != null) try family = ImportRefreshTransaction.validatePackageFamilyCatalog(rawFamily, record)
 			catch (_:Dynamic) family = null;
 		if (hasV3Family && family == null) return result;
+		// Validate each receipt entry once. Routing by complete path components
+		// preserves prefix boundaries, nested roots and the original file order.
+		// These detached indexes live only for this publication/inspection call.
+		var filesByRoot:Map<String, Array<Dynamic>> = new Map();
+		var sidecarsByRoot:Map<String, Map<String, Dynamic>> = new Map();
+		for (root in roots) {
+			ImportWorkScheduler.cooperate();
+			filesByRoot.set(root, []);
+			sidecarsByRoot.set(root, new Map());
+		}
+		for (entry in (cast files:Array<Dynamic>)) {
+			ImportWorkScheduler.cooperate();
+			if (entry == null || entry.owner != manifest.owner || entry.path == null
+				|| entry.sha256 == null || !~/^[a-f0-9]{64}$/.match(Std.string(entry.sha256))) continue;
+			var path = normalizeInstallRelative(Std.string(entry.path));
+			if (path == null || path == "") continue;
+			var boundary = path.indexOf("/");
+			while (boundary >= 0) {
+				var root = path.substr(0, boundary);
+				var owned = filesByRoot.get(root);
+				if (owned != null) {
+					owned.push({path:path, sha256:Std.string(entry.sha256)});
+					var relative = path.substr(boundary + 1);
+					if (StringTools.startsWith(relative, SourceLimeAssetIdentity.SIDECAR_DIR + "/"))
+						sidecarsByRoot.get(root).set(relative, entry);
+				}
+				boundary = path.indexOf("/", boundary + 1);
+			}
+		}
 		for (root in roots) {
 			ImportWorkScheduler.cooperate();
 			var namespace = root.substr("assets/imported_mods/".length);
-			var owned:Array<Dynamic> = [];
-			var sidecars:Map<String, Dynamic> = new Map();
-			for (entry in (cast files:Array<Dynamic>)) {
-				ImportWorkScheduler.cooperate();
-				if (entry == null || entry.owner != manifest.owner || entry.path == null
-					|| entry.sha256 == null || !~/^[a-f0-9]{64}$/.match(Std.string(entry.sha256))) continue;
-				var path = normalizeInstallRelative(Std.string(entry.path));
-				if (path == null || !StringTools.startsWith(path, root + "/")) continue;
-				owned.push({path:path, sha256:Std.string(entry.sha256)});
-				var relative = path.substr(root.length + 1);
-				if (StringTools.startsWith(relative, SourceLimeAssetIdentity.SIDECAR_DIR + "/"))
-					sidecars.set(relative, entry);
-			}
+			var owned = filesByRoot.get(root);
+			var sidecars = sidecarsByRoot.get(root);
 			for (engine in ["Psych Engine", "Nightmare Vision"]) {
 				ImportWorkScheduler.cooperate();
 				for (scope in (engine == "Psych Engine" ? ["package"] : ["package", "core"])) {
@@ -1384,10 +1415,20 @@ class ImportRefreshManager {
 				}
 		}
 		handoffInProgress.set(token, true);
-		var names = reservation.handoffNames.copy();
+		var offset = handoffOffsets.exists(token) ? handoffOffsets.get(token) : 0;
+		var end = Std.int(Math.min(offset + HANDOFF_SONGS_PER_POLL, reservation.handoffNames.length));
+		var names = reservation.handoffNames.slice(offset, end);
+		var finished = end >= reservation.handoffNames.length;
 		mutex.release();
 		try {
 			ModuleFunctions.completeImportOnMainThread(names);
+			if (!finished) {
+				mutex.acquire();
+				handoffOffsets.set(token, end);
+				handoffInProgress.remove(token);
+				mutex.release();
+				return false;
+			}
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			mutex.acquire();
 			var current = reservations.get(token);
@@ -1418,8 +1459,12 @@ class ImportRefreshManager {
 		mutex.acquire();
 		var tokens = pendingHandoffs.copy();
 		mutex.release();
-		for (token in tokens) try tryHandoff(token) catch (error:Dynamic)
-			trace("[import-refresh-handoff-error] " + Std.string(error));
+		var deadline = haxe.Timer.stamp() + HANDOFF_POLL_SECONDS;
+		for (token in tokens) {
+			try tryHandoff(token) catch (error:Dynamic)
+				trace("[import-refresh-handoff-error] " + Std.string(error));
+			if (haxe.Timer.stamp() >= deadline) break;
+		}
 	}
 
 	/** Main-thread bridge for the initial worker. The reservation remains held
@@ -1437,9 +1482,10 @@ class ImportRefreshManager {
 			return true;
 		}
 		var reservation = reservations.get(selected);
-		if (reservation != null && importedNames != null)
+		if (reservation != null && importedNames != null && !handoffOffsets.exists(selected)) {
 			reservation.handoffNames = importedNames.copy();
-		bumpAvailabilityLocked();
+			bumpAvailabilityLocked();
+		}
 		mutex.release();
 		try return tryHandoff(selected) catch (error:Dynamic) {
 			trace("[import-refresh-handoff-error] " + Std.string(error));
@@ -2223,6 +2269,14 @@ class ImportRefreshManager {
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			progress({phase:"scanning-retained-source", current:source, completed:0, total:0});
 			cooperateImportWork(cancel);
+			io.discoveryReuse = new ImportDiscoveryReuse(source, Std.string(record.type), function() {
+					return ImportIO.current() != io ? null : io.discoveryContextKey()
+						+ "|" + ImportRootScanner.retainedDiscoveryContextKey();
+				}, function() {
+					ImportSourceSnapshot.verify(Path.directory(source), Std.string(record.snapshotId), cancel, function(p) {
+						progress({phase:"checking-retained-source",current:p.current,completed:p.filesCompleted,total:p.filesTotal});
+					});
+				}, cancel);
 			var scan = ImportWorkflow.scanNow(source,Std.string(record.type));
 			if (scan == null || scan.rootScanTruncated == true || scan.packageScanTruncated == true)
 				throw "Import rescan was incomplete; installed content is unchanged.";
@@ -2268,6 +2322,7 @@ class ImportRefreshManager {
 				candidatesForScan(scan, sourceRootDescriptors(source, cast record.roots)));
 			if (cancel()) throw "Import cancelled before conversion.";
 			progress({phase:"converting-import", current:Std.string(record.label), completed:0, total:0});
+			io.discoveryReuse.accept();
 			var imported = convert(source,scan,names);
 			if (imported == null || imported.failed > 0 || cancel())
 				throw "Import conversion did not complete; installed content is unchanged. "

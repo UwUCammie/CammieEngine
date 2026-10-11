@@ -106,7 +106,7 @@ import sys.io.File;
 using StringTools;
 typedef SourceDifficultyRules = { var selectable:Array<String>; var unsupported:Array<String>; };
 class FNFAssets {
-  public static function exists(path:String):Bool return FileSystem.exists(path);
+  public static function exists(path:String, ?ext:Dynamic, ?directoryEntries:Map<String, Map<String, String>>):Bool return FileSystem.exists(path);
   public static function getText(path:String):String return File.getContent(path);
 }
 class CoolUtil {
@@ -242,7 +242,7 @@ typedef DiffInfo = { var difficulty:Int; var text:String; };
 typedef SourceDifficultyRules = { var selectable:Array<String>; var unsupported:Array<String>; };
 
 class FNFAssets {
-  public static function exists(path:String):Bool return false;
+  public static function exists(path:String, ?ext:Dynamic, ?directoryEntries:Map<String, Map<String, String>>):Bool return false;
   public static function getText(path:String):String return "";
 }
 class CoolUtil { public static function parseJson(raw:String):Dynamic return null; }

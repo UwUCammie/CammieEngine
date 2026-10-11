@@ -32,6 +32,14 @@ class SourceNativeClassAdapterMacro {
 			}
 			function dispatchSourceResult(name:String, args:Array<Dynamic>):Dynamic
 				return sourceLifecycle == null ? callNativeBase(name, args) : sourceLifecycle.dispatchResult(name, args);
+			override function set_visible(value:Bool):Bool return cast dispatchSourceResult('set_visible', [value]);
+			override function set_active(value:Bool):Bool return cast dispatchSourceResult('set_active', [value]);
+			override function set_exists(value:Bool):Bool return cast dispatchSourceResult('set_exists', [value]);
+			override function set_alive(value:Bool):Bool return cast dispatchSourceResult('set_alive', [value]);
+			override function get_camera():flixel.FlxCamera return cast dispatchSourceResult('get_camera', []);
+			override function set_camera(value:flixel.FlxCamera):flixel.FlxCamera return cast dispatchSourceResult('set_camera', [value]);
+			override function get_cameras():Array<flixel.FlxCamera> return cast dispatchSourceResult('get_cameras', []);
+			override function set_cameras(value:Array<flixel.FlxCamera>):Array<flixel.FlxCamera> return cast dispatchSourceResult('set_cameras', [value]);
 			override public function update(elapsed:Float):Void dispatchSource('update', [elapsed]);
 			override public function draw():Void dispatchSource('draw', []);
 			override public function kill():Void dispatchSource('kill', []);
@@ -43,6 +51,14 @@ class SourceNativeClassAdapterMacro {
 			}
 			function callNativeBase(name:String, args:Array<Dynamic>):Dynamic {
 				switch (name) {
+					case 'set_visible': return super.set_visible(args[0]);
+					case 'set_active': return super.set_active(args[0]);
+					case 'set_exists': return super.set_exists(args[0]);
+					case 'set_alive': return super.set_alive(args[0]);
+					case 'get_camera': return super.get_camera();
+					case 'set_camera': return super.set_camera(args[0]);
+					case 'get_cameras': return super.get_cameras();
+					case 'set_cameras': return super.set_cameras(args[0]);
 					case 'update': super.update(args[0]);
 					case 'draw': super.draw();
 					case 'kill': super.kill();
@@ -102,8 +118,22 @@ class SourceNativeClassAdapterMacro {
 		if (animation || object) {
 			var extra = macro class ObjectInitializationCallback extends flixel.FlxObject {
 				override function initVars():Void dispatchSource('initVars', []);
+				override function set_x(value:Float):Float return cast dispatchSourceResult('set_x', [value]);
+				override function set_y(value:Float):Float return cast dispatchSourceResult('set_y', [value]);
+				override function set_width(value:Float):Float return cast dispatchSourceResult('set_width', [value]);
+				override function set_height(value:Float):Float return cast dispatchSourceResult('set_height', [value]);
+				override function get_width():Float return cast dispatchSourceResult('get_width', []);
+				override function get_height():Float return cast dispatchSourceResult('get_height', []);
 			};
-			addCallbacks(extra, [{values:[macro 'initVars'], guard:null, expr:macro super.initVars()}]);
+			addCallbacks(extra, [
+				{values:[macro 'initVars'], guard:null, expr:macro super.initVars()},
+				{values:[macro 'set_x'], guard:null, expr:macro return super.set_x(args[0])},
+				{values:[macro 'set_y'], guard:null, expr:macro return super.set_y(args[0])},
+				{values:[macro 'set_width'], guard:null, expr:macro return super.set_width(args[0])},
+				{values:[macro 'set_height'], guard:null, expr:macro return super.set_height(args[0])},
+				{values:[macro 'get_width'], guard:null, expr:macro return super.get_width()},
+				{values:[macro 'get_height'], guard:null, expr:macro return super.get_height()}
+			]);
 		}
 		return fields.concat(adapter.fields);
 	}

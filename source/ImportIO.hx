@@ -67,6 +67,11 @@ class ImportIO {
 	public var installRoot(default, null):String;
 	public var stageRoot(default, null):String;
 	var parent:ImportIO;
+	public var discoveryReuse:ImportDiscoveryReuse;
+	// Only lexical routing is cached. Existence, masks and symlink checks stay live.
+	static inline var MAX_ROUTE_CACHE:Int = 4096;
+	var routeCache:Map<String, ImportIOPath> = new Map();
+	var routeCacheCount:Int = 0;
 	var workCancelled:Void->Bool;
 	var masks:Map<String, Bool> = new Map();
 	var ownedAncestors:Map<String, Bool> = new Map();
@@ -136,6 +141,10 @@ class ImportIO {
 		var context = current();
 		if (context == null)
 			throw "ImportIO.end() called without an active import scope.";
+		if (context.discoveryReuse != null) context.discoveryReuse.close();
+		context.discoveryReuse = null;
+		context.routeCache.clear();
+		context.routeCacheCount = 0;
 		context.assetProfiles.clear();
 		context.assetProfileHandoffs.clear();
 		setCurrent(context.parent);
@@ -296,6 +305,17 @@ class ImportIO {
 		}
 		result.sort(Reflect.compare);
 		return result;
+	}
+
+	/** Exact namespace/label context for one-use discovery, never a filesystem cache. */
+	public function discoveryContextKey():String {
+		var rows:Array<Dynamic> = [];
+		for (map in [namespaces, sourceLabels]) {
+			var keys = [for (key in map.keys()) key];
+			keys.sort(Reflect.compare);
+			rows.push([for (key in keys) [key, map.get(key)]]);
+		}
+		return haxe.Json.stringify(rows);
 	}
 
 	public function setNamespace(sourceRoot:String, engine:String, namespace:String):Void {
@@ -705,7 +725,33 @@ class ImportIO {
 		return installPath(routed.relative);
 	}
 
+	/** The install/stage roots are immutable for this scope. Reuse their lexical
+	 * mapping, never a filesystem result. Bounded storage also avoids retaining
+	 * every one-off asset probe in a large library. */
 	function route(path:String):ImportIOPath {
+		if (path == null || path == "") throw "ImportIO path cannot be empty.";
+		var cacheable = true;
+		#if windows
+		// Drive-relative (C:foo) and rooted (/foo) paths can change their absolute
+		// expansion when the process changes cwd. Keep those routes uncached.
+		if (Path.isAbsolute(path))
+			cacheable = (path.charAt(1) == ':' && (path.charAt(2) == '/' || path.charAt(2) == '\\'))
+				|| StringTools.startsWith(path, '//') || StringTools.startsWith(path, '\\\\');
+		#end
+		if (cacheable && routeCache.exists(path)) return routeCache.get(path);
+		var result = computeRoute(path);
+		if (cacheable) {
+			if (routeCacheCount >= MAX_ROUTE_CACHE) {
+				routeCache.clear();
+				routeCacheCount = 0;
+			}
+			routeCache.set(path, result);
+			routeCacheCount++;
+		}
+		return result;
+	}
+
+	function computeRoute(path:String):ImportIOPath {
 		if (path == null || path == "") throw "ImportIO path cannot be empty.";
 		var value = slash(path);
 		if (Path.isAbsolute(path)) {

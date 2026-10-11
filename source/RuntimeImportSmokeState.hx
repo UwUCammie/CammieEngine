@@ -79,6 +79,7 @@ class RuntimeImportSmokeState extends FlxState {
 		}
 		if (scanJob != null) {
 			var snapshot = scanJob.snapshot();
+			RuntimeImportSmokeHarness.reportProgress('scan', snapshot);
 			if (!snapshot.complete)
 				return;
 			if (cancellationRequested) {
@@ -133,6 +134,7 @@ class RuntimeImportSmokeState extends FlxState {
 		}
 		if (importJob != null) {
 			var snapshot = importJob.snapshot();
+			RuntimeImportSmokeHarness.reportProgress('import', snapshot);
 			if (!snapshot.complete)
 				return;
 			var result:Dynamic = snapshot.result;

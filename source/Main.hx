@@ -43,10 +43,13 @@ class Main extends Sprite {
 		RuntimeSmokeHarness.applyRuntimeRoot();
 		RuntimeSmokeSaveIsolation.install(RuntimeImportSmokeHarness.enabled());
 		cwd = Sys.getCwd();
+		RuntimeImportPerformanceProbe.run();
 		#end
 		var initialState:Class<FlxState> = TitleState;
 		#if sys
-		if (RuntimeImportSmokeHarness.enabled())
+		if (Sys.getEnv('CAMMIE_SHADER_COMPARE') != null)
+			initialState = RuntimeShaderCompareState;
+		else if (RuntimeImportSmokeHarness.enabled())
 			initialState = RuntimeImportSmokeState;
 		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().returnFreeplay)
 			initialState = RuntimeSmokeState;
@@ -81,6 +84,7 @@ class Main extends Sprite {
 		RuntimeMenuTimingProbe.install();
 		RuntimeFreeplayDifficultyProbe.install();
 		RuntimeStartupProbe.install();
+		RuntimeGpuProbe.install();
 		FlxG.scaleMode = new flixel.system.scaleModes.RatioScaleMode();
 
 		// the donor engine dropped its asset cache between states; the fork

@@ -191,7 +191,7 @@ class CoolUtil {{
 class FNFAssets {{
   static var resolution:Null<String> = null;
   static var resolverCalls:Int = 0;
-  static function resolveDiskPath(_id:String):Null<String> {{
+  static function resolveDiskPath(_id:String, ?directoryEntries:Map<String, Map<String, String>>):Null<String> {{
     resolverCalls++;
     return resolution;
   }}

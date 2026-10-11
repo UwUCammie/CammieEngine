@@ -30,14 +30,32 @@ class RuntimeFreeplayLaunchReadinessTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_import_wait_does_not_extend_gameplay_sample(self):
-        method=extract_method((ROOT / "source/RuntimeSmokeHarness.hx").read_text(), "static function initialWindowMs():Int")
+        source = (ROOT / "source/RuntimeSmokeHarness.hx").read_text()
+        method = "\n".join(extract_method(source, marker) for marker in (
+            "static function initialWindowMs():Int", "static function refreshProbeEnabled():Bool",
+            "static function refreshProbeOutcome("))
         main='class Main {static var cfg:{durationMs:Int,freeplay:Bool,freeplayAcceptSong:String,freeplayWaitMs:Int}; static function config() return cfg;'+method+'''
         static function main(){
+          Sys.putEnv("CAMMIE_IMPORT_REFRESH_STOP_ON_COMPLETE", "0");
           cfg={durationMs:20000,freeplay:true,freeplayAcceptSong:"target",freeplayWaitMs:1800000};
           if(initialWindowMs()!=1800000||config().durationMs!=20000)throw "separate import/gameplay windows";
           cfg.freeplayAcceptSong="";if(initialWindowMs()!=20000)throw "ordinary menu timing changed";
           cfg.freeplayAcceptSong="target";cfg.freeplay=false;if(initialWindowMs()!=20000)throw "direct gameplay timing changed";
           cfg.freeplay=true;cfg.freeplayWaitMs=0;if(initialWindowMs()!=20000)throw "default timing changed";
+          cfg.freeplayAcceptSong="";cfg.freeplayWaitMs=1800000;
+          Sys.putEnv("CAMMIE_IMPORT_REFRESH_STOP_ON_COMPLETE", "1");
+          if(initialWindowMs()!=1800000||cfg.durationMs!=20000)throw "refresh wait truncated";
+          var r={busy:true,blocked:false,complete:false,changed:false,queueRemaining:1};
+          if(refreshProbeOutcome(r,false)!="pending"||refreshProbeOutcome(r,true)!="timeout")throw "busy timeout";
+          r.busy=false;r.complete=true;
+          if(refreshProbeOutcome(r,true)!="timeout")throw "unchanged completion incorrectly passed";
+          r.changed=true;
+          if(refreshProbeOutcome(r,true)!="timeout")throw "queued work incorrectly passed";
+          r.queueRemaining=0;
+          if(refreshProbeOutcome(r,true)!="complete")throw "real completion did not pass";
+          r.blocked=true;
+          if(refreshProbeOutcome(r,false)!="blocked")throw "blocked result passed";
+          if(refreshProbeOutcome(null,true)!="timeout")throw "missing observation passed";
         }}'''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work=Path(directory);(work/"Main.hx").write_text(main,encoding="utf-8")

@@ -19,6 +19,7 @@ class RuntimeSmokePsychIrisClasses {
 		var originalStageDiagnostics = state.psychCompiledStageDiagnosticsReported;
 		var selectedRuntime:PsychCompiledStageRuntime = null;
 		var accessorSprite:flixel.FlxSprite = null;
+		var propertySprite:flixel.FlxSprite = null;
 		var plain = new SourceIrisBridge(state);
 		var lua = new LuaCompatInterp();
 		var runtime:PsychRuntimeBindings = null;
@@ -35,6 +36,7 @@ class RuntimeSmokePsychIrisClasses {
 		var constructionOwner:CodenameScriptClassLoader.CodenameScriptClassLoad = null;
 		var cleanup = function() {
 			if (accessorSprite != null) accessorSprite.destroy();
+			if (propertySprite != null) propertySprite.destroy();
 			if (selectedRuntime != null) selectedRuntime.destroy();
 			state.psychCompiledStageRuntime = originalStageRuntime;
 			state.psychCompiledStageRuntimeError = originalStageError;
@@ -129,6 +131,28 @@ class RuntimeSmokePsychIrisClasses {
 			check(session.call(accessorSource, 'runEscaped', []) == 0.625 && accessorSprite.alpha == 0.625
 				&& session.read(accessorSource, 'alphaCalls') == 1, 'Escaped source callback retains lexical accessor storage');
 			accessorSprite.cameras = [renderCamera];accessorSprite.draw();accessorSprite.destroy();accessorSprite = null;
+
+			plain.evaluate('import demo.NativeProperties; propertiesProbe=new NativeProperties();', 'native-property-probe');
+			var propertySource = plain.variables.get('propertiesProbe');
+			propertySprite = cast session.loader.scope.unwrapNativeArgument(propertySource);
+			session.write(propertySource, 'events', '');
+			propertySprite.visible = false;
+			check(session.call(propertySource, 'runEscaped', []) == true && propertySprite.visible
+				&& session.read(propertySource, 'events') == 'v;', 'Native visibility setter and escaped lexical storage');
+			plain.evaluate('Reflect.setProperty(propertiesProbe,"visible",false);', 'native-reflected-property');
+			check(!propertySprite.visible && session.read(propertySource, 'events') == 'v;v;', 'Iris reflected visibility uses authored setter');
+			propertySprite.kill();propertySprite.revive();
+			check(propertySprite.exists && propertySprite.alive, 'Native kill/revive retains authored boolean setters');
+			propertySprite.x = 10;propertySprite.y = 20;propertySprite.width = 30;propertySprite.height = 40;
+			check(propertySprite.x == 10.25 && propertySprite.y == 20 && propertySprite.width == 30 && propertySprite.height == 40,
+				'Native geometry setter/getter results and native super');
+			propertySprite.camera = renderCamera;
+			plain.evaluate('propertyCameraProbe=propertiesProbe.camera;', 'native-camera-getter');
+			check(plain.variables.get('propertyCameraProbe') == renderCamera, 'Iris camera getter preserves native identity');
+			var propertyCameras = [state.camHUD];propertySprite.cameras = propertyCameras;
+			check(propertySprite.cameras == propertyCameras && propertySprite.camera == state.camHUD,
+				'Native computed camera properties retain shared array storage');
+			propertySprite.destroy();propertySprite = null;
 
 			plain.evaluate('import demo.NativePanel; sourcePanelProbe=new NativePanel(); panelAddProbe=nativeSpriteGroup.add(sourcePanelProbe);', 'native-text-panel-probe');
 			var sourcePanel = plain.variables.get('sourcePanelProbe');
@@ -253,7 +277,7 @@ class RuntimeSmokePsychIrisClasses {
 			rejected = false;try retainedGroupIterator.hasNext() catch (_:Dynamic) rejected = true;
 			check(rejected, 'Released owner rejects retained native group iterators');
 			@:privateAccess RuntimeSmokeHarness.emit('psych_iris_classes_native_verified', {
-				nativeReturnValues:true,nativeFractionalClip:true,nativeAccessorBacking:true,nativeAccessorClosure:true,nativeGroupInitialization:true,nativeGraphicLoaded:true,derivedGraphicLoaded:true,selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
+				nativeFlagProperties:true,nativeCameraProperties:true,nativeGeometryProperties:true,nativePropertyReflection:true,nativeReturnValues:true,nativeFractionalClip:true,nativeAccessorBacking:true,nativeAccessorClosure:true,nativeGroupInitialization:true,nativeGraphicLoaded:true,derivedGraphicLoaded:true,selectedStageIdentity:true,selectedStageStatics:true,selectedStageOrderedRelease:true,nativeConstructionHooks:true,derivedConstructionHooks:true,textConstructionFrameHook:true,constructionRelease:true,inheritedSourceFieldWrites:true,nativeSpriteRenderHooks:true,nativeSpriteHitboxHook:true,coreNativeBases:true,recursiveSourceGroups:true,coreKillRevive:true,killedNativeCleanup:true,reentrantNativeRelease:true,groupClassFilters:true,groupPredicates:true,groupIterators:true,groupSort:true,memberArrayHelpers:true,memberArrayReplacement:true,memberArrayIterators:true,memberArrayWrites:true,memberArrayLoops:true,spriteGroupReplacement:true,spriteGroupRecycle:true,sourceTextLifecycle:true,sourceGroupLifecycle:true,variadicSuper:true,sourceSpriteLifecycle:true,sourceSpriteTransforms:true,crossOwnerRecycle:true,nativeGroups:true,nativeTweens:true,capturedMethods:true,reflectedMethods:true,indexedIdentity:true,plainPreset:true,embeddedPreset:true,sharedIdentity:true,sharedStatics:true,sourceStage:true,scriptClose:true,orderedDestroy:true,releasedOwner:true});
 		} catch (error:Dynamic) {cleanup();throw error;}
 		cleanup();
 	}

@@ -712,7 +712,7 @@ class ScriptClassScope {
 		ensureActive();
 		#if flixel
 		var receiver = unwrapNativeArgument(value);
-		if (Std.isOfType(receiver, SourceNativeClassAdapter)) {
+		if (SourceNativeClassLifecycle.hasBackingStorage(field) && Std.isOfType(receiver, SourceNativeClassAdapter)) {
 			var adapter:SourceNativeClassAdapter = cast receiver;
 			if (adapter.supportsNativeSuper('set_' + field) || adapter.supportsNativeSuper('get_' + field)) return receiver;
 		}
