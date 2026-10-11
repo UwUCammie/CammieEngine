@@ -1,5 +1,7 @@
 package;
 
+import ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex;
+
 import ImportRefreshAvailabilitySnapshot.ImportRefreshAvailabilitySnapshot;
 import ImportRefreshAvailabilitySnapshot.ImportRefreshPendingSong;
 
@@ -93,6 +95,8 @@ class FreeplaySongAvailability {
 		var scope = normalizePath(scopePath);
 		if (scope == '' || snapshot == null || snapshot.pendingTouchedPaths == null)
 			return false;
+		if (snapshot.pendingPathIndex != null)
+			return snapshot.pendingPathIndex.touches(scope);
 		for (path in snapshot.pendingTouchedPaths) {
 			var touched = normalizePath(path);
 			if (touched == scope || StringTools.startsWith(touched, scope + '/'))
@@ -130,19 +134,8 @@ class FreeplaySongAvailability {
 		return normalizePath(left) == normalizePath(right);
 	}
 
-	public static function normalizePath(value:String):String {
-		if (value == null)
-			return '';
-		var path = StringTools.replace(StringTools.trim(value), '\\', '/');
-		while (path.indexOf('//') >= 0)
-			path = StringTools.replace(path, '//', '/');
-		while (path.length > 0 && path.charAt(path.length - 1) == '/')
-			path = path.substr(0, path.length - 1);
-		#if windows
-		path = path.toLowerCase();
-		#end
-		return path;
-	}
+	public static function normalizePath(value:String):String
+		return ImportRefreshPathIndex.normalizePath(value);
 
 	static function containsRoot(roots:Array<String>, normalizedOwner:String):Bool {
 		if (roots == null)

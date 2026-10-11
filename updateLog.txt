@@ -1,6 +1,10 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.26 alpha - CammieEngine
+- NV JSON noteskins are selected by source API identity independently of HUD artwork layout, restoring authored notes, special-note textures and sustain-effect offsets. Correct splash animation definitions allow effects to retire normally instead of accumulating and slowing gameplay.
+- Pending import path-overlap checks share a revision-owned index while preserving package readiness locks.
+
 v0.0.25 alpha - CammieEngine
 - Restore live input getters in native pause, game-over, results and song/mod selection substates while preserving source-engine control facades.
 - Windows imported-menu script discovery reuses directory enumeration metadata while preserving live junction handling, Unicode paths, traversal limits and portable fallback behavior.

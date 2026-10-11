@@ -131,6 +131,29 @@ class Main {
    ownerRoot:owner,sourceRoot:'retained/source',sourceFolder:'Different Folder'};
   check(!FreeplaySongAvailability.matchesInstalledSource(sameDisplayDifferentFolder,owner,'Source Chart'),
    'display name alone must not hide a distinct source folder');
+
+  var touched=[' assets\\data\\shared\\one.json ', 'assets/data/shared-extra/a.json',
+   'assets/data/shared/two.json', 'assets/data/shared/two.json', '', null];
+  var index=new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(touched);
+  snapshot.pendingTouchedPaths=touched.copy();snapshot.pendingPathIndex=null;
+  var queries=['assets/data/shared','assets/data/share','assets/data/shared/one.json',
+   'assets/data/shared/one.json/child','assets/data/shared-extra','assets/data','',null];
+  for (i in 0...200) {
+   touched.push('assets/data/song'+i+'/chart.json');
+   queries.push('assets/data/song'+i);queries.push('assets/data/song'+i+'-sibling');
+  }
+  check(!index.touches('assets/data/song0'),'index detaches constructor input');
+  snapshot.pendingTouchedPaths=touched.copy();index=new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(touched);
+  for(scope in queries) {
+   snapshot.pendingPathIndex=null;var linear=FreeplaySongAvailability.touchesPath(snapshot,scope);
+   snapshot.pendingPathIndex=index;
+   check(FreeplaySongAvailability.touchesPath(snapshot,scope)==linear,'indexed overlap matches linear: '+scope);
+  }
+  check(index.touches('assets/data/shared'),'sibling sort order cannot hide descendants');
+  var newer=new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(['assets/data/replacement/a.json']);
+  check(index.touches('assets/data/shared')&&!newer.touches('assets/data/shared')&&newer.touches('assets/data/replacement'),
+   'a later revision does not mutate an old index');
+
   Sys.println('freeplay-song-availability-ok');
  }
 }

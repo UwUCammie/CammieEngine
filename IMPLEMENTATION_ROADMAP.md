@@ -6,7 +6,7 @@ Reference date: 4 October 2026. This document is the implementation brief and ac
 
 Make CammieEngine run imported Psych Engine and Nightmare Vision content accurately, including the scripts and menus supplied by a mod. Then make the imported library practical to manage and browse. Finally optimize performance without reducing visual quality, gameplay behavior, or usability.
 
-Immediate user priority (10 October 2026): before resuming the Phase 2 API backlog, measure Try Harder GPU frame time on this PC and reduce engine/compatibility rendering cost. Preserve all chart/mod files and at least 99% visual fidelity, allowing only imperceptible differences. Follow with measured improvements to importing and post-update refresh across more than 20 installed mods. Keep testing muted/off-screen. GPU measurements must be distinct from CPU update/draw timings; compare equivalent sections, resolution, settings and graphics. Retain every general goal below. The performance baseline predates the subsequent shared native property-hook checkpoint below. Further GPU profiling and real-library end-to-end refresh measurement remain open.
+Immediate user priority (10 October 2026): before resuming the Phase 2 API backlog, measure Try Harder GPU frame time on this PC and reduce engine/compatibility rendering cost. Preserve all chart/mod files and at least 99% visual fidelity, allowing only imperceptible differences. Follow with measured improvements to importing and post-update refresh across more than 20 installed mods. Keep testing muted/off-screen. GPU measurements must be distinct from CPU update/draw timings; compare equivalent sections, resolution, settings and graphics. Retain every general goal below. The performance baseline predates the subsequent shared native property-hook checkpoint below. Further GPU profiling and residual refresh stalls remain open. The 25-package refresh correctness gate passed in v0.0.25; its 580.497-second run is not a matched throughput comparison.
 
 Implementation order:
 
@@ -19,6 +19,15 @@ Implementation order:
 Small profiling and instrumentation changes may accompany earlier phases. Larger performance changes follow the compatibility and menu milestones so benchmarks compare equivalent behavior. This roadmap specifies future work; it does not authorize release publication or claim that the listed features already work.
 
 The primary agent should work through one milestone at a time, make a reviewable implementation, update its evidence, and then continue. Keep unfinished requirements visible across sessions. Scope additions and unresolved source behavior belong in the backlog rather than disappearing behind a passing example.
+
+## Current checkpoint (11 October 2026)
+
+- Published: v0.0.25 alpha, commit `4ce3e641`, with the verified shared native-menu input repair, faster Windows HXC discovery and stable refresh ordering. The user authorized publishing v0.0.26 with a Windows build on 11 October 2026; its release gate is being completed.
+- Accepted: 25 independent packages, 35 roots, 263 songs and 54,553 output hashes/receipts passed refresh correctness and readiness gates. Do not repeat the completed corpus merely because an older historical paragraph says it was pending.
+- Verified NV checkpoint: noteskin API selection now uses source identity independently of HUD artwork, restoring authored note/special-note textures, splash animation retirement and sustain-effect offsets. A matched 135-second Accelerant run improved the 115-125 second median from 63 FPS to 444.5 FPS, with bounded effect pools. Windows built; the final release suite passed 2,775 tests across 933 modules with 344 skips and zero failures. See [the regression report](tools/reports/v0.0.26-nv-noteskin-regression.md) for evidence and limits.
+- Keep the separate Try Harder opening regression open: matched unlimited runs within the first five seconds measured about 1151-1158 FPS for v0.0.22/v0.0.25 and 1155.5-1182 FPS for the candidate. The reported 1800-to-1200 drop was not reproduced. No chart/mod files changed; all native testing remained muted on a private desktop.
+- Deferred bounded importer performance task: measure readiness path-overlap queries against the real pending-output sets, then validate a revision-owned index. Preserve exact equality/descendant matching, platform case rules, unknown/pending/handoff locks and snapshot isolation. Separate exhaustive diagnostic overhead from ordinary menu frame time; the prior 1.575-second diagnostic gap is not yet attributable solely to production work.
+- Then resume remaining refresh/menu stalls and Try Harder GPU/CPU profiling, with matched controls and full fidelity. Laptop verification remains open. All Phase 0-7 concepts and exit gates below remain required, including full Psych/NV contracts, imported menu flows, safe mod management, categories/favorites, dense Freeplay, icons/stars and independent group/chart sorting.
 
 ## Roadmap at a glance
 
@@ -435,7 +444,7 @@ No disabling/reducing shaders, textures, effects, animation, note density, audio
 
 ## Implementation work packages
 
-Work without sub-agents. Keep shared Psych/NV changes in bounded packages with explicit interfaces. Run related focused tests as changes finish, then one integrated build and full suite per checkpoint; respect the native fixture and compiler budget. First resolve legacy Nightmare Vision Auto detection and bundled-tool media traversal, then continue the first incomplete Phase 2 contract from the latest checkpoint.
+Work without sub-agents. Keep shared Psych/NV changes in bounded packages with explicit interfaces. Run related focused tests as changes finish, then one integrated build and full suite per checkpoint; respect the native fixture and compiler budget. Use the current checkpoint below to choose unfinished work. Legacy Nightmare Vision Auto detection and bundled-tool traversal have recorded fixes; revisit them only for new evidence. The user-prioritized performance work currently precedes resuming the remaining Phase 2 contracts.
 
 Each work package should name its source contract, affected shared layer, deliverable, tests, native verification and remaining gaps. Build and test the integrated result before treating a package as complete. During later phases, repartition work around menu sessions, library data, freeplay presentation and profiling without duplicating core behavior.
 

@@ -45,7 +45,7 @@ class Main {
   methods += '\n' + paths[paths.index('public function modsNoteskin('):].split(';',1)[0] + ';'
   fixture=r'''
 class Paths {
- public var scriptExtensions=['hx','hxs','hscript'];public var files:Map<String,Bool>=[];public var hudProfile:Dynamic={name:'legacy-shared'};
+ public var scriptExtensions=['hx','hxs','hscript'];public var files:Map<String,Bool>=[];public var hudProfile:Dynamic={name:'legacy-shared'};public var legacyNoteSkinApi=true;
  public function new(){}
  public function modFolders(p:String):String {if(p.indexOf('..')>=0)throw 'invalid relative';return 'mod/'+p;}
  public function getOwnerCorePath(p:String):String return 'core/'+p;
@@ -64,7 +64,7 @@ class Main {
   p.files.set('core/noteskins/default.hx',true);check(p.legacyNoteskinScript(null)=='core/noteskins/default.hx','default core script');
   check(p.noteskin('custom.hx')=='core/noteskins/custom.hx','legacy explicit extension');check(p.modsNoteskin('custom.hx')=='mod/noteskins/custom.hx','mod spelling');
   var rejected=false;try p.legacyNoteskinScript('../foreign')catch(e:Dynamic)rejected=true;check(rejected,'delegates path validation');
-  p.hudProfile.name='modern';p.files.set('mod/data/noteskins/custom.json',true);check(p.noteskin('custom')=='mod/data/noteskins/custom.json','modern json unchanged');
+  p.legacyNoteSkinApi=false;p.files.set('mod/data/noteskins/custom.json',true);check(p.noteskin('custom')=='mod/data/noteskins/custom.json','modern JSON skin with historical HUD artwork');
  }
 }
 '''.replace('__METHODS__',methods)

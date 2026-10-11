@@ -2671,6 +2671,10 @@ class RuntimeSmokeHarness {
 		// Periodic live samples distinguish working dances from a valid atlas
 		// that never starts an animation. This runs only with smoke frame stats.
 		var visualState = PlayState.instance;
+		#if sys
+		if (Sys.getEnv('CAMMIE_NV_EFFECT_PROFILE') == '1' && playStateReady && visualState != null)
+			emit('nv_effect_profile', RuntimeSmokeNVEffects.snapshot(visualState));
+		#end
 		if (config().pacingOnly != true && playStateReady && visualState != null && FlxG.state == visualState) {
 			var scene = RuntimeSmokeVisuals.stage(visualState);
 			Reflect.setField(scene, 'songPosition', Conductor.songPosition);

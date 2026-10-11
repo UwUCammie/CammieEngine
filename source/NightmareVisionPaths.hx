@@ -29,6 +29,8 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	public final scriptInstances:Map<String, NightmareVisionScriptModule> = [];
 	public final CORE_DIRECTORY:String;
 	public final hudProfile:NightmareVisionHUDProfile;
+	/** Source API identity is independent of the package HUD artwork layout. */
+	public final legacyNoteSkinApi:Bool;
 	/** Source-visible directory name, translated to this import's owner by
 	 * `mods()` and `scopeAssetPath()` instead of exposing sibling packages. */
 	public var MODS_DIRECTORY(default, null):String = 'content';
@@ -87,7 +89,8 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		this.sourceDirectory = validDirectoryLabel(sourceDirectory) ? sourceDirectory : null;
 		if (!CORE_DIRECTORY.startsWith(this.root + '/'))
 			throw '[nightmare-vision-asset] Core dependency must belong to the selected owner';
-		if (NightmareVisionStageProfile.read(this.root) == NightmareVisionStageProfile.LEGACY) currentLevel = 'shared';
+		legacyNoteSkinApi = NightmareVisionStageProfile.read(this.root) == NightmareVisionStageProfile.LEGACY;
+		if (legacyNoteSkinApi) currentLevel = 'shared';
 		hudProfile = NightmareVisionHUDProfile.detect(this);
 		usesSharedRatingPrefix = hudProfile.usesSharedRatingPrefix;
 		COMBO_PREFIX = hudProfile.comboPrefix;
@@ -347,7 +350,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	}
 
 	public function noteskin(key:String, ?parentFolder:String, checkMods:Bool = true):String {
-		if (hudProfile != null && hudProfile.name == 'legacy-shared')
+		if (legacyNoteSkinApi)
 			return getPath('noteskins/' + key, parentFolder, false);
 		var path = getPath('data/noteskins/' + key + '.json', parentFolder, checkMods);
 		return exists(path) ? path : getPath('noteskins/' + key + '.json', parentFolder, checkMods);

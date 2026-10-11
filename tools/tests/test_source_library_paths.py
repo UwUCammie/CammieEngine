@@ -116,5 +116,6 @@ class SourceLibraryPathsTest(unittest.TestCase):
    work=FixturePath(directory);(work/'Main.hx').write_text(fixture)
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'--main','Main','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=45)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-  self.assertIn("NightmareVisionStageProfile.LEGACY) currentLevel = 'shared'",nv)
+  self.assertIn("legacyNoteSkinApi = NightmareVisionStageProfile.read(this.root) == NightmareVisionStageProfile.LEGACY",nv)
+  self.assertIn("if (legacyNoteSkinApi) currentLevel = 'shared'",nv)
 if __name__=='__main__':unittest.main()

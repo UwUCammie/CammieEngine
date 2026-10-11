@@ -21,5 +21,61 @@ typedef ImportRefreshAvailabilitySnapshot = {
 	var handoffPendingOwnerRoots:Array<String>;
 	var committedOwnerRoots:Array<String>;
 	var pendingTouchedPaths:Array<String>;
+	/** Read-only overlap index shared by copies of this immutable revision. */
+	@:optional var pendingPathIndex:ImportRefreshPathIndex;
 	var pendingSongs:Array<ImportRefreshPendingSong>;
+}
+
+/** A detached, normalized path index. No filesystem queries or process-wide cache.
+ * A fresh availability revision owns a fresh index; older views stay unchanged. */
+class ImportRefreshPathIndex {
+	final paths:Array<String>;
+
+	public function new(touched:Array<String>) {
+		var unique:Map<String, Bool> = new Map();
+		if (touched != null) for (path in touched) {
+			var normalized = normalizePath(path);
+			if (normalized != '') unique.set(normalized, true);
+		}
+		paths = [for (path in unique.keys()) path];
+		paths.sort(Reflect.compare);
+	}
+
+	public function touches(scopePath:String):Bool {
+		var scope = normalizePath(scopePath);
+		if (scope == '') return false;
+		var exact = lowerBound(scope);
+		if (exact < paths.length && paths[exact] == scope) return true;
+		// Searching scope alone is insufficient: a sibling such as song-extra
+		// can sort before song/chart.json and must not mask the real descendant.
+		var prefix = scope + '/';
+		var child = lowerBound(prefix);
+		return child < paths.length && StringTools.startsWith(paths[child], prefix);
+	}
+
+	function lowerBound(value:String):Int {
+		var low = 0;
+		var high = paths.length;
+		while (low < high) {
+			var middle = low + ((high - low) >> 1);
+			if (Reflect.compare(paths[middle], value) < 0) low = middle + 1;
+			else high = middle;
+		}
+		return low;
+	}
+
+	public static function normalizePath(value:String):String {
+		if (value == null)
+			return '';
+		var path = StringTools.replace(StringTools.trim(value), '\\', '/');
+		while (path.indexOf('//') >= 0)
+			path = StringTools.replace(path, '//', '/');
+		while (path.length > 0 && path.charAt(path.length - 1) == '/')
+			path = path.substr(0, path.length - 1);
+		#if windows
+		path = path.toLowerCase();
+		#end
+		return path;
+	}
+
 }

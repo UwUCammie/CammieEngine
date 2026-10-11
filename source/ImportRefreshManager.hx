@@ -1,5 +1,7 @@
 package;
 
+import ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex;
+
 #if sys
 import haxe.Json;
 import haxe.crypto.Sha256;
@@ -164,6 +166,7 @@ class ImportRefreshManager {
 				handoffPendingOwnerRoots:handoffRoots,
 				committedOwnerRoots:committedRoots,
 				pendingTouchedPaths:touchedPaths,
+				pendingPathIndex:new ImportRefreshPathIndex(touchedPaths),
 				pendingSongs:pendingSongs
 			};
 		}
@@ -175,6 +178,7 @@ class ImportRefreshManager {
 			handoffPendingOwnerRoots:cached.handoffPendingOwnerRoots.copy(),
 			committedOwnerRoots:cached.committedOwnerRoots.copy(),
 			pendingTouchedPaths:cached.pendingTouchedPaths.copy(),
+			pendingPathIndex:cached.pendingPathIndex,
 			pendingSongs:[for (song in cached.pendingSongs) clonePendingSong(song)]
 		};
 		mutex.release();
