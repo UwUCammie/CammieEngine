@@ -1,6 +1,8 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.25 development - CammieEngine
+
 v0.0.24 alpha - CammieEngine
 - Auto import recognizes supported game roots packaged directly inside bin or dist while continuing to prune unrelated build and SDK trees.
 - Import completion rebuilds difficulty support in small menu-frame batches, keeping each package locked until every song is ready and resuming safely after gameplay or a failed handoff.
