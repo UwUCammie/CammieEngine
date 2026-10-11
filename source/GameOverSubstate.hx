@@ -757,10 +757,10 @@ class GameOverSubstate extends MusicBeatSubstate {
 		if (codenameGameOverCancelled)
 			return;
 
-		if (controls.ACCEPT)
+		if (nativeControls.ACCEPT)
 			endBullshit();
 
-		if (controls.BACK) {
+		if (nativeControls.BACK) {
 			isEnding = true;
 			cancelDeathQuote();
 			hxcClearDeathOverlays();

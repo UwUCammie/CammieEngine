@@ -24,10 +24,15 @@ class MusicBeatSubstate extends FlxSubState
 	public var hxcCurrentBeat(get, never):Int;
 	inline function get_hxcCurrentStep():Int return curStep;
 	inline function get_hxcCurrentBeat():Int return curBeat;
-	private var controls(get, never):Dynamic;
-
-	function get_controls():Dynamic
+	// Native menus need typed access so Haxe invokes action getters. The dynamic
+	// script-facing property may be overridden with a source-engine facade.
+	private var nativeControls(get, never):Controls;
+	inline function get_nativeControls():Controls
 		return PlayerSettings.player1.controls;
+
+	private var controls(get, never):Dynamic;
+	function get_controls():Dynamic
+		return nativeControls;
 
 	override function create()
 	{

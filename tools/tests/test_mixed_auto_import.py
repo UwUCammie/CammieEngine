@@ -510,6 +510,7 @@ class Main {{
             (temp_path / "HxcScriptDiscovery.hx").write_text(
                 (ROOT / "source/HxcScriptDiscovery.hx").read_text()
             , newline='\n')
+            (temp_path / "NativeDirectoryListing.hx").write_text((ROOT / "source/NativeDirectoryListing.hx").read_text(), newline='\n')
             # VSliceImporter bounds Codename character definitions through this
             # shared helper. The fixture exercises its filesystem boundary but
             # otherwise keeps the discovery implementation out of this extract.

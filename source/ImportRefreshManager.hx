@@ -2387,6 +2387,11 @@ class ImportRefreshManager {
 						var validated = ImportRegistryRefresh.prepare(seed,generated,merged.text);
 						if (validated.conflicts.length > 0) throw "Local registry edits preserved: " + path + " " + validated.conflicts.join(", ");
 					}
+					// Re-conversion removes and appends this owner's rows in private
+					// staging. Retain persistent Freeplay positions after all ownership
+					// and concurrent-edit validation, without changing merged values.
+					if (previousRegistry != null && ImportIO.isFreeplayRegistry(path))
+						merged.text = ImportRegistryRefresh.retainEntryOrder(merged.text,current);
 					File.saveContent(staged,merged.text);
 					nextRegistries.push({path:path,before:liveBase,generated:merged.text});
 					if (FileSystem.exists(live)) baselines.push({path:path,owner:owner,sha256:Sha256.make(haxe.io.Bytes.ofString(current)).toHex()});

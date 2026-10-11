@@ -940,6 +940,7 @@ class Main {{
         "ImportDirectoryListing.hx": (ROOT / "source/ImportDirectoryListing.hx").read_text(),
         "HxcScriptIdentity.hx": (ROOT / "source/HxcScriptIdentity.hx").read_text(),
         "HxcScriptDiscovery.hx": (ROOT / "source/HxcScriptDiscovery.hx").read_text(),
+        "NativeDirectoryListing.hx": (ROOT / "source/NativeDirectoryListing.hx").read_text(),
         "CoolUtil.hx": '''class CoolUtil {
   public static function parseJson(raw:String):Dynamic return haxe.Json.parse(raw);
   public static function stringifyJson(value:Dynamic):String return haxe.Json.stringify(value);

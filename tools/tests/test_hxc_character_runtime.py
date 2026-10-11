@@ -397,6 +397,7 @@ class Main {{
         with tempfile.TemporaryDirectory() as folder:
             temp = Path(folder)
             (temp / "HxcScriptDiscovery.hx").write_text(self.discovery, newline='\n')
+            (temp / "NativeDirectoryListing.hx").write_text((ROOT / "source/NativeDirectoryListing.hx").read_text(), newline='\n')
             (temp / "HxcScriptIdentity.hx").write_text(
                 (ROOT / "source/HxcScriptIdentity.hx").read_text(), newline='\n')
             (temp / "Main.hx").write_text(main, newline='\n')

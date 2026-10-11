@@ -333,6 +333,7 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "VSliceAstcAdapter.hx",
                 "HxcScriptIdentity.hx",
                 "HxcScriptDiscovery.hx",
+                "NativeDirectoryListing.hx",
                 "CodenameEventMetadata.hx",
                 "CodenameNoteMetadata.hx",
                 "CodenameEventPack.hx",

@@ -2753,6 +2753,22 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         return matching[0]
 
+    def test_refresh_keeps_existing_shared_song_order_across_independent_packages(self):
+        records = []
+        for name in ('first', 'second', 'third'):
+            records.append(self.initial_import(self.make_source(name)))
+        path = self.install / REGISTRY
+        before = json.loads(path.read_text())
+        expected = ['first', 'second', 'third']
+        self.assertEqual([s['name'] for s in before['groups'][0]['songs']], expected)
+        # Refresh out of install order; changing metadata must not move a row.
+        for record in (records[0], records[2], records[1], records[0]):
+            refreshed = self.run_fixture('refresh', record['id'])
+            self.assertEqual(refreshed['status'], 'ok', refreshed)
+            registry = json.loads(path.read_text())
+            self.assertEqual([s['name'] for s in registry['groups'][0]['songs']], expected)
+            self.assertEqual(registry['owners'][record['label']], 'v2-' + record['label'])
+
     def test_refresh_after_donor_removal_uses_retained_source_and_publishes_new_song(self):
         donor = self.make_source("donor-a", initial_songs=["alpha"], next_songs=["alpha", "beta"])
         record = self.initial_import(donor)

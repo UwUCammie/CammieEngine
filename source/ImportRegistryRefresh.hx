@@ -44,6 +44,42 @@ class ImportRegistryRefresh {
 		return reconcile(beforeText, generated, live, false, false);
 	}
 
+	/** Keep persistent positions in membership registries after converter re-adds.
+	 * Values, removals, new-entry slots and ambiguous arrays remain untouched.
+	 * Call only after the ordinary three-way ownership/conflict checks. */
+	public static function retainEntryOrder(generated:String, live:String):String {
+		var desired:Dynamic = TJSON.parse(generated, "generated registry order");
+		var current:Dynamic = TJSON.parse(live, "live registry order");
+		var ordered = orderEntries(desired, current);
+		return deepEqual(ordered, desired) ? generated : UnicodeSafeJson.stringify(ordered);
+	}
+
+	static function orderEntries(desired:Dynamic, live:Dynamic):Dynamic {
+		if (isObject(desired) && isObject(live)) {
+			var output:Dynamic = {};
+			for (key in Reflect.fields(desired))
+				Reflect.setField(output, key, orderEntries(Reflect.field(desired,key),Reflect.field(live,key)));
+			return output;
+		}
+		if (isArray(desired) && isArray(live)) {
+			var target:Array<Dynamic> = cast desired;
+			var current:Array<Dynamic> = cast live;
+			var identity = objectArrayIdentity([],target,current);
+			if (identity != null) {
+				var retained:Array<Dynamic> = [];
+				for (entry in current) {
+					var index = indexOfIdentity(target,identity,identityValue(entry,identity));
+					if (index >= 0) retained.push(orderEntries(target[index],entry));
+				}
+				var next = 0;
+				return [for (entry in target)
+					indexOfIdentity(current,identity,identityValue(entry,identity)) < 0
+						? cloneDynamic(entry) : retained[next++]];
+			}
+		}
+		return cloneDynamic(desired);
+	}
+
 	static function reconcile(baseText:String, desiredText:String, liveText:String,
 		preparing:Bool, forceOwned:Bool):ImportRegistryRefreshResult {
 		if (baseText == null || desiredText == null || liveText == null)

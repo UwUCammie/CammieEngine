@@ -1827,6 +1827,7 @@ class RuntimeSmokeHarness {
 		FlxG.signals.postUpdate.add(onFramePostUpdate);
 		FlxG.signals.preDraw.add(onFramePreDraw);
 		FlxG.signals.postDraw.add(onFramePostDraw);
+		RuntimeSmokePauseInput.install();
 	}
 
 	static function onFramePreUpdate():Void {
@@ -2636,6 +2637,8 @@ class RuntimeSmokeHarness {
 		if (stage == null)
 			return;
 		var keyCode:Int = switch (key) {
+			case 'up': openfl.ui.Keyboard.UP;
+			case 'down': openfl.ui.Keyboard.DOWN;
 			case 'left': openfl.ui.Keyboard.LEFT;
 			case 'right': openfl.ui.Keyboard.RIGHT;
 			case 'escape': openfl.ui.Keyboard.ESCAPE;

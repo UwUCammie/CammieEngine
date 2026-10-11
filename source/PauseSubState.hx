@@ -391,9 +391,9 @@ class PauseSubState extends MusicBeatSubstate {
 		if (codenamePauseCancelled)
 			return;
 
-		var upP = controls.UP_MENU;
-		var downP = controls.DOWN_MENU;
-		var accepted = controls.ACCEPT;
+		var upP = nativeControls.UP_MENU;
+		var downP = nativeControls.DOWN_MENU;
+		var accepted = nativeControls.ACCEPT;
 
 		if (upP)
 			changeSelection(-1);

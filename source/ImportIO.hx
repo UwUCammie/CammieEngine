@@ -835,11 +835,15 @@ class ImportIO {
 		return routed.relative;
 	}
 
-	public static function isRegistry(path:String):Bool {
+	public static function isFreeplayRegistry(path:String):Bool {
 		return path == "assets/data/freeplaySongJson.jsonc"
 			|| path == "assets/data/freeplaySongJson.json"
 			|| path == "assets/images/freeplaySongJson.jsonc"
-			|| path == "assets/images/freeplaySongJson.json"
+			|| path == "assets/images/freeplaySongJson.json";
+	}
+
+	public static function isRegistry(path:String):Bool {
+		return isFreeplayRegistry(path)
 			|| path == "assets/data/storySonglist.json"
 			|| path == "assets/data/codenameMods.json"
 			|| path == "assets/imported_mods/compatOverlays.json"

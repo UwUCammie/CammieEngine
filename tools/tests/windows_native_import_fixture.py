@@ -43,6 +43,23 @@ class NativeImportFilesystemFixture {
   var args=Sys.args();
   try {
    switch(args[0]) {
+    case "directory-listing":
+     var root=args[1];
+     var expected=[for(name in FileSystem.readDirectory(root)) {name:name,isDirectory:FileSystem.isDirectory(haxe.io.Path.join([root,name]))}];
+     var actual=[for(entry in NativeDirectoryListing.read(root)) {name:entry.name,isDirectory:entry.isDirectory==null?FileSystem.isDirectory(haxe.io.Path.join([root,entry.name])):entry.isDirectory}];
+     expected.sort(function(a,b) return Reflect.compare(a.name,b.name));
+     actual.sort(function(a,b) return Reflect.compare(a.name,b.name));
+     if(UnicodeSafeJson.stringifyStandard(expected)!=UnicodeSafeJson.stringifyStandard(actual)) throw "directory metadata differs";
+     Sys.println(UnicodeSafeJson.stringifyStandard({entries:actual}));
+    case "directory-errors":
+     var portable=false;var native=false;
+     try FileSystem.readDirectory(args[1]) catch(_:Dynamic) portable=true;
+     try NativeDirectoryListing.read(args[1]) catch(_:Dynamic) native=true;
+     Sys.println(Json.stringify({portable:portable,native:native}));
+    case "script-discovery":
+     var plan=HxcScriptDiscovery.discoverRoot(args[1],"",Std.parseInt(args[2]));
+     var families:Dynamic={};for(key in plan.families.keys())Reflect.setField(families,key,plan.families.get(key));
+     Sys.println(UnicodeSafeJson.stringifyStandard({all:plan.all,families:families}));
     case "manager-fixture":
      ImportRefreshManagerFixture.main();
     case "io-scheduler":
@@ -54,6 +71,7 @@ class NativeImportFilesystemFixture {
      var live=File.getContent(args[4]);
      var result=if(mode=="prepare") ImportRegistryRefresh.prepare(before,generated,live)
       else if(mode=="seed") ImportRegistryRefresh.regenerationSeed(before,generated,live)
+      else if(mode=="order") {text:ImportRegistryRefresh.retainEntryOrder(generated,live),conflicts:[]}
       else ImportRegistryRefresh.merge(before,generated,live);
      File.saveContent(args[5],result.text);
      Sys.println(Json.stringify({conflicts:result.conflicts}));

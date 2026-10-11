@@ -120,20 +120,20 @@ class HxcScriptDiscovery {
 	static function collectRoot(root:String, output:Array<String>, budget:Int, depth:Int):Int {
 		if (root == null || root == '' || budget <= 0 || depth > 12 || !FileSystem.isDirectory(root))
 			return budget;
-		var entries:Array<String>;
+		var entries:Array<NativeDirectoryListing.DirectoryEntry>;
 		try {
-			entries = FileSystem.readDirectory(root);
+			entries = NativeDirectoryListing.read(root);
 		} catch (_:Dynamic) {
 			return budget;
 		}
-		entries.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
+		entries.sort(function(a, b) return Reflect.compare(a.name.toLowerCase(), b.name.toLowerCase()));
 		for (entry in entries) {
 			if (budget <= 0)
 				break;
-			var child = Path.join([root, entry]);
-			if (FileSystem.isDirectory(child))
+			var child = Path.join([root, entry.name]);
+			if (entry.isDirectory == null ? FileSystem.isDirectory(child) : entry.isDirectory)
 				budget = collectRoot(child, output, budget, depth + 1);
-			else if (entry.toLowerCase().endsWith('.hxc')) {
+			else if (entry.name.toLowerCase().endsWith('.hxc')) {
 				output.push(FileSystem.fullPath(child));
 				budget--;
 			}

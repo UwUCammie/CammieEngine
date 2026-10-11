@@ -197,7 +197,7 @@ class Main extends Base {
  var sourceStartStopped:Bool=false;
  var codenameGameOverRuntime:Dynamic;
  var codenameGameOverCancelled=false;var isEnding=false;
- var controls:Dynamic={ACCEPT:false,BACK:false};
+ var nativeControls:Dynamic={ACCEPT:false,BACK:false};
  function new(custom:Bool,cancelled:Bool) {
   super();RuntimeSmokeHarness.events=events;
   codenameGameOverCancelled=cancelled;

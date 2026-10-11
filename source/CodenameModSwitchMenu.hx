@@ -49,20 +49,20 @@ class CodenameModSwitchMenu extends MusicBeatSubstate {
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
-		if (controls.BACK || FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE) {
+		if (nativeControls.BACK || FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE) {
 			close();
 			return;
 		}
 		if (entries.length == 0) return;
-		if (controls.UP_MENU || FlxG.keys.justPressed.UP) {
+		if (nativeControls.UP_MENU || FlxG.keys.justPressed.UP) {
 			selected = selected <= 0 ? entries.length - 1 : selected - 1;
 			refreshRows();
 		}
-		if (controls.DOWN_MENU || FlxG.keys.justPressed.DOWN) {
+		if (nativeControls.DOWN_MENU || FlxG.keys.justPressed.DOWN) {
 			selected = (selected + 1) % entries.length;
 			refreshRows();
 		}
-		if (controls.ACCEPT || FlxG.keys.justPressed.ENTER) switchOwner();
+		if (nativeControls.ACCEPT || FlxG.keys.justPressed.ENTER) switchOwner();
 	}
 
 	function refreshRows():Void {

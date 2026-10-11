@@ -146,7 +146,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 		// unattended full-song run terminates cleanly instead of idling here.
 		RuntimeSmokeHarness.tick(elapsed);
 
-		if (controls.ACCEPT) {
+		if (nativeControls.ACCEPT) {
 			if (selectingRetry && !PlayState.isStoryMode) {
 				endBullshit();
 			} else {
@@ -159,7 +159,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 			}
 		}
 
-		if ((controls.UP_MENU || controls.DOWN_MENU)) {
+		if ((nativeControls.UP_MENU || nativeControls.DOWN_MENU)) {
 			selectingRetry = !selectingRetry;
 			if (selectingRetry) {
 				retryTxt.alpha = 1;

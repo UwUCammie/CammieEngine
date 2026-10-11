@@ -24,6 +24,8 @@ class ImportRegistryRefreshFixture {
       ImportRegistryRefresh.prepare(spec.before, spec.generated, spec.live)
     else if (spec.mode == "seed")
       ImportRegistryRefresh.regenerationSeed(spec.before, spec.generated, spec.live)
+    else if (spec.mode == "order")
+      {text:ImportRegistryRefresh.retainEntryOrder(spec.generated,spec.live),conflicts:[]}
     else
       ImportRegistryRefresh.merge(spec.before, spec.generated, spec.live);
     Sys.println(Json.stringify({text: result.text, conflicts: result.conflicts}));
@@ -239,6 +241,24 @@ class ImportRegistryRefreshTest(unittest.TestCase):
         self.assertEqual(merged, {"setting": "user edit", "order": ["a", "b", "c", "local"]})
         self.assertTrue(any("setting" in item for item in result["conflicts"]))
         self.assertTrue(any("order" in item for item in result["conflicts"]))
+
+    def test_entry_order_retains_positions_values_new_slots_and_removals(self):
+        live = '[{"name":"group","songs":[{"name":"a","v":1},{"name":"b","v":1},{"name":"gone"}]}]'
+        generated = '[{"name":"group","songs":[{"name":"b","v":2},{"name":"new","v":3},{"name":"a","v":4}]}]'
+        result = self.run_merge('order', '{}', generated, live)
+        self.assertEqual(self.parsed(result['text']), [
+            {'name': 'group', 'songs': [{'name': 'a', 'v': 4}, {'name': 'new', 'v': 3}, {'name': 'b', 'v': 2}]}])
+        repeated = self.run_merge('order', '{}', result['text'], live)
+        self.assertEqual(repeated['text'], result['text'])
+
+    def test_entry_order_does_not_guess_ambiguous_or_primitive_array_identity(self):
+        for live, generated in (
+            ('[{"name":"a"},{"name":"a"}]', '[{"name":"a","v":2},{"name":"a","v":1}]'),
+            ('["a","b"]', '["b","a"]'),
+            ('[{"other":"a"},{"other":"b"}]', '[{"other":"b"},{"other":"a"}]'),
+        ):
+            result = self.run_merge('order', '{}', generated, live)
+            self.assertEqual(result['text'], generated)
 
     def test_unchanged_live_jsonc_is_returned_byte_for_byte(self):
         text = '{\n  // keep comment\n  "values": ["a",],\n}\n'

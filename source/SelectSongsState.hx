@@ -124,9 +124,9 @@ class SelectSongsState extends MusicBeatSubstate
 			lerpScore = intendedScore;
 
 
-		var upP = controls.UP_MENU;
-		var downP = controls.DOWN_MENU;
-		var accepted = controls.ACCEPT;
+		var upP = nativeControls.UP_MENU;
+		var downP = nativeControls.DOWN_MENU;
+		var accepted = nativeControls.ACCEPT;
 
 		if (upP)
 		{
@@ -137,7 +137,7 @@ class SelectSongsState extends MusicBeatSubstate
 			changeSelection(1);
 		}
 
-		if (controls.BACK)
+		if (nativeControls.BACK)
 		{
 			close();
 		}
