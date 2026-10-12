@@ -2,7 +2,7 @@
 
 Reference date: 4 October 2026. This document is the implementation brief and acceptance checklist. A checked item requires evidence; an existing method name or successful build alone does not prove compatibility.
 
-Release checkpoint (12 October): [v0.0.27 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.27) is published with verified Windows assets. Development is v0.0.28. Continue the non-chart queue and preserve all existing acceptance gates; removal remains a read-only foundation. See [release validation](tools/reports/v0.0.27-release-validation.md).
+Release checkpoint (12 October): [v0.0.28 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.28) is published with verified Windows assets. Development is v0.0.29. Continue the non-chart queue and preserve all existing acceptance gates; removal remains a read-only foundation. See [release validation](tools/reports/v0.0.28-release-validation.md).
 
 Current Freeplay requirement (12 October): always pin favorite charts above non-favorites in host views. Apply group and chart sorting within each section. Keep unselected songs compact and expand only the selection; retain readable import locks, source details, search, categories, difficulty controls and completion stars. Give the browser more musical personality without introducing expensive effects or changing imported custom menus.
 
@@ -26,7 +26,7 @@ The primary agent should work through one milestone at a time, make a reviewable
 
 ## Current checkpoint (12 October 2026)
 
-- Published: [v0.0.27 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.27), tagged commit `eeff70bc`, with Freeplay/library, import continuity and menu-exit improvements. The Windows ZIP and checksum were verified before and after publication. See [release validation](tools/reports/v0.0.27-release-validation.md). Development is v0.0.28; future publication requires authorization.
+- Published: [v0.0.28 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.28), tagged commit `332cc55c`, with compact favorites-first host Freeplay and read-only retained/installed ownership checks. The Windows ZIP and checksum were verified before and after publication. See [release validation](tools/reports/v0.0.28-release-validation.md). Development is v0.0.29; future publication requires authorization.
 - Accepted: 25 independent packages, 35 roots, 263 songs and 54,553 output hashes/receipts passed refresh correctness and readiness gates. Do not repeat the completed corpus merely because an older historical paragraph says it was pending.
 - Verified NV checkpoint: noteskin API selection now uses source identity independently of HUD artwork, restoring authored note/special-note textures, splash animation retirement and sustain-effect offsets. A matched 135-second Accelerant run improved the 115-125 second median from 63 FPS to 444.5 FPS, with bounded effect pools. Windows built; the final release suite passed 2,775 tests across 933 modules with 344 skips and zero failures. See [the regression report](tools/reports/v0.0.26-nv-noteskin-regression.md) for evidence and limits.
 - Keep the separate Try Harder opening regression open: matched unlimited runs within the first five seconds measured about 1151-1158 FPS for v0.0.22/v0.0.25 and 1155.5-1182 FPS for the candidate. The reported 1800-to-1200 drop was not reproduced. No chart/mod files changed; all native testing remained muted on a private desktop.
