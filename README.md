@@ -28,6 +28,70 @@ to acquire the bundled helper.
 Maintainers build the Windows release locally and upload its ZIP and checksum
 to GitHub Releases. Native Windows smoke checks cover startup and Tutorial gameplay.
 
+## Freeplay browser
+
+Host Freeplay displays eight aligned rows at the usual 1280x720 logical viewport,
+with bounded title/source labels, visible import locks, a selected-song details panel,
+and separate completion stars. Named authored V-Slice difficulty ratings appear in
+the details panel after import/refresh; missing or ambiguous ratings display Unknown.
+Menu portraits load their supplied animation atlases. Browsing keeps the normal
+face; confirming a host song plays its selection animation, or its winning/losing
+face fallback, before launch. Back cancels confirmation; navigation or search
+cancels it and continues browsing. Launch checks import readiness again.
+Type to search, use arrows to browse/change difficulty,
+and hold Shift with Up/Down to move five matching songs. Tab or controller Select/Back
+opens Library actions. Imported custom-menu scopes retain their authored presentation.
+Imported mods display the same short package badge in Freeplay, Imported Mods and
+category membership controls. It distinguishes identical package names without
+renaming content. Search for four or more characters of a badge to narrow the view;
+category and favorite filters still apply.
+
+Host Library actions also offer **Grouping and sorting**. Group by mod or source
+engine, or use a flat list. Choose group and chart order independently: default
+authored chart order, alphabetical A-Z/Z-A, registry/engine order for groups, or favorites first
+for charts, including **Recently played**. **Recently imported** orders mod/engine
+groups by completed manual imports; automatic refreshes do not change that order.
+Older imports without recorded history remain unknown. Preferences persist, and
+sorting preserves the selected chart and difficulty. Play history begins when a song starts; previews
+and canceled selections do not count. Older installs start with unknown history,
+and unplayed songs sort after played songs. Search, categories and import locks
+still apply. Best-score and authored-rating ordering support both directions.
+Choose a **Comparison difficulty** in the sorting menu; it does not change the
+selected play difficulty. Missing records sort last, and ratings stay in separate
+scale blocks. The selected-song panel shows the value used for comparison. Scores
+are raw saved host points, not a normalized ranking of player skill.
+New or refreshed Psych/NV imports retain owner-local week order; NV Freeplay tabs
+take precedence when supplied. Default chart order applies that sequence within
+each mod's existing list positions, preserving default group order and the saved
+registry. Unlisted songs follow in stable registry order. This does not apply
+donor unlock rules or hide songs from the host library.
+When an import refresh rebuilds Freeplay, or finishes while you are in gameplay
+or another menu, returning to the same Freeplay view restores your search and
+selected song by retained identity, even if its row has moved. The selected
+difficulty returns only if still supported and present. Missing or ambiguous
+selections show a notice, and pending imports stay locked. This temporary return
+state is discarded when entering a different view and does not cross restarts.
+
+## Freeplay library actions
+
+In v0.0.27 development, press **Tab** or the controller **Select/Back** button in
+Freeplay to favorite the selected chart, filter the view, or manage categories.
+Categories can contain multiple mods, and a mod can belong to multiple categories.
+Create or rename categories with the keyboard or the on-screen character grid;
+add/remove mods from their membership list. Deleting a category preserves its mods,
+scores and favorites. Selected category filters combine by union, then intersect
+with favorites and song/mod search within the current view. Favorites show a `[FAVORITE]` label,
+separate from difficulty stars, and are saved independently of imported files
+and score slots. The host Freeplay category chooser includes **Favorites** and
+**Category: <name>** entries spanning the installed library. Imported custom menus
+keep their own scope. Freeplay remembers each chart's last manually selected
+difficulty by name and restores it only while it remains supported and present.
+Empty results cannot launch a hidden chart.
+Re-importing an unchanged authored package from a different source folder retains
+its chart identity and library metadata when its package identity and chart/audio
+fingerprint uniquely match an installed owner. Different or ambiguous packages
+remain separate. Uninstall/reinstall recovery is a separate roadmap milestone.
+
 ## Build from source
 
 Linux, with C++ build tools installed:

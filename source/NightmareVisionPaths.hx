@@ -522,7 +522,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	/** Source Paths.sanitize behavior, including its original character and
 	 * whitespace handling. */
 	public function sanitize(path:String):String
-		return ~/[^- a-zA-Z0-9..\/]+\//g.replace(path, '').replace(' ', '-').trim().toLowerCase();
+		return NightmareVisionSongNameCompat.format(path);
 
 	/** Source listAllFilesInDirectory precedence is core first, then global and
 	 * current mods. An imported source owner has no global list, so only the

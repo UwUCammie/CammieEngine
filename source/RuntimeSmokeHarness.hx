@@ -2350,6 +2350,7 @@ class RuntimeSmokeHarness {
 	static function freeplayFrame(now:Float):Void {
 		#if sys
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
+		if (RuntimeLibraryLifecycleProbe.enabled()) { RuntimeLibraryLifecycleProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }
 		if (RuntimeLegacyNoteColorProbe.enabled()) { RuntimeLegacyNoteColorProbe.tick(); return; }
@@ -2434,7 +2435,8 @@ class RuntimeSmokeHarness {
 			} else refreshReadbackCount = 2;
 		}
 		#end
-		if (inFreeplay && refreshProbeEnabled()) return;
+		if (RuntimeLibraryNavigationProbe.active) return;
+		if (inFreeplay && (refreshProbeEnabled() || RuntimeUserLibraryProbe.active || RuntimeLibraryCategoryProbe.active)) return;
 		// Return mode observes the real post-song menu without scrolling,
 		// accepting a row, leaving, or applying the standalone Freeplay deadline.
 		if (cfg.returnFreeplay)

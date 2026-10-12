@@ -201,6 +201,9 @@ class HscriptPathFixture {{
         fixture = """import haxe.io.Path;
 typedef ImportScanResult = Dynamic;
 class LegacyCharacterAtlasImporter { public static function clearCache():Void {} }
+class ImportSongOwnership {
+ public static function withIdentity<T>(names:Map<String,String>, sources:Array<Dynamic>, work:Void->T):T return work();
+}
 class FileSystem {
  public static var calls:Int=0;
  public static var fail:Bool=false;
@@ -1206,8 +1209,10 @@ class ScopedDependencyFixture {{
         freeplay = (ROOT / "source/FreeplayState.hx").read_text()
         manager = (ROOT / "source/ImportRefreshManager.hx").read_text()
         self.assertIn("FreeplayRegistry.getJson()", category)
-        self.assertIn("FreeplayRegistry.getJson()", main_menu)
-        self.assertIn("FreeplayState.currentSongList = epicCategoryJs[0].songs", category)
+        self.assertIn("LoadingState.loadAndSwitchState(new CategoryState())", main_menu)
+        self.assertIn("FreeplayState.currentSongList = songsButData", category)
+        self.assertIn("FreeplayRegistry.getJson()", freeplay)
+        self.assertIn("FreeplayLibraryView.songs(categories)", freeplay)
         self.assertIn("getAmbigAsset([id], CoolUtil.JSON_EXT", assets)
         self.assertIn("for (songSnippet in currentSongList)", freeplay)
         # Import completion refreshes difficulty support for the committed

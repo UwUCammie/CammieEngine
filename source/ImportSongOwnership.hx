@@ -8,6 +8,11 @@ import ImportFileSystem as FileSystem;
 import ImportFile as File;
 #end
 
+private typedef ImportSongIdentityScope = {
+	var names:Map<String, String>;
+	var fingerprints:Map<String, String>;
+}
+
 private typedef ImportSongOwnerIdentityCache = {
 	var index:Map<String, String>;
 	var ambiguous:Map<String, Bool>;
@@ -19,11 +24,13 @@ private typedef ImportSongOwnerIdentityCache = {
 class ImportSongOwnership {
 	static var baseSongKeys:Map<String, Bool> = null;
 	static var baseSongRegistryValid:Bool = false;
-	static var identityOverrides:Map<String, String> = null;
-	static var sourceFingerprintHints:Map<String, String> = null;
+	static var identityOverrides(get, set):Map<String, String>;
+	static var sourceFingerprintHints(get, set):Map<String, String>;
 	#if target.threaded
+	static var identityScopeTls = new sys.thread.Tls<ImportSongIdentityScope>();
 	static var ownerIdentityCacheTls:sys.thread.Tls<ImportSongOwnerIdentityCache> = new sys.thread.Tls();
 	#else
+	static var identityScopeValue:ImportSongIdentityScope;
 	static var ownerIdentityCacheValue:ImportSongOwnerIdentityCache;
 	#end
 	static inline var MAX_OWNER_IDENTITY_RECORDS:Int = 8192;
@@ -35,6 +42,61 @@ class ImportSongOwnership {
 	static inline var MAX_FINGERPRINT_PACKAGE_CHARTS:Int = 16384;
 	static inline var MAX_FINGERPRINT_PACKAGE_BYTES:Int = 268435456;
 	static inline var MAX_FINGERPRINT_PACKAGE_ENTRIES:Int = 32768;
+
+	static function identityScope():ImportSongIdentityScope {
+		#if target.threaded
+		if (identityScopeTls.value == null) identityScopeTls.value = {names:null, fingerprints:null};
+		return identityScopeTls.value;
+		#else
+		if (identityScopeValue == null) identityScopeValue = {names:null, fingerprints:null};
+		return identityScopeValue;
+		#end
+	}
+	static function get_identityOverrides():Map<String,String> return identityScope().names;
+	static function set_identityOverrides(value:Map<String,String>):Map<String,String> return identityScope().names = value;
+	static function get_sourceFingerprintHints():Map<String,String> return identityScope().fingerprints;
+	static function set_sourceFingerprintHints(value:Map<String,String>):Map<String,String> return identityScope().fingerprints = value;
+
+	/** Restore caller state after nested scans/conversions, including failures.
+	 * Only discovered source paths cross worker boundaries; hashes are rebuilt
+	 * against the current filesystem before choosing any retained owner. */
+	public static function withIdentity<T>(names:Map<String,String>, sources:Array<Dynamic>, work:Void->T):T {
+		var previousNames = identityOverrides;
+		var previousHints = sourceFingerprintHints;
+		try {
+			setIdentityOverrides(names);
+			setSourceFingerprintHints(sources);
+			var result = work();
+			identityOverrides = previousNames; sourceFingerprintHints = previousHints;
+			return result;
+		} catch (error:Dynamic) {
+			identityOverrides = previousNames; sourceFingerprintHints = previousHints;
+			throw error;
+		}
+	}
+
+	/** Detached minimal inputs, without parsed charts, diagnostics or cached hashes. */
+	public static function fingerprintSources(songs:Array<Dynamic>):Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		if (songs == null) return result;
+		for (song in songs) {
+			if (song == null || Reflect.field(song, 'sourceDuplicate') == true) continue;
+			var paths:Array<String> = [];
+			var diffs:Dynamic = Reflect.field(song, 'diffFiles');
+			if (Std.isOfType(diffs, Array)) for (path in (cast diffs:Array<Dynamic>))
+				if (Std.isOfType(path, String)) paths.push(cast path);
+			var converted:Dynamic = Reflect.field(song, 'convertedCharts');
+			if (Std.isOfType(converted, Array)) for (chart in (cast converted:Array<Dynamic>)) {
+				var path:Dynamic = chart == null ? null : Reflect.field(chart, 'source');
+				if (Std.isOfType(path, String) && paths.indexOf(cast path) < 0) paths.push(cast path);
+			}
+			var info:Dynamic = Reflect.field(song, 'importSourceInfo');
+			result.push({sourceRoot:Reflect.field(song, 'sourceRoot'), name:Reflect.field(song, 'name'),
+				sourceFolder:Reflect.field(song, 'sourceFolder'), diffFiles:paths,
+				importSourceInfo:{song:info == null ? null : Reflect.field(info, 'song')}});
+		}
+		return result;
+	}
 
 	/** Package labels entered for this import are a user-confirmed fallback
 	 * identity when the selected package has no authored ID. Keys use the same

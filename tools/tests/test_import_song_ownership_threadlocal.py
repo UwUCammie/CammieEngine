@@ -98,10 +98,20 @@ class Main {
   ImportSongOwnership.buildOwnerIdentityIndex(mainCache);
   ensure(mainCache.index.get("psych engine|id|fixture")=="owner-a","main thread did not read its installed tree");
 
+  var names:Map<String,String> = [rootA => "Main Package"];
+  ImportSongOwnership.setIdentityOverrides(names);
+  ImportSongOwnership.sourceFingerprintHints.set("main-sentinel", "main");
   var workerCache:Dynamic=null;var workerOwner="";var failed:Dynamic=null;var done=new Lock();
   Thread.create(function() {
    try {
     ImportIO.begin(rootB);
+    ensure(ImportSongOwnership.identityOverrides == null && ImportSongOwnership.sourceFingerprintHints == null,
+     "worker inherited main identity hints");
+    ImportSongOwnership.setIdentityOverrides([rootB => "Worker Package"]);
+    ImportSongOwnership.sourceFingerprintHints.set("worker-sentinel", "worker");
+    try ImportSongOwnership.withIdentity(null, null, function():Int { throw "nested failure"; }) catch (_:Dynamic) {}
+    ensure(ImportSongOwnership.sourceFingerprintHints.get("worker-sentinel") == "worker",
+     "nested failed scope discarded caller fingerprint");
     ImportSongOwnership.invalidateOwnerIdentityIndex();
     workerCache=ImportSongOwnership.ownerIdentityCache();
     ImportSongOwnership.buildOwnerIdentityIndex(workerCache);
@@ -113,6 +123,8 @@ class Main {
   });
   done.wait();
   ensure(failed==null,"worker cache read failed: "+Std.string(failed));
+  ensure(ImportSongOwnership.sourceFingerprintHints.get("main-sentinel") == "main"
+   && !ImportSongOwnership.sourceFingerprintHints.exists("worker-sentinel"), "worker changed live identity hints");
   ensure(workerOwner=="owner-b","worker did not read its staged filesystem view");
   ensure(workerCache!=mainCache,"main and worker shared mutable cache identity");
   ensure(mainCache.ready&&mainCache.index.get("psych engine|id|fixture")=="owner-a",
@@ -129,7 +141,7 @@ class ImportSongOwnershipThreadLocalTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
             temp_path = Path(temp)
             ownership = (SOURCE / "ImportSongOwnership.hx").read_text(encoding="utf-8")
-            self.assertEqual(ownership.count("#if target.threaded"), 2)
+            self.assertEqual(ownership.count("#if target.threaded"), 3)
             # Eval supports sys.thread.Tls but does not set target.threaded. Force
             # only that target condition so the production branch is exercised.
             (temp_path / "ImportSongOwnership.hx").write_text(

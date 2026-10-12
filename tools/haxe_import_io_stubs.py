@@ -13,6 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 IMPORT_IO_MODULES = (
     "ImportRevision.hx",
+    "PsychFreeplayOrder.hx",
+    "FreeplayAuthoredOrder.hx",
+    "PsychSongNameCompat.hx",
+    "NightmareVisionSongNameCompat.hx",
+    "ImportDirectoryListing.hx",
     "ImportSourceSnapshot.hx",
     "ImportIO.hx",
     "ImportDiscoveryReuse.hx",

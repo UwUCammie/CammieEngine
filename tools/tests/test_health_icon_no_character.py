@@ -16,8 +16,9 @@ class HealthIconNoCharacterTest(unittest.TestCase):
     def test_sentinel_uses_native_default_only_as_hidden_backing_icon(self):
         source = (ROOT / "source/HealthIcon.hx").read_text()
         character = (ROOT / "source/Character.hx").read_text()
-        icon_request = source[source.index("\tstatic function iconRequestForCharacter("):
-                              source.index("\n\t/** Named HXC alias")].strip()
+        icon_request = source[source.index('static function iconRequestForCharacter('):
+                              source.index('static function freeplayPixelIconPath(')]
+        icon_request += extract_method(source, 'static function freeplayPixelIconPath(')
         is_no_girlfriend = extract_method(character, "public static function isNoGirlfriend")
         fixture = (
             "using StringTools;\nclass Character {\n" + is_no_girlfriend + "\n}\n"

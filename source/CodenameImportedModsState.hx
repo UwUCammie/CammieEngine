@@ -136,7 +136,7 @@ class CodenameImportedModsState extends MusicBeatState {
 			var ready = FreeplaySongAvailability.ownerReadiness(importAvailability, item.root).ready;
 			row.text = (current ? '> ' : '  ') + item.title;
 			row.color = !ready ? 0xFF777777 : current ? FlxColor.YELLOW : FlxColor.WHITE;
-			subtitle.text = '(' + item.engine + ')';
+			subtitle.text = LibraryPackageLabel.caption(item.root, '(' + item.engine + ')');
 			subtitle.color = !ready ? 0xFF777777 : current ? FlxColor.YELLOW : 0xFFB9B9C5;
 		}
 		if (details != null) {

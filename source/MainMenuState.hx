@@ -80,11 +80,13 @@ class MainMenuState extends MusicBeatState {
 			optionShit.remove("donate");
 		if (!OptionsHandler.options.useSaveDataMenu && !OptionsHandler.options.allowEditOptions) 
 			optionShit.remove("options");
+		RuntimeSongExitProbe.mark("menu-audio-begin");
 		if (!FlxG.sound.music.playing) {
-			FlxG.sound.playMusic(FNFAssets.getSound('assets/music/custom_menu_music/'
+			FlxG.sound.playMusic(FNFAssets.getMusic('assets/music/custom_menu_music/'
 				+ CoolUtil.parseJson(FNFAssets.getText("assets/music/custom_menu_music/custom_menu_music.json")).Menu+'/freakyMenu' + TitleState.soundExt));
 		}
 		
+		RuntimeSongExitProbe.mark("menu-audio-end");
 		persistentUpdate = persistentDraw = true;
 		var bg:FlxSprite = new FlxSprite(-80).loadGraphic('assets/images/menuBG.png');
 		bg.scrollFactor.x = 0;
@@ -271,15 +273,9 @@ class MainMenuState extends MusicBeatState {
 										trace("Story Menu Selected");
 									case 'freeplay':
 										CategoryState.choosingFor = "freeplay";
-										var epicCategoryJs:Array<Dynamic> = cast FreeplayRegistry.getJson();
 										FreeplayState.soundTest = false;
-										if (epicCategoryJs.length > 1) {
-											LoadingState.loadAndSwitchState(new CategoryState());
-										}  else {
-											FreeplayState.currentSongList = epicCategoryJs[0].songs;
-											LoadingState.loadAndSwitchState(new FreeplayState());
-										}
-										
+										LoadingState.loadAndSwitchState(new CategoryState());
+
 									case 'options':
 										SaveDataState.prevPath = 'title';
 										LoadingState.loadAndSwitchState(new SaveDataState());
@@ -502,15 +498,8 @@ class MainMenuState extends MusicBeatState {
 				LoadingState.loadAndSwitchState(new StoryMenuState());
 			case HxcMenuSpec.ROUTE_FREEPLAY:
 				CategoryState.choosingFor = 'freeplay';
-				var categories:Array<Dynamic> = cast FreeplayRegistry.getJson();
 				FreeplayState.soundTest = false;
-				if (categories != null && categories.length > 1)
-					LoadingState.loadAndSwitchState(new CategoryState());
-				else if (categories != null && categories.length > 0) {
-					FreeplayState.currentSongList = categories[0].songs;
-					LoadingState.loadAndSwitchState(new FreeplayState());
-				} else
-					trace('[hxc-menu-route-fallback] freeplay registry is empty; native menu retained.');
+				LoadingState.loadAndSwitchState(new CategoryState());
 			case HxcMenuSpec.ROUTE_OPTIONS:
 				SaveDataState.prevPath = 'title';
 				LoadingState.loadAndSwitchState(new SaveDataState());

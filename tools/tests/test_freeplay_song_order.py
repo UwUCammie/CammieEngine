@@ -54,7 +54,7 @@ class FreeplaySongOrderFixture {
         source = (ROOT / 'source/CategoryState.hx').read_text()
         self.assertIn("if (categories[i] == 'All')", source)
         self.assertIn("if (c == i || categories[c] == 'All')", source)
-        self.assertIn('FreeplaySongOrder.sort(allEntries)', source)
+        self.assertIn('FreeplaySongOrder.sort(allEntries, choosingFor == "freeplay")', source)
         self.assertIn("base:categories[c] == 'Base Game'", source)
         smoke = (ROOT / 'source/RuntimeSmokeHarness.hx').read_text()
         self.assertIn("var allCategories = wanted == '' || wanted == 'All'", smoke)

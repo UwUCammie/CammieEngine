@@ -36,7 +36,12 @@ class HighscoreChartIdentityTest(unittest.TestCase):
         end_for_real = method(playstate_source, "function endForReal()")
         self.assertIn("Highscore.saveScore(Highscore.scoreSongIdForChart(SONG)", end_for_real)
         self.assertIn("Song.attachFreeplayScoreSongId(PlayState.SONG, songName);", freeplay_source)
-        self.assertIn("Song.attachFreeplayScoreSongId(PlayState.SONG, songs[daSelection].songName);", freeplay_source)
+        shared_launch = method(freeplay_source, "function launchSelection(")
+        self.assertIn("var songName = songs[index].songName;", shared_launch)
+        self.assertIn("Song.attachFreeplayScoreSongId(PlayState.SONG, songName);", shared_launch)
+        self.assertIn("return launchSelection(curSelected, curDifficulty);", method(freeplay_source, "function hxcLaunchCurrentSelection("))
+        self.assertIn("launchSelection(index, difficulty);", method(freeplay_source, "function updateBrowserConfirm("))
+        self.assertIn("else launchSelection(daSelection, curDifficulty);", freeplay_source)
         self.assertIn("Reflect.deleteField(data, 'compatScoreSongId');", charting_source)
         self.assertLess(
             song_source.index("Reflect.deleteField(parsedJson, 'compatScoreSongId');"),

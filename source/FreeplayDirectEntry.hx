@@ -49,12 +49,15 @@ class FreeplayDirectEntry {
 
 	/** Match CategoryState's virtual All list when rebuilding after a registry
 	 * generation change. Its registry row contains only Random-Song; the visible
-	 * category also includes every authored category's songs. */
-	static function allCategorySongs(categories:Array<Dynamic>):Array<Dynamic> {
+	 * category also includes every authored category's songs. Library views reuse
+	 * this ordering but deduplicate references and hide Random Song. An empty
+	 * registry retains the hidden scaffold used by Freeplay's empty-filter UI. */
+	public static function allCategorySongs(categories:Array<Dynamic>, libraryView:Bool = false):Array<Dynamic> {
 		var entries:Array<FreeplaySongEntry> = [];
-		for (category in categories) {
+		var seen:Map<String, Bool> = new Map();
+		if (categories != null) for (category in categories) {
 			var name:Dynamic = category == null ? null : Reflect.field(category, 'name');
-			if (!Std.isOfType(name, String) || name == 'All')
+			if (!Std.isOfType(name, String) || (!libraryView && name == 'All'))
 				continue;
 			var songs:Dynamic = Reflect.field(category, 'songs');
 			if (!Std.isOfType(songs, Array))
@@ -65,11 +68,19 @@ class FreeplayDirectEntry {
 					var songName:String = cast song;
 					data = {name:songName, week:-1, character:'face'};
 				}
+				if (libraryView) {
+					var rawName:Dynamic = data == null ? null : Reflect.field(data, 'name');
+					if (!Std.isOfType(rawName, String) || StringTools.trim(rawName) == '') continue;
+					var key = Std.string(rawName).toLowerCase();
+					if (key == 'random-song' || seen.exists(key)) continue;
+					seen.set(key, true);
+				}
 				entries.push({song:data, base:name == 'Base Game', order:entries.length});
 			}
 		}
-		var result:Array<Dynamic> = [{name:'Random-Song', week:0, character:'bf'}];
-		for (song in FreeplaySongOrder.sort(entries))
+		var result:Array<Dynamic> = [];
+		if (!libraryView || entries.length == 0) result.push({name:'Random-Song', week:0, character:'bf'});
+		for (song in FreeplaySongOrder.sort(entries, true))
 			result.push(song);
 		return result;
 	}

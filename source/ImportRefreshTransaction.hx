@@ -646,6 +646,15 @@ class ImportRefreshTransaction {
 		return manifest;
 	}
 
+	/** Lexical gate shared by removal planning and the transaction writer.
+	 * This does not verify live bytes, symlinks, ownership or file locks. */
+	public static function managedAssetPath(value:String):String {
+		var path = normalizeRelative(value);
+		if (!StringTools.startsWith(path.toLowerCase(), "assets/") || isProtectedSettingsPath(path))
+			throw "Managed removal cannot target settings or files outside assets/: " + value;
+		return path;
+	}
+
 	public static function manifestPath(stateRoot:String, owner:String):String {
 		return currentManifestPath(canonicalDirectory(stateRoot, true), owner);
 	}

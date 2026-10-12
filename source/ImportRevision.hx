@@ -32,11 +32,11 @@ class ImportRevision {
 	public static inline var FUTURE:String = "future";
 
 	static final ENGINE_REVISIONS:Map<String, Int> = [
-		"V-Slice" => 2,
+		"V-Slice" => 3,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
-		"Psych Engine" => 11,
-		"Nightmare Vision" => 15,
+		"Psych Engine" => 12,
+		"Nightmare Vision" => 16,
 		"FPS Plus" => 2,
 		"Codename Engine" => 1,
 		"Legacy FNF/Polymod" => 2

@@ -87,6 +87,8 @@ typedef ImportVisualChart = {
 }
 
 typedef ImportScanResult = {
+	/** Minimal source inputs, rehashed by the import worker before owner selection. */
+	var ?ownershipSources:Array<Dynamic>;
 	var source:String;
 	/** Normalized selector used to create this plan (for example Auto). */
 	var ?importType:String;
@@ -2738,7 +2740,8 @@ class ImportScanJob {
 		LegacyCharacterAtlasImporter.clearCache();
 		clearResolutionCaches();
 		try {
-			var result = performScan(sourcePath, importType);
+			var result = ImportSongOwnership.withIdentity(null, null,
+				function() return performScan(sourcePath, importType));
 			directoryCaseIndex = null;
 			return result;
 		} catch (error:Dynamic) {
@@ -2864,6 +2867,14 @@ class ImportScanJob {
 			writeReport(result);
 			return result;
 		}
+		result.ownershipSources = ImportSongOwnership.fingerprintSources(discovered);
+		// Retained refreshes already bind every selected root to its owner. Hash
+		// only unbound roots here; conversion still writes its normal fingerprint.
+		var identityScope = ImportIO.current();
+		var unbound = identityScope == null ? discovered : [for (song in discovered)
+			if (song != null && identityScope.namespace(field(song, 'sourceRoot', source),
+				field(song, 'engine', '')) == null) song];
+		ImportSongOwnership.setSourceFingerprintHints(unbound);
 		if (discovered.length == 0)
 			appendImporterFormatSuggestions(result, descriptors, selectedType);
 		var uniqueKinds:Map<String, Bool> = new Map<String, Bool>();

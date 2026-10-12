@@ -135,6 +135,8 @@ typedef SongImport = {
 	 * identities separate so Freeplay and DifficultyManager resolve the files
 	 * the importer actually wrote. */
 	@:optional var sourceFolder:String;
+	/** Owner-local authored Freeplay rank, independent of registry positions. */
+	@:optional var authoredFreeplayOrder:Int;
 	/** Destination-only key for a selectable V-Slice variation. */
 	@:optional var destinationFolder:String;
 	/** True when the canonical native song key was already owned by another
@@ -4468,7 +4470,21 @@ class ModuleFunctions {
 				: (root.engine == ImportEngine.CODENAME
 					? discoverCodenameSongImports(root, rootSources, rejectionCollector)
 					: discoverLegacySongImportsFromRoot(root, rootSources, rejectionCollector));
+			var ownerOrders:Map<String, Map<String, Int>> = [];
 			for (song in songs) {
+				if (root.engine == ImportEngine.PSYCH || root.engine == ImportEngine.NIGHTMARE_VISION) {
+					var owner = song.sourceRoot == null || song.sourceRoot == '' ? root.root : song.sourceRoot;
+					var ownerKey = importPathKey(owner);
+					if (!ownerOrders.exists(ownerKey)) {
+						var sameRoot = ownerKey == importPathKey(root.root);
+						ownerOrders.set(ownerKey, PsychFreeplayOrder.read(owner,
+							sameRoot ? root.contentRoot : owner, sameRoot ? root.data : null,
+							root.engine == ImportEngine.NIGHTMARE_VISION, CoolUtil.parseJson));
+					}
+					var sourceKey = PsychFreeplayOrder.songKey(Reflect.field(song, 'sourceFolder'), root.engine == ImportEngine.NIGHTMARE_VISION);
+					var rank = ownerOrders.get(ownerKey).get(sourceKey);
+					if (rank != null) Reflect.setField(song, 'authoredFreeplayOrder', rank);
+				}
 				var key = StringTools.trim(song.name).toLowerCase();
 				var sourceInfo = song.importSourceInfo == null
 					? (rootSources.exists(key) ? rootSources.get(key) : null) : song.importSourceInfo;
@@ -13969,6 +13985,10 @@ class ModuleFunctions {
 		var importedAlbum:Dynamic = Reflect.field(songData, 'album');
 		if (importedAlbum != null && StringTools.trim(Std.string(importedAlbum)) != '')
 			Reflect.setField(freeplayEntry, 'album', Std.string(importedAlbum));
+		var authoredOrder = FreeplayAuthoredOrder.rank(Reflect.field(songData, 'authoredFreeplayOrder'));
+		if (authoredOrder != null) Reflect.setField(freeplayEntry, 'authoredFreeplayOrder', authoredOrder);
+		var authoredRatings = FreeplayDifficultyRating.forImport(songData);
+		if (authoredRatings.length > 0) Reflect.setField(freeplayEntry, 'authoredDifficultyRatings', authoredRatings);
 		var importedRatings:Dynamic = Reflect.field(songData, 'difficultyRatings');
 		if (importedRatings != null && Std.isOfType(importedRatings, Array))
 			Reflect.setField(freeplayEntry, 'difficultyRatings', importedRatings);

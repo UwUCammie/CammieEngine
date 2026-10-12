@@ -55,7 +55,7 @@ class FreeplayListWindowTest(unittest.TestCase):
         source = (ROOT / "source/FreeplayState.hx").read_text()
         self.assertIn("FreeplayListWindow.window(visible, curSelected, ROW_WINDOW_RADIUS)", source)
         self.assertIn("songRows:Array<Alphabet>", source)
-        self.assertIn("icon.sprTracker = songRows[i]", source)
+        self.assertIn("icon.sprTracker = denseBrowser ? null : songRows[i]", source)
         self.assertIn("rowSongIndices", source)
 
 

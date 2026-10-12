@@ -3042,6 +3042,8 @@ class VSliceImporter {
 			convertMineToNuke: false,
 			vSliceUnroutedNotes: unroutedNotes
 		};
+			var authoredRatings = FreeplayDifficultyRating.named(field(field(metadata, 'playData'), 'ratings'), 'V-Slice');
+			if (authoredRatings.length > 0) songData.authoredDifficultyRatings = authoredRatings;
 			if (songArtist != '')
 				songData.songArtist = songArtist;
 			if (album != '')

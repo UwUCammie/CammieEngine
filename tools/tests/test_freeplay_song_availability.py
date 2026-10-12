@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import unittest
 
-from haxe_test_support import HAXE_COMMAND, FixturePath
+from haxe_test_support import HAXE_COMMAND, FixturePath, haxe_command
 from test_source_event_preparation import extract_method
 
 
@@ -150,6 +150,26 @@ class Main {
    check(FreeplaySongAvailability.touchesPath(snapshot,scope)==linear,'indexed overlap matches linear: '+scope);
   }
   check(index.touches('assets/data/shared'),'sibling sort order cannot hide descendants');
+  // Case folding and trimming can reorder an otherwise sorted input array.
+  var variants=[['Z/last/file', 'a/first/file'],[' a/middle/file ', 'A/first/file','z/end/file'],
+   ['root/file','root/file','root/file/child','root-extra/file'],
+   ['unicode/\u00c9/file','unicode/\u00e9/file','unicode/\u03a9/file']];
+  for(paths in variants) {
+   for(reverse in [false,true]) {
+    if(reverse)paths.reverse();
+    snapshot.pendingTouchedPaths=paths;
+    var orderedIndex=new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(paths);
+    var scopes=['Z','z','a','A','a/first','a/middle','root','root-extra','root/file',
+     'root/file/child','root/file/child/missing','unicode/\u00c9','unicode/\u00e9','unicode/\u03a9'];
+    for(scope in scopes) {
+     snapshot.pendingPathIndex=null;var expected=FreeplaySongAvailability.touchesPath(snapshot,scope);
+     snapshot.pendingPathIndex=orderedIndex;
+     check(FreeplaySongAvailability.touchesPath(snapshot,scope)==expected,'normalized input order: '+scope);
+    }
+   }
+  }
+  check(!new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(null).touches('anything'),
+   'absent input has no overlaps');
   var newer=new ImportRefreshAvailabilitySnapshot.ImportRefreshPathIndex(['assets/data/replacement/a.json']);
   check(index.touches('assets/data/shared')&&!newer.touches('assets/data/shared')&&newer.touches('assets/data/replacement'),
    'a later revision does not mutate an old index');
@@ -161,9 +181,9 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as temp:
             temp_path = FixturePath(temp)
             (temp_path / 'Main.hx').write_text(main, newline='\n')
-            for platform_defines in [[], ['-D', 'windows']]:
+            for windows in [False, True]:
                 result = subprocess.run(
-                    [*HAXE_COMMAND, *platform_defines, '-cp', str(ROOT / 'source'), '-cp', str(temp_path),
+                    [*haxe_command(windows=windows), '-cp', str(ROOT / 'source'), '-cp', str(temp_path),
                      '-main', 'Main', '--interp'],
                     cwd=ROOT, capture_output=True, text=True, timeout=30,
                 )
@@ -209,6 +229,7 @@ class Main {
   public static function availabilitySnapshot():Dynamic return snapshot;
 }
 class FreeplayHarness {
+  var libraryOrderKey:String = "";
   public var importAvailability:Dynamic;
   public var importAvailabilityRevision:Int = -1;
   public var importAvailabilityAppliedRevision:Int = -1;

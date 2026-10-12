@@ -67,6 +67,7 @@ private typedef ImportRefreshAvailabilityReservation = {
 	var handoffPending:Bool;
 	var handoffNames:Array<String>;
 	var manual:Bool;
+	var historyRoots:Array<String>;
 	var recoveryBlocked:Bool;
 }
 
@@ -248,7 +249,7 @@ class ImportRefreshManager {
 		if (reservation == null) {
 			reservation = {token:token, transactionOwner:transactionOwner == null ? "" : transactionOwner,
 				roots:[], committedRoots:[], waitForOwnerRoots:[], songs:[], touchedPaths:[], committed:false, handoffPending:false,
-				handoffNames:[], manual:manual, recoveryBlocked:false};
+				handoffNames:[], manual:manual, historyRoots:[], recoveryBlocked:false};
 			reservations.set(token, reservation);
 		}
 		var changed = false;
@@ -338,13 +339,20 @@ class ImportRefreshManager {
 
 	static function setReservationPaths(token:String, paths:Array<String>):Void {
 		var normalized:Array<String> = [];
+		var seenPaths:Map<String, Bool> = new Map();
 		var outputOwners:Array<String> = [];
+		var seenOwners:Map<String, Bool> = new Map();
 		if (paths != null) for (path in paths) {
 			var clean = normalizeInstallRelative(path);
 			if (clean != "") {
-				if (normalized.indexOf(clean) < 0) normalized.push(clean);
+				if (seenPaths.exists(clean)) continue;
+				seenPaths.set(clean, true);
+				normalized.push(clean);
 				var outputOwner = ownerRootFromInstalledPath(clean);
-				if (outputOwner != "" && outputOwners.indexOf(outputOwner) < 0) outputOwners.push(outputOwner);
+				if (outputOwner != "" && !seenOwners.exists(outputOwner)) {
+					seenOwners.set(outputOwner, true);
+					outputOwners.push(outputOwner);
+				}
 			}
 		}
 		normalized.sort(Reflect.compare);
@@ -1436,6 +1444,7 @@ class ImportRefreshManager {
 			ImportSongOwnership.invalidateOwnerIdentityIndex();
 			mutex.acquire();
 			var current = reservations.get(token);
+			var historyRoots = current != null && current.manual ? current.historyRoots.copy() : [];
 			if (current != null) {
 				setCommittedRootsLocked(current.committedRoots);
 				releaseReservationLocked(token);
@@ -1448,6 +1457,7 @@ class ImportRefreshManager {
 				status.busy = false;
 			}
 			mutex.release();
+			LibraryImportHistory.committed(historyRoots);
 			return true;
 		} catch (error:Dynamic) {
 			mutex.acquire();
@@ -1587,6 +1597,15 @@ class ImportRefreshManager {
 	/** Called by the existing native import worker. Its renderer stays on the
  	 * installed tree; only that worker receives the filesystem staging context. */
 	public static function importOnce(source:String, type:String, scan:ImportScanResult,
+		names:Map<String,String>, convert:(String,ImportScanResult,Map<String,String>)->SongImportBatchResult,
+		cancel:Void->Bool, progress:Dynamic->Void,
+		?sourceBuildContexts:Array<ImportSourceBuildContext>):SongImportBatchResult {
+		return ImportSongOwnership.withIdentity(names,
+			scan == null ? null : Reflect.field(scan, "ownershipSources"), function()
+				return importOnceScoped(source, type, scan, names, convert, cancel, progress, sourceBuildContexts));
+	}
+
+	static function importOnceScoped(source:String, type:String, scan:ImportScanResult,
 		names:Map<String,String>, convert:(String,ImportScanResult,Map<String,String>)->SongImportBatchResult,
 		cancel:Void->Bool, progress:Dynamic->Void,
 		?sourceBuildContexts:Array<ImportSourceBuildContext>):SongImportBatchResult {
@@ -2428,9 +2447,17 @@ class ImportRefreshManager {
 			var metadata:Dynamic = {importRecord:record,registries:nextRegistries};
 			progress({phase:"publishing-import",current:Std.string(record.label),completed:0,total:1});
 			var publishedPaths = masked.copy();
+			var publishedPathSet:Map<String, Bool> = new Map();
+			for (path in masked) {
+				cooperateImportWork(cancel);
+				publishedPathSet.set(path, true);
+			}
 			for (output in outputs) {
 				cooperateImportWork(cancel);
-				if (publishedPaths.indexOf(output.path) < 0) publishedPaths.push(output.path);
+				if (!publishedPathSet.exists(output.path)) {
+					publishedPathSet.set(output.path, true);
+					publishedPaths.push(output.path);
+				}
 			}
 			setReservationPaths(reservationToken, publishedPaths);
 			var applied = ImportRefreshTransaction.apply(install,stage,state,owner,["assets"],outputs,metadata,cancel,baselines,progress);
@@ -2439,6 +2466,12 @@ class ImportRefreshManager {
 			ImportWorkScheduler.cooperate();
 			var committed = committedManifest(state, owner);
 			var committedRoots = familyOwnerRootsForRecord(record, ownerRootsForRecord(record));
+			var importedHistoryRoots = ownerRootsForRecord(record);
+			mutex.acquire();
+			var historyReservation = reservations.get(reservationToken);
+			if (historyReservation != null && historyReservation.manual)
+				historyReservation.historyRoots = importedHistoryRoots;
+			mutex.release();
 			addCommittedPathOwners(committed, committedRoots);
 			ImportWorkScheduler.cooperate();
 			addRecordDependencyEdges(record, committedRoots);

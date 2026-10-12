@@ -2324,6 +2324,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			tweenAlpha:function(target, duration) FlxTween.tween(target, {alpha:1}, duration, {ease:FlxEase.circOut}),
 			tweenScoreScale:function(target, duration) return FlxTween.tween(target, {x:1.0, y:1.0}, duration),
 			applyScoreMarkup:function(target, color, start, end) {
+				if (Std.isOfType(target, SourceScoreText)) {
+					(cast target:SourceScoreText).applySourceFormat(color, start, end);
+					return;
+				}
+				// Authored HUDs can replace the borrowed label with a plain FlxText.
 				var text:FlxText = cast target;
 				if (scoreFormat != null) text.removeFormat(scoreFormat);
 				if (scoreFormat == null || scoreFormatColor != color) {
@@ -14981,7 +14986,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// healthBar
 		add(healthBar);
 
-		scoreTxt = new FlxText(0, healthBarBG.y + 40, FlxG.width, "", 200);
+		scoreTxt = new SourceScoreText(0, healthBarBG.y + 40, FlxG.width, "", 200);
 		scoreTxt.setFormat("assets/fonts/vcr.ttf", 20, FlxColor.WHITE, CENTER, OUTLINE, FlxColor.BLACK);
 		scoreTxt.scrollFactor.set();
 		if (codenameSelectedRoot() != '') {
@@ -16669,6 +16674,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		endSong();
 	}
 
+	var libraryPlayHistory:LibraryPlayHistory = new LibraryPlayHistory();
+
 	function startSong():Void {
 		startingSong = false;
 		if (FlxG.sound.music != null) {
@@ -16725,6 +16732,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		FlxG.sound.music.play();
 		playVocals();
 		dispatchPsychCompiledStage('startSong', []);
+		libraryPlayHistory.started(Highscore.scoreSongIdForChart(SONG));
 		RuntimeSmokeHarness.markSongStart(SONG.song);
 	}
 
@@ -26821,6 +26829,7 @@ void main(void) {
 	}
 
 	override public function destroy() {
+		RuntimeSongExitProbe.mark("destroy-begin");
 		destroyPsychCustomSubstates();
 		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
 		psychVideoHostDestroyed = true;
@@ -26871,6 +26880,7 @@ void main(void) {
 			nightmareVisionNoteTypes.destroy();
 			nightmareVisionNoteTypes = null;
 		}
+		RuntimeSongExitProbe.mark("nv-scripts-released");
 		for (renderer in nightmareVisionRenderers) renderer.destroy();
 		nightmareVisionRenderers.clear();
 		var ownedNightmareVisionLines = nightmareVisionOwnedStrumlines.copy();
@@ -26904,6 +26914,7 @@ void main(void) {
 			playHUD.release();
 			playHUD = null;
 		}
+		RuntimeSongExitProbe.mark("nv-fields-released");
 		// Native mounted membership owns real character groups. No cache-only destroy pass.
 		nightmareVisionRoleGroups = [];
 		nightmareVisionPlugins = null;
@@ -26917,6 +26928,7 @@ void main(void) {
 		if (nightmareVisionSkinRegistry != null) nightmareVisionSkinRegistry.destroy();
 		nightmareVisionSkinRegistry = null;
 		nightmareVisionPrefs = null;
+		RuntimeSongExitProbe.mark("nv-assets-released");
 		callAllHScript('destroy', []);
 		for (runtime in psychRuntimeBindings) runtime.release();
 		psychRuntimeBindings.resize(0);
@@ -26989,6 +27001,7 @@ void main(void) {
 			stopVocals();
 			destroyVocals();
 		}
+		RuntimeSongExitProbe.mark("compat-released");
 		clearScriptOwnership();
 		clearHscriptSoundCache();
 		for (line in codenameStrumlines) if (line != null) line.unbindCodenameInputLine();
@@ -27033,7 +27046,9 @@ void main(void) {
 		sourceDetachedHUDPieces.resize(0);
 		psychSourceHealthBar = null; psychSourceTimeBar = null;
 		nightmareVisionSourceHealthBar = null; nightmareVisionSourceTimeBar = null;
+		RuntimeSongExitProbe.mark("before-native-destroy");
 		super.destroy();
+		RuntimeSongExitProbe.mark("after-native-destroy");
 		// A script may have mounted an initial ghost; native teardown already owns it then.
 		for(sprite in nightmareVisionLegacyGhosts) if(sprite.animation!=null) sprite.destroy();
 		nightmareVisionLegacyGhosts=[];bfGhost=null;dadGhost=null;focusedChar=null;
@@ -27043,6 +27058,7 @@ void main(void) {
 		psychSourceIconP1 = null;psychSourceIconP2 = null;
 		nightmareVisionSourceIconP1 = null;nightmareVisionSourceIconP2 = null;
 		CodenameMusicBeatTransition.releaseChartOwner(codenameTransitionOwner);
+		RuntimeSongExitProbe.mark("destroy-complete");
 		if (smokeActors != null) RuntimeSmokeHarness.markPlayStateDestroyed(smokeActors);
 	}
 }

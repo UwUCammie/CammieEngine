@@ -41,6 +41,7 @@ class NightmareVisionVideoSprite {
  public function destroy():Void destroyed=true;
 }
 class RuntimeSmokeHarness {public static function markStep(s:String):Void {}}
+class RuntimeSongExitProbe {public static function mark(s:String):Void {}}
 class ScriptCallbackResult {public static var STOP=1;}
 class EngineCompat {public static function anyFunctionStop(a:Array<Dynamic>):Bool return a.indexOf(1)>=0;}
 class PsychRuntimeBindings {public static function dispatch(h:Dynamic,n:String,a:Array<Dynamic>):Dynamic {var cb:Dynamic=Reflect.field(h,'gateCallback');return cb==null?(Reflect.field(h,'allowCountdown')?0:1):cb();}}

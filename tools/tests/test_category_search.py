@@ -4,6 +4,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from test_native_asset_resolution import extract_method
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,7 +25,7 @@ class CategorySearchTest(unittest.TestCase):
         freeplay = (ROOT / 'source/FreeplayState.hx').read_text()
         category = (ROOT / 'source/CategoryState.hx').read_text()
 
-        search_norm = extract(freeplay, '\tpublic static function searchNorm(', '\tfunction songMatches(')
+        search_norm = extract_method(freeplay, 'public static function searchNorm(')
         next_visible = extract(freeplay, '\tpublic static function nextVisibleSelection(', '\n\tfunction changeSelection(')
         # the extracted instance methods are re-declared static in the fixture so
         # a single static main() can drive them

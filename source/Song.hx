@@ -47,6 +47,8 @@ typedef SwagSong = {
 	@:optional var difficultyRatings:Array<Dynamic>;
 	/** Rating for this authored difficulty when the importer can align it. */
 	@:optional var difficultyRating:Float;
+	/** Source-named ratings with their original scale, independent from completion scores. */
+	@:optional var authoredDifficultyRatings:Array<Dynamic>;
 	/** Parsed foreign metadata/provenance; unknown keys remain lossless here. */
 	@:optional var compatMetadata:Dynamic;
 	/** Authored chart format; controls note-side semantics when declared. */
@@ -161,7 +163,7 @@ class Song {
 	];
 	static var visualFields:Array<String> = [
 		'player1', 'player2', 'gf', 'stage', 'songArtist', 'album', 'difficultyRatings',
-		'difficultyRating', 'compatMetadata', 'compatPreserveSongTitle', 'stickerPack', 'uiType', 'cutsceneType',
+		'difficultyRating', 'authoredDifficultyRatings', 'compatMetadata', 'compatPreserveSongTitle', 'stickerPack', 'uiType', 'cutsceneType',
 		'isMoody', 'isSpooky', 'isHey', 'isCheer', 'forceLayout',
 		'uiLayoutType', 'cutsceneScript', 'cutsceneStoryOnly', 'cutscenePlayOnce',
 		'arrowSkin', 'splashSkin', 'disableNoteRGB'

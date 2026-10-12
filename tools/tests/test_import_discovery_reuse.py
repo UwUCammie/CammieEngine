@@ -18,14 +18,15 @@ class ImportDiscoveryReuseTest(unittest.TestCase):
    function() {verified++;if(changed)throw "source hash mismatch";},function() return cancel);
   var shared:Dynamic={pixels:[1,2],name:"same"};
   var origins:Map<String,String>=["same"=>"root/a"];
-  var d:Dynamic={songs:[{name:"same",destinationFolder:"original",diagnostics:[],convertedCharts:[{chart:{notes:[[1,2,3]]}}],visual:shared,sourceDuplicate:false,importSourceInfo:{dataFolder:"root/a"}},
+  var d:Dynamic={songs:[{name:"same",authoredFreeplayOrder:3,destinationFolder:"original",diagnostics:[],convertedCharts:[{chart:{notes:[[1,2,3]]}}],visual:shared,sourceDuplicate:false,importSourceInfo:{dataFolder:"root/a"}},
     {name:"same",sourceDuplicate:false,visual:shared,importSourceInfo:{dataFolder:"root/b"}},
     {name:"same",sourceDuplicate:true,visual:shared,importSourceInfo:{dataFolder:"root/alias"}}],
     packageDiscovery:{truncated:false,cancelled:false},sources:origins};
   var p=make();p.capture("snapshot/content","Auto",d);
-  d.songs[0].destinationFolder="owner-qualified";d.songs[0].diagnostics.push("changed");
+  d.songs[0].authoredFreeplayOrder=99;d.songs[0].destinationFolder="owner-qualified";d.songs[0].diagnostics.push("changed");
   d.songs[0].convertedCharts[0].chart.notes[0][1]=77;shared.pixels[0]=9;origins.set("same","changed");
   p.accept();var v=p.take("snapshot/content","Auto");
+  check(v.songs[0].authoredFreeplayOrder==3,"authored menu rank did not survive isolated discovery reuse");
   check(verified==1,"verify on use");check(v.songs.length==3,"same-named rows retained");
   check(v.songs[0].destinationFolder=="original" && v.songs[0].diagnostics.length==0,"pre-mutation isolation");
   check(v.songs[0].convertedCharts[0].chart.notes[0][1]==2,"nested chart isolation");

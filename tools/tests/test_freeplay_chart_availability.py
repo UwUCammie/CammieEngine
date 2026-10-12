@@ -28,7 +28,8 @@ public var songs:Array<Dynamic>=[{songName:"fixture",songCharacter:"bf"}];
 public var iconArray:Array<HealthIcon>=[null]; public var songRows:Array<Dynamic>=[{}];
 public var members:Array<Dynamic>=[]; public var grpSongSources:Dynamic={};
 public var starArray:Array<Array<RankStar>>=[null]; public var hxcCapsuleViews:Array<Dynamic>=[];
-public var curSelected:Int=0;
+public var curSelected:Int=0; public var denseBrowser:Bool=false;
+function applyListLayout():Void {} function updateBrowserDetails():Void {}
 public var curDifficulty:Int=0; public var hxcDifficultyOrder:Array<String>=[];
 public function new() {}
 function songMatches(i:Int):Bool return true;
@@ -126,9 +127,11 @@ Sys.println("freeplay-chart-availability-ok");
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as temp:
             folder = Path(temp)
             files = {'Harness.hx': host, 'Main.hx': main,
-                'HealthIcon.hx': '''class HealthIcon {public var sprTracker:Dynamic;public var visible:Bool;public var alpha:Float;
+                'HealthIcon.hx': '''class HealthIcon {public var sprTracker:Dynamic;public var visible:Bool;public var alpha:Float;public var width:Float=150;public var height:Float=150;
+public function setGraphicSize(w:Int, h:Int=0):Void {} public function updateHitbox():Void {}
 public function new(a:Dynamic,b:Dynamic,c:Dynamic,d:Dynamic,e:Dynamic){}}''',
                 'RankStar.hx': '''class RankStar {public var sprTracker:Dynamic;public var starNum:Int;public var visible:Bool;public var diff:Int;
+public function setGraphicSize(w:Int,h:Int=0):Void {} public function updateHitbox():Void {}
 public function new(s:String,d:Int){diff=d;} public function checkStar():Void{} public function destroy():Void{}}''',
                 'FlxTween.hx': 'class FlxTween {public static function cancelTweensOf(v:Dynamic):Void{}}',
                 'OptionsHandler.hx': 'class OptionsHandler {public static var options={style:false};}',
@@ -149,8 +152,9 @@ public static function allows(names:Array<String>,name:String):Bool return names
     def test_both_launch_routes_and_rank_stars_share_support(self):
         source = (ROOT/'source/FreeplayState.hx').read_text()
         hxc = extract_method(source, 'function hxcLaunchCurrentSelection(')
-        self.assertIn('availabilityAllowsLaunch(curSelected, curDifficulty)', hxc)
-        self.assertLess(hxc.index('availabilityAllowsLaunch('), hxc.index('Song.loadFromJson('))
+        self.assertIn('launchSelection(curSelected, curDifficulty)', hxc)
+        shared = extract_method(source, 'function launchSelection(')
+        self.assertLess(shared.index('availabilityAllowsLaunch('), shared.index('Song.loadFromJson('))
         launch = extract_method(source, 'function availabilityAllowsLaunch(')
         self.assertIn('selectionHasChart(songs[index].songName, difficulty)', launch)
         self.assertIn('if (!availabilityAllowsLaunch(daSelection, curDifficulty)) {', source)

@@ -14,10 +14,6 @@ import flixel.system.FlxAssets;
 import sys.FileSystem;
 import sys.io.File;
 #end
-#if lime_vorbis
-import lime.media.AudioBuffer;
-import lime.media.vorbis.VorbisFile;
-#end
 using StringTools;
 
 /** Owner-scoped source FunkinAssets API. The resolver accepts only paths
@@ -221,18 +217,6 @@ class NightmareVisionFunkinAssets {
 	public function releaseOwnerAssets():Void paths.releaseOwnerAssets();
 
 	function getVorbisSoundAt(path:String):Null<Sound> {
-		if (path == null || Path.extension(path).toLowerCase() != 'ogg') return null;
-		#if !lime_vorbis
-		return null;
-		#else
-		#if sys
-		if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) return null;
-		#end
-		try {
-			var vorbisFile = VorbisFile.fromFile(path);
-			if (vorbisFile == null) return null;
-			return Sound.fromAudioBuffer(AudioBuffer.fromVorbisFile(vorbisFile));
-		} catch (_:Dynamic) return null;
-		#end
+		return NativeVorbisSound.load(path);
 	}
 }

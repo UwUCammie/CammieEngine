@@ -465,8 +465,17 @@ class Main {{
     var registry:Array<Dynamic> = cast Json.parse(File.getContent('assets/data/freeplaySongJson.jsonc'));
     var registered = 0;
     for (category in registry)
-      for (entry in (cast category.songs:Array<Dynamic>))
+      for (entry in (cast category.songs:Array<Dynamic>)) {{
         registered++;
+        if (entry.name == 'vslice-song' || entry.name == 'vslice-song-alt') {{
+          var diff = entry.name == 'vslice-song' ? 'normal' : 'alt';
+          var expected = entry.name == 'vslice-song' ? 9 : 21;
+          var ratings = FreeplayDifficultyRating.read(Reflect.field(entry, 'authoredDifficultyRatings'));
+          var rating = FreeplayDifficultyRating.resolve(ratings, diff);
+          if (rating == null || rating.value != expected || rating.scale != 'V-Slice')
+            fail('registered rating lost source identity or variation scope');
+        }}
+      }}
     if (registered != 9) fail('expected nine registered songs, got ' + registered);
     var visible = 0;
     for (_ in DifficultyManager.supportedDiff.keys()) visible++;
@@ -504,6 +513,8 @@ class Main {{
             , newline='\n')
             (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc, newline='\n')
             (temp_path / "VSliceImporter.hx").write_text(self.vslice, newline='\n')
+            (temp_path / "FreeplayDifficultyRating.hx").write_text(
+                (ROOT / "source/FreeplayDifficultyRating.hx").read_text(), newline="\n")
             (temp_path / "HxcScriptIdentity.hx").write_text(
                 (ROOT / "source/HxcScriptIdentity.hx").read_text()
             , newline='\n')
@@ -681,7 +692,7 @@ class DifficultyManager {
         audio.mkdir(parents=True)
         metadata = {
             "version": "2.2.0", "songName": "VSlice Display",
-            "playData": {"difficulties": ["normal"], "songVariations": ["alt"], "characters": {
+            "playData": {"ratings": {"normal": 9}, "difficulties": ["normal"], "songVariations": ["alt"], "characters": {
                 "player": "bf", "opponent": "dad", "girlfriend": "gf",
                 "opponentVocals": ["zed"], "playerVocals": ["ada", "bf"]},
                 "stage": "stage", "noteStyle": "TestStyle"},
@@ -692,7 +703,7 @@ class DifficultyManager {
         (data / f"{song}-chart.json").write_text(json.dumps(chart), newline='\n')
         variation_metadata = {
             "version": "2.2.0", "songName": "VSlice Alt Display",
-            "playData": {"difficulties": ["alt"], "songVariations": [], "characters": {
+            "playData": {"ratings": {"alt": 21}, "difficulties": ["alt"], "songVariations": [], "characters": {
                 "player": "dad", "opponent": "bf", "girlfriend": "nogf",
                 "opponentVocals": ["alt-opponent"], "playerVocals": ["alt-player"],
                 "instrumental": "alt"}, "stage": "mall", "noteStyle": "pixel"},

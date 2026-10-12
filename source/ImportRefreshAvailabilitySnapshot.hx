@@ -33,12 +33,19 @@ class ImportRefreshPathIndex {
 
 	public function new(touched:Array<String>) {
 		var unique:Map<String, Bool> = new Map();
+		paths = [];
+		var ordered = true;
 		if (touched != null) for (path in touched) {
 			var normalized = normalizePath(path);
-			if (normalized != '') unique.set(normalized, true);
+			if (normalized == '' || unique.exists(normalized)) continue;
+			unique.set(normalized, true);
+			if (paths.length > 0 && Reflect.compare(paths[paths.length - 1], normalized) > 0)
+				ordered = false;
+			paths.push(normalized);
 		}
-		paths = [for (path in unique.keys()) path];
-		paths.sort(Reflect.compare);
+		// Manager snapshots are already sorted. Normalization can change their
+		// order, so verify it before avoiding a second sort of the same paths.
+		if (!ordered) paths.sort(Reflect.compare);
 	}
 
 	public function touches(scopePath:String):Bool {
@@ -67,7 +74,8 @@ class ImportRefreshPathIndex {
 	public static function normalizePath(value:String):String {
 		if (value == null)
 			return '';
-		var path = StringTools.replace(StringTools.trim(value), '\\', '/');
+		var path = StringTools.trim(value);
+		if (path.indexOf('\\') >= 0) path = StringTools.replace(path, '\\', '/');
 		while (path.indexOf('//') >= 0)
 			path = StringTools.replace(path, '//', '/');
 		while (path.length > 0 && path.charAt(path.length - 1) == '/')

@@ -44,7 +44,7 @@ class RuntimeFreeplayDifficultyProbe {
 			if (ImportRefreshManager.browseTick().busy) return;
 			#end
 			if (phase == 0) {
-				menu.changeSelection(row - FreeplayState.curSelected);
+				FreeplayState.curSelected = row; menu.changeSelection(0, true);
 				menu.buildIconFor(row);
 				var song = menu.songs[row].songName;
 				var supported = DifficultyManager.getSupportedDiffs(song);

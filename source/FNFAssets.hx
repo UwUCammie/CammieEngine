@@ -420,6 +420,19 @@ class FNFAssets {
             return Assets.loadBitmapData(id, useCache);
         #end
     }
+    /** Stream local menu music without decoding the whole track during a state
+     * switch. Resolution and unsupported formats use the ordinary sound rules. */
+    public static function getMusic(id:String):Sound {
+		#if sys
+		if (!RuntimeSongExitProbe.decodeMenuMusic) {
+			var path = resolveDiskPath(id);
+			var streamed = NativeVorbisSound.load(path);
+			if (streamed != null) return streamed;
+		}
+		#end
+		return getSound(id);
+    }
+
     /**
      * Get sound from file.
      * @param id Path of file

@@ -30,6 +30,7 @@ using StringTools;
 class CategoryState extends MusicBeatState
 {
 	var categories:Array<String> = [];
+	var libraryViews:Map<Int, String> = new Map();
 	public static var choosingFor:String = "freeplay";
 	var categorySongs:Array<Array<OneOfTwo<JsonMetadata, String>>> =[];
 	var categorybgs:Array<Array<String>> =[];
@@ -55,18 +56,14 @@ class CategoryState extends MusicBeatState
 		Discord.DiscordClient.changePresence("In the Freeplay Menu", null);
 		#end
 		var epicCategoryJs:Array<Dynamic> = cast FreeplayRegistry.getJson();
-		if (epicCategoryJs.length > 1 || choosingFor != "freeplay") {
-			for (category in epicCategoryJs) {
-				categories.push(category.name);
-				categorySongs.push(category.songs);
-				categorybgs.push(category.bgs);
-			}
-		} else {
-			// just set freeplay states songs to the only category
-			trace(epicCategoryJs[0].songs);
-			trace(epicCategoryJs[0].Bg);
-			FreeplayState.currentSongList = epicCategoryJs[0].songs;
-			LoadingState.loadAndSwitchState(new FreeplayState());
+		if (epicCategoryJs != null) for (category in epicCategoryJs) {
+			categories.push(category.name);
+			categorySongs.push(category.songs);
+			categorybgs.push(category.bgs);
+		}
+		if (choosingFor == 'freeplay') {
+			addLibraryView('Favorites', FreeplayLibraryView.FAVORITES);
+			for (category in UserLibrary.data().categoryList()) addLibraryView('Category: ' + category.name, category.id);
 		}
 
 		/*
@@ -220,6 +217,11 @@ class CategoryState extends MusicBeatState
 			openCategory();
 	}
 
+	function addLibraryView(label:String, id:String):Void {
+		libraryViews.set(categories.length, id); categories.push(label);
+		categorySongs.push([]); categorybgs.push([]);
+	}
+
 	// the songs a category hands to FreeplayState/SortState. "All" re-lists every
 	// other category's songs (generating our own metadata for bare string
 	// entries); anything else just lists its own
@@ -243,7 +245,7 @@ class CategoryState extends MusicBeatState
 						order:allEntries.length});
 				}
 			}
-			for (song in FreeplaySongOrder.sort(allEntries))
+			for (song in FreeplaySongOrder.sort(allEntries, choosingFor == "freeplay"))
 				songsButData.push(cast song);
 		} else {
 			for (song in categorySongs[i]) {
@@ -259,11 +261,17 @@ class CategoryState extends MusicBeatState
 	}
 
 	function openCategory() {
+		if (choosingFor == 'freeplay' && libraryViews.exists(curSelected)) {
+			FreeplayState.openLibraryView(libraryViews.get(curSelected));
+			LoadingState.loadAndSwitchState(new FreeplayState());
+			return;
+		}
 		// make sure it isn't a header / empty category
 		if (categorySongs[curSelected].length == 0)
 			return;
 		var songsButData:Array<JsonMetadata> = songsFor(curSelected);
 		if (choosingFor == "freeplay") {
+			FreeplayState.clearLibraryView();
 			FreeplayState.curCategory = categories[curSelected];
 			FreeplayState.currentSongList = songsButData;
 			LoadingState.loadAndSwitchState(new FreeplayState());

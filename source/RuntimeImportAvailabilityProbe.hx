@@ -14,6 +14,7 @@ import ModuleFunctions.SongImportBatchResult;
 
 /** Generated private fixtures only: actual workers, publication, rows and launch. */
 @:access(FreeplayState)
+@:access(FreeplayBrowserRow)
 @:access(ImportRefreshManager)
 @:access(RuntimeSmokeHarness)
 class RuntimeImportAvailabilityProbe {
@@ -38,6 +39,8 @@ class RuntimeImportAvailabilityProbe {
 	static var directReturnFreeplay:Dynamic;
 	static var directReturnSelection:String = '';
 	static var captureAt:Float = 0;
+	static var departedSelection:String = '';
+	static var departedSearch:String = '';
 
 	public static function enabled():Bool
 		return RuntimeSmokeHarness.enabled() && Sys.getEnv('CAMMIE_IMPORT_AVAILABILITY_SMOKE') == '1';
@@ -104,6 +107,20 @@ class RuntimeImportAvailabilityProbe {
 		return -1;
 	}
 
+	static function verifyRowAvailability(ui:FreeplayState, index:Int, disabled:Bool):Void {
+		check(ui.songRows[index] != null, 'Availability row must be materialized');
+		if (ui.denseBrowser) {
+			var row:FreeplayBrowserRow = cast ui.songRows[index];
+			var color = disabled ? 0xFF8B97A8 : (index == FreeplayState.curSelected ? 0xFFFFFFFF : 0xFFCFD8E5);
+			check(row.title.visible && row.title.color == color, 'Dense row title has incorrect readiness tint');
+		} else for (glyph in ui.songRows[index].members) if (glyph != null)
+			check(glyph.color == (disabled ? 0xFF858585 : 0xFFFFFFFF), 'Legacy row has incorrect readiness tint');
+		if (ui.iconArray[index] != null)
+			check(ui.iconArray[index].color == (disabled ? 0xFF858585 : 0xFFFFFFFF), 'Icon has incorrect readiness tint');
+		if (disabled) check(ui.sourceRows[index] != null && ui.sourceRows[index].color == 0xFF858585
+			&& ui.sourceRows[index].text != '', 'Pending row lacks its dimmed status');
+	}
+
 	/** Finish a package reservation between redraw and a fresh launch check.
 	 * The manager generation deliberately stays unchanged, like a receipt recheck.
 	 */
@@ -118,16 +135,14 @@ class RuntimeImportAvailabilityProbe {
 		ui.refreshImportAvailability();
 		check(!ui.availabilityAllowsSelection(index), 'Reserved row must be unavailable');
 		check(ui.songRows[index] != null, 'Race row must be materialized');
-		for (glyph in ui.songRows[index].members) if (glyph != null)
-			check(glyph.color == 0xFF858585, 'Reserved race row must be gray');
+		verifyRowAvailability(ui, index, true);
 		ImportRefreshManager.mutex.acquire();
 		ImportRefreshManager.releaseReservationLocked(token);
 		ImportRefreshManager.mutex.release();
 		ui.refreshAvailabilityForInteraction();
 		check(ui.availabilityAllowsSelection(index), 'Fresh launch check must see the completed package');
 		check(ui.refreshImportAvailability(), 'Fresh launch check must not consume the pending redraw');
-		for (glyph in ui.songRows[index].members) if (glyph != null)
-			check(glyph.color == 0xFFFFFFFF, 'Completed race row remained gray');
+		verifyRowAvailability(ui, index, false);
 		check(FreeplayState.curSelected == selected && ImportRefreshManager.generation == generation,
 			'Receipt readiness redraw must preserve selection and the current Freeplay state');
 		RuntimeSmokeHarness.emit('import_availability_interaction_redraw', {ready:true, generation:generation});
@@ -167,7 +182,7 @@ class RuntimeImportAvailabilityProbe {
 				check(!ui.availabilityAllowsLaunch(pending, difficulty), 'Pending B was playable');
 				FreeplayState.curSelected = pending; ui.changeSelection(0, true); ui.rebuildVisibleRows();
 				check(ui.songRows[pending] != null, 'Pending row not materialized');
-				for (glyph in ui.songRows[pending].members) if (glyph != null) check(glyph.color == 0xFF858585, 'Pending row not gray');
+				verifyRowAvailability(ui, pending, true);
 				RuntimeSmokeHarness.emit('import_availability_pending', {ready:songA, pending:songB,
 					category:FreeplayState.curCategory, revision:ImportRefreshManager.availabilityRevision()});
 				phase = 3; requestCapture('pending'); return;
@@ -207,6 +222,11 @@ class RuntimeImportAvailabilityProbe {
 				check(indexFor(ui, songB, true) < 0, 'Committed B still has a provisional duplicate');
 				check(FreeplayState.curCategory == 'Imported' && ui.availabilityAllowsLaunch(ready,
 					DifficultyManager.getValidDiff(1, songB)), 'B handoff did not replace pending state');
+				check(ui.searchString == departedSearch && ui.songs[FreeplayState.curSelected].songName == departedSelection,
+					'Publication while Freeplay was absent lost search or selected chart');
+				RuntimeSmokeHarness.emit('import_availability_absent_menu_selection',
+					{song:departedSelection, search:departedSearch, restored:true});
+				ui.searchString = ''; ui.applySearchFilter();
 				FreeplayState.curSelected = ready; ui.changeSelection(0, true);
 				verifyInteractionRevision(ui, ready);
 				check(ui.songs[ready].sourceLabel == Path.withoutDirectory(b) + ' · Psych Engine'
@@ -225,8 +245,7 @@ class RuntimeImportAvailabilityProbe {
 				check(!ui.availabilityAllowsLaunch(pending, DifficultyManager.getValidDiff(1, songB)),
 					'Refreshing B should remain unavailable before gameplay');
 				check(ui.songRows[pending] != null, 'Direct-return race row was not materialized');
-				for (glyph in ui.songRows[pending].members) if (glyph != null)
-					check(glyph.color == 0xFF858585, 'Refreshing B should be gray before gameplay');
+				verifyRowAvailability(ui, pending, true);
 				check(ui.availabilityAllowsLaunch(ready, DifficultyManager.getValidDiff(1, songA)),
 					'Ready A was blocked by B refresh');
 				FreeplayState.curSelected = ready;
@@ -260,11 +279,11 @@ class RuntimeImportAvailabilityProbe {
 				check(!ui.availabilityAllowsLaunch(pending, DifficultyManager.getValidDiff(1, songB)),
 					'B became playable before its direct-return refresh completed');
 				check(ui.songRows[pending] != null, 'Direct-return row was not materialized');
-				for (glyph in ui.songRows[pending].members) if (glyph != null)
-					check(glyph.color == 0xFF858585, 'B should remain gray before worker release');
+				verifyRowAvailability(ui, pending, true);
 				check(FreeplayState.curSelected >= 0 && FreeplayState.curSelected < ui.songs.length
 					&& ui.songs[FreeplayState.curSelected].songName == directReturnSelection,
 					'Direct return changed selection before the refresh completed');
+				ui.searchString = 'Availability'; ui.applySearchFilter();
 				directReturnFreeplay = ui;
 				RuntimeSmokeHarness.emit('import_availability_direct_return_pending',
 					{song:songB, selection:directReturnSelection, sameState:true});
@@ -284,12 +303,14 @@ class RuntimeImportAvailabilityProbe {
 				check(ui.availabilityAllowsLaunch(ready, DifficultyManager.getValidDiff(1, songB)),
 					'Direct-return refresh completed but B remained unavailable');
 				check(ui.songRows[ready] != null, 'Direct-return ready row was not materialized');
-				for (glyph in ui.songRows[ready].members) if (glyph != null)
-					check(glyph.color == 0xFFFFFFFF, 'Direct-return ready row remained gray after handoff');
+				verifyRowAvailability(ui, ready, false);
 				var count = 0;
 				for (song in ui.songs) if (!song.isProvisional && song.songName == songB) count++;
 				check(count == 1 && ImportRefreshManager.generation == FreeplayState.currentSongListGeneration,
 					'Direct-return refresh duplicated B or left a stale song-list generation');
+				check(ui.searchString == 'Availability'
+					&& ui.songs[FreeplayState.curSelected].songName == directReturnSelection,
+					'Worker publication lost Freeplay search or selected chart');
 				RuntimeSmokeHarness.emit('import_availability_direct_return_complete',
 					{song:songB, ready:true, stateRecreated:true, selection:FreeplayState.curSelected});
 				RuntimeSmokeHarness.succeed();
@@ -310,7 +331,11 @@ class RuntimeImportAvailabilityProbe {
 				var ui:FreeplayState = cast FlxG.state;
 				for (member in ui.members) if (Std.isOfType(member, ImportRefreshProgressBar)) {
 					var card:ImportRefreshProgressBar = cast member;
-					check(card.visible && card.panel.x + card.panel.width * card.panel.scale.x <= ui.scoreText.x - 10,
+					check(card.visible, 'Pending import progress card is hidden');
+					if (ui.denseBrowser) check(card.panel.x >= FreeplayBrowserLayout.detailX(FlxG.width)
+						&& card.panel.y + card.panel.height * card.panel.scale.y < ui.scoreText.y,
+						'Import card obscures the browser list or score');
+					else check(card.panel.x + card.panel.width * card.panel.scale.x <= ui.scoreText.x - 10,
 						'Import card obscures the score column');
 				}
 			}
@@ -323,6 +348,14 @@ class RuntimeImportAvailabilityProbe {
 				FreeplayState.curSelected = indexFor(ui, songA, false);
 				FreeplayState.curDifficulty = DifficultyManager.getValidDiff(1, songA);
 				ui.changeSelection(0, true); OptionsHandler.options.skipModifierMenu = true;
+				departedSelection = songA; departedSearch = 'Availability';
+				ui.searchString = departedSearch; ui.applySearchFilter();
+				// Old display slots differ from the fresh registry after B publishes.
+				var old = FreeplayState.curSelected;
+				var other = indexFor(ui, songB, true);
+				check(other >= 0 && other != old, 'Absent-menu fixture needs two distinct rows');
+				var swap = ui.songs[other]; ui.songs[other] = ui.songs[old]; ui.songs[old] = swap;
+				FreeplayState.curSelected = other;
 				check(ui.hxcLaunchCurrentSelection(), 'Ready A confirmation did not launch'); phase = 4;
 			} else {
 				RuntimeSmokeHarness.emit('import_availability_verified', {elapsedSeconds:Sys.time() - began});

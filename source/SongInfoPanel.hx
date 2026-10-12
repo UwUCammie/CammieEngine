@@ -78,6 +78,13 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         //add(judgeTxt);
         add(displayTxt);
     }   
+    public function setBrowserSize(panelWidth:Int, panelHeight:Int):Void {
+        backpanel.makeGraphic(panelWidth, panelHeight, 0xCC101622);
+        scoreTxt.font = 'assets/fonts/vcr.ttf'; displayTxt.font = scoreTxt.font;
+        scoreTxt.size = 18; scoreTxt.fieldWidth = panelWidth - 32;
+        scoreTxt.setPosition(x + 12, y + 10);
+        displayTxt.size = 16; displayTxt.setPosition(x + 12, y + panelHeight - 28);
+    }
     public function changeSong(song:String, diff:Int) {
         curSong = song;
         curDiff = diff;

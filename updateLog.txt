@@ -1,6 +1,26 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.27 alpha - CammieEngine
+- Re-importing an unchanged named package from a renamed or moved source folder preserves its chart identity, favorites, category memberships and named difficulty preference. Distinct same-named packages remain separate; identity preparation is isolated per import worker.
+- Freeplay preserves the selected song by retained identity, search text and supported named difficulty when imports refresh, including completion during gameplay or another menu before returning to the same view. Missing or ambiguous selections show a notice; pending songs remain locked.
+- Default Freeplay chart order uses authored Psych/NV week sequences and NV Freeplay tabs from new or refreshed imports. Owner-local ordering preserves saved registry positions, independent group order and stable fallback for unlisted songs.
+- Freeplay can order charts by saved best score or authored difficulty rating in either direction. A separate named comparison difficulty preserves the launch selection; unknown values sort last, incompatible rating scales remain separate, and score reads do not create save records.
+- Recently imported group ordering records completed manual imports in the host library save. Automatic refreshes, failed imports and unchanged existing packages keep their prior order; chart ordering remains independent.
+- Freeplay supports Recently played ordering, using persistent retained chart identities and a clock-independent play sequence. Shared song-start recording excludes previews and canceled selections, preserves import locks, and leaves older unknown history unfilled.
+- Host Freeplay has separate persistent grouping, group-order and chart-order controls. Mod/engine groups remain contiguous; alphabetical, default registry and favorites-first ordering compose with search, categories and import locks while keeping the selected chart and difficulty.
+- Imported mods have consistent short package badges in Freeplay, Imported Mods and category membership controls. Badge searches compose with existing filters; package identities and saved favorites are unchanged.
+- Freeplay portraits use their supplied animation atlases, keep normal faces while browsing, and show confirmation animations or winning/losing fallbacks on selection. Host confirmation is cancellable and rechecks import readiness before launch.
+- New or refreshed V-Slice imports preserve named authored difficulty ratings for the host Freeplay details panel. Missing or ambiguous ratings show Unknown; completion stars remain separate.
+- Host Freeplay uses an eight-row browser with aligned icons, bounded labels, selected-song details, an explicit empty state and separate completion stars. Existing search, Library actions, difficulty selection and pending-import locks remain shared.
+- The host Freeplay chooser includes global Favorites and user categories. Remembered chart difficulties survive menu/gameplay returns and are validated against current difficulty support and chart files.
+- Library categories support creation, rename, mod membership, deletion and combined Freeplay filters. Categories reference installed mods without copying or removing them, and name entry includes a controller-accessible character grid.
+- Freeplay Library actions (Tab or controller Select/Back) add persistent favorites and a favorites filter that combines with search. Favorites use a separate host save and remain distinct from difficulty stars.
+- Large import refreshes avoid quadratic duplicate searches while preparing publication paths, preserving ordered outputs, cancellation and package readiness locks.
+- Replacing the score text clears only stale native rank markup, preventing NV rank colours from appearing on accuracy digits while preserving authored formatting.
+- Main Menu, Freeplay and Options stream their music through the shared native Vorbis loader, reducing song-exit stalls without changing audio, graphics or required cleanup.
+- Import readiness snapshots avoid redundant path replacement and sorting while preserving platform case rules, normalized overlap checks and package launch locks.
+
 v0.0.26 alpha - CammieEngine
 - NV JSON noteskins are selected by source API identity independently of HUD artwork layout, restoring authored notes, special-note textures and sustain-effect offsets. Correct splash animation definitions allow effects to retire normally instead of accumulating and slowing gameplay.
 - Pending import path-overlap checks share a revision-owned index while preserving package readiness locks.

@@ -314,16 +314,21 @@ class HealthIcon extends FlxSprite {
 		var freeplayPixelPath = isNormal ? null : freeplayPixelIconPath(curCharacter, iconOwnerRoot);
 		if (freeplayPixelPath != null && FNFAssets.exists(freeplayPixelPath)) {
 			try {
-				loadGraphic(FNFAssets.getBitmapData(freeplayPixelPath));
+				var pixelXml = freeplayPixelPath.substr(0, freeplayPixelPath.length - 4) + '.xml';
+				isAnimated = FNFAssets.exists(pixelXml);
+				if (isAnimated) {
+					frames = DynamicSprite.DynamicAtlasFrames.fromSparrow(freeplayPixelPath, pixelXml);
+					FreeplayIconPresentation.configureAtlas(this, true);
+				} else {
+					loadGraphic(FNFAssets.getBitmapData(freeplayPixelPath));
+					animation.add('icon', [0], false, player);
+				}
 				// V-Slice 0.3.2's SongMenuItem displays this portrait at 2x.
 				setGraphicSize(Std.int(width * 2), Std.int(height * 2));
 				updateHitbox();
 				antialiasing = false;
-				isAnimated = false;
 				healthColors = [0xFFFFFFFF];
-				animation.add('icon', [0], false, player);
-				animation.play('icon');
-				animation.pause();
+				FreeplayIconPresentation.reset(this, isAnimated);
 				return this;
 			} catch (_:Dynamic) {}
 		}
@@ -404,6 +409,7 @@ class HealthIcon extends FlxSprite {
 						animation.addByPrefix('dying', 'dying', 24, true);
 						animation.addByPrefix('winning', 'winning', 24, true);
 						animation.addByPrefix('poisoned', 'poisoned', 24, true);
+						if (!isNormal) FreeplayIconPresentation.configureAtlas(this, false);
 					} else {
 						isAnimated = false;
 						loadGraphic(image, true, 150, 150);
@@ -422,6 +428,7 @@ class HealthIcon extends FlxSprite {
 					animation.addByPrefix('dying', 'dying', 24, true);
 					animation.addByPrefix('winning', 'winning', 24, true);
 					animation.addByPrefix('poisoned', 'poisoned', 24, true);
+					if (!isNormal) FreeplayIconPresentation.configureAtlas(this, false);
 				} else {
 					isAnimated = false;
 					var rawPic:BitmapData = FNFAssets.getBitmapData(charPath + "icons.png");
@@ -485,6 +492,12 @@ class HealthIcon extends FlxSprite {
 			return null;
 		return ownerRoot + '/images/freeplay/icons/' + id
 			+ (id.endsWith('pixel') ? '' : 'pixel') + '.png';
+	}
+
+	/** Freeplay capsule API; gameplay health states never use confirmation faces. */
+	public function confirm():Float return isNormal ? 0 : FreeplayIconPresentation.confirm(this, isAnimated);
+	public function resetConfirmation():Void {
+		if (!isNormal) FreeplayIconPresentation.reset(this, isAnimated);
 	}
 
 	/** Named HXC alias; native code continues to use switchAnim internally. */
@@ -650,6 +663,7 @@ class HealthIcon extends FlxSprite {
 	override function update(elapsed:Float):Void {
 		super.update(elapsed);
 		reportDeferredIconDiagnostic();
+		if (!isNormal) FreeplayIconPresentation.update(this);
 
 		if (sprTracker != null)
 			setPosition(sprTracker.x + sprTracker.width + 10, sprTracker.y - 30);

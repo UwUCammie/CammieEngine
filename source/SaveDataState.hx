@@ -81,13 +81,15 @@ class SaveDataState extends MusicBeatState {
 	#end
 	public static var prevPath:String = 'title';
 	override function create() {
+		RuntimeSongExitProbe.mark("options-audio-begin");
 		FlxG.sound.music.stop();
-		var goodSound = FNFAssets.getSound('assets/music/custom_menu_music/'
+		var goodSound = FNFAssets.getMusic('assets/music/custom_menu_music/'
 			+ musicJson.Options
 			+ '/options'
 			+ TitleState.soundExt);
 		optionMask = CoolUtil.parseJson(FNFAssets.getJson('assets/data/optionsMask'));
 		FlxG.sound.playMusic(goodSound);
+		RuntimeSongExitProbe.mark("options-audio-end");
 		var menuBG:FlxSprite = new FlxSprite().loadGraphic('assets/images/menuDesat.png');
 			optionList = [
 							{name: "Controls...", value: false, intName:'controls', desc:"Edit bindings!", ignore: true,},
@@ -201,6 +203,7 @@ class SaveDataState extends MusicBeatState {
 
 			saves.add(saveFile);
 		}
+		RuntimeSongExitProbe.mark("options-saves-ready");
 		trace("x3");
 		checkmarks = new FlxTypedSpriteGroup<FlxSprite>();
 		options = new FlxTypedSpriteGroup<Alphabet>();
@@ -252,6 +255,7 @@ class SaveDataState extends MusicBeatState {
 			options.add(swagOption);
 			curNum++;
 		}
+		RuntimeSongExitProbe.mark("options-rows-ready");
 		add(menuBG);
 		add(saves);
 		add(optionMenu);

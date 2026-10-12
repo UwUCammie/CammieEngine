@@ -19,6 +19,10 @@ REGISTRY = "assets/data/freeplaySongJson.json"
 
 
 STUBS = {
+    "LibraryImportHistory.hx": r'''class LibraryImportHistory {
+ public static var batches:Array<Array<String>>=[];
+ public static function committed(roots:Array<String>):Void {if(roots!=null && roots.length>0)batches.push(roots.copy());}
+}''',
     "EngineBranding.hx": r'''class EngineBranding {
  public static function version():String return "0.0.9";
 }''',
@@ -204,6 +208,7 @@ class ImportPackageNamePrompt {
  public static function validName(value:String):Bool return value!=null&&StringTools.trim(value)!="";
 }''',
     "ImportSongOwnership.hx": r'''class ImportSongOwnership {
+ public static function withIdentity<T>(names:Map<String,String>, sources:Array<Dynamic>, work:Void->T):T return work();
  public static function invalidateOwnerIdentityIndex():Void {}
 }''',
 }
@@ -517,10 +522,13 @@ class ImportRefreshManagerFixture {
   try {
    var result=ImportRefreshManager.importOnce(source,"Psych Engine",input,new Map(),
     conversion,noCancel,progress);
-   return {status:"ok",failed:result.failed,noChanges:Reflect.field(result,"noChanges")==true,
+   var before=LibraryImportHistory.batches.length;
+   ImportRefreshManager.completeInitialImportHandoff(result.importedSongs);
+   return {status:"ok",historyBefore:before,historyBatches:LibraryImportHistory.batches,
+    failed:result.failed,noChanges:Reflect.field(result,"noChanges")==true,
     roots:overlapObservedRoots,songs:overlapObservedSongs,
     records:ImportRefreshManager.cachedRecords(Sys.getCwd())};
-  } catch(error:Dynamic) return {status:"error",error:Std.string(error),
+  } catch(error:Dynamic) return {status:"error",error:Std.string(error),historyBatches:LibraryImportHistory.batches,
    roots:overlapObservedRoots,songs:overlapObservedSongs,
    records:ImportRefreshManager.cachedRecords(Sys.getCwd())};
  }
@@ -1155,6 +1163,7 @@ class ImportRefreshManagerFixture {
     ImportRefreshManager.mutex.acquire();
     var reservation=ImportRefreshManager.reserveLocked("batched", "", [owner], null, true);
     ImportRefreshManager.setReservationCommittedRootsLocked(reservation,[owner]);
+    reservation.historyRoots=[owner];
     ImportRefreshManager.setCommittedRootsLocked([unrelated]);
     ImportRefreshManager.queueHandoffLocked("batched",names);
     ImportRefreshManager.mutex.release();
@@ -1171,6 +1180,7 @@ class ImportRefreshManagerFixture {
     var failed=false;
     try ImportRefreshManager.tryHandoff("batched") catch(_:Dynamic) failed=true;
     var offsetAfterFailure=ImportRefreshManager.handoffOffsets.get("batched");
+    var historyBefore=LibraryImportHistory.batches.length;
     ModuleFunctions.handoffFailure=null;
     // The UI bridge may poll with another array. It must not replace a batch
     // whose first part has already been applied.
@@ -1179,14 +1189,20 @@ class ImportRefreshManagerFixture {
     var third=ImportRefreshManager.completeInitialImportHandoff(names);
     var after=ImportRefreshManager.availabilitySnapshot();
     var repeat=ImportRefreshManager.completeInitialImportHandoff(names);
-    report({first:first,second:second,third:third,repeat:repeat,prefix:prefix,
+    var generationAfter=ImportRefreshManager.generation;
+    var manualBatches=ModuleFunctions.handoffNames.copy();
+    ImportRefreshManager.mutex.acquire();
+    var refresh=ImportRefreshManager.reserveLocked("history-refresh", "", [unrelated], null, false);
+    refresh.historyRoots=[unrelated];ImportRefreshManager.queueHandoffLocked("history-refresh",[]);
+    ImportRefreshManager.mutex.release();ImportRefreshManager.tryHandoff("history-refresh");
+    report({historyBefore:historyBefore,historyBatches:LibraryImportHistory.batches,first:first,second:second,third:third,repeat:repeat,prefix:prefix,
      beforeLocked:!FreeplaySongAvailability.ownerReadiness(before,owner).ready,
      unrelatedReady:FreeplaySongAvailability.ownerReadiness(before,unrelated).ready,
      middleLocked:!FreeplaySongAvailability.ownerReadiness(middle,owner).ready,
      afterReady:FreeplaySongAvailability.ownerReadiness(after,owner).ready,
-     generationBefore:generationBefore,generationAfter:ImportRefreshManager.generation,
+     generationBefore:generationBefore,generationAfter:generationAfter,
      gameplay:gameplay,gameplayCalls:gameplayCalls,failed:failed,offsetAfterFailure:offsetAfterFailure,
-     batches:ModuleFunctions.handoffNames,offsetRetained:ImportRefreshManager.handoffOffsets.exists("batched")});
+     batches:manualBatches,offsetRetained:ImportRefreshManager.handoffOffsets.exists("batched")});
    case "handoff-cycle":
     ImportRefreshManager.checked=true;
     ImportRefreshManager.active=false;
@@ -2083,6 +2099,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertTrue(result["failed"], result)
         self.assertEqual(result["offsetAfterFailure"], 4)
         self.assertFalse(result["offsetRetained"], result)
+        self.assertEqual(result["historyBefore"], 0)
+        self.assertEqual(result["historyBatches"], [["assets/imported_mods/batched-owner"]])
 
     def test_committed_cyclic_dependencies_drain_handoffs_without_deadlock(self):
         result = self.run_fixture("handoff-cycle")
@@ -2823,7 +2841,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         shutil_rmtree(donor)
         stale_revisions = [dict(stamp) for stamp in record["revisions"]]
         self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
-        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {11})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {12})
         for stamp in stale_revisions:
             stamp["engineRevision"] = 9
         self.mark_record_stale(record, common_revision=None,
@@ -2836,7 +2854,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
-        self.assertTrue(any(stamp["engineRevision"] == 11
+        self.assertTrue(any(stamp["engineRevision"] == 12
                             for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())
@@ -3386,6 +3404,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
         parent = next(record for record in result["records"]
                       if record["label"] == corpus.name)
         self.assertEqual([root["relative"] for root in parent["roots"]], ["new-package"])
+        self.assertEqual(result["historyBefore"], 0)
+        self.assertEqual(result["historyBatches"], [["assets/imported_mods/" + parent["roots"][0]["namespace"]]])
         for record in previous:
             self.assertEqual(self.manifest_bytes(record), manifests[record["id"]])
         for name, data in installed.items():
@@ -3401,6 +3421,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         result = self.run_fixture("retained-root-overlap", corpus,
                                   "fnia", "swag-messiah", "new-package", "force-duplicate")
 
+        self.assertEqual(result["historyBatches"], [])
         self.assertEqual(result["status"], "error", result)
         self.assertIn("no retained-source ownership baseline", result["error"].lower())
         self.assertEqual({record["id"] for record in result["records"]}, record_ids)
@@ -3419,6 +3440,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
                                   "fnia", "swag-messiah", "all-owned")
 
         self.assertEqual(result["status"], "ok", result)
+        self.assertEqual(result["historyBatches"], [])
         self.assertTrue(result["noChanges"], result)
         self.assertEqual(result["roots"], [], result)
         self.assertEqual(result["songs"], [], result)
@@ -3438,6 +3460,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         result = self.run_fixture("retained-root-overlap", corpus,
                                   "fnia", "swag-messiah", "all-owned-new-work")
 
+        self.assertEqual(result["historyBatches"], [])
         self.assertEqual(result["status"], "error", result)
         self.assertIn("still reports new or unresolved work", result["error"].lower())
         self.assertEqual({record["id"] for record in result["records"]}, record_ids)

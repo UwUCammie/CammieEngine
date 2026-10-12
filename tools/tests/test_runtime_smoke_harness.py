@@ -140,8 +140,8 @@ class RuntimeSmokeHarnessTest(unittest.TestCase):
         self.assertIn("!directDone && ImportWorkScheduler.gameplayActive()", play_path)
         self.assertIn("LoadingState.loadAndSwitchState(new FreeplayState())", play_path)
         self.assertIn("!directDone && stillWaiting", return_path)
-        self.assertIn("B should remain gray before worker release", return_path)
-        self.assertLess(return_path.index("B should remain gray before worker release"),
+        self.assertIn("verifyRowAvailability(ui, pending, true)", return_path)
+        self.assertLess(return_path.index("verifyRowAvailability(ui, pending, true)"),
                         return_path.index("releaseDirectWorker.release()"))
         self.assertIn("import_availability_direct_return_pending", return_path)
         self.assertIn("import_availability_direct_return_complete", probe[phase_complete:])

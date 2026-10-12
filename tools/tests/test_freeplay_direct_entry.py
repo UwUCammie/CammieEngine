@@ -96,12 +96,18 @@ class FreeplayDirectEntryTest(unittest.TestCase):
         self.assertIn("return ImportedModDiscovery.ownerForSong(name, 'assets/data'), curCategory);", source)
         self.assertIn("if (preferredCategory == 'All')", (ROOT / "source/FreeplayDirectEntry.hx").read_text())
         self.assertIn("if (songs.length == 0)", source)
+        self.assertLess(source.index('departedSelection.take('), source.index('if (songs.length == 0)'))
         empty_route = source.split("if (songs.length == 0)", 1)[1].split(
             "curDifficulty =", 1)[0]
         self.assertIn("ImportedFreeplayCaller.take(directOwnerRoot)", empty_route)
         self.assertIn("CodenameModRuntime.stateInit", empty_route)
         generation_change = source.split('if (importRefreshGeneration != ImportRefreshManager.generation)', 1)[1].split('\n\t\t#end', 1)[0]
-        self.assertIn('currentSongList = [];', generation_change)
+        self.assertIn('reloadAfterImport();', generation_change)
+        from test_freeplay_random_difficulty import extract_method
+        reload = extract_method(source, 'function reloadAfterImport(')
+        self.assertIn('currentSongList = [];', reload)
+        self.assertIn('captureRefreshBookmark(refreshViewScope())', reload)
+        self.assertNotIn('curCategory =', reload)
         self.assertNotIn('curCategory =', generation_change)
 
 

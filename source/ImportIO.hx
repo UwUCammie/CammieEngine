@@ -836,18 +836,20 @@ class ImportIO {
 	}
 
 	public static function isFreeplayRegistry(path:String):Bool {
-		return path == "assets/data/freeplaySongJson.jsonc"
-			|| path == "assets/data/freeplaySongJson.json"
-			|| path == "assets/images/freeplaySongJson.jsonc"
-			|| path == "assets/images/freeplaySongJson.json";
+		path = path == null ? "" : path.toLowerCase();
+		return path == "assets/data/freeplaysongjson.jsonc"
+			|| path == "assets/data/freeplaysongjson.json"
+			|| path == "assets/images/freeplaysongjson.jsonc"
+			|| path == "assets/images/freeplaysongjson.json";
 	}
 
 	public static function isRegistry(path:String):Bool {
+		path = path == null ? "" : path.toLowerCase();
 		return isFreeplayRegistry(path)
-			|| path == "assets/data/storySonglist.json"
-			|| path == "assets/data/codenameMods.json"
-			|| path == "assets/imported_mods/compatOverlays.json"
-			|| path == "assets/imported_mods/globalResultsProvider.json"
+			|| path == "assets/data/storysonglist.json"
+			|| path == "assets/data/codenamemods.json"
+			|| path == "assets/imported_mods/compatoverlays.json"
+			|| path == "assets/imported_mods/globalresultsprovider.json"
 			|| path == "assets/images/custom_chars/custom_chars.jsonc"
 			|| path == "assets/images/custom_chars/icon_only_chars.json"
 			|| path == "assets/images/custom_stages/custom_stages.json"

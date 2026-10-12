@@ -33,6 +33,8 @@ class ImportedFreeplayCaller {
 }
 class FreeplayState {
  var directOwnerRoot:String='';
+ public var soundTest=false; public var libraryClears=0;
+ function clearLibraryView():Void libraryClears++;
  public function new() {}
  public function prepare():Void prepareDirectFreeplayContext();
  public function owner():String return directOwnerRoot;
@@ -45,6 +47,7 @@ class Main {
   CodenameModRuntime.owner='assets/imported_mods/chart-owner';
   ImportedFreeplayCaller.explicitlyScopedOwner='';
   state.prepare();
+  check(state.libraryClears==0,'chart return discarded host library view');
   check(state.owner()=='','ordinary Freeplay must have no imported owner filter');
   check(CodenameModRuntime.owner=='' && CodenameModRuntime.clears==1,
    'stale chart owner must be released when base Freeplay is prepared');
@@ -55,6 +58,9 @@ class Main {
    'explicit package entry must retain its owner filter');
   check(CodenameModRuntime.clears==1,
    'explicit imported Freeplay must not clear its active owner');
+  check(state.libraryClears==1,'explicit owner retained host library filters');
+  ImportedFreeplayCaller.explicitlyScopedOwner='';state.soundTest=true;state.prepare();
+  check(state.libraryClears==2,'sound test retained host library filters');
   Sys.println('freeplay-context-cleanup-ok');
  }
 }

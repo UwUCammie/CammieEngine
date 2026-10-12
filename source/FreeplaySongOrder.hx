@@ -80,7 +80,7 @@ class FreeplaySongOrder {
 		return normalized(canonical != name ? canonical : display);
 	}
 
-	public static function sort(entries:Array<FreeplaySongEntry>):Array<Dynamic> {
+	public static function sort(entries:Array<FreeplaySongEntry>, retainOrder:Bool = false):Array<Dynamic> {
 		if (entries == null)
 			return [];
 		var indexed = [];
@@ -94,8 +94,11 @@ class FreeplaySongOrder {
 			return a.order - b.order;
 		});
 		var result:Array<Dynamic> = [];
-		for (entry in indexed)
-			result.push(entry.song);
+		for (entry in indexed) {
+			var song = retainOrder ? Reflect.copy(entry.song) : entry.song;
+			if (retainOrder) Reflect.setField(song, '_libraryOrder', entry.order);
+			result.push(song);
+		}
 		return result;
 	}
 }

@@ -237,6 +237,12 @@ class Highscore {
 		return daSong;
 	}
 
+	/** Read only actual best-score records. Browsing must not create missing scores. */
+	public static function peekBestScore(song:String, diff:Int):Null<Int> {
+		var key = formatSong(song, diff, 'best-score');
+		return songScores.exists(key) ? songScores.get(key) : null;
+	}
+
 	public static function getScore(song:String, diff:Int, useFor:String = "best"):Int {
 		var daSong:String = formatSong(song, diff, useFor);
 		if (!songScores.exists(daSong))

@@ -82,6 +82,10 @@ class Main extends Sprite {
 		FramerateOptionsCompat.apply(initialOptions);
 		RuntimeInputProbe.install();
 		RuntimeMenuTimingProbe.install();
+		RuntimeSongExitProbe.install();
+		RuntimeUserLibraryProbe.install();
+		RuntimeLibraryCategoryProbe.install();
+		RuntimeLibraryNavigationProbe.install();
 		RuntimeFreeplayDifficultyProbe.install();
 		RuntimeStartupProbe.install();
 		RuntimeGpuProbe.install();
@@ -92,17 +96,21 @@ class Main extends Sprite {
 		// art + audio of every visited song piles up into multiple GB and
 		// native code starts SIGBUSing on rapid scene switching
 		FlxG.signals.preStateSwitch.add(function() {
+			RuntimeSongExitProbe.mark("pre-state-switch");
 			leavingPlayState = Std.isOfType(FlxG.state, PlayState);
 		});
 		// Flixel dispatches preStateCreate after destroying the old state and
 		// before the new state's create(). Trim here so newly created transition
 		// sprites cannot have their graphics destroyed by a late cache sweep.
 		FlxG.signals.preStateCreate.add(function(_state:FlxState) {
+			RuntimeSongExitProbe.mark("pre-state-create");
 			syncImportForegroundForState(_state);
 			if (leavingPlayState)
 				FlxG.bitmap.clearCache();
+			RuntimeSongExitProbe.mark("bitmap-cache-cleared");
 		});
 		FlxG.signals.postStateSwitch.add(function() {
+			RuntimeSongExitProbe.mark("post-state-switch");
 			// dead FlxSounds keep their decoded audio alive from here
 			// (members is getter-only, so prune in place)
 			var corpses = FlxG.sound.list.members;

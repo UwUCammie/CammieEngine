@@ -606,8 +606,16 @@ class Main {
   ImportSongOwnership.invalidateOwnerIdentityIndex();
   var newSongs:Array<Dynamic> = [{sourceRoot:newRoot, sourceFolder:"project-song",
     diffFiles:[newChart], importSourceInfo:{song:newRoot + "/songs/project-song"}}];
-  ImportSongOwnership.setSourceFingerprintHints(newSongs);
-  var movedNamespace = CompatScriptManifest.namespaceFor(newRoot, engine);
+  var inputs = ImportSongOwnership.fingerprintSources(newSongs);
+  Reflect.setField(newSongs[0], "diffFiles", []);
+  var movedNamespace = ImportSongOwnership.withIdentity(null, inputs,
+    function() return CompatScriptManifest.namespaceFor(newRoot, engine));
+  File.saveContent(newChart, '{"song":{"notes":[1]}}');
+  var changedNamespace = ImportSongOwnership.withIdentity(null, inputs,
+    function() return CompatScriptManifest.namespaceFor(newRoot, engine));
+  if (changedNamespace == expectedNamespace) throw "scan inputs reused stale fingerprint bytes";
+  File.saveContent(newChart, '{"song":{"notes":[]}}');
+  ImportSongOwnership.setSourceFingerprintHints(inputs);
   if (movedNamespace != expectedNamespace)
     throw "unique project title did not reconnect: " + movedNamespace + " != " + expectedNamespace;
 
