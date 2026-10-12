@@ -2,6 +2,8 @@
 
 Reference date: 4 October 2026. This document is the implementation brief and acceptance checklist. A checked item requires evidence; an existing method name or successful build alone does not prove compatibility.
 
+Release checkpoint (12 October): [v0.0.27 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.27) is published with verified Windows assets. Development is v0.0.28. Continue the non-chart queue and preserve all existing acceptance gates; removal remains a read-only foundation. See [release validation](tools/reports/v0.0.27-release-validation.md).
+
 ## Objective and order
 
 Make CammieEngine run imported Psych Engine and Nightmare Vision content accurately, including the scripts and menus supplied by a mod. Then make the imported library practical to manage and browse. Finally optimize performance without reducing visual quality, gameplay behavior, or usability.

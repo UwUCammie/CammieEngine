@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.28 development - CammieEngine
+- Continuing the existing roadmap after the v0.0.27 release.
+
 v0.0.27 alpha - CammieEngine
 - Re-importing an unchanged named package from a renamed or moved source folder preserves its chart identity, favorites, category memberships and named difficulty preference. Distinct same-named packages remain separate; identity preparation is isolated per import worker.
 - Freeplay preserves the selected song by retained identity, search text and supported named difficulty when imports refresh, including completion during gameplay or another menu before returning to the same view. Missing or ambiguous selections show a notice; pending songs remain locked.
