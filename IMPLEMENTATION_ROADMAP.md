@@ -2,7 +2,7 @@
 
 Reference date: 4 October 2026. This document is the implementation brief and acceptance checklist. A checked item requires evidence; an existing method name or successful build alone does not prove compatibility.
 
-Release checkpoint (12 October): [v0.0.31 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.31) is published at the user's request with verified Windows assets, direct Freeplay entry and held navigation, integer Difficulty Rating X/20 and metadata-only refresh, shared Psych stage/HUD ordering and navy FNF song-loading artwork. Development is v0.0.32. Continue the non-chart queue and preserve all existing acceptance gates; recoverable removal remains under development. See [release validation](tools/reports/v0.0.31-release-validation.md).
+Release checkpoint (12 October): [v0.0.32 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.32) is published at the user's request with verified Windows assets, smooth centered Freeplay motion, live import refresh inside the existing browser and named song-loading stages/details. Development is v0.0.33. Continue the non-chart queue and preserve all existing acceptance gates; recoverable removal remains under development. See [release validation](tools/reports/v0.0.32-release-validation.md).
 
 Current Freeplay requirement (12 October): always pin favorite charts above non-favorites in host views. Apply group and chart sorting within each section. Keep unselected songs compact and expand only the selection; retain readable import locks, source details, search, categories, difficulty controls and completion stars. Give the browser more musical personality without introducing expensive effects or changing imported custom menus.
 
