@@ -6,7 +6,7 @@ class LibrarySortingSubState extends LibraryMenuSubState {
 	override function create():Void { super.create(); refresh(); }
 	function refresh():Void {
 		var order = UserLibrary.data().sorting();
-		showActions('Library grouping and sorting', [
+		showActions('Sorting / Favorites always first', [
 			{label:'Grouping: ' + LibrarySort.label(order.grouping), run:function() advance(0)},
 			{label:'Group order: ' + LibrarySort.label(order.groups) + (order.grouping == 'flat' ? ' (inactive in flat list)' : ''), run:function() advance(1)},
 			{label:'Chart order: ' + LibrarySort.label(order.charts), run:function() advance(2)},

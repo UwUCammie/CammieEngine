@@ -1,8 +1,10 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.28 development - CammieEngine
-- Continuing the existing roadmap after the v0.0.27 release.
+v0.0.28 alpha - CammieEngine
+- Host Freeplay always puts favorites first, with independent sorting retained inside favorites and other songs. Compact unselected rows make room for eleven tracks at 720p, while the expanded selection shows source details and a larger portrait. New color accents and an animated music meter add visual character.
+- Add strict read-only retained import and installed ownership checks for the planned mod-removal workflow. Missing receipts, unclaimed packages, changed metadata and inconsistent dependencies block assessment while preserving files.
+- Share bounded metadata reads, cancellation and change detection between ownership checks. Mod removal and history archiving remain under development; no delete-mod action is exposed.
 
 v0.0.27 alpha - CammieEngine
 - Re-importing an unchanged named package from a renamed or moved source folder preserves its chart identity, favorites, category memberships and named difficulty preference. Distinct same-named packages remain separate; identity preparation is isolated per import worker.

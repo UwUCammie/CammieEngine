@@ -301,8 +301,14 @@ class RuntimeLibraryNavigationProbe {
 				check(menu.browserGroup.text.indexOf('Mod:') == 0, 'Selected group heading missing');
 				var visible = menu.orderedVisibleSongs(); var done:Map<String, Bool> = []; var last = '';
 				for (i in visible) {
-					var group = LibrarySort.group(menu.libraryOrderRows[i], 'mod');
+					var row = menu.libraryOrderRows[i];
+					var group = (row.favorite ? 'favorite:' : 'other:') + LibrarySort.group(row, 'mod');
 					if (group != last) { check(!done.exists(group), 'Mod group split into noncontiguous rows'); done.set(group, true); last = group; }
+				}
+				var sawOrdinary = false;
+				for (i in visible) {
+					if (!menu.libraryOrderRows[i].favorite) sawOrdinary = true;
+					else check(!sawOrdinary, 'Favorite sorted below an ordinary chart');
 				}
 				check(menu.rowSongIndices.length <= FreeplayBrowserLayout.capacity(FlxG.height), 'Sorting defeats row virtualization');
 				sortExpected = LibrarySort.select(visible, browserSelection, 1); captureName = 'sorted-mods'; press(40);
@@ -318,6 +324,8 @@ class RuntimeLibraryNavigationProbe {
 				var menu = freeplay(); FreeplayState.categoryFilters = []; menu.searchString = '';
 				FreeplayState.curSelected = browserSelection; menu.applySearchFilter(); menu.changeSelection(0, true);
 				sortDifficulty = FreeplayState.curDifficulty; sortReadiness = menu.availabilityAllowsSelection(browserSelection);
+				// Favorites were verified above; exercise the remaining sort orders without pins.
+				check(UserLibrary.change(function(data) { data.setFavorite(key, false); data.setFavorite(importedKey, false); }), UserLibrary.error);
 				// Only the opt-in private save is seeded. Real commit boundaries have separate transaction tests.
 				LibraryImportHistory.committed([owner]);
 				check(UserLibrary.data().importOrder(owner) == 1, 'Import observer did not save private history');

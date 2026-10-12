@@ -57,7 +57,7 @@ class ImportRemovalPlan {
 			if (!complete) throw 'The installed ownership inventory is incomplete.';
 			if (manifests == null || manifests.length > MAX_RECORDS) throw 'Ownership inventory limit exceeded or missing.';
 			var wanted:Map<String,Bool> = new Map();
-			if (selected != null) for (root in selected) wanted.set(owner(root), true);
+			if (selected != null) for (root in selected) wanted.set(ownerRoot(root), true);
 			plan.selectedOwners = sortedKeys(wanted);
 			if (plan.selectedOwners.length == 0) throw 'Select at least one imported package.';
 			var byRoot:Map<String,String> = new Map();
@@ -75,13 +75,7 @@ class ImportRemovalPlan {
 				if (plan.transactionVersions.exists(manifest.owner)) throw 'Duplicate transaction owner in inventory.';
 				plan.transactionVersions.set(manifest.owner, manifest.transactionId);
 				var roots:Map<String,Bool> = new Map();
-				var rawRoots = array(record, 'roots');
-				for (root in rawRoots) roots.set(owner('assets/imported_mods/' + text(root, 'namespace')), true);
-				var family = ImportRefreshTransaction.validatePackageFamilyCatalog(
-					Reflect.field(record, 'packageFamilyCatalog'), record);
-				if (family != null && family.version >= 2) for (member in family.members)
-					roots.set(owner('assets/imported_mods/' + member.namespace), true);
-				if (roots.keys().hasNext() == false) throw 'Retained import has no package roots.';
+				for (root in manifestRoots(manifest)) roots.set(root, true);
 				var chosen = false;
 				for (root in roots.keys()) {
 					if (byRoot.exists(root)) throw 'Package has ambiguous transaction ownership: ' + root;
@@ -94,7 +88,7 @@ class ImportRemovalPlan {
 					plan.blockers.push('Dependency metadata is missing for ' + manifest.owner + '.');
 				else for (dependency in array(record, 'runtimeDependencyOwners')) {
 					if (!Std.isOfType(dependency, String)) throw 'Invalid dependency owner.';
-					var root = owner(cast dependency);
+					var root = ownerRoot(cast dependency);
 					if (dependencies.indexOf(root) < 0) dependencies.push(root);
 				}
 				var snapshot = text(record, 'snapshotId');
@@ -116,7 +110,7 @@ class ImportRemovalPlan {
 			}
 			for (root in wanted.keys()) if (!byRoot.exists(root)) plan.blockers.push('No committed ownership for ' + root + '.');
 			plan.affectedOwners = sortedKeys(affected);
-			if (activeOwners != null) for (root in activeOwners) if (affected.exists(owner(root)))
+			if (activeOwners != null) for (root in activeOwners) if (affected.exists(ownerRoot(root)))
 				plan.blockers.push('Package is active or reserved: ' + root);
 			var claims:Map<String,RemovalClaim> = new Map();
 			var snapshots:Map<String,Array<Bool>> = new Map();
@@ -195,7 +189,24 @@ class ImportRemovalPlan {
 		return plan;
 	}
 
-	static function owner(value:String):String {
+	/** Validated logical roots, including materialized members of a retained family. */
+	public static function manifestRoots(manifest:ImportRefreshManifest):Array<String> return sortedKeys(manifestRootEngines(manifest));
+
+	public static function manifestRootEngines(manifest:ImportRefreshManifest):Map<String,String> {
+		var record:Dynamic = manifest == null || manifest.revision == null ? null : Reflect.field(manifest.revision, 'importRecord');
+		var id = text(record, 'id');
+		if (record == null || Reflect.field(record, 'schemaVersion') != 1 || !~/^[a-f0-9]{64}$/.match(id)
+			|| manifest.owner != 'retained-import:' + id) throw 'Invalid retained import identity.';
+		var roots:Map<String,String> = new Map();
+		for (root in array(record, 'roots')) roots.set(ownerRoot('assets/imported_mods/' + text(root, 'namespace')), ImportEngine.normalize(text(root, 'engine')));
+		var family = ImportRefreshTransaction.validatePackageFamilyCatalog(Reflect.field(record, 'packageFamilyCatalog'), record);
+		if (family != null && family.version >= 2) for (member in family.members)
+			roots.set(ownerRoot('assets/imported_mods/' + member.namespace), ImportEngine.normalize(family.engine));
+		if (!roots.keys().hasNext()) throw 'Retained import has no package roots.';
+		return roots;
+	}
+
+	public static function ownerRoot(value:String):String {
 		var path = ImportRefreshTransaction.managedAssetPath(value);
 		var parts = path.split('/');
 		if (parts.length != 3 || parts[0].toLowerCase() != 'assets' || parts[1].toLowerCase() != 'imported_mods')

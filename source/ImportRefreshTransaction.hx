@@ -94,6 +94,7 @@ typedef ImportRefreshResult = {
  * imports do not share backup namespaces. The receipt is the commit marker and
  * is written only after every destination and the new manifest are in place.
  */
+@:allow(ImportMetadataInspection)
 class ImportRefreshTransaction {
 	public static inline var MANIFEST_SCHEMA:Int = 1;
 	public static inline var STATUS_APPLIED:String = "applied";
@@ -644,6 +645,95 @@ class ImportRefreshTransaction {
 		var state = canonicalDirectory(stateRoot, true);
 		var manifest = readCurrentManifest(state, owner, null);
 		return manifest;
+	}
+
+	/** Strict read-only enumeration for retained-removal previews. Unlike browsing,
+	 * no invalid pointer, hidden owner or unfinished transaction is skipped.
+	 * This is a metadata snapshot, not an execution lock or a legacy-asset audit. */
+	public static function inspectRetainedManifests(installRoot:String, stateRoot:String,
+		recordsRoot:String, ?cancelCheck:Void->Bool):Array<ImportRefreshManifest> {
+		var install = canonicalDirectory(installRoot, false);
+		stateRoot = Path.normalize(FileSystem.absolutePath(stateRoot));
+		recordsRoot = Path.normalize(FileSystem.absolutePath(recordsRoot));
+		assertInside(stateRoot, install); assertInside(recordsRoot, install);
+		var inspection = new ImportMetadataInspection(install, cancelCheck);
+		function check():Void inspection.check();
+		function directory(path:String):Array<String> return inspection.directory(path);
+		function optionalDirectory(path:String):Array<String> return inspection.optionalDirectory(path);
+		function metadata(root:String, relative:String):Dynamic return inspection.metadata(Path.join([root, relative]));
+		check();
+		var stateNames = optionalDirectory(stateRoot);
+		var recordNames = optionalDirectory(recordsRoot);
+		if (stateNames.length > 8192 || recordNames.length > 8192) throw 'Ownership record limit exceeded.';
+		var pointers:Map<String,Bool> = new Map();
+		for (name in recordNames) {
+			if (!~/^[a-f0-9]{64}\.json$/.match(name)) throw 'Unexpected retained record entry: $name';
+			var raw = metadata(recordsRoot, name);
+			var id = name.substr(0, 64);
+			if (Reflect.field(raw, 'id') != id)
+				throw 'Invalid retained record pointer: $name';
+			pointers.set('retained-import:' + id, false);
+		}
+		var result:Array<ImportRefreshManifest> = [];
+		for (scope in stateNames) {
+			check();
+			if (!~/^[a-f0-9]{64}$/.match(scope)) throw 'Unexpected ownership state entry: $scope';
+			var names = directory(safeChild(stateRoot, scope, true));
+			for (name in names) if (name != 'manifest.json' && name != 'transactions')
+				throw 'Unexpected owner metadata entry: $name';
+			var raw:Dynamic = names.indexOf('manifest.json') < 0 ? null : metadata(stateRoot, scope + '/manifest.json');
+			var owner:String = raw == null ? null : Reflect.field(raw, 'owner');
+			var transactionNames = optionalDirectory(Path.join([stateRoot, scope, 'transactions']));
+			var committed:Map<String,Bool> = new Map();
+			for (transaction in transactionNames) {
+				check();
+				if (!StringTools.startsWith(transaction, 'txn-') || normalizeRelative(transaction).indexOf('/') >= 0)
+					throw 'Unexpected transaction directory: $transaction';
+				var relative = scope + '/transactions/' + transaction;
+				var path = safeChild(stateRoot, relative, true);
+				var members = directory(path);
+				for (name in members) if (name != 'backups' && name != 'receipt.json'
+					&& !~/^journal-[0-9]{8}\.json$/.match(name)) throw 'Unexpected transaction metadata: $name';
+				var journals = [for (name in members) if (~/^journal-[0-9]{8}\.json$/.match(name)) name];
+				if (journals.length == 0) throw 'Transaction has no complete journal: $transaction';
+				// A malformed newest journal requires recovery, never fallback to an older phase.
+				var journal = metadata(stateRoot, relative + '/' + journals[journals.length - 1]);
+				var journalOwner:Dynamic = Reflect.field(journal, 'owner');
+				if (!Std.isOfType(journalOwner, String) || digestText(cast journalOwner) != scope
+					|| Reflect.field(journal, 'schemaVersion') != MANIFEST_SCHEMA
+					|| Reflect.field(journal, 'transactionId') != transaction
+					|| !samePath(Path.normalize(Std.string(Reflect.field(journal, 'installRoot'))), install))
+					throw 'Transaction journal identity mismatch: $transaction';
+				if (owner == null) owner = cast journalOwner;
+				if (owner != journalOwner) throw 'Mixed transaction owners: $scope';
+				if (members.indexOf('receipt.json') >= 0) {
+					metadata(stateRoot, relative + '/receipt.json');
+					validateReceipt(Path.join([path, 'receipt.json']), journal);
+					committed.set(transaction, true);
+				} else if (Reflect.field(journal, 'phase') != 'rolled-back')
+					throw 'Transaction requires recovery before removal: $transaction';
+			}
+			if (raw == null) {
+				if (committed.keys().hasNext()) throw 'Committed owner is missing its manifest: $scope';
+				if (owner != null && pointers.exists(owner)) throw 'Retained pointer has no committed manifest: $owner';
+				continue; // Empty or fully rolled-back first imports own no installed outputs.
+			}
+			if (owner == null || digestText(owner) != scope || !pointers.exists(owner))
+				throw 'Committed owner has no matching retained pointer: $scope';
+			if (!committed.exists(Std.string(Reflect.field(raw, 'transactionId'))))
+				throw 'Current manifest transaction is not committed: $owner';
+			var manifest = readCurrentManifest(stateRoot, owner, null, cancelCheck);
+			var record:Dynamic = manifest.revision == null ? null : Reflect.field(manifest.revision, 'importRecord');
+			if (record == null || Reflect.field(record, 'schemaVersion') != 1
+				|| owner != 'retained-import:' + Std.string(Reflect.field(record, 'id')))
+				throw 'Committed retained identity mismatch: $owner';
+			pointers.set(owner, true); result.push(manifest);
+		}
+		for (owner in pointers.keys()) if (!pointers.get(owner)) throw 'Retained pointer has no ownership state: $owner';
+		// Detect a publication during this read. Execution must still reserve owners
+		// and revalidate under its own transaction lock after user confirmation.
+		inspection.verify();
+		return result;
 	}
 
 	/** Lexical gate shared by removal planning and the transaction writer.

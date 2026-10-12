@@ -19,10 +19,12 @@ class BrowserLayoutTest(unittest.TestCase):
     var page=FreeplayBrowserLayout.page(entries,selected,height);
     check(page.length==capacity,"page must fill at both boundaries");
     check(page.indexOf(selected)>=0,"selected chart absent");
-    check(FreeplayBrowserLayout.TOP+page.length*FreeplayBrowserLayout.ROW_HEIGHT<=height-84,"footer overlap");
+    check(FreeplayBrowserLayout.rowY(page.length,page.indexOf(selected))<=height-84,"footer overlap");
    }
   }
-  check(FreeplayBrowserLayout.capacity(720)==8,"expected eight readable rows");
+  check(FreeplayBrowserLayout.capacity(720)==11,"expected eleven rows with one expanded selection");
+  check(FreeplayBrowserLayout.rowY(1,0)-FreeplayBrowserLayout.rowY(0,0)==FreeplayBrowserLayout.SELECTED_HEIGHT,"selected row not expanded");
+  check(FreeplayBrowserLayout.rowY(2,0)-FreeplayBrowserLayout.rowY(1,0)==FreeplayBrowserLayout.ROW_HEIGHT,"unselected row not compact");
   var filtered=[3,33,503];
   check(FreeplayBrowserLayout.page(filtered,33,720).join(",")=="3,33,503","filtered indexes changed");
   check(FreeplayBrowserLayout.page(filtered,4,720).length==0,"hidden selection created rows");

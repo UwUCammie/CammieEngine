@@ -61,8 +61,11 @@ class RuntimeLibraryLifecycleProbe {
 				'Different same-named package merged with original');
 			check(!UserLibrary.data().isFavorite(key) && !UserLibrary.data().hasMod(category, record.ownerRoot),
 				'Different package inherited library metadata');
-			var manifests = [for (record in ImportRefreshManager.cachedRecords(Sys.getCwd()))
-				ImportRefreshTransaction.loadManifest('import-cache/state', 'retained-import:' + Std.string(record.id))];
+			var manifests = ImportRefreshTransaction.inspectRetainedManifests(Sys.getCwd(),
+				'import-cache/state', 'import-cache/records');
+			var installed = ImportInstalledOwnership.inspect(Sys.getCwd(), manifests, []);
+			check(installed.complete && installed.charts.length == 2, 'Installed ownership audit failed: ' + installed.blockers.join('; '));
+			RuntimeSmokeHarness.emit('library_installed_ownership_verified', {charts:installed.charts.length, owners:installed.owners.length});
 			var encodedBefore = Json.stringify(manifests);
 			var removal = ImportRemovalPlan.assess([firstOwner], manifests, true, []);
 			check(removal.inventoryComplete && removal.blockers.length == 0

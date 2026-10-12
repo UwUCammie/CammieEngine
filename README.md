@@ -222,3 +222,5 @@ Plus and the original Modding Plus and Friday Night Funkin’ contributors.
   and [verification report](tools/reports/engine-discrepancies-verification.md)
 - [Architecture](ENGINE_ARCHITECTURE.md) · [Update log](updateLog.txt)
 - [Credits](assets/data/credits.txt) · [License](LICENSE) · [Third-party notices](NOTICE)
+
+Host Freeplay always pins favorites above other songs. Group and chart sorting apply within each section. Unselected tracks use compact rows; the expanded selection shows its source details and larger portrait.

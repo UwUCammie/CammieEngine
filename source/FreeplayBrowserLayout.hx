@@ -3,8 +3,11 @@ package;
 /** Logical viewport geometry shared by host rows and their native checks. */
 class FreeplayBrowserLayout {
 	public static inline var TOP:Int = 112;
-	public static inline var ROW_HEIGHT:Int = 64;
-	public static function capacity(height:Int):Int return Std.int(Math.max(1, Math.floor((height - TOP - 84) / ROW_HEIGHT)));
+	public static inline var ROW_HEIGHT:Int = 42;
+	public static inline var SELECTED_HEIGHT:Int = 82;
+	public static function capacity(height:Int):Int return Std.int(Math.max(1, Math.floor((height - TOP - 84 - (SELECTED_HEIGHT - ROW_HEIGHT)) / ROW_HEIGHT)));
+	public static function rowY(position:Int, selectedPosition:Int):Float return TOP + position * ROW_HEIGHT
+		+ (selectedPosition >= 0 && position > selectedPosition ? SELECTED_HEIGHT - ROW_HEIGHT : 0);
 	public static function listWidth(width:Int):Int return Std.int(width * 0.64) - 24;
 	public static function detailX(width:Int):Int return Std.int(width * 0.66);
 	public static function page(visible:Array<Int>, selected:Int, height:Int):Array<Int> {

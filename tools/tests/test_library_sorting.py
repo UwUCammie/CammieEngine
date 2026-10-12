@@ -33,6 +33,10 @@ class Main {
   rows.reverse();check(LibrarySort.order(rows,'mod','az','az').join(',')==tied,'group tie is input-order dependent');rows.reverse();
   rows[0].modTitle='Beta';rows[2].modTitle='Beta';check(haxe.Json.stringify(rows)==unchanged,'sort mutated metadata');
   var random=row(5,'random','Random Song','','','',5);random.random=true;rows.push(random);
+  for(grouping in ['flat','mod','engine']) for(chartOrder in ['default','az','za','recent','scoreHigh']) {
+   var pinned=LibrarySort.order(rows,grouping,'az',chartOrder,true);
+   check(pinned[0]==2 && pinned[1]==5,'favorites must precede random and ordinary songs in every view');
+  }
   check(LibrarySort.order(rows,'mod','za','za')[0]==5,'random action moved inside a mod group');
   var data=new UserLibraryData();var key=UserLibraryData.chartKey('a','song');data.setLastDifficulty(key,'Hard');data.setFavorite(key,true);
   var legacy:Dynamic=haxe.Json.parse(data.encode());Reflect.deleteField(legacy,'sorting');
@@ -94,6 +98,10 @@ class Main {
   check(menu.orderedVisibleSongs()[0]==1,'favorites mode ignored save');
   var next=UserLibraryData.decode(UserLibrary.model.encode());next.setFavorite(UserLibraryData.chartKey('psych','b'),false);next.setFavorite(UserLibraryData.chartKey('nv','a'),true);UserLibrary.model=next;
   check(menu.orderedVisibleSongs()[0]==2,'favorite transaction failed to invalidate order');
+  UserLibrary.model.setSorting('flat','az','za');
+  check(menu.orderedVisibleSongs()[0]==2,'favorites lost under descending title order');
+  var unpinned=UserLibraryData.decode(UserLibrary.model.encode());unpinned.setFavorite(UserLibraryData.chartKey('nv','a'),false);UserLibrary.model=unpinned;
+  check(menu.orderedVisibleSongs()[0]==0,'favorite removal failed to invalidate non-favorite sorting mode');
   UserLibrary.model.setSorting('flat','az','recent');UserLibrary.model.recordPlay(UserLibraryData.chartKey('psych','b'),2000);
   check(menu.orderedVisibleSongs()[0]==1,'actual browser did not consume play history');
   var played=UserLibraryData.decode(UserLibrary.model.encode());played.recordPlay(UserLibraryData.chartKey('nv','z'),1000);UserLibrary.model=played;

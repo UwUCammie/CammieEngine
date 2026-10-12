@@ -40,7 +40,7 @@ class LibrarySort {
 		var order = Reflect.compare(a.toLowerCase(), b.toLowerCase());
 		return reverse ? -order : order;
 	}
-	public static function order(rows:Array<LibrarySortRow>, grouping:String, groups:String, charts:String):Array<Int> {
+	public static function order(rows:Array<LibrarySortRow>, grouping:String, groups:String, charts:String, pinFavorites:Bool = false):Array<Int> {
 		var heads:Map<String, LibrarySortRow> = new Map();
 		var imports:Map<String, Float> = new Map();
 		for (row in rows) {
@@ -72,6 +72,7 @@ class LibrarySort {
 		}
 		var sorted = rows.copy();
 		sorted.sort(function(a, b) {
+			if (pinFavorites && a.favorite != b.favorite) return a.favorite ? -1 : 1;
 			if (a.random != b.random) return a.random ? -1 : 1;
 			var ag = group(a, grouping); var bg = group(b, grouping);
 			var cmp = 0;
