@@ -130,7 +130,7 @@ Sys.println("freeplay-chart-availability-ok");
                 'HealthIcon.hx': '''class HealthIcon {public var sprTracker:Dynamic;public var visible:Bool;public var alpha:Float;public var width:Float=150;public var height:Float=150;
 public function setGraphicSize(w:Int, h:Int=0):Void {} public function updateHitbox():Void {}
 public function new(a:Dynamic,b:Dynamic,c:Dynamic,d:Dynamic,e:Dynamic){}}''',
-                'RankStar.hx': '''class RankStar {public function configureCard(v:Dynamic):Void{}public var sprTracker:Dynamic;public var starNum:Int;public var visible:Bool;public var diff:Int;
+                'RankStar.hx': '''class RankStar {public function updateDensity(v:Dynamic):Void{}public function configureCard(v:Dynamic):Void{}public var sprTracker:Dynamic;public var starNum:Int;public var visible:Bool;public var diff:Int;
 public function setGraphicSize(w:Int,h:Int=0):Void {} public function updateHitbox():Void {}
 public function new(s:String,d:Int){diff=d;} public function checkStar():Void{} public function destroy():Void{}}''',
                 'FlxTween.hx': 'class FlxTween {public static function cancelTweensOf(v:Dynamic):Void{}}',

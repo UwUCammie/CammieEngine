@@ -20,6 +20,8 @@ private typedef HxcFreeplayScope = {
 	var names:Array<String>;
 	/** Keep the translated program from being analyzed/read a second time. */
 	var generatedHscript:String;
+	var parked:Bool;
+	var retired:Bool;
 }
 
 /**
@@ -45,9 +47,15 @@ class HxcFreeplayRuntime {
 	var destinationRoot:String = '';
 	var seenPaths:Map<String, Bool> = new Map<String, Bool>();
 	var loaded:Bool = false;
+	var rootReady:String->Bool;
+	var songReady:String->Bool;
+	var rootKnown:String->Bool;
 
-	public function new(owner:FreeplayState) {
+	public function new(owner:FreeplayState, ?rootReady:String->Bool, ?songReady:String->Bool, ?rootKnown:String->Bool) {
 		this.owner = owner;
+		this.rootReady = rootReady;
+		this.songReady = songReady;
+		this.rootKnown = rootKnown;
 		activeRuntimes.push(this);
 		load();
 	}
@@ -69,11 +77,14 @@ class HxcFreeplayRuntime {
 
 	/** Dispatch one native Freeplay lifecycle payload to generated HXC modules. */
 	public function dispatch(callback:String, payload:Dynamic):Void {
+		dispatchScopes(callback,payload,scopes);
+	}
+	function dispatchScopes(callback:String, payload:Dynamic, targets:Array<HxcFreeplayScope>):Void {
 		if (callback == null || callback == '')
 			return;
 		var selectedSong = HxcFreeplayRouting.selectedSong(payload);
-		for (scope in scopes) {
-			if (scope == null || scope.interp == null)
+		for (scope in targets) {
+			if (scope == null || scope.interp == null || !scopeReady(scope))
 				continue;
 			if (!HxcFreeplayRouting.scopeMatches(scope.global, scope.associatedSongs, selectedSong))
 				continue;
@@ -118,9 +129,7 @@ class HxcFreeplayRuntime {
 
 	public function dispose():Void {
 		activeRuntimes.remove(this);
-		for (scope in scopes)
-			if (scope != null && scope.interp != null)
-				scope.interp.variables.clear();
+		for (scope in scopes) retire(scope);
 		scopes.resize(0);
 		namesByRoot = new Map<String, Map<String, Dynamic>>();
 		rootSongs = new Map<String, Array<String>>();
@@ -128,17 +137,57 @@ class HxcFreeplayRuntime {
 		rootPriorityBySong = new Map<String, Map<String, Int>>();
 		destinationRoot = '';
 		seenPaths = new Map<String, Bool>();
+		rootReady = null; songReady = null; rootKnown = null;
 		owner = null;
 		loaded = false;
 	}
 
+	/** Availability changes park callbacks immediately, without reading module files.
+		Ready scopes remain parked until refresh adopts their committed routing. */
+	public function setRootReadiness(ready:String->Bool):Void {
+		rootReady = ready;
+		for (scope in scopes) if (!rootAvailable(scope.root)) scope.parked = true;
+	}
+	function rootAvailable(root:String):Bool return rootReady == null || rootReady(root);
+	function rootRetained(root:String):Bool {
+		if (rootKnown != null) return rootKnown(root);
+		#if sys
+		return sys.FileSystem.exists(root) && sys.FileSystem.isDirectory(root);
+		#else
+		return true;
+		#end
+	}
+	function scopeReady(scope:HxcFreeplayScope):Bool {
+		if (scope == null || scope.retired || scope.parked || !rootAvailable(scope.root)) return false;
+		return true;
+	}
+	function retire(scope:HxcFreeplayScope):Void {
+		if (scope == null) return;
+		scope.parked = true;scope.retired = true;
+		if (scope.interp != null) scope.interp.variables.clear();
+		scope.interp = null;
+	}
 	function load():Void {
 		if (loaded)
 			return;
+		refresh();
 		loaded = true;
+	}
+
+	/** Reconcile routing/readiness while retaining this menu's module snapshots.
+		Module changes load on natural reentry: replay could duplicate native
+		members, timers or listeners which the interpreter does not own. */
+	public function refresh(?initialPayload:Dynamic, ?ready:String->Bool, ?songsReady:String->Bool, ?known:String->Bool):Void {
+		if (owner == null) return;
+		if (ready != null) rootReady = ready;
+		if (songsReady != null) songReady = songsReady;
+		if (known != null) rootKnown = known;
 		#if sys
 		var profileLoad = RuntimeSmokeHarness.enabled();
 		var profileMark = profileLoad ? haxe.Timer.stamp() : 0.0;
+		var priorScopes = scopes.copy();
+		var priorSongs = rootSongs; var priorGlobal = rootGlobal; var priorPriority = rootPriorityBySong;
+		rootSongs = new Map(); rootGlobal = new Map(); rootPriorityBySong = new Map();
 		var roots:Array<String> = [];
 		destinationRoot = HxcFreeplayRouting.normalizeRoot('assets/scripts');
 		addRoot(roots, destinationRoot, true);
@@ -148,40 +197,58 @@ class HxcFreeplayRuntime {
 			RuntimeSmokeHarness.profileSection('fp-hxc-manifests', now - profileMark);
 			profileMark = now;
 		}
+		// A pending owner may have partially published manifests. Keep its last
+		// routing and interpreter parked without discovering or reading its files.
+		for (scope in priorScopes) if (!rootAvailable(scope.root) && rootRetained(scope.root)) {
+			scope.parked = true;
+			rootSongs.set(scope.root,priorSongs.exists(scope.root)?priorSongs.get(scope.root).copy():[]);
+			rootGlobal.set(scope.root,priorGlobal.exists(scope.root)&&priorGlobal.get(scope.root));
+			for (song in priorPriority.keys()) {
+				var rank = priorPriority.get(song).get(scope.root);
+				if (rank != null) setRootPriority(scope.root,song,rank);
+			}
+		}
+		if (loaded) {
+			for (scope in scopes) {
+				if (!rootRetained(scope.root)) scope.retired = true;
+				if (scope.retired || !rootAvailable(scope.root) || roots.indexOf(scope.root) < 0) scope.parked = true;
+				else {
+					scope.global = rootGlobal.exists(scope.root) && rootGlobal.get(scope.root);
+					scope.associatedSongs = rootSongs.exists(scope.root) ? rootSongs.get(scope.root).copy() : [];
+					scope.parked = false;
+				}
+			}
+			// Retired/parked scopes stay in the name map to block unsafe fallback;
+			// retained native callbacks may still close over interpreter variables.
+			if (profileLoad) RuntimeSmokeHarness.profileSection('fp-hxc-routing-refresh', haxe.Timer.stamp() - profileMark);
+			return;
+		}
 		var modulePaths:Array<String> = [];
-		var moduleRoots:Map<String, String> = new Map<String, String>();
+		var moduleRoots:Map<String,String> = new Map();
 		for (root in roots) {
-			if (root == null || !FileSystem.isDirectory(root))
-				continue;
-			var rootKey = HxcFreeplayRouting.normalizeRoot(root);
-			var plan = HxcScriptDiscovery.discoverRoot(root, '');
+			if (!rootAvailable(root) || !FileSystem.exists(root) || !FileSystem.isDirectory(root)) continue;
+			var plan = HxcScriptDiscovery.discoverRoot(root,'');
 			var family = plan.families.get('module');
-			if (family != null)
-				for (path in family)
-					if (modulePaths.indexOf(path) < 0) {
-						modulePaths.push(path);
-						moduleRoots.set(path, rootKey);
-					}
+			if (family != null) for (path in family) if (!moduleRoots.exists(path)) {
+				modulePaths.push(path);
+				moduleRoots.set(path,root);
+			}
 		}
 		if (profileLoad) {
 			var now = haxe.Timer.stamp();
 			RuntimeSmokeHarness.profileSection('fp-hxc-discovery', now - profileMark);
 			profileMark = now;
 		}
-		// Register all names before executing any generated module. This mirrors
-		// PlayState's sibling-module routing and keeps load order deterministic,
-		// while retaining the manifest root on every scope.
-		for (path in modulePaths)
-			registerModule(path, moduleRoots.get(path));
+		// Register all sibling names before initial execution, in discovery order.
+		for (path in modulePaths) registerModule(path,moduleRoots.get(path));
 		if (profileLoad) {
 			var now = haxe.Timer.stamp();
 			RuntimeSmokeHarness.profileSection('fp-hxc-translation', now - profileMark);
 			profileMark = now;
 		}
-		for (path in modulePaths)
-			loadModule(path);
-		if (profileLoad)
-			RuntimeSmokeHarness.profileSection('fp-hxc-execution', haxe.Timer.stamp() - profileMark);
+		for (path in modulePaths) loadModule(path);
+		if (profileLoad) RuntimeSmokeHarness.profileSection('fp-hxc-execution', haxe.Timer.stamp() - profileMark);
+		if (initialPayload != null) dispatch('subStateOpenEnd',initialPayload);
 		#end
 	}
 
@@ -232,7 +299,8 @@ class HxcFreeplayRuntime {
 			return true;
 		var ownPriority = rootPriority(scope.root, selectedSong);
 		for (candidate in scopes) {
-			if (candidate == null || candidate == scope || candidate.identity != scope.identity
+			// A parked higher-priority owner still shadows its fallback, failing closed.
+			if (candidate == null || candidate.retired || candidate == scope || candidate.identity != scope.identity
 				|| !HxcFreeplayRouting.scopeMatches(candidate.global, candidate.associatedSongs, selectedSong))
 				continue;
 			var candidatePriority = rootPriority(candidate.root, selectedSong);
@@ -248,7 +316,7 @@ class HxcFreeplayRuntime {
 		if (owner == null || FreeplayState.currentSongList == null)
 			return;
 		for (song in FreeplayState.currentSongList) {
-			if (song == null || song.name == null)
+			if (song == null || song.name == null || (songReady != null && !songReady(song.name)))
 				continue;
 			var songKey = HxcFreeplayRouting.normalizeSong(song.name);
 			var manifestPath = 'assets/data/' + song.name.toLowerCase() + '/'
@@ -278,6 +346,14 @@ class HxcFreeplayRuntime {
 		}
 	}
 
+	function indexScope(scope:HxcFreeplayScope):Void {
+		var scopedNames = namesByRoot.get(scope.root);
+		if (scopedNames == null) {
+			scopedNames = new Map();
+			namesByRoot.set(scope.root, scopedNames);
+		}
+		for (name in scope.names) if (name != null && name.trim()!='') scopedNames.set(HxcScriptDiscovery.normalizeToken(name),scope);
+	}
 	function registerModule(path:String, root:String):Void {
 		if (path == null || seenPaths.exists(path) || !FileSystem.exists(path))
 			return;
@@ -322,6 +398,7 @@ class HxcFreeplayRuntime {
 				associatedSongs: associatedSongs == null ? [] : associatedSongs.copy(),
 				interp: null,
 				generatedHscript: result.generatedHscript,
+				parked:false, retired:false,
 				names: [
 					HxcScriptDiscovery.stem(path),
 					result.identifier,
@@ -329,14 +406,7 @@ class HxcFreeplayRuntime {
 				]
 			};
 			scopes.push(scope);
-			var scopedNames = namesByRoot.get(rootKey);
-			if (scopedNames == null) {
-				scopedNames = new Map<String, Dynamic>();
-				namesByRoot.set(rootKey, scopedNames);
-			}
-			for (name in scope.names)
-				if (name != null && name.trim() != '')
-					scopedNames.set(HxcScriptDiscovery.normalizeToken(name), scope);
+			indexScope(scope);
 		} catch (error:Dynamic) {
 			trace('[hxc-freeplay-analyze-error] ' + path + ': ' + Std.string(error));
 		}
@@ -349,7 +419,7 @@ class HxcFreeplayRuntime {
 				scope = candidate;
 				break;
 			}
-		if (scope == null)
+		if (scope == null || scope.interp != null || !scopeReady(scope))
 			return;
 		try {
 			var generated = scope.generatedHscript;
@@ -433,15 +503,16 @@ class HxcFreeplayRuntime {
 			return null;
 		var scope:HxcFreeplayScope = cast HxcFreeplayRouting.moduleLookup(namesByRoot,
 			root == null ? '' : root, destinationRoot, Std.string(name));
-		if (scope == null || scope.interp == null)
+		if (scope == null || scope.interp == null || !scopeReady(scope))
 			return null;
 		var proxy:Dynamic = {};
 		Reflect.setField(proxy, 'scriptCall', function(methodName:String, ?args:Array<Dynamic>):Dynamic {
+			if (scope.interp == null || !scopeReady(scope)) return null;
 			var method = scope.interp.variables.get(methodName);
 			return method == null ? null : Reflect.callMethod(null, method, args == null ? [] : args);
 		});
 		Reflect.setField(proxy, 'scriptGet', function(fieldName:String, ?_args:Array<Dynamic>):Dynamic
-			return scope.interp.variables.get(fieldName));
+			return scope.interp == null || !scopeReady(scope) ? null : scope.interp.variables.get(fieldName));
 		return proxy;
 	}
 	#end

@@ -175,7 +175,9 @@ class UserLibraryTest(unittest.TestCase):
  ''')
 
     def test_clearing_empty_filter_restores_selected_difficulty_details(self):
-        method=extract_method((ROOT/'source/FreeplayState.hx').read_text(),'function applySearchFilter(')
+        source=(ROOT/'source/FreeplayState.hx').read_text()
+        method=extract_method(source,'function applySearchFilter(')
+        selection=extract_method(source,'public static function nextVisibleSelection(')
         files={'View.hx':'''class View {
          public var searchString='missing';var searchText={text:'',alpha:1.0};var favoritesOnly=false;var soundTest=false;
          var libraryViewId='';var categoryFilters:Array<String>=[];var curSelected=0;
@@ -184,10 +186,14 @@ class UserLibraryTest(unittest.TestCase):
          var previewTimer=0.0;public var changes=0;
          public function new(){} function anyVisible():Bool return searchString=='';
          function songMatches(i:Int):Bool return anyVisible();function rebuildVisibleRows():Void {}
-         function changeSelection(i:Int):Void {} function stopPreviewSound():Void {}
+         var songs=[0];function orderedVisibleSongs():Array<Int> return anyVisible() ? [0] : [];
+         function changeSelection(change:Int=0,refreshOnly:Bool=false):Void {
+          if(!refreshOnly)curSelected=nextVisibleSelection(curSelected,change,songs.length,songMatches);
+         }
+         function stopPreviewSound():Void {}
          function changeDiff():Void {changes++;diffText.text='HARD';infoPanel.visible=true;}
          public function apply():Void applySearchFilter();
-        '''+method+'}'}
+        '''+method+selection+'}'}
         self.run_haxe('''var view=new View();view.apply();check(view.diffText.text=='NO MATCHING SONGS' && !view.scoreText.visible,'empty details');
          view.searchString='';view.apply();check(view.diffText.text=='HARD' && view.scoreText.visible && view.infoPanel.visible,'restored details');
          view.apply();check(view.changes==1,'unchanged filter repeated difficulty work');''',files)

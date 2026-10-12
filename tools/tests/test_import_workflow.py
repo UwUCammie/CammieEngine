@@ -1218,7 +1218,8 @@ class ScopedDependencyFixture {{
         self.assertIn("FreeplayRegistry.getJson()", freeplay)
         self.assertIn("FreeplayLibraryView.songs(categories)", freeplay)
         self.assertIn("getAmbigAsset([id], CoolUtil.JSON_EXT", assets)
-        self.assertIn("for (songSnippet in currentSongList)", freeplay)
+        self.assertIn("songs = registeredSongs(currentSongList)", freeplay)
+        self.assertIn("for (songSnippet in registry)", freeplay)
         # Import completion refreshes difficulty support for the committed
         # names; menu state creation then consumes the disk-backed registry.
         self.assertIn("completeInitialImportHandoff(importedNames)", self.source)

@@ -105,7 +105,10 @@ class FreeplayDirectEntryTest(unittest.TestCase):
         self.assertIn('reloadAfterImport();', generation_change)
         from test_freeplay_random_difficulty import extract_method
         reload = extract_method(source, 'function reloadAfterImport(')
-        self.assertIn('currentSongList = [];', reload)
+        self.assertIn('currentSongList = registry;', reload)
+        self.assertNotIn('new FreeplayState()', reload)
+        self.assertNotIn('loadAndSwitchState', reload)
+        self.assertIn('FreeplayRegistryReconcile.retained(oldKeys, nextKeys)', reload)
         self.assertIn('captureRefreshBookmark(refreshViewScope())', reload)
         self.assertNotIn('curCategory =', reload)
         self.assertNotIn('curCategory =', generation_change)

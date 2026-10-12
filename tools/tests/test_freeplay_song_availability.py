@@ -225,7 +225,10 @@ class Main {
         self.assertIn('pendingKey', source)
         self.assertIn('rowAvailabilityReason', source)
         self.assertIn('hxcCapsuleView(index)', source)
-        self.assertIn('returnFromEmptySongList();', source)
+        from test_freeplay_random_difficulty import extract_method
+        refresh = extract_method(source, 'function refreshImportAvailability(')
+        self.assertNotIn('returnFromEmptySongList();', refresh)
+        self.assertNotIn('loadAndSwitchState', refresh)
         self.assertIn('changeSelection(0, true);', source)
         self.assertIn('if (infoPanel == null)', source)
         self.assertIn('FreeplaySongAvailability.canPresentPendingSongs(curCategory, directOwnerRoot != \'\')', source)
@@ -254,6 +257,7 @@ class FreeplayHarness {
   public var curSelected:Int = 0;
   public var previewSound:Dynamic;
   public var reconciles:Int = 0;
+  public var denseBrowser:Bool = false;
   public var rendered:Int = 0;
   public var renderedRevision:Int = -1;
   public function new() {}

@@ -6,6 +6,13 @@ from pathlib import Path
 from haxe_test_support import HAXE_COMMAND
 ROOT = Path(__file__).resolve().parents[2]
 class FreeplayScrollMotionTest(unittest.TestCase):
+ def test_scaled_title_keeps_left_anchor_after_text_refresh(self):
+  from test_freeplay_random_difficulty import extract_method
+  source=(ROOT/'source/FreeplayBrowserRow.hx').read_text(encoding='utf-8')
+  draw=extract_method(source,'function drawPresentation(')
+  self.assertLess(draw.index('title.text ='),draw.index('title.origin.set(0, 0)'))
+  self.assertLess(draw.index('title.origin.set(0, 0)'),draw.index('title.scale.set('))
+  self.assertIn('title.setPosition(x + 82,',draw)
  def test_repeat_and_motion_across_frame_rates(self):
   fixture = r'''class Main {
  static function check(ok:Bool, message:String) { if (!ok) throw message; }
@@ -31,13 +38,23 @@ class FreeplayScrollMotionTest(unittest.TestCase):
   check(motion.advance(0,false,true,false)==1,'typing or substate reset must rearm initial step');
   for(i in 0...4)motion.advance(0.1,false,true,false);
   check(motion.advance(10,false,true,true)<=3,'hitch backlog must be discarded');
-  var low=new FreeplayScrollMotion(); var high=new FreeplayScrollMotion();
-  low.moved(-1);high.moved(-1);
-  check(low.offset>0,'up should start below center');
-  for(i in 0...30)low.settle(1/30);
-  for(i in 0...480)high.settle(1/480);
-  check(Math.abs(low.offset-high.offset)<0.001 && low.offset==0,'settle FPS drift');
-  high.moved(1);check(high.offset<0,'down should start above center');
+  for(fps in [30,60,144,480,1000]) {
+   var motion=new FreeplayCardMotion(); motion.target(24,402,42,false,true);
+   motion.target(32,319,82,true);
+   check(motion.y==402 && motion.height==42,'target change snapped geometry');
+   motion.advance(0.05);
+   check(motion.y<402 && motion.y>319 && motion.height>42 && motion.height<82,'missing intermediate transition');
+   motion.target(24,360,42,false);
+   var from=motion.y;
+   motion.advance(0.01);check(motion.y<360 && motion.y>from,'retarget jumped or reversed');
+   for(i in 0...fps)motion.advance(1/fps);
+   check(motion.y==360 && motion.height==42 && motion.focus==0,'motion did not settle exactly');
+  }
+  var low=new FreeplayCardMotion();var high=new FreeplayCardMotion();
+  low.target(0,0,42,false,true);high.target(0,0,42,false,true);
+  low.target(32,319,82,true);high.target(32,319,82,true);
+  low.advance(0.1);for(i in 0...48)high.advance(1/480);
+  check(Math.abs(low.y-high.y)<0.001 && Math.abs(low.height-high.height)<0.001,'geometry FPS drift');
   var entries=[for(i in 0...1300)i];
   for(height in [480,720,1080])for(selected in [0,1,650,1299]) {
    var page=FreeplayBrowserLayout.centeredPage(entries,selected,height);
@@ -64,4 +81,6 @@ class FreeplayScrollMotionTest(unittest.TestCase):
   self.assertIn('typedChar.length == 0 && anyVisible() && subState == null',freeplay)
   self.assertIn('scrollMotion.reset();',freeplay)
   self.assertIn('FreeplayBrowserLayout.centeredPage',freeplay)
+  self.assertNotIn('scrollMotion.offset',freeplay)
+  self.assertIn('animateBrowserRows(elapsed)',freeplay)
   self.assertIn('LibraryCollectionsSubState', (ROOT/'source/LibraryActionsSubState.hx').read_text())

@@ -138,8 +138,7 @@ class CategorySearchMain {
         # bounded row window around the still-global song selection.
         for name in ('source/CategoryState.hx', 'source/FreeplayState.hx'):
             text = (ROOT / name).read_text()
-            body = text[text.index('function applySearchFilter()'):]
-            body = body[:body.index('\n\t}')]
+            body = extract_method(text, 'function applySearchFilter(')
             if name.endswith('FreeplayState.hx'):
                 self.assertIn('rebuildVisibleRows()', body, name)
                 self.assertIn('function rebuildVisibleRows()', text, name)

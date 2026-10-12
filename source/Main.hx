@@ -83,6 +83,7 @@ class Main extends Sprite {
 		RuntimeInputProbe.install();
 		RuntimeMenuTimingProbe.install();
 		RuntimeSongExitProbe.install();
+		RuntimeSongLoadingProbe.install();
 		RuntimeUserLibraryProbe.install();
 		RuntimeLibraryCategoryProbe.install();
 		RuntimeLibraryNavigationProbe.install();

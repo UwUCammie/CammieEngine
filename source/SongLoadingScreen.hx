@@ -34,6 +34,7 @@ class SongLoadingScreen {
 	static var requestNumber:Int = 0;
 	static var stateRequested:Bool = false;
 	static var viewportWaitLogged:Bool = false;
+	static var phaseFrames:Int = 0;
 
 	public static function install():Void {
 		if (installed || Main.instance == null || FlxG.game == null) return;
@@ -41,10 +42,15 @@ class SongLoadingScreen {
 		// Installed after Main's cleanup listeners. These completions therefore
 		// include old-state teardown/cache pruning and dead sound retirement.
 		FlxG.signals.preStateCreate.add(function(_state:FlxState):Void {
-			if (active) complete(2, 'Scene cleared. Preparing the next scene');
+			if (active) complete(2, progress.label);
 		});
 		FlxG.signals.postStateSwitch.add(function():Void {
-			if (active) complete(3, 'Scene ready');
+			if (active) {
+				if (Std.isOfType(FlxG.state, PlayState))
+					progress.describe('ready', 'Track ready', cast(FlxG.state, PlayState).songLoadingSummary());
+				else progress.describe('ready', 'Menu ready', 'Song resources cleared. Menu created.');
+				complete(3, progress.label);
+			}
 		});
 		FlxG.signals.postDraw.add(afterDraw);
 		// OpenFL's Stage render listener has priority 0. This listener runs after
@@ -59,13 +65,23 @@ class SongLoadingScreen {
 
 	/** Duplicate accepts are ignored; nested calls from the preparation callback
 		are the original single state request and execute once. */
-	public static function queue(title:String, detail:String, action:Void->Void):Bool {
-		if (preparing) {action(); return true;}
+	public static function queue(title:String, detail:String, action:Void->Void, chartPreparation:Bool = false):Bool {
+		if (preparing) {
+			// Chart preparation requests its original transition exactly once,
+			// but only after this next action has its own presented frame.
+			if (pending != null) return false;
+			pending = action;
+			initialFrameRendered = false;
+			describeWork(title, false);
+			redraw(); log('phase-queued');
+			return true;
+		}
 		if (active) return false;
 		if (!installed) {action(); return true;}
-		requestNumber++;
+		requestNumber++; phaseFrames = 0;
 		stateRequested = false; viewportWaitLogged = false;
 		progress = new SongLoadingProgress();
+		describeWork(title, chartPreparation);
 		active = true;
 		pending = action;
 		initialFrameRendered = false;
@@ -73,6 +89,15 @@ class SongLoadingScreen {
 		try build(title, detail) catch (error:Dynamic) {cancel(); throw error;}
 		log('shown');
 		return true;
+	}
+
+	static function describeWork(title:String, chartPreparation:Bool):Void {
+		if (chartPreparation)
+			progress.describe('chart', 'Reading chart', 'Parsing the selected difficulty and its defaults.');
+		else if (title == 'LEAVING THE STAGE')
+			progress.describe('exit', 'Closing song and opening menu', 'Clearing song resources, then creating the next scene.');
+		else
+			progress.describe('scene', 'Creating the song scene', SongLoadingProgress.chartDetail(PlayState.SONG));
 	}
 
 	static function text(x:Float, y:Float, width:Float, value:String, size:Int, color:Int):TextField {
@@ -111,7 +136,8 @@ class SongLoadingScreen {
 		// Keep track information inside the artwork's empty upper-right area.
 		text(812, 102, 392, title == 'LEAVING THE STAGE' ? 'BACK TO THE MENU' : 'UP NEXT', 26, 0xFF16D2);
 		text(812, 152, 392, detail, 34, 0xFFFFFF).height = 142;
-		status = text(812, 310, 392, progress.label, 20, 0xFFFFFF);
+		status = text(812, 302, 420, progress.label, 16, 0xFFFFFF);
+		status.height = 154;
 		count = text(930, 666, 316, '', 18, 0xFFFFFF);
 		var track = new Sprite(); design.addChild(track);
 		track.graphics.beginFill(0x1B073C); track.graphics.drawRect(0, 702, 1280, 18); track.graphics.endFill();
@@ -170,8 +196,8 @@ class SongLoadingScreen {
 	}
 
 	static function redraw():Void {
-		status.text = progress.label;
-		count.text = progress.completed + ' / ' + SongLoadingProgress.TOTAL + ' ready';
+		status.text = progress.label + (progress.detail == '' ? '' : '\n\n' + progress.detail);
+		count.text = progress.completed == SongLoadingProgress.TOTAL ? 'READY' : progress.phase == 'chart' ? 'CHART' : progress.phase == 'exit' ? 'SONG > MENU' : 'CHART > SCENE';
 		fill.graphics.clear();
 		if (progress.completed > 0) {
 			fill.graphics.beginFill(0xFF16D2);
@@ -185,6 +211,7 @@ class SongLoadingScreen {
 
 	static function afterDraw():Void {
 		if (!active) return;
+		if (authoredOutroStarted()) {cancel(); return;}
 		layout();
 		// Stage ENTER_FRAME can finish a long synchronous state creation after
 		// the early Lime callback. Sample animation time here, before rendering.
@@ -193,13 +220,16 @@ class SongLoadingScreen {
 			if (!initialFrameRendered) return;
 			var action = pending; pending = null;
 			preparing = true;
+			log('work-started');
 			try action() catch (error:Dynamic) {cancel(); throw error;}
 			preparing = false;
-			if (!stateRequested || authoredOutroStarted()) {cancel(); return;}
-			if (active) complete(1, 'Request ready. Switching scenes');
+			if (authoredOutroStarted()) {cancel(); return;}
+			if (pending != null) {complete(1, progress.label); return;}
+			if (!stateRequested) {cancel(); return;}
+			if (active) complete(1, progress.label);
 			return;
 		}
-		if (progress.completed == 3) complete(4, 'Ready');
+		if (progress.completed == 3) complete(4, progress.label);
 		else if (progress.completed == 4 && readyFrameRendered) {
 			log('hidden'); cancel();
 		}
@@ -212,9 +242,9 @@ class SongLoadingScreen {
 			return;
 		}
 		if (pending != null && !initialFrameRendered) {
-			capture('initial');
+			capture(phaseFrames++ == 0 ? 'initial' : progress.phase);
 			initialFrameRendered = true;
-			log('initial-frame-rendered');
+			log('work-phase-rendered');
 		} else if (progress.completed == 4 && !readyFrameRendered) {
 			capture('ready');
 			readyFrameRendered = true;
@@ -255,7 +285,12 @@ class SongLoadingScreen {
 	}
 
 	static function authoredOutroStarted():Bool {
-		return FlxG.state != null && Std.isOfType(FlxG.state.subState, CodenameMusicBeatTransition);
+		var state = FlxG.state == null ? null : FlxG.state.subState;
+		while (state != null) {
+			if (Std.isOfType(state, CodenameMusicBeatTransition)) return true;
+			state = state.subState;
+		}
+		return false;
 	}
 
 	public static function cancel():Void {
@@ -293,7 +328,7 @@ class SongLoadingScreen {
 		#if sys
 		if (RuntimeSmokeHarness.enabled() || Sys.args().indexOf('--profile-song-loading') >= 0)
 			Sys.println('SONG_LOADING|' + haxe.Json.stringify({phase:phase,
-				completed:progress.completed, total:SongLoadingProgress.TOTAL, time:haxe.Timer.stamp()}));
+				work:progress.phase, action:progress.label, detail:progress.detail, completed:progress.completed, total:SongLoadingProgress.TOTAL, time:haxe.Timer.stamp()}));
 		#end
 	}
 }

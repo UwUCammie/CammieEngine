@@ -34,15 +34,21 @@ class RankStar extends FlxSprite {
 	var ratingLabel:String = '';
 	var difficultyLabel:String = '';
 	public function configureCard(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
-		inCard = true; density = value; whitenCard();
-		if (ChartDifficultyAnalysis.shadow(density)) createShadowGlow();
+		inCard = true; whitenCard();
 		legend = new flixel.text.FlxText(0, 0, 42, '', 10);
 		legend.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, CENTER);
 		legend.scrollFactor.set();
 		difficultyLabel = DifficultyManager.getDiffName(diff).toUpperCase().substr(0, 4);
-		ratingLabel = density == null ? '?/20' : Std.string(Std.int(density.difficulty)) + '/20';
-		legend.text = difficultyLabel + '\n' + ratingLabel;
+		updateDensity(value);
 	}
+	public function updateDensity(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
+		density = value;
+		if (ChartDifficultyAnalysis.shadow(density) && shadowGlow == null) createShadowGlow();
+		else if (!ChartDifficultyAnalysis.shadow(density) && shadowGlow != null) { shadowGlow.destroy(); shadowGlow = null; }
+		ratingLabel = density == null ? '?/20' : Std.string(Std.int(density.difficulty)) + '/20';
+		if (legend != null) legend.text = difficultyLabel + '\n' + ratingLabel;
+	}
+
 	function whitenCard():Void {
 		// A subtle gradient stays inside the star silhouette, with no rectangular backing.
 		var bitmap = new BitmapData(32, 32, true, 0);

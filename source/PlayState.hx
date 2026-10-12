@@ -14526,6 +14526,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var camNotes:Bool = false;
 	var songName:FlxText;
 	var uiSmelly:TUI;
+	/** Completed scene objects, measured after atomic source initialization. */
+	public function songLoadingSummary():String {
+		var generated = unspawnNotes == null ? 0 : unspawnNotes.length;
+		var voices = SONG != null && SONG.needsVoices && vocalTracks != null ? vocalTracks.tracks.length : 0;
+		return 'Created ' + generated + ' notes (including holds)\n'
+			+ (inst == null ? 'No instrumental loaded' : 'Instrumental loaded')
+			+ ', ' + voices + ' vocal tracks';
+	}
 	override public function create() {
 		if (guardMissingSongBeforeCreate()) return;
 		// Note keys cache parsed UI presets only for this song. This keeps every

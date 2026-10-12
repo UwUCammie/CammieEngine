@@ -6,7 +6,11 @@ class LoadingState extends FlxState {
 	static function switchState(target:FlxState):Void {
 		var action = function():Void {
 			SongLoadingScreen.stateRequestStarted();
-			if (CodenameMusicBeatTransition.switchStateForCurrentOwner(target)) return;
+			if (CodenameMusicBeatTransition.switchStateForCurrentOwner(target)) {
+				// openSubState is deferred by Flixel. The source already owns
+				// this handoff, including an authored veto, before it is visible.
+				SongLoadingScreen.cancel(); return;
+			}
 			CodenameRequestedStateCompat.switchToKnownTarget(target,
 				function():Void FlxG.switchState(target));
 		};
@@ -32,7 +36,7 @@ class LoadingState extends FlxState {
 
 	/** Defer chart preparation until the loading overlay has rendered. */
 	public static function prepareSongTransition(song:String, prepare:Void->Void):Bool {
-		return SongLoadingScreen.queue('LOADING YOUR TRACK', song, prepare);
+		return SongLoadingScreen.queue('LOADING YOUR TRACK', song, prepare, true);
 	}
 
     public static function loadAndSwitchState(target:FlxState) {

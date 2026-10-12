@@ -35,6 +35,14 @@ class RuntimeLibraryNavigationProbe {
 	static var metricSecond:Int = -1;
 	static var originalScores:Map<String, Int>;
 	static var refreshOldState:FreeplayState;
+	static var refreshOldRow:Dynamic;
+	static var refreshOldIcon:Dynamic;
+	static var refreshOldStar:Dynamic;
+	static var refreshOldCamera:Dynamic;
+	static var refreshOldMusic:Dynamic;
+	static function swapRefreshTable<T>(values:Array<T>, left:Int, right:Int):Void {
+		var value = values[left]; values[left] = values[right]; values[right] = value;
+	}
 	static var refreshExpectedKey:String;
 	static var refreshExpectedSearch:String;
 	static var refreshExpectedSave:String;
@@ -430,15 +438,23 @@ class RuntimeLibraryNavigationProbe {
 				check(UserLibrary.change(function(data) data.setFavorite(refreshExpectedKey,true)), UserLibrary.error);
 				refreshExpectedSave = UserLibrary.data().encode();
 				menu.searchString = refreshExpectedSearch; menu.applySearchFilter();
-				// Only the old, detached display list changes: simulate a prior registry
-				// layout whose selected row number differs from the newly published list.
-				var first = menu.songs[0]; menu.songs[0] = menu.songs[metricFirst]; menu.songs[metricFirst] = first;
+				refreshOldRow = menu.songRows[metricFirst]; refreshOldIcon = menu.iconArray[metricFirst];
+				refreshOldStar = menu.starArray[metricFirst] == null ? null : menu.starArray[metricFirst][0];
+				refreshOldCamera = menu.camUI; refreshOldMusic = FlxG.sound.music;
+				// Simulate an older registry order while keeping parallel ownership tables aligned.
+				swapRefreshTable(menu.songs, 0, metricFirst); swapRefreshTable(menu.songRows, 0, metricFirst);
+				swapRefreshTable(menu.sourceRows, 0, metricFirst); swapRefreshTable(menu.iconArray, 0, metricFirst);
+				swapRefreshTable(menu.starArray, 0, metricFirst); swapRefreshTable(menu.hxcCapsuleViews, 0, metricFirst);
+				menu.rowSongIndices = [for (index in menu.rowSongIndices) index == 0 ? metricFirst : index == metricFirst ? 0 : index];
 				FreeplayState.curSelected = 0;
 				refreshOldState = menu; menu.reloadAfterImport();
 			case 44:
 				var menu = freeplay();
-				check(menu != refreshOldState && menu.libraryChartKey(FreeplayState.curSelected) == refreshExpectedKey
+				check(menu == refreshOldState && menu.libraryChartKey(FreeplayState.curSelected) == refreshExpectedKey
 					&& FreeplayState.curSelected != 0, 'Refresh restored obsolete row number instead of identity');
+				check(menu.songRows[FreeplayState.curSelected] == refreshOldRow && menu.iconArray[FreeplayState.curSelected] == refreshOldIcon, 'Refresh replaced retained visual objects');
+				check(refreshOldStar == null || menu.starArray[FreeplayState.curSelected][0] == refreshOldStar, 'Refresh replaced unchanged rating star');
+				check(menu.camUI == refreshOldCamera && FlxG.sound.music == refreshOldMusic, 'Refresh recreated camera or menu audio');
 				check(menu.searchString == refreshExpectedSearch && menu.searchText.text.indexOf(refreshExpectedSearch) >= 0, 'Refresh dropped visible search');
 				check(DifficultyManager.getDiffName(FreeplayState.curDifficulty) == refreshExpectedDifficulty, 'Refresh lost named difficulty');
 				check(UserLibrary.data().encode() == refreshExpectedSave, 'Refresh changed library metadata');
