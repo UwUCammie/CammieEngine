@@ -2,7 +2,7 @@
 
 Reference date: 4 October 2026. This document is the implementation brief and acceptance checklist. A checked item requires evidence; an existing method name or successful build alone does not prove compatibility.
 
-Release checkpoint (12 October): [v0.0.28 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.28) is published with verified Windows assets. Development is v0.0.29. Continue the non-chart queue and preserve all existing acceptance gates; removal remains a read-only foundation. See [release validation](tools/reports/v0.0.28-release-validation.md).
+Release checkpoint (12 October): [v0.0.29 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.29) is published with verified Windows assets, the approved Freeplay difficulty design and animated title logo. Development is v0.0.30. Continue the non-chart queue and preserve all existing acceptance gates; removal remains a read-only foundation. See [release validation](tools/reports/v0.0.29-release-validation.md).
 
 Current Freeplay requirement (12 October): always pin favorite charts above non-favorites in host views. Apply group and chart sorting within each section. Keep unselected songs compact and expand only the selection; retain readable import locks, source details, search, categories, difficulty controls and completion stars. Give the browser more musical personality without introducing expensive effects or changing imported custom menus.
 
@@ -30,6 +30,8 @@ Small profiling and instrumentation changes may accompany earlier phases. Larger
 The primary agent should work through one milestone at a time, make a reviewable implementation, update its evidence, and then continue. Keep unfinished requirements visible across sessions. Scope additions and unresolved source behavior belong in the backlog rather than disappearing behind a passing example.
 
 ## Current checkpoint (12 October 2026)
+
+- Published v0.0.29 from `7ac27704` after explicit user authorization, including the separately confirmed logo update. Exact-package Freeplay and pause/resume checks and uploaded ZIP/checksum digest verification passed. See [release evidence](tools/reports/v0.0.29-release-validation.md). Development is v0.0.30; next resume validated identity/history archives and reinstall restoration. Preserve the approved Freeplay design and every remaining roadmap goal.
 
 - Published: [v0.0.28 alpha](https://github.com/UwUCammie/CammieEngine/releases/tag/v0.0.28), tagged commit `332cc55c`, with compact favorites-first host Freeplay and read-only retained/installed ownership checks. The Windows ZIP and checksum were verified before and after publication. See [release validation](tools/reports/v0.0.28-release-validation.md). Development is v0.0.29; future publication requires authorization.
 - Accepted: 25 independent packages, 35 roots, 263 songs and 54,553 output hashes/receipts passed refresh correctness and readiness gates. Do not repeat the completed corpus merely because an older historical paragraph says it was pending.

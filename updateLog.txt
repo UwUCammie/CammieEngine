@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.30 development - CammieEngine
+- Continuing the existing roadmap after the v0.0.29 release.
+
 v0.0.29 alpha - CammieEngine
 - Freeplay difficulty stars sit inside each chart card, with subtle star-shaped gradients, density colors, extreme-density shadows and hover animation. Add versioned NPS/danger analysis, NPS difficulty sorting, per-play misses/combo statistics and cleaner source captions.
 - Replace the title screen Modding Plus lettering with Cammie Engine, with trans flag colours on Cammie, while retaining the animated logo.
