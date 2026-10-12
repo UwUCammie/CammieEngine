@@ -69,6 +69,7 @@ class FlxRect {public function new(_x:Float,_y:Float,_width:Float,_height:Float)
 // PlayState's production runtime smoke hook is intentionally inert in this
 // renderer-free extraction fixture. Keep the call in the extracted update
 // loop so the fixture continues to pin the real production method body.
+class SongLoadingScreen {public static var active:Bool=false;}
 class RuntimeSmokeHarness {
  public static function tick(_elapsed:Float):Bool return false;
  public static function profileEnabled():Bool return false;

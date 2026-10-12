@@ -36,6 +36,9 @@ class Main {
  static var mutex=new sys.thread.Mutex();static var checked=true;static var active=false;
  static var inspectionPending=false;static var queue:Array<Dynamic>=[];static var measurements:Dynamic=null;
  static var pendingHandoffs:Array<String>=[];
+ static var handoffMeasurements:Dynamic=null;static var handoffTotal=0;static var handoffCompleted=0;
+ // Handoff dependency reservations are exercised by the complete native manager fixture.
+ static function hasRunnableHandoffLocked():Bool return pendingHandoffs.length>0;
  static var handedOff=false;static var pendingHandoff=false;static var completedNames:Array<String>=[];
  static var generation=0;static var diagnosticMessages:Array<String>=[];
  static var status:ImportRefreshBrowseStatus={busy:false,label:"Imports refreshed.",fraction:1,complete:true,changed:true,blocked:false};

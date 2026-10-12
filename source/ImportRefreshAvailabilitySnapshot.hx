@@ -17,6 +17,8 @@ typedef ImportRefreshPendingSong = {
 typedef ImportRefreshAvailabilitySnapshot = {
 	var revision:Int;
 	var inspectionPending:Bool;
+	/** Active verification/conversion or a runnable handoff, excluding stopped failures. */
+	@:optional var refreshInProgress:Bool;
 	var pendingOwnerRoots:Array<String>;
 	var handoffPendingOwnerRoots:Array<String>;
 	var committedOwnerRoots:Array<String>;

@@ -8,13 +8,15 @@ class LibraryActionsSubState extends LibraryMenuSubState {
 	var owner:String;
 	var categoryFilters:Array<String>;
 	var setCategories:Array<String>->Void;
+	var collection:String;
+	var setCollection:String->Void;
 
 	public function new(key:String, favoritesOnly:Bool, filter:Bool->Void,
-		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false) {
+		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false, collection:String = 'All', ?collectionFilter:String->Void) {
 		super(); this.allowSorting = allowSorting; chartKey = key; onlyFavorites = favoritesOnly; setFilter = filter;
 		owner = selectedOwner == null ? '' : selectedOwner;
 		categoryFilters = categories == null ? [] : categories.copy();
-		setCategories = categoryFilter;
+		setCategories = categoryFilter; this.collection = collection; setCollection = collectionFilter;
 	}
 	override function create():Void { super.create(); refresh(); }
 	function refresh():Void {
@@ -36,6 +38,10 @@ class LibraryActionsSubState extends LibraryMenuSubState {
 				child.cameras = cameras; child.closeCallback = refresh; openSubState(child);
 			}},
 		];
+		if (setCollection != null) entries.push({label:'Song collection: ' + collection, run:function() {
+			var child = new LibraryCollectionsSubState(collection, setCollection); child.cameras = cameras;
+			openSubState(child);
+		}});
 		if (allowSorting) entries.push({label:'Grouping and sorting', run:function() {
 			var child = new LibrarySortingSubState(); child.cameras = cameras;
 			child.closeCallback = refresh; openSubState(child);

@@ -1,7 +1,12 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.31 development - CammieEngine
+v0.0.31 alpha - CammieEngine
+- Freeplay: main-menu entry opens charts directly, with registry collections available in Library actions. Hold Up/Down after a short initial delay to browse at a consistent speed; Shift accelerates held movement. The selected chart stays centered and settles from a subtle directional offset.
+- Show integer Difficulty Rating X/20 with colored stars, combining break-excluded NPS, hazard severity, chords and sustain/tap overlap; scroll speed is excluded. Rating-only revisions refresh derived data transactionally before chart readiness, without reconverting source content or copying media.
+- Preserve Psych stage-created props below the gameplay HUD and notes, including Lua tag-created sprites, so authored red scenes such as Breezy Plains Demon keep player notes visible.
+- Add song entry/exit loading screens with FNF artwork, a navy background and looping colored stars, plus a progress bar driven by completed loading stages. Render the initial and completed screens before preparing or revealing the next scene.
+- Retire completed cleanup presentation, report actual main-thread song-loading handoffs, and release unrelated legacy chart checking when only stopped failures remain. Preserve affected package, dependency, provisional and chart-output locks.
 - Continue the existing roadmap after the verified v0.0.30 Windows release.
 
 v0.0.30 alpha - CammieEngine

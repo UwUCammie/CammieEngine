@@ -1260,6 +1260,46 @@ class ImportRefreshManagerFixture {
     report({deferred:deferred,categoryBusy:categoryStatus.busy,
      freeplayBusy:freeplayStatus.busy,generation:ImportRefreshManager.generation,
      refreshed:refreshSelection,selected:selectedList});
+   case "stopped-provider-handoff":
+    ImportRefreshManager.checked=true;
+    ImportRefreshManager.active=false;
+    ImportRefreshManager.inspectionPending=false;
+    ImportRefreshManager.inspectionRunning=false;
+    ImportRefreshManager.queue=[];
+    ImportRefreshManager.reservations=new Map();
+    ImportRefreshManager.pendingHandoffs=[];
+    ImportRefreshManager.status={busy:false,label:"Imports refreshed.",fraction:1.0,complete:true,changed:true,blocked:true};
+    ImportRefreshManager.measurements=new ImportRefreshProgress(ImportWorkScheduler.workStamp()-400);
+    ImportRefreshManager.measurements.update({phase:"cleaning-up-import",current:"old-package",completed:0,total:0},ImportWorkScheduler.workStamp()-380);
+    FlxG.state=new CategoryState();
+    var provider="assets/imported_mods/provider";
+    var dependent="assets/imported_mods/dependent";
+    ImportRefreshManager.mutex.acquire();
+    var failed=ImportRefreshManager.reserveLocked("failed-provider","provider",[provider,dependent],null,false);
+    ImportRefreshManager.setReservationCommittedRootsLocked(failed,[provider]);
+    failed.recoveryBlocked=true;
+    var waiting=ImportRefreshManager.reserveLocked("waiting-dependent","dependent",[dependent],null,false);
+    ImportRefreshManager.setReservationCommittedRootsLocked(waiting,[dependent]);
+    ImportRefreshManager.setReservationDependenciesLocked(waiting,[provider]);
+    ImportRefreshManager.queueHandoffLocked("waiting-dependent",["one","two","three","four","five","six","seven","eight","nine"]);
+    ImportRefreshManager.mutex.release();
+    var blocked=ImportRefreshManager.browseTick();
+    var stopped=ImportRefreshManager.availabilitySnapshot();
+    var unrelated=FreeplaySongAvailability.songReadiness(stopped,"assets/imported_mods/legacy",true);
+    var affected=FreeplaySongAvailability.ownerReadiness(stopped,dependent);
+    ImportRefreshManager.mutex.acquire();
+    failed.recoveryBlocked=false;
+    failed.committed=true;
+    ImportRefreshManager.queueHandoffLocked("failed-provider",[]);
+    ImportRefreshManager.mutex.release();
+    var loading=ImportRefreshManager.browseTick();
+    var running=ImportRefreshManager.availabilitySnapshot();
+    FlxG.state=new FreeplayState();
+    var done=loading;
+    for(i in 0...10)done=ImportRefreshManager.browseTick();
+    var finalView=ImportRefreshManager.availabilitySnapshot();
+    report({blocked:blocked,stopped:stopped,unrelated:unrelated,affected:affected,
+     loading:loading,running:running,done:done,finalView:finalView,handoffCalls:ModuleFunctions.handoffCalls});
    case "fresh":
     var source=args[2];
     var result=importPackage(source,false);
@@ -1989,6 +2029,26 @@ class ImportRefreshManagerTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout.strip().splitlines()[-1])
+
+    def test_stopped_provider_does_not_leave_cleanup_banner_or_gate_unrelated_legacy(self):
+        result = self.run_fixture("stopped-provider-handoff")
+        self.assertFalse(result["blocked"]["busy"], result)
+        self.assertFalse(result["blocked"]["backgroundBusy"], result)
+        self.assertFalse(result["blocked"]["complete"], result)
+        self.assertTrue(result["blocked"]["blocked"], result)
+        self.assertFalse(result["stopped"]["refreshInProgress"], result)
+        self.assertTrue(result["unrelated"]["ready"], result)
+        self.assertFalse(result["affected"]["ready"], result)
+        self.assertTrue(result["loading"]["busy"], result)
+        self.assertFalse(result["loading"]["complete"], result)
+        self.assertEqual(result["loading"]["phase"], "loading-imported-songs", result)
+        self.assertEqual(result["loading"]["total"], 9, result)
+        self.assertEqual(result["loading"]["completed"], 0, result)
+        self.assertTrue(result["running"]["refreshInProgress"], result)
+        self.assertFalse(result["done"]["busy"], result)
+        self.assertTrue(result["done"]["complete"], result)
+        self.assertEqual(result["finalView"]["pendingOwnerRoots"], [], result)
+        self.assertFalse(result["finalView"]["refreshInProgress"], result)
 
     def test_selected_nv_package_retains_parent_core_without_importing_siblings(self):
         game = self.scratch / "nv-game"
@@ -2733,12 +2793,15 @@ class ImportRefreshManagerTest(unittest.TestCase):
     def mark_record_stale(self, record: dict, common_revision: int | None = 0,
                           runtime_dependency_owners=None,
                           legacy_runtime_dependencies: bool = False,
-                          record_updates: dict | None = None) -> None:
+                          record_updates: dict | None = None,
+                          revision_updates: dict | None = None) -> None:
         owner = "retained-import:" + record["id"]
         owner_hash = hashlib.sha256(owner.encode()).hexdigest()
         scope = self.install / "import-cache/state" / owner_hash
         manifest_path = scope / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if revision_updates is not None:
+            manifest["revision"].update(revision_updates)
         if common_revision is not None:
             manifest["revision"]["importRecord"]["revisions"][0]["commonRevision"] = common_revision
         if record_updates is not None:
@@ -2770,6 +2833,31 @@ class ImportRefreshManagerTest(unittest.TestCase):
         matching = [record for record in report["records"] if record["label"] == source.name]
         self.assertEqual(len(matching), 1)
         return matching[0]
+
+    def test_metadata_only_rating_migration_finishes_before_owner_ready(self):
+        source = self.make_source("derived-ratings", initial_songs=["derived-ratings"], next_songs=["derived-ratings"])
+        record = self.initial_import(source)
+        chart = self.install / "assets/data/derived-ratings/derived-ratings.json"
+        chart.write_text(json.dumps({"song":{"notes":[{"mustHitSection":True,
+            "sectionNotes":[[0,0,0],[1000,1,0],[2000,2,0]]}]}}), encoding="utf-8")
+        before_chart = chart.read_bytes()
+        before_registry = (self.install / REGISTRY).read_bytes()
+        before_record = json.loads(json.dumps(record))
+        self.mark_record_stale(record, common_revision=None, revision_updates={"chartAnalysisVersion":0})
+        result = self.run_fixture("auto-refresh")
+        self.assertFalse(result["status"]["blocked"], result)
+        self.assertFalse(result["availability"]["inspectionPending"], result)
+        self.assertEqual(result["availability"]["pendingOwnerRoots"], [], result)
+        self.assertEqual(result["generation"], 1, result)
+        self.assertEqual(result["records"], [before_record])
+        self.assertEqual(chart.read_bytes(), before_chart)
+        self.assertEqual((self.install / REGISTRY).read_bytes(), before_registry)
+        density = json.loads((chart.parent / "chartDensity.json").read_text())["normal"]
+        self.assertEqual(density["version"], 6)
+        self.assertEqual(density["playerNotes"], 3)
+        self.assertIsInstance(density["difficulty"], int)
+        self.assertGreaterEqual(density["difficulty"], 1)
+        self.assertLessEqual(density["difficulty"], 20)
 
     def test_refresh_keeps_existing_shared_song_order_across_independent_packages(self):
         records = []

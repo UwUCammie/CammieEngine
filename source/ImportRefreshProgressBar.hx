@@ -369,6 +369,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		phase = StringTools.trim(phase == null ? "" : phase.toLowerCase());
 		return switch (phase) {
 			case "checking-import-receipts": "Checking saved imports";
+			case "analyzing-chart-difficulty": "Calculating Difficulty Ratings";
 			case "retaining-source": "Retaining source files";
 			case "checking-retained-source": "Checking retained source";
 			case "scanning-retained-source": "Scanning retained source";
@@ -386,6 +387,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 			case "backing-up-import": "Backing up import files";
 			case "publishing-import": "Publishing imported files";
 			case "cleaning-up-import": "Cleaning up temporary files";
+			case "loading-imported-songs": "Loading imported songs";
 			case "": "Preparing refresh";
 			default:
 				var readable = StringTools.trim(StringTools.replace(StringTools.replace(phase, "-", " "), "_", " "));

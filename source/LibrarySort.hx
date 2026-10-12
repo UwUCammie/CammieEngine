@@ -19,7 +19,7 @@ typedef LibrarySortRow = {
 /** Presentation only: original indexes remain authoritative for launch and readiness. */
 class LibrarySort {
 	public static function label(value:String):String return switch (value) {
-		case 'npsHigh': 'Notes per second (Difficulty): high-low'; case 'npsLow': 'Notes per second (Difficulty): low-high';
+		case 'npsHigh': 'Difficulty Rating: high-low'; case 'npsLow': 'Difficulty Rating: low-high';
 		case 'flat': 'Flat list'; case 'mod': 'By mod'; case 'engine': 'Engine type';
 		case 'az': 'Alphabetical A-Z'; case 'za': 'Alphabetical Z-A';
 		case 'scoreHigh': 'Best score high-low'; case 'scoreLow': 'Best score low-high';

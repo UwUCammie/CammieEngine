@@ -1,21 +1,39 @@
 import flixel.text.FlxText;
 import flixel.FlxState;
 import flixel.FlxG;
-// lol
-// doesn't actually load anything except fixing menus
+// Shared state routing with the song loading presentation.
 class LoadingState extends FlxState {
 	static function switchState(target:FlxState):Void {
-		if (CodenameMusicBeatTransition.switchStateForCurrentOwner(target)) return;
-		CodenameRequestedStateCompat.switchToKnownTarget(target,
-			function():Void FlxG.switchState(target));
+		var action = function():Void {
+			SongLoadingScreen.stateRequestStarted();
+			if (CodenameMusicBeatTransition.switchStateForCurrentOwner(target)) return;
+			CodenameRequestedStateCompat.switchToKnownTarget(target,
+				function():Void FlxG.switchState(target));
+		};
+		if (Std.isOfType(target, PlayState) || Std.isOfType(FlxG.state, PlayState)
+			|| SongLoadingScreen.preparing)
+			SongLoadingScreen.queue(Std.isOfType(target, PlayState) ? 'LOADING YOUR TRACK' : 'LEAVING THE STAGE',
+				PlayState.SONG == null ? 'Getting ready' : PlayState.SONG.song, action);
+		else action();
 	}
 
     /** Construct states that allocate graphics only after Flixel destroys the
         previous state and clears its bitmap cache. */
     public static function loadAndSwitchStateFactory(target:()->FlxState):Void {
 		PlayerSettings.player1.controls.setKeyboardScheme(Solo(4));
-		FlxG.switchState(target);
+		var action = function():Void {
+			SongLoadingScreen.stateRequestStarted();
+			FlxG.switchState(target);
+		};
+		if (Std.isOfType(FlxG.state, PlayState))
+			SongLoadingScreen.queue('LEAVING THE STAGE', PlayState.SONG == null ? 'Getting ready' : PlayState.SONG.song, action);
+		else action();
     }
+
+	/** Defer chart preparation until the loading overlay has rendered. */
+	public static function prepareSongTransition(song:String, prepare:Void->Void):Bool {
+		return SongLoadingScreen.queue('LOADING YOUR TRACK', song, prepare);
+	}
 
     public static function loadAndSwitchState(target:FlxState) {
 

@@ -272,9 +272,8 @@ class MainMenuState extends MusicBeatState {
 										LoadingState.loadAndSwitchState(new StoryMenuState());
 										trace("Story Menu Selected");
 									case 'freeplay':
-										CategoryState.choosingFor = "freeplay";
-										FreeplayState.soundTest = false;
-										LoadingState.loadAndSwitchState(new CategoryState());
+										FreeplayState.openHostLibrary();
+										LoadingState.loadAndSwitchState(new FreeplayState());
 
 									case 'options':
 										SaveDataState.prevPath = 'title';
@@ -497,9 +496,8 @@ class MainMenuState extends MusicBeatState {
 			case HxcMenuSpec.ROUTE_STORY:
 				LoadingState.loadAndSwitchState(new StoryMenuState());
 			case HxcMenuSpec.ROUTE_FREEPLAY:
-				CategoryState.choosingFor = 'freeplay';
-				FreeplayState.soundTest = false;
-				LoadingState.loadAndSwitchState(new CategoryState());
+				FreeplayState.openHostLibrary();
+				LoadingState.loadAndSwitchState(new FreeplayState());
 			case HxcMenuSpec.ROUTE_OPTIONS:
 				SaveDataState.prevPath = 'title';
 				LoadingState.loadAndSwitchState(new SaveDataState());

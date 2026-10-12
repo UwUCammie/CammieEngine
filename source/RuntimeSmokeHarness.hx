@@ -2435,7 +2435,7 @@ class RuntimeSmokeHarness {
 			} else refreshReadbackCount = 2;
 		}
 		#end
-		if (RuntimeLibraryNavigationProbe.active) return;
+		if (RuntimeLibraryNavigationProbe.active || RuntimeFreeplayScrollProbe.active) return;
 		if (inFreeplay && (refreshProbeEnabled() || RuntimeUserLibraryProbe.active || RuntimeLibraryCategoryProbe.active)) return;
 		// Return mode observes the real post-song menu without scrolling,
 		// accepting a row, leaving, or applying the standalone Freeplay deadline.

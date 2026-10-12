@@ -58,12 +58,9 @@ class RuntimeLibraryNavigationProbe {
 		return cast FlxG.state;
 	}
 	static function openView(id:String):Void {
-		check(Std.isOfType(FlxG.state, CategoryState), 'Expected category chooser at ' + phase);
-		var chooser:CategoryState = cast FlxG.state;
-		var index = -1;
-		for (i in chooser.libraryViews.keys()) if (chooser.libraryViews.get(i) == id) index = i;
-		check(index >= 0, 'Missing global library entry');
-		chooser.changeSelection(index - CategoryState.curSelected); press(13);
+		check(Std.isOfType(FlxG.state, MainMenuState), 'Expected main menu at ' + phase);
+		FreeplayState.openLibraryView(id);
+		LoadingState.loadAndSwitchState(new FreeplayState());
 	}
 	/** Generated private runtime art exercises the real PNG/XML owner loader, never donor files. */
 	static function installIconFixture(menu:FreeplayState, index:Int):Void {
@@ -126,7 +123,7 @@ class RuntimeLibraryNavigationProbe {
 				if (!Std.isOfType(FlxG.state, FreeplayState)) return false;
 				var menu = freeplay();
 				check(menu.denseBrowser, 'Host browser layout not enabled');
-				check(menu.rowSongIndices.length == FreeplayBrowserLayout.capacity(FlxG.height), 'Large library did not fill the bounded page');
+				check(menu.rowSongIndices.length == FreeplayBrowserLayout.centeredPage(menu.orderedVisibleSongs(), FreeplayState.curSelected, FlxG.height, menu.selectedCardHeight()).length, 'Large library did not fill the bounded page');
 				for (index in menu.rowSongIndices) {
 					var row = menu.songRows[index];
 					check(row.x >= 0 && row.y >= FreeplayBrowserLayout.TOP && row.y + 60 < FlxG.height - 68, 'Row escaped browser viewport');
@@ -182,11 +179,11 @@ class RuntimeLibraryNavigationProbe {
 				// In-memory menu metadata only: never write fixture ratings into a chart or registry.
 				menu.songs[target].authoredDifficultyRatings = FreeplayDifficultyRating.read(ratings);
 				menu.updateBrowserDetails();
-				check(menu.browserRating.text == 'Difficulty rating: 12 (fixture)', 'Selected named rating missing');
+				check(menu.browserRating.text == 'Authored rating: 12 (fixture)', 'Selected named rating missing');
 				menu.changeDiff(1);
-				check(menu.browserRating.text == 'Difficulty rating: 3 (fixture)', 'Difficulty switch retained previous rating');
+				check(menu.browserRating.text == 'Authored rating: 3 (fixture)', 'Difficulty switch retained previous rating');
 				menu.changeDiff(-1);
-				check(menu.browserRating.text == 'Difficulty rating: 12 (fixture)', 'Difficulty return lost rating');
+				check(menu.browserRating.text == 'Authored rating: 12 (fixture)', 'Difficulty return lost rating');
 
 				installIconFixture(menu, target);
 				check(UserLibrary.data().playOrder(key) == 0, 'Browsing/canceled confirmation recorded a play');
@@ -209,7 +206,7 @@ class RuntimeLibraryNavigationProbe {
 				check(menu.libraryChartKey(FreeplayState.curSelected) == key, 'Gameplay return lost selection');
 				check(FreeplayState.libraryViewId == FreeplayLibraryView.FAVORITES && menu.anyVisible(), 'Gameplay return lost library view');
 				check(DifficultyManager.getDiffName(FreeplayState.curDifficulty) == difficulty, 'Gameplay return lost difficulty');
-				check(menu.browserRating.text == 'Difficulty rating: Unknown', 'Fixture rating leaked across registry reload');
+				check(menu.browserRating.text == 'Authored rating: Unknown', 'Fixture rating leaked across registry reload');
 				UserLibrary.current = null; check(UserLibrary.data().lastDifficulty(key) == difficulty, 'Difficulty did not persist');
 				check(UserLibrary.data().playOrder(key) == 1 && UserLibrary.data().lastPlayed(key) > 0, 'Successful song start did not persist exactly one play');
 				check(UserLibrary.data().playOrder(importedKey) == 0, 'Unplayed imported favorite received history');

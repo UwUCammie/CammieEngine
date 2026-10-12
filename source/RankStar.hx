@@ -31,13 +31,17 @@ class RankStar extends FlxSprite {
 	var pulseTime:Float = 0;
 	var legend:flixel.text.FlxText;
 	var shadowGlow:FlxSprite;
+	var ratingLabel:String = '';
+	var difficultyLabel:String = '';
 	public function configureCard(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
 		inCard = true; density = value; whitenCard();
 		if (ChartDifficultyAnalysis.shadow(density)) createShadowGlow();
 		legend = new flixel.text.FlxText(0, 0, 42, '', 10);
 		legend.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, CENTER);
 		legend.scrollFactor.set();
-		legend.text = DifficultyManager.getDiffName(diff).toUpperCase().substr(0, 4);
+		difficultyLabel = DifficultyManager.getDiffName(diff).toUpperCase().substr(0, 4);
+		ratingLabel = density == null ? '?/20' : Std.string(Std.int(density.difficulty)) + '/20';
+		legend.text = difficultyLabel + '\n' + ratingLabel;
 	}
 	function whitenCard():Void {
 		// A subtle gradient stays inside the star silhouette, with no rectangular backing.
@@ -96,8 +100,10 @@ class RankStar extends FlxSprite {
 			color = 0xFF000000;
 		} else color = ChartDifficultyAnalysis.color(density);
 		alpha = savedAlpha; setPosition(savedX, savedY); super.draw();
-		if (showLegend) {
-			legend.setPosition(savedX - 8, cardY + 28); legend.alpha = savedAlpha;
+		if (legend != null) {
+			var text = showLegend ? difficultyLabel + '\n' + ratingLabel : ratingLabel;
+			if (legend.text != text) legend.text = text;
+			legend.setPosition(savedX - 8, cardY + (showLegend ? 28 : 26)); legend.alpha = savedAlpha;
 			legend.color = focused ? 0xFFFFD166 : 0xFFCFD8E5;
 			legend.cameras = cameras; legend.draw();
 		}

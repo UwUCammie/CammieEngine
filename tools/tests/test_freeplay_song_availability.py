@@ -106,6 +106,21 @@ class Main {
   check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
    'legacy unmanaged owner falls back after inspection completes');
 
+  snapshot.pendingOwnerRoots=[other];
+  snapshot.refreshInProgress=true;
+  check(!FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
+   'unmanaged imports stay locked while active refresh work remains');
+  snapshot.refreshInProgress=false;
+  check(FreeplaySongAvailability.ownerReadiness(snapshot,owner).ready,
+   'a stopped unrelated failure must not permanently gate a legacy import');
+  check(!FreeplaySongAvailability.ownerReadiness(snapshot,other).ready,
+   'the failed owner remains reserved when its work has stopped');
+  check(!FreeplaySongAvailability.songReadiness(snapshot,owner,false).ready,
+   'stopped work must not make a missing chart playable');
+  check(!FreeplaySongAvailability.songReadiness(snapshot,owner,true,'assets/data/shared').ready,
+   'stopped work must preserve chart output overlap locks');
+  snapshot.pendingOwnerRoots=[];
+
   var candidate:ImportRefreshPendingSong={key:'pending:one',name:'Chart',ownerRoot:owner,
    sourceRoot:'retained/source',sourceFolder:'Source Chart',destinationFolder:'Chart'};
   check(FreeplaySongAvailability.matchesInstalledDestination(candidate,owner,'Chart'),

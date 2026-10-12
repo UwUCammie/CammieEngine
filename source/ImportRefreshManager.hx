@@ -107,6 +107,9 @@ class ImportRefreshManager {
 	// Keep package readiness reserved while its main-thread support map is
 	// rebuilt in small batches. No filesystem/cache work moves to a worker.
 	static var handoffOffsets:Map<String, Int> = new Map();
+	static var handoffMeasurements:ImportRefreshProgress;
+	static var handoffTotal:Int = 0;
+	static var handoffCompleted:Int = 0;
 	static inline var HANDOFF_SONGS_PER_POLL:Int = 4;
 	static inline var HANDOFF_POLL_SECONDS:Float = 0.004;
 	static var committedOwnerRoots:Map<String, Bool> = new Map();
@@ -163,6 +166,7 @@ class ImportRefreshManager {
 			availabilityCache = {
 				revision:availabilityEpoch,
 				inspectionPending:inspectionPending || inspectionRunning || availabilityRecheckRequested || unresolvedRecovery,
+				refreshInProgress:active || queue.length > 0 || hasRunnableHandoffLocked(),
 				pendingOwnerRoots:pendingRoots,
 				handoffPendingOwnerRoots:handoffRoots,
 				committedOwnerRoots:committedRoots,
@@ -175,6 +179,7 @@ class ImportRefreshManager {
 		var snapshot:ImportRefreshAvailabilitySnapshot = {
 			revision:cached.revision,
 			inspectionPending:cached.inspectionPending,
+			refreshInProgress:cached.refreshInProgress,
 			pendingOwnerRoots:cached.pendingOwnerRoots.copy(),
 			handoffPendingOwnerRoots:cached.handoffPendingOwnerRoots.copy(),
 			committedOwnerRoots:cached.committedOwnerRoots.copy(),
@@ -387,9 +392,15 @@ class ImportRefreshManager {
 	static function queueHandoffLocked(token:String, names:Array<String>):Void {
 		var reservation = reservations.get(token);
 		if (reservation == null) return;
+		if (pendingHandoffs.length == 0) {
+			handoffMeasurements = new ImportRefreshProgress(ImportWorkScheduler.workStamp());
+			handoffTotal = handoffCompleted = 0;
+		}
 		reservation.committed = true;
 		reservation.handoffPending = true;
 		reservation.handoffNames = names == null ? [] : names.copy();
+		handoffTotal += reservation.handoffNames.length;
+		updateHandoffProgressLocked("");
 		handoffOffsets.remove(token);
 		setCommittedRootsLocked(reservation.committedRoots);
 		if (pendingHandoffs.indexOf(token) < 0) pendingHandoffs.push(token);
@@ -1409,6 +1420,31 @@ class ImportRefreshManager {
 		return false;
 	}
 
+	/** Shared provider gate for execution, work snapshots and progress. Caller holds mutex. */
+	static function handoffWaitingForProviderLocked(reservation:ImportRefreshAvailabilityReservation):Bool {
+		for (otherToken in reservations.keys()) if (otherToken != reservation.token) {
+			var other = reservations.get(otherToken);
+			if (other == null) continue;
+			for (dependency in reservation.waitForOwnerRoots)
+				if (other.roots.indexOf(dependency) >= 0 && (!other.committed || other.recoveryBlocked)) return true;
+		}
+		return false;
+	}
+
+	static function hasRunnableHandoffLocked():Bool {
+		for (token in pendingHandoffs) {
+			var reservation = reservations.get(token);
+			if (reservation != null && reservation.handoffPending
+				&& !handoffWaitingForProviderLocked(reservation)) return true;
+		}
+		return false;
+	}
+
+	static function updateHandoffProgressLocked(current:String):Void {
+		if (handoffMeasurements != null) handoffMeasurements.update({phase:"loading-imported-songs",
+			current:current, completed:handoffCompleted, total:handoffTotal}, ImportWorkScheduler.workStamp());
+	}
+
 	static function tryHandoff(token:String):Bool {
 		if (!canHandoffOnCurrentState()) return false;
 		mutex.acquire();
@@ -1417,15 +1453,7 @@ class ImportRefreshManager {
 			mutex.release();
 			return reservation == null;
 		}
-		for (otherToken in reservations.keys()) if (otherToken != token) {
-			var other = reservations.get(otherToken);
-			if (other == null) continue;
-			for (dependency in reservation.waitForOwnerRoots)
-				if (other.roots.indexOf(dependency) >= 0 && (!other.committed || other.recoveryBlocked)) {
-					mutex.release();
-					return false;
-				}
-		}
+		if (handoffWaitingForProviderLocked(reservation)) { mutex.release(); return false; }
 		handoffInProgress.set(token, true);
 		var offset = handoffOffsets.exists(token) ? handoffOffsets.get(token) : 0;
 		var end = Std.int(Math.min(offset + HANDOFF_SONGS_PER_POLL, reservation.handoffNames.length));
@@ -1434,6 +1462,10 @@ class ImportRefreshManager {
 		mutex.release();
 		try {
 			ModuleFunctions.completeImportOnMainThread(names);
+			mutex.acquire();
+			handoffCompleted += names.length;
+			updateHandoffProgressLocked(names.length == 0 ? "" : names[names.length - 1]);
+			mutex.release();
 			if (!finished) {
 				mutex.acquire();
 				handoffOffsets.set(token, end);
@@ -2444,7 +2476,7 @@ class ImportRefreshManager {
 				nextRevisions.push(ImportRevision.current(engine,EngineBranding.version()));
 			}
 			record.revisions = nextRevisions;
-			var metadata:Dynamic = {importRecord:record,registries:nextRegistries};
+			var metadata:Dynamic = {importRecord:record,registries:nextRegistries,chartAnalysisVersion:ChartDifficultyAnalysis.VERSION};
 			progress({phase:"publishing-import",current:Std.string(record.label),completed:0,total:1});
 			var publishedPaths = masked.copy();
 			var publishedPathSet:Map<String, Bool> = new Map();
@@ -2505,13 +2537,24 @@ class ImportRefreshManager {
 		performPendingHandoffs();
 		mutex.acquire();
 		var handoffWaiting = pendingHandoffs.length > 0;
+		var handoffRunnable = hasRunnableHandoffLocked();
 		var queueWaiting = queue.length > 0;
-		var value:ImportRefreshBrowseStatus = {busy:active || queueWaiting || handoffWaiting,
-			backgroundBusy:status.busy || queueWaiting || handoffWaiting,label:status.label,fraction:status.fraction,
-			complete:status.complete,changed:status.changed,blocked:status.blocked};
-		if (measurements != null) {
-			var measured = measurements.snapshot(ImportWorkScheduler.workStamp(), queue.length);
+		var busy = active || queueWaiting || handoffRunnable;
+		var waitingOnFailure = handoffWaiting && !handoffRunnable && !active && !queueWaiting;
+		var value:ImportRefreshBrowseStatus = {busy:busy, backgroundBusy:status.busy || queueWaiting || handoffRunnable,
+			label:status.label, fraction:status.fraction, complete:status.complete && !busy && !handoffWaiting,
+			changed:status.changed, blocked:status.blocked || waitingOnFailure};
+		var progress = !active && !queueWaiting && handoffRunnable ? handoffMeasurements : measurements;
+		if (progress != null) {
+			var measured = progress.snapshot(ImportWorkScheduler.workStamp(), queue.length);
 			for (field in Reflect.fields(measured)) Reflect.setField(value, field, Reflect.field(measured, field));
+		}
+		if (!active && !queueWaiting && handoffRunnable) {
+			value.label = "Loading imported songs";
+			value.fraction = handoffTotal <= 0 ? 0 : Math.min(1, handoffCompleted / handoffTotal);
+		} else if (waitingOnFailure) {
+			value.label = diagnosticMessages.length > 0 ? diagnosticMessages[diagnosticMessages.length - 1]
+				: "Import refresh needs attention before dependent packages can load.";
 		}
 		mutex.release();
 		return value;
@@ -2687,6 +2730,13 @@ class ImportRefreshManager {
 					if (assessment.status == ImportRevision.FUTURE || assessment.status == ImportRevision.UNKNOWN)
 						throw "Import receipt is newer or unrecognized; its files were preserved.";
 					if (assessment.status == ImportRevision.OUTDATED) stale = true;
+				}
+				if (!stale && dependencyMetadata.complete) {
+					var priorAnalysisTransaction:String = manifest.transactionId;
+					manifest = ChartDifficultyRefresh.refresh(install,Path.join([cache,"state"]),owner,cast manifest,function(payload) {
+						mutex.acquire(); measurements.update(payload,ImportWorkScheduler.workStamp()); mutex.release();
+					});
+					if (manifest.transactionId != priorAnalysisTransaction) {mutex.acquire();generation++;mutex.release();}
 				}
 				var refreshToken = "refresh:" + id;
 				ImportWorkScheduler.cooperate();
@@ -2961,7 +3011,7 @@ class ImportRefreshManager {
 			ModuleFunctions.setImportProgressCallback(null);
 			ModuleFunctions.setImportCancelCallback(null);
 			ModuleFunctions.setImportBackgroundMode(false);
-			mutex.acquire(); active = false; status.busy = false; status.complete = true; mutex.release();
+			mutex.acquire(); active = false; status.busy = false; status.complete = true; bumpAvailabilityLocked(); mutex.release();
 		});
 	}
 

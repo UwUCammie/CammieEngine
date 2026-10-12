@@ -59,6 +59,8 @@ class StageHudOrderFixture {
  var accuracyTxt:FakeBasic;
  var difficTxt:FakeBasic;
  public function new() {}
+ function remove(item:FakeBasic,splice:Bool):Void members.remove(item);
+ function insert(index:Int,item:FakeBasic):Void members.insert(index,item);
  function refresh():Void members.sort((left, right) -> left.z - right.z);
 ''' + methods + r'''
  static function main() {

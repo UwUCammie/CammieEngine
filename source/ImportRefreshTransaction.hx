@@ -114,10 +114,10 @@ class ImportRefreshTransaction {
 	public static function apply(installRoot:String, stagingRoot:String, stateRoot:String, owner:String,
 		ownedRoots:Array<String>, stagedOutputs:Array<ImportRefreshStagedOutput>, ?revision:Dynamic,
 		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>,
-		?progress:Dynamic->Void):ImportRefreshResult {
+		?progress:Dynamic->Void, preserveUnchanged:Bool = false):ImportRefreshResult {
 		try {
 			return applyInternal(installRoot, stagingRoot, stateRoot, owner, ownedRoots, stagedOutputs,
-				revision, cancelCheck, validatedBaselines, progress);
+				revision, cancelCheck, validatedBaselines, progress, preserveUnchanged);
 		} catch (error:Dynamic) {
 			if (Std.isOfType(error, ImportWorkCancelled))
 				return result(STATUS_CANCELLED, [], manifestPath(stateRoot, owner), "", "");
@@ -128,7 +128,7 @@ class ImportRefreshTransaction {
 	static function applyInternal(installRoot:String, stagingRoot:String, stateRoot:String, owner:String,
 		ownedRoots:Array<String>, stagedOutputs:Array<ImportRefreshStagedOutput>, ?revision:Dynamic,
 		?cancelCheck:Void->Bool, ?validatedBaselines:Array<ImportRefreshManifestFile>,
-		?progress:Dynamic->Void):ImportRefreshResult {
+		?progress:Dynamic->Void, preserveUnchanged:Bool = false):ImportRefreshResult {
 		if (installRoot == null || stagingRoot == null || stateRoot == null)
 			throw "Import refresh requires install, staging, and state roots.";
 		if (owner == null || StringTools.trim(owner) == "")
@@ -233,7 +233,7 @@ class ImportRefreshTransaction {
 		}
 		for (path in previousByPath.keys()) {
 			checkpointWork(cancelCheck);
-			if (!outputByPath.exists(path)) allPaths.push(path);
+			if (!preserveUnchanged && !outputByPath.exists(path)) allPaths.push(path);
 		}
 		allPaths.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
 
@@ -242,7 +242,22 @@ class ImportRefreshTransaction {
 		var manifestBeforeExists = FileSystem.exists(manifestPath);
 		var manifestBeforeHash = manifestBeforeExists ? ImportSourceSnapshot.sha256File(manifestPath, CHUNK_SIZE,
 			function() return checkCancelled(cancelCheck)) : "";
-		var manifestAfter = makeManifest(owner, transactionId, rootList, revision, outputByPath, cancelCheck);
+		// Derived metadata updates retain authenticated ownership without copying assets.
+		// Retained entries are not rewritten or claimed from current disk bytes.
+		var manifestOutputs = outputByPath.copy();
+		if (preserveUnchanged) {
+			if (Json.stringify(rootList) != Json.stringify(previous.ownedRoots)) throw "Derived refresh must retain the same owned roots.";
+			var priorRecord = previous.revision == null ? null : Reflect.field(previous.revision,"importRecord");
+			var nextRecord = revision == null ? null : Reflect.field(revision,"importRecord");
+			if (Json.stringify(priorRecord) != Json.stringify(nextRecord)) throw "Derived refresh cannot change the retained import record.";
+			for (entry in previous.files) {
+				var folded = entry.path.toLowerCase();
+				if (caseFolded.exists(folded) && caseFolded.get(folded) != entry.path)
+					throw "Derived refresh cannot change the case of an owned path: " + entry.path;
+				if (!manifestOutputs.exists(entry.path)) manifestOutputs.set(entry.path,{path:entry.path,stagedPath:entry.path,sha256:entry.sha256});
+			}
+		}
+		var manifestAfter = makeManifest(owner, transactionId, rootList, revision, manifestOutputs, cancelCheck);
 		var manifestText = UnicodeSafeJson.stringifyStandard(manifestAfter) + "\n";
 		var manifestAfterHash = digestText(manifestText);
 

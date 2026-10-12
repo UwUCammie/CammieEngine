@@ -132,7 +132,7 @@ class RuntimeFreeplayDifficultyProbe {public static var rejections=0;public stat
 class PlayState {public static var SONG:Dynamic;public static var isStoryMode=false;public static var balls=0;public static var watchedCutscene=false;public static var storyDifficulty=0;public function new(){}}
 class ModifierState {public static var isStoryMode=false;public function new(){}}
 class OptionsHandler {public static var options={skipModifierMenu:true};}
-class LoadingState {public static var launches=0;public static function loadAndSwitchState(state:Dynamic){launches++;}}
+class LoadingState {public static function prepareSongTransition(song:String,prepare:Void->Void):Bool {prepare();return true;}public static var launches=0;public static function loadAndSwitchState(state:Dynamic){launches++;}}
 """
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
             folder=Path(temp);(folder/'Main.hx').write_text(main+'\n'+harness)

@@ -21,7 +21,7 @@ class LibraryChartMetric {
 	public static function read(song:String, ratings:Array<AuthoredDifficultyRating>, mode:String,
 		difficulty:String, index:Int, supported:Array<Int>, score:(String, Int)->Null<Int>, ?density:ChartDifficultyAnalysis.ChartDensity):Null<LibraryMetricValue> {
 		if (index < 0 || supported == null || supported.indexOf(index) < 0) return null;
-		if (isDensity(mode)) return density == null ? null : {value:density.difficulty, scale:'NPS difficulty'};
+		if (isDensity(mode)) return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating /20'};
 		if (isScore(mode)) {
 			var value = score(song, index);
 			return value == null ? null : {value:value, scale:'Host score'};

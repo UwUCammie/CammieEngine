@@ -23,7 +23,7 @@ class DifficultyRatingTest(unittest.TestCase):
    check(FreeplayDifficultyRating.resolve(ratings,"normal").value==0,"authored zero treated as absent");
    check(FreeplayDifficultyRating.resolve(ratings,"hard")==null,"invented rating for unsupported difficulty");
    check(FreeplayDifficultyRating.resolve(ratings,"normal").scale=="V-Slice","source scale lost");
-   check(FreeplayDifficultyRating.label(ratings,"nightmare")=="Difficulty rating: 17 (V-Slice)","display changed source value");
+   check(FreeplayDifficultyRating.label(ratings,"nightmare")=="Authored rating: 17 (V-Slice)","display changed source value");
   }
   var imported=FreeplayDifficultyRating.forImport({convertedCharts:converted.charts});
   check(FreeplayDifficultyRating.resolve(imported,"nightmare").value==17,"registry export lost converted rating table");
@@ -39,7 +39,7 @@ class DifficultyRatingTest(unittest.TestCase):
   var entries=FreeplayDifficultyRating.read(source);source[0].value=99;
   check(FreeplayDifficultyRating.resolve(entries,"custom").value==2.5,"retained mutable source reference");
   check(FreeplayDifficultyRating.resolve(entries,"normal")==null,"custom rating became default difficulty");
-  check(FreeplayDifficultyRating.label([],"normal")=="Difficulty rating: Unknown","missing value fabricated");
+  check(FreeplayDifficultyRating.label([],"normal")=="Authored rating: Unknown","missing value fabricated");
   Sys.println("rating-contract-ok");
  }
 }'''

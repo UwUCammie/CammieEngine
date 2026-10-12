@@ -115,6 +115,8 @@ class FreeplayState extends MusicBeatState {
 	var rowSongIndices:Array<Int> = [];
 	private var curPlaying:Bool = false;
 	var searchString:String = "";
+	var scrollMotion = new FreeplayScrollMotion();
+	static var chartDensityGeneration:Int = -1;
 	static var favoritesOnly:Bool = false;
 	static var categoryFilters:Array<String> = [];
 	static var libraryViewId:String = '';
@@ -129,6 +131,10 @@ class FreeplayState extends MusicBeatState {
 
 	public static function clearLibraryView():Void {
 		libraryViewId = ''; favoritesOnly = false; categoryFilters = [];
+	}
+	public static function openHostLibrary():Void {
+		clearLibraryView(); soundTest = false; curCategory = 'All'; currentSongList = [];
+		CodenameModRuntime.clearActiveOwner();
 	}
 	public static function openLibraryView(id:String):Void {
 		clearLibraryView(); libraryViewId = id;
@@ -392,21 +398,28 @@ class FreeplayState extends MusicBeatState {
 		previewGen++;
 		stopPreviewSound();
 		var songName = songs[index].songName;
-		var chartName = songName.toLowerCase() + DifficultyIcons.getEndingFP(difficulty);
-		PlayState.SONG = Song.loadFromJson(chartName, songName.toLowerCase());
-		Song.attachFreeplayScoreSongId(PlayState.SONG, songName);
-		PlayState.isStoryMode = false;
-		PlayState.balls = 0;
-		PlayState.watchedCutscene = false;
-		ModifierState.isStoryMode = false;
-		PlayState.storyDifficulty = difficulty;
-		if (!OptionsHandler.options.skipModifierMenu)
-			LoadingState.loadAndSwitchState(new ModifierState());
-		else {
-			if (FlxG.sound.music != null)
-				FlxG.sound.music.stop();
-			LoadingState.loadAndSwitchState(new PlayState());
-		}
+		var prepare = function():Void {
+			if (index >= songs.length || songs[index].songName != songName
+				|| !availabilityAllowsLaunch(index, difficulty)) return;
+			var chartName = songName.toLowerCase() + DifficultyIcons.getEndingFP(difficulty);
+			PlayState.SONG = Song.loadFromJson(chartName, songName.toLowerCase());
+			Song.attachFreeplayScoreSongId(PlayState.SONG, songName);
+			PlayState.isStoryMode = false;
+			PlayState.balls = 0;
+			PlayState.watchedCutscene = false;
+			ModifierState.isStoryMode = false;
+			PlayState.storyDifficulty = difficulty;
+			if (!OptionsHandler.options.skipModifierMenu)
+				LoadingState.loadAndSwitchState(new ModifierState());
+			else {
+				if (FlxG.sound.music != null)
+					FlxG.sound.music.stop();
+				LoadingState.loadAndSwitchState(new PlayState());
+			}
+		};
+		if (OptionsHandler.options.skipModifierMenu)
+			return LoadingState.prepareSongTransition(songName, prepare);
+		prepare();
 		return true;
 	}
 
@@ -454,6 +467,9 @@ class FreeplayState extends MusicBeatState {
 		prepareDirectFreeplayContext();
 		#if sys
 		var managerGeneration = ImportRefreshManager.generation;
+		if (chartDensityGeneration != managerGeneration) {
+			ChartDensityCache.clear(); chartDensityGeneration = managerGeneration;
+		}
 		importRefreshGeneration = managerGeneration;
 		if (FreeplaySongAvailability.songListNeedsRegistryRefresh(directOwnerRoot != '',
 			currentSongList == null ? 0 : currentSongList.length,
@@ -1208,7 +1224,7 @@ class FreeplayState extends MusicBeatState {
 		searchBG.makeGraphic(FlxG.width, 68, 0xFF101622); searchBG.alpha = 1;
 		searchText.setPosition(24, FlxG.height - 62); searchText.size = 18; searchText.fieldWidth = FlxG.width - 48;
 		browserText(24, FlxG.height - 32, FlxG.width - 48,
-			'UP/DOWN Browse   LEFT/RIGHT Difficulty   ENTER Play   TAB / Select Library   ESC Back', 16, 0xFF9DB2CC);
+			'UP/DOWN Browse (hold, SHIFT faster)   LEFT/RIGHT Difficulty   ENTER Play   TAB / Select Library   ESC Back', 16, 0xFF9DB2CC);
 		updateBrowserDetails();
 	}
 
@@ -1252,7 +1268,7 @@ class FreeplayState extends MusicBeatState {
 				var star = stars[i]; star.visible = row.visible;
 				star.setGraphicSize(Std.int(Math.max(2, Math.min(26, spacing - 4)))); star.updateHitbox();
 				star.cardX = row.x + FreeplayBrowserLayout.listWidth(FlxG.width) - 244 + (i % Std.int(Math.max(1, columns))) * spacing;
-				star.cardY = row.y + (selected ? 16 + Std.int(i / columns) * 40 : 8);
+				star.cardY = row.y + (selected ? 16 + Std.int(i / columns) * 48 : 2);
 				star.showLegend = index == curSelected;
 				star.focused = index == curSelected && star.diff == curDifficulty;
 				star.alpha = FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)) ? 0.35 : 1;
@@ -1279,6 +1295,7 @@ class FreeplayState extends MusicBeatState {
 			isProvisionalSelection(curSelected) ? '' : selectedDifficultyName, scope);
 
 	function reloadAfterImport():Void {
+		ChartDensityCache.clear();
 		var bookmark = captureRefreshBookmark(refreshViewScope());
 		currentSongList = [];
 		outgoingRefreshBookmark = bookmark;
@@ -1340,6 +1357,8 @@ class FreeplayState extends MusicBeatState {
 		var profileMark = smokeProfile ? haxe.Timer.stamp() : 0.0;
 		super.update(elapsed);
 		RuntimeSourceChartingProbe.updateFreeplay();
+		var previousScrollOffset = scrollMotion.offset;
+		if (scrollMotion.settle(elapsed) && denseBrowser) shiftBrowserRows(scrollMotion.offset - previousScrollOffset);
 		syncSourceRows();
 		if (denseBrowser) {
 			browserMeterTime += elapsed;
@@ -1510,10 +1529,10 @@ class FreeplayState extends MusicBeatState {
 			clearHxcConfirm();
 		}
 
-		if (upP && typedChar.length == 0 && anyVisible())
-			changeSelection(FlxG.keys.pressed.SHIFT ? -5 : -1);
-		if (downP && typedChar.length == 0 && anyVisible())
-			changeSelection(FlxG.keys.pressed.SHIFT ? 5 : 1);
+		var canBrowse = typedChar.length == 0 && anyVisible() && subState == null;
+		var scrollChange = scrollMotion.advance(elapsed, canBrowse && (controls.UP_MENU_H || upP),
+			canBrowse && (controls.DOWN_MENU_H || downP), FlxG.keys.pressed.SHIFT);
+		if (scrollChange != 0) changeSelection(scrollChange);
 		if (controls.LEFT_MENU && selectedVisible)
 			changeDiff(-1);
 		if (controls.RIGHT_MENU && selectedVisible)
@@ -1562,7 +1581,7 @@ class FreeplayState extends MusicBeatState {
 							}
 						}
 					}
-					LoadingState.loadAndSwitchState(new CategoryState());
+					LoadingState.loadAndSwitchState(new MainMenuState());
 				}
 			}
 		}
@@ -1803,11 +1822,14 @@ class FreeplayState extends MusicBeatState {
 		stopPreviewSound();
 		previewTimer = 0;
 		clearHxcConfirm();
+		scrollMotion.reset();
 		libraryActionsOpen = true;
 		var key = songMatches(curSelected) ? libraryChartKey(curSelected) : '';
 		var owner = songMatches(curSelected) ? libraryOwner(curSelected) : '';
 		var menu = new LibraryActionsSubState(key, favoritesOnly, function(value) favoritesOnly = value,
-			owner, categoryFilters, function(value) categoryFilters = value.copy(), denseBrowser);
+			owner, categoryFilters, function(value) categoryFilters = value.copy(), denseBrowser, curCategory, denseBrowser && directOwnerRoot == '' ? function(value:String) {
+			curCategory = value; libraryViewId = ''; currentSongList = []; reloadAfterImport();
+		} : null);
 		menu.cameras = [camUI];
 		openSubState(menu);
 	}
@@ -2122,7 +2144,7 @@ class FreeplayState extends MusicBeatState {
 	*/
 	function rebuildVisibleRows():Void {
 		var visible = orderedVisibleSongs();
-		var desired = denseBrowser ? FreeplayBrowserLayout.page(visible, curSelected, FlxG.height, selectedCardHeight())
+		var desired = denseBrowser ? FreeplayBrowserLayout.centeredPage(visible, curSelected, FlxG.height, selectedCardHeight())
 			: FreeplayListWindow.window(visible, curSelected, ROW_WINDOW_RADIUS);
 		var wanted:Map<Int, Bool> = new Map();
 		for (index in desired)
@@ -2431,6 +2453,16 @@ class FreeplayState extends MusicBeatState {
 		}
 	}
 
+	/** Settling changes geometry only; it must not re-read metadata or rebuild ordering every frame. */
+	function shiftBrowserRows(delta:Float):Void {
+		for (index in rowSongIndices) {
+			var row = songRows[index];
+			if (row != null) row.y += delta;
+			if (iconArray[index] != null) iconArray[index].y += delta;
+			if (starArray[index] != null) for (star in starArray[index]) star.cardY += delta;
+		}
+	}
+
 	// Layout only the materialized window. songRows and the icon/star arrays
 	// retain global song indexes; grpSongs is the small contiguous visible slice.
 	function applyListLayout() {
@@ -2450,7 +2482,7 @@ class FreeplayState extends MusicBeatState {
 				for (star in starArray[index])
 					star.visible = vis && !denseBrowser && !OptionsHandler.options.style;
 			if (denseBrowser) {
-				item.setPosition(index == curSelected ? 32 : 24, FreeplayBrowserLayout.rowY(position, selectedPosition, selectedCardHeight()));
+				item.setPosition(index == curSelected ? 32 : 24, FreeplayBrowserLayout.centeredRowY(position, selectedPosition, FlxG.height, selectedCardHeight(), scrollMotion.offset));
 				(cast item:FreeplayBrowserRow).present(index == curSelected,
 					FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)), iconArray[index] != null, libraryOrderRows[index].favorite, selectedCardHeight());
 				var at = ordered.indexOf(index);
@@ -2497,6 +2529,7 @@ class FreeplayState extends MusicBeatState {
 
 	function changeSelection(change:Int = 0, refreshOnly:Bool = false) {
 		cancelBrowserConfirm();
+		scrollMotion.moved(change);
 		if (!anyVisible()) { applySearchFilter(); return; }
 		// A prompt belongs to the capsule that armed it. Drop it before the
 		// cursor moves so a later accept cannot open a previous song's popup.

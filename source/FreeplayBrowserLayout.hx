@@ -8,6 +8,19 @@ class FreeplayBrowserLayout {
 	public static function capacity(height:Int, selectedHeight:Int = SELECTED_HEIGHT):Int return Std.int(Math.max(1, Math.floor((height - TOP - 84 - (selectedHeight - ROW_HEIGHT)) / ROW_HEIGHT)));
 	public static function rowY(position:Int, selectedPosition:Int, selectedHeight:Int = SELECTED_HEIGHT):Float return TOP + position * ROW_HEIGHT
 		+ (selectedPosition >= 0 && position > selectedPosition ? selectedHeight - ROW_HEIGHT : 0);
+	public static function centeredRowY(position:Int, selectedPosition:Int, height:Int, selectedHeight:Int = SELECTED_HEIGHT, offset:Float = 0):Float {
+		var delta = position - selectedPosition;
+		return height / 2 - selectedHeight / 2 + offset + delta * ROW_HEIGHT
+			+ (delta > 0 ? selectedHeight - ROW_HEIGHT : 0);
+	}
+	public static function centeredPage(visible:Array<Int>, selected:Int, height:Int, selectedHeight:Int = SELECTED_HEIGHT):Array<Int> {
+		var position = visible.indexOf(selected);
+		if (position < 0) return [];
+		var top = centeredRowY(0, 0, height, selectedHeight);
+		var before = Std.int(Math.max(0, Math.floor((top - TOP - 18) / ROW_HEIGHT)));
+		var after = Std.int(Math.max(0, Math.floor((height - 84 - top - selectedHeight - 18) / ROW_HEIGHT)));
+		return visible.slice(Std.int(Math.max(0, position - before)), position + after + 1);
+	}
 	public static function listWidth(width:Int):Int return Std.int(width * 0.64) - 24;
 	public static function detailX(width:Int):Int return Std.int(width * 0.66);
 	public static function page(visible:Array<Int>, selected:Int, height:Int, selectedHeight:Int = SELECTED_HEIGHT):Array<Int> {
@@ -18,7 +31,7 @@ class FreeplayBrowserLayout {
 		return visible.slice(first, first + count);
 	}
 	public static function difficultyColumns(count:Int):Int return Std.int(Math.max(1, Math.min(6, count)));
-	public static function difficultyHeight(count:Int):Int return Std.int(Math.max(SELECTED_HEIGHT, 24 + Math.ceil(count / difficultyColumns(count)) * 40));
+	public static function difficultyHeight(count:Int):Int return Std.int(Math.max(SELECTED_HEIGHT, 24 + Math.ceil(count / difficultyColumns(count)) * 48));
 	/** VCR is monospaced; truncate before rasterizing instead of spilling into adjacent columns. */
 	public static function label(text:String, columns:Int):String {
 		if (text == null) return '';

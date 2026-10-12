@@ -1,0 +1,299 @@
+package;
+
+import flixel.FlxG;
+import flixel.FlxState;
+import lime.graphics.RenderContext;
+import openfl.display.Sprite;
+import openfl.display.Bitmap;
+import openfl.display.BitmapData;
+import openfl.filters.GlowFilter;
+import openfl.filters.ShaderFilter;
+import openfl.events.UncaughtErrorEvent;
+import openfl.text.TextField;
+import openfl.text.TextFormat;
+
+/** Native display overlay survives Flixel state destruction and bitmap pruning.
+	Preparation stays on the foreground thread. Lime's render callback records
+	the rendered overlay; the next game draw occurs after that frame's flip. */
+class SongLoadingScreen {
+	public static var active(default, null):Bool = false;
+	public static var preparing(default, null):Bool = false;
+	static var installed:Bool = false;
+	static var overlay:Sprite;
+	static var design:Sprite;
+	static var artwork:Bitmap;
+	static var stars:Array<Sprite> = [];
+	static var animationStarted:Float = 0;
+	static var fill:Sprite;
+	static var status:TextField;
+	static var count:TextField;
+	static var progress:SongLoadingProgress;
+	static var pending:Void->Void;
+	static var initialFrameRendered:Bool = false;
+	static var readyFrameRendered:Bool = false;
+	static var requestNumber:Int = 0;
+	static var stateRequested:Bool = false;
+	static var viewportWaitLogged:Bool = false;
+
+	public static function install():Void {
+		if (installed || Main.instance == null || FlxG.game == null) return;
+		installed = true;
+		// Installed after Main's cleanup listeners. These completions therefore
+		// include old-state teardown/cache pruning and dead sound retirement.
+		FlxG.signals.preStateCreate.add(function(_state:FlxState):Void {
+			if (active) complete(2, 'Scene cleared. Preparing the next scene');
+		});
+		FlxG.signals.postStateSwitch.add(function():Void {
+			if (active) complete(3, 'Scene ready');
+		});
+		FlxG.signals.postDraw.add(afterDraw);
+		// OpenFL's Stage render listener has priority 0. This listener runs after
+		// Stage.__render, unlike Flixel postDraw, which runs during ENTER_FRAME.
+		// Lime flips only after all onRender callbacks return. Work is therefore
+		// deferred to the next postDraw rather than run inside this callback.
+		lime.app.Application.current.window.onRender.add(beforeRender, false, 2147483647);
+		lime.app.Application.current.window.onRender.add(afterRender, false, -2147483647);
+		openfl.Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(
+			UncaughtErrorEvent.UNCAUGHT_ERROR, function(_event:UncaughtErrorEvent):Void cancel());
+	}
+
+	/** Duplicate accepts are ignored; nested calls from the preparation callback
+		are the original single state request and execute once. */
+	public static function queue(title:String, detail:String, action:Void->Void):Bool {
+		if (preparing) {action(); return true;}
+		if (active) return false;
+		if (!installed) {action(); return true;}
+		requestNumber++;
+		stateRequested = false; viewportWaitLogged = false;
+		progress = new SongLoadingProgress();
+		active = true;
+		pending = action;
+		initialFrameRendered = false;
+		readyFrameRendered = false;
+		try build(title, detail) catch (error:Dynamic) {cancel(); throw error;}
+		log('shown');
+		return true;
+	}
+
+	static function text(x:Float, y:Float, width:Float, value:String, size:Int, color:Int):TextField {
+		var field = new TextField();
+		var font = openfl.utils.Assets.getFont(Paths.font('funkin.otf'));
+		field.defaultTextFormat = new TextFormat(font.fontName, size, color);
+		field.embedFonts = true;
+		field.x = x; field.y = y; field.width = width; field.height = size * 5;
+		field.wordWrap = true;
+		field.selectable = false; field.mouseEnabled = false;
+		field.filters = [new GlowFilter(0x1B073C, 1, 3, 3, 4, 1)];
+		field.text = value; design.addChild(field);
+		return field;
+	}
+
+	static function build(title:String, detail:String):Void {
+		overlay = new Sprite(); overlay.mouseEnabled = false; overlay.mouseChildren = false;
+		design = new Sprite(); overlay.addChild(design);
+		design.graphics.beginFill(0x101622); design.graphics.drawRect(0, 0, 1280, 720); design.graphics.endFill();
+		buildStars();
+		// The official FNF loading lineup and graffiti wordmark, reused intact.
+		// Own the bitmap outside Flixel's cache so song-exit pruning cannot
+		// destroy the screen while the next scene is being constructed.
+		#if sys
+		var data = BitmapData.fromFile('assets/images/loading/funkay.png');
+		#else
+		var data = openfl.utils.Assets.getBitmapData('assets/images/loading/funkay.png').clone();
+		#end
+		if (data == null) throw 'Loading artwork is unavailable';
+		artwork = new Bitmap(data); artwork.smoothing = true;
+		artwork.filters = [new ShaderFilter(new SongLoadingMatteShader())];
+		var artScale = 720 / data.height;
+		artwork.scaleX = artwork.scaleY = artScale;
+		artwork.x = (1280 - data.width * artScale) / 2;
+		design.addChild(artwork);
+		// Keep track information inside the artwork's empty upper-right area.
+		text(812, 102, 392, title == 'LEAVING THE STAGE' ? 'BACK TO THE MENU' : 'UP NEXT', 26, 0xFF16D2);
+		text(812, 152, 392, detail, 34, 0xFFFFFF).height = 142;
+		status = text(812, 310, 392, progress.label, 20, 0xFFFFFF);
+		count = text(930, 666, 316, '', 18, 0xFFFFFF);
+		var track = new Sprite(); design.addChild(track);
+		track.graphics.beginFill(0x1B073C); track.graphics.drawRect(0, 702, 1280, 18); track.graphics.endFill();
+		fill = new Sprite(); design.addChild(fill);
+		Main.instance.addChild(overlay);
+		layout(); redraw();
+	}
+
+	static function buildStars():Void {
+		animationStarted = haxe.Timer.stamp();
+		var colors = [0xFF66B7, 0x80E3D0, 0x8667E8];
+		for (i in 0...28) {
+			var star = new Sprite();
+			var radius = 9 + i % 5 * 4;
+			star.graphics.beginFill(colors[i % colors.length]);
+			for (point in 0...10) {
+				var angle = point * Math.PI / 5 - Math.PI / 2;
+				var length = point % 2 == 0 ? radius : radius * 0.45;
+				var x = Math.cos(angle) * length, y = Math.sin(angle) * length;
+				if (point == 0) star.graphics.moveTo(x, y); else star.graphics.lineTo(x, y);
+			}
+			star.graphics.endFill();
+			design.addChild(star); stars.push(star);
+		}
+		animateStars();
+	}
+
+	static function animateStars():Void {
+		var time = haxe.Timer.stamp() - animationStarted;
+		for (i in 0...stars.length) {
+			var star = stars[i];
+			star.x = (i * 173 + time * (8 + i % 7)) % 1400 - 60;
+			star.y = (i * 117) % 640 + 30 + Math.sin(time * 0.7 + i) * 12;
+			star.rotation = (time * (4 + i % 5) + i * 31) % 360;
+			star.alpha = 0.15 + (Math.sin(time * 1.1 + i) + 1) * 0.1;
+		}
+	}
+
+	static function beforeRender(context:RenderContext):Void {
+		if (!active) return;
+		layout();
+	}
+
+	static function layout():Void {
+		if (overlay == null || Main.instance.stage == null) return;
+		// The stage can still report its previous size on the first resized
+		// frame. Window coordinates match the native renderer's logical size.
+		var window = lime.app.Application.current.window;
+		var width = window.width;
+		var height = window.height;
+		var scale = Math.min(width / 1280, height / 720);
+		overlay.graphics.clear(); overlay.graphics.beginFill(0x101622);
+		overlay.graphics.drawRect(0, 0, width, height); overlay.graphics.endFill();
+		design.scaleX = design.scaleY = scale;
+		design.x = (width - 1280 * scale) / 2; design.y = (height - 720 * scale) / 2;
+	}
+
+	static function redraw():Void {
+		status.text = progress.label;
+		count.text = progress.completed + ' / ' + SongLoadingProgress.TOTAL + ' ready';
+		fill.graphics.clear();
+		if (progress.completed > 0) {
+			fill.graphics.beginFill(0xFF16D2);
+			fill.graphics.drawRect(4, 706, 1272 * progress.fraction(), 10); fill.graphics.endFill();
+		}
+	}
+
+	static function complete(stage:Int, label:String):Void {
+		progress.finish(stage, label); redraw(); log('completed');
+	}
+
+	static function afterDraw():Void {
+		if (!active) return;
+		layout();
+		// Stage ENTER_FRAME can finish a long synchronous state creation after
+		// the early Lime callback. Sample animation time here, before rendering.
+		animateStars();
+		if (pending != null) {
+			if (!initialFrameRendered) return;
+			var action = pending; pending = null;
+			preparing = true;
+			try action() catch (error:Dynamic) {cancel(); throw error;}
+			preparing = false;
+			if (!stateRequested || authoredOutroStarted()) {cancel(); return;}
+			if (active) complete(1, 'Request ready. Switching scenes');
+			return;
+		}
+		if (progress.completed == 3) complete(4, 'Ready');
+		else if (progress.completed == 4 && readyFrameRendered) {
+			log('hidden'); cancel();
+		}
+	}
+
+	static function afterRender(context:RenderContext):Void {
+		if (!active) return;
+		if (!renderViewportReady()) {
+			if (!viewportWaitLogged) {log('waiting-for-resized-viewport'); viewportWaitLogged = true;}
+			return;
+		}
+		if (pending != null && !initialFrameRendered) {
+			capture('initial');
+			initialFrameRendered = true;
+			log('initial-frame-rendered');
+		} else if (progress.completed == 4 && !readyFrameRendered) {
+			capture('ready');
+			readyFrameRendered = true;
+			log('ready-frame-rendered');
+		}
+	}
+
+	/** A native window can resize before OpenFL updates its stage, projection
+		and backbuffer. Such a rendered frame is still clipped to the old size.
+		Only accept the handshake once the actual renderer has caught up. */
+	static function renderViewportReady():Bool {
+		var stage = Main.instance.stage;
+		var window = lime.app.Application.current.window;
+		var width = Std.int(window.width * window.scale);
+		var height = Std.int(window.height * window.scale);
+		#if openfl_dpi_aware
+		var logicalWidth = width, logicalHeight = height;
+		#else
+		var logicalWidth = window.width, logicalHeight = window.height;
+		#end
+		if (stage.stageWidth != logicalWidth || stage.stageHeight != logicalHeight) return false;
+		@:privateAccess var renderer = stage.__renderer;
+		if (renderer == null) return false;
+		if (Std.isOfType(renderer, openfl.display.OpenGLRenderer)) {
+			var gl:openfl.display.OpenGLRenderer = cast renderer;
+			@:privateAccess if (gl.__width != width || gl.__height != height
+				|| gl.__displayWidth != width || gl.__displayHeight != height) return false;
+		}
+		if (stage.context3D != null && (stage.context3D.backBufferWidth != logicalWidth
+			|| stage.context3D.backBufferHeight != logicalHeight)) return false;
+		return true;
+	}
+
+	/** Preparation may abort without scheduling a state, for example if import
+		readiness changes before the deferred chart read. */
+	public static function stateRequestStarted():Void {
+		if (active) stateRequested = true;
+	}
+
+	static function authoredOutroStarted():Bool {
+		return FlxG.state != null && Std.isOfType(FlxG.state.subState, CodenameMusicBeatTransition);
+	}
+
+	public static function cancel():Void {
+		if (overlay != null && overlay.parent != null) overlay.parent.removeChild(overlay);
+		if (artwork != null) {
+			artwork.filters = [];
+			if (artwork.bitmapData != null) artwork.bitmapData.dispose();
+		}
+		artwork = null; stars.resize(0);
+		overlay = null; design = null; fill = null; status = null; count = null;
+		pending = null; preparing = false; active = false;
+	}
+
+	/** Read the current rendered window frame after OpenFL Stage.__render,
+		before Lime flips it. Opt-in only; preparation waits for the next frame. */
+	static function capture(phase:String):Void {
+		#if sys
+		if (Sys.args().indexOf('--profile-song-loading') < 0) return;
+		try {
+			var directory = 'tmp/song-loading-captures';
+			if (!sys.FileSystem.exists(directory)) sys.FileSystem.createDirectory(directory);
+			var image = lime.app.Application.current.window.readPixels();
+			if (image == null) throw 'Window framebuffer unavailable';
+			var path = directory + '/song-loading-' + requestNumber + '-' + phase + '.png';
+			sys.io.File.saveBytes(path, image.encode());
+			Sys.println('SONG_LOADING_CAPTURE|' + haxe.Json.stringify({phase:phase,path:path,request:requestNumber}));
+		} catch (error:Dynamic) {
+			Sys.println('SONG_LOADING_CAPTURE_ERROR|' + Std.string(error));
+			throw error;
+		}
+		#end
+	}
+
+	static function log(phase:String):Void {
+		#if sys
+		if (RuntimeSmokeHarness.enabled() || Sys.args().indexOf('--profile-song-loading') >= 0)
+			Sys.println('SONG_LOADING|' + haxe.Json.stringify({phase:phase,
+				completed:progress.completed, total:SongLoadingProgress.TOTAL, time:haxe.Timer.stamp()}));
+		#end
+	}
+}

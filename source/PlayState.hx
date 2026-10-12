@@ -5057,6 +5057,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (cutsceneSprites.indexOf(cutsceneSprite) == -1)
 			cutsceneSprites.push(cutsceneSprite);
 	}
+	/** Lua tag-created objects are stored in haxeSprites, not exported script
+		variables. Capture additions during stage construction as owned props. */
+	function registerPsychStageCreatedMembers(before:Array<FlxBasic>):Void {
+		if (before == null) return;
+		for (member in members)
+			if (member != null && before.indexOf(member) < 0) registerStageSprite(member);
+	}
+
 	function registerStageSprites(interp:Interp):Void {
 		// A stage script may construct a sprite for a later cutscene without
 		// adding it to the state yet (thechamber does exactly that). Register
@@ -5203,6 +5211,29 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			trace('[stage-hud-layer] native HUD raised above imported stage props (max prop z ' + maxPropZ + ')');
 		}
 		importedStageHudProps.resize(0);
+	}
+
+	/** Psych creates stage props before its UI/note groups. Our stage start
+		callback runs after those groups exist, so restore that insertion order
+		once, before song onCreate/onCreatePost can author additional overlays. */
+	function layerPsychStageBeforeHud(stageMembers:Array<FlxBasic>):Void {
+		var hudMembers = nativeStageHudMembers();
+		var firstHud = members.length;
+		for (hud in hudMembers) {
+			var index = hud == null ? -1 : members.indexOf(hud);
+			if (index >= 0 && index < firstHud) firstHud = index;
+		}
+		if (firstHud == members.length) return;
+		var move:Array<FlxBasic> = [];
+		for (index in firstHud...members.length) {
+			var member = members[index];
+			if (member != null && stageMembers.indexOf(member) >= 0
+				&& hudMembers.indexOf(member) < 0) move.push(member);
+		}
+		for (member in move) {
+			remove(member, true);
+			insert(firstHud++, member);
+		}
 	}
 
 	function nativeStageHudMembers():Array<FlxBasic> {
@@ -14167,6 +14198,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// watermark for the imported-stage HUD clamp: everything this scope
 		// registers from here on is diffed against stageSprites afterwards
 		var hudPropWatermark:Int = stageSprites.length;
+		var psychStageMemberWatermark:Array<FlxBasic> = usehaxe == 'stage'
+			&& interp.variables.get('__psychScoreGlobals') == true ? members.copy() : null;
 		if (plainPsych) {
 			bindSourceBarClass((cast interp:SourceIrisBridge).evaluator, false,
 				PsychOwnerPaths.create(compatPsychOwnerForScript(path + filename), psychStageLibrary));
@@ -14271,6 +14304,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 		}
 		if (isStageScriptScope(usehaxe)) {
+			registerPsychStageCreatedMembers(psychStageMemberWatermark);
 			registerStageSprites(interp);
 			// every sprite this scope registered (adds during start plus the
 			// exports above) is a candidate for the imported-stage HUD clamp
@@ -14282,6 +14316,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// values; one sort here puts the opening frame in donor order
 			// (characters above backdrops, foreground layers on top).
 			refresh();
+			if (usehaxe == 'stage' && interp.variables.get('__psychScoreGlobals') == true)
+				layerPsychStageBeforeHud(stageSprites);
 		}
 		// old-engine scripts call FlxG.cameras.add(cam) expecting flixel-4
 		// semantics, but flixel 6 makes each new camera a default draw
@@ -21989,6 +22025,9 @@ void main(void) {
 	}
 
 	override public function update(elapsed:Float) {
+		// The loading screen covers this scene until the handoff has rendered.
+		// Substate outros update through FlxState independently of this callback.
+		if (SongLoadingScreen.active) return;
 		if (nightmareVisionStartupRedirect) return;
 		// FlxTimer's global plugin runs before state update, so a delayed death
 		// can finish here without advancing song callbacks or note processing.

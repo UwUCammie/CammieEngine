@@ -5,6 +5,7 @@ import flixel.FlxState;
 
 /** Direct chart-to-PlayState entry point used only by RuntimeSmokeHarness. */
 class RuntimeSmokeState extends FlxState {
+	var profileLoadingEntry:Bool = false;
 	override public function create():Void {
 		super.create();
 		// Runtime smoke windows may never receive desktop focus when a matrix
@@ -83,8 +84,12 @@ class RuntimeSmokeState extends FlxState {
 			}
 			if (request.chartEditor)
 				FlxG.switchState(new ChartingState());
-			else
-				FlxG.switchState(new PlayState());
+			else {
+				#if sys
+				profileLoadingEntry = Sys.args().indexOf('--profile-song-loading') >= 0;
+				#end
+				if (!profileLoadingEntry) FlxG.switchState(new PlayState());
+			}
 		} catch (error:Dynamic) {
 			RuntimeSmokeHarness.fail('load', Std.string(error));
 		}
@@ -92,6 +97,10 @@ class RuntimeSmokeState extends FlxState {
 
 	override public function update(elapsed:Float):Void {
 		super.update(elapsed);
+		if (profileLoadingEntry) {
+			profileLoadingEntry = false;
+			LoadingState.loadAndSwitchState(new PlayState());
+		}
 		RuntimeSmokeHarness.tick(elapsed);
 	}
 }

@@ -106,6 +106,20 @@ class ImportRefreshTransactionFixture {
         reportResult(applyWithBaselines(["registry.json"]));
       case "refresh-registry":
         reportResult(apply(["registry.json"]));
+      case "derived-refresh":
+        reportResult(ImportRefreshTransaction.apply(root, staging, state, owner, owned, outputs(["a.txt"]),
+          {analysisVersion:6}, null, null, null, true));
+      case "derived-case-collision":
+        File.saveContent(staging + "/collision", "new case");
+        ImportRefreshTransaction.apply(root, staging, state, owner, owned,
+          [{path:owned[0]+"/A.txt",stagedPath:"collision"}], {analysisVersion:6}, null, null, null, true);
+      case "derived-crash":
+        var target = root + "/" + owned[0] + "/a.txt";
+        ImportRefreshTransaction.apply(root, staging, state, owner, owned, outputs(["a.txt","b.txt"]),
+          {analysisVersion:6}, function() {
+            if (FileSystem.exists(target) && File.getContent(target) == "updated a") Sys.exit(44);
+            return false;
+          }, null, null, true);
       case "refresh":
         var result = apply(["a.txt"]);
         reportResult(result);
@@ -366,6 +380,41 @@ class ImportRefreshTransactionTest(unittest.TestCase):
         self.stage("a.txt", b"original a")
         self.stage("obsolete.txt", b"obsolete")
         self.assertEqual(self.report(self.run_fixture("initial"))["status"], "applied")
+
+    def test_derived_refresh_carries_receipt_entries_without_rewriting_assets(self):
+        self.seed_initial_import()
+        before = self.report(self.run_fixture("manifest"))
+        retained = self.destination / "obsolete.txt"
+        retained.write_bytes(b"local asset edit")
+        self.stage("a.txt", b"updated a")
+        result = self.report(self.run_fixture("derived-refresh"))
+        self.assertEqual(result["status"], "applied")
+        after = self.report(self.run_fixture("manifest"))
+        old = next(x for x in before["files"] if x["path"].endswith("obsolete.txt"))
+        new = next(x for x in after["files"] if x["path"].endswith("obsolete.txt"))
+        self.assertEqual(new, old)
+        self.assertEqual(retained.read_bytes(), b"local asset edit")
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"updated a")
+
+    def test_derived_refresh_rejects_case_collision_with_carried_receipt(self):
+        self.seed_initial_import()
+        before = self.report(self.run_fixture("manifest"))
+        result = self.run_fixture("derived-case-collision", expected=1)
+        self.assertIn("cannot change the case", result.stderr)
+        self.assertEqual(self.report(self.run_fixture("manifest")), before)
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"original a")
+
+    def test_derived_refresh_interrupted_commit_recovers_receipt_and_outputs(self):
+        self.seed_initial_import()
+        before = self.report(self.run_fixture("manifest"))
+        self.stage("a.txt", b"updated a")
+        self.stage("b.txt", b"new b")
+        self.run_fixture("derived-crash", expected=44)
+        self.assertEqual(self.report(self.run_fixture("recover"))["conflicts"], [])
+        self.assertEqual(self.report(self.run_fixture("manifest")), before)
+        self.assertEqual((self.destination / "a.txt").read_bytes(), b"original a")
+        self.assertEqual((self.destination / "obsolete.txt").read_bytes(), b"obsolete")
+        self.assertFalse((self.destination / "b.txt").exists())
 
     def test_refresh_replaces_and_retires_only_unchanged_owned_files(self):
         self.seed_initial_import()

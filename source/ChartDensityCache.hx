@@ -3,7 +3,8 @@ package;
 /** Small derived sidecar only. Freeplay never parses all chart bodies to sort. */
 class ChartDensityCache {
 	static var cache:Map<String, Dynamic> = [];
-	public static function clear():Void cache = [];
+	static var attempted:Map<String,Bool> = [];
+	public static function clear():Void {cache = [];attempted = [];}
 	public static function read(song:String, difficulty:String):Null<ChartDifficultyAnalysis.ChartDensity> {
 		if (song == null || song == '' || song.indexOf('..') >= 0 || song.indexOf('/') >= 0 || song.indexOf('\\') >= 0) return null;
 		var key = song.toLowerCase();
@@ -22,10 +23,12 @@ class ChartDensityCache {
 		if (difficulty == null) return null;
 		var diff = difficulty.toLowerCase();
 		if (table == null) { table = {}; cache.set(key, table); }
-		// Base/native charts have no retained source refresh. Analyze a named chart once on demand.
-		// Imported charts await their transactional refresher instead of parsing an entire library here.
-		if (!Reflect.hasField(table, diff) && !FNFAssets.exists('assets/data/' + key + '/importProvenance.json')
+		// Native charts are analyzed once on demand. Imported charts are analyzed by
+		// the background refresher before readiness, avoiding whole-library reads here.
+		var attemptKey = key + ':' + diff;
+		if (!attempted.exists(attemptKey) && ChartDifficultyAnalysis.read(Reflect.field(table,diff)) == null && !FNFAssets.exists('assets/data/' + key + '/importProvenance.json')
 			&& diff.indexOf('..') < 0 && diff.indexOf('/') < 0 && diff.indexOf('\\') < 0) {
+			attempted.set(attemptKey,true);
 			var result:Dynamic = null;
 			try {
 				var path = 'assets/data/' + key + '/' + key + (diff == 'normal' ? '' : '-' + diff) + '.json';

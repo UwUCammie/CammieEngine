@@ -86,6 +86,7 @@ class Main extends Sprite {
 		RuntimeUserLibraryProbe.install();
 		RuntimeLibraryCategoryProbe.install();
 		RuntimeLibraryNavigationProbe.install();
+		RuntimeFreeplayScrollProbe.install();
 		RuntimeFreeplayDifficultyProbe.install();
 		RuntimeStartupProbe.install();
 		RuntimeGpuProbe.install();
@@ -119,6 +120,8 @@ class Main extends Sprite {
 				if (corpses[i] == null || !corpses[i].exists)
 					corpses.splice(i, 1);
 		});
+
+		SongLoadingScreen.install();
 
 		distray = new DisSoundTray();
 		addChild(distray);

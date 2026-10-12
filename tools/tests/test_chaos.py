@@ -107,6 +107,7 @@ class FakeInterp {
  public function new() {}
 }
 class OwnershipTest {
+ var members:Array<FakeBasic> = [];
  var stageSprites:Array<FakeBasic> = [];
  var cutsceneSprites:Array<FakeBasic> = [];
  var cutsceneHandoffSprites:Array<FakeBasic> = [];
@@ -226,6 +227,7 @@ class FakeInterp {
  public function new() {}
 }
 class OwnershipSnapshotTest {
+ var members:Array<FakeBasic> = [];
  var stageSprites:Array<FakeBasic> = [];
  var cutsceneSprites:Array<FakeBasic> = [];
  var cutsceneHandoffSprites:Array<FakeBasic> = [];

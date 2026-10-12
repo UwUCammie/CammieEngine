@@ -71,7 +71,7 @@ class FreeplayDifficultyRating {
 
 	public static function label(entries:Array<AuthoredDifficultyRating>, difficulty:String):String {
 		var rating = resolve(entries, difficulty);
-		return rating == null ? 'Difficulty rating: Unknown'
-			: 'Difficulty rating: ' + rating.value + ' (' + rating.scale + ')';
+		return rating == null ? 'Authored rating: Unknown'
+			: 'Authored rating: ' + rating.value + ' (' + rating.scale + ')';
 	}
 }
