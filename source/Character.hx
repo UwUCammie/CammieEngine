@@ -1580,7 +1580,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		}
 	}
 	public function sing(direction:Int, ?miss:Bool=false, ?alt:Int=0) {
-		if (!canSing || specialAnim) return;
+		if (SourceCharacterAnimationLifecycle.blocksNoteAnimation(canSing, specialAnim,
+			PlayState.instance == null ? 0 : PlayState.instance.sourceNoteTimingMode(),
+			codenameLiveDefinition != null)) return;
 		var directName:String = switch (direction % 4) {
 			case 0:
 				"singLEFT";
@@ -1819,7 +1821,9 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 				playAnim('idle' + idleSuffix);
 			return;
 		}
-		if (sourceDanceNightmare && specialAnim) return;
+		if (SourceCharacterAnimationLifecycle.blocksDance(specialAnim, sourceDanceNightmare,
+			PlayState.instance == null ? 0 : PlayState.instance.sourceNoteTimingMode(),
+			codenameLiveDefinition != null || codenameVisualBuilding)) return;
 		// A script can retain an actor after its visual is destroyed or fails to
 		// resolve. The next beat must not dereference its animation controller.
 		if (animation == null) return;

@@ -120,6 +120,10 @@ class PsychOwnerPathsProbe {
   if (dialogue != expected) throw "Paths.txt did not resolve the selected weekend library: " + dialogue;
   if (FNFAssets.getText(dialogue) != "owner dialogue\n")
    throw "CoolUtil's FNFAssets-backed read did not consume the resolved owner path";
+  if (paths.modFolders("data/roses/rosesDialogue_en.txt") != expected)
+   throw "legacy modFolders did not resolve the selected owner library";
+  if (paths.modFolders("scripts/absent.lua") != owner + "/scripts/absent.lua")
+   throw "legacy missing mod path escaped its selected owner";
   var openfl:Dynamic = PsychOwnerOpenFlAssets.create(owner);
   if (!Reflect.callMethod(openfl, Reflect.field(openfl, "exists"), [dialogue]))
    throw "OpenFL Assets.exists did not see the selected owner's physical dialogue path";

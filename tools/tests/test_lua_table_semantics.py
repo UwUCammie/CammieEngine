@@ -25,6 +25,34 @@ class LuaTableSemanticsTest(unittest.TestCase):
                 cwd=ROOT, capture_output=True, text=True, timeout=45,
             )
 
+    def test_positional_insert_preserves_records_and_sequence(self):
+        fixture = r'''class Fixture {
+ static function main() {
+  var i=new LuaCompatInterp();i.variables.set('Std',Std);
+  var lua="local messages = {}\nlocal first={timer=0}\nlocal second={timer=2}\n"
+   + "table.insert(messages,first)\ntable.insert(messages,1,second)\n"
+   + "messages[1].timer=messages[1].timer+1\n"
+   + "firstResult=messages[1].timer\nlastResult=messages[2].timer\nsize=#messages\n"
+   + "table.insert(messages,3,{timer=5})\nendResult=messages[3].timer\n"
+   + "untouched='table.insert(messages,1,bad)'\n";
+  var code=LuaCompat.translate(lua,'sequence.lua');
+  if(!code.supported)throw code.diagnostics.join('|');
+  i.execute(new hscript.Parser().parseString(code.hscript));
+  if(i.variables.get('firstResult')!=3 || i.variables.get('lastResult')!=0
+    || i.variables.get('size')!=2 || i.variables.get('endResult')!=5)throw 'positional records corrupted';
+  if(i.variables.get('untouched')!='table.insert(messages,1,bad)')throw 'string rewritten';
+  var helper=i.variables.get('luaTableInsert');var native:Array<Dynamic>=[1,3];
+  Reflect.callMethod(null,helper,[native,2,2]);
+  if(native.join(',')!='1,2,3')throw 'native API sequence insertion';
+  for(position in [-1.0,0.0,5.0,1.5,Math.NaN]) {
+   var failed=false;try Reflect.callMethod(null,helper,[native,position,9])catch(_:Dynamic)failed=true;
+   if(!failed || native.join(',')!='1,2,3')throw 'invalid position mutated sequence';
+  }
+ }
+}'''
+        result = self.run_haxe(fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_missing_lua_global_reads_nil_without_changing_native_scope(self):
         fixture = r'''
 class Fixture {

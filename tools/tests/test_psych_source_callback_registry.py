@@ -20,6 +20,8 @@ class Main {
   var bridge:Dynamic=registry.bridge('a',hx,'a.hx',lua);
   var parent:PsychLuaCallbackFacade=bridge.parentFacade('a.hx',hx);
   check(parent.scriptName=='owner/a.lua'&&!parent.closed,'parent facade not source scope');
+  check(parent.lua==parent,'legacy handle does not map to the live scope');
+  check(registry.luaFacades('a').length==1 && registry.luaFacades('a')[0]==parent,'owner-only Lua enumeration');
   bridge.registerLocal('a.hx','localOnly',function(x:Int)return x+7,parent);
   check(parent.call('localOnly',[5])==12&&!other.variables.exists('localOnly'),'local callback isolation');
   bridge.registerGlobal('a.hx','shared',function(x:Int)return x*3);

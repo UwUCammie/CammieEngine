@@ -104,9 +104,15 @@ class Fixture {
    classArgs = args.copy();
    return sourceResult;
   }));
+  lua.variables.set('stringSplit', function(text:String, delimiter:String) return text.split(delimiter));
+  lua.variables.set('directoryFileList', function(path:String) return ['first.lua', 'last.lua']);
   PsychLuaApiResults.install(lua);
 
   var source = 'function onCreate()\n'
+   + ' local words = stringSplit("first/last", "/")\n'
+   + ' local files = directoryFileList("scripts")\n'
+   + ' check(words[1] == "first" and words[2] == "last" and words[0] == nil, "stringSplit table indexing")\n'
+   + ' check(files[1] == "first.lua" and files[2] == "last.lua", "directory table indexing")\n'
    + ' local items = getProperty("items")\n'
    + ' local group = getPropertyFromGroup("notes", 0, "values", true)\n'
    + ' local classItems = getPropertyFromClass("Fixture", "items", true)\n'

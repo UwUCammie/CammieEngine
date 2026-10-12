@@ -356,7 +356,7 @@ def render(donor, charts):
     with tempfile.TemporaryDirectory(prefix="codename-events-render-", dir=TMP) as work:
         path = Path(work) / "request.json"
         path.write_text(json.dumps(request))
-        run = subprocess.run([str(HAXE), "-cp", str(ROOT / "source"), "-cp", str(ROOT / "tools"),
+        run = subprocess.run([str(HAXE), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", str(ROOT / "source"), "-cp", str(ROOT / "tools"),
                               "--run", "CodenameEventRefreshRender", str(path)],
                              cwd=ROOT, text=True, capture_output=True, timeout=120)
         if run.returncode:

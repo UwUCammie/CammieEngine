@@ -25,12 +25,30 @@ class ChartDifficultyTest(unittest.TestCase):
    rows.push([1900,1,0,'Hurt Note']);rows.push([2000,2,0,'Custom']);
    var d=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:rows}]},[]);
    check(d.dangersInFastSections==1 && d.unknownKinds==1,"fast hazard/unknown");
-   check(ChartDifficultyAnalysis.shadow(d),"extreme density lacks shadow");
+   check(d.sustainedNps > 10 && !ChartDifficultyAnalysis.shadow(d),"short fast chart incorrectly has extreme shadow");
    check(ChartDifficultyAnalysis.read(haxe.Json.parse(haxe.Json.stringify(d)))!=null,"roundtrip");
    d.version=-1;check(ChartDifficultyAnalysis.read(d)==null,"stale accepted");
    var easy=ChartDifficultyAnalysis.analyze({notes:[]},[]);
    check(easy.playerNotes==0 && easy.nps==0 && !ChartDifficultyAnalysis.shadow(easy),"empty invalid");
-   check(ChartDifficultyAnalysis.color(easy)==0xFF55E68A,"easy not green");''')
+   check(ChartDifficultyAnalysis.color(easy)==0xFF4290FB,"easy not blue");''')
+ def test_sparse_native_heads_and_brief_bursts(self):
+  self.run_haxe(r'''var sparse=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:[[0,0],[1000,1],[2000,2,0]]}]},[]);
+   check(sparse.playerNotes==3 && sparse.nps==1.5,"native no-sustain heads were omitted");
+   check(ChartDifficultyAnalysis.describe(sparse).indexOf('NPS 1.50 / peak 1.00')>=0,"NPS not fixed to two decimals");
+   var burst:Array<Dynamic>=[for(i in 0...40)[10000+i*25,0,0]];burst.push([120000,4,0]);
+   var d=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:burst}]},[]);
+   check(d.peakNps==20 && !ChartDifficultyAnalysis.shadow(d),"isolated peak received shadow");
+   var fast:Array<Dynamic>=[for(i in 0...2400)[i*50,0,0]];
+   d=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:fast}]},[]);
+   check(ChartDifficultyAnalysis.shadow(d),"sustained extreme chart lost shadow");
+   d.difficulty=2;check(ChartDifficultyAnalysis.color(d)==0xFF4CFF86,"middle palette green missing");
+   d.difficulty=9;check(ChartDifficultyAnalysis.color(d)==0xFF05020C,"top palette black missing");''')
+ def test_real_native_erect_chart_counts_sparse_rows(self):
+  self.run_haxe(r'''var song=haxe.Json.parse(sys.io.File.getContent('assets/data/bopeebo/bopeebo-erect.json'));
+   var d=ChartDifficultyAnalysis.analyze(song,[]);var expected=0;
+   for(s in (cast song.song.notes:Array<Dynamic>))for(n in (cast s.sectionNotes:Array<Dynamic>))
+    if(n.length>=2 && n[1]>=0 && ChartNoteOwnership.mustPress(null,n[1],s.mustHitSection,4))expected++;
+   check(d.playerNotes==expected && expected>100,"Erect omitted short native rows");''')
  def test_metadata_and_malformed_notes(self):
   self.run_haxe(r'''var rows:Array<Dynamic>=[[0,0,0,'Spike'],[1000,1,0],[-1,0,0],[5,-1,0],[2,0.5,0],null];
    var d=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:rows}]},[{sourceNoteType:'Spike',damageAmount:-1}]);

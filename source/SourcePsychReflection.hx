@@ -77,6 +77,11 @@ class SourcePsychReflection {
 		if(maps&&SourceScriptReflection.isPsychMap(owner)) owner.set(key,value);
 		else writeProperty(owner,key,value);
 	}
+	/** Sprite groups expose members through a native getter. Dynamic field access
+	 * bypasses it on hxcpp, unlike the typed access used by upstream Psych. */
+	function groupMembers(group:Dynamic):Array<Dynamic> {
+		return cast Reflect.getProperty(group, 'members');
+	}
 	public function getGroup(path:String,index:Int,field:Dynamic,maps:Bool=false):Dynamic {
 		var group:Dynamic=groupRoot(path,maps);
 		// The source deliberately re-reads the literal target property for dispatch.
@@ -86,7 +91,7 @@ class SourcePsychReflection {
 				var item:Dynamic=group[index];
 				if(item!=null) return Type.typeof(field)==TInt ? item[field] : groupField(item,field,maps);
 				warn('getPropertyFromGroup: Object #$index from group: $path doesn\'t exist!');
-			} else return groupField(group.members[index],field,maps);
+			} else return groupField(groupMembers(group)[index],field,maps);
 		}
 		warn('getPropertyFromGroup: Group/Array $path doesn\'t exist!');
 		return null;
@@ -100,7 +105,7 @@ class SourcePsychReflection {
 					if(Type.typeof(field)==TInt) {item[field]=instances?parse(value):value;return value;}
 					setGroupField(item,field,instances?parse(value):value,maps);
 				}
-			} else setGroupField(group.members[index],field,instances?parse(value):value,maps);
+			} else setGroupField(groupMembers(group)[index],field,instances?parse(value):value,maps);
 		} else warn('setPropertyFromGroup: Group/Array $path doesn\'t exist!');
 		return value;
 	}
@@ -125,7 +130,7 @@ class SourcePsychReflection {
 			if(object!=null) {group.remove(object);if(destroy)object.destroy();}
 			else group.remove(group[index]);
 		} else {
-			if(object==null)object=group.members[index];
+			if(object==null)object=groupMembers(group)[index];
 			group.remove(object,true);
 			if(destroy)object.destroy();
 		}

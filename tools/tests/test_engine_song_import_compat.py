@@ -188,6 +188,7 @@ using StringTools;
 
 typedef SongImportVocalStem = {{ var source:String; var destination:String; @:optional var id:String; @:optional var role:String; }};
 typedef SongImport = {{
+  @:optional var difficultyAudioRoot:String;
   var name:String; var p1:String; var p2:String; var gf:String; var stage:String;
   var ui:String; var cutscene:String; var category:String; var isHey:Bool;
   var isCheer:Bool; var isMoody:Bool; var isSpooky:Bool; var stageID:Int; var week:Int;
@@ -946,6 +947,7 @@ using StringTools;
 
 typedef SongImportVocalStem = {{ var source:String; var destination:String; @:optional var id:String; @:optional var role:String; }};
 typedef SongImport = {{
+  @:optional var difficultyAudioRoot:String;
   var name:String; var p1:String; var p2:String; var gf:String; var stage:String;
   var ui:String; var cutscene:String; var category:String; var isHey:Bool;
   var isCheer:Bool; var isMoody:Bool; var isSpooky:Bool; var stageID:Int; var week:Int;

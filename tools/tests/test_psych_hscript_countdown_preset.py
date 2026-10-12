@@ -47,6 +47,8 @@ class PsychHscriptSourceBindings {
   this.host=host;this.interp=interp;this.origin=origin;this.callbackBridge=callbackBridge;
   parentLua=null;
  }
+ // Callback runtime is independently covered by its registry and native loading checks.
+ function installHistoricalLuaCallbacks():Void {}
  __INSTALL_METHOD__
  static function sourceBuildTarget():String return "fixture";
  static function setSharedVar(vars:Map<String,Dynamic>,name:String,value:Dynamic):Dynamic {

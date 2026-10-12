@@ -14,6 +14,7 @@ class FreeplayBrowserRow extends Alphabet {
 	var label:String;
 	var rowWidth:Int;
 	var wasSelected:Null<Bool>;
+	var presentedHeight:Int = -1;
 	public function new(label:String, rowWidth:Int) {
 		super(24, 0, ''); text = label; this.label = label; this.rowWidth = rowWidth;
 		panel = new FlxSprite().makeGraphic(rowWidth, 1, 0xFFFFFFFF);
@@ -28,10 +29,11 @@ class FreeplayBrowserRow extends Alphabet {
 		add(panel); add(divider); add(stripe); add(placeholder); add(title); add(favoriteTag);
 	}
 	public function groupBoundary(visible:Bool):Void divider.visible = visible;
-	public function present(selected:Bool, disabled:Bool, hasIcon:Bool, favorite:Bool = false):Void {
+	public function present(selected:Bool, disabled:Bool, hasIcon:Bool, favorite:Bool = false, selectedHeight:Int = FreeplayBrowserLayout.SELECTED_HEIGHT):Void {
 		alpha = 1;
-		if (wasSelected == null || wasSelected != selected) {
-			var height = (selected ? FreeplayBrowserLayout.SELECTED_HEIGHT : FreeplayBrowserLayout.ROW_HEIGHT) - 4;
+		var height = (selected ? selectedHeight : FreeplayBrowserLayout.ROW_HEIGHT) - 4;
+		if (wasSelected == null || wasSelected != selected || presentedHeight != height) {
+			presentedHeight = height;
 			panel.scale.y = height; panel.updateHitbox(); panel.setPosition(x, y);
 			stripe.scale.y = height; stripe.updateHitbox(); stripe.setPosition(x, y);
 			title.size = selected ? 28 : 22;

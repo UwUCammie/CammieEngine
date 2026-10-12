@@ -654,10 +654,12 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	override function makeIterator(value:Dynamic):Iterator<Dynamic> {
+		if (value == null) throw '[nightmare-vision-script-null-access] Cannot iterate a null collection';
 		if (Std.isOfType(value, Array)) return (cast value:Array<Dynamic>).iterator();
 		var method:Dynamic = value.iterator;
 		var iterator:Dynamic = method == null ? value : Reflect.callMethod(value, method, []);
-		if (iterator.hasNext == null || iterator.next == null) error(EInvalidIterator(iterator));
+		if (iterator == null || !Reflect.isFunction(iterator.hasNext) || !Reflect.isFunction(iterator.next))
+			throw '[nightmare-vision-script-invalid-iterator] Expected callable hasNext and next methods';
 		return iterator;
 	}
 
@@ -706,12 +708,14 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 
 	function makeKeyValueIterator(value:Dynamic):KeyValueIterator<Dynamic, Dynamic> {
+		if (value == null) throw '[nightmare-vision-script-null-access] Cannot iterate a null collection';
 		if (Std.isOfType(value, haxe.Constraints.IMap))
 			return (cast value:haxe.Constraints.IMap<Dynamic, Dynamic>).keyValueIterator();
 		if (Std.isOfType(value, Array)) return (cast value:Array<Dynamic>).keyValueIterator();
 		var method:Dynamic = value.keyValueIterator;
 		var iterator:Dynamic = method == null ? value : Reflect.callMethod(value, method, []);
-		if (iterator.hasNext == null || iterator.next == null) error(EInvalidIterator(iterator));
+		if (iterator == null || !Reflect.isFunction(iterator.hasNext) || !Reflect.isFunction(iterator.next))
+			throw '[nightmare-vision-script-invalid-iterator] Expected callable hasNext and next methods';
 		return iterator;
 	}
 

@@ -67,7 +67,8 @@ class Strumline {
  public function new(members:Array<Strumline.StrumNote>) this.members=members;
  """ + trans_in + "\n}\n"
                 "class StrumNote {\n"
-                " public var y:Float;public var alpha:Float;\n"
+                " public var y:Float;public var alpha:Float;var introYTween:FlxTween;var introAlphaTween:FlxTween;\n"
+                + method(strum_source, "startIntroTween") + method(strum_source, "cancelIntroTween") +
                 " @:keep public var codenameIntroAnimationCancelled:Bool=false;\n"
                 " public function new(y:Float,alpha:Float) {this.y=y;this.alpha=alpha;}\n"
                 " @:keep public function cancelCodenameIntroAnimation():Void "
@@ -80,6 +81,7 @@ class Strumline {
 class FlxTween {
  public static var calls:Array<Dynamic>=[];
  public function new() {}
+ public function cancel():Void {}
  public static function tween(target:Dynamic,values:Dynamic,duration:Float,options:Dynamic):FlxTween {
   calls.push({target:target,values:values,duration:duration,options:options});return new FlxTween();
  }
@@ -105,9 +107,9 @@ class Main {
   line.transIn();
   check(hidden.y==100&&hidden.alpha==0,'cancelled entrance changed the authored receptor state');
   check(visible.y==90&&visible.alpha==0,'uncancelled receptor lost the native entrance setup');
-  check(FlxTween.calls.length==1&&FlxTween.calls[0].target==visible,
+  check(FlxTween.calls.length==2&&FlxTween.calls[0].target==visible&&FlxTween.calls[1].target==visible,
    'native intro tween ran for a cancelled receptor or skipped the live receptor');
-  check(FlxTween.calls[0].values.y==100&&FlxTween.calls[0].values.alpha==1,
+  check(FlxTween.calls[0].values.y==100&&FlxTween.calls[1].values.alpha==1,
    'native intro tween endpoint changed');
 
   var separatelyCancelled=new CodenameStrumCreationEvent(visible,1,0,'left','game/notes/default');

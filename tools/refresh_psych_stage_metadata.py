@@ -381,7 +381,7 @@ def render(donor: Path, charts: list[dict]) -> dict:
         request_path = Path(work) / 'request.json'
         request_path.write_text(json.dumps(request), encoding='utf-8')
         run = subprocess.run(
-            [HAXE.as_posix(), '-cp', (ROOT / 'source').as_posix(), '-cp', (ROOT / 'tools').as_posix(),
+            [HAXE.as_posix(), '-cp', (ROOT / '.haxelib/tjson/1,4,0').as_posix(), '-cp', (ROOT / 'source').as_posix(), '-cp', (ROOT / 'tools').as_posix(),
              '--run', 'PsychStageRefreshRender', str(request_path)],
             cwd=ROOT, capture_output=True, text=True, timeout=120)
         if run.returncode:

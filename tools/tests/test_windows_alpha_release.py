@@ -82,6 +82,21 @@ class WindowsAlphaReleaseTest(unittest.TestCase):
                         "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
         return runtime, repo
 
+    def test_asset_baselines_recognize_old_releases_but_exclude_mutable_registries(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as temp:
+            root = Path(temp); runtime, repo = self.make_package_fixture(root)
+            subprocess.run(["git", "-C", str(repo), "tag", "v0.0.1"], check=True)
+            write(repo / "assets/data/song/chart.json", b"new authored chart")
+            subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repo), "-c", "user.name=Fixture", "-c",
+                            "user.email=fixture@example.invalid", "commit", "-qm", "new asset"], check=True)
+            files = {key.casefold(): (repo / key, Path(key)) for key in (
+                "assets/data/song/chart.json", "assets/data/options.json", *SHARED_REGISTRY_FIXTURES)}
+            result = PACKAGE.bundled_asset_baselines(repo, files)
+            self.assertEqual(set(result["files"]), {"assets/data/song/chart.json"})
+            self.assertEqual(set(result["files"]["assets/data/song/chart.json"]),
+                             {sha256(b"tracked chart").hexdigest(), sha256(b"new authored chart").hexdigest()})
+
     def test_root_diagnostic_logs_and_screenshots_are_excluded(self):
         self.assertTrue(PACKAGE.excluded_runtime_path(Path("startup-observe.log")))
         self.assertTrue(PACKAGE.excluded_runtime_path(Path("title-menu.png")))

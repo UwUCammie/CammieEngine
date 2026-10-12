@@ -1331,6 +1331,7 @@ class Main {{
 '''
         dependencies = r'''package;
 typedef SongImport = {
+  @:optional var difficultyAudioRoot:String;
   var name:String;
   var inst:Null<String>;
   var voices:Null<String>;

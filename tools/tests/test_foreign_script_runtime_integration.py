@@ -20,7 +20,7 @@ class ForeignScriptRuntimeIntegrationTest(unittest.TestCase):
 
     def test_chart_aware_multi_script_plan_loads_once(self):
         source = self.play_state
-        self.assertIn("PsychScriptDiscovery.discover(compatRoot, Song.storageFolder(SONG), SONG, songEvents)", source)
+        self.assertIn("PsychScriptDiscovery.discover(compatRoot, sourceSong, SONG, songEvents)", source)
         self.assertIn("CompatScriptManifest.FILE_NAME", source)
         self.assertIn("compatScriptRoots()", source)
         self.assertIn("psychCompatScriptsLoaded", source)

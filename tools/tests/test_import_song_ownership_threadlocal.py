@@ -16,7 +16,7 @@ import sys.FileSystem as RawFileSystem;
 import sys.thread.Tls;
 class ImportIO {
  static var currentContext:Tls<ImportIO> = new Tls();
- public var root:String;
+ public var root:String;public var installRoot(get,never):String;function get_installRoot():String return root;
  public function new(root:String) this.root=RawFileSystem.fullPath(root);
  public static function begin(root:String):Void currentContext.value=new ImportIO(root);
  public static function current():Null<ImportIO> return currentContext.value;
@@ -154,6 +154,13 @@ class ImportSongOwnershipThreadLocalTest(unittest.TestCase):
             (temp_path / "ImportEngine.hx").write_text(
                 (SOURCE / "ImportEngine.hx").read_text(encoding="utf-8"),
                 encoding="utf-8", newline="\n")
+            (temp_path / 'LibraryIdentityArchive.hx').write_text('''package;
+class LibraryIdentityArchive {
+ public static function load(root:String):LibraryIdentityArchive return new LibraryIdentityArchive();
+ public function new(){}
+ public function ownerFor(engine:String,identity:String,fingerprint:String):String return null;
+ public function destinationFor(engine:String,identity:String,fingerprint:String,source:String):String return null;
+}''', encoding='utf-8', newline='\n')
             (temp_path / "Main.hx").write_text(MAIN, encoding="utf-8", newline="\n")
             root_a = temp_path / "install-a"
             root_b = temp_path / "install-b"

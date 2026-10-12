@@ -7356,6 +7356,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		if (owner == null || field == null || StringTools.trim(field) == '')
 			return;
+		if (sourceScoreOwner && Std.isOfType(owner, Strumline.StrumNote))
+			(cast owner:Strumline.StrumNote).cancelIntroTween(field);
 		var tweenValue:Dynamic = value;
 		// Psych's doTweenColor/makeGraphic APIs take a bare RGB(A) hex string,
 		// but FlxTween interpolates the live numeric FlxColor field. Normalize at
@@ -7760,6 +7762,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var nativePath = resolved != null && FNFAssets.exists(Std.string(resolved))
 			? Std.string(resolved) : compatPsychNativeSoundPath(path, true);
 		if (nativePath != null) try FNFAssets.getSound(nativePath) catch (_:Dynamic) {}
+	}
+
+	function compatPrecacheFontForOwner(ownerRoot:String, path:String):Void {
+		if (path == null || StringTools.trim(path) == '' || !compatPsychOwnerFallbackAllowed(ownerRoot, path)) return;
+		var resolved:Dynamic = compatPsychPathCall(ownerRoot, 'font', [path]);
+		if (resolved == null) return;
+		var assets = PsychOwnerOpenFlAssets.create(ownerRoot);
+		var getFont = Reflect.field(assets, 'getFont');
+		try Reflect.callMethod(assets, getFont, [Std.string(resolved), true]) catch (error:Dynamic)
+			trace('[psych-assets] Unable to precache font ' + path + ': ' + Std.string(error));
 	}
 
 	function compatPrecacheMusicForOwner(ownerRoot:String, path:String):Void {
@@ -8391,7 +8403,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function captureLuaDefaultStrums():Void {
-		if (luaDefaultStrumsCaptured)
+		if (luaDefaultStrumsCaptured || strumLineNotes == null || strumLineNotes.members.length == 0)
 			return;
 		var count = Note.NOTE_AMOUNT * 2;
 		for (i in 0...count) {
@@ -8414,6 +8426,30 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 		}
 		luaDefaultStrumsCaptured = true;
+	}
+
+
+	/** Publish late-created Psych receptors without replacing each script's private globals. */
+	function publishPsychDefaultStrums():Void {
+		captureLuaDefaultStrums();
+		for (side in 0...2) {
+			var line = side == 0 ? enemyStrums : playerStrums;
+			if (line == null) continue;
+			var prefix = side == 0 ? 'defaultOpponentStrum' : 'defaultPlayerStrum';
+			for (i in 0...line.members.length) {
+				var strum = line.members[i];
+				if (strum == null) continue;
+				for (axis in ['X', 'Y']) {
+					var name = prefix + axis + i;
+					var value = axis == 'X' ? strum.x : strum.y;
+					for (interp in hscriptStates) {
+						interp.variables.set(name, value);
+						var setter = interp.variables.get('luaSetScriptGlobal');
+						if (setter != null) Reflect.callMethod(null, setter, [name, value]);
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -8484,6 +8520,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function seedEngineCompat(interp:Interp, ?extraPsychOwnerRoot:String):Void {
+		interp.variables.set('songLength', songLength);
 		var originValue:Dynamic = interp.variables.get('__compatDiagnosticSource');
 		var origin = originValue == null ? null : Std.string(originValue);
 		var psychScriptOwner = compatPsychOwnerForScript(origin);
@@ -8647,6 +8684,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			compatPrecacheSoundForOwner(psychScriptOwner, path));
 		interp.variables.set('precacheMusic', function(path:String)
 			compatPrecacheMusicForOwner(psychScriptOwner, path));
+		interp.variables.set('precacheFont', function(path:String)
+			compatPrecacheFontForOwner(psychScriptOwner, path));
 		interp.variables.set('addCharacterToList', compatAddCharacterToList);
 		interp.variables.set('triggerEvent', compatTriggerEvent);
 		interp.variables.set('cameraShake', compatCameraShake);
@@ -9847,6 +9886,32 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			pixelUI, '', diagnosticNoteIndex, psychNoteSkinDiagnosticsEnabled);
 		if (diagnosticNoteIndex > 0)
 			RuntimeSmokeHarness.markStep('psych-note-skin:complete count=' + diagnosticNoteIndex);
+	}
+
+	/** Reflection and tween APIs share live receptors, including after a style rebuild.
+		The index has no update/draw ownership; that remains with the strumlines. */
+	public function refreshPsychStrumIndex():Void {
+		if (!sourceScoreOwner || sourceScoreNightmare || strumLineNotes == null) return;
+		strumLineNotes.clear();
+		for (line in [enemyStrums, playerStrums])
+			if (line != null)
+				for (strum in line.members) strumLineNotes.add(strum);
+	}
+
+	/** Psych creates receptors only after onStartCountdown allows the handoff.
+		A video/dialogue-blocked onCreatePost therefore observes empty groups. */
+	function beginPsychCountdownReceptors():Void {
+		if (!sourceScoreOwner || sourceScoreNightmare) return;
+		for (line in [enemyStrums, playerStrums])
+			if (line != null) line.changeType(line.type, false, true);
+		configurePsychStrumSkins();
+		refreshPsychStrumIndex();
+		publishPsychDefaultStrums();
+		comboBreakThingies(0);
+		comboBreakThingies(1);
+		if (!skipCountdown)
+			for (line in [enemyStrums, playerStrums])
+				if (line != null) line.transIn();
 	}
 
 	function configurePsychStrumSkins():Void {
@@ -12210,10 +12275,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (globalsOnly) psychGlobalScriptsLoaded = true;
 		else psychCompatScriptsLoaded = true;
 		#if sys
+		var authoredSong = PsychSongNameCompat.format(SONG.song);
+		var selectedOwner = selectedPsychSkinRoot();
+		var ownedCompanions = selectedOwner != null && PsychScriptDiscovery.songDirectory(selectedOwner, authoredSong) != null;
 		for (compatRoot in compatScriptRoots()) {
 			// Dedicated source runtimes already own these modules.
 			if (CompatScriptManifest.usesDedicatedScriptRuntime(getCompatScriptManifest(), compatRoot)) continue;
-			var plan = PsychScriptDiscovery.discover(compatRoot, Song.storageFolder(SONG), SONG, songEvents);
+			var sourceSong = selectedOwner == null || compatRoot == 'assets' ? Song.storageFolder(SONG) : authoredSong;
+			var plan = PsychScriptDiscovery.discover(compatRoot, sourceSong, SONG, songEvents);
 			if (!globalsOnly && selectedPsychSkinRoot() != null)
 				plan.scripts.sort(function(a, b) {
 					var phase = function(scope:String):Int return switch (scope) {
@@ -12229,6 +12298,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			if (entry == null || entry.path == null || entry.scope == PsychScriptDiscovery.STAGE)
 				continue;
 			if (globalsOnly && entry.scope != PsychScriptDiscovery.GLOBAL) continue;
+			if (ownedCompanions && compatRoot == 'assets' && entry.scope == PsychScriptDiscovery.SONG) continue;
 			var basename = Path.withoutDirectory(entry.path).toLowerCase();
 			// The native loader below chooses exactly one difficulty-aware modchart.
 			// Discovery sees every sibling, so never replay those as generic song
@@ -12306,8 +12376,6 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		for (part in clean.split('/'))
 			if (part == '' || part == '..' || part == '.')
 				return null;
-		if (clean.startsWith('imported_mods/'))
-			return null;
 		if (!clean.toLowerCase().endsWith(hscript ? '.hx' : '.lua')) {
 			if (Path.extension(clean) != '')
 				return null;
@@ -12316,6 +12384,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var selectedRoot = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
 		var roots = selectedRoot == null || selectedRoot == ''
 			? compatForeignScriptRoots() : [selectedRoot];
+		// Paths.modFolders returns an owner-qualified path. Keep the same owner
+		// boundary used by other asset APIs before accepting that explicit form.
+		if (clean.toLowerCase().startsWith('imported_mods/')) {
+			for (root in roots) {
+				var resolved = PsychOwnerAssetPath.resolve(root, 'assets/' + clean);
+				if (resolved.owned && !resolved.blocked && !resolved.unavailable
+					&& FNFAssets.exists(resolved.path)) return resolved.path;
+			}
+			return null;
+		}
 		var allowNative = true;
 		if (callerPath != null) {
 			var owner = Path.normalize(callerPath);
@@ -13088,6 +13166,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var data:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
 			if (data == null)
 				return;
+			// Keep the host's required GF reference while honoring the source stage's hidden role.
+			if (gf != null && Reflect.field(data, 'hide_girlfriend') == true) gf.visible = false;
 			var sourceLibrary = Reflect.field(data, 'directory');
 			var cleanLibrary = sourceLibrary == null ? null
 				: PsychOwnerAssetPath.cleanId(Std.string(sourceLibrary));
@@ -13713,7 +13793,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var program = plainPsych ? null : parser.parseString(source);
 		var interp:Interp = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
 			: translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
-		interp.variables.set('__compatDiagnosticSource', path + filename);
+		var scriptOrigin = CompatScriptOrigin.resolve(path + filename, CoolUtil.HSCRIPT_EXT,
+			function(candidate) return FNFAssets.exists(candidate));
+		interp.variables.set('__compatDiagnosticSource', scriptOrigin);
 		interp.variables.set('__psychPlainHscript', source.startsWith(PsychHscriptCompat.TRANSLATED_MARKER));
 		// set vars
 		interp.variables.set("BEHIND_GF", BEHIND_GF);
@@ -14246,7 +14328,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var program = plainPsych ? null : parser.parseString(source);
 		var interp:Interp = plainPsych ? PluginManager.addVarsToInterp(new SourceIrisBridge(this))
 			: translatedLua ? PluginManager.addVarsToInterp(new LuaCompatInterp()) : PluginManager.createSimpleInterp();
-		interp.variables.set('__compatDiagnosticSource', path + filename);
+		var scriptOrigin = CompatScriptOrigin.resolve(path + filename, CoolUtil.HSCRIPT_EXT,
+			function(candidate) return FNFAssets.exists(candidate));
+		interp.variables.set('__compatDiagnosticSource', scriptOrigin);
 		// set vars
 		interp.variables.set("difficulty", storyDifficulty);
 	    interp.variables.set("Math", Math);
@@ -14835,10 +14919,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		//add(strumLineNotes);
 
 		if (nightmareVisionScripts == null || enemyStrums == null)
-			enemyStrums = new Strumline(92, strumLine.y, SONG.uiType, false, nightmareVisionScripts == null);
+			enemyStrums = new Strumline(92, strumLine.y, SONG.uiType, false, nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare));
 		if (nightmareVisionScripts == null || playerStrums == null)
-			playerStrums = new Strumline(FlxG.width / 2 + 92, strumLine.y, SONG.uiType, false, nightmareVisionScripts == null);
+			playerStrums = new Strumline(FlxG.width / 2 + 92, strumLine.y, SONG.uiType, false, nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare));
 		configurePsychStrumSkins();
+		refreshPsychStrumIndex();
 		configureNightmareVisionStrumlines();
 		if ((midscroll && !duoMode) || soloMode) { // middlescroll hijinks (coming 2085)
 			if (opponentPlayer) {
@@ -14860,7 +14945,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		highwayDimSprite.scrollFactor.set();
 		highwayDimSprite.visible = false;
 		add(highwayDimSprite);
-		if (nightmareVisionScripts == null) {
+		if (nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare)) {
 			enemyStrums.alpha = 0;
 			playerStrums.alpha = 0;
 		}
@@ -14882,8 +14967,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// From this point field collection mutations own live display attachment.
 		enableNightmareVisionFieldAttachment();
 
-		comboBreakThingies(0);
-		comboBreakThingies(1);
+		if (!(sourceScoreOwner && !sourceScoreNightmare)) {
+			comboBreakThingies(0);
+			comboBreakThingies(1);
+		}
 
 		// startCountdown();
 		trace('before generate');
@@ -16341,7 +16428,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// is made visible. Re-entry from a script during preparation is absorbed
 			// by codenameCountdownPreparationInProgress above.
 			RuntimeSmokeHarness.markStep('countdown:strum-transitions-begin');
-			if (nightmareVisionScripts == null) {
+			if (nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare)) {
 				enemyStrums.transIn();
 				playerStrums.transIn();
 				for (index in 2...nightmareVisionStrumlines.length)
@@ -16422,6 +16509,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			RuntimeSmokeHarness.markStep('countdown:stopped-by-startCountdown');
 			return;
 		}
+
+		beginPsychCountdownReceptors();
 
 		if (nightmareVisionScripts != null && !genNotesBeforeCountdown) generatePlayfields();
 
@@ -16694,6 +16783,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionAudioApi.attachCurrentInstrumental(FlxG.sound.music);
 		songLength = FlxG.sound.music.length;
 		updateUV('songLength', songLength);
+		setAllHaxeVar('songLength', songLength);
 
 		FlxG.sound.music.onComplete = function() handleSongAudioComplete();
 		playVocals();
@@ -19010,8 +19100,9 @@ void main(void) {
 						trace('Camera Target skipped: unknown target $cameraTarget');
 				}
 			case 'Play Animation':
-				var t = charForEventTarget(e.v2);
-				playSourceEventAnimation(t, e.v1, nightmareVisionScripts != null);
+				var t = sourceScoreOwner ? sourceAnimationEventActor(e.v2, !sourceScoreNightmare)
+					: charForEventTarget(e.v2);
+				playSourceEventAnimation(t, e.v1, sourceScoreOwner || nightmareVisionScripts != null);
 			case 'Set Health Icon':
 				applyCompatHealthIcon(e.v1, e.v2, e.v3);
 			case 'Change Character':
@@ -19998,7 +20089,7 @@ void main(void) {
 	}
 
 	/** Keep NMV's GF performer independent from the player/opponent side that
-	 * owns this note. Classic Psych GF Sing still only redirects opponent notes. */
+	 * owns this note. Psych supports GF performers on either input side. */
 	function isNightmareVisionGfPerformer(note:Note, playerOne:Bool):Bool {
 		return nightmareVisionScripts != null && playerOne && note != null
 			&& note.forceGfSing && gf != null;
@@ -20006,7 +20097,7 @@ void main(void) {
 
 	function noteSingerForSide(note:Note, playerOne:Bool):Character {
 		if (note != null && note.forceGfSing && gf != null
-			&& (!playerOne || nightmareVisionScripts != null))
+			&& (!playerOne || nightmareVisionScripts != null || sourceNoteTimingMode() == 1))
 			return gf;
 		return playerOne ? boyfriend : getOpponentSinger();
 	}
@@ -20061,6 +20152,8 @@ void main(void) {
 		if (useVocals == null)
 			useVocals = CoolUtil.getSongFile(SONG.song, currentSongAudioFolder() + '/', false);
 		RuntimeSmokeHarness.markLoadPhase('audio_paths_resolved');
+		if (RuntimeSmokeHarness.enabled()) @:privateAccess RuntimeSmokeHarness.emit('resolved_song_audio',
+			{song:SONG.song, difficulty:storyDifficultyText, instrumental:useInst, vocals:useVocals, stems:SONG.vocalStems});
 		
 		inst = SongAudioNormalizer.prepare(Sound.fromFile(useInst), useInst,
 			OptionsHandler.options.normalizeSongAudio);
@@ -20252,7 +20345,8 @@ void main(void) {
 					if (nightmareVisionScripts != null) {
 						if (nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex))
 							swagNote.forceGfSing = true;
-					} else if (section.gfSection == true && !gottaHitNote)
+					} else if (SourceCharacterAnimationLifecycle.gfSectionPerformer(sourceNoteTimingMode(),
+						section.gfSection == true, section.mustHitSection, gottaHitNote))
 						swagNote.forceGfSing = true;
 				// Crossfade is authored either on a note (legacy index 12) or on
 				// its section. Store the resolved side-specific value on every
@@ -20354,7 +20448,8 @@ void main(void) {
 							if (nightmareVisionScripts != null) {
 								if (nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex))
 									sustainNote.forceGfSing = true;
-							} else if (section.gfSection == true && !gottaHitNote)
+							} else if (SourceCharacterAnimationLifecycle.gfSectionPerformer(sourceNoteTimingMode(),
+						section.gfSection == true, section.mustHitSection, gottaHitNote))
 								sustainNote.forceGfSing = true;
 							sustainNote.duoMode = duoMode;
 							sustainNote.oppMode = opponentPlayer;
@@ -21163,14 +21258,21 @@ void main(void) {
 			return;
 		}
 		var smokeSwapStartedAt = RuntimeSmokeHarness.beginCharacterSwap();
-		var previousStageActor:Character = null;
-		    switch(charState) {
+		var previousStageActor:Character = switch (charState) {
+			case 'boyfriend': boyfriend; case 'dad': dad; case 'gf': gf; default: null;
+		};
+		var sourceSlot = sourceScoreOwner && previousStageActor != null;
+		var previousIndex = sourceSlot ? members.indexOf(previousStageActor) : -1;
+		var previousAlpha = sourceSlot ? previousStageActor.alpha : 1.0;
+		var previousVisible = !sourceSlot || previousStageActor.visible;
+		switch(charState) {
 			case 'boyfriend':
 				previousStageActor = boyfriend;
 				compatClearCharacterTrail(boyfriend);
-				remove(boyfriend);
+				remove(boyfriend, sourceSlot);
 				boyfriend.destroy();
 				boyfriend = new Character(swapOffsets[0], swapOffsets[1], charTo, codenameInitialActorIsPlayer('player', charTo, true), codenamePrimaryConstruction('player', charTo));
+				boyfriend.characterType = 'boyfriend';
 				loadHxcCharacterCompat(boyfriend.curCharacter, 'boyfriend', boyfriend);
 				compatEnableCharacterTrail(boyfriend);
 				if (!opponentPlayer && !demoMode)
@@ -21190,13 +21292,20 @@ void main(void) {
 					iconRPC = charTo;
 				#end
 
-				// Layering nonsense
-				if (dad.likeGf) {
-					add(boyfriend);
+				// Source groups keep their place and visibility across costume changes.
+				if (sourceSlot) {
+					boyfriend.alpha = previousAlpha;
+					boyfriend.visible = previousVisible;
+					if (previousIndex >= 0) insert(previousIndex, boyfriend); else add(boyfriend);
 				} else {
-				    remove(dad);
-				    add(boyfriend);
-				    add(dad);
+					// Layering nonsense
+					if (dad.likeGf) {
+						add(boyfriend);
+					} else {
+					    remove(dad);
+					    add(boyfriend);
+					    add(dad);
+					}
 				}
 				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, boyfriend);
 				setAllHaxeVar("boyfriend", boyfriend);
@@ -21205,9 +21314,10 @@ void main(void) {
 			case 'dad':
 				previousStageActor = dad;
 				compatClearCharacterTrail(dad);
-				remove(dad);
+				remove(dad, sourceSlot);
 				dad.destroy();
 				dad = new Character(swapOffsets[4], swapOffsets[5], charTo, codenameInitialActorIsPlayer('opponent', charTo, false), codenamePrimaryConstruction('opponent', charTo));
+				dad.characterType = 'dad';
 				loadHxcCharacterCompat(dad.curCharacter, 'dad', dad);
 				compatEnableCharacterTrail(dad);
 				if (duoMode || opponentPlayer || soloMode)
@@ -21225,13 +21335,20 @@ void main(void) {
 				} else if (!boyfriend.likeGf) {
 					gf.visible = true;
 				}*/
-					// Layering nonsense
-				if (boyfriend.likeGf) {
-				    add(dad);
+				// Source groups keep their place and visibility across costume changes.
+				if (sourceSlot) {
+					dad.alpha = previousAlpha;
+					dad.visible = previousVisible;
+					if (previousIndex >= 0) insert(previousIndex, dad); else add(dad);
 				} else {
-				    remove(boyfriend);
-				    add(dad);
-				    add(boyfriend);
+					// Layering nonsense
+					if (boyfriend.likeGf) {
+					    add(dad);
+					} else {
+					    remove(boyfriend);
+					    add(dad);
+					    add(boyfriend);
+					}
 				}
 				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, dad);
 				setAllHaxeVar("dad", dad);
@@ -21240,9 +21357,10 @@ void main(void) {
 			case 'gf':
 				previousStageActor = gf;
 				compatClearCharacterTrail(gf);
-				remove(gf);
+				remove(gf, sourceSlot);
 				gf.destroy();
 				gf = new Character(swapOffsets[2], swapOffsets[3], charTo, codenameInitialActorIsPlayer('gf', charTo, false), codenamePrimaryConstruction('gf', charTo));
+				gf.characterType = 'gf';
 				loadHxcCharacterCompat(gf.curCharacter, 'gf', gf);
 				compatEnableCharacterTrail(gf);
 				gf.scrollFactor.set(0.95, 0.95);
@@ -21252,12 +21370,19 @@ void main(void) {
 					gf.y += gfPosition[1];
 				}
 
-				// Layering nonsense
-				remove(boyfriend);
-				remove(dad);
-				add(gf);
-				add(dad);
-				add(boyfriend);
+				// Source groups keep their place and visibility across costume changes.
+				if (sourceSlot) {
+					gf.alpha = previousAlpha;
+					gf.visible = previousVisible;
+					if (previousIndex >= 0) insert(previousIndex, gf); else add(gf);
+				} else {
+					// Layering nonsense
+					remove(boyfriend);
+					remove(dad);
+					add(gf);
+					add(dad);
+					add(boyfriend);
+				}
 				if (curStage != null) curStage.rebindCodenameActor(previousStageActor, gf);
 				setAllHaxeVar("gf", gf);
 				callHxcCharacterAdded(gf, charState);
@@ -26627,14 +26752,15 @@ void main(void) {
 	function girlfriendDanceDue(beat:Int):Bool {
 		if (nightmareVisionLegacyFieldCameras) {
 			return gf != null && beat % Math.round(gfSpeed * gf.danceEveryNumBeats) == 0
-				&& gf.animation.curAnim != null && !gf.animation.curAnim.name.startsWith('sing') && !gf.stunned;
+				&& gf.animation.curAnim != null && !StringTools.startsWith(gf.animation.curAnim.name, 'sing') && !gf.stunned;
 		}
 		// Modern NV folds gfSpeed into the actor's live interval in its setter.
 		if (nightmareVisionScripts != null) return characterDanceDue(gf, beat);
 		if (sourceScoreOwner && !sourceScoreNightmare) {
 			if (gf == null || gf.animation == null || gf.codenameLiveDefinition != null) return false;
 			var interval = Math.round(gfSpeed * gf.danceEveryNumBeats);
-			return interval > 0 && beat % interval == 0;
+			return interval > 0 && beat % interval == 0 && gf.animation.curAnim != null
+				&& !StringTools.startsWith(gf.animation.curAnim.name, 'sing') && !gf.stunned;
 		}
 		return beat % gfSpeed == 0 && characterDanceDue(gf, beat);
 	}

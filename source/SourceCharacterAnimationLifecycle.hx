@@ -4,6 +4,20 @@ using StringTools;
 
 /** Small source-dialect gates for character animation state transitions. */
 class SourceCharacterAnimationLifecycle {
+	/** A source section assigns its main authored side to GF without changing
+	 * that side's input or scoring ownership. Native charts keep their old rule. */
+	public static function gfSectionPerformer(mode:Int, gfSection:Bool, sectionPlayer:Bool, notePlayer:Bool):Bool {
+		return gfSection && (mode == 1 ? notePlayer == sectionPlayer : !notePlayer);
+	}
+
+	public static function blocksDance(special:Bool, nightmare:Bool, mode:Int, codename:Bool):Bool {
+		return special && (nightmare || (mode == 1 && !codename));
+	}
+
+	public static function blocksNoteAnimation(canSing:Bool, special:Bool, mode:Int, codename:Bool):Bool {
+		return !canSing || (special && (mode != 1 || codename));
+	}
+
 	/** Psych and Nightmare Vision reset the special-animation latch whenever a
 	 * new source animation starts. Codename and native playback keep their own
 	 * animation contracts. */

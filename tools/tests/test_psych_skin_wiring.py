@@ -96,7 +96,7 @@ class SkinWiring {
         for name in ('swagNote', 'sustainNote'):
             semantic = source.index(f'EngineCompat.applyLegacyNoteRow({name}, songNotes);')
             apply = source.index(f'configurePsychNoteSkin({name}, psychSkinRoot);', semantic)
-            next_setup = source.index('if (section.gfSection == true && !gottaHitNote)', apply)
+            next_setup = source.index('if (SourceCharacterAnimationLifecycle.gfSectionPerformer(sourceNoteTimingMode(),', apply)
             self.assertLess(semantic, apply)
             self.assertLess(apply, next_setup,
                             f'{name} Psych skin must configure after legacy row semantics and before insertion')

@@ -103,6 +103,7 @@ class FlxTween {
  }
 }
 class RenderFixture {
+ var sourceScoreOwner:Bool=false;
  var haxeSprites:Map<String,FlxSprite> = [];
  var haxeSpriteAtlasNames:Map<String,Array<String>> = [];
  var members:Array<Dynamic> = [];
@@ -181,6 +182,7 @@ class RenderFixture {
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "Strumline.hx").write_text("class Strumline {} class StrumNote { public function cancelIntroTween(field:String):Void {} }")
             (Path(folder) / "RenderFixture.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder,

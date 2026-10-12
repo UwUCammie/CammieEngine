@@ -29,6 +29,18 @@ IMPORT_IO_MODULES = (
 )
 
 
+# These isolated source-subset tests have no durable archive. Transaction/archive
+# behavior is exercised separately against the complete production modules.
+ARCHIVE_LOOKUP_STUB = """package;
+class LibraryIdentityArchive {
+ public static function load(root:String):LibraryIdentityArchive return new LibraryIdentityArchive();
+ public function new(){}
+ public function ownerFor(engine:String,identity:String,fingerprint:String):String return null;
+ public function destinationFor(engine:String,identity:String,fingerprint:String,source:String):String return null;
+}
+"""
+
+
 def install_import_io_dependencies(folder: Path) -> None:
     """Install the real ImportIO dependency modules into a fixture class path."""
     destination = Path(folder)
@@ -37,3 +49,7 @@ def install_import_io_dependencies(folder: Path) -> None:
         if target.exists():
             continue
         target.write_text((ROOT / "source" / module).read_text(encoding="utf-8"), encoding="utf-8")
+
+    archive = destination / 'LibraryIdentityArchive.hx'
+    if not archive.exists():
+        archive.write_text(ARCHIVE_LOOKUP_STUB, encoding='utf-8')

@@ -195,6 +195,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 		if (centerReceptors) resetStrums();
 		if (transition)
 			transIn();
+		if (PlayState.instance != null) PlayState.instance.refreshPsychStrumIndex();
 	}
 
 	/**
@@ -313,9 +314,7 @@ class Strumline extends FlxTypedSpriteGroup<StrumNote> {
 			var arrow = members[i];
 			if (arrow.codenameIntroAnimationCancelled)
 				continue;
-			arrow.y -= 10;
-			arrow.alpha = 0;
-			FlxTween.tween(arrow, {y: arrow.y + 10, alpha: 1}, 1, {ease: FlxEase.circOut, startDelay: 0.5 + (0.2 * i)});
+			arrow.startIntroTween(0.5 + (0.2 * i));
 		}
 	}
 
@@ -577,6 +576,28 @@ class StrumNote extends FlxSprite {
 	@:keep public var nightmareVisionSource(default, set):Bool = false;
 	@:keep public var isQuant:Bool = false;
 	public var nightmareVisionQuantPrefs:Dynamic;
+	var introAlphaTween:FlxTween;
+	var introYTween:FlxTween;
+
+	/** Keep host entrance tweens separate so source scripts can take over one axis. */
+	public function startIntroTween(delay:Float):Void {
+		cancelIntroTween('alpha');
+		cancelIntroTween('y');
+		y -= 10;
+		alpha = 0;
+		introYTween = FlxTween.tween(this, {y:y + 10}, 1, {ease:FlxEase.circOut, startDelay:delay});
+		introAlphaTween = FlxTween.tween(this, {alpha:1}, 1, {ease:FlxEase.circOut, startDelay:delay});
+	}
+
+	public function cancelIntroTween(property:String):Void {
+		if (property == 'alpha' && introAlphaTween != null) {
+			introAlphaTween.cancel(); introAlphaTween = null;
+		}
+		if (property == 'y' && introYTween != null) {
+			introYTween.cancel(); introYTween = null;
+		}
+	}
+
 	/** Source PlayField keeps the animated alpha target separate from its field multiplier. */
 	@:keep public var targetAlpha:Float = 1;
 	@:keep public var alphaMult(default, set):Float = 1;

@@ -96,8 +96,9 @@ class RankStar extends FlxSprite {
 			color = 0xFF000000;
 		} else color = ChartDifficultyAnalysis.color(density);
 		alpha = savedAlpha; setPosition(savedX, savedY); super.draw();
-		if (focused && showLegend) {
-			legend.setPosition(savedX - 8, cardY + 30); legend.alpha = savedAlpha;
+		if (showLegend) {
+			legend.setPosition(savedX - 8, cardY + 28); legend.alpha = savedAlpha;
+			legend.color = focused ? 0xFFFFD166 : 0xFFCFD8E5;
 			legend.cameras = cameras; legend.draw();
 		}
 		color = savedColor;

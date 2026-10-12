@@ -2112,8 +2112,7 @@ class LuaCompat {
 
 	static function replaceTableHelpers(text:String, origin:String, diagnostics:Array<String>):String {
 		text = routeTableConcat(text, origin, diagnostics);
-		var insert = ~/table\.insert\s*\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*,\s*(.+)\)/g;
-		text = insert.replace(text, '$1.push($2)');
+		text = replaceOutsideStrings(text, 'table.insert', 'luaTableInsert');
 		var remove = ~/table\.remove\s*\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*,\s*(.+)\)/g;
 		text = remove.replace(text, '$1.splice(($2) - 1, 1)');
 		if (containsOutsideStrings(text, 'table.'))

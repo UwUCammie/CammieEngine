@@ -41,6 +41,50 @@ def extract_method(source: str, marker: str) -> str:
 
 
 class PsychStageJsonOnlyMetadataTest(unittest.TestCase):
+    def test_authored_girlfriend_visibility_preserves_required_actor(self):
+        play = (ROOT / 'source/PlayState.hx').read_text()
+        apply = extract_method(play, 'function applyPsychStageJson(').replace('function ', 'public function ', 1)
+        fixture = r'''class FNFAssets {
+ public static var data:Dynamic;
+ public static function exists(path:String):Bool return true;
+ public static function getText(path:String):String return haxe.Json.stringify(data);
+}
+class CoolUtil {public static function parseJson(s:String):Dynamic return haxe.Json.parse(s);}
+class PsychOwnerAssetPath {public static function cleanId(s:String):String return s;}
+class Actor {
+ public var visible:Bool=true;public var likeGf:Bool=false;
+ public function new(){}public function setPosition(x:Float,y:Float):Void {}
+}
+class Probe {
+ public var gf:Actor=new Actor();public var dad:Actor=null;public var boyfriend:Actor=null;
+ var psychStageLibrary:String;var curStage:Dynamic={defaultZoom:1.0};var defaultCamZoom:Float=1;
+ var swapOffsetsBeforePsychStage:Array<Float>;var swapOffsets:Array<Float>=[];var psychStageCharacterRoot:String;
+ function setGameCameraZoom(v:Float):Void {}
+ function psychStagePoint(data:Dynamic,key:String):Array<Float> return null;
+ function rememberPsychStagePoint(key:String,point:Array<Float>):Void {}
+ function stageCharacterOffset(actor:Actor,role:String):Array<Float> return [0,0];
+ function applyPsychStageCameraOffsets(data:Dynamic):Void {}
+ function refreshPsychStageCameraTarget():Void {}
+ public function new(){}
+ __APPLY__
+ static function main():Void {
+  var p=new Probe();var actor=p.gf;
+  FNFAssets.data={hide_girlfriend:true};p.applyPsychStageJson('stage.json','owner');
+  if(p.gf!=actor || p.gf.visible)throw 'authored hidden role was exposed or destroyed';
+  FNFAssets.data={hide_girlfriend:false};p.applyPsychStageJson('stage.json','owner');
+  if(p.gf.visible)throw 'stage forced a script-hidden role visible';
+  var visible=new Probe();FNFAssets.data={};visible.applyPsychStageJson('stage.json','owner');
+  if(!visible.gf.visible)throw 'missing flag hid a visible role';
+  p.gf=null;FNFAssets.data={hide_girlfriend:true};p.applyPsychStageJson('stage.json','owner');
+ }
+}'''.replace('__APPLY__',apply)
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
+            (Path(folder) / 'Probe.hx').write_text(fixture, newline='\n')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'Probe', '--interp'],
+                                    cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('psych-stage-json-error', result.stdout)
+
     @unittest.skipIf(os.name == 'nt', 'requires a case-sensitive filesystem fixture')
     def test_finds_owner_json_and_executes_compiled_source_when_resolved(self):
         play = (ROOT / "source/PlayState.hx").read_text()

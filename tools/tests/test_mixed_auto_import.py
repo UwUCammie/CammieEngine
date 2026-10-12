@@ -160,6 +160,7 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function applyImportedSidecars",
                 "static function applyImportedVisualMetadata",
                 "static function prepareImportedSongIdentity",
+                "static function importDifficultySongMedia",
                 "static function writeGeneratedDialogue",
 	                "static function importedChartFileName",
 	                "static function freeplayRegistryPath",
@@ -195,6 +196,8 @@ typedef SongImportVocalStem = {{
   var source:String; var destination:String; @:optional var id:String; @:optional var role:String;
 }};
 typedef SongImport = {{
+  @:optional var difficultyAudioRoot:String;
+  @:optional var sourceFolder:String;
   var name:String; var p1:String; var p2:String; var gf:String; var stage:String;
   var ui:String; var cutscene:String; var category:String; var isHey:Bool;
   var isCheer:Bool; var isMoody:Bool; var isSpooky:Bool; var stageID:Int; var week:Int;
@@ -494,7 +497,7 @@ class Main {{
         with tempfile.TemporaryDirectory() as folder:
             temp_path = Path(folder)
             install_import_io_dependencies(temp_path)
-            for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx",
+            for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx", "DifficultySongMedia.hx",
                                "ImportInstalledDependencyRoots.hx", "CompatCanonicalPath.hx"):
                 (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline='\n')
             (temp_path / "NightmareVisionVocalRole.hx").write_text(

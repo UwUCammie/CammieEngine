@@ -76,3 +76,27 @@ class Main {
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],capture_output=True,text=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
    self.assertIn('group-reflection-cases:4864',result.stdout)
+
+ def test_getter_backed_group_members(self):
+  fixture=r'''class GetterGroup {
+ public var reads=0;
+ public var members(get,never):Array<Dynamic>;
+ var values:Array<Dynamic>=[{x:4}];
+ function get_members():Array<Dynamic> {reads++;return values;}
+ public function new() {}
+}
+class Main {
+ static function main() {
+  var group=new GetterGroup();var state={group:group};var vars:Map<String,Dynamic>=[];
+  var service=new SourcePsychReflection(function()return vars,function()return state,function()return state,
+   function()return state,function(_)return false,function(_)return null,Reflect.getProperty,
+   Reflect.setProperty,function(v)return v,function(message)throw message);
+  if(service.getGroup('group',0,'x')!=4||group.reads!=1)throw 'getter not used for read';
+  service.setGroup('group',0,'x',17);
+  if(group.reads!=2||service.getGroup('group',0,'x')!=17)throw 'getter not used for write';
+ }
+}'''
+  with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
+   work=Path(folder);(work/'Main.hx').write_text(fixture)
+   result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(work),'-main','Main','--interp'],capture_output=True,text=True,timeout=60)
+   self.assertEqual(result.returncode,0,result.stdout+result.stderr)

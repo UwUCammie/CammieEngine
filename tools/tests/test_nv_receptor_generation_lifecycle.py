@@ -36,14 +36,14 @@ class NvReceptorGenerationLifecycleTest(unittest.TestCase):
         self.assertLess(countdown.index('if (sourceCountdownStopped)'), countdown.index('!genNotesBeforeCountdown) generatePlayfields();'))
         self.assertLess(countdown.index('!genNotesBeforeCountdown) generatePlayfields();'), countdown.index('startedCountdown = true;'))
         transitions = countdown[countdown.index("markStep('countdown:strum-transitions-begin')"):countdown.index("markStep('countdown:strum-transitions-complete')")]
-        self.assertIn('if (nightmareVisionScripts == null)', transitions)
+        self.assertIn('if (nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare))', transitions)
         generation = method(play, 'public function generatePlayfields():Void')
         order = ["callNightmareVision('postReceptorGeneration',", 'modManager.configureDimensions', 'modManager.registerEssentialModifiers()', 'modManager.registerDefaultModifiers()', 'modManager.registerScriptedModifiers()', 'modifiersRegistered = true', "callNightmareVision('postModifierRegister', [])"]
         indices = [generation.index(token) for token in order]
         self.assertEqual(indices, sorted(indices))
         self.assertIn('nightmareVisionDefaultGenerationDepth == 0', method(play, 'function syncNightmareVisionPlayFieldCollection('))
         self.assertIn('if (nightmareVisionScripts == null) {\n\t\t\tadd(enemyStrums);', play)
-        self.assertIn('false, nightmareVisionScripts == null)', play)
+        self.assertIn('false, nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare))', play)
         self.assertIn('arrowSkins = SONG.arrowSkins;', play)
         skin = method(play, 'function nightmareVisionDefaultSkinForField(field:Int')
         self.assertIn('var names = arrowSkins;', skin)
@@ -83,6 +83,7 @@ class Group {
 }
 typedef FeedbackField = {var members:Array<FlxSprite>;};
 class Main {
+ function beginPsychCountdownReceptors():Void {}
  public var nightmareVisionScripts:Dynamic={};public var playerComboBreak:Group=new Group();public var enemyComboBreak:Group=new Group();
  public var fields:Map<Int,FeedbackField>=new Map();public var playerStrums:Dynamic={members:[]};
  public var missBreakColor=1;public var wayoffBreakColor=2;public var shitBreakColor=3;
@@ -147,6 +148,7 @@ class Field {public var owner:Character;public function new(owner:Character)this
 class Target {public var x=0.;public var y=0.;public function new(){}public function setPosition(x:Float,y:Float):Void{this.x=x;this.y=y;}}
 class Scripts {public var group:Scripts;public var whosTurn:String;public function new()group=this;public function set(key:String,value:String):Void whosTurn=value;}
 class Main {
+ function beginPsychCountdownReceptors():Void {}
  public var nightmareVisionScripts:Scripts=new Scripts();public var scripts:Scripts;
  public var opponentStrums:Field;public var playerStrums:Field;
  public var dad:Character=new Character(10);public var boyfriend:Character=new Character(20);public var camCurTarget:Character;
@@ -234,6 +236,7 @@ class Scripts {
  __DISPATCH__
 }
 class Main {
+ function beginPsychCountdownReceptors():Void {}
  function nightmareVisionLegacyGoodNoteHit(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
  function nightmareVisionLegacyOpponentNoteHit(n:Dynamic,f:NightmareVisionPlayFieldView):Void {}
  public var SONG:Dynamic={lanes:3,uiType:'normal'};

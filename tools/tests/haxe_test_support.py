@@ -15,7 +15,9 @@ TEST_TMP = Path(os.environ.get('CAMMIE_TEST_TMP', str(ROOT / 'tmp')))
 def haxe_command(*, windows=None):
     if windows is None:
         windows = os.name == 'nt'
-    return [str(HAXE), *(['-D', 'windows'] if windows else [])]
+    # Shared importer identity lookups now include receipt-backed archive reads.
+    # Supply the project's pinned JSON library to every standalone compiler probe.
+    return [str(HAXE), '-cp', str(ROOT / '.haxelib/tjson/1,4,0'), *(['-D', 'windows'] if windows else [])]
 
 
 HAXE_COMMAND = haxe_command()

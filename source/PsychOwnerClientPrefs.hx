@@ -34,6 +34,10 @@ class PsychOwnerClientPrefs {
 	public var defaultButtons:StringMap<Dynamic>;
 	/** Convenient alias for hosts that expose a `.view`-shaped preference API. */
 	public var view(get, never):Dynamic;
+	/** Psych 0.x name for the shared antialiasing preference. */
+	public var globalAntialiasing(get, set):Bool;
+	function get_globalAntialiasing():Bool return data.antialiasing;
+	function set_globalAntialiasing(value:Bool):Bool return data.antialiasing = value;
 
 	var ownerSave:Dynamic;
 	var runtimeOperations:StringMap<Array<Dynamic>->Dynamic> = new StringMap();

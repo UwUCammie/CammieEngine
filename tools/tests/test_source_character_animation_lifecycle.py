@@ -13,6 +13,7 @@ class SourceCharacterAnimationLifecycleTest(unittest.TestCase):
         helper = (ROOT / 'source/SourceCharacterAnimationLifecycle.hx').read_text(encoding='utf-8')
         character = (ROOT / 'source/Character.hx').read_text(encoding='utf-8')
         self.assertIn('SourceCharacterAnimationLifecycle.specialAfterPlay', character)
+        self.assertIn('SourceCharacterAnimationLifecycle.blocksDance', character)
         self.assertIn('SourceCharacterAnimationLifecycle.returnAnimation', character)
         self.assertIn('SourceCharacterAnimationLifecycle.finishesReturn', character)
         self.assertIn('SourceCharacterAnimationLifecycle.mayFinishSpecial', character)
@@ -27,6 +28,21 @@ class SourceCharacterAnimationLifecycleTest(unittest.TestCase):
         fixture = '''class Main {
  static function check(value:Bool, message:String):Void if (!value) throw message;
  static function main():Void {
+  check(SourceCharacterAnimationLifecycle.blocksDance(true, false, 1, false), 'Psych beat interrupts special animation');
+  check(!SourceCharacterAnimationLifecycle.blocksDance(false, false, 1, false), 'Psych dance remains latched after finish');
+  check(!SourceCharacterAnimationLifecycle.blocksDance(true, false, 0, false), 'native dance behavior changed');
+  check(!SourceCharacterAnimationLifecycle.blocksDance(true, false, 1, true), 'Codename dance behavior changed');
+  for(section in [false,true]) for(owner in [false,true]) {
+   check(SourceCharacterAnimationLifecycle.gfSectionPerformer(1,true,section,owner)==(section==owner),
+    'Psych GF performer must follow the section side');
+   check(!SourceCharacterAnimationLifecycle.gfSectionPerformer(1,false,section,owner),'non-GF section redirected');
+   check(SourceCharacterAnimationLifecycle.gfSectionPerformer(0,true,section,owner)==!owner,'native GF rule changed');
+  }
+  check(!SourceCharacterAnimationLifecycle.blocksNoteAnimation(true,true,1,false),'Psych note cannot leave special pose');
+  check(SourceCharacterAnimationLifecycle.blocksNoteAnimation(true,true,0,false),'native special hold changed');
+  check(SourceCharacterAnimationLifecycle.blocksNoteAnimation(false,false,1,false),'canSing ignored');
+  check(SourceCharacterAnimationLifecycle.blocksNoteAnimation(true,true,1,true),'Codename special hold changed');
+
   check(!SourceCharacterAnimationLifecycle.specialAfterPlay(true, 1, false, false),
    'Psych playback must clear a special latch before a new animation');
   check(!SourceCharacterAnimationLifecycle.specialAfterPlay(true, 2, false, false),

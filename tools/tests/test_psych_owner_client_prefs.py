@@ -62,6 +62,11 @@ class Main {
   check(requiresDevice, 'public preference reload lost its device operation');detached.release();
   var prefs = new PsychOwnerClientPrefs('assets/imported_mods/prefs-a', storage, native);
   var defaults = prefs.defaultData;
+  check(!prefs.globalAntialiasing, 'legacy antialiasing getter lost native preference');
+  prefs.globalAntialiasing=true;
+  check(prefs.data.antialiasing, 'legacy write did not update shared preference');
+  prefs.data.antialiasing=false;
+  check(!prefs.globalAntialiasing, 'modern write did not update legacy alias');
   check((cast Reflect.getProperty(prefs, '__hscriptStringFieldPaths'):Array<String>).join('|')
    == 'data.noteSkin|defaultData.noteSkin',
    'owner preference instance did not publish the compiled StringTools receiver paths');

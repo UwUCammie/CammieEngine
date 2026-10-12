@@ -54,10 +54,12 @@ class FakeAnimation {
 }
 class FlxColor { public static inline var WHITE:Int = 0xFFFFFFFF; }
 class SourceCharacterAnimationLifecycle {
+  public static function blocksDance(s:Bool,n:Bool,m:Int,c:Bool):Bool return s && (n || (m==1 && !c));
   public static function returnAnimation(_currentName:Null<String>, _returnExists:Bool,
     _nightmareVision:Bool, _debugMode:Bool, _specialAnim:Bool):Null<String> return null;
 }
 class PlayState {
+  public function sourceNoteTimingMode():Int return 0;
   public static var instance:PlayState = null;
   public function new() {}
   public function dispatchHxcCharacterMethod(_character:Character, _name:String,

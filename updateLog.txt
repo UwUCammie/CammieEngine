@@ -1,8 +1,18 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.30 development - CammieEngine
+v0.0.30 alpha - CammieEngine
+- Preserve authored alternate-difficulty soundtracks and split vocals, and select Psych song scripts by the source chart's song key.
+- Count native heads without an explicit sustain length. Use average and sustained NPS for difficulty colors, retaining brief peak density as a diagnostic; adopt the supplied blue-to-black spectrum and show NPS with two decimals.
+- Show all available difficulties in a stable labeled star grid on the expanded chart card.
+- Archive validated package/chart identities for reinstall restoration without modifying favorites, scores or categories. Safe uninstall remains under development.
+- Skip repeated committed-backup cleanup work when the backup tree has already been removed.
 - Continuing the existing roadmap after the v0.0.29 release.
+- Fix Psych getter-backed group reflection and historical Lua/HScript callbacks, including owner-scoped dynamically loaded scripts, Lua array return indexing, positioned table insertion and song-length globals.
+- Preserve authored character animation targets, GF-section performers, stage GF-hide flags and costume-change layering/visibility. Let source receptor tweens supersede the corresponding host entrance tween and keep combined receptor references current after style changes. Create Psych receptors and their combo indicators only after the source countdown gate accepts, including video/dialogue handoffs, and publish default receptor coordinates after creation.
+- Resolve concrete script origins for cutscene/countdown handoffs and add owner-scoped font precaching and the legacy globalAntialiasing preference alias.
+- Keep mute/volume shortcuts out of Freeplay and category search input.
+- Include a validated official bundled-asset manifest in Windows packages. The updated installer can replace known unchanged official assets while preserving custom assets; old installed updater helpers still need a manual package update to acquire this behavior.
 
 v0.0.29 alpha - CammieEngine
 - Freeplay difficulty stars sit inside each chart card, with subtle star-shaped gradients, density colors, extreme-density shadows and hover animation. Add versioned NPS/danger analysis, NPS difficulty sorting, per-play misses/combo statistics and cleaner source captions.

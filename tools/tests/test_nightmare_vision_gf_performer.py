@@ -50,6 +50,8 @@ class Character {
 }
 class SingerRoutingState {
  public var nightmareVisionScripts:Dynamic=null;
+ public var mode:Int=0;
+ function sourceNoteTimingMode():Int return mode;
  public var gf:Character;
  public var boyfriend:Character;
  public var dad:Character;
@@ -77,6 +79,9 @@ class Main {
   check(native.singerFor(new Note(true),false)==native.gf, 'native Psych opponent GF Sing note still routes to GF');
   check(!native.isGfPerformer(new Note(true),true), 'native player note is not tagged as NMV GF performer');
 
+  var psych=new SingerRoutingState();psych.mode=1;
+  check(psych.singerFor(new Note(true),true)==psych.gf, 'Psych player GF note must sing with GF');
+  check(psych.singerFor(new Note(false),true)==psych.boyfriend, 'ordinary Psych player note stays BF');
   var nmv=new SingerRoutingState();
   nmv.nightmareVisionScripts={active:true};
   check(nmv.selectGfSection(playerGfSection,0), 'player-side GF section targets primary player field 0');
@@ -119,8 +124,8 @@ class Main {
         self.assertEqual(self.source.count(
             "nightmareVisionGfSectionNote(section, chartAddress.playfieldIndex)"), 2,
             "heads and sustain segments both inherit GF performer routing from their authored source field")
-        self.assertEqual(self.source.count("else if (section.gfSection == true && !gottaHitNote)"), 2,
-                         "classic Psych retains its existing opponent-only gfSection generation")
+        self.assertEqual(self.source.count("else if (SourceCharacterAnimationLifecycle.gfSectionPerformer(sourceNoteTimingMode(),"), 2,
+                         "heads and sustains use dialect-correct section performer ownership")
 
         for marker in ["function noteMissCore(", "function goodNoteHit("]:
             method = extract_method(self.source, marker)

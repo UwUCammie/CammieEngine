@@ -23,7 +23,7 @@ class PsychBaseStageCompat {public function new(){}}
 class PsychStageConstruction {public static function createNative(context:Dynamic):PsychBaseStageCompat return new PsychBaseStageCompat();}
 class PsychObjectProviders {public static function stageContext():Dynamic return null;}
 
-class PlayState extends MusicBeatState {public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
+class PlayState extends MusicBeatState {public var enemyStrums:Dynamic={members:[]};public var nightmareVisionLegacyFieldCameras:Bool=false;public function new(){super();}__ALIAS__}
 class NightmareVisionScriptInterp {
  public var variables:Map<String,Dynamic>=[];public var imports:Map<String,Dynamic>=[];var scope=new SourceNativeClassScope();
  public var constructorType:Dynamic;public function bindConstructorFactory(t:Dynamic,c:Dynamic,o:Dynamic):Void constructorType=t;

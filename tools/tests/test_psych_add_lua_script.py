@@ -49,6 +49,12 @@ class PsychAddLuaScriptTest(unittest.TestCase):
             'CompatScriptManifest.hx': '''class CompatScriptManifest {
                 public static function selectedRoot(manifest:Dynamic):String return "scoped";
             }''',
+            'PsychOwnerAssetPath.hx': '''class PsychOwnerAssetPath {
+                public static function resolve(root:String,path:String):Dynamic {
+                    var owned=root=="scoped" && path=="assets/imported_mods/scoped/scripts/child.lua";
+                    return {path:path,owned:owned,blocked:!owned,unavailable:false};
+                }
+            }''',
             'FNFAssets.hx': '''class FNFAssets {
                 public static var existing:Map<String,Bool>=new Map();
                 public static function isInScope(path:String):Bool return true;
@@ -97,6 +103,9 @@ class PsychAddLuaScriptTest(unittest.TestCase):
                     FNFAssets.existing.set("assets/epicScripts/infishake.lua",true);
                     FNFAssets.existing.set("other/epicScripts/stale.lua",true);
                     var host=new PsychHost();
+                    FNFAssets.existing.set("assets/imported_mods/scoped/scripts/child.lua",true);
+                    check(host.resolvePsychLuaScriptPath("assets/imported_mods/scoped/scripts/child") ==
+                        "assets/imported_mods/scoped/scripts/child.lua", "same-owner Paths.modFolders reference rejected");
                     check(host.resolvePsychLuaScriptPath("epicScripts/cam") ==
                         "scoped/epicScripts/cam.lua", "selected root did not win");
                     check(host.resolvePsychLuaScriptPath("epicScripts/infishake") ==

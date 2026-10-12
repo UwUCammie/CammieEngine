@@ -23,8 +23,9 @@ SPEC.loader.exec_module(RUNNER)
 
 class WindowsWorkflowTest(unittest.TestCase):
     def test_eval_platform_is_explicit_and_posix_probe_can_opt_out(self):
-        self.assertEqual(haxe_command(windows=True)[1:], ['-D', 'windows'])
-        self.assertEqual(haxe_command(windows=False)[1:], [])
+        self.assertEqual(haxe_command(windows=True)[-2:], ['-D', 'windows'])
+        self.assertEqual(haxe_command(windows=False)[1], '-cp')
+        self.assertEqual(Path(haxe_command(windows=False)[2]), ROOT / '.haxelib/tjson/1,4,0')
 
     def test_fixture_paths_preserve_native_equality_hashing_and_parents(self):
         from pathlib import Path as NativePath

@@ -1212,6 +1212,11 @@ class FreeplayState extends MusicBeatState {
 		updateBrowserDetails();
 	}
 
+	function selectedCardHeight():Int {
+		if (curSelected < 0 || curSelected >= starArray.length || starArray[curSelected] == null)
+			return FreeplayBrowserLayout.SELECTED_HEIGHT;
+		return FreeplayBrowserLayout.difficultyHeight(starArray[curSelected].length);
+	}
 	function updateBrowserDetails():Void {
 		if (!denseBrowser || browserCount == null) return;
 		var visible = orderedVisibleSongs();
@@ -1240,11 +1245,14 @@ class FreeplayState extends MusicBeatState {
 			var stars = starArray[index]; var row = songRows[index];
 			var selectedStar = 0;
 			for (i in 0...stars.length) if (stars[i].diff == curDifficulty) selectedStar = i;
-			var start = Std.int(Math.max(0, Math.min(selectedStar - 2, stars.length - 5)));
+			var selected = index == curSelected;
+			var columns = selected ? FreeplayBrowserLayout.difficultyColumns(stars.length) : stars.length;
+			var spacing = Math.min(36, 196 / Math.max(1, columns));
 			for (i in 0...stars.length) {
-				var star = stars[i]; star.visible = row.visible && i >= start && i < start + 5;
-				star.cardX = row.x + FreeplayBrowserLayout.listWidth(FlxG.width) - 244 + (i - start) * 36;
-				star.cardY = row.y + (index == curSelected ? 16 : 8);
+				var star = stars[i]; star.visible = row.visible;
+				star.setGraphicSize(Std.int(Math.max(2, Math.min(26, spacing - 4)))); star.updateHitbox();
+				star.cardX = row.x + FreeplayBrowserLayout.listWidth(FlxG.width) - 244 + (i % Std.int(Math.max(1, columns))) * spacing;
+				star.cardY = row.y + (selected ? 16 + Std.int(i / columns) * 40 : 8);
 				star.showLegend = index == curSelected;
 				star.focused = index == curSelected && star.diff == curDifficulty;
 				star.alpha = FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)) ? 0.35 : 1;
@@ -1430,13 +1438,14 @@ class FreeplayState extends MusicBeatState {
 		// WASD-style nav keys that produce a character type instead of moving
 		// on the frame they're typed so searching doesn't fight the controls
 		var typedChar:String = "";
-		if (FlxG.keys.justPressed.BACKSPACE) {
+		if (FlxG.keys.justPressed.BACKSPACE && !MenuSearchInput.reserved(FlxKey.BACKSPACE)) {
 			if (searchString.length > 0) {
 				searchString = searchString.substr(0, searchString.length - 1);
 				applySearchFilter();
 			}
 		} else if (FlxG.keys.justPressed.ANY) {
-			var key:Int = FlxG.keys.firstJustPressed();
+			var searchKey = FlxG.keys.firstJustPressed();
+			var key:Int = MenuSearchInput.reserved(searchKey) ? -1 : searchKey;
 			var A:Int = FlxKey.A;
 			var Z:Int = FlxKey.Z;
 			var ZERO:Int = FlxKey.ZERO;
@@ -2113,7 +2122,7 @@ class FreeplayState extends MusicBeatState {
 	*/
 	function rebuildVisibleRows():Void {
 		var visible = orderedVisibleSongs();
-		var desired = denseBrowser ? FreeplayBrowserLayout.page(visible, curSelected, FlxG.height)
+		var desired = denseBrowser ? FreeplayBrowserLayout.page(visible, curSelected, FlxG.height, selectedCardHeight())
 			: FreeplayListWindow.window(visible, curSelected, ROW_WINDOW_RADIUS);
 		var wanted:Map<Int, Bool> = new Map();
 		for (index in desired)
@@ -2441,9 +2450,9 @@ class FreeplayState extends MusicBeatState {
 				for (star in starArray[index])
 					star.visible = vis && !denseBrowser && !OptionsHandler.options.style;
 			if (denseBrowser) {
-				item.setPosition(index == curSelected ? 32 : 24, FreeplayBrowserLayout.rowY(position, selectedPosition));
+				item.setPosition(index == curSelected ? 32 : 24, FreeplayBrowserLayout.rowY(position, selectedPosition, selectedCardHeight()));
 				(cast item:FreeplayBrowserRow).present(index == curSelected,
-					FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)), iconArray[index] != null, libraryOrderRows[index].favorite);
+					FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)), iconArray[index] != null, libraryOrderRows[index].favorite, selectedCardHeight());
 				var at = ordered.indexOf(index);
 				var boundary = at > 0 && (libraryOrderRows[index].favorite != libraryOrderRows[ordered[at - 1]].favorite
 					|| (grouping != 'flat' && LibrarySort.group(libraryOrderRows[index], grouping) != LibrarySort.group(libraryOrderRows[ordered[at - 1]], grouping)));
@@ -2452,7 +2461,7 @@ class FreeplayState extends MusicBeatState {
 				if (icon != null) {
 					var size = index == curSelected ? 62 : 34;
 					icon.setGraphicSize(Std.int(size * icon.frameWidth / Math.max(icon.frameWidth, icon.frameHeight))); icon.updateHitbox();
-					var rowHeight = index == curSelected ? FreeplayBrowserLayout.SELECTED_HEIGHT : FreeplayBrowserLayout.ROW_HEIGHT;
+					var rowHeight = index == curSelected ? selectedCardHeight() : FreeplayBrowserLayout.ROW_HEIGHT;
 					icon.setPosition(item.x + 10 + (62 - icon.width) / 2, item.y + (rowHeight - 4 - icon.height) / 2); icon.alpha = 1;
 				}
 				continue;

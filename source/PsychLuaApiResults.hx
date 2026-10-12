@@ -11,6 +11,8 @@ class PsychLuaApiResults {
 		wrap(interp, lua, 'getProperty');
 		wrap(interp, lua, 'getPropertyFromGroup');
 		wrap(interp, lua, 'getPropertyFromClass');
+		wrap(interp, lua, 'stringSplit');
+		wrap(interp, lua, 'directoryFileList');
 	}
 
 	static function wrap(interp:Interp, lua:LuaCompatInterp, name:String):Void {

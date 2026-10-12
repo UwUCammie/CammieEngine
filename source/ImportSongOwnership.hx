@@ -17,6 +17,7 @@ private typedef ImportSongOwnerIdentityCache = {
 	var index:Map<String, String>;
 	var ambiguous:Map<String, Bool>;
 	var ready:Bool;
+	@:optional var archive:LibraryIdentityArchive;
 }
 
 /** A non-overwriting repair cannot change the donor which owns chart/audio.
@@ -221,9 +222,22 @@ class ImportSongOwnership {
 			if (fingerprint == '') return legacyNamespace;
 			lookupKey += '|' + fingerprint;
 		}
-		if (cache.ambiguous.exists(lookupKey))
+		if (cache.ambiguous.exists(lookupKey)) {
+			if (cache.archive != null && cache.archive.ownerFor(engine, identity, sourceFingerprint(sourceRoot)) != null)
+				throw 'Archived package identity conflicts with ambiguous installed owners.';
 			return legacyNamespace;
-		return cache.index.exists(lookupKey) ? cache.index.get(lookupKey) : legacyNamespace;
+		}
+		var installed = cache.index.get(lookupKey);
+		var archived = cache.archive == null ? null : cache.archive.ownerFor(engine, identity, sourceFingerprint(sourceRoot));
+		if (archived != null) {
+			var namespace = validOwnerNamespace(archived);
+			if (installed != null && installed != namespace)
+				throw 'Installed and archived package identities disagree.';
+			if (installed == null && FileSystem.exists(archived))
+				throw 'An archived package namespace is occupied without matching provenance.';
+			return namespace;
+		}
+		return installed == null ? legacyNamespace : installed;
 	}
 
 	/** Each native worker and the main thread keep an independent installed-tree
@@ -251,6 +265,7 @@ class ImportSongOwnership {
 		cache.index = null;
 		cache.ambiguous = null;
 		cache.ready = false;
+		cache.archive = null;
 	}
 
 	static function sourceFingerprint(sourceRoot:String):String {
@@ -546,8 +561,10 @@ class ImportSongOwnership {
 		cache.index = new Map<String, String>();
 		cache.ambiguous = new Map<String, Bool>();
 		#if sys
+		var context = ImportIO.current();
+		cache.archive = LibraryIdentityArchive.load(context == null ? Sys.getCwd() : context.installRoot);
 		var dataRoot = 'assets/data';
-		if (!FileSystem.isDirectory(dataRoot)) return;
+		if (!FileSystem.isDirectory(dataRoot)) { cache.ready = true; return; }
 		var entries:Array<String>;
 		try entries = FileSystem.readDirectory(dataRoot) catch (_:Dynamic) return;
 		if (entries.length > MAX_OWNER_IDENTITY_RECORDS) return;
@@ -893,7 +910,21 @@ class ImportSongOwnership {
 	 * another selected donor.  The returned error is only populated when the
 	 * existing collision cannot be moved to this donor's stable key. */
 	public static function planDestination(existingFolder:String, folder:String,
-		sourceRoot:String, engine:String):Dynamic {
+		sourceRoot:String, engine:String, ?sourceFolder:String):Dynamic {
+		#if sys
+		var identity = stableIdentity(sourceRoot, engine);
+		if (identity != '') {
+			var cache = ownerIdentityCache();
+			buildOwnerIdentityIndex(cache);
+			var archived = cache.archive == null ? null : cache.archive.destinationFor(engine, identity,
+				sourceFingerprint(sourceRoot), sourceFolder == null ? folder : sourceFolder);
+			if (archived != null) {
+				var archivedPath = Path.join([Path.directory(existingFolder), archived]);
+				return {folder:archived, qualified:archived != folder,
+					error:conflict(archivedPath, sourceRoot, engine)};
+			}
+		}
+		#end
 		var ownershipError = conflict(existingFolder, sourceRoot, engine);
 		if (ownershipError == null)
 			return {folder:folder, qualified:false, error:null};

@@ -124,6 +124,15 @@ class PsychRuntimeBindings {
 					&& matches(entry.path, path)) return true;
 			return false;
 		});
+		owner.variables.set('getGlobalFromScript', function(path:String, name:String):Dynamic {
+			for (facade in host.psychSourceCallbacks.luaFacades(ownerRoot))
+				if (matches(facade.scriptName, path)) return facade.get(name);
+			return null;
+		});
+		owner.variables.set('setGlobalFromScript', function(path:String, name:String, value:Dynamic):Void {
+			for (facade in host.psychSourceCallbacks.luaFacades(ownerRoot))
+				if (matches(facade.scriptName, path)) {facade.set(name, value); return;}
+		});
 		owner.variables.set('callScript', function(path:String, name:String, ?args:Array<Dynamic>):Dynamic {
 			for (entry in orderedScopes(host, 'Luas', owner, false, null)) {
 				var origin:Dynamic = entry.interp.variables.get('__compatDiagnosticSource');
@@ -210,7 +219,7 @@ class PsychRuntimeBindings {
 			&& target.variables.get('__psychScoreGlobals') == true;
 	}
 
-	static function matches(actual:String, requested:String):Bool {
+	public static function matches(actual:String, requested:String):Bool {
 		if (actual == null || requested == null || StringTools.trim(requested) == '') return false;
 		actual = StringTools.replace(actual, '\\', '/').toLowerCase();
 		var path = StringTools.replace(requested, '\\', '/').toLowerCase();

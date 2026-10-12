@@ -93,6 +93,60 @@ See LICENSE, NOTICE, docs/, and licenses/ for project and bundled notices.
 """
 
 
+BUNDLED_ASSET_MANIFEST = "BUNDLED_ASSETS.json"
+
+
+def bundled_asset_baselines(repository: Path, files: dict[str, tuple[Path, Path]]) -> dict:
+    """Recognize official assets from tagged releases without claiming local edits.
+
+    Only the package's bounded file list and Git object store are read. Import
+    registries, settings and user packages never become update-owned assets.
+    """
+    eligible = {key: value for key, value in files.items()
+                if key.startswith("assets/") and key not in SHARED_REGISTRY_PATHS
+                and key != "assets/data/options.json"
+                and ("/imported_mods/" not in key
+                     or tuple(key.split("/")[:3]) == BUNDLED_RESULTS_ROOT)}
+    result = {key: {sha256(value[0])} for key, value in eligible.items()}
+    objects: dict[str, set[str]] = {}
+    tags = git_output(repository, "tag", "--list", "v*").decode().splitlines()
+    for ref in ["HEAD", *("refs/tags/" + tag for tag in tags
+                          if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag))]:
+        for record in git_output(repository, "ls-tree", "-rz", "--full-tree", ref, "--", "assets").split(b"\0"):
+            if not record:
+                continue
+            metadata, path = record.split(b"\t", 1)
+            mode, kind, oid = metadata.decode("ascii").split()
+            key = path.decode("utf-8").casefold()
+            if mode == "100644" and kind == "blob" and key in eligible:
+                objects.setdefault(oid, set()).add(key)
+    # One Git process streams each distinct historical blob only once.
+    with subprocess.Popen(["git", "-C", str(repository), "cat-file", "--batch"],
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as process:
+        assert process.stdin is not None and process.stdout is not None
+        try:
+            for oid, paths in objects.items():
+                process.stdin.write((oid + "\n").encode("ascii")); process.stdin.flush()
+                header = process.stdout.readline().split()
+                if len(header) != 3 or header[1] != b"blob":
+                    raise ValueError("could not read bundled asset baseline from Git")
+                remaining = int(header[2]); digest = hashlib.sha256()
+                while remaining:
+                    chunk = process.stdout.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("truncated Git asset baseline")
+                    digest.update(chunk); remaining -= len(chunk)
+                if process.stdout.read(1) != b"\n":
+                    raise ValueError("invalid Git asset baseline boundary")
+                for path in paths:
+                    result[path].add(digest.hexdigest())
+        finally:
+            process.stdin.close()
+        if process.wait() != 0:
+            raise ValueError("could not finish reading bundled asset baselines")
+    return {"version": 1, "files": {key: sorted(values) for key, values in sorted(result.items())}}
+
+
 def safe_tag(tag: str) -> str:
     """Return a filename-safe label without allowing path components."""
     label = re.sub(r"[^A-Za-z0-9._-]+", "-", tag.strip()).strip(".-")
@@ -333,6 +387,7 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         relative = Path(*PurePosixPath(original).parts)
         unique_files[key] = (repository / original, relative)
 
+    asset_baselines = bundled_asset_baselines(repository, unique_files)
     output_dir.mkdir(parents=True, exist_ok=True)
     archive_path = output_dir / f"CammieEngine-{label}-windows-x64.zip"
     checksum_path = output_dir / "SHA256SUMS.txt"
@@ -343,7 +398,7 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
         with zipfile.ZipFile(temporary_archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
             archive_names: set[str] = set()
             for source, relative in unique_files.values():
-                if relative.as_posix().casefold() in {"release_tag", "updatelog.txt"}:
+                if relative.as_posix().casefold() in {"release_tag", "updatelog.txt", BUNDLED_ASSET_MANIFEST.casefold()}:
                     continue
                 archive_name = str(PurePosixPath(ARCHIVE_ROOT, *relative.parts))
                 committed_registry = shared_registries.get(relative.as_posix().casefold())
@@ -356,6 +411,10 @@ def make_package(runtime_dir: Path, output_dir: Path, tag: str, repo_root: Path 
             release_log_name = f"{ARCHIVE_ROOT}/updateLog.txt"
             archive.write(repository / "updateLog.txt", release_log_name)
             archive_names.add(release_log_name.casefold())
+
+            baseline_name = f"{ARCHIVE_ROOT}/{BUNDLED_ASSET_MANIFEST}"
+            archive.writestr(baseline_name, json.dumps(asset_baselines, sort_keys=True, separators=(",", ":")))
+            archive_names.add(baseline_name.casefold())
 
             release_tag_name = f"{ARCHIVE_ROOT}/RELEASE_TAG"
             archive.writestr(release_tag_name, label + "\n")

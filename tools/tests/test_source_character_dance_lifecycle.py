@@ -58,6 +58,13 @@ class Main {
   Reflect.setProperty(psych, 'gfSpeed', 2);
   check(psych.gf.danceEveryNumBeats == 2 && !psych.girlfriendDanceDue(2)
    && psych.girlfriendDanceDue(4), 'Psych GF cadence must use the product');
+  psych.gf.animation.curAnim.name='singLEFT';
+  check(!psych.girlfriendDanceDue(4), 'beat interrupted note-local GF singing');
+  psych.gf.animation.curAnim.name='idle';psych.gf.stunned=true;
+  check(!psych.girlfriendDanceDue(4), 'stunned GF danced');
+  psych.gf.stunned=false;psych.gf.animation.curAnim=null;
+  check(!psych.girlfriendDanceDue(4), 'GF without an animation danced');
+  psych.gf.animation.curAnim={name:'idle'};
   psych.gfSpeed = 0;
   check(!psych.girlfriendDanceDue(0), 'zero Psych cadence must not modulo zero');
   psych.gfSpeed = 2;

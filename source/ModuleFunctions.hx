@@ -81,6 +81,8 @@ typedef SongImport = {
 	@:optional var compatMetadata:Dynamic;
 	/** V-Slice split stems. The destination name is chart metadata, not a donor path. */
 	@:optional var vocalStems:Array<SongImportVocalStem>;
+	/** Selected source audio tree for chart-authored alternate soundtracks. */
+	@:optional var difficultyAudioRoot:String;
 	var dialog:String;
 	/** Original FPS/Kade JSON dialogue sidecar; retained beside the generated fallback. */
 	@:optional var dialogueJson:String;
@@ -1853,6 +1855,7 @@ class ModuleFunctions {
 				var sourceInfo:SongImportSource = {song:sourceSongFolder, data:chartDataFolder,
 					destination:importSongFolderName(songData), sourceRoot:songSourceRoot, engine:engine};
 				songData.importSourceInfo = sourceInfo;
+				if (!isNestedNmvPackageSong) songData.difficultyAudioRoot = sourceAudioRoot;
 				if (sourcePaths != null) sourcePaths.set(key, sourceInfo);
 			}
 		}
@@ -5260,7 +5263,7 @@ class ModuleFunctions {
 			var canonicalFolder = importSongFolderName(songData);
 			var destinationPlan = ImportSongOwnership.planDestination(
 				existingImportChild('assets/data', canonicalFolder), canonicalFolder,
-				songData.sourceRoot, songData.engine);
+				songData.sourceRoot, songData.engine, songData.sourceFolder);
 			var ownershipError:Null<String> = Reflect.field(destinationPlan, 'error');
 			var wasOwnerQualified = Reflect.field(destinationPlan, 'qualified') == true;
 			if (Reflect.field(destinationPlan, 'visualOnly') == true) {
@@ -11802,6 +11805,30 @@ class ModuleFunctions {
 		return result;
 	}
 
+
+	/** Retain referenced Psych song scopes, including folders containing only scripts. */
+	static function mergePsychSongCompanions(sourceData:String, sourceRoot:String, ownerRoot:String,
+		result:ImportAssetMergeResult, skipPaths:Map<String,Bool>):Void {
+		if (sourceData == null || !FileSystem.isDirectory(sourceData)) return;
+		var dataRoot = Path.directory(sourceData);
+		var seen:Map<String,Bool> = [];
+		for (entry in ImportDirectoryListing.normalize(FileSystem.readDirectory(sourceData))) {
+			if (importWorkCancelled()) return;
+			if (!StringTools.endsWith(entry.toLowerCase(), '.json')) continue;
+			var chart = readSongChart(Path.join([sourceData,entry]));
+			if (chart == null || chart.song == null) continue;
+			var name = PsychSongNameCompat.format(Reflect.field(chart.song, 'song'));
+			if (!validModuleName(name) || seen.exists(name)) continue;
+			seen.set(name,true);
+			var directory = findChildDirectory(dataRoot,name);
+			if (directory == null) continue;
+			if (!importPathIsWithin(directory,sourceRoot)) {
+				result.failed++; continue;
+			}
+			mergeTreeNonOverwriting(directory,Path.join([ownerRoot,'data',name]),0,result,skipPaths);
+		}
+	}
+
 	static function mergeSupportedAssets(sourceRoot:String, importedNames:Map<String, Bool>,
 		?importedSources:Map<String, SongImportSource>, ?scriptSourceRoot:String,
 		?scriptEngine:String, ?stagedCompatOwnerRoots:Map<String, Bool>,
@@ -11892,6 +11919,11 @@ class ModuleFunctions {
 				if (sourceInfo.data != null && importPathIsWithin(sourceInfo.data, sourceRoot))
 					mergeTreeNonOverwriting(sourceInfo.data,
 						Path.join(['assets', 'data', sourceInfo.destination]), 0, result, skipPaths);
+				if (scriptEngine == ImportEngine.PSYCH && sourceInfo.data != null
+					&& importPathIsWithin(sourceInfo.data, sourceRoot))
+					mergePsychSongCompanions(sourceInfo.data, sourceRoot,
+						CompatScriptManifest.destinationRoot(scriptSourceRoot == null ? sourceRoot : scriptSourceRoot, scriptEngine),
+						result, skipPaths);
 			}
 		}
 
@@ -13640,6 +13672,19 @@ class ModuleFunctions {
 			Reflect.setField(chartSong, 'song', targetFolder);
 	}
 
+
+	/** Variant audio and metadata are part of the same owned chart publication. */
+	static function importDifficultySongMedia(chartSong:Dynamic, songData:SongImport,
+		chartFile:String, targetFolder:String, songFolder:String):Void {
+		var plan = DifficultySongMedia.plan(songData.difficultyAudioRoot, songData.sourceFolder,
+			Reflect.field(chartSong, 'song'), chartFile, targetFolder);
+		if (plan == null) return;
+		for (file in (cast plan.files:Array<Dynamic>))
+			copyRequired(file.source, Path.join([songFolder,file.destination]), 'difficulty audio');
+		Reflect.setField(chartSong, 'vocalStems', plan.stems);
+		Reflect.setField(chartSong, 'needsVoices', (cast plan.stems:Array<Dynamic>).length > 0);
+	}
+
 	static public function importSong(songData:SongImport):Bool {
 		var validationError = validateSongImport(songData);
 		if (validationError != null) {
@@ -13779,6 +13824,7 @@ class ModuleFunctions {
 				// suffix (normal has no suffix).
 				var templateName = VSliceImporter.nativeFileName('chart', converted.difficulty);
 				var fileName = targetFolder + templateName.substr('chart'.length);
+				importDifficultySongMedia(coolSongSong, songData, fileName, targetFolder, songFolder);
 				var chartDestination = Path.join([dataFolder, fileName]);
 					var existingChartPath = existingImportChild(dataFolder, fileName);
 				var densityUsesExisting = FileSystem.exists(existingChartPath);
@@ -13887,6 +13933,7 @@ class ModuleFunctions {
 				}
 				coolSong.song = coolSongSong;
 				var fileName = importedChartFileName(targetFolder, chartPath, i, Reflect.field(songData, 'sourceFolder'));
+				importDifficultySongMedia(coolSongSong, songData, fileName, targetFolder, songFolder);
 				var chartDestination = Path.join([dataFolder, fileName]);
 				var existingChartPath = existingImportChild(dataFolder, fileName);
 				var densityUsesExisting = FileSystem.exists(existingChartPath);

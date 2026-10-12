@@ -135,6 +135,11 @@ class PsychOwnerPaths {
 		Reflect.setField(proxy, 'getSharedPath', function(?file:String = ''):String {
 			return getPath(owner, file, TEXT, 'shared', true, currentLevel);
 		});
+		Reflect.setField(proxy, 'modFolders', function(file:String):String {
+			var relative = cleanRelative(file);
+			var selected = ownerAsset(owner, relative, null, currentLevel);
+			return selected == null ? owner + '/' + relative : selected;
+		});
 		Reflect.setField(proxy, 'getPreloadPath', function(file:String):String {
 			return getPath(owner, file, TEXT, 'preload', true, currentLevel);
 		});

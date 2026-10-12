@@ -25,6 +25,13 @@ class BrowserLayoutTest(unittest.TestCase):
   check(FreeplayBrowserLayout.capacity(720)==11,"expected eleven rows with one expanded selection");
   check(FreeplayBrowserLayout.rowY(1,0)-FreeplayBrowserLayout.rowY(0,0)==FreeplayBrowserLayout.SELECTED_HEIGHT,"selected row not expanded");
   check(FreeplayBrowserLayout.rowY(2,0)-FreeplayBrowserLayout.rowY(1,0)==FreeplayBrowserLayout.ROW_HEIGHT,"unselected row not compact");
+  for (count in [1,6,7,12,18,30]) {
+   var expanded=FreeplayBrowserLayout.difficultyHeight(count);
+   check(expanded>=16+Math.ceil(count/FreeplayBrowserLayout.difficultyColumns(count))*40,"difficulty grid clipped");
+   var page=FreeplayBrowserLayout.page(entries,650,720,expanded);
+   check(page.indexOf(650)>=0,"expanded card lost selection");
+   if(expanded<500)check(FreeplayBrowserLayout.rowY(page.length,page.indexOf(650),expanded)<=720-84,"difficulty grid overlaps footer");
+  }
   var filtered=[3,33,503];
   check(FreeplayBrowserLayout.page(filtered,33,720).join(",")=="3,33,503","filtered indexes changed");
   check(FreeplayBrowserLayout.page(filtered,4,720).length==0,"hidden selection created rows");

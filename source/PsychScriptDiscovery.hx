@@ -128,13 +128,12 @@ class PsychScriptDiscovery {
 		collectImmediateScripts(scriptsRoot, GLOBAL, '', entries, seen);
 	}
 
-	static function collectSongScripts(contentRoot:String, songName:String, entries:Array<PsychScriptPlanEntry>,
-		seen:Map<String, Bool>):Void {
+	public static function songDirectory(contentRoot:String, songName:String):Null<String> {
 		if (songName == null || songName == '')
-			return;
+			return null;
 		var dataRoot = findDirectory(contentRoot, 'data');
 		if (dataRoot == null)
-			return;
+			return null;
 		var songRoot = findDirectory(dataRoot, songName);
 		if (songRoot == null) {
 			// A few Kade/FPS packages put charts below data/songs/<song>.
@@ -149,7 +148,12 @@ class PsychScriptDiscovery {
 			if (nested != null)
 				songRoot = findDirectory(nested, songName);
 		}
-		collectImmediateScripts(songRoot, SONG, songName, entries, seen);
+		return songRoot;
+	}
+
+	static function collectSongScripts(contentRoot:String, songName:String, entries:Array<PsychScriptPlanEntry>,
+		seen:Map<String, Bool>):Void {
+		collectImmediateScripts(songDirectory(contentRoot, songName), SONG, songName, entries, seen);
 	}
 
 	static function collectStageScripts(contentRoot:String, stageName:String, entries:Array<PsychScriptPlanEntry>,

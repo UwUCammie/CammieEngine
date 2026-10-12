@@ -51,6 +51,7 @@ class HoldLedgerFixture {
  public function clearAll():Array<Dynamic> {clearCalls++;return ['held-actor'];}
 }
 class Main {
+ function beginPsychCountdownReceptors():Void {}
  var psychMissingIntroRequest:Null<Int>;var psychMissingIntroHandoffUsed=false;
  var isStoryMode=false;var alwaysDoCutscenes=false;var startedCountdown=false;public var gateCallback:Void->Dynamic;
  var psychVideoHostDestroyed=false;var psychVideoRequestSerial=0;var psychVideoHandoffTimer:FlxTimer;

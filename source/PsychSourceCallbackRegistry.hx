@@ -64,6 +64,13 @@ class PsychSourceCallbackRegistry {
 		};
 	}
 
+	/** Snapshot of live Lua handles belonging to this source owner only. */
+	public function luaFacades(ownerRoot:String):Array<PsychLuaCallbackFacade> {
+		ensureAlive();
+		return [for (scope in scopes) if (scope.lua && scope.ownerRoot == ownerRoot
+			&& scope.interp.variables.get('__compatClosed') != true) scope.facade];
+	}
+
 	function wrap(scope:PsychCallbackScope, callback:Dynamic):Dynamic {
 		if (!Reflect.isFunction(callback)) throw '[psych-hscript] Callback must be a function';
 		return Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
@@ -91,6 +98,9 @@ class PsychSourceCallbackRegistry {
 /** Source parentLua facade bound to exactly one live translated Lua scope. */
 class PsychLuaCallbackFacade {
 	@:allow(PsychSourceCallbackRegistry) final scope:PsychCallbackScope;
+	/** Historical llua callers pass script.lua back to Lua_helper.add_callback. */
+	public var lua(get, never):PsychLuaCallbackFacade;
+	function get_lua():PsychLuaCallbackFacade return this;
 	public var scriptName(get, never):String;
 	function get_scriptName():String return Std.string(scope.interp.variables.get('__compatDiagnosticSource'));
 	public var closed(get, never):Bool;

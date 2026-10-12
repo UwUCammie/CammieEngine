@@ -42,7 +42,7 @@ class Main {
   if (ImportSongOwnership.conflict("song", b, "Psych Engine") == null) throw "mixed old import allowed";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_mixed_selected_owner_repairs_visuals_without_duplicate_chart(self):
@@ -78,7 +78,7 @@ class Main {
     throw "base-song guard was bypassed";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"),
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"),
                                      "-cp", tmp, "--run", "Main"], cwd=tmp,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -128,7 +128,7 @@ class Main {
     throw "valid provenance bypassed corrupt completed ownership";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_collision_gets_stable_owner_key_and_destination_only_provenance(self):
@@ -197,7 +197,7 @@ class Main {
     throw "Nested content pack reused the executable's owner-qualified song key";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_pristine_collision_destination_records_owner_before_manifest_guard(self):
@@ -246,7 +246,7 @@ class Main {
     throw "completed owner-qualified destination lost its ownership";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         module = (ROOT / "source/ModuleFunctions.hx").read_text()
@@ -309,7 +309,7 @@ class Main {
     throw "nested Psych pack name";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_retained_source_label_is_exact_and_below_authored_metadata(self):
@@ -372,7 +372,7 @@ class Main {
  }
 }''', encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"],
                 cwd=tmp, capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -434,7 +434,7 @@ class Main {
  }
 }''', encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"],
                 cwd=tmp, capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -474,7 +474,7 @@ class Main {
     throw "moved package could not refresh its existing chart owner";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_unnamed_package_uses_user_label_as_movable_identity(self):
@@ -525,7 +525,7 @@ class Main {
   ImportSongOwnership.clearIdentityOverrides();
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_legacy_import_without_fingerprint_does_not_claim_moved_owner(self):
@@ -560,7 +560,7 @@ class Main {
     throw "failed legacy claim mutated the existing owner manifest";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_project_title_reconnects_and_duplicate_title_owners_fail_closed(self):
@@ -631,7 +631,7 @@ class Main {
     throw "duplicate title chose one existing owner instead of failing closed";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_second_package_with_same_title_gets_separate_owner_by_chart_audio_fingerprint(self):
@@ -698,7 +698,7 @@ class Main {
     throw "collision planning modified the first package's imported files";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_generic_pack_template_uses_parent_folder_and_keeps_package_identity(self):
@@ -730,7 +730,7 @@ class Main {
  }
 }''', encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"],
                 cwd=tmp, capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -775,7 +775,7 @@ class Main {
  }
 }''', encoding="utf-8", newline='\n')
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"],
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"],
                 cwd=tmp, capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -809,5 +809,5 @@ class Main {
     throw "ambiguous identity selected a foreign imported namespace";
  }
 }''', newline='\n')
-            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", str(ROOT / ".haxelib/tjson/1,4,0"), "-cp", tmp, "--run", "Main"], cwd=tmp, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

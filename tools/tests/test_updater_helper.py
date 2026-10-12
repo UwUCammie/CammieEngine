@@ -144,6 +144,9 @@ class UpdaterHelperTest(unittest.TestCase):
         (install_root / "RELEASE_TAG").write_text("v0.0.1-alpha.5\n", newline='\n')
         (install_root / "assets/data").mkdir(parents=True)
         (install_root / "assets/data/options.json").write_text("user-settings", newline='\n')
+        (install_root / "assets/data/official.txt").write_text("old-official")
+        (install_root / "assets/data/customized.txt").write_text("user-customized")
+
         (install_root / "assets/imported_mods/user").mkdir(parents=True)
         (install_root / "assets/imported_mods/user/chart.json").write_text("imported-chart", newline='\n')
         (install_root / "import-cache/snapshot/source").mkdir(parents=True)
@@ -163,6 +166,12 @@ class UpdaterHelperTest(unittest.TestCase):
             package.writestr(PREFIX + "assets/data/engine-code.txt", "new-engine-asset")
             package.writestr(PREFIX + "Templates/funkin.otf", b"same-font")
             package.writestr(PREFIX + "assets/imported_mods/user/chart.json", "release-chart")
+            package.writestr(PREFIX + "assets/data/official.txt", "new-official")
+            package.writestr(PREFIX + "assets/data/customized.txt", "new-default")
+            package.writestr(PREFIX + "BUNDLED_ASSETS.json", json.dumps({"version": 1, "files": {
+                "assets/data/official.txt": [hashlib.sha256(b"old-official").hexdigest()],
+                "assets/data/customized.txt": [hashlib.sha256(b"old-default").hexdigest()],
+            }}))
             package.writestr(PREFIX + "RELEASE_TAG", tag + "\n")
 
         digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
@@ -196,6 +205,9 @@ class UpdaterHelperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((install_root / "Templates/funkin.otf").stat().st_mtime_ns,
                          self._identical_font_time, "an identical installed font was unnecessarily replaced")
+        self.assertEqual((install_root / "assets/data/official.txt").read_text(),
+                         "new-official" if mode == "success" else "old-official")
+        self.assertEqual((install_root / "assets/data/customized.txt").read_text(), "user-customized")
         return install_root
 
     def test_streaming_verified_update_preserves_user_content_and_replaces_helper(self):

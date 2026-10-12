@@ -22,7 +22,7 @@ class Main {
   check(legacy.status == ImportRevision.UNKNOWN, "legacy app version was mistaken for a compatibility receipt");
 
   var current = ImportRevision.current("psychengine", "0.0.8");
-  check(current.engineRevision == 12
+  check(current.engineRevision == 13
    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:8},
     "Psych Engine").status == ImportRevision.OUTDATED,
    "older Psych receipts did not request source-profile republishing");
@@ -32,7 +32,7 @@ class Main {
     "V-Slice named rating metadata did not schedule retained-source refresh");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,
    "explicit common and engine revisions were not recorded");
-  check(current.commonRevision == 4
+  check(current.commonRevision == 5
    && ImportRevision.assess({schemaVersion:1, commonRevision:2, sourceEngine:"Psych Engine",
     engineRevision:1}, "Psych Engine").status == ImportRevision.OUTDATED,
    "shared density analysis changes do not trigger retained-source refresh");

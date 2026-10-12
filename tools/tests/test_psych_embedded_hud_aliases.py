@@ -26,6 +26,7 @@ class PsychEmbeddedHudAliasesTest(unittest.TestCase):
 class PsychHscriptSourceBindings {
  final host:Host;final interp:Interp;final origin:String;final callbackBridge:Dynamic=null;final parentLua:Dynamic=null;
  public function new(host:Host,interp:Interp,origin:String,bridge:Dynamic){this.host=host;this.interp=interp;this.origin=origin;}
+ function installHistoricalLuaCallbacks():Void {}
  __INSTALL__
  static function sourceBuildTarget():String return 'fixture';
  static function setSharedVar(m:Map<String,Dynamic>,n:String,v:Dynamic):Dynamic {m.set(n,v);return v;}

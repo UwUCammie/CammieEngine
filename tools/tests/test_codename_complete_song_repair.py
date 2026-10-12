@@ -38,7 +38,7 @@ import sys.FileSystem;
 import sys.io.File;
 using StringTools;
 
-typedef SongImport = {var name:String; var sourceRoot:String; var engine:String;
+typedef SongImport = {@:optional var sourceFolder:String;var name:String; var sourceRoot:String; var engine:String;
  @:optional var display:String; @:optional var diagnostics:Array<String>;
  @:optional var destinationFolder:String; @:optional var sourceDuplicate:Bool;
  @:optional var sourceModName:String; @:optional var importSourceInfo:SongImportSource;}

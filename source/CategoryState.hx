@@ -158,13 +158,14 @@ class CategoryState extends MusicBeatState
 		// deletes. nav keys that produce a character type instead of moving on the
 		// frame they're typed so searching doesn't fight the controls
 		var typedChar:String = "";
-		if (FlxG.keys.justPressed.BACKSPACE) {
+		if (FlxG.keys.justPressed.BACKSPACE && !MenuSearchInput.reserved(FlxKey.BACKSPACE)) {
 			if (searchString.length > 0) {
 				searchString = searchString.substr(0, searchString.length - 1);
 				applySearchFilter();
 			}
 		} else if (FlxG.keys.justPressed.ANY) {
-			var key:Int = FlxG.keys.firstJustPressed();
+			var searchKey = FlxG.keys.firstJustPressed();
+			var key:Int = MenuSearchInput.reserved(searchKey) ? -1 : searchKey;
 			var A:Int = FlxKey.A;
 			var Z:Int = FlxKey.Z;
 			var ZERO:Int = FlxKey.ZERO;

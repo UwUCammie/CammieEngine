@@ -25,7 +25,7 @@ typedef ImportRevisionAssessment = {
 /** Shared import compatibility revisions persisted with source receipts. */
 class ImportRevision {
 	public static inline var SCHEMA_VERSION:Int = 1;
-	public static inline var COMMON_REVISION:Int = 4;
+	public static inline var COMMON_REVISION:Int = 5;
 	public static inline var UNKNOWN:String = "unknown";
 	public static inline var CURRENT:String = "current";
 	public static inline var OUTDATED:String = "outdated";
@@ -35,7 +35,7 @@ class ImportRevision {
 		"V-Slice" => 3,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
-		"Psych Engine" => 12,
+		"Psych Engine" => 13,
 		"Nightmare Vision" => 16,
 		"FPS Plus" => 2,
 		"Codename Engine" => 1,

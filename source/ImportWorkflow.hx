@@ -2906,7 +2906,7 @@ class ImportScanJob {
 				if (!sourceDuplicate) {
 					var existingDataFolder = caseInsensitivePath(Path.join(['assets', 'data', storageKey]));
 					var destinationPlan = ImportSongOwnership.planDestination(existingDataFolder, storageKey,
-						sourceRoot, field(songData, 'engine', ''));
+						sourceRoot, field(songData, 'engine', ''), sourceFolder);
 					destinationError = Reflect.field(destinationPlan, 'error');
 					if (destinationError != null) {
 						duplicate = true;

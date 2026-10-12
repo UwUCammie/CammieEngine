@@ -7,6 +7,7 @@ class PsychStateClassBindings {
 		return host.nightmareVisionLegacyFieldCameras ? host.psychScriptVariables : MusicBeatState.getVariables();
 	}
 	public static function installScope(scope:SourceNativeClassScope):Void {
+		scope.bindInstanceProperty(PlayState, 'opponentStrums', function(state:PlayState):Dynamic return state.enemyStrums);
 		scope.bindInstanceProperty(MusicBeatState, 'controls', function(object:MusicBeatState):Dynamic
 			return object.psychSourceTiming ? PsychControlsCompat.instance : Reflect.getProperty(object, 'controls'));
 		if (!scope.hasRuntimeClass('backend.MusicBeatState')) {

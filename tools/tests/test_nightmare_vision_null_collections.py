@@ -136,6 +136,8 @@ class Main {
     if (attempts == 1) return nullCollection()[markIndex()];
     return 42;
    }
+   function iterateNull() { for (value in nullCollection()) markRhs(); }
+   function iterateNullPairs() { for (key => value in nullCollection()) markRhs(); }
    function good() return 17;
   ', function(scriptInterp:NightmareVisionScriptInterp):Void {
    scriptInterp.variables.set('nullCollection', function():Dynamic {
@@ -155,6 +157,9 @@ class Main {
   expectNullFailure(group, errors, callbackOrder, 'compoundNull', 'collection,index');
   expectNullFailure(group, errors, callbackOrder, 'prefixNull', 'collection,index');
   expectNullFailure(group, errors, callbackOrder, 'postfixNull', 'collection,index');
+
+  expectNullFailure(group, errors, callbackOrder, 'iterateNull', 'collection');
+  expectNullFailure(group, errors, callbackOrder, 'iterateNullPairs', 'collection');
 
   callbackOrder.resize(0);
   var beforeRecovery = errors.length;

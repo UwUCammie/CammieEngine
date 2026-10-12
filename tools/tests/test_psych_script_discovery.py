@@ -114,7 +114,10 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
             stages.mkdir()
             (stages / "scene.lua").write_text("function onCreate() end", newline='\n')
             # Same real files under two content roots must still run once.
-            (donor / "shared").symlink_to(donor, target_is_directory=True)
+            try:
+                (donor / "shared").symlink_to(donor, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"symlink fixture unavailable: {error}")
             runtime = root / "runtime"
             runtime.mkdir()
             mount = runtime / "assets"

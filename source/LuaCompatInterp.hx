@@ -96,6 +96,30 @@ class LuaCompatInterp extends Interp {
 		variables.set('luaIpairsKey', luaIpairsKey);
 		variables.set('luaIpairsValue', luaIpairsValue);
 		variables.set('luaSequenceLength', luaSequenceLength);
+		variables.set('luaTableInsert', Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			if (args.length != 2 && args.length != 3) throw 'table.insert expects two or three arguments';
+			var table = args[0];
+			if (table == null || (!luaOwned(table) && !Std.isOfType(table, Array)))
+				throw 'table.insert expects a table';
+			var length = luaSequenceLength(table);
+			var position:Dynamic = args.length == 2 ? length + 1 : args[1];
+			if ((!Std.isOfType(position, Int) && !Std.isOfType(position, Float))
+				|| !Math.isFinite(position) || position != Std.int(position) || position < 1 || position > length + 1)
+				throw 'table.insert position is out of bounds';
+			var index:Int = Std.int(position);
+			var value = args[args.length - 1];
+			if (Std.isOfType(table, Array) && !luaOwned(table))
+				(cast table:Array<Dynamic>).insert(index - 1, value);
+			else {
+				var cursor = length;
+				while (cursor >= index) {
+					writeIndex(table, cursor + 1, readIndex(table, cursor));
+					cursor--;
+				}
+				writeIndex(table, index, value);
+			}
+			return null;
+		}));
 		variables.set('luaTableClear', function(table:Dynamic):Void {
 			if (luaOwned(table))
 				clearOwned(table);

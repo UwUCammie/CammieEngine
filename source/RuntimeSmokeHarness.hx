@@ -2674,6 +2674,22 @@ class RuntimeSmokeHarness {
 		// that never starts an animation. This runs only with smoke frame stats.
 		var visualState = PlayState.instance;
 		#if sys
+		if (Sys.getEnv('CAMMIE_SMOKE_DIALOGUE_ADVANCE') == '1' && playStateReady && visualState != null
+			&& visualState.inCutscene && visualState.doof != null && visualState.doof.exists
+			&& visualState.members.indexOf(visualState.doof) >= 0)
+			simulateAccept();
+		if (Sys.getEnv('CAMMIE_SMOKE_NOTE_VISIBILITY') == '1' && playStateReady && visualState != null) {
+			var samples:Array<Dynamic> = [];
+			if (visualState.notes != null) for (note in visualState.notes.members)
+				if (note != null && note.exists && samples.length < 32)
+					samples.push({player:note.mustPress, lane:note.noteData, alpha:note.alpha,
+						visible:note.visible, x:note.x, y:note.y, time:note.strumTime, copyAlpha:note.copyAlpha, mode:note.sourceTimingMode});
+			var receptors:Array<Dynamic> = [];
+			for (line in [visualState.enemyStrums, visualState.playerStrums]) if (line != null)
+				for (strum in line.members) if (strum != null)
+					receptors.push({lane:strum.ID, alpha:strum.alpha, visible:strum.visible, x:strum.x});
+			emit('note_visibility_sample', {songPosition:Conductor.songPosition, notes:samples, receptors:receptors});
+		}
 		if (Sys.getEnv('CAMMIE_NV_EFFECT_PROFILE') == '1' && playStateReady && visualState != null)
 			emit('nv_effect_profile', RuntimeSmokeNVEffects.snapshot(visualState));
 		#end

@@ -108,8 +108,8 @@ class PsychNoteTypeAdapterTest(unittest.TestCase):
         helper_end = play_state.index("\n\tprivate function generateSong", helper_start)
         singer_helper = play_state[helper_start:helper_end]
         self.assertIn("note != null && note.forceGfSing && gf != null", singer_helper)
-        self.assertIn("(!playerOne || nightmareVisionScripts != null)", singer_helper,
-                      "GF Sing redirects player notes only in NMV, preserving classic Psych player ownership")
+        self.assertIn("(!playerOne || nightmareVisionScripts != null || sourceNoteTimingMode() == 1)", singer_helper,
+                      "source GF Sing redirects the performer while preserving player input ownership")
         self.assertIn("return playerOne ? boyfriend : getOpponentSinger();", singer_helper,
                       "ordinary player notes remain BF-owned and opponent GF Sing remains supported")
         self.assertIn("noteSingerForSide(note, playerOne)", play_state)

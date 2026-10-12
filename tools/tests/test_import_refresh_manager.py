@@ -2800,7 +2800,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual((self.install / "assets/songs/alpha/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertEqual((self.install / "assets/songs/beta/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertTrue((self.install / "assets/data/beta/beta.json").is_file())
-        self.assertTrue(any(stamp["commonRevision"] == 4 for stamp in refreshed["records"][0]["revisions"]))
+        self.assertTrue(any(stamp["commonRevision"] == 5 for stamp in refreshed["records"][0]["revisions"]))
         self.assertFalse(donor.exists())
 
     def test_regenerate_uses_snapshot_root_for_package_family_catalog_apis(self):
@@ -2841,7 +2841,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         shutil_rmtree(donor)
         stale_revisions = [dict(stamp) for stamp in record["revisions"]]
         self.assertEqual({stamp["sourceEngine"] for stamp in stale_revisions}, {"Psych Engine"})
-        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {12})
+        self.assertEqual({stamp["engineRevision"] for stamp in stale_revisions}, {13})
         for stamp in stale_revisions:
             stamp["engineRevision"] = 9
         self.mark_record_stale(record, common_revision=None,
@@ -2854,7 +2854,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertFalse(result["status"]["blocked"], result)
         self.assertTrue(result["status"]["changed"], result)
         self.assertEqual(result["generation"], 1)
-        self.assertTrue(any(stamp["engineRevision"] == 12
+        self.assertTrue(any(stamp["engineRevision"] == 13
                             for stamp in result["records"][0]["revisions"]))
         self.assertTrue((self.install / "assets/songs/auto-new/Inst.ogg").is_file())
         self.assertFalse(donor.exists())

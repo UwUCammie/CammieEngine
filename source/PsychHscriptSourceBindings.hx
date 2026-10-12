@@ -45,6 +45,7 @@ class PsychHscriptSourceBindings {
 			if (paths != null && Reflect.isFunction(Reflect.field(paths, '__sourceOwnerRoot')))
 				host.bindSourceBarClass((cast interp:SourceIrisBridge).evaluator, false, paths);
 		}
+		installHistoricalLuaCallbacks();
 		variables.set('Countdown', PsychBaseStageCountdown);
 		variables.set('Rating', PsychRatingCompat);
 		variables.set('PsychCamera', PsychHscriptCamera);
@@ -84,6 +85,40 @@ class PsychHscriptSourceBindings {
 		#if (!flash && sys)
 		variables.set('ErrorHandledRuntimeShader', PsychHscriptErrorHandledRuntimeShader);
 		#end
+	}
+
+	/** Older Psych HScript registers callbacks through llua handles. Reuse the
+	 * owner-scoped registry used by createCallback instead of a second runtime. */
+	function installHistoricalLuaCallbacks():Void {
+		if (!Std.isOfType(interp, SourceIrisBridge)) return;
+		var evaluator = (cast interp:SourceIrisBridge).evaluator;
+		var root = host.compatPsychOwnerForScript(origin);
+		if (root == null) return;
+		var helper:Dynamic = {add_callback:function(target:Dynamic, name:String, callback:Dynamic):Void {
+			registerLocal(callbackBridge, origin, name, callback, target);
+		}};
+		interp.variables.set('Lua_helper', helper);
+		evaluator.bindImport('llua.Lua_helper', helper);
+		interp.variables.set('FunkinLua', PsychSourceCallbackRegistry.PsychLuaCallbackFacade);
+		evaluator.bindImport('FunkinLua', PsychSourceCallbackRegistry.PsychLuaCallbackFacade);
+		evaluator.bindImport('psychlua.FunkinLua', PsychSourceCallbackRegistry.PsychLuaCallbackFacade);
+		evaluator.bindConstructorFactory(PsychSourceCallbackRegistry.PsychLuaCallbackFacade, function(args) {
+			var path = args.length == 0 ? '' : Std.string(args[0]);
+			host.compatAddLuaScript(path, false, origin, false);
+			for (facade in host.psychSourceCallbacks.luaFacades(root))
+				if (PsychRuntimeBindings.matches(facade.scriptName, path)) return facade;
+			throw '[psych-hscript] Unable to load Lua script: ' + path;
+		}, null);
+		var scope = evaluator.sourceClassScope();
+		scope.bindInstanceProperty(PlayState, 'luaArray', function(state:PlayState):Dynamic {
+			return state == host ? host.psychSourceCallbacks.luaFacades(root) : [];
+		});
+		scope.bindInstanceProperty(PlayState, 'callOnLuas', function(state:PlayState):Dynamic {
+			return function(name:String, ?args:Array<Dynamic>, ignoreStops:Bool = false):Dynamic {
+				return state == host ? PsychRuntimeBindings.dispatch(host, name,
+					args == null ? [] : args, 'Luas', ignoreStops) : ScriptCallbackResult.CONTINUE;
+			};
+		});
 	}
 
 	static function invokeBridge(bridge:Dynamic, methodName:String, args:Array<Dynamic>):Dynamic {

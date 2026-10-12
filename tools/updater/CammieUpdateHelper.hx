@@ -504,8 +504,44 @@ class CammieUpdateHelper {
 		return payloadRoot;
 	}
 
+	static var bundledAssetBaselines:Map<String, Array<String>> = new Map();
+
+	static function loadBundledAssetBaselines(payload:String):Void {
+		bundledAssetBaselines.clear();
+		var manifest = Path.join([payload, "BUNDLED_ASSETS.json"]);
+		if (!FileSystem.exists(manifest)) return; // Older packages retain blanket protection.
+		var data:Dynamic = haxe.Json.parse(File.getContent(manifest));
+		if (data == null || data.version != 1 || data.files == null)
+			throw "The bundled asset ownership manifest is invalid.";
+		for (key in Reflect.fields(data.files)) {
+			var safe = safeEntryPath(PAYLOAD_ROOT + "/" + key);
+			if (safe == null || safe.directory || key != key.toLowerCase()
+				|| !StringTools.startsWith(key, "assets/") || key == "assets/data/options.json"
+				|| (StringTools.startsWith(key, "assets/imported_mods/")
+					&& !StringTools.startsWith(key, "assets/imported_mods/bundled-vslice-results/")))
+				throw "The bundled asset ownership manifest contains an invalid path.";
+			var values:Dynamic = Reflect.field(data.files, key);
+			if (!Std.isOfType(values, Array)) throw "Invalid bundled asset baseline list.";
+			var hashes:Array<String> = [];
+			for (value in (cast values:Array<Dynamic>)) {
+				if (!Std.isOfType(value, String) || !~/^[0-9a-f]{64}$/.match(value))
+					throw "Invalid bundled asset baseline digest.";
+				hashes.push(value);
+			}
+			bundledAssetBaselines.set(key, hashes);
+		}
+	}
+
+	/** Only known official bytes may replace an existing protected asset. */
+	static function isUnmodifiedBundledAsset(relative:String, installed:String):Bool {
+		var baselines = bundledAssetBaselines.get(relative.toLowerCase());
+		return baselines != null && baselines.length > 0 && !FileSystem.isDirectory(installed)
+			&& baselines.indexOf(sha256File(installed)) >= 0;
+	}
+
 	static function copyReleaseTree(source:String, destination:String, relative:String, backupRoot:String,
 		backupIndex:Map<String, String>, backedUp:Array<String>, createdFiles:Array<String>, progress:{count:Int, failAfter:Int}):Void {
+		if (relative == "") loadBundledAssetBaselines(source);
 		createDirectory(destination);
 		var names = FileSystem.readDirectory(source);
 		names.sort(Reflect.compare);
@@ -520,7 +556,8 @@ class CammieUpdateHelper {
 				copyReleaseTree(sourcePath, targetPath, relativePath, backupRoot, backupIndex, backedUp, createdFiles, progress);
 			} else {
 				progressFile = relativePath;
-				if (isProtectedRelative(relativePath) && FileSystem.exists(targetPath)) {
+				if (isProtectedRelative(relativePath) && FileSystem.exists(targetPath)
+					&& !isUnmodifiedBundledAsset(relativePath, targetPath)) {
 					progressFiles++;
 					reportProgress(progressFiles, installTotal);
 					continue;
