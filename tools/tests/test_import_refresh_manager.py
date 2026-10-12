@@ -2800,7 +2800,7 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual((self.install / "assets/songs/alpha/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertEqual((self.install / "assets/songs/beta/Inst.ogg").read_text(), "v2-donor-a:retained:donor-a")
         self.assertTrue((self.install / "assets/data/beta/beta.json").is_file())
-        self.assertTrue(any(stamp["commonRevision"] == 3 for stamp in refreshed["records"][0]["revisions"]))
+        self.assertTrue(any(stamp["commonRevision"] == 4 for stamp in refreshed["records"][0]["revisions"]))
         self.assertFalse(donor.exists())
 
     def test_regenerate_uses_snapshot_root_for_package_family_catalog_apis(self):

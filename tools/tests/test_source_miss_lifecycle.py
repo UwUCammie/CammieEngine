@@ -445,7 +445,7 @@ class PlayState {
  public var notes:NoteGroup = new NoteGroup();
  public var sourceScoreNightmare:Bool;
  public var sourceScoreOwner:Bool = true;
- public var combo(default,set):Int = 0;
+ public var combo(default,set):Int = 0; public var performanceMaxCombo:Int=0;
  public var songScore(default,set):Int = 0;
  public var misses(default,set):Int = 0;
  public var totalPlayed(default,set):Int = 0;

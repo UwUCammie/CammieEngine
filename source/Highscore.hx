@@ -18,6 +18,7 @@ enum abstract FCLevel(Int) from Int to Int {
 	@:op(A == B) static function _(_, _):Bool;
 }
 class Highscore {
+	public static var songPerformance:Map<String, PlayPerformance.PlayPerformanceRecord> = [];
 	public static var songScores:Map<String, Int> = new Map();
 	public static var songAccuracy:Map<String, Float> = new Map();
 	public static var songCompletions:Map<String, Bool> = new Map();
@@ -64,7 +65,7 @@ class Highscore {
 		return storage;
 	}
 
-	public static function saveScore(song:String, score:Int = 0, ?diff:Int = 0, ?accuracy:Float = 0, ?rating:FCLevel, ?judge:Jury):Void {
+	public static function saveScore(song:String, score:Int = 0, ?diff:Int = 0, ?accuracy:Float = 0, ?rating:FCLevel, ?judge:Jury, ?performance:PlayPerformance.PlayPerformanceRecord):Void {
 		// we don't need the current options or modifiers as we can assume they haven't changed
 		var daSong:String = formatSong(song, diff, "best-score");
 		var recentSong:String = formatSong(song, diff, "recent");
@@ -74,6 +75,7 @@ class Highscore {
 		var curOptions = OptionsHandler.options;
 		var modifierDynamic = ModifierState.namedModifiers;
 		setScore(recentSong, score);
+			setPerformance(recentSong, performance);
 		setAccuracy(recentSong, accuracy);
 		setFCLevel(recentSong, rating);
 		setJudge(recentSong, judge);
@@ -82,6 +84,7 @@ class Highscore {
 		if (songScores.exists(daSong)) {
 			if (songScores.get(daSong) < score) {
 				setScore(daSong, score);
+			setPerformance(daSong, performance);
 				setAccuracy(daSong, accuracy);
 				setFCLevel(daSong, rating);
 				setJudge(daSong,judge);
@@ -91,6 +94,7 @@ class Highscore {
 			}
 		} else {
 			setScore(daSong, score);
+			setPerformance(daSong, performance);
 			setAccuracy(daSong, accuracy);
 			setFCLevel(daSong, rating);
 			setJudge(daSong, judge);
@@ -101,6 +105,7 @@ class Highscore {
 		if (songAccuracy.exists(bestAccuracy)) {
 			if (songAccuracy.get(bestAccuracy) < accuracy) {
 				setScore(bestAccuracy, score);
+			setPerformance(bestAccuracy, performance);
 				setAccuracy(bestAccuracy, accuracy);
 				setFCLevel(bestAccuracy, rating);
 				setJudge(bestAccuracy, judge);
@@ -110,6 +115,7 @@ class Highscore {
 			}
 		} else {
 			setScore(bestAccuracy, score);
+			setPerformance(bestAccuracy, performance);
 			setAccuracy(bestAccuracy, accuracy);
 			setFCLevel(bestAccuracy, rating);
 			setJudge(bestAccuracy, judge);
@@ -121,6 +127,7 @@ class Highscore {
 		if (songFCLevels.exists(bestFC)) {
 			if (songFCLevels.get(bestFC) <= rating) {
 				setScore(bestFC, score);
+			setPerformance(bestFC, performance);
 				setAccuracy(bestFC, accuracy);
 				setFCLevel(bestFC, rating);
 				setJudge(bestFC, judge);
@@ -131,6 +138,7 @@ class Highscore {
 			}
 		} else {
 			setScore(bestFC, score);
+			setPerformance(bestFC, performance);
 			setAccuracy(bestFC, accuracy);
 			setFCLevel(bestFC, rating);
 			setJudge(bestFC, judge);
@@ -160,6 +168,7 @@ class Highscore {
 		for (saveCode in saveCategories) {
 			var daSong:String = formatSong(song, diff, saveCode);
 			songScores.remove(daSong);
+			songPerformance.remove(daSong);
 			songAccuracy.remove(daSong);
 			songCompletions.remove(daSong);
 			songFCLevels.remove(daSong);
@@ -215,7 +224,14 @@ class Highscore {
 		//FlxG.save.data.songModifiersUsed = songModifiersUsed;
 		//FlxG.save.flush();
 	}
+	static function setPerformance(key:String, value:PlayPerformance.PlayPerformanceRecord):Void {
+		var valid = PlayPerformance.read(value);
+		if (valid == null) songPerformance.remove(key); else songPerformance.set(key, valid);
+	}
+	public static function peekPerformance(song:String, diff:Int, category:String = 'best-score'):Null<PlayPerformance.PlayPerformanceRecord>
+		return PlayPerformance.read(songPerformance.get(formatSong(song, diff, category)));
 	static function songFlush():Void {
+		FlxG.save.data.songPerformance = songPerformance;
 		FlxG.save.data.songScores = songScores;
 		FlxG.save.data.songCompletions = songCompletions;
 		FlxG.save.data.songAccuracy = songAccuracy;
@@ -314,6 +330,7 @@ class Highscore {
 	}
 
 	public static function load():Void {
+		songPerformance = FlxG.save.data.songPerformance == null ? [] : FlxG.save.data.songPerformance;
 		if (FlxG.save.data.songScores != null)
 			songScores = FlxG.save.data.songScores;
 

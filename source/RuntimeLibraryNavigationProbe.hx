@@ -233,7 +233,7 @@ class RuntimeLibraryNavigationProbe {
 				menu.searchString = ''; menu.applySearchFilter();
 				check(menu.anyVisible() && menu.diffText.text != 'NO MATCHING SONGS', 'Cleared search retained empty difficulty label');
 				var badge = LibraryPackageLabel.badge(owner);
-				check(menu.browserSource.text.indexOf(badge) >= 0, 'Selected details lost package badge');
+				check(menu.browserSource.text.indexOf(badge) < 0, 'Selected details exposed a raw package badge');
 				menu.searchString = badge; menu.applySearchFilter();
 				check(menu.anyVisible(), 'Package badge query hid its own category');
 				for (i in 0...menu.songs.length) if (menu.songMatches(i))

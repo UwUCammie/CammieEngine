@@ -56,6 +56,7 @@ class Main {
 }"""
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
             (Path(temp)/'Main.hx').write_text(body)
+            (Path(temp)/'ChartDensityCache.hx').write_text('class ChartDensityCache {public static function read(a:String,b:String):Null<ChartDifficultyAnalysis.ChartDensity> return null;}')
             # FreeplaySongOrder needs only the existing test asset bridge for legacy title resolution.
             (Path(temp)/'FNFAssets.hx').write_text('class FNFAssets {public static function exists(p:String):Bool return false; public static function getText(p:String):String return "";}')
             (Path(temp)/'CoolUtil.hx').write_text('class CoolUtil {public static function parseJson(s:String):Dynamic return haxe.Json.parse(s);}')
@@ -134,6 +135,7 @@ class Main {
 }""".replace('METHOD',method)
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
             (Path(temp)/'Main.hx').write_text(main)
+            (Path(temp)/'ChartDensityCache.hx').write_text('class ChartDensityCache {public static function read(a:String,b:String):Null<ChartDifficultyAnalysis.ChartDensity> return null;}')
             # Expose the in-fixture shared save facade to the extracted method.
             main=main.replace('class UserLibrary {','class FixtureLibrary {').replace('UserLibrary.', 'FixtureLibrary.')
             (Path(temp)/'Main.hx').write_text(main)

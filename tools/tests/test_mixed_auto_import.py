@@ -337,6 +337,12 @@ class Main {{
         File.saveContent('assets/data/kade-song/compatScripts.json', CompatScriptManifest.stringify(
           CompatScriptManifest.create(song.sourceRoot, song.engine)));
       if (!ModuleFunctions.importSong(song)) fail(root.engine + ' failed to import ' + song.name);
+      var densityPath = Path.join(['assets','data',song.name.toLowerCase(),'chartDensity.json']);
+      if (!FileSystem.exists(densityPath)) fail('No shared chart density metadata');
+      var densities:Dynamic = haxe.Json.parse(File.getContent(densityPath));
+      if (Reflect.fields(densities).length == 0) fail('Empty chart density table');
+      for (difficulty in Reflect.fields(densities))
+        if (ChartDifficultyAnalysis.read(Reflect.field(densities,difficulty)) == null) fail('Invalid shared density record');
       var target = song.name.toLowerCase();
       if (!FileSystem.exists(Path.join(['assets', 'data', target, target + '.json'])))
         fail(root.engine + ' did not write a native chart');
@@ -627,6 +633,8 @@ class DifficultyManager {
   }
 }
 """, newline='\n')
+            for dependency in ("ChartDifficultyAnalysis.hx", "ChartNoteOwnership.hx", "ImportRevision.hx", "NoteTypeCompat.hx"):
+                (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline="\n")
             (temp_path / "Main.hx").write_text(with_kade_parser(fixture), newline='\n')
             parent = temp_path / "mixed-parent"
             self._make_legacy_root(parent / "psych", "psych-song", direct=True,

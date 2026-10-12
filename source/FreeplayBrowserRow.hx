@@ -20,9 +20,9 @@ class FreeplayBrowserRow extends Alphabet {
 		stripe = new FlxSprite().makeGraphic(5, 1, 0xFFFF66B7);
 		placeholder = new FlxText(14, 8, 48, '?', 22);
 		placeholder.setFormat('assets/fonts/vcr.ttf', 22, 0xFF8997AD, CENTER);
-		title = new FlxText(82, 5, rowWidth - 148, '', 22);
+		title = new FlxText(82, 5, rowWidth - 370, '', 22);
 		title.setFormat('assets/fonts/vcr.ttf', 22, 0xFFFFFFFF, LEFT); title.wordWrap = false;
-		favoriteTag = new FlxText(rowWidth - 56, 10, 50, 'FAV', 16);
+		favoriteTag = new FlxText(rowWidth - 50, 10, 50, 'FAV', 16);
 		favoriteTag.setFormat('assets/fonts/vcr.ttf', 16, 0xFFFFD166, CENTER);
 		divider = new FlxSprite().makeGraphic(rowWidth, 1, 0xFF80E3D0); divider.visible = false;
 		add(panel); add(divider); add(stripe); add(placeholder); add(title); add(favoriteTag);
@@ -35,7 +35,7 @@ class FreeplayBrowserRow extends Alphabet {
 			panel.scale.y = height; panel.updateHitbox(); panel.setPosition(x, y);
 			stripe.scale.y = height; stripe.updateHitbox(); stripe.setPosition(x, y);
 			title.size = selected ? 28 : 22;
-			title.text = FreeplayBrowserLayout.label(label.toUpperCase(), Std.int((rowWidth - 148) / (selected ? 17 : 14)));
+			title.text = FreeplayBrowserLayout.label(label.toUpperCase(), Std.int((rowWidth - 370) / (selected ? 17 : 14)));
 			title.setPosition(x + 82, y + (selected ? 12 : 7));
 			placeholder.y = y + (selected ? 25 : 6);
 			wasSelected = selected;

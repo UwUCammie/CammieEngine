@@ -57,6 +57,7 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
     var fcTxt:FlxText;
     var judgeTxt:FlxText;
     var displaying:String = "best";
+    var browser:Bool = false;
     var curSong:String = "tutorial";
     var displayTxt:FlxText;
     var curDiff:Int = 1;
@@ -79,6 +80,7 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         add(displayTxt);
     }   
     public function setBrowserSize(panelWidth:Int, panelHeight:Int):Void {
+        browser = true; displaying = "best-score";
         backpanel.makeGraphic(panelWidth, panelHeight, 0xCC101622);
         scoreTxt.font = 'assets/fonts/vcr.ttf'; displayTxt.font = scoreTxt.font;
         scoreTxt.size = 18; scoreTxt.fieldWidth = panelWidth - 32;
@@ -107,6 +109,7 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
                 fcUse += "None";
         } 
         scoreTxt.text += '\n' + fcUse;
+        if (browser) scoreTxt.text += '\n' + PlayPerformance.label(Highscore.peekPerformance(song, diff, displaying));
         var sussyjudge = switch (cast (Highscore.getJudge(song, diff, displaying) : Judge.Jury)) {
             case Judge9:
                 "Judge JUSTICE";
@@ -119,7 +122,7 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         }
 		var songOptions = Highscore.getOptionsUsed(song, diff, displaying);
         var modifierUsed = Highscore.getModifiersUsed(song, diff, displaying);
-        if (displaying != 'best') {
+        if (displaying != 'best' && !browser) {
 			scoreTxt.text += '\n' + sussyjudge;
             // Purge references to ignore shitty timing :)
             /*
@@ -134,7 +137,7 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         }
             
        
-        displayTxt.text = displaying;
+        displayTxt.text = (browser ? 'Q / E: ' : '') + displaying;
      }
      public function changeDisplay(change:Int=0) {
          var sussyOption:DisplayOptions = cast (displaying : DisplayOptions);

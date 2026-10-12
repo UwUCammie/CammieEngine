@@ -108,6 +108,7 @@ class FreeplayState extends MusicBeatState {
 	var browserEmpty:FlxText;
 	var browserCompletion:FlxText;
 	var browserRating:FlxText;
+	var browserDensity:FlxText;
 	var browserMetric:FlxText;
 	var browserStarPanel:FlxSprite;
 	var sourceRows:Array<FlxText> = [];
@@ -1186,18 +1187,19 @@ class FreeplayState extends MusicBeatState {
 		browserCount = browserText(26, 66, FlxG.width * 0.6, '', 18, 0xFF9DB2CC);
 		browserGroup = browserText(26, 90, FlxG.width * 0.6, '', 16, 0xFF80E3D0);
 		browserDetail = browserText(detailX, 200, detailWidth, '', 24, 0xFFFFFFFF);
-		browserSource = browserText(detailX, 294, detailWidth, '', 16, 0xFF9DB2CC);
+		browserSource = browserText(detailX, 264, detailWidth, '', 16, 0xFF9DB2CC);
 		scoreText.setPosition(detailX, 392); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
-		scoreText.alignment = LEFT;
-		diffText.setPosition(detailX, 422); diffText.size = 22; diffText.fieldWidth = detailWidth;
-		browserRating = browserText(detailX, 452, detailWidth, '', 16, 0xFF9DB2CC);
-		browserMetric = browserText(detailX, 360, detailWidth, '', 16, 0xFF80E3D0);
+		scoreText.alignment = LEFT; scoreText.visible = false;
+		diffText.setPosition(detailX, 454); diffText.size = 22; diffText.fieldWidth = detailWidth;
+		browserRating = browserText(detailX, 314, detailWidth, '', 14, 0xFF9DB2CC);
+		browserDensity = browserText(detailX, 366, detailWidth, '', 14, 0xFF9DB2CC);
+		browserMetric = browserText(detailX, 338, detailWidth, '', 16, 0xFF80E3D0);
 		browserMetric.wordWrap = false;
-		if (infoPanel != null) { infoPanel.setPosition(detailX, 480); infoPanel.visible = false; }
+		if (infoPanel != null) { infoPanel.setPosition(detailX, 490); infoPanel.visible = false; }
 		// Detailed score cycling stays reachable; its compact panel uses the same score service.
-		if (infoPanel != null) infoPanel.setBrowserSize(Std.int(detailWidth), 100);
+		if (infoPanel != null) infoPanel.setBrowserSize(Std.int(detailWidth), 146);
 		qtooltip.visible = false; etooltip.visible = false;
-		browserCompletion = browserText(detailX, 584, detailWidth, 'COMPLETION BY DIFFICULTY', 16, 0xFF9DB2CC);
+		browserCompletion = browserText(detailX, 600, detailWidth, 'COMPLETION BY DIFFICULTY', 16, 0xFF9DB2CC);
 		browserStarPanel = new FlxSprite(detailX, 609).makeGraphic(Std.int(detailWidth), 30, 0xFFB8CBDD);
 		insert(members.indexOf(grpSongs), browserStarPanel);
 		browserEmpty = browserText(56, 280, FreeplayBrowserLayout.listWidth(FlxG.width) - 64,
@@ -1223,24 +1225,29 @@ class FreeplayState extends MusicBeatState {
 		browserGroup.text = refreshNotice != '' ? FreeplayBrowserLayout.label(refreshNotice, 74)
 			: (hasSelection ? FreeplayBrowserLayout.label(libraryGroupCaption(curSelected), 74) : '');
 		browserEmpty.visible = !hasSelection;
-		browserRating.text = hasSelection ? FreeplayDifficultyRating.label(songs[curSelected].authoredDifficultyRatings,
-			DifficultyManager.getDiffName(curDifficulty)) : '';
+		browserRating.text = hasSelection ? FreeplayDifficultyRating.label(songs[curSelected].authoredDifficultyRatings, DifficultyManager.getDiffName(curDifficulty)) : '';
+		browserDensity.text = hasSelection ? ChartDifficultyAnalysis.describe(ChartDensityCache.read(songs[curSelected].songName, DifficultyManager.getDiffName(curDifficulty))) : '';
 		var ordering = UserLibrary.data().sorting();
 		browserMetric.text = hasSelection && LibraryChartMetric.active(ordering.charts) && curSelected < libraryOrderRows.length
 			? FreeplayBrowserLayout.label(LibraryChartMetric.label(libraryOrderRows[curSelected].metric, ordering.difficulty), Std.int(browserMetric.fieldWidth / 10)) : '';
 
-		var hasStars = hasSelection && starArray[curSelected] != null && starArray[curSelected].length > 0;
-		browserCompletion.visible = hasStars;
-		browserStarPanel.visible = hasStars;
+		browserCompletion.visible = false;
+		browserCompletion.text = hasSelection ? 'Completion: ' + (['Unplayed','Clear','SDCB','Bad','Good','Sick'][Std.int(Math.max(0, Math.min(5, Highscore.getFCLevel(songs[curSelected].songName, curDifficulty))))]) : '';
+		browserStarPanel.visible = false;
 		browserDetail.text = hasSelection ? FreeplayBrowserLayout.label(songs[curSelected].displayTitle, 84) : 'No song selected';
 		browserSource.text = hasSelection ? FreeplayBrowserLayout.label(sourceCaption(songs[curSelected]), 120) : '';
-		for (index in rowSongIndices) if (starArray[index] != null) {
-			var stars = starArray[index];
+		for (index in rowSongIndices) if (starArray[index] != null && songRows[index] != null) {
+			var stars = starArray[index]; var row = songRows[index];
+			var selectedStar = 0;
+			for (i in 0...stars.length) if (stars[i].diff == curDifficulty) selectedStar = i;
+			var start = Std.int(Math.max(0, Math.min(selectedStar - 2, stars.length - 5)));
 			for (i in 0...stars.length) {
-				var star = stars[i];
-				star.visible = hasSelection && index == curSelected;
-				star.setPosition(FreeplayBrowserLayout.detailX(FlxG.width) + i * Math.min(34, (FlxG.width * 0.32 - 24) / stars.length), 611);
-				star.alpha = star.diff == curDifficulty ? 1 : 0.45;
+				var star = stars[i]; star.visible = row.visible && i >= start && i < start + 5;
+				star.cardX = row.x + FreeplayBrowserLayout.listWidth(FlxG.width) - 244 + (i - start) * 36;
+				star.cardY = row.y + (index == curSelected ? 16 : 8);
+				star.showLegend = index == curSelected;
+				star.focused = index == curSelected && star.diff == curDifficulty;
+				star.alpha = FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index)) ? 0.35 : 1;
 			}
 		}
 	}
@@ -1374,10 +1381,21 @@ class FreeplayState extends MusicBeatState {
 		lerpAccuracy = Math.round(intendedAccuracy * 100) / 100;
 		if (Math.abs(lerpScore - intendedScore) <= 10) lerpScore = intendedScore;
 		if (!soundTest)
-			scoreText.text = "PERSONAL BEST:" + Math.floor(lerpScore) + ", " + lerpAccuracy + "%";
+			scoreText.text = "PERSONAL BEST:" + Math.floor(lerpScore) + ", " + lerpAccuracy + "%"
+				+ (denseBrowser && curSelected >= 0 && curSelected < songs.length ? '\n' + PlayPerformance.label(Highscore.peekPerformance(songs[curSelected].songName, curDifficulty)) : '');
 		else
 			scoreText.text = "Sound Test";
 
+		if (denseBrowser && subState == null && !browserConfirm.active) {
+			for (index in rowSongIndices) if (starArray[index] != null) for (star in starArray[index]) {
+				if (star.visible && FlxG.mouse.overlaps(star)) {
+					star.focused = true;
+					if (FlxG.mouse.justPressed && availabilityAllowsSelection(index)) {
+						curSelected = index; changeSelection(0); curDifficulty = star.diff; changeDiff(0); rememberLibraryDifficulty();
+					}
+				} else star.focused = index == curSelected && star.diff == curDifficulty;
+			}
+		}
 		var upP = controls.UP_MENU;
 		var downP = controls.DOWN_MENU;
 		#if debug
@@ -1650,8 +1668,8 @@ class FreeplayState extends MusicBeatState {
 			diffText.text = difficultyObject.text;
 
 			#if !switch
-			intendedScore = Highscore.getScore(songs[curSelected].songName, curDifficulty);
-			intendedAccuracy = Highscore.getAccuracy(songs[curSelected].songName, curDifficulty) * 100;
+			intendedScore = Highscore.getScore(songs[curSelected].songName, curDifficulty, denseBrowser ? 'best-score' : 'best');
+			intendedAccuracy = Highscore.getAccuracy(songs[curSelected].songName, curDifficulty, denseBrowser ? 'best-score' : 'best') * 100;
 			#end
 
 			if (starArray[curSelected] != null)
@@ -1821,7 +1839,7 @@ class FreeplayState extends MusicBeatState {
 		#end
 		var label = song.sourceLabel == null ? '' : song.sourceLabel;
 		if (label == '') label = song.ownerRoot != '' || song.importProvenancePresent ? 'Imported mod' : 'Base game';
-		return LibraryPackageLabel.caption(song.ownerRoot, label);
+		return label;
 	}
 
 	/** Cache ordering independently of the search filter and the bounded display rows. */
@@ -1859,7 +1877,7 @@ class FreeplayState extends MusicBeatState {
 					imported:order.groups == 'imported' ? data.importOrder(owner) : 0,
 					metric:metricIndex < 0 || song.isProvisional || song.songName.toLowerCase() == 'random-song' ? null : LibraryChartMetric.read(song.songName,
 						song.authoredDifficultyRatings, order.charts, order.difficulty, metricIndex,
-						DifficultyManager.supportedDiff.get(song.songName.toLowerCase()), Highscore.peekBestScore),
+						DifficultyManager.supportedDiff.get(song.songName.toLowerCase()), Highscore.peekBestScore, LibraryChartMetric.isDensity(order.charts) ? ChartDensityCache.read(song.songName, order.difficulty) : null),
 					random:song.songName.toLowerCase() == 'random-song'});
 			}
 			libraryOrder = LibrarySort.order(libraryOrderRows, order.grouping, order.groups, order.charts, true);
@@ -2010,6 +2028,7 @@ class FreeplayState extends MusicBeatState {
 			source.x = row.x + (denseBrowser ? 82 : 10 * SONG_ROW_SCALE);
 			source.y = row.y + (denseBrowser ? 48 : 65 * SONG_ROW_SCALE);
 			source.visible = row.visible && (!denseBrowser || index == curSelected);
+			if (denseBrowser) source.fieldWidth = FreeplayBrowserLayout.listWidth(FlxG.width) - 360;
 			source.alpha = row.alpha;
 		}
 	}
@@ -2056,13 +2075,13 @@ class FreeplayState extends MusicBeatState {
 			for (star in starArray[index])
 				star.color = tint;
 
-		var subtitle = disabled ? LibraryPackageLabel.caption(song.ownerRoot, FreeplaySongAvailability.rowAvailabilityReason(decision))
+		var subtitle = disabled ? FreeplaySongAvailability.rowAvailabilityReason(decision)
 			: (denseBrowser ? sourceCaption(song) : (song.sourceLabel == null || song.sourceLabel == '' ? '' : '(' + sourceCaption(song) + ')'));
 		if (UserLibrary.data().isFavorite(libraryChartKey(index)))
 			subtitle = '[FAVORITE] ' + subtitle;
 		if (denseBrowser) {
 			if (subtitle == '') subtitle = 'Base game';
-			subtitle = FreeplayBrowserLayout.label(subtitle, Std.int((FreeplayBrowserLayout.listWidth(FlxG.width) - 100) / 10));
+			subtitle = FreeplayBrowserLayout.label(subtitle, Std.int((FreeplayBrowserLayout.listWidth(FlxG.width) - 360) / 10));
 		}
 		var source = sourceRows[index];
 		if (subtitle == '') {
@@ -2261,7 +2280,7 @@ class FreeplayState extends MusicBeatState {
 		for (diff in supported) {
 			var rankStar:RankStar = new RankStar(songs[i].songName, diff);
 			rankStar.sprTracker = denseBrowser ? null : icon;
-			if (denseBrowser) { rankStar.setGraphicSize(26, 26); rankStar.updateHitbox(); }
+			if (denseBrowser) { rankStar.setGraphicSize(26, 26); rankStar.updateHitbox(); rankStar.configureCard(ChartDensityCache.read(songs[i].songName, DifficultyManager.getDiffName(diff))); }
 			rankStar.starNum = starCount.length;
 			rankStar.visible = songMatches(i) && !OptionsHandler.options.style;
 			insert(members.indexOf(grpSongSources), rankStar);
@@ -2393,7 +2412,7 @@ class FreeplayState extends MusicBeatState {
 		if (denseBrowser) updateBrowserDetails();
 		var hasMatches = anyVisible();
 		var wasEmpty = scoreText != null && !scoreText.visible;
-		if (scoreText != null) scoreText.visible = hasMatches;
+		if (scoreText != null) scoreText.visible = hasMatches && !denseBrowser;
 		if (hasMatches && wasEmpty) changeDiff();
 		if (!hasMatches) {
 			if (infoPanel != null) infoPanel.visible = false;
@@ -2502,7 +2521,7 @@ class FreeplayState extends MusicBeatState {
 		// selector.y = (70 * curSelected) + 30;
 
 		#if false
-		intendedScore = Highscore.getScore(songs[curSelected].songName, curDifficulty);
+		intendedScore = Highscore.getScore(songs[curSelected].songName, curDifficulty, denseBrowser ? 'best-score' : 'best');
 		intendedAccuracy = Highscore.getAccuracy(songs[curSelected].songName, curDifficulty);
 		// lerpScore = 0;
 		#end

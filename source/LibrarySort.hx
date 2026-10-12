@@ -19,6 +19,7 @@ typedef LibrarySortRow = {
 /** Presentation only: original indexes remain authoritative for launch and readiness. */
 class LibrarySort {
 	public static function label(value:String):String return switch (value) {
+		case 'npsHigh': 'Notes per second (Difficulty): high-low'; case 'npsLow': 'Notes per second (Difficulty): low-high';
 		case 'flat': 'Flat list'; case 'mod': 'By mod'; case 'engine': 'Engine type';
 		case 'az': 'Alphabetical A-Z'; case 'za': 'Alphabetical Z-A';
 		case 'scoreHigh': 'Best score high-low'; case 'scoreLow': 'Best score low-high';
@@ -92,7 +93,7 @@ class LibrarySort {
 				case 'az', 'za': name(a.title, b.title, charts == 'za');
 				case 'favorites': a.favorite == b.favorite ? 0 : (a.favorite ? -1 : 1);
 				case 'recent': Reflect.compare(validPlay(b.played), validPlay(a.played));
-				case 'scoreHigh', 'scoreLow', 'ratingHigh', 'ratingLow': LibraryChartMetric.compare(a.metric, b.metric, charts == 'scoreHigh' || charts == 'ratingHigh');
+				case 'scoreHigh', 'scoreLow', 'ratingHigh', 'ratingLow', 'npsHigh', 'npsLow': LibraryChartMetric.compare(a.metric, b.metric, charts == 'scoreHigh' || charts == 'ratingHigh' || charts == 'npsHigh');
 				default: Reflect.compare(authoredSlots.exists(a.index) ? authoredSlots.get(a.index) : a.ordinal,
 					authoredSlots.exists(b.index) ? authoredSlots.get(b.index) : b.ordinal);
 			};

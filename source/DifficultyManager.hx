@@ -25,6 +25,7 @@ class DifficultyManager {
 
 	public static function init() {
 		FreeplayChartMetadata.clear();
+		ChartDensityCache.clear();
 		supportedDiff = [];
 		weeksSupported = [];
 		diffJson = CoolUtil.parseJson(FNFAssets.getJson("assets/images/custom_difficulties/difficulties"));

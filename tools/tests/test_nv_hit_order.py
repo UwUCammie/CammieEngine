@@ -338,7 +338,7 @@ class Conductor { public static var songPosition:Float = 1; }
 class Main {
  function dispatchHistoricalNightmareNoteHit(n:NVNote,c:String):Void events.push("legacy-notify:"+c);
  public var nightmareVisionLegacyFieldCameras=false;
- public var combo:Int=0;
+ public var combo:Int=0; public var performanceMaxCombo:Int=0;
  function spawnNoteSplashOnNote(n:NVNote):Void events.push('historical-splash');
  function setAllHaxeVar(n:String,v:Dynamic):Void {}
  function popUpScore(t:Float,n:NVNote,p:Bool,f:Bool,field:NightmareVisionPlayFieldView):Void events.push('historical-score');

@@ -91,7 +91,7 @@ class Main {
  var missCalls=0;
  var playbackRate:Float=1;
  var health:Float=1;var songScore=0;var songScoreDef=0;var trueScore=0;
- var combo=0;var misses=0;var ratingNum=0;var accuracy:Float=0;
+ var combo=0;var performanceMaxCombo:Int=0;var misses=0;var ratingNum=0;var accuracy:Float=0;
  var accuracyPressedNotes:Float=0;var totalAccuracyAmount:Float=0;
  public var codenameAccuracy(get,set):Float;
  var comboRatings:Array<CodenameComboRating>=[new CodenameComboRating(0,'F',0xFF0000)];

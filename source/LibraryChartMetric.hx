@@ -8,7 +8,8 @@ typedef LibraryMetricValue = {var value:Float; var scale:String;}
 class LibraryChartMetric {
 	public static function isScore(mode:String):Bool return mode == 'scoreHigh' || mode == 'scoreLow';
 	public static function isRating(mode:String):Bool return mode == 'ratingHigh' || mode == 'ratingLow';
-	public static function active(mode:String):Bool return isScore(mode) || isRating(mode);
+	public static function isDensity(mode:String):Bool return mode == 'npsHigh' || mode == 'npsLow';
+	public static function active(mode:String):Bool return isScore(mode) || isRating(mode) || isDensity(mode);
 	public static function difficultyIndex(difficulty:String, names:Array<String>):Int {
 		var found = -1;
 		for (i in 0...names.length) if (names[i].toLowerCase() == difficulty.toLowerCase()) {
@@ -18,8 +19,9 @@ class LibraryChartMetric {
 		return found;
 	}
 	public static function read(song:String, ratings:Array<AuthoredDifficultyRating>, mode:String,
-		difficulty:String, index:Int, supported:Array<Int>, score:(String, Int)->Null<Int>):Null<LibraryMetricValue> {
+		difficulty:String, index:Int, supported:Array<Int>, score:(String, Int)->Null<Int>, ?density:ChartDifficultyAnalysis.ChartDensity):Null<LibraryMetricValue> {
 		if (index < 0 || supported == null || supported.indexOf(index) < 0) return null;
+		if (isDensity(mode)) return density == null ? null : {value:density.difficulty, scale:'NPS difficulty'};
 		if (isScore(mode)) {
 			var value = score(song, index);
 			return value == null ? null : {value:value, scale:'Host score'};

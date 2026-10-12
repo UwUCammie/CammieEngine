@@ -47,7 +47,7 @@ class UserLibraryData {
 	public function setSorting(grouping:String, groups:String, charts:String):Void {
 		if (['flat', 'mod', 'engine'].indexOf(grouping) < 0
 			|| ['default', 'az', 'za', 'engine', 'imported'].indexOf(groups) < 0
-			|| ['default', 'az', 'za', 'favorites', 'recent', 'scoreHigh', 'scoreLow', 'ratingLow', 'ratingHigh'].indexOf(charts) < 0) throw 'Invalid library sorting.';
+			|| ['default', 'az', 'za', 'favorites', 'recent', 'scoreHigh', 'scoreLow', 'ratingLow', 'ratingHigh', 'npsHigh', 'npsLow'].indexOf(charts) < 0) throw 'Invalid library sorting.';
 		this.grouping = grouping; groupOrder = groups; chartOrder = charts;
 	}
 

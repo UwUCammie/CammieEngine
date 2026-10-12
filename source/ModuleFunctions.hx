@@ -13734,6 +13734,13 @@ class ModuleFunctions {
 					return index;
 			return fallback;
 		};
+		var chartDensities:Dynamic = {};
+		var analysisDefinitions:Array<Dynamic> = songData.noteDefinitions;
+		var analysisDefinitionPath = existingImportChild(dataFolder, 'noteInfo.json');
+		if (analysisDefinitions == null && FileSystem.exists(analysisDefinitionPath)) {
+			var rawDefinitions:Dynamic = CoolUtil.parseJson(File.getContent(analysisDefinitionPath));
+			if (Std.isOfType(rawDefinitions, Array)) analysisDefinitions = cast rawDefinitions;
+		}
 		if (songData.convertedCharts != null && songData.convertedCharts.length > 0) {
 			for (i in 0...songData.convertedCharts.length) {
 				var converted = songData.convertedCharts[i];
@@ -13774,6 +13781,7 @@ class ModuleFunctions {
 				var fileName = targetFolder + templateName.substr('chart'.length);
 				var chartDestination = Path.join([dataFolder, fileName]);
 					var existingChartPath = existingImportChild(dataFolder, fileName);
+				var densityUsesExisting = FileSystem.exists(existingChartPath);
 					if (!FileSystem.exists(existingChartPath)) {
 						trace('[import-chart-serialize-start] source=' + converted.source
 							+ ' difficulty=' + converted.difficulty + ' destination=' + chartDestination);
@@ -13831,6 +13839,7 @@ class ModuleFunctions {
 						}
 					}
 					requireChartMaterialized(chartDestination);
+					Reflect.setField(chartDensities, converted.difficulty.toLowerCase(), ChartDifficultyAnalysis.analyze(densityUsesExisting ? readSongChart(existingChartPath) : coolSong, analysisDefinitions, songData.engine == ImportEngine.NIGHTMARE_VISION));
 					writtenCharts++;
 			}
 		} else if (songData.diffFiles != null) {
@@ -13880,6 +13889,7 @@ class ModuleFunctions {
 				var fileName = importedChartFileName(targetFolder, chartPath, i, Reflect.field(songData, 'sourceFolder'));
 				var chartDestination = Path.join([dataFolder, fileName]);
 				var existingChartPath = existingImportChild(dataFolder, fileName);
+				var densityUsesExisting = FileSystem.exists(existingChartPath);
 				if (!FileSystem.exists(existingChartPath)) {
 					trace('[import-chart-serialize-start] source=' + chartPath
 						+ ' destination=' + chartDestination);
@@ -13895,11 +13905,15 @@ class ModuleFunctions {
 						File.saveContent(existingChartPath, CoolUtil.stringifyJson(existingChart));
 				}
 				requireChartMaterialized(chartDestination);
+				var densityKey = fileName.substr(0, fileName.length - 5);
+				densityKey = densityKey == targetFolder ? 'normal' : densityKey.substr(targetFolder.length + 1);
+				Reflect.setField(chartDensities, densityKey.toLowerCase(), ChartDifficultyAnalysis.analyze(densityUsesExisting ? readSongChart(existingChartPath) : coolSong, analysisDefinitions, songData.engine == ImportEngine.NIGHTMARE_VISION));
 				writtenCharts++;
 			}
 		}
 		if (writtenCharts == 0)
 			return false;
+		File.saveContent(Path.join([dataFolder, 'chartDensity.json']), haxe.Json.stringify(chartDensities));
 
 		// V-Slice kinds which have no built-in event equivalent are kept in the
 		// engine's existing custom-note metadata channel. Matching HXC note

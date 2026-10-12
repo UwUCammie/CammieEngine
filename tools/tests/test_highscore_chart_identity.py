@@ -50,11 +50,13 @@ class HighscoreChartIdentityTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
+            (work / "PlayPerformance.hx").write_text((ROOT / "source/PlayPerformance.hx").read_text())
             highscore_methods = [
                 method(highscore_source, marker)
                 for marker in (
                     "public static function scoreSongIdForChart(",
                     "public static function saveScore(",
+                    "static function setPerformance(",
                     "static function setScore(",
                     "public static function setAccuracy(",
                     "static function setFCLevel(",
@@ -76,6 +78,7 @@ class HighscoreChartIdentityTest(unittest.TestCase):
             ]
             highscore_fixture = "\n".join([
                 "class Highscore {",
+                " public static var songPerformance:Map<String,PlayPerformance.PlayPerformanceRecord>=[];",
                 " public static var songScores:Map<String,Int> = new Map();",
                 " public static var songAccuracy:Map<String,Float> = new Map();",
                 " public static var songCompletions:Map<String,Bool> = new Map();",

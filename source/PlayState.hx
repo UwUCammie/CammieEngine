@@ -905,7 +905,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function publishHistoricalNightmareMiss(note:Note):Void {
-		setAllHaxeVar('misses', misses);setAllHaxeVar('combo', combo);setAllHaxeVar('songScore', songScore);
+		setAllHaxeVar('misses', misses);setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));setAllHaxeVar('songScore', songScore);
 		if (note.noteMiss != null) callHscript(note.noteMiss, [note], 'modchart');
 		callAllHScript('playerOneMiss', [], false, null, null, true);
 		callAllHScript('noteMiss', [note, true, note.noteData], true, null, null, true);
@@ -3369,6 +3369,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	public var health(default, set):Float = 1;
 	@:keep var iconsAnimations:Bool = true;
 	private var combo:Int = 0;
+	var performanceMaxCombo:Int = 0;
+	var performancePlayerNotes:Int = 0;
 	public static var daScrollSpeed:Float = 1;
 	/** Codename's live per-song speed field; native gameplay stores it here. */
 	public var scrollSpeed(get, set):Float;
@@ -14458,6 +14460,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		Judgement.uiJson = CoolUtil.parseJson(FNFAssets.getText('assets/images/custom_ui/ui_packs/ui.json'));
 		uiSmelly = Reflect.field(Judgement.uiJson, SONG.uiType);
 		misses = bads = goods = sicks = shits = 0;
+		performanceMaxCombo = 0; performancePlayerNotes = 0;
 		initializeSourceScoreLedger(nightmareVisionSelectedRoot() != '');
 		ss = true;
 		// use current note amount
@@ -20432,6 +20435,11 @@ void main(void) {
 					hxcStrumlineNoteSurface = new HxcStrumlineNoteSurface(unspawnNotes);
 					break;
 				}
+		performancePlayerNotes = 0;
+		for (note in unspawnNotes) if (note != null && !note.isSustainNote
+			&& (note.sourcePlayfieldPlayerControlled == null ? note.mustPress : note.sourcePlayfieldPlayerControlled)
+			&& !note.sourcePlayfieldAutoPlay && !note.hitCausesMiss && !note.mineNote && !note.nukeNote
+			&& !note.dontCountNote && !note.avoidAutoHit) performancePlayerNotes++;
 		RuntimeSmokeHarness.markChartNoteSides(SONG.format, unspawnNotes);
 		defaultNoteWidth = initialNoteAlignmentWidth();
 		generatedMusic = true;
@@ -23565,7 +23573,8 @@ void main(void) {
 		RuntimeSmokeHarness.markScoreSaveDecision(SONG, songScore, storyDifficulty,
 			ModifierState.scoreMultiplier, demoMode);
 		if (!RuntimeSmokeHarness.enabled() && !demoMode && ModifierState.scoreMultiplier > 0) {
-			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge);
+			Highscore.saveScore(Highscore.scoreSongIdForChart(SONG), songScore, storyDifficulty, accuracy / 100, Ratings.CalculateFCRating(), OptionsHandler.options.judge,
+				{misses:misses, maxCombo:performanceMaxCombo, totalPlayerNotes:performancePlayerNotes});
 			var sourceSession = NightmareVisionStateSession.active;
 			if (nightmareVisionScripts != null && sourceSession != null && sourceSession.mods == nightmareVisionActiveMods)
 				sourceSession.highscores.saveScore(SONG.song, songScore,
@@ -23736,14 +23745,14 @@ void main(void) {
 						setAllHaxeVar("misses", misses);
 						score = -300;
 						combo = 0;
-						setAllHaxeVar("combo", combo);
+						setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 					}
 
 				case 'wayoff':
 					if (!dontCountNote) {
 						score = -300;
 						combo = 0;
-						setAllHaxeVar("combo", combo);
+						setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 						misses++;
 						setAllHaxeVar("misses", misses);
 						ss = false;
@@ -25375,10 +25384,10 @@ void main(void) {
 					combo = 0;
 					misses++;
 					setAllHaxeVar('misses', misses);
-					setAllHaxeVar('combo', combo);
+					setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 				} else if (event.countAsCombo) {
 					combo++;
-					setAllHaxeVar('combo', combo);
+					setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 				}
 				if (event.showRating == true || (event.showRating == null && event.player)) {
 					displayCodenameNoteRating(event);
@@ -25467,7 +25476,7 @@ void main(void) {
 				gf.codenamePlayAnim(event.gfSadAnim, event.forceGfAnim, 'MISS');
 			else gf.playAnim(event.gfSadAnim, event.forceGfAnim);
 		}
-		if (event.resetCombo) {combo = 0; setAllHaxeVar('combo', combo);}
+		if (event.resetCombo) {combo = 0; setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));}
 		songScore += event.score;
 		misses += event.misses;
 		setAllHaxeVar('songScore', songScore);
@@ -25570,7 +25579,7 @@ void main(void) {
 			// all affected fields have delivered their local handlers.
 		}
 		setAllHaxeVar('misses', misses);
-		setAllHaxeVar('combo', combo);
+		setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 		setAllHaxeVar('songScore', songScore);
 		if (note != null && note.noteMiss != null) callHscript(note.noteMiss, [note], 'modchart');
 		callAllHScript(playerOne ? 'playerOneMiss' : 'playerTwoMiss', [], false, null, null, true);
@@ -25709,7 +25718,7 @@ void main(void) {
 					gf.playAnim('sad');
 				if (!sourceScoreLedgerActive()) updateAccuracy();
 				if (countsMiss) combo = 0;
-				setAllHaxeVar("combo", combo);
+				setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 				if (!sourceScoreLedgerActive() && !practiceMode && !demoMode)
 					songScore -= 5;
 				setAllHaxeVar('songScore', songScore);
@@ -25989,13 +25998,13 @@ void main(void) {
 			var sourceLedger = sourceScoreLedgerActive();
 			var sourcePopup = !sourceScoreNightmare || (nightmareVisionFieldForNote(note).playerControls
 				&& nightmareVisionFieldForNote(note).showRatings);
-			if (sourceLedger && sourcePopup && !note.isSustainNote) combo = Std.int(Math.min(9999, combo + 1));
+			if (sourceLedger && sourcePopup && !note.isSustainNote) { combo = Std.int(Math.min(9999, combo + 1)); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo)); }
 			if (sourceLedger && sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 			if (!sourceLedger || sourcePopup) popUpScore(note.strumTime, note, playerOne);
 			if (sourceLedger && !sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 			if (!note.isSustainNote) {
 				if (!sourceLedger) combo += 1;
-				setAllHaxeVar("combo", combo);
+				setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 
 				if (combo == 50)
 					gf.playAnim('cheer', true);
@@ -26196,7 +26205,7 @@ void main(void) {
 
 		if (field.playerControls && nightmareVisionLegacyFieldCameras && !note.isSustainNote) {
 			combo = Std.int(Math.min(9999, combo + 1));
-			setAllHaxeVar('combo', combo);
+			setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 			popUpScore(note.strumTime, note, playerOne, false, field);
 		}
 		if (field.playerControls) {
@@ -26393,7 +26402,7 @@ void main(void) {
 		}
 		if (!nightmareVisionLegacyFieldCameras && field.playerControls && field.showRatings && !note.isSustainNote) {
 			combo = Std.int(Math.min(9999, combo + 1));
-			setAllHaxeVar('combo', combo);
+			setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 			popUpScore(note.strumTime, note, playerOne, false, field);
 		}
 		if (!accepted) return;
