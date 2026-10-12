@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.31 development - CammieEngine
+- Continue the existing roadmap after the verified v0.0.30 Windows release.
+
 v0.0.30 alpha - CammieEngine
 - Preserve authored alternate-difficulty soundtracks and split vocals, and select Psych song scripts by the source chart's song key.
 - Count native heads without an explicit sustain length. Use average and sustained NPS for difficulty colors, retaining brief peak density as a diagnostic; adopt the supplied blue-to-black spectrum and show NPS with two decimals.
