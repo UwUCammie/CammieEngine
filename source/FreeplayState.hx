@@ -104,6 +104,14 @@ class FreeplayState extends MusicBeatState {
 	var libraryOrder:Array<Int> = [];
 	var libraryOrderRows:Array<LibrarySort.LibrarySortRow> = [];
 	var libraryOrderKey:String = '';
+	var chartRows:Array<FreeplayChartRows.FreeplayChartRow> = [];
+	var chartOrder:Array<Int> = [];
+	var chartDisplay:Map<String, FreeplayBrowserRow> = [];
+	var chartPage:Array<Int> = [];
+	var chartJump:Bool = false;
+	function expandedDifficultyRows():Bool return denseBrowser && LibraryChartMetric.isDensity(UserLibrary.data().sorting().charts);
+	function visibleChartRows():Array<Int> { orderedVisibleSongs(); return [for (id in chartOrder) if (songMatches(chartRows[id].song)) id]; }
+	function selectedChartRow(visible:Array<Int>):Int return FreeplayChartRows.find(chartRows, visible, curSelected, curDifficulty);
 	var libraryFavoriteData:UserLibraryData;
 	var browserEmpty:FlxText;
 	var browserCompletion:FlxText;
@@ -887,6 +895,7 @@ class FreeplayState extends MusicBeatState {
 			}
 			for (index in rowSongIndices)
 				updateRenderedRowAvailability(index);
+			if (expandedDifficultyRows()) layoutChartRows();
 			rebuildIconQueue();
 			if (curSelected >= 0 && curSelected < songs.length
 				&& !availabilityAllowsSelection(curSelected) && previewSound != null)
@@ -1262,15 +1271,18 @@ class FreeplayState extends MusicBeatState {
 		if (libraryViewId != '' && libraryViewId != FreeplayLibraryView.FAVORITES) {
 			for (entry in UserLibrary.data().categoryList()) if (entry.id == libraryViewId) label = entry.name;
 		}
-		browserCount.text = label + '  /  ' + visible.length + ' songs'
-			+ (hasSelection ? '  /  ' + (visible.indexOf(curSelected) + 1) + ' of ' + visible.length : '');
+		var chartVisible = expandedDifficultyRows() ? visibleChartRows() : [];
+		var count = expandedDifficultyRows() ? chartVisible.length : visible.length;
+		var position = expandedDifficultyRows() ? chartVisible.indexOf(selectedChartRow(chartVisible)) : visible.indexOf(curSelected);
+		browserCount.text = label + '  /  ' + count + (expandedDifficultyRows() ? ' charts' : ' songs')
+			+ (hasSelection ? '  /  ' + (position + 1) + ' of ' + count : '');
 		browserGroup.text = refreshNotice != '' ? FreeplayBrowserLayout.label(refreshNotice, 74)
 			: (hasSelection ? FreeplayBrowserLayout.label(libraryGroupCaption(curSelected), 74) : '');
 		browserEmpty.visible = !hasSelection;
 		browserRating.text = hasSelection ? FreeplayDifficultyRating.label(songs[curSelected].authoredDifficultyRatings, DifficultyManager.getDiffName(curDifficulty)) : '';
 		browserDensity.text = hasSelection ? ChartDifficultyAnalysis.describe(ChartDensityCache.read(songs[curSelected].songName, DifficultyManager.getDiffName(curDifficulty))) : '';
 		var ordering = UserLibrary.data().sorting();
-		browserMetric.text = hasSelection && LibraryChartMetric.active(ordering.charts) && curSelected < libraryOrderRows.length
+		browserMetric.text = !expandedDifficultyRows() && hasSelection && LibraryChartMetric.active(ordering.charts) && curSelected < libraryOrderRows.length
 			? FreeplayBrowserLayout.label(LibraryChartMetric.label(libraryOrderRows[curSelected].metric, ordering.difficulty), Std.int(browserMetric.fieldWidth / 10)) : '';
 
 		browserCompletion.visible = false;
@@ -1931,6 +1943,7 @@ class FreeplayState extends MusicBeatState {
 		if (hxcRuntime != null && previousDifficulty != curDifficulty && hxcCapsuleView(curSelected) != null)
 			hxcRuntime.dispatch('difficultySwitch', EngineCompat.hxcFreeplayPayload(
 			'difficultySwitch', this, hxcCapsuleView(curSelected), curDifficulty, null));
+		if (expandedDifficultyRows()) { chartJump = change != 0 && previousDifficulty != curDifficulty; rebuildVisibleRows(); rebuildIconQueue(); }
 		if (denseBrowser) updateBrowserDetails();
 		if (OptionsHandler.options.style && false) {
 			var coolors = iconArray[curSelected].healthColors;
@@ -2115,6 +2128,14 @@ class FreeplayState extends MusicBeatState {
 					random:song.songName.toLowerCase() == 'random-song'});
 			}
 			libraryOrder = LibrarySort.order(libraryOrderRows, order.grouping, order.groups, order.charts, true);
+			chartRows = [];
+			if (expandedDifficultyRows()) chartRows = FreeplayChartRows.expand(libraryOrderRows,
+				function(index) return songs[index].isProvisional ? [] : DifficultyManager.getSupportedDiffs(songs[index].songName),
+				function(index, diff) {
+					var density = ChartDensityCache.read(songs[index].songName, DifficultyManager.getDiffName(diff));
+					return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating /20'};
+				}, DifficultyManager.getDiffName);
+			chartOrder = LibrarySort.order([for (row in chartRows) row.sort], order.grouping, order.groups, order.charts, true);
 			libraryOrderKey = key; libraryFavoriteData = data;
 		}
 		return [for (index in libraryOrder) if (songMatches(index)) index];
@@ -2123,7 +2144,7 @@ class FreeplayState extends MusicBeatState {
 	function libraryGroupCaption(index:Int):String {
 		var order = UserLibrary.data().sorting(); var grouping = order.grouping;
 		if (grouping == 'flat') return 'Favorites first / ' + LibrarySort.label(order.charts)
-			+ (LibraryChartMetric.active(order.charts) ? ' / ' + order.difficulty : '');
+			+ (!expandedDifficultyRows() && LibraryChartMetric.active(order.charts) ? ' / ' + order.difficulty : '');
 		if (index < 0 || index >= libraryOrderRows.length) return '';
 		var row = libraryOrderRows[index];
 		if (row.random) return 'Random song';
@@ -2352,7 +2373,8 @@ class FreeplayState extends MusicBeatState {
 	*/
 	function rebuildVisibleRows():Void {
 		var visible = orderedVisibleSongs();
-		var desired = denseBrowser ? FreeplayBrowserLayout.centeredPage(visible, curSelected, FlxG.height, selectedCardHeight())
+		if (!expandedDifficultyRows()) clearChartDisplay();
+		var desired = expandedDifficultyRows() ? (songMatches(curSelected) ? [curSelected] : []) : denseBrowser ? FreeplayBrowserLayout.centeredPage(visible, curSelected, FlxG.height, selectedCardHeight())
 			: FreeplayListWindow.window(visible, curSelected, ROW_WINDOW_RADIUS);
 		var wanted:Map<Int, Bool> = new Map();
 		for (index in desired)
@@ -2419,6 +2441,7 @@ class FreeplayState extends MusicBeatState {
 				songRows[index] = row;
 				grpSongs.add(row);
 			}
+			if (denseBrowser && !expandedDifficultyRows()) { (cast row:FreeplayBrowserRow).rename(songs[index].displayTitle); (cast row:FreeplayBrowserRow).setChartCaption(''); }
 			var relativePosition = position - selectedPosition;
 			row.targetY = relativePosition;
 			row.visible = true;
@@ -2672,6 +2695,7 @@ class FreeplayState extends MusicBeatState {
 
 	/** Animate only bounded geometry; metadata, filters and ordering are unchanged between targets. */
 	function animateBrowserRows(elapsed:Float):Void {
+		if (expandedDifficultyRows()) for (row in chartDisplay) row.animate(elapsed);
 		for (index in rowSongIndices) {
 			var row:FreeplayBrowserRow = cast songRows[index];
 			if (row == null || !row.animate(elapsed)) continue;
@@ -2706,7 +2730,52 @@ class FreeplayState extends MusicBeatState {
 
 	// Layout only the materialized window. songRows and the icon/star arrays
 	// retain global song indexes; grpSongs is the small contiguous visible slice.
+	function clearChartDisplay():Void {
+		for (row in chartDisplay) { grpSongs.remove(row, true); row.destroy(); }
+		chartDisplay = []; chartPage = [];
+	}
+	function layoutChartRows():Void {
+		var visible = visibleChartRows();
+		var selected = selectedChartRow(visible);
+		var desired = FreeplayBrowserLayout.centeredPage(visible, selected, FlxG.height, selectedCardHeight());
+		var wanted:Map<String, Bool> = [];
+		for (id in desired) if (id != selected) wanted.set(chartRows[id].key, true);
+		for (key in [for (key in chartDisplay.keys()) key]) if (!wanted.exists(key)) {
+			var row = chartDisplay.get(key);
+			if (row != null) { grpSongs.remove(row, true); row.destroy(); chartDisplay.remove(key); }
+		}
+		chartPage = desired;
+		var selectedPosition = desired.indexOf(selected);
+		var order = UserLibrary.data().sorting();
+		for (position in 0...desired.length) {
+			var id = desired[position]; var entry = chartRows[id];
+			var selectedEntry = id == selected;
+			var row:FreeplayBrowserRow = selectedEntry ? cast songRows[curSelected] : chartDisplay.get(entry.key);
+			if (row == null && !selectedEntry) {
+				row = new FreeplayBrowserRow('', FreeplayBrowserLayout.listWidth(FlxG.width));
+				row.setPosition(24, FreeplayBrowserLayout.centeredRowY(position, selectedPosition, FlxG.height, selectedCardHeight()));
+				grpSongs.add(row); chartDisplay.set(entry.key, row);
+			}
+			if (row == null) continue;
+			var diffName = entry.difficulty < 0 ? '' : DifficultyManager.getDiffName(entry.difficulty);
+			row.rename(songs[entry.song].displayTitle);
+			row.setChartCaption(diffName);
+			if (!selectedEntry) row.setChartArtwork(songs[entry.song].songName, songs[entry.song].songCharacter,
+				entry.difficulty, entry.difficulty < 0 ? null : ChartDensityCache.read(songs[entry.song].songName, diffName), availabilityAllowsSelection(entry.song));
+			row.present(selectedEntry, FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(entry.song)),
+				selectedEntry && iconArray[curSelected] != null, entry.sort.favorite, selectedCardHeight());
+			row.moveTo(selectedEntry ? 32 : 24, FreeplayBrowserLayout.centeredRowY(position, selectedPosition, FlxG.height, selectedCardHeight()), selectedCardHeight(), chartJump);
+			var at = visible.indexOf(id);
+			var previous = at > 0 ? chartRows[visible[at - 1]].sort : null;
+			row.groupBoundary(previous != null && (previous.favorite != entry.sort.favorite
+				|| (order.grouping != 'flat' && LibrarySort.group(previous, order.grouping) != LibrarySort.group(entry.sort, order.grouping))));
+		}
+		positionBrowserDecorations(curSelected);
+		chartJump = false;
+	}
+
 	function applyListLayout() {
+		if (expandedDifficultyRows()) { layoutChartRows(); return; }
 		var selectedPosition = rowSongIndices.indexOf(curSelected);
 		var ordered = denseBrowser ? orderedVisibleSongs() : [];
 		var grouping = denseBrowser ? UserLibrary.data().sorting().grouping : 'flat';
@@ -2764,6 +2833,7 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	function changeSelection(change:Int = 0, refreshOnly:Bool = false) {
+		var previousSelectionSong = curSelected; var previousSelectionDifficulty = curDifficulty;
 		cancelBrowserConfirm();
 		if (!anyVisible()) { applySearchFilter(); return; }
 		// A prompt belongs to the capsule that armed it. Drop it before the
@@ -2789,7 +2859,16 @@ class FreeplayState extends MusicBeatState {
 			}
 
 		if (change != 0) refreshNotice = '';
-		if (!refreshOnly)
+		var chartNavigation = !refreshOnly && expandedDifficultyRows();
+		if (chartNavigation) {
+			var visible = visibleChartRows();
+			var id = LibrarySort.select(visible, selectedChartRow(visible), change);
+			if (id >= 0 && id < chartRows.length) {
+				curSelected = chartRows[id].song;
+				if (chartRows[id].difficulty >= 0) curDifficulty = chartRows[id].difficulty;
+				difficultySongKey = libraryChartKey(curSelected);
+			}
+		} else if (!refreshOnly)
 			curSelected = denseBrowser ? LibrarySort.select(orderedVisibleSongs(), curSelected, change)
 				: nextVisibleSelection(curSelected, change, songs.length, songMatches);
 		rebuildVisibleRows();
@@ -2827,6 +2906,7 @@ class FreeplayState extends MusicBeatState {
 		
 		restoreLibraryDifficulty();
 		changeDiff();
+		dispatchChartNavigationDifficulty(chartNavigation, previousSelectionSong, previousSelectionDifficulty);
 		// trace(Highscore.getComplete(songs[0].songName, curDifficulty));
 
 		if (iconArray[curSelected] != null) {
@@ -2850,6 +2930,14 @@ class FreeplayState extends MusicBeatState {
 		if (hxcRuntime != null && selectedCapsule != null)
 			hxcRuntime.dispatch('capsuleSelected', EngineCompat.hxcFreeplayPayload(
 			'capsuleSelected', this, selectedCapsule, curDifficulty, null));
+	}
+
+	/** Expanded Up/Down can select another chart of the same capsule. */
+	function dispatchChartNavigationDifficulty(chartNavigation:Bool, previousSong:Int, previousDifficulty:Int):Void {
+		if (!chartNavigation || previousSong != curSelected || previousDifficulty == curDifficulty || hxcRuntime == null) return;
+		var capsule = hxcCapsuleView(curSelected);
+		if (capsule != null) hxcRuntime.dispatch('difficultySwitch', EngineCompat.hxcFreeplayPayload(
+			'difficultySwitch', this, capsule, curDifficulty, null));
 	}
 
 	/**

@@ -1,6 +1,6 @@
 package;
 
-/** Independent ordering and named metric scope, persisted through the shared library transaction. */
+/** Ordering persisted through the shared library transaction. */
 class LibrarySortingSubState extends LibraryMenuSubState {
 	public function new() super();
 	override function create():Void { super.create(); refresh(); }
@@ -10,7 +10,6 @@ class LibrarySortingSubState extends LibraryMenuSubState {
 			{label:'Grouping: ' + LibrarySort.label(order.grouping), run:function() advance(0)},
 			{label:'Group order: ' + LibrarySort.label(order.groups) + (order.grouping == 'flat' ? ' (inactive in flat list)' : ''), run:function() advance(1)},
 			{label:'Chart order: ' + LibrarySort.label(order.charts), run:function() advance(2)},
-			{label:'Comparison difficulty: ' + order.difficulty + (LibraryChartMetric.active(order.charts) ? '' : ' (metric sorts only)'), run:advanceDifficulty},
 			{label:'Return', run:function() close()}
 		], false);
 	}
@@ -25,17 +24,4 @@ class LibrarySortingSubState extends LibraryMenuSubState {
 		UserLibrary.change(function(data) data.setSorting(order.grouping, order.groups, order.charts));
 		refresh();
 	}
-	function advanceDifficulty():Void {
-		var current = UserLibrary.data().sorting().difficulty;
-		var names:Array<String> = [];
-		for (name in DifficultyManager.getDifficultyNames()) {
-			var key = StringTools.trim(name).toLowerCase();
-			if (key != '' && names.indexOf(key) < 0) names.push(key);
-		}
-		if (names.indexOf(current) < 0) names.push(current);
-		names.sort(Reflect.compare);
-		var next = names[(names.indexOf(current) + 1) % names.length];
-		UserLibrary.change(function(data) data.setComparisonDifficulty(next)); refresh();
-	}
-
 }

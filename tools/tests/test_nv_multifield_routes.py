@@ -23,7 +23,11 @@ def method(source, signature):
 class NvMultifieldRoutesTest(unittest.TestCase):
     def test_real_generation_lookup_layout_input_note_and_rgb_routes(self):
         play = (ROOT / 'source/PlayState.hx').read_text()
-        self.assertIn('if (nightmareVisionScripts != null && !nightmareVisionAcceptsNoteField(chartAddress.playfieldIndex)) continue;', play)
+        guard = method(play, 'if (nightmareVisionScripts != null && !nightmareVisionAcceptsNoteField(chartAddress.playfieldIndex))')
+        body = guard[guard.index('{') + 1:guard.rfind('}')]
+        statements = [statement.strip() for statement in body.split(';') if statement.strip()]
+        self.assertEqual(statements, ['SongLoadingScreen.workUnit(loadingRowUnit)', 'continue'],
+                         'Rejected fields must count the processed row and skip its note construction')
         strums = (ROOT / 'source/Strumline.hx').read_text()
         note = (ROOT / 'source/Note.hx').read_text()
         methods = '\n'.join(method(play, sig) for sig in [

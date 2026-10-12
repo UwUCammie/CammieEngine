@@ -39,6 +39,7 @@ class NightmareVisionTimeBarTest(unittest.TestCase):
             "public function sourceNoteTimingMode()",
         ))
         fixture = r'''
+class SongLoadingScreen {public static function workUnit(_units:Float=1):Void {}}
 class Point { public function new() {} public function set():Void {} }
 class Sprite {
  public var x:Float; public var y:Float; public var width:Float; public var height:Float;

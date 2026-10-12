@@ -169,6 +169,8 @@ class DynamicScrollSpeedTest(unittest.TestCase):
         self.assertNotIn('FlxG.save.data.scrollSpeed', ps)
         self.assertEqual(movement.count('* noteScrollSpeed)'), 2)
         fixture = '''
+// Scene progress does not change the scroll-speed and owner-startup behavior under test.
+class SongLoadingScreen {public static function workUnit(_units:Float=1):Void {}}
 class OptionsHandler {public static var options = {scrollSpeed:1.0, dynamicScrollSpeed:0.0};}
 // This fixture extracts speed fields but does not execute the note iteration pass.
 class PsychNoteIteration {public function new() {}}

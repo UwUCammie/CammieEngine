@@ -266,6 +266,7 @@ class Main {
                 file = temp / name
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_text(body, newline='\n')
+            (temp / "SongLoadingWork.hx").write_text((ROOT / "source/SongLoadingWork.hx").read_text(encoding="utf-8"), newline='\n')
             (temp / "CodenameCreationVisual.hx").write_text(helper, newline='\n')
             (temp / "CodenameNoteCreationEvent.hx").write_text(event, newline='\n')
             result = subprocess.run([*HAXE_COMMAND, "-cp", str(temp), "-main", "Main", "--interp"],

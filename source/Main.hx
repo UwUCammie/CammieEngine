@@ -107,8 +107,10 @@ class Main extends Sprite {
 		FlxG.signals.preStateCreate.add(function(_state:FlxState) {
 			RuntimeSongExitProbe.mark("pre-state-create");
 			syncImportForegroundForState(_state);
-			if (leavingPlayState)
-				FlxG.bitmap.clearCache();
+			if (leavingPlayState) {
+				if (SongLoadingScreen.active) pruneSongBitmapCache();
+				else FlxG.bitmap.clearCache();
+			}
 			RuntimeSongExitProbe.mark("bitmap-cache-cleared");
 		});
 		FlxG.signals.postStateSwitch.add(function() {
@@ -134,4 +136,20 @@ class Main extends Sprite {
 		addChild(memoryCounter);
 		#end
 	}
+	/** Same eligibility and removal operation as pinned Flixel clearCache,
+	 * with a completed-resource checkpoint after each graphic is retired. */
+	static function pruneSongBitmapCache():Void {
+		@:privateAccess var cache = FlxG.bitmap._cache;
+		if (cache == null) {FlxG.bitmap.clearCache(); return;}
+		var keys = [for (key in cache.keys()) key];
+		SongLoadingScreen.beginWork('cache', Math.max(1, keys.length), 0.5, 0.65);
+		for (key in keys) {
+			var graphic = FlxG.bitmap.get(key);
+			if (graphic != null && !graphic.persist && graphic.useCount <= 0)
+				FlxG.bitmap.removeByKey(key);
+			SongLoadingScreen.workUnit();
+		}
+		if (keys.length == 0) SongLoadingScreen.workUnit();
+	}
+
 }

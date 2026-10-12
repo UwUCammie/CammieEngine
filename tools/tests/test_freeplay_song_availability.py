@@ -263,6 +263,8 @@ class FreeplayHarness {
   public function new() {}
   function reconcilePendingSongs():Bool { reconciles++; return false; }
   function rebuildVisibleRows():Void {}
+  function expandedDifficultyRows():Bool return false;
+  function layoutChartRows():Void {}
   function rebuildIconQueue():Void {}
   function updateRenderedRowAvailability(index:Int):Void {
     rendered++;

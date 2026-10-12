@@ -74,6 +74,9 @@ class Browser {
  public var libraryOrder:Array<Int>=[]; public var libraryOrderRows:Array<LibrarySort.LibrarySortRow>=[];
  public var libraryOrderKey='';public var libraryFavoriteData:UserLibraryData;
  public var reads=0;public var hidden=-1;
+ public var chartRows:Array<FreeplayChartRows.FreeplayChartRow>=[]; public var chartOrder:Array<Int>=[];
+ function clearChartDisplay():Void {}
+ function expandedDifficultyRows():Bool return LibraryChartMetric.isDensity(UserLibrary.data().sorting().charts);
  public function new() songs=[
   {songName:'z',displayTitle:'Zulu',sourceLabel:'Misleading Psych label',owner:'nv',provenance:{sourceEngine:'Nightmare Vision',modName:'First'},libraryOrdinal:0,importProvenancePresent:true,isProvisional:false},
   {songName:'b',displayTitle:'Bravo',sourceLabel:'Psych label',owner:'psych',provenance:{sourceEngine:'Psych Engine',modName:'Second'},libraryOrdinal:1,importProvenancePresent:true,isProvisional:false},
@@ -130,6 +133,11 @@ class Main {
   menu.songs[1].authoredDifficultyRatings=FreeplayDifficultyRating.read([{difficulty:'normal',value:3,scale:'A'}]);
   UserLibrary.model.setSorting('flat','default','ratingLow');check(menu.orderedVisibleSongs().join(',')=='1,0','browser ignored named ratings');
   menu.songs[1].isProvisional=true;menu.libraryOrderKey='';check(menu.orderedVisibleSongs().join(',')=='0,1','provisional row received a comparison value');
+  UserLibrary.model.setSorting('flat','default','npsHigh');menu.orderedVisibleSongs();
+  check(menu.chartRows.length==3 && menu.chartRows[0].song==0 && menu.chartRows[1].song==0 && menu.chartRows[2].difficulty==-1,'actual browser expansion confused canonical and chart identities');
+  menu.songs[1].isProvisional=false;DifficultyManager.supportedDiff.set('b',[0,1]);menu.libraryOrderKey='';menu.orderedVisibleSongs();
+  check(menu.chartRows.length==4 && menu.chartRows[3].song==1 && menu.chartRows[3].difficulty==1,'support refresh did not rebuild expanded chart identities');
+  UserLibrary.model.setSorting('flat','default','az');menu.orderedVisibleSongs();check(menu.chartRows.length==0 && menu.libraryOrder.length==2,'alphabetical retained expanded chart entries');
 
  }
 }""".replace('METHOD',method)
@@ -139,7 +147,7 @@ class Main {
             # Expose the in-fixture shared save facade to the extracted method.
             main=main.replace('class UserLibrary {','class FixtureLibrary {').replace('UserLibrary.', 'FixtureLibrary.')
             (Path(temp)/'Main.hx').write_text(main)
-            (Path(temp)/'DifficultyManager.hx').write_text('class DifficultyManager {public static var supportedDiff:Map<String,Array<Int>>=[];public static function getDifficultyNames():Array<String> return ["normal","hard"];}')
+            (Path(temp)/'DifficultyManager.hx').write_text('class DifficultyManager {public static var supportedDiff:Map<String,Array<Int>>=[];public static function getDifficultyNames():Array<String> return ["normal","hard"];public static function getSupportedDiffs(s:String):Array<Int> return supportedDiff.get(s)==null?[]:supportedDiff.get(s);public static function getDiffName(i:Int):String return getDifficultyNames()[i];}')
             (Path(temp)/'Highscore.hx').write_text('class Highscore {public static var values:Map<String,Int>=[];public static var reads=0;public static function peekBestScore(song:String,diff:Int):Null<Int> {reads++;return values.get(song+":"+diff);}}')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',temp,'--run','Main'],cwd=ROOT,capture_output=True,text=True,timeout=60)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

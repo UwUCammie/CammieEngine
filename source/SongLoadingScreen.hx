@@ -25,8 +25,6 @@ class SongLoadingScreen {
 	static var stars:Array<Sprite> = [];
 	static var animationStarted:Float = 0;
 	static var fill:Sprite;
-	static var status:TextField;
-	static var count:TextField;
 	static var progress:SongLoadingProgress;
 	static var pending:Void->Void;
 	static var initialFrameRendered:Bool = false;
@@ -35,20 +33,36 @@ class SongLoadingScreen {
 	static var stateRequested:Bool = false;
 	static var viewportWaitLogged:Bool = false;
 	static var phaseFrames:Int = 0;
+	static var lastWorkPresentation:Float = 0;
+	static var presentingWork:Bool = false;
+	static var workFrames:Int = 0;
+	static var phaseWorkFrames:Int = 0;
+	static var enterFrames:Int = 0;
+	static var gameUpdates:Int = 0;
 
 	public static function install():Void {
 		if (installed || Main.instance == null || FlxG.game == null) return;
 		installed = true;
+		Main.instance.stage.addEventListener(openfl.events.Event.ENTER_FRAME,
+			function(_:openfl.events.Event):Void enterFrames++);
+		FlxG.signals.preUpdate.add(function():Void gameUpdates++);
+		SongLoadingWork.install(function(kind:String):Void {
+			if (active && (kind != 'cleanup' || progress.phase == 'cleanup')) resourceComplete(true);
+		});
 		// Installed after Main's cleanup listeners. These completions therefore
 		// include old-state teardown/cache pruning and dead sound retirement.
 		FlxG.signals.preStateCreate.add(function(_state:FlxState):Void {
-			if (active) complete(2, progress.label);
+			if (active) {
+				complete(2, progress.label);
+				if (!Std.isOfType(_state, PlayState)) beginWork('menu', 1, 0.65, 0.98);
+			}
 		});
 		FlxG.signals.postStateSwitch.add(function():Void {
 			if (active) {
 				if (Std.isOfType(FlxG.state, PlayState))
 					progress.describe('ready', 'Track ready', cast(FlxG.state, PlayState).songLoadingSummary());
 				else progress.describe('ready', 'Menu ready', 'Song resources cleared. Menu created.');
+				workUnit();
 				complete(3, progress.label);
 			}
 		});
@@ -78,9 +92,10 @@ class SongLoadingScreen {
 		}
 		if (active) return false;
 		if (!installed) {action(); return true;}
-		requestNumber++; phaseFrames = 0;
+		requestNumber++; phaseFrames = 0; workFrames = 0; lastWorkPresentation = 0;
 		stateRequested = false; viewportWaitLogged = false;
 		progress = new SongLoadingProgress();
+		if (chartPreparation) progress.beginWork('chart', 1, 0, 0.05);
 		describeWork(title, chartPreparation);
 		active = true;
 		pending = action;
@@ -136,9 +151,6 @@ class SongLoadingScreen {
 		// Keep track information inside the artwork's empty upper-right area.
 		text(812, 102, 392, title == 'LEAVING THE STAGE' ? 'BACK TO THE MENU' : 'UP NEXT', 26, 0xFF16D2);
 		text(812, 152, 392, detail, 34, 0xFFFFFF).height = 142;
-		status = text(812, 302, 420, progress.label, 16, 0xFFFFFF);
-		status.height = 154;
-		count = text(930, 666, 316, '', 18, 0xFFFFFF);
 		var track = new Sprite(); design.addChild(track);
 		track.graphics.beginFill(0x1B073C); track.graphics.drawRect(0, 702, 1280, 18); track.graphics.endFill();
 		fill = new Sprite(); design.addChild(fill);
@@ -196,13 +208,80 @@ class SongLoadingScreen {
 	}
 
 	static function redraw():Void {
-		status.text = progress.label + (progress.detail == '' ? '' : '\n\n' + progress.detail);
-		count.text = progress.completed == SongLoadingProgress.TOTAL ? 'READY' : progress.phase == 'chart' ? 'CHART' : progress.phase == 'exit' ? 'SONG > MENU' : 'CHART > SCENE';
 		fill.graphics.clear();
-		if (progress.completed > 0) {
+		if (progress.fraction() > 0) {
 			fill.graphics.beginFill(0xFF16D2);
 			fill.graphics.drawRect(4, 706, 1272 * progress.fraction(), 10); fill.graphics.endFill();
 		}
+	}
+
+	/** Called on the foreground thread at existing work boundaries, never from
+	 * a timer. Lifecycle callbacks retain their original uninterrupted order. */
+	public static function beginWork(name:String, total:Float, start:Float, end:Float):Void {
+		if (!active) return;
+		phaseWorkFrames = 0;
+		progress.beginWork(name, total, start, end);
+		redraw();
+	}
+	public static function workUnit(units:Float = 1):Void {
+		if (!active || progress.completed >= 3) return;
+		progress.worked(units); presentWork();
+	}
+	public static function resourceComplete<T>(value:T):T {
+		if (active && progress.completed < 3) {progress.worked(1, true); presentWork();}
+		return value;
+	}
+	static function presentWork():Void {
+		if (!active || progress.completed >= 3 || presentingWork || progress.workTotal <= 0) return;
+		var now = haxe.Timer.stamp();
+		if (now - lastWorkPresentation < 1 / 30) return;
+		lastWorkPresentation = now;
+		layout(); animateStars(); redraw();
+		// Native overlay-only presentation is supplied below. No game update,
+		// input event, script hook or display-list broadcast is dispatched.
+		presentOverlay();
+	}
+	static function presentOverlay():Void {
+		#if (cpp && lime)
+		var window = lime.app.Application.current.window;
+		if (overlay == null || window.width <= 0 || window.height <= 0 || !renderViewportReady()) return;
+		@:privateAccess var renderer = Main.instance.stage.__renderer;
+		if (!Std.isOfType(renderer, openfl.display.OpenGLRenderer)) return;
+		var gl:openfl.display.OpenGLRenderer = cast renderer;
+		@:privateAccess if (gl.__defaultRenderTarget != null || gl.__numClipRects != 0
+			|| gl.__stencilReference != 0 || gl.__maskObjects.length != 0) return;
+		@:privateAccess var context = gl.__context3D;
+		@:privateAccess var rendererCleared = gl.__cleared;
+		@:privateAccess var contextCleared = context.__cleared;
+		@:privateAccess var contextPresent = context.__present;
+		var beforeEnterFrames = enterFrames, beforeGameUpdates = gameUpdates;
+		presentingWork = true;
+		var restore = function():Void {
+			@:privateAccess gl.__cleared = rendererCleared;
+			@:privateAccess context.__cleared = contextCleared;
+			@:privateAccess context.__present = contextPresent;
+			presentingWork = false;
+		};
+		try {
+			// Pinned Lime 8.3.2 only makes this window's context current here.
+			// Render this surviving sprite only, never Stage.__render/ENTER_FRAME.
+			@:privateAccess window.__backend.render();
+			@:privateAccess overlay.__update(false, true);
+			context.setRenderToBackBuffer();
+			@:privateAccess gl.__clear();
+			@:privateAccess gl.__render(overlay);
+			workFrames++; phaseWorkFrames++;
+			if (enterFrames != beforeEnterFrames || gameUpdates != beforeGameUpdates)
+				throw 'Loading repaint dispatched a gameplay update';
+			log('work-presented');
+			#if sys
+			if (Sys.args().indexOf('--profile-song-loading') >= 0 && phaseWorkFrames <= 24)
+				capture(progress.phase + '-work-' + workFrames);
+			#end
+			@:privateAccess window.__backend.contextFlip();
+		} catch (error:Dynamic) {restore(); throw error;}
+		restore();
+		#end
 	}
 
 	static function complete(stage:Int, label:String):Void {
@@ -224,7 +303,7 @@ class SongLoadingScreen {
 			try action() catch (error:Dynamic) {cancel(); throw error;}
 			preparing = false;
 			if (authoredOutroStarted()) {cancel(); return;}
-			if (pending != null) {complete(1, progress.label); return;}
+			if (pending != null) {workUnit(); complete(1, progress.label); return;}
 			if (!stateRequested) {cancel(); return;}
 			if (active) complete(1, progress.label);
 			return;
@@ -300,7 +379,7 @@ class SongLoadingScreen {
 			if (artwork.bitmapData != null) artwork.bitmapData.dispose();
 		}
 		artwork = null; stars.resize(0);
-		overlay = null; design = null; fill = null; status = null; count = null;
+		overlay = null; design = null; fill = null;
 		pending = null; preparing = false; active = false;
 	}
 
@@ -328,7 +407,7 @@ class SongLoadingScreen {
 		#if sys
 		if (RuntimeSmokeHarness.enabled() || Sys.args().indexOf('--profile-song-loading') >= 0)
 			Sys.println('SONG_LOADING|' + haxe.Json.stringify({phase:phase,
-				work:progress.phase, action:progress.label, detail:progress.detail, completed:progress.completed, total:SongLoadingProgress.TOTAL, time:haxe.Timer.stamp()}));
+				work:progress.phase, action:progress.label, detail:progress.detail, completed:progress.completed, total:SongLoadingProgress.TOTAL, fraction:progress.fraction(), workCompleted:progress.workCompleted, workTotal:progress.workTotal, enterFrames:enterFrames, gameUpdates:gameUpdates, time:haxe.Timer.stamp()}));
 		#end
 	}
 }

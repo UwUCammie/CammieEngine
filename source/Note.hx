@@ -1566,6 +1566,7 @@ class Note extends DynamicSprite {
 		codenameFrameOffset = null;
 		codenameFrameOffsetOwned = false;
 		super.destroy();
+		SongLoadingWork.complete(true, 'cleanup');
 	}
 
 	public function switchType(uiType:String) {

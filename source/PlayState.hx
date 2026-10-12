@@ -14536,10 +14536,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	override public function create() {
 		if (guardMissingSongBeforeCreate()) return;
+		SongLoadingScreen.beginWork('scene', 24, 0.05, 0.98);
 		// Note keys cache parsed UI presets only for this song. This keeps every
 		// generated note from rereading and reparsing the same JSON while still
 		// observing asset changes between charts.
 		NoteKeys.clearPresetCache();
+		SongLoadingScreen.workUnit();
 		Sys.println('[dims] FlxG=' + FlxG.width + 'x' + FlxG.height + ' initial=' + FlxG.initialWidth + 'x' + FlxG.initialHeight);
 		#if desktop
 		var songLowercase = currentSongStorageFolder();
@@ -14603,6 +14605,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				preferredJudgement = Reflect.field(Judgement.uiJson, preferredJudgement).uses;
 		}
 		storyDifficultyText = DifficultyManager.getDiffName(storyDifficulty);
+		SongLoadingScreen.workUnit();
 
 		#if windows
 		iconRPC = SONG.player2;
@@ -14758,6 +14761,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		Conductor.mapBPMChanges(SONG);
 		Conductor.changeBPM(SONG.bpm);
 		initialStepCrochet = Conductor.stepCrochet;
+		SongLoadingScreen.workUnit();
 		var dialogSuffix = "";
 		if (OptionsHandler.options.stressTankmen) {
 			dialogSuffix = "-shit";
@@ -14824,6 +14828,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		noteSpawnLookahead = scrollSpawnLookahead(dynamicScrollTarget);
 
 		initializeNightmareVisionScripts();
+		SongLoadingScreen.workUnit();
 		if (NightmareVisionStateSession.active != null && NightmareVisionStateSession.active.hasPendingSwitch) {
 			nightmareVisionStartupRedirect = true;
 			persistentUpdate = false;
@@ -14856,6 +14861,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			: constructNightmareVisionRole(SONG.player2, 1);
 		if(nightmareVisionLegacyFieldCameras) {startHistoricalCharacterPos(dad,true);dadGroup.add(dad);dadGroup.parent=dad;}
 		loadNightmareVisionCharacter(dad);
+		SongLoadingScreen.workUnit();
 		if(nightmareVisionLegacyFieldCameras) dadMap.set(dad.curCharacter,dad);
 		else if (nightmareVisionScripts != null) {dadGroup.addChar(dad);dadGroup.parent = dad;}
 		if (duoMode || opponentPlayer || soloMode)
@@ -14884,6 +14890,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			registry.setOnScripts('boyfriend',boyfriend);registry.setOnScripts('boyfriendGroup',boyfriendGroup);registry.setOnScripts('bfGhost',bfGhost);
 		}
 		loadNightmareVisionCharacter(boyfriend);
+		SongLoadingScreen.workUnit();
 		if(nightmareVisionLegacyFieldCameras) boyfriendMap.set(boyfriend.curCharacter,boyfriend);
 		else if (nightmareVisionScripts != null) {boyfriendGroup.addChar(boyfriend);boyfriendGroup.parent = boyfriend;}
 		if (!opponentPlayer && !demoMode)
@@ -14907,6 +14914,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		gf.syncHxcPosition();
 		dad.syncHxcPosition();
 		RuntimeSmokeHarness.markLoadPhase('initial_characters');
+		SongLoadingScreen.workUnit();
 		trace('befpre spoop check');
 		if (SONG.isSpooky) {
 			trace("WOAH SPOOPY");
@@ -14936,6 +14944,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// doof.y = FlxG.height * 0.5;
 		doof.scrollFactor.set();
 		doof.finishThing = startCountdown;
+		SongLoadingScreen.workUnit();
 
 		Conductor.songPosition = -5000;
 		trace('prepare your strumlime');
@@ -14969,6 +14978,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		configurePsychStrumSkins();
 		refreshPsychStrumIndex();
 		configureNightmareVisionStrumlines();
+		SongLoadingScreen.workUnit();
 		if ((midscroll && !duoMode) || soloMode) { // middlescroll hijinks (coming 2085)
 			if (opponentPlayer) {
 				enemyStrums.x += 325;
@@ -15010,6 +15020,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (comboGroup != null) add(comboGroup);
 		// From this point field collection mutations own live display attachment.
 		enableNightmareVisionFieldAttachment();
+		SongLoadingScreen.workUnit();
 
 		if (!(sourceScoreOwner && !sourceScoreNightmare)) {
 			comboBreakThingies(0);
@@ -15059,6 +15070,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		FlxG.fixedTimestep = false;
 		trace('gay');
+		SongLoadingScreen.workUnit();
 		var sourceTimeHUD = nightmareVisionScripts != null;
 		var timeGraphic:Dynamic = sourceTimeHUD
 			? nightmareVisionPaths.image(nightmareVisionPaths.usesSharedRatingPrefix
@@ -15097,6 +15109,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		songPosBar.cameras = [camHUD];
 
 		initializeSourceTimeHUDAliases();
+		SongLoadingScreen.workUnit();
 
 		if (useSongBar && !sourceTimeHUD) {
 			add(songPosBG);
@@ -15163,6 +15176,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		iconArray = [iconP1, iconP2];
 
 		updateHealthColors();
+		SongLoadingScreen.workUnit();
 
 		practiceDieIcon = new HealthIcon('bf-old', false, true);
 		practiceDieIcon.y = healthBar.y - (practiceDieIcon.height / 2);
@@ -15212,6 +15226,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		initializeSourceHUDBarGroups();
 		initializeSourceHUDIcons();
 		initializeNightmareVisionHUD();
+		SongLoadingScreen.workUnit();
 
 		startingSong = true;
 		trace('finish uo');
@@ -15311,7 +15326,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			camGame.focusOn(camFollow.getPosition());
 		}
 		loadCodenameStateCompat();
+		SongLoadingScreen.workUnit();
 		loadCodenameStageCompat();
+		SongLoadingScreen.workUnit();
 		flushPendingHxcCharacterAdded();
 		initializeVSliceCameraFocus(beforeStageCameraX, beforeStageCameraY);
 		if (psychCompiledStageCreated)
@@ -15320,6 +15337,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		trace('stage done');
 		RuntimeSmokeHarness.markLoadPhase('stage_loaded');
+		SongLoadingScreen.workUnit();
 
 		RuntimeSmokeHarness.markStep('playstate:create:ui-layout-begin');
 		final uiJson = CoolUtil.parseJson(FNFAssets.getText("assets/images/custom_ui/ui_layouts/ui.json"));
@@ -15333,8 +15351,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		bindGameplayCameras();
 		trace('ui done');
 		RuntimeSmokeHarness.markStep('playstate:create:ui-layout-complete');
+		SongLoadingScreen.workUnit();
 		psychSourceCreationReady = true;
 		preparePsychSourceSongScripts();
+		SongLoadingScreen.workUnit();
 
 		if (nightmareVisionScripts != null) {
 			nightmareVisionScripts.loadScope('song');
@@ -15382,11 +15402,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 
 		RuntimeSmokeHarness.markStep('playstate:create:intro-dispatch-returned');
+		SongLoadingScreen.workUnit();
 		if (sourceScoreDisplayOwned()) {
 			RecalculateRating(false, false);
 			if (nightmareVisionScripts != null) updateScoreBar();
 		}
 		RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');
+		SongLoadingScreen.workUnit();
 		if (selectedPsychSkinRoot() != null) PsychRuntimeBindings.dispatch(this, 'onCreatePost', []);
 		if (nightmareVisionInputScope != null)
 			nightmareVisionInputScope.input = nightmareVisionInputScope.createInput(nightmareVisionInputScope.controls);
@@ -15395,9 +15417,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');
 		super.create();
 		RuntimeSmokeHarness.markStep('playstate:create:super-create-complete');
+		SongLoadingScreen.workUnit();
 		RuntimeSmokeHarness.markStep('playstate:create:stateChangeEnd-begin');
 		callAllHScript('stateChangeEnd', [EngineCompat.hxcLifecyclePayload('stateChangeEnd', {targetState: this})]);
 		RuntimeSmokeHarness.markStep('playstate:create:stateChangeEnd-complete');
+		SongLoadingScreen.workUnit();
 		RuntimeSmokeHarness.markPlayStateReady(SONG);
 		if (runtimeSmokeActorTracking()) RuntimeSmokeHarness.markCodenameActorSnapshot(runtimeSmokeActorSummary());
 		runtimeSmokeCameraSnapshot('playstate-ready');
@@ -19983,6 +20007,7 @@ void main(void) {
 				var entry = splitPaths[index];
 				var prefetchedSound = prefetchedSounds == null ? null : prefetchedSounds[index];
 				var sound = loadVocalTrack(entry.path, prefetchedSound);
+				if (sound != null) SongLoadingWork.complete(true);
 				if (sound != null)
 					sounds.push({sound: sound, role: entry.role});
 			}
@@ -20202,6 +20227,7 @@ void main(void) {
 		inst = SongAudioNormalizer.prepare(Sound.fromFile(useInst), useInst,
 			OptionsHandler.options.normalizeSongAudio);
 		RuntimeSmokeHarness.markLoadPhase('instrument_loaded');
+		SongLoadingWork.complete(true);
 
 		if (SONG.needsVoices)
 			initializeVocalTracks(useVocals);
@@ -20236,10 +20262,13 @@ void main(void) {
 			prepareNightmareVisionSourceEvents();
 			speedChanges.sort(NightmareVisionScrollVelocity.sort);
 		}
+		var loadingRows = SongLoadingProgress.chartRows(songData);
+		var loadingRowUnit = loadingRows > 0 ? 1.0 / loadingRows : 0.0;
 		var daSection:Int = 0;
 		var traceNoteConstruction = RuntimeSmokeHarness.enabled();
 		var generateChartNotes:Void->Void = function():Void {
 		RuntimeSmokeHarness.markLoadPhase('note_generation_started');
+		if (loadingRows == 0) SongLoadingScreen.workUnit();
 		var noteConstructionCount:Int = 0;
 		var markNoteConstructed:Void->Void = function():Void {
 			noteConstructionCount++;
@@ -20267,7 +20296,7 @@ void main(void) {
 				if (nightmareVisionScripts != null
 					? SongEvents.isNightmareVisionLegacyEventRow(songNotes, songData.keys == null ? 4 : songData.keys)
 					: songNotes.length >= 2 && songNotes[1] == -1)
-					continue;
+					{SongLoadingScreen.workUnit(loadingRowUnit); continue;}
 
 				var authoredTime:Dynamic = traceNoteConstruction && songNotes.length > 0 ? songNotes[0] : null;
 				var authoredLane:Dynamic = traceNoteConstruction && songNotes.length > 1 ? songNotes[1] : null;
@@ -20293,7 +20322,7 @@ void main(void) {
 						Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT)
 					: ChartNoteOwnership.address(SONG.format,
 						Std.int(songNotes[1]), section.mustHitSection, Note.NOTE_AMOUNT);
-				if (nightmareVisionScripts != null && !nightmareVisionAcceptsNoteField(chartAddress.playfieldIndex)) continue;
+				if (nightmareVisionScripts != null && !nightmareVisionAcceptsNoteField(chartAddress.playfieldIndex)) {SongLoadingScreen.workUnit(loadingRowUnit); continue;}
 				if (nightmareVisionScripts != null) gottaHitNote = chartAddress.playfieldIndex == 0;
 				var sourcePlayerControlled:Null<Bool> = nightmareVisionScripts != null
 					? chartAddress.playerControlled : ChartNoteOwnership.playerControlOverride(SONG.format, chartAddress);
@@ -20557,6 +20586,7 @@ void main(void) {
 				}
 				swagNote.codenameGeneratedX = swagNote.x;
 			}
+				SongLoadingScreen.workUnit(loadingRowUnit);
 			}
 			daSection += 1;
 		}
@@ -27012,6 +27042,7 @@ void main(void) {
 
 	override public function destroy() {
 		RuntimeSongExitProbe.mark("destroy-begin");
+		SongLoadingScreen.beginWork('cleanup', 7, 0.05, 0.5);
 		destroyPsychCustomSubstates();
 		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
 		psychVideoHostDestroyed = true;
@@ -27063,7 +27094,8 @@ void main(void) {
 			nightmareVisionNoteTypes = null;
 		}
 		RuntimeSongExitProbe.mark("nv-scripts-released");
-		for (renderer in nightmareVisionRenderers) renderer.destroy();
+		SongLoadingScreen.workUnit();
+		for (renderer in nightmareVisionRenderers) {renderer.destroy(); SongLoadingWork.complete(true, 'cleanup');}
 		nightmareVisionRenderers.clear();
 		var ownedNightmareVisionLines = nightmareVisionOwnedStrumlines.copy();
 		nightmareVisionLegacyReceptors.release();
@@ -27097,6 +27129,7 @@ void main(void) {
 			playHUD = null;
 		}
 		RuntimeSongExitProbe.mark("nv-fields-released");
+		SongLoadingScreen.workUnit();
 		// Native mounted membership owns real character groups. No cache-only destroy pass.
 		nightmareVisionRoleGroups = [];
 		nightmareVisionPlugins = null;
@@ -27111,10 +27144,11 @@ void main(void) {
 		nightmareVisionSkinRegistry = null;
 		nightmareVisionPrefs = null;
 		RuntimeSongExitProbe.mark("nv-assets-released");
+		SongLoadingScreen.workUnit();
 		callAllHScript('destroy', []);
-		for (runtime in psychRuntimeBindings) runtime.release();
+		for (runtime in psychRuntimeBindings) {runtime.release(); SongLoadingWork.complete(true, 'cleanup');}
 		psychRuntimeBindings.resize(0);
-		for (scope in psychNativeClassScopes) scope.release();
+		for (scope in psychNativeClassScopes) {scope.release(); SongLoadingWork.complete(true, 'cleanup');}
 		psychNativeClassScopes.resize(0);
 		psychSourceCallbacks.release();
 		for (interp in hscriptStates) if (Std.isOfType(interp, SourceIrisBridge)) (cast interp:SourceIrisBridge).release();
@@ -27135,13 +27169,13 @@ void main(void) {
 			reportPsychCompiledStageRuntimeDiagnostics();
 			psychCompiledStageRuntime = null;
 		}
-		for (session in psychSourceClassSessions) session.release();
+		for (session in psychSourceClassSessions) {session.release(); SongLoadingWork.complete(true, 'cleanup');}
 		psychSourceClassSessions.clear();
 		for (videoModule in hxcVideoModuleHosts.copy())
 			if (videoModule != null)
 				videoModule.destroy();
 		hxcVideoModuleHosts.resize(0);
-		for (scope in codenameCharacterScopes.copy()) scope.runtime.destroy();
+		for (scope in codenameCharacterScopes.copy()) {scope.runtime.destroy(); SongLoadingWork.complete(true, 'cleanup');}
 		codenameCharacterScopes.resize(0);
 		callCodenameScripts('destroy', []);
 		for (scope in codenameScriptScopes)
@@ -27184,6 +27218,7 @@ void main(void) {
 			destroyVocals();
 		}
 		RuntimeSongExitProbe.mark("compat-released");
+		SongLoadingScreen.workUnit();
 		clearScriptOwnership();
 		clearHscriptSoundCache();
 		for (line in codenameStrumlines) if (line != null) line.unbindCodenameInputLine();
@@ -27229,18 +27264,21 @@ void main(void) {
 		psychSourceHealthBar = null; psychSourceTimeBar = null;
 		nightmareVisionSourceHealthBar = null; nightmareVisionSourceTimeBar = null;
 		RuntimeSongExitProbe.mark("before-native-destroy");
+		SongLoadingScreen.workUnit();
 		super.destroy();
 		RuntimeSongExitProbe.mark("after-native-destroy");
+		SongLoadingScreen.workUnit();
 		// A script may have mounted an initial ghost; native teardown already owns it then.
 		for(sprite in nightmareVisionLegacyGhosts) if(sprite.animation!=null) sprite.destroy();
 		nightmareVisionLegacyGhosts=[];bfGhost=null;dadGhost=null;focusedChar=null;
 		boyfriendMap=null;dadMap=null;gfMap=null;
-		for (owner in sourceIconAssetOwners) owner.release();
+		for (owner in sourceIconAssetOwners) {owner.release(); SongLoadingWork.complete(true, 'cleanup');}
 		sourceIconAssetOwners.clear();
 		psychSourceIconP1 = null;psychSourceIconP2 = null;
 		nightmareVisionSourceIconP1 = null;nightmareVisionSourceIconP2 = null;
 		CodenameMusicBeatTransition.releaseChartOwner(codenameTransitionOwner);
 		RuntimeSongExitProbe.mark("destroy-complete");
+		SongLoadingScreen.workUnit();
 		if (smokeActors != null) RuntimeSmokeHarness.markPlayStateDestroyed(smokeActors);
 	}
 }

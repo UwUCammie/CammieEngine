@@ -14,6 +14,10 @@ class PsychVideoCountdownHandoffTest(unittest.TestCase):
         video_lookup = paths[paths.index("\t\tReflect.setField(proxy, 'video',"):paths.index("\t\tReflect.setField(proxy, 'getSparrowAtlas',")]
         gate = source[source.index('var countdownResults:Array<Dynamic> = [];', source.index('public function startCountdown():Void')):source.index('\n\t\tif (duoMode)', source.index('var countdownResults:Array<Dynamic> = [];', source.index('public function startCountdown():Void')))]
         fixture = r'''
+class SongLoadingScreen {
+ public static function beginWork(_name:String,_total:Float,_start:Float,_end:Float):Void {}
+ public static function workUnit(_units:Float=1):Void {}
+}
 class FlxG {public static var state:Dynamic;public static var width=1280;public static var height=720;}
 class FlxTimer {
  public static var queue:Array<FlxTimer>=[];public var canceled=false;var callback:FlxTimer->Void;

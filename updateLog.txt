@@ -1,6 +1,10 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.33 alpha - CammieEngine
+- Replace comparison-difficulty selection with Difficulty Rating sorting: show one listing per available difficulty and jump immediately to the selected difficulty's sorted position with Left/Right. Keep alphabetical and other ordinary sorting behavior.
+- Remove redundant loading status and scene-detail text. Drive the progress bar from actual completed scene-building and song-cleanup units, presenting the loading overlay during synchronous work while preserving authored script callback order.
+
 v0.0.32 alpha - CammieEngine
 - Keep the Freeplay selection centered, with smooth list movement and selected-card expansion when moving Up/Down.
 - Reconcile refreshed chart data inside the open Freeplay menu, preserving unchanged rows, selection, filters and imported menu sessions instead of visibly reopening the browser.

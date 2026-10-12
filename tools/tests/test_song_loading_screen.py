@@ -21,7 +21,7 @@ class SongLoadingScreenTest(unittest.TestCase):
 class LoadingProbe {
  static var outro=false; static var installed=true; static var stateRequested=false; static var viewportWaitLogged=false; static var viewportReady=false;
  static var active=false; static var preparing=false;
- static var phaseFrames=0; static var requestNumber=0; static var pending:Void->Void;
+ static var workFrames=0; static var lastWorkPresentation=0.; static var phaseFrames=0; static var requestNumber=0; static var pending:Void->Void;
  static var initialFrameRendered=false; static var readyFrameRendered=false;
  static var progress:SongLoadingProgress;
  static var overlay:Dynamic; static var design:Dynamic; static var fill:Dynamic; static var artwork:Dynamic; static var stars:Array<Dynamic>=[];
@@ -29,6 +29,7 @@ class LoadingProbe {
  static function build(a:String,b:String):Void {}
  static function authoredOutroStarted():Bool return outro;
  static function renderViewportReady():Bool return viewportReady;
+ static function workUnit(units:Float=1):Void progress.worked(units);
  static function redraw():Void {}
  static function layout():Void {}
  static function animateStars():Void {}
@@ -41,7 +42,16 @@ class LoadingProbe {
   var model=new SongLoadingProgress();
   check(model.fraction()==0,"initial progress");
   model.finish(1,"prepared"); model.finish(0,"old"); model.finish(8,"invalid");
-  check(model.completed==1&&model.label=="prepared"&&model.fraction()==0.25,"progress regressed or guessed");
+  check(model.completed==1&&model.label=="prepared"&&model.fraction()==0,"lifecycle steps guessed synchronous progress");
+  model.beginWork("scene", 4, 0.25, 0.98);
+  model.worked(); var first=model.fraction();
+  model.worked(1,true); var second=model.fraction();
+  check(first>0.25&&second>first&&second<0.98,"completed resources did not advance actual work");
+  model.worked(-5);check(model.fraction()==second,"negative work changed progress");
+  model.worked(3);check(model.fraction()==0.98,"planned work did not complete");
+  model.finish(3,"created");check(model.fraction()<1,"creation completed before final frame");
+  model.finish(4,"drawn");check(model.fraction()==1,"final frame did not complete");
+  check(SongLoadingProgress.chartRows({notes:[{sectionNotes:[[0,0,0],[1,-1,0]]},{sectionNotes:[[2,1,0]]}]})==3,"row plan incorrect");
   var detail=SongLoadingProgress.chartDetail({stage:"windy",player1:"bf",player2:"dad",gf:"gf",needsVoices:true,
    notes:[{sectionNotes:[[0,0,0],[1,-1,0]]},{sectionNotes:[[2,1,0]]}]});
   check(detail.indexOf("2 sections, 3 rows")>=0&&detail.indexOf("Stage: windy")>=0&&detail.indexOf("bf, dad, gf")>=0,"prepared chart facts missing");
@@ -75,6 +85,86 @@ class LoadingProbe {
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder)/'LoadingProbe.hx').write_text(fixture,encoding='utf-8')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',folder,'-main','LoadingProbe','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_worker_reads_never_repaint_foreground_and_values_are_unchanged(self):
+        fixture = r'''class LoadingWorkProbe {
+ static function main():Void {
+  var sentinel={identity:17};
+  if(SongLoadingWork.complete(sentinel)!=sentinel)throw "uninstalled sink changed asset";
+  var calls=0;var kinds:Array<String>=[];
+  SongLoadingWork.install(function(kind){calls++;kinds.push(kind);});
+  if(SongLoadingWork.complete(sentinel)!=sentinel||calls!=1)throw "foreground resource completion lost value";
+  var lock=new sys.thread.Lock();
+  sys.thread.Thread.create(function(){
+   if(SongLoadingWork.complete(sentinel)!=sentinel)throw "worker resource identity changed";
+   lock.release();
+  });
+  if(!lock.wait(3)||calls!=1)throw "worker invoked display sink";
+  SongLoadingWork.complete(true,"cleanup");
+  if(calls!=2||kinds.join(",")!="resource,cleanup")throw "resource kind or completion lost";
+ }
+}'''
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder)/'LoadingWorkProbe.hx').write_text(fixture,encoding='utf-8')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',folder,'-main','LoadingWorkProbe','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_completed_scene_stops_resource_accounting_and_repaints(self):
+        source=(ROOT/'source/SongLoadingScreen.hx').read_text(encoding='utf-8')
+        fixture=r'''class WorkGateProbe {
+ static var active=true;static var calls=0;static var progress=new SongLoadingProgress();
+ static function presentWork():Void calls++;
+''' + method(source,'public static function workUnit(') + method(source,'public static function resourceComplete<T>(') + r'''
+ static function main():Void {
+  var value={identity:7};progress.beginWork("scene",3,0.05,0.98);
+  workUnit();if(calls!=1)throw "actual create checkpoint omitted";
+  progress.finish(3,"ready");var completed=progress.workCompleted,total=progress.workTotal;
+  workUnit();if(resourceComplete(value)!=value)throw "ready resource identity changed";
+  if(calls!=1||progress.workCompleted!=completed||progress.workTotal!=total)throw "completed scene repainted or counted regular updates";
+  active=false;workUnit();resourceComplete(value);if(calls!=1)throw "inactive scene repainted";
+ }
+}'''
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder)/'WorkGateProbe.hx').write_text(fixture,encoding='utf-8')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',folder,'-main','WorkGateProbe','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_bitmap_pruning_keeps_flixel_eligibility_and_counts_actual_scans(self):
+        source=(ROOT/'source/Main.hx').read_text(encoding='utf-8')
+        fixture = r'''class Graphic {
+ public var persist:Bool;public var useCount:Int;public var destroyed=0;
+ public function new(persist:Bool,useCount:Int){this.persist=persist;this.useCount=useCount;}
+}
+class BitmapCache {
+ public var _cache:Map<String,Graphic>=[];
+ public var removed:Array<String>=[];
+ public function new(){}
+ public function get(k:String):Graphic return _cache.get(k);
+ public function removeByKey(k:String):Void {var g=_cache.get(k);_cache.remove(k);removed.push(k);g.destroyed++;}
+ public function clearCache():Void throw "unexpected atomic prune";
+}
+class FlxG {public static var bitmap=new BitmapCache();}
+class SongLoadingScreen {
+ public static var planned=0.;public static var worked=0;
+ public static function beginWork(n:String,t:Float,a:Float,b:Float):Void {planned=t;worked=0;}
+ public static function workUnit():Void worked++;
+}
+class BitmapProbe {
+''' + method(source,'static function pruneSongBitmapCache(') + r'''
+ static function main():Void {
+  var dead=new Graphic(false,0),persistent=new Graphic(true,0),used=new Graphic(false,1);
+  FlxG.bitmap._cache.set("dead",dead);FlxG.bitmap._cache.set("persistent",persistent);FlxG.bitmap._cache.set("used",used);
+  pruneSongBitmapCache();
+  if(dead.destroyed!=1||persistent.destroyed!=0||used.destroyed!=0)throw "cache eligibility changed";
+  if(FlxG.bitmap.removed.join(",")!="dead"||SongLoadingScreen.planned!=3||SongLoadingScreen.worked!=3)throw "scan progress incorrect";
+  FlxG.bitmap._cache=[];pruneSongBitmapCache();
+  if(SongLoadingScreen.planned!=1||SongLoadingScreen.worked!=1)throw "empty cache plan did not finish";
+ }
+}'''
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder)/'BitmapProbe.hx').write_text(fixture,encoding='utf-8')
+            result=subprocess.run([*HAXE_COMMAND,'-cp',folder,'-main','BitmapProbe','--interp'],cwd=ROOT,capture_output=True,text=True,timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_existing_cleanup_and_owner_callback_routes_remain(self):

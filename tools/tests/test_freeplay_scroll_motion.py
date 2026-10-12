@@ -11,7 +11,15 @@ class FreeplayScrollMotionTest(unittest.TestCase):
   source=(ROOT/'source/FreeplayBrowserRow.hx').read_text(encoding='utf-8')
   draw=extract_method(source,'function drawPresentation(')
   self.assertLess(draw.index('title.text ='),draw.index('title.origin.set(0, 0)'))
-  self.assertLess(draw.index('title.origin.set(0, 0)'),draw.index('title.scale.set('))
+  self.assertLess(draw.index('title.text ='),draw.index('title.updateHitbox();'))
+  self.assertLess(draw.index('title.updateHitbox();'),draw.index('title.offset.set(0, 0)'))
+  self.assertLess(draw.index('title.offset.set(0, 0)'),draw.index('title.origin.set(0, 0)'))
+  self.assertIn('if (titleAppearanceChanged) title.updateHitbox();',draw)
+  self.assertIn('titleChanged || title.color != titleColor',draw)
+  self.assertLess(draw.index('title.color = titleColor;'),draw.index('title.updateHitbox();'))
+  self.assertLess(draw.index('title.scale.set('),draw.index('title.updateHitbox();'))
+  self.assertEqual(draw.count('title.updateHitbox();'),1)
+  self.assertLess(draw.index('title.origin.set(0, 0)'),draw.index('title.setPosition('))
   self.assertIn('title.setPosition(x + 82,',draw)
  def test_repeat_and_motion_across_frame_rates(self):
   fixture = r'''class Main {

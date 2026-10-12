@@ -136,7 +136,7 @@ class FNFAssets {
 	public static function getText(id:String):String {
 		id = Path.normalize(id);
 	        #if sys
-			if (ImportIO.current() != null) return AssetTextEncoding.stripBom(ImportFile.getContent(id));
+			if (ImportIO.current() != null) return SongLoadingWork.complete(AssetTextEncoding.stripBom(ImportFile.getContent(id)));
             // if there a library strip it out..
             // future proofing ftw
 				var resolved = resolveDiskPath(id);
@@ -159,12 +159,12 @@ class FNFAssets {
 				throw 'File $path doesn\'t exist or cannot be read.';
 			}
 			}
-			return ImportOverlayResolver.applyText(id, AssetTextEncoding.stripBom(content));
+			return SongLoadingWork.complete(ImportOverlayResolver.applyText(id, AssetTextEncoding.stripBom(content)));
             
         #else
             // no need to strip it out... 
             // assets handles it
-            return AssetTextEncoding.stripBom(Assets.getText(id));
+            return SongLoadingWork.complete(AssetTextEncoding.stripBom(Assets.getText(id)));
         #end
     }
 	/**
@@ -345,13 +345,13 @@ class FNFAssets {
 				if (resolved != null)
 					path = resolved;
 				else if (Assets.exists(id))
-					return Assets.getBitmapData(id, useCache);
+					return SongLoadingWork.complete(Assets.getBitmapData(id, useCache));
 				else if (!isInScope(id))
 					throw "Tried to access a file that is out of scope.";
 			if (path == null)
 				throw 'File $id doesn\'t exist or cannot be read.';
 			var bitmapKey = DiskBitmapCache.key(FileSystem.absolutePath(path));
-			return DiskBitmapCache.getOrLoad(bitmapKey, useCache,
+			return SongLoadingWork.complete(DiskBitmapCache.getOrLoad(bitmapKey, useCache,
 				function(key:String):BitmapData {
 					var graphic = FlxG.bitmap.get(key);
 					var cached = graphic == null || graphic.isDestroyed ? null : graphic.bitmap;
@@ -376,9 +376,9 @@ class FNFAssets {
 				function(key:String, data:BitmapData):BitmapData {
 					var graphic = FlxG.bitmap.add(data, false, key);
 					return graphic == null ? data : graphic.bitmap;
-				});
+				}));
         #else
-            return Assets.getBitmapData(id, useCache);
+            return SongLoadingWork.complete(Assets.getBitmapData(id, useCache));
         #end
     }
 
@@ -447,18 +447,18 @@ class FNFAssets {
 					path = resolved;
 				else if (Assets.exists(id))
 					// Prefer a manifest asset only when no disk file shadows it.
-					return Assets.getSound(id, useCache);
+					return SongLoadingWork.complete(Assets.getSound(id, useCache));
 				else if (!isInScope(id))
 					throw "Tried to access a file that is out of scope.";
 			if (path == null)
 				throw 'File $id doesn\'t exist or cannot be read.';
 		try {
-			return Sound.fromFile(path);
+			return SongLoadingWork.complete(Sound.fromFile(path));
 		} catch (e:Any) {
 			throw 'File $path doesn\'t exist or cannot be read.';
 		}
         #else
-            return Assets.getSound(id, useCache);
+            return SongLoadingWork.complete(Assets.getSound(id, useCache));
         #end
     }
     /**

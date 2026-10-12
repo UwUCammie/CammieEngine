@@ -2171,6 +2171,7 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		if (sourceStageOffsetScratch != null) sourceStageOffsetScratch.put();
 		sourceStageAnimOffset = null;sourceStageOffsetBase = null;sourceStageOffsetScratch = null;sourceAnimationPaths = null;
 		super.destroy();
+		SongLoadingWork.complete(true, 'cleanup');
 	}
 
 	public function loadMappedAnims(?song:SwagSong, ?char:String) {
