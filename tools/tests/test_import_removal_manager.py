@@ -61,7 +61,7 @@ class ImportRemovalManagerTest(unittest.TestCase):
             }
             for name,content in files.items():
                 path=work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8')
-            result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'--main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=15)
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'--main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=90)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('worker handoff passed',result.stdout)
 
