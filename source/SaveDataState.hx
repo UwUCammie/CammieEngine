@@ -106,6 +106,7 @@ class SaveDataState extends MusicBeatState {
 							{name: "Flashing Lights", value: false, intName: "flashingLights", desc: "Allow imported charts to flash the gameplay or HUD camera."},
 							{name: "Vignette Effects", value: false, intName: "vignetteEffects", desc: "Allow imported charts to render vignette overlays."},
 							{name: "Song Lyrics", value: false, intName: "lyricsEnabled", desc: "Show lyrics and captions authored by imported songs."},
+							{name: "Show Duplicate Base Game Charts", value: false, intName: "showDuplicateBaseCharts", desc: "List imported copies of base game songs in Freeplay. Copies share a base song's music and tempo."},
 							{name: "Always Show Cutscenes", intName: "alwaysDoCutscenes", value: false, desc: "Force show cutscenes, even in freeplay"}, 
 							{name: "Skip Modifier Menu", value: false, intName: "skipModifierMenu", desc: "Skip the modifier menu"}, 
 							{name: "Skip Victory Screen", value: false, intName : "skipVictoryScreen", desc: "Skip the victory screen at the end of songs."},

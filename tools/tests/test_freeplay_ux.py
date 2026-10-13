@@ -28,19 +28,24 @@ class Main {
   check(FreeplaySongTitle.display('swag-messiah')=='Swag Messiah','title display');
   check(FreeplaySongTitle.display('already-Capitalized')=='Already Capitalized','title casing');
   check(FreeplayStarTrail.opacity(0)==0 && FreeplayStarTrail.opacity(0.1)>0.5 && FreeplayStarTrail.opacity(0.3)<FreeplayStarTrail.opacity(0.15) && FreeplayStarTrail.opacity(FreeplayStarTrail.FADE_END)==0 && FreeplayStarTrail.opacity(1)==0 && FreeplayStarTrail.FADE_END<=0.45,'trail fade endpoint');
-  check(FreeplayStarTrail.STARS>=12 && FreeplayStarTrail.GHOSTS>=3 && FreeplayStarTrail.PERIOD>=2,'star stream too sparse or fast');
-  var lanes=new Map<Int,Bool>();
-  for(i in 0...FreeplayStarTrail.STARS) {
-   var lane=FreeplayStarTrail.lane(i);check(lane>0 && lane<1,'star lane leaves card');lanes.set(Std.int(lane*1000),true);
-   check(Math.abs(FreeplayStarTrail.spin(i))>=90,'star does not rotate');
-   var p=FreeplayStarTrail.progress(1.25,i);check(p>=0 && p<1,'progress range');
-   var later=FreeplayStarTrail.progress(1.25+FreeplayStarTrail.PERIOD*0.1,i)-p;if(later<0)later+=1;
-   check(later>0.05 && later<0.2,'star crosses too fast or too slowly');
-   for(g in 1...FreeplayStarTrail.GHOSTS)
-    check(FreeplayStarTrail.ghostOpacity(0.15,g)<FreeplayStarTrail.ghostOpacity(0.15,g-1) && FreeplayStarTrail.ghostLag(g)>FreeplayStarTrail.ghostLag(g-1),'tail does not fade behind the star');
-   check(FreeplayStarTrail.ghostOpacity(0.15,0)<FreeplayStarTrail.opacity(0.15) && FreeplayStarTrail.ghostOpacity(0.005,0)==0,'tail outruns its star');
+  check(FreeplayStarTrail.STARS>=28 && FreeplayStarTrail.GHOSTS==4 && FreeplayStarTrail.PERIOD<=2.2 && FreeplayStarTrail.PERIOD>=1.5,'star stream too sparse, slow or fast');
+  check(FreeplayStarTrail.STARS%FreeplayStarTrail.LANES==0,'lanes carry unequal star counts');
+  var gap=1/FreeplayStarTrail.STARS;
+  for(clock in [0.0,0.37,1.25,9.5]) for(i in 0...FreeplayStarTrail.STARS) {
+   var lane=FreeplayStarTrail.lane(i);check(lane>0 && lane<1 && lane==FreeplayStarTrail.lane(i+FreeplayStarTrail.LANES),'star lane leaves card or drifts');
+   var p=FreeplayStarTrail.progress(clock,i);check(p>=0 && p<1,'progress range');
+   var behind=p-FreeplayStarTrail.progress(clock,(i+1)%FreeplayStarTrail.STARS);if(behind<0)behind+=1;
+   check(Math.abs(behind-gap)<1e-9,'spawn interval is not uniform');
+   var later=FreeplayStarTrail.progress(clock+FreeplayStarTrail.PERIOD*0.1,i)-p;if(later<0)later+=1;
+   check(Math.abs(later-0.1)<1e-9,'stars do not share one speed');
   }
-  var laneCount=0;for(_ in lanes.keys())laneCount++;check(laneCount==FreeplayStarTrail.STARS,'stars share a lane');
+  for(g in 1...FreeplayStarTrail.GHOSTS)
+   check(FreeplayStarTrail.ghostOpacity(0.15,g)<FreeplayStarTrail.ghostOpacity(0.15,g-1) && FreeplayStarTrail.ghostLag(g)>FreeplayStarTrail.ghostLag(g-1),'tail does not fade behind the star');
+  check(FreeplayStarTrail.ghostOpacity(0.15,0)<FreeplayStarTrail.opacity(0.15) && FreeplayStarTrail.ghostOpacity(0.005,0)==0,'tail outruns its star');
+  check(FreeplayStarTrail.ghostLag(FreeplayStarTrail.GHOSTS-1)<=0.03,'tail too long');
+  check(FreeplayStarTrail.SIZE>0 && FreeplayStarTrail.SPIN>=90,'star does not rotate');
+  var trailSource=sys.io.File.getContent('source/FreeplayStarTrail.hx')+sys.io.File.getContent('source/FreeplayBrowserRow.hx');
+  check(trailSource.indexOf('random')<0 && trailSource.indexOf('Math.sin(star')<0,'star stream uses randomness');
   var sections=FreeplayDetailSections.layout();
   for(i in 0...sections.length) {
    check(sections[i].title!='' && sections[i].height>=100,'detail card missing heading or body');

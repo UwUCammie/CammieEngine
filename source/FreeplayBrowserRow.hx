@@ -35,7 +35,8 @@ class FreeplayBrowserRow extends Alphabet {
 		}
 	}
 	function animateTrail(elapsed:Float):Void {
-		var activeTrail = !disabled && (selected || flixel.FlxG.mouse.overlaps(panel));
+		// The cursor is hidden in this menu, so pointing must not light a card.
+		var activeTrail = !disabled && (selected || (flixel.FlxG.mouse.visible && flixel.FlxG.mouse.overlaps(panel)));
 		if (!activeTrail) {
 			if (trailShown) { for (star in trails) star.visible = false; trailShown = false; }
 			return;
@@ -47,7 +48,7 @@ class FreeplayBrowserRow extends Alphabet {
 		var travel = rowWidth - 36; var lanes = Math.max(0, motion.height - 4 - 26);
 		for (i in 0...FreeplayStarTrail.STARS) {
 			var head = FreeplayStarTrail.progress(trailClock, i);
-			var size = FreeplayStarTrail.size(i); var turn = FreeplayStarTrail.spin(i);
+			var size = FreeplayStarTrail.SIZE; var turn = FreeplayStarTrail.SPIN;
 			var laneY = y + 4 + FreeplayStarTrail.lane(i) * lanes;
 			for (copy in 0...copies) {
 				var star = trails[i * copies + copy];
@@ -57,7 +58,7 @@ class FreeplayBrowserRow extends Alphabet {
 				if (!star.visible) continue;
 				star.alpha = opacity; star.color = trailColor;
 				star.scale.set(size * (1 - copy * 0.15), size * (1 - copy * 0.15));
-				star.angle = turn * (trailClock - copy * 0.05);
+				star.angle = turn * (trailClock - copy * FreeplayStarTrail.GHOST_STEP * FreeplayStarTrail.PERIOD);
 				star.setPosition(x + rowWidth - 27 - progress * travel, laneY);
 			}
 		}
@@ -171,7 +172,8 @@ class FreeplayBrowserRow extends Alphabet {
 			var star = chartStars[i];
 			star.setGraphicSize(Std.int(Math.max(2, Math.min(26, spacing - 4)))); star.updateHitbox();
 			star.cardX = x + rowWidth - (chartCaption == '' ? 244 : 94) + i * spacing;
-			star.cardY = y - 2; star.setPosition(star.cardX, y + 3); star.visible = !selected; star.alpha = disabled ? 0.45 : 1;
+			// Centered in the compact card: its number is drawn inside the star.
+			star.cardY = y + (height - star.height) / 2; star.setPosition(star.cardX, star.cardY); star.visible = !selected; star.alpha = disabled ? 0.45 : 1;
 		}
 		chartTag.text = FreeplayBrowserLayout.label(chartCaption.toUpperCase(), 16);
 		chartTag.setPosition(x + rowWidth - 244, y + 8); chartTag.visible = !selected && chartCaption != '';

@@ -46,6 +46,15 @@ class NightmareVisionLegacyVideoSprite extends NightmareVisionVideoSprite {
 		}
 	}
 
+	/** A skip ends the clip the way the decoder would, so the source's own
+	 * `onEnd` listeners still run. */
+	public override function skip():Void {
+		var video = bitmap;
+		if (video == null) return;
+		video.onEndReached.dispatch();
+		if (bitmap == video && video.isPlaying) video.stop();
+	}
+
 	// Legacy callbacks are decoder events, not modern synthetic completions.
 	// In particular, load failure must not masquerade as an end event.
 	override function finish(reason:String):Void {

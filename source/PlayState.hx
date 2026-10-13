@@ -2784,6 +2784,18 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var totalPlayed:Int = 0;
 	var totalNotesHitDefault:Float = 0;
 	public var camFollow:FlxObject;
+	// Psych-era eased camera point; SourceCameraFollowPoint keeps it on the live view.
+	@:keep public var camFollowPos:FlxObject = new FlxObject(0, 0, 1, 1);
+	var camFollowPosX:Float = 0;
+	var camFollowPosY:Float = 0;
+	function syncCamFollowPos():Void {
+		if (camFollowPos == null || camGame == null) return;
+		// A script that moved the point itself wants the game camera snapped there.
+		if (SourceCameraFollowPointMath.moved(camFollowPos.x, camFollowPos.y, camFollowPosX, camFollowPosY))
+			camGame.focusOn(camFollowPos.getMidpoint());
+		SourceCameraFollowPoint.sync(camFollowPos, camGame, FlxG.cameras.list);
+		camFollowPosX = camFollowPos.x; camFollowPosY = camFollowPos.y;
+	}
 	// V-Slice camera aliases. The setters/getters intentionally point at the
 	// live gameplay camera and follow target, so reads and writes affect the
 	// same objects used by native camera events.
@@ -5816,6 +5828,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			case 'ratingpercent': return ratingPercent;
 			case 'ratingname': return ratingName;
 			case 'ratingfc': return ratingFC;
+			// Psych's own field is the song's folder name. The native field of this
+			// name is a HUD text object, which a script must never be handed as a string.
+			case 'songname': return psychSongPath(SONG == null ? '' : Std.string(SONG.song));
 			default:
 		}
 		if (root.toLowerCase() == 'songspeed')
@@ -6076,7 +6091,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function compatGetPropertyFromClass(className:Dynamic, path:Dynamic):Dynamic {
 		var sourcePrefs = compatSourceClientPrefs(className);
-		if (sourcePrefs != null) return compatReadPath(sourcePrefs, compatSourcePreferencePath(sourcePrefs, path));
+		if (sourcePrefs != null) {
+			// A preference this owner never stored still has its source default below.
+			var stored = compatReadPath(sourcePrefs, compatSourcePreferencePath(sourcePrefs, path));
+			if (stored != null) return stored;
+		}
 		var gameOverKey = psychGameOverClassPropertyKey(className, path);
 		if (gameOverKey != null && sourceGameOverSettings != null)
 			return sourceGameOverSettings.read(sourceGameOverSettingKey(gameOverKey));
@@ -6985,7 +7004,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		fps:Dynamic = 24, looped:Bool = true):Bool {
 		var object:Dynamic = compatFindObject(name);
 		if (object == null || object.animation == null) return false;
-		var indices = compatNormalizeAnimationIndices(frames);
+		// Flixel only rejects indices past the end; a negative one would be read
+		// from outside the frame list when it is shown.
+		var indices = [for (index in compatNormalizeAnimationIndices(frames)) if (index >= 0) index];
 		if (indices.length == 0) return false;
 		var rate = Std.parseFloat(Std.string(fps));
 		object.animation.add(animation, indices, Math.isNaN(rate) ? 24 : rate, looped);
@@ -7191,12 +7212,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			} catch (_:Dynamic) {}
 	}
 
-	function compatSetGraphicSize(name:Dynamic, width:Int, ?height:Int):Void {
+	// Psych refreshes the hitbox here unless told not to. Without that a resized
+	// sprite keeps scaling around its old middle and lands off its position.
+	function compatSetGraphicSize(name:Dynamic, width:Int, ?height:Int, ?updateHitbox:Null<Bool>):Void {
 		var object:Dynamic = compatFindObject(name);
 		if (object != null)
 			try {
-				if (Std.isOfType(object, FlxSprite))
-					(cast object : FlxSprite).setGraphicSize(width, height);
+				if (Std.isOfType(object, FlxSprite)) {
+					(cast object : FlxSprite).setGraphicSize(width, height == null ? 0 : height);
+					if (updateHitbox != false) (cast object : FlxSprite).updateHitbox();
+				}
 			} catch (_:Dynamic) {}
 	}
 
@@ -7487,12 +7512,27 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return object == null || !Std.isOfType(object, FlxBasic) ? -1 : members.indexOf(cast object);
 	}
 
-	function compatRandomInt(min:Int = 0, max:Int = FlxMath.MAX_VALUE_INT, ?exclude:Array<Int>):Int {
-		return FlxG.random.int(min, max, exclude);
+	/** Psych passes the values to leave out as comma separated text; a list is
+	 * accepted as well. Anything unreadable is ignored instead of excluded. */
+	public static function compatRandomExclusions(exclude:Dynamic):Array<Float> {
+		var values:Array<Float> = [];
+		if (exclude == null) return values;
+		var parts:Array<Dynamic> = Std.isOfType(exclude, Array) ? cast exclude : cast Std.string(exclude).split(',');
+		for (part in parts) {
+			var value = Std.parseFloat(StringTools.trim(Std.string(part)));
+			if (Math.isFinite(value)) values.push(value);
+		}
+		return values;
 	}
 
-	function compatRandomFloat(min:Float = 0, max:Float = 1, ?exclude:Array<Float>):Float {
-		return FlxG.random.float(min, max, exclude);
+	function compatRandomInt(min:Int = 0, max:Int = FlxMath.MAX_VALUE_INT, ?exclude:Dynamic):Int {
+		var skipped = [for (value in compatRandomExclusions(exclude)) Std.int(value)];
+		return FlxG.random.int(min, max, skipped.length == 0 ? null : skipped);
+	}
+
+	function compatRandomFloat(min:Float = 0, max:Float = 1, ?exclude:Dynamic):Float {
+		var skipped = compatRandomExclusions(exclude);
+		return FlxG.random.float(min, max, skipped.length == 0 ? null : skipped);
 	}
 
 	function compatLuaRandom(?first:Null<Int>, ?second:Null<Int>):Int {
@@ -8589,6 +8629,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// shared seed so converted scripts can use the same spelling without
 		// chart-side declarations; section/BPM values are refreshed from stepHit.
 		interp.variables.set('screenWidth', FlxG.width);
+		// The chart's own character ids, which scripts compare against by name.
+		for (name => value in psychCharacterNames()) interp.variables.set(name, value);
+		// Preference globals Psych always defines. Scripts do arithmetic on these, so
+		// a missing one is an error rather than a harmless nil.
+		var psychPreferences:Map<String, Dynamic> = ['noteOffset' => 0, 'middlescroll' => false, 'framerate' => FlxG.updateFramerate,
+			'timeBarType' => 'Time Left', 'scoreZoom' => true, 'cameraZoomOnBeat' => true, 'flashingLights' => true,
+			'healthBarAlpha' => 1, 'noResetButton' => false, 'lowQuality' => false, 'guitarHeroSustains' => true,
+			'instakillOnMiss' => false, 'buildTarget' => 'windows',
+			'songPath' => psychSongPath(SONG == null ? '' : Std.string(SONG.song)), 'curSection' => Std.int(Math.max(0, curSection))];
+		for (name => value in psychPreferences) if (!interp.variables.exists(name)) interp.variables.set(name, value);
 		interp.variables.set('screenHeight', FlxG.height);
 		interp.variables.set('EReg', EReg);
 		interp.variables.set('crochet', Conductor.crochet);
@@ -8872,7 +8922,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		installHistoricalLuaProperties(interp, resultsObserver);
 		installHistoricalLuaObjectOrder(interp, resultsObserver);
 		installHistoricalLuaTextLifecycle(interp, resultsObserver);
+		installPsychLegacyPropertyNames(interp);
 		PsychLuaApiResults.install(interp);
+	}
+
+	/** Psych 0.6 kept its preferences as flat statics and had no HUD object named
+	 * songName. Scripts written for it still get an answer from the newer getters. */
+	function installPsychLegacyPropertyNames(interp:Interp):Void {
+		var classGet:Dynamic = interp.variables.get('getPropertyFromClass');
+		if (Reflect.isFunction(classGet)) interp.variables.set('getPropertyFromClass', Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			var value:Dynamic = Reflect.callMethod(null, classGet, args);
+			if (value == null && args.length >= 2 && compatSourceClientPrefs(args[0]) != null) return compatGetPropertyFromClass(args[0], args[1]);
+			return value;
+		}));
+		// Engine name and version labels belong to the engine a script came from.
+		for (name in ['makeLuaText', 'setTextString']) {
+			var write:Dynamic = interp.variables.get(name);
+			if (Reflect.isFunction(write)) interp.variables.set(name, Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+				if (args.length > 1) args[1] = SourceEngineWatermark.clean(args[1]);
+				return Reflect.callMethod(null, write, args);
+			}));
+		}
+		var get:Dynamic = interp.variables.get('getProperty');
+		if (Reflect.isFunction(get)) interp.variables.set('getProperty', Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			var value:Dynamic = Reflect.callMethod(null, get, args);
+			if (args.length > 0 && Std.isOfType(value, flixel.text.FlxText) && EngineCompat.propertyPath(args[0]).toLowerCase() == 'songname')
+				return psychSongPath(SONG == null ? '' : Std.string(SONG.song));
+			// Judgement counters and other 0.6 state fields live under other names here.
+			if (value == null && args.length > 0) return compatGetProperty(args[0]);
+			return value;
+		}));
 	}
 
 	function hxcModuleNameKeys(scriptPath:String):Array<String> {
@@ -15586,7 +15665,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 					trace('[psych-stage-video] transition callback failed: ' + Std.string(error));
 					if (ending) endForReal(); else startCountdown();
 				}
-			}, {skipHoldSeconds: 1, skipPressed: function() return PsychControlsCompat.instance.pressed('accept')});
+			});
 			clip.finishCallback = function() {if (ending) endForReal(); else startCountdown();};
 			clip.onSkip = clip.finishCallback;
 			videoCutscene = clip;
@@ -15806,6 +15885,83 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	/** Advance an explicitly skipped event video to its chart-time endpoint. */
+	// Cutscenes that run on song time and can be skipped with Enter.
+	var songCutscenes:Array<{key:Dynamic, startMs:Float, durationMs:Void->Float, alive:Void->Bool, seek:Float->Void, finish:Void->Void}> = [];
+	@:keep public function registerSongCutscene(key:Dynamic, durationMs:Void->Float, alive:Void->Bool, seek:Float->Void, finish:Void->Void, ?startMs:Null<Float>):Void {
+		for (entry in songCutscenes.copy()) if (entry.key == key) songCutscenes.remove(entry);
+		songCutscenes.push({key:key, startMs:startMs == null ? Conductor.songPosition : startMs, durationMs:durationMs, alive:alive, seek:seek, finish:finish});
+	}
+
+	function nextPlayerNoteTime():Float {
+		var best = Math.NaN;
+		for (note in notes.members)
+			if (note != null && note.alive && note.mustPress && note.strumTime > Conductor.songPosition && !(best <= note.strumTime)) best = note.strumTime;
+		for (note in unspawnNotes)
+			if (note != null && note.mustPress && note.strumTime > Conductor.songPosition) {
+				if (!(best <= note.strumTime)) best = note.strumTime;
+				break;
+			}
+		return best;
+	}
+
+	/** Enter during a cutscene lands the song where the chart picks play back
+	 * up. Returns true when the press was used, so it does not also pause. */
+	function skipSongCutscenes(pressed:Bool):Bool {
+		if (songCutscenes.length == 0) return false;
+		for (entry in songCutscenes.copy()) if (!entry.alive()) songCutscenes.remove(entry);
+		if (!pressed || songCutscenes.length == 0 || paused || endingSong) return false;
+		// A clip that is loaded but not on screen has no length yet and is left alone.
+		var showing = [for (entry in songCutscenes) if (entry.durationMs() > 0) entry];
+		if (showing.length == 0) return false;
+		if (startingSong || FlxG.sound.music == null) {
+			// Nothing is on song time yet, so there is only the cutscene to end.
+			for (entry in showing) {songCutscenes.remove(entry); entry.finish();}
+			return true;
+		}
+		var now = Conductor.songPosition;
+		var nextNote = nextPlayerNoteTime();
+		var target = CutsceneSkip.furthest([for (entry in showing)
+			CutsceneSkip.target(now, entry.startMs, entry.durationMs() * playbackRate, nextNote, songLength)], now);
+		if (!CutsceneSkip.skippable(now, target)) return false;
+		seekForwardSongTime(target, false);
+		for (entry in showing) {
+			var length = entry.durationMs() * playbackRate;
+			if (entry.startMs + length <= target + 50) {
+				songCutscenes.remove(entry);
+				entry.finish();
+			} else entry.seek((target - entry.startMs) / playbackRate);
+		}
+		trace('[cutscene-skip] from=' + Math.round(now) + ' to=' + Math.round(target) + ' cutscenes=' + showing.length);
+		return true;
+	}
+
+	/** Psych's formatToSongPath: the folder spelling of a song title. */
+	public static function psychSongPath(title:String):String {
+		var path = ~/[~&\\;:<>#]/g.replace(StringTools.replace(title == null ? '' : title, ' ', '-'), '-');
+		return StringTools.trim(~/[.,'"%?!]/g.replace(path, '')).toLowerCase();
+	}
+
+	// Psych's switches for the judgement popups, which scripts turn off to draw their own.
+	@:keep public var showRating:Bool = true;
+	@:keep public var showComboNum:Bool = true;
+	@:keep public var showCombo:Bool = false;
+
+	// Psych's boyfriendName, dadName and gfName: the id the chart or the last
+	// Change Character event asked for, in its original spelling.
+	var psychChangedCharacters:Map<String, String> = new Map();
+	function psychCharacterNames():Map<String, String> {
+		var names:Map<String, String> = [
+			'boyfriendName' => SONG == null || SONG.player1 == null ? '' : Std.string(SONG.player1),
+			'dadName' => SONG == null || SONG.player2 == null ? '' : Std.string(SONG.player2),
+			'gfName' => SONG == null || Reflect.field(SONG, 'gfVersion') == null ? '' : Std.string(Reflect.field(SONG, 'gfVersion'))
+		];
+		for (name => value in psychChangedCharacters) names.set(name, value);
+		return names;
+	}
+
+	@:keep public function skipSongCutscenesForSmoke():Bool
+		return RuntimeSmokeHarness.enabled() && skipSongCutscenes(true);
+
 	function skipCompatEventVideoToEnd(eventTime:Float, durationMs:Float):Void {
 		if (FlxG.sound.music == null || startingSong || endingSong)
 			return;
@@ -15908,6 +16064,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		});
 		compatEventVideo = video;
 		add(video);
+		registerSongCutscene(video, function() return video.durationMs,
+			function() return compatEventVideo == video,
+			function(ms:Float) video.resyncSongTime(ms, 0),
+			function() if (compatEventVideo == video) finishCompatEventVideo(), eventTime - Math.max(0, timestamp));
 	}
 	#end
 	@:keep public function videoIntro(filename:String) {
@@ -19190,6 +19350,8 @@ void main(void) {
 				// a failsafe dad is worse than keeping the current char
 				if (target.length > 0 && Character.characterExists(target)) {
 					switchCharacter(target, slot);
+					psychChangedCharacters.set(slot == 'bf' ? 'boyfriendName' : slot == 'gf' ? 'gfName' : 'dadName', target);
+					for (name => value in psychCharacterNames()) setAllHaxeVar(name, value);
 				} else if (target.length > 0) {
 					trace('change character to missing $target skipped');
 				}
@@ -22037,6 +22199,7 @@ void main(void) {
 	}
 
 	override public function draw():Void {
+		syncCamFollowPos();
 		// FlxState skips this state's members while a non-persistent substate is
 		// open. Do not leave native note sprites hidden when only the substate
 		// will draw; the adapter restores any previous suppression in that case.
@@ -22341,6 +22504,8 @@ void main(void) {
 		else accuracyTxt.text = "Accuracy:" + accuracy + "%";
 		if (controls.SYNC_VOCALS)
 			resyncVocals();
+		// A press used to skip a cutscene must not pause the song as well.
+		if (skipSongCutscenes(FlxG.keys.justPressed.ENTER)) {} else
 		if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause
 			&& callNightmareVision('onPause', []) != NightmareVisionScriptGroup.STOP_FUNC) {
 			persistentUpdate = false;
@@ -24072,7 +24237,7 @@ void main(void) {
 		}
 		rating.x += judOffsetX;
 		rating.y += judOffsetY;
-		if (showRatings)
+		if (showRatings && showRating)
 			add(rating);
 		var judgementScale = uiSmelly.judgementScale == null ? 0.7 : uiSmelly.judgementScale;
 		rating.setGraphicSize(Std.int(rating.width * judgementScale));
@@ -24156,7 +24321,7 @@ void main(void) {
 				}
 			}
 
-			if ((combo >= 10 || combo == 0) && showRatings)
+			if ((combo >= 10 || combo == 0) && showRatings && showComboNum)
 				add(numScore);
 
 			FlxTween.tween(numScore, {alpha: 0}, 0.2, {
@@ -26770,6 +26935,7 @@ void main(void) {
 			NightmareVisionPluginHost.callActive('onSectionHit');
 			callNightmareVision('onSectionHit', []);
 			dispatchPsychCompiledStage('sectionHit', []);
+			setAllHaxeVar('curSection', curSection);
 			callAllHScript('sectionHit', [curSection]);
 		}
 		#if windows

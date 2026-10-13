@@ -91,7 +91,7 @@ __METHOD__
                 public static var firstChild:Dynamic;
                 public static var stage={stageWidth:1280,stageHeight:720,numChildren:8,setChildIndex:function(v:Dynamic,i:Int){}};
                 public static var signals={gameResized:new Event(),focusGained:new Event()};
-                public static var keys={justPressed:{SPACE:false}};
+                public static var keys={justPressed:{SPACE:false,ENTER:false}};
                 public static function addChildBelowMouse(v:Dynamic){if(children==0)firstChild=v;children++;}
                 public static function removeChild(v:Dynamic){children--;}
             }''',

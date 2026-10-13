@@ -239,7 +239,7 @@ class LuaCompat {
 				next = StringTools.trim(rawLines[nextIndex]);
 				nextIndex++;
 			}
-			if (depth <= 0 && !luaLineNeedsMore(pending) && !luaLineContinuesWith(next)) {
+			if (depth <= 0 && (!luaLineNeedsMore(pending) || luaBareReturnBefore(pending, next)) && !luaLineContinuesWith(next)) {
 				result.push(pending);
 				pending = '';
 				depth = 0;
@@ -248,6 +248,17 @@ class LuaCompat {
 		if (pending != '')
 			result.push(pending);
 		return result;
+	}
+
+	/** A `return` with nothing after it returns nothing when the block ends on
+	 * the next line. Only `end` stays joined, as the callers already read that. */
+	static function luaBareReturnBefore(pending:String, next:String):Bool {
+		if (StringTools.trim(pending) != 'return') return false;
+		for (keyword in ['elseif', 'else', 'until']) {
+			if (!StringTools.startsWith(next, keyword)) continue;
+			if (next.length == keyword.length || !isWord(next.charAt(keyword.length))) return true;
+		}
+		return false;
 	}
 
 	static function luaLineNeedsMore(value:String):Bool {

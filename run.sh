@@ -404,6 +404,10 @@ fi
 # memoization to Flixel's per-update serial instead.
 python3 tools/patch_flixel_input_frame_cache.py
 
+# A script may destroy a one-shot sprite from its own animation-finished
+# callback. Flixel then dispatches a destroyed signal, which is a native crash.
+python3 tools/patch_flixel_finish_guard.py
+
 # funkin-modchart 1.2.5 reads FlxUVRect.right/top using the pre-6.1.1
 # coordinate order and its rotated hold path advances UVs with an 8-float
 # stride despite emitting 12 floats per subdivision. Its camera lookup also

@@ -95,6 +95,10 @@ class FreeplayState extends MusicBeatState {
 	var songRows:Array<Alphabet> = [];
 	var denseBrowser:Bool = false;
 	var browserHeading:FlxText;
+	var browserUnderline:FlxSprite;
+	var browserBpm:Float = FreeplayPulse.DEFAULT_BPM;
+	var browserBeatClock:Float = 0;
+	var bpmCache:Map<String, Float> = [];
 	var browserMeters:Array<FlxSprite> = [];
 	var browserEnvelope = new FreeplayAudioEnvelope();
 
@@ -142,6 +146,11 @@ class FreeplayState extends MusicBeatState {
 	var registryRefreshRetryAt:Float = 0;
 	static var chartDensityGeneration:Int = -1;
 	static var favoritesOnly:Bool = false;
+	/** Session-only: list hidden charts and mods so they can be shown again. */
+	static var showHiddenEntries:Bool = false;
+	static var duplicateCache:Map<String, Bool> = [];
+	static var baseFingerprints:Null<Array<BaseGameDuplicate.ChartFingerprint>> = null;
+	static var baseFingerprintSongs:Array<String> = [];
 	static var categoryFilters:Array<String> = [];
 	static var libraryViewId:String = '';
 	var difficultySongKey:String = '';
@@ -1241,11 +1250,7 @@ class FreeplayState extends MusicBeatState {
 		var detailX = FreeplayBrowserLayout.detailX(FlxG.width);
 		var detailWidth = FlxG.width - detailX - 24;
 		scoreBG.visible = false;
-		browserHeading = browserText(140, 8, FlxG.width * 0.5, 'FREEPLAY', 44, 0xFFFFF4DC);
-		browserHeading.angle = -2;
-		var underline = new FlxSprite(142, 57).makeGraphic(240, 5, 0xFFFF66B7); underline.angle = -2;
-		add(underline); uiChrome.push(underline);
-		browserText(detailX, 106, detailWidth, 'PICK YOUR NEXT TRACK', 20, 0xFFFF66B7);
+		browserText(detailX, FreeplayDetailSections.HEADER_Y, detailWidth, 'PICK YOUR NEXT TRACK', 20, 0xFFFF66B7);
 		// One backed card per group of details. Each accent spans its whole card and
 		// shares a color with the card heading, so it marks a section, not a row.
 		for (section in FreeplayDetailSections.layout()) {
@@ -1259,12 +1264,13 @@ class FreeplayState extends MusicBeatState {
 		var meterFloor = new FlxSprite(detailX, FreeplayDetailSections.METER_FLOOR).makeGraphic(12 * 19 - 7, 3, 0xFFFFF4DC);
 		add(meterFloor); uiChrome.push(meterFloor);
 		for (i in 0...12) {
-			var meter = new FlxSprite(detailX + i * 19, FreeplayDetailSections.METER_FLOOR - 1).makeGraphic(12, 1, i % 3 == 0 ? 0xFFFF66B7 : 0xFF80E3D0);
-			meter.origin.set(6, 1); meter.scale.y = 2;
+			var meter = new FlxSprite(detailX + i * 19, FreeplayDetailSections.METER_FLOOR - 1).makeGraphic(12, 1, 0xFFFFFFFF);
+			meter.origin.set(6, 1); meter.scale.y = 2; meter.color = FreeplayPulse.loudness(0);
 			add(meter); uiChrome.push(meter); browserMeters.push(meter);
 		}
-		browserCount = browserText(26, 66, FlxG.width * 0.6, '', 18, 0xFF9DB2CC);
-		browserGroup = browserText(26, 90, FlxG.width * 0.6, '', 16, 0xFF80E3D0);
+		// Clear of the optional FPS and memory counters in the top-left corner.
+		browserCount = browserText(150, 14, FlxG.width * 0.5, '', 18, 0xFF9DB2CC);
+		browserGroup = browserText(150, 38, FlxG.width * 0.5, '', 16, 0xFF80E3D0);
 		browserFavoritesHeader = browserText(26, 140, FreeplayBrowserLayout.listWidth(FlxG.width) - 48, 'FAVORITES', 14, 0xFFFFD166); browserFavoritesHeader.visible = false;
 		var trackY = FreeplayDetailSections.TRACK_Y; var difficultyY = FreeplayDetailSections.DIFFICULTY_Y; var scoreY = FreeplayDetailSections.SCORE_Y;
 		browserDetail = browserText(detailX, trackY + 22, detailWidth, '', 24, 0xFFFFFFFF);
@@ -1272,9 +1278,9 @@ class FreeplayState extends MusicBeatState {
 		scoreText.setPosition(detailX, difficultyY + 22); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
 		scoreText.alignment = LEFT; scoreText.visible = false;
 		diffText.setPosition(detailX, difficultyY + 22); diffText.size = 22; diffText.fieldWidth = detailWidth;
-		browserRating = browserText(detailX, difficultyY + 46, detailWidth, '', 14, 0xFF9DB2CC);
-		browserDensity = browserText(detailX, difficultyY + 76, detailWidth, '', 13, 0xFFCFD8E5);
-		browserMetric = browserText(detailX, difficultyY + 61, detailWidth, '', 14, 0xFF80E3D0);
+		browserRating = browserText(detailX, difficultyY + 52, detailWidth, '', 14, 0xFF9DB2CC);
+		browserDensity = browserText(detailX, difficultyY + 96, detailWidth, '', 14, 0xFFCFD8E5);
+		browserMetric = browserText(detailX, difficultyY + 72, detailWidth, '', 14, 0xFF80E3D0);
 		browserMetric.wordWrap = false;
 		if (infoPanel != null) { infoPanel.setPosition(detailX, scoreY + 22); infoPanel.visible = false; }
 		// Detailed score cycling stays reachable; its compact panel uses the same score service.
@@ -1288,9 +1294,26 @@ class FreeplayState extends MusicBeatState {
 		searchBG.setPosition(0, FlxG.height - 68);
 		searchBG.makeGraphic(FlxG.width, 68, 0xFF101622); searchBG.alpha = 1;
 		searchText.setPosition(24, FlxG.height - 62); searchText.size = 18; searchText.fieldWidth = 90;
-		searchInput.setPosition(120, FlxG.height - 62); searchInput.size = 18; searchInput.fieldWidth = FlxG.width - 144;
-		browserText(24, FlxG.height - 32, FlxG.width - 48,
-			'CTRL Search   UP/DOWN Browse (hold, SHIFT faster)   LEFT/RIGHT Difficulty   ENTER Play   TAB / Select Library   ESC Back', 16, 0xFF9DB2CC);
+		searchInput.setPosition(120, FlxG.height - 62); searchInput.size = 18; searchInput.fieldWidth = FlxG.width - 144 - 270;
+		// Keys and what they do are colored apart, with a rule between each pair.
+		var hintX:Float = 24;
+		var hints = FreeplayPulse.hints();
+		for (index in 0...hints.length) {
+			var key = browserText(hintX, FlxG.height - 31, 0, hints[index].key, 15, 0xFFFFD166);
+			hintX += key.width + 5;
+			var action = browserText(hintX, FlxG.height - 31, 0, hints[index].action, 15, 0xFF9DB2CC);
+			hintX += action.width + 10;
+			if (index < hints.length - 1) {
+				var rule = new FlxSprite(hintX, FlxG.height - 30).makeGraphic(2, 16, 0xFF3A4A63);
+				add(rule); uiChrome.push(rule);
+				hintX += 12;
+			}
+		}
+		// Added last so the title sits above every other element, in the corner.
+		browserUnderline = new FlxSprite(FlxG.width - 244, FlxG.height - 13).makeGraphic(226, 5, 0xFFFF66B7); browserUnderline.angle = -2;
+		add(browserUnderline); uiChrome.push(browserUnderline);
+		browserHeading = browserText(FlxG.width - 246, FlxG.height - 62, 0, 'FREEPLAY', 44, 0xFFFFF4DC);
+		browserHeading.angle = -2;
 		updateBrowserDetails();
 	}
 
@@ -1469,7 +1492,7 @@ class FreeplayState extends MusicBeatState {
 		}
 		rowSongIndices = [for (previous in oldVisible) if (inverse.exists(previous)) inverse.get(previous)];
 		iconQueue.resize(0); libraryOrderKey = ''; libraryFavoriteData = null;
-		ChartDensityCache.clear(); chartDensityGeneration = generation; currentSongListGeneration = generation;
+		ChartDensityCache.clear(); chartDensityGeneration = generation; currentSongListGeneration = generation; duplicateCache = []; baseFingerprints = null;
 		refreshNotice = ''; refreshBookmark = bookmark;
 		restoreRefreshSelection();
 		#if sys
@@ -1639,7 +1662,18 @@ class FreeplayState extends MusicBeatState {
 				if (!Math.isFinite(amplitude)) amplitude = 0;
 				var target = 2 + Math.min(1, Math.max(0, amplitude)) * (22 - Math.abs(i - 5.5));
 				meter.scale.y += (target - meter.scale.y) * Math.min(1, elapsed * 35);
-				// Bars grow upward from a fixed floor (see the bottom-edge origin).
+				// Bars grow upward from a fixed floor (see the bottom-edge origin) and
+				// shift from green through yellow to red as their own level rises.
+				meter.color = FreeplayPulse.loudness((meter.scale.y - 2) / (22 - Math.abs(i - 5.5)));
+			}
+			if (browserHeading != null) {
+				// Follow the playing preview so the beat lands with the music.
+				browserBeatClock = previewSound != null && previewSound.playing ? previewSound.time / 1000 : browserBeatClock + elapsed;
+				var strength = FreeplayPulse.strength(browserBeatClock, browserBpm);
+				var lean = FreeplayPulse.beat(browserBeatClock, browserBpm) % 2 == 0 ? 1 : -1;
+				browserHeading.scale.set(1 + 0.14 * strength, 1 + 0.14 * strength);
+				browserHeading.angle = -2 + lean * 2.5 * strength;
+				browserUnderline.scale.x = 1 + 0.18 * strength;
 			}
 		}
 		if (smokeProfile)
@@ -1688,9 +1722,11 @@ class FreeplayState extends MusicBeatState {
 			scoreText.text = "Sound Test";
 
 		if (!searchFocused && !focusChanged && denseBrowser && subState == null && !browserConfirm.active) {
+			// The cursor is hidden in this menu: an unseen pointer selects nothing.
+			var pointer = FlxG.mouse.visible;
 			var clickedSong = -1; var clickedDifficulty = -1; var clickedKey = "";
 			for (row in chartDisplay) for (star in row.chartStars) {
-				star.focused = star.visible && FlxG.mouse.overlaps(star);
+				star.focused = pointer && star.visible && FlxG.mouse.overlaps(star);
 				if (star.focused) {
 					row.setTrailColor(ChartDifficultyAnalysis.color(star.density));
 					if (FlxG.mouse.justPressed && availabilityAllowsSelection(row.presentationSong)) {
@@ -1704,7 +1740,7 @@ class FreeplayState extends MusicBeatState {
 				chartJump = true; changeSelection(0); changeDiff(0); rememberLibraryDifficulty();
 			}
 			for (index in rowSongIndices) if (starArray[index] != null) for (star in starArray[index]) {
-				if (star.visible && FlxG.mouse.overlaps(star)) {
+				if (pointer && star.visible && FlxG.mouse.overlaps(star)) {
 					star.focused = true;
 					if (FlxG.mouse.justPressed && availabilityAllowsSelection(index)) {
 						curSelected = index; changeSelection(0); curDifficulty = star.diff; changeDiff(0); rememberLibraryDifficulty();
@@ -1737,6 +1773,10 @@ class FreeplayState extends MusicBeatState {
 				startPreview();
 		}
 
+		if (!searchFocused && !focusChanged && !soundTest && denseBrowser && FlxG.keys.justPressed.F1) {
+			openLibraryManagement();
+			return;
+		}
 		if (!searchFocused && !focusChanged && !soundTest && (FlxG.keys.justPressed.TAB || FlxG.gamepads.anyJustPressed(BACK))) {
 			openLibraryActions();
 			return;
@@ -2104,9 +2144,114 @@ class FreeplayState extends MusicBeatState {
 		openSubState(menu);
 	}
 
+	/** Hidden by the player, or an imported copy of a base game song. */
+	function libraryHidden(i:Int):Bool {
+		if (soundTest) return false;
+		var song = songs[i];
+		if (song.isProvisional || song.songName.toLowerCase() == 'random-song') return false;
+		var data = UserLibrary.data();
+		if (!showHiddenEntries && data.hasHidden()
+			&& (data.isModHidden(libraryOwner(i)) || data.isChartHidden(libraryChartKey(i)))) return true;
+		return !OptionsHandler.options.showDuplicateBaseCharts && baseDuplicate(i);
+	}
+
+	function chartFingerprintFor(name:String, title:String):BaseGameDuplicate.ChartFingerprint {
+		var print:BaseGameDuplicate.ChartFingerprint = {title:title, audioBytes:-1, audioSeconds:-1, bpm:-1, player:'', opponent:''};
+		#if sys
+		var inst = previewInstPath(name);
+		if (inst != null) {
+			var resolved = FNFAssets.resolveCaseInsensitivePath(inst);
+			BaseGameDuplicate.measureAudio(resolved == null ? inst : resolved, print);
+		}
+		#end
+		return print;
+	}
+	/** Tempo and cast are read only for charts that already pass the cheap test. */
+	function readFingerprintChart(name:String, print:BaseGameDuplicate.ChartFingerprint):Void {
+		if (print.bpm != -1) return;
+		print.bpm = 0;
+		var key = name.toLowerCase();
+		try for (ending in ['', '-hard', '-easy']) {
+			var path = 'assets/data/' + key + '/' + key + ending + '.json';
+			if (!FNFAssets.exists(path)) continue;
+			var text = FNFAssets.getText(path);
+			if (text.length <= 8388608) BaseGameDuplicate.readChart(text, print);
+			break;
+		} catch (_:Dynamic) {}
+	}
+	static function sharedNoteCounts(left:String, right:String):Array<Int> {
+		for (difficulty in ['hard', 'normal', 'easy']) {
+			var a = ChartDensityCache.read(left, difficulty); var b = ChartDensityCache.read(right, difficulty);
+			if (a != null && b != null) return [a.playerNotes, b.playerNotes];
+		}
+		return [-1, -1];
+	}
+	/** An imported chart that repeats a base game song: same title, tempo and
+	 * cast, over the same instrumental. Decided once per song and remembered. */
+	function baseDuplicate(i:Int):Bool {
+		#if sys
+		var song = songs[i];
+		var key = song.songName.toLowerCase();
+		var known = duplicateCache.get(key);
+		if (known != null) return known;
+		var result = false;
+		try {
+			resolveSongIdentity(song);
+			if (song.importProvenancePresent || song.ownerRoot != '') {
+				if (baseFingerprints == null) {
+					baseFingerprints = []; baseFingerprintSongs = [];
+					var registry:Array<Dynamic> = cast FreeplayRegistry.getJson();
+					if (registry != null) for (category in registry) {
+						if (category == null || Std.string(Reflect.field(category, 'name')) != 'Base Game') continue;
+						var entries:Dynamic = Reflect.field(category, 'songs');
+						if (Std.isOfType(entries, Array)) for (entry in (cast entries:Array<Dynamic>)) {
+							var name:Dynamic = Std.isOfType(entry, String) ? entry : entry == null ? null : Reflect.field(entry, 'name');
+							if (!Std.isOfType(name, String) || !safeSongFolder(cast name)) continue;
+							baseFingerprintSongs.push(cast name);
+							baseFingerprints.push(chartFingerprintFor(cast name, cast name));
+						}
+					}
+				}
+				var title = song.sourceFolder != null && song.sourceFolder != '' ? song.sourceFolder : song.songName.split('--')[0];
+				var mine = chartFingerprintFor(song.songName, title);
+				for (index in 0...baseFingerprints.length) {
+					var base = baseFingerprints[index];
+					if (!BaseGameDuplicate.candidate(mine, base)) continue;
+					readFingerprintChart(song.songName, mine);
+					readFingerprintChart(baseFingerprintSongs[index], base);
+					var notes = BaseGameDuplicate.needsNotes(mine, base) ? sharedNoteCounts(song.songName, baseFingerprintSongs[index]) : [-1, -1];
+					if (BaseGameDuplicate.matches(mine, base, notes[0], notes[1])) { result = true; break; }
+				}
+			}
+		} catch (_:Dynamic) result = false;
+		duplicateCache.set(key, result);
+		return result;
+		#else
+		return false;
+		#end
+	}
+
+	function openLibraryManagement():Void {
+		if (soundTest || subState != null) return;
+		stopPreviewSound();
+		previewTimer = 0;
+		clearHxcConfirm();
+		scrollMotion.reset();
+		libraryActionsOpen = true;
+		var selected = songMatches(curSelected);
+		var menu = new LibraryManageSubState(selected ? libraryChartKey(curSelected) : '', selected ? libraryOwner(curSelected) : '',
+			selected ? FreeplaySongTitle.display(songs[curSelected].displayTitle) : '', selected ? sourceCaption(songs[curSelected]) : '',
+			showHiddenEntries, function(value) showHiddenEntries = value, function() {
+				for (song in songs) if (song.sourceResolved) { song.sourceResolved = false; song.sourceLabel = song.registrySourceLabel; }
+			});
+		menu.cameras = [camUI];
+		openSubState(menu);
+	}
+
 	function songMatches(i:Int):Bool {
 		if (i < 0 || i >= songs.length) return false;
 		if (libraryViewId != '' && songs[i].songName.toLowerCase() == 'random-song') return false;
+		if (libraryHidden(i)) return false;
 		if (!soundTest && categoryFilters.length > 0 && !UserLibrary.data().matchesCategories(categoryFilters, libraryOwner(i))) return false;
 		if (!soundTest && favoritesOnly && !UserLibrary.data().isFavorite(libraryChartKey(i))) return false;
 		if (searchString.length == 0)
@@ -2139,6 +2284,8 @@ class FreeplayState extends MusicBeatState {
 		if (!soundTest) resolveSongIdentity(song);
 		#end
 		var label = song.sourceLabel == null ? '' : song.sourceLabel;
+		var renamed = soundTest ? '' : UserLibrary.data().modName(song.ownerRoot);
+		if (renamed != '') return renamed;
 		if (label == '') label = song.ownerRoot != '' || song.importProvenancePresent ? 'Imported mod' : 'Base game';
 		return label;
 	}
@@ -2622,6 +2769,25 @@ class FreeplayState extends MusicBeatState {
 		}
 	}
 
+	/** Tempo for the heading beat. Reading a chart waits for the preview
+	 * debounce so scrolling never touches the disk; revisits use the cache. */
+	function selectedChartBpm(read:Bool):Float {
+		if (soundTest || curSelected < 0 || curSelected >= songs.length || songs[curSelected].isProvisional) return browserBpm;
+		var key = songs[curSelected].songName.toLowerCase();
+		var path = 'assets/data/' + key + '/' + key + DifficultyManager.getDiffEnding(curDifficulty) + '.json';
+		if (bpmCache.exists(path)) return bpmCache.get(path);
+		if (!read || key == 'random-song' || !safeSongFolder(key)) return browserBpm;
+		var bpm = FreeplayPulse.DEFAULT_BPM;
+		try {
+			if (FNFAssets.exists(path)) {
+				var text = FNFAssets.getText(path);
+				if (text.length <= 8388608) bpm = FreeplayPulse.bpmFromChartText(text);
+			}
+		} catch (_:Dynamic) {}
+		bpmCache.set(path, bpm);
+		return bpm;
+	}
+
 	// ---- song previews: debounced, async-loaded, small LRU cache ----
 	function previewInstPath(name:String):String {
 		// freeplay names are usually lowercase while chart `song` fields are
@@ -2662,6 +2828,7 @@ class FreeplayState extends MusicBeatState {
 		if (soundTest || name.toLowerCase() == 'random-song'
 			|| !availabilityAllowsLaunch(curSelected, curDifficulty))
 			return;
+		browserBpm = selectedChartBpm(true);
 		var path = previewInstPath(name);
 		if (path == null)
 			return;
@@ -2933,7 +3100,7 @@ class FreeplayState extends MusicBeatState {
 			}
 		} else if (!refreshOnly)
 			curSelected = LibrarySort.select(orderedVisibleSongs(), curSelected, change);
-		if (previousSelectionSong != curSelected) stopPreviewSound();
+		if (previousSelectionSong != curSelected) stopPreviewSound(); browserBpm = selectedChartBpm(false);
 		rebuildVisibleRows();
 		rebuildIconQueue(); // keep the info window centered on the new selection
 
@@ -3194,6 +3361,8 @@ class SongMetadata {
 	public var display:String = "";
 	public var displayTitle:String = "";
 	public var sourceLabel:String = "";
+	/** The label as registered, before any receipt-derived repair. */
+	public var registrySourceLabel:String = "";
 	public var authoredDifficultyRatings:Array<FreeplayDifficultyRating.AuthoredDifficultyRating> = [];
 	public var libraryOrdinal:Int = -1;
 	public var authoredFreeplayOrder:Null<Int> = null;
@@ -3221,6 +3390,7 @@ class SongMetadata {
 		this.display = display != null ? display : song;
 		this.displayTitle = this.display;
 		this.sourceLabel = sourceLabel == null ? '' : sourceLabel;
+		registrySourceLabel = this.sourceLabel;
 	}
 }
 typedef JsonMetadata = {

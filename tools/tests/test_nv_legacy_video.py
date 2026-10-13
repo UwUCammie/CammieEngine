@@ -33,7 +33,7 @@ class LegacyVideoTest(unittest.TestCase):
  public var onEndReached=new Event();public var onOpening=new Event();public var onFormatSetup=new Event();
  public var onEncounteredError:Dynamic=new Event();public var isPlaying=false;public var disposed=false;
  public var loadOK=true;public var path:String;public var options:Array<String>;public var pauseCalls=0;public var resumeCalls=0;
- var resumeOnFocus=false;
+ var resumeOnFocus=false;public var length:haxe.Int64=0;public var time:haxe.Int64=0;
  public function new(){}
  public function load(p:String,o:Array<String>):Bool {if(!loadOK)return false;path=p;options=o;
  FlxG.signals.focusGained.add(onFocusGained);FlxG.signals.focusLost.add(onFocusLost);return true;}

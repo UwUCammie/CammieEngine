@@ -11,12 +11,13 @@ typedef FreeplayDetailSection = {
  * of detail text sits on one backed card whose accent and heading share a color. */
 class FreeplayDetailSections {
 	/** Bottom edge shared by the visualizer floor and every bar. */
-	public static inline var METER_FLOOR:Int = 166;
+	public static inline var HEADER_Y:Int = 16;
+	public static inline var METER_FLOOR:Int = 78;
 	public static inline var GAP:Int = 8;
-	public static inline var TRACK_Y:Int = 176;
+	public static inline var TRACK_Y:Int = 88;
 	public static inline var TRACK_HEIGHT:Int = 120;
 	public static inline var DIFFICULTY_Y:Int = TRACK_Y + TRACK_HEIGHT + GAP;
-	public static inline var DIFFICULTY_HEIGHT:Int = 200;
+	public static inline var DIFFICULTY_HEIGHT:Int = 288;
 	public static inline var SCORE_Y:Int = DIFFICULTY_Y + DIFFICULTY_HEIGHT + GAP;
 	public static inline var SCORE_HEIGHT:Int = 132;
 

@@ -50,6 +50,11 @@ class RuntimeSmokeFreeplayState extends FlxState {
 
 			RuntimeSmokeHarness.markStep('registry-read');
 			FreeplayState.currentSongList = RuntimeSmokeHarness.selectFreeplaySongs();
+			// The native category chooser records this. Without it, the list rebuild
+			// after the startup import check falls back to the first registry row,
+			// which holds only Random Song.
+			var smokeCategory = RuntimeSmokeHarness.config() == null ? '' : RuntimeSmokeHarness.config().freeplayCategory;
+			FreeplayState.curCategory = smokeCategory == '' ? 'All' : smokeCategory;
 			// TitleState/MainMenuState leave the menu music playing before
 			// freeplay opens.  Without it FlxG.sound.music is null and
 			// FreeplayState.create's `FlxG.sound.music.playing` guard is a hard

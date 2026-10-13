@@ -14,7 +14,8 @@ TREES = ('source', 'assets', 'art', 'example_mods', 'TempFiles', '.haxelib',
 ROOT_INPUTS = ('Project.xml', 'VERSION', 'run.sh')
 HELPERS = ('tools/launch_cache.py', 'tools/runtime_lock.sh',
            'tools/ensure_lime_uncapped.py', 'tools/patch_lime_uncapped_frame_loop.py',
-           'tools/patch_flixel_input_frame_cache.py', 'tools/patch_windows_mingw.py')
+           'tools/patch_flixel_input_frame_cache.py', 'tools/patch_flixel_finish_guard.py',
+           'tools/patch_windows_mingw.py')
 
 
 def metadata(path):

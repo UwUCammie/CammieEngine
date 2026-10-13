@@ -86,6 +86,8 @@ typedef TOptions = {
     var gpuOnlyBitmaps:Bool;
     var vignetteEffects:Bool;
     var lyricsEnabled:Bool;
+    /** Freeplay hides imported copies of base game songs unless this is on. */
+    var showDuplicateBaseCharts:Bool;
 }
 /**
  * All options that can display on the savedatamenu. Used with mask
@@ -194,6 +196,7 @@ class OptionsHandler {
         opt.volumeMusic = sanitizeVolume(Reflect.field(opt, "volumeMusic"));
         opt.volumeSFX = sanitizeVolume(Reflect.field(opt, "volumeSFX"));
         opt.normalizeSongAudio = sanitizeBool(Reflect.field(opt, "normalizeSongAudio"), false);
+        opt.showDuplicateBaseCharts = sanitizeBool(Reflect.field(opt, "showDuplicateBaseCharts"), false);
         opt.useCharColor = sanitizeBool(Reflect.field(opt, "useCharColor"), true);
         opt.week6PixelPerfect = sanitizeBool(Reflect.field(opt, "week6PixelPerfect"), true);
         opt.quality = quality;
@@ -293,6 +296,7 @@ class OptionsHandler {
             lastOptions.flashingLights = true;
             lastOptions.vignetteEffects = true;
             lastOptions.lyricsEnabled = true;
+            lastOptions.showDuplicateBaseCharts = false;
         }
 		return lastOptions;
         #else

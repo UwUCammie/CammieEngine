@@ -264,6 +264,22 @@ class BuildScriptTests(unittest.TestCase):
         from tools import launch_cache
         self.assertIn(patcher, launch_cache.HELPERS)
 
+    def test_native_flixel_finish_callback_may_destroy_its_sprite(self):
+        patcher = "tools/patch_flixel_finish_guard.py"
+        self.assertIn(patcher, self.run_sh)
+        self.assertIn("tools" + chr(92) + "patch_flixel_finish_guard.py", self.run_bat)
+        self.assertIn('python3 "$ROOT/tools/patch_flixel_finish_guard.py"', self.build_sh)
+        from tools import launch_cache, patch_flixel_finish_guard as guard
+        self.assertIn(patcher, launch_cache.HELPERS)
+        for newline in (chr(10), chr(13) + chr(10)):
+            source = ("function fireFinishCallback(?name:String):Void" + chr(10) + guard.OLD + chr(10)).replace(chr(10), newline)
+            patched = guard.patch_source(source)
+            self.assertIn("if (_sprite == null)" + newline, patched)
+            self.assertLess(patched.index("if (_sprite == null)"), patched.index("onFinish.dispatch(name);"))
+            self.assertEqual(guard.patch_source(patched), patched)
+        with self.assertRaises(ValueError):
+            guard.patch_source("no finish callback here")
+
     def test_desktop_runtime_trees_stay_on_disk(self):
         for asset in ("music", "songs", "module"):
             self.assertIn(

@@ -42,6 +42,7 @@ class FreeplayState {
  public var categoryFilters:Array<String>=[];
  function libraryOwner(i:Int):String return songs[i].sourceLabel;
  function libraryChartKey(i:Int):String return songs[i].songName;
+ function libraryHidden(i:Int):Bool return false;
  public var songs:Array<SongMetadata>=[];
  public var legacySources:Map<String,String>=new Map();
  public var identityReads=0;

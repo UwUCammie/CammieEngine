@@ -99,6 +99,7 @@ typedef RuntimeSmokeOptions = {
 	/** Optional forward seek after audio starts, used only by the native seek smoke. */
 	var seekAfterMs:Float;
 	var seekToMs:Float;
+	var cutsceneSkipAfterMs:Float;
 	/** Number of PlayState creations in one native smoke process (1 or 2). */
 	var playstateVisits:Int;
 	/** Enter ChartingState and run one companion-event save/reload round-trip. */
@@ -147,6 +148,7 @@ class RuntimeSmokeHarness {
 	static var naturalSongEndAt:Float = -1;
 	static var songStartObserved:Bool = false;
 	static var seekCompleted:Bool = false;
+	static var cutsceneSkipTried:Bool = false;
 	static var codenameEventVisualMarkers:Int = 0;
 	static var codenameCallbackVisualMarkers:Int = 0;
 	static var codenameMotionMarkers:Int = 0;
@@ -216,6 +218,7 @@ class RuntimeSmokeHarness {
 			noteRenderAfterMs: 5000,
 			seekAfterMs: -1,
 			seekToMs: -1,
+			cutsceneSkipAfterMs: -1,
 			playstateVisits: 1,
 			chartEditor: false,
 			nextSongFolder: '',
@@ -363,6 +366,10 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					result.seekAfterMs = parseSmokeTime(value);
 					if (result.seekAfterMs < 0) configurationError = 'invalid --smoke-seek-after-ms';
+				case '--smoke-cutscene-skip-after-ms':
+					smokeArgumentsSeen = true;
+					result.cutsceneSkipAfterMs = parseSmokeTime(value);
+					if (result.cutsceneSkipAfterMs < 0) configurationError = 'invalid --smoke-cutscene-skip-after-ms';
 				case '--smoke-seek-to-ms':
 					smokeArgumentsSeen = true;
 					result.seekToMs = parseSmokeTime(value);
@@ -2868,6 +2875,15 @@ class RuntimeSmokeHarness {
 	static function maybeRunSeek():Void {
 		maybeTriggerGameOver();
 		var request = config();
+		// Stands in for the Enter press a hidden window cannot receive.
+		if (request != null && request.cutsceneSkipAfterMs >= 0 && !cutsceneSkipTried && playStateReady && songStartObserved
+			&& PlayState.instance != null && FlxG.state == PlayState.instance
+			&& Conductor.songPosition >= request.cutsceneSkipAfterMs) {
+			cutsceneSkipTried = true;
+			var before = Conductor.songPosition;
+			var used = PlayState.instance.skipSongCutscenesForSmoke();
+			trace('[smoke-cutscene-skip] used=' + used + ' from=' + Math.round(before) + ' to=' + Math.round(Conductor.songPosition));
+		}
 		if (request == null || request.seekToMs < 0 || seekCompleted
 			|| !playStateReady || !songStartObserved)
 			return;

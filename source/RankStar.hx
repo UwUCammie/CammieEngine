@@ -32,11 +32,15 @@ class RankStar extends FlxSprite {
 	var legend:flixel.text.FlxText;
 	var shadowGlow:FlxSprite;
 	var ratingLabel:String = '';
+	var wholeLabel:String = '';
+	/** 0 shows the whole rating inside the star, 1 the full rating beneath it. */
+	var legendLift:Float = 0;
 	var difficultyLabel:String = '';
 	public function configureCard(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
 		inCard = true; whitenCard();
 		legend = new flixel.text.FlxText(0, 0, 42, '', 10);
 		legend.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, CENTER);
+		legend.setBorderStyle(OUTLINE, 0xFF101622, 1);
 		legend.scrollFactor.set();
 		difficultyLabel = DifficultyManager.getDiffName(diff).toUpperCase().substr(0, 4);
 		updateDensity(value);
@@ -46,8 +50,21 @@ class RankStar extends FlxSprite {
 		if (ChartDifficultyAnalysis.shadow(density) && shadowGlow == null) createShadowGlow();
 		else if (!ChartDifficultyAnalysis.shadow(density) && shadowGlow != null) { shadowGlow.destroy(); shadowGlow = null; }
 		ratingLabel = density == null ? '?' : ChartDifficultyAnalysis.twoDecimals(density.difficulty);
-		if (legend != null) legend.text = difficultyLabel + '\n' + ratingLabel;
+		wholeLabel = wholeRating(ratingLabel);
 	}
+	/** The rating with its decimals dropped, not rounded. */
+	public static function wholeRating(label:String):String {
+		if (label == null) return '?';
+		var point = label.indexOf('.');
+		return point <= 0 ? label : label.substr(0, point);
+	}
+	/** Legend top, relative to the star, between the compact and expanded forms. */
+	public static function legendOffset(lift:Float, starHeight:Float):Float {
+		var inside = starHeight / 2 - 7; var below = starHeight + 2;
+		return inside + (below - inside) * Math.max(0, Math.min(1, lift));
+	}
+	/** Fade the whole number out, swap text at the midpoint, fade the full rating in. */
+	public static function legendOpacity(lift:Float):Float return Math.abs(1 - 2 * Math.max(0, Math.min(1, lift)));
 
 	function whitenCard():Void {
 		// A subtle gradient stays inside the star silhouette, with no rectangular backing.
@@ -107,10 +124,14 @@ class RankStar extends FlxSprite {
 		} else color = ChartDifficultyAnalysis.color(density);
 		alpha = savedAlpha; setPosition(savedX, savedY); super.draw();
 		if (legend != null) {
-			var text = showLegend ? difficultyLabel + '\n' + ratingLabel : ratingLabel;
+			// Compact cards keep the whole number inside the star so nothing hangs
+			// below the card; the expanded card slides the full rating out beneath.
+			var expanded = legendLift >= 0.5;
+			var text = expanded ? difficultyLabel + '\n' + ratingLabel : wholeLabel;
 			if (legend.text != text) legend.text = text;
-			legend.setPosition(savedX - 8, cardY + (showLegend ? 28 : 26)); legend.alpha = savedAlpha;
-			legend.color = focused ? 0xFFFFD166 : 0xFFCFD8E5;
+			legend.setPosition(savedX + width / 2 - 21, savedY + legendOffset(legendLift, height));
+			legend.alpha = savedAlpha * legendOpacity(legendLift);
+			legend.color = !expanded ? 0xFFFFFFFF : focused ? 0xFFFFD166 : 0xFFCFD8E5;
 			legend.cameras = cameras; legend.draw();
 		}
 		color = savedColor;
@@ -150,6 +171,9 @@ class RankStar extends FlxSprite {
 		super.update(elapsed);
 		if (inCard) {
 			pulseTime += elapsed;
+			var lifted = showLegend ? 1 : 0;
+			legendLift += (lifted - legendLift) * Math.min(1, elapsed * 12);
+			if (Math.abs(lifted - legendLift) < 0.01) legendLift = lifted;
 			if (shadowGlow != null) shadowGlow.update(elapsed);
 			var jump = focused ? Math.abs(Math.sin(pulseTime * 4)) : 0;
 			setPosition(cardX, cardY - jump * 5); angle = focused ? Math.sin(pulseTime * 4) * 7 : 0;

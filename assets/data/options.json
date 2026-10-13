@@ -23,6 +23,7 @@
     ,"flashingLights" : true
     ,"vignetteEffects" : true
     ,"lyricsEnabled" : true
+    ,"showDuplicateBaseCharts" : false
     ,"useKadeHealth" : false
     ,"showTimings" : false
     ,"accuracyMode" : 0

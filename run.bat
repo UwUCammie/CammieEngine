@@ -712,6 +712,11 @@ if errorlevel 1 (
 	echo ERROR: Could not apply the Flixel input-frame cache patch. 1>&2
 	exit /b 1
 )
+call !PYTHON_COMMAND! "!ROOT!\tools\patch_flixel_finish_guard.py"
+if errorlevel 1 (
+	echo ERROR: Could not apply the Flixel animation finish guard patch. 1>&2
+	exit /b 1
+)
 set "MODCHART_UTIL=!HAXELIB_PATH!\funkin-modchart\1,2,5\modchart\backend\util\ModchartUtil.hx"
 if not exist "!MODCHART_UTIL!" (
 	echo ERROR: Pinned funkin-modchart 1.2.5 source was not found at !MODCHART_UTIL!. 1>&2

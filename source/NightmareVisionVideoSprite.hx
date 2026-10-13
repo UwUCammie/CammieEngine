@@ -133,6 +133,27 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 		});
 	}
 
+	// A playing owner video is offered to the song as a cutscene. Whether a
+	// press may skip it is CutsceneSkip's call, not the video's.
+	public override function play():Bool {
+		var started = super.play();
+		var register:Dynamic = started && ownerState != null ? Reflect.field(ownerState, 'registerSongCutscene') : null;
+		if (Reflect.isFunction(register)) {
+			var ended = false;
+			var shown:Dynamic = this;
+			bitmap.onEndReached.add(function() ended = true);
+			// The decoder reports playback a few frames after play(), so the clip
+			// stays registered until it ends and only has a length while it shows.
+			Reflect.callMethod(ownerState, register, [this,
+				function() return disposed || bitmap == null || !bitmap.isPlaying || shown.visible == false || shown.alpha <= 0
+					? 0.0 : haxe.Int64.toInt(bitmap.length) + 0.0,
+				function() return !disposed && !finished && !ended && bitmap != null,
+				function(ms:Float) if (!disposed && bitmap != null) bitmap.time = haxe.Int64.ofInt(Std.int(Math.max(0, ms))),
+				function() skip()]);
+		}
+		return started;
+	}
+
 	public function skip():Void {
 		if (disposed || finished)
 			return;

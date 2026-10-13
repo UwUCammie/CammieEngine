@@ -10,7 +10,7 @@ class PsychDiscordBindings {
 		'resetClientID', 'updatePresence'
 	];
 
-	/** Psych's Lua API is registered as two globals rather than a class import. */
+	/** Psych's Lua API is registered as globals rather than a class import. */
 	public static function installLua(interp:Interp, facade:PsychDiscordClient):Void {
 		if (interp == null || facade == null)
 			throw '[psych-discord] Lua bindings require an interpreter and owner facade';
@@ -20,6 +20,8 @@ class PsychDiscordBindings {
 			facade.changePresence(details, state, smallImageKey, hasStartTimestamp,
 				endTimestamp, largeImageKey);
 		});
+		// Psych 0.6 scripts know the same callback by its older name.
+		interp.variables.set('changePresence', interp.variables.get('changeDiscordPresence'));
 		interp.variables.set('changeDiscordClientID', function(?newID:String):Void {
 			facade.changeDiscordClientID(newID);
 		});

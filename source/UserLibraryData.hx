@@ -14,6 +14,11 @@ class UserLibraryData {
 	var categories:Array<UserLibraryCategory> = [];
 	var favorites:Map<String, Bool> = new Map();
 	var difficulties:Map<String, String> = new Map();
+	var hiddenCharts:Map<String, Bool> = new Map();
+	var hiddenMods:Map<String, Bool> = new Map();
+	var modNames:Map<String, String> = new Map();
+	var hiddenCount:Int = 0;
+	var nameCount:Int = 0;
 	var nextCategory:Int = 1;
 	var plays = new LibraryHistoryData(false);
 	var imports = new LibraryHistoryData(true);
@@ -90,6 +95,38 @@ class UserLibraryData {
 		difficulties.set(key, difficulty);
 	}
 
+	/** Hidden entries stay installed and keep their scores; they are only left out of lists. */
+	public function hasHidden():Bool return hiddenCount > 0;
+	public function isChartHidden(key:String):Bool return hiddenCount > 0 && key != null && key != '' && hiddenCharts.exists(key);
+	public function setChartHidden(key:String, hidden:Bool):Void {
+		if (key == null || key == '') throw 'No chart identity is available.';
+		if (hidden == hiddenCharts.exists(key)) return;
+		if (hidden) { hiddenCharts.set(key, true); hiddenCount++; } else { hiddenCharts.remove(key); hiddenCount--; }
+	}
+	public function isModHidden(owner:String):Bool return hiddenCount > 0 && hiddenMods.exists(ownerKey(owner));
+	public function setModHidden(owner:String, hidden:Bool):Void {
+		owner = ownerKey(owner);
+		if (owner == '') throw 'Select an imported mod first.';
+		if (hidden == hiddenMods.exists(owner)) return;
+		if (hidden) { hiddenMods.set(owner, true); hiddenCount++; } else { hiddenMods.remove(owner); hiddenCount--; }
+	}
+	/** A display name chosen by the player. It never changes ownership or files. */
+	public function hasModNames():Bool return nameCount > 0;
+	public function modName(owner:String):String {
+		if (nameCount == 0) return '';
+		var name = modNames.get(ownerKey(owner));
+		return name == null ? '' : name;
+	}
+	public function setModName(owner:String, name:String):Void {
+		owner = ownerKey(owner);
+		if (owner == '') throw 'Select an imported mod first.';
+		var clean = name == null ? '' : StringTools.trim(name);
+		var had = modNames.exists(owner);
+		if (clean == '') { if (had) { modNames.remove(owner); nameCount--; } return; }
+		modNames.set(owner, categoryName(clean));
+		if (!had) nameCount++;
+	}
+
 	/** Return a detached view so UI code cannot mutate saved memberships. */
 	public function categoryList():Array<UserLibraryCategory> {
 		return [for (entry in categories) {id:entry.id, name:entry.name, mods:entry.mods.copy()}];
@@ -132,10 +169,14 @@ class UserLibraryData {
 	public function encode():String {
 		var starred = [for (key in favorites.keys()) key]; starred.sort(Reflect.compare);
 		var keys = [for (key in difficulties.keys()) key]; keys.sort(Reflect.compare);
+		var concealedCharts = [for (key in hiddenCharts.keys()) key]; concealedCharts.sort(Reflect.compare);
+		var concealedMods = [for (key in hiddenMods.keys()) key]; concealedMods.sort(Reflect.compare);
+		var named = [for (key in modNames.keys()) key]; named.sort(Reflect.compare);
 
 		return Json.stringify({version:VERSION, nextCategory:nextCategory, categories:categoryList(),
 			sorting:sorting(), playSequence:plays.sequence, plays:plays.entries(),
-			importSequence:imports.sequence, imports:imports.entries(), favorites:starred, difficulties:[for (key in keys) {key:key, difficulty:difficulties.get(key)}]});
+			importSequence:imports.sequence, imports:imports.entries(), favorites:starred, difficulties:[for (key in keys) {key:key, difficulty:difficulties.get(key)}],
+			hiddenCharts:concealedCharts, hiddenMods:concealedMods, modNames:[for (key in named) {owner:key, name:modNames.get(key)}]});
 	}
 
 	static function text(value:Dynamic):String {
@@ -170,6 +211,13 @@ class UserLibraryData {
 		for (entry in list(document.difficulties)) {
 			if (entry == null) throw 'Invalid difficulty preference.';
 			result.setLastDifficulty(text(entry.key), text(entry.difficulty));
+		}
+		// Added after the first library saves: older documents simply have none.
+		if (Reflect.hasField(document, 'hiddenCharts')) for (key in list(document.hiddenCharts)) result.setChartHidden(text(key), true);
+		if (Reflect.hasField(document, 'hiddenMods')) for (owner in list(document.hiddenMods)) result.setModHidden(text(owner), true);
+		if (Reflect.hasField(document, 'modNames')) for (entry in list(document.modNames)) {
+			if (entry == null) throw 'Invalid mod name.';
+			result.setModName(text(entry.owner), text(entry.name));
 		}
 		if (Reflect.hasField(document, 'plays') || Reflect.hasField(document, 'playSequence'))
 			result.plays.restore(document.playSequence, document.plays);

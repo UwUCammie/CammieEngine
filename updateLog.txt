@@ -1,8 +1,20 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.37 development - CammieEngine
-- Development continues after the published v0.0.36 checkpoint; remaining roadmap requirements stay open.
+v0.0.37 alpha - CammieEngine
+- Make the Freeplay card stars a steady stream: thirty-two evenly spaced stars across eight fixed lanes, a little faster, with shorter tails and no random timing or placement. The pointer no longer highlights or selects cards while it is hidden.
+- Add a Freeplay library menu on F1: hide or show the selected chart, hide or show its mod, rename the mod, restore its original name, delete the mod with all of its charts, and list hidden entries again. A chart is never deleted by itself.
+- Hide imported copies of base game charts in Freeplay. A copy needs the same title, tempo and cast, and either identical audio or the same song length with a matching note count, so remixes and charts with their own characters stay listed. Add the Show Duplicate Base Game Charts option.
+- Put a large FREEPLAY heading in the bottom right corner that pulses to the tempo of the selected song, and give the space it left at the top to the song list and details.
+- Colour the Freeplay visualizer from green through yellow to red by loudness. Give the key hints a separate key colour and dividers, and drop the hold and SHIFT note.
+- Show the whole difficulty number inside the star on Freeplay cards, and move to the full two decimal rating under the star on the selected card, so compact stars no longer spill out of the card.
+- Skip cutscenes with Enter. A video that plays while the chart has no notes for the player lands the song where the chart resumes play, firing every event in between and ending the video the way it ends by itself; a video behind notes is scenery and Enter still pauses. Intro and ending videos take one Enter press instead of Space or a held key.
+- Provide camFollowPos, the eased camera point older Psych and Nightmare Vision scripts read and follow. A script camera locked onto it now shows the same place as the game camera, which keeps mirror and reflection layers in the world.
+- Read files of older Nightmare Vision imports that have no asset index from the import's own folders. Stage scripts that stopped on a missing atlas now finish, restoring their videos, strumline placement and note modifiers.
+- Fill gaps in the Psych Lua layer: boyfriendName, dadName, gfName, songPath, curSection and the preference globals, flat ClientPrefs names, judgement counters, showRating/showCombo/showComboNum, changePresence, getRandomInt exclusion text, and setGraphicSize refreshing the hitbox, which put resized full screen effects in a corner.
+- Translate a bare Lua return that is followed by elseif or else, which used to disable the whole script. Reject negative frame indices in script animations and let a sprite destroy itself from its own animation finished callback; both were native crashes.
+- Blank engine name and version labels that imported scripts draw for the engine they were written for.
+- Incremental alpha release after v0.0.36; remaining roadmap requirements stay open.
 
 v0.0.36 alpha - CammieEngine
 - Fix Freeplay freezing for many seconds while a search is active. Search matching no longer compiles a pattern for every song on every frame, which left the next large allocation (usually a song preview) to release millions of them at once. Collapse repeated import diagnostics in the log so one failed package cannot hold the output lock for the whole game.

@@ -14,7 +14,7 @@ class OptionsCategories {
 				'flashingLights', 'vignetteEffects': 'Graphics & Performance';
 			case 'dontMuteMiss', 'normalizeSongAudio', 'hitSounds', 'soundtest': 'Audio';
 			case 'showSongPos', 'showNoteSplashes', 'style', 'newJudgementPos', 'preferJudgement',
-				'showComboBreaks', 'useCharColor', 'lyricsEnabled', 'allowStoryMode',
+				'showComboBreaks', 'useCharColor', 'lyricsEnabled', 'showDuplicateBaseCharts', 'allowStoryMode',
 				'allowFreeplay', 'titleToggle', 'credits', 'fastSceneTransitions': 'Interface';
 			case 'scrollSpeed', 'dynamicScrollSpeed', 'downscroll', 'midscroll', 'highwayDim',
 				'alwaysDoCutscenes', 'skipModifierMenu', 'skipVictoryScreen', 'useCustomInput',

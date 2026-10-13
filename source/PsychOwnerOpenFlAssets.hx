@@ -617,6 +617,17 @@ class PsychOwnerOpenFlAssets {
 				context.pathRoot, context.excludedSubtree);
 			if (ownerPath.blocked || ownerPath.unavailable || ownerPath.owned) return ownerPath;
 		}
+		// An older Nightmare Vision import has no receipt-backed asset index at
+		// all. Its files are still confined to its own owner tree, so read them
+		// in the donor's order (package, then engine core) and nowhere else.
+		if (context.engine == 'Nightmare Vision' && (selected == null || selected.result.state == 'no-index')) {
+			for (identityScope in context.identityScopes) {
+				var ownerPath = PsychOwnerAssetPath.resolveInScope(context.ownerRoot, id,
+					identityScope == 'core' ? context.ownerRoot + '/__nmv_core' : context.ownerRoot,
+					identityScope == 'package' ? '__nmv_core' : '');
+				if (ownerPath.blocked || ownerPath.owned) return ownerPath;
+			}
+		}
 		if (!context.allowNativeFallback)
 			return {path:null, owned:false, blocked:false, unavailable:true};
 		var clean = PsychOwnerAssetPath.cleanId(id);

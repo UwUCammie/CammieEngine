@@ -140,14 +140,19 @@ class SourceOwnerAssetContextProbe {
    "composite facade used a package path without a committed package identity");
   check(rejects(compositeLime,"getText","data/core-only.txt"),
    "composite facade used a core path without a committed core identity");
-  check(rejects(packageOpenFl,"getText","data/package-only.txt"),
-   "OpenFL package facade used an unindexed disk path");
-  check(rejects(coreOpenFl,"getText","data/core-only.txt"),
-   "OpenFL core facade used an unindexed disk path");
-  check(rejects(compositeOpenFl,"getText","data/package-only.txt"),
-   "OpenFL composite facade used an unindexed package path");
-  check(rejects(compositeOpenFl,"getText","data/core-only.txt"),
-   "OpenFL composite facade used an unindexed core path");
+  // An import with no asset index at all reads its own tree through OpenFL,
+  // each facade inside its own scope and never across it.
+  check(Reflect.callMethod(packageOpenFl,Reflect.field(packageOpenFl,"getText"),["data/package-only.txt"])=="package",
+   "OpenFL package facade could not read its own file of an index-less import");
+  check(Reflect.callMethod(coreOpenFl,Reflect.field(coreOpenFl,"getText"),["data/core-only.txt"])=="core",
+   "OpenFL core facade could not read its own file of an index-less import");
+  check(rejects(coreOpenFl,"getText","data/package-only.txt"),
+   "OpenFL core facade crossed into package files");
+  check(rejects(packageOpenFl,"getText","data/core-only.txt"),
+   "OpenFL package facade crossed into core files");
+  check(Reflect.callMethod(compositeOpenFl,Reflect.field(compositeOpenFl,"getText"),["data/package-only.txt"])=="package"
+   &&Reflect.callMethod(compositeOpenFl,Reflect.field(compositeOpenFl,"getText"),["data/core-only.txt"])=="core",
+   "OpenFL composite facade could not read an index-less import in package then core order");
   check(Reflect.callMethod(compositeLime,Reflect.field(compositeLime,"list"),[AssetType.TEXT]).length==0,
    "composite list exposed owner files without receipt identity");
   check(PsychOwnerAssetPath.resolveInScope(owner,"data/core-only.txt",owner+"/__nmv_core").owned,

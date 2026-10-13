@@ -2,7 +2,7 @@ package;
 
 /** Logical viewport geometry shared by host rows and their native checks. */
 class FreeplayBrowserLayout {
-	public static inline var TOP:Int = 112;
+	public static inline var TOP:Int = 64;
 	public static inline var ROW_HEIGHT:Int = 42;
 	public static inline var SELECTED_HEIGHT:Int = 82;
 	public static function capacity(height:Int, selectedHeight:Int = SELECTED_HEIGHT):Int return Std.int(Math.max(1, Math.floor((height - TOP - 84 - (selectedHeight - ROW_HEIGHT)) / ROW_HEIGHT)));

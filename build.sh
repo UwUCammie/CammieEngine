@@ -429,6 +429,9 @@ prepare_cross_project() {
 	python3 "$ROOT/tools/patch_flixel_input_frame_cache.py" \
 		"$ROOT/.haxelib/flixel/6,1,2/flixel" \
 		|| die "could not apply the Flixel input-frame cache patch"
+	python3 "$ROOT/tools/patch_flixel_finish_guard.py" \
+		"$ROOT/.haxelib/flixel/6,1,2/flixel" \
+		|| die "could not apply the Flixel animation finish guard patch"
 }
 
 ensure_windows_astc_decoder() {
