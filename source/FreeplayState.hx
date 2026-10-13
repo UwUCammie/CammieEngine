@@ -96,11 +96,13 @@ class FreeplayState extends MusicBeatState {
 	var denseBrowser:Bool = false;
 	var browserHeading:FlxText;
 	var browserMeters:Array<FlxSprite> = [];
-	var browserMeterTime:Float = 0;
+	var browserEnvelope = new FreeplayAudioEnvelope();
+
 	var browserDetail:FlxText;
 	var browserSource:FlxText;
 	var browserCount:FlxText;
 	var browserGroup:FlxText;
+	var browserFavoritesHeader:FlxText;
 	var libraryOrder:Array<Int> = [];
 	var libraryOrderRows:Array<LibrarySort.LibrarySortRow> = [];
 	var libraryOrderKey:String = '';
@@ -109,9 +111,17 @@ class FreeplayState extends MusicBeatState {
 	var chartDisplay:Map<String, FreeplayBrowserRow> = [];
 	var chartPage:Array<Int> = [];
 	var chartJump:Bool = false;
+	var selectedPresentationKey:String = "";
 	function expandedDifficultyRows():Bool return denseBrowser && LibraryChartMetric.isDensity(UserLibrary.data().sorting().charts);
 	function visibleChartRows():Array<Int> { orderedVisibleSongs(); return [for (id in chartOrder) if (songMatches(chartRows[id].song)) id]; }
-	function selectedChartRow(visible:Array<Int>):Int return FreeplayChartRows.find(chartRows, visible, curSelected, curDifficulty);
+	function selectedChartRow(visible:Array<Int>):Int {
+		for (id in visible) if (chartRows[id].key == selectedPresentationKey && chartRows[id].song == curSelected
+			&& (!expandedDifficultyRows() || chartRows[id].difficulty == curDifficulty)) return id;
+		var favoriteOccurrence = StringTools.startsWith(selectedPresentationKey, '@favorite:');
+		for (id in visible) if (chartRows[id].song == curSelected && (!expandedDifficultyRows() || chartRows[id].difficulty == curDifficulty)
+			&& StringTools.startsWith(chartRows[id].key, '@favorite:') == favoriteOccurrence) return id;
+		return FreeplayChartRows.find(chartRows, visible, curSelected, expandedDifficultyRows() ? curDifficulty : -1);
+	}
 	var libraryFavoriteData:UserLibraryData;
 	var browserEmpty:FlxText;
 	var browserCompletion:FlxText;
@@ -123,6 +133,11 @@ class FreeplayState extends MusicBeatState {
 	var rowSongIndices:Array<Int> = [];
 	private var curPlaying:Bool = false;
 	var searchString:String = "";
+	var searchInput:FreeplaySearchField;
+	var searchControlUsed:Bool = false;
+	var searchControlDown:Bool = false;
+	var searchFocused:Bool = false;
+	var searchSoundKeys:FreeplaySearchSoundKeys = new FreeplaySearchSoundKeys();
 	var scrollMotion = new FreeplayScrollMotion();
 	var registryRefreshRetryAt:Float = 0;
 	static var chartDensityGeneration:Int = -1;
@@ -755,6 +770,13 @@ class FreeplayState extends MusicBeatState {
 		searchText = new FlxText(10, FlxG.height - 40, 0, "", 24);
 		searchText.setFormat("assets/fonts/vcr.ttf", 24, FlxColor.WHITE, LEFT);
 		add(searchText);
+		searchInput = new FreeplaySearchField(120, FlxG.height - 40, FlxG.width - 150, '', 24, FlxColor.WHITE, FlxColor.TRANSPARENT);
+		searchInput.setFormat('assets/fonts/vcr.ttf', 24, FlxColor.WHITE, LEFT);
+		// Native text events handle Unicode, paste and caret editing; Ctrl owns focus.
+		searchInput.onTextChange.add(function(value, change) { searchString = value; applySearchFilter(); });
+		add(searchInput); uiChrome.push(searchInput);
+		FlxG.stage.addEventListener(openfl.events.KeyboardEvent.KEY_DOWN, onSearchKeyDown);
+		FlxG.stage.addEventListener(openfl.events.KeyboardEvent.KEY_UP, onSearchKeyUp);
 		applySearchFilter(); // shows the placeholder
 		rebuildIconQueue(); // fill the info window around the selection
 
@@ -808,6 +830,7 @@ class FreeplayState extends MusicBeatState {
 		}
 		changeSelection();
 		restoreRefreshDifficulty();
+		RuntimeFreeplayUxProbe.install(this);
 		if (smokeProfile) {
 			var now = haxe.Timer.stamp();
 			RuntimeSmokeHarness.profileSection('fp-create-first-selection', now - profileMark);
@@ -881,7 +904,7 @@ class FreeplayState extends MusicBeatState {
 		var selectedPendingKey = curSelected >= 0 && curSelected < songs.length
 			&& songs[curSelected].isProvisional ? songs[curSelected].pendingKey : '';
 		var rowsChanged = reconcilePendingSongs();
-		if (rowsChanged) libraryOrderKey = '';
+		libraryOrderKey = ''; // Readiness changes reorder even when registry membership is unchanged.
 		if (grpSongs != null) {
 			if (rowsChanged) {
 
@@ -894,7 +917,7 @@ class FreeplayState extends MusicBeatState {
 			}
 			for (index in rowSongIndices)
 				updateRenderedRowAvailability(index);
-			if (expandedDifficultyRows()) layoutChartRows();
+			if (denseBrowser) layoutChartRows();
 			rebuildIconQueue();
 			if (curSelected >= 0 && curSelected < songs.length
 				&& !availabilityAllowsSelection(curSelected) && previewSound != null)
@@ -1223,13 +1246,19 @@ class FreeplayState extends MusicBeatState {
 		var underline = new FlxSprite(142, 57).makeGraphic(240, 5, 0xFFFF66B7); underline.angle = -2;
 		add(underline); uiChrome.push(underline);
 		browserText(detailX, 106, detailWidth, 'PICK YOUR NEXT TRACK', 20, 0xFFFF66B7);
-		browserText(detailX, 166, detailWidth, 'ON DECK', 16, 0xFFFFD166);
+		var detailPanel = new FlxSprite(detailX - 12, 188).makeGraphic(Std.int(detailWidth + 24), 390, 0xFF182235);
+		detailPanel.alpha = 0.7; insert(members.indexOf(grpSongs), detailPanel); uiChrome.push(detailPanel);
+		for (i in 0...3) {
+			var accent = new FlxSprite(detailX - 12, 188 + i * 126).makeGraphic(4, 74, i == 1 ? 0xFF80E3D0 : 0xFFFF66B7);
+			add(accent); uiChrome.push(accent);
+		}
 		for (i in 0...12) {
 			var meter = new FlxSprite(detailX + i * 19, 142).makeGraphic(12, 1, i % 3 == 0 ? 0xFFFF66B7 : 0xFF80E3D0);
 			add(meter); uiChrome.push(meter); browserMeters.push(meter);
 		}
 		browserCount = browserText(26, 66, FlxG.width * 0.6, '', 18, 0xFF9DB2CC);
 		browserGroup = browserText(26, 90, FlxG.width * 0.6, '', 16, 0xFF80E3D0);
+		browserFavoritesHeader = browserText(26, 140, FreeplayBrowserLayout.listWidth(FlxG.width) - 48, 'FAVORITES', 14, 0xFFFFD166); browserFavoritesHeader.visible = false;
 		browserDetail = browserText(detailX, 200, detailWidth, '', 24, 0xFFFFFFFF);
 		browserSource = browserText(detailX, 264, detailWidth, '', 16, 0xFF9DB2CC);
 		scoreText.setPosition(detailX, 392); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
@@ -1250,9 +1279,10 @@ class FreeplayState extends MusicBeatState {
 			'No songs match this view.\nClear your search or adjust Library filters.', 24, 0xFFCFD8E5);
 		searchBG.setPosition(0, FlxG.height - 68);
 		searchBG.makeGraphic(FlxG.width, 68, 0xFF101622); searchBG.alpha = 1;
-		searchText.setPosition(24, FlxG.height - 62); searchText.size = 18; searchText.fieldWidth = FlxG.width - 48;
+		searchText.setPosition(24, FlxG.height - 62); searchText.size = 18; searchText.fieldWidth = 90;
+		searchInput.setPosition(120, FlxG.height - 62); searchInput.size = 18; searchInput.fieldWidth = FlxG.width - 144;
 		browserText(24, FlxG.height - 32, FlxG.width - 48,
-			'UP/DOWN Browse (hold, SHIFT faster)   LEFT/RIGHT Difficulty   ENTER Play   TAB / Select Library   ESC Back', 16, 0xFF9DB2CC);
+			'CTRL Search   UP/DOWN Browse (hold, SHIFT faster)   LEFT/RIGHT Difficulty   ENTER Play   TAB / Select Library   ESC Back', 16, 0xFF9DB2CC);
 		updateBrowserDetails();
 	}
 
@@ -1269,11 +1299,11 @@ class FreeplayState extends MusicBeatState {
 		if (libraryViewId != '' && libraryViewId != FreeplayLibraryView.FAVORITES) {
 			for (entry in UserLibrary.data().categoryList()) if (entry.id == libraryViewId) label = entry.name;
 		}
-		var chartVisible = expandedDifficultyRows() ? visibleChartRows() : [];
-		var count = expandedDifficultyRows() ? chartVisible.length : visible.length;
-		var position = expandedDifficultyRows() ? chartVisible.indexOf(selectedChartRow(chartVisible)) : visible.indexOf(curSelected);
-		browserCount.text = label + '  /  ' + count + (expandedDifficultyRows() ? ' charts' : ' songs')
-			+ (hasSelection ? '  /  ' + (position + 1) + ' of ' + count : '');
+		var chartVisible = visibleChartRows();
+		var count = chartVisible.length;
+		var position = chartVisible.indexOf(selectedChartRow(chartVisible));
+		browserCount.text = label + '  /  ' + (expandedDifficultyRows() ? count + ' chart cards' : visible.length + ' songs')
+			+ (hasSelection ? '  /  ' + (position + 1) + ' of ' + count + ' cards' : '');
 		browserGroup.text = refreshNotice != '' ? FreeplayBrowserLayout.label(refreshNotice, 74)
 			: (hasSelection ? FreeplayBrowserLayout.label(libraryGroupCaption(curSelected), 74) : '');
 		browserEmpty.visible = !hasSelection;
@@ -1286,7 +1316,7 @@ class FreeplayState extends MusicBeatState {
 		browserCompletion.visible = false;
 		browserCompletion.text = hasSelection ? 'Completion: ' + (['Unplayed','Clear','SDCB','Bad','Good','Sick'][Std.int(Math.max(0, Math.min(5, Highscore.getFCLevel(songs[curSelected].songName, curDifficulty))))]) : '';
 		browserStarPanel.visible = false;
-		browserDetail.text = hasSelection ? FreeplayBrowserLayout.label(songs[curSelected].displayTitle, 84) : 'No song selected';
+		browserDetail.text = hasSelection ? FreeplayBrowserLayout.label(FreeplaySongTitle.display(songs[curSelected].displayTitle), 84) : 'No song selected';
 		browserSource.text = hasSelection ? FreeplayBrowserLayout.label(sourceCaption(songs[curSelected]), 120) : '';
 		for (index in rowSongIndices) if (starArray[index] != null && songRows[index] != null) {
 			var stars = starArray[index]; var row = songRows[index];
@@ -1558,7 +1588,26 @@ class FreeplayState extends MusicBeatState {
 		FlxG.game.setChildIndex(camUI.flashSprite, FlxG.game.getChildIndex(FlxG.camera.flashSprite) + 1);
 	}
 
+	// Events retain chord ownership even when both keys release between updates.
+	function onSearchKeyDown(event:openfl.events.KeyboardEvent):Void {
+		if (event.keyCode == (FlxKey.CONTROL:Int)) {
+			if (!searchControlDown) searchControlUsed = false;
+			searchControlDown = true;
+		} else if (searchControlDown || event.ctrlKey) searchControlUsed = true;
+	}
+	function onSearchKeyUp(event:openfl.events.KeyboardEvent):Void {
+		if (event.keyCode == (FlxKey.CONTROL:Int)) searchControlDown = false;
+	}
+
 	override function update(elapsed:Float) {
+		var focusChanged = subState == null && FlxG.keys.justReleased.CONTROL && !searchControlUsed;
+		if (FlxG.keys.justPressed.CONTROL || FlxG.keys.justReleased.CONTROL) RuntimeFreeplayUxProbe.recordCtrl('parent-before-focus-toggle');
+		if (focusChanged) {
+			searchFocused = !searchFocused;
+			if (searchFocused) { cancelBrowserConfirm(); searchInput.startFocus(); } else searchInput.endFocus();
+			applySearchFilter();
+		}
+		searchSoundKeys.update(searchFocused);
 		#if sys
 		ImportRefreshManager.browseTick();
 		if (importRefreshGeneration != ImportRefreshManager.generation) {
@@ -1574,18 +1623,21 @@ class FreeplayState extends MusicBeatState {
 		if (denseBrowser) animateBrowserRows(elapsed);
 		syncSourceRows();
 		if (denseBrowser) {
-			browserMeterTime += elapsed;
+			browserEnvelope.update(previewSound != null && previewSound.playing ? previewSound : null, elapsed);
 			for (i in 0...browserMeters.length) {
 				var meter = browserMeters[i];
-				meter.scale.y = 4 + 15 * (0.5 + 0.5 * Math.sin(browserMeterTime * 4 + i * 0.8));
-				meter.y = 158 - meter.scale.y / 2;
+				var amplitude = browserEnvelope.levels[i];
+				if (!Math.isFinite(amplitude)) amplitude = 0;
+				var target = 2 + Math.min(1, Math.max(0, amplitude)) * (22 - Math.abs(i - 5.5));
+				meter.scale.y += (target - meter.scale.y) * Math.min(1, elapsed * 35);
+				meter.y = 166 - meter.scale.y;
 			}
 		}
 		if (smokeProfile)
 			RuntimeSmokeHarness.profileSection('fp-update-base', haxe.Timer.stamp() - profileMark);
 		profileMark = haxe.Timer.stamp();
 		var updateCapsule = hxcCapsuleView(curSelected);
-		if (hxcRuntime != null && updateCapsule != null)
+		if (!searchFocused && !focusChanged && hxcRuntime != null && updateCapsule != null)
 			hxcRuntime.dispatch('update', EngineCompat.hxcFreeplayPayload(
 				'update', this, updateCapsule, curDifficulty, null));
 		refreshHxcConfirm();
@@ -1626,7 +1678,22 @@ class FreeplayState extends MusicBeatState {
 		else
 			scoreText.text = "Sound Test";
 
-		if (denseBrowser && subState == null && !browserConfirm.active) {
+		if (!searchFocused && !focusChanged && denseBrowser && subState == null && !browserConfirm.active) {
+			var clickedSong = -1; var clickedDifficulty = -1; var clickedKey = "";
+			for (row in chartDisplay) for (star in row.chartStars) {
+				star.focused = star.visible && FlxG.mouse.overlaps(star);
+				if (star.focused) {
+					row.setTrailColor(ChartDifficultyAnalysis.color(star.density));
+					if (FlxG.mouse.justPressed && availabilityAllowsSelection(row.presentationSong)) {
+						clickedSong = row.presentationSong; clickedDifficulty = star.diff; clickedKey = row.presentationKey;
+						break;
+					}
+				}
+			}
+			if (clickedSong >= 0) {
+				curSelected = clickedSong; selectedPresentationKey = clickedKey; curDifficulty = clickedDifficulty;
+				chartJump = true; changeSelection(0); changeDiff(0); rememberLibraryDifficulty();
+			}
 			for (index in rowSongIndices) if (starArray[index] != null) for (star in starArray[index]) {
 				if (star.visible && FlxG.mouse.overlaps(star)) {
 					star.focused = true;
@@ -1661,44 +1728,14 @@ class FreeplayState extends MusicBeatState {
 				startPreview();
 		}
 
-		if (!soundTest && (FlxG.keys.justPressed.TAB || FlxG.gamepads.anyJustPressed(BACK))) {
+		if (!searchFocused && !focusChanged && !soundTest && (FlxG.keys.justPressed.TAB || FlxG.gamepads.anyJustPressed(BACK))) {
 			openLibraryActions();
 			return;
 		}
 
-		// type-to-search: letters/digits filter the list, backspace deletes.
-		// WASD-style nav keys that produce a character type instead of moving
-		// on the frame they're typed so searching doesn't fight the controls
+		// Native text events preserve punctuation, keyboard layouts, paste and Unicode.
+		if (searchFocused || focusChanged) { scrollMotion.advance(elapsed, false, false, false); return; }
 		var typedChar:String = "";
-		if (FlxG.keys.justPressed.BACKSPACE && !MenuSearchInput.reserved(FlxKey.BACKSPACE)) {
-			if (searchString.length > 0) {
-				searchString = searchString.substr(0, searchString.length - 1);
-				applySearchFilter();
-			}
-		} else if (FlxG.keys.justPressed.ANY) {
-			var searchKey = FlxG.keys.firstJustPressed();
-			var key:Int = MenuSearchInput.reserved(searchKey) ? -1 : searchKey;
-			var A:Int = FlxKey.A;
-			var Z:Int = FlxKey.Z;
-			var ZERO:Int = FlxKey.ZERO;
-			var NINE:Int = FlxKey.NINE;
-			var NPZERO:Int = FlxKey.NUMPADZERO;
-			var NPNINE:Int = FlxKey.NUMPADNINE;
-			if (key >= A && key <= Z)
-				typedChar = String.fromCharCode(key - A + "a".code);
-			else if (key >= ZERO && key <= NINE)
-				typedChar = String.fromCharCode(key - ZERO + "0".code);
-			else if (key >= NPZERO && key <= NPNINE)
-				typedChar = String.fromCharCode(key - NPZERO + "0".code);
-			else if (key == (FlxKey.SPACE : Int))
-				typedChar = " ";
-			else if (key == (FlxKey.MINUS : Int))
-				typedChar = "-";
-			if (typedChar.length > 0) {
-				searchString += typedChar;
-				applySearchFilter();
-			}
-		}
 
 		// Z/Q/E/W/S/A/D are all bound to menu actions, so a keystroke that typed
 		// must not also accept/launch (typing "z" used to start the highlighted
@@ -1999,15 +2036,13 @@ class FreeplayState extends MusicBeatState {
 		vocals.play();
 	}
 
-	// search matching: lowercase + alphanumeric only, so "bopeebo bside"
+	// Search preserves Unicode and typed symbols, so literal queries remain distinct.
+	// Ignoring separators lets "bopeebo bside"
 	// finds "Bopeebo-BSide" and dashes/spaces are interchangeable.
 	// (public + static: CategoryState's category search shares it)
 	public static function searchNorm(s:String):String {
-		var buf = "";
-		for (chr in s.toLowerCase().split(""))
-			if ((chr >= "a" && chr <= "z") || (chr >= "0" && chr <= "9"))
-				buf += chr;
-		return buf;
+		if (s == null) return '';
+		return ~/[\s\-()\[\]·]+/g.replace(s.toLowerCase(), '');
 	}
 
 	function libraryChartKey(index:Int):String {
@@ -2088,7 +2123,11 @@ class FreeplayState extends MusicBeatState {
 
 	/** Cache ordering independently of the search filter and the bounded display rows. */
 	function orderedVisibleSongs():Array<Int> {
-		if (!denseBrowser) return FreeplayListWindow.visibleIndices(songs.length, songMatches);
+		if (!denseBrowser) {
+			var visible = FreeplayListWindow.visibleIndices(songs.length, songMatches);
+			return [for (index in visible) if (!FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index))) index]
+				.concat([for (index in visible) if (FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(index))) index]);
+		}
 		var data = UserLibrary.data(); var order = data.sorting();
 		var key = songs.length + ':' + order.grouping + ':' + order.groups + ':' + order.charts + ':' + order.difficulty;
 		if (key != libraryOrderKey || data != libraryFavoriteData) {
@@ -2116,7 +2155,7 @@ class FreeplayState extends MusicBeatState {
 					owner:UserLibraryData.ownerKey(owner), modTitle:modTitle, engine:engine,
 					ordinal:song.libraryOrdinal < 0 ? i : song.libraryOrdinal,
 					authored:song.isProvisional ? null : song.authoredFreeplayOrder,
-					favorite:data.isFavorite(libraryChartKey(i)),
+					favorite:data.isFavorite(libraryChartKey(i)), unavailable:FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(i)),
 					played:order.charts == 'recent' ? data.playOrder(libraryChartKey(i)) : 0,
 					imported:order.groups == 'imported' ? data.importOrder(owner) : 0,
 					metric:metricIndex < 0 || song.isProvisional || song.songName.toLowerCase() == 'random-song' ? null : LibraryChartMetric.read(song.songName,
@@ -2124,15 +2163,17 @@ class FreeplayState extends MusicBeatState {
 						DifficultyManager.supportedDiff.get(song.songName.toLowerCase()), Highscore.peekBestScore, LibraryChartMetric.isDensity(order.charts) ? ChartDensityCache.read(song.songName, order.difficulty) : null),
 					random:song.songName.toLowerCase() == 'random-song'});
 			}
-			libraryOrder = LibrarySort.order(libraryOrderRows, order.grouping, order.groups, order.charts, true);
+			libraryOrder = LibrarySort.order(libraryOrderRows, order.grouping, order.groups, order.charts);
 			chartRows = [];
 			if (expandedDifficultyRows()) chartRows = FreeplayChartRows.expand(libraryOrderRows,
 				function(index) return songs[index].isProvisional ? [] : DifficultyManager.getSupportedDiffs(songs[index].songName),
 				function(index, diff) {
 					var density = ChartDensityCache.read(songs[index].songName, DifficultyManager.getDiffName(diff));
-					return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating /20'};
+					return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating'};
 				}, DifficultyManager.getDiffName);
-			chartOrder = LibrarySort.order([for (row in chartRows) row.sort], order.grouping, order.groups, order.charts, true);
+			if (!expandedDifficultyRows()) chartRows = FreeplayChartRows.expand(libraryOrderRows, function(index) return [], function(index, diff) return null);
+			chartOrder = LibrarySort.order([for (row in chartRows) row.sort], order.grouping, order.groups, order.charts);
+			chartOrder = FreeplayChartRows.withFavorites(chartRows, chartOrder, !favoritesOnly);
 			libraryOrderKey = key; libraryFavoriteData = data;
 		}
 		return [for (index in libraryOrder) if (songMatches(index)) index];
@@ -2370,8 +2411,8 @@ class FreeplayState extends MusicBeatState {
 	*/
 	function rebuildVisibleRows():Void {
 		var visible = orderedVisibleSongs();
-		if (!expandedDifficultyRows()) clearChartDisplay();
-		var desired = expandedDifficultyRows() ? (songMatches(curSelected) ? [curSelected] : []) : denseBrowser ? FreeplayBrowserLayout.centeredPage(visible, curSelected, FlxG.height, selectedCardHeight())
+		if (!denseBrowser) clearChartDisplay();
+		var desired = denseBrowser ? (songMatches(curSelected) ? [curSelected] : []) : denseBrowser ? FreeplayBrowserLayout.centeredPage(visible, curSelected, FlxG.height, selectedCardHeight())
 			: FreeplayListWindow.window(visible, curSelected, ROW_WINDOW_RADIUS);
 		var wanted:Map<Int, Bool> = new Map();
 		for (index in desired)
@@ -2428,7 +2469,7 @@ class FreeplayState extends MusicBeatState {
 					row.setPosition(24, FreeplayBrowserLayout.centeredRowY(position, selectedPosition, FlxG.height, selectedCardHeight()));
 				}
 				else {
-					row = new Alphabet(0, (70 * index) + 30, songs[index].displayTitle,
+					row = new Alphabet(0, (70 * index) + 30, FreeplaySongTitle.display(songs[index].displayTitle),
 						true, false, false, null, null, null, true);
 					row.setMenuTextScale(SONG_ROW_SCALE);
 					row.menuMotionRate = SONG_ROW_MOTION_RATE;
@@ -2661,22 +2702,20 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	function applySearchFilter(refreshOnly:Bool = false) {
-		var searching:Bool = searchString.length > 0;
-		if (searching) {
-			searchText.text = "search: " + searchString + "_";
-			searchText.alpha = 1;
-		} else {
-			searchText.text = "search: (type to filter)";
-			searchText.alpha = 0.45;
+		searchText.text = 'SEARCH:';
+		searchText.alpha = searchFocused ? 1 : 0.5;
+		if (searchInput != null) {
+			if (searchInput.text != searchString) searchInput.text = searchString;
+			searchInput.alpha = searchFocused ? 1 : 0.55;
 		}
-		if (!soundTest) searchText.text += (libraryViewId != '' ? ' | Library' : '') + (favoritesOnly ? ' | Favorites' : '')
-			+ (categoryFilters.length > 0 ? ' | Categories: ' + categoryFilters.length : '') + ' | Tab / Select: Library';
+
 		if (!songMatches(curSelected) && anyVisible()) {
 			if (refreshOnly) curSelected = denseBrowser ? LibrarySort.select(orderedVisibleSongs(), curSelected, 0)
 				: nextVisibleSelection(curSelected, 0, songs.length, songMatches);
 			changeSelection(0, refreshOnly); // refresh can relocate without scroll audio
 		} else
 			rebuildVisibleRows(); // clearing a search restores rows outside the old window
+		rebuildIconQueue();
 		if (denseBrowser) updateBrowserDetails();
 		var hasMatches = anyVisible();
 		var wasEmpty = scoreText != null && !scoreText.visible;
@@ -2692,7 +2731,7 @@ class FreeplayState extends MusicBeatState {
 
 	/** Animate only bounded geometry; metadata, filters and ordering are unchanged between targets. */
 	function animateBrowserRows(elapsed:Float):Void {
-		if (expandedDifficultyRows()) for (row in chartDisplay) row.animate(elapsed);
+		if (denseBrowser) for (row in chartDisplay) row.animate(elapsed);
 		for (index in rowSongIndices) {
 			var row:FreeplayBrowserRow = cast songRows[index];
 			if (row == null || !row.animate(elapsed)) continue;
@@ -2743,6 +2782,7 @@ class FreeplayState extends MusicBeatState {
 		}
 		chartPage = desired;
 		var selectedPosition = desired.indexOf(selected);
+		if (browserFavoritesHeader != null) browserFavoritesHeader.visible = false;
 		var order = UserLibrary.data().sorting();
 		for (position in 0...desired.length) {
 			var id = desired[position]; var entry = chartRows[id];
@@ -2755,16 +2795,20 @@ class FreeplayState extends MusicBeatState {
 			}
 			if (row == null) continue;
 			var diffName = entry.difficulty < 0 ? '' : DifficultyManager.getDiffName(entry.difficulty);
-			row.rename(songs[entry.song].displayTitle);
-			row.setChartCaption(diffName);
+			sourceDisplayFor(songs[entry.song]); row.rename(FreeplaySongTitle.display(songs[entry.song].displayTitle));
+			row.setChartCaption(diffName); row.presentationSong = entry.song; row.presentationKey = entry.key;
 			if (!selectedEntry) row.setChartArtwork(songs[entry.song].songName, songs[entry.song].songCharacter,
 				entry.difficulty, entry.difficulty < 0 ? null : ChartDensityCache.read(songs[entry.song].songName, diffName), availabilityAllowsSelection(entry.song));
+			row.setTrailColor(ChartDifficultyAnalysis.color(ChartDensityCache.read(songs[entry.song].songName, DifficultyManager.getDiffName(entry.difficulty < 0 ? DifficultyManager.getValidDiff(curDifficulty, songs[entry.song].songName) : entry.difficulty))));
 			row.present(selectedEntry, FreeplaySongAvailability.rowIsDisabled(rowAvailabilityDecision(entry.song)),
 				selectedEntry && iconArray[curSelected] != null, entry.sort.favorite, selectedCardHeight());
 			row.moveTo(selectedEntry ? 32 : 24, FreeplayBrowserLayout.centeredRowY(position, selectedPosition, FlxG.height, selectedCardHeight()), selectedCardHeight(), chartJump);
 			var at = visible.indexOf(id);
+			if (browserFavoritesHeader != null && at == 0 && StringTools.startsWith(entry.key, '@favorite:')) {
+				browserFavoritesHeader.visible = true; browserFavoritesHeader.setPosition(26, row.motion.targetY - 18);
+			}
 			var previous = at > 0 ? chartRows[visible[at - 1]].sort : null;
-			row.groupBoundary(previous != null && (previous.favorite != entry.sort.favorite
+			row.groupBoundary(previous != null && (StringTools.startsWith(chartRows[visible[at - 1]].key, '@favorite:') != StringTools.startsWith(entry.key, '@favorite:')
 				|| (order.grouping != 'flat' && LibrarySort.group(previous, order.grouping) != LibrarySort.group(entry.sort, order.grouping))));
 		}
 		positionBrowserDecorations(curSelected);
@@ -2772,7 +2816,7 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	function applyListLayout() {
-		if (expandedDifficultyRows()) { layoutChartRows(); return; }
+		if (denseBrowser) { layoutChartRows(); return; }
 		var selectedPosition = rowSongIndices.indexOf(curSelected);
 		var ordered = denseBrowser ? orderedVisibleSongs() : [];
 		var grouping = denseBrowser ? UserLibrary.data().sorting().grouping : 'flat';
@@ -2856,18 +2900,18 @@ class FreeplayState extends MusicBeatState {
 			}
 
 		if (change != 0) refreshNotice = '';
-		var chartNavigation = !refreshOnly && expandedDifficultyRows();
+		var chartNavigation = !refreshOnly && denseBrowser;
 		if (chartNavigation) {
 			var visible = visibleChartRows();
 			var id = LibrarySort.select(visible, selectedChartRow(visible), change);
 			if (id >= 0 && id < chartRows.length) {
-				curSelected = chartRows[id].song;
+				curSelected = chartRows[id].song; selectedPresentationKey = chartRows[id].key;
 				if (chartRows[id].difficulty >= 0) curDifficulty = chartRows[id].difficulty;
 				difficultySongKey = libraryChartKey(curSelected);
 			}
 		} else if (!refreshOnly)
-			curSelected = denseBrowser ? LibrarySort.select(orderedVisibleSongs(), curSelected, change)
-				: nextVisibleSelection(curSelected, change, songs.length, songMatches);
+			curSelected = LibrarySort.select(orderedVisibleSongs(), curSelected, change);
+		if (previousSelectionSong != curSelected) stopPreviewSound();
 		rebuildVisibleRows();
 		rebuildIconQueue(); // keep the info window centered on the new selection
 
@@ -3049,6 +3093,14 @@ class FreeplayState extends MusicBeatState {
 		return applied;
 	}
 
+	override function openSubState(state:flixel.FlxSubState):Void {
+		// Imported callbacks can open a modal even while the parent is typing.
+		if (searchInput != null && searchInput.hasFocus) searchInput.endFocus();
+		searchFocused = false; searchSoundKeys.update(false);
+		if (searchText != null) { searchText.alpha = 0.5; searchInput.alpha = 0.55; }
+		super.openSubState(state);
+	}
+
 	override function closeSubState():Void {
 		super.closeSubState();
 		if (libraryActionsOpen) {
@@ -3106,6 +3158,10 @@ class FreeplayState extends MusicBeatState {
 			FlxG.sound.list.remove(vocals);
 			vocals.destroy();
 		}
+		FlxG.stage.removeEventListener(openfl.events.KeyboardEvent.KEY_DOWN, onSearchKeyDown);
+		FlxG.stage.removeEventListener(openfl.events.KeyboardEvent.KEY_UP, onSearchKeyUp);
+		searchSoundKeys.restore();
+		if (searchInput != null) searchInput.endFocus();
 		super.destroy();
 	}
 }

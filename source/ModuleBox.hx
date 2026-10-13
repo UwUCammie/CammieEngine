@@ -24,7 +24,7 @@ class ModuleBox extends FlxTypedSpriteGroup<FlxSprite> {
 		icon.setPosition(0, 5);
 		add(icon);
 
-		nameLabel = new FlxText(180, 0, background.width - 240, name);
+		nameLabel = new FlxText(180, 0, background.width - 240, type == 'song' ? FreeplaySongTitle.display(name) : name);
 		nameLabel.setFormat('assets/fonts/vcr.otf', 40, 0xFFFFFFFF, 'left');
 		add(nameLabel);
 	}

@@ -45,7 +45,7 @@ class RankStar extends FlxSprite {
 		density = value;
 		if (ChartDifficultyAnalysis.shadow(density) && shadowGlow == null) createShadowGlow();
 		else if (!ChartDifficultyAnalysis.shadow(density) && shadowGlow != null) { shadowGlow.destroy(); shadowGlow = null; }
-		ratingLabel = density == null ? '?/20' : Std.string(Std.int(density.difficulty)) + '/20';
+		ratingLabel = density == null ? '?' : ChartDifficultyAnalysis.twoDecimals(density.difficulty);
 		if (legend != null) legend.text = difficultyLabel + '\n' + ratingLabel;
 	}
 

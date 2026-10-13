@@ -179,13 +179,13 @@ class UserLibraryTest(unittest.TestCase):
         method=extract_method(source,'function applySearchFilter(')
         selection=extract_method(source,'public static function nextVisibleSelection(')
         files={'View.hx':'''class View {
-         public var searchString='missing';var searchText={text:'',alpha:1.0};var favoritesOnly=false;var soundTest=false;
+         var searchFocused=false;var searchInput:Dynamic=null;public var searchString='missing';var searchText={text:'',alpha:1.0};var favoritesOnly=false;var soundTest=false;
          var libraryViewId='';var categoryFilters:Array<String>=[];var curSelected=0;
          public var denseBrowser=false; function updateBrowserDetails():Void {}
          public var scoreText={visible:true};public var infoPanel={visible:true};public var diffText={text:'HARD'};
          var previewTimer=0.0;public var changes=0;
          public function new(){} function anyVisible():Bool return searchString=='';
-         function songMatches(i:Int):Bool return anyVisible();function rebuildVisibleRows():Void {}
+         function songMatches(i:Int):Bool return anyVisible();function rebuildVisibleRows():Void {} function rebuildIconQueue():Void {}
          var songs=[0];function orderedVisibleSongs():Array<Int> return anyVisible() ? [0] : [];
          function changeSelection(change:Int=0,refreshOnly:Bool=false):Void {
           if(!refreshOnly)curSelected=nextVisibleSelection(curSelected,change,songs.length,songMatches);

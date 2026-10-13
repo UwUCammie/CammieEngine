@@ -54,7 +54,7 @@ class RegistryReconcileTest(unittest.TestCase):
   selection=change[start:end]
   fixture=r'''class Browser {
    public var curSelected=0;
-   var searchString='visible';var soundTest=false;var libraryViewId='';var favoritesOnly=false;var categoryFilters:Array<String>=[];
+   var searchFocused=false;var searchInput:Dynamic=null;var searchString='visible';var soundTest=false;var libraryViewId='';var favoritesOnly=false;var categoryFilters:Array<String>=[];
    var denseBrowser=true;var songs=[0,1];
    var searchText:Dynamic={text:'',alpha:1.0};var scoreText:Dynamic={visible:false};var diffText:Dynamic={text:''};var infoPanel:Dynamic={visible:true};var previewTimer=0.0;
    public var sounds=0;public var changes=0;public var layouts=0;
@@ -68,6 +68,7 @@ class RegistryReconcileTest(unittest.TestCase):
     SELECTION
    }
    function rebuildVisibleRows():Void layouts++;
+   function rebuildIconQueue():Void {}
    function updateBrowserDetails():Void{}
    function changeDiff():Void changes++;
    function stopPreviewSound():Void{}

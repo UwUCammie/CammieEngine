@@ -12,6 +12,7 @@ HAXE = ROOT / ".tools/haxe/haxe"
 
 
 STUBS = {
+    "ImportWorkScheduler.hx": "class ImportWorkScheduler { public static function workStamp():Float return haxe.Timer.stamp(); }",
     "haxe/Timer.hx": r'''package haxe;
 class Timer { public static var now:Float=0; public static function stamp():Float return now; }''',
     "flixel/FlxBasic.hx": r'''package flixel;
@@ -126,7 +127,7 @@ class Main {
   check(overlay.activityText.text.indexOf("19s ago")>=0,"age of the last actual progress update was not shown");
   check(overlay.timingText.text.indexOf("Elapsed 1m 15s")>=0
    &&overlay.timingText.text.indexOf(" | ")>=0
-   &&overlay.timingText.text.indexOf("Phase ETA ~2m 04s")>=0
+   &&overlay.timingText.text.indexOf("Import ETA ~2m 15s")>=0
    &&overlay.timingText.text.indexOf("Queue 2")>=0,"elapsed time, phase ETA, or queue count was omitted");
   check(Math.abs(overlay.progressFraction()-0.375)<0.0001
    &&Math.abs(overlay.progressFill.scale.x-0.375)<0.0001,"phase fraction was not drawn");
@@ -164,7 +165,7 @@ class Main {
   var firstIndeterminateX=overlay.progressFill.x;
   check(overlay.phaseText.text.indexOf("total unknown")>=0
    &&overlay.currentFileText.text.indexOf("Waiting for")>=0
-   &&overlay.timingText.text.indexOf("Phase ETA unavailable")>=0,
+   &&overlay.timingText.text.indexOf("Import ETA estimating")>=0,
    "unknown phase totals or missing current-file details were not explained");
   check(overlay.progressFill.scale.x>0&&overlay.progressFill.scale.x<0.24,
    "unknown totals did not draw an indeterminate segment");
@@ -252,7 +253,7 @@ class Main {
     +integrated.statusText.text+" | "+integrated.phaseText.text+" | "+integrated.currentFileText.text);
   check(integrated.activityText.text.indexOf("just now")>=0
    &&integrated.timingText.text.indexOf("Elapsed 0s")>=0
-   &&integrated.timingText.text.indexOf("Phase ETA unavailable")>=0
+   &&integrated.timingText.text.indexOf("Import ETA ~")>=0
    &&integrated.timingText.text.indexOf("Queue ")==-1,
    "manual elapsed/activity/unknown ETA or queue display was misleading");
   check(Math.abs(integrated.progressFraction()-0.35)<0.0001,
@@ -262,8 +263,8 @@ class Main {
   integrated.update(0.25);
   check(integrated.activityText.text.indexOf("just now")>=0
    &&integrated.timingText.text.indexOf("Elapsed 4s")>=0
-   &&integrated.timingText.text.indexOf("Phase ETA ~48s")>=0,
-   "shared helper did not calculate a phase-only ETA from local activity");
+   &&integrated.timingText.text.indexOf("Import ETA ~")>=0,
+   "shared helper did not calculate a whole-import ETA from local activity");
   Timer.now=5;
   localStatus.phase="scan-roots";
   localStatus.current="selected-source";
@@ -271,7 +272,7 @@ class Main {
   localStatus.total=100;
   integrated.update(0.25);
   check(integrated.phaseText.text.indexOf("4 folders checked | unknown")>=0
-   &&integrated.timingText.text.indexOf("Phase ETA unavailable")>=0
+   &&integrated.timingText.text.indexOf("Import ETA ~")>=0
    &&integrated.progressFraction()==0
    &&integrated.progressFill.scale.x>0&&integrated.progressFill.scale.x<=0.24,
    "local root scan safety caps were shown as a known total or whole-import fraction: "

@@ -1784,6 +1784,7 @@ class ImportRefreshManager {
 		try {
 			var result = captureImport(source,type,scan,names,convert,cancel,sharedProgress,token,sourceBuildContexts);
 			mutex.acquire();
+			measurements.finish(ImportWorkScheduler.workStamp());
 			active = false;
 			status.busy = false;
 			status.complete = true;
@@ -2675,7 +2676,9 @@ class ImportRefreshManager {
 			changed:status.changed, blocked:status.blocked || waitingOnFailure};
 		var progress = !active && !queueWaiting && handoffRunnable ? handoffMeasurements : measurements;
 		if (progress != null) {
-			var measured = progress.snapshot(ImportWorkScheduler.workStamp(), queue.length);
+			var queuedUnits:Float = 0;
+			for (record in queue) queuedUnits += ImportRefreshProgress.estimatedWorkUnits(Reflect.field(record,"estimatedWorkUnits"));
+			var measured = progress.snapshot(ImportWorkScheduler.workStamp(), queue.length,queuedUnits);
 			for (field in Reflect.fields(measured)) Reflect.setField(value, field, Reflect.field(measured, field));
 		}
 		if (!active && !queueWaiting && handoffRunnable) {
@@ -2880,6 +2883,7 @@ class ImportRefreshManager {
 				var reservation = reserveLocked(refreshToken, owner, refreshRoots, null, false);
 				setReservationCommittedRootsLocked(reservation, committedRoots);
 				setReservationDependenciesLocked(reservation, dependencyMetadata.owners);
+				Reflect.setField(record, "estimatedWorkUnits", manifest.files == null ? 100 : Math.max(1,manifest.files.length));
 				queue.push(record);
 				bumpAvailabilityLocked();
 				mutex.release();
@@ -3101,7 +3105,8 @@ class ImportRefreshManager {
 		active = true;
 		status.busy = true; status.complete = false; status.changed = false; status.fraction = 0;
 		status.label = "Refreshing import: " + Std.string(record.label);
-		measurements = new ImportRefreshProgress(ImportWorkScheduler.workStamp());
+		measurements = new ImportRefreshProgress(ImportWorkScheduler.workStamp(),
+			ImportRefreshProgress.estimatedWorkUnits(Reflect.field(record,"estimatedWorkUnits")));
 		var install = Sys.getCwd();
 		mutex.release();
 		Thread.create(function() {
@@ -3133,6 +3138,7 @@ class ImportRefreshManager {
 				var result = regenerate(install,record,ImportWorkflow.convertRetainedSource,function() return false,onProgress,token);
 				mutex.acquire();
 				queueHandoffLocked(token, result.importedSongs);
+				measurements.finish(ImportWorkScheduler.workStamp());
 				trace("[import-refresh-complete] " + Std.string(record.label));
 				status.changed = true; status.label = "Imports refreshed."; status.fraction = 1; status.complete = true;
 				mutex.release();

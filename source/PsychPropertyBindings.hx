@@ -18,8 +18,12 @@ class PsychPropertyBindings {
 			target,
 			function(value) return Std.isOfType(value,MusicBeatState),
 			resolve,
-			function(object,key) return classes.read(object,key),
-			function(object,key,value):Void {classes.write(object,key,value);},parse,warn);
+			function(object,key) return PsychObjectProviders.isHUDProperty(object,key)
+				? PsychObjectProviders.read(object,key) : classes.read(object,key),
+			function(object,key,value):Void {
+				if (PsychObjectProviders.isHUDProperty(object,key)) PsychObjectProviders.write(object,key,value);
+				else classes.write(object,key,value);
+			},parse,warn);
 		interp.variables.set('getPropertyFromGroup',service.getGroup);
 		interp.variables.set('setPropertyFromGroup',service.setGroup);
 		interp.variables.set('addToGroup',service.addGroup);

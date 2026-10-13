@@ -2853,11 +2853,10 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(chart.read_bytes(), before_chart)
         self.assertEqual((self.install / REGISTRY).read_bytes(), before_registry)
         density = json.loads((chart.parent / "chartDensity.json").read_text())["normal"]
-        self.assertEqual(density["version"], 6)
+        self.assertEqual(density["version"], 7)
         self.assertEqual(density["playerNotes"], 3)
-        self.assertIsInstance(density["difficulty"], int)
+        self.assertIsInstance(density["difficulty"], (int, float))
         self.assertGreaterEqual(density["difficulty"], 1)
-        self.assertLessEqual(density["difficulty"], 20)
 
     def test_refresh_keeps_existing_shared_song_order_across_independent_packages(self):
         records = []

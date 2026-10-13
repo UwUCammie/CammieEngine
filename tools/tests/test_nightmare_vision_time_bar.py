@@ -52,9 +52,9 @@ class Sprite {
  public function screenCenter(axis:Dynamic):Void x=(1280-width)/2;
 }
 class Text extends Sprite {
- public var size:Int; public var borderSize:Float;
+ public var size:Int; public var borderSize:Float; public var text:String;
  public function new(x:Float,y:Float,width:Float,text:String,size:Int) {
-  super(x,y);this.width=width;this.size=size;height=size+10;
+  super(x,y);this.width=width;this.size=size;this.text=text;height=size+10;
  }
  public function setFormat(font:String,size:Int,color:Dynamic,align:Dynamic,style:Dynamic,border:Dynamic):Void this.size=size;
 }
@@ -107,6 +107,7 @@ CONSTRUCTION
    if(hud.nightmareVisionPaths.selected != (legacy?'timeBar':'UI/timeBar')) throw 'source layout selection';
    if(hud.songPosBG.width!=400 || hud.songPosBar.width!=394 || hud.songPosBar.height!=13) throw 'source fill dimensions';
    if(hud.songPosBar.x!=hud.songPosBG.x+3 || hud.songPosBar.y!=hud.songPosBG.y+3) throw 'source fill inset';
+   if(hud.songName.text!="Source Song") throw "display title normalization";
    if(hud.songName.size!=32 || hud.songName.width!=1280 || hud.songName.y!=(down?676:19)) throw 'source timer label';
    if(hud.songPosBG.y!=hud.songName.y+hud.songName.height/4) throw 'source timer baseline';
    // A script can swap a larger decorative border without enlarging the fill.
@@ -120,7 +121,7 @@ CONSTRUCTION
 '''.replace("CONSTRUCTION", construction).replace("HELPERS", helpers).replace("new FlxSprite", "new Sprite").replace("new FlxText", "new Text").replace("new FlxBar", "new Bar")
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             (Path(folder)/"Main.hx").write_text(fixture)
-            result=subprocess.run([*HAXE_COMMAND,"-cp",folder,"-main","Main","--interp"],capture_output=True,text=True,cwd=ROOT)
+            result=subprocess.run([*HAXE_COMMAND,"-cp",str(ROOT/"source"),"-cp",folder,"-main","Main","--interp"],capture_output=True,text=True,cwd=ROOT)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue("for (object in [cast nightmareVisionSourceTimeBar, cast songName])" in source, "NV display owns source time group plus label, not hidden fill/background")
         self.assertIn("if (useSongBar && !sourceTimeHUD)", source)

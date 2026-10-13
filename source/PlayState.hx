@@ -2083,7 +2083,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			playHUD.updateIconsAnimation();
 			playHUD.updateTimer(Conductor.songPosition, songLength,
 				nightmareVisionPrefs.view.noteOffset, nightmareVisionPrefs.view.timeBarType,
-				startingSong, paused, endingSong, SONG.song);
+				startingSong, paused, endingSong, FreeplaySongTitle.display(SONG.song));
 		}
 		if (sourceHUDIconMode == 1) updatePsychSourceIcons(elapsed);
 		updateSourceHealthLimit();
@@ -2317,7 +2317,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			songFill:songPosBar, songBackground:songPosBG, timeText:songName,
 			healthValue:function() return health, healthMin:0, healthMax:2,
 			songProgress:function() return songPositionBar,
-			songTitle:SONG.song, timeBarType:prefs.timeBarType, showTime:showTime,
+			songTitle:FreeplaySongTitle.display(SONG.song), timeBarType:prefs.timeBarType, showTime:showTime,
 			setHealthDirection:function(forward) healthBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
 			setSongDirection:function(forward) songPosBar.fillDirection = forward ? LEFT_TO_RIGHT : RIGHT_TO_LEFT,
 			refreshCharacterPresentation:refreshCharacterIconsAndColors,
@@ -15083,8 +15083,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		songPosBG.scrollFactor.set();
 		songPosBG.cameras = [camHUD];
 
-		var shownSongTitle = SONG.compatPreserveSongTitle == true ? SONG.song
-			: StringTools.replace(SONG.song, '-', ' ');
+		var shownSongTitle = FreeplaySongTitle.display(SONG.song);
 		songName = new FlxText(sourceTimeHUD ? 0 : songPosBG.x,
 			sourceTimeHUD ? (downscroll ? FlxG.height - 44 : 19) : songPosBG.y,
 			sourceTimeHUD ? FlxG.width : songPosBG.width, shownSongTitle, sourceTimeHUD ? 32 : 16);

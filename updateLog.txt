@@ -1,8 +1,14 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.35 development - CammieEngine
-- Development continues after the published v0.0.34 checkpoint; remaining roadmap requirements stay open.
+v0.0.35 alpha - CammieEngine
+- Keep unavailable importing songs below ready songs in every sort. Favorite charts appear in a labeled top section and their regular sorted positions; remove the redundant Favorites first sort option and preserve ordinary and per-difficulty card artwork.
+- Toggle Freeplay search with a bare Ctrl press, starting unfocused. Use native Unicode text, keyboard layouts and clipboard editing; suppress menu/audio shortcuts during search and release native focus when a compatibility modal opens.
+- Drive Freeplay meters from the selected preview's decoded audio, add clipped pastel difficulty-colored star trails and right-panel accents, remove On Deck, and present song names with spaces and capitalized words without changing chart/audio identifiers.
+- Show uncapped Difficulty Ratings with two decimals. Apply a convex shared strain scale that separates harder charts more clearly; retain break-excluded density, hazard severity, chords and hold/tap overlap, and migrate derived data without reconverting imports.
+- Estimate time for the whole import, including queued packages and later publication, cleanup and song-list handoff. Combine measured phase throughput with future-work estimates and manifest-sized queue costs; exclude gameplay pauses and display coarse timing.
+- Preserve scripted health-bar/icon positions across cutscene completion through shared live HUD property aliases, including the reported Swag Messiah intro. Apply display-only song title formatting across gameplay, pause, story, loading and module lists.
+- Incremental alpha release after v0.0.34; remaining roadmap requirements stay open.
 
 v0.0.34 alpha - CammieEngine
 - Added supported imported title/main-menu/Freeplay/gameplay sessions with scoped partial-menu fallbacks and consecutive package isolation. Preserve authored returns after pause, retry and results; track and release owned timers, tweens and sounds. Source-backed Psych states and registered Nightmare Vision HScript routes are supported; unsupported or compiled donor menus offer an explicit scoped Freeplay fallback.

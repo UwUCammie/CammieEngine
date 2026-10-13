@@ -17,7 +17,7 @@ class LibrarySortingSubState extends LibraryMenuSubState {
 	function advance(field:Int):Void {
 		var order = UserLibrary.data().sorting();
 		var options = field == 0 ? ['flat', 'mod', 'engine']
-			: (field == 1 ? ['default', 'az', 'za', 'engine', 'imported'] : ['default', 'az', 'za', 'favorites', 'recent', 'scoreHigh', 'scoreLow', 'ratingLow', 'ratingHigh', 'npsHigh', 'npsLow']);
+			: (field == 1 ? ['default', 'az', 'za', 'engine', 'imported'] : ['default', 'az', 'za', 'recent', 'scoreHigh', 'scoreLow', 'ratingLow', 'ratingHigh', 'npsHigh', 'npsLow']);
 		var value = field == 0 ? order.grouping : (field == 1 ? order.groups : order.charts);
 		var next = options[(options.indexOf(value) + 1) % options.length];
 		if (field == 0) order.grouping = next; else if (field == 1) order.groups = next; else order.charts = next;

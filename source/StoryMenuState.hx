@@ -595,11 +595,10 @@ class StoryMenuState extends MusicBeatState {
 		var stringThing:Array<String> = weekData[curWeek];
 
 		for (i in stringThing) {
-			txtTracklist.text += "\n" + i;
+			txtTracklist.text += "\n" + FreeplaySongTitle.display(i);
 		}
 		//txtTracklist.text += "\n shitty workaround but ok";
 		trace(txtTracklist.text);
-		txtTracklist.text = StringTools.replace(txtTracklist.text.toUpperCase(), "-", " ");
 		trace(txtTracklist.text);
 		txtTracklist.screenCenter(X);
 		txtTracklist.x -= FlxG.width * 0.35;

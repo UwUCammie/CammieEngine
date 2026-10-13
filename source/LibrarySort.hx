@@ -11,6 +11,7 @@ typedef LibrarySortRow = {
 	var ?authored:Int;
 	var favorite:Bool;
 	var random:Bool;
+	var ?unavailable:Bool;
 	var ?played:Float;
 	var ?imported:Float;
 	var ?metric:LibraryChartMetric.LibraryMetricValue;
@@ -73,6 +74,8 @@ class LibrarySort {
 		}
 		var sorted = rows.copy();
 		sorted.sort(function(a, b) {
+			if (a.unavailable == true && b.unavailable != true) return 1;
+			if (b.unavailable == true && a.unavailable != true) return -1;
 			if (pinFavorites && a.favorite != b.favorite) return a.favorite ? -1 : 1;
 			if (a.random != b.random) return a.random ? -1 : 1;
 			var ag = group(a, grouping); var bg = group(b, grouping);

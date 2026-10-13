@@ -150,7 +150,7 @@ class SongLoadingScreen {
 		design.addChild(artwork);
 		// Keep track information inside the artwork's empty upper-right area.
 		text(812, 102, 392, title == 'LEAVING THE STAGE' ? 'BACK TO THE MENU' : 'UP NEXT', 26, 0xFF16D2);
-		text(812, 152, 392, detail, 34, 0xFFFFFF).height = 142;
+		text(812, 152, 392, FreeplaySongTitle.display(detail), 34, 0xFFFFFF).height = 142;
 		var track = new Sprite(); design.addChild(track);
 		track.graphics.beginFill(0x1B073C); track.graphics.drawRect(0, 702, 1280, 18); track.graphics.endFill();
 		fill = new Sprite(); design.addChild(fill);

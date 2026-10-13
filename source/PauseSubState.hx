@@ -82,7 +82,7 @@ class PauseSubState extends MusicBeatSubstate {
 
 		makeMenuItems(menuItems);
 
-		songNameTxt = new FlxText(0, 20, FlxG.width - 10, PlayState.SONG.song, 32);
+		songNameTxt = new FlxText(0, 20, FlxG.width - 10, FreeplaySongTitle.display(PlayState.SONG.song), 32);
 		songNameTxt.font = "assets/fonts/vcr.ttf";
 		songNameTxt.alignment = RIGHT;
 		add(songNameTxt);
@@ -194,7 +194,7 @@ class PauseSubState extends MusicBeatSubstate {
 			}
 			songNameTxt.size = textSize;
 			songNameTxt.text = spec.titleLabel == null || spec.titleLabel == ''
-				? PlayState.SONG.song : spec.titleLabel + ' ' + PlayState.SONG.song;
+				? FreeplaySongTitle.display(PlayState.SONG.song) : spec.titleLabel + ' ' + FreeplaySongTitle.display(PlayState.SONG.song);
 			songNameTxt.alignment = RIGHT;
 			curDiffTxt.visible = false;
 			if (spec.deathLabel != null && spec.deathLabel != '')

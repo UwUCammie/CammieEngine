@@ -42,7 +42,7 @@ class Main {
   var legacy:Dynamic=haxe.Json.parse(data.encode());Reflect.deleteField(legacy,'sorting');
   var loaded=UserLibraryData.decode(haxe.Json.stringify(legacy));check(loaded.sorting().grouping=='flat' && loaded.sorting().charts=='az','old save did not migrate');
   loaded.setSorting('mod','engine','favorites');var round=UserLibraryData.decode(loaded.encode());
-  check(round.sorting().groups=='engine' && round.sorting().charts=='favorites' && round.lastDifficulty(key)=='Hard' && round.isFavorite(key),'sorting persistence damaged library');
+  check(round.sorting().groups=='engine' && round.sorting().charts=='default' && round.lastDifficulty(key)=='Hard' && round.isFavorite(key),'sorting persistence damaged library');
   var detached=round.sorting();detached.groups='za';check(round.sorting().groups=='engine','UI can mutate saved preferences without transaction');
   var invalid:Dynamic=haxe.Json.parse(round.encode());invalid.sorting.charts='bogus';var rejected=false;
   try UserLibraryData.decode(haxe.Json.stringify(invalid)) catch(_:Dynamic) rejected=true;check(rejected,'invalid sorting silently overwrites save');
@@ -76,6 +76,8 @@ class Browser {
  public var reads=0;public var hidden=-1;
  public var chartRows:Array<FreeplayChartRows.FreeplayChartRow>=[]; public var chartOrder:Array<Int>=[];
  function clearChartDisplay():Void {}
+ public var favoritesOnly=false;
+ function rowAvailabilityDecision(i:Int):FreeplaySongAvailability.FreeplayAvailabilityDecision return {ready:true,state:"ready",reason:""};
  function expandedDifficultyRows():Bool return LibraryChartMetric.isDensity(UserLibrary.data().sorting().charts);
  public function new() songs=[
   {songName:'z',displayTitle:'Zulu',sourceLabel:'Misleading Psych label',owner:'nv',provenance:{sourceEngine:'Nightmare Vision',modName:'First'},libraryOrdinal:0,importProvenancePresent:true,isProvisional:false},
@@ -99,11 +101,12 @@ class Main {
   check(LibrarySort.select(menu.orderedVisibleSongs(),2,1)==1,'filtered navigation used global index');
   menu.hidden=-1;UserLibrary.model.setSorting('flat','az','favorites');
   UserLibrary.model.setFavorite(UserLibraryData.chartKey('psych','b'),true);
-  check(menu.orderedVisibleSongs()[0]==1,'favorites mode ignored save');
+  menu.orderedVisibleSongs();check(menu.chartRows[menu.chartOrder[0]].song==1,'legacy favorites preference lost favorite section');
   var next=UserLibraryData.decode(UserLibrary.model.encode());next.setFavorite(UserLibraryData.chartKey('psych','b'),false);next.setFavorite(UserLibraryData.chartKey('nv','a'),true);UserLibrary.model=next;
-  check(menu.orderedVisibleSongs()[0]==2,'favorite transaction failed to invalidate order');
+  menu.orderedVisibleSongs();check(menu.chartRows[menu.chartOrder[0]].song==2,'favorite transaction failed to invalidate presentation');
   UserLibrary.model.setSorting('flat','az','za');
-  check(menu.orderedVisibleSongs()[0]==2,'favorites lost under descending title order');
+  menu.orderedVisibleSongs(); check(menu.chartRows[menu.chartOrder[0]].song==2 && menu.chartRows[menu.chartOrder[0]].key=='@favorite:a:-1','favorites presentation section lost');
+  check(menu.libraryOrder[0]==0 && menu.chartRows[menu.chartOrder[menu.chartOrder.length-1]].song==2,'favorites omitted from ordinary descending list');
   var unpinned=UserLibraryData.decode(UserLibrary.model.encode());unpinned.setFavorite(UserLibraryData.chartKey('nv','a'),false);UserLibrary.model=unpinned;
   check(menu.orderedVisibleSongs()[0]==0,'favorite removal failed to invalidate non-favorite sorting mode');
   UserLibrary.model.setSorting('flat','az','recent');UserLibrary.model.recordPlay(UserLibraryData.chartKey('psych','b'),2000);
@@ -137,7 +140,7 @@ class Main {
   check(menu.chartRows.length==3 && menu.chartRows[0].song==0 && menu.chartRows[1].song==0 && menu.chartRows[2].difficulty==-1,'actual browser expansion confused canonical and chart identities');
   menu.songs[1].isProvisional=false;DifficultyManager.supportedDiff.set('b',[0,1]);menu.libraryOrderKey='';menu.orderedVisibleSongs();
   check(menu.chartRows.length==4 && menu.chartRows[3].song==1 && menu.chartRows[3].difficulty==1,'support refresh did not rebuild expanded chart identities');
-  UserLibrary.model.setSorting('flat','default','az');menu.orderedVisibleSongs();check(menu.chartRows.length==0 && menu.libraryOrder.length==2,'alphabetical retained expanded chart entries');
+  UserLibrary.model.setSorting('flat','default','az');menu.orderedVisibleSongs();check(menu.chartRows.length==2 && menu.chartRows[0].difficulty==-1 && menu.libraryOrder.length==2,'alphabetical did not restore song entries');
 
  }
 }""".replace('METHOD',method)

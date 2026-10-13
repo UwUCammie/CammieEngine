@@ -131,7 +131,7 @@ class ModPlusCarryState extends MusicBeatState
 						importButton: null,
 						miscButton: null
 					}; 
-					daBox.nameText = new FlxText(600, 10 + (50 * songsLoaded.indexOf(path)), 100, songName);
+					daBox.nameText = new FlxText(600, 10 + (50 * songsLoaded.indexOf(path)), 100, FreeplaySongTitle.display(songName));
 					daBox.importButton = new FlxUIButton(600, daBox.nameText.y + 20, "Import Song", function():Void {
 						checkFile(songName.toLowerCase(), 'song');
 						remove(daBox.nameText);

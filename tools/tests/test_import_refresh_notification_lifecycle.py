@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class ImportRefreshNotificationLifecycleTest(unittest.TestCase):
     def run_haxe(self, source):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
-            for module in ('ImportWorkScheduler.hx', 'ImportWorkCancelled.hx'):
+            for module in ('ImportWorkScheduler.hx', 'ImportWorkCancelled.hx', 'ImportRefreshProgress.hx'):
                 shutil.copy2(ROOT / 'source' / module, Path(directory) / module)
             main = Path(directory) / 'Main.hx'
             main.write_text(source, encoding='utf-8')

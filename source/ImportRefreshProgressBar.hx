@@ -231,7 +231,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 	}
 
 	function addLocalMeasurements(state:Dynamic):Dynamic {
-		var now = haxe.Timer.stamp();
+		var now = ImportWorkScheduler.workStamp();
 		if (localMeasurements == null) localMeasurements = new ImportRefreshProgress(now);
 		localMeasurements.update(state, now);
 		var measured = localMeasurements.snapshot(now, -1);
@@ -329,7 +329,7 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		var eta = floatField(state, "etaSeconds", -1);
 		var queueRemaining = intField(state, "queueRemaining", 0);
 		var timing = elapsed < 0 ? "Elapsed unavailable" : "Elapsed " + formatDuration(elapsed, false);
-		timing += eta >= 0 ? " | Phase ETA ~" + formatDuration(eta, true) : " | Phase ETA unavailable";
+		timing += eta >= 0 ? " | Import ETA ~" + formatEstimate(eta) : " | Import ETA estimating";
 		if (queueRemaining >= 0) timing += " | Queue " + queueRemaining;
 		timingText.text = ellipsizeEnd(timing, charsForWidth(contentWidth, 13));
 	}
@@ -453,6 +453,12 @@ class ImportRefreshProgressBar extends FlxTypedGroup<FlxSprite> {
 		var left = Std.int(Math.ceil(remaining / 2));
 		var right = remaining - left;
 		return text.substr(0, left) + "..." + (right > 0 ? text.substr(text.length - right) : "");
+	}
+
+	static function formatEstimate(seconds:Float):String {
+		// Estimates include unmeasured future work, so show a useful coarse budget.
+		var step:Float = seconds < 60 ? 5 : seconds < 300 ? 15 : 60;
+		return formatDuration(Math.ceil(seconds/step)*step, true);
 	}
 
 	static function formatDuration(seconds:Float, roundUp:Bool):String {

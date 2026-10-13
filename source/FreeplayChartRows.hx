@@ -27,6 +27,23 @@ class FreeplayChartRows {
 		}
 		return result;
 	}
+	/** Separate presentation identities retain their canonical song/difficulty indexes. */
+	public static function withFavorites(rows:Array<FreeplayChartRow>, order:Array<Int>, duplicate:Bool):Array<Int> {
+		var pinned:Array<Int> = []; var ready:Array<Int> = []; var pending:Array<Int> = [];
+		for (id in order) {
+			var row = rows[id];
+			if (row.sort.unavailable == true) { pending.push(id); continue; }
+			if (row.sort.favorite && duplicate) {
+				var copy:LibrarySort.LibrarySortRow = cast Reflect.copy(row.sort);
+				copy.index = rows.length;
+				var key = '@favorite:' + row.key;
+				rows.push({key:key, song:row.song, difficulty:row.difficulty, sort:copy});
+				pinned.push(copy.index);
+			}
+			ready.push(id);
+		}
+		return pinned.concat(ready).concat(pending);
+	}
 	public static function find(rows:Array<FreeplayChartRow>, visible:Array<Int>, song:Int, difficulty:Int):Int {
 		for (id in visible) if (rows[id].song == song && rows[id].difficulty == difficulty) return id;
 		for (id in visible) if (rows[id].song == song) return id;

@@ -45,7 +45,7 @@ class CategorySearchTest(unittest.TestCase):
  public static function run(){
   // normalization drops case, spaces, dashes and symbols
   if (FreeplayState.searchNorm("Week-2") != "week2") throw 'norm: ' + FreeplayState.searchNorm("Week-2");
-  if (FreeplayState.searchNorm("VS Impostor!") != "vsimpostor") throw 'norm: ' + FreeplayState.searchNorm("VS Impostor!");
+  if (FreeplayState.searchNorm("VS Impostor!") != "vsimpostor!") throw 'norm: ' + FreeplayState.searchNorm("VS Impostor!");
 
   // empty search matches everything
   searchString = "";

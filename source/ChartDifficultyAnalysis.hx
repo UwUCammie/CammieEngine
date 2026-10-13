@@ -25,7 +25,7 @@ typedef ChartDensity = {
 	* Two-second burst windows and active ten-second windows separate bursts from consistency.
 	* Never executes donor scripts or guesses their effects from mod/chart names. */
 class ChartDifficultyAnalysis {
-	public static inline var VERSION:Int = 6;
+	public static inline var VERSION:Int = 7;
 	public static inline var FAST_NPS:Float = 6;
 	public static inline var SHADOW_DIFFICULTY:Float = 17;
 	public static function number(value:Dynamic, fallback:Float = 0):Float {
@@ -162,8 +162,10 @@ class ChartDifficultyAnalysis {
 		var speed = nps*0.65 + sustained*0.25 + Math.sqrt(peak)*0.4;
 		var hazards = (dangerWeight+missWeight)/active + fastDangers/active;
 		var complexity = Math.sqrt(chordStrain)*0.9 + Math.sqrt(tapStrain)*0.9;
-		var rating = hits.length+dangers.length == 0 ? 0 : Math.round(Math.max(1,Math.min(20,
-			speed*(1+Math.min(0.5,complexity*0.08+hazards*0.06))+complexity+hazards)));
+		var pressure = speed*(1+Math.min(0.5,complexity*0.08+hazards*0.06))+complexity+hazards;
+		// Convex strain scale: preserve introductory charts, then increase the
+		// marginal rating per unit of compound pressure. There is no upper cap.
+		var rating = hits.length+dangers.length == 0 ? 0 : Math.max(1, pressure*(1+Math.max(0,pressure-3)/8));
 		return {version:VERSION, playerNotes:hits.length, dangerNotes:dangers.length, unknownKinds:unknown,
 			seconds:seconds, activeSeconds:active,nps:nps,peakNps:peak,sustainedNps:sustained,
 			dangerPerSecond:hazardRate,dangersInFastSections:fastDangers,lethalDangerNotes:lethal,missRiskNotes:missRisk,
@@ -176,8 +178,6 @@ class ChartDifficultyAnalysis {
 			var value = number(Reflect.field(raw,field), -1);
 			if (value < 0) return null;
 		}
-		var rating = number(Reflect.field(raw,'difficulty'),-1);
-		if (rating > 20 || rating != Math.floor(rating)) return null;
 		return cast raw;
 	}
 	/** Screenshot-inspired continuous scale: blue, cyan, green, yellow, red, violet, navy, black. */
@@ -194,12 +194,17 @@ class ChartDifficultyAnalysis {
 	}
 	public static function shadow(density:Null<ChartDensity>):Bool return density != null && density.difficulty >= SHADOW_DIFFICULTY;
 	public static function twoDecimals(value:Float):String {
-		var rounded = Math.round(value * 100); var whole = Std.int(rounded / 100);
-		return whole + '.' + StringTools.lpad(Std.string(rounded % 100), '0', 2);
+		if (!Math.isFinite(value) || value < 0) return '?';
+		// Keep the whole part as Float: uncapped ratings can exceed Int range.
+		var whole = Math.ffloor(value); var cents = Std.int(Math.ffloor((value-whole)*100+0.5));
+		if (cents == 100) { whole += 1; cents = 0; }
+		var text = Std.string(whole); var exponent = text.indexOf('e');
+		if (exponent >= 0) return twoDecimals(Std.parseFloat(text.substr(0,exponent)))+text.substr(exponent);
+		return text + '.' + StringTools.lpad(Std.string(cents), '0', 2);
 	}
 	public static function describe(density:Null<ChartDensity>):String {
 		if (density == null) return 'Difficulty Rating: awaiting analysis';
-		return 'Difficulty Rating ' + Std.int(density.difficulty) + '/20\nNPS ' + twoDecimals(density.nps) + ' / peak ' + twoDecimals(density.peakNps)
+		return 'Difficulty Rating ' + twoDecimals(density.difficulty) + '\nNPS ' + twoDecimals(density.nps) + ' / peak ' + twoDecimals(density.peakNps)
 			+ ' / consistent ' + twoDecimals(density.sustainedNps)
 			+ '\nDanger notes: ' + density.dangerNotes + ' (' + twoDecimals(density.dangerPerSecond) + '/s)'
 			+ ' / lethal: ' + density.lethalDangerNotes + '\nChords: ' + density.chordNotes + ' / taps during holds: ' + density.sustainTapNotes

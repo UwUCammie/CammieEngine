@@ -35,7 +35,17 @@ class Main {
 """)
             result=subprocess.run([*HAXE_COMMAND, '-cp', str(root), '-main', 'Main', '--interp'], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        for name in ('CategoryState', 'FreeplayState'):
+        for name in ('CategoryState',):
             source=(ROOT / ('source/'+name+'.hx')).read_text()
             self.assertIn('MenuSearchInput.reserved(searchKey) ? -1 : searchKey', source)
             self.assertIn('!MenuSearchInput.reserved(FlxKey.BACKSPACE)', source)
+
+    def test_freeplay_uses_native_focused_text_input(self):
+        source=(ROOT/'source/FreeplayState.hx').read_text()
+        self.assertIn('var searchFocused:Bool = false',source)
+        self.assertIn('FlxG.keys.justReleased.CONTROL && !searchControlUsed',source)
+        self.assertIn('searchInput.startFocus()',source)
+        self.assertIn('searchInput.endFocus()',source)
+        self.assertIn('searchInput.onTextChange.add',source)
+        self.assertIn('if (searchFocused || focusChanged)',source)
+        self.assertNotIn('String.fromCharCode(key -',source)

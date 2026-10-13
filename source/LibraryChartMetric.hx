@@ -21,7 +21,7 @@ class LibraryChartMetric {
 	public static function read(song:String, ratings:Array<AuthoredDifficultyRating>, mode:String,
 		difficulty:String, index:Int, supported:Array<Int>, score:(String, Int)->Null<Int>, ?density:ChartDifficultyAnalysis.ChartDensity):Null<LibraryMetricValue> {
 		if (index < 0 || supported == null || supported.indexOf(index) < 0) return null;
-		if (isDensity(mode)) return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating /20'};
+		if (isDensity(mode)) return density == null ? null : {value:density.difficulty, scale:'Difficulty Rating'};
 		if (isScore(mode)) {
 			var value = score(song, index);
 			return value == null ? null : {value:value, scale:'Host score'};
@@ -41,6 +41,6 @@ class LibraryChartMetric {
 		return descending ? Reflect.compare(b.value, a.value) : Reflect.compare(a.value, b.value);
 	}
 	public static function label(value:Null<LibraryMetricValue>, difficulty:String):String {
-		return 'Sort (' + difficulty + '): ' + (value == null ? 'Unknown' : value.value + ' (' + value.scale + ')');
+		return 'Sort (' + difficulty + '): ' + (value == null ? 'Unknown' : (value.scale == 'Host score' ? Std.string(value.value) : ChartDifficultyAnalysis.twoDecimals(value.value)) + ' (' + value.scale + ')');
 	}
 }

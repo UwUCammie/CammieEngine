@@ -9,6 +9,17 @@ class ChartDifficultyTest(unittest.TestCase):
    Path(temp,'Main.hx').write_text("class Main {static function check(ok:Bool,s:String){if(!ok)throw s;} static function main(){"+body+"}}")
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',temp,'--run','Main'],cwd=ROOT,capture_output=True,text=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+ def test_uncapped_convex_scale_and_decimal_format(self):
+  self.run_haxe(r'''function chart(interval:Float):Dynamic {return {notes:[{mustHitSection:true,sectionNotes:[for(i in 0...400)[i*interval,i%4,0]]}]};}
+   var easy=ChartDifficultyAnalysis.analyze(chart(250),[]);var hard=ChartDifficultyAnalysis.analyze(chart(160),[]);var extreme=ChartDifficultyAnalysis.analyze(chart(10),[]);
+   function pressure(d:ChartDifficultyAnalysis.ChartDensity):Float return d.nps*0.65+d.sustainedNps*0.25+Math.sqrt(d.peakNps)*0.4;
+   check(hard.difficulty-easy.difficulty>pressure(hard)-pressure(easy),"convex scale did not stretch harder charts");
+   check(extreme.difficulty>20 && ChartDifficultyAnalysis.read(extreme)!=null,"extreme chart capped");
+   check(extreme.difficulty!=Math.floor(extreme.difficulty),"rating rounded to integer");
+   check(ChartDifficultyAnalysis.color(extreme)==0xFF05020C,"uncapped palette unsafe");
+   check(ChartDifficultyAnalysis.twoDecimals(21474836.48)=="21474836.48","decimal formatting overflowed Int");
+   check(ChartDifficultyAnalysis.twoDecimals(1.999)=="2.00","decimal carry");
+   check(ChartDifficultyAnalysis.twoDecimals(Math.POSITIVE_INFINITY)=="?","nonfinite formatting");''')
  def test_sides_chords_sustains_and_dangers(self):
   self.run_haxe(r'''var rows:Array<Dynamic>=[[0,0,5000],[0,1,0],[1000,2,0,"Hurt Note"],[2000,4,0],[3000,3,0,"Can't Hit"]];
    var song:Dynamic={song:{notes:[{mustHitSection:true,sectionNotes:rows}]}};
@@ -94,9 +105,9 @@ class ChartDifficultyTest(unittest.TestCase):
    var longRest:Array<Dynamic>=[for(row in split)[row[0]+(row[0]>=60000?60000:0),row[1],row[2]]];
    var longer=analyze(longRest);check(longer.nps==e.nps && longer.difficulty==e.difficulty,"rest length affects rating");
    var invalid:Dynamic=haxe.Json.parse(haxe.Json.stringify(required));invalid.difficulty=21;
-   check(ChartDifficultyAnalysis.read(invalid)==null,"out of scale rating accepted");invalid.difficulty=1.2;
-   check(ChartDifficultyAnalysis.read(invalid)==null,"fractional rating accepted");
+   check(ChartDifficultyAnalysis.read(invalid)!=null,"uncapped rating rejected");invalid.difficulty=1.2;
+   check(ChartDifficultyAnalysis.read(invalid)!=null,"fractional rating rejected");
    var before=analyze(a);var chart:Dynamic={speed:99,notes:[{mustHitSection:true,sectionNotes:a}]};
    check(ChartDifficultyAnalysis.analyze(chart,[]).difficulty==before.difficulty,"scroll speed affects rating");
-   check(ChartDifficultyAnalysis.describe(before).indexOf('Difficulty Rating '+Std.int(before.difficulty)+'/20')==0,"rating text absent");''')
+   check(ChartDifficultyAnalysis.describe(before).indexOf('Difficulty Rating '+ChartDifficultyAnalysis.twoDecimals(before.difficulty))==0,"rating text absent");''')
 if __name__=='__main__':unittest.main()
