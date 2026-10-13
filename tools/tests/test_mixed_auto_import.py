@@ -636,7 +636,7 @@ class DifficultyManager {
   }
 }
 """, newline='\n')
-            for dependency in ("ChartDifficultyAnalysis.hx", "ChartNoteOwnership.hx", "ImportRevision.hx", "NoteTypeCompat.hx"):
+            for dependency in ("ChartDifficultyAnalysis.hx", "ChartMechanicScan.hx", "ChartNoteOwnership.hx", "ImportRevision.hx", "NoteTypeCompat.hx"):
                 (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline="\n")
             (temp_path / "Main.hx").write_text(with_kade_parser(fixture), newline='\n')
             parent = temp_path / "mixed-parent"

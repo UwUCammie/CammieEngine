@@ -19,19 +19,24 @@ typedef ChartDensity = {
 	var chordStrain:Float;
 	var sustainTapNotes:Int;
 	var sustainTapStrain:Float;
+	/** Notes whose script takes the player's input away when hit. */
+	var mechanicNotes:Int;
+	/** Scripted playfield movement estimate, see ChartMechanicScan.modchart. */
+	var modchart:Float;
 }
 
 /** Pure analysis of normalized charts. Heads count once; sustains keep activity open.
 	* Two-second burst windows and active ten-second windows separate bursts from consistency.
-	* Never executes donor scripts or guesses their effects from mod/chart names. */
+	* Never executes donor scripts or guesses their effects from mod/chart names.
+	* An optional context carries what a static read of those scripts found. */
 class ChartDifficultyAnalysis {
-	public static inline var VERSION:Int = 7;
+	public static inline var VERSION:Int = 8;
 	public static inline var FAST_NPS:Float = 6;
 	public static inline var SHADOW_DIFFICULTY:Float = 17;
 	public static function number(value:Dynamic, fallback:Float = 0):Float {
 		return (Std.isOfType(value, Int) || Std.isOfType(value, Float)) && Math.isFinite(value) ? value : fallback;
 	}
-	public static function analyze(chart:Dynamic, definitions:Array<Dynamic>, nightmare:Bool = false):Null<ChartDensity> {
+	public static function analyze(chart:Dynamic, definitions:Array<Dynamic>, nightmare:Bool = false, ?context:ChartMechanicScan.ChartAnalysisContext):Null<ChartDensity> {
 		if (chart == null) return null;
 		var song:Dynamic = Reflect.field(chart, 'song');
 		if (song == null || !Reflect.isObject(song)) song = chart;
@@ -42,6 +47,7 @@ class ChartDifficultyAnalysis {
 		var format:String = Reflect.field(song, 'format');
 		var hits:Array<Float> = []; var dangers:Array<Float> = []; var unknown = 0; var end:Float = 0;
 		var heads:Array<Dynamic> = []; var activity:Array<Dynamic> = []; var lethal = 0; var dangerWeight:Float = 0; var missRisk = 0; var missWeight:Float = 0;
+		var mechanics = 0; var readOnly = 0; var hazardIndex = context == null ? null : context.noteHazards;
 		var definitionIndex:Map<String, Dynamic> = [];
 		if (definitions != null) for (definition in definitions) if (definition != null) {
 			var kind = NoteTypeCompat.canonical(Reflect.field(definition, 'sourceNoteType'));
@@ -69,17 +75,36 @@ class ChartDifficultyAnalysis {
 				if (definition != null) danger = danger || Reflect.field(definition, 'hitCausesMiss') == true
 					|| Reflect.field(definition, 'avoidAutoHit') == true || number(Reflect.field(definition, 'damageAmount')) < 0;
 				var scripted = definition != null && (Reflect.field(definition,'noteHit') != null || Reflect.field(definition,'noteMiss') != null);
-				if (danger) {
-					if (scripted || (kind != '' && kind != 'Hurt Note')) unknown++;
+				// A statically read note script settles what metadata leaves unknown.
+				var hazard:Null<ChartMechanicScan.NoteScriptHazard> = hazardIndex == null || kind == '' ? null : hazardIndex.get(kind.toLowerCase());
+				var trap = hazard != null && hazard.avoid && (hazard.inputLock || hazard.damage || hazard.lethal);
+				if (danger || trap) {
+					if (hazard == null && (scripted || (kind != '' && kind != 'Hurt Note'))) unknown++;
 					dangers.push(time); activity.push({start:time-1000, end:time+1000});
-					var damage = definition == null ? (bank == 3 ? 69 : bank == 1 ? 0.45 : 0.04) : Math.max(Math.max(0,-number(Reflect.field(definition,'damageAmount'),-0.04*number(Reflect.field(definition,'damageMultiplier'),1))), number(Reflect.field(definition,'missHealth')));
-					var kills = damage >= 2;
+					var damage = !danger ? 0.04 : definition == null ? (bank == 3 ? 69 : bank == 1 ? 0.45 : 0.04) : Math.max(Math.max(0,-number(Reflect.field(definition,'damageAmount'),-0.04*number(Reflect.field(definition,'damageMultiplier'),1))), number(Reflect.field(definition,'missHealth')));
+					var kills = damage >= 2 || (hazard != null && hazard.lethal);
 					if (kills) lethal++;
-					dangerWeight += kills ? 4 : 1 + Math.min(2, damage);
+					var locks = hazard != null && hazard.inputLock;
+					if (locks) mechanics++;
+					// Losing input costs every note until recovery: between ordinary and lethal damage.
+					dangerWeight += kills ? 4 : locks ? 3 : 1 + Math.min(2, damage);
+					if (!danger) {
+						// A scripted trap still has to be read and steered around, often beside a
+						// real note, so it keeps its place in the pattern as well as its hazard.
+						var duration = Math.max(0,number(row.length > 2 ? row[2] : null));
+						hits.push(time); heads.push({time:time,end:time+duration,lane:Std.int(lane)%columns}); readOnly++;
+					}
 					continue;
 				}
+				// Skippable with no consequence: neither a required head nor a hazard.
+				if (hazard != null && hazard.avoid) continue;
 				if (kind == "Can't Hit" || (definition != null && Reflect.field(definition, 'dontCountNote') == true)) continue;
-				if (scripted || (kind != '' && ['Normal','Alt Animation','GF Sing','No Animation'].indexOf(kind) < 0)) unknown++;
+				if (hazard == null && (scripted || (kind != '' && ['Normal','Alt Animation','GF Sing','No Animation'].indexOf(kind) < 0))) unknown++;
+				if (hazard != null && (hazard.inputLock || hazard.lethal || hazard.damage)) {
+					// Required, and its script punishes the player around it.
+					if (hazard.inputLock) mechanics++;
+					missRisk++; missWeight += hazard.lethal ? 4 : hazard.inputLock ? 2 : 1;
+				}
 				if (definition != null) {
 					var missDamage = Math.max(0,number(Reflect.field(definition,'missHealth'),0.04*number(Reflect.field(definition,'damageMultiplier'),1)));
 					if (missDamage > 0.1) {missRisk++;missWeight += Math.min(4,missDamage);}
@@ -166,15 +191,20 @@ class ChartDifficultyAnalysis {
 		// Convex strain scale: preserve introductory charts, then increase the
 		// marginal rating per unit of compound pressure. There is no upper cap.
 		var rating = hits.length+dangers.length == 0 ? 0 : Math.max(1, pressure*(1+Math.max(0,pressure-3)/8));
-		return {version:VERSION, playerNotes:hits.length, dangerNotes:dangers.length, unknownKinds:unknown,
+		// Moving, hidden or reversed lanes make every note harder to read. Applied after
+		// the convex scale and bounded, because the scripts are read rather than run.
+		var modchart = context == null ? 0.0 : Math.max(0, number(context.modchart));
+		rating *= 1+Math.min(0.3,modchart*0.075);
+		return {version:VERSION, playerNotes:hits.length-readOnly, dangerNotes:dangers.length, unknownKinds:unknown,
 			seconds:seconds, activeSeconds:active,nps:nps,peakNps:peak,sustainedNps:sustained,
 			dangerPerSecond:hazardRate,dangersInFastSections:fastDangers,lethalDangerNotes:lethal,missRiskNotes:missRisk,
-			chordNotes:chordNotes,chordStrain:chordStrain,sustainTapNotes:tapNotes,sustainTapStrain:tapStrain,difficulty:rating};
+			chordNotes:chordNotes,chordStrain:chordStrain,sustainTapNotes:tapNotes,sustainTapStrain:tapStrain,
+			mechanicNotes:mechanics,modchart:rating == 0 ? 0 : modchart,difficulty:rating};
 	}
 
 	public static function read(raw:Dynamic):Null<ChartDensity> {
 		if (raw == null || Reflect.field(raw, 'version') != VERSION) return null;
-		for (field in ['playerNotes','dangerNotes','unknownKinds','seconds','nps','peakNps','sustainedNps','dangerPerSecond','dangersInFastSections','difficulty','activeSeconds','lethalDangerNotes','missRiskNotes','chordNotes','chordStrain','sustainTapNotes','sustainTapStrain']) {
+		for (field in ['playerNotes','dangerNotes','unknownKinds','seconds','nps','peakNps','sustainedNps','dangerPerSecond','dangersInFastSections','difficulty','activeSeconds','lethalDangerNotes','missRiskNotes','chordNotes','chordStrain','sustainTapNotes','sustainTapStrain','mechanicNotes','modchart']) {
 			var value = number(Reflect.field(raw,field), -1);
 			if (value < 0) return null;
 		}
@@ -208,6 +238,9 @@ class ChartDifficultyAnalysis {
 			+ ' / consistent ' + twoDecimals(density.sustainedNps)
 			+ '\nDanger notes: ' + density.dangerNotes + ' (' + twoDecimals(density.dangerPerSecond) + '/s)'
 			+ ' / lethal: ' + density.lethalDangerNotes + '\nChords: ' + density.chordNotes + ' / taps during holds: ' + density.sustainTapNotes
-			+ '\nIn fast sections: ' + density.dangersInFastSections + (density.unknownKinds > 0 ? '\nScripted note behavior: estimated' : '');
+			+ '\nIn fast sections: ' + density.dangersInFastSections
+			+ (density.mechanicNotes > 0 ? '\nInput-lock notes: ' + density.mechanicNotes : '')
+			+ (density.modchart > 0 ? '\nModchart: ' + ChartMechanicScan.modchartLabel(density.modchart) + ' (' + twoDecimals(density.modchart) + ')' : '')
+			+ (density.unknownKinds > 0 ? '\nScripted note behavior: estimated' : '');
 	}
 }

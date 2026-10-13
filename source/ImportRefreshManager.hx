@@ -2323,6 +2323,7 @@ class ImportRefreshManager {
 		mutex.release();
 		try {
 			var result = regenerate(install,record,convert,cancel,progress,token);
+			clearRefreshFailure(install, Std.string(record.id));
 			mutex.acquire();
 			queueHandoffLocked(token, result.importedSongs);
 			mutex.release();
@@ -2606,7 +2607,10 @@ class ImportRefreshManager {
 				nextRevisions.push(ImportRevision.current(engine,EngineBranding.version()));
 			}
 			record.revisions = nextRevisions;
-			var metadata:Dynamic = {importRecord:record,registries:nextRegistries,chartAnalysisVersion:ChartDifficultyAnalysis.VERSION};
+			// Conversion rates charts before their owner tree is published. Leave the
+			// analysis marked pending so the readiness pass rates them again with the
+			// retained note type and song scripts (ChartDifficultyRefresh).
+			var metadata:Dynamic = {importRecord:record,registries:nextRegistries,chartAnalysisVersion:0};
 			progress({phase:"publishing-import",current:Std.string(record.label),completed:0,total:1});
 			var publishedPaths = masked.copy();
 			var publishedPathSet:Map<String, Bool> = new Map();
@@ -2645,7 +2649,8 @@ class ImportRefreshManager {
 				trace("[import-refresh-cleanup-error] " + Std.string(cleanup));
 			return imported;
 		} catch (error:Dynamic) {
-			trace("[import-refresh-conversion-error] " + Std.string(error) + "\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack()));
+			// One failed package can repeat a diagnostic thousands of times.
+			trace("[import-refresh-conversion-error] " + TraceDigest.collapse(Std.string(error)) + "\n" + haxe.CallStack.toString(haxe.CallStack.exceptionStack()));
 			if (!ended) ImportIO.end();
 			ImportRootScanner.setRetainedSourceEngines(previousEngines);
 			ImportRootScanner.setRetainedSourceRoots(previousRoots);
@@ -2863,6 +2868,13 @@ class ImportRefreshManager {
 					if (assessment.status == ImportRevision.FUTURE || assessment.status == ImportRevision.UNKNOWN)
 						throw "Import receipt is newer or unrecognized; its files were preserved.";
 					if (assessment.status == ImportRevision.OUTDATED) stale = true;
+				}
+				// A refresh that already failed against this exact receipt and importer
+				// would fail the same way. Keep the package gated and say why instead.
+				if (stale) {
+					var knownFailure = readRefreshFailure(install, id);
+					if (ImportRefreshFailure.blocks(knownFailure, ImportRefreshFailure.fingerprint(record, EngineBranding.version())))
+						throw ImportRefreshFailure.message(knownFailure, Std.string(record.label));
 				}
 				if (!stale && dependencyMetadata.complete && !ownerLeased) {
 					var priorAnalysisTransaction:String = manifest.transactionId;
@@ -3091,6 +3103,92 @@ class ImportRefreshManager {
 		mutex.release();
 	}
 
+	static function refreshFailurePath(install:String, id:String):String
+		return Path.join([install, CACHE_ROOT, "refresh-failures", id + ".json"]);
+
+	static function readRefreshFailure(install:String, id:String):Null<ImportRefreshFailure.ImportRefreshFailureMarker> {
+		try {
+			var path = refreshFailurePath(install, id);
+			if (!FileSystem.exists(path) || FileSystem.isDirectory(path) || FileSystem.stat(path).size > 65536) return null;
+			return ImportRefreshFailure.read(File.getContent(path), id);
+		} catch (_:Dynamic) return null;
+	}
+
+	static function clearRefreshFailure(install:String, id:String):Void {
+		try {
+			var path = refreshFailurePath(install, id);
+			if (FileSystem.exists(path) && !FileSystem.isDirectory(path)) FileSystem.deleteFile(path);
+		} catch (_:Dynamic) {}
+	}
+
+	/** Detect, without the receipt's forced identity, what a failed record's
+	 * roots really are. Only an explicitly typed root with no recorded evidence
+	 * can be contradicted, and only by executable proof. */
+	static function retainedEngineMismatch(install:String, record:Dynamic):Null<ImportRefreshFailure.ImportEngineMismatch> {
+		var found:Null<ImportRefreshFailure.ImportEngineMismatch> = null;
+		var previousEngines = ImportRootScanner.setRetainedSourceEngines(null);
+		var previousRoots = ImportRootScanner.setRetainedSourceRoots(null);
+		try {
+			var source = contained(Path.join([install, CACHE_ROOT]), Std.string(record.source));
+			if (FileSystem.exists(source) && FileSystem.isDirectory(source)) for (root in (cast record.roots:Array<Dynamic>)) {
+				ImportWorkScheduler.cooperate();
+				var relative = Std.string(root.relative);
+				var inspected = ImportRootScanner.inspectRoot(relative == "" ? source : Path.join([source, relative]), ImportEngine.AUTO);
+				if (inspected == null) continue;
+				found = ImportRefreshFailure.mismatch(relative, Std.string(record.type), Std.string(root.engine),
+					Reflect.field(root, "evidence"), inspected.engine, inspected.evidence);
+				if (found != null) break;
+			}
+		} catch (_:Dynamic) found = null;
+		ImportRootScanner.setRetainedSourceEngines(previousEngines);
+		ImportRootScanner.setRetainedSourceRoots(previousRoots);
+		return found;
+	}
+
+	/** Label of another committed import of the same package layout that already
+	 * carries the detected engine, or null. */
+	static function correctlyTypedCopy(install:String, record:Dynamic, detected:String):Null<String> {
+		try {
+			var wanted = [for (root in (cast record.roots:Array<Dynamic>)) Std.string(root.relative)];
+			wanted.sort(Reflect.compare);
+			for (other in cachedRecords(install)) {
+				ImportWorkScheduler.cooperate();
+				if (other == null || other.id == record.id || Std.string(other.label) != Std.string(record.label)) continue;
+				var roots:Array<Dynamic> = cast other.roots;
+				if (roots == null || roots.length != wanted.length) continue;
+				var relatives = [for (root in roots) Std.string(root.relative)];
+				relatives.sort(Reflect.compare);
+				var same = relatives.join("\n") == wanted.join("\n");
+				for (root in roots) if (ImportRevision.normalizeEngine(Std.string(root.engine)) != detected) same = false;
+				if (same) return Std.string(other.label);
+			}
+		} catch (_:Dynamic) {}
+		return null;
+	}
+
+	/** Persist a failed automatic refresh and return the message to show. A
+	 * proven wrong engine is explained and never retried for this receipt. */
+	static function rememberRefreshFailure(install:String, record:Dynamic, fingerprint:String, error:String):String {
+		var explained = error;
+		try {
+			var id = Std.string(record.id);
+			var mismatch = retainedEngineMismatch(install, record);
+			if (mismatch != null) {
+				explained = ImportRefreshFailure.mistyped(mismatch, correctlyTypedCopy(install, record, mismatch.detected));
+				trace("[import-refresh-error] " + Std.string(record.label) + ": " + explained);
+			}
+			var marker = ImportRefreshFailure.next(readRefreshFailure(install, id), id, fingerprint, explained, mismatch != null);
+			var path = refreshFailurePath(install, id);
+			FileSystem.createDirectory(Path.directory(path));
+			var temporary = path + ".tmp";
+			File.saveContent(temporary, Json.stringify(marker));
+			if (FileSystem.exists(path)) FileSystem.deleteFile(path);
+			FileSystem.rename(temporary, path);
+			if (ImportRefreshFailure.blocks(marker, fingerprint)) explained = ImportRefreshFailure.message(marker, Std.string(record.label));
+		} catch (failure:Dynamic) trace("[import-refresh-error] Could not record the failed refresh: " + Std.string(failure));
+		return explained;
+	}
+
 	static function startNext():Void {
 		mutex.acquire();
 		if (removalToken != "" || active || inspectionPending || queue.length == 0) { mutex.release(); return; }
@@ -3108,6 +3206,8 @@ class ImportRefreshManager {
 		measurements = new ImportRefreshProgress(ImportWorkScheduler.workStamp(),
 			ImportRefreshProgress.estimatedWorkUnits(Reflect.field(record,"estimatedWorkUnits")));
 		var install = Sys.getCwd();
+		// Taken before regeneration, which rewrites the in-memory receipt stamps.
+		var failureFingerprint = ImportRefreshFailure.fingerprint(record, EngineBranding.version());
 		mutex.release();
 		Thread.create(function() {
 			ModuleFunctions.setImportBackgroundMode(true);
@@ -3136,6 +3236,7 @@ class ImportRefreshManager {
 			ModuleFunctions.setImportProgressCallback(onProgress);
 			try {
 				var result = regenerate(install,record,ImportWorkflow.convertRetainedSource,function() return false,onProgress,token);
+				clearRefreshFailure(install, Std.string(record.id));
 				mutex.acquire();
 				queueHandoffLocked(token, result.importedSongs);
 				measurements.finish(ImportWorkScheduler.workStamp());
@@ -3143,9 +3244,10 @@ class ImportRefreshManager {
 				status.changed = true; status.label = "Imports refreshed."; status.fraction = 1; status.complete = true;
 				mutex.release();
 			} catch (error:Dynamic) {
-				trace("[import-refresh-error] " + Std.string(record.label) + ": " + Std.string(error));
+				trace("[import-refresh-error] " + Std.string(record.label) + ": " + TraceDigest.collapse(Std.string(error)));
 				settleFailedReservation(token, install);
-				mutex.acquire(); recordDiagnosticLocked(Std.string(error)); mutex.release();
+				var explained = rememberRefreshFailure(install, record, failureFingerprint, Std.string(error));
+				mutex.acquire(); recordDiagnosticLocked(explained); mutex.release();
 			}
 			ModuleFunctions.setImportProgressCallback(null);
 			ModuleFunctions.setImportCancelCallback(null);

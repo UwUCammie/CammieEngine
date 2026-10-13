@@ -110,4 +110,61 @@ class ChartDifficultyTest(unittest.TestCase):
    var before=analyze(a);var chart:Dynamic={speed:99,notes:[{mustHitSection:true,sectionNotes:a}]};
    check(ChartDifficultyAnalysis.analyze(chart,[]).difficulty==before.difficulty,"scroll speed affects rating");
    check(ChartDifficultyAnalysis.describe(before).indexOf('Difficulty Rating '+ChartDifficultyAnalysis.twoDecimals(before.difficulty))==0,"rating text absent");''')
+ def test_note_scripts_are_classified_by_code_shape_only(self):
+  self.run_haxe(r"""var freeze='function setupNote(note) {\n note.canMiss = true; // optional\n}\nfunction goodNoteHit(note) {\n getFieldFromID(0).inControl = false;\n}';
+   var h=ChartMechanicScan.noteHazard(freeze,false);
+   check(h!=null && h.avoid && h.inputLock && !h.lethal && !h.damage,"haxe input lock trap");
+   h=ChartMechanicScan.noteHazard("function onCreate()\n setPropertyFromGroup('unspawnNotes', i, 'ignoreNote', true) -- skip\nend\nfunction goodNoteHit(id)\n setProperty('boyfriend.stunned', true)\n setProperty('health', getProperty('health') - 0.3)\nend",true);
+   check(h!=null && h.avoid && h.inputLock && h.damage && !h.lethal,"lua stun and drain");
+   h=ChartMechanicScan.noteHazard("function noteMiss(note) { game.health = 0; }",false);
+   check(h!=null && h.lethal && !h.avoid && !h.inputLock,"lethal miss");
+   h=ChartMechanicScan.noteHazard("function setupNote(note) { note.hitCausesMiss = true; }",false);
+   check(h!=null && h.avoid && h.damage,"miss on hit is harmful");
+   check(ChartMechanicScan.noteHazard("function setupNote(note) {\n // note.canMiss = true; inControl = false;\n /* health = 0; */\n note.missHealth = 0;\n healthBar.alpha = 0;\n health = 0.5;\n}",false)==null,"comments or lookalikes classified");
+   check(ChartMechanicScan.noteHazard("x = x--1 -- not lua here\nnote.canMiss = true;",false)!=null,"haxe decrement treated as a lua comment");
+   check(ChartMechanicScan.noteHazard("-- note.ignoreNote = true",true)==null && ChartMechanicScan.noteHazard(null,false)==null,"lua comment or null classified");
+   check(ChartMechanicScan.safeOwner('assets/imported_mods/pack-1')=='assets/imported_mods/pack-1',"owner rejected");
+   for(bad in ['assets/imported_mods/../x','assets/data/x','assets/imported_mods/a/b','C:/x','assets/imported_mods/'])check(ChartMechanicScan.safeOwner(bad)==null,"unsafe owner "+bad);
+   check(ChartMechanicScan.safeOwner(5)==null && !ChartMechanicScan.safeName('a/b') && !ChartMechanicScan.safeName('..') && ChartMechanicScan.safeName('try-harder'),"names");
+   check(ChartMechanicScan.isScript('Ice Note.hx') && ChartMechanicScan.isScript('a.LUA') && !ChartMechanicScan.isScript('hard.json') && ChartMechanicScan.isLua('a.lua') && !ChartMechanicScan.isLua('a.hx'),"script names");""")
+ def test_modchart_estimate_needs_playfield_code(self):
+  self.run_haxe(r"""function one(text:String,lua:Bool=false):Float return ChartMechanicScan.modchart([{text:text,lua:lua}]);
+   check(ChartMechanicScan.modchart([])==0 && ChartMechanicScan.modchart(null)==0,"empty");
+   check(one("function onCreatePost() { boyfriend.playAnim('flip'); add(new FlxSprite().makeGraphic(1,1)); animation.addByPrefix('idle','reverse'); }")==0,"ordinary words counted as modifiers");
+   var light=one("modManager.queueEase(16, 20, 'drunk', 1, 'cubeOut');");
+   var heavy=one("for (i in 0...4) modManager.queueSet(8, 'reverse' + i, 1);\nmodManager.queueEaseP(4, 8, 'opponentSwap', 50);\nmodManager.queueSet(1, \"stealth\", 1, 1);\nmodManager.queueEase(1, 2, 'transform0X', 5);\nmodManager.queueEase(1, 2, 'transformY-a', 5);\nmodManager.queueSet(2, 'drunk', 1);\nmodManager.queueSetP(3, 'noteSpawnTime', 2000);");
+   check(light>0 && heavy>light*3 && heavy<=4,"variety not rewarded");
+   check(one("// modManager.queueSet(1, 'reverse', 1);")==0,"commented modchart counted");
+   var many=one([for(i in 0...400)"modManager.queueSet("+i+", 'drunk', 1);"].join("\n"));
+   check(many<light*2.01,"repetition outweighed variety");
+   var lua=one("function onBeatHit()\n noteTweenX('a', 4, 100, 0.5, 'quadOut')\n setPropertyFromGroup('playerStrums', 0, 'y', 50)\nend",true);
+   check(lua>0 && one("function onUpdate() { playerStrums.members[0].x += 3; camHUD.angle = 5; if (playerStrums.members[0].x == 4) {} }")>0,"direct strum movement missed");
+   check(one("if (playerStrums.members[0].x == 4) trace('same');")==0,"comparison counted as movement");
+   check(ChartMechanicScan.modchart([],'{"events":[[0,[["Change Scroll Speed","2","1"]]]]}')>0,"speed events missed");
+   check(ChartMechanicScan.modchartLabel(0.5)=='light' && ChartMechanicScan.modchartLabel(2)=='moderate' && ChartMechanicScan.modchartLabel(3.5)=='heavy',"labels");""")
+ def test_script_context_raises_but_never_lowers_a_rating(self):
+  self.run_haxe(r"""var rows:Array<Dynamic>=[];for(i in 0...120){rows.push([i*250,i%4,0]);if(i%4==0)rows.push([i*250,(i+2)%4,0,'Ice Note']);}
+   var chart:Dynamic={notes:[{mustHitSection:true,sectionNotes:rows}]};
+   var plain=ChartDifficultyAnalysis.analyze(chart,[]);
+   var hazards:Map<String,ChartMechanicScan.NoteScriptHazard>=['ice note'=>{avoid:true,inputLock:true,damage:false,lethal:false}];
+   var trapped=ChartDifficultyAnalysis.analyze(chart,[],false,{noteHazards:hazards,modchart:0});
+   check(plain.mechanicNotes==0 && plain.modchart==0 && plain.unknownKinds==30,"no context changed analysis");
+   check(trapped.mechanicNotes==30 && trapped.dangerNotes==30 && trapped.playerNotes==120 && trapped.unknownKinds==0,"trap counts");
+   check(trapped.difficulty>plain.difficulty && trapped.chordNotes==plain.chordNotes,"trap lowered or flattened the rating");
+   check(ChartDifficultyAnalysis.describe(trapped).indexOf('Input-lock notes: 30')>=0 && ChartDifficultyAnalysis.describe(plain).indexOf('Input-lock')<0,"mechanic line");
+   var optional:Map<String,ChartMechanicScan.NoteScriptHazard>=['ice note'=>{avoid:true,inputLock:false,damage:false,lethal:false}];
+   var skipped=ChartDifficultyAnalysis.analyze(chart,[],false,{noteHazards:optional});
+   check(skipped.playerNotes==120 && skipped.dangerNotes==0 && skipped.chordNotes==0,"harmless optional note still counted");
+   var required:Map<String,ChartMechanicScan.NoteScriptHazard>=['ice note'=>{avoid:false,inputLock:false,damage:false,lethal:true}];
+   var risky=ChartDifficultyAnalysis.analyze(chart,[],false,{noteHazards:required});
+   check(risky.playerNotes==150 && risky.missRiskNotes==30 && risky.difficulty>plain.difficulty,"required lethal note ignored");
+   var moving=ChartDifficultyAnalysis.analyze(chart,[],false,{modchart:2});var extreme=ChartDifficultyAnalysis.analyze(chart,[],false,{modchart:400});
+   check(moving.difficulty>plain.difficulty && extreme.difficulty<=plain.difficulty*1.3001 && extreme.difficulty>moving.difficulty,"modchart unbounded or ignored");
+   check(ChartDifficultyAnalysis.describe(moving).indexOf('Modchart: moderate (2.00)')>=0,"modchart line");
+   check(ChartDifficultyAnalysis.analyze(chart,[],false,{modchart:-5}).difficulty==plain.difficulty,"negative modchart lowered rating");
+   check(ChartDifficultyAnalysis.read(haxe.Json.parse(haxe.Json.stringify(trapped)))!=null,"roundtrip with mechanics");
+   var old:Dynamic=haxe.Json.parse(haxe.Json.stringify(plain));Reflect.deleteField(old,'modchart');check(ChartDifficultyAnalysis.read(old)==null,"analysis without mechanics accepted");
+   var declared:Array<Dynamic>=[[0,0,0],[500,1,0,'Hurt Note']];
+   var hurt=ChartDifficultyAnalysis.analyze({notes:[{mustHitSection:true,sectionNotes:declared}]},[],false,{noteHazards:hazards});
+   check(hurt.dangerNotes==1 && hurt.playerNotes==1 && hurt.mechanicNotes==0,"declared danger notes changed");""")
 if __name__=='__main__':unittest.main()

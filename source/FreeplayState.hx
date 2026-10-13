@@ -1246,31 +1246,39 @@ class FreeplayState extends MusicBeatState {
 		var underline = new FlxSprite(142, 57).makeGraphic(240, 5, 0xFFFF66B7); underline.angle = -2;
 		add(underline); uiChrome.push(underline);
 		browserText(detailX, 106, detailWidth, 'PICK YOUR NEXT TRACK', 20, 0xFFFF66B7);
-		var detailPanel = new FlxSprite(detailX - 12, 188).makeGraphic(Std.int(detailWidth + 24), 390, 0xFF182235);
-		detailPanel.alpha = 0.7; insert(members.indexOf(grpSongs), detailPanel); uiChrome.push(detailPanel);
-		for (i in 0...3) {
-			var accent = new FlxSprite(detailX - 12, 188 + i * 126).makeGraphic(4, 74, i == 1 ? 0xFF80E3D0 : 0xFFFF66B7);
+		// One backed card per group of details. Each accent spans its whole card and
+		// shares a color with the card heading, so it marks a section, not a row.
+		for (section in FreeplayDetailSections.layout()) {
+			var card = new FlxSprite(detailX - 12, section.y).makeGraphic(Std.int(detailWidth + 24), section.height, 0xFF182235);
+			card.alpha = 0.82; insert(members.indexOf(grpSongs), card); uiChrome.push(card);
+			var accent = new FlxSprite(detailX - 12, section.y).makeGraphic(4, section.height, section.color);
 			add(accent); uiChrome.push(accent);
+			browserText(detailX, section.y + 6, detailWidth, section.title, 12, section.color);
 		}
+		// Solid floor first, then bars anchored to it by their bottom edge.
+		var meterFloor = new FlxSprite(detailX, FreeplayDetailSections.METER_FLOOR).makeGraphic(12 * 19 - 7, 3, 0xFFFFF4DC);
+		add(meterFloor); uiChrome.push(meterFloor);
 		for (i in 0...12) {
-			var meter = new FlxSprite(detailX + i * 19, 142).makeGraphic(12, 1, i % 3 == 0 ? 0xFFFF66B7 : 0xFF80E3D0);
+			var meter = new FlxSprite(detailX + i * 19, FreeplayDetailSections.METER_FLOOR - 1).makeGraphic(12, 1, i % 3 == 0 ? 0xFFFF66B7 : 0xFF80E3D0);
+			meter.origin.set(6, 1); meter.scale.y = 2;
 			add(meter); uiChrome.push(meter); browserMeters.push(meter);
 		}
 		browserCount = browserText(26, 66, FlxG.width * 0.6, '', 18, 0xFF9DB2CC);
 		browserGroup = browserText(26, 90, FlxG.width * 0.6, '', 16, 0xFF80E3D0);
 		browserFavoritesHeader = browserText(26, 140, FreeplayBrowserLayout.listWidth(FlxG.width) - 48, 'FAVORITES', 14, 0xFFFFD166); browserFavoritesHeader.visible = false;
-		browserDetail = browserText(detailX, 200, detailWidth, '', 24, 0xFFFFFFFF);
-		browserSource = browserText(detailX, 264, detailWidth, '', 16, 0xFF9DB2CC);
-		scoreText.setPosition(detailX, 392); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
+		var trackY = FreeplayDetailSections.TRACK_Y; var difficultyY = FreeplayDetailSections.DIFFICULTY_Y; var scoreY = FreeplayDetailSections.SCORE_Y;
+		browserDetail = browserText(detailX, trackY + 22, detailWidth, '', 24, 0xFFFFFFFF);
+		browserSource = browserText(detailX, trackY + 80, detailWidth, '', 16, 0xFF9DB2CC);
+		scoreText.setPosition(detailX, difficultyY + 22); scoreText.size = 20; scoreText.fieldWidth = detailWidth;
 		scoreText.alignment = LEFT; scoreText.visible = false;
-		diffText.setPosition(detailX, 454); diffText.size = 22; diffText.fieldWidth = detailWidth;
-		browserRating = browserText(detailX, 314, detailWidth, '', 14, 0xFF9DB2CC);
-		browserDensity = browserText(detailX, 366, detailWidth, '', 14, 0xFF9DB2CC);
-		browserMetric = browserText(detailX, 338, detailWidth, '', 16, 0xFF80E3D0);
+		diffText.setPosition(detailX, difficultyY + 22); diffText.size = 22; diffText.fieldWidth = detailWidth;
+		browserRating = browserText(detailX, difficultyY + 46, detailWidth, '', 14, 0xFF9DB2CC);
+		browserDensity = browserText(detailX, difficultyY + 76, detailWidth, '', 13, 0xFFCFD8E5);
+		browserMetric = browserText(detailX, difficultyY + 61, detailWidth, '', 14, 0xFF80E3D0);
 		browserMetric.wordWrap = false;
-		if (infoPanel != null) { infoPanel.setPosition(detailX, 490); infoPanel.visible = false; }
+		if (infoPanel != null) { infoPanel.setPosition(detailX, scoreY + 22); infoPanel.visible = false; }
 		// Detailed score cycling stays reachable; its compact panel uses the same score service.
-		if (infoPanel != null) infoPanel.setBrowserSize(Std.int(detailWidth), 146);
+		if (infoPanel != null) infoPanel.setBrowserSize(Std.int(detailWidth), FreeplayDetailSections.SCORE_HEIGHT - 26);
 		qtooltip.visible = false; etooltip.visible = false;
 		browserCompletion = browserText(detailX, 600, detailWidth, 'COMPLETION BY DIFFICULTY', 16, 0xFF9DB2CC);
 		browserStarPanel = new FlxSprite(detailX, 609).makeGraphic(Std.int(detailWidth), 30, 0xFFB8CBDD);
@@ -1316,8 +1324,9 @@ class FreeplayState extends MusicBeatState {
 		browserCompletion.visible = false;
 		browserCompletion.text = hasSelection ? 'Completion: ' + (['Unplayed','Clear','SDCB','Bad','Good','Sick'][Std.int(Math.max(0, Math.min(5, Highscore.getFCLevel(songs[curSelected].songName, curDifficulty))))]) : '';
 		browserStarPanel.visible = false;
-		browserDetail.text = hasSelection ? FreeplayBrowserLayout.label(FreeplaySongTitle.display(songs[curSelected].displayTitle), 84) : 'No song selected';
-		browserSource.text = hasSelection ? FreeplayBrowserLayout.label(sourceCaption(songs[curSelected]), 120) : '';
+		// Two lines each at most, so neither can leave the track card.
+		browserDetail.text = hasSelection ? FreeplayBrowserLayout.label(FreeplaySongTitle.display(songs[curSelected].displayTitle), Std.int(browserDetail.fieldWidth / 14.4) * 2 - 2) : 'No song selected';
+		browserSource.text = hasSelection ? FreeplayBrowserLayout.label(sourceCaption(songs[curSelected]), Std.int(browserSource.fieldWidth / 9.6) * 2 - 2) : '';
 		for (index in rowSongIndices) if (starArray[index] != null && songRows[index] != null) {
 			var stars = starArray[index]; var row = songRows[index];
 			var selectedStar = 0;
@@ -1630,7 +1639,7 @@ class FreeplayState extends MusicBeatState {
 				if (!Math.isFinite(amplitude)) amplitude = 0;
 				var target = 2 + Math.min(1, Math.max(0, amplitude)) * (22 - Math.abs(i - 5.5));
 				meter.scale.y += (target - meter.scale.y) * Math.min(1, elapsed * 35);
-				meter.y = 166 - meter.scale.y;
+				// Bars grow upward from a fixed floor (see the bottom-edge origin).
 			}
 		}
 		if (smokeProfile)
@@ -2042,7 +2051,20 @@ class FreeplayState extends MusicBeatState {
 	// (public + static: CategoryState's category search shares it)
 	public static function searchNorm(s:String):String {
 		if (s == null) return '';
-		return ~/[\s\-()\[\]·]+/g.replace(s.toLowerCase(), '');
+		// No EReg here: an active search runs this for every song on every frame,
+		// and each compiled pattern is native memory that only a full collection
+		// releases. Millions of them stalled the menu for many seconds.
+		var lower = s.toLowerCase();
+		var out = '';
+		var start = 0;
+		for (i in 0...lower.length) {
+			var c = lower.charCodeAt(i);
+			// whitespace, '-', '(', ')', '[', ']' and the middle dot
+			if (c != 32 && (c < 9 || c > 13) && c != 45 && c != 40 && c != 41 && c != 91 && c != 93 && c != 0xB7) continue;
+			if (i > start) out += lower.substring(start, i);
+			start = i + 1;
+		}
+		return start == 0 ? lower : out + lower.substring(start);
 	}
 
 	function libraryChartKey(index:Int):String {

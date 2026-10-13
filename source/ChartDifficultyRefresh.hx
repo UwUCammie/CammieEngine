@@ -26,6 +26,41 @@ class ChartDifficultyRefresh {
 		var text = File.getContent(resolved);
 		reads.set(path,haxe.crypto.Sha256.make(haxe.io.Bytes.ofString(text)).toHex());return text;
 	}
+	/** Script files directly inside one imported folder. Optional content: a
+	 * missing or unreadable folder contributes nothing. */
+	static function listScripts(install:String,directory:String):Array<String> {
+		try {
+			var resolved = ImportRefreshTransaction.safeChild(install,directory,false);
+			if (!FileSystem.exists(resolved) || !FileSystem.isDirectory(resolved)) return [];
+			var names = [for (name in FileSystem.readDirectory(resolved))
+				if (ChartMechanicScan.isScript(name) && !FileSystem.isDirectory(Path.join([resolved,name]))) name];
+			names.sort(Reflect.compare);
+			return names;
+		} catch (_:Dynamic) return [];
+	}
+	/** What each of an owner's note type scripts does, read without running it. */
+	static function noteHazards(install:String,owner:String,reads:Map<String,String>):Map<String,ChartMechanicScan.NoteScriptHazard> {
+		var result:Map<String,ChartMechanicScan.NoteScriptHazard> = [];
+		for (directory in ChartMechanicScan.noteScriptFolders()) for (name in listScripts(install,owner+'/'+directory)) {
+			ImportWorkScheduler.cooperate();
+			var kind = NoteTypeCompat.canonical(Path.withoutExtension(name)).toLowerCase();
+			if (kind == '' || result.exists(kind)) continue;
+			var text = readText(install,owner+'/'+directory+'/'+name,ChartMechanicScan.MAX_SCRIPT_BYTES,reads);
+			var hazard = text == null ? null : ChartMechanicScan.noteHazard(text,ChartMechanicScan.isLua(name));
+			if (hazard != null) result.set(kind,hazard);
+		}
+		return result;
+	}
+	static function songModchart(install:String,owner:String,sourceFolder:String,folder:String,reads:Map<String,String>):Float {
+		var scripts:Array<ChartMechanicScan.ChartScriptText> = [];
+		if (owner != null && sourceFolder != null) for (directory in ChartMechanicScan.songScriptFolders(sourceFolder)) for (name in listScripts(install,owner+'/'+directory)) {
+			if (scripts.length >= ChartMechanicScan.MAX_SONG_SCRIPTS) break;
+			ImportWorkScheduler.cooperate();
+			var text = readText(install,owner+'/'+directory+'/'+name,ChartMechanicScan.MAX_SCRIPT_BYTES,reads);
+			if (text != null) scripts.push({text:text,lua:ChartMechanicScan.isLua(name)});
+		}
+		return ChartMechanicScan.modchart(scripts,readText(install,folder+'/events.json',MAX_METADATA_BYTES,reads));
+	}
 	public static function refresh(install:String,state:String,owner:String,manifest:ImportRefreshManifest,?progress:Dynamic->Void):ImportRefreshManifest {
 		if (manifest.revision != null && Reflect.field(manifest.revision,'chartAnalysisVersion') == ChartDifficultyAnalysis.VERSION) return manifest;
 		var folders:Map<String,Array<String>> = [];
@@ -44,6 +79,7 @@ class ChartDifficultyRefresh {
 		FileSystem.createDirectory(stage);
 		var outputs:Array<ImportRefreshStagedOutput> = []; var generated:Array<String> = [];
 		var reads:Map<String,String> = []; var completed = 0; var total = 0; for (_ in folders.keys()) total++;
+		var hazardsByOwner:Map<String,Map<String,ChartMechanicScan.NoteScriptHazard>> = [];
 		try {
 			for (folder in folders.keys()) {
 				ImportWorkScheduler.cooperate();
@@ -54,10 +90,20 @@ class ChartDifficultyRefresh {
 					if (Std.isOfType(raw,Array)) definitions = cast raw;
 				}
 				var nightmare = false; var provenanceText = readText(install,folder+'/importProvenance.json',MAX_METADATA_BYTES,reads);
+				var sourceOwner:Null<String> = null; var sourceFolder:Null<String> = null;
 				if (provenanceText != null) {
 					var raw:Dynamic = parseJson(provenanceText);
 					nightmare = Reflect.field(raw,'sourceEngine') == 'Nightmare Vision';
+					sourceOwner = ChartMechanicScan.safeOwner(Reflect.field(raw,'sourceOwner'));
+					var named:Dynamic = Reflect.field(raw,'sourceFolder');
+					if (sourceOwner != null && ChartMechanicScan.safeName(named)) sourceFolder = cast named;
 				}
+				// Retained donor scripts are read, never run, for mechanics that
+				// converted note metadata cannot express.
+				if (sourceOwner != null && !hazardsByOwner.exists(sourceOwner)) hazardsByOwner.set(sourceOwner,noteHazards(install,sourceOwner,reads));
+				var context:ChartMechanicScan.ChartAnalysisContext = {
+					noteHazards:sourceOwner == null ? null : hazardsByOwner.get(sourceOwner),
+					modchart:songModchart(install,sourceOwner,sourceFolder,folder,reads)};
 				var table:Dynamic = {}; var count = 0;
 				for (path in folders.get(folder)) {
 					ImportWorkScheduler.cooperate();
@@ -66,7 +112,7 @@ class ChartDifficultyRefresh {
 						if (StringTools.startsWith(reads.get(path),'oversized:')) continue;
 						throw 'Owned chart is missing: '+path;
 					}
-					var result = ChartDifficultyAnalysis.analyze(parseJson(chartText),definitions,nightmare);
+					var result = ChartDifficultyAnalysis.analyze(parseJson(chartText),definitions,nightmare,context);
 					if (result == null) continue;
 					var song = folder.split('/').pop(); var name = Path.withoutExtension(Path.withoutDirectory(path));
 					var difficulty = name == song ? 'normal' : name.substr(song.length+1);

@@ -1,8 +1,13 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.36 development - CammieEngine
-- Development continues after the published v0.0.35 checkpoint; remaining roadmap requirements stay open.
+v0.0.36 alpha - CammieEngine
+- Fix Freeplay freezing for many seconds while a search is active. Search matching no longer compiles a pattern for every song on every frame, which left the next large allocation (usually a song preview) to release millions of them at once. Collapse repeated import diagnostics in the log so one failed package cannot hold the output lock for the whole game.
+- Stop retrying an outdated import whose automatic refresh keeps failing. A failure is remembered for that receipt, importer revision and application version (one retry for ordinary failures) and reported with a short reason; installed content stays unchanged and a later version tries again. When an import was given an explicit source engine that its own executable contradicts, the refresh now says which engine the package really is, whether a correctly detected copy is already installed, and does not retry.
+- Rate scripted note mechanics and modcharts in the Difficulty Rating. Retained note type scripts are read, never run, for notes that are meant to be avoided and lock input, drain health or kill when hit; such notes keep their place in the pattern and add hazard pressure, and the details show an input-lock count. Song scripts and scroll-speed events give a bounded modchart estimate from the kinds of playfield movement they use. No mod, song or note name is special-cased. Existing imports are rated again automatically without reconverting.
+- Anchor the Freeplay visualizer bars to a solid floor so they grow upward instead of floating. Group the right-hand details into backed TRACK, DIFFICULTY and YOUR BEST cards whose accent and heading share a color.
+- Replace the single card star with a slower stream of fourteen spinning stars, each with a fading tail that is gone well before mid-card, on the selected or hovered card.
+- Incremental alpha release after v0.0.35; remaining roadmap requirements stay open.
 
 v0.0.35 alpha - CammieEngine
 - Keep unavailable importing songs below ready songs in every sort. Favorite charts appear in a labeled top section and their regular sorted positions; remove the redundant Favorites first sort option and preserve ordinary and per-difficulty card artwork.

@@ -36,4 +36,40 @@ class ChartDifficultyRefreshTest(unittest.TestCase):
     }}''')
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',tmp,'--run','Main',str(install),str(stage),str(state)],cwd=ROOT,capture_output=True,text=True,timeout=90)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+ def test_retained_scripts_supply_mechanics_without_running(self):
+  with tempfile.TemporaryDirectory(dir=TEST_TMP if os.environ.get('CAMMIE_TEST_TMP') else None) as tmp:
+   base=Path(tmp);install=base/'install';stage=base/'stage';state=base/'state'
+   for p in (install,stage,state):p.mkdir()
+   rows=','.join('[%d,%d,0]'%(i*250,i%4) for i in range(60))+','+','.join('[%d,%d,0,"Trap"]'%(i*1000,(i+2)%4) for i in range(15))
+   (stage/'chart.json').write_text('{"song":{"notes":[{"mustHitSection":true,"sectionNotes":['+rows+']}]}}')
+   (stage/'provenance').write_text('{"sourceEngine":"Psych Engine","sourceOwner":"assets/imported_mods/pack","sourceFolder":"test"}')
+   (stage/'outside').write_text('{"sourceEngine":"Psych Engine","sourceOwner":"assets/imported_mods/../../escape","sourceFolder":"../test"}')
+   owner=install/'assets/imported_mods/pack'
+   (owner/'custom_notetypes').mkdir(parents=True);(owner/'data/test').mkdir(parents=True)
+   (owner/'custom_notetypes/Trap.lua').write_text("function onCreate()\n setPropertyFromGroup('unspawnNotes', 0, 'ignoreNote', true)\nend\nfunction goodNoteHit()\n setProperty('boyfriend.stunned', true)\nend\n")
+   (owner/'data/test/script.lua').write_text("function onBeatHit()\n noteTweenX('a', 4, 100, 0.5, 'quadOut')\n os.exit(1)\nend\n")
+   (owner/'data/test/test.json').write_text('{"not":"a script"}')
+   (base/'CoolUtil.hx').write_text('class CoolUtil {public static function parseJson(s:String):Dynamic return haxe.Json.parse(s);}')
+   (base/'Main.hx').write_text(r"""import sys.io.File;class Main {
+    static function check(b:Bool,s:String){if(!b)throw s;}
+    static function main(){var args=Sys.args();var install=args[0];var stage=args[1];var state=args[2];
+     var record:Dynamic={id:'test',schemaVersion:1,revisions:[{commonRevision:5}]};
+     var r=ImportRefreshTransaction.apply(install,stage,state,'owner',['assets/data'],[
+      {path:'assets/data/test/test.json',stagedPath:'chart.json'},
+      {path:'assets/data/test/importProvenance.json',stagedPath:'provenance'},
+      {path:'assets/data/plain/plain.json',stagedPath:'chart.json'},
+      {path:'assets/data/plain/importProvenance.json',stagedPath:'outside'}],{importRecord:record,registries:[],chartAnalysisVersion:0});
+     check(r.status=='applied','seed');
+     var after=ChartDifficultyRefresh.refresh(install,state,'owner',ImportRefreshTransaction.loadManifest(state,'owner'));
+     check(after.revision.chartAnalysisVersion==ChartDifficultyAnalysis.VERSION,'pending analysis not completed');
+     var found=ChartDifficultyAnalysis.read(haxe.Json.parse(File.getContent(install+'/assets/data/test/chartDensity.json')).normal);
+     var plain=ChartDifficultyAnalysis.read(haxe.Json.parse(File.getContent(install+'/assets/data/plain/chartDensity.json')).normal);
+     check(found!=null && plain!=null,'analysis absent');
+     check(found.mechanicNotes==15 && found.dangerNotes==15 && found.modchart>0 && found.unknownKinds==0,'retained scripts ignored');
+     check(plain.mechanicNotes==0 && plain.modchart==0 && plain.unknownKinds==15,'unsafe owner was read');
+     check(found.difficulty>plain.difficulty,'mechanics did not raise the rating');
+     check(File.getContent(install+'/assets/imported_mods/pack/custom_notetypes/Trap.lua').indexOf('stunned')>0,'donor script changed');
+    }}""")
+   result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',tmp,'--run','Main',str(install),str(stage),str(state)],cwd=ROOT,capture_output=True,text=True,timeout=90)
+   self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 if __name__=='__main__':unittest.main()

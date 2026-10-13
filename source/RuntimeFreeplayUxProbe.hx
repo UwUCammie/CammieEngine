@@ -156,7 +156,7 @@ class RuntimeFreeplayUxProbe {
 		if (phase != 5 || RuntimeSmokeHarness.finished) return;
 		try {
 			var card:FreeplayBrowserRow = cast menu.songRows[FreeplayState.curSelected];
-			check(card != null && card.trails.length == 6, 'Trail pool missing');
+			check(card != null && card.trails.length == FreeplayStarTrail.STARS * (FreeplayStarTrail.GHOSTS + 1), 'Trail pool missing');
 			var selected = FreeplayState.curSelected;
 			check(menu.iconArray[selected] != null && menu.iconArray[selected].visible, 'Selected icon absent after empty search recovery');
 			check(menu.starArray[selected] != null && menu.starArray[selected].length == DifficultyManager.getSupportedDiffs(menu.songs[selected].songName).length, 'Selected difficulty stars absent after empty search recovery');
@@ -168,15 +168,15 @@ class RuntimeFreeplayUxProbe {
 				for (star in compact.chartStars) check(star.visible, 'Compact difficulty star hidden');
 			}
 			for (star in card.trails) if (star.visible) {
-				check(star.clipRect != null && star.clipRect.x >= 0 && star.clipRect.y >= 0, 'Trail escapes card window');
-				check(star.clipRect.width <= 18 && star.clipRect.height <= 18, 'Trail clipping bounds wrong');
+				check(star.x >= card.x && star.x + 18 <= card.x + card.rowWidth, 'Trail escapes card window');
+				check(star.y >= card.y && star.y + 18 <= card.y + card.motion.height, 'Trail escapes card height');
 			}
-			check(FreeplayStarTrail.opacity(1 / 3) == 0, 'Trail survives first third');
+			check(FreeplayStarTrail.opacity(FreeplayStarTrail.FADE_END) == 0 && FreeplayStarTrail.opacity(0.1) > 0, 'Trail fade endpoints wrong');
 			var path = RuntimeSmokeHarness.config().logPath + '.ux.png';
 			var image = lime.app.Application.current.window.readPixels();
 			check(image != null, 'Missing UX framebuffer'); RuntimeSmokeHarness.ensureParent(path); sys.io.File.saveBytes(path, image.encode());
 			UserLibrary.change(function(data) { data.setFavorite(favoriteKey, savedFavorite); data.setSorting(savedSorting.grouping, savedSorting.groups, savedSorting.charts); });
-			RuntimeSmokeHarness.emit('freeplay_ux_verified', {duplicates:true, allDifficulties:true, pendingToReady:true, regularOccurrence:true, ctrlFocus:true, sameFrameCtrlChord:true, betweenUpdateCtrlChord:true, actualAudioKeyReleases:true, selectedArtwork:true, compactArtwork:true, punctuation:true, unicode:true, audioKeys:true, mutedPcm:true, envelope:largestEnvelope, trailPool:6, screenshot:path});
+			RuntimeSmokeHarness.emit('freeplay_ux_verified', {duplicates:true, allDifficulties:true, pendingToReady:true, regularOccurrence:true, ctrlFocus:true, sameFrameCtrlChord:true, betweenUpdateCtrlChord:true, actualAudioKeyReleases:true, selectedArtwork:true, compactArtwork:true, punctuation:true, unicode:true, audioKeys:true, mutedPcm:true, envelope:largestEnvelope, trailPool:card.trails.length, screenshot:path});
 			RuntimeSmokeHarness.succeed(); phase = 5;
 		} catch (error:Dynamic) RuntimeSmokeHarness.fail('freeplay-ux-capture', Std.string(error));
 		#end

@@ -83,9 +83,10 @@ class SongInfoPanel extends FlxTypedSpriteGroup<FlxSprite> {
         browser = true; displaying = "best-score";
         backpanel.makeGraphic(panelWidth, panelHeight, 0xCC101622);
         scoreTxt.font = 'assets/fonts/vcr.ttf'; displayTxt.font = scoreTxt.font;
-        scoreTxt.size = 18; scoreTxt.fieldWidth = panelWidth - 32;
-        scoreTxt.setPosition(x + 12, y + 10);
-        displayTxt.size = 16; displayTxt.setPosition(x + 12, y + panelHeight - 28);
+        // Five score lines fill the card, so the Q / E mode label shares the first row.
+        scoreTxt.size = 16; scoreTxt.fieldWidth = panelWidth - 32;
+        scoreTxt.setPosition(x + 12, y + 8);
+        displayTxt.size = 16; displayTxt.setPosition(x + panelWidth - 214, y + 8);
     }
     public function changeSong(song:String, diff:Int) {
         curSong = song;

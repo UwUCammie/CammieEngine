@@ -27,7 +27,26 @@ class Main {
   }
   check(FreeplaySongTitle.display('swag-messiah')=='Swag Messiah','title display');
   check(FreeplaySongTitle.display('already-Capitalized')=='Already Capitalized','title casing');
-  check(FreeplayStarTrail.opacity(0)>0 && FreeplayStarTrail.opacity(1/3)==0 && FreeplayStarTrail.opacity(1)==0,'trail fade endpoint');
+  check(FreeplayStarTrail.opacity(0)==0 && FreeplayStarTrail.opacity(0.1)>0.5 && FreeplayStarTrail.opacity(0.3)<FreeplayStarTrail.opacity(0.15) && FreeplayStarTrail.opacity(FreeplayStarTrail.FADE_END)==0 && FreeplayStarTrail.opacity(1)==0 && FreeplayStarTrail.FADE_END<=0.45,'trail fade endpoint');
+  check(FreeplayStarTrail.STARS>=12 && FreeplayStarTrail.GHOSTS>=3 && FreeplayStarTrail.PERIOD>=2,'star stream too sparse or fast');
+  var lanes=new Map<Int,Bool>();
+  for(i in 0...FreeplayStarTrail.STARS) {
+   var lane=FreeplayStarTrail.lane(i);check(lane>0 && lane<1,'star lane leaves card');lanes.set(Std.int(lane*1000),true);
+   check(Math.abs(FreeplayStarTrail.spin(i))>=90,'star does not rotate');
+   var p=FreeplayStarTrail.progress(1.25,i);check(p>=0 && p<1,'progress range');
+   var later=FreeplayStarTrail.progress(1.25+FreeplayStarTrail.PERIOD*0.1,i)-p;if(later<0)later+=1;
+   check(later>0.05 && later<0.2,'star crosses too fast or too slowly');
+   for(g in 1...FreeplayStarTrail.GHOSTS)
+    check(FreeplayStarTrail.ghostOpacity(0.15,g)<FreeplayStarTrail.ghostOpacity(0.15,g-1) && FreeplayStarTrail.ghostLag(g)>FreeplayStarTrail.ghostLag(g-1),'tail does not fade behind the star');
+   check(FreeplayStarTrail.ghostOpacity(0.15,0)<FreeplayStarTrail.opacity(0.15) && FreeplayStarTrail.ghostOpacity(0.005,0)==0,'tail outruns its star');
+  }
+  var laneCount=0;for(_ in lanes.keys())laneCount++;check(laneCount==FreeplayStarTrail.STARS,'stars share a lane');
+  var sections=FreeplayDetailSections.layout();
+  for(i in 0...sections.length) {
+   check(sections[i].title!='' && sections[i].height>=100,'detail card missing heading or body');
+   if(i>0) check(sections[i].y>=sections[i-1].y+sections[i-1].height+FreeplayDetailSections.GAP && sections[i].color!=sections[i-1].color,'detail cards overlap or share an accent');
+  }
+  check(sections[0].y>FreeplayDetailSections.METER_FLOOR && sections[sections.length-1].y+sections[sections.length-1].height<=720-68,'detail cards collide with meters or search bar');
  }
 }"""
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
@@ -61,6 +80,8 @@ class Main {
    check(searchNorm('\u00e9')!='' && searchNorm('\u00e9')!=searchNorm('e'));
    check(searchNorm('+')!='' && searchNorm('+')!=searchNorm('0'));
    check(searchNorm('a+b').indexOf(searchNorm('+'))>=0 && searchNorm('plain').indexOf(searchNorm('+'))<0);
+   check(searchNorm(' Week-2	[B] (C)·d
+')=='week2bcd' && searchNorm('---')=='' && searchNorm(null)=='' && searchNorm('plain')=='plain');
   }}"""
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
    (Path(temp)/'Main.hx').write_text(body,encoding='utf-8')

@@ -2853,7 +2853,8 @@ class ImportRefreshManagerTest(unittest.TestCase):
         self.assertEqual(chart.read_bytes(), before_chart)
         self.assertEqual((self.install / REGISTRY).read_bytes(), before_registry)
         density = json.loads((chart.parent / "chartDensity.json").read_text())["normal"]
-        self.assertEqual(density["version"], 7)
+        self.assertEqual(density["version"], 8)
+        self.assertEqual((density["mechanicNotes"], density["modchart"]), (0, 0))
         self.assertEqual(density["playerNotes"], 3)
         self.assertIsInstance(density["difficulty"], (int, float))
         self.assertGreaterEqual(density["difficulty"], 1)

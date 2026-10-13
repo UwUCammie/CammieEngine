@@ -36,7 +36,16 @@ class ChartDensityCache {
 					var definitions:Array<Dynamic> = [];
 					var notes = 'assets/data/' + key + '/noteInfo.json';
 					if (FNFAssets.exists(notes)) definitions = cast CoolUtil.parseJson(FNFAssets.getText(notes));
-					result = ChartDifficultyAnalysis.analyze(CoolUtil.parseJson(FNFAssets.getText(path)), definitions);
+					// The chart's own modchart script is read, not run, for playfield movement.
+					var scripts:Array<ChartMechanicScan.ChartScriptText> = [];
+					var script = 'assets/data/' + key + '/modchart-' + diff + '.hscript';
+					if (!FNFAssets.exists(script)) script = 'assets/data/' + key + '/modchart.hscript';
+					if (FNFAssets.exists(script)) {
+						var text = FNFAssets.getText(script);
+						if (text.length <= ChartMechanicScan.MAX_SCRIPT_BYTES) scripts.push({text:text, lua:false});
+					}
+					result = ChartDifficultyAnalysis.analyze(CoolUtil.parseJson(FNFAssets.getText(path)), definitions, false,
+						{modchart:ChartMechanicScan.modchart(scripts)});
 				}
 			} catch (_:Dynamic) {}
 			Reflect.setField(table, diff, result);

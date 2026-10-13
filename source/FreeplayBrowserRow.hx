@@ -12,19 +12,54 @@ class FreeplayBrowserRow extends Alphabet {
 	public function setTrailColor(color:Int):Void {
 		trailColor = flixel.util.FlxColor.interpolate(color, 0xFFFFFFFF, 0.58);
 	}
+	var trailShown:Bool = false;
+	/** Built on first use: only a selected or hovered card pays for its stars. */
+	function buildTrail():Void {
+		var key = 'freeplay-trail-star'; var graphic = flixel.FlxG.bitmap.get(key);
+		if (graphic == null) {
+			var bitmap = new openfl.display.BitmapData(18, 18, true, 0); var shape = new openfl.display.Shape();
+			shape.graphics.beginFill(0xFFFFFF);
+			for (i in 0...11) {
+				var angle = -Math.PI / 2 + i * Math.PI / 5; var radius = i % 2 == 0 ? 8.0 : 3.5;
+				var px = 9 + Math.cos(angle) * radius; var py = 9 + Math.sin(angle) * radius;
+				if (i == 0) shape.graphics.moveTo(px, py); else shape.graphics.lineTo(px, py);
+			}
+			shape.graphics.endFill(); bitmap.draw(shape); graphic = flixel.FlxG.bitmap.add(bitmap, false, key);
+		}
+		// Above the panel, below the text. Inserting at one index stacks later
+		// sprites lower, which leaves each star above its own tail copies.
+		var layer = members.indexOf(panel) + 1;
+		for (i in 0...FreeplayStarTrail.STARS * (FreeplayStarTrail.GHOSTS + 1)) {
+			var star = new FlxSprite(); star.loadGraphic(graphic); star.antialiasing = true; star.visible = false;
+			insert(layer, star); trails.push(star);
+		}
+	}
 	function animateTrail(elapsed:Float):Void {
-		trailClock += elapsed;
 		var activeTrail = !disabled && (selected || flixel.FlxG.mouse.overlaps(panel));
-		for (i in 0...trails.length) {
-			var star = trails[i];
-			var progress = (trailClock / 0.42 + i / trails.length) % 1;
-			star.visible = activeTrail && progress < 1 / 3;
-			if (!star.visible) continue;
-			star.alpha = FreeplayStarTrail.opacity(progress); star.color = trailColor;
-			star.setPosition(x + rowWidth - 8 - progress * rowWidth, y + (i + 0.5) / trails.length * (motion.height - 4) - 9);
-			var left = Math.max(0, x - star.x); var top = Math.max(0, y - star.y);
-			var right = Math.min(18, x + rowWidth - star.x); var bottom = Math.min(18, y + motion.height - 4 - star.y);
-			star.clipRect = star.clipRect.set(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+		if (!activeTrail) {
+			if (trailShown) { for (star in trails) star.visible = false; trailShown = false; }
+			return;
+		}
+		if (trails.length == 0) buildTrail();
+		trailShown = true; trailClock += elapsed;
+		var copies = FreeplayStarTrail.GHOSTS + 1;
+		// Stars stay wholly inside the card, so a rotating sprite needs no clip.
+		var travel = rowWidth - 36; var lanes = Math.max(0, motion.height - 4 - 26);
+		for (i in 0...FreeplayStarTrail.STARS) {
+			var head = FreeplayStarTrail.progress(trailClock, i);
+			var size = FreeplayStarTrail.size(i); var turn = FreeplayStarTrail.spin(i);
+			var laneY = y + 4 + FreeplayStarTrail.lane(i) * lanes;
+			for (copy in 0...copies) {
+				var star = trails[i * copies + copy];
+				var progress = copy == 0 ? head : head - FreeplayStarTrail.ghostLag(copy - 1);
+				var opacity = copy == 0 ? FreeplayStarTrail.opacity(head) : FreeplayStarTrail.ghostOpacity(head, copy - 1);
+				star.visible = opacity > 0.01;
+				if (!star.visible) continue;
+				star.alpha = opacity; star.color = trailColor;
+				star.scale.set(size * (1 - copy * 0.15), size * (1 - copy * 0.15));
+				star.angle = turn * (trailClock - copy * 0.05);
+				star.setPosition(x + rowWidth - 27 - progress * travel, laneY);
+			}
 		}
 	}
 	var divider:FlxSprite;
@@ -97,18 +132,6 @@ class FreeplayBrowserRow extends Alphabet {
 		chartTag.setFormat('assets/fonts/vcr.ttf', 16, 0xFFCFD8E5, RIGHT); chartTag.wordWrap = false;
 		divider = new FlxSprite().makeGraphic(rowWidth, 1, 0xFF80E3D0); divider.visible = false;
 		add(panel);
-		var key = 'freeplay-trail-star'; var graphic = flixel.FlxG.bitmap.get(key);
-		if (graphic == null) {
-			var bitmap = new openfl.display.BitmapData(18, 18, true, 0); var shape = new openfl.display.Shape();
-			shape.graphics.beginFill(0xFFFFFF);
-			for (i in 0...11) {
-				var angle = -Math.PI / 2 + i * Math.PI / 5; var radius = i % 2 == 0 ? 8.0 : 3.5;
-				var px = 9 + Math.cos(angle) * radius; var py = 9 + Math.sin(angle) * radius;
-				if (i == 0) shape.graphics.moveTo(px, py); else shape.graphics.lineTo(px, py);
-			}
-			shape.graphics.endFill(); bitmap.draw(shape); graphic = flixel.FlxG.bitmap.add(bitmap, false, key);
-		}
-		for (i in 0...6) { var star = new FlxSprite(); star.loadGraphic(graphic); star.clipRect = flixel.math.FlxRect.get(0, 0, 18, 18); star.visible = false; add(star); trails.push(star); }
 		add(divider); add(stripe); add(placeholder); add(title); add(chartTag); add(favoriteTag);
 	}
 	public function groupBoundary(visible:Bool):Void divider.visible = visible;
