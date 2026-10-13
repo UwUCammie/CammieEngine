@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.40 development - CammieEngine
+- Development continues after the published v0.0.39 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.39 alpha - CammieEngine
 - Skip cutscenes with Left Alt instead of Enter. Enter is the pause key again during every video, and Space no longer skips intro videos. Right Alt does nothing, and a press made while nothing can be skipped is forgotten after a quarter of a second.
 - Incremental alpha release after v0.0.38; remaining roadmap requirements stay open.
