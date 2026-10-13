@@ -40,9 +40,17 @@ class NightmareVisionScriptInterp extends Interp {
 	}
 	#if flixel
 	public var sourceSpriteOwner:Null<NightmareVisionSpriteOwner>;
+	public var asyncResources(default, null):CodenameScriptInterp;
+	public function bindAsyncResources(root:String):Void {
+		if (asyncResources == null) asyncResources = new CodenameScriptInterp(new CodenamePaths(root));
+	}
 	#end
 	function finishSourceConstruction(value:Dynamic):Dynamic {
 		#if flixel
+		if (asyncResources != null) {
+			if (Std.isOfType(value, flixel.util.FlxTimer)) asyncResources.ownTimer(cast value);
+			if (Std.isOfType(value, flixel.sound.FlxSound)) asyncResources.ownSound(value);
+		}
 		if (sourceSpriteOwner != null && Std.isOfType(value, flixel.FlxSprite)
 			&& Type.getInstanceFields(Type.getClass(value)).indexOf('__nightmareVisionSpriteOwner') >= 0)
 			NightmareVisionSpriteMethods.bind(cast value, sourceSpriteOwner);
@@ -233,6 +241,7 @@ class NightmareVisionScriptInterp extends Interp {
 		constructorBindings.resize(0);
 		#if flixel
 		sourceSpriteOwner = null;
+		if (asyncResources != null) {asyncResources.release(); asyncResources = null;}
 		#end
 		if (nativeClassScope != null) {nativeClassScope.release(); nativeClassScope = null;}
 		sourceClasses = null;
@@ -687,7 +696,15 @@ class NightmareVisionScriptInterp extends Interp {
 			else crowplexus.iris.Iris.error('Unknown function: ' + field + details, posInfos());
 			return null;
 		}
-		return call(object, method, args);
+		var result = call(object, method, args);
+		#if flixel
+		if (asyncResources != null) {
+			if (Std.isOfType(result, flixel.tweens.FlxTween)) asyncResources.ownTween(cast result);
+			if (object == flixel.FlxG.sound && (field == 'play' || field == 'playMusic'))
+				asyncResources.ownSound(field == 'playMusic' ? flixel.FlxG.sound.music : result);
+		}
+		#end
+		return result;
 	}
 
 	/** Add evidence for the common String-call failure without changing lookup

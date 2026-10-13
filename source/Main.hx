@@ -41,14 +41,17 @@ class Main extends Sprite {
 		instance = this;
 		#if sys
 		RuntimeSmokeHarness.applyRuntimeRoot();
-		RuntimeSmokeSaveIsolation.install(RuntimeImportSmokeHarness.enabled());
+		RuntimeSmokeSaveIsolation.install(RuntimeImportSmokeHarness.enabled() || ImportedMenuSmokeHarness.enabled());
 		cwd = Sys.getCwd();
+		ImportRemovalManager.install();
 		RuntimeImportPerformanceProbe.run();
 		#end
 		var initialState:Class<FlxState> = TitleState;
 		#if sys
 		if (Sys.getEnv('CAMMIE_SHADER_COMPARE') != null)
 			initialState = RuntimeShaderCompareState;
+		else if (ImportedMenuSmokeHarness.enabled())
+			initialState = ImportedMenuSmokeState;
 		else if (RuntimeImportSmokeHarness.enabled())
 			initialState = RuntimeImportSmokeState;
 		else if (RuntimeSmokeHarness.config() != null && RuntimeSmokeHarness.config().returnFreeplay)
@@ -80,6 +83,7 @@ class Main extends Sprite {
 		var initialOptions = OptionsHandler.options;
 		addChild(new FlxGame(1280, 720, initialState, initialOptions.fpsCap, initialOptions.fpsCap, true));
 		FramerateOptionsCompat.apply(initialOptions);
+		FlxG.signals.postUpdate.add(function() ImportRemovalManager.poll());
 		RuntimeInputProbe.install();
 		RuntimeMenuTimingProbe.install();
 		RuntimeSongExitProbe.install();

@@ -1,3 +1,4 @@
+from menu_async_fixture_support import add_menu_async_contracts
 """Complete donor alphabet classes with pinned group methods and typed IO."""
 from pathlib import Path
 import re
@@ -49,4 +50,4 @@ def alphabet_fixture_files(parent_version="6.1.2"):
     path_source=(ROOT.parent/'fnf_sources/FNF-PsychEngine/source/backend/Paths.hx').read_text()
     atlas_method=method(path_source,'inline static public function getSparrowAtlas(')
     files['DonorPathsAtlas.hx']='import flixel.graphics.FlxGraphic;import flixel.graphics.frames.FlxAtlasFrames;using StringTools;final TEXT:Dynamic=null;class Language {public static function getFileTranslation(s:String)return s;}class DonorPathsAtlas {public static var mask=0;public static function image(s:String,?p:String,?gpu:Bool=true){var g=new FlxGraphic(33,27);g.key=(mask&1)!=0?"owned/images/"+s+".png":"assets/images/source_compat/psych/alphabet.png";return g;}public static function getPath(s:String,t:Dynamic,?p:String)return (mask&2)!=0?"owned/"+s:"assets/images/source_compat/psych/alphabet.xml";'+atlas_method+'}'
-    return files
+    return add_menu_async_contracts(files)

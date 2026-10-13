@@ -1,3 +1,4 @@
+from menu_async_fixture_support import install_menu_async_contracts
 """Historical NV video behavior using production adapters and a deterministic decoder."""
 from pathlib import Path
 import subprocess
@@ -122,6 +123,7 @@ class Main {
                 target=base/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(content)
             for owner in ['owner-a','owner-b']:
                 (base/owner).mkdir();(base/owner/'clip.mp4').write_bytes(b'fixture')
+            install_menu_async_contracts(base, native_flixel=False)
             result=subprocess.run([*HAXE_COMMAND,'-cp',d,'--main','Main','--interp'],cwd=base,text=True,capture_output=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 

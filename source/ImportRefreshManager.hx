@@ -127,6 +127,112 @@ class ImportRefreshManager {
 	static var availabilityCache:Null<ImportRefreshAvailabilitySnapshot> = null;
 	static var reservationSerial:Int = 0;
 	static var measurements:ImportRefreshProgress;
+	static var runtimeOwnerLeases:Map<String,Array<String>> = new Map();
+	public static function tryAcquireRuntimeOwnerLease(roots:Array<String>):String {
+		var normalized:Array<String> = [];
+		if (roots != null) for (value in roots) {
+			var root = normalizeOwnerRoot(value);
+			if (root == "") return "";
+			if (normalized.indexOf(root) < 0) normalized.push(root);
+		}
+		if (normalized.length == 0) return "";
+		mutex.acquire();
+		normalized = runtimeProviderClosureLocked(normalized);
+		if (normalized == null) { mutex.release(); return ""; }
+		if (removalToken != "" || inspectionRunning || inspectionPending || unresolvedRecovery) { mutex.release(); return ""; }
+		for (reservation in reservations) for (root in normalized)
+			if (reservation.roots.indexOf(root) >= 0 || reservation.waitForOwnerRoots.indexOf(root) >= 0) { mutex.release(); return ""; }
+		for (blocked in scopedUnavailableOwnersByToken) for (root in normalized)
+			if (blocked.indexOf(root) >= 0) { mutex.release(); return ""; }
+		var token = nextReservationTokenLocked("runtime-owner");
+		runtimeOwnerLeases.set(token,normalized); mutex.release(); return token;
+	}
+	static function runtimeProviderClosureLocked(roots:Array<String>):Array<String> {
+		var result = roots.copy(); var changed = true;
+		while (changed) {
+			changed = false;
+			for (provider in dependentRootsByOwner.keys()) if (result.indexOf(provider) < 0)
+				for (consumer in dependentRootsByOwner.get(provider)) if (result.indexOf(consumer) >= 0) {
+					result.push(provider); changed = true; break;
+				}
+			if (result.length > 8192) return null;
+		}
+		result.sort(Reflect.compare); return result;
+	}
+	/** Main-thread metadata snapshot, never a chart or asset filesystem scan. */
+	public static function runtimeOwnerLeaseRoots(owner:String):Array<String> {
+		var root = normalizeOwnerRoot(owner); if (root == "") return [];
+		mutex.acquire(); var roots = runtimeProviderClosureLocked([root]); mutex.release();
+		return roots == null ? [] : roots;
+	}
+	public static function releaseRuntimeOwnerLease(token:String):Void {
+		mutex.acquire(); runtimeOwnerLeases.remove(token); mutex.release();
+	}
+	static function queuedRuntimeRoots(record:Dynamic):Array<String> {
+		var roots = familyOwnerRootsForRecord(record,ownerRootsForRecord(record));
+		var dependencies:Dynamic = Reflect.field(record,"runtimeDependencyOwners");
+		if (Std.isOfType(dependencies,Array)) for (value in (cast dependencies:Array<Dynamic>)) {
+			var root = normalizeOwnerRoot(Std.string(value));
+			if (root != "" && roots.indexOf(root) < 0) roots.push(root);
+		}
+		return roots;
+	}
+	static function runtimeOwnersBusyLocked(roots:Array<String>):Bool {
+		if (roots == null) return false;
+		for (leased in runtimeOwnerLeases) for (root in roots) if (leased.indexOf(root) >= 0) return true;
+		return false;
+	}
+	static function runtimeOwnersBusy(roots:Array<String>):Bool {
+		mutex.acquire(); var busy = runtimeOwnersBusyLocked(roots); mutex.release(); return busy;
+	}
+	static var removalToken:String = "";
+
+	public static function removalActiveOwners():Array<String> {
+		mutex.acquire(); var roots:Array<String> = [];
+		for (reservation in reservations) for (root in reservation.roots) if (roots.indexOf(root) < 0) roots.push(root);
+		for (leased in runtimeOwnerLeases) for (root in leased) if (roots.indexOf(root) < 0) roots.push(root);
+		mutex.release(); roots.sort(Reflect.compare); return roots;
+	}
+	public static function reserveRemovalRecovery():String {
+		mutex.acquire();
+		if (removalToken != "" || active || inspectionRunning || queue.length > 0 || pendingHandoffs.length > 0 || reservations.keys().hasNext() || runtimeOwnerLeases.keys().hasNext()) { mutex.release(); return ""; }
+		removalToken = nextReservationTokenLocked("removal");
+		reserveLocked(removalToken,"managed-import-removal",[],null,true);
+		var token = removalToken; mutex.release(); return token;
+	}
+	public static function reserveForRemoval(plan:ImportRemovalPlan):String {
+		mutex.acquire();
+		if (plan == null || plan.blockers.length > 0 || removalToken != "" || active || inspectionRunning
+			|| queue.length > 0 || pendingHandoffs.length > 0 || unresolvedRecovery || reservations.keys().hasNext() || runtimeOwnersBusyLocked(plan.affectedOwners)) { mutex.release(); return ""; }
+		removalToken = nextReservationTokenLocked("removal");
+		var reservation = reserveLocked(removalToken,"managed-import-removal",plan.affectedOwners,null,true);
+		reservation.touchedPaths = [for (file in plan.candidateFiles) file.path].concat(plan.registryPaths);
+		bumpAvailabilityLocked();
+		var token = removalToken; mutex.release(); return token;
+	}
+	/** Called on the main thread after worker publication and before browsing resumes. */
+	public static function finishRemovalReservation(token:String, removedRoots:Array<String>, committed:Bool):Void {
+		mutex.acquire();
+		if (token != removalToken || token == "") { mutex.release(); throw "Invalid removal reservation."; }
+		mutex.release();
+		if (committed) {
+			ModuleFunctions.completeImportOnMainThread([]);
+			ImportSongOwnership.invalidateOwnerIdentityIndex();
+		}
+		mutex.acquire();
+		if (token != removalToken || token == "") { mutex.release(); throw "Invalid removal reservation."; }
+		if (committed) {
+			for (root in removedRoots) {
+				committedOwnerRoots.remove(root); committedPathsByOwner.remove(root);
+				committedAssetIndexBindings.remove(root); dependentRootsByOwner.remove(root);
+			}
+			// Rebuild owner/path edges from the next authoritative receipt read.
+			committedPathOwners = new Map(); familyOwnerRootCache = new Map();
+			queue = []; checked = false; inspectionPending = false; availabilityRecheckRequested = false;
+			generation++; status.changed = true;
+		}
+		releaseReservationLocked(token); removalToken = ""; bumpAvailabilityLocked(); mutex.release();
+	}
 	public static var generation(default,null):Int = 0;
 
 	/** Cheap epoch check for high-frequency menu updates. */
@@ -165,8 +271,8 @@ class ImportRefreshManager {
 			pendingSongs.sort(function(a, b) return Reflect.compare(a.key, b.key));
 			availabilityCache = {
 				revision:availabilityEpoch,
-				inspectionPending:inspectionPending || inspectionRunning || availabilityRecheckRequested || unresolvedRecovery,
-				refreshInProgress:active || queue.length > 0 || hasRunnableHandoffLocked(),
+				inspectionPending:removalToken != "" || inspectionPending || inspectionRunning || availabilityRecheckRequested || unresolvedRecovery,
+				refreshInProgress:removalToken != "" || active || queue.length > 0 || hasRunnableHandoffLocked(),
 				pendingOwnerRoots:pendingRoots,
 				handoffPendingOwnerRoots:handoffRoots,
 				committedOwnerRoots:committedRoots,
@@ -364,6 +470,7 @@ class ImportRefreshManager {
 		var expandedOutputOwners = expandDependentOwnerRoots(outputOwners);
 		mutex.acquire();
 		var reservation = reservations.get(token);
+		if (runtimeOwnersBusyLocked(expandedOutputOwners) || (reservation != null && runtimeOwnersBusyLocked(reservation.waitForOwnerRoots))) { mutex.release(); throw "An imported owner is active; publication deferred."; }
 		if (reservation != null) {
 			var changed = reservation.touchedPaths.join("\n") != normalized.join("\n");
 			if (changed) reservation.touchedPaths = normalized;
@@ -1547,7 +1654,7 @@ class ImportRefreshManager {
 			bumpAvailabilityLocked();
 		}
 		var shouldStart = checked && (inspectionPending || availabilityRecheckRequested)
-			&& !inspectionRunning && !active;
+			&& !inspectionRunning && !active && removalToken == "";
 		if (shouldStart) {
 			inspectionRunning = true;
 			bumpAvailabilityLocked();
@@ -1646,7 +1753,7 @@ class ImportRefreshManager {
 		var importRoots = expandDependentOwnerRoots(importCommittedRoots);
 		var dependencyOwners = dependencyOwnerRootsForScan(scan, Sys.getCwd(), importRoots);
 		mutex.acquire();
-		if (active || queue.length > 0 || inspectionPending || inspectionRunning || unresolvedRecovery) {
+		if (removalToken != "" || runtimeOwnersBusyLocked(importRoots) || active || queue.length > 0 || inspectionPending || inspectionRunning || unresolvedRecovery) {
 			mutex.release();
 			throw "Another import refresh is already running.";
 		}
@@ -2168,6 +2275,26 @@ class ImportRefreshManager {
 		return result;
 	}
 
+	public static function filterRemovedSourceRoots(scan:ImportScanResult,source:String,record:Dynamic):ImportScanResult {
+		// Removal exclusions are part of the committed import record. Scanning
+		// a retained aggregate must not resurrect a deliberately removed root.
+		var removedRoots:Dynamic = Reflect.field(record,"removedSourceRoots");
+		if (removedRoots != null) {
+			if (!Std.isOfType(removedRoots,Array)) throw "Invalid removed source root catalog.";
+			var excluded:Map<String,Bool> = new Map();
+			for (removed in (cast removedRoots:Array<Dynamic>)) {
+				var relative = normalizeSourceRootRelative(Reflect.field(removed,"relative"));
+				if (relative == null || relative == "") throw "Invalid removed source root.";
+				excluded.set(sourceRootIdentityKey(Path.join([source,relative]),Std.string(removed.engine)),true);
+				excluded.set(sourceRootIdentityKey(Path.join([source,relative + "/assets"]),Std.string(removed.engine)),true);
+				if (StringTools.endsWith(relative,"/assets"))
+				excluded.set(sourceRootIdentityKey(Path.join([source,relative.substr(0,relative.length-7)]),Std.string(removed.engine)),true);
+			}
+			scan = scanWithoutPreviouslyOwnedRoots(scan,excluded);
+		}
+		return scan;
+	}
+
 	static function hasMapEntries(values:Map<String, Bool>):Bool {
 		if (values == null) return false;
 		for (_ in values.keys()) return true;
@@ -2184,6 +2311,7 @@ class ImportRefreshManager {
 		ImportWorkScheduler.cooperate();
 		var roots = expandDependentOwnerRoots(committedRoots);
 		mutex.acquire();
+		if (removalToken != "" || runtimeOwnersBusyLocked(roots)) { mutex.release(); throw "This imported owner is active or removal is running."; }
 		token = nextReservationTokenLocked("refresh-now");
 		var reservation = reserveLocked(token, owner, roots, null, false);
 		setReservationCommittedRootsLocked(reservation, committedRoots);
@@ -2333,6 +2461,7 @@ class ImportRefreshManager {
 					});
 				}, cancel);
 			var scan = ImportWorkflow.scanNow(source,Std.string(record.type));
+			scan = filterRemovedSourceRoots(scan,source,record);
 			if (scan == null || scan.rootScanTruncated == true || scan.packageScanTruncated == true)
 				throw "Import rescan was incomplete; installed content is unchanged.";
 			for (field in ["rootScanDiagnostics","packageScanDiagnostics"]) {
@@ -2678,7 +2807,8 @@ class ImportRefreshManager {
 					priorRecord = Reflect.field(priorManifest.revision,"importRecord");
 				}
 				ImportWorkScheduler.cooperate();
-				var conflicts = ImportRefreshTransaction.recover(install,Path.join([cache,"state"]),owner);
+				var ownerLeased = priorRecord != null && runtimeOwnersBusy(familyOwnerRootsForRecord(priorRecord,ownerRootsForRecord(priorRecord)));
+				var conflicts = ownerLeased ? [] : ImportRefreshTransaction.recover(install,Path.join([cache,"state"]),owner);
 				if (conflicts.length > 0) {
 					ImportWorkScheduler.cooperate();
 					recoveryPaths = ImportRefreshTransaction.recoveryTargetPaths(install,Path.join([cache,"state"]),owner);
@@ -2731,7 +2861,7 @@ class ImportRefreshManager {
 						throw "Import receipt is newer or unrecognized; its files were preserved.";
 					if (assessment.status == ImportRevision.OUTDATED) stale = true;
 				}
-				if (!stale && dependencyMetadata.complete) {
+				if (!stale && dependencyMetadata.complete && !ownerLeased) {
 					var priorAnalysisTransaction:String = manifest.transactionId;
 					manifest = ChartDifficultyRefresh.refresh(install,Path.join([cache,"state"]),owner,cast manifest,function(payload) {
 						mutex.acquire(); measurements.update(payload,ImportWorkScheduler.workStamp()); mutex.release();
@@ -2959,8 +3089,11 @@ class ImportRefreshManager {
 
 	static function startNext():Void {
 		mutex.acquire();
-		if (active || inspectionPending || queue.length == 0) { mutex.release(); return; }
-		var record = queue.shift();
+		if (removalToken != "" || active || inspectionPending || queue.length == 0) { mutex.release(); return; }
+		var index = 0;
+		while (index < queue.length && runtimeOwnersBusyLocked(queuedRuntimeRoots(queue[index]))) index++;
+		if (index >= queue.length) { mutex.release(); return; }
+		var record = queue.splice(index,1)[0];
 		var token = "refresh:" + Std.string(record.id);
 		var owner = "retained-import:" + Std.string(record.id);
 		reserveLocked(token, owner, ownerRootsForRecord(record), null, false);

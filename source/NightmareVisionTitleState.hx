@@ -190,7 +190,7 @@ class NightmareVisionTitleState extends NightmareVisionMusicBeatState {
 
 		if (FlxG.keys.justPressed.F) FlxG.fullscreen = !FlxG.fullscreen;
 
-		var pressedEnter = FlxG.keys.justPressed.ENTER || controls.ACCEPT;
+		var pressedEnter = FlxG.keys.justPressed.ENTER || sourceControl("ACCEPT");
 		var gamepad = FlxG.gamepads.lastActive;
 		if (gamepad != null && gamepad.justPressed.START) pressedEnter = true;
 
@@ -212,8 +212,8 @@ class NightmareVisionTitleState extends NightmareVisionMusicBeatState {
 
 		if (pressedEnter && !skippedIntro) skipIntro();
 		if (swagShader != null) {
-			if (controls.UI_LEFT) swagShader.hue -= elapsed * 0.1;
-			if (controls.UI_RIGHT) swagShader.hue += elapsed * 0.1;
+			if (sourceControl("UI_LEFT")) swagShader.hue -= elapsed * 0.1;
+			if (sourceControl("UI_RIGHT")) swagShader.hue += elapsed * 0.1;
 		}
 
 		super.update(elapsed);

@@ -1,3 +1,4 @@
+from menu_async_fixture_support import add_menu_async_contracts
 """Connected typed source icon aliases, ownership, phase and interpreter factories."""
 import os
 from pathlib import Path
@@ -92,6 +93,7 @@ class Main {static function ok(v:Bool,m:String)if(!v)throw m;static function fac
   self.assertIn("Reflect.setField(proxy, '__sourceOwnerRoot', function() return owner)",paths)
 
  def run_haxe(self,files):
+  files=add_menu_async_contracts(files)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    for name,content in files.items():
     p=Path(tmp)/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content)

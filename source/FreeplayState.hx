@@ -602,8 +602,7 @@ class FreeplayState extends MusicBeatState {
 			if (importedCaller != null) {
 				if (importedCaller.returnKind == 'package-picker') {
 					FreeplayState.currentSongList = [];
-					CodenameModRuntime.clearActiveOwner();
-					LoadingState.loadAndSwitchState(new CodenameImportedModsState());
+					ImportedMenuEntry.leaveToPicker();
 					return;
 				} else {
 					var target = CodenameModRuntime.stateInit(importedCaller.ownerRoot,
@@ -913,8 +912,7 @@ class FreeplayState extends MusicBeatState {
 		if (importedCaller != null) {
 			if (importedCaller.returnKind == 'package-picker') {
 				FreeplayState.currentSongList = [];
-				CodenameModRuntime.clearActiveOwner();
-				LoadingState.loadAndSwitchState(new CodenameImportedModsState());
+				ImportedMenuEntry.leaveToPicker();
 				return;
 			}
 			var target = CodenameModRuntime.stateInit(importedCaller.ownerRoot,
@@ -1784,8 +1782,7 @@ class FreeplayState extends MusicBeatState {
 					if (importedCaller != null) {
 						if (importedCaller.returnKind == 'package-picker') {
 							FreeplayState.currentSongList = [];
-							CodenameModRuntime.clearActiveOwner();
-							LoadingState.loadAndSwitchState(new CodenameImportedModsState());
+							ImportedMenuEntry.leaveToPicker();
 							return;
 						} else {
 							var target = CodenameModRuntime.stateInit(importedCaller.ownerRoot,
@@ -2045,7 +2042,7 @@ class FreeplayState extends MusicBeatState {
 		var menu = new LibraryActionsSubState(key, favoritesOnly, function(value) favoritesOnly = value,
 			owner, categoryFilters, function(value) categoryFilters = value.copy(), denseBrowser, curCategory, denseBrowser && directOwnerRoot == '' ? function(value:String) {
 			curCategory = value; libraryViewId = ''; closeSubState(); reloadAfterImport();
-		} : null);
+		} : null, songMatches(curSelected) ? sourceCaption(songs[curSelected]) : '');
 		menu.cameras = [camUI];
 		openSubState(menu);
 	}

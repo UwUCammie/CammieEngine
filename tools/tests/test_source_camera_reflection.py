@@ -1,3 +1,4 @@
+from menu_async_fixture_support import install_menu_async_contracts
 """Keep the Psych Iris FlxG/camera facade live through reflective reads and writes."""
 from pathlib import Path
 import os
@@ -134,6 +135,7 @@ class SourceCameraReflectionTest(unittest.TestCase):
             env["PATH"] = os.pathsep.join(
                 [str(ROOT / ".tools/haxe"), str(ROOT / ".tools/neko"), env.get("PATH", "")]
             )
+            install_menu_async_contracts(work, native_flixel=True)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-D", "flixel", "-cp", str(ROOT / "source"),
                  "-cp", str(ROOT / ".haxelib/hscript-iris/1,1,3"), "-cp", str(work), *FLIXEL_ARGS,

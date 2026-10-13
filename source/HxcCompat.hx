@@ -1038,7 +1038,7 @@ class HxcCompat {
 		var switchVariables = collectMatches(clean,
 			'\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\)', 1);
 		var switched = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(', 'm').match(clean);
-		var directSafeSwitch = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*(?:ScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*(?:["\\\'][A-Za-z_][A-Za-z0-9_]*["\\\']|[A-Za-z_][A-Za-z0-9_.]*)\\s*\\)|new\\s+(?:MainMenuState|StoryMenuState|FreeplayState|TitleState|CreditsState|SaveDataState)\\b|\\(\\s*\\)\\s*->\\s*new\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\()', 'm').match(clean);
+		var directSafeSwitch = new EReg('\\bFlxG\\s*\\.\\s*switchState\\s*\\(\\s*(?:ScriptedMusicBeat(?:State|SubState)\\s*\\.\\s*init\\s*\\(\\s*(?:["\\\'][A-Za-z_][A-Za-z0-9_]*["\\\']|[A-Za-z_][A-Za-z0-9_.]*)\\s*\\)|new\\s+(?:MainMenuState|StoryMenuState|FreeplayState|TitleState|CreditsState|SaveDataState|PlayState)\\b|\\(\\s*\\)\\s*->\\s*new\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\()', 'm').match(clean);
 		var unsafeSwitch = switched && !directSafeSwitch;
 		if (unsafeSwitch && switchVariables.length > 0) {
 			unsafeSwitch = false;

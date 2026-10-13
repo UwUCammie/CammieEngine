@@ -716,7 +716,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 		if (PlayState.isStoryMode)
 			LoadingState.loadAndSwitchState(new StoryMenuState());
 		else
-			LoadingState.loadAndSwitchState(new FreeplayState());
+			ImportedMenuEntry.returnToFreeplay();
 		FlxG.sound.playMusic(Paths.music('freakyMenu'));
 
 		// Psych's false confirmation is deliberately after the menu transition
@@ -770,7 +770,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 			if (PlayState.isStoryMode)
 				LoadingState.loadAndSwitchState(new StoryMenuState());
 			else
-				LoadingState.loadAndSwitchState(new FreeplayState());
+				ImportedMenuEntry.returnToFreeplay();
 			return;
 		}
 

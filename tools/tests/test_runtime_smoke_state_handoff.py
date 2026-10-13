@@ -41,7 +41,11 @@ class RuntimeSmokeStateHandoffTest(unittest.TestCase):
         self.assertIn("if (RuntimeSmokeHarness.enabled())", imported_update)
 
         fixture = """class FlxG {
-  public static var keys:Dynamic = {justPressed:{F10:false}};
+  public static var keys:Dynamic = {justPressed:{F10:false,ENTER:false}};
+}
+class ImportedMenuEntry {
+  public static var departing:Bool=false;
+  public static function openDefaultFreeplay(owner:String):Void {}
 }
 class RuntimeSmokeHarness {
   public static var active:Bool = false;
@@ -80,6 +84,7 @@ class SmokeEntryState {
 class Main extends MusicBeatState {
   public var runtime:FakeRuntime;
   public var ownerRoot:String = "owner";
+  public var diagnosticPanel:Dynamic=null;
 """ + imported_update + """
   static function check(ok:Bool, reason:String):Void if (!ok) throw reason;
   static function main():Void {
@@ -107,7 +112,7 @@ class Main extends MusicBeatState {
     RuntimeSmokeHarness.active = false;
     imported.update(0.016);
     check(RuntimeSmokeHarness.ticks == 3, "ordinary imported state ticked smoke harness");
-    FlxG.keys = {justPressed:{F10:true}};
+    FlxG.keys = {justPressed:{F10:true,ENTER:false}};
     RuntimeSmokeHarness.active = true;
     imported.update(0.016);
     check(CodenameModRuntime.exits == 1 && RuntimeSmokeHarness.ticks == 3,

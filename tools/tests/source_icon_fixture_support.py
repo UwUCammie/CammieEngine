@@ -1,3 +1,4 @@
+from menu_async_fixture_support import add_menu_async_contracts
 """Owner-local icon dependencies and actual pinned animation methods."""
 from pathlib import Path
 import re
@@ -80,4 +81,4 @@ class Main {
  }
 }
 '''
-    return files
+    return add_menu_async_contracts(files)

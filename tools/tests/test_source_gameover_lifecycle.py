@@ -272,6 +272,7 @@ class HxcCompatRuntime { public static function clearGameOverCharacter(value:Dyn
 class Paths { public static function music(key:String):String return key; }
 class StoryMenuState { public function new() {} }
 class FreeplayState { public function new() {} }
+class ImportedMenuEntry {public static function returnToFreeplay():Void LoadingState.loadAndSwitchState(new FreeplayState());}
 class LoadingState {
  public static function loadAndSwitchState(value:Dynamic):Void
   Trace.add("load:"+(Std.isOfType(value,StoryMenuState) ? "story" : "freeplay"));

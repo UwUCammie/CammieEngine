@@ -22,6 +22,7 @@ private typedef HxcFreeplayScope = {
 	var generatedHscript:String;
 	var parked:Bool;
 	var retired:Bool;
+	@:optional var lease:String;
 }
 
 /**
@@ -61,6 +62,15 @@ class HxcFreeplayRuntime {
 	}
 
 	/** Resolve a sibling module only inside the imported state caller's root. */
+	/** Live and parked interpreters still own callbacks/resources until retired. */
+	public static function activeOwnerRoots():Array<String> {
+		var roots:Array<String> = [];
+		for (runtime in activeRuntimes) if (runtime != null && runtime.owner != null)
+			for (scope in runtime.scopes) if (scope != null && scope.interp != null && !scope.retired
+				&& scope.root != '' && !roots.contains(scope.root)) roots.push(scope.root);
+		return roots;
+	}
+
 	public static function moduleProxyForRoot(root:String, name:Dynamic):Dynamic {
 		var selectedRoot = HxcFreeplayRouting.normalizeRoot(root);
 		if (selectedRoot == '' || name == null)
@@ -146,7 +156,7 @@ class HxcFreeplayRuntime {
 		Ready scopes remain parked until refresh adopts their committed routing. */
 	public function setRootReadiness(ready:String->Bool):Void {
 		rootReady = ready;
-		for (scope in scopes) if (!rootAvailable(scope.root)) scope.parked = true;
+		for (scope in scopes) if (!rootAvailable(scope.root)) park(scope, true);
 	}
 	function rootAvailable(root:String):Bool return rootReady == null || rootReady(root);
 	function rootRetained(root:String):Bool {
@@ -161,10 +171,20 @@ class HxcFreeplayRuntime {
 		if (scope == null || scope.retired || scope.parked || !rootAvailable(scope.root)) return false;
 		return true;
 	}
+	function park(scope:HxcFreeplayScope, value:Bool):Void {
+		if (scope == null) return;
+		scope.parked = value;
+		if (Std.isOfType(scope.interp, CodenameScriptInterp)) (cast scope.interp:CodenameScriptInterp).setPaused(value);
+	}
 	function retire(scope:HxcFreeplayScope):Void {
 		if (scope == null) return;
-		scope.parked = true;scope.retired = true;
-		if (scope.interp != null) scope.interp.variables.clear();
+		park(scope, true);scope.retired = true;
+		if (Std.isOfType(scope.interp, CodenameScriptInterp)) (cast scope.interp:CodenameScriptInterp).release();
+		else if (scope.interp != null) scope.interp.variables.clear();
+		#if sys
+		if (scope.lease != null && scope.lease != '') ImportRefreshManager.releaseRuntimeOwnerLease(scope.lease);
+		#end
+		scope.lease = '';
 		scope.interp = null;
 	}
 	function load():Void {
@@ -200,7 +220,7 @@ class HxcFreeplayRuntime {
 		// A pending owner may have partially published manifests. Keep its last
 		// routing and interpreter parked without discovering or reading its files.
 		for (scope in priorScopes) if (!rootAvailable(scope.root) && rootRetained(scope.root)) {
-			scope.parked = true;
+			park(scope, true);
 			rootSongs.set(scope.root,priorSongs.exists(scope.root)?priorSongs.get(scope.root).copy():[]);
 			rootGlobal.set(scope.root,priorGlobal.exists(scope.root)&&priorGlobal.get(scope.root));
 			for (song in priorPriority.keys()) {
@@ -210,12 +230,12 @@ class HxcFreeplayRuntime {
 		}
 		if (loaded) {
 			for (scope in scopes) {
-				if (!rootRetained(scope.root)) scope.retired = true;
-				if (scope.retired || !rootAvailable(scope.root) || roots.indexOf(scope.root) < 0) scope.parked = true;
+				if (!rootRetained(scope.root)) retire(scope);
+				if (scope.retired || !rootAvailable(scope.root) || roots.indexOf(scope.root) < 0) park(scope, true);
 				else {
 					scope.global = rootGlobal.exists(scope.root) && rootGlobal.get(scope.root);
 					scope.associatedSongs = rootSongs.exists(scope.root) ? rootSongs.get(scope.root).copy() : [];
-					scope.parked = false;
+					park(scope, false);
 				}
 			}
 			// Retired/parked scopes stay in the name map to block unsafe fallback;
@@ -422,9 +442,14 @@ class HxcFreeplayRuntime {
 		if (scope == null || scope.interp != null || !scopeReady(scope))
 			return;
 		try {
+			#if sys
+			if (StringTools.startsWith(scope.root, 'assets/imported_mods/')) {
+				scope.lease = ImportRefreshManager.tryAcquireRuntimeOwnerLease(ImportedMenuEntry.requiredOwnerRoots(scope.root));
+				if (scope.lease == '') return;
+			}
+			#end
 			var generated = scope.generatedHscript;
-			if (generated == null || generated.trim() == '')
-				return;
+			if (generated == null || generated.trim() == '') {retire(scope); return;}
 			var profileModule = RuntimeSmokeHarness.enabled();
 			var profileMark = profileModule ? haxe.Timer.stamp() : 0.0;
 			var profileName = HxcScriptDiscovery.stem(path);
@@ -435,7 +460,11 @@ class HxcFreeplayRuntime {
 				RuntimeSmokeHarness.profileSection('fp-hxc-parse:' + profileName, now - profileMark);
 				profileMark = now;
 			}
-			var interp = PluginManager.createSimpleInterp();
+			var scoped = new CodenameScriptInterp(new CodenamePaths(scope.root));
+			var interp = PluginManager.addVarsToInterp(scoped);
+			scoped.bindScriptObject(owner);
+			interp.variables.set('FlxTween', scoped.tweenFacade());
+			scope.interp = interp;
 			seedInterpreter(interp, scope);
 			interp.execute(program);
 			if (profileModule)
@@ -444,6 +473,7 @@ class HxcFreeplayRuntime {
 			scope.interp = interp;
 		} catch (error:Dynamic) {
 			trace('[hxc-freeplay-load-error] ' + path + ': ' + Std.string(error));
+			retire(scope);
 			scopes.remove(scope);
 		}
 	}
@@ -458,8 +488,15 @@ class HxcFreeplayRuntime {
 		// root before falling back to native engine assets.
 		interp.variables.set('hxcAssetRoot', scope == null ? '' : scope.root);
 		interp.variables.set('Paths', HxcStateAssetScope.paths(scope == null ? '' : scope.root));
-		interp.variables.set('hxcFreeplayPlaySound', HxcCompatRuntime.freeplayPlaySound);
-		interp.variables.set('hxcFreeplayPlayMusic', HxcCompatRuntime.freeplayPlayMusic);
+		interp.variables.set('hxcFreeplayPlaySound', function(path:Dynamic, ?volume:Float = 1):Dynamic {
+			var sound = HxcCompatRuntime.freeplayPlaySound(path, volume);
+			return Std.isOfType(interp, CodenameScriptInterp) ? (cast interp:CodenameScriptInterp).ownSound(sound) : sound;
+		});
+		interp.variables.set('hxcFreeplayPlayMusic', function(path:Dynamic, ?options:Dynamic):Dynamic {
+			var result = HxcCompatRuntime.freeplayPlayMusic(path, options);
+			if (Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).ownSound(flixel.FlxG.sound.music);
+			return result;
+		});
 		interp.variables.set('FreeplayState', FreeplayState);
 		interp.variables.set('PlayState', PlayState);
 		interp.variables.set('hxcCoalesce', HxcCompatRuntime.hxcCoalesce);

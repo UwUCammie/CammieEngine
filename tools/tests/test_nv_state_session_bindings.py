@@ -221,6 +221,12 @@ import StateSessionFixtureTypes.NightmareVisionPluginHost;
 import StateSessionFixtureTypes.NightmareVisionSpriteRegistry;
 import StateSessionFixtureTypes.PlayState;
 import StateSessionFixtureTypes.FreeplayState;
+import StateSessionFixtureTypes.ModifierState;
+import StateSessionFixtureTypes.VictoryLoopState;
+import StateSessionFixtureTypes.Song;
+import StateSessionFixtureTypes.ImportedMenuEntry;
+import StateSessionFixtureTypes.LoadingState;
+import StateSessionFixtureTypes.ImportedModDiscovery;
 import StateSessionFixtureTypes.NightmareVisionHighscore;
 import StateSessionFixtureTypes.NightmareVisionHighscoreBindings;
 import StateSessionFixtureTypes.NightmareVisionMainMetadata;
@@ -232,6 +238,7 @@ import StateSessionFixtureTypes.NightmareVisionBootstrapServices;
 import StateSessionFixtureTypes.CodenameOwnerSaveData;
 
 class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
+ public var importedMenuEntry:Bool = false;
  public static var active(default, null):NightmareVisionStateSession;
  public final mods:OwnerMods;
  public final paths:OwnerPaths;
@@ -434,6 +441,7 @@ class ImportedFreeplayCaller {
  public static var lastPackage:String;
  public static var captures:Int = 0;
  public static function capturePackage(root:String):Void {lastPackage=root;captures++;}
+ public static function ownerForFreeplay(root:String):String return lastPackage;
 }
 
 class NightmareVisionScriptBindings {
@@ -472,6 +480,7 @@ class NightmareVisionUnportedState extends FlxState {
  public function new(name:String, session:Dynamic) super('Unported:' + name);
 }
 class PlayState extends FlxState {
+ public static var SONG:Dynamic;
  public static var nightmareVisionActiveMods:OwnerMods;
  public static var nightmareVisionActivePrefs:OwnerPrefs;
  public static var nightmareVisionActiveDifficulty:OwnerDifficulty;
@@ -481,6 +490,12 @@ class PlayState extends FlxState {
  public static function activeNightmareVisionInputScope(owner:Dynamic):Dynamic return null;
  __PLAY_ADOPT__
 }
+class Song {public static function storageFolder(song:Dynamic):String return "song";}
+class LoadingState {public static function loadAndSwitchState(state:FlxState):Void flixel.FlxG.switchState(function() return state);}
+class ImportedModDiscovery {public static function ownerForSong(song:String,base:String):String return "";}
+class ImportedMenuEntry {public static function gameplayUnavailableReason(owner:String,song:String):String return ""; public static function loadOwnedChart(r:String,j:String,f:String):Dynamic return null;public static function openDefaultFreeplay(r:String):Void {} }
+class ModifierState extends FlxState {public function new() super('ModifierState');}
+class VictoryLoopState extends FlxState {public function new() super('VictoryLoopState');}
 class FreeplayState extends FlxState { public function new() super('FreeplayState'); }
 class ExternalState extends FlxState { public function new() super('ExternalState'); }
 class NightmareVisionScriptedState extends NightmareVisionMusicBeatState {

@@ -24,9 +24,9 @@ class NightmareVisionFlashingState extends NightmareVisionMusicBeatState {
 		warnText.screenCenter(FlxAxes.Y); add(warnText);
 	}
 	public override function update(elapsed:Float):Void {
-		if (!session.flashingLeftState && (controls.ACCEPT || controls.BACK)) {
+		if (!session.flashingLeftState && (sourceControl("ACCEPT") || sourceControl("BACK"))) {
 			session.flashingLeftState = true; session.setTransSkip();
-			var back:Bool = controls.BACK;
+			var back:Bool = sourceControl("BACK");
 			session.prefs.view.flashing = back; session.prefs.flush();
 			var save = new CodenameOwnerSaveData(session.paths.root);
 			save.setField('flashing', back); save.flush();

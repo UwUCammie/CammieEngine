@@ -22,6 +22,7 @@ class CodenameImportedModsState extends MusicBeatState {
 
 	override function create():Void {
 		super.create();
+		ImportedMenuEntry.release();
 		FlxG.camera.bgColor = FlxColor.fromRGB(12, 12, 18);
 		heading = new FlxText(40, 28, FlxG.width - 80, 'Imported Mods', 34);
 		heading.setFormat(null, 34, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
@@ -45,7 +46,7 @@ class CodenameImportedModsState extends MusicBeatState {
 		details.fieldHeight = 54;
 		add(details);
 		notice = new FlxText(40, FlxG.height - 32, FlxG.width - 80,
-			'Up/Down: choose package   Enter: open package   Backspace: native menu', 15);
+			'Up/Down: choose package   Enter: open package   F: default Freeplay   Delete: uninstall   Backspace: native menu', 15);
 		notice.setFormat(null, 15, 0xFFA0A0A0, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		add(notice);
 		syncImportAvailability();
@@ -114,6 +115,21 @@ class CodenameImportedModsState extends MusicBeatState {
 			LoadingState.loadAndSwitchState(new MainMenuState());
 			return;
 		}
+		if (FlxG.keys.justPressed.F && entries.length > 0) {
+			var item = entries[selected];
+			if (FreeplaySongAvailability.ownerReadiness(importAvailability, item.root).ready)
+				try ImportedMenuEntry.openDefaultFreeplay(item.root) catch (error:Dynamic) {
+					diagnostics = [Std.string(error)]; refreshRows();
+				}
+			return;
+		}
+		if (FlxG.keys.justPressed.DELETE && entries.length > 0) {
+			var owner = entries[selected].root;
+			var removal = new LibraryRemovalSubState(owner, function() {refreshCatalog(); refreshRows();}, entries[selected].title);
+			removal.cameras = [FlxG.camera];
+			openSubState(removal);
+			return;
+		}
 		if ((controls.ACCEPT || FlxG.keys.justPressed.ENTER) && entries.length > 0)
 			launchSelected();
 	}
@@ -164,6 +180,29 @@ class CodenameImportedModsState extends MusicBeatState {
 		var item = entries[selected];
 		var readiness = FreeplaySongAvailability.ownerReadiness(importAvailability, item.root);
 		if (!readiness.ready) {details.text = readiness.reason; return;}
+		if (item.menuDiagnostic != null && item.menuDiagnostic != '') {
+			details.text = item.menuDiagnostic + '\nPress F to open this package in default Freeplay.';
+			return;
+		}
+		if (StringTools.startsWith(item.launchState, 'psych:')) {
+			try ImportedMenuEntry.openPsych(item.root) catch (error:Dynamic) {
+				ImportedMenuEntry.release();
+				diagnostics = ['[imported-menu-entry] ' + item.root + ': ' + Std.string(error),
+					'Press F to open the package in default Freeplay.'];
+				refreshRows();
+			}
+			return;
+		}
+		if (StringTools.startsWith(item.launchState, 'nv:')) {
+			try ImportedMenuEntry.openNightmareVision(item.root, item.sourceDirectory, item.launchState.substr(3))
+			catch (error:Dynamic) {
+				ImportedMenuEntry.release();
+				diagnostics = ['[imported-menu-entry] ' + item.root + ': ' + Std.string(error),
+					'Press F to open the package in default Freeplay.'];
+				refreshRows();
+			}
+			return;
+		}
 		if (item.launchState != '') {
 			if (!CodenameModRuntime.activateOwner(item.root)) {
 				diagnostics = CodenameModRuntime.diagnostics();
@@ -190,9 +229,8 @@ class CodenameImportedModsState extends MusicBeatState {
 			refreshRows();
 			return;
 		}
-		CodenameModRuntime.clearActiveOwner();
-		FreeplayState.currentSongList = [];
-		ImportedFreeplayCaller.capturePackage(item.root);
-		LoadingState.loadAndSwitchState(new FreeplayState());
+		try ImportedMenuEntry.openDefaultFreeplay(item.root) catch (error:Dynamic) {
+			diagnostics = [Std.string(error)]; refreshRows();
+		}
 	}
 }

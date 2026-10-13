@@ -28,6 +28,7 @@ class Main {
  static var bumps=0;
  static var steps=0;
  static var expanded:Array<String>=[];
+ static function runtimeOwnersBusyLocked(a:Array<String>):Bool {if(!mutex.held)throw "unlocked owner lease check";return false;}
  static function bumpAvailabilityLocked(){if(!mutex.held)throw "unlocked mutation";bumps++;}
  static function ownerRootForNamespace(s:String):String return "assets/imported_mods/"+s;
  static function expandDependentOwnerRoots(a:Array<String>):Array<String> {

@@ -233,6 +233,10 @@ class CodenameScriptInterp extends Interp {
 			}
 		}
 		var result = super.fcall(object, field, args);
+		trackReturnedTween(result);
+		if (object != null && object == scriptObject && result != null && args != null
+			&& (field == 'add' || field == 'insert'))
+			claimSceneObject(args[field == 'insert' ? 1 : 0]);
 		if (Std.isOfType(object, EventDispatcher) && args != null && args.length >= 2
 			&& (field == 'addEventListener' || field == 'removeEventListener')) {
 			var dispatcher:EventDispatcher = cast object;
@@ -299,8 +303,10 @@ class CodenameScriptInterp extends Interp {
 	public var ownerStateFactory:Null<String->Dynamic>;
 	public final stageBindings:CodenameStageBindings = new CodenameStageBindings();
 	public final flxG:CodenameFlxGFacade;
+	public var resourcesReleased(default, null):Bool = false;
 	var ownedTweens:Array<FlxTween> = [];
 	var ownedTimers:Array<FlxTimer> = [];
+	var ownedSounds:Array<flixel.sound.FlxSound> = [];
 	/** Display objects and listener registrations created by this interpreter.
 		Globals can attach overlays directly to Main.instance, so they need
 		cleanup even if their authored destroy() fails partway through. */
@@ -327,6 +333,7 @@ class CodenameScriptInterp extends Interp {
 	var paused:Bool = false;
 	var pausedTweens:Map<FlxTween, Bool> = new Map();
 	var pausedTimers:Map<FlxTimer, Bool> = new Map();
+	var pausedSounds:Map<flixel.sound.FlxSound, Bool> = new Map();
 	var liveGlobals:Map<String, {read:Void->Dynamic, write:Dynamic->Void}> = [];
 	/** Explicit state properties stay live without exposing the entire native state
 	 * as an interpreter parent or copying mutable values into each script. */
@@ -922,7 +929,13 @@ static function shaderFloatLength(parameterType:ShaderParameterType):Int {
 		});
 		return FlxTween.tween(mirror, properties, duration, adapted);
 	}
-	function ownTween(tween:FlxTween):FlxTween {
+	/** Lowered compatibility helpers can return native tweens without the facade. */
+	public function trackReturnedTween(result:Dynamic):Dynamic {
+		if (Std.isOfType(result, FlxTween)) ownTween(cast result);
+		return result;
+	}
+	public function ownTween(tween:FlxTween):FlxTween {
+		if (tween == null || ownedTweens.indexOf(tween) >= 0) return tween;
 		ownedTweens.push(tween);
 		if (paused) {
 			pausedTweens.set(tween, tween.active);
@@ -943,14 +956,29 @@ static function shaderFloatLength(parameterType:ShaderParameterType):Int {
 				pausedTimers.set(timer, timer.active);
 				timer.active = false;
 			}
+			for (sound in ownedSounds) if (sound != null) {
+				pausedSounds.set(sound, sound.playing);
+				if (sound.playing) sound.pause();
+			}
 		} else {
 			for (tween in pausedTweens.keys()) tween.active = pausedTweens.get(tween) && !tween.finished;
 			for (timer in pausedTimers.keys()) timer.active = pausedTimers.get(timer) && !timer.finished;
+			for (sound in pausedSounds.keys()) if (pausedSounds.get(sound)) sound.resume();
+			pausedSounds.clear();
 			pausedTweens.clear();
 			pausedTimers.clear();
 		}
 	}
+	/** Shared async ownership for source menus and native Freeplay modules. */
+	public function ownTimer(timer:FlxTimer):FlxTimer {if (ownedTimers.indexOf(timer) < 0) ownedTimers.push(timer); return timer;}
+	public function ownSound(sound:Dynamic):Dynamic {
+		if (Std.isOfType(sound, flixel.sound.FlxSound) && ownedSounds.indexOf(cast sound) < 0)
+			ownedSounds.push(cast sound);
+		return sound;
+	}
+
 	public function release():Void {
+		resourcesReleased = true;
 		if (scriptClassScope != null) {
 			scriptClassScope.release();
 			scriptClassScope = null;
@@ -986,9 +1014,23 @@ static function shaderFloatLength(parameterType:ShaderParameterType):Int {
 		for (timer in ownedTimers) if (timer != null) timer.cancel();
 		ownedTweens.resize(0);
 		ownedTimers.resize(0);
+		for (sound in ownedSounds) if (sound != null) {
+			if (sound.fadeTween != null) sound.fadeTween.cancel();
+			sound.onComplete = null;
+			try {
+				sound.stop();
+				if (FlxG.sound != null) {
+					if (FlxG.sound.music == sound) FlxG.sound.music = null;
+					if (FlxG.sound.list != null) FlxG.sound.list.remove(sound, true);
+				}
+				sound.destroy();
+			} catch (_:Dynamic) {}
+		}
+		ownedSounds.resize(0);
 		for (owned in ownedCameraFilters.copy())
 			try removeCameraShader(owned.camera, owned.shader) catch (_:Dynamic) {}
 		ownedCameraFilters.resize(0);
+		pausedSounds.clear();
 		pausedTweens.clear();
 		pausedTimers.clear();
 		paused = false;

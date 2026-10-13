@@ -49,6 +49,28 @@ typedef HxcStateFactoryLookup = {
 */
 class HxcStateFactory {
 	public static var lastDiagnostic(default, null):String = '';
+	static var menuOwner:String = '';
+	static var menuEntries:Map<String, HxcStateFactoryEntry> = new Map();
+
+	public static function installMenuSession(root:String, sources:Array<String>):Void {
+		clearMenuSession();
+		#if sys
+		for (path in sources) {
+			var result = HxcCompat.analyze(File.getContent(path), path);
+			var name = Path.withoutExtension(Path.withoutDirectory(path));
+			menuEntries.set(name, {name:name, kind:'state', path:path, root:root,
+				relativePath:path.substr(root.length + 1), generatedHscript:result.generatedHscript,
+				menuSpec:result.menuSpec, diagnostics:cast result.diagnostics});
+		}
+		menuOwner = root;
+		#end
+	}
+	public static function clearMenuSession():Void {menuOwner = ''; menuEntries.clear();}
+	public static function menuSessionRoot():String return menuOwner;
+
+	static function materialize(entry:HxcStateFactoryEntry):Dynamic {
+		return entry.menuSpec != null ? new HxcImportedMenuState(entry) : new HxcImportedState(entry);
+	}
 
 	public static function stateInit(root:String, name:Dynamic):Dynamic {
 		return init(root, name, 'state');
@@ -89,6 +111,18 @@ class HxcStateFactory {
 		var requested = name == null ? '' : StringTools.trim(Std.string(name));
 		if (requested == '')
 			return fail('unsupported-hxc-state-factory', 'HXC ' + kind + ' factory received an empty state name.');
+
+		if (kind == 'state' && root == menuOwner && menuEntries.exists(requested))
+			return materialize(menuEntries.get(requested));
+		if (kind == 'state' && root == menuOwner && requested == 'PlayState') {
+			if (PlayState.SONG == null || ImportedModDiscovery.ownerForSong(Song.storageFolder(PlayState.SONG), 'assets/data') != root)
+				throw '[imported-menu-chart] Gameplay must use a chart owned by the selected package';
+			return new PlayState();
+		}
+		if (kind == 'state' && root == menuOwner && requested == 'FreeplayState') {
+			ImportedFreeplayCaller.capturePackage(root);
+			return new FreeplayState();
+		}
 
 		// Keep the old, audited native aliases intact even when a manifest happens
 		// to contain a same-named file. Native state identity always wins.
@@ -302,6 +336,15 @@ class HxcStateFactory {
 
 	/** Switch with the caller's manifest namespace enforced. */
 	public static function switchStateScoped(root:String, target:Dynamic):Bool {
+		if (target != null && Std.isOfType(target, PlayState)) {
+			if (root != menuOwner || menuOwner == '' || PlayState.SONG == null
+				|| ImportedModDiscovery.ownerForSong(Song.storageFolder(PlayState.SONG), 'assets/data') != root)
+				return fail('unsupported-hxc-gameplay-switch', 'Gameplay chart must belong to the active imported menu owner.');
+			var unavailable = ImportedMenuEntry.gameplayUnavailableReason(root, Song.storageFolder(PlayState.SONG));
+			if (unavailable != '') return fail('unavailable-hxc-gameplay-switch', unavailable);
+			LoadingState.loadAndSwitchState(cast target);
+			return true;
+		}
 		if (target != null && (Std.isOfType(target, HxcImportedMenuState)
 			|| Std.isOfType(target, HxcImportedState)
 			|| Std.isOfType(target, HxcImportedSubState))) {
@@ -359,6 +402,10 @@ class HxcStateFactory {
 	public static function back(current:Dynamic):Bool {
 		if (current != null && Std.isOfType(current, HxcImportedSubState)) {
 			(cast current:HxcImportedSubState).close();
+			return true;
+		}
+		if (menuOwner != '') {
+			ImportedMenuEntry.leaveToPicker();
 			return true;
 		}
 		var home = HxcCompatRuntime.stateInit('MainMenuState');

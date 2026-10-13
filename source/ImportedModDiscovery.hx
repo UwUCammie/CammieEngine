@@ -15,6 +15,8 @@ typedef ImportedModPackage = {
 	var engine:String;
 	var launchState:String;
 	var songCount:Int;
+	@:optional var sourceDirectory:String;
+	@:optional var menuDiagnostic:String;
 }
 
 typedef ImportedModDiscoveryResult = {
@@ -31,6 +33,7 @@ private typedef ImportedModDiscoveryCandidate = {
 	var songCount:Int;
 	var songs:Map<String, Bool>;
 	var statePaths:Array<String>;
+	@:optional var sourceDirectory:String;
 }
 
 /** Build one package row per imported owner from small chart provenance files.
@@ -70,6 +73,7 @@ class ImportedModDiscovery {
 					var root = cleanOwnerRoot(fieldString(provenance, 'sourceOwner'));
 					if (engine == '' || root == '') continue;
 					var candidate = getOrCreate(candidates, root, engine);
+					candidate.sourceDirectory = fieldString(provenance, 'sourceModDirectory');
 					var modName = cleanTitle(fieldString(provenance, 'modName'));
 					var rank = titleRank(fieldString(provenance, 'nameSource'));
 					if (modName != '' && rank > candidate.titleRank) {
@@ -110,11 +114,24 @@ class ImportedModDiscovery {
 		for (candidate in candidates) {
 			candidate.statePaths.sort(Reflect.compare);
 			var launchState = '';
+			var menuDiagnostic = '';
 			if (candidate.engine == ImportEngine.CODENAME)
 				launchState = CodenameModEntryPoint.find(candidate.root, candidate.statePaths);
+			if (candidate.engine == ImportEngine.PSYCH) {
+				var plan = ImportedPsychMenuPlan.find(candidate.root);
+				launchState = plan.state == '' ? '' : 'psych:' + plan.state;
+				menuDiagnostic = plan.diagnostic;
+				if (plan.diagnostic != '') result.diagnostics.push(plan.diagnostic);
+			}
+			if (candidate.engine == ImportEngine.NIGHTMARE_VISION) {
+				var plan = ImportedNightmareMenuPlan.find(candidate.root, candidate.sourceDirectory);
+				launchState = plan.state == '' ? '' : 'nv:' + plan.state;
+				menuDiagnostic = plan.diagnostic;
+				if (plan.diagnostic != '') result.diagnostics.push(plan.diagnostic);
+			}
 			var title = candidate.title == '' ? humanizeRoot(candidate.root) : candidate.title;
 			result.packages.push({root:candidate.root, title:title, engine:candidate.engine,
-				launchState:launchState, songCount:candidate.songCount});
+				launchState:launchState, songCount:candidate.songCount, sourceDirectory:candidate.sourceDirectory, menuDiagnostic:menuDiagnostic});
 		}
 		result.packages.sort(function(a:ImportedModPackage, b:ImportedModPackage):Int {
 			var titleOrder = Reflect.compare(a.title.toLowerCase(), b.title.toLowerCase());

@@ -62,6 +62,7 @@ class MainMenuState extends MusicBeatState {
 	var importedModsHint:FlxText;
 	public static var version:String = 'v' + EngineBranding.version();
 	override function create() {
+		if (!Std.isOfType(this, HxcImportedMenuState)) ImportedMenuEntry.release();
 		RuntimeStartupProbe.mark('main_menu_enter');
 		#if windows
 		// Updating Discord Rich Presence
@@ -496,8 +497,10 @@ class MainMenuState extends MusicBeatState {
 			case HxcMenuSpec.ROUTE_STORY:
 				LoadingState.loadAndSwitchState(new StoryMenuState());
 			case HxcMenuSpec.ROUTE_FREEPLAY:
-				FreeplayState.openHostLibrary();
-				LoadingState.loadAndSwitchState(new FreeplayState());
+				if (!ImportedMenuEntry.openOwnedFreeplay(hxcOverlayRoot)) {
+					FreeplayState.openHostLibrary();
+					LoadingState.loadAndSwitchState(new FreeplayState());
+				}
 			case HxcMenuSpec.ROUTE_OPTIONS:
 				SaveDataState.prevPath = 'title';
 				LoadingState.loadAndSwitchState(new SaveDataState());

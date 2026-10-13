@@ -155,7 +155,7 @@ class ImportPackageFamilyCatalog {
 				members.push({directory:sourceMember.directory,
 					sourceRelative:sourceMember.sourceRelative, namespace:namespace});
 			}
-			if (members.length < 2) return null;
+			if (members.length < (hasRemovalExclusions(record) ? 1 : 2)) return null;
 			var coreProvider = validatedCoreProvider(snapshotRoot, record, structure);
 			var version = 2;
 			if (coreProvider != null) {
@@ -392,6 +392,22 @@ class ImportPackageFamilyCatalog {
 	 * Full-root captures prove the outer NMV installation from retained source
 	 * files. Captures beginning at content/ require persisted scanner evidence
 	 * from the original scan or direct NMV chart structure in the retained tree. */
+	static function hasRemovalExclusions(record:Dynamic):Bool {
+		var entries:Dynamic = record == null ? null : Reflect.field(record,"removedSourceRoots");
+		return Std.isOfType(entries,Array) && (cast entries:Array<Dynamic>).length > 0;
+	}
+	static function removedSourceRoot(record:Dynamic,relative:String):Bool {
+		var entries:Dynamic = Reflect.field(record,"removedSourceRoots");
+		if (entries == null) return false;
+		if (!Std.isOfType(entries,Array)) throw "Invalid removed source roots.";
+		for (entry in (cast entries:Array<Dynamic>)) {
+			var removed:Dynamic = Reflect.field(entry,"relative");
+			if (!Std.isOfType(removed,String) || removed == "" || Path.isAbsolute(removed)
+				|| Std.string(removed).indexOf("..") >= 0) throw "Invalid removed source path.";
+			if (relative == removed || relative + "/assets" == removed || StringTools.startsWith(relative,removed + "/")) return true;
+		}
+		return false;
+	}
 	static function discoverStructure(snapshotRoot:String, record:Dynamic):Null<ImportPackageFamilySourceStructure> {
 		if (record == null || !Std.isOfType(Reflect.field(record, "snapshotId"), String)
 			|| Reflect.field(record, "source") != "sources/" + Std.string(record.snapshotId) + "/content") return null;
@@ -486,6 +502,7 @@ class ImportPackageFamilyCatalog {
 						}
 						seen.set(folded, true);
 						var relative = containerRelative == "" ? name : containerRelative + "/" + name;
+						if (removedSourceRoot(record,relative)) continue;
 						if (!recordedDirectories.exists(relative.toLowerCase())) continue;
 						var child = safeChild(container, name);
 						if (child == null || !FileSystem.isDirectory(child)) continue;
@@ -511,7 +528,7 @@ class ImportPackageFamilyCatalog {
 						if (!sourceProven) continue;
 						members.push({directory:name, sourceRelative:relative, sourceRoot:child});
 					}
-					if (!invalidDirectory && members.length >= 2) {
+					if (!invalidDirectory && members.length >= (hasRemovalExclusions(record) ? 1 : 2)) {
 						members.sort(function(a, b) {
 							var folded = Reflect.compare(a.sourceRelative.toLowerCase(), b.sourceRelative.toLowerCase());
 							return folded != 0 ? folded : Reflect.compare(a.sourceRelative, b.sourceRelative);
@@ -588,7 +605,7 @@ class ImportPackageFamilyCatalog {
 		structure:Null<ImportPackageFamilySourceStructure>):Bool {
 		if (catalog == null || structure == null || catalog.version < 2
 			|| catalog.snapshotId != structure.snapshotId || catalog.containerRelative != structure.containerRelative
-			|| catalog.members == null || catalog.members.length < 2
+			|| catalog.members == null || catalog.members.length < 1
 			|| catalog.members.length > structure.members.length) return false;
 		for (member in catalog.members) {
 			var matched = false;

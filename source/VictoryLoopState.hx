@@ -155,7 +155,7 @@ class VictoryLoopState extends MusicBeatSubstate {
 				if (PlayState.isStoryMode)
 					LoadingState.loadAndSwitchState(new StoryMenuState());
 				else
-					LoadingState.loadAndSwitchState(new FreeplayState());
+					ImportedMenuEntry.returnToFreeplay();
 			}
 		}
 

@@ -21,7 +21,7 @@ class NightmareVisionUnportedState extends NightmareVisionMusicBeatState {
 		add(text);
 	}
 	public override function update(elapsed:Float):Void {
-		if (controls.BACK) session.switchState(session.createStateFactory('MainMenuState'));
+		if (sourceControl("BACK")) session.switchState(session.createStateFactory('MainMenuState'));
 		super.update(elapsed);
 	}
 }

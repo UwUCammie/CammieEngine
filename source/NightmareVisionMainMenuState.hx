@@ -119,19 +119,19 @@ class NightmareVisionMainMenuState extends NightmareVisionMusicBeatState {
 				switchTo('ModsState');
 			}
 
-			if (controls.UI_UP_P || controls.UI_DOWN_P) {
+			if (sourceControl("UI_UP_P") || sourceControl("UI_DOWN_P")) {
 				playMenuSound('scrollMenu');
-				changeSelection(controls.UI_UP_P ? -1 : 1);
+				changeSelection(sourceControl("UI_UP_P") ? -1 : 1);
 			}
 
-			if (controls.BACK) {
+			if (sourceControl("BACK")) {
 				canInteract = true;
 				playMenuSound('cancelMenu');
 				switchTo('TitleState');
 			}
 
 			scriptGroup.set('curSelected', selectedIndex());
-			if (controls.ACCEPT) acceptSelection();
+			if (sourceControl("ACCEPT")) acceptSelection();
 			else if (FlxG.keys.anyJustPressed(debugKeys)) {
 				canInteract = true;
 				switchTo('MasterEditorMenu');

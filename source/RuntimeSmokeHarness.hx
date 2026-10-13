@@ -173,7 +173,7 @@ class RuntimeSmokeHarness {
 
 	/** True only for an explicit smoke command line. */
 	public static function enabled():Bool {
-		return config() != null && smokeArgumentsSeen;
+		return !ImportedMenuSmokeHarness.enabled() && config() != null && smokeArgumentsSeen;
 	}
 
 	/** Return the parsed launch request, or null for an ordinary launch. */
@@ -2350,6 +2350,7 @@ class RuntimeSmokeHarness {
 	static function freeplayFrame(now:Float):Void {
 		#if sys
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
+		if (RuntimeLibraryRemovalProbe.enabled()) { RuntimeLibraryRemovalProbe.tick(); return; }
 		if (RuntimeLibraryLifecycleProbe.enabled()) { RuntimeLibraryLifecycleProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }

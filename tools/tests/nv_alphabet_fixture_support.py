@@ -1,3 +1,4 @@
+from menu_async_fixture_support import add_menu_async_contracts
 """Full NV donor and immutable atlas metadata with actual host parent methods."""
 from pathlib import Path
 import re
@@ -44,4 +45,4 @@ class FlxFrame {public var name:String;public var w:Int;public var h:Int;public 
     source = re.sub(r'\bAlphabet\b', 'DonorNVAlphabet', source)
     source = re.sub(r'\bAlphaCharacter\b', 'DonorNVAlphaCharacter', source).replace('override function update', 'override public function update')
     files['DonorNVAlphabet.hx'] = source
-    return files
+    return add_menu_async_contracts(files)

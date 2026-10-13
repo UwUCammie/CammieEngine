@@ -18,7 +18,14 @@ class NightmareVisionFallbackState extends NightmareVisionMusicBeatState {
 		super(session.stateHost()); warningMessage = message; continueCallback = next; this.session = session;
 	}
 	public override function create():Void {
-		var bg = new FlxSprite().loadGraphic(session.paths.image('uhoh'));
+		var bg = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF12121C);
+		try {
+			var imagePath = session.paths.getPath('images/uhoh.png');
+			if (session.paths.exists(imagePath)) {
+				var graphic = session.paths.image('uhoh');
+				if (graphic != null) bg.loadGraphic(graphic);
+			}
+		} catch (_:Dynamic) {}
 		bg.setGraphicSize(FlxG.width, FlxG.height); bg.updateHitbox(); add(bg);
 		var error = new FlxText(0, 0, 0, 'ERROR', 46);
 		error.setFormat(session.paths.DEFAULT_FONT, 46, 0xFFFF0000, LEFT, OUTLINE, 0xFF000000);
@@ -33,7 +40,7 @@ class NightmareVisionFallbackState extends NightmareVisionMusicBeatState {
 	}
 	public override function update(elapsed:Float):Void {
 		super.update(elapsed);
-		if (controls.ACCEPT) {persistentUpdate = false; continueCallback();}
+		if (sourceControl("ACCEPT")) {persistentUpdate = false; continueCallback();}
 	}
 	public override function destroy():Void {if (errorTween != null) errorTween.cancel(); super.destroy();}
 }

@@ -6961,7 +6961,7 @@ class ModuleFunctions {
 	 * asset merge; media and native registries continue to use their shared
 	 * destination paths. */
 	static function compatScriptTreeNames():Array<String> {
-		return ['scripts', 'stages', 'custom_events', 'custom_notetypes', 'plugins'];
+		return ['scripts', 'stages', 'custom_events', 'custom_notetypes', 'plugins', 'states'];
 	}
 
 	/** Read only the validated provenance of selected converted chart rows.
@@ -8777,6 +8777,7 @@ class ModuleFunctions {
 		var expected:Array<Dynamic> = [];
 		var budget:Array<Int> = [4096];
 		var luaDependencyCount = 0;
+		if (engine == ImportEngine.PSYCH) collectCompatScriptFiles(findChildDirectory(findChildDirectory(sourceRoot, 'source'), 'states'), 'source/states', false, expected, 0, budget, ['.hx', '.hxc']);
 		for (root in roots) {
 			var luaDependencies = engine == ImportEngine.PSYCH
 				? PsychLuaScriptDependencies.discover(root.base)
@@ -8809,7 +8810,7 @@ class ModuleFunctions {
 				var source = findChildDirectory(root.base, name);
 				if (source != null)
 					collectCompatScriptFiles(source, (root.prefix == '' ? name : root.prefix + '/' + name),
-						false, expected, 0, budget, null, engine == ImportEngine.NIGHTMARE_VISION);
+						false, expected, 0, budget, null, engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH);
 			}
 			var dataRoot = findChildDirectory(root.base, 'data');
 			// Registry data is a runtime dependency of scripted note styles too.
@@ -8857,6 +8858,7 @@ class ModuleFunctions {
 	static function sourceHasCompatScriptTree(sourceRoot:String, ?engine:String):Bool {
 		if (sourceRoot == null || !FileSystem.isDirectory(sourceRoot))
 			return false;
+		if (engine == ImportEngine.PSYCH && hasCompatScriptFile(findChildDirectory(findChildDirectory(sourceRoot, 'source'), 'states'), 0, true)) return true;
 		var nestedAssets = findChildDirectory(sourceRoot, 'assets');
 		if (nestedAssets != null)
 			sourceRoot = nestedAssets;
@@ -8875,7 +8877,7 @@ class ModuleFunctions {
 			}
 			for (name in compatScriptTreeNames())
 				if (hasCompatScriptFile(findChildDirectory(root, name), 0,
-					engine == ImportEngine.NIGHTMARE_VISION))
+					engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH))
 					return true;
 			var dataRoot = findChildDirectory(root, 'data');
 			if (dataRoot != null)
@@ -11263,6 +11265,12 @@ class ModuleFunctions {
 			}
 			destinationRoot = Path.join([destination, destinationSubpath]);
 		}
+		if (engine == ImportEngine.PSYCH) {
+			var menuSources:Array<Dynamic> = [];
+			collectCompatScriptFiles(findChildDirectory(findChildDirectory(sourceRoot, 'source'), 'states'),
+				'source/states', false, menuSources, 0, [512], ['.hx', '.hxc']);
+			for (entry in menuSources) copyImportFileNonOverwriting(entry.source, Path.join([destinationRoot, entry.relative]), result);
+		}
 		// Psych-family packs use pack.json for their authored identity and global
 		// script scope. Retain the source document beside its owned scripts so
 		// runtime settings can validate package names without consulting another
@@ -11441,6 +11449,9 @@ class ModuleFunctions {
 			mergePsychLanguageDataScopes(contentRoot, sourceRoot, destinationRoot, result,
 				skipPaths, languagePlan);
 		}
+		if (engine == ImportEngine.PSYCH || engine == ImportEngine.NIGHTMARE_VISION)
+			writeImportContentNonOverwriting(ImportedMenuManifest.capture(destination, engine, Path.withoutDirectory(sourceRoot)),
+				Path.join([destination, ImportedMenuManifest.FILE_NAME]), result, true);
 		return destination;
 	}
 

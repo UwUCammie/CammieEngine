@@ -3,6 +3,7 @@ package;
 /** Opt-in process-local saves for unattended native tests. */
 @:access(lime.system.System)
 class RuntimeSmokeSaveIsolation {
+	public static var installed(default, null):Bool = false;
 	public static function install(?importSmoke:Bool = false):Void {
 		#if sys
 		if (!RuntimeSmokeHarness.enabled() && !importSmoke) return;
@@ -17,6 +18,7 @@ class RuntimeSmokeSaveIsolation {
 		// Flixel 6.1 strips three components from Lime's application directory;
 		// OpenFL's legacy location remains under that same private test root.
 		lime.system.System.__applicationStorageDirectory = root + '/storage/company/title';
+		installed = true;
 		#end
 	}
 }

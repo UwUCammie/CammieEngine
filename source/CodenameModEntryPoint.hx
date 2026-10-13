@@ -26,8 +26,18 @@ class CodenameModEntryPoint {
 			|| statePaths.length == 0 || statePaths.length > MAX_STATES)
 			return '';
 		var states = statePaths.copy();
+		// A standalone title is not a coherent menu flow. Missing main menus
+		// enter the package's filtered default Freeplay directly.
+		var mains = [];
+		for (candidate in states) {
+			var basename = Path.withoutExtension(Path.withoutDirectory(candidate)).toLowerCase();
+			if ((basename == 'mainmenustate' || basename == 'mainmenu')
+				&& routesToOwnerState(root, candidate, states)) mains.push(candidate);
+		}
+		if (mains.length != 1) return '';
 		states.sort(Reflect.compare);
 		for (pass in 0...3) {
+			var matches:Array<String> = [];
 			for (candidate in states) {
 				var basename = Path.withoutExtension(Path.withoutDirectory(candidate)).toLowerCase();
 				var wanted = switch (pass) {
@@ -36,8 +46,10 @@ class CodenameModEntryPoint {
 					default: basename == 'mainmenustate' || basename == 'mainmenu';
 				};
 				if (wanted && routesToOwnerState(root, candidate, states))
-					return candidate;
+					matches.push(candidate);
 			}
+			if (matches.length > 1) return '';
+			if (matches.length == 1) return matches[0];
 		}
 		#end
 		return '';
@@ -67,6 +79,9 @@ class CodenameModEntryPoint {
 			var constructor = new EReg('\\bnew\\s+([A-Za-z0-9_$.]+)\\s*\\(', 'i');
 			if (constructor.match(body)) {
 				var className = constructor.matched(1);
+				var leaf = className.split('.').pop().toLowerCase();
+				var main = Path.withoutExtension(Path.withoutDirectory(sourcePath)).toLowerCase();
+				if ((main == 'mainmenu' || main == 'mainmenustate') && leaf == 'freeplaystate') return true;
 				var resolution = CodenameModStateResolver.resolve(ownerTargets, className, sourcePath);
 				if (resolution.path != '' && !resolution.ambiguous) return true;
 			}

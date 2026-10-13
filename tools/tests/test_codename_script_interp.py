@@ -19,7 +19,6 @@ DONOR_HL17 = (
     / "codename/hl17_v3/mods/HL17"
 )
 
-
 def mounted_try_harder_owner():
     for assets_root in (
         ROOT / 'tmp/dsides-current-chart-refresh/runtime-overlay/assets',
@@ -233,7 +232,7 @@ class FlxBasic { public var destroyCount:Int=0; public var exists:Bool=true; pub
 class TestStateSwitchSignal { public function new() {} public function addOnce(listener:Void->Void):Void {}
  public function remove(listener:Void->Void):Void {} }
 class TestStateSwitchSignals { public var postStateSwitch:TestStateSwitchSignal; public function new() postStateSwitch=new TestStateSwitchSignal(); }
-class FlxG { public static var signals:Dynamic=new TestStateSwitchSignals();
+class FlxG {public static var sound:Dynamic=null; public static var signals:Dynamic=new TestStateSwitchSignals();
  public static var save:Dynamic; public static var width:Int=1280; public static var height:Int=720;
  public static var state:Dynamic; public static var camera:FlxCamera;
  public static var game:FlxGame=new FlxGame();
@@ -470,6 +469,8 @@ class FlxRuntimeShader extends openfl.display.Shader {
  public var SWITCHMOD:Bool=false;
  public function new() {}
 }''',
+                'flixel/sound/FlxSound.hx': '''package flixel.sound;
+class FlxSound {public var playing:Bool=true;public var stopped:Bool=false;public var destroyed:Bool=false;public var onComplete:Dynamic;public var fadeTween:flixel.tweens.FlxTween;public function new(){}public function pause():Void playing=false;public function resume():Void playing=true;public function stop():Void {playing=false;stopped=true;}public function destroy():Void destroyed=true;}''',
                 'flixel/util/FlxTimer.hx': '''package flixel.util;
 class FlxTimer { public var active:Bool=true; public var finished:Bool=false; public var cancelled:Bool=false;
  public var time:Float=0; public var elapsedLoops:Int=0; public function new() {}
@@ -1474,7 +1475,12 @@ class Main {
   a.setPaused(true);
   a.execute(new hscript.Parser().parseString("filterCamera.addShader(cameraShader);"));
   if(filterCamera.filters.length!=2) throw 'camera shader re-add';
+  var ownedAudio=new flixel.sound.FlxSound();var borrowedAudio=new flixel.sound.FlxSound();
+  a.ownSound(ownedAudio);a.ownSound(ownedAudio);
+  a.setPaused(true);if(ownedAudio.playing || !borrowedAudio.playing)throw 'owned audio park';
+  a.setPaused(false);if(!ownedAudio.playing)throw 'owned audio resume';
   a.release(); a.release(); a.setPaused(false);
+  if(!ownedAudio.stopped || !ownedAudio.destroyed || borrowedAudio.stopped || borrowedAudio.destroyed)throw 'audio teardown ownership';
   if(filterCamera.filters.length!=1 || filterCamera.filters[0]!=originalFilter)
    throw 'interpreter release retained camera shader filter';
   var detached=false;

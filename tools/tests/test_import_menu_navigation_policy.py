@@ -28,6 +28,7 @@ class ImportMenuNavigationTest(unittest.TestCase):
         source=(ROOT/'source/CodenameImportedModsState.hx').read_text(encoding='utf-8')
         launch=extract_method(source,'function launchSelected():Void').replace('function launchSelected','public function launchSelected',1)
         code=r"""
+class ImportedMenuEntry {public static function openDefaultFreeplay(r:String):Void{}public static function openPsych(r:String):Void{}public static function openNightmareVision(r:String,d:String,n:String):Void{}public static function release():Void{}}
 class CodenameModRuntime {public static var opened='';public static function activateOwner(r:String):Bool {opened=r;return true;}public static function diagnostics():Array<String>return [];public static function clearActiveOwner():Void{}}
 class CodenameImportedState {public var root:String;public function new(r:String,s:String)root=r;}
 class LoadingState {public static var target:Dynamic;public static function loadAndSwitchState(s:Dynamic):Void target=s;}

@@ -96,6 +96,8 @@ typedef ImportRefreshResult = {
  */
 @:allow(ImportMetadataInspection)
 @:allow(LibraryIdentityArchive)
+@:allow(ImportRemovalTransaction)
+@:allow(ImportRemovalPartition)
 class ImportRefreshTransaction {
 	public static inline var MANIFEST_SCHEMA:Int = 1;
 	public static inline var STATUS_APPLIED:String = "applied";
@@ -955,7 +957,9 @@ class ImportRefreshTransaction {
 		var rawRoots:Dynamic = Reflect.field(record, "roots");
 		if (!Std.isOfType(rawRoots, Array)) throw "Import package-family catalog record has no roots.";
 		var memberValues:Array<Dynamic> = cast rawMembers;
-		if (memberValues.length < 2 || memberValues.length > 128)
+		var removedRoots:Dynamic = Reflect.field(record,"removedSourceRoots");
+		var minimumMembers = version >= 2 && Std.isOfType(removedRoots,Array) && (cast removedRoots:Array<Dynamic>).length > 0 ? 1 : 2;
+		if (memberValues.length < minimumMembers || memberValues.length > 128)
 			throw "Import package-family catalog member count is invalid.";
 		var members:Array<ImportRefreshPackageFamilyCatalogEntry> = [];
 		var seenDirectories:Map<String, Bool> = new Map();
@@ -1237,7 +1241,7 @@ class ImportRefreshTransaction {
 						if (!isRegularFile(target)) throw "The destination is no longer a regular file.";
 						var currentHash = ImportSourceSnapshot.sha256File(target, CHUNK_SIZE);
 						if (currentHash == beforeHash) continue;
-						if (afterExists && currentHash != afterHash)
+						if (!afterExists || currentHash != afterHash)
 							throw "The destination was edited after interruption; preserving local bytes.";
 					}
 					var parent = Path.directory(target);

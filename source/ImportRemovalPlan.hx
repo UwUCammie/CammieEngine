@@ -7,7 +7,7 @@ private typedef RemovalRecord = {
 	var manifest:ImportRefreshManifest;
 	var roots:Array<String>;
 	var dependencies:Array<String>;
-	var snapshot:String;
+	var snapshots:Array<String>;
 	var selected:Bool;
 }
 private typedef RemovalClaim = {
@@ -32,7 +32,9 @@ typedef ImportRemovalSharedFile = {
  * reserve owners, revalidate this inventory and current bytes, reconcile registry
  * contributions, archive identities, then journal publication and cleanup.
  * No source, save, registry, receipt or live asset is mutated here. */
+@:allow(ImportRemovalPartition)
 class ImportRemovalPlan {
+	public var packageNames(default,null):Map<String,String> = new Map();
 	public var selectedOwners(default, null):Array<String> = [];
 	public var affectedOwners(default, null):Array<String> = [];
 	public var transactionOwners(default, null):Array<String> = [];
@@ -77,6 +79,12 @@ class ImportRemovalPlan {
 				var roots:Map<String,Bool> = new Map();
 				for (root in manifestRoots(manifest)) roots.set(root, true);
 				var chosen = false;
+				for (descriptor in array(record,"roots")) {
+					var root = ownerRoot("assets/imported_mods/" + text(descriptor,"namespace"));
+					var label = text(descriptor,"name");
+					if (label == "") label = text(descriptor,"label");
+					if (label != "" && label.length <= 256 && !~/[\x00-\x1F\x7F]/.match(label)) plan.packageNames.set(root,label);
+				}
 				for (root in roots.keys()) {
 					if (byRoot.exists(root)) throw 'Package has ambiguous transaction ownership: ' + root;
 					byRoot.set(root, manifest.owner);
@@ -94,10 +102,20 @@ class ImportRemovalPlan {
 				var snapshot = text(record, 'snapshotId');
 				if (!~/^[a-f0-9]{64}$/.match(snapshot) || text(record, 'source') != 'sources/' + snapshot + '/content')
 					throw 'Invalid managed snapshot identity.';
+				var snapshotIds = [snapshot];
+				var extra:Dynamic = Reflect.field(record,'sourceSnapshots');
+				if (extra != null) {
+					if (!Std.isOfType(extra,Array)) throw 'Invalid retained snapshot reference list.';
+					for (reference in (cast extra:Array<Dynamic>)) {
+						var value = Std.isOfType(reference,String) ? Std.string(reference) : text(reference,'snapshotId');
+						if (!~/^[a-f0-9]{64}$/.match(value)) throw 'Invalid retained snapshot reference.';
+						if (snapshotIds.indexOf(value) < 0) snapshotIds.push(value);
+					}
+				}
 				fileCount += manifest.files.length;
 				if (fileCount > MAX_FILES) throw 'Ownership file inventory limit exceeded.';
 				var entry:RemovalRecord = {manifest:manifest, roots:sortedKeys(roots), dependencies:dependencies,
-					snapshot:snapshot, selected:chosen};
+					snapshots:snapshotIds, selected:chosen};
 				records.push(entry);
 				if (chosen) {
 					plan.transactionOwners.push(manifest.owner);
@@ -119,8 +137,10 @@ class ImportRemovalPlan {
 			var registrySpellings:Map<String,String> = new Map();
 			for (entry in records) {
 				work();
-				if (!snapshots.exists(entry.snapshot)) snapshots.set(entry.snapshot, [false, false]);
-				snapshots.get(entry.snapshot)[entry.selected ? 0 : 1] = true;
+				for (snapshot in entry.snapshots) {
+					if (!snapshots.exists(snapshot)) snapshots.set(snapshot, [false,false]);
+					snapshots.get(snapshot)[entry.selected ? 0 : 1] = true;
+				}
 				if (!entry.selected) for (dependency in entry.dependencies) if (affected.exists(dependency))
 					for (root in entry.roots) dependentRoots.set(root, true);
 				var registryBaselines:Map<String,Bool> = new Map();

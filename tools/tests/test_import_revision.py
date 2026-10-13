@@ -22,7 +22,7 @@ class Main {
   check(legacy.status == ImportRevision.UNKNOWN, "legacy app version was mistaken for a compatibility receipt");
 
   var current = ImportRevision.current("psychengine", "0.0.8");
-  check(current.engineRevision == 13
+  check(current.engineRevision == 14
    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:8},
     "Psych Engine").status == ImportRevision.OUTDATED,
    "older Psych receipts did not request source-profile republishing");
@@ -40,7 +40,7 @@ class Main {
 	 engineRevision:10};
   check(ImportRevision.assess(priorNmv, "Nightmare Vision").status == ImportRevision.OUTDATED,
 	 "Nightmare Vision revision-10 receipts were not scheduled for legacy-content refresh");
-  check(ImportRevision.current("Nightmare Vision").engineRevision == 16,
+  check(ImportRevision.current("Nightmare Vision").engineRevision == 17,
 	 "Nightmare Vision compiled manifest publication did not advance the engine revision");
   current.applicationVersion = "0.0.1-alpha.8";
   check(ImportRevision.assess(current, "Psych Engine").status == ImportRevision.CURRENT,

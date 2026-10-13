@@ -374,7 +374,7 @@ class PauseSubState extends MusicBeatSubstate {
 		if (PlayState.isStoryMode)
 			LoadingState.loadAndSwitchState(new StoryMenuState());
 		else
-			LoadingState.loadAndSwitchState(new FreeplayState());
+			ImportedMenuEntry.returnToFreeplay();
 		if (chartingOwner != '') {
 			PsychOwnerChartingMode.clear(chartingOwner);
 			if (FlxG.camera != null) FlxG.camera.followLerp = 0;

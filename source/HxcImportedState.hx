@@ -14,9 +14,23 @@ class HxcImportedState extends MusicBeatState {
 	override function create() {
 		super.create();
 		runtime.create();
+		if (runtime.failed) {
+			var text = new flixel.text.FlxText(40, 40, flixel.FlxG.width - 80,
+				'Imported menu could not run: ' + factoryEntry.relativePath
+				+ '\nEnter: default Freeplay   F10: Imported Mods', 22);
+			add(text);
+		}
 	}
 
 	override public function update(elapsed:Float) {
+		if (ImportedMenuEntry.departing) return;
+		if (flixel.FlxG.keys.justPressed.F10) {
+			ImportedMenuEntry.leaveToPicker();
+			return;
+		}
+		if (runtime.failed && flixel.FlxG.keys.justPressed.ENTER) {
+			ImportedMenuEntry.openDefaultFreeplay(factoryEntry.root); return;
+		}
 		runtime.update(elapsed);
 		super.update(elapsed);
 	}

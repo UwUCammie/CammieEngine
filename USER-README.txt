@@ -35,6 +35,21 @@ editors and source dependencies remain unsupported or under verification.
 Report the source engine, package version, song, difficulty and exact steps
 when an import fails or behaves differently from its original engine.
 
+REMOVE IMPORTED MODS
+From the main menu, press I for Imported Mods, select a package and press Delete.
+In native Freeplay, press Tab for Library actions and choose Remove installed
+mod (preserve saved history). Review the listed package and managed content;
+Cancel is selected by default. Shared files and source folders are preserved,
+as are scores, favorites, categories and difficulty history for a later reinstall.
+An active source menu must return to Imported Mods before its package is removed.
+
+Removal runs in the background and restores installed content if cancelled before
+commit. Interrupted operations recover on restart. If recovery or final cleanup
+needs another attempt, open Library actions and choose Recover interrupted mod
+removal, even when the removed package no longer has a row.
+Older imports without ownership receipts must be reimported before removal.
+Unclaimed local files or edits block removal; preserve or move those files first.
+
 CREATE CONTENT
 The chart editor and import tools are available in the engine. Existing
 HScript and registry documentation is in the source repository. This guide

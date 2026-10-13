@@ -23,6 +23,7 @@ class CodenameModRuntime {
 	static var postSwitchHandler:Void->Void;
 	static var preStateCreateSmokeHandler:FlxState->Void;
 	static var globalFailure:String = '';
+	static var ownerLease:String = '';
 
 	public static function activeRoot():String return selectedRoot;
 
@@ -65,7 +66,14 @@ class CodenameModRuntime {
 			return false;
 		}
 		if (selectedRoot == root && globalRuntime != null) return true;
+		#if sys
+		var lease = ImportRefreshManager.tryAcquireRuntimeOwnerLease(ImportedMenuEntry.requiredOwnerRoots(root));
+		if (lease == '') {trace('[codename-mod-owner] Selected owner is being refreshed; retry when ready.'); return false;}
+		#end
 		clearActiveOwner();
+		#if sys
+		ownerLease = lease;
+		#end
 		selectedRoot = root;
 		activeStatePaths = selectedStates;
 		installStateCreateSmokeTrace(root);
@@ -116,6 +124,10 @@ class CodenameModRuntime {
 		selectedRoot = '';
 		activeStatePaths = [];
 		globalFailure = '';
+		#if sys
+		if (ownerLease != '') ImportRefreshManager.releaseRuntimeOwnerLease(ownerLease);
+		#end
+		ownerLease = '';
 	}
 
 	public static function isActiveOwner(root:String):Bool
@@ -196,8 +208,7 @@ class CodenameModRuntime {
 
 	/** Explicit user exit: release owner globals before returning to native menus. */
 	public static function exitToNativeMenu():Void {
-		clearActiveOwner();
-		LoadingState.loadAndSwitchState(new MainMenuState());
+		ImportedMenuEntry.leaveToPicker();
 	}
 
 	static function readCatalog():CodenameModLaunchPlanData {

@@ -10,6 +10,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 FIXTURES = {
+    "ImportedMenuEntry.hx": r'''class ImportedMenuEntry {
+ public static var departing:Bool=false;
+ public static function leaveToPicker():Void FixtureLog.add('leaveToPicker');
+}''',
+    "NightmareVisionStateSession.hx": r'''class NightmareVisionStateSession {
+ public var importedMenuEntry:Bool=false;
+ public function new(){}
+ public function offerPendingMenuFailure():Bool return false;
+}''',
     "FixtureLog.hx": r'''class FixtureLog {
  public static var entries:Array<String> = [];
  public static function add(value:String):Void entries.push(value);
@@ -19,6 +28,7 @@ import FixtureLog;
 class FlxG {
  public static var sound:FixtureSoundManager = new FixtureSoundManager();
  public static var state:FlxState;
+ public static var keys:Dynamic={justPressed:{F10:false}};
 }
 class FixtureSoundManager {
  public var music:FixtureMusic;

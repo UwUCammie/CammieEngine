@@ -21,6 +21,12 @@ class HxcImportedMenuState extends MainMenuState {
 			HxcCompatRuntime.mountMainMenuOverlay(this, factoryEntry.menuSpec, factoryEntry.root);
 	}
 
+	override function update(elapsed:Float):Void {
+		if (ImportedMenuEntry.departing) return;
+		if (flixel.FlxG.keys.justPressed.F10) {ImportedMenuEntry.leaveToPicker(); return;}
+		super.update(elapsed);
+	}
+
 	override public function destroy():Void {
 		HxcCompatRuntime.clearMainMenuOverlay(this);
 		super.destroy();

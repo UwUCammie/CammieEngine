@@ -35,6 +35,11 @@ class CodenameImportedState extends MusicBeatState {
 	}
 
 	override public function update(elapsed:Float):Void {
+		if (ImportedMenuEntry.departing) return;
+		if (diagnosticPanel != null && FlxG.keys.justPressed.ENTER) {
+			ImportedMenuEntry.openDefaultFreeplay(ownerRoot);
+			return;
+		}
 		if (FlxG.keys.justPressed.F10) {
 			CodenameModRuntime.exitToNativeMenu();
 			return;
@@ -70,7 +75,7 @@ class CodenameImportedState extends MusicBeatState {
 		diagnosticPanel.scrollFactor.set();
 		add(diagnosticPanel);
 		diagnosticText = new FlxText(40, 36, FlxG.width - 80,
-			'Imported state could not run\n' + scriptPath + '\n' + message, 20);
+			'Imported state could not run\n' + scriptPath + '\n' + message + '\n\nEnter: open this package in default Freeplay\nF10: Imported Mods', 20);
 		diagnosticText.setFormat(null, 20, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		diagnosticText.wordWrap = true;
 		diagnosticText.fieldHeight = FlxG.height - 72;

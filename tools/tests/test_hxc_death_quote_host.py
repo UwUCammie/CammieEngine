@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class HxcDeathQuoteHostTest(unittest.TestCase):
     def run_haxe(self, text):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
+            (Path(folder) / 'ImportedMenuEntry.hx').write_text('class ImportedMenuEntry {public static function returnToFreeplay():Void Main.LoadingState.loadAndSwitchState(new Main.FreeplayState());}', newline='\n')
             (Path(folder) / 'Main.hx').write_text(text, newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'),
                                      '-cp', folder, '--run', 'Main'], cwd=ROOT,

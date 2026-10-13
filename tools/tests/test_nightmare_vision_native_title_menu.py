@@ -6,6 +6,7 @@ import textwrap
 import unittest
 
 from haxe_test_support import HAXE, HAXE_COMMAND, ROOT
+from test_source_event_preparation import extract_method
 
 
 DONOR = ROOT.parent / 'fnf_sources/NightmareVision/source/funkin'
@@ -54,6 +55,30 @@ class NightmareVisionNativeTitleMenuTests(unittest.TestCase):
         self.assertNotIn('FreeplayState.vocals', menu)
         self.assertNotIn('new MainMenuState(', menu)
         self.assertNotIn('new TitleState(', title)
+
+    def test_fallback_confirm_reads_owner_getter_and_keeps_unknown_fields_opaque(self):
+        base=(ROOT/'source/NightmareVisionMusicBeatState.hx').read_text()
+        fallback=(ROOT/'source/NightmareVisionFallbackState.hx').read_text()
+        helper=extract_method(base,'public function sourceControl(')
+        update=extract_method(fallback,'public override function update(')
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as directory:
+            fixture=Path(directory)
+            code=r'''class Base {public var ticks=0; public function new(){} public function update(e:Float):Void ticks++;}
+class OwnerControls {public var reads=0; public var accepted=false; public var ACCEPT(get,never):Bool; public function new(){} function get_ACCEPT():Bool {reads++;return accepted;} }
+class Main extends Base {
+ public var controls:Dynamic; public var persistentUpdate=true; public var calls=0;
+ function continueCallback():Void calls++;
+ __HELPER__
+ __UPDATE__
+ static function main(){var host=new Main();var input=new OwnerControls();host.controls=input;
+ host.update(.1);if(host.calls!=0||input.reads!=1)throw 'idle owner getter';
+ input.accepted=true;host.update(.1);if(host.calls!=1||host.persistentUpdate||host.ticks!=2||input.reads!=2)throw 'confirm callback/property';
+ if(host.sourceControl('reads')||input.reads!=2)throw 'unknown action exposed';
+ host.controls=null;host.update(.1);if(host.calls!=1)throw 'null input callback';
+ }}'''.replace('__HELPER__',helper).replace('__UPDATE__',update)
+            (fixture/'Main.hx').write_text(code)
+            result=subprocess.run([*HAXE_COMMAND,'-cp',str(fixture),'-main','Main','--interp'],cwd=ROOT,text=True,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     @unittest.skipUnless(HAXE.exists(), 'portable Haxe toolchain is not bootstrapped')
     def test_color_swap_setters_update_the_actual_uniform_values(self):

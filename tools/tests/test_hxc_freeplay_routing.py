@@ -103,6 +103,7 @@ class HxcFreeplayRoutingTest(unittest.TestCase):
         fixture = '''import hscript.Interp;
 import hscript.Parser;
 typedef HxcFreeplayScope = { var root:String; };
+class CodenameScriptInterp extends Interp {public function new(){super();}public function ownSound(s:Dynamic):Dynamic return s;}
 class FreeplayState { public function new() {} }
 class PlayState {}
 class CreditsState {}
@@ -154,6 +155,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder)
+            (path / 'flixel').mkdir(exist_ok=True)
+            (path / 'flixel/FlxG.hx').write_text('package flixel;class FlxG {public static var sound:Dynamic={music:null};}', newline='\n')
             (path / "Main.hx").write_text(fixture, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(HSCRIPT), "-cp", str(path), "-main", "Main", "--interp"],

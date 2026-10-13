@@ -1,3 +1,4 @@
+from menu_async_fixture_support import install_menu_async_contracts
 """Exercise owner-local NMV input scopes through real Iris source bindings."""
 import os
 import subprocess
@@ -270,6 +271,7 @@ class NightmareVisionInputScopeBindingsTest(unittest.TestCase):
             env["HAXELIB_PATH"] = str(ROOT / ".haxelib")
             env["PATH"] = os.pathsep.join((str(ROOT / ".tools/haxe"),
                                             str(ROOT / ".tools/neko"), env.get("PATH", "")))
+            install_menu_async_contracts(work, native_flixel=True)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-D", "flixel", "-cp", str(ROOT / "source"),
                  "-cp", str(IRIS), "-cp", str(work), *FLIXEL_ARGS,

@@ -32,6 +32,7 @@ def extract_method(source: str, marker: str) -> str:
 
 
 def install_nv_stage_profile_support(work):
+    (work / 'ImportedMenuManifest.hx').write_text('class ImportedMenuManifest {public static inline var FILE_NAME=".cammie-menu-entry.json";public static function capture(r:String,e:String,d:String):String return haxe.Json.stringify({owner:r,engine:e,state:""});}', newline='\n')
     for name in ('NightmareVisionStageProfile', 'NightmareVisionStageImportProfile', 'NightmareVisionAssetCollector'):
         (work / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
     scanner = work / 'ImportRootScanner.hx'
@@ -69,6 +70,7 @@ class CompatScriptImportTest(unittest.TestCase):
                 "static function readImportJson",
                 "static function mergeModPlusCharacterAssets",
                 "static function compatScriptTreeNames",
+                "static function collectCompatScriptFiles",
                 "static function mergePsychLanguageDataScopes",
                 "static function mergePsychLanguageFiles",
                 "static function mergeCompatScriptTrees",
@@ -1040,8 +1042,8 @@ class RepairFixture {{
     var psychOnlyHx = donor + '-psych';
     ensureDirectory(Path.join([psychOnlyHx, 'scripts']));
     File.saveContent(Path.join([psychOnlyHx, 'scripts', 'global.hx']), 'function onLoad() {{}}');
-    if (sourceHasCompatScriptTree(psychOnlyHx, ImportEngine.PSYCH))
-      throw 'Psych .hx file changed the non-NMV executable-script rule';
+    if (!sourceHasCompatScriptTree(psychOnlyHx, ImportEngine.PSYCH))
+      throw 'Psych source-state code did not retain a managed compatibility owner';
     var modPlusOnlyHx = donor + '-modplus';
     ensureDirectory(Path.join([modPlusOnlyHx, 'images', 'custom_stages']));
     File.saveContent(Path.join([modPlusOnlyHx, 'images', 'custom_stages', 'room.hx']),

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from haxe_test_support import HAXE_COMMAND
 from source_attachment_fixture_support import attachment_fixture_files
+from menu_async_fixture_support import add_menu_async_contracts
 from test_nv_multifield_routes import method
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -23,7 +24,7 @@ def integration_files():
  ps=(ROOT/'source/PlayState.hx').read_text()
  methods='\n'.join(method(ps,n).replace('function ','public function ',1) for n in ['function sourceAttachedSpriteOwner(','function bindSourceAttachmentClasses('])
  files['AttachmentHost.hx']='import flixel.util.FlxAxes;class AttachmentHost extends flixel.group.FlxGroup.FlxTypedGroup<flixel.FlxBasic> {public var psychStageLibrary:String;public var psychClientPrefs:Dynamic={data:{antialiasing:true}};public function new(){super();}function selectedPsychSkinRoot():String return "current";'+methods+'}'
- return files
+ return add_menu_async_contracts(files)
 
 class SourceAttachmentIntegrationTest(unittest.TestCase):
  def test_psych_owner_factory_plain_bridge_assets_and_once_only_display(self):

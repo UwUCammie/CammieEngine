@@ -18,7 +18,11 @@ class HxcFreeplayRefreshTest(unittest.TestCase):
    }'''+source[end:]
    (base/'HxcFreeplayRuntime.hx').write_text(source,encoding='utf-8')
    stubs={
-   'PluginManager.hx':'''typedef HscriptGlobals=Dynamic;class PluginManager {public static function createSimpleInterp():hscript.Interp return new hscript.Interp();}''',
+   'PluginManager.hx':'''typedef HscriptGlobals=Dynamic;class PluginManager {public static function createSimpleInterp():hscript.Interp return new hscript.Interp();public static function addVarsToInterp<T:hscript.Interp>(i:T):T return i;}''',
+   'CodenameScriptInterp.hx':'''class CodenameScriptInterp extends hscript.Interp {public function new(p:CodenamePaths){super();}public function bindScriptObject(o:Dynamic):Void{}public function tweenFacade():Dynamic return {};public function release():Void variables.clear();public function setPaused(v:Bool):Void{}}''',
+   'CodenamePaths.hx':'''class CodenamePaths {public function new(p:String){}}''',
+   'ImportedMenuEntry.hx':'''class ImportedMenuEntry {public static function requiredOwnerRoots(r:String):Array<String>return [r];}''',
+   'ImportRefreshManager.hx':'''class ImportRefreshManager {public static function tryAcquireRuntimeOwnerLease(r:Array<String>):String return 'lease';public static function releaseRuntimeOwnerLease(t:String):Void{}}''',
    'hscript/ParserEx.hx':'''package hscript;class ParserEx extends Parser {public function new(){super();allowTypes=true;}}''',
    'FreeplayState.hx':'''class FreeplayState {public static var currentSongList:Array<{name:String}>=[];public var events:Array<String>=[];public function new(){}public function hxcPushAssetScope(s:String):String return '';public function hxcPopAssetScope(s:String):Void {}}''',
    'RuntimeSmokeHarness.hx':'''class RuntimeSmokeHarness {public static function enabled():Bool return false;public static function profileSection(s:String,t:Float):Void {}}''',
@@ -73,7 +77,7 @@ class HxcFreeplayRefreshTest(unittest.TestCase):
    FreeplayState.currentSongList=[];song('two',[a]);runtime.refresh();runtime.dispatch('update',{capsule:{name:'one'}});
    check(pa.scriptGet('count')==1,'old song dispatched');runtime.dispatch('update',{capsule:{name:'two'}});
    check(pa.scriptGet('count')==2 && pb.scriptGet('count')==null,'association not updated or absent root active');''')
- def test_parked_primary_blocks_fallback_removed_owner_keeps_variables(self):
+ def test_parked_primary_blocks_fallback_removed_owner_disposes_resources(self):
   self.run_haxe(r'''var a='assets/imported_mods/a';var b='assets/imported_mods/b';song('one',[a,b]);
    module(a,'Shared',"count=0; function update(p){count++;}");module(b,'Shared',"count=0; function update(p){count++;}");
    var ready=true;var known=true;var runtime=new HxcFreeplayRuntime(owner,function(r)return r!=a||ready,null,function(r)return r!=a||known);
@@ -81,9 +85,9 @@ class HxcFreeplayRefreshTest(unittest.TestCase):
    ready=false;runtime.setRootReadiness(function(r)return r!=a||ready);runtime.refresh();runtime.dispatch('update',{capsule:{name:'one'}});
    check(fallback.scriptGet('count')==0 && old.scriptGet('count')==null,'pending primary leaked to fallback');
    known=false;FreeplayState.currentSongList=[];song('one',[b]);runtime.refresh();runtime.dispatch('update',{capsule:{name:'one'}});
-   check(fallback.scriptGet('count')==1 && old.scriptGet('count')==null && scope.interp.variables.get('count')==0,'removed owner snapshot destroyed or still dispatched');
+   check(fallback.scriptGet('count')==1 && old.scriptGet('count')==null && scope.interp==null,'removed owner retained interpreter or still dispatched');
    module(a,'Shared',"count=9; function update(p){count++;}");known=true;ready=true;FreeplayState.currentSongList=[];song('one',[a,b]);runtime.refresh();
-   check(HxcFreeplayRuntime.moduleProxyForRoot(a,'Shared')==null && scope.interp.variables.get('count')==0,'re-added owner revived retired snapshot');
+   check(HxcFreeplayRuntime.moduleProxyForRoot(a,'Shared')==null && scope.interp==null,'re-added owner revived retired snapshot');
    runtime.dispose();check(scope.interp==null && fallback.scriptGet('count')==null,'disposal retained interpreter');''')
  def test_rejected_source_also_waits_for_natural_entry(self):
   self.run_haxe(r'''var root='assets/imported_mods/a';song('one',[root]);module(root,'Unsafe',"count=0; function update(p){count++;}",false);

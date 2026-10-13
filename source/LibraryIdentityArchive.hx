@@ -144,7 +144,11 @@ class LibraryIdentityArchive {
 		var manifests = ImportRefreshTransaction.inspectRetainedManifests(install,Path.join([install,'import-cache/state']),Path.join([install,'import-cache/records']),cancel);
 		var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel);
 		if (!audit.complete) throw audit.blockers.join('; ');
-		for (owner in owners) if (audit.owners.indexOf(owner) < 0) throw 'Selected package is not installed: ' + owner;
+		var committedOwners:Map<String,Bool> = new Map();
+		for (manifest in manifests) for (owner in ImportRemovalPlan.manifestRoots(manifest)) committedOwners.set(owner,true);
+		// A shared core provider may be a receipt-authenticated logical root
+		// without a materialized namespace. It has no chart history to archive.
+		for (owner in owners) if (!committedOwners.exists(owner)) throw 'Selected package has no committed ownership: ' + owner;
 		var archive = load(install,cancel);
 		var original = archive.encode();
 		var merged = archive.records;

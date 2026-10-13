@@ -19,6 +19,7 @@ class HxcImportedRuntime {
 	public var created(default, null):Bool = false;
 	public var failed(default, null):Bool = false;
 	var owned:Array<Dynamic> = [];
+
 	/** Callbacks which already threw once.  Their required state genuinely never
 	 * materialized, so re-dispatching them every frame only burns time and would
 	 * flood the log; the first failure keeps the full diagnostic. */
@@ -36,7 +37,15 @@ class HxcImportedRuntime {
 			var parser = new ParserEx();
 			var source = EngineCompat.rewriteScopedAssetPaths(entry.generatedHscript);
 			var program = parser.parseString(source);
-			interp = PluginManager.createSimpleInterp();
+			var scoped = new CodenameScriptInterp(new CodenamePaths(entry.root));
+			interp = PluginManager.addVarsToInterp(scoped);
+			scoped.bindScriptObject(owner);
+			scoped.ownerStateFactory = function(name:String):Dynamic {
+				if (entry.root != HxcStateFactory.menuSessionRoot()) return null;
+				if (!['TitleState', 'MainMenuState', 'FreeplayState', 'PlayState'].contains(name)) return null;
+				return HxcStateFactory.stateInit(entry.root, name);
+			};
+			interp.variables.set('FlxTween', scoped.tweenFacade());
 			seed();
 			interp.execute(program);
 			created = true;
@@ -73,7 +82,8 @@ class HxcImportedRuntime {
 		if (created && !failed)
 			call('destroy', [], true);
 		try {
-			interp.variables.clear();
+			if (Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).release();
+			else interp.variables.clear();
 		} catch (_:Dynamic) {}
 		owned.resize(0);
 		interp = null;
@@ -91,6 +101,8 @@ class HxcImportedRuntime {
 		interp.variables.set('currentMenuState', null);
 		interp.variables.set('hxcAssetRoot', entry.root == null ? '' : entry.root);
 		interp.variables.set('PlayState', PlayState);
+		interp.variables.set('Song', {loadFromJson:function(json:String, folder:String):Dynamic
+			return ImportedMenuEntry.loadOwnedChart(entry.root, json, folder)});
 		interp.variables.set('SONG', PlayState.SONG);
 		interp.variables.set('songData', PlayState.SONG);
 		interp.variables.set('hscriptPath', Path.directory(entry.path) + '/');
@@ -123,7 +135,9 @@ class HxcImportedRuntime {
 		interp.variables.set('onEvent', function(_name:Dynamic, _v1:Dynamic, _v2:Dynamic, _v3:Dynamic):Void {});
 		interp.variables.set('add', function(value:Dynamic):Dynamic {
 			owned.push(value);
-			return ownerCall('add', [value]);
+			var result = ownerCall('add', [value]);
+			if (result != null && Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).claimSceneObject(value);
+			return result;
 		});
 		interp.variables.set('remove', function(value:Dynamic):Dynamic {
 			owned.remove(value);
@@ -131,11 +145,15 @@ class HxcImportedRuntime {
 		});
 		interp.variables.set('insert', function(position:Int, value:Dynamic):Dynamic {
 			owned.push(value);
-			return ownerCall('insert', [position, value]);
+			var result = ownerCall('insert', [position, value]);
+			if (result != null && Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).claimSceneObject(value);
+			return result;
 		});
 		interp.variables.set('addSprite', function(value:Dynamic, ?_position:Int):Dynamic {
 			owned.push(value);
-			return ownerCall('add', [value]);
+			var result = ownerCall('add', [value]);
+			if (result != null && Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).claimSceneObject(value);
+			return result;
 		});
 		interp.variables.set('removeSprite', function(value:Dynamic):Dynamic {
 			owned.remove(value);
@@ -154,8 +172,17 @@ class HxcImportedRuntime {
 		interp.variables.set('curStep', 0);
 		interp.variables.set('curBeat', 0);
 		interp.variables.set('debugPrint', function(value:Dynamic):Void trace(value));
-		interp.variables.set('soundPlaySafe', function(_path:Dynamic, ?_volume:Float = 1):Dynamic return null);
-		interp.variables.set('preloadSound', function(_path:Dynamic):Dynamic return null);
+		interp.variables.set('soundPlaySafe', function(path:Dynamic, ?volume:Float = 1):Dynamic {
+			var scoped = HxcStateAssetScope.scopedAssetPath(entry.root, Std.string(path));
+			if (scoped == null || !FNFAssets.exists(scoped)) throw '[hxc-state-sound] Missing owner sound: ' + Std.string(path);
+			var sound = flixel.FlxG.sound.play(FNFAssets.getSound(scoped), volume);
+			if (Std.isOfType(interp, CodenameScriptInterp)) (cast interp:CodenameScriptInterp).ownSound(sound);
+			return sound;
+		});
+		interp.variables.set('preloadSound', function(path:Dynamic):Dynamic {
+			var scoped = HxcStateAssetScope.scopedAssetPath(entry.root, Std.string(path));
+			return scoped == null ? null : FNFAssets.getSound(scoped);
+		});
 		interp.variables.set('LoadingState', LoadingState);
 		interp.variables.set('MainMenuState', MainMenuState);
 		interp.variables.set('StoryMenuState', StoryMenuState);

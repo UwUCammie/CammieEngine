@@ -97,6 +97,7 @@ class LoadingState {
   last = state;
  }
 }
+class ImportedMenuEntry { public static function returnToFreeplay():Void LoadingState.loadAndSwitchState(new FreeplayState()); }
 class FlxG { public static var camera:Dynamic = {followLerp:1.0}; }
 class ChartingState { public function new() {} }
 class FreeplayState { public function new() {} }

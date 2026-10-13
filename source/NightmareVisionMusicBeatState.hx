@@ -78,6 +78,13 @@ class NightmareVisionMusicBeatState extends FlxUIState {
 	}
 
 	function get_controls():Dynamic return sourceHost.getControls();
+	/** Native hosts must invoke owner input getters, as source reflection does. */
+	public function sourceControl(name:String):Bool {
+		if (!['ACCEPT','BACK','UI_UP_P','UI_DOWN_P','UI_LEFT','UI_RIGHT'].contains(name)) return false;
+		var input = controls;
+		return input != null && Reflect.getProperty(input, name) == true;
+	}
+
 
 	/**
 		Load and parent one state script. The host resolves the source path and
@@ -136,6 +143,14 @@ class NightmareVisionMusicBeatState extends FlxUIState {
 
 	/** Source update timing and step events run before onUpdate and child updates. */
 	public override function update(elapsed:Float):Void {
+		if (ImportedMenuEntry.departing) return;
+		if (Std.isOfType(sourceSession, NightmareVisionStateSession)
+			&& (cast sourceSession:NightmareVisionStateSession).offerPendingMenuFailure()) return;
+		if (FlxG.keys.justPressed.F10 && Std.isOfType(sourceSession, NightmareVisionStateSession)
+			&& (cast sourceSession:NightmareVisionStateSession).importedMenuEntry) {
+			ImportedMenuEntry.leaveToPicker();
+			return;
+		}
 		var oldStep = curStep;
 		var timing = sourceHost.timing();
 		curDecStep = timing.decimalStep;

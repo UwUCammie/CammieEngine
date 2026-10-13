@@ -27,6 +27,9 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	public var weekCompleted:Dynamic = new Map<String, Bool>();
 	public var startMeta:Dynamic;
 	public var bootstrapComplete:Bool = false;
+	public var importedMenuEntry:Bool = false;
+	var pendingMenuFailure:String = '';
+	var showingMenuFailure:Bool = false;
 	var bootstrapServices:NightmareVisionBootstrapServices;
 	final mainRuntime:NightmareVisionMainRuntime;
 	public var plugins:NightmareVisionPluginRuntime;
@@ -373,6 +376,13 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 				case 'FlashingState': new NightmareVisionFlashingState(this);
 				case 'MusicBeatState': new NightmareVisionMusicBeatState(stateHost());
 				case 'PlayState':
+					if (importedMenuEntry) {
+						var owner = mods.selectedRoot();
+						if (PlayState.SONG == null || ImportedModDiscovery.ownerForSong(Song.storageFolder(PlayState.SONG), 'assets/data') != owner)
+							throw '[imported-menu-chart] Gameplay must use a chart owned by the selected package';
+						var unavailable = ImportedMenuEntry.gameplayUnavailableReason(owner, Song.storageFolder(PlayState.SONG));
+						if (unavailable != '') throw '[imported-menu-chart] ' + unavailable;
+					}
 					PlayState.adoptNightmareVisionStateServices(this);
 					new PlayState();
 				case 'FreeplayState':
@@ -387,6 +397,11 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 
 	public function switchState(next:Dynamic):Void {
 		ensureAlive();
+		if (importedMenuEntry && Std.isOfType(next, PlayState)) {
+			requestedSwitch = true;
+			LoadingState.loadAndSwitchState(cast next);
+			return;
+		}
 		var request:Void->Dynamic;
 		var resetConstructor:Void->Dynamic = null;
 		if (Reflect.isFunction(next)) request = cast next;
@@ -509,9 +524,16 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	function onPreStateCreate(current:FlxState):Void {
 		if (released) return;
 		if (states.exists(current)) {requestedSwitch = false; return;}
+		if (importedMenuEntry && (Std.isOfType(current, FreeplayState)
+			|| Std.isOfType(current, ModifierState) || Std.isOfType(current, VictoryLoopState))
+			&& ImportedFreeplayCaller.ownerForFreeplay('') == mods.selectedRoot()) {
+			requestedSwitch = false; return;
+		}
 		if (Std.isOfType(current, PlayState)) {
 			var play:PlayState = cast current;
-			if (play.nightmareVisionSelectedRoot() == mods.ownerRoot) {requestedSwitch = false; return;}
+			if (play.nightmareVisionSelectedRoot() == mods.ownerRoot) {
+				PlayState.adoptNightmareVisionStateServices(this); requestedSwitch = false; return;
+			}
 		}
 		// The old state is destroyed; retire its process effects before an
 		// unrelated destination creates its UI or invokes persistent plugins.
@@ -545,7 +567,8 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 			failedScriptState:function(name) {
 				switchState(function() {
 					var fallback = new NightmareVisionFallbackState('failed to load (' + name + ')!\nDoes it exist?',
-						function() switchState(createStateFactory('MainMenuState')), this);
+						function() {if (importedMenuEntry) ImportedMenuEntry.openDefaultFreeplay(mods.selectedRoot());
+						else switchState(createStateFactory('MainMenuState'));}, this);
 					states.set(fallback, 'FallbackState'); return fallback;
 				});
 			},
@@ -563,6 +586,19 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		states.remove(cast state);
 	}
 
+	public function offerPendingMenuFailure():Bool {
+		if (pendingMenuFailure == '' || showingMenuFailure || released) return false;
+		showingMenuFailure = true;
+		var message = pendingMenuFailure; pendingMenuFailure = '';
+		switchState(function() {
+			var fallback = new NightmareVisionFallbackState('Imported menu could not run\n' + message
+				+ '\nConfirm: open this package in default Freeplay',
+				function() ImportedMenuEntry.openDefaultFreeplay(mods.selectedRoot()), this);
+			states.set(fallback, 'FallbackState'); return fallback;
+		});
+		return true;
+	}
+
 	public function substateHost():NightmareVisionMusicBeatSubstate.NightmareVisionMusicBeatSubstateHost {
 		var host:Dynamic = stateHost();
 		host.createSubstateScript = createScriptAt;
@@ -572,6 +608,8 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	function report(name:String, callback:String, error:Dynamic):Void {
 		if (bootstrapServices != null) bootstrapServices.reportError(name, callback, error);
 		trace('[nightmare-vision-script-error] ' + paths.root + '/' + name + '#' + callback + ': ' + Std.string(error));
+		if (importedMenuEntry && !showingMenuFailure && !Std.isOfType(FlxG.state, PlayState))
+			pendingMenuFailure = paths.root + '/' + name + '#' + callback + ': ' + Std.string(error);
 	}
 
 	function createStateScript(name:String, parent:Dynamic, group:NightmareVisionScriptGroup):NightmareVisionStateScriptLoadResult
@@ -609,9 +647,19 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	public function install(interp:NightmareVisionScriptInterp):Void {
 		ensureAlive();
 		mainRuntime.install();
+		#if flixel
+		if (importedMenuEntry) interp.bindAsyncResources(paths.root);
+		#end
 		var view:NightmareVisionFlxGView = cast interp.variables.get('FlxG');
 		if (view != null) view.bindStateRequests(switchState, resetState);
 		var scope = interp.sourceClassScope();
+		if (importedMenuEntry) {
+			interp.variables.set('Song', Song);
+			interp.bindImport('funkin.backend.Song', Song);
+			scope.bindRuntimeClass('funkin.backend.Song', Song);
+			scope.bindStaticField(Song, 'loadFromJson', function() return function(json:String, folder:String):Dynamic
+				return ImportedMenuEntry.loadOwnedChart(mods.selectedRoot(), json, folder));
+		}
 		var names:Map<String, Dynamic> = ['TitleState'=>NightmareVisionTitleState,
 			'MainMenuState'=>NightmareVisionMainMenuState, 'FlashingState'=>NightmareVisionFlashingState,
 			'Init'=>NightmareVisionInitState, 'Splash'=>NightmareVisionSplashState];

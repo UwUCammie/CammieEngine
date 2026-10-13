@@ -31,6 +31,7 @@ class CodenameCharacterRuntimeTest(unittest.TestCase):
 class FlxBasic { public function new() {} public function destroy():Void {} }''',
                 'flixel/FlxState.hx': '''package flixel;
 class FlxState extends FlxBasic { public function new() { super(); } }''',
+                'flixel/sound/FlxSound.hx': '''package flixel.sound;class FlxSound {public var playing:Bool=true;public var onComplete:Dynamic;public var fadeTween:flixel.tweens.FlxTween;public function new(){}public function pause():Void playing=false;public function resume():Void playing=true;public function stop():Void playing=false;public function destroy():Void{}}''',
                 'flixel/FlxG.hx': '''package flixel;
 class TestStateSwitchSignal {
  public function new() {}
@@ -41,7 +42,7 @@ class TestSignals {
  public var postStateSwitch:TestStateSwitchSignal;
  public function new() postStateSwitch = new TestStateSwitchSignal();
 }
-class FlxG {
+class FlxG {public static var sound:Dynamic=null;
  public static var game:Dynamic;
  public static var state:FlxState;
  public static var signals:TestSignals = new TestSignals();

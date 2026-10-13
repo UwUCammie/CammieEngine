@@ -43,6 +43,15 @@ private typedef HxcIdentityClass = {
 }
 
 class HxcScriptIdentity {
+	/** Structural scan text built by the existing lexer; literal contents stay opaque. */
+	public static function structuralText(source:String):String {
+		var output = new StringBuf();
+		for (token in tokenize(source == null ? '' : source)) {
+			if (token.kind == 'string') output.add(' ');
+			else { output.add(token.value); if (token.kind == 'identifier') output.add(' '); }
+		}
+		return output.toString();
+	}
 	/** Balanced top-level class spans; strings, regexes and comments stay opaque. */
 	public static function classDeclarations(source:String):Array<HxcScriptClassDeclaration> {
 		var text = source == null ? '' : source;

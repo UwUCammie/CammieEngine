@@ -8375,7 +8375,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function compatExitSong(?skipTransition:Bool = false):Void {
 		paused = false;
 		compatCustomSubstateOpen = false;
-		LoadingState.loadAndSwitchState(new FreeplayState());
+		ImportedMenuEntry.returnToFreeplay();
 	}
 
 	function compatLoadSong(songName:String, ?difficulty:String = ''):Void {
@@ -23883,7 +23883,7 @@ void main(void) {
 				LoadingState.loadAndSwitchStateFactory(() -> new VictoryLoopState(victoryBfX, victoryBfY,
 					victoryGfX, victoryGfY, victoryAccuracy, victoryScore, victoryDadX, victoryDadY));
 			} else
-				LoadingState.loadAndSwitchState(new FreeplayState());
+				ImportedMenuEntry.returnToFreeplay();
 		}
 	}
 

@@ -6,15 +6,16 @@ class LibraryActionsSubState extends LibraryMenuSubState {
 	var onlyFavorites:Bool;
 	var setFilter:Bool->Void;
 	var owner:String;
+	var ownerTitle:String;
 	var categoryFilters:Array<String>;
 	var setCategories:Array<String>->Void;
 	var collection:String;
 	var setCollection:String->Void;
 
 	public function new(key:String, favoritesOnly:Bool, filter:Bool->Void,
-		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false, collection:String = 'All', ?collectionFilter:String->Void) {
+		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false, collection:String = 'All', ?collectionFilter:String->Void, ownerTitle:String = '') {
 		super(); this.allowSorting = allowSorting; chartKey = key; onlyFavorites = favoritesOnly; setFilter = filter;
-		owner = selectedOwner == null ? '' : selectedOwner;
+		this.ownerTitle = ownerTitle; owner = selectedOwner == null ? '' : selectedOwner;
 		categoryFilters = categories == null ? [] : categories.copy();
 		setCategories = categoryFilter; this.collection = collection; setCollection = collectionFilter;
 	}
@@ -45,6 +46,25 @@ class LibraryActionsSubState extends LibraryMenuSubState {
 		if (allowSorting) entries.push({label:'Grouping and sorting', run:function() {
 			var child = new LibrarySortingSubState(); child.cameras = cameras;
 			child.closeCallback = refresh; openSubState(child);
+		}});
+		#if sys
+		var removal = ImportRemovalManager.poll();
+		if (!removal.busy && (removal.phase == 'conflict' || removal.phase == 'cleanup-pending')) entries.push({label:'Recover interrupted mod removal', run:function() {
+			if (Std.isOfType(flixel.FlxG.state, FreeplayState)
+				&& ImportedFreeplayCaller.ownerForFreeplay(CodenameModRuntime.activeRoot()) == '') {
+				LoadingState.loadAndSwitchState(new LibraryRemovalState('')); return;
+			}
+			var child = new LibraryRemovalSubState(''); child.cameras = cameras; child.closeCallback = refresh; openSubState(child);
+		}});
+		#end
+		if (LibraryRemovalPresentation.eligible(owner)) entries.push({label:'Remove installed mod (preserve saved history)', run:function() {
+			if (Std.isOfType(flixel.FlxG.state, FreeplayState)
+				&& ImportedFreeplayCaller.ownerForFreeplay(CodenameModRuntime.activeRoot()) == ''
+				&& HxcFreeplayRuntime.activeOwnerRoots().indexOf(owner) >= 0) {
+				LoadingState.loadAndSwitchState(new LibraryRemovalState(owner,ownerTitle)); return;
+			}
+			var child = new LibraryRemovalSubState(owner, function() close(), ownerTitle); child.cameras = cameras;
+			openSubState(child);
 		}});
 		entries.push({label:'Return', run:function() close()});
 		showActions('Library actions', entries, false);
