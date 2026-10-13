@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.39 development - CammieEngine
+- Development continues after the published v0.0.38 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.38 alpha - CammieEngine
 - Replace the Freeplay card star stream with a window onto a larger star field: hundreds of faint stars set off from a tall emitter just beyond the card's right edge, enter already in flight, bend very slightly up or down, move a little faster with tighter tails and fade out sooner. Stars crossing the top, bottom or right edge are cut off by the card and nothing is drawn outside it. Rows and bends follow fixed sequences that cannot line up into steps.
 - Show compact difficulty stars without a number. A rating colour key above the song list is one gradient from 0 to 20+ with markers and numbers beneath it every five; the selected card still spells out each rating.
