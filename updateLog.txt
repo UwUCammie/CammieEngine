@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.38 development - CammieEngine
+- Development continues after the published v0.0.37 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.37 alpha - CammieEngine
 - Make the Freeplay card stars a steady stream: thirty-two evenly spaced stars across eight fixed lanes, a little faster, with shorter tails and no random timing or placement. The pointer no longer highlights or selects cards while it is hidden.
 - Add a Freeplay library menu on F1: hide or show the selected chart, hide or show its mod, rename the mod, restore its original name, delete the mod with all of its charts, and list hidden entries again. A chart is never deleted by itself.
