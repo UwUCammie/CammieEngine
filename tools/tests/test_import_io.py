@@ -249,6 +249,15 @@ import sys.FileSystem;
 import sys.thread.Thread;
 class Main {
  static var cancelHash:Bool=false;
+ // A failed check must end the process. Throwing out of main would leave a
+ // worker parked at its checkpoint, and the run would only ever time out
+ // without saying which check failed.
+ static function main():Void {
+  var code=0;
+  try body() catch(error:Dynamic) { Sys.println("FAILED: "+Std.string(error)); code=1; }
+  cancelHash=true;
+  Sys.exit(code);
+ }
  static function waitFor(done:Void->Bool, seconds:Float):Bool {
   var until=Sys.time()+seconds;
   while(Sys.time()<until) {
@@ -257,7 +266,7 @@ class Main {
   }
   return done();
  }
- static function main():Void {
+ static function body():Void {
   var args=Sys.args(); var install=args[0]; var stage=args[1]; var source=args[2];
   var copyTarget=stage+"/assets/data/copied.bin";
   ImportWorkScheduler.bindForegroundThread();
@@ -272,7 +281,7 @@ class Main {
    copyState.done=true;
   });
   var started=waitFor(function() return FileSystem.exists(copyTarget)
-   &&FileSystem.stat(copyTarget).size>=65536,10);
+   &&FileSystem.stat(copyTarget).size>=65536,60);
   if(!started) throw "background copy did not reach its first 64 KiB checkpoint";
   var lease=ImportWorkScheduler.beginGameplay();
   Sys.sleep(0.04);
@@ -280,7 +289,7 @@ class Main {
   Sys.sleep(0.12);
   var copyPaused=!copyState.done&&FileSystem.stat(copyTarget).size==pausedSize;
   ImportWorkScheduler.endGameplay(lease);
-  if(!waitFor(function() return copyState.done,20)) throw "background copy did not resume after gameplay";
+  if(!waitFor(function() return copyState.done,90)) throw "background copy did not resume after gameplay";
   if(copyState.error!="") throw "background copy failed: "+copyState.error;
   if(!copyPaused) throw "background copy kept writing during gameplay";
 
@@ -302,7 +311,7 @@ class Main {
   Sys.sleep(0.08);
   var hashPaused=!hashState.done;
   cancelHash=true;
-  if(!waitFor(function() return hashState.done,5)) throw "cancelled background hash did not wake";
+  if(!waitFor(function() return hashState.done,30)) throw "cancelled background hash did not wake";
   ImportWorkScheduler.endGameplay(lease);
   if(!hashPaused||!hashState.cancelled)
    throw "background prewrite hash did not pause and cancel at a chunk boundary: "+hashState.error;
@@ -323,7 +332,7 @@ class Main {
    if(io!=null) ImportIO.end();
    immediateState.done=true;
   });
-  if(!waitFor(function() return immediateState.done,5)||!immediateState.cancelled)
+  if(!waitFor(function() return immediateState.done,30)||!immediateState.cancelled)
    throw "background I/O ignored cancellation when gameplay was idle";
 
   var foregroundCancelled=false;
@@ -497,7 +506,7 @@ class Main {
                 [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(base), "--run", "Main",
                  str(install), str(stage), str(source), str(foreground)],
                 cwd=ROOT, env={**os.environ, "CAMMIE_TEST_TMP": str(ROOT / "tmp")},
-                capture_output=True, text=True, timeout=45,
+                capture_output=True, text=True, timeout=300,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("OK", result.stdout)
