@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.36 development - CammieEngine
+- Development continues after the published v0.0.35 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.35 alpha - CammieEngine
 - Keep unavailable importing songs below ready songs in every sort. Favorite charts appear in a labeled top section and their regular sorted positions; remove the redundant Favorites first sort option and preserve ordinary and per-difficulty card artwork.
 - Toggle Freeplay search with a bare Ctrl press, starting unfocused. Use native Unicode text, keyboard layouts and clipboard editing; suppress menu/audio shortcuts during search and release native focus when a compatibility modal opens.
