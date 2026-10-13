@@ -17,6 +17,7 @@ class LibraryManageSubState extends LibraryMenuSubState {
 		this.chartKey = chartKey == null ? '' : chartKey; this.owner = owner == null ? '' : owner;
 		this.chartTitle = chartTitle == null ? '' : chartTitle; this.ownerTitle = ownerTitle == null ? '' : ownerTitle;
 		this.showHidden = showHidden; this.setShowHidden = setShowHidden; this.namesChanged = namesChanged;
+		cardTitle = this.chartTitle; cardCaption = this.ownerTitle;
 	}
 	override function create():Void { super.create(); refresh(); }
 

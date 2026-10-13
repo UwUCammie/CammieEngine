@@ -16,11 +16,13 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 	public function new(owner:String, ?onPublished:Void->Void, ?displayTitle:String) {
 		super(); this.owner = owner; this.onPublished = onPublished;
 		this.displayTitle = displayTitle == null ? '' : StringTools.trim(displayTitle);
+		cardTitle = this.displayTitle;
 	}
 	override function create():Void {
 		super.create();
-		detail = new FlxText(60, 275, FlxG.width - 120, '', 18);
-		detail.setFormat('assets/fonts/vcr.ttf', 18, 0xFFCCCCCC, LEFT); add(detail);
+		// Under the two or three choices this dialog ever offers.
+		detail = new FlxText(panelX + 32, rowsY + 3 * LibraryMenuSubState.ROW_PITCH + 6, LibraryMenuSubState.PANEL_WIDTH - 64, '', 14);
+		detail.setFormat('assets/fonts/vcr.ttf', 14, 0xFFCFD8E5, LEFT); add(detail);
 		backAction = leaveOrCancel;
 		#if sys
 		started = LibraryRemovalPresentation.eligible(owner) && ImportRemovalManager.beginPreview(owner);

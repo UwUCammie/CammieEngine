@@ -24,7 +24,7 @@ class LibraryNameSubState extends MusicBeatSubstate {
 	}
 	override function create():Void {
 		openingInputFrame = FlxG.game.inputFrame;
-		super.create(); add(new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF101522));
+		super.create(); LibraryMenuSubState.buildPanel(this, 40, 24, FlxG.width - 80, FlxG.height - 48);
 		var heading = new FlxText(40, 40, FlxG.width - 80, title, 28);
 		heading.setFormat('assets/fonts/vcr.ttf', 28, 0xFFFFFFFF, CENTER); add(heading);
 		input = new FlxUIInputText(60, 120, FlxG.width - 120, initial, 24, 0xFFFFFFFF, 0xFF30384C);

@@ -13,9 +13,10 @@ class LibraryActionsSubState extends LibraryMenuSubState {
 	var setCollection:String->Void;
 
 	public function new(key:String, favoritesOnly:Bool, filter:Bool->Void,
-		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false, collection:String = 'All', ?collectionFilter:String->Void, ownerTitle:String = '') {
+		?selectedOwner:String, ?categories:Array<String>, ?categoryFilter:Array<String>->Void, allowSorting:Bool = false, collection:String = 'All', ?collectionFilter:String->Void, ownerTitle:String = '', chartTitle:String = '') {
 		super(); this.allowSorting = allowSorting; chartKey = key; onlyFavorites = favoritesOnly; setFilter = filter;
 		this.ownerTitle = ownerTitle; owner = selectedOwner == null ? '' : selectedOwner;
+		cardTitle = chartTitle; cardCaption = ownerTitle;
 		categoryFilters = categories == null ? [] : categories.copy();
 		setCategories = categoryFilter; this.collection = collection; setCollection = collectionFilter;
 	}

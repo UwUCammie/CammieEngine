@@ -17,7 +17,7 @@ class LibraryRemovalUiTest(unittest.TestCase):
  typedef LibraryMenuAction = {var label:String; var run:Void->Void;}
  class LibraryMenuSubState {
  public var actions:Array<LibraryMenuAction>=[]; public var selected:Int=0;
- public var heading:String=''; public var status:flixel.text.FlxText=new flixel.text.FlxText();
+ public var heading:String=''; public var status:flixel.text.FlxText=new flixel.text.FlxText();public var cardTitle:String='';public var cardCaption:String='';public var panelX:Int=0;public var rowsY:Int=0;public static inline var ROW_PITCH:Int=40;public static inline var PANEL_WIDTH:Int=760;
  public var backAction:Void->Void; public var closed:Bool=false; public var cameras:Array<Dynamic>=[];public var closeCallback:Void->Void;public var child:LibraryMenuSubState;
  public function new(){} public function create():Void{} public function add(x:Dynamic):Void{}
  public function close():Void{closed=true;if(closeCallback!=null)closeCallback();}public function openSubState(state:LibraryMenuSubState):Void{child=state;state.create();} public function update(elapsed:Float):Void{}

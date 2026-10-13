@@ -7,6 +7,8 @@ import flixel.text.FlxText;
 class FreeplayBrowserRow extends Alphabet {
 	var panel:FlxSprite;
 	var trails:Array<FlxSprite> = [];
+	var trailStars:Array<Int> = [];
+	var trailClips:Array<flixel.math.FlxRect> = [];
 	var trailClock:Float = 0;
 	var trailColor:Int = 0xFFFFDDDD;
 	public function setTrailColor(color:Int):Void {
@@ -15,23 +17,33 @@ class FreeplayBrowserRow extends Alphabet {
 	var trailShown:Bool = false;
 	/** Built on first use: only a selected or hovered card pays for its stars. */
 	function buildTrail():Void {
-		var key = 'freeplay-trail-star'; var graphic = flixel.FlxG.bitmap.get(key);
+		var frame = FreeplayStarTrail.FRAME; var turns = FreeplayStarTrail.TURNS;
+		var key = 'freeplay-trail-star-turns'; var graphic = flixel.FlxG.bitmap.get(key);
 		if (graphic == null) {
-			var bitmap = new openfl.display.BitmapData(18, 18, true, 0); var shape = new openfl.display.Shape();
-			shape.graphics.beginFill(0xFFFFFF);
-			for (i in 0...11) {
-				var angle = -Math.PI / 2 + i * Math.PI / 5; var radius = i % 2 == 0 ? 8.0 : 3.5;
-				var px = 9 + Math.cos(angle) * radius; var py = 9 + Math.sin(angle) * radius;
-				if (i == 0) shape.graphics.moveTo(px, py); else shape.graphics.lineTo(px, py);
+			// One frame per step of the star's turn; see FreeplayStarTrail.TURNS.
+			var bitmap = new openfl.display.BitmapData(frame * turns, frame, true, 0); var shape = new openfl.display.Shape();
+			for (turn in 0...turns) {
+				var middle = turn * frame + frame / 2; var tilt = turn * (Math.PI * 2 / 5) / turns;
+				shape.graphics.beginFill(0xFFFFFF);
+				for (i in 0...11) {
+					var angle = -Math.PI / 2 + tilt + i * Math.PI / 5; var radius = i % 2 == 0 ? 8.0 : 3.5;
+					var px = middle + Math.cos(angle) * radius; var py = frame / 2 + Math.sin(angle) * radius;
+					if (i == 0) shape.graphics.moveTo(px, py); else shape.graphics.lineTo(px, py);
+				}
+				shape.graphics.endFill();
 			}
-			shape.graphics.endFill(); bitmap.draw(shape); graphic = flixel.FlxG.bitmap.add(bitmap, false, key);
+			bitmap.draw(shape); graphic = flixel.FlxG.bitmap.add(bitmap, false, key);
 		}
 		// Above the panel, below the text. Inserting at one index stacks later
 		// sprites lower, which leaves each star above its own tail copies.
 		var layer = members.indexOf(panel) + 1;
-		for (i in 0...FreeplayStarTrail.STARS * (FreeplayStarTrail.GHOSTS + 1)) {
-			var star = new FlxSprite(); star.loadGraphic(graphic); star.antialiasing = true; star.visible = false;
-			insert(layer, star); trails.push(star);
+		// Only stars whose path can cross the card get sprites.
+		for (i in 0...FreeplayStarTrail.STARS) if (FreeplayStarTrail.reachesCard(i)) {
+			trailStars.push(i);
+			for (copy in 0...FreeplayStarTrail.GHOSTS + 1) {
+				var star = new FlxSprite(); star.loadGraphic(graphic, true, frame, frame); star.antialiasing = true; star.visible = false;
+				insert(layer, star); trails.push(star); trailClips.push(new flixel.math.FlxRect());
+			}
 		}
 	}
 	function animateTrail(elapsed:Float):Void {
@@ -44,22 +56,34 @@ class FreeplayBrowserRow extends Alphabet {
 		if (trails.length == 0) buildTrail();
 		trailShown = true; trailClock += elapsed;
 		var copies = FreeplayStarTrail.GHOSTS + 1;
-		// Stars stay wholly inside the card, so a rotating sprite needs no clip.
-		var travel = rowWidth - 36; var lanes = Math.max(0, motion.height - 4 - 26);
-		for (i in 0...FreeplayStarTrail.STARS) {
-			var head = FreeplayStarTrail.progress(trailClock, i);
-			var size = FreeplayStarTrail.SIZE; var turn = FreeplayStarTrail.SPIN;
-			var laneY = y + 4 + FreeplayStarTrail.lane(i) * lanes;
+		// The card is a window onto a taller field that starts just beyond its
+		// right edge. A star crossing the top, bottom or right edge is cut off
+		// there, and nothing is ever drawn past the card.
+		var frame = FreeplayStarTrail.FRAME; var half = frame / 2;
+		var cardLeft = x; var cardRight = x + rowWidth; var cardTop = y; var cardBottom = y + motion.height - 4;
+		var travel = rowWidth - 36; var reach = (cardBottom - cardTop) / 2;
+		var turn = FreeplayStarTrail.SPIN;
+		for (slot in 0...trailStars.length) {
+			var i = trailStars[slot];
+			var head = FreeplayStarTrail.life(trailClock, i);
 			for (copy in 0...copies) {
-				var star = trails[i * copies + copy];
-				var progress = copy == 0 ? head : head - FreeplayStarTrail.ghostLag(copy - 1);
+				var star = trails[slot * copies + copy];
+				var life = copy == 0 ? head : head - FreeplayStarTrail.ghostLag(copy - 1);
 				var opacity = copy == 0 ? FreeplayStarTrail.opacity(head) : FreeplayStarTrail.ghostOpacity(head, copy - 1);
-				star.visible = opacity > 0.01;
-				if (!star.visible) continue;
-				star.alpha = opacity; star.color = trailColor;
-				star.scale.set(size * (1 - copy * 0.15), size * (1 - copy * 0.15));
-				star.angle = turn * (trailClock - copy * FreeplayStarTrail.GHOST_STEP * FreeplayStarTrail.PERIOD);
-				star.setPosition(x + rowWidth - 27 - progress * travel, laneY);
+				if (opacity <= 0.01) { star.visible = false; continue; }
+				var size = FreeplayStarTrail.scale(life) * (1 - copy * 0.15);
+				var px = cardRight - FreeplayStarTrail.entered(life) * travel;
+				var py = cardTop + reach + FreeplayStarTrail.offset(i, life) * reach - half;
+				// The drawn star is `size` times the frame, about the frame's middle.
+				var left = px + half - half * size; var top = py + half - half * size;
+				var fromX = FreeplayStarTrail.clipFrom(left, size, cardLeft); var toX = FreeplayStarTrail.clipTo(left, size, cardRight);
+				var fromY = FreeplayStarTrail.clipFrom(top, size, cardTop); var toY = FreeplayStarTrail.clipTo(top, size, cardBottom);
+				if (toX - fromX < 0.5 || toY - fromY < 0.5) { star.visible = false; continue; }
+				star.visible = true; star.alpha = opacity; star.color = trailColor;
+				star.scale.set(size, size); star.setPosition(px, py);
+				star.animation.frameIndex = FreeplayStarTrail.turnFrame(turn * (trailClock - copy * FreeplayStarTrail.GHOST_STEP * FreeplayStarTrail.PERIOD) + i * 47);
+				if (fromX <= 0 && fromY <= 0 && toX >= frame && toY >= frame) { if (star.clipRect != null) star.clipRect = null; }
+				else star.clipRect = trailClips[slot * copies + copy].set(fromX, fromY, toX - fromX, toY - fromY);
 			}
 		}
 	}
@@ -172,7 +196,7 @@ class FreeplayBrowserRow extends Alphabet {
 			var star = chartStars[i];
 			star.setGraphicSize(Std.int(Math.max(2, Math.min(26, spacing - 4)))); star.updateHitbox();
 			star.cardX = x + rowWidth - (chartCaption == '' ? 244 : 94) + i * spacing;
-			// Centered in the compact card: its number is drawn inside the star.
+			// Centered in the compact card. The rating is spelled out on the selected card only.
 			star.cardY = y + (height - star.height) / 2; star.setPosition(star.cardX, star.cardY); star.visible = !selected; star.alpha = disabled ? 0.45 : 1;
 		}
 		chartTag.text = FreeplayBrowserLayout.label(chartCaption.toUpperCase(), 16);

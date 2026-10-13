@@ -100,6 +100,7 @@ class FreeplayState extends MusicBeatState {
 	var browserBeatClock:Float = 0;
 	var bpmCache:Map<String, Float> = [];
 	var browserMeters:Array<FlxSprite> = [];
+	var browserMeterLevels:Array<Float> = [for (i in 0...12) 0.0];
 	var browserEnvelope = new FreeplayAudioEnvelope();
 
 	var browserDetail:FlxText;
@@ -1263,10 +1264,40 @@ class FreeplayState extends MusicBeatState {
 		// Solid floor first, then bars anchored to it by their bottom edge.
 		var meterFloor = new FlxSprite(detailX, FreeplayDetailSections.METER_FLOOR).makeGraphic(12 * 19 - 7, 3, 0xFFFFF4DC);
 		add(meterFloor); uiChrome.push(meterFloor);
-		for (i in 0...12) {
-			var meter = new FlxSprite(detailX + i * 19, FreeplayDetailSections.METER_FLOOR - 1).makeGraphic(12, 1, 0xFFFFFFFF);
-			meter.origin.set(6, 1); meter.scale.y = 2; meter.color = FreeplayPulse.loudness(0);
+		// Each bar is a stack of outlined blocks, coloured by height, like a
+		// hardware level meter. Sound only decides how many of them are lit.
+		var blockKey = 'freeplay-meter-block'; var blockGraphic = FlxG.bitmap.get(blockKey);
+		if (blockGraphic == null) {
+			var bitmap = new openfl.display.BitmapData(12, 5, true, 0xFF5A5A5A);
+			bitmap.fillRect(new openfl.geom.Rectangle(1, 1, 10, 3), 0xFFFFFFFF);
+			blockGraphic = FlxG.bitmap.add(bitmap, false, blockKey);
+		}
+		for (i in 0...12) for (block in 0...FreeplayPulse.METER_BLOCKS) {
+			var meter = new FlxSprite(detailX + i * 19, FreeplayDetailSections.METER_FLOOR - 6 - block * 6);
+			meter.loadGraphic(blockGraphic); meter.color = FreeplayPulse.blockColor(block); meter.alpha = block == 0 ? 1 : 0.16;
 			add(meter); uiChrome.push(meter); browserMeters.push(meter);
+		}
+		// What the star colours mean, since compact cards no longer carry a number:
+		// one gradient from the easiest to the hardest rating, marked every five.
+		var keyWidth = FreeplayPulse.KEY_WIDTH;
+		var keyX = 24 + FreeplayBrowserLayout.listWidth(FlxG.width) - keyWidth - 14;
+		browserText(keyX - 58, 33, 56, 'RATING', 12, 0xFF9DB2CC);
+		// A light rim keeps the darkest ratings readable on the dark menu.
+		var keyRim = new FlxSprite(keyX - 1, 35).makeGraphic(keyWidth + 2, 10, 0xFF6C7C96); add(keyRim); uiChrome.push(keyRim);
+		var keyName = 'freeplay-rating-key'; var keyGraphic = FlxG.bitmap.get(keyName);
+		if (keyGraphic == null) {
+			var bitmap = new openfl.display.BitmapData(keyWidth, 8, false, 0);
+			for (column in 0...keyWidth)
+				bitmap.fillRect(new openfl.geom.Rectangle(column, 0, 1, 8), ChartDifficultyAnalysis.ratingColor(FreeplayPulse.keyRating(column)));
+			keyGraphic = FlxG.bitmap.add(bitmap, false, keyName);
+		}
+		var keyBar = new FlxSprite(keyX, 36); keyBar.loadGraphic(keyGraphic); add(keyBar); uiChrome.push(keyBar);
+		var keyValues = FreeplayPulse.ratingKey();
+		for (i in 0...keyValues.length) {
+			var at = keyX + FreeplayPulse.keyColumn(keyValues[i]);
+			var tick = new FlxSprite(at, 45).makeGraphic(1, 4, 0xFFCFD8E5); add(tick); uiChrome.push(tick);
+			var number = browserText(at - 15, 49, 32, keyValues[i] + (i == keyValues.length - 1 ? '+' : ''), 10, 0xFFCFD8E5);
+			number.alignment = CENTER; number.wordWrap = false;
 		}
 		// Clear of the optional FPS and memory counters in the top-left corner.
 		browserCount = browserText(150, 14, FlxG.width * 0.5, '', 18, 0xFF9DB2CC);
@@ -1335,8 +1366,9 @@ class FreeplayState extends MusicBeatState {
 		var position = chartVisible.indexOf(selectedChartRow(chartVisible));
 		browserCount.text = label + '  /  ' + (expandedDifficultyRows() ? count + ' chart cards' : visible.length + ' songs')
 			+ (hasSelection ? '  /  ' + (position + 1) + ' of ' + count + ' cards' : '');
-		browserGroup.text = refreshNotice != '' ? FreeplayBrowserLayout.label(refreshNotice, 74)
-			: (hasSelection ? FreeplayBrowserLayout.label(libraryGroupCaption(curSelected), 74) : '');
+		// Kept short: the rating colour key shares this line.
+		browserGroup.text = refreshNotice != '' ? FreeplayBrowserLayout.label(refreshNotice, 26)
+			: (hasSelection ? FreeplayBrowserLayout.label(libraryGroupCaption(curSelected), 26) : '');
 		browserEmpty.visible = !hasSelection;
 		browserRating.text = hasSelection ? FreeplayDifficultyRating.label(songs[curSelected].authoredDifficultyRatings, DifficultyManager.getDiffName(curDifficulty)) : '';
 		browserDensity.text = hasSelection ? ChartDifficultyAnalysis.describe(ChartDensityCache.read(songs[curSelected].songName, DifficultyManager.getDiffName(curDifficulty))) : '';
@@ -1656,15 +1688,12 @@ class FreeplayState extends MusicBeatState {
 		syncSourceRows();
 		if (denseBrowser) {
 			browserEnvelope.update(previewSound != null && previewSound.playing ? previewSound : null, elapsed);
-			for (i in 0...browserMeters.length) {
-				var meter = browserMeters[i];
-				var amplitude = browserEnvelope.levels[i];
-				if (!Math.isFinite(amplitude)) amplitude = 0;
-				var target = 2 + Math.min(1, Math.max(0, amplitude)) * (22 - Math.abs(i - 5.5));
-				meter.scale.y += (target - meter.scale.y) * Math.min(1, elapsed * 35);
-				// Bars grow upward from a fixed floor (see the bottom-edge origin) and
-				// shift from green through yellow to red as their own level rises.
-				meter.color = FreeplayPulse.loudness((meter.scale.y - 2) / (22 - Math.abs(i - 5.5)));
+			var blocks = FreeplayPulse.METER_BLOCKS;
+			for (i in 0...Std.int(browserMeters.length / blocks)) {
+				// Up with the sound at once, back down at a steady rate.
+				browserMeterLevels[i] = FreeplayPulse.settle(browserMeterLevels[i], browserEnvelope.levels[i], elapsed);
+				var lit = FreeplayPulse.litBlocks(browserMeterLevels[i]);
+				for (block in 0...blocks) browserMeters[i * blocks + block].alpha = block < lit ? 1 : 0.16;
 			}
 			if (browserHeading != null) {
 				// Follow the playing preview so the beat lands with the music.
@@ -2139,7 +2168,8 @@ class FreeplayState extends MusicBeatState {
 		var menu = new LibraryActionsSubState(key, favoritesOnly, function(value) favoritesOnly = value,
 			owner, categoryFilters, function(value) categoryFilters = value.copy(), denseBrowser, curCategory, denseBrowser && directOwnerRoot == '' ? function(value:String) {
 			curCategory = value; libraryViewId = ''; closeSubState(); reloadAfterImport();
-		} : null, songMatches(curSelected) ? sourceCaption(songs[curSelected]) : '');
+		} : null, songMatches(curSelected) ? sourceCaption(songs[curSelected]) : '',
+			songMatches(curSelected) ? FreeplaySongTitle.display(songs[curSelected].displayTitle) : '');
 		menu.cameras = [camUI];
 		openSubState(menu);
 	}

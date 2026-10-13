@@ -1,8 +1,14 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.38 development - CammieEngine
-- Development continues after the published v0.0.37 checkpoint; remaining roadmap requirements stay open.
+v0.0.38 alpha - CammieEngine
+- Replace the Freeplay card star stream with a window onto a larger star field: hundreds of faint stars set off from a tall emitter just beyond the card's right edge, enter already in flight, bend very slightly up or down, move a little faster with tighter tails and fade out sooner. Stars crossing the top, bottom or right edge are cut off by the card and nothing is drawn outside it. Rows and bends follow fixed sequences that cannot line up into steps.
+- Show compact difficulty stars without a number. A rating colour key above the song list is one gradient from 0 to 20+ with markers and numbers beneath it every five; the selected card still spells out each rating.
+- Cut the loading artwork out of its backdrop on the artwork's own pixels before scaling, which removes the yellow-green rim around the characters. Feather the cut edge and add a drop shadow. Fill the loading screen with three times as many background stars in a wide range of sizes and opacities.
+- Draw the Freeplay visualizer as stacked outlined blocks that are green at the bottom and red at the top. Sound only lights more blocks, and a bar sinks back at a steady rate instead of dropping at once.
+- Turn the TAB and F1 Freeplay menus, and the menus opened from them, into centred translucent popups over the dimmed song list, with the selected chart shown as a card above the choices and a highlighted selection row.
+- Add tools/run_tests.py --changed, which runs only the test modules covering files changed since the last commit.
+- Incremental alpha release after v0.0.37; remaining roadmap requirements stay open.
 
 v0.0.37 alpha - CammieEngine
 - Make the Freeplay card stars a steady stream: thirty-two evenly spaced stars across eight fixed lanes, a little faster, with shorter tails and no random timing or placement. The pointer no longer highlights or selects cards while it is hidden.

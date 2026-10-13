@@ -7,7 +7,7 @@ import openfl.display.Sprite;
 import openfl.display.Bitmap;
 import openfl.display.BitmapData;
 import openfl.filters.GlowFilter;
-import openfl.filters.ShaderFilter;
+import openfl.filters.DropShadowFilter;
 import openfl.events.UncaughtErrorEvent;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
@@ -142,8 +142,15 @@ class SongLoadingScreen {
 		var data = openfl.utils.Assets.getBitmapData('assets/images/loading/funkay.png').clone();
 		#end
 		if (data == null) throw 'Loading artwork is unavailable';
+		// Cut the lineup out on its own pixels, before any scaling can smear the
+		// backdrop into the outlines, then lift it off the background with a shadow.
+		// Black would vanish on the navy screen, so the shadow is a deep violet.
+		var bounds = new openfl.geom.Rectangle(0, 0, data.width, data.height);
+		var pixels = data.getPixels(bounds);
+		SongLoadingMatte.apply(pixels, data.width, data.height);
+		pixels.position = 0; data.setPixels(bounds, pixels);
 		artwork = new Bitmap(data); artwork.smoothing = true;
-		artwork.filters = [new ShaderFilter(new SongLoadingMatteShader())];
+		artwork.filters = [new DropShadowFilter(16, 55, 0x2A1B63, 0.9, 5, 5, 1, 2)];
 		var artScale = 720 / data.height;
 		artwork.scaleX = artwork.scaleY = artScale;
 		artwork.x = (1280 - data.width * artScale) / 2;
@@ -161,9 +168,11 @@ class SongLoadingScreen {
 	static function buildStars():Void {
 		animationStarted = haxe.Timer.stamp();
 		var colors = [0xFF66B7, 0x80E3D0, 0x8667E8];
-		for (i in 0...28) {
+		// A deep field: many small faint stars and a few large bright ones. Size
+		// and brightness come from fixed sequences, so the screen never changes.
+		for (i in 0...STAR_COUNT) {
 			var star = new Sprite();
-			var radius = 9 + i % 5 * 4;
+			var radius = starRadius(i);
 			star.graphics.beginFill(colors[i % colors.length]);
 			for (point in 0...10) {
 				var angle = point * Math.PI / 5 - Math.PI / 2;
@@ -177,6 +186,16 @@ class SongLoadingScreen {
 		animateStars();
 	}
 
+	public static inline var STAR_COUNT:Int = 84;
+	static inline function fraction(value:Float):Float return value - Math.floor(value);
+	/** 3 to 27 pixels, weighted towards small stars. */
+	public static function starRadius(index:Int):Float {
+		var spread = fraction(index * 0.3819660112501051);
+		return 3 + spread * spread * 24;
+	}
+	/** Resting opacity of a star, 0.06 to 0.5, independent of its size. */
+	public static function starOpacity(index:Int):Float return 0.06 + fraction(index * 0.6180339887498949 + 0.25) * 0.44;
+
 	static function animateStars():Void {
 		var time = haxe.Timer.stamp() - animationStarted;
 		for (i in 0...stars.length) {
@@ -184,7 +203,8 @@ class SongLoadingScreen {
 			star.x = (i * 173 + time * (8 + i % 7)) % 1400 - 60;
 			star.y = (i * 117) % 640 + 30 + Math.sin(time * 0.7 + i) * 12;
 			star.rotation = (time * (4 + i % 5) + i * 31) % 360;
-			star.alpha = 0.15 + (Math.sin(time * 1.1 + i) + 1) * 0.1;
+			// Each star twinkles around its own brightness.
+			star.alpha = starOpacity(i) * (0.75 + 0.25 * Math.sin(time * 1.1 + i));
 		}
 	}
 

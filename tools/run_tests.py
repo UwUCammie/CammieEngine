@@ -134,12 +134,54 @@ def save_timings(timings):
                 pass
 
 
+def changed_paths():
+    """Files that differ from the last commit, plus untracked ones."""
+    listed = []
+    for command in (["git", "diff", "--name-only", "HEAD"], ["git", "ls-files", "--others", "--exclude-standard"]):
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        if result.returncode == 0:
+            listed.extend(line.strip() for line in result.stdout.splitlines() if line.strip())
+    return sorted(set(listed))
+
+
+def modules_for_changes(paths, modules):
+    """Test modules that cover the given files.
+
+    A changed test module is selected itself. For any other file, every module
+    whose text names the file (by stem for sources and tools, by file name
+    otherwise) is selected. This keeps everyday runs to the handful of modules
+    that can notice the change; the release package still runs everything.
+    """
+    names = set()
+    selected = set()
+    for path in paths:
+        item = Path(path)
+        if item.parent.as_posix() == "tools/tests" and item.name.startswith("test_") and item.suffix == ".py":
+            selected.add(item.name)
+        elif item.suffix in (".hx", ".py", ".ps1", ".sh", ".bat"):
+            names.add(item.stem if item.suffix in (".hx", ".py") else item.name)
+        else:
+            names.add(item.name)
+    names.discard("")
+    if names:
+        for module in modules:
+            try:
+                text = module.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if any(name in text for name in names):
+                selected.add(module.name)
+    return [module for module in modules if module.name in selected]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jobs", type=int, default=default_jobs(),
                         help="modules at once (default: up to 16, budgeted for nested compilers)")
     parser.add_argument("--pattern", default="test_*.py",
                         help="module filename glob (default: test_*.py)")
+    parser.add_argument("--changed", action="store_true",
+                        help="run only the modules that cover files changed since the last commit")
     parser.add_argument('--module', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.module:
@@ -151,6 +193,12 @@ def main():
     modules = sorted(TESTS.glob(args.pattern))
     if not modules:
         parser.error("no test modules match --pattern")
+    if args.changed:
+        paths = changed_paths()
+        modules = modules_for_changes(paths, modules)
+        print(f"{len(paths)} changed files are covered by {len(modules)} test modules", flush=True)
+        if not modules:
+            return 0
     timings = load_timings()
     modules = schedule_modules(modules, timings)
     worker_count = min(args.jobs, len(modules))

@@ -70,6 +70,39 @@ class FreeplayPulse {
 		return 0xFF000000 | (r << 16) | (g << 8) | b;
 	}
 
+	/** Blocks stacked in one visualizer bar. */
+	public static inline var METER_BLOCKS:Int = 6;
+	/** Share of full height a bar may fall each second once the sound drops. */
+	public static inline var METER_FALL:Float = 1.6;
+
+	/** Colour of a block by its place in the bar: the bottom is green, the top red.
+	 * A bar never changes colour as a whole; louder sound only lights more blocks. */
+	public static function blockColor(block:Int, blocks:Int = METER_BLOCKS):Int
+		return loudness(blocks <= 1 ? 0 : block / (blocks - 1));
+	/** Blocks lit at a level 0..1. The lowest block stays lit as the floor. */
+	public static function litBlocks(level:Float, blocks:Int = METER_BLOCKS):Int {
+		var value = !Math.isFinite(level) ? 0 : Math.max(0, Math.min(1, level));
+		return Std.int(Math.max(1, Math.min(blocks, Math.round(value * blocks))));
+	}
+	/** A bar jumps up with the sound at once and sinks back at a steady rate. */
+	public static function settle(shown:Float, level:Float, elapsed:Float):Float {
+		var target = !Math.isFinite(level) ? 0 : Math.max(0, Math.min(1, level));
+		if (!Math.isFinite(shown) || target >= shown) return target;
+		return Math.max(target, shown - METER_FALL * Math.max(0, elapsed));
+	}
+	/** Width in pixels of the rating colour key above the song list. */
+	public static inline var KEY_WIDTH:Int = 200;
+	/** Top of the rating scale; anything above it shares the last colour. */
+	public static inline var KEY_TOP:Int = 20;
+	/** Ratings marked on the colour key. */
+	public static function ratingKey():Array<Int> return [0, 5, 10, 15, 20];
+	/** Rating shown by a column of the key, left to right. */
+	public static function keyRating(column:Int, width:Int = KEY_WIDTH):Float
+		return width <= 1 ? 0 : Math.max(0, Math.min(1, column / (width - 1))) * KEY_TOP;
+	/** Column of the key that shows a rating. */
+	public static function keyColumn(rating:Float, width:Int = KEY_WIDTH):Int
+		return Std.int(Math.round(Math.max(0, Math.min(1, rating / KEY_TOP)) * (width - 1)));
+
 	/** Bottom-row controls, each a key and what it does. */
 	public static function hints():Array<FreeplayHint> return [
 		{key:'CTRL', action:'Search'},

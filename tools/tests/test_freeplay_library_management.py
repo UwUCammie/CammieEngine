@@ -64,6 +64,55 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
   check(Math.abs(BaseGameDuplicate.oggSeconds(head, tail) - 10) < 1e-9, 'ogg length');
   check(BaseGameDuplicate.oggSeconds(haxe.io.Bytes.alloc(64), tail) == -1 && BaseGameDuplicate.oggSeconds(head, haxe.io.Bytes.alloc(64)) == -1 && BaseGameDuplicate.oggSeconds(null, null) == -1, 'malformed audio measured');""")
 
+    def test_block_meter_colour_key_popup_layout_and_cutout(self):
+        self.run_haxe(r"""
+  var blocks = FreeplayPulse.METER_BLOCKS;
+  check(blocks >= 5 && FreeplayPulse.blockColor(0) == 0xFF4CFF86 && FreeplayPulse.blockColor(blocks - 1) == 0xFFFF4D4D, 'bottom block is not green or top block is not red');
+  for (b in 1...blocks) check(((FreeplayPulse.blockColor(b) >> 16) & 255) >= ((FreeplayPulse.blockColor(b - 1) >> 16) & 255), 'blocks do not warm with height');
+  check(FreeplayPulse.litBlocks(0) == 1 && FreeplayPulse.litBlocks(1) == blocks && FreeplayPulse.litBlocks(0.5) == Math.round(blocks / 2) && FreeplayPulse.litBlocks(Math.NaN) == 1 && FreeplayPulse.litBlocks(7) == blocks, 'lit block count');
+  check(FreeplayPulse.settle(0.2, 0.9, 0.016) == 0.9, 'bar does not jump up with the sound');
+  var falling = FreeplayPulse.settle(0.9, 0, 0.1);
+  check(falling < 0.9 && falling > 0.6 && Math.abs(0.9 - falling - FreeplayPulse.METER_FALL * 0.1) < 1e-9, 'bar drops at once or not at a steady rate');
+  check(FreeplayPulse.settle(0.05, 0, 1) == 0 && FreeplayPulse.settle(Math.NaN, 0.3, 0.1) == 0.3, 'bar falls below the sound or keeps a bad level');
+  var key = FreeplayPulse.ratingKey();
+  check(key.join(',') == '0,5,10,15,20', 'colour key marks');
+  var width = FreeplayPulse.KEY_WIDTH;
+  check(FreeplayPulse.keyRating(0) == 0 && FreeplayPulse.keyRating(width - 1) == 20 && FreeplayPulse.keyRating(-5) == 0 && FreeplayPulse.keyRating(width + 9) == 20, 'gradient ends');
+  check(FreeplayPulse.keyColumn(0) == 0 && FreeplayPulse.keyColumn(20) == width - 1 && FreeplayPulse.keyColumn(99) == width - 1 && FreeplayPulse.keyColumn(10) == Math.round((width - 1) / 2), 'marker positions');
+  for (i in 1...key.length) {
+   check(FreeplayPulse.keyColumn(key[i]) - FreeplayPulse.keyColumn(key[i - 1]) >= 40, 'markers crowd each other');
+   check(Math.abs(FreeplayPulse.keyRating(FreeplayPulse.keyColumn(key[i])) - key[i]) < 0.06, 'marker does not sit on its colour');
+   check(ChartDifficultyAnalysis.ratingColor(key[i]) != ChartDifficultyAnalysis.ratingColor(key[i - 1]), 'two marks share a colour');
+  }
+  check(ChartDifficultyAnalysis.ratingColor(0) == 0xFF4290FB && ChartDifficultyAnalysis.ratingColor(99) == ChartDifficultyAnalysis.ratingColor(20) && ChartDifficultyAnalysis.ratingColor(Math.NaN) == ChartDifficultyAnalysis.ratingColor(0), 'rating colour ends');
+
+  // Outline pixels that are only a darker backdrop lose the backdrop; artwork keeps its colour.
+  check(SongLoadingMatte.coverage(0, 0, 0) == 1 && SongLoadingMatte.coverage(255, 255, 255) == 1 && SongLoadingMatte.coverage(230, 60, 90) == 1 && SongLoadingMatte.coverage(40, 90, 200) == 1, 'artwork colours cut');
+  check(SongLoadingMatte.coverage(202, 255, 77) == 0 && Math.abs(SongLoadingMatte.coverage(101, 127, 38) - 0.5) < 0.02 && SongLoadingMatte.coverage(20, 26, 8) > 0.88, 'backdrop share of an outline pixel');
+  var w = 9; var h = 3; var pixels = haxe.io.Bytes.alloc(w * h * 4);
+  function put(x:Int, y:Int, r:Int, g:Int, b:Int) { var at = (y * w + x) * 4; pixels.set(at, 255); pixels.set(at + 1, r); pixels.set(at + 2, g); pixels.set(at + 3, b); }
+  function alpha(x:Int, y:Int):Int return pixels.get((y * w + x) * 4);
+  for (y in 0...h) {
+   for (x in 0...2) put(x, y, 202, 255, 77);      // backdrop
+   put(2, y, 101, 127, 38);                        // half outline, half backdrop
+   put(3, y, 0, 0, 0);                             // outline
+   put(4, y, 230, 60, 90);                         // artwork next to the outline
+   for (x in 5...9) put(x, y, 90, 60, 200);        // more artwork
+  }
+  for (y in 0...h) put(8, y, 240, 240, 240);
+  SongLoadingMatte.apply(pixels, w, h);
+  check(alpha(0, 1) == 0 && alpha(1, 1) == 0, 'backdrop kept');
+  var rim = (1 * w + 2) * 4;
+  check(alpha(2, 1) > 60 && alpha(2, 1) < 145 && pixels.get(rim + 1) < 12 && pixels.get(rim + 2) < 12 && pixels.get(rim + 3) < 12, 'rim keeps backdrop colour: ' + alpha(2, 1) + ' ' + pixels.get(rim + 2));
+  check(alpha(3, 1) > 200 && alpha(3, 1) >= alpha(2, 1) && alpha(4, 1) == 255 && pixels.get((1 * w + 4) * 4 + 1) == 230, 'outline or artwork damaged');
+  check(alpha(8, 1) == 255, 'far pixel damaged');
+  var short = haxe.io.Bytes.alloc(4); SongLoadingMatte.apply(short, 4, 4); SongLoadingMatte.apply(short, 0, 0);
+
+  check(LibraryMenuLayout.PANEL_WIDTH < 1280 && LibraryMenuLayout.PANEL_HEIGHT < 720, 'menu is full screen');
+  check(LibraryMenuLayout.rowsTop(true) > LibraryMenuLayout.rowsTop(false) + 50, 'card overlaps the choices');
+  check(LibraryMenuLayout.rowsTop(true) + LibraryMenuLayout.VISIBLE_ROWS * LibraryMenuLayout.ROW_PITCH <= LibraryMenuLayout.PANEL_HEIGHT - 92, 'choices run into the status line');
+  check(LibraryMenuLayout.firstVisible(0, 20) == 0 && LibraryMenuLayout.firstVisible(10, 20) == 7 && LibraryMenuLayout.firstVisible(19, 20) == 13 && LibraryMenuLayout.firstVisible(2, 3) == 0, 'selection scrolls out of view');""")
+
     def test_heading_beat_meter_colors_and_hints(self):
         self.run_haxe(r"""
   check(FreeplayPulse.bpmFromChartText('{"song":{"bpm":150,"notes":[{"bpm":150},{"bpm":75},{"bpm":150}]}}') == 150, 'song tempo');
@@ -104,7 +153,27 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
             self.assertIn(label, manage)
         self.assertNotIn('Delete chart', manage)
         star = (ROOT / 'source/RankStar.hx').read_text(encoding='utf-8')
-        self.assertIn("var text = expanded ? difficultyLabel + '\\n' + ratingLabel : wholeLabel;", star)
+        # Compact stars carry no number; the colour key above the list explains them.
+        self.assertNotIn('wholeLabel', star)
+        self.assertIn('if (legend != null && legendLift > 0.01) {', star)
+        self.assertIn("browserText(keyX - 58, 33, 56, 'RATING', 12, 0xFF9DB2CC);", freeplay)
+        self.assertIn('ChartDifficultyAnalysis.ratingColor(FreeplayPulse.keyRating(column))', freeplay)
+        self.assertIn('var at = keyX + FreeplayPulse.keyColumn(keyValues[i]);', freeplay)
+        # Numbers sit under the gradient, below their tick marks.
+        self.assertIn('var number = browserText(at - 15, 49, 32,', freeplay)
+        self.assertIn('var keyBar = new FlxSprite(keyX, 36);', freeplay)
+        self.assertIn('meter.color = FreeplayPulse.blockColor(block);', freeplay)
+        self.assertIn('browserMeterLevels[i] = FreeplayPulse.settle(browserMeterLevels[i], browserEnvelope.levels[i], elapsed);', freeplay)
+        menu = (ROOT / 'source/LibraryMenuSubState.hx').read_text(encoding='utf-8')
+        self.assertNotIn('makeGraphic(FlxG.width, FlxG.height, 0xFF101522)', menu)
+        self.assertIn('dim.alpha = 0.58;', menu)
+        self.assertIn('body.alpha = 0.93;', menu)
+        self.assertIn('persistentDraw = false;', menu)
+        self.assertIn('cardTitle = this.chartTitle; cardCaption = this.ownerTitle;', manage)
+        loading = (ROOT / 'source/SongLoadingScreen.hx').read_text(encoding='utf-8')
+        self.assertIn('SongLoadingMatte.apply(pixels, data.width, data.height);', loading)
+        self.assertIn('new DropShadowFilter(', loading)
+        self.assertNotIn('ShaderFilter(', loading)
         options = (ROOT / 'source/SaveDataState.hx').read_text(encoding='utf-8')
         self.assertIn('{name: "Show Duplicate Base Game Charts", value: false, intName: "showDuplicateBaseCharts"', options)
         seed = (ROOT / 'assets/data/options.json').read_text(encoding='utf-8')

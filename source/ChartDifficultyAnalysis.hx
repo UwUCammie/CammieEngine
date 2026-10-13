@@ -211,10 +211,12 @@ class ChartDifficultyAnalysis {
 		return cast raw;
 	}
 	/** Screenshot-inspired continuous scale: blue, cyan, green, yellow, red, violet, navy, black. */
-	public static function color(density:Null<ChartDensity>):Int {
-		if (density == null) return 0xFF8997AD;
+	public static function color(density:Null<ChartDensity>):Int
+		return density == null ? 0xFF8997AD : ratingColor(density.difficulty);
+	/** Star colour of a Difficulty Rating; the scale ends at 20. */
+	public static function ratingColor(difficulty:Float):Int {
 		var stops = [0xFF4290FB,0xFF4BC3F5,0xFF4CFF86,0xFFF5F05D,0xFFFF7468,0xFFF44791,0xFFAE4DC3,0xFF5148CB,0xFF151071,0xFF05020C];
-		var position = Math.max(0, Math.min(9, density.difficulty / 20 * 9));
+		var position = !Math.isFinite(difficulty) ? 0 : Math.max(0, Math.min(9, difficulty / 20 * 9));
 		var i = Std.int(position); if (i == 9) return stops[9];
 		var weight = position - i; var a = stops[i]; var b = stops[i+1];
 		var r = Std.int(((a >> 16) & 255) * (1-weight) + ((b >> 16) & 255) * weight);
