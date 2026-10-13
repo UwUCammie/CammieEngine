@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.37 development - CammieEngine
+- Development continues after the published v0.0.36 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.36 alpha - CammieEngine
 - Fix Freeplay freezing for many seconds while a search is active. Search matching no longer compiles a pattern for every song on every frame, which left the next large allocation (usually a song preview) to release millions of them at once. Collapse repeated import diagnostics in the log so one failed package cannot hold the output lock for the whole game.
 - Stop retrying an outdated import whose automatic refresh keeps failing. A failure is remembered for that receipt, importer revision and application version (one retry for ordinary failures) and reported with a short reason; installed content stays unchanged and a later version tries again. When an import was given an explicit source engine that its own executable contradicts, the refresh now says which engine the package really is, whether a correctly detected copy is already installed, and does not retry.
