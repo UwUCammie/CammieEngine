@@ -15904,8 +15904,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return best;
 	}
 
-	/** Enter during a cutscene lands the song where the chart picks play back
-	 * up. Returns true when the press was used, so it does not also pause. */
+	/** A skip press during a cutscene lands the song where the chart picks play
+	 * back up. Returns true when the press was used. */
 	function skipSongCutscenes(pressed:Bool):Bool {
 		if (songCutscenes.length == 0) return false;
 		for (entry in songCutscenes.copy()) if (!entry.alive()) songCutscenes.remove(entry);
@@ -22504,8 +22504,8 @@ void main(void) {
 		else accuracyTxt.text = "Accuracy:" + accuracy + "%";
 		if (controls.SYNC_VOCALS)
 			resyncVocals();
-		// A press used to skip a cutscene must not pause the song as well.
-		if (skipSongCutscenes(FlxG.keys.justPressed.ENTER)) {} else
+		// Left Alt skips a cutscene. A press that did must not also reach the pause check.
+		if (skipSongCutscenes(CutsceneSkipKey.pressed())) {} else
 		if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause
 			&& callNightmareVision('onPause', []) != NightmareVisionScriptGroup.STOP_FUNC) {
 			persistentUpdate = false;

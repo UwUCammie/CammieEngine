@@ -1,4 +1,4 @@
-"""Enter skips a cutscene to where the chart resumes; scenery videos are left alone."""
+"""Left Alt skips a cutscene to where the chart resumes; scenery videos are left alone."""
 from pathlib import Path
 import subprocess, tempfile, unittest
 from haxe_test_support import HAXE_COMMAND, TEST_TMP
@@ -30,18 +30,33 @@ class CutsceneSkipTest(unittest.TestCase):
   check(!CutsceneSkip.skippable(1000, 1200) && !CutsceneSkip.skippable(1000, Math.NaN), 'tiny or unknown jump accepted');
   check(CutsceneSkip.furthest([8000, 12000, Math.NaN, 500], 1000) == 12000 && CutsceneSkip.furthest([], 1000) == 1000, 'furthest landing time');""")
 
-    def test_every_cutscene_route_answers_to_enter(self):
+    def test_every_cutscene_route_answers_to_left_alt(self):
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
-        self.assertIn('if (skipSongCutscenes(FlxG.keys.justPressed.ENTER)) {} else', play)
+        self.assertIn('if (skipSongCutscenes(CutsceneSkipKey.pressed())) {} else', play)
         self.assertIn('seekForwardSongTime(target, false);', play)
         self.assertIn('registerSongCutscene(video, function() return video.durationMs,', play)
         cutscene = (ROOT / 'source/VideoCutscene.hx').read_text(encoding='utf-8')
-        self.assertIn('FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE', cutscene)
+        self.assertIn('} else if (CutsceneSkipKey.pressed())', cutscene)
+        # Left Alt only: Enter and Space are back to their normal jobs.
+        for source in (play, cutscene):
+            self.assertNotIn('skipSongCutscenes(FlxG.keys', source)
+        self.assertNotIn('justPressed.SPACE', cutscene)
+        key = (ROOT / 'source/CutsceneSkipKey.hx').read_text(encoding='utf-8')
+        self.assertIn('if (key != lime.ui.KeyCode.LEFT_ALT) return;', key)
+        self.assertNotIn('RIGHT_ALT', key)
         owner = (ROOT / 'source/NightmareVisionVideoSprite.hx').read_text(encoding='utf-8')
         self.assertIn("Reflect.field(ownerState, 'registerSongCutscene')", owner)
         legacy = (ROOT / 'source/NightmareVisionLegacyVideoSprite.hx').read_text(encoding='utf-8')
         # The source's own end listeners must run on a skip, exactly as on a natural end.
         self.assertIn('video.onEndReached.dispatch();', legacy)
+
+    def test_a_skip_press_counts_once_and_goes_stale(self):
+        self.run_haxe(r"""
+  check(CutsceneSkipKey.fresh(10, 10) && CutsceneSkipKey.fresh(10, 10 + CutsceneSkipKey.WINDOW), 'recent press refused');
+  check(!CutsceneSkipKey.fresh(10, 10 + CutsceneSkipKey.WINDOW + 0.01) && !CutsceneSkipKey.fresh(10, 9) && !CutsceneSkipKey.fresh(Math.NEGATIVE_INFINITY, 5) && !CutsceneSkipKey.fresh(Math.NaN, 5), 'stale or missing press accepted');
+  check(CutsceneSkipKey.WINDOW > 0 && CutsceneSkipKey.WINDOW <= 0.5, 'press lingers long enough to skip a later cutscene');
+  check(!CutsceneSkipKey.pressed(), 'pressed without a key');
+  CutsceneSkipKey.forced = true; check(CutsceneSkipKey.pressed(), 'forced press ignored'); CutsceneSkipKey.forced = false;""")
 
     def test_eased_camera_point_tracks_the_live_view(self):
         self.run_haxe(r"""

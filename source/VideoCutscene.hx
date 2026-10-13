@@ -199,7 +199,7 @@ class VideoCutscene extends FlxBasic {
 					skipHeldSeconds = Math.max(0, skipHeldSeconds + (-0.1 - skipHeldSeconds) * decay);
 				}
 				if (skipHeldSeconds >= options.skipHoldSeconds) skipPending = true;
-			} else if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE)
+			} else if (CutsceneSkipKey.pressed())
 				skipPending = true;
 		}
 		if (skipPending && !finished) {

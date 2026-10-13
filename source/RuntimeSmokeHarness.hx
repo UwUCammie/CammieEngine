@@ -2875,7 +2875,7 @@ class RuntimeSmokeHarness {
 	static function maybeRunSeek():Void {
 		maybeTriggerGameOver();
 		var request = config();
-		// Stands in for the Enter press a hidden window cannot receive.
+		// Stands in for the skip key press a hidden window cannot receive.
 		if (request != null && request.cutsceneSkipAfterMs >= 0 && !cutsceneSkipTried && playStateReady && songStartObserved
 			&& PlayState.instance != null && FlxG.state == PlayState.instance
 			&& Conductor.songPosition >= request.cutsceneSkipAfterMs) {

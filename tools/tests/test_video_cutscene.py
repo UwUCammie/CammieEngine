@@ -84,6 +84,7 @@ __METHOD__
         source = (ROOT / 'source/VideoCutscene.hx').read_text().replace('#if cpp', '').replace('#end', '')
         files = {
             'VideoCutscene.hx': source,
+            'CutsceneSkipKey.hx': (ROOT / 'source/CutsceneSkipKey.hx').read_text(encoding='utf-8'),
             'flixel/FlxBasic.hx': 'package flixel; class FlxBasic {public function new(){} public function update(t:Float){} public function destroy(){}}',
             'Event.hx': '''class Event {var handlers:Array<Dynamic>=[]; public function new(){} public function add(f:Dynamic){handlers.push(f);} public function remove(f:Dynamic){} public function dispatch(){for(f in handlers) Reflect.callMethod(null,f,[]);}}''',
             'flixel/FlxG.hx': '''package flixel; class FlxG {
@@ -131,9 +132,9 @@ __METHOD__
                  throw "Chart video was not suspended exactly once";
                 native.paused=false;FlxG.signals.focusGained.dispatch();
                 if(!native.paused||native.pauseCalls!=2)throw "Focus gain restarted a paused chart video";
-                FlxG.keys.justPressed.SPACE=true;normal.update(0);
+                CutsceneSkipKey.forced=true;normal.update(0);
                 if(count!=0)throw "Suspended clip consumed skip input";
-                FlxG.keys.justPressed.SPACE=false;
+                CutsceneSkipKey.forced=false;
                 normal.resume();normal.resume();
                 if(native.paused||native.resumeCalls!=1||!native.visible||!FlxG.firstChild.visible)
                  throw "Chart video did not resume exactly once";
@@ -142,20 +143,20 @@ __METHOD__
                 native.onEndReached.dispatch();normal.update(0);normal.update(0);
                 if(count!=1||!native.disposed||FlxG.children!=0)throw "Completion must clean up once";
                 if(normal.skipped)throw "Natural completion was marked as a skip";
-                var skip=make(path);skip.update(0);FlxG.keys.justPressed.SPACE=true;
+                var skip=make(path);skip.update(0);CutsceneSkipKey.forced=true;
                 if(skip.durationMs!=20840)throw "Clip duration is not available for event seek";
-                skip.update(0);FlxG.keys.justPressed.SPACE=false;
+                skip.update(0);CutsceneSkipKey.forced=false;
                 if(count!=2||FlxG.children!=0)throw "Skip failed";
                 if(!skip.skipped)throw "Explicit skip was not distinguished from completion";
                 var deferred=make(path);deferred.update(0);native=FlxVideo.last;
                 native.length=-1;native.duration=-1;
-                FlxG.keys.justPressed.SPACE=true;deferred.update(0.016);FlxG.keys.justPressed.SPACE=false;
+                CutsceneSkipKey.forced=true;deferred.update(0.016);CutsceneSkipKey.forced=false;
                 if(count!=2||FlxG.children!=2)throw "Skip should wait briefly for delayed VLC metadata";
                 native.duration=20840;deferred.update(0.016);
                 if(count!=3||!deferred.skipped||FlxG.children!=0)throw "Deferred skip did not seek when metadata arrived";
                 var unavailable=make(path);unavailable.update(0);native=FlxVideo.last;
                 native.length=-1;native.duration=-1;
-                FlxG.keys.justPressed.SPACE=true;unavailable.update(0.016);FlxG.keys.justPressed.SPACE=false;
+                CutsceneSkipKey.forced=true;unavailable.update(0.016);CutsceneSkipKey.forced=false;
                 unavailable.update(1.0);
                 if(count!=4||unavailable.skipped||!unavailable.skipRequested||FlxG.children!=0)throw "Missing metadata trapped the player";
                 make("missing-cutscene.mp4").update(0);
@@ -170,18 +171,18 @@ __METHOD__
                 if(FlxG.children!=0)throw "Configured video cleanup failed";
                 var eventVideo=new VideoCutscene(path,function(){}, {allowSkip:false});
                 eventVideo.update(0);native=FlxVideo.last;
-                FlxG.keys.justPressed.SPACE=true;eventVideo.update(0.5);
+                CutsceneSkipKey.forced=true;eventVideo.update(0.5);
                 if(eventVideo.skipped||eventVideo.skipRequested||FlxG.children!=2)
                  throw "Source event video accepted native skip input";
-                FlxG.keys.justPressed.SPACE=false;
+                CutsceneSkipKey.forced=false;
                 native.onEndReached.dispatch();eventVideo.update(0);eventVideo.destroy();
                 if(FlxG.children!=0)throw "Non-skippable event video did not complete";
                 var accepting=false;
                 var held=new VideoCutscene(path,function(){count++;},
                  {skipHoldSeconds:1,skipPressed:function() return accepting});
-                held.update(0);FlxG.keys.justPressed.SPACE=true;held.update(0.5);
+                held.update(0);CutsceneSkipKey.forced=true;held.update(0.5);
                 if(held.skipped||count!=6)throw "Psych video ignored mapped accept hold";
-                FlxG.keys.justPressed.SPACE=false;accepting=true;held.update(0.4);
+                CutsceneSkipKey.forced=false;accepting=true;held.update(0.4);
                 if(held.skipped||count!=6)throw "Psych video skipped before one second";
                 held.update(0.6);
                 if(!held.skipped||count!=7)throw "Psych video did not skip on held accept";

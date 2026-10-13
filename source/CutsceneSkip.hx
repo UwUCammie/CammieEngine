@@ -1,6 +1,6 @@
 package;
 
-/** Where an Enter press may take the song while a cutscene is showing.
+/** Where the skip key (see CutsceneSkipKey) may take the song while a cutscene is showing.
  *
  * A cutscene is a stretch the chart leaves free of player notes. A video that
  * plays behind notes is scenery and is never skipped. The landing time is where
@@ -9,7 +9,7 @@ package;
 class CutsceneSkip {
 	/** Breathing room kept in front of the first note after a skip. */
 	public static inline var NOTE_LEAD_MS:Float = 1000;
-	/** Shorter jumps are not worth a seek and would steal the pause key. */
+	/** Shorter jumps are not worth a seek. */
 	public static inline var MIN_SKIP_MS:Float = 500;
 
 	/** Song time the chart resumes at: the end of the cutscene, or just ahead
