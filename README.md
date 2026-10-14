@@ -1,4 +1,4 @@
-# CammieEngine v0.0.40
+# CammieEngine v0.0.41
 
 An **alpha** Friday Night Funkin’ engine built on Disappointing Plus, Modding
 Plus, and HaxeFlixel. Includes gameplay, a chart editor, scripting, and mod imports.

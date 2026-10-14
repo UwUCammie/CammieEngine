@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.41 development - CammieEngine
+- Development continues after the published v0.0.40 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.40 alpha - CammieEngine
 - Psych and Nightmare Vision now share one implementation wherever the two engines behave the same: preferences, Discord presence, chart script discovery, built-in chart events, camera targeting, hit and miss handling, character swaps, stage files, event preparation and script globals. Compatibility code now calls base game functions instead of carrying its own copies, and new base game functions were added where none existed.
 - Lua scripts: the translator no longer switches scripts off because of how their code is laid out. One-line functions, if/else in any layout, "else if", one-line loops, do blocks, repeat/until, goto continue and varargs all work. If one function cannot be translated, only that function is disabled and the import report names it.
