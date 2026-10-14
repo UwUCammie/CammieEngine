@@ -52,6 +52,7 @@ class FlxGraphicBitmapOwnershipTest(unittest.TestCase):
             self.fail("unterminated getFlxGraphic method")
 
         fixture = """class FakeBitmapData { public function new(){} }
+typedef BitmapData = FakeBitmapData;
 class FlxGraphic {
   public var key:String; public var bitmap:FakeBitmapData; public var useCount:Int=0;
   public var isDestroyed:Bool=false;
@@ -61,8 +62,10 @@ class FlxGraphic {
 }
 class FakeBitmapFrontEnd {
   public var entries:Map<String,FlxGraphic>=new Map();
+  public var adds:Int=0;
   public function new(){}
   public function add(bitmap:FakeBitmapData,unique:Bool=false,?key:String):FlxGraphic {
+    adds++;
     if(key==null) for(graphic in entries) if(graphic.bitmap==bitmap && !graphic.isDestroyed)return graphic;
     var actualKey=key==null?'bitmap':key;
     var graphic=new FlxGraphic(actualKey,bitmap);entries.set(actualKey,graphic);return graphic;
@@ -72,7 +75,11 @@ class FakeBitmapFrontEnd {
 class FlxG { public static var bitmap:FakeBitmapFrontEnd=new FakeBitmapFrontEnd(); }
 class FNFAssets {
   public static var data:FakeBitmapData=new FakeBitmapData();
-  public static function getBitmapData(_id:String,?useCache:Bool=true):FakeBitmapData return data;
+  public static var canonical:FlxGraphic=null;
+  // The disk loader hands back the canonical graphic when it has one, and a
+  // bare bitmap for anything else.
+  static function readImage(_id:String,useCache:Bool,asGraphic:Bool):Dynamic
+    return asGraphic && canonical!=null ? canonical : data;
   METHOD
 }
 class CanonicalGraphicTest {
@@ -87,6 +94,10 @@ class CanonicalGraphicTest {
     FlxG.bitmap.clearCache();
     check(!cached.isDestroyed && loaded.bitmap==FNFAssets.data,
       'zero-use alias disposal invalidated the live canonical graphic');
+    FNFAssets.canonical=cached;
+    var adds=FlxG.bitmap.adds;
+    check(FNFAssets.getFlxGraphic('/owner/images/NOTE_assets.png')==cached && FlxG.bitmap.adds==adds,
+      'a cached disk graphic went through the scanning FlxG.bitmap.add');
   }
 }
 """.replace("METHOD", method)

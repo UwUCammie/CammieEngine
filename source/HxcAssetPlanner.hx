@@ -72,8 +72,14 @@ class HxcAssetPlanner {
 	public static function literalReferences(source:String, includeData:Bool = false):Array<HxcAssetReference> {
 		var result:Array<HxcAssetReference> = [];
 		var seen:Map<String, Bool> = new Map<String, Bool>();
+		// Commented-out lookups never run, so they are not dependencies of the script.
+		source = withoutComments(source);
 		var add = function(kind:String, key:String):Void {
 			if (key == null || StringTools.trim(key) == '')
+				return;
+			// 'sounds/$lang/line' is Haxe string interpolation: the key is only known at
+			// run time, so it is not a literal file the importer can plan or report.
+			if (hasInterpolation(key))
 				return;
 			var clean = StringTools.replace(StringTools.trim(key), '\\', '/');
 			// Paths resolves adjacent separators inside relative keys. Preserve a
@@ -149,6 +155,81 @@ class HxcAssetPlanner {
 		collectBoundLiteralReferences(source, add);
 		remapPermanentTextureCacheSounds(source, result, add);
 		return result;
+	}
+
+	/** True when a quoted key holds a `$name` or `${expression}` interpolation. */
+	static function hasInterpolation(key:String):Bool {
+		var index = key.indexOf("$");
+		while (index >= 0 && index + 1 < key.length) {
+			var next = key.fastCodeAt(index + 1);
+			if (next == '{'.code || next == '_'.code || (next >= 'a'.code && next <= 'z'.code)
+				|| (next >= 'A'.code && next <= 'Z'.code))
+				return true;
+			index = key.indexOf("$", index + 1);
+		}
+		return false;
+	}
+
+	/** Remove line and block comments, keeping quoted strings intact. */
+	static function withoutComments(source:String):String {
+		if (source == null || source.indexOf('/') < 0)
+			return source;
+		var output = new StringBuf();
+		var quote = 0;
+		var index = 0;
+		var length = source.length;
+		while (index < length) {
+			var code = source.fastCodeAt(index);
+			if (quote != 0) {
+				output.addChar(code);
+				if (code == '\\'.code && index + 1 < length) {
+					output.addChar(source.fastCodeAt(index + 1));
+					index += 2;
+					continue;
+				}
+				if (code == quote)
+					quote = 0;
+				index++;
+				continue;
+			}
+			if (code == '"'.code || code == "'".code) {
+				quote = code;
+				output.addChar(code);
+				index++;
+				continue;
+			}
+			// A regex literal (~/a\/b/g) can hold a slash pair that is not a comment.
+			if (code == '~'.code && index + 1 < length && source.fastCodeAt(index + 1) == '/'.code) {
+				var end = index + 2;
+				while (end < length && source.fastCodeAt(end) != '/'.code && source.fastCodeAt(end) != '\n'.code)
+					end += source.fastCodeAt(end) == '\\'.code ? 2 : 1;
+				end = end < length ? end + 1 : length;
+				output.addSub(source, index, end - index);
+				index = end;
+				continue;
+			}
+			if (code == '/'.code && index + 1 < length) {
+				var next = source.fastCodeAt(index + 1);
+				if (next == '/'.code) {
+					while (index < length && source.fastCodeAt(index) != '\n'.code)
+						index++;
+					continue;
+				}
+				if (next == '*'.code) {
+					var close = source.indexOf('*/', index + 2);
+					// Keep line breaks so nothing after the comment joins the previous line.
+					for (inner in index...(close < 0 ? length : close))
+						if (source.fastCodeAt(inner) == '\n'.code)
+							output.addChar('\n'.code);
+					output.addChar(' '.code);
+					index = close < 0 ? length : close + 2;
+					continue;
+				}
+			}
+			output.addChar(code);
+			index++;
+		}
+		return output.toString();
 	}
 
 	/** A few HXC packages pass `Paths.sound(key)` to the texture-cache API.
@@ -1438,6 +1519,26 @@ class HxcAssetPlanner {
 			if (position.len <= 0 || position.pos + position.len >= remaining.length)
 				break;
 			remaining = remaining.substr(position.pos + position.len);
+		}
+
+		// `sprite.loadSparrow(key)` / `sprite.loadTexture(key)`, usually chained on
+		// `new FunkinSprite(...)`, name the art in their first argument.
+		for (load in [{method:'loadSparrow', kind:'sparrow'}, {method:'loadTexture', kind:'image'}]) {
+			var loadCall = new EReg('\\.\\s*' + load.method + '\\s*\\(\\s*([^,)]+)', 'g');
+			remaining = source;
+			attempts = 0;
+			while (attempts++ < 1024 && loadCall.match(remaining)) {
+				var argument = StringTools.trim(loadCall.matched(1));
+				var literal = new EReg('^["\\\']([^"\\\']+)["\\\']$', '');
+				if (literal.match(argument))
+					add(load.kind, literal.matched(1));
+				else if (aliases.exists(argument))
+					add(load.kind, aliases.get(argument));
+				var position = loadCall.matchedPos();
+				if (position.len <= 0 || position.pos + position.len >= remaining.length)
+					break;
+				remaining = remaining.substr(position.pos + position.len);
+			}
 		}
 	}
 

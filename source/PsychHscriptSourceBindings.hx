@@ -49,6 +49,7 @@ class PsychHscriptSourceBindings {
 		variables.set('Countdown', PsychBaseStageCountdown);
 		variables.set('Rating', PsychRatingCompat);
 		variables.set('PsychCamera', PsychHscriptCamera);
+		variables.set('LuaUtils', PsychLuaUtilsCompat);
 		variables.set('CustomSubstate', host.nightmareVisionLegacyFieldCameras
 			? cast new PsychHscriptCustomSubstateFacade(host) : cast PsychCustomSubstate);
 		variables.set('parentLua', parentLua);

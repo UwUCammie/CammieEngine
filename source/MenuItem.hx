@@ -19,9 +19,16 @@ class MenuItem extends FlxSpriteGroup
 	public var targetY:Float = 0;
 	public var week:FlxSprite;
 
-	public function new(x:Float, y:Float, weekNum:Int = 0)
+	public function new(x:Float, y:Float, weekNum:Int = 0, ?imported:ImportedStoryWeeks.ImportedStoryWeek)
 	{
 		super(x, y);
+		// Imported weeks are not in storySonglist.json; their art lives in the owner.
+		if (imported != null) {
+			week = createImportedWeekSprite(imported);
+			add(week);
+			week.updateHitbox();
+			return;
+		}
 		// WHAT THE FUCK
 		// IS THIS :GRIEF:
 		// WHY THE FUCK DO YOU READ A FILE FUCKING 5 TIMES
@@ -30,6 +37,15 @@ class MenuItem extends FlxSpriteGroup
 		var parsedWeekJson:StoryMenuState.StorySongsJson = CoolUtil.parseJson(FNFAssets.getJson("assets/data/storySonglist"));
 		var weekName = parsedWeekJson.weeks[weekNum].name;
 		var rawPic = FNFAssets.getBitmapData('assets/images/campaign-ui-week/' + weekName + ".png");
+		if (rawPic == null) {
+			// A week converted from another engine's level data can name a title
+			// image the package never shipped. Show its name instead of loading
+			// a null graphic.
+			week = createWeekLabel(weekLabel('', weekName));
+			add(week);
+			week.updateHitbox();
+			return;
+		}
 		
 		var rawXml:String = "";
 		if (FNFAssets.exists('assets/images/campaign-ui-week/' + weekName + ".xml")) {
@@ -55,6 +71,31 @@ class MenuItem extends FlxSpriteGroup
 			week.updateHitbox();
 		}
 
+	}
+
+	/** The owner's title image, or the week's name as text when it has none. */
+	static function createImportedWeekSprite(imported:ImportedStoryWeeks.ImportedStoryWeek):FlxSprite {
+		if (imported.art != '') {
+			var rawPic = FNFAssets.getBitmapData(imported.art);
+			if (rawPic != null)
+				return createWeekSpriteFromGraphic(rawPic);
+		}
+		return createWeekLabel(weekLabel(imported.title, imported.key));
+	}
+
+	/** Text shown for a week with no title image: its title, else its key without the owner prefix. */
+	public static function weekLabel(title:String, key:String):String {
+		if (title != null && title != '')
+			return title.toUpperCase();
+		if (key == null)
+			return '';
+		return key.substr(key.indexOf(':') + 1).toUpperCase();
+	}
+
+	static function createWeekLabel(label:String):FlxSprite {
+		var text = new flixel.text.FlxText(0, 0, 0, label, 48);
+		text.setFormat("assets/fonts/vcr.ttf", 48, flixel.util.FlxColor.WHITE, CENTER);
+		return text;
 	}
 
 	/** PNG-only campaign entries still need their FlxSprite instance created. */

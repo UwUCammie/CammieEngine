@@ -22,7 +22,7 @@ class NightmareVisionLegacyHitFlow {
 				state.registerComboHit();
 				state.popUpScore(note.strumTime, note, true, false, field);
 			}
-			state.health += SourceHealthDelta.hit(true, note.hitHealth, state.healthGain);
+			state.applySourceHitHealth(note, true, true);
 		} else state.camZooming = true;
 
 		state.prepareNightmareVisionLegacyHitSingers(note, field, player);

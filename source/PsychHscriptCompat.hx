@@ -176,7 +176,7 @@ class PsychHscriptCompat {
 			'backend.MusicBeatState' => 'MusicBeatState', 'backend.MusicBeatSubstate' => 'MusicBeatSubstate', 'states.PlayState' => 'PlayState',
 			'objects.Character' => 'Character', 'objects.Alphabet' => 'Alphabet',
 			'objects.Note' => 'Note', 'objects.HealthIcon' => 'HealthIcon',
-			'psychlua.CustomSubstate' => 'CustomSubstate',
+			'psychlua.CustomSubstate' => 'CustomSubstate', 'psychlua.LuaUtils' => 'LuaUtils',
 			'backend.PsychCamera' => 'PsychCamera',
 			'haxe.ds.StringMap' => 'StringMap', 'haxe.ds.IntMap' => 'IntMap',
 			'haxe.ds.ObjectMap' => 'ObjectMap'

@@ -347,6 +347,8 @@ class MountedModPlusEndToEndTest(unittest.TestCase):
                 "NightmareVisionChartCompat.hx",
                 "NightmareVisionScriptDiscovery.hx",
                 "SourceChartReferences.hx",
+                "SourceOwnerFiles.hx",
+                "CompatCanonicalPath.hx",
                 "NightmareVisionDifficultyCompat.hx",
                 "NightmareVisionVocalRole.hx",
                 "SourceVocalRole.hx",

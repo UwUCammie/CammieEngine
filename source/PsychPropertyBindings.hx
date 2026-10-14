@@ -30,8 +30,14 @@ class PsychPropertyBindings {
 		interp.variables.set('removeFromGroup',service.removeGroup);
 		interp.variables.set('getProperty',service.get);
 		interp.variables.set('setProperty',service.set);
-		interp.variables.set('getPropertyFromClass',service.getClass);
-		interp.variables.set('setPropertyFromClass',service.setClass);
+		// ClientPrefs resolves to the owner's preference object, whose fields sit
+		// under `data`; older scripts still name them flat (ClientPrefs.ghostTapping).
+		var prefsPath=function(type:Dynamic,path:Dynamic):Dynamic
+			return SourcePreferenceClassPath.map(type,path,host.compatSourceClientPrefs,host.compatSourcePreferencePath);
+		interp.variables.set('getPropertyFromClass',function(type:String,path:String,maps:Bool=false):Dynamic
+			return service.getClass(type,prefsPath(type,path),maps));
+		interp.variables.set('setPropertyFromClass',function(type:String,path:String,value:Dynamic,maps:Bool=false,instances:Bool=false):Dynamic
+			return service.setClass(type,prefsPath(type,path),value,maps,instances));
 		interp.variables.set('callMethod',service.call);
 		interp.variables.set('callMethodFromClass',service.callClass);
 	}

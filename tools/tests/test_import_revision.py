@@ -26,8 +26,8 @@ class Main {
    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"Psych Engine", engineRevision:8},
     "Psych Engine").status == ImportRevision.OUTDATED,
    "older Psych receipts did not request source-profile republishing");
-  check(ImportRevision.current("V-Slice").engineRevision == 3
-    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"V-Slice", engineRevision:2},
+  check(ImportRevision.current("V-Slice").engineRevision == 4
+    && ImportRevision.assess({schemaVersion:1, commonRevision:3, sourceEngine:"V-Slice", engineRevision:3},
       "V-Slice").status == ImportRevision.OUTDATED,
     "V-Slice named rating metadata did not schedule retained-source refresh");
   check(current.sourceEngine == "Psych Engine" && current.commonRevision > 0 && current.engineRevision > 0,

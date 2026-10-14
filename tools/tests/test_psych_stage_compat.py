@@ -28,6 +28,26 @@ class PsychStageCompatibilityTest(unittest.TestCase):
                  "-cp", str(HAXESCRIPT), "-main", "PsychStageCompatTest", "--interp"],
                 cwd=ROOT, capture_output=True, text=True, timeout=300)
 
+    def test_stage_built_after_on_create_keeps_its_full_lua_module(self):
+        # Psych runs every stage callback; a stage that builds its scene in
+        # onCreatePost must not fall back to the empty static setup.
+        fixture = r'''
+class PsychStageCompatTest {
+ static function main() {
+  var post = LuaCompat.translate("function onCreatePost()\n makeLuaSprite('bg', 'bg', 0, 0)\n addLuaSprite('bg', false)\nend\n"
+   + "function onStepHit()\nend\n", 'post.lua', true).hscript;
+  if (PsychStageCompat.runtimeModuleUnusable(post)) throw 'onCreatePost stage was replaced: ' + post;
+  var create = LuaCompat.translate("function onCreate()\n makeLuaSprite('bg', 'bg', 0, 0)\nend\n", 'create.lua', true).hscript;
+  if (PsychStageCompat.runtimeModuleUnusable(create)) throw 'onCreate stage was replaced';
+  if (!PsychStageCompat.runtimeModuleUnusable('') || !PsychStageCompat.runtimeModuleUnusable(null)
+   || !PsychStageCompat.runtimeModuleUnusable('// lua-compat-translated:v1\nvar x = 1;'))
+   throw 'a module without callbacks was kept';
+ }
+}
+'''
+        result = self.run_fixture(fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_stage_class_property_routes_gameover_actor_and_audio_to_song_state(self):
         fixture = r'''
 class PsychStageCompatTest {

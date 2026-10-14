@@ -1,7 +1,7 @@
 package;
 
-import haxe.crypto.Sha256;
 import haxe.Json;
+import haxe.io.Bytes;
 import haxe.io.Path;
 #if sys
 import ImportFileSystem as FileSystem;
@@ -64,6 +64,8 @@ class CodenameBaseCharacterDependency {
 	public static inline var RELATIVE_ROOT:String = 'compat-engine-base';
 	public static inline var RECEIPT_NAME:String = 'character-dependency.json';
 	static inline var VERSION:Int = 2;
+	/** Bytes hashed between import checkpoints. */
+	static inline var DIGEST_CHUNK_BYTES:Int = 65536;
 
 	public static function plan(engineAssetRoot:String, fallbackId:String):CodenameBaseCharacterDependencyPlan {
 		var result:CodenameBaseCharacterDependencyPlan = {
@@ -281,9 +283,35 @@ class CodenameBaseCharacterDependency {
 		destinationRelative:String):CodenameBaseCharacterAsset {
 		var source = Path.join([root, sourceRelative]);
 		var digest = '';
-		try digest = Sha256.make(File.getBytes(source)).toHex() catch (_:Dynamic) {}
+		try digest = fileDigest(source) catch (_:Dynamic) {}
 		return {source:source, sourceRelative:sourceRelative,
 			destinationRelative:destinationRelative, digest:digest};
+	}
+
+	/** Hash a file in bounded chunks with an import checkpoint between them.
+	 * One whole-file hash is a loop that never reaches a collector safe point,
+	 * so a collection on the game thread would wait for the entire file while
+	 * an import runs next to a song. Reads go through the import file facade so
+	 * staged writes are hashed, and the digest is the same lowercase hex. */
+	static function fileDigest(path:String):String {
+		var input = File.read(path, true);
+		var hash = new ImportSourceSnapshot.ImportSnapshotSha256();
+		var buffer = Bytes.alloc(DIGEST_CHUNK_BYTES);
+		try {
+			var reading = true;
+			while (reading) {
+				ImportWorkScheduler.cooperate();
+				var count = 0;
+				try count = input.readBytes(buffer, 0, buffer.length) catch (_:haxe.io.Eof) count = 0;
+				if (count <= 0) reading = false;
+				else hash.update(buffer, 0, count);
+			}
+		} catch (error:Dynamic) {
+			input.close();
+			throw error;
+		}
+		input.close();
+		return hash.digestHex();
 	}
 	#end
 
@@ -316,7 +344,7 @@ class CodenameBaseCharacterDependency {
 				var destination = safeDestination(dependencyRoot, entry.destinationRelative);
 				if (destination == null || !FileSystem.exists(destination)) return false;
 				var digest = '';
-				try digest = Sha256.make(File.getBytes(destination)).toHex() catch (_:Dynamic) return false;
+				try digest = fileDigest(destination) catch (_:Dynamic) return false;
 				if (digest != entry.digest) return false;
 			}
 		}
@@ -480,7 +508,7 @@ class CodenameBaseCharacterDependency {
 			var destination = safeDestination(dependencyRoot, entry.destinationRelative);
 			if (destination == null || !FileSystem.exists(destination) || FileSystem.isDirectory(destination)) return false;
 			var digest = '';
-			try digest = Sha256.make(File.getBytes(destination)).toHex() catch (_:Dynamic) return false;
+			try digest = fileDigest(destination) catch (_:Dynamic) return false;
 			if (digest != entry.digest) return false;
 		}
 		return true;

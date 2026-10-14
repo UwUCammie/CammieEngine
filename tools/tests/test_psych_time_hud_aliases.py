@@ -38,10 +38,15 @@ class PsychTimeHudAliasesTest(unittest.TestCase):
             "public function sourceNoteTimingMode()",
         ))
         engine_source = (ROOT / "source/EngineCompat.hx").read_text(encoding="utf-8")
-        engine_methods = "\n".join(extract_method(engine_source, marker) for marker in (
-            "public static function propertyPath(",
-            "public static function propertyRoot(",
-        ))
+        # propertyPath remembers resolved paths in fields declared just above it.
+        cache_start = engine_source.index("\tstatic inline var PROPERTY_PATH_CACHE_LIMIT")
+        engine_methods = engine_source[cache_start:engine_source.index(
+            "\tpublic static function propertyPath(", cache_start)] + "\n".join(
+            extract_method(engine_source, marker) for marker in (
+                "public static function propertyPath(",
+                "static function resolvePropertyPath(",
+                "public static function propertyRoot(",
+            ))
 
         fixture = r'''
 using StringTools;

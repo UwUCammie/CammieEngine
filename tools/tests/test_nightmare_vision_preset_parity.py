@@ -16,15 +16,9 @@ REFERENCE = ROOT.parent / 'fnf_sources/NightmareVision/source/funkin/scripts/Fun
 KNOWN_MISSING = {
     'Dynamic',  # a type, not a value hxcpp can hand to a script
     'Defines',
-    'FlxRuntimeShader',
     'FlxAnimateFrames',
-    'FlxSpriteElement',
-    'StageData',
-    'FunkinSound',
     'Note',  # the engine note has different fields; a wrong alias is worse than none
     'StrumNote',
-    'BackgroundDancer',
-    'BackgroundGirls',
     'CutsceneHandler',
     'DialogueBox',
 }
@@ -81,6 +75,61 @@ class NightmareVisionPresetParityTest(unittest.TestCase):
         self.assertIn("interp.variables.set('SortUtil', NightmareVisionSortUtil);", preset)
         self.assertIn("interp.bindImport('funkin.utils.SortUtil', NightmareVisionSortUtil);", preset)
         self.assertIn('NightmareVisionVideoSprite.instancesFor(videoOwner)', preset)
+        self.assertIn("interp.variables.set('FunkinSound', funkinSound);", preset)
+        self.assertIn("interp.bindImport('funkin.audio.FunkinSound', funkinSound);", preset)
+        self.assertIn('interp.asyncResources.ownSound(sound);', preset)
+
+    def test_funkin_sound_forwards_to_flxg_sound_with_source_defaults(self):
+        stubs = {
+            'flixel/sound/FlxSound.hx': 'package flixel.sound;\nclass FlxSound { public var tag:String; public function new(tag:String) this.tag = tag; }',
+            'flixel/FlxG.hx': '''package flixel;
+import flixel.sound.FlxSound;
+class SoundFront {
+ public var log:Array<String> = [];
+ public var music:FlxSound;
+ public function new() {}
+ public function playMusic(asset:Dynamic, volume:Float, looped:Bool, ?group:Dynamic):Void {
+  log.push('music:' + asset + ':' + volume + ':' + looped); music = new FlxSound('music');
+ }
+ public function play(asset:Dynamic, volume:Float, looped:Bool, ?group:Dynamic, autoDestroy:Bool, ?onComplete:Void->Void):FlxSound {
+  log.push('play:' + asset + ':' + volume + ':' + looped + ':' + autoDestroy); return new FlxSound('play');
+ }
+ public function load(?asset:Dynamic, volume:Float, looped:Bool, ?group:Dynamic, autoDestroy:Bool, autoPlay:Bool,
+   ?url:String, ?onComplete:Void->Void, ?onLoad:Void->Void):FlxSound {
+  log.push('load:' + asset + ':' + volume + ':' + looped + ':' + autoDestroy + ':' + autoPlay); return new FlxSound('load');
+ }
+}
+class FlxG { public static var sound:SoundFront = new SoundFront(); }''',
+        }
+        main = r'''class Main {
+ static function check(v:Bool, s:String):Void if (!v) throw s;
+ static function main():Void {
+  var owned:Array<String> = [];
+  var sound = new NightmareVisionFunkinSound(function(s) owned.push(s.tag));
+  sound.playMusic('menu');
+  sound.playMusic('menu', 0.45);
+  var played = sound.play('click');
+  var loaded = sound.load('loop', 0.5, true);
+  var log = flixel.FlxG.sound.log.join(',');
+  check(log == 'music:menu:1:true,music:menu:0.45:true,play:click:1:false:true,load:loop:0.5:true:false:false', log);
+  check(owned.join(',') == 'music,music,play,load', 'every sound is handed to the owner: ' + owned.join(','));
+  check(played.tag == 'play' && loaded.tag == 'load', 'the sounds are returned to the script');
+  new NightmareVisionFunkinSound().playMusic('menu');
+ }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:
+            work = Path(directory)
+            for relative, body in stubs.items():
+                target = work / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(body, encoding='utf-8')
+            (work / 'NightmareVisionFunkinSound.hx').write_text(
+                (ROOT / 'source/NightmareVisionFunkinSound.hx').read_text(encoding='utf-8'), encoding='utf-8')
+            (work / 'Main.hx').write_text(main, encoding='utf-8')
+            result = subprocess.run([*HAXE_COMMAND, '-cp', str(work), '--main', 'Main', '--interp'],
+                                    cwd=work, capture_output=True, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_sort_util_comparators(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as directory:

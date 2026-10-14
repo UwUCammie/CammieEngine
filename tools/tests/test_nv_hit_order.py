@@ -183,6 +183,10 @@ class Main {
         dispatch = extract_method(self.play, "function dispatchNightmareVisionNoteHit(note:Note,")
         detach = extract_method(self.play, "function detachNightmareVisionTap(")
         auto_loop = extract_method(self.play, "function processNightmareVisionAutoHits(")
+        # The autoplay pass walks a reused snapshot of notes.members.
+        auto_loop += "\n var nightmareVisionNoteSnapshot:Array<Note> = [];\n var nightmareVisionNoteSnapshotBusy:Bool = false;\n"
+        auto_loop += extract_method(self.play, "function takeNightmareVisionNoteSnapshot(") + "\n"
+        auto_loop += extract_method(self.play, "function releaseNightmareVisionNoteSnapshot(") + "\n"
         register_combo = extract_method(self.play, "function registerComboHit(")
         fixture = r'''
 class Note {public var noteSplashDisabled=false;

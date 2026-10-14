@@ -37,12 +37,17 @@ class RankStar extends FlxSprite {
 	var difficultyLabel:String = '';
 	public function configureCard(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
 		inCard = true; whitenCard();
-		legend = new flixel.text.FlxText(0, 0, 42, '', 10);
-		legend.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, CENTER);
-		legend.setBorderStyle(OUTLINE, 0xFF101622, 1);
-		legend.scrollFactor.set();
 		difficultyLabel = DifficultyManager.getDiffName(diff).toUpperCase().substr(0, 4);
 		updateDensity(value);
+	}
+	/** The legend is only ever shown under the selected card's stars, so it is
+		built the first time one lifts instead of a rendered text per card star. */
+	function createLegend():flixel.text.FlxText {
+		var text = new flixel.text.FlxText(0, 0, 42, '', 10);
+		text.setFormat('assets/fonts/vcr.ttf', 10, 0xFFFFFFFF, CENTER);
+		text.setBorderStyle(OUTLINE, 0xFF101622, 1);
+		text.scrollFactor.set();
+		return text;
 	}
 	public function updateDensity(value:Null<ChartDifficultyAnalysis.ChartDensity>):Void {
 		density = value;
@@ -55,21 +60,29 @@ class RankStar extends FlxSprite {
 		return starHeight - 6 + 8 * Math.max(0, Math.min(1, lift));
 	public static function legendOpacity(lift:Float):Float return Math.max(0, Math.min(1, lift));
 
+	public static inline var CARD_GRAPHIC_KEY:String = 'freeplay-card-star';
 	function whitenCard():Void {
-		// A subtle gradient stays inside the star silhouette, with no rectangular backing.
-		var bitmap = new BitmapData(32, 32, true, 0);
-		var shape = new openfl.display.Shape();
-		var gradient = new openfl.geom.Matrix();
-		gradient.createGradientBox(32, 32, Math.PI / 2);
-		shape.graphics.beginGradientFill(openfl.display.GradientType.LINEAR, [0xFFFFFF, 0xE3E7F0], [1, 1], [0, 255], gradient);
-		shape.graphics.lineStyle(2.4, 0x25332B, 1, true, NORMAL, ROUND, ROUND);
-		for (i in 0...11) {
-			var phase = -Math.PI / 2 + i * Math.PI / 5; var radius = i % 2 == 0 ? 14 : 6;
-			var px = 16 + Math.cos(phase) * radius; var py = 16 + Math.sin(phase) * radius;
-			if (i == 0) shape.graphics.moveTo(px,py); else shape.graphics.lineTo(px,py);
+		// Every card star is the same drawing and is only tinted when drawn, so
+		// one shared graphic replaces a vector rasterise, a bitmap and a texture
+		// per star. It is redrawn only after the last star using it is gone.
+		var graphic = flixel.FlxG.bitmap.get(CARD_GRAPHIC_KEY);
+		if (graphic == null) {
+			// A subtle gradient stays inside the star silhouette, with no rectangular backing.
+			var bitmap = new BitmapData(32, 32, true, 0);
+			var shape = new openfl.display.Shape();
+			var gradient = new openfl.geom.Matrix();
+			gradient.createGradientBox(32, 32, Math.PI / 2);
+			shape.graphics.beginGradientFill(openfl.display.GradientType.LINEAR, [0xFFFFFF, 0xE3E7F0], [1, 1], [0, 255], gradient);
+			shape.graphics.lineStyle(2.4, 0x25332B, 1, true, NORMAL, ROUND, ROUND);
+			for (i in 0...11) {
+				var phase = -Math.PI / 2 + i * Math.PI / 5; var radius = i % 2 == 0 ? 14 : 6;
+				var px = 16 + Math.cos(phase) * radius; var py = 16 + Math.sin(phase) * radius;
+				if (i == 0) shape.graphics.moveTo(px,py); else shape.graphics.lineTo(px,py);
+			}
+			shape.graphics.endFill(); bitmap.draw(shape);
+			graphic = flixel.FlxG.bitmap.add(bitmap, false, CARD_GRAPHIC_KEY);
 		}
-		shape.graphics.endFill(); bitmap.draw(shape);
-		loadGraphic(bitmap); setGraphicSize(26,26); updateHitbox();
+		loadGraphic(graphic); setGraphicSize(26,26); updateHitbox();
 	}
 	function createShadowGlow():Void {
 		// The light travels around a fixed star silhouette, never an orbit of round blobs.
@@ -112,9 +125,10 @@ class RankStar extends FlxSprite {
 			color = 0xFF000000;
 		} else color = ChartDifficultyAnalysis.color(density);
 		alpha = savedAlpha; setPosition(savedX, savedY); super.draw();
-		if (legend != null && legendLift > 0.01) {
+		if (legendLift > 0.01) {
 			// Compact cards show the star alone; its colour is explained by the key
 			// at the top of the menu. The selected card spells the rating out below.
+			if (legend == null) legend = createLegend();
 			var text = difficultyLabel + '\n' + ratingLabel;
 			if (legend.text != text) legend.text = text;
 			legend.setPosition(savedX + width / 2 - 21, savedY + legendOffset(legendLift, height));

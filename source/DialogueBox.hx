@@ -81,6 +81,13 @@ class DialogueBox extends FlxSpriteGroup {
 	public var psychInputMode:Bool = false;
 	public var nextDialogueThing:Void->Void = null;
 	public var skipDialogueThing:Void->Void = null;
+	/**
+		Asked before a press acts, with 'completeLine' (show the rest of the
+		typing line), 'line' (move past a finished line) or 'skip' (end the
+		dialogue). Returning false ignores the press; V-Slice scripts cancel
+		their conversation events this way. Null lets every press through.
+	*/
+	public var allowInputThing:String->Bool = null;
 	var psychTextFinished:Bool = false;
 
 	var portrait:FlxSprite;
@@ -266,8 +273,11 @@ class DialogueBox extends FlxSpriteGroup {
 		if (!psychInputMode || !dialogueStarted || isEnding || (!accept && !back))
 			return;
 
+		var action = back ? 'skip' : (!psychTextFinished ? 'completeLine' : 'line');
+		if (allowInputThing != null && !allowInputThing(action))
+			return;
 		playDialogueClick();
-		if (!psychTextFinished && !back) {
+		if (action == 'completeLine') {
 			swagDialogue.skip();
 			if (skipDialogueThing != null)
 				skipDialogueThing();
@@ -306,6 +316,7 @@ class DialogueBox extends FlxSpriteGroup {
 		finishThing = null;
 		nextDialogueThing = null;
 		skipDialogueThing = null;
+		allowInputThing = null;
 		psychInputMode = false;
 		psychTextFinished = false;
 		if (swagDialogue != null)

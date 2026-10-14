@@ -2038,10 +2038,21 @@ class HxcCompatRuntime {
 	/** Native bounded Sparrow factory; atlas bytes stay inside the selected root. */
 	public static function createFunkinSpriteSparrow(root:Dynamic, x:Dynamic = 0, y:Dynamic = 0,
 		key:Dynamic = null):Dynamic {
-		var sprite = createFunkinSprite(root, x, y);
+		return funkinLoadSparrow(createFunkinSprite(root, x, y), root, key);
+	}
+
+	/**
+		V-Slice's `sprite.loadSparrow(key)`: give the sprite the owner's Sparrow
+		frames and return it, so the constructor chain
+		`new FunkinSprite(x, y).loadSparrow(key)` still yields the sprite. A
+		missing atlas leaves the sprite as it was, like the source's failed load.
+	*/
+	public static function funkinLoadSparrow(sprite:Dynamic, root:Dynamic, key:Dynamic):Dynamic {
+		if (sprite == null)
+			return sprite;
 		var png = hxcResolvedAsset(root, key, 'images', '.png');
 		var xml = hxcResolvedAsset(root, key, 'images', '.xml');
-		if (sprite == null || png == null || xml == null)
+		if (png == null || xml == null)
 			return sprite;
 		try {
 			var atlasClass = Type.resolveClass('DynamicAtlasFrames');
@@ -2052,6 +2063,16 @@ class HxcCompatRuntime {
 					Reflect.setProperty(sprite, 'frames', frames);
 			}
 		} catch (_:Dynamic) {}
+		return sprite;
+	}
+
+	/** V-Slice's `sprite.loadTexture(key)`: load the owner's image and return the sprite. */
+	public static function funkinLoadTexture(sprite:Dynamic, root:Dynamic, key:Dynamic):Dynamic {
+		if (sprite == null)
+			return sprite;
+		var image = hxcImageValue(root, key);
+		if (image != null)
+			hxcCall(sprite, 'loadGraphic', [image]);
 		return sprite;
 	}
 
@@ -2298,7 +2319,7 @@ class HxcCompatRuntime {
 		var cleaned:Dynamic = {};
 		var dropped:Array<String> = [];
 		for (field in Reflect.fields(values)) {
-			if (runtimeField(target, field) == null) {
+			if (tweenFieldValue(target, field) == null) {
 				dropped.push(field);
 				continue;
 			}
@@ -2721,6 +2742,10 @@ class HxcCompatRuntime {
 
 	public static function gameOverSetMustNotExit(value:Dynamic):Bool
 		return gameOverCall('hxcSetMustNotExit', [value]) == true;
+
+	/** Window focus event for `Application.current.window.onFocusOut/onFocusIn` ('out' or 'in'). */
+	public static function windowFocusEvent(kind:String):HxcWindowEvent
+		return HxcWindowEvent.focus(kind);
 
 	/** Explicitly reject donor process/window escape. */
 	public static function gameOverCloseWindow():Bool {
@@ -3147,6 +3172,36 @@ class HxcCompatRuntime {
 		if (method == null)
 			return null;
 		try return Reflect.callMethod(owner, method, args) catch (_:Dynamic) return null;
+	}
+
+	/** Flixel tweens accept nested paths such as `scale.x`; resolve each step the same way. */
+	static function tweenFieldValue(target:Dynamic, path:String):Dynamic {
+		if (path.indexOf('.') < 0)
+			return runtimeField(target, path);
+		var current:Dynamic = target;
+		for (part in path.split('.')) {
+			current = runtimeField(current, part);
+			if (current == null)
+				return null;
+		}
+		return current;
+	}
+
+	/**
+		Build an anonymous object from alternating keys and values. Generated code
+		uses it for object literals whose keys are quoted (`{"scale.x": 1.5}`), which
+		the game's HScript parser cannot read but Haxe allows.
+	*/
+	public static function objectOf(pairs:Array<Dynamic>):Dynamic {
+		var result:Dynamic = {};
+		if (pairs == null)
+			return result;
+		var index = 0;
+		while (index + 1 < pairs.length) {
+			Reflect.setField(result, Std.string(pairs[index]), pairs[index + 1]);
+			index += 2;
+		}
+		return result;
 	}
 
 	static function runtimeField(value:Dynamic, name:String):Dynamic {

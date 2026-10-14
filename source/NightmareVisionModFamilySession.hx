@@ -6,7 +6,6 @@ using StringTools;
 /** Shared selection and private list state for one retained package family. */
 @:keep
 class NightmareVisionModFamilySession {
-	static inline var ROOT_PREFIX:String = 'assets/imported_mods/';
 
 	final leaseRoot:String;
 	final members:Array<NightmareVisionModFamilyMember> = [];
@@ -181,11 +180,8 @@ class NightmareVisionModFamilySession {
 
 	static function checkedRoot(value:String):String {
 		if (value == null) throw '[nightmare-vision-mod-family] Missing installed root';
-		var clean = StringTools.replace(value, '\\', '/');
-		if (!clean.startsWith(ROOT_PREFIX) || clean.indexOf(':') >= 0 || clean.indexOf('\x00') >= 0)
-			throw '[nightmare-vision-mod-family] Invalid installed root: ' + value;
-		for (part in clean.split('/')) if (part == '' || part == '.' || part == '..')
-			throw '[nightmare-vision-mod-family] Invalid installed root: ' + value;
-		return Path.normalize(clean);
+		var root = SourceOwnerFiles.normalizeRoot(value);
+		if (root == null) throw '[nightmare-vision-mod-family] Invalid installed root: ' + value;
+		return Path.normalize(root);
 	}
 }

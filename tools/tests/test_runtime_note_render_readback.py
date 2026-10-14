@@ -156,6 +156,10 @@ class ReadbackNightmareVisionRGB {
   public var enabled:Bool = true;
   public var alpha:Float = 0.8;
   public var flash:Float = 0.25;
+  public var r(get, never):Int; function get_r():Int return palette.r;
+  public var g(get, never):Int; function get_g():Int return palette.g;
+  public var b(get, never):Int; function get_b():Int return palette.b;
+  public var mult(get, never):Float; function get_mult():Float return palette.mult;
   public function new(palette:ReadbackPalette) this.palette = palette;
 }
 class Note {

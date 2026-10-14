@@ -275,7 +275,7 @@ class NightmareVisionNoteSkin {
 
 	function refreshRGB(graphics:NightmareVisionRGBGraphics, lane:Int):NightmareVisionRGBGraphics {
 		if (graphics == null) graphics = new NightmareVisionRGBGraphics(palette(lane));
-		else graphics.palette.copyValues(palette(lane));
+		else graphics.copyValues(palette(lane));
 		graphics.enabled = inEngineColoring;
 		return graphics;
 	}

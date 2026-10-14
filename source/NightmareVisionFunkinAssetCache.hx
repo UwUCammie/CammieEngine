@@ -17,24 +17,55 @@ class NightmareVisionFunkinAssetCache {
 	public final currentTrackedTexts:NightmareVisionAssetCacheMap<String> = new NightmareVisionAssetCacheMap();
 	public final localTrackedAssets:Array<String> = [];
 	var released:Bool = false;
+	// The clears only ask whether a key was used in this state. The source
+	// pushes on every cache hit, so a per-beat lookup grew the list for the
+	// whole song and made each clear quadratic. Keep each key once.
+	final localTrackedSet:Map<String, Bool> = new Map();
+	var localTrackedCount:Int = 0;
 
 	public function new(paths:NightmareVisionPaths) this.paths = paths;
 
+	/** Record that this state used a cached key. */
+	public function trackLocal(key:String):Void {
+		syncLocalTracked();
+		if (localTrackedSet.exists(key)) return;
+		localTrackedSet.set(key, true);
+		localTrackedAssets.push(key);
+		localTrackedCount++;
+	}
+
+	/** Scripts can edit the public list directly; rebuild the lookup set when
+	 * its length moved underneath us. */
+	function syncLocalTracked():Void {
+		if (localTrackedAssets.length == localTrackedCount) return;
+		localTrackedSet.clear();
+		for (key in localTrackedAssets) localTrackedSet.set(key, true);
+		localTrackedCount = localTrackedAssets.length;
+	}
+
+	function resetLocalTracked():Void {
+		localTrackedAssets.resize(0);
+		localTrackedSet.clear();
+		localTrackedCount = 0;
+	}
+
 	public function clearStoredMemory():Void {
 		ensureAlive();
+		syncLocalTracked();
 		for (key in currentTrackedSounds.keys())
-			if (!localTrackedAssets.contains(key) && !currentTrackedSounds.permanentKeys.contains(key))
+			if (!localTrackedSet.exists(key) && !currentTrackedSounds.permanentKeys.contains(key))
 				removeFromCache(key);
-		localTrackedAssets.resize(0);
+		resetLocalTracked();
 	}
 
 	public function clearUnusedMemory():Void {
 		ensureAlive();
+		syncLocalTracked();
 		for (key in currentTrackedGraphics.keys())
-			if (!localTrackedAssets.contains(key) && !currentTrackedGraphics.permanentKeys.contains(key))
+			if (!localTrackedSet.exists(key) && !currentTrackedGraphics.permanentKeys.contains(key))
 				removeFromCache(key);
 		for (key in currentTrackedTexts.keys())
-			if (!localTrackedAssets.contains(key) && !currentTrackedTexts.permanentKeys.contains(key))
+			if (!localTrackedSet.exists(key) && !currentTrackedTexts.permanentKeys.contains(key))
 				removeFromCache(key);
 	}
 
@@ -89,7 +120,7 @@ class NightmareVisionFunkinAssetCache {
 		if (selected == null || graphic == null) return null;
 		prepareGraphic(graphic, allowGPU);
 		currentTrackedGraphics.set(selected, graphic);
-		localTrackedAssets.push(selected);
+		trackLocal(selected);
 		return graphic;
 	}
 
@@ -110,7 +141,7 @@ class NightmareVisionFunkinAssetCache {
 			graphic.persist = true;
 			graphic.destroyOnNoUse = false;
 			currentTrackedGraphics.set(key, graphic);
-			localTrackedAssets.push(key);
+			trackLocal(key);
 		}
 		return graphic;
 	}
@@ -133,7 +164,7 @@ class NightmareVisionFunkinAssetCache {
 		var selected = paths.scopeAssetPath(key);
 		if (selected == null || sound == null) return null;
 		currentTrackedSounds.set(selected, sound);
-		localTrackedAssets.push(selected);
+		trackLocal(selected);
 		return sound;
 	}
 
@@ -142,7 +173,7 @@ class NightmareVisionFunkinAssetCache {
 		var selected = paths.scopeAssetPath(key);
 		if (selected == null || data == null) return null;
 		currentTrackedTexts.set(selected, data);
-		localTrackedAssets.push(selected);
+		trackLocal(selected);
 		return data;
 	}
 
@@ -152,7 +183,7 @@ class NightmareVisionFunkinAssetCache {
 		for (key in [for (key in currentTrackedGraphics.keys()) key]) removeFromCache(key);
 		for (key in [for (key in currentTrackedSounds.keys()) key]) removeFromCache(key);
 		for (key in [for (key in currentTrackedTexts.keys()) key]) removeFromCache(key);
-		localTrackedAssets.resize(0);
+		resetLocalTracked();
 		released = true;
 	}
 

@@ -567,6 +567,12 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	 * the native trace.  A missing visual must identify its dependency instead
 	 * of appearing only as a silent Dad fallback. */
 	public static var resolutionDiagnostics:Array<String> = [];
+	/** Messages already in resolutionDiagnostics, so deduplication does not
+		rescan the list. Bounded like the list, which starts over at the cap. */
+	static var resolutionDiagnosticSeen:Map<String, Bool> = new Map();
+	static var resolutionDiagnosticSeenFor:Array<String> = null;
+	static var resolutionDiagnosticSeenCount:Int = 0;
+	static inline var MAX_RESOLUTION_DIAGNOSTICS:Int = 512;
 	public static function reportResolution(resolution:Dynamic):Void {
 		if (resolution == null || resolution.complete == true)
 			return;
@@ -583,10 +589,8 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 		var requested = resolution.requested == null ? '' : Std.string(resolution.requested);
 		var detail = resolution.diagnostic == null ? '' : Std.string(resolution.diagnostic);
 		var message = code + '|' + requested + '|' + detail;
-		if (resolutionDiagnostics.indexOf(message) < 0) {
-			resolutionDiagnostics.push(message);
+		if (rememberResolutionDiagnostic(message))
 			trace('[character-resolution] ' + message);
-		}
 		// Keep the resolver's precise reason, then add one shared runtime
 		// dependency record with origin/search/impact fields.  The Dad
 		// interpreter below is only an emergency visual implementation; the
@@ -597,6 +601,31 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			'character visual falls back to Dad; note lanes, timing, and score gameplay continue',
 			'unresolved-source-dependency');
 		EngineCompat.reportVisualFallback(plan);
+	}
+
+	/** True when the message is new. A caller that replaced the public list
+		gets the deduplication rebuilt from the list it put there. */
+	static function rememberResolutionDiagnostic(message:String):Bool {
+		if (resolutionDiagnostics == null)
+			resolutionDiagnostics = [];
+		if (resolutionDiagnosticSeenFor != resolutionDiagnostics
+			|| resolutionDiagnosticSeenCount != resolutionDiagnostics.length) {
+			resolutionDiagnosticSeen = new Map();
+			for (known in resolutionDiagnostics) resolutionDiagnosticSeen.set(known, true);
+			resolutionDiagnosticSeenFor = resolutionDiagnostics;
+		}
+		if (resolutionDiagnosticSeen.exists(message)) {
+			resolutionDiagnosticSeenCount = resolutionDiagnostics.length;
+			return false;
+		}
+		if (resolutionDiagnostics.length >= MAX_RESOLUTION_DIAGNOSTICS) {
+			resolutionDiagnostics.resize(0);
+			resolutionDiagnosticSeen = new Map();
+		}
+		resolutionDiagnosticSeen.set(message, true);
+		resolutionDiagnostics.push(message);
+		resolutionDiagnosticSeenCount = resolutionDiagnostics.length;
+		return true;
 	}
 	public static function animationName(character:Character):String {
 		return character != null && character.animation != null && character.animation.curAnim != null ? character.animation.curAnim.name : '';

@@ -116,7 +116,10 @@ class PsychOwnerOpenFlAssets {
 			var key = ownerCacheKeySelected(id, 'IMAGE', resolved.path);
 			if (useCache && ownerCache != null && ownerCache.enabled && ownerCache.hasBitmapData(key)) {
 				var cached = ownerCache.getBitmapData(key);
-				if (cached != null) return cached;
+				if (OpenFlAssets.isValidBitmapData(cached)) return cached;
+				// The canonical graphic that shared these pixels was destroyed and
+				// disposed them. Forget the dead entry and decode the file again.
+				ownerCache.removeBitmapData(key);
 			}
 			var bitmap = FNFAssets.getBitmapData(resolved.path, useCache);
 			if (bitmap != null && useCache && ownerCache != null && ownerCache.enabled)

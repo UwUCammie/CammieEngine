@@ -160,9 +160,14 @@ __METHODS__
                 method = method.replace("function compatClassPropertyPath",
                                         "static function compatClassPropertyPath", 1)
             methods.append(method)
-        engine_methods = []
+        members = play_state.index("\tstatic final PSYCH_PREFS_OWN_MEMBERS")
+        methods.append(play_state[members:play_state.index("];", members) + 2])
+        # propertyPath remembers resolved paths in fields declared just above it.
+        cache_start = engine_compat.index("\tstatic inline var PROPERTY_PATH_CACHE_LIMIT")
+        engine_methods = [engine_compat[cache_start:engine_compat.index("\tpublic static function propertyPath", cache_start)]]
         for marker in (
             "public static function propertyPath",
+            "static function resolvePropertyPath",
             "public static function propertyRoot",
             "public static function legacyClassProperty",
         ):
@@ -302,10 +307,24 @@ class EngineCompat {
   public static function propertyPath(path:Dynamic):String return path == null ? '' : Std.string(path);
   public static function legacyCounterName(_root:String):String return '';
 }
+class TaggedSoundRegistry {
+  public static function tagFromPsychVariable(name:String):String
+    return name != null && StringTools.startsWith(name, 'sound_') && name.length > 6 ? name.substr(6) : null;
+}
+class FixtureSounds {
+  var sounds:Map<String, Dynamic> = new Map();
+  public function new() {}
+  public function set(tag:String, sound:Dynamic):Void sounds.set(tag, sound);
+  public function get(tag:Dynamic):Dynamic return sounds.get(Std.string(tag));
+  public function findPsychVariable(name:String):Dynamic
+    return TaggedSoundRegistry.tagFromPsychVariable(name) == null ? null : sounds.get(TaggedSoundRegistry.tagFromPsychVariable(name));
+}
 class GameOverPropertyProbe {
   var nightmareVisionLegacyFieldCameras=false;
   function getLuaObject(n:String,t:Bool):Dynamic return null;
   function characterGroupForRole(role:String):Dynamic return {group: role};
+  public var taggedSounds:FixtureSounds = new FixtureSounds();
+  function soundForTag(tag:Dynamic):Dynamic return taggedSounds.get(Std.string(tag));
 __METHODS__
   var sourceScoreOwner:Bool = false;
   var sourceScoreNightmare:Bool = false;
@@ -386,6 +405,17 @@ __METHODS__
     check(game.compatPropertyRoot('boyfriend') == PlayState.globalSprites.get('boyfriend'), 'global sprite precedence changed');
     PlayState.globalSprites.remove('boyfriend');
     check(game.compatPropertyRoot('boyfriend') == game.haxeSprites.get('boyfriend'), 'Haxe sprite precedence changed');
+    // Psych's `sound_<tag>` variable reaches the tagged sound, after every other root
+    var wasDead = game.isDead;
+    game.isDead = false;
+    var boom = {volume: 1};
+    game.taggedSounds.set('boom', boom);
+    check(game.compatPropertyRoot('sound_boom') == boom, 'sound_<tag> root did not reach the tagged sound');
+    game.psychScriptVariables.set('sound_boom', 'script value');
+    check(game.compatPropertyRoot('sound_boom') == 'script value', 'a script variable lost precedence over sound_<tag>');
+    game.psychScriptVariables.remove('sound_boom');
+    check(game.compatPropertyRoot('sound_nobody') == null, 'an unknown sound tag resolved to something');
+    game.isDead = wasDead;
 
     game.compatSetProperty('camFollow.x', 77);
     check(game.lastWriteTarget == subFollow && game.lastWritePath == 'x' && subFollow.x == 77,

@@ -17,7 +17,11 @@ class SongLoadingScreenTest(unittest.TestCase):
     def test_real_deferred_callback_and_completed_stage_model(self):
         source=(ROOT/'source/SongLoadingScreen.hx').read_text(encoding='utf-8')
         helper='\n'.join(method(source,n) for n in ['public static function queue(', 'static function describeWork(', 'static function afterDraw(', 'static function afterRender(', 'public static function cancel('])
+        # The handoff used to upload every cached texture, which doubled the cost
+        # of the first frames. The stub counts calls so the probe fails if the
+        # handoff starts asking for that bulk upload again.
         fixture=r'''class PlayState { public static var SONG:Dynamic; }
+class FNFAssets { public static var uploads=0; public static function uploadSongTextures():Void uploads++; }
 class LoadingProbe {
  static var outro=false; static var installed=true; static var stateRequested=false; static var viewportWaitLogged=false; static var viewportReady=false;
  static var active=false; static var preparing=false;
@@ -66,7 +70,9 @@ class LoadingProbe {
   afterRender(null);afterDraw();check(nested==1&&active,"rendered scene phase did not execute once");
   afterDraw(); check(active&&progress.completed==1,"timer completed actual work");
   complete(2,"cleaned");complete(3,"created");
+  check(FNFAssets.uploads==0,"textures uploaded before the new state existed");
   afterDraw();check(active&&progress.completed==4,"completion frame missing");
+  check(FNFAssets.uploads==0,"the handoff uploaded every cached texture, which doubled the first frames' cost");
   afterDraw();check(active,"completed overlay retired before rendering");
   afterRender(null);afterDraw();check(!active,"overlay did not retire");
   queue("abort","",function(){});afterDraw();afterRender(null);afterDraw();

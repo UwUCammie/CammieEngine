@@ -13,6 +13,31 @@ using StringTools;
 
 /** Psych-compatible path functions scoped to one imported asset owner. */
 class PsychOwnerPaths {
+	static var bridgeFacades:Map<String, {facade:Dynamic, sounds:PsychOwnerSoundCache}> = new Map();
+	static var bridgeFacadeGeneration:Int = -1;
+
+	/** Facade for engine bridge calls such as makeLuaSprite, loadGraphic and
+	 * playSound. Building one costs dozens of closures and a directory check,
+	 * and those calls can run every beat, so one is kept per owner. It carries
+	 * no level or translation state of its own; never hand it to a script,
+	 * which could change that state for every later bridge call. */
+	public static function bridgeFacade(ownerRoot:String):Dynamic {
+		var generation = ImportRefreshManager.generation;
+		if (generation != bridgeFacadeGeneration) {
+			bridgeFacades.clear();
+			bridgeFacadeGeneration = generation;
+		}
+		var entry = ownerRoot == null ? null : bridgeFacades.get(ownerRoot);
+		// A released sound cache means the owner was retired; rebuild so audio
+		// calls reach the owner's fresh cache instead of throwing.
+		if (entry != null && !entry.sounds.isReleased()) return entry.facade;
+		var facade = create(ownerRoot);
+		bridgeFacades.set(ownerRoot, {facade:facade, sounds:PsychOwnerSoundCache.forOwner(ownerRoot)});
+		return facade;
+	}
+
+	public static function clearBridgeFacades():Void bridgeFacades.clear();
+
 	public static function create(ownerRoot:String, ?initialLibrary:String):Dynamic {
 		var owner = PsychOwnerAssetPath.normalizeOwner(ownerRoot);
 		if (owner == '') throw '[psych-assets] A valid selected import owner root is required';
@@ -223,9 +248,17 @@ class PsychOwnerPaths {
 		var translated = translate == null ? key : translate(key);
 		if (translated == null) translated = key;
 		var file = translated + '.' + Paths.SOUND_EXT;
+		// A repeated request whose Sound is already decoded skips the owner,
+		// identity and library walk. Misses are never remembered.
+		var request = (modsAllowed ? '1' : '0') + (path == null ? '-' : '+' + path)
+			+ '\x00' + (currentLevel == null ? '-' : '+' + currentLevel) + '\x00' + file;
+		var remembered = cache.resolvedFile(request);
+		if (remembered != null) return cache.returnSound(remembered, beepOnNull, key, path);
 		var resolved = soundPath(owner, file, path, modsAllowed, currentLevel);
 		if (resolved == null) return cache.returnMissing(file, beepOnNull, key, path);
-		return cache.returnSound(resolved, beepOnNull, key, path);
+		var sound = cache.returnSound(resolved, beepOnNull, key, path);
+		cache.rememberResolvedFile(request, resolved);
+		return sound;
 	}
 
 	static function soundPath(owner:String, file:String, path:Null<String>, modsAllowed:Bool,
@@ -256,8 +289,21 @@ class PsychOwnerPaths {
 
 		var shared = indexedSoundResolution(owner, file, 'shared');
 		if (shared.state == 'found') return shared.path;
-		if (shared.state == 'no-index' || shared.state == 'unclaimed') return shared.sourceId;
+		if (shared.state == 'no-index' || shared.state == 'unclaimed') {
+			if (FNFAssets.exists(shared.sourceId)) return shared.sourceId;
+			// The engine keeps its menu sounds in assets/sounds, where older Psych
+			// builds also looked last. Without this an owner that relies on the
+			// stock scrollMenu or confirmMenu gets the missing-sound beep.
+			var engine = engineSoundPath(file);
+			return engine != null ? engine : shared.sourceId;
+		}
 		return null;
+	}
+
+	/** The engine's own copy of a sound (assets/sounds/...), or null when it has none. */
+	static function engineSoundPath(file:String):Null<String> {
+		var engine = Paths.file(file, SOUND, 'preload');
+		return engine != null && FNFAssets.exists(engine) ? engine : null;
 	}
 
 	static function ownerOverridePath(owner:String, file:String, path:Null<String>):String {

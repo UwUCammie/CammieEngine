@@ -391,6 +391,10 @@ class PsychAssetProfile {
 				"An unsupported or unavailable Project input may contain additional asset mappings.");
 		}
 		var counters = {entries:0, scopes:0, bytes:0.0, hashedBytes:0.0, hashes:new Map<String, Dynamic>()};
+		// A released build's manifests still list base files its author deleted
+		// before shipping; the build itself never had them, so they are counted
+		// once instead of reported as hundreds of import errors.
+		var unshippedCompiledFiles = 0;
 		var destinationSources:Map<String, String> = new Map();
 		var destinationProjectionSources:Map<String, Dynamic> = new Map();
 		var ambiguous:Map<String, Bool> = new Map();
@@ -459,9 +463,12 @@ class PsychAssetProfile {
 				markWalkIncomplete(result);
 				result.skipped++;
 				recordScopeProjection(result, candidate, "", candidateState != DISABLED, false);
-				addWalkDiagnostic(result, onDiagnostic, "candidate-source-missing",
-					candidateState == DISABLED ? "warning" : "error",
-					"A mapped Project.xml source path is absent from the retained snapshot.");
+				if (profile.compiledManifests == true)
+					unshippedCompiledFiles++;
+				else
+					addWalkDiagnostic(result, onDiagnostic, "candidate-source-missing",
+						candidateState == DISABLED ? "warning" : "error",
+						"A mapped Project.xml source path is absent from the retained snapshot.");
 				continue;
 			}
 			var candidateIsDirectory = false;
@@ -584,6 +591,9 @@ class PsychAssetProfile {
 				result, onDiagnostic, cancelled, sourceFilter, candidateFilter);
 			if (result.status == "cancelled") return result;
 		}
+		if (unshippedCompiledFiles > 0)
+			addWalkDiagnostic(result, onDiagnostic, "compiled-files-not-shipped", "warning",
+				unshippedCompiledFiles + " files listed in the compiled asset manifests are not in the released build.");
 		if (!profile.complete) markWalkIncomplete(result);
 		return result;
 		#else

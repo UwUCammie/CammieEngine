@@ -10,8 +10,9 @@ using StringTools;
 
 	Inactive text and the directives themselves are blanked to spaces with
 	every line break kept, so offsets and line numbers still point at the
-	original source. Strings and comments are skipped while scanning, so a
-	`#end` inside a string never closes a block.
+	original source. Strings, comments and regex literals are skipped while
+	scanning, so a `#end` inside a string never closes a block and an
+	apostrophe inside `~/.../` never starts one.
 */
 class HxcPreprocessor {
 	static var cachedEngineDefines:Map<String, String>;
@@ -74,6 +75,10 @@ class HxcPreprocessor {
 				var close = source.indexOf('*/', index + 2);
 				skipEnd = close < 0 ? length : close + 2;
 			}
+			// A quote inside a regex would otherwise be read as an open string and
+			// swallow the directives that follow it.
+			else if (code == '~'.code && index + 1 < length && source.fastCodeAt(index + 1) == '/'.code)
+				skipEnd = HxcScriptIdentity.regexLiteralEnd(source, index);
 			if (skipEnd > index) {
 				emit(output, source, index, skipEnd, live);
 				index = skipEnd;

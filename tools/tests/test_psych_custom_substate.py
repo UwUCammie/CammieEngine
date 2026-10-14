@@ -94,10 +94,11 @@ class Main {
 
     def test_playstate_dispatch_is_owned_by_substate_clock(self):
         source = (ROOT / 'source/PlayState.hx').read_text()
-        bridge = (ROOT / 'source/EngineCompat.hx').read_text()
+        names = (ROOT / 'source/ScriptLifecycleNames.hx').read_text()
         self.assertIn("callAllHScript('customSubstateUpdatePost', [state.customName, elapsed])", source)
         self.assertNotIn("callAllHScript('customSubstateUpdate', [compatCustomSubstateName", source)
-        self.assertIn("case 'oncustomsubstateupdatepost' | 'customsubstateupdatepost'", bridge)
+        # Both spellings of the post-update hook resolve through the shared lifecycle table.
+        self.assertIn("row('customSubstateUpdatePost', ['onCustomSubstateUpdatePost'])", names)
         self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*updateNightmareVisionScreenUnderlay\(\);\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
         self.assertIn('subState == compatCustomSubstate && !compatCustomSubstate.sourceLifecycle', source)

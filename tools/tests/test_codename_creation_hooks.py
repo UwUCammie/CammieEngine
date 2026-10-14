@@ -99,6 +99,7 @@ class CodenameCreationHooksTest(unittest.TestCase):
         get_offset = method(note_source, "get_frameOffset")
         set_offset = method(note_source, "set_frameOffset")
         destroy = method(note_source, "destroy")
+        release_row = method(note_source, "releaseLegacyRowMembership")
 
         stubs = {
             "animate/FlxAnimateFrames.hx": r'''package animate;
@@ -161,6 +162,8 @@ class Note extends flixel.FlxSprite {
  public var nightmareVisionTypeRuntime:Dynamic=null;public var nightmareVisionRenderer:Dynamic=null;
  public var nightmareVisionTailState:Dynamic=null;public var nightmareVisionRGB:Dynamic=null;
  public var nightmareVisionBaseScalePoint:FlxPoint=null;
+ public var isSustainNote:Bool=false;public var prevNote:Note;
+ var nightmareVisionLegacyRow:Array<Note>=null;static var retiredLegacyRows:Array<Array<Note>>=[];
  public var frameOffset(get,set):FlxPoint;
 ''',
             "CodenameGameEvent.hx": (ROOT / "source/CodenameGameEvent.hx").read_text(),
@@ -246,7 +249,7 @@ class Main {
  }
 }''',
         }
-        probe = stubs["Note.hx"] + "\n" + get_offset + "\n" + set_offset + "\n" + destroy + "\n}\n"
+        probe = stubs["Note.hx"] + "\n" + get_offset + "\n" + set_offset + "\n" + release_row + "\n" + destroy + "\n}\n"
         stubs["Note.hx"] = probe
         state_source = (ROOT / "source/PlayState.hx").read_text()
         stubs["TypeTable.hx"] = ('class TypeTable { public var codenameSelectedNoteTypes:Array<Dynamic> '

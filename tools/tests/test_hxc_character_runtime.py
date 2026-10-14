@@ -45,9 +45,12 @@ class HxcCharacterRuntimeTest(unittest.TestCase):
         for token in (
             "callHxcCharacterAdded",
             "dispatchHxcCharacterMethod",
-            "loadHxcCharacterCompat(boyfriend.curCharacter, 'boyfriend', boyfriend)",
-            "loadHxcCharacterCompat(dad.curCharacter, 'dad', dad)",
-            "loadHxcCharacterCompat(gf.curCharacter, 'gf', gf)",
+            # One swap body serves boyfriend, dad and gf; the new actor is put in
+            # its role first, then its HXC character scripts load for that role.
+            "if (charState == 'boyfriend' || charState == 'dad' || charState == 'gf') {",
+            "var next = setCharacterForRole(charState, takeSwapCharacter(charState, charTo));",
+            "loadHxcCharacterCompat(next.curCharacter, charState, next);",
+            "setAllHaxeVar(charState, next);",
             "setAllHaxeVar('boyfriend', boyfriend)",
             "setAllHaxeVar('dad', dad)",
             "setAllHaxeVar('gf', gf)",

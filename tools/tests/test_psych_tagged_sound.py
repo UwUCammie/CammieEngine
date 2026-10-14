@@ -171,6 +171,12 @@ class PsychTaggedSoundTest(unittest.TestCase):
             self.assertIn("interp.variables.set('" + name + "', " + binding + ");", source)
         self.assertIn("interp.variables.set('playSound', function(path:Dynamic", source)
         self.assertIn("compatPlaySoundForOwner(psychScriptOwner, path, volume, tag, looped)", source)
+        # Lua gets Psych's `sound_<tag>` name back and can reach the sound through it.
+        self.assertIn("return luaPlaySound ? TaggedSoundRegistry.psychVariableName(tag) : sound;", source)
+        self.assertIn("var luaPlaySound = Std.isOfType(interp, LuaCompatInterp);", source)
+        root = method(source, "compatPropertyRoot")
+        self.assertIn("TaggedSoundRegistry.tagFromPsychVariable(root)", root)
+        self.assertIn("value = taggedSounds.findPsychVariable(root);", root)
         self.assertIn("taggedSounds.clear();", method(source, "destroy"))
         self.assertIn("playTaggedSound(", method(source, "compatPlaySound"))
         self.assertNotIn("hscriptSafePlay", method(source, "compatPlaySound"))

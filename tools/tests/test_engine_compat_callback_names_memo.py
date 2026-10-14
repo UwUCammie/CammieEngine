@@ -3,6 +3,7 @@ from haxe_test_support import HAXE_COMMAND, FixturePath
 
 import subprocess
 import tempfile
+import re
 import unittest
 from pathlib import Path
 
@@ -64,10 +65,24 @@ class EngineCompatCallbackNamesMemoTest(unittest.TestCase):
         callers = 0
         for path in sorted((ROOT / "source").rglob("*.hx")):
             source = path.read_text(encoding="utf-8", errors="replace")
-            for line in source.splitlines():
+            lines = source.splitlines()
+            for index, line in enumerate(lines):
                 if "callbackNames(" in line and "function callbackNames(" not in line:
                     callers += 1
-                    self.assertIn("for (candidate in EngineCompat.callbackNames(", line, path.name)
+                    if "for (candidate in EngineCompat.callbackNames(" in line:
+                        continue
+                    # Otherwise the shared list is held in a variable or returned to
+                    # a caller that holds it; no holder may change it in place.
+                    held = re.search(r"(?:var|final)\s+(\w+)\s*=", line) or re.search(r"(?:var|final)\s+(\w+)\s*=", lines[index - 1])
+                    if held is None:
+                        self.assertTrue(line.strip().startswith(("return ", "? ")) or lines[index - 1].strip().startswith("return "),
+                            path.name + ": " + line.strip())
+                        continue
+                    # Only the function that holds the list matters; other locals may share the name.
+                    end = next((i for i in range(index, len(lines)) if lines[i] == "\t}"), len(lines))
+                    body = "\n".join(lines[index:end])
+                    self.assertIsNone(re.search(r"\b" + held.group(1) + r"\.(?:push|pop|remove|splice|insert|unshift|shift|sort|reverse|resize)\(", body),
+                        path.name + ": " + held.group(1) + " is changed in place")
         self.assertGreater(callers, 0)
 
 

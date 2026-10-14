@@ -24,7 +24,7 @@ class PsychCharacterPreloadBridgeTest(unittest.TestCase):
         method += play[slot_start:play.index("\n\t}", slot_start) + 3]
         fixture = '''using StringTools;
 class Character {
-  public static function characterExists(name:String):Bool return name == "bf-jam-car" || name == "gf-swag";
+  public static function characterExists(name:String):Bool return name == "bf-jam-car" || name == "gf-swag" || name == "listed-dad";
 }
 class FakeCharacterBank {
   public var names:Array<String> = [];
@@ -45,6 +45,13 @@ class PlayState {
     warmed.push(name + ":" + isPlayer);
   function preloadSwapCharacter(slot:String, name:String, wanted:Int = 1):Void
     warmed.push(name + ":" + slot);
+  var listed:Array<String> = [];
+  // Only "listed-dad" can go in a Psych role map in this fixture.
+  function publishPsychRoleCharacter(slot:String, name:String):Bool {
+    if (name != "listed-dad") return false;
+    listed.push(name + ":" + slot);
+    return true;
+  }
 ''' + method + '''
   static function main():Void {
     var state = new PlayState();
@@ -54,6 +61,10 @@ class PlayState {
     state.compatAddCharacterToList(null, "boyfriend");
     if (state.warmed.join(",") != "bf-jam-car:boyfriend,gf-swag:gf")
       throw "Psych character preload did not preserve selected role or missing dependency";
+    // An actor listed in the role map is the swap's actor; no second copy.
+    state.compatAddCharacterToList(" listed-dad ", "dad");
+    if (state.listed.join(",") != "listed-dad:dad" || state.warmed.join(",") != "bf-jam-car:boyfriend,gf-swag:gf")
+      throw "listed role actor was also preloaded: " + state.listed.join(",") + " / " + state.warmed.join(",");
 
     // The Nightmare Vision host retains these preloads in the role bank.
     var warmedBefore = state.warmed.join(",");

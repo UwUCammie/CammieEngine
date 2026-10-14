@@ -49,6 +49,22 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	var ownerAssetFacade:NightmareVisionFunkinAssets;
 	var modFamily:NightmareVisionModsContext;
 	var familyProviders:Map<String, NightmareVisionPaths> = [];
+	/** Seconds a remembered lookup is trusted. Short on purpose: files can be
+	 * written by code that never tells the asset layer. */
+	static inline var LOOKUP_MEMO_LIFETIME_SECONDS:Float = 2.0;
+	static inline var LOOKUP_MEMO_MAX_ENTRIES:Int = 4096;
+	/** getPath and scopeAssetPath results. One script image or atlas lookup
+	 * walks mod and core folders with about twenty filesystem calls, and
+	 * scripts repeat the same lookups every beat or frame. */
+	final lookupMemo:Map<String, String> = new Map();
+	var lookupMemoCount:Int = 0;
+	var lookupMemoStartedAt:Float = 0;
+	var lookupMemoGeneration:Int = -1;
+	var lookupMemoRevision:Int = -1;
+	var lookupMemoFamily:NightmareVisionModsContext = null;
+	var lookupMemoSelectedRoot:Null<String> = null;
+	var lookupMemoLevel:Null<String> = null;
+	final lookupMemoGlobalMods:Array<String> = [];
 
 	/** Keep the lease anchor stable while source lookups follow its authorized family.
 	 * Existing sprites/cache keys keep their resolved paths until ordinary teardown. */
@@ -167,6 +183,16 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	 * Paths returned by this API are relative to the game cwd; arbitrary engine
 	 * or other-owner paths must not become an escape hatch from this adapter. */
 	public function scopeAssetPath(path:String):Null<String> {
+		if (path == null || !lookupMemoUsable()) return scopeAssetPathUncached(path);
+		var key = 's:' + path;
+		var remembered = lookupMemo.get(key);
+		if (remembered != null) return remembered;
+		var scoped = scopeAssetPathUncached(path);
+		rememberLookup(key, scoped);
+		return scoped;
+	}
+
+	function scopeAssetPathUncached(path:String):Null<String> {
 		if (!safeRelative(path)) return null;
 		if (modFamily != null) {
 			// Both old borrowed keys and newly selected keys remain inside the catalog.
@@ -312,6 +338,64 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 
 	public function getPath(file:String, ?parentFolder:String, checkMods:Bool = false):String {
 		if (parentFolder != null) file = parentFolder + '/' + file;
+		if (file == null || !lookupMemoUsable()) return getPathUncached(file, checkMods);
+		var key = (checkMods ? 'm:' : 'c:') + file;
+		var remembered = lookupMemo.get(key);
+		if (remembered != null) return remembered;
+		var path = getPathUncached(file, checkMods);
+		rememberLookup(key, path);
+		return path;
+	}
+
+	/** Whether remembered lookups may be used now. Forgets them when an import
+	 * refresh, an identity change, the selected family member, the current
+	 * level or the global mod list moved, or when they aged out. Source dev
+	 * mode disables caching, so it never remembers anything. Asking the family
+	 * for its selection also keeps the released-context error of a direct call. */
+	function lookupMemoUsable():Bool {
+		if (devModeEnabled()) return false;
+		var selectedRoot = modFamily == null ? root : modFamily.selectedRoot();
+		var generation = ImportRefreshManager.generation;
+		var revision = ImportRefreshManager.availabilityRevision();
+		var now = haxe.Timer.stamp();
+		var stale = generation != lookupMemoGeneration || revision != lookupMemoRevision
+			|| modFamily != lookupMemoFamily || selectedRoot != lookupMemoSelectedRoot
+			|| currentLevel != lookupMemoLevel || !sameGlobalMods()
+			|| now - lookupMemoStartedAt > LOOKUP_MEMO_LIFETIME_SECONDS || now < lookupMemoStartedAt;
+		if (stale) {
+			lookupMemo.clear();
+			lookupMemoCount = 0;
+			lookupMemoStartedAt = now;
+			lookupMemoGeneration = generation;
+			lookupMemoRevision = revision;
+			lookupMemoFamily = modFamily;
+			lookupMemoSelectedRoot = selectedRoot;
+			lookupMemoLevel = currentLevel;
+			lookupMemoGlobalMods.resize(0);
+			if (modFamily != null) for (directory in modFamily.globalMods) lookupMemoGlobalMods.push(directory);
+		}
+		return true;
+	}
+
+	function sameGlobalMods():Bool {
+		var live = modFamily == null ? null : modFamily.globalMods;
+		var count = live == null ? 0 : live.length;
+		if (count != lookupMemoGlobalMods.length) return false;
+		for (index in 0...count) if (live[index] != lookupMemoGlobalMods[index]) return false;
+		return true;
+	}
+
+	function rememberLookup(key:String, value:Null<String>):Void {
+		if (value == null) return;
+		if (lookupMemoCount >= LOOKUP_MEMO_MAX_ENTRIES) {
+			lookupMemo.clear();
+			lookupMemoCount = 0;
+		}
+		if (!lookupMemo.exists(key)) lookupMemoCount++;
+		lookupMemo.set(key, value);
+	}
+
+	function getPathUncached(file:String, checkMods:Bool):String {
 		if (checkMods) {
 			var selected = existingFamilyModPath(file);
 			if (selected != null) return selected;
@@ -436,6 +520,8 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 	public function releaseOwnerAssets():Void {
 		RuntimeOwnerAssetIdentity.releaseOwner(root);
 		tempAtlasFramesCache.clear();
+		lookupMemo.clear();
+		lookupMemoCount = 0;
 		scriptInstances.clear();
 		if (ownerAssetCache != null) ownerAssetCache.release();
 		ownerAssetCache = null;
@@ -482,7 +568,7 @@ class NightmareVisionPaths implements NightmareVisionScriptPaths {
 		if (url == null || !url.contains('.png')) return null;
 		var cache = ownedAssets().cache;
 		if (cache.currentTrackedGraphics.exists(url)) {
-			cache.localTrackedAssets.push(url);
+			cache.trackLocal(url);
 			return cache.currentTrackedGraphics.get(url);
 		}
 		var http = new Http(url);

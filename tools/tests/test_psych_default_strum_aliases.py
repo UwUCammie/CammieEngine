@@ -85,6 +85,60 @@ class PsychDefaultStrumCompat {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_script_owned_side_default_writes_shadow_later_reads(self):
+        # Psych gives every Lua script its own copy of these globals: a script
+        # that moves its baseline reads its own number back, comparisons are
+        # not mistaken for writes, and the untouched slots keep the receptor.
+        fixture = r"""
+class PsychDefaultStrumCompat {
+    static function main() {
+        var source = "function onStepHit()\n"
+            + "  if curStep >= 3 then\n"
+            + "    defaultOpponentStrumX0 = -412\n"
+            + "    defaultPlayerStrumY1 = defaultPlayerStrumY1 + 5;\n"
+            + "  end\n"
+            + "  if defaultOpponentStrumX0 == -412 then out('moved') end\n"
+            + "  out(defaultOpponentStrumX0 + 1, defaultPlayerStrumY1, defaultOpponentStrumX1)\n"
+            + "end";
+        var converted = LuaCompat.translate(source, "own-strum.lua");
+        if (!converted.supported)
+            throw converted.diagnostics.join(" | ");
+        var interp = new LuaCompatInterp();
+        var globals:Map<String, Dynamic> = [];
+        var own:Array<Dynamic> = [];
+        var lines:Array<String> = [];
+        interp.variables.set("out", Reflect.makeVarArgs(function(a:Array<Dynamic>) {
+            lines.push(a.join(","));
+            return null;
+        }));
+        interp.variables.set("luaSetScriptGlobal", function(name:Dynamic, value:Dynamic) {
+            if (!EngineCompat.luaSetScriptGlobal(globals, name, value)) return false;
+            var slot = EngineCompat.luaSideStrumSlot(Std.string(name));
+            if (slot >= 0) own[slot] = value;
+            return true;
+        });
+        interp.variables.set("luaGetSideDefaultStrum", function(side:Dynamic, index:Dynamic, axis:Dynamic)
+            return EngineCompat.luaGetSideDefaultStrum([100.0, 110.0], [200.0, 210.0],
+                [300.0, 310.0], [400.0, 410.0], side, index, axis, own));
+        interp.variables.set("curStep", 0);
+        interp.execute(new hscript.Parser().parseString(converted.hscript));
+        var step:Dynamic = interp.variables.get("onStepHit");
+        step();
+        interp.variables.set("curStep", 4);
+        step();
+        var got = lines.join("|");
+        if (got != "101,410,110|moved|-411,415,110")
+            throw "own strum values: " + got;
+        if (EngineCompat.luaSideStrumSlot("defaultPlayerStrumY3") != 15
+            || EngineCompat.luaSideStrumSlot("defaultOpponentStrumX0") != 0
+            || EngineCompat.luaSideStrumSlot("defaultStrum0X") != -1)
+            throw "slot layout";
+    }
+}
+"""
+        result = self.run_fixture(fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(DONOR.is_dir(), "mounted FNF-Example-Mods corpus is unavailable")
     def test_mounted_bare_side_globals_translate_to_the_native_adapter(self):
         self.assertTrue(OPPONENT_SCRIPT.is_file(), OPPONENT_SCRIPT)

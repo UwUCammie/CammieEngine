@@ -124,13 +124,14 @@ class FrameHitchAttributionTest(unittest.TestCase):
     def test_harness_wiring(self):
         source = (ROOT / "source/RuntimeSmokeHarness.hx").read_text(encoding="utf-8")
         post = extract_method(source, "static function onFramePostDraw(")
-        self.assertIn("hitchTracker.endFrame(now, currentHeapBytes())", post)
+        self.assertIn("hitchTracker.endFrame(now, currentHeapBytes(), currentLargeBytes(), currentReservedBytes())", post)
         self.assertNotIn("frameDelta > 33.4 ||", post)
         for field in ("previousRenderMs", "outsideMs", "collectedInside", "collectedOutside",
-                      "heapDropBytes", "harnessMs", "cause"):
+                      "heapDropBytes", "largeGrowthBeforeDropBytes", "largeTriggerSuspected",
+                      "harnessMs", "cause"):
             self.assertIn(field + ":", post)
         pre = extract_method(source, "static function onFramePreUpdate(")
-        self.assertIn("hitchTracker.beginFrame(frameStart, currentHeapBytes())", pre)
+        self.assertIn("hitchTracker.beginFrame(frameStart, currentHeapBytes(), currentLargeBytes(), currentReservedBytes())", pre)
         # the per-5-second note geometry burst stays out of pacing runs
         live = extract_method(source, "public static function markLiveNightmareVisionNote(")
         self.assertIn("config().pacingOnly == true", live)
@@ -149,7 +150,13 @@ class FrameHitchAttributionTest(unittest.TestCase):
         # a slow render. The window opens after flixel's draw instead.
         self.assertEqual(render.count("window.onRender.add("), 1)
         self.assertEqual(source.count("hitchTracker.beginRender("), 1)
-        begin = post.index("hitchTracker.beginRender(nowMs())")
+        # The render window opens with one clock read, shared by the hitch tracker
+        # and the per-window render mean.
+        begin = post.index("renderWindowStart = nowMs();")
+        self.assertGreater(post.index("hitchTracker.beginRender(renderWindowStart)"), begin)
+        rendered = extract_method(source, "static function onRenderTimingEnd(")
+        self.assertIn("hitchTracker.endRender(now);", rendered)
+        self.assertIn("renderCosts.push(now - renderWindowStart);", rendered)
         self.assertGreater(begin, post.index("hitchTracker.endFrame("))
         self.assertGreater(begin, post.index("emitFrameSummary();"))
         openfl = ROOT / ".haxelib/openfl/9,5,2/src/openfl/display/Stage.hx"
@@ -157,6 +164,81 @@ class FrameHitchAttributionTest(unittest.TestCase):
             limeRender = extract_method(openfl.read_text(encoding="utf-8"),
                                         "private function __onLimeRender(")
             self.assertLess(limeRender.index("Event.ENTER_FRAME"), limeRender.index("__render(context)"))
+
+    def test_large_heap_growth_before_a_drop_names_the_trigger(self):
+        self.run_fixture("HitchLargeFixture", '''
+  var mb = 1024.0 * 1024.0;
+  // Frame helper without the large figures leaves the attribution alone.
+  frame(3, 1, 12, 100, 100);
+  if (t.largeBytes != -1 || t.largeGrowthBeforeDropBytes != 0) fail("large figures invented");
+  // First collection only sets the baseline: nothing measured it from a collection.
+  t.beginFrame(now, 500 * mb, 100 * mb, 600 * mb); now += 3; t.endFrame(now, 510 * mb, 130 * mb, 600 * mb); now += 13;
+  t.beginFrame(now, 300 * mb, 20 * mb, 600 * mb); now += 3; t.endFrame(now, 300 * mb, 20 * mb, 600 * mb); now += 13;
+  if (!t.collectedOutside) fail("drop not seen");
+  if (t.largeGrowthBeforeDropBytes != 30 * mb) fail("growth from first sample: " + t.largeGrowthBeforeDropBytes);
+  if (t.largeTriggerSuspected || t.largeTriggeredCollections != 0) fail("classified without a collection baseline");
+  // Large heap grows past max(40 MB, blocks of 580 MB) before the next drop: large trigger.
+  t.beginFrame(now, 400 * mb, 300 * mb, 900 * mb); now += 3; t.endFrame(now, 960 * mb, 560 * mb, 1200 * mb); now += 13;
+  if (t.largeTriggerSuspected) fail("growth alone flagged a trigger");
+  t.beginFrame(now, 320 * mb, 30 * mb, 1200 * mb); now += 3; t.endFrame(now, 320 * mb, 30 * mb, 1200 * mb); now += 13;
+  if (t.largeGrowthBeforeDropBytes != 540 * mb) fail("growth: " + t.largeGrowthBeforeDropBytes);
+  if (!t.largeTriggerSuspected || t.largeTriggeredCollections != 1) fail("large trigger missed");
+  // Small large-heap growth before the next drop: block growth, not the large budget.
+  t.beginFrame(now, 600 * mb, 35 * mb, 1200 * mb); now += 3; t.endFrame(now, 650 * mb, 40 * mb, 1200 * mb); now += 13;
+  t.beginFrame(now, 300 * mb, 30 * mb, 1200 * mb); now += 3; t.endFrame(now, 300 * mb, 30 * mb, 1200 * mb); now += 13;
+  if (!t.collectedOutside || t.largeTriggerSuspected || t.largeTriggeredCollections != 1) fail("block collection read as large");
+  if (t.largeGrowthBeforeDropBytes != 10 * mb) fail("small growth: " + t.largeGrowthBeforeDropBytes);
+  // The next frame without a drop clears the per-frame figures.
+  t.beginFrame(now, 310 * mb, 31 * mb, 1200 * mb); now += 3; t.endFrame(now, 311 * mb, 31 * mb, 1200 * mb);
+  if (t.largeGrowthBeforeDropBytes != 0 || t.largeTriggerSuspected) fail("figures carried over");
+  // With a small block heap the 40 MB floor is the budget.
+  var u = new FrameHitchTracker();
+  u.beginFrame(0, 50 * mb, 10 * mb, 30 * mb); u.endFrame(1, 40 * mb, 5 * mb, 30 * mb);
+  u.beginFrame(2, 80 * mb, 42 * mb, 80 * mb); u.endFrame(3, 30 * mb, 4 * mb, 80 * mb);
+  if (!u.largeTriggerSuspected) fail("40 MB floor not used: growth " + u.largeGrowthBeforeDropBytes);
+''')
+
+    def test_profiled_spikes_carry_their_attribution(self):
+        source = (ROOT / "source/RuntimeSmokeHarness.hx").read_text(encoding="utf-8")
+        post = extract_method(source, "static function onFramePostDraw(")
+        self.assertIn("else if (config().pacingOnly != true && now - frameStart > SPIKE_MS && profileEnabled())", post)
+        pre = extract_method(source, "static function onFramePreUpdate(")
+        for line in ("spikeHeapAtStart = currentHeapBytes();", "spikeQueuedNotesAtStart = queuedNoteCount();",
+                     "frameScriptCallbacks = 0;"):
+            self.assertIn(line, pre)
+        spike = extract_method(source, "static function emitFrameSpike(")
+        for field in ("slowestSection:", "slowestSectionMs:", "notesLeftQueue:", "scriptCallbacks:",
+                      "heapDeltaBytes:", "collected:", "costMs:"):
+            self.assertIn(field, spike)
+        snapshot = extract_method(source, "static function frameHeapSnapshot(")
+        self.assertIn("largeBytes: EngineMemory.largeBytes()", snapshot)
+        self.assertIn("largeTriggeredCollections: hitchTracker.largeTriggeredCollections", snapshot)
+        self.assertIn("largeAfterBytes: gc.largeAfter", source)
+        # Already-sampled notes are found without building a string key.
+        live = extract_method(source, "public static function markLiveNightmareVisionNote(")
+        packed = live.index("nightmareVisionLivePackedSamples.exists(packed)")
+        self.assertLess(packed, live.index("var key ="))
+
+    def test_live_note_sample_keys_pack_without_collisions(self):
+        source = (ROOT / "source/RuntimeSmokeHarness.hx").read_text(encoding="utf-8")
+        live = extract_method(source, "public static function markLiveNightmareVisionNote(")
+        condition = live[live.index("if (field >= -1") + 3:live.index(") {", live.index("if (field >= -1"))] + ")"
+        formula = live[live.index("var packed = ") + len("var packed = "):live.index(";", live.index("var packed = "))]
+        self.run_fixture("HitchPackedKeyFixture", '''
+  var seen = new Map<Int, String>();
+  var limit = 2147483647.0;
+  for (field in [-1, 0, 1, 7, 255]) for (direction in [-1, 0, 3, 63]) for (kind in 0...3) for (bucket in [0, 1, 2, 19999]) {
+   if (!(''' + condition + ''')) fail("usual value rejected");
+   var packedFloat = ((bucket * 257.0 + field + 1) * 65 + direction + 1) * 3 + kind;
+   if (packedFloat > limit) fail("packed key overflows: " + packedFloat);
+   var packed = ''' + formula + ''';
+   var label = field + ":" + direction + ":" + kind + ":" + bucket;
+   if (seen.exists(packed)) fail("collision " + label + " with " + seen.get(packed));
+   seen.set(packed, label);
+  }
+  var field = 256, direction = 0, bucket = 0;
+  if (''' + condition + ''') fail("out of range field packed");
+''')
 
     def test_unclosed_render_window_does_not_reach_the_next_frame(self):
         self.run_fixture("HitchRenderResetFixture", '''

@@ -7,23 +7,31 @@ import haxe.Constraints.IMap;
 import haxe.ds.ObjectMap;
 import haxe.ds.StringMap;
 
+/**
+	Bookkeeping keyed by a Lua table. Scripts build tables every frame and the
+	engine hands over fresh arrays on every property read, so on native builds
+	these maps hold their keys weakly and an entry goes when its table does.
+	Values stay strongly held, as in any map.
+**/
+#if cpp
+typedef LuaTableMap<V> = haxe.ds.WeakMap<Dynamic, V>;
+#else
+typedef LuaTableMap<V> = ObjectMap<Dynamic, V>;
+#end
+
 /** Lua table and truth-value rules for translated Lua scopes only. */
 class LuaCompatInterp extends Interp {
-	var luaTables:ObjectMap<Dynamic, Bool> = new ObjectMap();
-	var extraFields:ObjectMap<Dynamic, StringMap<Dynamic>> = new ObjectMap();
-	var objectFields:ObjectMap<Dynamic, ObjectMap<Dynamic, Dynamic>> = new ObjectMap();
-	var extraOrder:ObjectMap<Dynamic, Array<Dynamic>> = new ObjectMap();
+	var luaTables:LuaTableMap<Bool> = new LuaTableMap();
+	var extraFields:LuaTableMap<StringMap<Dynamic>> = new LuaTableMap();
+	var objectFields:LuaTableMap<ObjectMap<Dynamic, Dynamic>> = new LuaTableMap();
+	var extraOrder:LuaTableMap<Array<Dynamic>> = new LuaTableMap();
 	public var smokeDiagnosticsEnabled:Bool = false;
 	public var lastSongPositionCallProbe:String = '';
 	var nilArithmeticProbeEmitted:Bool = false;
 	// Functions that take every result of a trailing call, like Lua functions do.
 	// Translated Lua functions are added as they are created; closures a script
 	// builds every frame must not pile up here, hence the weak map where one exists.
-	#if cpp
-	var multiCallees:haxe.ds.WeakMap<Dynamic, Bool> = new haxe.ds.WeakMap();
-	#else
-	var multiCallees:ObjectMap<Dynamic, Bool> = new ObjectMap();
-	#end
+	var multiCallees:LuaTableMap<Bool> = new LuaTableMap();
 	// True while the running Lua function was called from a spot that reads all
 	// of its results. Everything else, the engine included, gets the first one.
 	var multiWanted:Bool = false;
@@ -32,7 +40,7 @@ class LuaCompatInterp extends Interp {
 	var seededFunctions:StringMap<Bool> = null;
 	// Metatables the script set. Stays null until the first setmetatable, so
 	// scripts that never use one pay nothing on table reads and writes.
-	var metatables:ObjectMap<Dynamic, Dynamic> = null;
+	var metatables:LuaTableMap<Dynamic> = null;
 	// The keys a pairs loop walks, taken once when the loop starts. Working
 	// them out again on every step made each loop quadratic. A few slots, so a
 	// loop over another table inside the body does not drop the outer walk.
@@ -153,20 +161,71 @@ class LuaCompatInterp extends Interp {
 		};
 	}
 
-	/** The number a Lua string turns into inside arithmetic, or null when it is not one. */
+	/**
+		The number a Lua string turns into inside arithmetic, or null when it is
+		not one. Every `x .. n` reaches this through its `"" + n` half, so it runs
+		thousands of times a second. It is scanned by hand: a regex literal is a
+		fresh native pattern on each call, freed only by a finalizer, and a few
+		thousand of those per frame made later collections stall for seconds.
+	**/
 	static function luaNumericString(value:String):Dynamic {
 		var text = StringTools.trim(value);
-		if (~/^[+-]?0[xX][0-9A-Fa-f]+$/.match(text)) {
-			var negative = text.charAt(0) == '-';
-			var digits = text.charAt(0) == '-' || text.charAt(0) == '+' ? text.substr(1) : text;
-			var parsed:Null<Int> = Std.parseInt(digits);
-			return parsed == null ? null : (negative ? -parsed : parsed);
+		var length = text.length;
+		var start = length > 0 && (text.charCodeAt(0) == '+'.code || text.charCodeAt(0) == '-'.code) ? 1 : 0;
+		if (start >= length)
+			return null;
+		if (length - start > 2 && text.charCodeAt(start) == '0'.code && (text.charCodeAt(start + 1) | 0x20) == 'x'.code) {
+			// Nothing that starts 0x can be a decimal number, so a bad digit ends it here.
+			for (index in start + 2...length)
+				if (!isHexDigit(text.charCodeAt(index)))
+					return null;
+			var parsed:Null<Int> = Std.parseInt(text.substr(start));
+			return parsed == null ? null : (text.charCodeAt(0) == '-'.code ? -parsed : parsed);
 		}
-		if (~/^[+-]?[0-9]+$/.match(text) && text.length < 10)
-			return Std.parseInt(text.charAt(0) == '+' ? text.substr(1) : text);
-		if (~/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/.match(text))
-			return Std.parseFloat(text);
-		return null;
+		var index = start;
+		var wholeDigits = 0;
+		while (index < length && isDecimalDigit(text.charCodeAt(index))) {
+			index++;
+			wholeDigits++;
+		}
+		var fractionDigits = 0;
+		var dotted = index < length && text.charCodeAt(index) == '.'.code;
+		if (dotted) {
+			index++;
+			while (index < length && isDecimalDigit(text.charCodeAt(index))) {
+				index++;
+				fractionDigits++;
+			}
+		}
+		if (wholeDigits == 0 && fractionDigits == 0)
+			return null;
+		var exponent = index < length && (text.charCodeAt(index) | 0x20) == 'e'.code;
+		if (exponent) {
+			index++;
+			if (index < length && (text.charCodeAt(index) == '+'.code || text.charCodeAt(index) == '-'.code))
+				index++;
+			var exponentDigits = 0;
+			while (index < length && isDecimalDigit(text.charCodeAt(index))) {
+				index++;
+				exponentDigits++;
+			}
+			if (exponentDigits == 0)
+				return null;
+		}
+		if (index != length)
+			return null;
+		// Short plain integers stay Int; anything longer could overflow one.
+		if (!dotted && !exponent && length < 10)
+			return Std.parseInt(start == 1 && text.charCodeAt(0) == '+'.code ? text.substr(1) : text);
+		return Std.parseFloat(text);
+	}
+
+	static inline function isDecimalDigit(code:Null<Int>):Bool {
+		return code != null && code >= '0'.code && code <= '9'.code;
+	}
+
+	static inline function isHexDigit(code:Null<Int>):Bool {
+		return isDecimalDigit(code) || (code != null && (code | 0x20) >= 'a'.code && (code | 0x20) <= 'f'.code);
 	}
 
 	/** Lua's `%` takes the sign of the divisor: -1 % 5 is 4, where Haxe gives -1. */
@@ -294,11 +353,11 @@ class LuaCompatInterp extends Interp {
 	*/
 	function takesEveryResult(callee:Dynamic, receiver:Dynamic, field:String, args:Array<Dynamic>):Bool {
 		if (field != null && Std.isOfType(receiver, String))
-			return LuaStdlib.STRING_NAMES.indexOf(field) >= 0;
+			return LuaStdlib.isStringName(field);
 		if (callee == methodCallHelper && callee != null && args.length >= 2) {
 			var self:Dynamic = args[0];
 			if (Std.isOfType(self, String))
-				return LuaStdlib.STRING_NAMES.indexOf(Std.string(args[1])) >= 0;
+				return LuaStdlib.isStringName(Std.string(args[1]));
 			return self != null && acceptsMultipleValues(get(self, Std.string(args[1])));
 		}
 		return acceptsMultipleValues(callee);
@@ -315,8 +374,53 @@ class LuaCompatInterp extends Interp {
 		return super.execute(program);
 	}
 
+	/**
+		Whether `key` reads `default(Player|Opponent)?Strum` then `[XY]` and
+		digits, or digits and `[XY]`. Every `_G` read and write asks, so it is
+		scanned by hand: on native builds a regex literal is a fresh native
+		pattern per call, freed only by a finalizer. One final line break is
+		accepted, as the regex `$` did.
+	**/
 	static function readOnlyGlobal(key:String):Bool {
-		return ~/^default(?:Player|Opponent)?Strum(?:[XY][0-9]+|[0-9]+[XY])$/.match(key);
+		if (key == null || !StringTools.startsWith(key, 'default'))
+			return false;
+		var length = key.length;
+		if (length > 0 && key.charCodeAt(length - 1) == '\n'.code)
+			length--;
+		var index = 'default'.length;
+		if (textAt(key, index, 'Player'))
+			index += 'Player'.length;
+		else if (textAt(key, index, 'Opponent'))
+			index += 'Opponent'.length;
+		if (!textAt(key, index, 'Strum'))
+			return false;
+		index += 'Strum'.length;
+		if (index >= length)
+			return false;
+		var axisFirst = isAxisLetter(key.charCodeAt(index));
+		if (axisFirst)
+			index++;
+		var digits = 0;
+		while (index < length && isDecimalDigit(key.charCodeAt(index))) {
+			index++;
+			digits++;
+		}
+		if (digits == 0)
+			return false;
+		return axisFirst ? index == length : index == length - 1 && isAxisLetter(key.charCodeAt(index));
+	}
+
+	static inline function isAxisLetter(code:Null<Int>):Bool {
+		return code != null && (code == 'X'.code || code == 'Y'.code);
+	}
+
+	static function textAt(text:String, index:Int, word:String):Bool {
+		if (index + word.length > text.length)
+			return false;
+		for (offset in 0...word.length)
+			if (text.charCodeAt(index + offset) != word.charCodeAt(offset))
+				return false;
+		return true;
 	}
 
 	/** `_G[key]` read: the script's own globals, plus the few names the engine routes itself. */
@@ -402,11 +506,14 @@ class LuaCompatInterp extends Interp {
 		};
 	}
 
-	/** Lua reads an unset global as nil; keep that rule inside Lua scopes. */
+	/**
+		Lua reads an unset global as nil; keep that rule inside Lua scopes.
+		Identifiers are read more than anything else, so this is one lookup in
+		each map, where checking first and then asking hscript took up to five.
+	**/
 	override function resolve(id:String):Dynamic {
-		if (locals.get(id) == null && !variables.exists(id))
-			return null;
-		return super.resolve(id);
+		var slot = locals.get(id);
+		return slot != null ? slot.r : variables.get(id);
 	}
 
 	/** Reapply after the shared PlayState bindings, which seed base fallbacks. */
@@ -561,7 +668,7 @@ class LuaCompatInterp extends Interp {
 		library call.
 	*/
 	override function fcall(object:Dynamic, field:String, args:Array<Dynamic>):Dynamic {
-		if (Std.isOfType(object, String) && LuaStdlib.STRING_NAMES.indexOf(field) >= 0)
+		if (Std.isOfType(object, String) && LuaStdlib.isStringName(field))
 			return LuaStdlib.stringMethod(object, field, args.length > 0 && args[0] == object ? args.slice(1) : args);
 		return super.fcall(object, field, args);
 	}
@@ -832,7 +939,7 @@ class LuaCompatInterp extends Interp {
 			return table;
 		}
 		if (metatables == null)
-			metatables = new ObjectMap();
+			metatables = new LuaTableMap();
 		metatables.set(table, meta);
 		return table;
 	}
@@ -920,7 +1027,8 @@ class LuaCompatInterp extends Interp {
 			return null;
 		if (Std.isOfType(table, IMap))
 			return (cast table : IMap<Dynamic, Dynamic>).get(key);
-		if (luaOwned(table) && Std.isOfType(table, Array)) {
+		// The type test first: it is cheap, and most reads are not of a table.
+		if (Std.isOfType(table, Array) && luaOwned(table)) {
 			var list:Array<Dynamic> = cast table;
 			if (Std.isOfType(key, Int) || Std.isOfType(key, Float)) {
 				var index = Std.int(key);
@@ -943,7 +1051,7 @@ class LuaCompatInterp extends Interp {
 			(cast table : IMap<Dynamic, Dynamic>).set(key, value);
 			return value;
 		}
-		if (luaOwned(table) && Std.isOfType(table, Array)) {
+		if (Std.isOfType(table, Array) && luaOwned(table)) {
 			var list:Array<Dynamic> = cast table;
 			if (Std.isOfType(key, Int) || Std.isOfType(key, Float)) {
 				var index = Std.int(key);
@@ -976,7 +1084,8 @@ class LuaCompatInterp extends Interp {
 	}
 
 	override function get(object:Dynamic, field:String):Dynamic {
-		if (luaOwned(object) && Std.isOfType(object, Array)) {
+		// The type test first, so a field read of an engine object skips the table lookup.
+		if (Std.isOfType(object, Array) && luaOwned(object)) {
 			// The table's own key or its metatable's comes first, so an object
 			// with a `remove` method is not handed the Haxe Array one.
 			var value:Dynamic = indexValue(object, field);
@@ -998,9 +1107,213 @@ class LuaCompatInterp extends Interp {
 		return super.set(object, field, value);
 	}
 
-	function boolCondition(condition:Expr):Expr {
-		var inverse = Tools.mk(EUnop('!', true, condition), condition);
-		return Tools.mk(EUnop('!', true, inverse), condition);
+	static inline var STOP_ERROR = 0;
+	static inline var STOP_BREAK = 1;
+	static inline var STOP_CONTINUE = 2;
+	static inline var STOP_RETURN = 3;
+
+	/** What hscript threw: a break, continue or return signal, or a real error. */
+	static function stopKind(error:Dynamic):Int {
+		if (!isHscriptStop(error))
+			return STOP_ERROR;
+		return switch (Type.enumConstructor(error)) {
+			case 'SBreak': STOP_BREAK;
+			case 'SContinue': STOP_CONTINUE;
+			default: STOP_RETURN;
+		};
+	}
+
+	/**
+		Build a translated Lua function. hscript's own version copies every
+		captured local into a new map on each call and ends each call by
+		throwing its return value, and Lua callbacks and helpers run many times
+		a frame. This one runs in the captured map itself: the parameters go on
+		the declared stack and come off again when the call ends, error or not,
+		so the map is the same after every call. A closure made during a call
+		still copies the map as it stands, parameters included. A `return` at
+		the end of the body hands its value back without a throw.
+	**/
+	function luaFunction(params:Array<Argument>, body:Expr, name:String):Dynamic {
+		var capturedLocals = duplicate(locals);
+		var me = this;
+		var minParams = 0;
+		for (param in params)
+			if (!param.opt)
+				minParams++;
+		var created:Dynamic = Reflect.makeVarArgs(function(args:Array<Dynamic>):Dynamic {
+			if (((args == null) ? 0 : args.length) != params.length) {
+				if (args.length < minParams) {
+					var message = 'Invalid number of parameters. Got ' + args.length + ', required ' + minParams;
+					if (name != null)
+						message += " for function '" + name + "'";
+					me.error(ECustom(message));
+				}
+				// Same filling of optional parameters as hscript.
+				var filled:Array<Dynamic> = [];
+				var extraParams = args.length - minParams;
+				var position = 0;
+				for (param in params)
+					if (param.opt) {
+						if (extraParams > 0) {
+							filled.push(args[position++]);
+							extraParams--;
+						} else
+							filled.push(null);
+					} else
+						filled.push(args[position++]);
+				args = filled;
+			}
+			var old = me.locals, depth = me.depth;
+			me.depth++;
+			me.locals = capturedLocals;
+			var oldDecl = me.declared.length;
+			for (index in 0...params.length) {
+				var paramName = params[index].name;
+				me.declared.push({n: paramName, old: capturedLocals.get(paramName)});
+				capturedLocals.set(paramName, {r: args[index]});
+			}
+			var result:Dynamic = null;
+			try {
+				result = me.luaFunctionBody(body);
+			} catch (error:Dynamic) {
+				me.locals = capturedLocals;
+				me.restore(oldDecl);
+				me.locals = old;
+				me.depth = depth;
+				switch (stopKind(error)) {
+					case STOP_RETURN:
+						result = me.returnValue;
+						me.returnValue = null;
+						return result;
+					case STOP_BREAK:
+						throw 'Invalid break';
+					case STOP_CONTINUE:
+						throw 'Invalid continue';
+					default:
+						throw error;
+				}
+			}
+			me.locals = capturedLocals;
+			me.restore(oldDecl);
+			me.locals = old;
+			me.depth = depth;
+			return result;
+		});
+		if (name != null) {
+			if (depth == 0)
+				variables.set(name, created);
+			else {
+				// A named function inside a function is local to it, and sees itself.
+				declared.push({n: name, old: locals.get(name)});
+				var ref = {r: created};
+				locals.set(name, ref);
+				capturedLocals.set(name, ref);
+			}
+		}
+		return created;
+	}
+
+	/**
+		Run a function body like a block, except that a `return` standing in
+		the block itself ends it with its value instead of a throw. Statements
+		after it never ran anyway. A `return` inside an if or a loop still
+		throws, and the function catches it.
+	**/
+	function luaFunctionBody(body:Expr):Dynamic {
+		switch (Tools.expr(body)) {
+			case EBlock(statements):
+				var old = declared.length;
+				var value:Dynamic = null;
+				for (statement in statements)
+					switch (Tools.expr(statement)) {
+						case EReturn(returned):
+							value = returned == null ? null : returnedValue(returned);
+							restore(old);
+							return value;
+						default:
+							value = expr(statement);
+					}
+				restore(old);
+				return value;
+			default:
+				return expr(body);
+		}
+	}
+
+	/** The value a `return` hands back. `return f()` passes every result of f on, but only to a caller that reads them. */
+	function returnedValue(returned:Expr):Dynamic {
+		return switch (Tools.expr(returned)) {
+			case ECall(target, params):
+				var result:Dynamic = callValues(target, params, multiWanted);
+				multiWanted ? result : LuaValues.first(result);
+			default:
+				expr(returned);
+		};
+	}
+
+	/**
+		A numeric or pairs loop over `makeRangeArray(high, low)` walks the
+		numbers without building the list first. Per-frame loops over notes
+		built one each frame. The bounds are still worked out once, before the
+		first step, and the engine helper must be the one bound: a script's own
+		function of that name is called as written. Returns false when the loop
+		is not one of these and has not been touched.
+	**/
+	function luaRangeLoop(name:String, rangeParams:Array<Expr>, body:Expr):Bool {
+		var helper:Dynamic = resolve('makeRangeArray');
+		if (helper == null || acceptsMultipleValues(helper))
+			return false;
+		var high:Dynamic = expr(rangeParams[0]);
+		var low:Dynamic = rangeParams.length > 1 ? expr(rangeParams[1]) : 0;
+		if (!Std.isOfType(high, Int) || !Std.isOfType(low, Int)) {
+			// Not plain whole numbers: let the helper itself decide what they mean.
+			var saved = multiWanted;
+			multiWanted = false;
+			var list:Dynamic = null;
+			try {
+				list = call(null, helper, rangeParams.length > 1 ? [high, low] : [high]);
+			} catch (error:Dynamic) {
+				multiWanted = saved;
+				throw error;
+			}
+			multiWanted = saved;
+			var old = declared.length;
+			declared.push({n: name, old: locals.get(name)});
+			var steps = makeIterator(list);
+			while (steps.hasNext()) {
+				locals.set(name, {r: steps.next()});
+				try {
+					expr(body);
+				} catch (error:Dynamic) {
+					var kind = stopKind(error);
+					if (kind == STOP_BREAK)
+						break;
+					if (kind != STOP_CONTINUE)
+						throw error;
+				}
+			}
+			restore(old);
+			return true;
+		}
+		var first:Int = low;
+		var end:Int = high;
+		var old = declared.length;
+		declared.push({n: name, old: locals.get(name)});
+		for (value in first...end) {
+			// A new slot per step, so a closure made in the body keeps its own number.
+			locals.set(name, {r: value});
+			try {
+				expr(body);
+			} catch (error:Dynamic) {
+				var kind = stopKind(error);
+				if (kind == STOP_BREAK)
+					break;
+				if (kind != STOP_CONTINUE)
+					throw error;
+			}
+		}
+		restore(old);
+		return true;
 	}
 
 	override public function expr(expression:Expr):Dynamic {
@@ -1034,17 +1347,16 @@ class LuaCompatInterp extends Interp {
 				if (table != null)
 					luaTables.set(table, true);
 				return table;
-			case EFunction(_, _, _, _):
-				var created:Dynamic = super.expr(expression);
+			case EFunction(params, body, name, _):
+				var created:Dynamic = luaFunction(params, body, name);
 				multiCallees.set(created, true);
 				return created;
 			case EReturn(value) if (value != null):
 				switch (Tools.expr(value)) {
-					case ECall(target, params):
-						// `return f()` passes every result of f on, but only to a
-						// caller that reads them.
-						var result:Dynamic = callValues(target, params, multiWanted);
-						variables.set('__luaReturnValue', multiWanted ? result : LuaValues.first(result));
+					case ECall(_, _):
+						// A return inside an if or a loop. The one closing a
+						// function body never gets here; see luaFunctionBody.
+						variables.set('__luaReturnValue', returnedValue(value));
 						if (returnSlot == null)
 							returnSlot = Tools.mk(EReturn(Tools.mk(EIdent('__luaReturnValue'), expression)), expression);
 						return super.expr(returnSlot);
@@ -1078,13 +1390,57 @@ class LuaCompatInterp extends Interp {
 			case ECall(target, params):
 				// Anything that is not a multiple-value spot sees one value.
 				return LuaValues.first(callValues(target, params, false));
+			// Loops test their condition the Lua way, run here rather than by
+			// rebuilding the loop node around a converted condition each time.
 			case EWhile(condition, body):
-				return super.expr(Tools.mk(EWhile(boolCondition(condition), body), expression));
+				var old = declared.length;
+				while (truthy(expr(condition))) {
+					try {
+						expr(body);
+					} catch (error:Dynamic) {
+						var kind = stopKind(error);
+						if (kind == STOP_BREAK)
+							break;
+						if (kind != STOP_CONTINUE)
+							throw error;
+					}
+				}
+				restore(old);
+				return null;
 			case EDoWhile(condition, body):
-				return super.expr(Tools.mk(EDoWhile(boolCondition(condition), body), expression));
+				var old = declared.length;
+				do {
+					try {
+						expr(body);
+					} catch (error:Dynamic) {
+						var kind = stopKind(error);
+						if (kind == STOP_BREAK)
+							break;
+						if (kind != STOP_CONTINUE)
+							throw error;
+					}
+				} while (truthy(expr(condition)));
+				restore(old);
+				return null;
+			case EFor(name, iterator, body):
+				switch (Tools.expr(iterator)) {
+					case ECall(target, rangeParams) if ((rangeParams.length == 1 || rangeParams.length == 2)
+						&& isRangeHelper(target)):
+						if (luaRangeLoop(name, rangeParams, body))
+							return null;
+					default:
+				}
+				return super.expr(expression);
 			default:
 				return super.expr(expression);
 		}
+	}
+
+	static function isRangeHelper(target:Expr):Bool {
+		return switch (Tools.expr(target)) {
+			case EIdent('makeRangeArray'): true;
+			default: false;
+		};
 	}
 
 	static function isSongPositionCall(target:Expr):Bool {

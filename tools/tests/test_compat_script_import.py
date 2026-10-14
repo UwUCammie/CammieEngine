@@ -31,6 +31,12 @@ def extract_method(source: str, marker: str) -> str:
     raise AssertionError(marker)
 
 
+def install_hxc_discovery(work):
+    """mergeHxcScriptTree asks the shared scripted-class gate about .hx files."""
+    for name in ('HxcScriptDiscovery', 'HxcScriptIdentity', 'HxcPreprocessor', 'NativeDirectoryListing'):
+        (work / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
+
+
 def install_nv_stage_profile_support(work):
     (work / 'ImportedMenuManifest.hx').write_text('class ImportedMenuManifest {public static inline var FILE_NAME=".cammie-menu-entry.json";public static function capture(r:String,e:String,d:String):String return haxe.Json.stringify({owner:r,engine:e,state:""});}', newline='\n')
     for name in ('NightmareVisionStageProfile', 'NightmareVisionStageImportProfile', 'NightmareVisionAssetCollector'):
@@ -144,6 +150,9 @@ class CopyFixture {{
     if (!FileSystem.exists(Path.join([destination, 'stages', 'facility.json']))) throw 'stage metadata missing';
     if (!FileSystem.exists(Path.join([destination, 'shared', 'scripts', 'shared.lua']))) throw 'shared script missing';
     if (!FileSystem.exists(Path.join([destination, 'scripts', 'characters', 'vampire.hxc']))) throw 'HXC family missing';
+    if (!FileSystem.exists(Path.join([destination, 'scripts', 'characters', 'witch.hx']))) throw 'scripted .hx class missing';
+    if (!FileSystem.exists(Path.join([destination, 'scripts', 'characters', 'import.hx']))) throw 'import defaults missing';
+    if (FileSystem.exists(Path.join([destination, 'scripts', 'characters', 'helper.hx']))) throw 'classless .hx copied as a script';
     if (File.getContent(Path.join([destination, 'data', 'notestyles', 'fixture.json'])) != 'style metadata') throw 'scoped style metadata missing';
     if (File.getContent(Path.join([destination, 'data', 'package-lines.txt'])) != 'owned sidecar')
       throw 'root-level data sidecar missing from owner';
@@ -231,6 +240,7 @@ class CopyFixture {{
             (temp / "PsychLuaScriptDependencies.hx").write_text(
                 (ROOT / "source/PsychLuaScriptDependencies.hx").read_text(), newline='\n')
             install_nv_stage_profile_support(temp)
+            install_hxc_discovery(temp)
             (temp / "CopyFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             donor.mkdir()
@@ -266,6 +276,12 @@ class CopyFixture {{
             (donor / "shared/scripts/shared.lua").write_text("function onUpdate() end", newline='\n')
             (donor / "data/characters").mkdir(parents=True)
             (donor / "data/characters/vampire.hxc").write_text("class Vampire {}", newline='\n')
+            # 0.8.4+ scripted classes may use .hx; classless helpers stay behind and
+            # the folder's import defaults travel with the scripts.
+            (donor / "data/characters/witch.hx").write_text(
+                "class Witch extends SparrowCharacter { function new() { super('witch'); } }", newline='\n')
+            (donor / "data/characters/helper.hx").write_text("function helper() {}", newline='\n')
+            (donor / "data/characters/import.hx").write_text("import funkin.Paths;", newline='\n')
             (donor / "data/notestyles").mkdir(parents=True)
             (donor / "data/notestyles/fixture.json").write_text("style metadata", newline='\n')
             (donor / "data/package-lines.txt").write_text("owned sidecar", newline='\n')
@@ -1087,6 +1103,7 @@ class ImportRootScanner {
             for helper in ("ImportEngine", "PsychLuaScriptDependencies", "NightmareVisionAssetCollector"):
                 (temp / (helper + ".hx")).write_text((ROOT / "source" / (helper + ".hx")).read_text(), newline='\n')
             install_nv_stage_profile_support(temp)
+            install_hxc_discovery(temp)
             (temp / "RepairFixture.hx").write_text(fixture, newline='\n')
             donor = temp / "donor"
             (donor / "scripts").mkdir(parents=True)

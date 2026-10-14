@@ -1,8 +1,104 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.41 development - CammieEngine
-- Development continues after the published v0.0.40 checkpoint; remaining roadmap requirements stay open.
+v0.0.41 alpha - CammieEngine
+- Fixed freezes of several seconds in Psych songs whose Lua scripts join text and numbers often, for example in tween and timer callbacks. Every number in a .. join built throwaway native patterns, and clearing them later stopped the game.
+- Fixed a crash when a script swaps characters through dadMap, boyfriendMap or gfMap after addCharacterToList.
+- Lua scripts run faster: calling a Lua function no longer copies its surrounding scope, returns no longer raise internal exceptions, number loops no longer build lists, and tables a script drops are freed instead of kept for the whole song.
+- Script callbacks skip scripts that do not define them before any other work, script order is cached, embedded runHaxeCode text is parsed once, and getProperty paths are parsed once and reused.
+- Images loaded by scripts stay ready for the rest of the song instead of being decoded again after a sprite is removed, precacheImage really preloads, sprite creation no longer scans the whole image cache, and atlas files are parsed once.
+- Psych and Nightmare Vision asset, sound and font lookups check their caches before searching the disk.
+- The HUD no longer rebuilds its text every frame when nothing changed, and less temporary memory is made per frame and per hit, so garbage collections are rarer and shorter.
+- Finished notes are released during the song, and blocking calls such as update downloads no longer hold up garbage collection.
+- Skipping an intro video now also moves script timers that were waiting for it forward, so songs whose scripts hold the countdown until the clip ends no longer sit on a faded screen.
+- Psych mods' own rating and combo images (sick.png, num0.png and so on) replace the engine's popup art, as in Psych.
+- Psych HScript can use game.boyfriendGroup, game.dadGroup and game.gfGroup in every song, global scripts can read character group positions before the stage is built, and game.triggerEvent and camera.setFilters work.
+- Psych songs now respect the mod's own camera zoom setting for the beat camera bump, like Psych and Nightmare Vision do.
+- Psych Engine and Nightmare Vision mods now add their weeks to Story Mode, with the mod's week title art, its lock order and its own week scores.
+- Removing an imported mod also removes its Story Mode weeks.
+- Weeks completed since you last opened Story Mode now unlock without restarting the game.
+- Choosing the wrong engine for an import now shows a warning in the scan before anything is imported.
+- Older V-Slice songs that list an empty set of playable characters now load with the standard bf, gf and dad instead of losing their girlfriend.
+- V-Slice scripts that use #if blocks next to regular expressions now keep only the desktop code reliably.
+- V-Slice import.hx and import.hxc files are no longer mistaken for scripts.
+- V-Slice mod scripts now run in V-Slice's order: modules first by priority, then song, events, note kinds, stage and characters, so a module can cancel an event before the others react.
+- V-Slice scripts can call stopPropagation() to keep an event from the scripts after them.
+- V-Slice song scripts that start a conversation now show it in the dialogue box, and the song starts once it ends instead of getting stuck before the countdown.
+- V-Slice scripts now hear onDialogueStart, onDialogueLine, onDialogueCompleteLine, onDialogueSkip, onDialogueEnd, onStateCreate and onScriptEvent.
+- V-Slice onSongLoaded now receives the song id, difficulty, notes and events, and onSongRetry receives the difficulty.
+- Psych and Nightmare Vision charts that only give section lengths in beats now get correct BPM change timing (the tempo map used to place every change at the start of the song).
+- Psych scripts can now call Conductor.getStep, getBeat, stepToSeconds, beatToSeconds, getBPMFromStep and getCrotchetAtTime, and they account for BPM changes the same way Nightmare Vision's do.
+- Nightmare Vision character and stage files are now found even when the mod's folder or file names use different capitalisation, as Psych mods already were.
+- Imported mods can no longer reach files outside their own folder through a folder link (junction).
+- Imported shaders that give their uniforms a starting value (uniform float x = 0.5;) no longer fail to compile on stricter graphics drivers. The starting values are still applied.
+- Psych mods that use the stock menu sounds (scrollMenu, confirmMenu and similar) now play the game's own sounds instead of a beep. This fixes the bundled results screen.
+- Psych Lua scripts get the full results from string.find, string.match and string.gsub: end positions, every capture and Lua's real pattern rules.
+- Psych Lua playSound returns the sound's name as Psych does, and getProperty('sound_<tag>.volume') reaches the playing sound.
+- Psych songs whose characters name their own vocal file (vocals_file) now play that file on the right side and no longer play extra stems on top of it.
+- Psych startDialogue picks up a translated dialogue file for the mod's selected language when one exists.
+- Psych getCharacterX/Y and setCharacterX/Y now move the character's group like Psych does, and unknown names mean the player.
+- Psych scripts can fade or hide the whole HUD through uiGroup and place sprites under the notes with noteGroup. The week's miss total (campaignMisses) is now counted in story mode.
+- Nightmare Vision mods can now restyle and redirect the pause menu with their own pause script: Exit, Options and Restart can be replaced or delayed, and the script is told when the menu changes.
+- Scripted Nightmare Vision menus can now start songs and weeks the way the original engine does (PlayState.prepareForSong, prepareForWeek and storyMeta).
+- Nightmare Vision scripts can use FunkinSound to play menu music and sounds.
+- Song callbacks for Nightmare Vision, Psych and HScript scripts now go through one shared path, so all three engines get them in the same order with the same stop rules.
+- Skipping a cutscene with Left Alt now takes you to 5 seconds before gameplay instead of straight into it, so you can see the hand-over and get ready.
+- Skipping an intro video now plays its last 5 seconds, and the countdown follows when it ends. Pressing skip with 5 seconds or less left does nothing.
+- Script cutscene timers stay in step with a skipped intro video, so effects tied to the video end on time.
+- Freeplay scrolls more smoothly: reading the options no longer reapplies the volume to every playing sound, which happened hundreds of times a frame in menus and songs.
+- Freeplay chart cards share one drawn difficulty star and only build the rating label when a card is selected.
+- Opening Freeplay no longer reads every imported song's instrumental to check for base game duplicates, only songs whose title matches a base song.
+- Returning to Freeplay reuses each chart's import details instead of reading every receipt again.
+- Nightmare Vision charts with modcharts now create far less garbage per note, so the game pauses to clean up memory about half as often during a song, and each pause is shorter.
+- Nightmare Vision notes that share the same colours now share one colour shader instead of each note building its own, which saves memory on long charts.
+- Images used by a global results screen script are now loaded during the song loading screen, which roughly halves the freeze when the results screen appears.
+- Textures for the loaded song are now sent to the graphics card while the loading screen is still up.
+- V-Slice scripts can now use the Adjust Color shader (hue, saturation, brightness, contrast), so songs and stages that build one no longer stop part way through their setup.
+- V-Slice scripts that pause videos when the game window loses focus now work, and their focus listeners are cleaned up when the song ends.
+- V-Slice sprites created with loadSparrow or loadTexture now show their art, and the importer copies the images they use.
+- Story weeks whose title image is missing now show the week name instead of failing to load.
+- Starting a story week now resets the week's miss total, so scripts no longer see the previous week's misses.
+- Imported V-Slice menu states now react when the game window loses or regains focus.
+- Fixed the health table shown to V-Slice scripts: a Bad hit is now correctly listed as losing health.
+- Nightmare Vision stage scripts can now use BackgroundGirls and BackgroundDancer, so stages that build the school background girls load again.
+- Nightmare Vision scripts can now use StageData, FlxRuntimeShader (including FlxRuntimeShader.fromPath) and FlxSpriteElement, reading only from their own mod.
+- Story weeks started from a Nightmare Vision mod's own story menu now play every song in the week and return to that mod's story menu, instead of stopping after the first song.
+- Imported Psych and Nightmare Vision mods now see your real FPS cap as their framerate setting, so scripts that time their motion by framerate no longer move too fast.
+- Story levels from V-Slice mods now appear as Story Mode weeks for the songs you imported, with their title images.
+- Psych Engine and Nightmare Vision songs that ship only an opponent vocal track next to Voices.ogg now play both tracks, with Voices.ogg as the player's voice.
+- Songs from older V-Slice mods (metadata 2.0 and 2.1) now import with the right instrumental and note style.
+- V-Slice scripted characters and stages written as .hx files, and their import.hx files, are now imported.
+- Re-importing a Nightmare Vision mod that is already installed now records its story weeks and script owners.
+- Fixed the results screen's score counter being very loud for its first few ticks: it now plays at most one tick sound per frame, like the base game.
+- Imported Psych mods whose scripts contain text in older encodings (for example Chinese comments) are no longer stuck as "still working" in Freeplay after every launch.
+- Importing a released Psych or Nightmare Vision build no longer reports hundreds of errors for base game files its author removed; they are counted in one note instead.
+- Psych Lua scripts can move their own defaultPlayerStrumX/Y and defaultOpponentStrumX/Y values, so modcharts that shake notes around a new position stay there.
+- A failing runHaxeCode call in a Psych Lua script is reported and the rest of that callback still runs, as in Psych.
+- The common camera template script (zCameraFix) loads again instead of failing on its table copy helper.
+- Older Psych scripts can read and change preferences such as ClientPrefs.ghostTapping, including preferences added by other Psych forks.
+- Psych 0.7 HScript files can import psychlua.LuaUtils for tween eases, tween types, blend modes and cameras.
+- Psych stages that build their scene in onCreatePost or later callbacks are no longer left empty.
+- Scrolling through a large Freeplay library is smoother: each step no longer re-checks every song against the search and filters several times.
+- Imported V-Slice Freeplay modules now get their song selected, intro done, outro and close events.
+- Psych scripts that read botplaySine now see it advance while botplay is on, as in Psych.
+- Songs use about 70 MB less memory: the results screen images that are loaded ahead of time are now kept only in video memory instead of also in RAM.
+- The first frames of a song no longer stall twice as long: the engine stopped uploading every cached texture at the end of loading, which roughly halved the hitch when the music starts (about 90 to 180 ms down to about 40 ms).
+- Nightmare Vision modcharts create less garbage per note each frame, so long modchart songs pause for memory cleanup less often.
+- V-Slice mods that were imported before this update are refreshed automatically, so art loaded through loadSparrow/loadTexture now shows up.
+- Refreshing a V-Slice import no longer fails with 'cannot safely identify owned array changes' when another mod also patched songs through a _merge folder.
+- V-Slice imports no longer report the game's own sounds (thunder, menu sounds and similar) as missing, or report sounds that are only named in comments or built from variables.
+- V-Slice scripts that use cast, (value : Type) checks, quoted tween fields such as "scale.x", or 'import ... as Alias' now load instead of failing to parse.
+- Fixed V-Slice scripts breaking on zIndex assignments with ?. or ??, on startsWith calls on list items, and on 'else' followed by an optional call.
+- Added V-Slice's IntervalShake effect; songs that shake the stage no longer freeze at the start.
+- V-Slice stages now keep the save and settings they set up in their constructor.
+- A song whose intro script fails no longer waits forever before the countdown.
+- A script error that repeats every frame is now logged a few times instead of thousands.
+- Songs started straight from the command line give scripts a music object, as the source engines do.
+- V-Slice modules can build the AdjustColorShader and DropShadowShader by name.
+- Songs from V-Slice mods with many scripts load far faster: one song that sat on the loading screen for close to a minute now loads in a few seconds.
+- V-Slice scripts that declare constants with final (and final helper functions) now work, so effects such as a stage fade that uses one no longer stop with an error.
+- V-Slice scripts that keep an AdjustColorShader or DropShadowShader in a field now get a working shader, so their colour and shadow effects show.
+- Incremental alpha release after v0.0.40; remaining roadmap requirements stay open.
 
 v0.0.40 alpha - CammieEngine
 - Psych and Nightmare Vision now share one implementation wherever the two engines behave the same: preferences, Discord presence, chart script discovery, built-in chart events, camera targeting, hit and miss handling, character swaps, stage files, event preparation and script globals. Compatibility code now calls base game functions instead of carrying its own copies, and new base game functions were added where none existed.

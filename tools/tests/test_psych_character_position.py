@@ -215,6 +215,9 @@ class Probe {
   var psychStageCameraBoyfriend:Array<Float> = [0, 0];
   var psychStageCameraOpponent:Array<Float> = [0, 0];
   var psychStageCameraGirlfriend:Array<Float> = [0, 0];
+  // Listed role actors follow anchor writes; they have their own test.
+  var realigned = 0;
+  function realignIdlePsychRoleActors():Void realigned++;
 ''' + methods + '''
   static function eq(actual:Array<Float>, x:Float, y:Float):Void
     if (actual[0] != x || actual[1] != y) throw 'position mismatch: ' + actual;
@@ -228,6 +231,7 @@ class Probe {
     if (state.curStage.bf.x != 749 || state.swapOffsets[1] != 100) throw 'raw stage point lost';
     state.syncPsychStageGroupAnchor('gf', 'x', 355);
     state.syncPsychStageGroupAnchor('dad', 'y', 430);
+    if (state.realigned != 2) throw 'anchor writes did not carry listed role actors';
     if (state.swapOffsets[2] != 355 || state.swapOffsets[5] != 430)
       throw 'Psych group move did not survive a later character swap';
     var bf = new Character('bf');

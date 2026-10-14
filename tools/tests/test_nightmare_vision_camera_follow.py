@@ -13,6 +13,7 @@ class NightmareVisionCameraFollowTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
         methods = "\n".join(extract_method(source, marker) for marker in [
             "@:keep public function getCharacterCameraPos", "@:keep public function moveCameraSection",
+            "function notifySourceCameraMove(",
             "function applyNightmareVisionSingDisplacement(", "@:keep public function moveCamera("])
         start = source.index("\t\tsourceBatch.dispatchUpdate(function(index, sourceElapsed)")
         end = source.index("\n\t\tif (smokeProfileAt", start)

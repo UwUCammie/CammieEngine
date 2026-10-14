@@ -159,6 +159,9 @@ class Main {
  }
  var swapPreloads:Array<String>=[];
  function preloadSwapCharacter(slot:String,name:String,wanted:Int=1):Void swapPreloads.push(slot+':'+name+':'+wanted);
+ // Psych role map listing has its own test; this host lists nothing.
+ var listedRoles:Array<String>=[];
+ function publishPsychRoleCharacter(slot:String,name:String):Bool {listedRoles.push(slot+':'+name);return false;}
  __SLOT_BODY__
  function codenameSelectedRoot():String return '';
  function currentSongDataPath(name:String):String
@@ -205,6 +208,7 @@ class Main {
   check(!scriptGF.destroyed && !scriptOne.destroyed && scriptGF.alpha==0.00001
    && scriptOne.alpha==0.00001, 'Psych script preload actors were not retained hidden');
   check(state.warmCalls.length==0, 'Psych script preload used the temporary atlas warmer');
+  check(state.listedRoles.length==0, 'Nightmare Vision preload went through the Psych role maps');
 
   // The ordinary Psych host keeps one built actor for the native swap slot.
   var psychOnly=new Main();
@@ -212,6 +216,7 @@ class Main {
   psychOnly.compatAddCharacterToList('ordinary','boyfriend');
   psychOnly.compatAddCharacterToList('second','1');
   check(psychOnly.swapPreloads.join(',')=='boyfriend:ordinary:1,dad:second:1', 'ordinary preload did not keep a swap actor');
+  check(psychOnly.listedRoles.join(',')=='boyfriend:ordinary,dad:second', 'ordinary preload skipped the Psych role maps');
   check(psychOnly.warmCalls.length==0, 'ordinary preload still built and destroyed a temporary actor');
 
   // Once NV source events have been prepared, their character bank already

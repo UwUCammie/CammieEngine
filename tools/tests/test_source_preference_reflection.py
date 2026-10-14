@@ -198,6 +198,36 @@ __METHODS__
         check(ownerB.compatGetPropertyFromClass('ClientPrefs', 'sickWindow') == 19.0,
             'second NV owner did not retain its own preference view');
 
+        // The modern Psych binding walks the resolved preference object itself;
+        // a flat 0.6 field has to be mapped under data first, not set on the wrapper.
+        var flatPrefs = new SourcePreferenceReflectionFixture();
+        var flatData:Dynamic = {ghostTapping:true, downScroll:false};
+        flatPrefs.psychClientPrefs = {data:flatData};
+        var mapped = SourcePreferenceClassPath.map('ClientPrefs', 'ghostTapping',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath);
+        check(mapped == 'data.ghostTapping', 'flat Psych class path was not mapped under data: ' + mapped);
+        check(SourcePreferenceClassPath.map('backend.ClientPrefs', 'data.downScroll',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath) == 'data.downScroll',
+            'modern Psych data path changed');
+        check(SourcePreferenceClassPath.map('ClientPrefs', 'hudAntialiasing',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath) == 'data.hudAntialiasing',
+            'a fork preference was not kept under data');
+        check(SourcePreferenceClassPath.map('ClientPrefs', 'globalAntialiasing',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath) == 'globalAntialiasing'
+            && SourcePreferenceClassPath.map('ClientPrefs', 'keyBinds',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath) == 'keyBinds',
+            'owner object members were moved under data');
+        flatPrefs.compatSetPropertyFromClass('ClientPrefs', 'hudAntialiasing', false);
+        check(flatData.hudAntialiasing == false
+            && flatPrefs.compatGetPropertyFromClass('ClientPrefs', 'hudAntialiasing') == false,
+            'a fork preference write was not read back');
+        check(SourcePreferenceClassPath.map('PlayState', 'ghostTapping',
+            flatPrefs.compatSourceClientPrefs, flatPrefs.compatSourcePreferencePath) == 'ghostTapping',
+            'a class other than ClientPrefs was remapped');
+        check(SourcePreferenceClassPath.map('ClientPrefs', 'data.sickWindow',
+            ownerA.compatSourceClientPrefs, ownerA.compatSourcePreferencePath) == 'sickWindow',
+            'NV owner path was not flattened');
+
         var native = new SourcePreferenceReflectionFixture();
         check(native.compatGetPropertyFromClass('ClientPrefs', 'ratingOffset') == 0.0,
             'native ratingOffset fallback changed');
@@ -225,12 +255,16 @@ class SourcePreferenceReflectionTest(unittest.TestCase):
         ):
             methods.append(extract_method(play_state, marker))
         methods.append(play_state[play_state.index('\t@:keep public var isPixelStage'):play_state.index('\n\tfunction restoreNightmareVisionPixelStage')])
+        members = play_state.index('\tstatic final PSYCH_PREFS_OWN_MEMBERS')
+        methods.append(play_state[members:play_state.index('];', members) + 2])
         fixture = FIXTURE.replace("__METHODS__", "\n\n".join(methods))
 
         TEST_TMP.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="source-preference-reflection-", dir=TEST_TMP) as folder:
             Path(folder, "SourceGameOverSettings.hx").write_text(
                 (ROOT / "source/SourceGameOverSettings.hx").read_text(encoding="utf-8"), newline="\n")
+            Path(folder, "SourcePreferenceClassPath.hx").write_text(
+                (ROOT / "source/SourcePreferenceClassPath.hx").read_text(encoding="utf-8"), newline="\n")
             Path(folder, "SourcePreferenceReflectionFixture.hx").write_text(fixture, newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "SourcePreferenceReflectionFixture", "--interp"],

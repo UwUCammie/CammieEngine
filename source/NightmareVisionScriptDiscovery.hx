@@ -286,34 +286,14 @@ class NightmareVisionScriptDiscovery {
 		return resolvePath(root, relative, true);
 	}
 
+	// The case-insensitive owner walk and the physical containment check are
+	// shared with the character and stage loaders.
 	static function resolvePath(root:String, relative:String, wantDirectory:Bool):Null<String> {
-		if (root == null || !FileSystem.isDirectory(root) || relative == null || relative == '') return null;
-		var clean = cleanRelative(relative);
-		if (clean == '') return null;
-		var current = root;
-		for (part in clean.split('/')) {
-			var selected = Path.join([current, part]);
-			if (!FileSystem.exists(selected)) {
-				var matches:Array<String> = [];
-				try for (entry in FileSystem.readDirectory(current))
-					if (entry.toLowerCase() == part.toLowerCase()) matches.push(entry)
-				catch (_:Dynamic) return null;
-				if (matches.length != 1) return null;
-				selected = Path.join([current, matches[0]]);
-			}
-			if (!FileSystem.exists(selected) || !withinRoot(root, selected)) return null;
-			current = selected;
-		}
-		if (FileSystem.isDirectory(current) != wantDirectory) return null;
-		return current;
+		return wantDirectory ? SourceOwnerFiles.resolveDirectory(root, relative) : SourceOwnerFiles.resolveFile(root, relative);
 	}
 
 	static function withinRoot(root:String, path:String):Bool {
-		try {
-			var base = canonical(root);
-			var candidate = canonical(path);
-			return candidate == base || candidate.startsWith(base + '/');
-		} catch (_:Dynamic) return false;
+		return SourceOwnerFiles.within(root, path);
 	}
 
 	static function canonical(path:String):String {
@@ -370,10 +350,8 @@ class NightmareVisionScriptDiscovery {
 	}
 
 	static function cleanRelative(value:String):String {
-		if (value == null || value == '' || value.indexOf('\\') >= 0 || value.startsWith('/')) return '';
-		var parts = value.split('/');
-		for (part in parts) if (!safeSegment(part)) return '';
-		return parts.join('/');
+		var clean = SourceOwnerFiles.cleanRelative(value);
+		return clean == null ? '' : clean;
 	}
 
 	#end

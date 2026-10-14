@@ -26,6 +26,11 @@ class PauseSubState extends MusicBeatSubstate {
 
 	var grpMenuShit:FlxTypedGroup<Alphabet>;
 
+	/** The open pause menu. Source pause scripts reach it as PauseSubState.instance. */
+	@:keep public static var instance:PauseSubState;
+	/** Hooks from the song's script layer, or null. */
+	var scriptHooks:PauseMenuHooks;
+
 	var songNameTxt:FlxText;
 	var curDiffTxt:FlxText;
 	var deathsTxt:FlxText;
@@ -111,6 +116,15 @@ class PauseSubState extends MusicBeatSubstate {
 		FlxG.cameras.add(pauseCamera, false);
 		cameras = [pauseCamera];
 		codenameInitPauseScript();
+		instance = this;
+		if (PlayState.instance != null) scriptHooks = PlayState.instance.pauseMenuHooks(this);
+		if (scriptHooks != null) {
+			// The source menu loads its script before building the items, so the
+			// script hears the first selection and onRegenMenu before onCreatePost.
+			changeSelection();
+			if (scriptHooks.regenerated != null) scriptHooks.regenerated();
+			if (scriptHooks.created != null) scriptHooks.created();
+		}
 		// Nothing is moving while the menu fades in, so pay for a full
 		// collection here instead of somewhere in the middle of the song.
 		EngineMemory.collectNow(true, 'pause');
@@ -158,6 +172,27 @@ class PauseSubState extends MusicBeatSubstate {
 		}
 		if (hxcPauseApplied)
 			hxcApplyMenuPresentation();
+		if (scriptHooks != null && scriptHooks.regenerated != null) scriptHooks.regenerated();
+	}
+
+	/** Leave to the menu unless a pause script cancels it. */
+	@:keep public function returnToMain():Void {
+		if (scriptHooks == null || scriptHooks.allows(PauseMenuHooks.EXIT)) exitPauseToMenu();
+	}
+
+	/** Open the options screen unless a pause script cancels it. */
+	@:keep public function toOptions():Void {
+		if (scriptHooks != null && !scriptHooks.allows(PauseMenuHooks.OPTIONS)) return;
+		SaveDataState.prevPath = 'freeplay';
+		LoadingState.loadAndSwitchState(new SaveDataState());
+	}
+
+	/** Restart the song unless a pause script cancels it; noTrans skips the outgoing transition. */
+	@:keep public function restartSong(noTrans:Bool = false, replayCutscene:Bool = false):Void {
+		if (scriptHooks != null && !scriptHooks.allows(PauseMenuHooks.RESTART)) return;
+		if (noTrans) FlxTransitionableState.skipNextTransOut = true;
+		if (replayCutscene) PlayState.watchedCutscene = false;
+		PlayState.restartCurrentSong();
 	}
 
 	/**
@@ -379,6 +414,7 @@ class PauseSubState extends MusicBeatSubstate {
 		if (pauseMusic.volume < 0.5)
 			pauseMusic.volume += 0.01 * elapsed;
 
+		if (scriptHooks != null && scriptHooks.update != null) scriptHooks.update(elapsed);
 		super.update(elapsed);
 		if (codenamePauseRuntime != null)
 			codenamePauseRuntime.update(elapsed);
@@ -402,19 +438,17 @@ class PauseSubState extends MusicBeatSubstate {
 					case "Resume":
 						close();
 					case "Restart Song":
-						PlayState.restartCurrentSong();
+						restartSong();
 					case "Replay Cutscene":
-						PlayState.watchedCutscene = false;
-						PlayState.restartCurrentSong();
+						restartSong(false, true);
 					case "Charting":
 						openPauseChartEditor();
 					case "Exit to menu":
-						exitPauseToMenu();
+						returnToMain();
 					case "Change Modifiers":
 						LoadingState.loadAndSwitchState(new ModifierState());
 					case "Change Options":
-						SaveDataState.prevPath = 'freeplay';
-						LoadingState.loadAndSwitchState(new SaveDataState());
+						toOptions();
 					case "Change Difficulty":
 						// Imported songs can be registered after the initial difficulty
 						// scan.  Always use the null-safe lazy resolver so a song with no
@@ -451,6 +485,12 @@ class PauseSubState extends MusicBeatSubstate {
 	}
 
 	override function destroy() {
+		// Source pause scripts hear onDestroy before the menu is torn down.
+		var hooks = scriptHooks;
+		scriptHooks = null;
+		if (instance == this) instance = null;
+		if (hooks != null && hooks.destroy != null)
+			try hooks.destroy() catch (error:Dynamic) trace('[pause-script] onDestroy failed: ' + Std.string(error));
 		if (codenamePauseRuntime != null) {
 			codenamePauseRuntime.destroy();
 			codenamePauseRuntime = null;
@@ -484,6 +524,8 @@ class PauseSubState extends MusicBeatSubstate {
 			if (curSelected >= grpMenuShit.length)
 				curSelected = 0;
 		}
+		if (scriptHooks != null && scriptHooks.selectionChanged != null && !scriptHooks.selectionChanged(curSelected))
+			return;
 
 		var bullShit:Int = 0;
 

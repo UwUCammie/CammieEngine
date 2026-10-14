@@ -107,6 +107,14 @@ class Main {
         self.assertLess(group.index('readField(field)'), group.index("callTarget(host, 'characterGroupForRole', [role])"))
         self.assertLess(group.index("'characterGroupForRole'"), group.index('new PsychBaseStageActorGroupCompat('))
 
+    def test_lua_character_position_callbacks_use_the_group(self):
+        bindings = (ROOT / 'source/PsychSourceBindings.hx').read_text(encoding='utf-8')
+        self.assertIn('return host.characterGroupPosition(role, axis);', method(bindings, 'function actorPosition('))
+        self.assertIn('host.setCharacterGroupPosition(role, axis, value);', method(bindings, 'function setActorPosition('))
+        self.assertIn("host.characterForRole('gf')", method(bindings, 'function cameraSetTarget('))
+        for name in ('getCharacterX', 'getCharacterY'):
+            self.assertIn("variables.set('" + name + "', function(role:String):Float return actorPosition(role, ", bindings)
+
 
 if __name__ == '__main__':
     unittest.main()

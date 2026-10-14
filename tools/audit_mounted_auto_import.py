@@ -1263,6 +1263,8 @@ def main() -> int:
             "NightmareVisionChartCompat.hx": (ROOT / "source/NightmareVisionChartCompat.hx").read_text(),
             "NightmareVisionScriptDiscovery.hx": (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text(),
             "SourceChartReferences.hx": (ROOT / "source/SourceChartReferences.hx").read_text(),
+            "SourceOwnerFiles.hx": (ROOT / "source/SourceOwnerFiles.hx").read_text(),
+            "CompatCanonicalPath.hx": (ROOT / "source/CompatCanonicalPath.hx").read_text(),
             "NightmareVisionDifficultyCompat.hx": (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text(),
             "NightmareVisionVocalRole.hx": (ROOT / "source/NightmareVisionVocalRole.hx").read_text(),
             "SourceVocalRole.hx": (ROOT / "source/SourceVocalRole.hx").read_text(),

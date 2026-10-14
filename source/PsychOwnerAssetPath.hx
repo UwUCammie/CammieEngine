@@ -18,9 +18,10 @@ typedef PsychOwnerAssetPathResult = {
 class PsychOwnerAssetPath {
 	public static function normalizeOwner(value:String):String {
 		if (value == null) return '';
-		var owner = Path.normalize(StringTools.replace(StringTools.trim(value), '\\', '/'));
-		if (!owner.startsWith(CompatScriptManifest.ROOT_PREFIX + '/'))
-			return '';
+		// Same owner-root rule as the owner preferences and Nightmare Vision.
+		var owner = SourceOwnerFiles.normalizeRoot(StringTools.trim(value));
+		if (owner == null) return '';
+		owner = Path.normalize(owner);
 		#if sys
 		if (!FileSystem.isDirectory(owner)) return '';
 		#end
@@ -30,6 +31,9 @@ class PsychOwnerAssetPath {
 	/** Release the small identity-index cache when this selected owner retires. */
 	public static function releaseOwner(owner:String):Void {
 		RuntimeOwnerAssetIdentity.releaseOwner(owner);
+		#if sys
+		SourceOwnerFiles.forgetResolvedPaths();
+		#end
 	}
 
 	/** Locate only owner media. Native fallback remains the caller's decision. */
@@ -127,15 +131,9 @@ class PsychOwnerAssetPath {
 
 	public static function withinOwner(owner:String, path:String):Bool {
 		#if sys
-		if (owner == null || path == null || !FileSystem.exists(owner) || !FileSystem.exists(path))
-			return false;
-		try {
-			var base = Path.normalize(FileSystem.fullPath(owner));
-			var candidate = Path.normalize(FileSystem.fullPath(path));
-			return candidate.startsWith(base + '/');
-		} catch (_:Dynamic) {
-			return false;
-		}
+		// Physical containment: fullPath is lexical on Windows, so a junction in
+		// the owner could otherwise point outside it.
+		return SourceOwnerFiles.within(owner, path, false);
 		#else
 		return owner != null && path != null && Path.normalize(path).startsWith(Path.normalize(owner) + '/');
 		#end

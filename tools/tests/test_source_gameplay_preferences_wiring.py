@@ -226,7 +226,7 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         nv_init = extract_method(play, "function initializeNightmareVisionScripts():Void")
         psych_init = create.index("initializeSourceGameplayPreferences(psychClientPrefs, false)")
         self.assertLess(psych_init, create.index("initializeNightmareVisionScripts();"))
-        self.assertLess(psych_init, create.index("PsychRuntimeBindings.dispatch(this, 'onCreatePost'"))
+        self.assertLess(psych_init, create.index("sourceCallbacks().dispatch(SourceLifecycleEvent.CreatePost"))
         self.assertLess(nv_init.index("initializeSourceGameplayPreferences(nightmareVisionPrefs, true)"),
                         nv_init.index("NightmareVisionStageScene.load(stage, nightmareVisionScripts.group)"))
         self.assertLess(nv_init.index("initializeSourceGameplayPreferences(nightmareVisionPrefs, true)"),

@@ -76,6 +76,17 @@ class HxcImportedRuntime {
 		call('beatHit', [beat], true);
 	}
 
+	/**
+		Window focus changes, which a V-Slice state hears as a FocusScriptEvent.
+		A script method that takes no event simply ignores the payload.
+	*/
+	public function focus(gained:Bool):Void {
+		if (!created || failed)
+			return;
+		var name = gained ? 'focusGained' : 'focusLost';
+		call(name, [EngineCompat.hxcLifecyclePayload(name, {targetState: owner})], true);
+	}
+
 	public function destroy():Void {
 		if (interp == null)
 			return;

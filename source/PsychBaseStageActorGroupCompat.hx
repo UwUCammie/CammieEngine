@@ -283,6 +283,11 @@ class PsychBaseStageActorGroupCompat {
 				var getInfo = Reflect.field(stage, 'getInfo');
 				if (Reflect.isFunction(getInfo)) info = Reflect.callMethod(stage, getInfo, [role]);
 			}
+		} else {
+			// Psych's global scripts run after its stage exists. A host that loads
+			// them before its stage can still answer with the stage file's anchors.
+			var early = Reflect.field(stageHost, 'earlyStageAnchor');
+			if (Reflect.isFunction(early)) info = Reflect.callMethod(stageHost, early, [role]);
 		}
 		if (info == null) throw '[psych-stage] ' + groupName() + ' cannot resolve curStage.' + infoField();
 		return info;

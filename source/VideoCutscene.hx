@@ -34,8 +34,13 @@ class VideoCutscene extends FlxBasic {
 	/** Psych's VideoSprite lets a stage replace either transition callback. */
 	public var finishCallback:Void->Void = null;
 	public var onSkip:Void->Void = null;
-	/** True only when the player explicitly skipped the video. */
+	/** True once the player skipped ahead in the video. */
 	public var skipped(default, null):Bool = false;
+	/** Milliseconds of the clip the skips jumped over. */
+	public var unwatchedMs(default, null):Float = 0;
+	/** Runs at the moment of a skip with the milliseconds jumped over, so script
+	 * timers waiting out the clip can move on by the same amount. */
+	public var onSkipAhead:Float->Void = null;
 	/** Records a skip request even when VLC never reports a duration. */
 	public var skipRequested(get, never):Bool;
 	function get_skipRequested():Bool return skipPending;
@@ -204,8 +209,23 @@ class VideoCutscene extends FlxBasic {
 		}
 		if (skipPending && !finished) {
 			if (durationMs > 0) {
-				skipped = true;
-				finished = true;
+				// The skip leaves the last few seconds to play, then the clip ends on
+				// its own and the normal completion follows. With that little or less
+				// left, the press does nothing.
+				skipPending = false;
+				skipHeldSeconds = 0;
+				var playedMs = video == null ? Math.NaN : Std.parseFloat(Std.string(video.time));
+				var seekMs = CutsceneSkip.leadSeekMs(durationMs, playedMs);
+				// One skip already left only the last seconds. VLC applies a seek a
+				// little later, so a quick second press can still read the old
+				// playhead; it must not move script timers a second time.
+				if (Math.isFinite(seekMs) && video != null && !skipped) {
+					var moved = CutsceneSkip.leadAdvanceMs(durationMs, playedMs);
+					skipped = true;
+					unwatchedMs += moved;
+					video.time = Std.int(seekMs);
+					if (onSkipAhead != null && moved > 0) onSkipAhead(moved);
+				}
 			} else {
 				// VLC can report its duration a few frames after load. Wait briefly
 				// for that metadata so an immediate skip can still seek the song.
@@ -231,6 +251,7 @@ class VideoCutscene extends FlxBasic {
 		onComplete = null;
 		finishCallback = null;
 		onSkip = null;
+		onSkipAhead = null;
 		FlxG.signals.gameResized.remove(onResize);
 		FlxG.signals.focusGained.remove(onFocusGained);
 		if (video != null) {

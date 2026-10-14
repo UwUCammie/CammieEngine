@@ -136,6 +136,12 @@ MAIN = r"""class Main {
    'an unknown length gives no progress and no seek');
   check(SourceVideoPlayback.clampVolume(Math.NaN)==0 && SourceVideoPlayback.safeRate(0)==1,
    'bad volume and rate values are made safe');
+  check(SourceVideoPlayback.hostRate(1.5)==1.5 && SourceVideoPlayback.hostRate('0.75')==0.75,
+   'a host playbackRate number or numeric text is followed');
+  check(Math.isNaN(SourceVideoPlayback.hostRate(null)) && Math.isNaN(SourceVideoPlayback.hostRate(0))
+   && Math.isNaN(SourceVideoPlayback.hostRate(-2)) && Math.isNaN(SourceVideoPlayback.hostRate('fast'))
+   && Math.isNaN(SourceVideoPlayback.hostRate(Math.POSITIVE_INFINITY)),
+   'an unusable host rate leaves the decoder rate alone instead of forcing 1');
  }
 }"""
 
@@ -173,6 +179,11 @@ class NightmareVisionVideoSpriteApiTest(unittest.TestCase):
                        'static function forEach(', 'static function forEachAlive('):
             self.assertIn(member, decoder, member)
             self.assertIn(member, stub, member)
+
+    def test_hxc_video_follows_its_host_rate_through_the_shared_rule(self):
+        source = (ROOT / 'source/HxcOwnedVideoSprite.hx').read_text()
+        self.assertIn("SourceVideoPlayback.hostRate(Reflect.getProperty(ownerState, 'playbackRate'))", source)
+        self.assertNotIn('Std.parseFloat', source)
 
 
 if __name__ == '__main__':

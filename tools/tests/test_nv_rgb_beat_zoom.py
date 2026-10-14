@@ -83,6 +83,7 @@ class Main {
  public var shader:Dynamic={mult:{value:[]},u_alpha:{value:[]},u_flash:{value:[]}};
  public function new() {}
  public function copy():PsychRGBPalette return new PsychRGBPalette();
+ public function copyValues(o:PsychRGBPalette):Void {r=o.r;g=o.g;b=o.b;mult=o.mult;}
 }''', newline='\n')
             (work / 'flixel').mkdir()
             (work / 'flixel/FlxSprite.hx').write_text('package flixel; class FlxSprite {public var shader:Dynamic;}', newline='\n')

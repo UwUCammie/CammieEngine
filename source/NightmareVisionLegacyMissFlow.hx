@@ -12,12 +12,8 @@ class NightmareVisionLegacyMissFlow {
 				state.retireNightmareVisionLegacyNote(candidate);
 		});
 		state.combo = 0;
-		// This revision has no native health modifier and no hold subdivision.
-		state.health -= SourceHealthDelta.miss(true, note.missHealth, state.healthLoss);
-		if (state.instakillOnMiss) {
-			state.setSourceVocalVolume('player', 0);
-			state.doDeathCheck(true);
-		}
+		state.applySourceMissHealth(note, true, true, true);
+		state.killOnSourceMiss(false);
 		state.setSourceVocalVolume('player', 0);
 		state.applySourceMiss();
 		state.RecalculateRating();
@@ -33,11 +29,8 @@ class NightmareVisionLegacyMissFlow {
 	public static function press(state:PlayState, direction:Int = 1, anim:Bool = true):Void {
 		if (state.nightmareVisionPrefs.view.ghostTapping == true) return;
 		if (!state.boyfriend.stunned) {
-			state.health -= SourceHealthDelta.pressMiss(state.healthLoss);
-			if (state.instakillOnMiss) {
-				state.setSourceVocalVolume('player', 0);
-				state.doDeathCheck(true);
-			}
+			state.applySourceMissHealth(null, true, true, true);
+			state.killOnSourceMiss(false);
 			if (state.combo > 5 && state.gf != null && state.gf.animOffsets.exists('sad')) state.gf.playAnim('sad');
 			state.combo = 0;
 			state.applySourceMiss(true);

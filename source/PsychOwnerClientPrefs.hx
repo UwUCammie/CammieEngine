@@ -43,6 +43,8 @@ class PsychOwnerClientPrefs {
 	function set_globalAntialiasing(value:Bool):Bool return data.antialiasing = value;
 
 	var ownerSave:Dynamic;
+	/** Seeded data fields that follow the running game; loading keeps them. */
+	var liveSeeds:Array<String> = [];
 	var runtimeOperations:StringMap<Array<Dynamic>->Dynamic> = new StringMap();
 	var released:Bool = false;
 
@@ -52,7 +54,7 @@ class PsychOwnerClientPrefs {
 		this.ownerSave = ownerSave;
 		defaultData = createDataDefaults();
 		data = createDataDefaults();
-		seedNativeOptions(data, nativeOptions, false);
+		liveSeeds = seedNativeOptions(data, nativeOptions, false);
 		keyBinds = keyboardDefaults();
 		gamepadBinds = gamepadDefaults();
 		loadDefaultKeys();
@@ -121,7 +123,7 @@ class PsychOwnerClientPrefs {
 		var savedData:Dynamic = field(values, 'data');
 		if (savedData != null) {
 			for (name in DATA_FIELDS) {
-				if (!hasField(savedData, name)) continue;
+				if (!hasField(savedData, name) || liveSeeds.indexOf(name) >= 0) continue;
 				var saved:Dynamic = field(savedData, name);
 				if (name == 'gameplaySettings') {
 					var target:Dynamic = field(data, name);

@@ -296,6 +296,18 @@ class PsychStageCompat {
 			+ quote(property) + '", "' + quote(value) + '");');
 	}
 
+	/**
+		Whether the full Lua module of a stage can not stand on its own, so the
+		static setup has to be used. A disabled translation keeps no callback.
+		Psych runs every stage callback, and many stages build their scene in
+		onCreatePost or later, so any callback keeps the full module.
+	**/
+	public static function runtimeModuleUnusable(runtimeSource:String):Bool {
+		if (runtimeSource == null || StringTools.trim(runtimeSource) == '')
+			return true;
+		return !~/\bfunction\s+(?:on[A-Za-z0-9_]+|start)\s*\(/.match(runtimeSource);
+	}
+
 	#if sys
 	/** Read and translate one stage file. The donor file is read-only. */
 	public static function translateFile(path:String):PsychStageTranslation {

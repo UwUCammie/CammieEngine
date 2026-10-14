@@ -2326,6 +2326,45 @@ def _metadata(root: Path, label: str) -> SourceMetadata:
     return SourceMetadata(label, True, str(root), revision, version, tracked_tree, len(list(iter_haxe_files(root))))
 
 
+def _source_callback_router_routes(root: Path) -> dict[str, dict[str, list[SourceRef]]]:
+    """Callback names PlayState sends through SourceCallbackRouter's table.
+
+    A row only counts when PlayState actually dispatches its event, so an
+    unused row is not reported as a route. Returns sink -> name -> refs, with
+    sinks 'nv', 'psych' and 'hscript'.
+    """
+    routes: dict[str, dict[str, list[SourceRef]]] = {
+        "nv": defaultdict(list), "psych": defaultdict(list), "hscript": defaultdict(list),
+    }
+    router_path = root / "source" / "SourceCallbackRouter.hx"
+    play_path = root / "source" / "PlayState.hx"
+    if not router_path.is_file() or not play_path.is_file():
+        return routes
+    router = _read_code(router_path)
+    play = _read_code(play_path)
+    dispatched: dict[str, SourceRef] = {}
+    for match in _code_matches(play, re.compile(r"\bdispatch\s*\(\s*SourceLifecycleEvent\s*\.\s*([A-Za-z_]\w*)")):
+        dispatched.setdefault(match.group(1), _ref(root, play_path, _line_at(play, match.start())))
+    row = re.compile(r"\btable\s*\.\s*set\s*\(\s*SourceLifecycleEvent\s*\.\s*([A-Za-z_]\w*)\s*,\s*new\s+SourceCallbackRoute\s*\(")
+    literal = re.compile(r"""(['"])([A-Za-z_$][\w$]*)\1""")
+    # Constructor order: order, nightmareVision, psych, family, ignoreStops, needsOwner, hscript.
+    positions = {"nv": 1, "psych": 2, "hscript": 6}
+    for match in _code_matches(router, row):
+        call_ref = dispatched.get(match.group(1))
+        if call_ref is None:
+            continue
+        opening = router.find("(", router.find("SourceCallbackRoute", match.start()))
+        arguments, _ = _extract_call_arguments(router, opening)
+        row_ref = _ref(root, router_path, _line_at(router, match.start()))
+        for sink, index in positions.items():
+            if index >= len(arguments):
+                continue
+            name = literal.fullmatch(arguments[index].strip())
+            if name is not None:
+                routes[sink][name.group(2)].extend([row_ref, call_ref])
+    return routes
+
+
 def _engine_inventory(
     root: Path, candidate_names: set[str],
     source_binding_routes: tuple[dict[str, dict[str, list[SourceRef]]], list[dict[str, object]]] | None = None,
@@ -2344,6 +2383,16 @@ def _engine_inventory(
         prefix = "@nv-hook:" if dialect == "Nightmare Vision HScript" else "@psych-hook:"
         for name, refs in names.items():
             direct[prefix + name].extend(refs)
+    router_routes = _source_callback_router_routes(root)
+    for name, refs in router_routes["nv"].items():
+        direct["@nv-hook:" + name].extend(refs)
+        dynamic_hooks[name].extend(refs)
+    for name, refs in router_routes["psych"].items():
+        direct["@psych-hook:" + name].extend(refs)
+    # Native HScript names reach Psych through the callAllHScript aliases below.
+    for name, refs in router_routes["hscript"].items():
+        direct["@psych-hook:" + name].extend(refs)
+        host_callback_routes[name.lower()].extend(refs)
     if source_binding_routes is None:
         source_binding_routes = _source_binding_audit(root)
     source_bindings, _route_records = source_binding_routes

@@ -85,8 +85,25 @@ class Main {
    && prefs.data.shaders == false && prefs.data.camZooms == false && prefs.data.noteOffset == 1.75,
    'native matching option seeds or fractional noteOffset were lost');
   check(prefs.defaultData.noteOffset == 0 && prefs.defaultData.antialiasing == true
-   && prefs.data.framerate == 60,
-   'native values leaked into defaults or a nonmatching fps option was seeded');
+   && prefs.defaultData.framerate == 60,
+   'native values leaked into defaults');
+  check(prefs.data.framerate == 240 && Std.isOfType(prefs.data.framerate, Int),
+   'a capped native fps seeds the whole-number framerate scripts scale motion by');
+  var uncapped = new PsychOwnerClientPrefs('assets/imported_mods/prefs-uncapped', new MemoryOwnerSave(),
+   {fpsCap:240, unlimitedFPS:true});
+  check(uncapped.data.framerate == 60, 'uncapped play has no single rate and keeps the donor default');
+  uncapped.release();
+  // A framerate saved in an earlier session must not replace the live engine cap.
+  var staleRate = new MemoryOwnerSave({version:1, values:{data:{framerate:60, language:'de-DE'}}});
+  var capped = new PsychOwnerClientPrefs('assets/imported_mods/stale-rate', staleRate, {fpsCap:240});
+  capped.loadStoredPrefs();
+  check(capped.data.framerate == 240 && capped.data.language == 'de-DE',
+   'a saved owner framerate replaced the live engine cap, or other saved values stopped loading');
+  capped.release();
+  var savedUncapped = new PsychOwnerClientPrefs('assets/imported_mods/stale-rate', staleRate, {fpsCap:240, unlimitedFPS:true});
+  savedUncapped.loadStoredPrefs();
+  check(savedUncapped.data.framerate == 60, 'uncapped play stopped loading the saved owner framerate');
+  savedUncapped.release();
   var replacementDefaults:Dynamic = {noteSkin:'Writable'};
   prefs.defaultData = replacementDefaults;
   check(prefs.defaultData == replacementDefaults, 'defaultData was not writable like the donor static field');

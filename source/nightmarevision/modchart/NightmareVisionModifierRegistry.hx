@@ -8,6 +8,10 @@ typedef NightmareVisionModifierExecution = {
 	@:optional var state:NightmareVisionModifierFormulaState;
 	var getPosition:Float->Float->Float->Float->NightmareVisionModchartVector->Int->Int->Dynamic->NightmareVisionModchartVector;
 	var updateObject:Float->Dynamic->NightmareVisionModchartVector->Int->String->Void;
+	/** True when getPosition only reads the sprite and the snapshot it is given
+		(the engine's own formula modifiers). Lets the position pass skip
+		re-reading a sprite nothing has written to since the last read. */
+	@:optional var positionReadsOnly:Bool;
 }
 
 /** Public metadata for one source ModManager modifier or submodifier. */

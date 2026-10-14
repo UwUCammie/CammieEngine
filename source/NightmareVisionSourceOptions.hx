@@ -256,9 +256,7 @@ class NightmareVisionSourceOptions {
 
 	static function normalizeOwner(value:String):String {
 		if (value == null) return '';
-		var clean = StringTools.replace(StringTools.trim(value), '\\', '/');
-		if (!StringTools.startsWith(clean, 'assets/imported_mods/') || clean.indexOf('/../') >= 0
-			|| StringTools.endsWith(clean, '/..') || clean.indexOf(':') >= 0 || clean.indexOf('\x00') >= 0) return '';
-		return clean;
+		var root = SourceOwnerFiles.normalizeRoot(StringTools.trim(value));
+		return root == null ? '' : root;
 	}
 }

@@ -151,9 +151,26 @@ class FreeplayState extends MusicBeatState {
 	static var showHiddenEntries:Bool = false;
 	static var duplicateCache:Map<String, Bool> = [];
 	static var baseFingerprints:Null<Array<BaseGameDuplicate.ChartFingerprint>> = null;
+	/** Whether each base fingerprint's instrumental has been measured yet. */
+	static var baseFingerprintAudio:Array<Bool> = [];
 	static var baseFingerprintSongs:Array<String> = [];
 	static var categoryFilters:Array<String> = [];
 	static var libraryViewId:String = '';
+	/** songMatches answers, kept per song while every input it reads is unchanged.
+		A scroll step asks about every song four or five times (ordering, chart rows,
+		layout, details), which was most of its cost. 0 unknown, 1 shown, 2 hidden. */
+	var songMatchCache:Array<Int> = [];
+	/** The song each cached answer is for, so a list edit at that index recomputes it. */
+	var songMatchSongs:Array<SongMetadata> = [];
+	var songMatchSearch:String = null;
+	var songMatchCategories:Array<String> = null;
+	var songMatchFavorites:Bool = false;
+	var songMatchShowHidden:Bool = false;
+	var songMatchView:String = null;
+	var songMatchSoundTest:Bool = false;
+	var songMatchLibrary:UserLibraryData = null;
+	var songMatchDuplicates:Bool = false;
+	var songMatchEpoch:Int = -1;
 	var difficultySongKey:String = '';
 	var selectedDifficultyName:String = '';
 	var refreshBookmark:FreeplayRefreshBookmark;
@@ -421,7 +438,26 @@ class FreeplayState extends MusicBeatState {
 	}
 
 	function hxcLaunchCurrentSelection():Bool {
+		dispatchHxcSongSelected(curSelected, curDifficulty);
 		return launchSelection(curSelected, curDifficulty);
+	}
+
+	/** V-Slice sends songSelected when a song is confirmed, before its confirm animation. */
+	function dispatchHxcSongSelected(index:Int, difficulty:Int):Void {
+		if (hxcRuntime == null)
+			return;
+		var capsule = hxcCapsuleView(index);
+		if (capsule != null)
+			hxcRuntime.dispatch('songSelected', EngineCompat.hxcFreeplayPayload('songSelected', this, capsule, difficulty, null));
+	}
+
+	/** Freeplay-wide V-Slice events (freeplayIntroDone, freeplayOutro, freeplayClose).
+		They carry the selected capsule when there is one, so modules scoped to that
+		song hear them as well as global modules. */
+	function dispatchHxcFreeplayEvent(kind:String):Void {
+		if (hxcRuntime == null)
+			return;
+		hxcRuntime.dispatch(kind, EngineCompat.hxcFreeplayPayload(kind, this, hxcCapsuleView(curSelected), curDifficulty, null));
 	}
 
 	function launchSelection(index:Int, difficulty:Int):Bool {
@@ -836,6 +872,9 @@ class FreeplayState extends MusicBeatState {
 				'subStateOpenEnd', this, initialHxcCapsule, curDifficulty, null);
 			hxcRuntime.dispatch('subStateOpenEnd', initialHxcPayload);
 		}
+		// This menu has no DJ intro to wait for, so its intro is done once it opens,
+		// which is when V-Slice sends the event for a Freeplay without a DJ.
+		dispatchHxcFreeplayEvent('freeplayIntroDone');
 		if (smokeProfile) {
 			var now = haxe.Timer.stamp();
 			RuntimeSmokeHarness.profileSection('fp-create-hxc-start', now - profileMark);
@@ -1136,11 +1175,33 @@ class FreeplayState extends MusicBeatState {
 		iconQueue.resize(0);
 	}
 
+	/** Receipt and owner lookups for the current import generation. Freeplay
+	 * resolves every listed chart the first time it filters (the duplicate check
+	 * needs each owner), and each lookup reads and parses a receipt and asks for
+	 * the owning mod. The key is the asset path epoch, the same one the receipt
+	 * existence check is cached under: it moves on every import, removal or
+	 * library refresh and on any file the engine writes itself, so re-entering
+	 * Freeplay reuses the lookups instead of reading every receipt again. */
+	static var identityCache:Map<String, Null<LibraryChartIdentity.LibraryChartRecord>> = [];
+	static var identityCacheGeneration:Int = -1;
+	static function cachedChartIdentity(folder:String, generation:Int,
+		read:String->Null<LibraryChartIdentity.LibraryChartRecord>):Null<LibraryChartIdentity.LibraryChartRecord> {
+		if (identityCacheGeneration != generation) {
+			identityCache = [];
+			identityCacheGeneration = generation;
+		}
+		var key = folder == null ? '' : folder;
+		if (identityCache.exists(key)) return identityCache.get(key);
+		var identity = read(folder);
+		identityCache.set(key, identity);
+		return identity;
+	}
+
 	function resolveSongIdentity(song:SongMetadata):Void {
 		if (song == null || song.isProvisional || song.identityResolved)
 			return;
 		song.identityResolved = true;
-		var identity = LibraryChartIdentity.read(song.songName);
+		var identity = cachedChartIdentity(song.songName, FNFAssets.pathEpoch(), LibraryChartIdentity.read);
 		if (identity == null) return;
 		song.importProvenancePresent = identity.hasReceipt;
 		song.provenance = identity.provenance;
@@ -1969,6 +2030,7 @@ class FreeplayState extends MusicBeatState {
 				applySearchFilter();
 			} else {
 				// main menu or else we are cursed
+				dispatchHxcFreeplayEvent('freeplayOutro');
 				FlxG.autoPause = OptionsHandler.options.autoPause;
 				if (soundTest)
 					LoadingState.loadAndSwitchState(new SaveDataState());
@@ -1988,6 +2050,8 @@ class FreeplayState extends MusicBeatState {
 							}
 						}
 					}
+					// V-Slice closes Freeplay (and says so) only when it returns to the main menu.
+					dispatchHxcFreeplayEvent('freeplayClose');
 					LoadingState.loadAndSwitchState(new MainMenuState());
 				}
 			}
@@ -2054,6 +2118,7 @@ class FreeplayState extends MusicBeatState {
 					RuntimeFreeplayDifficultyProbe.ordinaryRejectedSelection(songs[daSelection].songName, curDifficulty);
 					return;
 				}
+				dispatchHxcSongSelected(daSelection, curDifficulty);
 				if (denseBrowser) beginBrowserConfirm(daSelection, curDifficulty);
 				else launchSelection(daSelection, curDifficulty);
 			}
@@ -2267,6 +2332,12 @@ class FreeplayState extends MusicBeatState {
 
 	function chartFingerprintFor(name:String, title:String):BaseGameDuplicate.ChartFingerprint {
 		var print:BaseGameDuplicate.ChartFingerprint = {title:title, audioBytes:-1, audioSeconds:-1, bpm:-1, player:'', opponent:''};
+		measureFingerprintAudio(name, print);
+		return print;
+	}
+	/** Probes the instrumental names and reads the file's head and tail, so it
+	 * only runs for a chart whose title already matches a base song. */
+	function measureFingerprintAudio(name:String, print:BaseGameDuplicate.ChartFingerprint):Void {
 		#if sys
 		var inst = previewInstPath(name);
 		if (inst != null) {
@@ -2274,7 +2345,6 @@ class FreeplayState extends MusicBeatState {
 			BaseGameDuplicate.measureAudio(resolved == null ? inst : resolved, print);
 		}
 		#end
-		return print;
 	}
 	/** Tempo and cast are read only for charts that already pass the cheap test. */
 	function readFingerprintChart(name:String, print:BaseGameDuplicate.ChartFingerprint):Void {
@@ -2309,7 +2379,7 @@ class FreeplayState extends MusicBeatState {
 			resolveSongIdentity(song);
 			if (song.importProvenancePresent || song.ownerRoot != '') {
 				if (baseFingerprints == null) {
-					baseFingerprints = []; baseFingerprintSongs = [];
+					baseFingerprints = []; baseFingerprintSongs = []; baseFingerprintAudio = [];
 					var registry:Array<Dynamic> = cast FreeplayRegistry.getJson();
 					if (registry != null) for (category in registry) {
 						if (category == null || Std.string(Reflect.field(category, 'name')) != 'Base Game') continue;
@@ -2318,14 +2388,24 @@ class FreeplayState extends MusicBeatState {
 							var name:Dynamic = Std.isOfType(entry, String) ? entry : entry == null ? null : Reflect.field(entry, 'name');
 							if (!Std.isOfType(name, String) || !safeSongFolder(cast name)) continue;
 							baseFingerprintSongs.push(cast name);
-							baseFingerprints.push(chartFingerprintFor(cast name, cast name));
+							baseFingerprints.push({title:cast name, audioBytes:-1, audioSeconds:-1, bpm:-1, player:'', opponent:''});
+							baseFingerprintAudio.push(false);
 						}
 					}
 				}
 				var title = song.sourceFolder != null && song.sourceFolder != '' ? song.sourceFolder : song.songName.split('--')[0];
-				var mine = chartFingerprintFor(song.songName, title);
+				// candidate() requires a shared title before anything else, so the title
+				// is compared first and instrumentals are only read for a title match.
+				// The first Freeplay filter used to read the audio of every imported chart.
+				var mine:BaseGameDuplicate.ChartFingerprint = null;
 				for (index in 0...baseFingerprints.length) {
 					var base = baseFingerprints[index];
+					if (!BaseGameDuplicate.sameTitle(title, base.title)) continue;
+					if (mine == null) mine = chartFingerprintFor(song.songName, title);
+					if (!baseFingerprintAudio[index]) {
+						baseFingerprintAudio[index] = true;
+						measureFingerprintAudio(baseFingerprintSongs[index], base);
+					}
 					if (!BaseGameDuplicate.candidate(mine, base)) continue;
 					readFingerprintChart(song.songName, mine);
 					readFingerprintChart(baseFingerprintSongs[index], base);
@@ -2353,6 +2433,8 @@ class FreeplayState extends MusicBeatState {
 			selected ? FreeplaySongTitle.display(songs[curSelected].displayTitle) : '', selected ? sourceCaption(songs[curSelected]) : '',
 			showHiddenEntries, function(value) showHiddenEntries = value, function() {
 				for (song in songs) if (song.sourceResolved) { song.sourceResolved = false; song.sourceLabel = song.registrySourceLabel; }
+				// A search can match on these labels.
+				invalidateSongMatches();
 			});
 		menu.cameras = [camUI];
 		openSubState(menu);
@@ -2360,6 +2442,49 @@ class FreeplayState extends MusicBeatState {
 
 	function songMatches(i:Int):Bool {
 		if (i < 0 || i >= songs.length) return false;
+		syncSongMatchInputs();
+		var song = songs[i];
+		if (i < songMatchSongs.length && songMatchSongs[i] == song && songMatchCache[i] != 0)
+			return songMatchCache[i] == 1;
+		var matched = songMatchesUncached(i);
+		while (songMatchSongs.length <= i) {
+			songMatchSongs.push(null);
+			songMatchCache.push(0);
+		}
+		songMatchSongs[i] = song;
+		songMatchCache[i] = matched ? 1 : 2;
+		return matched;
+	}
+
+	/** Drop every cached songMatches answer when an input it reads has changed.
+		The library save is replaced on each edit, the path epoch moves with imports
+		and with files the engine writes, and the filters are replaced, not edited. */
+	function syncSongMatchInputs():Void {
+		var library = UserLibrary.data();
+		var duplicates = OptionsHandler.options.showDuplicateBaseCharts;
+		var epoch = FNFAssets.pathEpoch();
+		if (songMatchSearch == searchString && songMatchCategories == categoryFilters && songMatchFavorites == favoritesOnly
+			&& songMatchShowHidden == showHiddenEntries && songMatchView == libraryViewId && songMatchSoundTest == soundTest
+			&& songMatchLibrary == library && songMatchDuplicates == duplicates && songMatchEpoch == epoch)
+			return;
+		invalidateSongMatches();
+		songMatchSearch = searchString;
+		songMatchCategories = categoryFilters;
+		songMatchFavorites = favoritesOnly;
+		songMatchShowHidden = showHiddenEntries;
+		songMatchView = libraryViewId;
+		songMatchSoundTest = soundTest;
+		songMatchLibrary = library;
+		songMatchDuplicates = duplicates;
+		songMatchEpoch = epoch;
+	}
+
+	function invalidateSongMatches():Void {
+		songMatchCache.resize(0);
+		songMatchSongs.resize(0);
+	}
+
+	function songMatchesUncached(i:Int):Bool {
 		if (libraryViewId != '' && songs[i].songName.toLowerCase() == 'random-song') return false;
 		if (libraryHidden(i)) return false;
 		if (!soundTest && categoryFilters.length > 0 && !UserLibrary.data().matchesCategories(categoryFilters, libraryOwner(i))) return false;

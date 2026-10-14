@@ -38,6 +38,7 @@ class Main extends Sprite {
 		super();
 		RuntimeStartupProbe.begin();
 		ImportWorkScheduler.bindForegroundThread();
+		SongGraphicRetention.bindOwnerThread();
 		instance = this;
 		#if sys
 		RuntimeSmokeHarness.applyRuntimeRoot();
@@ -113,10 +114,21 @@ class Main extends Sprite {
 			RuntimeSongExitProbe.mark("pre-state-create");
 			syncImportForegroundForState(_state);
 			if (leavingPlayState) {
+				// The song's own holds go first. A held graphic has a use count,
+				// so the sweep below would otherwise keep every one of them.
+				SongGraphicRetention.end();
+				DynamicSprite.DynamicAtlasFrames.releaseAll();
 				if (SongLoadingScreen.active) pruneSongBitmapCache();
 				else FlxG.bitmap.clearCache();
 			}
 			RuntimeSongExitProbe.mark("bitmap-cache-cleared");
+			// Hold this song's disk images until it ends; see SongGraphicRetention.
+			if (Std.isOfType(_state, PlayState)) {
+				// Low memory mode keeps only what scripts precache on purpose.
+				SongGraphicRetention.maxHeldBytes = OptionsHandler.options.lowMemoryMode
+					? 0 : SongGraphicRetention.DEFAULT_MAX_HELD_BYTES;
+				SongGraphicRetention.begin(FNFAssets.pathEpoch());
+			}
 		});
 		FlxG.signals.postStateSwitch.add(function() {
 			RuntimeSongExitProbe.mark("post-state-switch");

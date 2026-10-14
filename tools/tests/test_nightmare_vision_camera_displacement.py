@@ -22,6 +22,7 @@ class NightmareVisionCameraDisplacementTest(unittest.TestCase):
         play_methods = "\n".join([
             extract_method(play_source, "@:keep public function getCharacterCameraPos("),
             extract_method(play_source, "@:keep public function moveCameraSection("),
+            extract_method(play_source, "function notifySourceCameraMove("),
             extract_method(play_source, "function applyNightmareVisionSingDisplacement("),
             extract_method(play_source, "@:keep public function moveCamera("),
         ])

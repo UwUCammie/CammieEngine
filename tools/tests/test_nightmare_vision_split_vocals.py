@@ -35,7 +35,7 @@ class NightmareVisionSplitVocalsTest(unittest.TestCase):
         ):
             self.assertIn(marker, play_state)
         self.assertIn("format != 'nmv2'", play_state)
-        self.assertIn("SourceVocalRole.resolve(authoredId, authoredRole)", play_state)
+        self.assertIn("SourceVocalRole.resolve(authoredId, authoredRole, characterVocalsFile(boyfriend),", play_state)
         self.assertIn("normalizeSourceVocalRoles(songData)", importer)
         self.assertIn("nmv-vocal-groups:", play_state)
         self.assertIn("nmv-vocal-pcm:", play_state)
@@ -91,7 +91,10 @@ class VocalStemRepair {
 
 class VocalRoleResolver {
   public var SONG:Dynamic;
+  public var boyfriend:Dynamic;
+  public var dad:Dynamic;
   public function new(format:String) this.SONG = {format:format};
+  function characterVocalsFile(character:Dynamic):String return character == null ? null : character.vocalsFile;
 ''' + role_resolver + '''
 ''' + preferred_role_resolver + '''
   public function resolve(entry:Dynamic):String return resolveImportedVocalStemRole(entry);

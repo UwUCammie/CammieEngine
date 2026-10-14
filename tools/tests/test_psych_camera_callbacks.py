@@ -30,6 +30,7 @@ class PsychCameraCallbacksTest(unittest.TestCase):
             extract_method(source, marker)
             for marker in (
                 "@:keep public function moveCameraSection(",
+                "function notifySourceCameraMove(",
                 "function updatePsychSectionCamera():Void",
                 "function applyNightmareVisionSingDisplacement(",
             )

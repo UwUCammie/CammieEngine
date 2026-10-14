@@ -160,6 +160,8 @@ class ImportRegistryRefresh {
 				if (identity != null && !objectArrayWasReordered(baseArray, desiredArray, identity))
 					return present(reconcileObjectArray(baseArray, desiredArray, liveArray, identity,
 						path, false, true, conflicts));
+				if (isValueRecordArray(baseArray) && isValueRecordArray(desiredArray) && isValueRecordArray(liveArray))
+					return present(reconcilePrimitiveArray(baseArray, desiredArray, liveArray, path, false, conflicts));
 				conflicts.push(path + ": cannot safely identify owned array changes; preserving live array for regeneration");
 				return cloneValue(live);
 			}
@@ -183,6 +185,10 @@ class ImportRegistryRefresh {
 			if (identity != null && !objectArrayWasReordered(baseArray, desiredArray, identity)) {
 				var merged = reconcileObjectArray(baseArray, desiredArray, liveArray, identity,
 					path, preparing, false, conflicts);
+				return merged.length == 0 && !desired.exists ? absent() : present(merged);
+			}
+			if (isValueRecordArray(baseArray) && isValueRecordArray(desiredArray) && isValueRecordArray(liveArray)) {
+				var merged = reconcilePrimitiveArray(baseArray, desiredArray, liveArray, path, preparing, conflicts);
 				return merged.length == 0 && !desired.exists ? absent() : present(merged);
 			}
 		}
@@ -403,9 +409,10 @@ class ImportRegistryRefresh {
 		output.push(cloneDynamic(entry));
 	}
 
+	static final IDENTITY_FIELDS = ["name", "id", "namespace", "root", "key"];
+
 	static function objectArrayIdentity(base:Array<Dynamic>, desired:Array<Dynamic>, live:Array<Dynamic>):Null<String> {
-		var candidates = ["name", "id", "namespace", "root", "key"];
-		for (candidate in candidates) {
+		for (candidate in IDENTITY_FIELDS) {
 			if (objectArrayHasUniqueIdentity(base, candidate) && objectArrayHasUniqueIdentity(desired, candidate)
 				&& objectArrayHasUniqueIdentity(live, candidate)) return candidate;
 		}
@@ -455,6 +462,26 @@ class ImportRegistryRefresh {
 
 	static function isIdentityValue(value:Dynamic):Bool {
 		return value != null && (Std.isOfType(value, String) || isNumber(value));
+	}
+
+	/**
+		Rows with no key field, such as the overlay records several imports append to
+		one shared list, are told apart by their whole value. Each owner adds and
+		removes complete rows, so a value present in the old output and missing from
+		the new one is that owner's row to remove, and other owners' rows stay. Row
+		position carries no meaning there (overlays sort by their own order field),
+		so unlike primitive lists no ordering condition applies. Duplicates would make
+		a removal ambiguous, and rows that do carry a key field but repeat it are
+		ambiguous entries rather than keyless records, so both keep the old conflict.
+	*/
+	static function isValueRecordArray(values:Array<Dynamic>):Bool {
+		for (index in 0...values.length) {
+			var value = values[index];
+			if (!isObject(value)) return false;
+			for (key in IDENTITY_FIELDS) if (Reflect.hasField(value, key)) return false;
+			for (other in 0...index) if (deepEqual(value, values[other])) return false;
+		}
+		return true;
 	}
 
 	/** Recognize only ordered primitive array appends/removals; reorder and object arrays stay atomic. */

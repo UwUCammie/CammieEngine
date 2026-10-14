@@ -32,7 +32,8 @@ class ImportRevision {
 	public static inline var FUTURE:String = "future";
 
 	static final ENGINE_REVISIONS:Map<String, Int> = [
-		"V-Slice" => 3,
+		// 4: HXC loadSparrow/loadTexture art and base-game sound lookups are planned, so older V-Slice imports re-plan.
+		"V-Slice" => 4,
 		"Kade Engine" => 2,
 		"Modding Plus" => 2,
 		"Psych Engine" => 14,

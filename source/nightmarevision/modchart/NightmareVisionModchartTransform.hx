@@ -68,6 +68,11 @@ class NightmareVisionModchartTransform {
 		pos.x = baseX(context, object.data, object.player);
 		pos.y = (context.legacyCoordinates ? 50 : baseY(context.noteWidth)) + visualDiff;
 
+		// True once the snapshot has been refreshed from the sprite and nothing has
+		// written to the sprite since. Reading it again then gives the same values,
+		// and that read (dozens of boxed reflective reads per modifier per note)
+		// was most of what the collector had to clean up on modchart songs.
+		var liveRead = false;
 		for (name in registry.executionList(object.player)) {
 			if (!liveActive(object) || exclusions != null && exclusions.indexOf(name) >= 0) continue;
 			var entry = registry.executionEntry == null ? null : registry.executionEntry(name);
@@ -75,7 +80,11 @@ class NightmareVisionModchartTransform {
 			if (entry != null && entry.builtin == null) {
 				pos = entry.getPosition(time == null ? object.kind == NightmareVisionModchartObject.NOTE ? object.strumTime : 0 : time,
 					visualDiff, timeDiff, beat, pos, object.data, object.player, object.nativeObject);
-				if (object.readLive != null) object.readLive();
+				var readsOnly = entry.positionReadsOnly == true;
+				if (object.readLive != null && !(liveRead && readsOnly)) {
+					object.readLive();
+					liveRead = true;
+				}
 				continue;
 			}
 			var family = entry == null ? name : entry.builtin;

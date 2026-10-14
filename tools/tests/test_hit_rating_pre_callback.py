@@ -95,9 +95,12 @@ class SmokeHitFixture {
         self.assertLess(good_hit.index("note.rating = noteRatingAtHit(note);"),
                         good_hit.index("EngineCompat.hxcNoteCallbackPayload("))
         score_start = source.index("\tprivate function popUpScore(")
-        score = source[score_start:source.index("\n\t\ttrace(daRating);", score_start)]
+        score = source[score_start:source.index("\n\t\tvar healthBonus = 0.0;", score_start)]
         self.assertIn("var noteDiff:Float = adjustedNoteDiff(daNote);", score)
         self.assertIn("daNote.rating = noteRatingAtHit(daNote);", score)
+        # Per-hit garbage: no placeholder popup sprite and no rating trace.
+        self.assertIn("var rating:FlxSprite = null;", score)
+        self.assertNotIn("trace(daRating)", score)
 
         fixture = r'''
 class Note {

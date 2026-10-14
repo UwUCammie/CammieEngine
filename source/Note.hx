@@ -1,6 +1,8 @@
 package;
 
 import DynamicSprite.DynamicAtlasFrames;
+import nightmarevision.modchart.NightmareVisionModchartLiveSprite;
+import nightmarevision.modchart.NightmareVisionModchartLiveSprite.NightmareVisionModchartLiveField as LiveField;
 import CodenameNoteMetadata.CodenameNoteOrigin;
 import Judgement.TUI;
 import openfl.errors.Error;
@@ -172,7 +174,7 @@ typedef SingInfo = {
 }
 // sinful dynamic sprite
 @:build(NightmareVisionSpriteMacro.build())
-class Note extends DynamicSprite {
+class Note extends DynamicSprite implements NightmareVisionModchartLiveSprite {
 	/** Psych 0.7.3 logical texture. Empty means the current chart's arrow skin. */
 	public var texture(get, set):String;
 	var psychTexture:String = '';
@@ -500,6 +502,14 @@ class Note extends DynamicSprite {
 	public var prevNote:Note;
 	@:keep public var nextNote:Note;
 	@:keep public var row:Int = 0;
+	/** Historical chord row this head was grouped into. Held until the head is
+	 * destroyed so a row whose heads are all gone can be emptied instead of
+	 * keeping every grouped Note of the song alive. */
+	@:allow(PlayState) var nightmareVisionLegacyRow:Array<Note> = null;
+	/** Rows whose heads were all destroyed, emptied on the next gameplay frame.
+	 * A hit sings from its row before it destroys the note, and waiting a frame
+	 * keeps any later read in that same frame on the full row. */
+	static var retiredLegacyRows:Array<Array<Note>> = [];
 	/** Source note/hold views keep the authored chain available to scripts. */
 	@:keep public var parent:Note = null;
 	@:keep public var tail:Array<Note> = [];
@@ -524,11 +534,8 @@ class Note extends DynamicSprite {
 	@:keep public var params:Array<Dynamic> = null;
 	/** Value of a named chart parameter, or null. */
 	@:keep public function getParam(name:String):Dynamic {
-		if (params != null)
-			for (param in params)
-				if (param != null && param.name == name)
-					return param.value;
-		return null;
+		// Same lookup as the script note views, so both agree on a missing name.
+		return NoteRowParams.find(params, name);
 	}
 	public var altNum:Int = 0;
 	public var isPixel:Bool = false;
@@ -584,6 +591,68 @@ class Note extends DynamicSprite {
 	}
 	@:keep public var rgbGraphics(get, never):NightmareVisionRGBGraphics;
 	function get_rgbGraphics():NightmareVisionRGBGraphics return nightmareVisionRGB;
+
+	// The Nightmare Vision modchart renderer reads and writes these on every
+	// note each frame; through Reflect each Float would be boxed into garbage.
+	// Each one goes through the same getter or setter Reflect would call.
+	public function modchartLiveFloat(field:Int):Float {
+		return switch (field) {
+			case LiveField.X: x;
+			case LiveField.Y: y;
+			case LiveField.WIDTH: width;
+			case LiveField.HEIGHT: height;
+			case LiveField.FRAME_HEIGHT: frameHeight;
+			case LiveField.ANGLE: angle;
+			case LiveField.M_ANGLE: mAngle;
+			case LiveField.SCALE_X: scale == null ? Math.NaN : scale.x;
+			case LiveField.SCALE_Y: scale == null ? Math.NaN : scale.y;
+			case LiveField.BASE_SCALE_X: baseScale.x;
+			case LiveField.BASE_SCALE_Y: baseScale.y;
+			case LiveField.MULT_SPEED: multSpeed;
+			case LiveField.STRUM_TIME: strumTime;
+			case LiveField.SUSTAIN_LENGTH: sustainLength;
+			case LiveField.OFFSET_X: offsetX;
+			case LiveField.OFFSET_Y: offsetY;
+			case LiveField.TYPE_OFFSET_X: typeOffsetX;
+			case LiveField.TYPE_OFFSET_Y: typeOffsetY;
+			case LiveField.ALPHA_MOD: alphaMod;
+			case LiveField.RGB_FLASH: nightmareVisionRGB == null ? Math.NaN : nightmareVisionRGB.flash;
+			case LiveField.RGB_ALPHA: nightmareVisionRGB == null ? Math.NaN : nightmareVisionRGB.alpha;
+			default: Math.NaN;
+		}
+	}
+
+	public function modchartLiveBool(field:Int):Bool {
+		return switch (field) {
+			case LiveField.ACTIVE: active;
+			case LiveField.WAS_GOOD_HIT: wasGoodHit;
+			default: false;
+		}
+	}
+
+	public function modchartSetLiveFloat(field:Int, value:Float):Void {
+		switch (field) {
+			case LiveField.X: x = value;
+			case LiveField.Y: y = value;
+			case LiveField.ANGLE: angle = value;
+			case LiveField.SCALE_X: if (scale != null) scale.x = value;
+			case LiveField.SCALE_Y: if (scale != null) scale.y = value;
+			case LiveField.MULT_SPEED: multSpeed = value;
+			case LiveField.ALPHA_MOD: alphaMod = value;
+			case LiveField.RGB_FLASH: if (nightmareVisionRGB != null) nightmareVisionRGB.flash = value;
+			case LiveField.RGB_ALPHA: if (nightmareVisionRGB != null) nightmareVisionRGB.alpha = value;
+			default:
+		}
+	}
+
+	public function modchartLiveCall(method:Int):Void {
+		switch (method) {
+			case LiveField.UPDATE_HITBOX: updateHitbox();
+			case LiveField.CENTER_ORIGIN: centerOrigin();
+			case LiveField.CENTER_OFFSETS: centerOffsets();
+			default:
+		}
+	}
 	@:keep public function setCustomColor(colors:Array<Dynamic>):Void {
 		if (nightmareVisionTypeRuntime == null) throw '[nightmare-vision-note] No source note-type runtime';
 		nightmareVisionTypeRuntime.api.setCustomColor(this, colors);
@@ -1588,13 +1657,40 @@ class Note extends DynamicSprite {
 		return bounds;
 	}
 
+	/** Empty every historical chord row whose heads were all destroyed before
+	 * this frame. Nothing sings from such a row any more, and an empty row takes
+	 * the same no-chord branch a missing one does. */
+	public static function flushRetiredLegacyRows():Void {
+		if (retiredLegacyRows.length == 0) return;
+		for (row in retiredLegacyRows) row.resize(0);
+		retiredLegacyRows.resize(0);
+	}
+
+	function releaseLegacyRowMembership():Void {
+		var row = nightmareVisionLegacyRow;
+		if (row == null) return;
+		nightmareVisionLegacyRow = null;
+		for (member in row)
+			if (member != null && member.nightmareVisionLegacyRow == row) return;
+		retiredLegacyRows.push(row);
+	}
+
 	override public function destroy():Void {
+		releaseLegacyRowMembership();
+		// A head's prevNote is the chart's previous note, so destroyed heads would
+		// chain every earlier Note of the song together and keep them all alive
+		// to the end. Sustain walkers stop at the head and live sustain pieces
+		// only read their own predecessor, so a destroyed head points at itself,
+		// the same way the chart's first note starts out.
+		if (!isSustainNote) prevNote = this;
 		if (nightmareVisionTypeRuntime != null) nightmareVisionTypeRuntime.releaseNote(this);
 		nightmareVisionTypeRuntime = null;
 		if (nightmareVisionRenderer != null) nightmareVisionRenderer.release(this);
 		nightmareVisionRenderer = null;
 		if (nightmareVisionTailState != null) nightmareVisionTailState.notes.remove(this);
 		nightmareVisionTailState = null;
+		// A palette made for this note goes back for the next note that needs one.
+		if (nightmareVisionRGB != null) nightmareVisionRGB.release();
 		nightmareVisionRGB = null;
 		nightmareVisionLegacyColors = null;
 		// FunkinSprite does not pool its baseScale point in destroy(). Scripts
@@ -1977,13 +2073,13 @@ class Note extends DynamicSprite {
 	public function getHealth(rating:String):Float {
 		if (mineNote) {
 			if (rating != 'miss')
-				return -0.45;
+				return -GameplayConstants.HEALTH_MINE_PENALTY;
 			else
 				return 0;
 		}
 		if (nukeNote) {
 			if (rating != 'miss')
-				return -69;
+				return -GameplayConstants.HEALTH_NUKE_PENALTY;
 			else
 				return 0;
 		}
@@ -2013,22 +2109,26 @@ class Note extends DynamicSprite {
 				if (damageAmount != null) {
 					return damageAmount * (ignoreHealthMods ? 1 : PlayState.healthLossMultiplier);
 				} else {
-					return damageMultiplier * -0.04 * (ignoreHealthMods ? 1 : PlayState.healthLossMultiplier);
+					return damageMultiplier * -GameplayConstants.HEALTH_CONSISTENT_STEP
+						* (ignoreHealthMods ? 1 : PlayState.healthLossMultiplier);
 				}
 			} else {
 				if (healAmount != null) {
 					return healAmount * (ignoreHealthMods ? 1 : PlayState.healthGainMultiplier);
 				} else {
-					return healMultiplier * (ignoreHealthMods ? 1 : PlayState.healthGainMultiplier) * 0.04;
+					return healMultiplier * (ignoreHealthMods ? 1 : PlayState.healthGainMultiplier)
+						* GameplayConstants.HEALTH_CONSISTENT_STEP;
 				}
 			}
 		} else {
 			var healies = 0.0;
-			var shitHeal = OptionsHandler.options.useKadeHealth ? 0.2 : 0.06;
-			var badHeal = OptionsHandler.options.useKadeHealth ? 0.06 : 0.03;
-			var goodHeal = OptionsHandler.options.useKadeHealth ? 0.04  : 0.03;
-			var missHeal = 0.04;
-			var sickHeal = OptionsHandler.options.useKadeHealth ? 0.1 : 0.07;
+			// Amounts come from the shared table; the cutoff below picks each sign.
+			var kade = OptionsHandler.options.useKadeHealth;
+			var shitHeal = kade ? GameplayConstants.KADE_HEALTH_SHIT_AMOUNT : GameplayConstants.HEALTH_SHIT_AMOUNT;
+			var badHeal = kade ? GameplayConstants.KADE_HEALTH_BAD_AMOUNT : GameplayConstants.HEALTH_BAD_AMOUNT;
+			var goodHeal = kade ? GameplayConstants.KADE_HEALTH_GOOD_AMOUNT : GameplayConstants.HEALTH_GOOD_AMOUNT;
+			var missHeal = GameplayConstants.HEALTH_MISS_PENALTY;
+			var sickHeal = kade ? GameplayConstants.KADE_HEALTH_SICK_AMOUNT : GameplayConstants.HEALTH_SICK_AMOUNT;
 			switch (healCutoff) {
 				case "shit":
 					switch (rating) {

@@ -58,7 +58,10 @@ class DiskBitmapCacheTest(unittest.TestCase):
         source = (ROOT / "source/FNFAssets.hx").read_text()
         self.assertIn("DiskBitmapCache.getOrLoad(bitmapKey, useCache", source)
         self.assertIn("FlxG.bitmap.get(key)", source)
-        self.assertIn("FlxG.bitmap.add(data, false, key)", source)
+        # A fresh decode is registered under its key directly. FlxG.bitmap.add
+        # would scan every cached graphic for a bitmap that cannot be there.
+        self.assertIn("FlxGraphic.createGraphic(data, key, false, true)", source)
+        self.assertNotIn("FlxG.bitmap.add(data, false, key)", source)
         self.assertIn("Assets.getBitmapData(id, useCache)", source)
         self.assertIn("BitmapData.fromFile(path)", source)
 

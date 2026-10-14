@@ -38,6 +38,11 @@ class PsychPlayStateMemberSurfaceTest(unittest.TestCase):
         self.assertIn("function get_spawnTime():Float return noteSpawnLookahead;", play)
         self.assertIn("function set_spawnTime(value:Float):Float return noteSpawnLookahead = clampSpawnTime(value);", play)
         self.assertIn("unspawnNotes[0].strumTime - Conductor.songPosition < noteSpawnLookahead", play)
+        # A story song adds its misses to the week total next to its score; a reset clears both.
+        story = play[play.index("\t\t\tcampaignScore += songScore;\n"):]
+        self.assertLess(story.index("campaignMisses += songMisses;"), story.index("campaignScoreDef += songScoreDef;"))
+        reset = method(play, "@:keep public static function resetSongInfos")
+        self.assertIn("campaignMisses = 0;", reset)
 
     def test_ui_skin_name_drives_the_pixel_switch_and_splits_like_the_reference(self):
         if not (ROOT / ".tools/haxe/haxe.exe").is_file() and not (ROOT / ".tools/haxe/haxe").is_file():

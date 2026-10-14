@@ -73,35 +73,26 @@ class NightmareVisionConductor {
 		var entry = getBPMFromSeconds(time);
 		return (time - entry.songTime) / (entry.stepCrotchet * 4);
 	}
-	public function getCrotchetAtTime(time:Float):Float return getBPMFromSeconds(time).stepCrotchet * 4;
-	public function stepToSeconds(step:Float):Float {
-		var entry = getBPMFromStep(step);
-		return entry.songTime + (step - entry.stepTime) * entry.stepCrotchet;
-	}
-	public function beatToSeconds(beat:Float):Float return stepToSeconds(beat * 4);
-	public function getStep(time:Float):Float {
-		var entry = getBPMFromSeconds(time);
-		return entry.stepTime + (time - entry.songTime) / entry.stepCrotchet;
-	}
-	public function getStepRounded(time:Float):Int return Math.floor(getStep(time));
-	public function getBeat(time:Float):Float return getStep(time) / 4;
-	public function getBeatRounded(time:Float):Int return Math.floor(getBeat(time));
+	// The map-aware conversions live on the base Conductor so Psych scripts get
+	// the same answers; this keeps only the source instance spelling.
+	public function getCrotchetAtTime(time:Float):Float return Conductor.getCrotchetAtTime(time);
+	public function stepToSeconds(step:Float):Float return Conductor.stepToSeconds(step);
+	public function beatToSeconds(beat:Float):Float return Conductor.beatToSeconds(beat);
+	public function getStep(time:Float):Float return Conductor.getStep(time);
+	public function getStepRounded(time:Float):Int return Conductor.getStepRounded(time);
+	public function getBeat(time:Float):Float return Conductor.getBeat(time);
+	public function getBeatRounded(time:Float):Int return Conductor.getBeatRounded(time);
 	public function mapBPMChanges(song:Dynamic):Void {
 		var map = bpmChangeMap;
 		map.resize(0);
+		// The source map starts with an explicit initial tempo entry and measures
+		// sections only by sectionBeats.
 		map.push({stepTime:0, songTime:0.0, bpm:song.bpm, stepCrotchet:calculateCrochet(song.bpm) / 4});
-		var tempo:Float = song.bpm;
-		var step = 0;
-		var time:Float = 0;
-		for (section in (cast song.notes:Array<Dynamic>)) {
-			if (section.changeBPM == true && section.bpm != tempo) {
-				tempo = section.bpm;
-				map.push({stepTime:step, songTime:time, bpm:tempo, stepCrotchet:calculateCrochet(tempo) / 4});
-			}
-			var beats:Dynamic = Reflect.field(section, 'sectionBeats');
-			var delta = Math.round((beats == null ? 4.0 : cast beats) * 4);
-			step += delta;
-			time += calculateCrochet(tempo) / 4 * delta;
-		}
+		for (change in ConductorTempoMap.tempoChanges(song, sourceSectionSteps))
+			map.push({stepTime:change.stepTime, songTime:change.songTime, bpm:change.bpm, stepCrotchet:change.stepCrochet});
+	}
+	static function sourceSectionSteps(section:Dynamic):Int {
+		var beats:Dynamic = section == null ? null : Reflect.field(section, 'sectionBeats');
+		return Math.round((beats == null ? 4.0 : cast beats) * 4);
 	}
 }

@@ -603,28 +603,21 @@ class PsychSourceBindings {
 	var timeBarLeft:FlxColor = FlxColor.GRAY;
 	var timeBarRight:FlxColor = FlxColor.LIME;
 
-	function actorForRole(role:String):Dynamic {
-		return host.getHaxeActor(role == null ? '' : role);
-	}
-
+	// Psych's getCharacterX/setCharacterX work on the character's group, the
+	// stage anchor the sprite sits in, and treat any unknown name as boyfriend.
+	// The base game owns both rules.
 	function actorPosition(role:String, axis:String):Float {
-		var actor:Dynamic = actorForRole(role);
-		if (actor == null) return 0;
-		try return axis == 'x' ? actor.x : actor.y catch (_:Dynamic) return 0;
+		return host.characterGroupPosition(role, axis);
 	}
 
 	function setActorPosition(role:String, axis:String, value:Float):Void {
-		var actor:Dynamic = actorForRole(role);
-		if (actor == null) return;
-		try {
-			if (axis == 'x') actor.x = value else actor.y = value;
-		} catch (_:Dynamic) {}
+		host.setCharacterGroupPosition(role, axis, value);
 	}
 
 	function cameraSetTarget(target:String):Void {
 		var role = target == null ? '' : StringTools.trim(target).toLowerCase();
 		if (role == 'gf' || role == 'girlfriend') {
-			var gf = actorForRole('gf');
+			var gf = host.characterForRole('gf');
 			if (gf != null) host.setCameraFollowActor(cast gf, 'gf');
 		} else host.moveCamera(role == 'dad' || role == 'opponent');
 	}

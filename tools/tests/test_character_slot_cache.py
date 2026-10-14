@@ -101,6 +101,9 @@ class Main {
   return actor;
  }
  function addNightmareVisionCharacterToList(name:String, role:Int):Void throw 'NV path in native fixture';
+ // Psych role map listing has its own test; here nothing gets listed.
+ function publishPsychRoleCharacter(slot:String, name:String):Bool return false;
+ function adoptIdlePsychRoleCharacter(slot:String, name:String, x:Float, y:Float):Character return null;
  function codenameSwapPreloadParams(e:Dynamic):Dynamic return null;
  function codenameSelectedRoot():String return '';
  function currentSongDataPath(name:String):String return 'missing-preload-file.txt';
@@ -176,8 +179,15 @@ class Main {
         play = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
         swap = method(play, '\tfunction switchCharacter(charTo:String, charState:String)')
         self.assertNotIn('new Character(', swap)
-        for slot in ('boyfriend', 'dad', 'gf'):
-            self.assertIn(f"{slot} = takeSwapCharacter('{slot}', charTo);", swap)
+        # One role body serves boyfriend, dad and gf alike.
+        self.assertIn("var next = setCharacterForRole(charState, takeSwapCharacter(charState, charTo));", swap)
+        self.assertIn("if (charState == 'boyfriend' || charState == 'dad' || charState == 'gf') {", swap)
+        # The destroyed actor leaves the role maps and a listed actor leaves the
+        # scene before the swap reads layer indexes.
+        forget = swap.index('forgetPsychRoleCharacter(previousStageActor);')
+        detach = swap.index('detachIdlePsychRoleCharacter(charState, charTo);')
+        self.assertLess(detach, swap.index('var previousIndex'))
+        self.assertLess(forget, detach)
         destroy = play[play.index('boyfriendMap=null;dadMap=null;gfMap=null;'):][:200]
         self.assertIn('swapCharacterCache.release()', destroy)
 

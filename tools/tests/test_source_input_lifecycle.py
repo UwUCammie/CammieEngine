@@ -66,7 +66,9 @@ class SourceInputLifecycleTest(unittest.TestCase):
             "NightmareVisionPlayFieldView", "InputField"
         )
         cls.remove_field_note = extract_method(play, "function nightmareVisionRemoveFieldNoteMembership(")
-        cls.psych_press = extract_method(play, "function psychSourceKeyPressed(")
+        # The shared press admission travels with the Psych handler into the fixture.
+        cls.psych_press = extract_method(play, "function psychSourceKeyPressed(") + "\n" \
+            + extract_method(play, "function sourceKeyPressAdmitted(")
         cls.psych_release = extract_method(play, "function psychSourceKeyReleased(")
         cls.nv_press = extract_method(play, "function nightmareVisionSourceKeyPressed(")
         cls.nv_release = extract_method(play, "function nightmareVisionSourceKeyReleased(")

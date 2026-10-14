@@ -92,6 +92,8 @@ class StoryMenuState extends MusicBeatState {
 		}
 		var storySongJson:StorySongsJson = CoolUtil.parseJson(FNFAssets.getText('assets/data/storySonglist.json'));
 		persistentUpdate = persistentDraw = true;
+		// Rebuilt on every visit so weeks completed since the last one unlock.
+		weekUnlocked = [];
 		var songsParsed:Array<Array<String>> = [];
 		var namesParsed:Array<String> = [];
 		var titlesParsed:Array<String> = [];
@@ -150,6 +152,35 @@ class StoryMenuState extends MusicBeatState {
 			charsParsed.push(charArray);
 			var flagArray = weekInfo.flags == null ? [] : weekInfo.flags;
 			flagsParsed.push(flagArray);
+			weekNums.push(useWeek);
+			useWeek++;
+		}
+		// Psych-family imports bring their own weeks, listed after the base game's.
+		var menuCharacterRegistry:Dynamic = CoolUtil.parseJson(FNFAssets.getJson("assets/images/campaign-ui-char/custom_ui_chars"));
+		var listedWeeks = ImportedStoryWeeks.menuWeeks(ImportedStoryWeeks.collect(), namesParsed,
+			OptionsHandler.options.ignoreUnlocks, weekCompleted);
+		for (listed in listedWeeks) {
+			var importedWeek = listed.week;
+			var locked = listed.locked;
+			var visibleIndex = songsParsed.length;
+			importedWeeks.set(visibleIndex, importedWeek);
+			importedWeekLocked.set(visibleIndex, locked);
+			namesParsed.push(importedWeek.key);
+			songsParsed.push(importedWeek.songs);
+			titlesParsed.push(importedWeek.title);
+			// Slots the base menu has no art for stay empty, as an empty slot does in the source.
+			var charArray:Array<String> = [];
+			var hidden:Array<Bool> = [];
+			for (slot in 0...3) {
+				var name = importedWeek.characters[slot];
+				var known = name != '' && menuCharacterRegistry != null && Reflect.hasField(menuCharacterRegistry, name);
+				charArray.push(known ? name : ["dad", "bf", "gf"][slot]);
+				hidden.push(!known);
+			}
+			importedWeekHiddenCharacters.set(visibleIndex, hidden);
+			coolors.push(0xFFF9CF51);
+			charsParsed.push(charArray);
+			flagsParsed.push([]);
 			weekNums.push(useWeek);
 			useWeek++;
 		}
@@ -218,6 +249,9 @@ class StoryMenuState extends MusicBeatState {
 				weekUnlocked.push(true);
 			}
 		}
+		for (index in importedWeekLocked.keys())
+			if (index < weekUnlocked.length)
+				weekUnlocked[index] = !importedWeekLocked.get(index);
 		
 		scoreText = new FlxText(10, 10, 0, "SCORE: 49324858", 36);
 		scoreText.setFormat("VCR OSD Mono", 32);
@@ -246,7 +280,7 @@ class StoryMenuState extends MusicBeatState {
 		weekCharactersArray = new FlxTypedGroup<FlxTypedGroup<MenuCharacter>>();
 
 		for (i in 0...weekData.length) {
-			var weekThing:MenuItem = new MenuItem(0, yellowBG.y + yellowBG.height + 10, weekNums[i]);
+			var weekThing:MenuItem = new MenuItem(0, yellowBG.y + yellowBG.height + 10, weekNums[i], importedWeeks.get(i));
 			weekThing.y += ((weekThing.height + 20) * i);
 			weekThing.targetY = i;
 			grpWeekText.add(weekThing);
@@ -274,6 +308,9 @@ class StoryMenuState extends MusicBeatState {
 				weekCharacterThing.x += weekCharacterThing.offsetX;
 				weekCharacterThing.y += weekCharacterThing.offsetY;
 				weekCharacterThing.flipX = weekCharacterThing.jsonFlipX;
+				var hiddenCharacters = importedWeekHiddenCharacters.get(i);
+				if (hiddenCharacters != null && hiddenCharacters[char])
+					weekCharacterThing.visible = false;
 
 				weekCharactersArray.members[i].add(weekCharacterThing);
 			}
@@ -389,6 +426,28 @@ class StoryMenuState extends MusicBeatState {
 	var movedBack:Bool = false;
 	var selectedWeek:Bool = false;
 	var stopspamming:Bool = false;
+	/** Imported weeks by visible index, with their lock state and empty character slots. */
+	var importedWeeks:Map<Int, ImportedStoryWeeks.ImportedStoryWeek> = [];
+	var importedWeekLocked:Map<Int, Bool> = [];
+	var importedWeekHiddenCharacters:Map<Int, Array<Bool>> = [];
+
+	/** A week counts as completed once any difficulty has a score, the same
+	 * test the base menu's week unlock flags use. */
+	static function weekCompleted(name:String):Bool {
+		var diffJson = CoolUtil.parseJson(Assets.getText("assets/images/custom_difficulties/difficulties.json"));
+		var difficulties:Array<Dynamic> = diffJson.difficulties;
+		for (diff in 0...difficulties.length)
+			if (Highscore.getWeekScore(name, diff) != 0)
+				return true;
+		return false;
+	}
+
+	/** Score name of the visible week. Hidden weeks keep their slot in
+	 * weekNames, so the visible index alone can point at the wrong week. */
+	function currentWeekName():String {
+		var index = HxcStoryMenuRouting.sourceWeekIndex(curWeek, weekNums);
+		return index >= 0 && index < weekNames.length ? weekNames[index] : weekNames[curWeek];
+	}
 
 	function selectWeek() {
 		if (!weekUnlocked[curWeek])
@@ -433,6 +492,8 @@ class StoryMenuState extends MusicBeatState {
 		PlayState.storyWeekNum = sourceWeekIndex;
 		PlayState.campaignScore = 0;
 		PlayState.campaignAccuracy = 0;
+		// Psych scripts read the week's running miss total; a new week starts at zero.
+		PlayState.campaignMisses = 0;
 		if (!importedStoryTransition)
 			new FlxTimer().start(1, function(tmr:FlxTimer) {
 				if (!OptionsHandler.options.skipModifierMenu)
@@ -537,8 +598,8 @@ class StoryMenuState extends MusicBeatState {
 		grpDifficulty.activeDiff.alpha = 0;
 		grpDifficulty.activeDiff.y = leftArrow.y - 15;
 		rightArrow.setPosition(grpDifficulty.activeDiff.x + grpDifficulty.activeDiff.width + 50, leftArrow.y);
-		intendedScore = Highscore.getWeekScore(weekNames[curWeek], curDifficulty);
-		intendedAccuracy = Highscore.getWeekAccuracy(weekNames[curWeek], curDifficulty);
+		intendedScore = Highscore.getWeekScore(currentWeekName(), curDifficulty);
+		intendedAccuracy = Highscore.getWeekAccuracy(currentWeekName(), curDifficulty);
 
 		FlxTween.tween(grpDifficulty.activeDiff, {y: leftArrow.y + 15, alpha: 1}, 0.07);
 	}
@@ -604,8 +665,8 @@ class StoryMenuState extends MusicBeatState {
 		txtTracklist.x -= FlxG.width * 0.35;
 
 		#if !switch
-		intendedScore = Highscore.getWeekScore(weekNames[curWeek], curDifficulty);
-		intendedAccuracy = Highscore.getWeekScore(weekNames[curWeek], curDifficulty);
+		intendedScore = Highscore.getWeekScore(currentWeekName(), curDifficulty);
+		intendedAccuracy = Highscore.getWeekScore(currentWeekName(), curDifficulty);
 		#end
 	}
 }

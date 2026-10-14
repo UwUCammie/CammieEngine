@@ -25,7 +25,8 @@ def note_param_api() -> str:
     """The params field and getParam method, copied out of Note.hx."""
     source = (ROOT / "source/Note.hx").read_text(encoding="utf-8")
     start = source.index("@:keep public var params:Array<Dynamic>")
-    end = source.index("return null;\n\t}", start) + len("return null;\n\t}")
+    method = source.index("public function getParam(", start)
+    end = source.index("\n\t}", method) + len("\n\t}")
     return source[start:end]
 
 
@@ -80,7 +81,11 @@ class Main {
     if (note.getParam("speed") != 2) fail("getParam");
     if (note.getParam("missing") != null) fail("missing param");
     if (new FakeNote().getParam("speed") != null) fail("note without params");
+    if (note.getParam(null) != null) fail("null name");
     if (NoteRowParams.apply([1, 2, 3], null).length != 3) fail("no params, no column");
+    // The shared lookup every getParam view uses.
+    if (NoteRowParams.find(note.params, "speed") != 2 || NoteRowParams.find(note.params, "missing") != null
+      || NoteRowParams.find(null, "speed") != null || NoteRowParams.find([null, {name: "a", value: 1}], "a") != 1) fail("find");
   }
 }
 ''')

@@ -52,8 +52,13 @@ class Test {{
     def test_camera_offsets_use_safe_animation_name(self):
         source = SOURCE.read_text()
         camera = source[source.index('\t\tif (camNotes) {'):source.index('\n\t\tif (endingSong)', source.index('\t\tif (camNotes) {'))]
-        self.assertIn('characterAnimationName(dad)', camera)
-        self.assertIn('characterAnimationName(boyfriend)', camera)
+        # Both actors go through one helper that reads the safe animation name.
+        self.assertIn('writeCharacterCamNudge(dad, dadcam', camera)
+        self.assertIn('writeCharacterCamNudge(boyfriend, bfcam', camera)
+        start = source.index('\tfunction writeCharacterCamNudge(')
+        nudge = source[start:source.index('\n\t}\n', start)]
+        self.assertIn('characterAnimationName(actor)', nudge)
+        self.assertNotIn('curAnim.name', nudge)
         self.assertNotIn('dad.animation.curAnim.name', camera)
         self.assertNotIn('boyfriend.animation.curAnim.name', camera)
 

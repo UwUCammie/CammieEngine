@@ -60,6 +60,7 @@ class PsychRuntimeBindings {
         # native-only HXC video dependency pulled in by source normalization.
         files['HxcOwnedVideoSprite.hx'] = 'class HxcOwnedVideoSprite {public static function create(o:Dynamic,r:String,x:Float=0,y:Float=0):Dynamic return null;public static function pauseForState(s:Dynamic):Void{}public static function resumeForState(s:Dynamic):Void{}public static function destroyForState(s:Dynamic):Void{}}'
         files['PsychHscriptCamera.hx'] = 'class PsychHscriptCamera {}'
+        files['PsychLuaUtilsCompat.hx'] = 'class PsychLuaUtilsCompat {}'
         files['PsychHscriptCustomSubstateFacade.hx'] = 'class PsychHscriptCustomSubstateFacade {public function new(v:Dynamic){}}'
         files['Main.hx'] = r'''import flixel.FlxSprite;import flixel.graphics.FlxGraphic;import hscript.Interp;
 class Host {public var nightmareVisionLegacyFieldCameras:Bool=false;

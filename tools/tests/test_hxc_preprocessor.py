@@ -82,6 +82,23 @@ class HxcPreprocessorTest(unittest.TestCase):
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_quote_inside_a_regex_literal_does_not_hide_directives(self):
+        result = run_main(r'''class Main {
+  static function fail(value:String):Void throw value;
+  static function squash(value:String):String return StringTools.trim(~/\s+/g.replace(value, " "));
+  static function main() {
+    var defines = ["desktop" => "1"];
+    // Read as a string, the apostrophe would run to the next quote and the
+    // mobile branch would survive.
+    var source = "var r = ~/it's/i;\n#if mobile\ntouch();\n#else\ndesk();\n#end\nvar q = 'x';";
+    var out = squash(HxcPreprocessor.apply(source, defines));
+    if (out != "var r = ~/it's/i; desk(); var q = 'x';") fail("regex: " + out);
+    if (HxcPreprocessor.apply(source, defines).length != source.length) fail("offsets moved");
+  }
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

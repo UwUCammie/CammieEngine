@@ -16,10 +16,14 @@ class LegacyMissFlowTest(unittest.TestCase):
   retire=extract_method((ROOT/'source/PlayState.hx').read_text(),'function retireNightmareVisionLegacyNote(').replace('function retire','public function retire')
   # The legacy flow books the miss through the shared ledger helper.
   retire+=extract_method((ROOT/'source/PlayState.hx').read_text(),'function applySourceMiss(').replace('function applySourceMiss','public function applySourceMiss')
+  # Health and instakill are the shared source helpers in their historical mode.
+  for shared in ('applySourceMissHealth','killOnSourceMiss'):
+   retire+=extract_method((ROOT/'source/PlayState.hx').read_text(),'function '+shared+'(').replace('function '+shared,'public function '+shared)
   host=r'''
 class PlayState {
  public var events:Array<String>=[];public var notes:Group;public var vocals:Voice;
  public var modchartObjects:Map<String,Dynamic>=[];public var health=1.;public var healthLoss=2.;public var combo=8;
+ public var healthLossMultiplier=7.;public var pressMissDamage=0.5;public var holdSubdivisions=3;
  public var instakillOnMiss=false;public var practiceMode=false;public var endingSong=true;public var sourceScoreNightmare=true;
  public static var misses=2;public var songScore=70;public var totalPlayed=3;
  public var boyfriend:Character;public var gf:Character;public var nightmareVisionPrefs:Dynamic={view:{ghostTapping:false}};

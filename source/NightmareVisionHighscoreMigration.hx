@@ -430,16 +430,8 @@ class NightmareVisionHighscoreMigration {
 		}
 	}
 
-	static function ownerPath(value:Dynamic):Null<String> {
-		if (!Std.isOfType(value, String)) return null;
-		var clean = StringTools.replace(StringTools.trim(cast value), '\\', '/');
-		while (StringTools.endsWith(clean, '/')) clean = clean.substr(0, clean.length - 1);
-		if (!StringTools.startsWith(clean.toLowerCase(), 'assets/imported_mods/')) return null;
-		var parts = clean.split('/');
-		if (parts.length < 3) return null;
-		for (index in 2...parts.length) if (!validComponent(parts[index])) return null;
-		return clean;
-	}
+	static function ownerPath(value:Dynamic):Null<String>
+		return SourceOwnerFiles.ownerFromData(value);
 
 	static function validComponent(value:String):Bool {
 		if (value == null) return false;

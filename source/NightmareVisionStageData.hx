@@ -97,31 +97,16 @@ class NightmareVisionStageData {
 	}
 
 	static function normalizeRelative(value:String):String {
-		if (value == null || value == '' || value.startsWith('/') || value.indexOf('\\') >= 0)
-			return '';
-		var parts = value.split('/');
-		for (part in parts)
-			if (part == '' || part == '.' || part == '..' || part.indexOf(':') >= 0)
-				return '';
-		return parts.join('/');
+		var clean = SourceOwnerFiles.cleanRelative(value);
+		return clean == null ? '' : clean;
 	}
 
+	/** Absolute path of an owner file in its on-disk spelling. */
 	static function resolveExactFile(ownerRoot:String, relative:String):Null<String> {
 		#if sys
-		var clean = normalizeRelative(relative);
-		if (clean == '' || ownerRoot == null || ownerRoot.trim() == '') return null;
+		if (ownerRoot == null || ownerRoot.trim() == '') return null;
 		try {
-			var root = Path.normalize(FileSystem.fullPath(ownerRoot));
-			if (!FileSystem.isDirectory(root)) return null;
-			var current = root;
-			var parts = clean.split('/');
-			for (i in 0...parts.length) {
-				current = Path.join([current, parts[i]]);
-				if (!FileSystem.exists(current) || !withinRoot(root, current)) return null;
-				if (i < parts.length - 1 && !FileSystem.isDirectory(current)) return null;
-				if (i == parts.length - 1 && FileSystem.isDirectory(current)) return null;
-			}
-			return current;
+			return SourceOwnerFiles.resolveFile(Path.normalize(FileSystem.fullPath(ownerRoot)), relative);
 		} catch (_:Dynamic) {
 			return null;
 		}
@@ -129,17 +114,4 @@ class NightmareVisionStageData {
 		return null;
 		#end
 	}
-
-	#if sys
-	static function withinRoot(root:String, path:String):Bool {
-		try {
-			var base = Path.normalize(FileSystem.fullPath(root));
-			var candidate = Path.normalize(FileSystem.fullPath(path));
-			var prefix = base.endsWith('/') ? base : base + '/';
-			return candidate == base || candidate.startsWith(prefix);
-		} catch (_:Dynamic) {
-			return false;
-		}
-	}
-	#end
 }

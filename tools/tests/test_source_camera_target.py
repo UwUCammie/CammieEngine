@@ -58,9 +58,18 @@ class SourceCameraTargetTest(unittest.TestCase):
 		helper = helper[:helper.index('\n\t}\n')]
 		self.assertIn('SourceCameraFollowPointMath.NIGHTMARE_OPPONENT_BASE_X', helper)
 		section = play[play.index('@:keep public function moveCameraSection('):]
-		section = section[:section.index("callNightmareVision('onMoveCamera', ['gf']);")]
+		section = section[:section.index('notifySourceCameraMove(role);')]
 		self.assertIn('SourceCameraFollowPointMath.GIRLFRIEND', section)
 		self.assertNotIn('gf.cameraPosition[0] + girlfriendCameraOffset[0]', section)
+
+	def test_on_move_camera_is_sent_from_one_place(self):
+		play = (ROOT / 'source/PlayState.hx').read_text()
+		notify = play[play.index('function notifySourceCameraMove('):]
+		notify = notify[:notify.index('\n\t}\n')]
+		# Both engines notify through the one helper, never from the section code.
+		self.assertEqual(play.count("'onMoveCamera'"), 2)
+		self.assertIn("callNightmareVision('onMoveCamera', [role]);", notify)
+		self.assertIn("callAllHScript('onMoveCamera', [role]);", notify)
 
 
 if __name__ == '__main__':

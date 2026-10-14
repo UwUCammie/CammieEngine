@@ -44,6 +44,8 @@ FIXTURE_TYPE_RENAMES = {
     "FreeplayState": "FixtureFreeplayState",
     "PlayState": "FixturePlayState",
     "CoolUtil": "FixtureCoolUtil",
+    "NightmareVisionStoryMeta": "FixtureStoryMeta",
+    "PauseSubState": "FixturePauseSubState",
 }
 
 
@@ -198,6 +200,8 @@ import NightmareVisionModTransition;
 import NightmareVisionStateFactory.INightmareVisionStateFactoryHost;
 import NightmareVisionStateFactory.NightmareVisionStateTransitionOverrides;
 import StateSessionFixtureTypes.Conductor;
+import StateSessionFixtureTypes.FixtureStoryMeta;
+import StateSessionFixtureTypes.PauseSubState;
 import StateSessionFixtureTypes.FixtureLog;
 import StateSessionFixtureTypes.InputScope;
 import StateSessionFixtureTypes.CoolUtil;
@@ -272,6 +276,9 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
  final redirectNames:Map<String, String> = new Map();
  final sourceStateClasses:Map<String, Dynamic> = new Map();
  public var weekCompleted:Dynamic = new Map<String, Bool>();
+ public var storyMeta:Dynamic = new FixtureStoryMeta();
+ var storyWeekActive:Bool = false;
+ function songPreparationHost(?difficultyIndex:Null<Int>):Dynamic return null;
  final postCallbacks:Array<Void->Void> = [];
  final previousSkipIn:Bool;
  final previousSkipOut:Bool;
@@ -500,6 +507,12 @@ class PlayState extends FlxState {
  __PLAY_ADOPT__
 }
 class Song {public static function storageFolder(song:Dynamic):String return "song";}
+class PauseSubState {}
+class FixtureStoryMeta {
+ public function new() {}
+ public static function prepareSong(meta:Dynamic, host:Dynamic, name:String, ?d:Null<Int>, ?s:Null<Bool>):Dynamic return null;
+ public static function prepareWeek(meta:Dynamic, host:Dynamic, songs:Array<String>, ?d:Null<Int>, ?s:Null<Bool>):Dynamic return null;
+}
 class LoadingState {public static function loadAndSwitchState(state:FlxState):Void flixel.FlxG.switchState(function() return state);}
 class ImportedModDiscovery {public static function ownerForSong(song:String,base:String):String return "";}
 class ImportedMenuEntry {public static function gameplayUnavailableReason(owner:String,song:String):String return ""; public static function loadOwnedChart(r:String,j:String,f:String):Dynamic return null;public static function openDefaultFreeplay(r:String):Void {} }

@@ -239,6 +239,8 @@ typedef HxcCompatResult = {
 	@:optional var runtimeShaderDescriptor:Dynamic;
 	/** Bounded shader/filter graphs keyed by their donor shader fields. */
 	@:optional var runtimeShaderDescriptors:Array<Dynamic>;
+	/** Module dispatch priority from `super('id', priority)`; lower runs first. */
+	@:optional var modulePriority:Null<Int>;
 }
 
 /**
@@ -249,18 +251,10 @@ typedef HxcCompatResult = {
 	just because it looked syntactically plausible.
 */
 class HxcCompat {
-	static var lifecycleNames:Array<String> = [
-		'onCreate', 'onCreatePost', 'onSongStart', 'onUpdate', 'onUpdatePost',
-		'onBeatHit', 'onStepHit', 'onSectionHit', 'onCountdownStart',
-		'onCountdownTick', 'onCountdownStep', 'onCountdownEnd', 'onStartCountdown', 'onGoodNoteHit', 'onOpponentNoteHit',
-		'onNoteHit', 'onNoteIncoming', 'onNoteMiss', 'onOpponentNoteMiss',
-		'onNoteGhostMiss', 'onNoteHoldDrop',
-		'onSongEvent', 'onSongEnd', 'onEndSong', 'onSongRetry', 'onPause', 'onResume',
-		'onPauseSubstateOpen', 'onPauseSubstateClose',
-		'onStateOpenEnd', 'onSubStateOpenBegin', 'onSubStateOpenEnd', 'onSubStateCloseEnd', 'onPlayStateEnter',
-		'onFocusLost',
-		'onDifficultySwitch', 'onCapsuleSelected', 'onDestroy'
-	];
+	/** Every V-Slice `onX` hook; read from the one lifecycle table the game also uses. */
+	static var lifecycleNames(get, never):Array<String>;
+	static inline function get_lifecycleNames():Array<String>
+		return ScriptLifecycleNames.vsliceHookMethods();
 
 	/** Return true for an HXC path without opening it. */
 	public static function isHxcPath(path:String):Bool {
@@ -269,7 +263,16 @@ class HxcCompat {
 
 	/** Analyze one HXC source file without modifying it or its donor tree. */
 	public static function analyze(source:String, ?path:String):HxcCompatResult {
-		var text = source == null ? '' : source;
+		var result = analyzeSource(source, path);
+		// The passes leave thousands of dead regular expressions per file; see
+		// EngineMemory.scriptTranslated for why they are collected a few files at a time.
+		EngineMemory.scriptTranslated(source == null ? 0 : source.length);
+		return result;
+	}
+
+	static function analyzeSource(source:String, ?path:String):HxcCompatResult {
+		// `import ... as Alias` names are spelled out first, so every later pass sees real class names.
+		var text = HxcScriptSyntaxLowering.expandImportAliases(source == null ? '' : source);
 		var clean = stripComments(text);
 		var qualifiedStateAliases = collectQualifiedStateAliases(clean);
 		// Only these two donor menu classes have a direct native destination. Keep
@@ -315,6 +318,7 @@ class HxcCompat {
 		var lowerBase = baseClass.toLowerCase();
 		var lowerPath = path == null ? '' : path.toLowerCase();
 		var kind = classify(lowerBase, lowerPath, false, clean);
+		var modulePriority:Null<Int> = kind == 'module' ? moduleConstructorPriority(clean) : null;
 		var characterDefinition:Dynamic = kind == 'character'
 			? detectCharacterInfoDefinition(clean) : null;
 		var shaderDefinition:Dynamic = kind == 'shader'
@@ -501,7 +505,7 @@ class HxcCompat {
 					continue;
 				appendUnique(companionClassNames, companionFragment.name);
 				var companionPath = (path == null ? '' : path) + '#companion:' + companionFragment.name;
-				var companion = analyze(companionFragment.source, companionPath);
+				var companion = analyzeSource(companionFragment.source, companionPath);
 				if (companion == null)
 					continue;
 				if (runtimeShaderDescriptors.length == 1
@@ -679,8 +683,14 @@ class HxcCompat {
 		// object graphs, but stage construction has a narrow engine-owned adapter
 		// for the common BGSprite/FlxSprite/layer/starting-point surface.  Do not
 		// copy any other constructor expressions into the generated interpreter.
-		var constructorSafe = kind == 'stage' ? true : applyConstructorState(functions, stateFields, stateInitializers,
-			constructorStatements);
+		// A V-Slice Stage keeps its own state in new() after super('id') (a save
+		// object, a flag). Replay the same bounded constructor state modules get;
+		// anything outside that surface is simply left out, as before, and never
+		// marks the stage unsafe. Other stage bases keep the dedicated adapter above.
+		var constructorSafe = kind == 'stage'
+			? (baseClass != 'Stage' || applyConstructorState(functions, stateFields, stateInitializers,
+				constructorStatements) || true)
+			: applyConstructorState(functions, stateFields, stateInitializers, constructorStatements);
 		var moduleInitializationSafe = kind != 'module' || (stateInitializerSafe && constructorSafe);
 		var moduleSafe = kind != 'module';
 		if (videoModuleAdapter) {
@@ -1156,9 +1166,11 @@ class HxcCompat {
 			characterDefinition: characterDefinition,
 			shaderDefinition: shaderDefinition,
 			runtimeShaderDescriptor: runtimeShaderDescriptor,
-			runtimeShaderDescriptors: runtimeShaderDescriptors
+			runtimeShaderDescriptors: runtimeShaderDescriptors,
+			modulePriority: modulePriority
 		};
-		result.generatedHscript = generateHscript(result);
+		// The game's HScript parser has no cast keyword, type checks or quoted object keys.
+		result.generatedHscript = HxcScriptSyntaxLowering.lower(generateHscript(result));
 		result.nativeNoteDefinitions = nativeNoteDefinitions(result);
 		return result;
 	}
@@ -1396,6 +1408,7 @@ class HxcCompat {
 			var normalized = StringTools.replace(chain, ' ', '');
 			if (normalized == '.getFloat' || normalized == '.getBool' || normalized == '.getInt'
 				|| normalized == '.getString' || normalized == '.cancel' || normalized == '.cancelEvent'
+				|| normalized == '.stopPropagation' || normalized == '.stopEventPropagation'
 				|| normalized == '.note.noteData.getDirection'
 				|| normalized == '.note.noteData.getMustHitNote'
 				|| normalized == '.note.noteData.getStrumlineIndex'
@@ -1444,7 +1457,8 @@ class HxcCompat {
 	static function payloadFieldChainSupported(chain:String):Bool {
 		if (chain == null || chain == '')
 			return true;
-		for (field in ['.eventCanceled', '.canceled', '.cancelled', '.eventKind', '.cancel', '.cancelEvent', '.step', '.beat',
+		for (field in ['.eventCanceled', '.canceled', '.cancelled', '.eventKind', '.cancel', '.cancelEvent',
+			'.stopPropagation', '.stopEventPropagation', '.shouldPropagate', '.step', '.beat',
 			'.elapsed', '.healthChange', '.judgement', '.dir', '.direction', '.playerOne',
 			'.score', '.scoreChange', '.isComboBreak', '.playSound', '.doesNotesplash', '.playAnim',
 			'.hitDiff', '.comboCount', '.hasPossibleNotes', '.holdNote',
@@ -1731,57 +1745,18 @@ class HxcCompat {
 	}
 
 	/** Map V-Slice lifecycle spellings to the callback names used by PlayState. */
-	static function lifecycleCallback(name:String):String {
-		if (name == null)
-			return '';
-		switch (name.toLowerCase()) {
-			case 'new': return '';
-			case 'step': return 'stepHit';
-			case 'oncreate' | 'create': return 'start';
-			case 'oncreatepost' | 'createpost': return 'createPost';
-			case 'onsongstart' | 'songstart': return 'songStart';
-			case 'onupdate' | 'update': return 'update';
-			case 'onupdatepost' | 'updatepost': return 'updatePost';
-			case 'onbeathit' | 'beathit': return 'beatHit';
-			case 'onstephit' | 'stephit': return 'stepHit';
-			case 'onsectionhit' | 'sectionhit': return 'sectionHit';
-			case 'oncountdowntick' | 'countdowntick': return 'countdownTick';
-			case 'oncountdownstep' | 'countdownstep': return 'countdownStep';
-			case 'oncountdownend' | 'countdownend': return 'countdownEnd';
-			case 'onstartcountdown' | 'startcountdown': return 'startCountdown';
-			case 'oncountdownstart' | 'countdownstart': return 'countdownStart';
-			case 'ongoodnotehit' | 'goodnotehit': return 'goodNoteHit';
-			case 'onopponentnotehit' | 'opponentnotehit': return 'opponentNoteHit';
-			case 'onnotehit' | 'notehit': return 'noteHit';
-			case 'onnoteincoming' | 'noteincoming': return 'noteIncoming';
-			case 'onnotemiss' | 'notemiss': return 'noteMiss';
-			case 'onopponentnotemiss' | 'opponentnotemiss': return 'opponentNoteMiss';
-			case 'onnoteghostmiss' | 'noteghostmiss': return 'noteGhostMiss';
-			case 'onnoteholddrop' | 'noteholddrop': return 'noteHoldDrop';
-			case 'onsongend' | 'onendsong' | 'songend': return 'songEnd';
-			case 'onsongretry' | 'songretry': return 'songRetry';
-			case 'onsongevent' | 'songevent': return 'songEvent';
-			case 'onpause' | 'pause': return 'pause';
-			case 'onresume' | 'resume': return 'resume';
-			case 'onpausesubstateopen' | 'pausesubstateopen': return 'subStateOpenEnd';
-			case 'onpausesubstateclose' | 'pausesubstateclose': return 'subStateCloseBegin';
-			case 'onsongloaded' | 'songloaded': return 'songLoaded';
-			case 'onstatechangebegin' | 'statechangebegin': return 'stateChangeBegin';
-			case 'onstatechangeend' | 'statechangeend': return 'stateChangeEnd';
-			case 'onstateopenend' | 'stateopenend': return 'stateChangeEnd';
-			case 'onsubstateclosebegin' | 'substateclosebegin': return 'subStateCloseBegin';
-			case 'onsubstateopenend' | 'substateopenend': return 'subStateOpenEnd';
-			case 'onsubstateopenbegin' | 'substateopenbegin': return 'subStateOpenBegin';
-			case 'onsubstatecloseend' | 'substatecloseend': return 'subStateCloseEnd';
-			case 'onplaystateenter' | 'playstateenter': return 'playStateEnter';
-			case 'ondifficultyswitch' | 'difficultyswitch': return 'difficultySwitch';
-			case 'oncapsuleselected' | 'capsuleselected': return 'capsuleSelected';
-			case 'onfocusgained' | 'focusgained': return 'focusGained';
-			case 'onfocuslost' | 'focuslost': return 'focusLost';
-			case 'ongameover' | 'gameover': return 'gameOver';
-			case 'ondestroy' | 'destroy': return 'destroy';
-			default: return '';
-		}
+	static function lifecycleCallback(name:String):String
+		return ScriptLifecycleNames.vsliceCanonical(name);
+
+	/**
+		The priority a Module passes as the second `super(...)` argument. V-Slice
+		sorts modules by it (lower first) before every event, so it decides which
+		module may cancel or stop an event before the others see it.
+	*/
+	static function moduleConstructorPriority(source:String):Int {
+		var value = firstString(source, '\\bsuper\\s*\\(\\s*["\\\'][^"\\\']*["\\\']\\s*,\\s*(-?[0-9]+)\\s*[,)]');
+		var parsed = value == '' ? null : Std.parseInt(value);
+		return parsed == null ? ScriptDispatchOrder.DEFAULT_MODULE_PRIORITY : parsed;
 	}
 
 	/** Character callbacks which PlayState dispatches on the actor's live scope. */
@@ -3809,7 +3784,8 @@ class HxcCompat {
 		// a field declaration (`var flag = true; function new()`). Treat the
 		// semicolon as a declaration boundary too, otherwise constructor state is
 		// skipped and a dynamic `active = flag` can be mistaken for a literal rule.
-		var expression = new EReg('(?:^|[\\n\\r{};])\\s*(?:(?:public|private|protected|static|override|inline|macro)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(', 'm');
+		// `final` and `dynamic` methods are ordinary helpers to the script.
+		var expression = new EReg('(?:^|[\\n\\r{};])\\s*(?:(?:public|private|protected|static|override|inline|macro|final|dynamic)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(', 'm');
 		var offset = 0;
 		while (offset < source.length) {
 			var rest = source.substr(offset);
@@ -4080,10 +4056,13 @@ class HxcCompat {
 				index++;
 				continue;
 			}
-			if (depth == 0 && body.substr(index, 3) == 'var'
+			// `final` fields are constants the methods read like any other field
+			// (final FADE_TIME:Float = 3.5), so they are state as much as `var` is.
+			var keywordLength = body.substr(index, 3) == 'var' ? 3 : body.substr(index, 5) == 'final' ? 5 : 0;
+			if (depth == 0 && keywordLength > 0
 				&& (index == 0 || !isIdentifierPart(body.charAt(index - 1)))
-				&& (index + 3 >= body.length || !isIdentifierPart(body.charAt(index + 3)))) {
-				var nameStart = index + 3;
+				&& (index + keywordLength >= body.length || !isIdentifierPart(body.charAt(index + keywordLength)))) {
+				var nameStart = index + keywordLength;
 				while (nameStart < body.length && isWhitespace(body.charAt(nameStart)))
 					nameStart++;
 				var nameEnd = nameStart;
@@ -4091,6 +4070,10 @@ class HxcCompat {
 					nameEnd++;
 					while (nameEnd < body.length && isIdentifierPart(body.charAt(nameEnd)))
 						nameEnd++;
+				}
+				// `final function` and `final class` declare no field.
+				var declaredName = body.substr(nameStart, nameEnd - nameStart);
+				if (nameEnd > nameStart && declaredName != 'function' && declaredName != 'class') {
 					var declarationEnd = nameEnd;
 					var declarationDepth = 0;
 					var declarationQuote = '';
@@ -4120,11 +4103,11 @@ class HxcCompat {
 					var declarationText = body.substr(nameEnd, declarationEnd - nameEnd);
 					var equals = declarationText.indexOf('=');
 					var initializer = equals < 0 ? '' : StringTools.trim(declarationText.substr(equals + 1));
-					result.push({name: body.substr(nameStart, nameEnd - nameStart), initializer: initializer});
+					result.push({name: declaredName, initializer: initializer});
 					index = declarationEnd < body.length ? declarationEnd + 1 : declarationEnd;
 					continue;
 				}
-				index = nameEnd > index ? nameEnd : index + 3;
+				index = nameEnd > index ? nameEnd : index + keywordLength;
 				continue;
 			}
 			index++;
@@ -4926,6 +4909,10 @@ class HxcCompat {
 		var value = StringTools.trim(source);
 		// ShaderFilter only wraps an already-constructed shader field.
 		if (new EReg('^new\\s+ShaderFilter\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\s*\\)$', 'm').match(value))
+			return true;
+		// V-Slice's own shader classes have engine versions with the same fields and
+		// take no arguments; a field left null makes every later `field.hue = ...` miss.
+		if (new EReg('^new\\s+(?:AdjustColorShader|DropShadowShader)\\s*\\(\\s*\\)$', 'm').match(value))
 			return true;
 		var constructor = new EReg('^new\\s+FlxRuntimeShader\\s*\\(', 'm');
 		if (!constructor.match(value))
@@ -7057,6 +7044,8 @@ class HxcCompat {
 				| 'FlxAnimateFrames' | 'FlxAngle' | 'FlxTypeText' | 'HealthIcon' | 'ShaderFilter'
 				| 'FlxRuntimeShader' | 'FlxTrail' | 'FlxEffectSprite' | 'FlxGlitchEffect'
 				| 'FlxButton' | 'FlxTextBorderStyle'
+				// Every script interpreter binds these base-game shaders (PluginManager), so modules may construct them.
+				| 'AdjustColorShader' | 'DropShadowShader' | 'IntervalShake'
 				| 'Math' | 'Std' | 'String' | 'StringTools' | 'Array' | 'Map' | 'Reflect'
 				| 'Paths' | 'CoolUtil' | 'FNFAssets' | 'File' | 'FileSystem' | 'System'
 				| 'TitleState' | 'MainMenuState' | 'CreditsState' | 'SaveDataState' | 'FreeplayState' | 'Character' | 'OptionsHandler' | 'DifficultyManager'
@@ -8387,6 +8376,7 @@ class HxcCompat {
 			.replace(output, 'HxcCompatRuntime.createFunkinSprite(hxcAssetRoot)');
 		output = new EReg('\\bnew\\s+FunkinSprite\\s*\\(', 'g')
 			.replace(output, 'HxcCompatRuntime.createFunkinSprite(hxcAssetRoot, ');
+		output = lowerFunkinSpriteLoads(output);
 		// In-stage FunkinVideoSprite instances must remain ordinary sprites so
 		// source cameras, z-order, seeking, looping and end callbacks keep control.
 		// The native adapter bounds their media to this script's package owner.
@@ -8585,6 +8575,31 @@ class HxcCompat {
 	}
 
 	/**
+		V-Slice loads a FunkinSprite's art with `loadSparrow(key)` / `loadTexture(key)`,
+		which return the sprite, most often chained on the constructor. The native
+		sprite has neither method, so both forms go through runtime helpers that
+		resolve the key in the script's own asset root and return the sprite:
+		`new FunkinSprite(x, y).loadSparrow(k)` (already lowered to createFunkinSprite)
+		and `name.loadTexture(k)` on a variable or field.
+	*/
+	static function lowerFunkinSpriteLoads(source:String):String {
+		if (source == null || source.indexOf('.load') < 0)
+			return source;
+		var output = source;
+		for (method in ['Sparrow', 'Texture']) {
+			output = new EReg('HxcCompatRuntime\\.createFunkinSprite\\(hxcAssetRoot((?:\\s*,[^()]*)?)\\)\\s*\\.\\s*load'
+				+ method + '\\s*\\(', 'g')
+				.replace(output, 'HxcCompatRuntime.funkinLoad' + method
+					+ '(HxcCompatRuntime.createFunkinSprite(hxcAssetRoot$1), hxcAssetRoot, ');
+			// `super.loadX(...)` inside a FunkinSprite subclass stays a plain call.
+			output = new EReg('(^|[^A-Za-z0-9_.])((?:this\\s*\\.\\s*)?(?!super\\b)[A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*load'
+				+ method + '\\s*\\(', 'gm')
+				.replace(output, '$1HxcCompatRuntime.funkinLoad' + method + '($2, hxcAssetRoot, ');
+		}
+		return output;
+	}
+
+	/**
 		Normalize donor object names which have a direct native equivalent.  The
 		method names themselves stay intact: PlayState, StageHelper, and Character
 		seed the corresponding HXC accessors, which also keeps chained expressions
@@ -8674,6 +8689,12 @@ class HxcCompat {
 		// on the explicit native host bridge instead of exposing a mutable window.
 		output = new EReg('\\bWindowUtil\\s*\\.\\s*setWindowTitle\\s*\\(', 'g')
 			.replace(output, 'hxcSetWindowTitle(');
+		// Focus listeners (pausing a video while the window is unfocused) go on
+		// engine-owned events that are cleared with the state, never on lime's own.
+		output = new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusOut\\b', 'g')
+			.replace(output, "HxcCompatRuntime.windowFocusEvent('out')");
+		output = new EReg('\\bApplication\\s*\\.\\s*current\\s*\\.\\s*window\\s*\\.\\s*onFocusIn\\b', 'g')
+			.replace(output, "HxcCompatRuntime.windowFocusEvent('in')");
 		output = lowerBareSetIconCalls(output);
 		// CreditsDataHandler is a donor-side singleton.  The native CreditsState
 		// consumes the same plain entry shape through this isolated process-local
@@ -9565,9 +9586,25 @@ class HxcCompat {
 			}
 			var calleeEnd = skipWhitespaceBackward(output, open - 1) + 1;
 			var calleeStart = calleeEnd - 1;
-			while (calleeStart >= 0 && (isIdentifierPart(output.charAt(calleeStart))
-				|| output.charAt(calleeStart) == '.' || isWhitespace(output.charAt(calleeStart))))
-				calleeStart--;
+			while (calleeStart >= 0) {
+				var current = output.charAt(calleeStart);
+				if (isIdentifierPart(current) || current == '.') {
+					calleeStart--;
+					continue;
+				}
+				// Spaces may sit beside a dot (`a .b()`), but a space between two words
+				// ends the callee: `else a.b()?.c` must not pull `else` into it.
+				if (isWhitespace(current)) {
+					var before = skipWhitespaceBackward(output, calleeStart);
+					var after = skipWhitespaceForward(output, calleeStart);
+					if ((before >= 0 && output.charAt(before) == '.')
+						|| (after < output.length && output.charAt(after) == '.')) {
+						calleeStart = before;
+						continue;
+					}
+				}
+				break;
+			}
 			calleeStart++;
 			var callee = StringTools.trim(output.substr(calleeStart, calleeEnd - calleeStart));
 			if (callee == '' || callee.startsWith('.') || callee.indexOf('?.') >= 0
@@ -9923,6 +9960,13 @@ class HxcCompat {
 		var start = end;
 		while (start >= 0 && (isIdentifierPart(source.charAt(start)) || source.charAt(start) == '.'))
 			start--;
+		// `list[index].id` or `call().id`: the scan stopped at the bracket and kept the
+		// joining dot, so the operand continues with the bracketed expression before it.
+		if (source.charAt(start + 1) == '.') {
+			var before = skipWhitespaceBackward(source, start);
+			if (before >= 0 && (source.charAt(before) == ']' || source.charAt(before) == ')'))
+				return scanLeftOperandStart(source, before);
+		}
 		return start + 1;
 	}
 
@@ -10513,15 +10557,43 @@ class HxcCompat {
 			var matched = assignment.matchedPos();
 			var target = StringTools.trim(assignment.matched(1));
 			var assignmentOperator = StringTools.trim(assignment.matched(2));
-			var value = StringTools.trim(assignment.matched(3));
+			// Earlier lowerings turn `a?.b` and `??` into closures whose bodies hold
+			// semicolons, so the value runs to the statement's end, not the first `;`.
+			var valueStart = matched.pos + matched.len - assignment.matched(3).length;
+			var valueEnd = zIndexValueEnd(output, valueStart);
+			var value = StringTools.trim(output.substring(valueStart, valueEnd));
 			var replacement = 'HxcCompatRuntime.setZIndex(' + target + ', ' + value + ', '
 				+ quote(assignmentOperator) + ')';
-			output = output.substr(0, matched.pos) + replacement
-				+ output.substr(matched.pos + matched.len);
+			output = output.substr(0, matched.pos) + replacement + output.substr(valueEnd);
 		}
 		var read = new EReg('\\b(' + receiver + ')'
 			+ '\\s*\\.\\s*zIndex\\b', 'g');
 		return read.replace(output, 'HxcCompatRuntime.getZIndex($1)');
+	}
+
+	/** End of an assigned value: the first `;` or line break outside brackets and strings. */
+	static function zIndexValueEnd(source:String, start:Int):Int {
+		var depth = 0;
+		var index = start;
+		while (index < source.length) {
+			var c = source.charAt(index);
+			if (c == '"' || c == "'") {
+				// scanQuoteEnd returns the offset just after the closing quote.
+				index = scanQuoteEnd(source, index);
+				continue;
+			}
+			if (c == '(' || c == '[' || c == '{')
+				depth++;
+			else if (c == ')' || c == ']' || c == '}') {
+				// Closing a bracket the value did not open ends the value.
+				if (depth == 0)
+					return index;
+				depth--;
+			} else if (depth == 0 && (c == ';' || c == '\n'))
+				return index;
+			index++;
+		}
+		return index;
 	}
 
 	/** Emit only literal FPS Plus character metadata into generated HScript. */

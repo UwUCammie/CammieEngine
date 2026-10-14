@@ -1,5 +1,7 @@
 package;
 
+import SourceEventPreparation.SourceEventPreparationHooks;
+
 /** Historical NV event callbacks over shared native rows and script handles. */
 class NightmareVisionLegacyEventPreparation {
 	public static function invoke(event:Dynamic, callback:String, scripts:Void->Map<String, Dynamic>,
@@ -24,10 +26,18 @@ class NightmareVisionLegacyEventPreparation {
 
 	public static function earlyTrigger(event:Dynamic, scripts:Void->Map<String, Dynamic>,
 		call:(Dynamic, String, Array<Dynamic>)->Dynamic, global:(String, Array<Dynamic>)->Dynamic):Float {
+		return SourceEventPreparation.earlyOffsetFor(Reflect.getProperty(event, 'event'),
+			scriptEarlyTrigger(event, scripts, call, global));
+	}
+
+	/** The scripts' answer before the built-in default: the event's own module,
+	 * when it has one, replaces the global answer. */
+	static function scriptEarlyTrigger(event:Dynamic, scripts:Void->Map<String, Dynamic>,
+		call:(Dynamic, String, Array<Dynamic>)->Dynamic, global:(String, Array<Dynamic>)->Dynamic):Null<Float> {
 		var offset:Float = global('eventEarlyTrigger', [Reflect.getProperty(event, 'event'),
 			Reflect.getProperty(event, 'value1'), Reflect.getProperty(event, 'value2')]);
 		if (scripts().exists(Reflect.getProperty(event, 'event'))) offset = invoke(event, 'getOffset', scripts, call);
-		return SourceEventPreparation.earlyOffsetFor(Reflect.getProperty(event, 'event'), offset);
+		return offset;
 	}
 
 	/** Public eventPushed and generation share builtin ownership and callback arguments. */
@@ -54,21 +64,27 @@ class NightmareVisionLegacyEventPreparation {
 		publish:(Dynamic, SourceEventNote)->Void, builtin:Dynamic->Bool, ?pushedNames:Void->Map<String, Bool>):Void {
 		var names:Map<String, Bool> = [];
 		if (pushedNames == null) pushedNames = function() return names;
-		for (entry in collect(visit, noteOffset, scripts, call)) {
-			var event = entry.event;
-			if (!pushedNames().exists(event.event)) {
-				pushedNames().set(event.event, true);
-				firstPush(event, scripts, call);
-			}
-		}
+		// Pass one only announces each event name once. The name map is read
+		// again for every row because scripts may replace it.
+		var announce:SourceEventPreparationHooks = {
+			firstPush: function(event:SourceEventNote) firstPush(event, scripts, call)
+		};
+		for (entry in collect(visit, noteOffset, scripts, call))
+			SourceEventPreparation.pushView(entry.event, pushedNames(), announce);
 		for (name in pushedNames().keys()) load(name);
+		// Pass two admits the rows again, now with every module loaded, and
+		// offsets and publishes each one.
+		var row:Dynamic = null;
+		var publishRow:SourceEventPreparationHooks = {
+			earlyOffset: function(event:SourceEventNote) return scriptEarlyTrigger(event, scripts, call, global),
+			push: function(event:SourceEventNote) {
+				publish(row, event);
+				pushed(event, scripts, call, builtin);
+			}
+		};
 		for (entry in collect(visit, noteOffset, scripts, call)) {
-			var event = entry.event;
-			// Match compound-assignment evaluation: callbacks may mutate the view.
-			var time = event.strumTime;
-			event.strumTime = time - earlyTrigger(event, scripts, call, global);
-			publish(entry.row, event);
-			pushed(event, scripts, call, builtin);
+			row = entry.row;
+			SourceEventPreparation.pushView(entry.event, null, publishRow);
 		}
 	}
 }

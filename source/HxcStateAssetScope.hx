@@ -45,7 +45,9 @@ class HxcStateAssetScope {
 			return fallback;
 		}
 		try {
-			return FlxAtlasFrames.fromSparrow(FNFAssets.getBitmapData(image), FNFAssets.getText(metadata));
+			// The canonical graphic, not its bitmap: flixel would scan every
+			// cached graphic to find the owner of a bare BitmapData.
+			return FlxAtlasFrames.fromSparrow(FNFAssets.getFlxGraphic(image), FNFAssets.getText(metadata));
 		} catch (error:Dynamic) {
 			diagnoseFallback(root, clean, label, true, true, Std.string(error));
 			return fallback;
@@ -72,7 +74,7 @@ class HxcStateAssetScope {
 			return null;
 		}
 		try {
-			var pixels = FNFAssets.getBitmapData(image);
+			var pixels = FNFAssets.getFlxGraphic(image);
 			var atlasText = FNFAssets.getText(metadata);
 			return packer
 				? FlxAtlasFrames.fromSpriteSheetPacker(pixels, atlasText)
@@ -226,7 +228,7 @@ class HxcStateAssetScope {
 				metadata = packer ? Paths.file('images/' + clean + '.txt') : Paths.file('images/' + clean + '.xml');
 			var imageValue:Dynamic = image;
 			if (image != null && FNFAssets.exists(image))
-				imageValue = FNFAssets.getBitmapData(image);
+				imageValue = FNFAssets.getFlxGraphic(image);
 			var metadataValue:Dynamic = metadata;
 			if (metadata != null && FNFAssets.exists(metadata))
 				metadataValue = FNFAssets.getText(metadata);

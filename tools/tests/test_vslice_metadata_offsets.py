@@ -132,6 +132,8 @@ class Main {
     if (Conductor.songTimeFromAudio(1000) != 1300 || Conductor.audioTimeFromSong(1300) != 1000) fail("positive map");
     if (Conductor.songStartThreshold(0) != 300 || Conductor.audioStartSongTime(0) != 300) fail("positive start");
     if (Conductor.songStartThreshold(5000) != 0 || Conductor.audioStartSongTime(5000) != 5000) fail("positive start past offset");
+    // Scripts sync media with songPosition - combinedOffset; that has to be the audio time.
+    if (Conductor.combinedOffset != 300 || 1300 - Conductor.combinedOffset != Conductor.audioTimeFromSong(1300)) fail("combined offset");
     // Negative: the audio has a lead-in that the chart skips.
     Conductor.instrumentalOffset = -5000;
     if (Conductor.audioTimeFromSong(Conductor.audioStartSongTime(0)) != 5000) fail("negative start skips lead-in");

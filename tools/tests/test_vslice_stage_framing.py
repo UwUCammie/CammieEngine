@@ -293,8 +293,17 @@ class Main {
         self.assertIn("if (psychCameraCompatibilityActive && !actor.authoredCamOffsets)", play_state)
         self.assertIn("actor.followCamX + (includeTurnNudge ? bfcam[0] : 0);", play_state)
         self.assertIn("actor.followCamX + (includeTurnNudge ? dadcam[0] : 0);", play_state)
-        self.assertIn("if (psychCameraCompatibilityActive || dad.authoredCamOffsets)", play_state)
-        self.assertIn("if (psychCameraCompatibilityActive || boyfriend.authoredCamOffsets)", play_state)
+        # Authored actors get no per-animation nudge: the nudge writer is told
+        # so and then writes zero for both axes.
+        self.assertIn("writeCharacterCamNudge(dad, dadcam, fallbackCamOffset,\n\t\t\t\tpsychCameraCompatibilityActive || dad.authoredCamOffsets);", play_state)
+        self.assertIn("writeCharacterCamNudge(boyfriend, bfcam, fallbackCamOffset,\n\t\t\t\tpsychCameraCompatibilityActive || boyfriend.authoredCamOffsets);", play_state)
+        nudge_start = play_state.index("\tfunction writeCharacterCamNudge(")
+        nudge = play_state[nudge_start:play_state.index("\n\t/** Same answer as name.split", nudge_start)]
+        self.assertIn("var x:Float = 0;", nudge)
+        self.assertIn("var y:Float = 0;", nudge)
+        self.assertIn("if (!authored) {", nudge)
+        self.assertIn("target[0] = x;", nudge)
+        self.assertIn("target[1] = y;", nudge)
         self.assertIn("cameraTargetForActor(boyfriend, 'boyfriend',", play_state)
         self.assertIn("setCameraFollowActor(dad, 'dad');", play_state)
 

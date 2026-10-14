@@ -79,6 +79,7 @@ class SourceMissLifecycleTest(unittest.TestCase):
             "function reactGirlfriendToComboBreak(",
             "function playMissSound(",
             "function applySourceMissHealth(",
+            "function killOnSourceMiss(",
             "function refreshSourceAccuracy():Void",
             "function sourceMissCounts(",
         )

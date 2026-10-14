@@ -26,6 +26,8 @@ class KadeNoteConversionTest(unittest.TestCase):
                 (ROOT / "source/EngineCompat.hx").read_text()
             , newline='\n')
             (folder_path / "ScriptCallbackResult.hx").write_text((ROOT / "source/ScriptCallbackResult.hx").read_text(), newline="\n")
+            # EngineCompat reads its callback spellings from the shared lifecycle table.
+            (folder_path / "ScriptLifecycleNames.hx").write_text((ROOT / "source/ScriptLifecycleNames.hx").read_text(), newline="\n")
             (folder_path / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline="\n")
             # EngineCompat's HScript judgement hooks take the shared outcome type.
             (folder_path / "NoteJudgementOutcome.hx").write_text((ROOT / "source/NoteJudgementOutcome.hx").read_text(), newline="\n")

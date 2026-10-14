@@ -141,6 +141,12 @@ class PluginManager {
 		interp.variables.set("FlxRuntimeShader", ShaderHandler.CoolRuntimeShader);
 		interp.variables.set("ShaderFilter", openfl.filters.ShaderFilter);
 		interp.variables.set("DropShadowShader", shaders.DropShadowShader);
+		// V-Slice stages, characters and song scripts build this by name. Without
+		// it the first `new AdjustColorShader()` aborts the rest of the callback.
+		interp.variables.set("AdjustColorShader", shaders.AdjustColorShader);
+		// V-Slice scripts call IntervalShake.shake from timer callbacks, where an
+		// unknown name is not caught by the script runner and stops the game.
+		interp.variables.set("IntervalShake", IntervalShake);
 		interp.variables.set("FlxTrail", FlxTrail);
 		// Springless and other imported modcharts construct these chainable
 		// effects directly. Keeping them in the common interpreter prevents a

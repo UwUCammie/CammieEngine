@@ -18,7 +18,9 @@ class FreeplaySourceSearchTest(unittest.TestCase):
             self.skipTest("portable Haxe interpreter is unavailable")
         source = (ROOT / "source/FreeplayState.hx").read_text()
         normalizer = extract_method(source, 'public static function searchNorm(')
-        matcher = extract_method(source, 'function songMatches(')
+        # songMatches caches this filter's answers (test_freeplay_song_match_cache);
+        # the filter rules themselves live in songMatchesUncached.
+        matcher = extract_method(source, 'function songMatchesUncached(')
         fixture = '''
 class UserLibrary {
  public static var model = new UserLibraryData();
@@ -48,7 +50,7 @@ class FreeplayState {
  public var identityReads=0;
  function resolveSongIdentity(song:SongMetadata):Void {identityReads++;}
  public function new() {}
- public function runMatch(index:Int):Bool return songMatches(index);
+ public function runMatch(index:Int):Bool return index >= 0 && index < songs.length && songMatchesUncached(index);
  function sourceDisplayFor(song:SongMetadata):Void {
   if (song.sourceResolved) return;
   song.sourceResolved=true;

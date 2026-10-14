@@ -161,6 +161,9 @@ class NoteOutcomeFixture {{
             || !near(constants.HEALTH_GHOST_MISS_PENALTY, 0.04)
             || !near(constants.HEALTH_SICK_BONUS, 0.07))
             fail("health amounts");
+        // A bad hit costs health at the default cutoff, as Note.getHealth gives it.
+        if (!near(constants.HEALTH_BAD_BONUS, -0.03) || !near(constants.HEALTH_SHIT_BONUS, -0.06))
+            fail("bad and shit bonuses follow the native judgement");
         if (constants.MS_PER_SEC != 1000 || constants.STEPS_PER_BEAT != 4) fail("timing constants");
         ''')
 
@@ -202,7 +205,7 @@ class NoteOutcomeFixture {{
             "if (EngineCompat.hxcPayloadCanceled(hxcGhostEvent))",
             "EngineCompat.hxcApplyNoteOutcome(hxcMissEvent, missOutcome);",
             "if (missOutcome != null && missOutcome.healthChanged()) healthBonus = missOutcome.healthChange;",
-            "if (countsMiss && (missOutcome == null || missOutcome.isComboBreak)) combo = 0;",
+            "if (missOutcome == null || missOutcome.isComboBreak) combo = 0;",
             "if (missOutcome != null) playMissSound = missOutcome.playSound;",
             "(missOutcome == null || missOutcome.playAnim)",
         ]:

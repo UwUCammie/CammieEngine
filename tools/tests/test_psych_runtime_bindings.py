@@ -492,11 +492,36 @@ class PsychRuntimeBindingsFixture {
   check(callbackFailed&&Reflect.callMethod(null,luaOwner.variables.get('runHaxeFunction'),['twice',[5]])==11,
    'embedded callback failure did not restore the Iris execution frame');
 
-  var missingImport=false;
-  try Reflect.callMethod(null,runA,['import definitely.missing.PsychBinding;'])
-  catch(error:Dynamic) missingImport=Std.string(error).indexOf('definitely.missing.PsychBinding')>=0;
-  check(missingImport&&Reflect.callMethod(null,runA,['afterImportFailure = 33; afterImportFailure;'])==33,
+  // Like Psych, a failing runHaxeCode is reported and returns nil instead of
+  // aborting the Lua callback that called it.
+  var reports:Array<String>=[];
+  var previousTrace=haxe.Log.trace;
+  haxe.Log.trace=function(value:Dynamic,?infos:haxe.PosInfos):Void reports.push(Std.string(value));
+  var missingResult:Dynamic=Reflect.callMethod(null,runA,['import definitely.missing.PsychBinding;']);
+  var runtimeResult:Dynamic=Reflect.callMethod(null,runA,['var none = null; none.setColorTransform(1);']);
+  haxe.Log.trace=previousTrace;
+  var missingImport=missingResult==null&&reports.length==2
+   &&reports[0].indexOf('[psych-hscript-error]')==0&&reports[0].indexOf('definitely.missing.PsychBinding')>=0;
+  check(missingImport&&runtimeResult==null&&reports[1].indexOf('owner-a/owner.lua#runHaxeCode')>=0
+   &&Reflect.callMethod(null,runA,['afterImportFailure = 33; afterImportFailure;'])==33,
    'missing import diagnostic or subsequent embedded execution recovery failed');
+
+  // runHaxeFunction follows the same rule: a module that was never started, a
+  // missing function and a throwing function are each reported and return nil.
+  var functionReports:Array<String>=[];
+  haxe.Log.trace=function(value:Dynamic,?infos:haxe.PosInfos):Void functionReports.push(Std.string(value));
+  var runFunction=luaOwner.variables.get('runHaxeFunction');
+  Reflect.callMethod(null,runA,['function failsLater() { var none = null; return none.length; }']);
+  var notStarted:Dynamic=Reflect.callMethod(null,luaFirst.variables.get('runHaxeFunction'),['twice',[1]]);
+  var notDefined:Dynamic=Reflect.callMethod(null,runFunction,['definitelyNotDefined',[]]);
+  var thrown:Dynamic=Reflect.callMethod(null,runFunction,['failsLater',[]]);
+  haxe.Log.trace=previousTrace;
+  check(notStarted==null&&notDefined==null&&thrown==null&&functionReports.length==3
+   &&functionReports[0].indexOf('[psych-hscript-error] owner-a/lua-first.lua#runHaxeFunction')==0
+   &&functionReports[1].indexOf('definitelyNotDefined')>=0
+   &&functionReports[2].indexOf('owner-a/owner.lua#runHaxeFunction')>=0
+   &&Reflect.callMethod(null,runFunction,['twice',[5]])==11,
+   'a failing runHaxeFunction was not reported as nil, or the module did not recover');
 
   Sys.println('OK');
  }

@@ -61,4 +61,56 @@ class NightmareVisionModchartObject {
 	public function new(?kind:String) {
 		if (kind != null) this.kind = kind;
 	}
+
+	/**
+		Put every field back to the value a new object starts with. Lets the
+		per-modifier formula calls reuse one carrier instead of allocating one
+		per modifier per note per frame, which kept the collector busy on
+		modchart-heavy songs. Must list every field declared above.
+	**/
+	public function reset(?kind:String):NightmareVisionModchartObject {
+		nativeObject = null;
+		livePosition = null;
+		flushLive = null;
+		readLive = null;
+		this.kind = kind != null ? kind : NOTE;
+		player = 0;
+		data = 0;
+		active = true;
+		isSustain = false;
+		isSustainEnd = false;
+		wasGoodHit = false;
+		strumTime = 0;
+		multSpeed = 1;
+		width = 0;
+		height = 0;
+		frameWidth = 0;
+		frameHeight = 0;
+		sustainLength = 0;
+		baseScaleX = 1;
+		baseScaleY = 1;
+		scaleX = 1;
+		scaleY = 1;
+		x = 0;
+		y = 0;
+		alphaMod = 1;
+		rgbFlash = 0;
+		rgbAlpha = 1;
+		angle = 0;
+		mAngle = 0;
+		legacyClip = null;
+		legacySpeed = null;
+		legacyCoordinates = false;
+		garbage = false;
+		legacyTypeOffsetX = 0;
+		legacyTypeOffsetY = 0;
+		sourceOffsetX = 0;
+		sourceOffsetY = 0;
+		typeOffsetX = 0;
+		typeOffsetY = 0;
+		spriteOffsetX = 0;
+		spriteOffsetY = 0;
+		centerOriginAndOffsets = false;
+		return this;
+	}
 }

@@ -25,7 +25,7 @@
 		"name": "Results Character:",
 		"type": "string",
 		"description": "Decides which character will be shown in the results screen. When Adaptive is selected, it will play the matching characters results screens. (Not BF or Pico = random)",
-		"value": "Adaptive"
+		"value": "Adaptive",
 		"options": ["BF Only", "Pico Only", "Adaptive"]
 	},
 	{

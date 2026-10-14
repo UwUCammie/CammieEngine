@@ -133,7 +133,7 @@ class HxcScriptDiscovery {
 			var child = Path.join([root, entry.name]);
 			if (entry.isDirectory == null ? FileSystem.isDirectory(child) : entry.isDirectory)
 				budget = collectRoot(child, output, budget, depth + 1);
-			else if (entry.name.toLowerCase().endsWith('.hxc')) {
+			else if (isScriptedClassFile(child)) {
 				output.push(FileSystem.fullPath(child));
 				budget--;
 			}
@@ -141,6 +141,203 @@ class HxcScriptDiscovery {
 		return budget;
 	}
 	#end
+
+	/**
+		True for a file the scripted-class runtime may own: any `.hxc`, or a `.hx`
+		inside a `scripts/` tree that declares a class with a known scripted base
+		(Module, Song, Stage, a character class and so on). Since Funkin 0.8.4
+		Polymod reads both extensions. Psych, Nightmare Vision and Codename keep
+		classless HScript in `.hx`, so the class test keeps those files out.
+		`import.hx` and `import.hxc` only hold package import defaults and are
+		never scripts themselves. `source` skips the file read when the caller
+		already has the text.
+	*/
+	public static function isScriptedClassFile(path:String, ?source:String):Bool {
+		if (path == null || path == '')
+			return false;
+		var normalized = path.replace('\\', '/').toLowerCase();
+		var slash = normalized.lastIndexOf('/');
+		var name = slash < 0 ? normalized : normalized.substr(slash + 1);
+		if (name == 'import.hx' || name == 'import.hxc')
+			return false;
+		if (name.endsWith('.hxc'))
+			return true;
+		if (!name.endsWith('.hx') || !('/' + normalized).contains('/scripts/'))
+			return false;
+		var text = source;
+		#if sys
+		if (text == null) {
+			var cached = scriptedHxCache.get(normalized);
+			try {
+				if (!FileSystem.exists(path))
+					return false;
+				var stat = FileSystem.stat(path);
+				var modifiedAt = stat.mtime == null ? 0 : stat.mtime.getTime();
+				if (cached != null && cached.modifiedAt == modifiedAt && cached.size == stat.size)
+					return cached.scripted;
+				text = File.getContent(path);
+				var scripted = declaresScriptedClass(text);
+				scriptedHxCache.set(normalized, {modifiedAt: modifiedAt, size: stat.size, scripted: scripted});
+				return scripted;
+			} catch (_:Dynamic) {
+				scriptedHxCache.remove(normalized);
+				return false;
+			}
+		}
+		#end
+		return text != null && declaresScriptedClass(text);
+	}
+
+	static function declaresScriptedClass(source:String):Bool {
+		// A class with a scripted base needs both words. Classless HScript, which
+		// is most `.hx` under Psych-family scripts trees, skips the tokenizer.
+		if (source == null || source.indexOf('class') < 0 || source.indexOf('extends') < 0)
+			return false;
+		for (declaration in HxcScriptIdentity.classDeclarations(source))
+			if (HxcScriptIdentity.familyForBase(declaration.base) != '')
+				return true;
+		return false;
+	}
+
+	#if sys
+	static var scriptedHxCache:Map<String, {var modifiedAt:Float; var size:Int; var scripted:Bool;}> = new Map();
+
+	/**
+		Package import defaults for one script, the way Polymod applies
+		`import.hx` / `import.hxc`: files in the script's own folder and every
+		parent folder up to the `scripts` root, outermost first, so a nearer
+		file's import of the same name comes later and wins. Each entry is one
+		`import ...;` or `using ...;` statement. Only the active `#if` branches
+		count, and comments are ignored.
+	*/
+	public static function importDefaults(scriptPath:String):Array<String> {
+		var result:Array<String> = [];
+		if (scriptPath == null || scriptPath == '')
+			return result;
+		var folders:Array<String> = [];
+		var folder = Path.directory(Path.normalize(scriptPath.replace('\\', '/')));
+		for (_ in 0...16) {
+			if (folder == null || folder == '')
+				break;
+			folders.unshift(folder);
+			var base = Path.withoutDirectory(folder).toLowerCase();
+			if (base == 'scripts')
+				break;
+			var parent = Path.directory(folder);
+			if (parent == folder)
+				break;
+			folder = parent;
+		}
+		// Without a scripts folder above it the file is not in a package tree,
+		// so only its own folder can supply defaults.
+		if (folders.length > 0 && Path.withoutDirectory(folders[0]).toLowerCase() != 'scripts')
+			folders = [folders[folders.length - 1]];
+		for (directory in folders)
+			for (name in ['import.hx', 'import.hxc']) {
+				var file = Path.join([directory, name]);
+				if (!FileSystem.exists(file) || FileSystem.isDirectory(file))
+					continue;
+				try {
+					for (statement in importStatements(File.getContent(file)))
+						if (result.indexOf(statement) < 0)
+							result.push(statement);
+				} catch (_:Dynamic) {}
+			}
+		return result;
+	}
+	#end
+
+	/** `import` and `using` statements of an import defaults file, normalised to `import a.b.C;`. */
+	public static function importStatements(source:String):Array<String> {
+		var result:Array<String> = [];
+		if (source == null)
+			return result;
+		var text = stripLineAndBlockComments(HxcPreprocessor.apply(source));
+		for (part in text.split(';')) {
+			var statement = part.trim();
+			var keyword = statement.startsWith('import') ? 'import' : (statement.startsWith('using') ? 'using' : '');
+			if (keyword == '' || statement.length <= keyword.length)
+				continue;
+			var space = statement.charCodeAt(keyword.length);
+			if (space != ' '.code && space != '\t'.code && space != '\n'.code && space != '\r'.code)
+				continue;
+			var body = collapseWhitespace(statement.substr(keyword.length));
+			if (body == '' || !isImportBody(body))
+				continue;
+			var line = keyword + ' ' + body + ';';
+			if (result.indexOf(line) < 0)
+				result.push(line);
+		}
+		return result;
+	}
+
+	static function stripLineAndBlockComments(source:String):String {
+		var output = new StringBuf();
+		var index = 0;
+		while (index < source.length) {
+			var code = source.fastCodeAt(index);
+			if (code == '/'.code && index + 1 < source.length && source.fastCodeAt(index + 1) == '/'.code) {
+				while (index < source.length && source.fastCodeAt(index) != '\n'.code)
+					index++;
+				continue;
+			}
+			if (code == '/'.code && index + 1 < source.length && source.fastCodeAt(index + 1) == '*'.code) {
+				var close = source.indexOf('*/', index + 2);
+				index = close < 0 ? source.length : close + 2;
+				output.addChar(' '.code);
+				continue;
+			}
+			output.addChar(code);
+			index++;
+		}
+		return output.toString();
+	}
+
+	static function collapseWhitespace(value:String):String {
+		var output = new StringBuf();
+		var pendingSpace = false;
+		for (index in 0...value.length) {
+			var code = value.fastCodeAt(index);
+			if (code == ' '.code || code == '\t'.code || code == '\n'.code || code == '\r'.code) {
+				pendingSpace = output.length > 0;
+				continue;
+			}
+			if (pendingSpace)
+				output.addChar(' '.code);
+			pendingSpace = false;
+			output.addChar(code);
+		}
+		return output.toString();
+	}
+
+	/** A dotted path with an optional `.*` or ` as Alias` / ` in Alias` tail. */
+	static function isImportBody(body:String):Bool {
+		var words = body.split(' ');
+		if (words.length != 1 && !(words.length == 3 && (words[1] == 'as' || words[1] == 'in')
+			&& isIdentifier(words[2])))
+			return false;
+		var parts = words[0].split('.');
+		for (index in 0...parts.length) {
+			var part = parts[index];
+			if (part == '*' && index == parts.length - 1 && index > 0)
+				continue;
+			if (!isIdentifier(part))
+				return false;
+		}
+		return true;
+	}
+
+	static function isIdentifier(value:String):Bool {
+		if (value == null || value == '')
+			return false;
+		for (index in 0...value.length) {
+			var code = value.fastCodeAt(index);
+			var letter = (code >= 'a'.code && code <= 'z'.code) || (code >= 'A'.code && code <= 'Z'.code) || code == '_'.code;
+			if (!letter && !(index > 0 && code >= '0'.code && code <= '9'.code))
+				return false;
+		}
+		return true;
+	}
 
 	/** Map the donor directory layout to a stable importer family name. */
 	public static function familyForPath(path:String):String {
@@ -158,7 +355,14 @@ class HxcScriptDiscovery {
 		if (path == null || path == '')
 			return 'unknown';
 		var normalized = path.replace('\\', '/').toLowerCase();
-		if (!normalized.endsWith('.hxc'))
+		// A `.hx` file only counts when it declares a scripted class, and the
+		// import defaults files are never scripts.
+		if (!normalized.endsWith('.hxc') && !normalized.endsWith('.hx'))
+			return 'unknown';
+		if (normalized.endsWith('/import.hxc') || normalized.endsWith('/import.hx')
+			|| normalized == 'import.hxc' || normalized == 'import.hx')
+			return 'unknown';
+		if (normalized.endsWith('.hx') && !isScriptedClassFile(path))
 			return 'unknown';
 		var parts = normalized.split('/');
 		for (index in 0...parts.length) {
@@ -183,7 +387,10 @@ class HxcScriptDiscovery {
 
 	#if sys
 	static function sourceIdentity(path:String, pathFamily:String):HxcScriptIdentityData {
-		if (path == null || path == '' || !path.toLowerCase().endsWith('.hxc'))
+		var lower = path == null ? '' : path.toLowerCase();
+		if (lower == '' || (!lower.endsWith('.hxc') && !lower.endsWith('.hx')))
+			return null;
+		if (lower.endsWith('.hx') && !isScriptedClassFile(path))
 			return null;
 		var normalized = Path.normalize(StringTools.replace(path, '\\', '/'));
 		var key = normalized + '\u0000' + (pathFamily == null ? '' : pathFamily);

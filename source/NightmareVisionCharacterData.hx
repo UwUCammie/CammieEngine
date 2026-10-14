@@ -102,91 +102,33 @@ class NightmareVisionCharacterData {
 	}
 	#end
 
+	/** Owner file first, then the package's core dependency. The path keeps the
+		owner root as given and the file's on-disk spelling. */
 	static function resolveOwnerFile(ownerRoot:String, relative:String):Null<String> {
-		var ownerFile = resolveExactFile(ownerRoot, relative);
+		#if sys
+		var ownerFile = SourceOwnerFiles.resolveFile(ownerRoot, relative);
 		if (ownerFile != null)
-			return Path.normalize(Path.join([ownerRoot, relative]));
-		var coreRelative = '__nmv_core/' + relative;
-		return resolveExactFile(ownerRoot, coreRelative) == null ? null
-			: Path.normalize(Path.join([ownerRoot, coreRelative]));
+			return ownerFile;
+		return SourceOwnerFiles.resolveFile(ownerRoot, '__nmv_core/' + relative);
+		#else
+		return null;
+		#end
 	}
 
 	static function normalizeOwnerPath(ownerRoot:String, relative:String):Null<String> {
-		var clean = normalizeRelative(relative);
-		if (clean == '' || ownerRoot == null || StringTools.trim(ownerRoot) == '')
-			return null;
 		#if sys
-		try {
-			var root = Path.normalize(FileSystem.fullPath(ownerRoot));
-			if (!FileSystem.isDirectory(root))
-				return null;
-			var ownerPath = resolveExactDirectory(root, clean);
-			if (ownerPath != null)
-				return Path.normalize(Path.join([ownerRoot, clean]));
-			return null;
-		} catch (_:Dynamic) {
-			return null;
-		}
+		return SourceOwnerFiles.resolveDirectory(ownerRoot, relative);
 		#else
 		return null;
 		#end
 	}
 
 	static function normalizeRelative(value:String):String {
-		if (value == null || value == '' || value.startsWith('/') || value.indexOf('\\') >= 0)
-			return '';
-		var parts = value.split('/');
-		for (part in parts)
-			if (part == '' || part == '.' || part == '..' || part.indexOf(':') >= 0)
-				return '';
-		return parts.join('/');
+		var clean = SourceOwnerFiles.cleanRelative(value);
+		return clean == null ? '' : clean;
 	}
 
 	#if sys
-	static function resolveExactFile(ownerRoot:String, relative:String):Null<String> {
-		var clean = normalizeRelative(relative);
-		if (clean == '' || ownerRoot == null || StringTools.trim(ownerRoot) == '')
-			return null;
-		try {
-			var root = Path.normalize(FileSystem.fullPath(ownerRoot));
-			if (!FileSystem.isDirectory(root))
-				return null;
-			var current = root;
-			var parts = clean.split('/');
-			for (i in 0...parts.length) {
-				current = Path.join([current, parts[i]]);
-				if (!FileSystem.exists(current) || !withinRoot(root, current))
-					return null;
-				if (i < parts.length - 1 && !FileSystem.isDirectory(current))
-					return null;
-				if (i == parts.length - 1 && FileSystem.isDirectory(current))
-					return null;
-			}
-			return current;
-		} catch (_:Dynamic) {
-			return null;
-		}
-	}
-
-	static function resolveExactDirectory(ownerRoot:String, relative:String):Null<String> {
-		var clean = normalizeRelative(relative);
-		if (clean == '' || ownerRoot == null || StringTools.trim(ownerRoot) == '')
-			return null;
-		try {
-			var root = Path.normalize(FileSystem.fullPath(ownerRoot));
-			if (!FileSystem.isDirectory(root))
-				return null;
-			var current = root;
-			for (part in clean.split('/')) {
-				current = Path.join([current, part]);
-				if (!FileSystem.isDirectory(current) || !withinRoot(root, current))
-					return null;
-			}
-			return current;
-		} catch (_:Dynamic) {
-			return null;
-		}
-	}
 
 	static function hasAnimateAtlas(prefix:String):Bool {
 		if (!FileSystem.isDirectory(prefix) || !FileSystem.exists(prefix + '/Animation.json'))
@@ -204,21 +146,12 @@ class NightmareVisionCharacterData {
 	}
 
 	static function resolveSparrowPrefix(ownerRoot:String, relativePrefix:String):Null<String> {
-		if (resolveExactFile(ownerRoot, relativePrefix + '.png') == null
-			|| resolveExactFile(ownerRoot, relativePrefix + '.xml') == null)
+		var image = SourceOwnerFiles.resolveFile(ownerRoot, relativePrefix + '.png');
+		if (image == null || SourceOwnerFiles.resolveFile(ownerRoot, relativePrefix + '.xml') == null)
 			return null;
-		return Path.normalize(Path.join([ownerRoot, relativePrefix]));
-	}
-
-	static function withinRoot(root:String, path:String):Bool {
-		try {
-			var base = Path.normalize(FileSystem.fullPath(root));
-			var candidate = Path.normalize(FileSystem.fullPath(path));
-			var prefix = base.endsWith('/') ? base : base + '/';
-			return candidate == base || candidate.startsWith(prefix);
-		} catch (_:Dynamic) {
-			return false;
-		}
+		// The loader appends the extensions to this prefix, so it takes the
+		// image's on-disk spelling.
+		return Path.withoutExtension(image);
 	}
 	#end
 }

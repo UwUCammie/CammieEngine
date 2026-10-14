@@ -155,7 +155,10 @@ class FreeplayLibraryManagementTest(unittest.TestCase):
         star = (ROOT / 'source/RankStar.hx').read_text(encoding='utf-8')
         # Compact stars carry no number; the colour key above the list explains them.
         self.assertNotIn('wholeLabel', star)
-        self.assertIn('if (legend != null && legendLift > 0.01) {', star)
+        self.assertIn('if (legendLift > 0.01) {', star)
+        # The legend text exists only once a selected card lifts it.
+        self.assertIn('if (legend == null) legend = createLegend();', star)
+        self.assertNotIn('legend = new flixel.text.FlxText', star[star.index('function configureCard('):star.index('function createLegend(')])
         self.assertIn("browserText(keyX - 58, 33, 56, 'RATING', 12, 0xFF9DB2CC);", freeplay)
         self.assertIn('ChartDifficultyAnalysis.ratingColor(FreeplayPulse.keyRating(column))', freeplay)
         self.assertIn('var at = keyX + FreeplayPulse.keyColumn(keyValues[i]);', freeplay)

@@ -449,5 +449,36 @@ class Fixture {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+    def test_lowered_table_copy_template_accepts_a_single_table(self):
+        # A common camera template defines its own deep tableCopy(t,st,copyMeta,x)
+        # and calls it with only the table, at load time.
+        fixture = r'''
+class Fixture {
+ static function main() {
+  var lua = 'local tableCopy\nfunction tableCopy(t,st,copyMeta,x)\n'
+   + ' getfenv().things = getfenv().things or {}\n'
+   + ' st = st or {}\n for i,v in pairs(t) do\n  st[i] = v\n end\n'
+   + ' local meta = getmetatable(t)\n if (type(meta) == "table") then\n  setmetatable(st, meta)\n end\n'
+   + ' return st\nend\n'
+   + 'local template = {zoom = 2}\nlocal cams = {hud = tableCopy(template)}\n'
+   + 'function onCreate()\n print(cams.hud.zoom)\nend\n';
+  var converted=LuaCompat.translate(lua,'camera-template.lua');
+  if (!converted.supported) throw converted.diagnostics.join('|');
+  if (converted.hscript.indexOf('luaTableCopy') < 0) throw 'template copy was not lowered: ' + converted.hscript;
+  var lines:Array<String> = [];
+  var interp=new LuaCompatInterp();
+  interp.variables.set('print',Reflect.makeVarArgs(function(args:Array<Dynamic>) {
+   lines.push([for (value in args) value == null ? 'nil' : Std.string(value)].join(','));
+  }));
+  interp.execute(new hscript.Parser().parseString(converted.hscript));
+  Reflect.callMethod(null,interp.variables.get('onCreate'),[]);
+  if (lines.join('|') != '2') throw 'single argument copy failed: '+lines.join('|');
+ }
+}
+'''
+        result = self.run_haxe(fixture)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -33,45 +33,47 @@ class SourcePsychReflection {
 		for(i in 1...end) object=read(object,parts[i],maps);
 		return object;
 	}
+	// The split arrays used for paths below come from a shared cache and are
+	// only read; call() still splits its own copy because it shifts it.
 	/** Text/object callbacks use a direct root even for a single-token path. */
 	public function object(path:String):Dynamic {
-		var parts=path.split('.');
+		var parts=SourceScriptReflection.dotParts(path);
 		return parts.length>1 ? read(loop(parts),parts[parts.length-1]) : direct(parts[0]);
 	}
 	public function get(path:String,maps:Bool=false):Dynamic {
-		var parts=path.split('.');
+		var parts=SourceScriptReflection.dotParts(path);
 		return parts.length>1 ? read(loop(parts,true,maps),parts[parts.length-1],maps) : read(target(),path,maps);
 	}
 	public function set(path:String,value:Dynamic,maps:Bool=false,instances:Bool=false):Dynamic {
-		var parts=path.split('.');
+		var parts=SourceScriptReflection.dotParts(path);
 		var object=parts.length>1 ? loop(parts,true,maps) : target();
 		write(object,parts[parts.length-1],instances?parse(value):value,maps);return value;
 	}
 	public function getClass(type:String,path:String,maps:Bool=false):Dynamic {
 		var object=resolveClass(type);
 		if(object==null){warn('getPropertyFromClass: Class $type not found');return null;}
-		for(part in path.split('.')) object=read(object,part,maps);
+		for(part in SourceScriptReflection.dotParts(path)) object=read(object,part,maps);
 		return object;
 	}
 	public function setClass(type:String,path:String,value:Dynamic,maps:Bool=false,instances:Bool=false):Dynamic {
 		var object=resolveClass(type);
 		if(object==null){warn('setPropertyFromClass: Class $type not found');return null;}
-		var parts=path.split('.');
+		var parts=SourceScriptReflection.dotParts(path);
 		for(i in 0...parts.length-1) object=read(object,parts[i],maps);
 		write(object,parts[parts.length-1],instances?parse(value):value,maps);return value;
 	}
 	function groupRoot(path:String,maps:Bool):Dynamic {
-		var parts=path.split('.');
+		var parts=SourceScriptReflection.dotParts(path);
 		return parts.length>1 ? loop(parts,false,maps) : readProperty(target(),path);
 	}
 	function groupField(object:Dynamic,field:String,maps:Bool):Dynamic {
-		var parts=field.split('.');
+		var parts=SourceScriptReflection.dotParts(field);
 		var owner=SourceScriptReflection.groupFieldOwner(object,parts,readProperty);
 		var key=parts[parts.length-1];
 		return maps&&SourceScriptReflection.isPsychMap(owner) ? owner.get(key) : readProperty(owner,key);
 	}
 	function setGroupField(object:Dynamic,field:String,value:Dynamic,maps:Bool):Void {
-		var parts=field.split('.');
+		var parts=SourceScriptReflection.dotParts(field);
 		var owner=SourceScriptReflection.groupFieldOwner(object,parts,readProperty);
 		var key=parts[parts.length-1];
 		if(maps&&SourceScriptReflection.isPsychMap(owner)) owner.set(key,value);

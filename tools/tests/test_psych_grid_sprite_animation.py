@@ -37,6 +37,7 @@ class PsychOwnerPaths {
     });
     return proxy;
   }
+  public static function bridgeFacade(owner:String):Dynamic return create(owner);
 }
 
 class FakeAnimation {
@@ -241,6 +242,10 @@ class FNFAssets {
                 (ROOT / "source/PsychOwnerAssetPath.hx").read_text(encoding="utf-8"),
                 encoding="utf-8", newline="\n",
             )
+            # The owner path rules and physical containment check it delegates to.
+            for shared in ("SourceOwnerFiles.hx", "CompatCanonicalPath.hx"):
+                (work / shared).write_text((ROOT / "source" / shared).read_text(encoding="utf-8"),
+                    encoding="utf-8", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=120,

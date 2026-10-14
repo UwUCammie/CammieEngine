@@ -23,8 +23,13 @@ class ChartDifficultyRefresh {
 		if (!FileSystem.exists(resolved)) {reads.set(path,'missing');return null;}
 		if (FileSystem.isDirectory(resolved)) throw 'Chart analysis input is not a regular file: '+path;
 		if (FileSystem.stat(resolved).size > limit) {reads.set(path,'oversized:'+FileSystem.stat(resolved).size);return null;}
-		var text = File.getContent(resolved);
-		reads.set(path,haxe.crypto.Sha256.make(haxe.io.Bytes.ofString(text)).toHex());return text;
+		// Hash the bytes on disk, as the final recheck does. Native strings re-encode
+		// non UTF-8 text (donor comments in old code pages), so a hash of the decoded
+		// text never matched and the package stayed unavailable after every launch.
+		// The text is still read the tolerant way; a change between the two reads
+		// is caught by that recheck.
+		reads.set(path,haxe.crypto.Sha256.make(File.getBytes(resolved)).toHex());
+		return File.getContent(resolved);
 	}
 	/** Script files directly inside one imported folder. Optional content: a
 	 * missing or unreadable folder contributes nothing. */

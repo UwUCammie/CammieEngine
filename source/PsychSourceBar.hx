@@ -60,12 +60,7 @@ class PsychSourceBar extends FlxSpriteGroup
 			return;
 		}
 
-		if(valueFunction != null)
-		{
-			var value:Null<Float> = FlxMath.remapToRange(FlxMath.bound(valueFunction(), bounds.min, bounds.max), bounds.min, bounds.max, 0, 100);
-			percent = (value != null ? value : 0);
-		}
-		else percent = 0;
+		percent = SourceBarLayout.percentFor(valueFunction, bounds.min, bounds.max);
 		super.update(elapsed);
 	}
 
@@ -90,18 +85,8 @@ class PsychSourceBar extends FlxSpriteGroup
 
 	public function regenerateClips()
 	{
-		if(leftBar != null)
-		{
-			leftBar.setGraphicSize(Std.int(bg.width), Std.int(bg.height));
-			leftBar.updateHitbox();
-			leftBar.clipRect = new FlxRect(0, 0, Std.int(bg.width), Std.int(bg.height));
-		}
-		if(rightBar != null)
-		{
-			rightBar.setGraphicSize(Std.int(bg.width), Std.int(bg.height));
-			rightBar.updateHitbox();
-			rightBar.clipRect = new FlxRect(0, 0, Std.int(bg.width), Std.int(bg.height));
-		}
+		SourceBarLayout.regenerateClip(leftBar, bg, false);
+		SourceBarLayout.regenerateClip(rightBar, bg, false);
 		updateBar();
 	}
 

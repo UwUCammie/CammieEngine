@@ -33,10 +33,73 @@ class DynamicAtlasFrames {
     // flixel drops a graphic from the bitmap cache once its useCount hits zero,
     // and switchCharacter destroys the outgoing character, which would otherwise
     // free a sheet another swap still needs. Bounded so a long session cannot
-    // grow it forever.
+    // grow it forever, emptied when a song ends (Main) and when an import or a
+    // file write moves FNFAssets.pathEpoch, so it never serves old frames.
     static var atlasCache:Map<String, FlxAtlasFrames> = new Map();
     static var atlasOrder:Array<String> = [];
-    static final ATLAS_CACHE_MAX = 16;
+    // Metadata handed over as text is keyed by image alone and compared here,
+    // instead of building a key that copies and hashes the whole file.
+    static var atlasText:Map<String, String> = new Map();
+    static var atlasEpoch:Int = 0;
+    static final ATLAS_CACHE_MAX = 32;
+    // Longer than any asset path; atlas metadata is usually far longer.
+    static final MAX_PATH_LENGTH = 1024;
+
+    /** Release every cached atlas and the use counts it holds. */
+    static public function releaseAll():Void {
+        for (key in atlasOrder.copy())
+            releaseCachedAtlas(key);
+        atlasCache.clear();
+        atlasText.clear();
+    }
+
+    static function checkEpoch():Void {
+        var epoch = FNFAssets.pathEpoch();
+        if (epoch == atlasEpoch)
+            return;
+        releaseAll();
+        atlasEpoch = epoch;
+    }
+
+    /** True for an argument that is clearly file contents, not a path. Such
+        text must never reach FNFAssets.exists, which would normalize it, list
+        the game folder and remember it as a missed path. */
+    static function isInlineText(value:String):Bool {
+        // JSON text opens with a brace. A brace further in can be part of a
+        // real file or folder name, so only the first character counts.
+        return value != null && (value.length > MAX_PATH_LENGTH || value.indexOf('<') >= 0
+            || value.indexOf('\n') >= 0 || (value.length > 0 && StringTools.fastCodeAt(value, 0) == '{'.code));
+    }
+
+    /** Cache key for an image plus metadata, null when the image is not a path. */
+    static function atlasKey(kind:String, png:FlxGraphicAsset, metadata:String):String {
+        if (!(png is String))
+            return null;
+        if (isInlineText(metadata))
+            return kind + '|' + png + '|<inline>';
+        return kind + '|' + png + '|' + metadata;
+    }
+
+    static function cachedFor(key:String, metadata:String):FlxAtlasFrames {
+        if (key == null)
+            return null;
+        checkEpoch();
+        if (atlasText.exists(key) && atlasText.get(key) != metadata)
+            return null;
+        return getCachedAtlas(key);
+    }
+
+    static function store(key:String, metadata:String, frames:FlxAtlasFrames):FlxAtlasFrames {
+        if (key != null && isInlineText(metadata)) {
+            if (frames == null || frames.parent == null || frames.parent.isDestroyed)
+                return frames;
+            // One inline slot per image: a different text replaces the old one.
+            if (atlasText.exists(key) && atlasText.get(key) != metadata)
+                releaseCachedAtlas(key);
+            atlasText.set(key, metadata);
+        }
+        return putCachedAtlas(key, frames);
+    }
 
     static public function getCachedAtlas(key:String):FlxAtlasFrames {
         if (key == null)
@@ -69,25 +132,25 @@ class DynamicAtlasFrames {
         var frames = atlasCache.get(key);
         atlasCache.remove(key);
         atlasOrder.remove(key);
+        atlasText.remove(key);
         if (frames != null && frames.parent != null && !frames.parent.isDestroyed)
             frames.parent.decrementUseCount();
     }
 
     public static function fromSparrow(png:FlxGraphicAsset, xml:String) {
-        var key:String = (png is String) ? 'sparrow|' + png + '|' + xml : null;
-        if (key != null) {
-            var hit = getCachedAtlas(key);
-            if (hit != null)
-                return hit;
-        }
-        if (FNFAssets.exists(xml)) {
+        var key = atlasKey('sparrow', png, xml);
+        var hit = cachedFor(key, xml);
+        if (hit != null)
+            return hit;
+        var source = xml;
+        if (!isInlineText(xml) && FNFAssets.exists(xml)) {
             xml = FNFAssets.getText(xml);
         }
         if ((png is String)) {
             // show time again
-            png = FNFAssets.getBitmapData(png);
+            png = FNFAssets.getFlxGraphic(png);
         }
-        return putCachedAtlas(key, FlxAtlasFrames.fromSparrow(png, xml));
+        return store(key, source, FlxAtlasFrames.fromSparrow(png, xml));
     }
     /**
      * Load a V-Slice multi-sparrow character as one frame collection.
@@ -138,30 +201,27 @@ class DynamicAtlasFrames {
         return main;
     }
     public static function fromSpriteSheetPacker(png:FlxGraphicAsset, txt:String) {
-        var key:String = (png is String) ? 'sspack|' + png + '|' + txt : null;
-        if (key != null) {
-            var hit = getCachedAtlas(key);
-            if (hit != null)
-                return hit;
-        }
-		if (FNFAssets.exists(txt)) {
+        var key = atlasKey('sspack', png, txt);
+        var hit = cachedFor(key, txt);
+        if (hit != null)
+            return hit;
+        var source = txt;
+		if (!isInlineText(txt) && FNFAssets.exists(txt)) {
 			txt = FNFAssets.getText(txt);
 		}
 		if ((png is String)) {
 			// show time again
-			png = FNFAssets.getBitmapData(png);
+			png = FNFAssets.getFlxGraphic(png);
 		}
-        return putCachedAtlas(key, FlxAtlasFrames.fromSpriteSheetPacker(png, txt));
+        return store(key, source, FlxAtlasFrames.fromSpriteSheetPacker(png, txt));
     }
     // JSON-Hash atlases (Paths.getCharacterJson) go through the same cache
     public static function fromTexturePackerJson(png:FlxGraphicAsset, json:String) {
-        var key:String = (png is String) ? 'tpackjson|' + png + '|' + json : null;
-        if (key != null) {
-            var hit = getCachedAtlas(key);
-            if (hit != null)
-                return hit;
-        }
-        return putCachedAtlas(key, FlxAtlasFrames.fromTexturePackerJson(png, json));
+        var key = atlasKey('tpackjson', png, json);
+        var hit = cachedFor(key, json);
+        if (hit != null)
+            return hit;
+        return store(key, json, FlxAtlasFrames.fromTexturePackerJson(png, json));
     }
 }
 

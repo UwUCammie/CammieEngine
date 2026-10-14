@@ -516,7 +516,21 @@ function onUpdate(elapsed)
     end
 end
 
+-- V-Slice plays the clear percent tick at most once per frame, from one tween
+-- update. Here every percent has its own timer and the eased schedule finishes
+-- dozens of them in the first frames, so one tick per timer stacked that many
+-- copies of the same sound and the first ticks came out far too loud.
+counterTickPlayed = false
+function playCounterTick()
+    if counterTickPlayed then
+        return
+    end
+    counterTickPlayed = true
+    playSound('scrollMenu', 0.8)
+end
+
 function onUpdatePost(elapsed)
+    counterTickPlayed = false
     if accuracyStyle == 'vslice' then
         vFakeAcc = math.floor(vsliceAccuracyCalc(fullSongNotes, sicks or 0, goods or 0) * 100)
         vAcc = vFakeAcc / 100
@@ -671,14 +685,14 @@ function onTimerCompleted(tag, loops, loopsLeft)
                 playAnim('cpR', tostring(riseAccuracy))
                 playAnim('cpRW', tostring(riseAccuracy))
                 setProperty('cpR.alpha', 1)
-                playSound('scrollMenu', 0.8)
+                playCounterTick()
             elseif riseAccuracy < 100 and riseAccuracy > 9 then
                 setProperty('cpL.alpha', 1)
                 playAnim('cpL', string.sub(tostring(riseAccuracy), 1, 1))
                 playAnim('cpR', string.sub(tostring(riseAccuracy), 2, 2))
                 playAnim('cpLW', string.sub(tostring(riseAccuracy), 1, 1))
                 playAnim('cpRW', string.sub(tostring(riseAccuracy), 2, 2))
-                playSound('scrollMenu', 0.8)
+                playCounterTick()
             elseif riseAccuracy == 100 then
                 setProperty('cp1.alpha', 1)
                 playAnim('cpL', '0')

@@ -296,7 +296,8 @@ class NightmareVisionInputClockRouteTest(unittest.TestCase):
     def setUpClass(cls):
         play = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
         cls.press_wrapper = extract_method(play, "function onNightmareVisionInputPress(")
-        cls.nv_press = extract_method(play, "function nightmareVisionSourceKeyPressed(")
+        cls.nv_press = extract_method(play, "function nightmareVisionSourceKeyPressed(") + "\n" \
+            + extract_method(play, "function sourceKeyPressAdmitted(")
         cls.field_for_note = extract_method(play, "function nightmareVisionFieldForNote(").replace(
             "NightmareVisionPlayFieldView", "InputField"
         )

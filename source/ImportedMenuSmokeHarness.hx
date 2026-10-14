@@ -63,9 +63,18 @@ class ImportedMenuSmokeHarness {
 		}
 	}
 
+	// The environment is fixed for the run and RuntimeSmokeHarness.enabled()
+	// asks this per note per frame, so read the variable once.
+	static var enabledResolved:Bool = false;
+	static var enabledValue:Bool = false;
+
 	public static function enabled():Bool {
 		#if sys
-		return Sys.getEnv('CAMMIE_MENU_SMOKE_PLAN') != null;
+		if (!enabledResolved) {
+			enabledValue = Sys.getEnv('CAMMIE_MENU_SMOKE_PLAN') != null;
+			enabledResolved = true;
+		}
+		return enabledValue;
 		#else
 		return false;
 		#end

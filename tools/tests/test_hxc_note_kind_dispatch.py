@@ -27,14 +27,26 @@ class HxcNoteKindDispatchTest(unittest.TestCase):
   public var variables:Map<String,Dynamic> = []; public function new() {}
 }
 class LuaCompatInterp extends FakeInterp {}
+typedef Interp = FakeInterp;
 class ScriptCallbackResult {
  public static var STOP_LUA = '##STOPLUA'; public static var STOP_HSCRIPT = '##STOPHSCRIPT'; public static var STOP_ALL = '##STOPALL';
 }
 class EngineCompat {
   public static function callbackArguments(name:String, selected:String,
       args:Array<Dynamic>, hxc:Bool):Array<Dynamic> return [hxc ? 'hxc' : 'legacy'];
+  public static function callbackNames(name:String):Array<String> return [name];
+  public static function canonicalCallback(name:String):String return name;
+  public static function hxcPayloadIn(args:Array<Dynamic>):Dynamic return null;
+  public static function hxcPayloadStopped(payload:Dynamic):Bool return false;
+}
+class OrderStub {
+  public function new() {}
+  public function arrange<T>(keys:Array<String>, live:Map<String,T>):Void {}
 }
 class State {
+  public var hxcDispatchOrder = new OrderStub();
+  public var hxcScriptEventScopes:Map<String,Bool> = [];
+  public var lastHxcCallPayload:Dynamic = null;
   public var hscriptStates:Map<String,FakeInterp> = [];
   public var hxcPayloadStates:Map<String,Bool> = [];
   public var defaultPsychGlobalScopes:Array<String> = [];
@@ -45,19 +57,26 @@ class State {
   function hxcCharacterScopeOwnsNote(scope:String,args:Array<Dynamic>):Bool return true;
   function hxcNoteKindScopeOwnsNote(scope:String,args:Array<Dynamic>):Bool return true;
   function callHscript(name:String,args:Array<Dynamic>,usehaxe:String,
-      optional:Bool,?returnValues:Array<Dynamic>):Void {
+      optional:Bool,?returnValues:Array<Dynamic>):Bool {
     var selectedName = name;
     var callArgs = EngineCompat.callbackArguments(name, selectedName, args,
       hxcPayloadStates.get(usehaxe) == true);
     received.push(usehaxe + ':' + callArgs[0]);
+    return true;
   }
 ''' + dispatch + hxc_dispatch + '''
 }
 class Main {
   static function main() {
     var state = new State();
-    state.hscriptStates.set('psych', new FakeInterp());
-    state.hscriptStates.set('hxc', new FakeInterp());
+    // Broadcasts pass over scopes that define none of the hook's spellings.
+    var hooks = function(interp:FakeInterp):FakeInterp {
+      for (name in ['noteMiss', 'noteHit', 'goodNoteHit']) interp.variables.set(name, function() {});
+      return interp;
+    };
+    state.hscriptStates.set('psych', hooks(new FakeInterp()));
+    state.hscriptStates.set('hxc', hooks(new FakeInterp()));
+    state.hscriptStates.set('no-hooks', new FakeInterp());
     state.hxcPayloadStates.set('psych', false);
     state.hxcPayloadStates.set('hxc', true);
     state.callAllHScript('noteMiss', [null], true);
@@ -68,7 +87,7 @@ class Main {
     if (state.received.length != 1 || state.received[0] != 'hxc:hxc')
       throw 'non-HXC scope entered early HXC dispatch';
     state.hscriptStates.get('psych').variables.set('__psychScoreGlobals',true);
-    var lua=new LuaCompatInterp();lua.variables.set('__psychScoreGlobals',true);
+    var lua=new LuaCompatInterp();hooks(lua);lua.variables.set('__psychScoreGlobals',true);
     state.hscriptStates.set('lua',lua);state.received=[];
     state.callAllHScript('goodNoteHit',[null,true],true,null,null,false,true);
     if(state.received.join(',')!='psych:legacy')throw 'Lua suppression also dropped host HScript observer';
@@ -155,7 +174,7 @@ class Main {
     def test_scope_registration_and_ghost_miss_boundary(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         self.assertIn("hxcNoteKindScopes.set(scope, HxcScriptDiscovery.normalizeToken(translatedCompat.identifier))", source)
-        self.assertIn("&& (!hxcNoteKindScopes.exists(key) || hxcNoteKindScopeOwnsNote(key, args))", source)
+        self.assertIn("|| (hxcNoteKindScopes.exists(key) && !hxcNoteKindScopeOwnsNote(key, args)))", source)
         miss = source[source.index("\tfunction noteMiss("):source.index("\n\tfunction badNoteCheck(")]
         self.assertLess(miss.index("callHxcNoteHScript('noteGhostMiss'"),
                         miss.index("if (note != null) {\n\t\t\t\thxcMissEvent"))

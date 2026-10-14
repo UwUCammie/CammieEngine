@@ -153,6 +153,12 @@ class LuaCompat {
 class PsychStageCompat {
   public static function translateFile(_path:String):CompatTranslation
     return {hscript:'function onCreate() {}', diagnostics:[]};
+  // Same rule as the engine: a translated module with any callback stands on its own.
+  public static function runtimeModuleUnusable(runtimeSource:String):Bool {
+    if (runtimeSource == null || StringTools.trim(runtimeSource) == '')
+      return true;
+    return !~/\bfunction\s+(?:on[A-Za-z0-9_]+|start)\s*\(/.match(runtimeSource);
+  }
 }
 
 class HxcCompat {

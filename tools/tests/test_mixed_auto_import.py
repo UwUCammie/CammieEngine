@@ -517,6 +517,8 @@ class Main {{
             (temp_path / "SourceChartReferences.hx").write_text(
                 (ROOT / "source/SourceChartReferences.hx").read_text()
             , newline='\n')
+            for shared in ("SourceOwnerFiles.hx", "CompatCanonicalPath.hx"):
+                (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
             , newline='\n')
@@ -530,6 +532,9 @@ class Main {{
             , newline='\n')
             (temp_path / "VSliceAstcAdapter.hx").write_text(self.astc, newline='\n')
             (temp_path / "VSliceImporter.hx").write_text(self.vslice, newline='\n')
+            # V-Slice discovery reads story levels into owner weeks.
+            for shared in ("VSliceStoryWeeks.hx", "PsychFamilyWeekImport.hx", "NightmareVisionSongNameCompat.hx"):
+                (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')
             (temp_path / "FreeplayDifficultyRating.hx").write_text(
                 (ROOT / "source/FreeplayDifficultyRating.hx").read_text(), newline="\n")
             (temp_path / "HxcScriptIdentity.hx").write_text(

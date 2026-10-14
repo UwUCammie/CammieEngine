@@ -7,6 +7,12 @@ private typedef SourceIrisImports = {
 	var paths:Array<String>;
 }
 
+private typedef SourceIrisParsed = {
+	var origin:String;
+	var paths:Array<String>;
+	var expression:Expr;
+}
+
 /**
 	Facade over the engine's persistent Iris interpreter for Psych's plain
 	HScript callbacks. The inherited HScript globals map is deliberately shared
@@ -16,6 +22,25 @@ class SourceIrisBridge extends hscript.Interp {
 	public var evaluator(default, null):NightmareVisionScriptInterp;
 	var parser:NightmareVisionScriptParser;
 	var previousVarsToBring:Dynamic;
+
+	// Scripts call runHaxeCode with the same short strings every frame. Import
+	// extraction, normalisation and parsing depend only on the text, so a
+	// parsed tree is kept per source string and executed again; the bindings
+	// and varsToBring work still runs on every call. Bounded, and cleared when
+	// full so strings built from changing values cannot grow it.
+	static inline var PARSE_CACHE_LIMIT:Int = 256;
+	static inline var PARSE_CACHE_MAX_SOURCE:Int = 8192;
+	var parsedSources:Map<String, SourceIrisParsed> = null;
+	var parsedSourceCount:Int = 0;
+
+	// PsychHscriptCompat.importBindings() builds a new map on every call; its
+	// content is fixed, so this read-only copy serves every lookup here.
+	static var seededImports:Map<String, String> = null;
+
+	static function importAliases():Map<String, String> {
+		if (seededImports == null) seededImports = PsychHscriptCompat.importBindings();
+		return seededImports;
+	}
 
 	public function new(parent:Dynamic) {
 		super();
@@ -29,8 +54,17 @@ class SourceIrisBridge extends hscript.Interp {
 		stays alive between calls, retaining functions and globals just like the
 		source engine. Reapplying normalization to an already marked source is safe.
 	*/
-	public function evaluate(source:String, origin:String, ?varsToBring:Dynamic):Dynamic {
+	public function evaluate(source:String, origin:String, ?varsToBring:Dynamic, cacheParse:Bool = false):Dynamic {
 		applyVarsToBring(varsToBring);
+		var label = origin == null || StringTools.trim(origin) == '' ? 'psych-hscript' : origin;
+		var cached = cacheParse && source != null && parsedSources != null ? parsedSources.get(source) : null;
+		if (cached != null && cached.origin == label) {
+			// Same steps as below minus the text work: seeded and imported
+			// bindings are refreshed because host variables may have changed.
+			bindKnownSeededLibraries();
+			bindImportPaths(cached.paths);
+			return evaluator.execute(cached.expression);
+		}
 		var extracted = extractImports(source);
 		var normalized = PsychHscriptCompat.normalize(extracted.source);
 		if (!normalized.supported)
@@ -40,15 +74,28 @@ class SourceIrisBridge extends hscript.Interp {
 		// Bind every known import whose short name was seeded by the host so either
 		// raw and marked source forms resolve identically.
 		bindKnownSeededLibraries();
-		for (path in extracted.paths) {
-			var alias = PsychHscriptCompat.importBindings().get(path);
+		bindImportPaths(extracted.paths);
+
+		var expression:Expr = parser.parseString(normalized.source, label);
+		// Only text that normalised and parsed is kept; a failing string is
+		// processed again so it reports its error every time.
+		if (cacheParse && source != null && source.length <= PARSE_CACHE_MAX_SOURCE) {
+			if (parsedSources == null || parsedSourceCount >= PARSE_CACHE_LIMIT) {
+				parsedSources = new Map();
+				parsedSourceCount = 0;
+			}
+			parsedSources.set(source, {origin: label, paths: extracted.paths, expression: expression});
+			parsedSourceCount++;
+		}
+		return evaluator.execute(expression);
+	}
+
+	function bindImportPaths(paths:Array<String>):Void {
+		for (path in paths) {
+			var alias = importAliases().get(path);
 			if (alias == null) alias = path.substr(path.lastIndexOf('.') + 1);
 			bindLibrary(alias, path);
 		}
-
-		var expression:Expr = parser.parseString(normalized.source,
-			origin == null || StringTools.trim(origin) == '' ? 'psych-hscript' : origin);
-		return evaluator.execute(expression);
 	}
 
 	/** Strip simple top-level imports before Psych's bounded normalizer runs. */
@@ -199,7 +246,7 @@ class SourceIrisBridge extends hscript.Interp {
 			return sourceClass;
 		}
 
-		var aliases = PsychHscriptCompat.importBindings();
+		var aliases = importAliases();
 		var shortName = name == null || StringTools.trim(name) == ''
 			? aliases.get(packagePath) : StringTools.trim(name);
 		var value:Dynamic = null;
@@ -224,7 +271,7 @@ class SourceIrisBridge extends hscript.Interp {
 		host. This also handles source that was normalized before it reached us.
 	*/
 	public function bindKnownSeededLibraries():Void {
-		for (path => shortName in PsychHscriptCompat.importBindings())
+		for (path => shortName in importAliases())
 			if (variables.exists(shortName))
 				evaluator.bindImport(path, variables.get(shortName));
 	}
@@ -270,6 +317,8 @@ class SourceIrisBridge extends hscript.Interp {
 	public function release():Void {
 		if (evaluator != null) evaluator.release();
 		previousVarsToBring = null;
+		parsedSources = null;
+		parsedSourceCount = 0;
 		variables = new Map<String, Dynamic>();
 		parser = null;
 		evaluator = null;

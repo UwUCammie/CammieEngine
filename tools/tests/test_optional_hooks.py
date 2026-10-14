@@ -25,6 +25,7 @@ class OptionalHooksTest(unittest.TestCase):
         hxc_dispatch=source.index('\n\t/** Dispatch a note lifecycle hook only to HXC interpreters', source_helpers)
         methods=(source[start:source_helpers]+source[hxc_dispatch:end]).replace('OptionsHandler.options.flashingLights', 'true')
         fixture='''class FakeInterp {public var variables:Map<String,Dynamic>;public function new(v:Map<String,Dynamic>){variables=v;}}
+typedef Interp = FakeInterp;
 class SourceIrisBridge extends FakeInterp {
  public function new(v:Map<String,Dynamic>) super(v);
  public function callFunction(name:String,args:Array<Dynamic>):Dynamic
@@ -34,6 +35,10 @@ class HookTest {
  var notes:{members:Array<Dynamic>}=null;
  var hscriptStates:Map<String,FakeInterp>=[];
  var hxcPayloadStates:Map<String,Bool>=[];
+ var hxcDispatchOrder:ScriptDispatchOrder=new ScriptDispatchOrder();
+ var hxcScriptEventScopes:Map<String,Bool>=[];
+ var lastHxcCallPayload:Dynamic=null;
+ var countdownStartErrors:Int=0;
  var defaultPsychGlobalScopes:Array<String>=[];
  var hxcNoteKindScopes:Map<String,String>=[];
  var psychFlashEventScopes:Map<String,Bool>=[];

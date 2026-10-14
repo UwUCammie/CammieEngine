@@ -704,8 +704,10 @@ class LuaCompat {
 				var callArgs:Array<String> = [];
 				for (arg in argList)
 					callArgs.push(StringTools.trim(arg));
-				output.push(indent + 'tableCopy = function(' + args + ') { return luaTableCopy('
-					+ callArgs.join(', ') + '); }');
+				// Lua callers pass only the table; every other parameter is optional
+				// as in any translated Lua function.
+				output.push(indent + 'tableCopy = function(' + [for (arg in callArgs) '?' + arg].join(', ')
+					+ ') { return luaTableCopy(' + callArgs.join(', ') + '); }');
 			} else {
 				for (lineIndex in start...i) output.push(lines[lineIndex]);
 			}
@@ -1629,29 +1631,8 @@ class LuaCompat {
 		}
 		var names = splitTopLevel(lhs, ',');
 		var right = StringTools.trim(text.substr(equal + 1));
-		var stringMatch = parseLuaStringMatch(right);
-		if (stringMatch != null) {
-			var matchResult:Array<String> = [];
-			var matchNames:Array<String> = [];
-			for (nameRaw in names) {
-				var name = StringTools.trim(nameRaw);
-				if (!~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(name))
-					return null;
-				matchNames.push(name);
-				matchResult.push((local ? 'var ' : '') + name + ' = null;');
-			}
-			var matchId = '__luaStringMatch' + collectionCounter++;
-			var patternLiteral = '"' + escapeHscriptString(stringMatch.regex) + '"';
-			var input = convertExpression(stringMatch.input, origin, diagnostics);
-			matchResult.push('var ' + matchId + ' = new EReg(' + patternLiteral + ', "");');
-			matchResult.push('if (' + matchId + '.match(' + input + ')) {');
-			for (index in 0...matchNames.length) {
-				var value = index < stringMatch.captures ? matchId + '.matched(' + (index + 1) + ')' : 'null';
-				matchResult.push(matchNames[index] + ' = ' + value + ';');
-			}
-			matchResult.push('}');
-			return matchResult;
-		}
+		// `a, b = string.match(s, p)` takes the multiple-value path below, so
+		// every capture comes from the one Lua pattern engine.
 		if (names.length <= 1)
 			return null;
 		if (StringTools.endsWith(right, ';'))
@@ -1712,90 +1693,6 @@ class LuaCompat {
 		return result;
 	}
 
-	/** Parse the literal-pattern capture subset of Lua string.match. */
-	static function parseLuaStringMatch(value:String):Null<{input:String, regex:String, captures:Int}> {
-		var text = StringTools.trim(value);
-		if (StringTools.endsWith(text, ';'))
-			text = StringTools.trim(text.substr(0, text.length - 1));
-		if (!StringTools.startsWith(text, 'string.match'))
-			return null;
-		var cursor = 'string.match'.length;
-		if (cursor < text.length && isWord(text.charAt(cursor)))
-			return null;
-		while (cursor < text.length && isSpace(text.charAt(cursor))) cursor++;
-		if (cursor >= text.length || text.charAt(cursor) != '(')
-			return null;
-		var close = matchingDelimiter(text, cursor, '(', ')');
-		if (close < 0 || StringTools.trim(text.substr(close + 1)) != '')
-			return null;
-		var args = splitTopLevel(text.substr(cursor + 1, close - cursor - 1), ',');
-		if (args.length != 2)
-			return null;
-		var pattern = literalStringValue(args[1]);
-		if (pattern == null)
-			return null;
-		var translated = luaCapturePattern(pattern);
-		if (translated == null)
-			return null;
-		return {input:StringTools.trim(args[0]), regex:translated.regex, captures:translated.captures};
-	}
-
-	/** Convert only Lua's portable single-line capture classes and quantifiers. */
-	static function luaCapturePattern(pattern:String):Null<{regex:String, captures:Int}> {
-		var output = new StringBuf();
-		var captures = 0;
-		var depth = 0;
-		var cursor = 0;
-		while (cursor < pattern.length) {
-			var character = pattern.charAt(cursor);
-			if (character == '%') {
-				cursor++;
-				if (cursor >= pattern.length)
-					return null;
-				var escaped = pattern.charAt(cursor);
-				switch (escaped) {
-					case 'a': output.add('[A-Za-z]');
-					case 'd': output.add('[0-9]');
-					case 's': output.add('\\s');
-					case 'w': output.add('[A-Za-z0-9_]');
-					case 'l': output.add('[a-z]');
-					case 'u': output.add('[A-Z]');
-					case 'A': output.add('[^A-Za-z]');
-					case 'D': output.add('[^0-9]');
-					case 'S': output.add('\\S');
-					case 'W': output.add('[^A-Za-z0-9_]');
-					case '%': output.add('%');
-					default: return null;
-				}
-				cursor++;
-				continue;
-			}
-			switch (character) {
-				case '(':
-					captures++;
-					depth++;
-					output.add('(');
-				case ')':
-					depth--;
-					if (depth < 0) return null;
-					output.add(')');
-				case '.' | '*' | '+' | '?' | '^' | '$': output.add(character);
-				case '-':
-					// Lua's non-greedy repetition follows an atom; Haxe's regular
-					// expression spelling is the same quantifier with a trailing ?.
-					if (output.toString().length == 0) return null;
-					output.add('*?');
-				default:
-					if ('\\[]{}|'.indexOf(character) >= 0)
-						output.add('\\');
-					output.add(character);
-			}
-			cursor++;
-		}
-		if (depth != 0 || captures == 0)
-			return null;
-		return {regex:output.toString(), captures:captures};
-	}
 
 	static function escapeHscriptString(value:String):String {
 		return StringTools.replace(StringTools.replace(value, '\\', '\\\\'), '"', '\\"');
@@ -2551,7 +2448,18 @@ class LuaCompat {
 			var after = cursor;
 			while (after < source.length && isSpace(source.charAt(after)))
 				after++;
-			if (after < source.length && source.charAt(after) == '=') {
+			var assigns = after < source.length && source.charAt(after) == '='
+				&& (after + 1 >= source.length || source.charAt(after + 1) != '=');
+			if (assigns && StringTools.trim(out.toString()) == '') {
+				// Psych hands each script these as its own Lua globals, so a
+				// script may move its baseline; later reads in it see the value.
+				var value = StringTools.trim(source.substr(after + 1));
+				if (StringTools.endsWith(value, ';'))
+					value = StringTools.trim(value.substr(0, value.length - 1));
+				return 'luaSetScriptGlobal("' + identifier + '", '
+					+ rewriteLegacyStrumAliases(value, origin, diagnostics) + ')';
+			}
+			if (assigns) {
 				addDiagnostic(diagnostics, origin, 'lua-default-strum-write',
 					'Psych default receptor globals are read-only: ' + identifier);
 				out.add(identifier);
@@ -2935,7 +2843,6 @@ class LuaCompat {
 
 	/** Route the small Lua standard-library subset used by the donor corpus. */
 	static function replaceLuaBuiltins(text:String, origin:String, diagnostics:Array<String>):String {
-		text = routeLiteralGsub(text);
 		for (entry in [
 			{from: 'tonumber', to: 'luaNumber'},
 			{from: 'tostring', to: 'luaString'},
@@ -2946,6 +2853,14 @@ class LuaCompat {
 			{from: 'string.upper', to: 'luaStringUpper'},
 			{from: 'string.format', to: 'luaStringFormat'},
 			{from: 'string.gmatch', to: 'luaStringGmatch'},
+			// Every pattern helper goes to LuaPattern through these names; the
+			// Lua scope rebinds them to versions that return all of Lua's results.
+			{from: 'string.match', to: 'luaStringMatch'},
+			{from: 'string.gsub', to: 'luaStringGsub'},
+			{from: 'string.rep', to: 'luaStringRep'},
+			{from: 'string.reverse', to: 'luaStringReverse'},
+			{from: 'string.byte', to: 'luaStringByte'},
+			{from: 'string.char', to: 'luaStringChar'},
 			{from: 'os.clock', to: 'luaOsClock'},
 			{from: 'os.time', to: 'luaOsTime'},
 			{from: 'table.find', to: 'luaTableFind'},
@@ -2966,85 +2881,6 @@ class LuaCompat {
 		return text;
 	}
 
-	/** Route literal gsub patterns plus the small character-class subset used
-		for title cleanup. Other Lua patterns stay diagnosed. */
-	static function routeLiteralGsub(value:String):String {
-		if (value == null || value.indexOf('string.gsub') < 0)
-			return value;
-		var out = new StringBuf();
-		var quote = '';
-		var i = 0;
-		while (i < value.length) {
-			var c = value.charAt(i);
-			if (quote != '') {
-				out.add(c);
-				if (c == '\\' && i + 1 < value.length) {
-					i++;
-					out.add(value.charAt(i));
-				} else if (c == quote)
-					quote = '';
-				i++;
-				continue;
-			}
-			if (c == '"' || c == "'") {
-				quote = c;
-				out.add(c);
-				i++;
-				continue;
-			}
-			if (value.substr(i, 'string.gsub'.length) == 'string.gsub'
-				&& (i == 0 || !isWord(value.charAt(i - 1)))) {
-				var open = i + 'string.gsub'.length;
-				while (open < value.length && isSpace(value.charAt(open))) open++;
-				var close = open < value.length && value.charAt(open) == '('
-					? matchingDelimiter(value, open, '(', ')') : -1;
-				if (close > open) {
-					var args = splitTopLevel(value.substr(open + 1, close - open - 1), ',');
-					var pattern = args.length >= 3 ? literalStringValue(args[1]) : null;
-					var replacement = args.length >= 3 ? literalStringValue(args[2]) : null;
-					if (args.length >= 3 && args.length <= 4
-						&& supportedGsubPattern(pattern, replacement)) {
-						out.add('luaStringGsub');
-						i += 'string.gsub'.length;
-						continue;
-					}
-				}
-			}
-			out.add(c);
-			i++;
-		}
-		return out.toString();
-	}
-
-	static function literalGsubPattern(pattern:String):Null<String> {
-		if (pattern == null || pattern == '') return null;
-		var output = new StringBuf();
-		var meta = '.^$*+?-[]()';
-		var i = 0;
-		while (i < pattern.length) {
-			var c = pattern.charAt(i);
-			if (c == '%') {
-				i++;
-				if (i >= pattern.length || meta.indexOf(pattern.charAt(i)) < 0
-					&& pattern.charAt(i) != '%') return null;
-				output.add(pattern.charAt(i));
-			} else {
-				if (meta.indexOf(c) >= 0) return null;
-				output.add(c);
-			}
-			i++;
-		}
-		return output.toString();
-	}
-
-	static function supportedGsubPattern(pattern:String, replacement:String):Bool {
-		if (pattern == null || replacement == null) return false;
-		if (literalGsubPattern(pattern) != null)
-			return replacement.indexOf('%') < 0;
-		return (pattern == '[^%a%d]' && replacement.indexOf('%') < 0)
-			|| (pattern == '%s+' && replacement.indexOf('%') < 0)
-			|| (pattern == '^%s*(.-)%s*$' && replacement == '%1');
-	}
 
 	/**
 		Whether the text uses `library.name` with a name the Lua library table

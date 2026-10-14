@@ -25,9 +25,13 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	public final highscoreSave:CodenameOwnerSaveData;
 	public final highscores:NightmareVisionHighscore;
 	public var weekCompleted:Dynamic = new Map<String, Bool>();
+	/** Source PlayState.storyMeta; one per session so every script sees the same week. */
+	public var storyMeta:NightmareVisionStoryMeta = new NightmareVisionStoryMeta();
 	public var startMeta:Dynamic;
 	public var bootstrapComplete:Bool = false;
 	public var importedMenuEntry:Bool = false;
+	/** Set while a story week this owner's menu prepared through storyMeta is played. */
+	var storyWeekActive:Bool = false;
 	var pendingMenuFailure:String = '';
 	var showingMenuFailure:Bool = false;
 	var bootstrapServices:NightmareVisionBootstrapServices;
@@ -266,16 +270,7 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	}
 
 	static function safeScoreMigrationOwner(value:Dynamic):Null<String> {
-		if (!Std.isOfType(value, String)) return null;
-		var clean = StringTools.replace(StringTools.trim(cast value), '\\', '/');
-		while (StringTools.endsWith(clean, '/')) clean = clean.substr(0, clean.length - 1);
-		if (!StringTools.startsWith(clean.toLowerCase(), 'assets/imported_mods/')) return null;
-		var parts = clean.split('/');
-		if (parts.length < 3) return null;
-		for (index in 2...parts.length)
-			if (parts[index] == '' || parts[index] == '.' || parts[index].indexOf('..') >= 0
-				|| parts[index].indexOf(':') >= 0 || parts[index].indexOf('\u0000') >= 0) return null;
-		return clean;
+		return SourceOwnerFiles.ownerFromData(value);
 	}
 
 	static function safeScoreMigrationSongId(value:String):Bool {
@@ -663,6 +658,22 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 			scope.bindRuntimeClass('funkin.backend.Song', Song);
 			scope.bindStaticField(Song, 'loadFromJson', function() return function(json:String, folder:String):Dynamic
 				return ImportedMenuEntry.loadOwnedChart(mods.selectedRoot(), json, folder));
+			scope.bindStaticField(PlayState, 'storyMeta', function() return storyMeta,
+				function(value) return storyMeta = value);
+			var prepareSong = function(songName:String, ?difficultyIndex:Null<Int>, ?storyMode:Null<Bool>):Dynamic {
+				var error = NightmareVisionStoryMeta.prepareSong(storyMeta, songPreparationHost(difficultyIndex), songName,
+					difficultyIndex, storyMode);
+				if (error == null) storyWeekActive = storyMode == true;
+				return error;
+			};
+			var prepareWeek = function(songs:Array<String>, ?difficultyIndex:Null<Int>, ?storyMode:Null<Bool>):Dynamic {
+				var error = NightmareVisionStoryMeta.prepareWeek(storyMeta, songPreparationHost(difficultyIndex), songs,
+					difficultyIndex, storyMode);
+				if (error == null) storyWeekActive = storyMode == true;
+				return error;
+			};
+			scope.bindStaticField(PlayState, 'prepareForSong', function() return prepareSong);
+			scope.bindStaticField(PlayState, 'prepareForWeek', function() return prepareWeek);
 		}
 		var names:Map<String, Dynamic> = ['TitleState'=>NightmareVisionTitleState,
 			'MainMenuState'=>NightmareVisionMainMenuState, 'FlashingState'=>NightmareVisionFlashingState,
@@ -686,6 +697,11 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		interp.variables.set('FreeplayState', FreeplayState);
 		interp.bindImport('funkin.states.FreeplayState', FreeplayState);
 		scope.bindRuntimeClass('funkin.states.FreeplayState', FreeplayState);
+		// The native pause menu stands in for the source one: instance,
+		// returnToMain, toOptions and restartSong keep their source names.
+		interp.variables.set('PauseSubState', PauseSubState);
+		interp.bindImport('funkin.states.substates.PauseSubState', PauseSubState);
+		scope.bindRuntimeClass('funkin.states.substates.PauseSubState', PauseSubState);
 		// Source menus with no native port. A package's stateRedirects can point
 		// them at its own scripts; otherwise they open the unported-state screen.
 		for (path in ['funkin.states.StoryMenuState', 'funkin.states.CreditsState',
@@ -745,6 +761,59 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		scope.bindStaticField(CoolUtil, 'switchState', function() return switchWithTransition);
 		scope.bindStaticField(CoolUtil, 'setTransSkip', function() return setTransSkip);
 		if (configureScript != null) configureScript(interp);
+	}
+
+	/**
+		Source endSong for a story week this owner's menu started through
+		storyMeta: the next playlist song comes from this owner, and the end of
+		the week goes back to the owner's (redirected) story menu. False for any
+		other story song, which the engine's own story playlist handles.
+	*/
+	public function advanceStoryWeek(songScore:Int, songMisses:Int):Bool {
+		if (released || !importedMenuEntry || !storyWeekActive) return false;
+		var owner = mods.selectedRoot();
+		if (PlayState.SONG == null || ImportedModDiscovery.ownerForSong(Song.storageFolder(PlayState.SONG), 'assets/data') != owner) {
+			storyWeekActive = false;
+			return false;
+		}
+		if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		if (NightmareVisionStoryMeta.advanceWeek(storyMeta, songPreparationHost(storyMeta.difficulty), songScore, songMisses,
+			function(song, error) trace('[nightmare-vision-story] Could not prepare ' + song + ': ' + Std.string(error)))) {
+			// The source goes straight from one week song to the next.
+			setTransSkip();
+			switchState(createStateFactory('PlayState'));
+			return true;
+		}
+		storyWeekActive = false;
+		var music = paths.findFileWithExts('music/freakyMenu', ['ogg', 'wav'], null, true);
+		if (paths.exists(music)) FlxG.sound.playMusic(paths.music('freakyMenu'), 1);
+		switchState(createStateFactory('StoryMenuState'));
+		return true;
+	}
+
+	/** Source song preparation on the base game's chart choice and this owner's installed charts. */
+	function songPreparationHost(?difficultyIndex:Null<Int>):NightmareVisionStoryMeta.NightmareVisionSongPreparationHost {
+		return {
+			sanitize:paths.sanitize,
+			difficultyName:difficulty.getDifficultyFilePath,
+			resolve:function(folder, name) {
+				var names = DifficultyManager.getDifficultyNames();
+				var known = false;
+				for (entry in names) if (entry != null && entry.toLowerCase() == name.toLowerCase()) known = true;
+				// A difficulty the base game does not list still has its own chart file.
+				if (!known) return {chart:folder + '-' + name.toLowerCase(), difficulty:PlayState.storyDifficulty};
+				var target = SongFlow.loadTarget(folder, name, null, PlayState.storyDifficulty, names,
+					DifficultyManager.getDefaultDiff());
+				return {chart:target.chart, difficulty:target.difficulty};
+			},
+			load:function(chart, folder) return ImportedMenuEntry.loadOwnedChart(mods.selectedRoot(), chart, folder),
+			commit:function(song, nativeDifficulty, storyMode) {
+				PlayState.SONG = song;
+				PlayState.storyDifficulty = nativeDifficulty;
+				PlayState.isStoryMode = storyMode;
+				difficulty.selectDifficulty(difficultyIndex == null ? 1 : difficultyIndex);
+			}
+		};
 	}
 
 	/** One stand-in per session, so a static one script writes is what the next script reads. */

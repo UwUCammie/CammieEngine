@@ -82,12 +82,7 @@ class NightmareVisionBar extends FlxSpriteGroup implements NightmareVisionIUiSpr
 			return;
 		}
 
-		if (valueFunction != null)
-		{
-			var value:Null<Float> = FlxMath.remapToRange(FlxMath.bound(valueFunction(), bounds.min, bounds.max), bounds.min, bounds.max, 0, 100);
-			percent = (value != null ? value : 0);
-		}
-		else percent = 0;
+		percent = SourceBarLayout.percentFor(valueFunction, bounds.min, bounds.max);
 		super.update(elapsed);
 	}
 
@@ -117,32 +112,8 @@ class NightmareVisionBar extends FlxSpriteGroup implements NightmareVisionIUiSpr
 
 	public function regenerateClips()
 	{
-		if (leftBar != null)
-		{
-			if (Std.int(leftBar.frameWidth) != Std.int(bg.frameWidth) || Std.int(leftBar.frameHeight) != Std.int(bg.frameHeight))
-			{
-				leftBar.makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
-			}
-			else
-			{
-				leftBar.setGraphicSize(Std.int(bg.width), Std.int(bg.height));
-			}
-			leftBar.updateHitbox();
-			leftBar.clipRect = new FlxRect(0, 0, Std.int(bg.width), Std.int(bg.height));
-		}
-		if (rightBar != null)
-		{
-			if (rightBar.frameWidth != Std.int(bg.frameWidth) || rightBar.frameHeight != Std.int(bg.frameHeight))
-			{
-				rightBar.makeGraphic(Std.int(bg.width), Std.int(bg.height), FlxColor.WHITE);
-			}
-			else
-			{
-				rightBar.setGraphicSize(Std.int(bg.width), Std.int(bg.height));
-			}
-			rightBar.updateHitbox();
-			rightBar.clipRect = new FlxRect(0, 0, Std.int(bg.width), Std.int(bg.height));
-		}
+		SourceBarLayout.regenerateClip(leftBar, bg, true);
+		SourceBarLayout.regenerateClip(rightBar, bg, true);
 		updateBar();
 	}
 
@@ -188,8 +159,6 @@ class NightmareVisionBar extends FlxSpriteGroup implements NightmareVisionIUiSpr
 
 	override function set_alpha(v:Float)
 	{
-		v = FlxMath.bound(v, 0, 1);
-		v *= alphaMultipler;
-		return super.set_alpha(v);
+		return super.set_alpha(SourceBarLayout.multipliedAlpha(v, alphaMultipler));
 	}
 }

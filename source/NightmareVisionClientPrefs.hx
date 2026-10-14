@@ -24,6 +24,8 @@ class NightmareVisionClientPrefs {
 	public var view(default, null):Dynamic;
 	public var ownerRoot(default, null):String;
 	final ownerSave:Dynamic;
+	/** Seeded fields that follow the running game; load() keeps them. */
+	var liveSeeds:Array<String> = [];
 	var released:Bool = false;
 
 	/** `ownerSave` is an already owner-validated CodenameOwnerSaveData view. */
@@ -33,7 +35,7 @@ class NightmareVisionClientPrefs {
 		this.ownerSave = ownerSave;
 		view = makeDefaults();
 		// Copied, not bound: later writes only touch this detached owner view.
-		seedNativeOptions(view, nativeOptions, true);
+		liveSeeds = seedNativeOptions(view, nativeOptions, true);
 		installMethods();
 		// Source Main captures reset defaults before Init overlays saved bindings.
 		loadDefaultKeys();
@@ -65,7 +67,7 @@ class NightmareVisionClientPrefs {
 			throw '[nmv-client-prefs] Malformed owner preferences';
 
 		for (name in persistedFields()) {
-			if (!hasField(values, name)) continue;
+			if (!hasField(values, name) || liveSeeds.indexOf(name) >= 0) continue;
 			var saved:Dynamic = field(values, name);
 			if (isMapField(name)) {
 				var target:Dynamic = field(view, name);

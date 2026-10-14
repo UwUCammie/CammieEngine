@@ -45,6 +45,7 @@ class NightmareVisionRGBGraphics {
  public var palette:PsychRGBPalette;
  public function new(palette:PsychRGBPalette) this.palette=palette;
  public function apply(note:Note):Void {}
+ public function copyValues(other:PsychRGBPalette):Void palette.copyValues(other);
 }
 class FakeAnim {
  public var name:String;

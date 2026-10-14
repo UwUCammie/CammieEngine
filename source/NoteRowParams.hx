@@ -48,6 +48,20 @@ class NoteRowParams {
 		return result;
 	}
 
+	/**
+		Value of the named param in a params list, or null. This is the one
+		lookup behind every `getParam(name)` view (the native Note and the
+		script note views), so they all agree on a missing name.
+	*/
+	public static function find(params:Array<Dynamic>, name:String):Dynamic {
+		if (params == null || name == null)
+			return null;
+		for (param in params)
+			if (param != null && Reflect.field(param, 'name') == name)
+				return Reflect.field(param, 'value');
+		return null;
+	}
+
 	/** Params stored on a chart row, or null. Malformed entries are skipped. */
 	public static function read(row:Array<Dynamic>):Null<Array<Dynamic>> {
 		if (row == null || row.length <= SLOT)

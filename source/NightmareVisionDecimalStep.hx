@@ -18,32 +18,8 @@ class NightmareVisionDecimalStep {
 	 */
 	public static function getStep(songTimeMs:Float, initialBpm:Float,
 		bpmChangeMap:Array<Dynamic>, noteOffsetMs:Float = 0):Float {
-		var change:Dynamic = null;
-		if (bpmChangeMap != null) {
-			for (candidate in bpmChangeMap) {
-				if (candidate == null) continue;
-				var changeTime = numberField(candidate, 'songTime', Math.NaN);
-				if (songTimeMs >= changeTime)
-					change = candidate;
-			}
-		}
-
-		var changeTime = change == null ? 0 : numberField(change, 'songTime', 0);
-		var changeStep = change == null ? 0 : numberField(change, 'stepTime', 0);
-		var stepCrochet = change == null ? Math.NaN : numberField(change, 'stepCrotchet', Math.NaN);
-		if (!(stepCrochet > 0)) {
-			var bpm = change == null ? initialBpm : numberField(change, 'bpm', initialBpm);
-			if (!(bpm > 0)) bpm = initialBpm;
-			stepCrochet = (60 / bpm) * 1000 / 4;
-		}
-		if (!(stepCrochet > 0)) return Math.NaN;
-		return changeStep + ((songTimeMs - noteOffsetMs) - changeTime) / stepCrochet;
-	}
-
-	static function numberField(value:Dynamic, name:String, fallback:Float):Float {
-		var field = Reflect.field(value, name);
-		if (field == null) return fallback;
-		var parsed = Std.parseFloat(Std.string(field));
-		return Math.isNaN(parsed) ? fallback : parsed;
+		// Same conversion as the base Conductor; the initial tempo only covers
+		// time before the first entry (the countdown).
+		return ConductorTempoMap.stepAtTime(songTimeMs, cast bpmChangeMap, (60 / initialBpm) * 1000 / 4, noteOffsetMs);
 	}
 }

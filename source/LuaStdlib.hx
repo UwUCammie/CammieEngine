@@ -29,6 +29,23 @@ class LuaStdlib {
 	];
 	public static var TABLE_NAMES(default, null):Array<String> = ['insert', 'remove', 'concat', 'sort', 'getn', 'maxn', 'unpack'];
 	public static var OS_NAMES(default, null):Array<String> = ['time', 'clock', 'date', 'difftime'];
+	// STRING_NAMES as a lookup. Every `text:method()` call and string library
+	// check asks this, and a list scan per call adds up in per-frame scripts.
+	static var stringNameSet:haxe.ds.StringMap<Bool> = null;
+
+	/** Whether `name` is a function of the Lua string library. */
+	public static function isStringName(name:String):Bool {
+		if (name == null)
+			return false;
+		var names = stringNameSet;
+		if (names == null) {
+			names = new haxe.ds.StringMap();
+			for (entry in STRING_NAMES)
+				names.set(entry, true);
+			stringNameSet = names;
+		}
+		return names.exists(name);
+	}
 
 	static var weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 	static var months = [
@@ -94,10 +111,19 @@ class LuaStdlib {
 		});
 		global(interp, 'rawequal', function(args):Dynamic return args[0] == args[1]);
 
-		// The engine binds single-result spellings of these for every script
-		// language. A Lua scope understands result lists, so here they hand
-		// back everything Lua would (find's end index, gsub's count, every
-		// capture of match) and take any number of arguments.
+		installScopedStringHelpers(interp);
+	}
+
+	/**
+		The engine binds single-result spellings of these for every script
+		language. A Lua scope understands result lists, so here they hand back
+		everything Lua would (find's end index, gsub's count, every capture of
+		match) and take any number of arguments. The game seeds its shared
+		helpers after the scope is built, so it calls this again afterwards.
+	*/
+	public static function installScopedStringHelpers(interp:LuaCompatInterp):Void {
+		if (interp == null)
+			return;
 		for (name in ['find', 'match', 'gsub', 'byte', 'char', 'format'])
 			interp.variables.set('luaString' + name.charAt(0).toUpperCase() + name.substr(1),
 				native(interp, function(args) return stringCall(name, args, interp)));
@@ -114,7 +140,7 @@ class LuaStdlib {
 		argument.
 	*/
 	public static function stringMethod(receiver:Dynamic, name:String, args:Array<Dynamic>):Dynamic {
-		if (STRING_NAMES.indexOf(name) < 0)
+		if (!isStringName(name))
 			throw "attempt to call method '" + name + "' (a nil value)";
 		var all:Array<Dynamic> = [receiver];
 		if (args != null)

@@ -5,7 +5,6 @@ using StringTools;
 /** Transient chart-editor handoff state isolated by Psych import owner. */
 @:keep
 class PsychOwnerChartingMode {
-	static inline var OWNER_PREFIX:String = 'assets/imported_mods/';
 	static var chartingModes:Map<String, Bool> = new Map();
 
 	/** Missing, invalid, native, and NV owners all read as false. */
@@ -28,15 +27,8 @@ class PsychOwnerChartingMode {
 	}
 
 	static function ownerKey(ownerRoot:String):String {
-		if (ownerRoot == null) return '';
-		var path = StringTools.replace(StringTools.trim(ownerRoot), '\\', '/');
-		while (path.indexOf('//') >= 0) path = StringTools.replace(path, '//', '/');
-		while (path.endsWith('/')) path = path.substr(0, path.length - 1);
-		if (!path.startsWith(OWNER_PREFIX) || path.length <= OWNER_PREFIX.length
-			|| path.indexOf(String.fromCharCode(0)) >= 0 || path.indexOf(':') >= 0)
-			return '';
-		for (part in path.split('/'))
-			if (part == '.' || part == '..') return '';
+		var path = SourceOwnerFiles.ownerFromData(ownerRoot);
+		if (path == null) return '';
 		#if windows
 		path = path.toLowerCase();
 		#end

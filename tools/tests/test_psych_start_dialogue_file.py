@@ -100,6 +100,8 @@ class Main {
  public function endSong():Void endSongCalls++;
  function currentSongDataPath(file:String):String return 'assets/data/test-song/'+file;
  function selectedPsychSkinRoot():Null<String> return mountedRoot;
+ public var language:String=null;
+ function psychDialogueLanguage():Null<String> return language;
  function compatPsychPathCall(owner:String,call:String,args:Array<Dynamic>):Dynamic
   return owner+'/'+call+'/'+args[0]+'.json';
  function compatPlayMusic(path:Dynamic,volume:Float=1,looped:Bool=false):Void {
@@ -171,6 +173,16 @@ class Main {
   host.mountedRoot='mods/pack';
   check(host.compatDialogueText('mounted')=='bf/dad>from the mod','mounted dialogue was not found');
   check(host.compatDialogueText('ending')=='bf/dad>so long+bye','the imported copy should win');
+
+  // a translated file wins when the player's language has one, the plain file otherwise
+  FNFAssets.files.set('assets/data/test-song/ending_pt-BR.json','{"dialogue":[{"text":"tchau"}]}');
+  FNFAssets.files.set('mods/pack/json/test-song/mounted_pt-BR.json','{"dialogue":[{"text":"do mod"}]}');
+  host.language='pt-BR';
+  check(host.compatDialogueText('ending')=='bf/dad>tchau','translated dialogue was not used');
+  check(host.compatDialogueText('mounted')=='bf/dad>do mod','translated mounted dialogue was not used');
+  host.language='en-US';
+  check(host.compatDialogueText('ending')=='bf/dad>so long+bye','a language without a file lost the plain one');
+  host.language=null;
 
   // the dialogue built at create keeps serving its own names
   var opening=new Main();

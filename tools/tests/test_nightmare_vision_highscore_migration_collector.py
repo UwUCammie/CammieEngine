@@ -228,6 +228,9 @@ class Song {
             "CompatScriptManifest.hx": manifest_stub,
             "NightmareVisionHighscoreMigration.hx": migration_stub,
         }
+        # Receipt owners go through the shared owner-root rule, so the real one runs here.
+        for name in ("SourceOwnerFiles.hx", "CompatCanonicalPath.hx"):
+            stubs[name] = (ROOT / "source" / name).read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory(prefix="nmv-score-collector-", dir=ROOT / "tmp") as directory:
             work = Path(directory)
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")

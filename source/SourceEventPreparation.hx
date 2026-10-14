@@ -19,7 +19,7 @@ typedef SourceEventPreparationHooks = {
 	@:optional var push:SourceEventNote->Void;
 }
 
-/** The event preparation loop Psych and Nightmare Vision share. */
+/** The event preparation loop Psych and both Nightmare Vision revisions share. */
 class SourceEventPreparation {
 	/** Base-game early triggers for built-in events, in milliseconds. */
 	public static function defaultEarlyOffset(name:String):Float {
@@ -48,18 +48,36 @@ class SourceEventPreparation {
 		for (row in rows) {
 			var event = new SourceEventNote(row, noteOffset);
 			views.push(event);
-			if (hooks.beforeFirstPush != null)
-				hooks.beforeFirstPush(event);
-			if (!pushedNames.exists(event.event)) {
-				pushedNames.set(event.event, true);
-				if (hooks.firstPush != null)
-					hooks.firstPush(event);
-			}
-			if (hooks.earlyOffset != null)
-				event.strumTime -= earlyOffsetFor(event.event, hooks.earlyOffset(event));
-			if (hooks.push != null)
-				hooks.push(event);
+			pushView(event, pushedNames, hooks);
 		}
+	}
+
+	/**
+		One built view through the hooks, in the order every engine runs them.
+		Historical Nightmare Vision builds its views itself over two admission
+		passes, so it calls this directly. Without `pushedNames` no first push is
+		tracked: its second pass must not record names the first pass never saw.
+	**/
+	public static function pushView(event:SourceEventNote, pushedNames:Null<Map<String, Bool>>,
+		hooks:SourceEventPreparationHooks):Void {
+		if (hooks.beforeFirstPush != null)
+			hooks.beforeFirstPush(event);
+		if (pushedNames != null && !pushedNames.exists(event.event)) {
+			pushedNames.set(event.event, true);
+			if (hooks.firstPush != null)
+				hooks.firstPush(event);
+		}
+		if (hooks.earlyOffset != null) {
+			// The time is read before any script runs: an early-trigger callback
+			// that moves the event does not change what is subtracted from. The
+			// name is read after: both Nightmare Vision revisions pick the built-in
+			// default by the name the event has once its scripts have answered.
+			var time = event.strumTime;
+			var answer = hooks.earlyOffset(event);
+			event.strumTime = time - earlyOffsetFor(event.event, answer);
+		}
+		if (hooks.push != null)
+			hooks.push(event);
 	}
 
 	/** The deferred half of prepare, for engines that ask for offsets later. */

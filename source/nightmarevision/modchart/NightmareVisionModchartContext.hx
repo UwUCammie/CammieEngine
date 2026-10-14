@@ -31,4 +31,26 @@ class NightmareVisionModchartContext {
 		this.legacyCoordinates = legacyCoordinates;
 		this.songBpm = songBpm;
 	}
+
+	/**
+		`previous` when it already holds exactly these values, otherwise a new
+		context. The values only change once per frame, but every modifier asks
+		for a context for every note, so building a fresh one each time made
+		hundreds of throwaway objects per frame. The context is immutable, so
+		handing the same one out again cannot change what a caller sees.
+	**/
+	public static function reuse(previous:Null<NightmareVisionModchartContext>, width:Float, height:Float, keys:Int,
+		noteWidth:Float, songPosition:Float = 0, beat:Float = 0, songSpeed:Float = 1, crotchet:Float = 500,
+		downScroll:Bool = false, lowQuality:Bool = false, legacyCoordinates:Bool = false,
+		songBpm:Float = 120):NightmareVisionModchartContext {
+		if (previous != null && previous.width == width && previous.height == height
+			&& previous.keys == (keys < 1 ? 1 : keys) && previous.noteWidth == noteWidth
+			&& previous.songPosition == songPosition && previous.beat == beat
+			&& previous.songSpeed == songSpeed && previous.crotchet == crotchet
+			&& previous.downScroll == downScroll && previous.lowQuality == lowQuality
+			&& previous.legacyCoordinates == legacyCoordinates && previous.songBpm == songBpm)
+			return previous;
+		return new NightmareVisionModchartContext(width, height, keys, noteWidth, songPosition, beat, songSpeed,
+			crotchet, downScroll, lowQuality, legacyCoordinates, songBpm);
+	}
 }

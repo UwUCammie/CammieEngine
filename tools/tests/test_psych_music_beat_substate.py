@@ -9,6 +9,9 @@ class PsychMusicBeatSubstateTest(unittest.TestCase):
   donor=donor.replace('private var','public var')
   method=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),'public static function getBPMFromSeconds(')
   map_method=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),'public static function mapBPMChanges(')
+  # The shared clock reads the step through the base tempo map conversions.
+  for marker in ['public static function segmentStepCrochet(','public static function getStep(']:
+   map_method+=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),marker)
   conductor_source=subprocess.check_output(['git','-C',str(ROOT.parent/'fnf_sources/FNF-PsychEngine'),'show','5c67ced49e5a98535298a6daa3f8f4ec79ac8399:source/backend/Conductor.hx'],text=True)
   bpm_oracle=extract_method(conductor_source,'public static function getBPMFromSeconds(').replace('getBPMFromSeconds','donorBPM')
   files={

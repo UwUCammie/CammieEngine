@@ -100,6 +100,9 @@ typedef RuntimeSmokeOptions = {
 	var seekAfterMs:Float;
 	var seekToMs:Float;
 	var cutsceneSkipAfterMs:Float;
+	/** Wall milliseconds after PlayState is ready before one skip press is sent to
+	 * an intro cutscene that is holding the countdown. */
+	var ?introSkipAfterMs:Float;
 	/** Number of PlayState creations in one native smoke process (1 or 2). */
 	var playstateVisits:Int;
 	/** Enter ChartingState and run one companion-event save/reload round-trip. */
@@ -113,6 +116,10 @@ typedef RuntimeSmokeOptions = {
 @:access(PlayState)
 class RuntimeSmokeHarness {
 	static var parsed:Null<RuntimeSmokeOptions>;
+	// The command line cannot change during a run, but the gates below are
+	// asked per note and per character every frame. An ordinary launch has no
+	// parsed options to cache, so remember that the answer is already known.
+	static var configResolved:Bool = false;
 	static var smokeArgumentsSeen:Bool = false;
 	static var started:Bool = false;
 	static var playStateStarted:Bool = false;
@@ -149,6 +156,9 @@ class RuntimeSmokeHarness {
 	static var songStartObserved:Bool = false;
 	static var seekCompleted:Bool = false;
 	static var cutsceneSkipTried:Bool = false;
+	static var introSkipReadyAt:Float = -1;
+	static var introSkipPressing:Bool = false;
+	static var introSkipTried:Bool = false;
 	static var codenameEventVisualMarkers:Int = 0;
 	static var codenameCallbackVisualMarkers:Int = 0;
 	static var codenameMotionMarkers:Int = 0;
@@ -163,8 +173,18 @@ class RuntimeSmokeHarness {
 	static var nightmareVisionVisualKinds:Map<String, Bool> = new Map();
 	static var nightmareVisionSplashSeen:Map<Int, Bool> = new Map();
 	static var nightmareVisionLiveSamples:Map<String, Bool> = new Map();
+	/** The same sample keys packed into an Int for the usual small values. */
+	static var nightmareVisionLivePackedSamples:Map<Int, Bool> = new Map();
 	static var nightmareVisionLiveCount:Int = 0;
 	static var hitchTracker:FrameHitchTracker = new FrameHitchTracker();
+	/** Profiled (non-pacing) frames slower than this get a frame_spike event. */
+	static inline var SPIKE_MS:Float = 20;
+	static var spikeHeapAtStart:Float = -1;
+	static var spikeQueuedNotesAtStart:Int = -1;
+	static var frameScriptCallbacks:Int = 0;
+	/** Set once a dispatcher reports callbacks, so an unwired count reads as
+		unknown instead of zero. */
+	static var scriptCallbacksCounted:Bool = false;
 	static var renderTimingInstalled:Bool = false;
 	#if sys
 	// one append handle for the whole run: opening and closing the log for
@@ -189,7 +209,7 @@ class RuntimeSmokeHarness {
 
 	/** Return the parsed launch request, or null for an ordinary launch. */
 	public static function config():Null<RuntimeSmokeOptions> {
-		if (parsed != null)
+		if (configResolved)
 			return parsed;
 		var result:RuntimeSmokeOptions = {
 			songFolder: '',
@@ -228,6 +248,7 @@ class RuntimeSmokeHarness {
 			seekAfterMs: -1,
 			seekToMs: -1,
 			cutsceneSkipAfterMs: -1,
+			introSkipAfterMs: -1,
 			playstateVisits: 1,
 			chartEditor: false,
 			nextSongFolder: '',
@@ -379,6 +400,10 @@ class RuntimeSmokeHarness {
 					smokeArgumentsSeen = true;
 					result.cutsceneSkipAfterMs = parseSmokeTime(value);
 					if (result.cutsceneSkipAfterMs < 0) configurationError = 'invalid --smoke-cutscene-skip-after-ms';
+				case '--smoke-intro-skip-after-ms':
+					smokeArgumentsSeen = true;
+					result.introSkipAfterMs = parseSmokeTime(value);
+					if (result.introSkipAfterMs < 0) configurationError = 'invalid --smoke-intro-skip-after-ms';
 				case '--smoke-seek-to-ms':
 					smokeArgumentsSeen = true;
 					result.seekToMs = parseSmokeTime(value);
@@ -411,6 +436,7 @@ class RuntimeSmokeHarness {
 		#end
 		if (!smokeArgumentsSeen) {
 			parsed = null;
+			configResolved = true;
 			return null;
 		}
 		if (result.playstateVisits != 1 && result.playstateVisits != 2) {
@@ -465,6 +491,7 @@ class RuntimeSmokeHarness {
 					: result.nextSongFolder + '-' + result.nextDifficulty;
 		}
 		parsed = result;
+		configResolved = true;
 		return parsed;
 	}
 
@@ -877,7 +904,8 @@ class RuntimeSmokeHarness {
 		if (config().frameStats || config().pacingOnly == true) {
 			var gc = EngineMemory.probe();
 			emit('gc_probe', {ms: gc.seconds * 1000, usedBeforeBytes: gc.usedBefore,
-				usedAfterBytes: gc.usedAfter, reservedAfterBytes: gc.reservedAfter, song: name});
+				usedAfterBytes: gc.usedAfter, reservedAfterBytes: gc.reservedAfter,
+				largeBeforeBytes: gc.largeBefore, largeAfterBytes: gc.largeAfter, song: name});
 		}
 		var visualState = PlayState.instance;
 		if (visualState != null) {
@@ -1056,11 +1084,24 @@ class RuntimeSmokeHarness {
 		if (!profileEnabled() || config().pacingOnly == true || finished || note == null || receptor == null
 			|| note.nightmareVisionRenderer == null || !note.visible || !note.active
 			|| nightmareVisionLiveCount >= 512 || Math.abs(note.strumTime - Conductor.songPosition) > 2000) return;
-		var key = note.sourcePlayfieldIndex + ':' + note.sourceDirection + ':'
-			+ (note.isSustainNote ? (note.nightmareVisionSustainEnd ? 'end' : 'body') : 'head')
-			+ ':' + Math.floor(Conductor.songPosition / 5000);
-		if (nightmareVisionLiveSamples.exists(key)) return;
-		nightmareVisionLiveSamples.set(key, true);
+		// Most calls find their sample already taken. Pack the usual small values
+		// into an Int so those calls do not build a string per visible note per
+		// frame, which inflated the profiled note-processing section.
+		var field = note.sourcePlayfieldIndex;
+		var direction = note.sourceDirection;
+		var kind = note.isSustainNote ? (note.nightmareVisionSustainEnd ? 2 : 1) : 0;
+		var bucket = Math.floor(Conductor.songPosition / 5000);
+		if (field >= -1 && field < 256 && direction >= -1 && direction < 64 && bucket >= 0 && bucket < 20000) {
+			var packed = ((bucket * 257 + field + 1) * 65 + direction + 1) * 3 + kind;
+			if (nightmareVisionLivePackedSamples.exists(packed)) return;
+			nightmareVisionLivePackedSamples.set(packed, true);
+		} else {
+			var key = field + ':' + direction + ':'
+				+ (note.isSustainNote ? (note.nightmareVisionSustainEnd ? 'end' : 'body') : 'head')
+				+ ':' + bucket;
+			if (nightmareVisionLiveSamples.exists(key)) return;
+			nightmareVisionLiveSamples.set(key, true);
+		}
 		nightmareVisionLiveCount++;
 		var state = note.nightmareVisionRenderer.visualState(note);
 		var snapshot:Dynamic = RuntimeSmokeVisuals.note(note, Note.swagWidth);
@@ -1742,6 +1783,9 @@ class RuntimeSmokeHarness {
 	static var costs:Array<Float> = [];
 	static var updateCosts:Array<Float> = [];
 	static var drawCosts:Array<Float> = [];
+	static var renderCosts:Array<Float> = [];
+	static var drawCallCounts:Array<Float> = [];
+	static var renderWindowStart:Float = -1;
 	static var deltas:Array<Float> = [];
 	static var windowHitches:Int = 0;
 	static var totalFrames:Int = 0;
@@ -1874,8 +1918,13 @@ class RuntimeSmokeHarness {
 		#end
 	}
 
-	static function onRenderTimingEnd(context:lime.graphics.RenderContext):Void
-		hitchTracker.endRender(nowMs());
+	static function onRenderTimingEnd(context:lime.graphics.RenderContext):Void {
+		var now = nowMs();
+		hitchTracker.endRender(now);
+		if (renderWindowStart >= 0)
+			renderCosts.push(now - renderWindowStart);
+		renderWindowStart = -1;
+	}
 
 	static function currentHeapBytes():Float {
 		#if cpp
@@ -1883,6 +1932,49 @@ class RuntimeSmokeHarness {
 		#else
 		return -1;
 		#end
+	}
+
+	static function currentLargeBytes():Float {
+		#if cpp
+		return EngineMemory.largeBytes();
+		#else
+		return -1;
+		#end
+	}
+
+	static function currentReservedBytes():Float {
+		#if cpp
+		return EngineMemory.reservedBytes();
+		#else
+		return -1;
+		#end
+	}
+
+	/** Script dispatchers report how many callbacks they ran, so a profiled
+		spike can be told apart from a callback burst. Two static int writes. */
+	public static function countScriptCallbacks(count:Int):Void {
+		scriptCallbacksCounted = true;
+		frameScriptCallbacks += count;
+	}
+
+	static function queuedNoteCount():Int {
+		var state = PlayState.instance;
+		return playStateReady && state != null && state.unspawnNotes != null ? state.unspawnNotes.length : -1;
+	}
+
+	/** One event per profiled frame over SPIKE_MS, next to its slowest section:
+		notes that left the spawn queue, script callbacks run and the heap change
+		tell a spawn burst, a callback burst and a collection apart. */
+	static function emitFrameSpike(now:Float):Void {
+		var queued = queuedNoteCount();
+		var heap = currentHeapBytes();
+		emit('frame_spike', {songPosition: playStateReady ? Conductor.songPosition : null,
+			costMs: now - frameStart,
+			slowestSection: frameSlowestSection, slowestSectionMs: frameSlowestSectionMs,
+			notesLeftQueue: queued >= 0 && spikeQueuedNotesAtStart >= 0 ? spikeQueuedNotesAtStart - queued : null,
+			scriptCallbacks: scriptCallbacksCounted ? frameScriptCallbacks : null,
+			heapDeltaBytes: heap >= 0 && spikeHeapAtStart >= 0 ? heap - spikeHeapAtStart : null,
+			collected: heap >= 0 && spikeHeapAtStart >= 0 && heap < spikeHeapAtStart});
 	}
 
 	static function onFramePreUpdate():Void {
@@ -1893,7 +1985,12 @@ class RuntimeSmokeHarness {
 		}
 		frameStart = nowMs();
 		if (config().pacingOnly == true)
-			hitchTracker.beginFrame(frameStart, currentHeapBytes());
+			hitchTracker.beginFrame(frameStart, currentHeapBytes(), currentLargeBytes(), currentReservedBytes());
+		else if (profileEnabled()) {
+			spikeHeapAtStart = currentHeapBytes();
+			spikeQueuedNotesAtStart = queuedNoteCount();
+			frameScriptCallbacks = 0;
+		}
 		frameSlowestSection = '';
 		frameSlowestSectionMs = 0;
 		frameDelta = 0;
@@ -1932,9 +2029,12 @@ class RuntimeSmokeHarness {
 		var now = nowMs();
 		costs.push(now - frameStart);
 		drawCosts.push(now - drawStart);
+		// Flixel counts one per camera batch it submits, so this is the frame's batch count.
+		drawCallCounts.push(flixel.graphics.tile.FlxDrawBaseItem.drawCalls);
 		// One event per slow frame. A long gap that is only the previous slow
 		// frame's own update and draw is not reported again.
-		if (config().pacingOnly == true && hitchTracker.endFrame(now, currentHeapBytes()))
+		if (config().pacingOnly == true
+			&& hitchTracker.endFrame(now, currentHeapBytes(), currentLargeBytes(), currentReservedBytes()))
 			emit('frame_hitch', {songPosition: playStateReady ? Conductor.songPosition : null,
 				gapMs: hitchTracker.gapMs, updateDrawMs: hitchTracker.insideMs,
 				previousRenderMs: hitchTracker.renderMs, outsideMs: hitchTracker.outsideMs,
@@ -1942,9 +2042,13 @@ class RuntimeSmokeHarness {
 				collectedInside: hitchTracker.collectedInside,
 				collectedOutside: hitchTracker.collectedOutside,
 				heapDropBytes: hitchTracker.heapDropBytes,
+				largeGrowthBeforeDropBytes: hitchTracker.largeGrowthBeforeDropBytes,
+				largeTriggerSuspected: hitchTracker.largeTriggerSuspected,
 				harnessMs: hitchTracker.harnessMs,
 				slowestSection: frameSlowestSection, slowestSectionMs: frameSlowestSectionMs,
 				heap: frameHeapSnapshot()});
+		else if (config().pacingOnly != true && now - frameStart > SPIKE_MS && profileEnabled())
+			emitFrameSpike(now);
 		totalFrames++;
 		if (config() != null && config().freeplay)
 			freeplayFrame(now);
@@ -1953,8 +2057,10 @@ class RuntimeSmokeHarness {
 			emitFrameSummary();
 		}
 		// last, so the harness's own reporting above is not counted as render
-		if (renderTimingInstalled)
-			hitchTracker.beginRender(nowMs());
+		if (renderTimingInstalled) {
+			renderWindowStart = nowMs();
+			hitchTracker.beginRender(renderWindowStart);
+		}
 	}
 
 	/** Capture the fully drawn native window once an actual gameplay note is on screen. */
@@ -2347,7 +2453,9 @@ class RuntimeSmokeHarness {
 	static function noteRenderShaderDiagnostic(note:Note):Dynamic {
 		var reference = note == null ? null : note.rgbShader;
 		var nightmareVision = note == null ? null : note.nightmareVisionRGB;
-		var palette = nightmareVision != null ? nightmareVision.palette
+		// Read the values, not `palette`, which would give the note its own copy.
+		var palette:Dynamic = nightmareVision != null
+			? {r:nightmareVision.r, g:nightmareVision.g, b:nightmareVision.b, mult:nightmareVision.mult}
 			: (reference == null ? null : reference.parent);
 		var shader:Dynamic = note == null ? null : note.shader;
 		var shaderClass = shader == null ? null : Type.getClass(shader);
@@ -2799,6 +2907,13 @@ class RuntimeSmokeHarness {
 			updateP95Ms: rounded(percentile(updateCosts, 0.95)),
 			drawP50Ms: rounded(percentile(drawCosts, 0.5)),
 			drawP95Ms: rounded(percentile(drawCosts, 0.95)),
+			// Means, unrounded: the clock steps in whole milliseconds, so a sub-millisecond
+			// change in average cost only shows up as a mean over many frames.
+			updateMeanMs: meanOf(updateCosts),
+			drawMeanMs: meanOf(drawCosts),
+			renderMeanMs: renderCosts.length == 0 ? null : meanOf(renderCosts),
+			renderP95Ms: renderCosts.length == 0 ? null : rounded(percentile(renderCosts, 0.95)),
+			drawCallsMean: meanOf(drawCallCounts),
 			deltaP50Ms: rounded(percentile(deltas, 0.5)),
 			deltaP95Ms: rounded(percentile(deltas, 0.95)),
 			deltaMaxMs: rounded(maxOf(deltas)),
@@ -2817,6 +2932,8 @@ class RuntimeSmokeHarness {
 		costs.resize(0);
 		updateCosts.resize(0);
 		drawCosts.resize(0);
+		renderCosts.resize(0);
+		drawCallCounts.resize(0);
 		deltas.resize(0);
 		windowHitches = 0;
 	}
@@ -2826,8 +2943,10 @@ class RuntimeSmokeHarness {
 		return {currentBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_CURRENT),
 			liveBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE),
 			reservedBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_RESERVED),
+			largeBytes: EngineMemory.largeBytes(),
 			requestedCollects: EngineMemory.collectCount,
 			suspectedCollections: hitchTracker.suspectedCollections,
+			largeTriggeredCollections: hitchTracker.largeTriggeredCollections,
 			lastCollectMs: EngineMemory.lastCollectSeconds * 1000,
 			lastCollectReason: EngineMemory.lastReason};
 		#else
@@ -2852,6 +2971,15 @@ class RuntimeSmokeHarness {
 		sorted.sort(Reflect.compare);
 		var index = Std.int(Math.min(sorted.length - 1, Math.round(fraction * (sorted.length - 1))));
 		return sorted[index];
+	}
+
+	static function meanOf(samples:Array<Float>):Float {
+		if (samples.length == 0)
+			return 0;
+		var sum:Float = 0;
+		for (sample in samples)
+			sum += sample;
+		return sum / samples.length;
 	}
 
 	static function maxOf(samples:Array<Float>):Float {
@@ -2957,10 +3085,29 @@ class RuntimeSmokeHarness {
 		return Std.parseFloat(raw == null ? '' : StringTools.trim(raw));
 	}
 
+	/** One skip press for an intro cutscene, which runs before song time exists.
+	 * The press is held for exactly one tick, like a real key press. */
+	static function maybeSkipIntro(request:RuntimeSmokeOptions):Void {
+		if (introSkipPressing) {
+			introSkipPressing = false;
+			CutsceneSkipKey.forced = false;
+		}
+		if (request == null || request.introSkipAfterMs == null || request.introSkipAfterMs < 0 || introSkipTried
+			|| !playStateReady || songStartObserved || PlayState.instance == null || FlxG.state != PlayState.instance)
+			return;
+		if (introSkipReadyAt < 0) introSkipReadyAt = nowMs();
+		if (nowMs() - introSkipReadyAt < request.introSkipAfterMs) return;
+		introSkipTried = true;
+		introSkipPressing = true;
+		CutsceneSkipKey.forced = true;
+		emit('intro_skip_press', {heldMs: nowMs() - introSkipReadyAt, startedCountdown: PlayState.instance.startedCountdown});
+	}
+
 	/** Apply position-triggered smoke actions once gameplay has started. */
 	static function maybeRunSeek():Void {
 		maybeTriggerGameOver();
 		var request = config();
+		maybeSkipIntro(request);
 		// Stands in for the skip key press a hidden window cannot receive.
 		if (request != null && request.cutsceneSkipAfterMs >= 0 && !cutsceneSkipTried && playStateReady && songStartObserved
 			&& PlayState.instance != null && FlxG.state == PlayState.instance

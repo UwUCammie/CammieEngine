@@ -16,15 +16,20 @@ class CutsceneSkipTest(unittest.TestCase):
     def test_landing_time_follows_the_chart(self):
         self.run_haxe(r"""
   var none = Math.NaN;
-  check(CutsceneSkip.target(1000, 0, 8000, none, 300000) == 8000, 'cutscene without later notes should land on its end');
-  check(CutsceneSkip.target(1000, 0, 8000, 20000, 300000) == 8000, 'a distant note moved the landing time');
-  check(CutsceneSkip.target(1000, 0, 8000, 6000, 300000) == 6000 - CutsceneSkip.NOTE_LEAD_MS, 'landing time ignores the next player note');
-  check(CutsceneSkip.target(303500, 303035, 11000, none, 310000) == 310000, 'landing time passed the end of the song');
+  var lead = CutsceneSkip.LEAD_MS;
+  check(lead == 5000, 'a skip should land five seconds before play resumes');
+  check(CutsceneSkip.target(1000, 0, 18000, none, 300000) == 13000, 'cutscene without later notes should keep its last five seconds');
+  check(CutsceneSkip.target(1000, 0, 18000, 40000, 300000) == 13000, 'a distant note moved the landing time');
+  check(CutsceneSkip.target(1000, 0, 18000, 12000, 300000) == 12000 - lead, 'landing time ignores the next player note');
+  check(CutsceneSkip.target(290000, 289000, 30000, none, 310000) == 310000 - lead, 'landing time passed the end of the song');
+  check(CutsceneSkip.target(14000, 0, 18000, none, 300000) == 14000 && CutsceneSkip.target(13000, 0, 18000, none, 300000) == 13000, 'a skip with five seconds or less left moved the song');
+  check(!CutsceneSkip.skippable(14000, CutsceneSkip.target(14000, 0, 18000, none, 300000)), 'a skip inside the last five seconds was used');
+  check(CutsceneSkip.target(1000, 0, 6000, none, 300000) == 1000, 'short cutscene skipped past its last five seconds');
   check(CutsceneSkip.target(9000, 0, 8000, none, 300000) == 9000, 'finished cutscene moved the song backwards');
   check(CutsceneSkip.target(1000, 0, 0, none, 300000) == 1000 && CutsceneSkip.target(1000, 0, -1, none, 300000) == 1000, 'unknown length treated as skippable');
   check(CutsceneSkip.target(1000, Math.NaN, 8000, none, 300000) == 1000, 'unknown start treated as skippable');
   check(CutsceneSkip.skippable(1000, 8000) && CutsceneSkip.skippable(1000, 1000 + CutsceneSkip.MIN_SKIP_MS), 'real cutscene refused');
-  // A video behind notes is scenery: the next note is always close, so Enter keeps pausing.
+  // A video behind notes is scenery: the next note is always close, so the press is left alone.
   var scenery = CutsceneSkip.target(50000, 0, 200000, 50400, 300000);
   check(scenery == 50000 && !CutsceneSkip.skippable(50000, scenery), 'video behind notes treated as a cutscene');
   check(!CutsceneSkip.skippable(1000, 1200) && !CutsceneSkip.skippable(1000, Math.NaN), 'tiny or unknown jump accepted');

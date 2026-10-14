@@ -19,7 +19,6 @@ private typedef NightmareVisionSaveSession = {
 	values. Persistence backends remain in the host-side session registry rather
 	than the reflected session object. */
 class NightmareVisionSaveData {
-	static inline var ROOT_PREFIX:String = 'assets/imported_mods/';
 	static inline var MAP_MARKER:String = '__nightmareVisionOwnerStringMap__';
 	static var sessions:Map<String, NightmareVisionSaveSession> = new Map();
 	/** Persistence backends stay off script-reflectable session instances. */
@@ -95,15 +94,14 @@ class NightmareVisionSaveData {
 	}
 
 	static function canonicalOwnerKey(value:String):String {
-		var clean = StringTools.replace(StringTools.trim(value == null ? '' : value), '\\', '/');
-		if (clean == '' || clean.startsWith('/') || clean.indexOf(':') >= 0) return '';
-		for (part in clean.split('/')) if (part == '' || part == '..') return '';
-		var normalized = Path.normalize(clean);
+		var root = SourceOwnerFiles.normalizeRoot(StringTools.trim(value == null ? '' : value));
+		if (root == null) return '';
+		var normalized = Path.normalize(root);
+		// One save bucket per folder, whatever case a caller spelled it in.
 		#if windows
 		normalized = normalized.toLowerCase();
 		#end
-		return normalized.startsWith(ROOT_PREFIX) && normalized.length > ROOT_PREFIX.length
-			? normalized : '';
+		return normalized;
 	}
 
 	static function validField(name:String):Bool

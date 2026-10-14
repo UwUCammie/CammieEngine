@@ -72,4 +72,34 @@ class ChartDifficultyRefreshTest(unittest.TestCase):
     }}""")
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',tmp,'--run','Main',str(install),str(stage),str(state)],cwd=ROOT,capture_output=True,text=True,timeout=90)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+ def test_scripts_saved_in_a_legacy_encoding_do_not_block_the_refresh(self):
+  # Donor scripts often carry comments in a non UTF-8 code page. The inputs are
+  # checked again by raw file hash, so reading them as text must hash the same bytes.
+  with tempfile.TemporaryDirectory(dir=TEST_TMP if os.environ.get('CAMMIE_TEST_TMP') else None) as tmp:
+   base=Path(tmp);install=base/'install';stage=base/'stage';state=base/'state'
+   for p in (install,stage,state):p.mkdir()
+   (stage/'chart.json').write_text('{"song":{"notes":[{"mustHitSection":true,"sectionNotes":[[0,0,0],[500,1,0]]}]}}')
+   (stage/'provenance').write_text('{"sourceEngine":"Psych Engine","sourceOwner":"assets/imported_mods/pack","sourceFolder":"test"}')
+   owner=install/'assets/imported_mods/pack'
+   (owner/'data/test').mkdir(parents=True)
+   (owner/'data/test/intro.lua').write_bytes(b"local size = 18\t--\xcf\xd4\xca\xbe\nfunction onCreate()\nend\n")
+   (base/'CoolUtil.hx').write_text('class CoolUtil {public static function parseJson(s:String):Dynamic return haxe.Json.parse(s);}')
+   (base/'Main.hx').write_text(r"""class Main {
+    static function check(b:Bool,s:String){if(!b)throw s;}
+    static function main(){var args=Sys.args();var install=args[0];var stage=args[1];var state=args[2];
+     var record:Dynamic={id:'test',schemaVersion:1,revisions:[{commonRevision:5}]};
+     var r=ImportRefreshTransaction.apply(install,stage,state,'owner',['assets/data'],[
+      {path:'assets/data/test/test.json',stagedPath:'chart.json'},
+      {path:'assets/data/test/importProvenance.json',stagedPath:'provenance'}],{importRecord:record,registries:[],chartAnalysisVersion:0});
+     check(r.status=='applied','seed');
+     var after=ChartDifficultyRefresh.refresh(install,state,'owner',ImportRefreshTransaction.loadManifest(state,'owner'));
+     check(after.revision.chartAnalysisVersion==ChartDifficultyAnalysis.VERSION,'analysis did not finish');
+    }}""")
+   result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',tmp,'--run','Main',str(install),str(stage),str(state)],cwd=ROOT,capture_output=True,text=True,timeout=90)
+   self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+   # The interpreter keeps invalid UTF-8 as is, native builds do not; the
+   # recorded hash has to come from the raw bytes on every target.
+   source=(ROOT/'source/ChartDifficultyRefresh.hx').read_text(encoding='utf-8')
+   self.assertNotIn('Bytes.ofString(text)',source)
+   self.assertIn('Sha256.make(File.getBytes(resolved))',source)
 if __name__=='__main__':unittest.main()

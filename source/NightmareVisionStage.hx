@@ -355,7 +355,8 @@ class NightmareVisionStage extends FlxTypedContainer<FlxBasic>
   if (operations == null) throw '[nightmare-vision-stage] Missing source Bopper operations';
   return operations;
  }
- function resolveBuiltinObject(name:String):Null<Class<Dynamic>> {
+ /** Static so the scripts' StageData.resolveObjectInstance shares this rule. */
+ public static function resolveBuiltinObject(name:String):Null<Class<Dynamic>> {
   name = name.toLowerCase();
   if (name.indexOf('tiledsprite') >= 0) return flixel.addons.display.FlxTiledSprite;
   else if (name.indexOf('backdrop') >= 0) return flixel.addons.display.FlxBackdrop;

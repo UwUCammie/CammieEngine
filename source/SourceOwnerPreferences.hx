@@ -11,6 +11,10 @@ typedef SourceOwnerSeedRow = {
 	var psych:String;
 	var nightmare:String;
 	var kind:String;
+	/** The owner value reports how the game is running right now rather than a
+		choice the player makes in the mod, so a saved owner value must not
+		replace it. */
+	@:optional var live:Bool;
 }
 
 /** The parts of an owner-scoped ClientPrefs store that do not depend on which
@@ -36,7 +40,15 @@ class SourceOwnerPreferences {
 		{native:'gameplayShaders', psych:'shaders', nightmare:'shaders', kind:'bool'},
 		{native:'zoomCamera', psych:'camZooms', nightmare:'camZooms', kind:'bool'},
 		{native:'showNoteSplashes', psych:'splashAlpha', nightmare:'noteSplashes', kind:'splash'},
-		{native:'offset', psych:'noteOffset', nightmare:'noteOffset', kind:'number'}
+		{native:'offset', psych:'noteOffset', nightmare:'noteOffset', kind:'number'},
+		// Scripts read framerate to scale per-frame motion (for example
+		// 240 / framerate per update), so it has to be the rate the game really
+		// runs at. Uncapped play has no single rate and keeps the owner default.
+		// Both are live: the owner's own options cannot change the real rate,
+		// so a framerate it saved earlier would be stale once the player
+		// changes the engine cap.
+		{native:'fpsCap', psych:'framerate', nightmare:'framerate', kind:'framerate', live:true},
+		{native:'unlimitedFPS', psych:null, nightmare:'unlockedFramerate', kind:'bool', live:true}
 	];
 
 	/** Clean an owner root and refuse anything that is not one imported mod.
@@ -44,14 +56,8 @@ class SourceOwnerPreferences {
 		and rejected by the other. */
 	public static function normalizeOwner(owner:String, label:String):String {
 		if (owner == null) throw '[' + label + '] Missing owner root';
-		var path = owner.replace('\\', '/');
-		while (path.indexOf('//') >= 0) path = path.replace('//', '/');
-		while (path.length > OWNER_PREFIX.length && path.endsWith('/'))
-			path = path.substr(0, path.length - 1);
-		if (!path.startsWith(OWNER_PREFIX) || path.length <= OWNER_PREFIX.length
-			|| path.indexOf('/../') >= 0 || path.endsWith('/..')
-			|| path.indexOf('/./') >= 0 || path.endsWith('/.'))
-			throw '[' + label + '] Refused an owner outside imported mods';
+		var path = SourceOwnerFiles.normalizeRoot(owner);
+		if (path == null) throw '[' + label + '] Refused an owner outside imported mods';
 		return path;
 	}
 
@@ -72,9 +78,24 @@ class SourceOwnerPreferences {
 	}
 
 	/** Copy the player's matching native options into a fresh owner preference
-		object. Values are copied, never bound, so later owner writes stay local. */
-	public static function seedNativeOptions(target:Dynamic, options:Dynamic, nightmare:Bool):Void {
-		if (target == null || options == null) return;
+		object. Values are copied, never bound, so later owner writes stay local.
+		Returns the owner names of the live rows that were seeded; loading the
+		owner's saved values skips those. */
+	public static function seedNativeOptions(target:Dynamic, options:Dynamic, nightmare:Bool):Array<String> {
+		var live:Array<String> = [];
+		if (target == null || options == null) return live;
+		for (row in NATIVE_SEEDS) {
+			var name = nightmare ? row.nightmare : row.psych;
+			if (name == null || row.live != true) continue;
+			var value:Dynamic = field(options, row.native);
+			var usable = switch (row.kind) {
+				case 'bool': Std.isOfType(value, Bool);
+				case 'framerate': field(options, 'unlimitedFPS') != true
+					&& (Std.isOfType(value, Int) || Std.isOfType(value, Float)) && Math.isFinite((value:Float)) && (value:Float) >= 1;
+				default: false;
+			};
+			if (usable) live.push(name);
+		}
 		for (row in NATIVE_SEEDS) {
 			var name = nightmare ? row.nightmare : row.psych;
 			if (name == null) continue;
@@ -91,9 +112,15 @@ class SourceOwnerPreferences {
 					if (!Std.isOfType(value, Bool)) continue;
 					if (nightmare) Reflect.setField(target, name, value);
 					else if (value == false) Reflect.setField(target, name, 0.0);
+				case 'framerate':
+					if (field(options, 'unlimitedFPS') == true) continue;
+					if (!Std.isOfType(value, Int) && !Std.isOfType(value, Float)) continue;
+					var rate:Float = value;
+					if (Math.isFinite(rate) && rate >= 1) Reflect.setField(target, name, Std.int(rate));
 				default:
 			}
 		}
+		return live;
 	}
 
 	/** Start the four note lanes on the keys the player bound in the engine.

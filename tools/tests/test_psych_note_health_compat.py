@@ -95,6 +95,9 @@ __METHODS__
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             Path(folder, "PsychNoteHealthFixture.hx").write_text(fixture, newline='\n')
+            # getHealth reads its default amounts from the shared table.
+            Path(folder, "GameplayConstants.hx").write_text(
+                (ROOT / "source/GameplayConstants.hx").read_text(encoding="utf-8"), newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "PsychNoteHealthFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

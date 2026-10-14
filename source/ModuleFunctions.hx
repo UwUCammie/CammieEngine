@@ -464,6 +464,9 @@ class ModuleFunctions {
 		ImportOverlayResolver.invalidate();
 		NoteKeys.clearPresetCache();
 		Song.invalidateVisualRegistryCache();
+		// An import or refresh can replace or remove owner files, so on-disk
+		// spellings remembered before it must be looked up again.
+		SourceOwnerFiles.forgetResolvedPaths();
 		if (songNames == null)
 			return;
 		for (songName in songNames) {
@@ -1191,14 +1194,15 @@ class ModuleFunctions {
 	 * those files as a native vocalStems list so PlayState can load every track
 	 * together; a lone first stem is not a valid substitute for the group.
 	 */
-	static function findImportVocalStems(basePath:String):Array<SongImportVocalStem> {
+	static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false):Array<SongImportVocalStem> {
 		var stems:Array<SongImportVocalStem> = [];
 		if (basePath == null || !FileSystem.isDirectory(basePath))
 			return stems;
 		// A combined Voices file normally means there is nothing to split. The
 		// exception is a pack that ships the player/opponent pair beside it:
 		// engines that know the pair play it and leave the combined file alone.
-		var combined = findImportFile(basePath, ['Voices.ogg', 'voices.ogg']) != null;
+		var combinedPath = findImportFile(basePath, ['Voices.ogg', 'voices.ogg']);
+		var combined = combinedPath != null;
 		var playerStem = false;
 		var entries:Array<String>;
 		try {
@@ -1228,9 +1232,17 @@ class ModuleFunctions {
 				playerStem = true;
 			stems.push({source:source, destination:entry, id:stemId, role:'shared'});
 		}
-		// an opponent stem alone cannot replace the combined file
-		if (combined && !playerStem)
-			return [];
+		// Psych and Nightmare Vision load the player's stem when there is one and
+		// otherwise the combined file, and load the opponent's stem on its own
+		// either way. So for them an opponent stem beside the combined file plays
+		// with that file as the player's voice instead of being dropped. Engines
+		// that only ever load the combined file never played that stem, and
+		// adding it would double the opponent's voice.
+		if (combined && !playerStem) {
+			if (stems.length == 0 || !combinedPlaysAsPlayer)
+				return [];
+			stems.unshift({source:combinedPath, destination:'Voices.ogg', id:'Player', role:'player'});
+		}
 		return stems;
 	}
 
@@ -1788,8 +1800,16 @@ class ModuleFunctions {
 					flatMusicRoot = sourceAudioRoot;
 
 				var songData = songImportFromAssetFolders(songFolder, chartDataFolder, songFolderName, flatMusicRoot);
-				if (songData != null && (engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH))
+				if (songData != null && (engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH)) {
+					// Only these two engines fall back to the combined file for the
+					// player while still loading a lone opponent stem.
+					if (songData.vocalStems == null || songData.vocalStems.length == 0) {
+						var fallbackStems = findImportVocalStems(songFolder, true);
+						if (fallbackStems.length > 0)
+							songData.vocalStems = fallbackStems;
+					}
 					normalizeSourceVocalRoles(songData);
+				}
 				// songImportFromRoots normally derives the destination folder from the
 				// chart directory name. For the nested NMV layout that directory is
 				// literally `data`; retain the authored songs/<song> key instead.
@@ -2914,6 +2934,9 @@ class ModuleFunctions {
 		var songsData = Path.join([root.data, 'songs']);
 		if (!FileSystem.isDirectory(songsData))
 			return result;
+		// Story levels are read once per root and handed to the base variation
+		// of each song, which is the one a level's song id names.
+		var levelWeeks:VSliceStoryWeeks.VSliceStoryWeekSource = null;
 		var folders:Array<String>;
 		try {
 			folders = ImportDirectoryListing.normalize(FileSystem.readDirectory(songsData));
@@ -2967,7 +2990,9 @@ class ModuleFunctions {
 			}
 			var metadata:Dynamic = null;
 			try {
-				metadata = CoolUtil.parseJson(File.getContent(metadataPath));
+				// 2.0 and 2.1 metadata keep the characters and note style under older
+				// names; read them the way the chart converter already does.
+				metadata = VSliceImporter.migrateMetadata(CoolUtil.parseJson(File.getContent(metadataPath)));
 			} catch (error:Dynamic) {
 				diagnostics.push('[invalid-metadata] Could not parse V-Slice metadata: ' + metadataPath
 					+ ' (' + Std.string(error) + ')');
@@ -3334,6 +3359,15 @@ class ModuleFunctions {
 				Reflect.setField(songData, 'sourceFolder', folderName);
 			if (variationSuffix != '')
 				Reflect.setField(songData, 'destinationFolder', nativeSongName);
+			else {
+				if (levelWeeks == null)
+					levelWeeks = VSliceStoryWeeks.read(root.contentRoot == null
+						|| StringTools.trim(root.contentRoot) == '' ? root.root : root.contentRoot, root.data);
+				if (levelWeeks.weeks.length > 0) {
+					Reflect.setField(songData, 'authoredStoryWeeks', levelWeeks.weeks);
+					Reflect.setField(songData, 'authoredStoryArt', levelWeeks.titles);
+				}
+			}
 			if (convertedStages.length > 0)
 				Reflect.setField(songData, 'convertedStages', convertedStages);
 			if (eventVideoAssets.length > 0)
@@ -4544,19 +4578,25 @@ class ModuleFunctions {
 					? discoverCodenameSongImports(root, rootSources, rejectionCollector)
 					: discoverLegacySongImportsFromRoot(root, rootSources, rejectionCollector));
 			var ownerOrders:Map<String, Map<String, Int>> = [];
+			// Freeplay order and story weeks come from one read of the week files.
+			var ownerStoryWeeks:Map<String, Array<PsychFamilyWeekImport.PsychFamilyStoryWeek>> = [];
 			for (song in songs) {
 				if (root.engine == ImportEngine.PSYCH || root.engine == ImportEngine.NIGHTMARE_VISION) {
 					var owner = song.sourceRoot == null || song.sourceRoot == '' ? root.root : song.sourceRoot;
 					var ownerKey = importPathKey(owner);
+					var nightmare = root.engine == ImportEngine.NIGHTMARE_VISION;
 					if (!ownerOrders.exists(ownerKey)) {
 						var sameRoot = ownerKey == importPathKey(root.root);
-						ownerOrders.set(ownerKey, PsychFreeplayOrder.read(owner,
+						var weekSource = PsychFamilyWeekImport.readSource(owner,
 							sameRoot ? root.contentRoot : owner, sameRoot ? root.data : null,
-							root.engine == ImportEngine.NIGHTMARE_VISION, CoolUtil.parseJson));
+							nightmare, CoolUtil.parseJson);
+						ownerOrders.set(ownerKey, PsychFreeplayOrder.fromSource(weekSource, nightmare));
+						ownerStoryWeeks.set(ownerKey, PsychFamilyWeekImport.storyWeeks(weekSource, nightmare));
 					}
-					var sourceKey = PsychFreeplayOrder.songKey(Reflect.field(song, 'sourceFolder'), root.engine == ImportEngine.NIGHTMARE_VISION);
+					var sourceKey = PsychFreeplayOrder.songKey(Reflect.field(song, 'sourceFolder'), nightmare);
 					var rank = ownerOrders.get(ownerKey).get(sourceKey);
 					if (rank != null) Reflect.setField(song, 'authoredFreeplayOrder', rank);
+					Reflect.setField(song, 'authoredStoryWeeks', ownerStoryWeeks.get(ownerKey));
 				}
 				var key = StringTools.trim(song.name).toLowerCase();
 				var sourceInfo = song.importSourceInfo == null
@@ -4970,7 +5010,9 @@ class ModuleFunctions {
 		};
 		var source = findVSliceHxcAsset(sourceRoot, reference.key, folder, extensions);
 		if (source == null) {
-			if (reportMissing) {
+			// Scripts often play the base game's own media (Paths.sound('thunder_1')); the runtime
+			// falls back to the host assets tree for those, so they are present, not missing.
+			if (reportMissing && !vSliceHostMediaExists(runtimeNamespace, reference.key, folder, extensions)) {
 				if (result.errors == null)
 					result.errors = [];
 				result.errors.push('HXC static asset missing: ' + reference.key + ' (' + sourceRoot + ')');
@@ -4985,6 +5027,26 @@ class ModuleFunctions {
 		var extension = Path.extension(source);
 		mergeVSliceMapping({source:source, destination:folder + '/' + clean + (clean.toLowerCase().endsWith('.' + extension.toLowerCase()) ? '' : '.' + extension),
 			kind:'hxc-stage-media', supported:true}, runtimeNamespace, result);
+	}
+
+	/**
+		Whether the host game ships a media file a V-Slice script names. The import
+		namespace lives at <host assets>/imported_mods/<namespace>, and the HXC runtime
+		resolves a key it cannot find in the namespace against <host assets>/<folder>,
+		so only that tree and its shared library count. Images are not checked here:
+		their lookup has a basename fallback that would match unrelated host art.
+	*/
+	static function vSliceHostMediaExists(runtimeNamespace:String, key:String, folder:String,
+		extensions:Array<String>):Bool {
+		if (runtimeNamespace == null || key == null || folder == null || folder == 'images')
+			return false;
+		var importedRoot = Path.directory(Path.normalize(runtimeNamespace));
+		if (Path.withoutDirectory(importedRoot).toLowerCase() != 'imported_mods')
+			return false;
+		var hostAssets = Path.directory(importedRoot);
+		if (hostAssets == '' || !FileSystem.isDirectory(hostAssets))
+			return false;
+		return findVSliceHxcAsset(hostAssets, key, folder, extensions) != null;
 	}
 
 	/** Copy only assets referenced by selected V-Slice stage HXC files. */
@@ -5412,11 +5474,15 @@ class ModuleFunctions {
 				// A complete chart/audio import can still be missing some converted
 				// owner assets. Revisit only the non-overwriting visual/runtime merges;
 				// importSong would needlessly parse and touch the existing chart.
+				// Psych and Nightmare Vision songs come back for their owner records
+				// (script manifest, provenance, story weeks), which a re-import of an
+				// existing install would otherwise never write; they have no
+				// converted visuals to repair.
 				if ((songData.engine == ImportEngine.CODENAME || songData.engine == ImportEngine.V_SLICE
-					|| songData.engine == ImportEngine.PSYCH)
+					|| songData.engine == ImportEngine.PSYCH || songData.engine == ImportEngine.NIGHTMARE_VISION)
 					&& songData.sourceRoot != null && StringTools.trim(songData.sourceRoot) != '') {
 					importedSongs.set(storageKey, songData);
-					if (songData.engine != ImportEngine.PSYCH)
+					if (songData.engine == ImportEngine.CODENAME || songData.engine == ImportEngine.V_SLICE)
 						try mergeConvertedVisuals(songData) catch (error:Dynamic) {
 							result.failed++;
 							result.errors.push(songData.name + ': converted visual repair failed: ' + Std.string(error));
@@ -5825,6 +5891,8 @@ class ModuleFunctions {
 			result.skippedAssets += manifestMerge.skipped;
 			assetFailures += manifestMerge.failed;
 		}
+		for (message in writeImportedStoryWeeks(importedSongs))
+			result.errors.push(message);
 		// Registry-backed visual validation is cached by Song for chart loading.
 		// Refreshes happen on the Flixel thread when ImportImportJob is running in
 		// its native worker; synchronous callers retain the old behavior.
@@ -9001,6 +9069,59 @@ class ModuleFunctions {
 		return existingImportChild(dataFolder, CompatScriptManifest.FILE_NAME);
 	}
 
+	/** Psych-family weeks and V-Slice story levels become Story Mode weeks of
+	 * the owner that imported them. The record sits in the owner folder, so
+	 * removing the import also removes its weeks. Returns diagnostics; a week
+	 * record never fails a song. */
+	static function writeImportedStoryWeeks(importedSongs:Iterable<SongImport>):Array<String> {
+		var diagnostics:Array<String> = [];
+		var owners:Array<String> = [];
+		var engines:Map<String, String> = [];
+		var weeks:Map<String, Array<PsychFamilyWeekImport.PsychFamilyStoryWeek>> = [];
+		var songs:Map<String, Map<String, String>> = [];
+		var titles:Map<String, Map<String, String>> = [];
+		for (songData in importedSongs) {
+			if (songData == null || (songData.engine != ImportEngine.PSYCH && songData.engine != ImportEngine.NIGHTMARE_VISION
+				&& songData.engine != ImportEngine.V_SLICE)
+				|| songData.sourceRoot == null || StringTools.trim(songData.sourceRoot) == '')
+				continue;
+			var authored:Array<PsychFamilyWeekImport.PsychFamilyStoryWeek> = Reflect.field(songData, 'authoredStoryWeeks');
+			var sourceFolder:Dynamic = Reflect.field(songData, 'sourceFolder');
+			var folder = importSongFolderName(songData);
+			if (authored == null || !Std.isOfType(sourceFolder, String) || !validModuleName(folder))
+				continue;
+			var owner = CompatScriptManifest.destinationRoot(songData.sourceRoot, songData.engine);
+			if (!songs.exists(owner)) {
+				owners.push(owner);
+				engines.set(owner, songData.engine);
+				weeks.set(owner, authored);
+				songs.set(owner, new Map());
+				var art:Dynamic = Reflect.field(songData, 'authoredStoryArt');
+				if (Std.isOfType(art, haxe.ds.StringMap)) titles.set(owner, cast art);
+			}
+			songs.get(owner).set(songData.engine == ImportEngine.V_SLICE
+				? VSliceStoryWeeks.songKey(sourceFolder)
+				: PsychFamilyWeekImport.songKey(sourceFolder, songData.engine == ImportEngine.NIGHTMARE_VISION), folder);
+		}
+		for (owner in owners) {
+			// V-Slice title images live outside the owner's copied trees, so the
+			// ones the weeks name are copied in beside the record. An existing
+			// file is kept, the same as every other owner asset.
+			var ownerTitles = titles.get(owner);
+			if (ownerTitles != null)
+				for (file in ownerTitles.keys()) {
+					var copied:ImportAssetMergeResult = {copied:0, skipped:0, failed:0};
+					copyImportFileNonOverwriting(ownerTitles.get(file),
+						Path.join([owner, VSliceStoryWeeks.TITLE_FOLDER, file + '.png']), copied);
+					if (copied.failed > 0)
+						diagnostics.push('Could not copy the story title image of ' + file + ' into ' + owner + '.');
+				}
+			if (!ImportedStoryWeeks.write(owner, engines.get(owner), weeks.get(owner), songs.get(owner)))
+				diagnostics.push('Could not record the story weeks of ' + owner + '.');
+		}
+		return diagnostics;
+	}
+
 	/** Persist destination-only import identity and the bounded source
 	 * fingerprint without storing the donor's filesystem path. Existing
 	 * provenance is user data and stays untouched on subsequent repairs. */
@@ -9438,8 +9559,20 @@ class ModuleFunctions {
 				mergeHxcScriptTree(sourcePath, Path.join([destination, entry]), depth + 1, result, skipPaths);
 				continue;
 			}
-			if (!entry.toLowerCase().endsWith('.hxc'))
-				continue;
+			var lowerEntry = entry.toLowerCase();
+			// Polymod applies import.hx(c) defaults from a script's own folder and
+			// its parents, so they travel with the scripts they belong to.
+			if (!lowerEntry.endsWith('.hxc') && lowerEntry != 'import.hx') {
+				if (!lowerEntry.endsWith('.hx'))
+					continue;
+				// Since 0.8.4 a .hx file that declares a scripted class is a script
+				// too. The destination is below scripts/, where the runtime judges it.
+				var hxSource:String = null;
+				try hxSource = File.getContent(sourcePath) catch (_:Dynamic) {}
+				if (hxSource == null
+					|| !HxcScriptDiscovery.isScriptedClassFile(Path.join([destination, entry]), hxSource))
+					continue;
+			}
 			var destinationPath = existingImportChild(destination, entry);
 			if (FileSystem.exists(destinationPath)) {
 				result.skipped++;

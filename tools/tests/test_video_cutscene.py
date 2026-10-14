@@ -85,6 +85,7 @@ __METHOD__
         files = {
             'VideoCutscene.hx': source,
             'CutsceneSkipKey.hx': (ROOT / 'source/CutsceneSkipKey.hx').read_text(encoding='utf-8'),
+            'CutsceneSkip.hx': (ROOT / 'source/CutsceneSkip.hx').read_text(encoding='utf-8'),
             'flixel/FlxBasic.hx': 'package flixel; class FlxBasic {public function new(){} public function update(t:Float){} public function destroy(){}}',
             'Event.hx': '''class Event {var handlers:Array<Dynamic>=[]; public function new(){} public function add(f:Dynamic){handlers.push(f);} public function remove(f:Dynamic){} public function dispatch(){for(f in handlers) Reflect.callMethod(null,f,[]);}}''',
             'flixel/FlxG.hx': '''package flixel; class FlxG {
@@ -143,17 +144,29 @@ __METHOD__
                 native.onEndReached.dispatch();normal.update(0);normal.update(0);
                 if(count!=1||!native.disposed||FlxG.children!=0)throw "Completion must clean up once";
                 if(normal.skipped)throw "Natural completion was marked as a skip";
-                var skip=make(path);skip.update(0);CutsceneSkipKey.forced=true;
+                var skip=make(path);skip.update(0);native=FlxVideo.last;CutsceneSkipKey.forced=true;
+                var jumped:Float=-1;var jumps=0;skip.onSkipAhead=function(ms:Float){jumped=ms;jumps++;};
                 if(skip.durationMs!=20840)throw "Clip duration is not available for event seek";
-                skip.update(0);CutsceneSkipKey.forced=false;
-                if(count!=2||FlxG.children!=0)throw "Skip failed";
-                if(!skip.skipped)throw "Explicit skip was not distinguished from completion";
+                native.time=2000;skip.update(0);CutsceneSkipKey.forced=false;
+                // A skip leaves the last five seconds to play instead of ending the clip.
+                if(count!=1||FlxG.children!=2||native.time!=15840)throw "Skip did not keep the last five seconds";
+                if(!skip.skipped||skip.unwatchedMs!=13840||jumped!=13840)throw "Skip did not report the time it jumped over";
+                CutsceneSkipKey.forced=true;skip.update(0);CutsceneSkipKey.forced=false;
+                if(native.time!=15840||skip.unwatchedMs!=13840||count!=1)throw "A press inside the last five seconds did something";
+                // VLC applies a seek a little later: a quick second press can still read the old playhead.
+                native.time=2000;CutsceneSkipKey.forced=true;skip.update(0);CutsceneSkipKey.forced=false;
+                if(native.time!=2000||skip.unwatchedMs!=13840||jumps!=1)throw "A second press before the seek landed moved timers again";
+                native.time=15840;
+                native.onEndReached.dispatch();skip.update(0);
+                if(count!=2||FlxG.children!=0)throw "Skipped clip did not finish on its own";
                 var deferred=make(path);deferred.update(0);native=FlxVideo.last;
                 native.length=-1;native.duration=-1;
                 CutsceneSkipKey.forced=true;deferred.update(0.016);CutsceneSkipKey.forced=false;
                 if(count!=2||FlxG.children!=2)throw "Skip should wait briefly for delayed VLC metadata";
                 native.duration=20840;deferred.update(0.016);
-                if(count!=3||!deferred.skipped||FlxG.children!=0)throw "Deferred skip did not seek when metadata arrived";
+                if(count!=2||!deferred.skipped||native.time!=15840)throw "Deferred skip did not seek when metadata arrived";
+                native.onEndReached.dispatch();deferred.update(0);
+                if(count!=3||FlxG.children!=0)throw "Deferred skip did not finish on its own";
                 var unavailable=make(path);unavailable.update(0);native=FlxVideo.last;
                 native.length=-1;native.duration=-1;
                 CutsceneSkipKey.forced=true;unavailable.update(0.016);CutsceneSkipKey.forced=false;
@@ -185,7 +198,9 @@ __METHOD__
                 CutsceneSkipKey.forced=false;accepting=true;held.update(0.4);
                 if(held.skipped||count!=6)throw "Psych video skipped before one second";
                 held.update(0.6);
-                if(!held.skipped||count!=7)throw "Psych video did not skip on held accept";
+                if(!held.skipped||count!=6||FlxVideo.last.time!=15840)throw "Psych video did not skip on held accept";
+                FlxVideo.last.onEndReached.dispatch();held.update(0);
+                if(count!=7)throw "Held skip did not let the clip finish";
                 held.destroy();
               }
             }'''

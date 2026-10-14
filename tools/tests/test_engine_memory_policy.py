@@ -76,6 +76,93 @@ class EngineMemoryPolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("OK", result.stdout)
 
+    def run_fixture(self, name, body):
+        fixture = 'class ' + name + ' {\n static function fail(message:String):Void throw message;\n static function main() {\n' + body + '\n  Sys.println("OK");\n }\n}'
+        with tempfile.TemporaryDirectory() as folder:
+            (FixturePath(folder) / (name + ".hx")).write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"), "--run", name],
+                cwd=ROOT, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("OK", result.stdout)
+
+    def test_song_free_space_is_applied_once_and_restored(self):
+        self.run_fixture("EngineSongMemoryFixture", r'''
+  var tuned:Array<String> = [];
+  var env:Map<String, String> = [];
+  EngineMemory.tuner = function(mb:Int, percent:Int) tuned.push(mb + ":" + percent);
+  EngineMemory.environment = function(name:String) return env.get(name);
+  EngineMemory.reset();
+  var songA = {}, songB = {};
+
+  // Plain launch: the song value goes in once and the default comes back.
+  if (!EngineMemory.enterSong(songA)) fail("song free space was not applied");
+  if (EngineMemory.enterSong(songA)) fail("song free space was applied twice");
+  if (tuned.join(",") != EngineMemory.SONG_MIN_FREE_MB + ":0") fail("wrong song value: " + tuned.join(","));
+  if (EngineMemory.SONG_MIN_FREE_MB > EngineMemory.MAX_MIN_FREE_MB) fail("song value overflows the collector");
+  if (!EngineMemory.leaveSong(songA)) fail("song free space was not restored");
+  if (EngineMemory.leaveSong(songA)) fail("restored twice");
+  if (tuned.join(",") != EngineMemory.SONG_MIN_FREE_MB + ":0," + EngineMemory.DEFAULT_MIN_FREE_MB + ":0") fail("wrong restore: " + tuned.join(","));
+
+  // A retry builds the next song before the old one is destroyed.
+  tuned = [];
+  EngineMemory.enterSong(songA);
+  if (EngineMemory.enterSong(songB)) fail("a replacement song applied the value again");
+  if (EngineMemory.leaveSong(songA)) fail("the old song restored the default under the new one");
+  if (tuned.length != 1) fail("handover changed the tuning: " + tuned.join(","));
+  if (!EngineMemory.leaveSong(songB)) fail("the replacement song did not restore");
+  if (tuned.length != 2) fail("replacement restore missing");
+
+  // An explicit command-line minimum wins and is never overwritten.
+  EngineMemory.reset();
+  tuned = [];
+  EngineMemory.applyStartupTuning(["--gc-min-free-mb=128"]);
+  if (EngineMemory.enterSong(songA) || EngineMemory.leaveSong(songA)) fail("song value overrode the command line");
+  if (tuned.join(",") != "128:0") fail("command-line tuning changed: " + tuned.join(","));
+
+  // So does the collector's own environment variable.
+  EngineMemory.reset();
+  tuned = [];
+  env.set("HXCPP_MINIMUM_FREE_SPACE", "67108864");
+  if (EngineMemory.enterSong(songA) || EngineMemory.leaveSong(songA) || tuned.length != 0) fail("song value overrode the environment");
+  env.remove("HXCPP_MINIMUM_FREE_SPACE");
+
+  // The song value itself can be changed or switched off for measurements.
+  EngineMemory.reset();
+  tuned = [];
+  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=0"]);
+  if (EngineMemory.enterSong(songA) || EngineMemory.leaveSong(songA) || tuned.length != 0) fail("song value could not be switched off");
+  EngineMemory.reset();
+  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=512"]);
+  EngineMemory.enterSong(songA);
+  if (tuned.join(",") != "512:0") fail("song override ignored: " + tuned.join(","));
+  EngineMemory.reset();
+  tuned = [];
+  EngineMemory.applyStartupTuning(["--gc-song-min-free-mb=999999"]);
+  EngineMemory.enterSong(songA);
+  if (tuned.join(",") != EngineMemory.MAX_MIN_FREE_MB + ":0") fail("song override not clamped: " + tuned.join(","));
+''')
+
+    def test_probe_reports_large_heap_around_the_collection(self):
+        self.run_fixture("EngineLargeMemoryFixture", r'''
+  var large = 300.0;
+  EngineMemory.collector = function(major:Bool) large = 120.0;
+  EngineMemory.largeBytesProvider = function() return large;
+  EngineMemory.reset();
+  if (EngineMemory.largeBytes() != 300) fail("large bytes not read from the provider");
+  var report = EngineMemory.probe();
+  if (report.largeBefore != 300 || report.largeAfter != 120) fail("probe large figures: " + report.largeBefore + " -> " + report.largeAfter);
+''')
+
+    def test_song_states_enter_and_leave_the_song_policy(self):
+        play = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
+        create = play[play.index("override public function create() {"):]
+        self.assertIn("EngineMemory.enterSong(this);", create[:create.index("startTimestamp = consumeStartingPosition();")])
+        destroy = play[play.index("override public function destroy() {"):]
+        self.assertIn("EngineMemory.leaveSong(this);", destroy[:destroy.index('RuntimeSongExitProbe.mark("destroy-complete");')])
+        self.assertEqual(play.count("EngineMemory.enterSong("), 1)
+        self.assertEqual(play.count("EngineMemory.leaveSong("), 1)
+
     def test_collector_is_only_reached_through_the_module_at_quiet_points(self):
         loading = (ROOT / "source/SongLoadingScreen.hx").read_text(encoding="utf-8")
         handoff = loading[loading.index("if (progress.completed == 3) {"):]

@@ -332,6 +332,10 @@ class SongLoadingScreen {
 			// The new state exists and the overlay still covers it: the best
 			// moment to clear out everything loading left behind.
 			EngineMemory.collectNow(true, 'loading-handoff', true);
+			// No bulk texture upload here. Uploading every cached texture under
+			// the overlay doubled both the first render and the first frame
+			// after the music starts (about 90 to 180 ms instead of 40 to 95 ms,
+			// measured on several songs); textures upload when first drawn.
 			complete(4, progress.label);
 		}
 		else if (progress.completed == 4 && readyFrameRendered) {

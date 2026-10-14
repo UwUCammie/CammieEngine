@@ -43,9 +43,7 @@ class NightmareVisionHealthIcon extends FlxSprite implements NightmareVisionIUiS
 
 	override function set_alpha(v:Float)
 	{
-		v = FlxMath.bound(v, 0, 1);
-		v *= alphaMultipler;
-		return super.set_alpha(v);
+		return super.set_alpha(SourceBarLayout.multipliedAlpha(v, alphaMultipler));
 	}
 
 	public function set_frameCount(value:Int)

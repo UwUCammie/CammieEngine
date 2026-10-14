@@ -58,9 +58,11 @@ import hscript.Interp;
 class PlayState {
  public var hscriptStates:Map<String,Interp>=[];
  public var hxcPayloadStates:Map<String,Bool>=[];
+ public var lastHxcCallPayload:Dynamic=null;
  public var psychFlashEventScopes:Map<String,Bool>=[];
  public var hxcCharacterScopeNames:Map<String,Bool>=[];
  public var notes:Dynamic=null;
+ public var countdownStartErrors:Int=0;
  public function new() {}
 
  public function psychFlashCallbackSuppressed(_flashing:Bool,_psych:Bool,_event:String):Bool return false;

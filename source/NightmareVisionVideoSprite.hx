@@ -230,7 +230,8 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 					? 0.0 : haxe.Int64.toInt(bitmap.length) + 0.0,
 				function() return !disposed && !finished && !ended && bitmap != null,
 				function(ms:Float) if (!disposed && bitmap != null) bitmap.time = haxe.Int64.ofInt(Std.int(Math.max(0, ms))),
-				function() skip()]);
+				function() skip(), null,
+				function() return disposed || bitmap == null ? Math.NaN : haxe.Int64.toInt(bitmap.time) + 0.0]);
 		}
 		return started;
 	}

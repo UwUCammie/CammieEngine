@@ -190,31 +190,31 @@ __HELPERS__
 
     def test_nightmare_can_miss_skips_ledger_but_keeps_common_health_and_callbacks(self):
         miss_method = extract_method(self.play_source, "function noteMissCore(")
-        common = extract_block(miss_method, "if (sourceCommon) {")
         compact_method = compact(miss_method)
-        compact_common = compact(common)
-
         self.assertIn(
             "if(authoredLine!=null||sourceScoreLedgerActive()||!actingOn.stunned)",
             compact_method,
         )
-        self.assertIn(
-            "varsourceCommon=!sourceScoreLedgerActive()||sourceScoreNightmare||PsychSustainChain.prepareMiss(note,guitarHeroSustains);",
-            compact_method,
-        )
-        self.assertIn("varcountsMiss=!sourceScoreLedgerActive()||sourceMissCounts(note);", compact_method)
-        self.assertIn(
-            "varmissReaction=!(sourceScoreNightmare&&note==null&&actingOn.stunned);",
-            compact_method,
-        )
-        self.assertIn("if(sourceScoreLedgerActive()){if(countsMiss)applySourceMiss();}", compact_common)
-        # Health remains outside the countsMiss guard: NMV canMiss suppresses
-        # the ledger while preserving PlayField.noteMiss damage. Reaction
-        # suppression applies only to a stunned empty Nightmare press.
-        self.assertIn("if(sourceScoreLedgerActive())applySourceMissHealth(note,playerOne,missReaction);", compact_common)
-        self.assertIn("if(playMissSound&&missReaction)", compact_common)
-        self.assertIn("if(missReaction&&(missOutcome==null||missOutcome.playAnim)&&(note==null||note.allowsAnimation(true)))", compact_common)
-        self.assertIn("if(countsMiss)applySourceMiss();", compact_common)
+        # Every source ledger (Psych and NV) leaves through sourceNoteMiss, so the
+        # native bookkeeping after that return has no ledger branches left.
+        ledger_exit = "if(sourceScoreLedgerActive()){sourceNoteMiss(direction,playerOne,note,actingOn,hxcMissEvent);return;}"
+        self.assertIn(ledger_exit, compact_method)
+        common = miss_method[miss_method.index("hxcStrumlineNoteSurface.miss(note);"):]
+        common = common[:common.index('callAllHScript("playerOneMiss", []);')]
+        compact_common = compact(common)
+        for gone in ("sourceScoreLedgerActive()", "countsMiss", "missReaction", "sourceCommon", "applySourceMiss"):
+            self.assertNotIn(gone, compact_common)
+        self.assertIn("misses+=1;", compact_common)
+        self.assertIn("if(playMissSound)this.playMissSound();", compact_common)
+        # Health stays outside the counted-miss guard on the NV source route:
+        # canMiss suppresses the ledger while keeping PlayField.noteMiss damage,
+        # and reaction suppression applies only to a stunned empty press.
+        source_miss = compact(extract_method(self.play_source, "function sourceNoteMiss("))
+        nv = source_miss[source_miss.index("}else{"):]
+        self.assertIn("varreacts=note!=null||actingOn==null||!actingOn.stunned;", nv)
+        self.assertLess(nv.index("applySourceMissHealth(note,playerOne,reacts);"), nv.index("if(sourceMissCounts(note)){"))
+        self.assertIn("if(sourceMissCounts(note)){", nv)
+        self.assertIn("applySourceMiss();", nv[nv.index("if(sourceMissCounts(note)){"):])
         for callback in (
             'callAllHScript("playerOneMiss", []);',
             "dispatchPsychCompiledStage('noteMissPress', [direction]);",

@@ -13,7 +13,10 @@ class PsychPauseChartingHandoffTest(unittest.TestCase):
     def test_pause_editor_entry_and_captured_owner_menu_reset(self):
         source = (ROOT / 'source/PauseSubState.hx').read_text(encoding='utf-8')
         self.assertIn('case "Charting":\n\t\t\t\t\t\topenPauseChartEditor();', source)
-        self.assertIn('case "Exit to menu":\n\t\t\t\t\t\texitPauseToMenu();', source)
+        # Exit asks any pause script first, then leaves through exitPauseToMenu.
+        self.assertIn('case "Exit to menu":\n\t\t\t\t\t\treturnToMain();', source)
+        self.assertIn('scriptHooks.allows(PauseMenuHooks.EXIT)) exitPauseToMenu();',
+                      method(source, 'public function returnToMain()'))
         methods = '\n'.join(method(source, marker) for marker in (
             'function openPauseChartEditor()', 'function exitPauseToMenu()',
         ))

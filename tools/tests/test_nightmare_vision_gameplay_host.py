@@ -407,7 +407,7 @@ class Main {
                         event_dispatch.index("script.callValue(callback, args)"),
                         "dispatch must use the same prepared selection as effect ownership")
 
-        create_post = source.index("callNightmareVision('onCreatePost', []);")
+        create_post = source.index("sourceCallbacks().dispatch(SourceLifecycleEvent.CreatePost, []);")
         super_create = source.index("super.create();", create_post)
         self.assertLess(create_post, super_create)
 
@@ -434,7 +434,7 @@ class Main {
         pause_start = source.index("if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause")
         pause_end = source.index("var canShowKeys = true;", pause_start)
         pause = source[pause_start:pause_end]
-        self.assertLess(pause.index("callNightmareVision('onPause', [])"), pause.index("paused = true;"))
+        self.assertLess(pause.index("sourceCallbacks().dispatch(SourceLifecycleEvent.Pause, [])"), pause.index("paused = true;"))
 
         countdown = extract_block(source, "public function startCountdown():Void")
         nmv_countdown = countdown.index("countdownResults.push(callNightmareVision('onStartCountdown', []));")

@@ -125,8 +125,8 @@ class FlxG {
         game_over = (ROOT / 'source/GameOverSubstate.hx').read_text(encoding='utf-8')
 
         restart = method(play, 'public function restartSong(')
-        self.assertIn("callAllHScript('songRetry', []);", restart)
-        self.assertLess(restart.index("callAllHScript('songRetry', []);"), restart.index('new PlayState()'))
+        self.assertIn("callAllHScript('songRetry', [], false, null, [EngineCompat.hxcSongRetryPayload(hxcDifficultyId())]);", restart)
+        self.assertLess(restart.index("callAllHScript('songRetry', [], false, null, [EngineCompat.hxcSongRetryPayload(hxcDifficultyId())]);"), restart.index('new PlayState()'))
         self.assertIn('skipNextSongTransition(skipTransition);', restart)
         self.assertEqual(play.count("callAllHScript('songRetry'"), 1)
         self.assertIn('instance.restartSong(skipTransition);', method(play, 'public static function restartCurrentSong('))
@@ -146,7 +146,9 @@ class FlxG {
             self.assertNotIn('new StoryMenuState()', source, name)
             self.assertNotIn('ImportedMenuEntry.returnToFreeplay()', source, name)
             self.assertNotIn('Song.loadFromJson(', source, name)
-        self.assertEqual(pause.count('PlayState.restartCurrentSong();'), 2)
+        # Restart and Replay Cutscene both go through the menu's restartSong().
+        self.assertEqual(pause.count('PlayState.restartCurrentSong();'), 1)
+        self.assertIn('PlayState.restartCurrentSong();', method(pause, 'public function restartSong('))
         self.assertIn('PlayState.exitToMenu();', method(pause, 'function exitPauseToMenu()'))
         self.assertIn('PlayState.loadSongByName(null, diffs[curSelected - 1]);', pause)
         self.assertIn('PlayState.restartCurrentSong();', method(game_over, 'function endBullshit():Void'))

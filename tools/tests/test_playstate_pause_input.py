@@ -15,7 +15,7 @@ class PlayStatePauseInputTest(unittest.TestCase):
         self.assertIn("bindKeys(Control.PAUSE, [P, ENTER, ESCAPE])", controls)
         pause_gate = "if ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause"
         self.assertTrue(pause_gate in play_state, "Configured gameplay pause gate missing")
-        self.assertIn("callNightmareVision('onPause', []) != NightmareVisionScriptGroup.STOP_FUNC", play_state)
+        self.assertIn("!sourceCallbacks().dispatch(SourceLifecycleEvent.Pause, []).stopped", play_state)
         callback = "callAllHScript('onPause', [], false, pauseResults, [pauseEvent])"
         self.assertLess(play_state.index(pause_gate), play_state.index(callback))
         self.assertIn("EngineCompat.anyFunctionStop(pauseResults)", play_state)

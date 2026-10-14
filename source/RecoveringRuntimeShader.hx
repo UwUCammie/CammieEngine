@@ -24,6 +24,29 @@ class RecoveringRuntimeShader extends FlxRuntimeShader {
 		super(RuntimeShaderSource.prepare(fragmentSource), RuntimeShaderSource.prepare(vertexSource));
 		if (recovery != null) compileRecovery = recovery;
 		if (label != null) shaderLabel = label;
+		applyUniformDefaults(vertexSource);
+		applyUniformDefaults(fragmentSource);
+	}
+
+	/** Puts back the values the normaliser stripped from `uniform x = value;`
+		declarations, so the shader starts where its author wrote it would. */
+	function applyUniformDefaults(source:Null<String>):Void {
+		for (entry in RuntimeShaderSource.uniformDefaults(source)) {
+			try {
+				var type = entry.type;
+				var single = entry.values.length == 1;
+				if (type == 'bool' || StringTools.startsWith(type, 'bvec')) {
+					if (single) setBool(entry.name, entry.values[0] != 0);
+					else setBoolArray(entry.name, [for (value in entry.values) value != 0]);
+				} else if (type == 'int' || StringTools.startsWith(type, 'ivec')) {
+					if (single) setInt(entry.name, Std.int(entry.values[0]));
+					else setIntArray(entry.name, [for (value in entry.values) Std.int(value)]);
+				} else {
+					if (single) setFloat(entry.name, entry.values[0]);
+					else setFloatArray(entry.name, entry.values);
+				}
+			} catch (_:Dynamic) {}
+		}
 	}
 
 	// OpenFL compiles on first draw, not in the constructor, so a try/catch

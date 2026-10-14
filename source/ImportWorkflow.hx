@@ -1043,6 +1043,9 @@ class ImportScanJob {
 			if (automatic == null || automatic.engine == selectedType
 				|| automatic.confidence < 0.2 || automatic.confidence <= descriptor.confidence)
 				continue;
+			// appendEngineMismatchWarnings already named this root.
+			if (descriptor.confidence <= 0 && automatic.decisive == true)
+				continue;
 			var key = ImportRootScanner.canonicalize(descriptor.root) + '|' + automatic.engine;
 			if (seen.exists(key))
 				continue;
@@ -1051,6 +1054,43 @@ class ImportScanJob {
 				+ ', but current root evidence favors ' + automatic.engine
 				+ '. Select that importer or Auto-detect, then scan again.';
 			result.importerSuggestions.push(suggestion);
+		}
+	}
+
+	/** Warn in the scan, before anything is imported, when the chosen importer
+	 * found nothing of its own in a root that another engine's format proves.
+	 * Importing it anyway records the wrong engine, which later refreshes can
+	 * only report, not repair. Songs found by the chosen importer do not hide
+	 * this: they are read with the wrong engine's rules. */
+	static function appendEngineMismatchWarnings(result:ImportScanResult,
+		descriptors:Array<ImportRoot>, selectedType:String):Void {
+		if (result == null || descriptors == null || ImportEngine.isAuto(selectedType))
+			return;
+		if (result.importerSuggestions == null)
+			result.importerSuggestions = [];
+		var seen:Map<String, Bool> = new Map<String, Bool>();
+		for (descriptor in descriptors) {
+			if (descriptor == null || descriptor.root == null || StringTools.trim(descriptor.root) == ''
+				|| descriptor.confidence > 0)
+				continue;
+			var automatic = ImportRootScanner.inspectRoot(descriptor.root, ImportEngine.AUTO);
+			if (automatic == null || automatic.decisive != true || automatic.engine == selectedType)
+				continue;
+			var key = ImportRootScanner.canonicalize(descriptor.root) + '|' + automatic.engine;
+			if (seen.exists(key))
+				continue;
+			seen.set(key, true);
+			var proof = '';
+			if (automatic.evidence != null)
+				for (line in automatic.evidence)
+					if (line != null && StringTools.trim(line) != '') {
+						proof = ' (' + line + ')';
+						break;
+					}
+			result.importerSuggestions.push('[engine-mismatch] Nothing here looks like ' + selectedType
+				+ ', but it is ' + automatic.engine + proof + '. Importing it as ' + selectedType
+				+ ' can leave an entry without playable songs. Select ' + automatic.engine
+				+ ' or Auto-detect, then scan again.');
 		}
 	}
 
@@ -2879,6 +2919,7 @@ class ImportScanJob {
 			if (song != null && identityScope.namespace(field(song, 'sourceRoot', source),
 				field(song, 'engine', '')) == null) song];
 		ImportSongOwnership.setSourceFingerprintHints(unbound);
+		appendEngineMismatchWarnings(result, descriptors, selectedType);
 		if (discovered.length == 0)
 			appendImporterFormatSuggestions(result, descriptors, selectedType);
 		var uniqueKinds:Map<String, Bool> = new Map<String, Bool>();

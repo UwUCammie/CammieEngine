@@ -30,6 +30,7 @@ class FlxG {
  public static var keys={justPressed:{LEFT:false,RIGHT:false}};
 }
 class FlxMath { public static function bound(v:Float,low:Float,high:Float) return Math.max(low,Math.min(high,v)); }
+typedef NightmareVisionModchartRenderer = Dynamic;
 class Conductor {
  public static var songPosition:Float=10000;
  public static var bpm:Float=120;
@@ -53,10 +54,14 @@ class Note {
  public function new(t:Float) {strumTime=t;}
  public function kill():Void alive=false;
  public function destroy():Void {}
+ public static function flushRetiredLegacyRows():Void {}
 }
 class EngineCompat {
  public static function hxcNoteIncomingPayload(note:Dynamic):Dynamic return {};
  public static function hxcApplyNoteCallbackPayload(payload:Dynamic):Void {}
+}
+class HxcCompatRuntime {
+ public static function observeIncoming(_note:Dynamic):Void {}
 }
 class CodenameModRuntime {
  public static function updateGlobal(_elapsed:Float):Void {}
@@ -116,6 +121,10 @@ class DemoTest {
  var sourceBatch:Dynamic=null;
  var SONG:SongStub=null;
  var haxeVars:Map<String,Dynamic>=new Map();
+ // The per-frame timing sync writes every scope directly; this one scope
+ // shares its globals with the setAllHaxeVar stub.
+ var hscriptStates:Map<String,{variables:Map<String,Dynamic>}>=null;
+ function hscriptCallbackListened(_name:String):Bool return true;
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}
  function dispatchPsychNoteSpawn(_note:Note):Void {}
@@ -132,7 +141,7 @@ class DemoTest {
  function currentSongDataPath(fileName:String):String return 'assets/data/demo/' + fileName;
  function nightmareVisionRenderer(_field:Int, ?_sourceField:Dynamic):Dynamic return {configureNote:function(_note:Note):Void {}};
  function nightmareVisionRenderContext():Dynamic return null;
- public function new() {}
+ public function new() {hscriptStates=['probe'=>{variables:haxeVars}];}
 ''' + methods + controls + '\nfunction spawn() {\nvar smokeProfileAt:Float = 0;\n' + spawn + '''\n}
  static function check(ok:Bool, message:String) {if(!ok) throw message;}
  static function main() {
@@ -143,6 +152,7 @@ class DemoTest {
   check(FlxG.timeScale==1.5 && FlxG.sound.music.pitch==1.5 && state.vocals.pitch==1.5, "Gameplay and both tracks must agree");
   check(state.haxeVars.get("songPos") == Conductor.songPosition
     && state.haxeVars.get("curBpm") == Conductor.bpm
+    && state.haxeVars.get("bpm") == Conductor.bpm
     && state.haxeVars.get("crochet") == Conductor.crochet
     && state.haxeVars.get("stepCrochet") == Conductor.stepCrochet,
     "Timing globals must follow the authoritative Conductor clock");

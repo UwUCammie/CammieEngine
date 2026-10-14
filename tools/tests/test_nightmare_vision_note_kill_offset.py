@@ -86,7 +86,8 @@ class NightmareVisionNoteKillOffsetTest(unittest.TestCase):
         self.assertIn("if (hasParentWriteField(id))", interp_source)
         self.assertIn("Reflect.setProperty(parent, id, value);", interp_source)
         self.assertIn("new NightmareVisionGameplayScripts(this, plan,", play_state)
-        self.assertIn("if (root.toLowerCase() == 'songspeed')\n\t\t\treturn daScrollSpeed;", compat_getter)
+        self.assertIn("var lowerRoot = root.toLowerCase();", compat_getter)
+        self.assertIn("if (lowerRoot == 'songspeed')\n\t\t\treturn daScrollSpeed;", compat_getter)
         speed_case = compat_setter.split("case 'songspeed':", 1)[1].split("case 'cpucontrolled'", 1)[0]
         self.assertIn("songSpeed = speed;", speed_case)
         self.assertNotIn("SONG.speed", speed_case)

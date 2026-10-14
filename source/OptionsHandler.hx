@@ -223,10 +223,16 @@ class OptionsHandler {
 
     public static function applyAudioOptions(opt:TOptions):Void {
         if (opt == null || FlxG.sound == null) return;
-        if (FlxG.sound.defaultMusicGroup != null)
-            FlxG.sound.defaultMusicGroup.volume = opt.volumeMusic;
-        if (FlxG.sound.defaultSoundGroup != null)
-            FlxG.sound.defaultSoundGroup.volume = opt.volumeSFX;
+        // The options getter runs this on every read, often hundreds of times a
+        // frame. Assigning a group volume pushes a new gain to every sound in the
+        // group, so an unchanged value is skipped: playing sounds refresh their
+        // gain each update and a sound that starts playing computes it anyway.
+        var music = FlxG.sound.defaultMusicGroup;
+        if (music != null && music.volume != opt.volumeMusic)
+            music.volume = opt.volumeMusic;
+        var effects = FlxG.sound.defaultSoundGroup;
+        if (effects != null && effects.volume != opt.volumeSFX)
+            effects.volume = opt.volumeSFX;
     }
 
 

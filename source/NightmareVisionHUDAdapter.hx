@@ -372,6 +372,11 @@ class NightmareVisionHUDAdapter {
 	public var updateIconScale:Bool = true;
 	public var scoreTxt:Dynamic;
 	public var timeTxt:Dynamic;
+	// The timer label only changes once a second; keep the last string so the
+	// frames in between do not format a new one.
+	var timerLabel:String = null;
+	var timerLabelSeconds:Int = -1;
+	var timerLabelTarget:Dynamic = null;
 	public var ratingPrefix(get, set):String;
 	public var ratingSuffix(get, set):String;
 	public var comboPrefix(get, set):String;
@@ -594,7 +599,17 @@ class NightmareVisionHUDAdapter {
 		}
 		var displayed = timeBarType == 'Time Elapsed' ? current : songLength - current;
 		var seconds = Std.int(Math.max(0, Math.floor(displayed / 1000)));
-		Reflect.setProperty(timeTxt, 'text', formatTime(seconds));
+		// Same second, same label object, and nothing else wrote its text:
+		// writing the label again would put back exactly what is there.
+		if (timerLabel != null && seconds == timerLabelSeconds && timerLabelTarget == timeTxt
+			&& Reflect.getProperty(timeTxt, 'text') == timerLabel)
+			return;
+		if (timerLabel == null || seconds != timerLabelSeconds) {
+			timerLabel = formatTime(seconds);
+			timerLabelSeconds = seconds;
+		}
+		timerLabelTarget = timeTxt;
+		Reflect.setProperty(timeTxt, 'text', timerLabel);
 	}
 
 	/** Refresh only the live objects that PsychHUD exposes through BaseHUD. */

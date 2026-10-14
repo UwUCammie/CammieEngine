@@ -13,7 +13,15 @@ class NightmareVisionTimingWindowTest(unittest.TestCase):
     def test_live_tempo_map_window_and_camera_bindings(self):
         if not HAXE.exists():
             self.skipTest('portable Haxe unavailable')
-        native = '''class Conductor {
+        # The NV conductor delegates its tempo map maths to the base Conductor,
+        # so the stub carries the real conversions next to its live fields.
+        from test_source_gameplay_lifecycle import extract_method
+        conductor_source = (ROOT / 'source/Conductor.hx').read_text(encoding='utf-8')
+        conversions = '\n'.join(extract_method(conductor_source, 'public static function ' + name + '(') for name in [
+            'getBPMFromSeconds', 'getBPMFromStep', 'segmentStepCrochet', 'getStep', 'getStepRounded',
+            'getBeat', 'getBeatRounded', 'stepToSeconds', 'beatToSeconds', 'getCrotchetAtTime'])
+        native = '''typedef BPMChangeEvent = {var stepTime:Int; var songTime:Float; var bpm:Float; @:optional var stepCrochet:Float;}
+class Conductor {
  public static var bpm:Float=120;
  public static var crochet:Float=500;
  public static var stepCrochet:Float=125;
@@ -21,9 +29,9 @@ class NightmareVisionTimingWindowTest(unittest.TestCase):
  public static var lastSongPos:Float=0;
  public static var offset:Float=0;
  public static var safeZoneOffset:Float=150;
- public static var bpmChangeMap:Array<Dynamic>=[{stepTime:8,songTime:1000.,bpm:60.}];
+ public static var bpmChangeMap:Array<BPMChangeEvent>=[{stepTime:8,songTime:1000.,bpm:60.}];
  public static function changeBPM(v:Float) {bpm=v;crochet=60000/v;stepCrochet=crochet/4;}
-}'''
+''' + conversions + '\n}'
         main = r'''class Main {
  static function eq(a:Dynamic,b:Dynamic,label:String) {if(a!=b) throw label+': '+a+' != '+b;}
  static function near(a:Float,b:Float) {if(Math.isNaN(a)||Math.abs(a-b)>.00001) throw 'timing '+a+' != '+b;}

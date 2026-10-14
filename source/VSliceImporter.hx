@@ -110,8 +110,29 @@ typedef VSliceStageConversion = {
 	var diagnostics:Array<VSliceDiagnostic>;
 }
 
+/**
+	What a V-Slice package adds besides songs. A package with no song charts
+	can still ship characters, stages, note styles, levels, scripted classes
+	and `_merge` patches that other imported songs use.
+*/
+typedef VSliceChartFreeInventory = {
+	var characters:Array<String>;
+	var stages:Array<String>;
+	var noteStyles:Array<String>;
+	var levels:Array<String>;
+	/** Full paths of scripted class files (`.hxc`, and `.hx` that declare one). */
+	var scripts:Array<String>;
+	var mergeFiles:Int;
+	/** Song folders under data/songs that hold a metadata file. */
+	var songFolders:Int;
+	/** True when anything other than songs is present. */
+	var hasContent:Bool;
+}
+
 /** Pure conversion output for one V-Slice data/levels definition. */
 typedef VSliceLevelConversion = {
+	/** Level id (the JSON file name without extension) when read from a folder. */
+	@:optional var id:String;
 	/** Native storySonglist week entry, or null when the level has no songs. */
 	var week:Dynamic;
 	/** Title image copy into the native campaign-ui-week folder. */
@@ -264,6 +285,95 @@ class VSliceImporter {
 		return result;
 	}
 
+	#if sys
+	/**
+		List what a V-Slice content root ships apart from songs, without
+		converting or copying anything. `dataRoot` and `scriptsRoot` default to
+		`data` and `scripts` below `contentRoot`. The import flow uses
+		`songFolders == 0 && hasContent` to recognise a song-less package
+		(characters, modules or note styles only) that still has to be imported.
+	*/
+	public static function chartFreeInventory(contentRoot:String, ?dataRoot:String,
+		?scriptsRoot:String):VSliceChartFreeInventory {
+		var root = normalizeSourceRoot(contentRoot);
+		var data = dataRoot == null || dataRoot.trim() == '' ? joinPath(root, 'data') : dataRoot;
+		var scripts = scriptsRoot == null || scriptsRoot.trim() == '' ? joinPath(root, 'scripts') : scriptsRoot;
+		var scriptPaths:Array<String> = [];
+		if (FileSystem.isDirectory(scripts))
+			for (path in HxcScriptDiscovery.discoverRoot(scripts, '').all)
+				scriptPaths.push(path);
+		var result:VSliceChartFreeInventory = {
+			characters: characterDefinitionNames([joinPath(data, 'characters')]),
+			stages: characterDefinitionNames([joinPath(data, 'stages')]),
+			noteStyles: characterDefinitionNames([joinPath(data, 'notestyles')]),
+			levels: characterDefinitionNames([joinPath(data, 'levels')]),
+			scripts: scriptPaths,
+			mergeFiles: countFiles(joinPath(root, '_merge'), 0, 4096),
+			songFolders: countSongFolders(joinPath(data, 'songs')),
+			hasContent: false
+		};
+		result.hasContent = result.characters.length > 0 || result.stages.length > 0
+			|| result.noteStyles.length > 0 || result.levels.length > 0
+			|| result.scripts.length > 0 || result.mergeFiles > 0;
+		return result;
+	}
+
+	/** Files below `folder`, stopping at `limit` so a huge tree cannot stall a scan. */
+	static function countFiles(folder:String, depth:Int, limit:Int):Int {
+		if (limit <= 0 || depth > 10 || !FileSystem.isDirectory(folder))
+			return 0;
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(folder);
+		} catch (_:Dynamic) {
+			return 0;
+		}
+		var count = 0;
+		for (entry in entries) {
+			if (count >= limit)
+				break;
+			var child = joinPath(folder, entry);
+			if (FileSystem.isDirectory(child))
+				count += countFiles(child, depth + 1, limit - count);
+			else
+				count++;
+		}
+		return count;
+	}
+
+	/** Song folders that hold a V-Slice metadata file (`<id>-metadata*.json`). */
+	static function countSongFolders(songs:String):Int {
+		if (!FileSystem.isDirectory(songs))
+			return 0;
+		var count = 0;
+		var folders:Array<String>;
+		try {
+			folders = FileSystem.readDirectory(songs);
+		} catch (_:Dynamic) {
+			return 0;
+		}
+		for (folder in folders) {
+			var path = joinPath(songs, folder);
+			if (!FileSystem.isDirectory(path))
+				continue;
+			var files:Array<String>;
+			try {
+				files = FileSystem.readDirectory(path);
+			} catch (_:Dynamic) {
+				continue;
+			}
+			for (file in files) {
+				var lower = file.toLowerCase();
+				if (lower.endsWith('.json') && lower.indexOf('-metadata') >= 0) {
+					count++;
+					break;
+				}
+			}
+		}
+		return count;
+	}
+	#end
+
 	static function isSafeCharacterDefinitionName(value:String):Bool {
 		if (value == null || value == '' || value == '.' || value == '..')
 			return false;
@@ -356,9 +466,11 @@ class VSliceImporter {
 		song names; ids it does not know are kept as authored. Props are not
 		mapped onto the fixed native story characters, so they are reported.
 		Order levels by id when importing several, as the V-Slice registry does.
+		With `importedOnly`, songs missing from `songNames` were not imported, so
+		they are left out instead of pointing the week at a chart that is not there.
 	*/
 	public static function convertLevel(data:Dynamic, ?sourceRoot:String, id:String,
-		?songNames:Map<String, String>):VSliceLevelConversion {
+		?songNames:Map<String, String>, importedOnly:Bool = false):VSliceLevelConversion {
 		var findings:Array<VSliceDiagnostic> = [];
 		var root = normalizeSourceRoot(sourceRoot);
 		var levelId = id == null ? '' : id.trim();
@@ -372,6 +484,11 @@ class VSliceImporter {
 				if (songId == '')
 					continue;
 				var nativeName = songNames == null ? null : songNames.get(songId.toLowerCase());
+				if ((nativeName == null || nativeName == '') && importedOnly) {
+					findings.push(makeDiagnostic('info', 'level-song-not-imported',
+						'V-Slice level ' + levelId + ' lists ' + songId + ', which was not imported.', origin));
+					continue;
+				}
 				songs.push(nativeName == null || nativeName == '' ? songId : nativeName);
 			}
 		if (songs.length == 0) {
@@ -411,12 +528,117 @@ class VSliceImporter {
 				findings.push(makeDiagnostic('warning', 'missing-level-title',
 					'V-Slice level title image was not found: ' + titleAsset, origin));
 		}
+		// Levels often keep blank placeholder props ({assetPath: ""}); only
+		// props that would actually draw something are worth reporting.
 		var props = field(data, 'props');
-		if (Std.isOfType(props, Array) && (cast props:Array<Dynamic>).length > 0)
+		var drawnProps = 0;
+		if (Std.isOfType(props, Array))
+			for (prop in (cast props:Array<Dynamic>))
+				if (stringValue(field(prop, 'assetPath'), '') != '')
+					drawnProps++;
+		if (drawnProps > 0)
 			findings.push(makeDiagnostic('info', 'level-props-unmapped',
 				'V-Slice level ' + levelId + ' props are not mapped onto the native story characters.', origin));
 		result.week = week;
 		return result;
+	}
+
+	#if sys
+	/**
+		Convert every `data/levels/*.json` of a V-Slice content root, ordered by
+		level id the way the V-Slice level registry lists them. `dataRoot`
+		defaults to `<sourceRoot>/data`. When `songNames` is given it is the
+		map of imported song ids, and songs outside it are left out of the
+		weeks. A file that cannot be read becomes a result with no week and an
+		`invalid-level` diagnostic, so one bad level never stops the rest.
+	*/
+	public static function convertLevelFolder(sourceRoot:String, ?dataRoot:String,
+		?songNames:Map<String, String>):Array<VSliceLevelConversion> {
+		var results:Array<VSliceLevelConversion> = [];
+		var root = normalizeSourceRoot(sourceRoot);
+		var data = dataRoot == null || dataRoot.trim() == '' ? joinPath(root, 'data') : dataRoot;
+		var folder = joinPath(data, 'levels');
+		if (!FileSystem.isDirectory(folder))
+			return results;
+		var ids:Array<String> = [];
+		var files:Map<String, String> = new Map();
+		var entries:Array<String>;
+		try {
+			entries = FileSystem.readDirectory(folder);
+		} catch (_:Dynamic) {
+			return results;
+		}
+		for (entry in entries) {
+			if (!entry.toLowerCase().endsWith('.json'))
+				continue;
+			var path = joinPath(folder, entry);
+			if (FileSystem.isDirectory(path))
+				continue;
+			var id = entry.substr(0, entry.length - 5);
+			ids.push(id);
+			files.set(id, path);
+		}
+		// Case-folded order first, then the exact spelling, so the week order
+		// never depends on how the filesystem lists the folder.
+		ids.sort(function(a, b) {
+			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+			return lower == 0 ? Reflect.compare(a, b) : lower;
+		});
+		for (id in ids) {
+			var path = files.get(id);
+			var conversion:VSliceLevelConversion;
+			try {
+				conversion = convertLevel(Json.parse(File.getContent(path)), root, id, songNames, songNames != null);
+			} catch (error:Dynamic) {
+				conversion = {week: null, assets: [], diagnostics: [makeDiagnostic('warning', 'invalid-level',
+					'V-Slice level could not be read: ' + Std.string(error), path)]};
+			}
+			conversion.id = id;
+			results.push(conversion);
+		}
+		return results;
+	}
+	#end
+
+	/**
+		Add converted level weeks to a parsed storySonglist document (the
+		`weeks` form) and return the names that were added. A week whose name
+		is already there is kept as it is, with a `level-week-exists` finding on
+		its conversion, so a level can never replace a built-in or earlier
+		imported week. Only the title mappings of added weeks should be copied.
+	*/
+	public static function mergeLevelWeeks(registry:Dynamic, conversions:Array<VSliceLevelConversion>):Array<String> {
+		var added:Array<String> = [];
+		if (registry == null || conversions == null)
+			return added;
+		var weeks:Dynamic = field(registry, 'weeks');
+		if (!Std.isOfType(weeks, Array)) {
+			weeks = [];
+			Reflect.setField(registry, 'weeks', weeks);
+		}
+		var list:Array<Dynamic> = cast weeks;
+		var taken:Map<String, Bool> = new Map();
+		for (existing in list) {
+			var name = stringValue(field(existing, 'name'), '');
+			if (name != '')
+				taken.set(name.toLowerCase(), true);
+		}
+		for (conversion in conversions) {
+			if (conversion == null || conversion.week == null)
+				continue;
+			var name = stringValue(field(conversion.week, 'name'), '');
+			if (name == '')
+				continue;
+			if (taken.exists(name.toLowerCase())) {
+				conversion.diagnostics.push(makeDiagnostic('info', 'level-week-exists',
+					'A story week named ' + name + ' already exists, so V-Slice level ' + name + ' was not added.', ''));
+				continue;
+			}
+			taken.set(name.toLowerCase(), true);
+			list.push(Reflect.copy(conversion.week));
+			added.push(name);
+		}
+		return added;
 	}
 
 	/** An ARGB colour for a V-Slice level background, or null when it is an image path. */
@@ -445,7 +667,10 @@ class VSliceImporter {
 			return metadata;
 		var playable = field(playData, 'playableChars');
 		var playerIds = safeFields(playable);
-		var needsCharacters = field(playData, 'characters') == null && playerIds.length > 0;
+		// An authored but empty map still marks 2.0 metadata; the reference
+		// fills in bf, gf and dad for it rather than leaving no characters.
+		var needsCharacters = field(playData, 'characters') == null && playable != null
+			&& !Std.isOfType(playable, String) && !Std.isOfType(playable, Array);
 		var needsNoteStyle = field(playData, 'noteStyle') == null && stringValue(field(playData, 'noteSkin'), '') != '';
 		if (!needsCharacters && !needsNoteStyle)
 			return metadata;
@@ -455,9 +680,13 @@ class VSliceImporter {
 			// The reference takes the map's first key. Map order is not stable
 			// across targets, so sort the ids to keep repeat imports identical.
 			playerIds.sort(function(a, b) return a < b ? -1 : a > b ? 1 : 0);
-			var player = playerIds[0];
-			var entry = field(playable, player);
-			var characters:Dynamic = {
+			var player = playerIds.length > 0 ? playerIds[0] : null;
+			var entry = player == null ? null : field(playable, player);
+			var characters:Dynamic = entry == null ? {
+				player: 'bf',
+				girlfriend: 'gf',
+				opponent: 'dad'
+			} : {
 				player: player,
 				girlfriend: playableCharacterField(entry, 'g', 'girlfriend'),
 				opponent: playableCharacterField(entry, 'o', 'opponent'),

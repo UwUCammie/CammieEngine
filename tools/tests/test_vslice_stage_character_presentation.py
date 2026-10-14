@@ -139,11 +139,8 @@ class Main {
     def test_native_change_character_rebinds_stage_presentation_and_depth(self):
         play_state = (ROOT / "source/PlayState.hx").read_text()
         swap = method(play_state, "\tfunction switchCharacter(charTo:String, charState:String)")
-        for role in ("boyfriend", "dad", "gf"):
-            self.assertIn(
-                f"curStage.applyVSliceCharacterPresentation('{role}', {role})",
-                swap,
-            )
+        # The single role body presents the incoming actor for its own role.
+        self.assertIn("curStage.applyVSliceCharacterPresentation(charState, next)", swap)
         self.assertIn("curStage.rebindCharacterZ(charState, previousStageActor, stageActor)", swap)
         self.assertIn("stageRoleInfo.zIndex != -69", swap)
         self.assertIn("curStage.refresh()", swap)

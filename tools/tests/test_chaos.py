@@ -288,6 +288,9 @@ class OwnershipSnapshotTest {
         # the extracted fixture inside an open try statement.
         end = source.index('\n\t\tdiagnoseLegacyKadeOffset();', start)
         countdown = source[start:end]
+        router_start = source.index('\tfunction sourceCallbacks():SourceCallbackRouter {')
+        router_helper = source[router_start:source.index('\n\t}\n', router_start) + 4] if '\n\t}\n' in source[router_start:] \
+            else source[router_start:source.index('\n\t}\r\n', router_start) + 5]
         fixture = '''
 class FakeBasic { public function new() {} }
 class FakeTimer {
@@ -319,6 +322,8 @@ class PsychRuntimeBindings {
  }
 }
 class PlayState { public static var globalSprites:Map<String,FakeBasic> = []; }
+class ScriptCallbackResult { public static inline var STOP:String = 'STOP'; }
+class NightmareVisionScriptGroup { public static inline var STOP_FUNC:Int = 1; }
 class EarlyHandoffTest {
  var stageSprites:Array<FakeBasic> = [];
  var cutsceneSprites:Array<FakeBasic> = [];
@@ -355,7 +360,13 @@ class EarlyHandoffTest {
   nightmareCalls.push(name);
   return null;
  }
-''' + helper + '''
+ // A Nightmare Vision owner, so the routed start gate reaches both engines.
+ var sourceScoreNightmare:Bool = true;
+ var nightmareVisionScripts:Dynamic = null;
+ function selectedPsychSkinRoot():Dynamic return null;
+ function callAllHScript(name:String, args:Array<Dynamic>):Void {}
+ var sourceCallbackRouter:SourceCallbackRouter;
+''' + router_helper + helper + '''
  public function startCountdown():Void {
 ''' + countdown.replace('public function startCountdown():Void {\n', '') + '''
   return;
@@ -432,6 +443,14 @@ class EarlyHandoffTest {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / 'EarlyHandoffTest.hx'
             path.write_text(fixture, newline='\n')
+            # The real router, reading this fixture's sentinel stand-ins.
+            router = (ROOT / 'source/SourceCallbackRouter.hx').read_text(encoding='utf-8')
+            router = router.replace('NightmareVisionScriptGroup.', 'EarlyHandoffTest.NightmareVisionScriptGroup.')
+            router = router.replace('ScriptCallbackResult.', 'EarlyHandoffTest.ScriptCallbackResult.')
+            (Path(folder) / 'SourceCallbackRouter.hx').write_text(router, newline='\n')
+            for name in ('SourceLifecycleEvent', 'SourceCallbackOutcome'):
+                (Path(folder) / (name + '.hx')).write_text(
+                    (ROOT / ('source/' + name + '.hx')).read_text(encoding='utf-8'), newline='\n')
             result = subprocess.run([
                 *HAXE_COMMAND, '-cp', folder,
                 '-main', 'EarlyHandoffTest', '--interp'
@@ -454,8 +473,15 @@ class FakeTimeline {
  public function cancel(?handoff:Bool = true):Void {}
 }
 class PlayState { public static var globalSprites:Map<String,FakeBasic> = []; }
+class FakeDispatchOrder {
+ public var count:Int = 1;
+ public function new() {}
+ public function clear():Void count = 0;
+}
 class RegistryResetTest {
  var pendingHxcCharacterVisuals:Map<String,Bool> = [];
+ var hxcDispatchOrder:FakeDispatchOrder = new FakeDispatchOrder();
+ var hxcScriptEventScopes:Map<String,Bool> = ["stale-scope" => true];
  var stageSprites:Array<FakeBasic> = [];
  var cutsceneSprites:Array<FakeBasic> = [];
  var cutsceneHandoffSprites:Array<FakeBasic> = [];
@@ -530,6 +556,8 @@ class RegistryResetTest {
    throw 'Lua scope ownership survived state cleanup';
   if (state.psychCustomEventScopes.keys().hasNext())
    throw 'custom event ownership survived state cleanup';
+  if (state.hxcDispatchOrder.count != 0 || state.hxcScriptEventScopes.exists('stale-scope'))
+   throw 'script dispatch order survived state cleanup';
  }
 }
 '''

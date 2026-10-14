@@ -35,6 +35,8 @@ class LegacyAssetCasePathTest(unittest.TestCase):
             for marker in (
                 "inline static function getPreloadPath",
                 "static function resolveCaseInsensitivePath",
+                "static function rememberCaseResolvedPath",
+                "static function clearCaseResolvedPaths",
             )
         )
         fixture = f'''import haxe.io.Path;
@@ -43,8 +45,14 @@ import sys.io.File;
 class OpenFlAssets {{
     public static function exists(path:String, ?type:Dynamic):Bool return false;
 }}
+class ImportRefreshManager {{
+    public static var generation:Int = 0;
+}}
 class PathsCaseFixture {{
     static var caseResolvedPaths:Map<String, String> = new Map();
+    static inline var MAX_CASE_RESOLVED_PATHS:Int = 4096;
+    static var caseResolvedCount:Int = 0;
+    static var caseResolvedGeneration:Int = 0;
 {methods}
     static function main() {{
         var preload = getPreloadPath("images/ALLEY/WHITTYBACK.png");

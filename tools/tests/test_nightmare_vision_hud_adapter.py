@@ -45,6 +45,12 @@ class FakeBar {
  public function setRange(min:Float, max:Float):Void { this.min=min; this.max=max; }
  public function updateBar():Void updates++;
 }
+class CountingText {
+ public var text(default, set):String = '';
+ public var writes:Int = 0;
+ public function new() {}
+ function set_text(value:String):String { writes++; return text = value; }
+}
 class FakeObject {
  public var x:Float = 0; public var y:Float = 0;
  public var alpha:Float = 1; public var visible:Bool = true;
@@ -248,6 +254,37 @@ class Main {
   adapter.updateTimer(80000, 100000, 0, 'Disabled', false, false, false);
   eq(timeText.visible, true, 'per-frame timer does not reset authored visibility');
   eq(timeText.text, 'script-authored title', 'disabled timer leaves label untouched');
+  // The label is kept between seconds, but anything that wrote over it in the
+  // same second is still replaced, and progress still moves every frame.
+  adapter.updateTimer(52345, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(timeText.text, '0:52', 'same second after a script write restores the label');
+  adapter.updateTimer(52900, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(state.songPositionBar, 0.52655, 'progress moves within the same second');
+  eq(timeText.text, '0:52', 'same second keeps the label');
+  timeText.text = 'overwritten';
+  adapter.updateTimer(52900, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(timeText.text, '0:52', 'a write in the same second is replaced');
+  adapter.updateTimer(53300, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(timeText.text, '0:53', 'next second formats a new label');
+  adapter.updateTimer(80000, 100000, 0, 'Time Left', false, false, false);
+  eq(timeText.text, '0:20', 'switching mode formats the remaining time');
+  // Frames inside one second do not write the label again; a new label
+  // object, a foreign write and the next second all do.
+  var counted = new CountingText();
+  adapter.timeTxt = counted;
+  adapter.updateTimer(52345, 100000, 245, 'Time Elapsed', false, false, false);
+  adapter.updateTimer(52600, 100000, 245, 'Time Elapsed', false, false, false);
+  adapter.updateTimer(52900, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(counted.writes, 1, 'one label write per second');
+  eq(counted.text, '0:52', 'counted label');
+  counted.text = 'foreign';
+  adapter.updateTimer(52950, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(counted.writes, 3, 'a foreign write in the same second is put back');
+  eq(counted.text, '0:52', 'counted label restored');
+  adapter.updateTimer(53300, 100000, 245, 'Time Elapsed', false, false, false);
+  eq(counted.writes, 4, 'next second writes once');
+  eq(counted.text, '0:53', 'counted next second');
+  adapter.timeTxt = timeText;
 
   // Source lifecycle and direct icon operations act on host-owned objects.
   adapter.onSongStart();

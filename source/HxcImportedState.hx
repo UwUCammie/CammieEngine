@@ -45,6 +45,16 @@ class HxcImportedState extends MusicBeatState {
 		super.beatHit();
 	}
 
+	override public function onFocus():Void {
+		super.onFocus();
+		if (runtime != null) runtime.focus(true);
+	}
+
+	override public function onFocusLost():Void {
+		super.onFocusLost();
+		if (runtime != null) runtime.focus(false);
+	}
+
 	override public function destroy():Void {
 		if (runtime != null) {
 			runtime.destroy();

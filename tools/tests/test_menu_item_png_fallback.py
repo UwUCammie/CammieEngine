@@ -63,6 +63,55 @@ class Main {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def run_main(self, main: str):
+        with tempfile.TemporaryDirectory() as folder:
+            temp = Path(folder)
+            (temp / "Main.hx").write_text(main, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(temp), "-main", "Main", "--interp"],
+                cwd=ROOT, capture_output=True, text=True, timeout=120,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_week_without_a_title_image_shows_its_name(self):
+        source = (ROOT / "source/MenuItem.hx").read_text()
+        constructor = source[source.index("public function new"):]
+        lookup = constructor.index("var rawPic = FNFAssets.getBitmapData('assets/images/campaign-ui-week/'")
+        guard = constructor.index("if (rawPic == null) {", lookup)
+        # The guard runs before either the atlas or the plain graphic is built.
+        self.assertLess(guard, constructor.index('if (rawXml != "")'))
+        guard_body = constructor[guard:constructor.index("return;", guard)]
+        self.assertIn("week = createWeekLabel(weekLabel('', weekName));", guard_body)
+        helper = extract_method(source, "public static function weekLabel(")
+        self.run_main(f'''class Main {{
+  {helper}
+  static function main() {{
+    if (weekLabel("", "week7") != "WEEK7") throw "plain week name";
+    if (weekLabel("Spooky Month", "owner:week2") != "SPOOKY MONTH") throw "title wins";
+    if (weekLabel("", "owner:week2") != "WEEK2") throw "owner prefix dropped";
+    if (weekLabel(null, null) != "") throw "nothing to show";
+  }}
+}}''')
+
+    def test_story_week_start_clears_every_campaign_total(self):
+        source = (ROOT / "source/StoryMenuState.hx").read_text()
+        start = source.index("PlayState.storyWeekNum = sourceWeekIndex;")
+        block = source[start:source.index("if (!importedStoryTransition)", start)]
+        # Skip the storyWeekNum line itself; it reads a local of the menu.
+        block = block[block.index("\n") + 1:]
+        self.run_main('''class PlayState {
+  public static var campaignScore:Int = 120;
+  public static var campaignAccuracy:Float = 0.5;
+  public static var campaignMisses:Int = 9;
+}
+class Main {
+  static function main() {
+''' + block + '''
+    if (PlayState.campaignScore != 0 || PlayState.campaignAccuracy != 0 || PlayState.campaignMisses != 0)
+      throw "a new week kept the last week's totals";
+  }
+}''')
+
 
 if __name__ == "__main__":
     unittest.main()

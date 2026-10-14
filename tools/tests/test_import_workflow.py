@@ -747,7 +747,7 @@ class CandidateCacheFixture {{
         self.assertIn("result.importerSuggestions", (ROOT / "source/ImportSettingsState.hx").read_text())
         method = extract_method(self.source, "static function appendImporterFormatSuggestions")
         fixture = f'''typedef ImportRoot = {{
-  var root:String; var engine:String; var confidence:Float; var evidence:Array<String>;
+  var root:String; var engine:String; var confidence:Float; var evidence:Array<String>; @:optional var decisive:Bool;
 }};
 typedef ImportScanResult = {{ var importerSuggestions:Array<String>; }};
 class ImportEngine {{
@@ -799,6 +799,67 @@ class Main {{
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("FORMAT_HINT=[format-mismatch]", result.stdout + result.stderr)
+
+    def test_explicit_engine_with_no_evidence_warns_before_import(self):
+        scan_body = self.source[self.source.index("public static function perform(sourcePath:String, ?importType:String)"):]
+        scan_body = scan_body[:scan_body.index("class ImportImportJob")]
+        # The warning does not wait for an empty song list.
+        call = scan_body.index("appendEngineMismatchWarnings(result, descriptors, selectedType);")
+        self.assertLess(call, scan_body.index("if (discovered.length == 0)"))
+        warnings = extract_method(self.source, "static function appendEngineMismatchWarnings")
+        suggestions = extract_method(self.source, "static function appendImporterFormatSuggestions")
+        fixture = f'''typedef ImportRoot = {{
+  var root:String; var engine:String; var confidence:Float; var evidence:Array<String>; @:optional var decisive:Bool;
+}};
+typedef ImportScanResult = {{ var importerSuggestions:Array<String>; }};
+class ImportEngine {{
+  public static inline var AUTO:String = "Auto";
+  public static function isAuto(value:Dynamic):Bool return Std.string(value) == AUTO;
+}}
+class ImportRootScanner {{
+  public static var automatic:Map<String, ImportRoot> = new Map();
+  public static function inspectRoot(root:String, selected:String):ImportRoot return automatic.get(root);
+  public static function canonicalize(path:String):String return StringTools.replace(path, "\\\\", "/").toLowerCase();
+}}
+class ImportWorkflow {{
+{warnings}
+{suggestions}
+}}
+@:access(ImportWorkflow)
+class Main {{
+  static function check(v:Bool, m:String) if (!v) throw m;
+  static function main() {{
+    ImportRootScanner.automatic.set("proven", {{root:"proven", engine:"V-Slice", confidence:1.0, decisive:true,
+      evidence:["", "V-Slice chart pair"]}});
+    ImportRootScanner.automatic.set("hint", {{root:"hint", engine:"V-Slice", confidence:0.4, decisive:false, evidence:["layout"]}});
+    var empty:ImportRoot = {{root:"proven", engine:"Psych Engine", confidence:0, evidence:[]}};
+    var result:ImportScanResult = {{importerSuggestions:[]}};
+    ImportWorkflow.appendEngineMismatchWarnings(result, [empty, empty], "Psych Engine");
+    check(result.importerSuggestions.length == 1, "decisive mismatch not reported once");
+    var line = result.importerSuggestions[0];
+    check(line.indexOf("[engine-mismatch]") == 0 && line.indexOf("(V-Slice chart pair)") > 0, "warning lacks the proof: " + line);
+    // The zero-song hint does not repeat the same root.
+    ImportWorkflow.appendImporterFormatSuggestions(result, [empty], "Psych Engine");
+    check(result.importerSuggestions.length == 1, "zero-song hint repeated the warning");
+    // Layout hints, roots with their own evidence and Auto stay quiet.
+    var quiet:ImportScanResult = {{importerSuggestions:[]}};
+    ImportWorkflow.appendEngineMismatchWarnings(quiet, [{{root:"hint", engine:"Psych Engine", confidence:0, evidence:[]}}], "Psych Engine");
+    ImportWorkflow.appendEngineMismatchWarnings(quiet, [{{root:"proven", engine:"Psych Engine", confidence:0.3, evidence:["x"]}}], "Psych Engine");
+    ImportWorkflow.appendEngineMismatchWarnings(quiet, [empty], "Auto");
+    check(quiet.importerSuggestions.length == 0, "warning without decisive proof");
+  }}
+}}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            fixture_path = Path(folder) / "Main.hx"
+            fixture_path.write_text(fixture, newline='\n')
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_ui_facing_job_api_has_pollable_progress_and_background_worker(self):
         source = self.source
@@ -1193,6 +1254,9 @@ class ScopedDependencyFixture {{
         handoff = extract_method(module, "public static function completeImportOnMainThread")
         self.assertIn("ImportOverlayResolver.invalidate()", handoff)
         self.assertIn("Song.invalidateVisualRegistryCache()", handoff)
+        # Owner file spellings remembered before an import or refresh may name
+        # files the import replaced or removed.
+        self.assertIn("SourceOwnerFiles.forgetResolvedPaths()", handoff)
         for marker in (
             "static function writeOverlayRetentionManifest",
             "static function importPsychCharacters",
@@ -1302,6 +1366,7 @@ class Main {{
     sourceRoot:null, engine:null, importSourceInfo:null
   }};
   static function normalizeSourceVocalRoles(songData:SongImport):Void {{}}
+  static function findImportVocalStems(basePath:String, combinedPlaysAsPlayer:Bool = false):Array<Dynamic> return [];
   static function validateAndRecordSongImport(collector:SongImportRejectionCollector, songData:SongImport,
       sourceRoot:String, dataFolder:String, engine:String):Bool return songData != null;
   static function importSongFolderName(songData:SongImport):String return songData.name;
@@ -1349,6 +1414,7 @@ typedef SongImport = {
   var sourceRoot:Null<String>;
   var engine:Null<String>;
   @:optional var gf:String;
+  @:optional var vocalStems:Array<Dynamic>;
   var importSourceInfo:SongImportSource;
 }
 typedef SongImportSource = {

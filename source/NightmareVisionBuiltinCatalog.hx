@@ -20,7 +20,14 @@ class NightmareVisionBuiltinCatalog {
 		}
 		return result.copy();
 	}
-	public static function hasPosition(kind:String):Bool return ['reverse','perspectiveDONTUSE','opponentSwap','flip','invert','drunk','beat','receptorScroll','transformX','infinite','path','boost','rotateX','localrotateX'].indexOf(kind)>=0;
+	// Asked once per modifier per note every frame: a switch, not an array literal
+	// that would be built again on every call.
+	public static function hasPosition(kind:String):Bool {
+		return switch(kind) {
+			case 'reverse','perspectiveDONTUSE','opponentSwap','flip','invert','drunk','beat','receptorScroll','transformX','infinite','path','boost','rotateX','localrotateX': true;
+			default: false;
+		};
+	}
 	public static function hasObject(kind:String, objectKind:String):Bool {
 		return switch(kind) {
 			case 'stealth','mini','perspectiveDONTUSE': true;

@@ -63,6 +63,17 @@ class Conductor {
 	/** Chart time the music is at when playback begins from `startTime`. */
 	public static inline function audioStartSongTime(startTime:Float):Float
 		return instrumentalOffset > startTime ? instrumentalOffset : startTime;
+	/**
+	 * Song clock minus audio clock in ms, the value V-Slice calls
+	 * `Conductor.combinedOffset`. The song clock here is the audio time plus
+	 * the instrumental offset; the player's latency offset moves note and
+	 * event times instead of songPosition, so it is not part of the gap.
+	 * Scripts that sync media with `songPosition - combinedOffset` therefore
+	 * land on the music's real position.
+	 */
+	public static var combinedOffset(get, never):Float;
+	static inline function get_combinedOffset():Float
+		return instrumentalOffset;
 	/** A chart's authored instrumental offset; anything that is not a finite number is zero. */
 	public static function chartInstrumentalOffset(song:Dynamic):Float {
 		if (song == null)
@@ -103,29 +114,66 @@ class Conductor {
 		return lastChange;
 	}
 
+	/** Last tempo change at or before a step, or the live tempo when there is none. */
+	@:keep public static function getBPMFromStep(step:Float):BPMChangeEvent {
+		var lastChange:BPMChangeEvent = {stepTime:0, songTime:0, bpm:bpm, stepCrochet:stepCrochet};
+		for (change in bpmChangeMap) if (change.stepTime <= step) lastChange = change;
+		return lastChange;
+	}
+
+	/** Step length of a tempo segment in either map spelling (see ConductorTempoMap). */
+	public static function segmentStepCrochet(change:BPMChangeEvent, ?fallback:Float):Float {
+		return ConductorTempoMap.segmentStepCrochet(change, fallback == null ? stepCrochet : fallback);
+	}
+
+	/** Psych/Nightmare Vision Conductor.getStep over the live tempo map. The
+	 * optional note offset gives MusicBeatState.curDecStep. */
+	@:keep public static function getStep(time:Float, noteOffset:Float = 0):Float {
+		return ConductorTempoMap.stepAtTime(time, cast bpmChangeMap, stepCrochet, noteOffset);
+	}
+
+	/** Whole step for a song time. Psych 1.0.4's own version floors only part
+	 * of the sum; this is the whole-step value both donors' callers expect. */
+	@:keep public static function getStepRounded(time:Float):Int {
+		return Math.floor(getStep(time));
+	}
+
+	@:keep public static function getBeat(time:Float, noteOffset:Float = 0):Float {
+		return getStep(time, noteOffset) / 4;
+	}
+
+	@:keep public static function getBeatRounded(time:Float):Int {
+		return Math.floor(getBeat(time));
+	}
+
+	/** Song milliseconds at a step, across tempo changes. */
+	@:keep public static function stepToSeconds(step:Float):Float {
+		var change = getBPMFromStep(step);
+		return change.songTime + (step - change.stepTime) * segmentStepCrochet(change);
+	}
+
+	@:keep public static function beatToSeconds(beat:Float):Float {
+		return stepToSeconds(beat * 4);
+	}
+
+	/** Beat length in ms at a song time (the donors spell it crotchet). */
+	@:keep public static function getCrotchetAtTime(time:Float):Float {
+		return segmentStepCrochet(getBPMFromSeconds(time)) * 4;
+	}
+
+	@:keep public static function getCrochetAtTime(time:Float):Float {
+		return getCrotchetAtTime(time);
+	}
+
+	@:keep public static function calculateCrochet(bpm:Float):Float {
+		return (60 / bpm) * 1000;
+	}
+
 	/** Map BPM changes of a song, retaining source step duration for each segment. */
 	public static function mapBPMChanges(song:SwagSong) {
-		bpmChangeMap = [];
-
-		var curBPM:Float = song.bpm;
-		var totalSteps:Int = 0;
-		var totalPos:Float = 0;
-		for (i in 0...song.notes.length) {
-			if(song.notes[i].changeBPM && song.notes[i].bpm != curBPM) {
-				curBPM = song.notes[i].bpm;
-				var event:BPMChangeEvent = {
-					stepTime: totalSteps,
-					songTime: totalPos,
-					stepCrochet: (60 / curBPM) * 1000 / 4,
-					bpm: curBPM
-				};
-				bpmChangeMap.push(event);
-			}
-
-			var deltaSteps:Int = song.notes[i].lengthInSteps;
-			totalSteps += deltaSteps;
-			totalPos += ((60 / curBPM) * 1000 / 4) * deltaSteps;
-		}
+		// Native charts carry lengthInSteps; Psych and Nightmare Vision charts
+		// may only carry sectionBeats, which used to count as zero steps here.
+		bpmChangeMap = cast ConductorTempoMap.tempoChanges(song, EditorSectionLengthCompat.steps);
 		trace("new BPM map BUDDY " + bpmChangeMap);
 	}
 	/**

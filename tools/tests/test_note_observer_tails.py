@@ -254,7 +254,10 @@ class NoteObserverTailsTest(unittest.TestCase):
             self.assertNotIn(direct, legacy_miss)
         self.assertEqual(legacy_miss.count("state.applySourceMiss("), 2)
         self.assertIn("state.registerComboHit();", legacy_hit)
-        self.assertIn("SourceHealthDelta.hit(true, note.hitHealth, state.healthGain)", legacy_hit)
+        self.assertIn("state.applySourceHitHealth(note, true, true);", legacy_hit)
+        self.assertNotIn("state.health", legacy_hit)
+        self.assertNotIn("state.health", legacy_miss)
+        self.assertNotIn("state.doDeathCheck", legacy_miss)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,14 @@ class VSliceMetadataMigrationTest(unittest.TestCase):
 ''')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_v2_0_empty_playable_map_uses_reference_defaults(self):
+        meta = base("2.0.0", {"playableChars": {}})
+        result = convert_and_check(meta, '''
+    if (song.player1 != "bf" || song.player2 != "dad" || song.gf != "gf") fail("defaults " + song.player1 + "/" + song.player2 + "/" + song.gf);
+    if (codes.indexOf("metadata-migrated") < 0) fail("migration diagnostic");
+''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_v2_1_note_skin_maps_to_note_style(self):
         meta = base("2.1.0", {"characters": {"player": "bf", "opponent": "senpai", "girlfriend": "gf"}, "noteSkin": "pixel"})
         result = convert_and_check(meta, '''
@@ -72,6 +80,31 @@ class VSliceMetadataMigrationTest(unittest.TestCase):
     if (song.player1 != "bf" || song.player2 != "dad" || song.uiType != "normal") fail("current fields win");
     if (codes.indexOf("metadata-migrated") >= 0) fail("no migration expected");
 ''')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_importer_reads_song_media_from_migrated_metadata(self):
+        # The song scan picks the instrumental and note style from the metadata it
+        # parsed itself, so that read has to see the migrated field names too.
+        module = (ROOT / "source/ModuleFunctions.hx").read_text(encoding="utf-8")
+        start = module.index("static function discoverVSliceSongImports")
+        scan = module[start:module.index("\n\t}\n", start)]
+        self.assertIn("metadata = VSliceImporter.migrateMetadata(CoolUtil.parseJson(File.getContent(metadataPath)));", scan)
+        self.assertLess(scan.index("VSliceImporter.migrateMetadata("), scan.index("findVSliceInstrumental(audioFolder, metadata"))
+        main = '''class Main {
+  static function main() {
+    var metadata:Dynamic = haxe.Json.parse('{"version":"2.0.0","playData":{"playableChars":{"pico":{"o":"darnell","i":"pico"}},"noteSkin":"pixel"}}');
+    var migrated:Dynamic = VSliceImporter.migrateMetadata(metadata);
+    if (migrated.playData.characters.instrumental != "pico") throw "instrumental";
+    if (migrated.playData.noteStyle != "pixel") throw "note style";
+  }
+}
+'''
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
+            (Path(folder) / "Main.hx").write_text(main, newline="\n")
+            result = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder, "-main", "Main", "--interp"],
+                cwd=ROOT, capture_output=True, text=True,
+            )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

@@ -31,6 +31,12 @@ class ImportOverlayResolver {
 	static var cachedManifestStamp:String = '';
 	static var cachedRecords:Array<CompatOverlayRecord> = null;
 	static var diagnosticBuffer:Array<String> = [];
+	/** Messages already in the buffer. A manifest with many bad records would
+		otherwise rescan the whole buffer for every new message. */
+	static var diagnosticSeen:Map<String, Bool> = new Map();
+	/** A broken manifest can produce one message per record; past this the
+		buffer starts over rather than growing for the whole session. */
+	static inline var MAX_DIAGNOSTICS:Int = 512;
 	#end
 
 	/** Drop the cached manifest after an import writes a new retention record. */
@@ -39,7 +45,7 @@ class ImportOverlayResolver {
 		cachedManifestPath = '';
 		cachedManifestStamp = '';
 		cachedRecords = null;
-		diagnosticBuffer = [];
+		clearDiagnostics();
 		#end
 	}
 
@@ -113,7 +119,7 @@ class ImportOverlayResolver {
 		cachedManifestPath = path;
 		cachedManifestStamp = stamp;
 		cachedRecords = [];
-		diagnosticBuffer = [];
+		clearDiagnostics();
 		if (stamp == '')
 			return cachedRecords;
 
@@ -324,9 +330,18 @@ class ImportOverlayResolver {
 
 	static function recordDiagnostic(message:String):Void {
 		if (diagnosticBuffer == null)
-			diagnosticBuffer = [];
-		if (diagnosticBuffer.indexOf(message) < 0)
-			diagnosticBuffer.push(message);
+			clearDiagnostics();
+		if (diagnosticSeen.exists(message))
+			return;
+		if (diagnosticBuffer.length >= MAX_DIAGNOSTICS)
+			clearDiagnostics();
+		diagnosticSeen.set(message, true);
+		diagnosticBuffer.push(message);
+	}
+
+	static function clearDiagnostics():Void {
+		diagnosticBuffer = [];
+		diagnosticSeen = new Map();
 	}
 	#end
 }

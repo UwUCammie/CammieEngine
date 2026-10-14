@@ -1,6 +1,7 @@
 package nightmarevision.modchart;
 
 import haxe.ds.ObjectMap;
+import nightmarevision.modchart.NightmareVisionModchartLiveSprite.NightmareVisionModchartLiveField as LiveField;
 import nightmarevision.modchart.NightmareVisionModifierRegistry.NightmareVisionModifierExecution;
 
 private typedef NightmareVisionSpriteBaseline = {
@@ -35,6 +36,16 @@ class NightmareVisionModchartRenderer {
 
 	var baselines:ObjectMap<Dynamic, NightmareVisionSpriteBaseline> = new ObjectMap();
 	var warnedUnsupported:ObjectMap<Dynamic, Map<String, Bool>> = new ObjectMap();
+	/** Formula carriers reused by applyInstancePosition/applyInstanceObject, one
+		per nesting level so a modifier that asks for another evaluation while
+		one is running still gets its own carrier. */
+	var instanceObjects:Array<NightmareVisionModchartObject> = [];
+	var instanceDepth:Int = 0;
+	/** Classes whose instances refuse an undeclared field. Writing one there
+		throws, so it never had an effect; remembering the class skips the
+		throw, which cost an exception per note per frame. */
+	static var sourceOffsetRejected:Map<String, Bool> = new Map();
+	static final NO_OFFSET:NightmareVisionModchartVector = new NightmareVisionModchartVector();
 
 	public function new(transform:NightmareVisionModchartTransform,
 		?skinOffsets:NightmareVisionModchartSkinOffsets,
@@ -189,7 +200,7 @@ class NightmareVisionModchartRenderer {
 		entry:NightmareVisionModifierExecution, sprite:Dynamic, kind:String,
 		position:NightmareVisionModchartVector, time:Float, diff:Float, timeDiff:Float,
 		beat:Float, data:Int, player:Int):NightmareVisionModchartVector {
-		var object = new NightmareVisionModchartObject(kind);
+		var object = borrowInstanceObject(kind);
 		object.data = data;
 		object.player = player;
 		if (context.legacyCoordinates && sprite != null) {
@@ -197,7 +208,33 @@ class NightmareVisionModchartRenderer {
 			object.isSustainEnd = StringTools.endsWith(currentAnimation(sprite), 'end');
 			object.multSpeed = number(property(sprite, 'multSpeed'), 1);
 		}
-		return transform.applyInstancePosition(context, entry, object, position, time, diff, timeDiff, beat);
+		var result = position;
+		try result = transform.applyInstancePosition(context, entry, object, position, time, diff, timeDiff, beat)
+		catch (error:Dynamic) {
+			releaseInstanceObject(object);
+			throw error;
+		}
+		releaseInstanceObject(object);
+		return result;
+	}
+
+	/** A cleared carrier for one formula call; hand it back with releaseInstanceObject. */
+	function borrowInstanceObject(kind:String):NightmareVisionModchartObject {
+		var object = instanceDepth < instanceObjects.length ? instanceObjects[instanceDepth] : null;
+		if (object == null) {
+			object = new NightmareVisionModchartObject(kind);
+			instanceObjects[instanceDepth] = object;
+		} else
+			object.reset(kind);
+		instanceDepth++;
+		return object;
+	}
+
+	function releaseInstanceObject(object:NightmareVisionModchartObject):Void {
+		if (instanceDepth > 0) instanceDepth--;
+		// Drop the sprite reference so a carrier never keeps a dead note alive.
+		object.nativeObject = null;
+		object.livePosition = null;
 	}
 
 	/** Read and commit only fields used by the overridden source callback. */
@@ -220,7 +257,19 @@ class NightmareVisionModchartRenderer {
 		if (family == 'receptorScroll' && entry.value(player) == 0) return;
 		if (family == 'perspectiveDONTUSE' && !(Math.abs(position.z) > NightmareVisionModchartMath.EPSILON)) return;
 		if (sprite == null) throw 'Nightmare Vision source callback requires an object';
-		var object = new NightmareVisionModchartObject(kind);
+		var object = borrowInstanceObject(kind);
+		try applyInstanceObjectWith(context, entry, sprite, kind, position, beat, player, family, note, object)
+		catch (error:Dynamic) {
+			releaseInstanceObject(object);
+			throw error;
+		}
+		releaseInstanceObject(object);
+	}
+
+	function applyInstanceObjectWith(context:NightmareVisionModchartContext,
+		entry:NightmareVisionModifierExecution, sprite:Dynamic, kind:String,
+		position:NightmareVisionModchartVector, beat:Float, player:Int, family:String, note:Bool,
+		object:NightmareVisionModchartObject):Void {
 		object.player = family == 'stealth' && note ? Std.int(property(sprite, 'lane')) : player;
 		if (family != 'perspectiveDONTUSE') object.data = intFieldWithFallbacks(sprite, 'noteData', 'direction', 'ID');
 		if (family == 'confusion' || family == 'mini') {
@@ -350,6 +399,12 @@ class NightmareVisionModchartRenderer {
 
 	/** Source scripts can tween baseScale after sprite configuration. */
 	function syncLiveBaseScale(sprite:Dynamic, baseline:NightmareVisionSpriteBaseline):Void {
+		var live = liveSprite(sprite);
+		if (live != null) {
+			baseline.scaleX = finiteOr(live.modchartLiveFloat(LiveField.BASE_SCALE_X), baseline.scaleX);
+			baseline.scaleY = finiteOr(live.modchartLiveFloat(LiveField.BASE_SCALE_Y), baseline.scaleY);
+			return;
+		}
 		var point = liveBaseScale(sprite);
 		if (point == null) return;
 		baseline.scaleX = number(field(point, 'x'), baseline.scaleX);
@@ -386,12 +441,13 @@ class NightmareVisionModchartRenderer {
 		}
 		// NMV notes carry source-owned miss fades on alphaMod. Other sprite kinds
 		// have separate RGB alpha semantics and retain the source default of 1.
-		object.alphaMod = kind == NightmareVisionModchartObject.NOTE
-			? number(property(sprite, 'alphaMod'), 1) : 1;
+		var live = liveSprite(sprite);
+		object.alphaMod = kind != NightmareVisionModchartObject.NOTE ? 1
+			: live != null ? finiteOr(live.modchartLiveFloat(LiveField.ALPHA_MOD), 1) : number(property(sprite, 'alphaMod'), 1);
 		object.rgbFlash = 0;
 		object.rgbAlpha = 1;
 		object.angle = 0;
-		object.mAngle = number(property(sprite, 'mAngle'));
+		object.mAngle = live != null ? finiteOr(live.modchartLiveFloat(LiveField.M_ANGLE), 0) : number(property(sprite, 'mAngle'));
 		object.garbage = false;
 		object.spriteOffsetX = 0;
 		object.spriteOffsetY = 0;
@@ -403,9 +459,6 @@ class NightmareVisionModchartRenderer {
 		object.isSustainEnd = field(sprite, 'isSustainEnd') == true
 			|| StringTools.endsWith(currentAnimation(sprite), 'end');
 		object.wasGoodHit = field(sprite, 'wasGoodHit') == true;
-		object.strumTime = number(field(sprite, 'strumTime'));
-		object.sustainLength = number(field(sprite, 'sustainLength'));
-		object.multSpeed = number(field(sprite, 'multSpeed'), 1);
 		object.width = baseline.width;
 		object.height = baseline.height;
 		object.frameHeight = baseline.frameHeight;
@@ -413,6 +466,20 @@ class NightmareVisionModchartRenderer {
 		object.baseScaleY = baseline.scaleY;
 		object.scaleX = baseline.scaleX;
 		object.scaleY = baseline.scaleY;
+		if (live != null) {
+			// The same values as the reflective reads below, without boxing each one.
+			object.strumTime = finiteOr(live.modchartLiveFloat(LiveField.STRUM_TIME), 0);
+			object.sustainLength = finiteOr(live.modchartLiveFloat(LiveField.SUSTAIN_LENGTH), 0);
+			object.multSpeed = finiteOr(live.modchartLiveFloat(LiveField.MULT_SPEED), 1);
+			object.x = finiteOr(live.modchartLiveFloat(LiveField.X), 0);
+			object.y = finiteOr(live.modchartLiveFloat(LiveField.Y), 0);
+			readLiveOffsets(live, object);
+			if (transform.registry.executionEntry != null) readTypedLive(live, object);
+			return object;
+		}
+		object.strumTime = number(field(sprite, 'strumTime'));
+		object.sustainLength = number(field(sprite, 'sustainLength'));
+		object.multSpeed = number(field(sprite, 'multSpeed'), 1);
 		object.x = number(field(sprite, 'x'));
 		object.y = number(field(sprite, 'y'));
 		object.sourceOffsetX = number(property(sprite, 'offsetX'));
@@ -425,9 +492,53 @@ class NightmareVisionModchartRenderer {
 		return object;
 	}
 
+	/** The four source offsets, read the same way as the reflective path. */
+	static function readLiveOffsets(live:NightmareVisionModchartLiveSprite, object:NightmareVisionModchartObject):Void {
+		var offsetX = live.modchartLiveFloat(LiveField.OFFSET_X);
+		var offsetY = live.modchartLiveFloat(LiveField.OFFSET_Y);
+		var typeOffsetX = live.modchartLiveFloat(LiveField.TYPE_OFFSET_X);
+		var typeOffsetY = live.modchartLiveFloat(LiveField.TYPE_OFFSET_Y);
+		object.sourceOffsetX = finiteOr(offsetX, 0);
+		object.sourceOffsetY = finiteOr(offsetY, 0);
+		object.legacyTypeOffsetX = finiteOr(typeOffsetX, 0);
+		object.legacyTypeOffsetY = finiteOr(typeOffsetY, 0);
+		object.typeOffsetX = isFiniteNumber(offsetX) ? offsetX : finiteOr(typeOffsetX, 0);
+		object.typeOffsetY = isFiniteNumber(offsetY) ? offsetY : finiteOr(typeOffsetY, 0);
+	}
+
+	/** Typed form of readLiveObject for sprites that offer it. */
+	function readTypedLive(live:NightmareVisionModchartLiveSprite, object:NightmareVisionModchartObject):Void {
+		object.active = live.modchartLiveBool(LiveField.ACTIVE);
+		object.x = finiteOr(live.modchartLiveFloat(LiveField.X), object.x);
+		object.y = finiteOr(live.modchartLiveFloat(LiveField.Y), object.y);
+		object.width = finiteOr(live.modchartLiveFloat(LiveField.WIDTH), object.width);
+		object.height = finiteOr(live.modchartLiveFloat(LiveField.HEIGHT), object.height);
+		object.frameHeight = finiteOr(live.modchartLiveFloat(LiveField.FRAME_HEIGHT), object.frameHeight);
+		object.angle = finiteOr(live.modchartLiveFloat(LiveField.ANGLE), object.angle);
+		object.mAngle = finiteOr(live.modchartLiveFloat(LiveField.M_ANGLE), 0);
+		object.scaleX = finiteOr(live.modchartLiveFloat(LiveField.SCALE_X), object.scaleX);
+		object.scaleY = finiteOr(live.modchartLiveFloat(LiveField.SCALE_Y), object.scaleY);
+		object.baseScaleX = finiteOr(live.modchartLiveFloat(LiveField.BASE_SCALE_X), object.baseScaleX);
+		object.baseScaleY = finiteOr(live.modchartLiveFloat(LiveField.BASE_SCALE_Y), object.baseScaleY);
+		object.multSpeed = finiteOr(live.modchartLiveFloat(LiveField.MULT_SPEED), object.multSpeed);
+		object.wasGoodHit = live.modchartLiveBool(LiveField.WAS_GOOD_HIT);
+		object.strumTime = finiteOr(live.modchartLiveFloat(LiveField.STRUM_TIME), object.strumTime);
+		readLiveOffsets(live, object);
+		if (object.kind == NightmareVisionModchartObject.NOTE)
+			object.alphaMod = finiteOr(live.modchartLiveFloat(LiveField.ALPHA_MOD), object.alphaMod);
+		object.rgbFlash = finiteOr(live.modchartLiveFloat(LiveField.RGB_FLASH), object.rgbFlash);
+		if (object.kind != NightmareVisionModchartObject.NOTE)
+			object.rgbAlpha = finiteOr(live.modchartLiveFloat(LiveField.RGB_ALPHA), object.rgbAlpha);
+	}
+
 	/** Refresh only current source fields; never reset callback mutations to the frame baseline. */
 	function readLiveObject(sprite:Dynamic, object:NightmareVisionModchartObject,
 		baseline:NightmareVisionSpriteBaseline):Void {
+		var live = liveSprite(sprite);
+		if (live != null) {
+			readTypedLive(live, object);
+			return;
+		}
 		object.active = property(sprite, 'active') != false;
 		object.x = number(property(sprite, 'x'), object.x);
 		object.y = number(property(sprite, 'y'), object.y);
@@ -461,6 +572,17 @@ class NightmareVisionModchartRenderer {
 
 	/** Source update callbacks run before final centering and source skin offsets. */
 	function flushLiveObject(sprite:Dynamic, object:NightmareVisionModchartObject):Void {
+		var live = liveSprite(sprite);
+		if (live != null) {
+			writeLive(live, LiveField.X, object.x);
+			writeLive(live, LiveField.Y, object.y);
+			writeLive(live, LiveField.SCALE_X, object.scaleX);
+			writeLive(live, LiveField.SCALE_Y, object.scaleY);
+			if (object.kind == NightmareVisionModchartObject.NOTE || object.kind == NightmareVisionModchartObject.RECEPTOR)
+				writeLive(live, LiveField.ANGLE, object.angle);
+			writeLiveEffects(sprite, object);
+			return;
+		}
 		setField(sprite, 'x', object.x);
 		setField(sprite, 'y', object.y);
 		var scale = property(sprite, 'scale');
@@ -474,6 +596,16 @@ class NightmareVisionModchartRenderer {
 	function writeLiveEffects(sprite:Dynamic, object:NightmareVisionModchartObject):Void {
 		// Standalone formula results remain visual-only and do not replace persistent miss fades.
 		if (transform.registry.executionEntry == null) return;
+		var live = liveSprite(sprite);
+		if (live != null) {
+			if (object.kind == NightmareVisionModchartObject.NOTE) {
+				writeLive(live, LiveField.ALPHA_MOD, object.alphaMod);
+				if (!object.legacyCoordinates) writeLive(live, LiveField.MULT_SPEED, object.multSpeed);
+			}
+			writeLive(live, LiveField.RGB_FLASH, object.rgbFlash);
+			if (object.kind != NightmareVisionModchartObject.NOTE) writeLive(live, LiveField.RGB_ALPHA, object.rgbAlpha);
+			return;
+		}
 		if (object.kind == NightmareVisionModchartObject.NOTE) {
 			setField(sprite, 'alphaMod', object.alphaMod);
 			// Historical XModifier commits its setter at its callback position.
@@ -498,7 +630,7 @@ class NightmareVisionModchartRenderer {
 		state.alphaMod = object.alphaMod;
 		state.rgbFlash = object.rgbFlash;
 		state.rgbAlpha = object.rgbAlpha;
-		var offset = applySkinOffsets ? skinOffsets.get(kind, object.data, object.isSustain) : new NightmareVisionModchartVector();
+		var offset = applySkinOffsets ? skinOffsets.get(kind, object.data, object.isSustain) : NO_OFFSET;
 		state.spriteOffsetX = offset.x + object.spriteOffsetX;
 		state.spriteOffsetY = offset.y + object.spriteOffsetY;
 		if (applySkinOffsets && kind == NightmareVisionModchartObject.NOTE && object.isSustainEnd) {
@@ -508,18 +640,34 @@ class NightmareVisionModchartRenderer {
 		}
 
 		writeLiveEffects(sprite, object);
-		setField(sprite, 'x', object.x);
-		setField(sprite, 'y', object.y);
-		var scale = field(sprite, 'scale');
-		setField(scale, 'x', object.scaleX);
-		setField(scale, 'y', object.scaleY);
-		if (kind == NightmareVisionModchartObject.NOTE || kind == NightmareVisionModchartObject.RECEPTOR)
-			setField(sprite, 'angle', object.angle);
+		var live = liveSprite(sprite);
+		if (live != null) {
+			writeLive(live, LiveField.X, object.x);
+			writeLive(live, LiveField.Y, object.y);
+			writeLive(live, LiveField.SCALE_X, object.scaleX);
+			writeLive(live, LiveField.SCALE_Y, object.scaleY);
+			if (kind == NightmareVisionModchartObject.NOTE || kind == NightmareVisionModchartObject.RECEPTOR)
+				writeLive(live, LiveField.ANGLE, object.angle);
+		} else {
+			setField(sprite, 'x', object.x);
+			setField(sprite, 'y', object.y);
+			var scale = field(sprite, 'scale');
+			setField(scale, 'x', object.scaleX);
+			setField(scale, 'y', object.scaleY);
+			if (kind == NightmareVisionModchartObject.NOTE || kind == NightmareVisionModchartObject.RECEPTOR)
+				setField(sprite, 'angle', object.angle);
+		}
 
 		if (object.centerOriginAndOffsets) {
-			if (legacyCoordinates && kind == NightmareVisionModchartObject.NOTE) callNoArg(sprite, 'updateHitbox');
-			callNoArg(sprite, 'centerOrigin');
-			callNoArg(sprite, 'centerOffsets');
+			if (live != null) {
+				if (legacyCoordinates && kind == NightmareVisionModchartObject.NOTE) callLive(live, LiveField.UPDATE_HITBOX);
+				callLive(live, LiveField.CENTER_ORIGIN);
+				callLive(live, LiveField.CENTER_OFFSETS);
+			} else {
+				if (legacyCoordinates && kind == NightmareVisionModchartObject.NOTE) callNoArg(sprite, 'updateHitbox');
+				callNoArg(sprite, 'centerOrigin');
+				callNoArg(sprite, 'centerOffsets');
+			}
 			if (!legacyCoordinates && kind == NightmareVisionModchartObject.NOTE && object.isSustain) {
 				setNestedField(sprite, 'origin', 'y', 0);
 				setNestedField(sprite, 'offset', 'y', 0);
@@ -528,10 +676,23 @@ class NightmareVisionModchartRenderer {
 		setNestedPoint(sprite, 'spriteOffset', state.spriteOffsetX, state.spriteOffsetY);
 		// Keep the source-only draw offset accessible to a host renderer even
 		// when the native FlxSprite class has no `spriteOffset` vector.
+		writeSourceOffset(sprite, state.spriteOffsetX, state.spriteOffsetY);
+	}
+
+	/** Replaceable for tests: the reflective write a class may refuse. */
+	static var fieldWriter:Dynamic->String->Dynamic->Void = Reflect.setField;
+
+	static function writeSourceOffset(sprite:Dynamic, x:Float, y:Float):Void {
+		var spriteClass = Type.getClass(sprite);
+		var className = spriteClass == null ? null : Type.getClassName(spriteClass);
+		if (className != null && sourceOffsetRejected.exists(className)) return;
 		try {
-			Reflect.setField(sprite, 'nightmareVisionSourceOffsetX', state.spriteOffsetX);
-			Reflect.setField(sprite, 'nightmareVisionSourceOffsetY', state.spriteOffsetY);
-		} catch (_:Dynamic) {}
+			fieldWriter(sprite, 'nightmareVisionSourceOffsetX', x);
+			fieldWriter(sprite, 'nightmareVisionSourceOffsetY', y);
+		} catch (_:Dynamic) {
+			// Only a class instance can refuse a field; a plain object never throws here.
+			if (className != null) sourceOffsetRejected.set(className, true);
+		}
 	}
 
 	/** Historical ReverseModifier clips at its own position in the callback chain. */
@@ -634,6 +795,25 @@ class NightmareVisionModchartRenderer {
 		var current = field(animation, 'curAnim');
 		var name = field(current, 'name');
 		return name == null ? '' : Std.string(name);
+	}
+
+	static function liveSprite(sprite:Dynamic):Null<NightmareVisionModchartLiveSprite>
+		return Std.isOfType(sprite, NightmareVisionModchartLiveSprite) ? cast sprite : null;
+
+	/** number()'s rule for a value that is already a Float: NaN and infinities fall back. */
+	static inline function finiteOr(value:Float, fallback:Float):Float
+		return isFiniteNumber(value) ? value : fallback;
+
+	static inline function isFiniteNumber(value:Float):Bool
+		return !Math.isNaN(value) && Math.isFinite(value);
+
+	/** setField's rule: a setter that throws leaves the rest of the writes going. */
+	static function writeLive(live:NightmareVisionModchartLiveSprite, id:Int, value:Float):Void {
+		try live.modchartSetLiveFloat(id, value) catch (_:Dynamic) {}
+	}
+
+	static function callLive(live:NightmareVisionModchartLiveSprite, method:Int):Void {
+		try live.modchartLiveCall(method) catch (_:Dynamic) {}
 	}
 
 	static function field(value:Dynamic, name:String):Dynamic

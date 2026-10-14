@@ -78,11 +78,8 @@ class HxcOwnedVideoSprite extends FlxVideoSprite {
 	function applySourcePlaybackRate():Void {
 		if (bitmap == null || ownerState == null)
 			return;
-		var value:Dynamic = Reflect.getProperty(ownerState, 'playbackRate');
-		if (value == null)
-			return;
-		var rate = Std.parseFloat(Std.string(value));
-		if (!Math.isNaN(rate) && Math.isFinite(rate) && rate > 0)
+		var rate = SourceVideoPlayback.hostRate(Reflect.getProperty(ownerState, 'playbackRate'));
+		if (!Math.isNaN(rate))
 			bitmap.rate = rate;
 	}
 

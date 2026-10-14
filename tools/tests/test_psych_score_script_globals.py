@@ -351,8 +351,25 @@ class PsychScoreScriptGlobalsTest(unittest.TestCase):
 
         engine = (ROOT / "source/EngineCompat.hx").read_text(encoding="utf-8")
         callback_names = extract_method(engine, "public static function callbackNames(")
-        self.assertIn("case 'recalculaterating':", callback_names)
-        self.assertIn("appendName(result, 'onRecalculateRating');", callback_names)
+        # The spellings now come from the shared lifecycle table; run it so the
+        # Psych onRecalculateRating spelling is checked as behaviour.
+        self.assertIn("ScriptLifecycleNames.broadcastSpellings(name.toLowerCase())", callback_names)
+        with tempfile.TemporaryDirectory(prefix="psych-score-names-", dir=TEST_TMP) as folder:
+            Path(folder, "RecalculateNamesFixture.hx").write_text(
+                "class RecalculateNamesFixture {\n"
+                " static function main() {\n"
+                "  var spellings = ScriptLifecycleNames.broadcastSpellings('recalculaterating');\n"
+                "  if (spellings == null || spellings.indexOf('onRecalculateRating') < 0)\n"
+                "   throw 'recalculateRating does not broadcast onRecalculateRating';\n"
+                "  if (ScriptLifecycleNames.canonical('onrecalculaterating') != 'recalculateRating')\n"
+                "   throw 'onRecalculateRating does not resolve to recalculateRating';\n"
+                " }\n"
+                "}\n", newline="\n")
+            names = subprocess.run(
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
+                 "-main", "RecalculateNamesFixture", "--interp"],
+                cwd=ROOT, capture_output=True, text=True, timeout=300)
+        self.assertEqual(names.returncode, 0, names.stdout + names.stderr)
 
         snapshot_method = snapshot.replace(
             "function sourceScoreSnapshot", "public function sourceScoreSnapshot", 1

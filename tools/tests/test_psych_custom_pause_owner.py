@@ -21,6 +21,7 @@ class PsychCustomPauseOwnerTest(unittest.TestCase):
         open_pause = extract_method(source, 'public function openPauseMenu(')
         fixture = r'''
 class NightmareVisionScriptGroup {public static inline var STOP_FUNC:Int=1;}
+class ScriptCallbackResult {public static inline var STOP:String='STOP';}
 class EngineCompat {
  public static function hxcLifecyclePayload(s:String):Dynamic return {};
  public static function hxcPayloadCanceled(payload:Dynamic):Bool
@@ -42,7 +43,10 @@ class Main {
  var sourceBatch:Dynamic = {};var postDispatches=0;
  function updateNightmareVisionScreenUnderlay():Void {}
  function dispatchNightmareVisionUpdatePost(batch:Dynamic){postDispatches++;}
- function callNightmareVision(name:String,args:Array<Dynamic>):Int return nmvStop ? 1 : 0;
+ function callNightmareVision(name:String,args:Array<Dynamic>):Dynamic return nmvStop ? 1 : 0;
+ // The real router with a Nightmare Vision owner; only the pause gate runs here.
+ function sourceCallbacks() return new SourceCallbackRouter(function() return true, function() return false,
+  callNightmareVision, function(n, a, f, i) return null, function(n, a) {});
  public function new(){}
  function setAllHaxeVar(s:String,v:Dynamic){}
  function callCodenameEvent(name:String,e:CodenameGameEvent){}
@@ -69,6 +73,13 @@ class Main {
 '''.replace('GATE', gate).replace('OPEN_PAUSE', open_pause)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            router = (ROOT / 'source/SourceCallbackRouter.hx').read_text(encoding='utf-8')
+            router = router.replace('NightmareVisionScriptGroup.', 'Main.NightmareVisionScriptGroup.')
+            router = router.replace('ScriptCallbackResult.', 'Main.ScriptCallbackResult.')
+            (Path(folder) / 'SourceCallbackRouter.hx').write_text(router, newline='\n')
+            for name in ('SourceLifecycleEvent', 'SourceCallbackOutcome'):
+                (Path(folder) / (name + '.hx')).write_text(
+                    (ROOT / ('source/' + name + '.hx')).read_text(encoding='utf-8'), newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '--run', 'Main'], cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)
@@ -78,16 +89,19 @@ class Main {
         source = (ROOT / 'source/PlayState.hx').read_text()
         methods = '\n'.join(extract_method(source, 'function ' + name + '(') for name in (
             'pausePsychCustomTimeline', 'resumePsychCustomTimeline',
+            'pauseGameplayForSubstate', 'pauseGameplayAudio', 'resumeGameplayFromSubstate',
             'compatOpenCustomSubstate', 'compatCloseCustomSubstate',
             'psychCustomSubstateCreate', 'psychCustomSubstateCreatePost',
             'psychCustomSubstateUpdate', 'psychCustomSubstateUpdatePost',
             'psychCustomSubstateDestroy', 'psychCustomSubstateFinished'))
-        fixture = r'''
-class Task {public var active=true; public var finished=false; public function new() {}}
-class Manager<T> {public var tasks:Array<T>=[]; public function new() {}
- public function forEach(f:T->Void) for(t in tasks)f(t);}
-class FlxTimer extends Task {public static var globalManager=new Manager<FlxTimer>();}
-class FlxTween extends Task {public static var globalManager=new Manager<FlxTween>();}
+        # The timeline freeze is the real SourcePauseTasks snapshot over stub managers.
+        stubs = {
+            'Task.hx': 'class Task {public var active=true; public var finished=false; public function new() {}}',
+            'Manager.hx': 'class Manager<T> {public var tasks:Array<T>=[]; public function new() {}\n public function forEach(f:T->Void) for(t in tasks)f(t);}',
+            'flixel/util/FlxTimer.hx': 'package flixel.util; class FlxTimer extends Task {public static var globalManager=new Manager<FlxTimer>();}',
+            'flixel/tweens/FlxTween.hx': 'package flixel.tweens; class FlxTween extends Task {public static var globalManager=new Manager<FlxTween>();}',
+        }
+        fixture = r'''import flixel.util.FlxTimer; import flixel.tweens.FlxTween;
 class Sound {public var paused=false;public function new(){}public function pause()paused=true;}
 class FlxG {public static var sound={music:new Sound()};}
 class PsychCustomSubstate {
@@ -161,6 +175,10 @@ class Main extends HostBase {
 '''.replace('METHODS', methods)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
+            for name, text in stubs.items():
+                (Path(folder) / name).parent.mkdir(parents=True, exist_ok=True)
+                (Path(folder) / name).write_text(text, newline='\n')
+            (Path(folder) / 'SourcePauseTasks.hx').write_text((ROOT / 'source/SourcePauseTasks.hx').read_text(encoding='utf-8'), newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', folder,
                                      '--run', 'Main'], cwd=ROOT, capture_output=True,
                                     text=True, timeout=30)

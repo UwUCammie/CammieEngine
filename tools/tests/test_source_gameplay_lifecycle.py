@@ -78,6 +78,7 @@ class SourceGameplayLifecycleTest(unittest.TestCase):
         cls.spawn_helper = extract_method(cls.play, "function dispatchPsychNoteSpawn(")
         cls.hit_helper = extract_method(cls.play, "function dispatchPsychNoteHitPre(")
         cls.countdown_helper = extract_method(cls.play, "function notifySourceCountdownStarted(")
+        cls.router_helper = extract_method(cls.play, "function sourceCallbacks():SourceCallbackRouter")
 
     def compile_helper_fixture(self, cpp=False):
         fixture = r'''
@@ -87,6 +88,10 @@ class ScriptCallbackResult {
  public static inline var STOP_HSCRIPT:String = 'STOP_HSCRIPT';
  public static inline var STOP_ALL:String = 'STOP_ALL';
  public static inline var CONTINUE:String = 'CONTINUE';
+}
+class NightmareVisionScriptGroup {
+ public static inline var CONTINUE_FUNC:Int = 0;
+ public static inline var STOP_FUNC:Int = 1;
 }
 class Note {
  public var noteData:Int = -2;
@@ -159,7 +164,10 @@ class PlayState {
   order.push('nightmare:' + name);
   return null;
  }
-''' + self.spawn_helper + '\n' + self.hit_helper + '\n' + self.countdown_helper + r'''
+ function selectedPsychSkinRoot():Dynamic return null;
+ function callAllHScript(name:String, args:Array<Dynamic>):Void {}
+ var sourceCallbackRouter:SourceCallbackRouter;
+''' + self.router_helper + '\n' + self.spawn_helper + '\n' + self.hit_helper + '\n' + self.countdown_helper + r'''
  public function exerciseSpawn(note:Note):Void dispatchPsychNoteSpawn(note);
  public function exerciseHit(note:Note, playerOne:Bool):Bool
   return dispatchPsychNoteHitPre(note, playerOne);
@@ -224,6 +232,14 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             (Path(folder) / "Main.hx").write_text(fixture, newline="\n")
+            # The real router, reading this fixture's sentinel stand-ins.
+            router = (ROOT / "source/SourceCallbackRouter.hx").read_text(encoding="utf-8")
+            router = router.replace("NightmareVisionScriptGroup.", "Main.NightmareVisionScriptGroup.")
+            router = router.replace("ScriptCallbackResult.", "Main.ScriptCallbackResult.")
+            (Path(folder) / "SourceCallbackRouter.hx").write_text(router, newline="\n")
+            for name in ("SourceLifecycleEvent", "SourceCallbackOutcome"):
+                (Path(folder) / (name + ".hx")).write_text(
+                    (ROOT / ("source/" + name + ".hx")).read_text(encoding="utf-8"), newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=30,
@@ -300,7 +316,11 @@ class Main {
     def test_countdown_notification_occurs_after_gate_before_skip_and_timer(self):
         countdown = extract_method(self.play, "public function startCountdown():Void")
         repeated = extract_braced_block(countdown, "if (startedCountdown)")
-        self.assertIn("onStartCountdown", repeated)
+        # The repeated request still notifies both engines' onStartCountdown.
+        self.assertIn("sourceCallbacks().dispatch(SourceLifecycleEvent.StartCountdownAgain, []);", repeated)
+        router = (ROOT / "source/SourceCallbackRouter.hx").read_text(encoding="utf-8")
+        self.assertIn("SourceLifecycleEvent.StartCountdownAgain, new SourceCallbackRoute(['psych', 'nv'], "
+                      "'onStartCountdown', 'onStartCountdown')", router)
         self.assertNotIn("notifySourceCountdownStarted", repeated)
         self.assertNotIn("new FlxTimer()", repeated)
         started = countdown.rindex("startedCountdown = true;")

@@ -7,6 +7,28 @@ import haxe.ds.IntMap;
 class SourceScriptReflection {
 	public static inline var INSTANCE_PREFIX = '##PSYCHLUA_STRINGTOOBJ::';
 
+	// Lua property calls split the same few dotted paths every frame, often per
+	// note. The pieces depend only on the text, so the split arrays are kept and
+	// shared. Callers only read them. Bounded and cleared when full.
+	static inline var DOT_PARTS_LIMIT:Int = 1024;
+	static var dotPartsCache:Map<String, Array<String>> = new Map();
+	static var dotPartsCount:Int = 0;
+
+	/** path.split('.') for read-only use; the returned array is shared. */
+	public static function dotParts(path:String):Array<String> {
+		if (path == null) return path.split('.');
+		var cached = dotPartsCache.get(path);
+		if (cached != null) return cached;
+		var parts = path.split('.');
+		if (dotPartsCount >= DOT_PARTS_LIMIT) {
+			dotPartsCache.clear();
+			dotPartsCount = 0;
+		}
+		dotPartsCache.set(path, parts);
+		dotPartsCount++;
+		return parts;
+	}
+
 	public static function mapKey(object:Dynamic, key:String):Dynamic {
 		return Std.isOfType(object, IntMap) ? Std.parseInt(key) : key;
 	}
@@ -302,8 +324,9 @@ class SourceScriptReflection {
 	/** Source raw field/index reads, shared by argument parsing and public reflection. */
 	public static function readPsychInstancePart(instance:Dynamic, variable:String,
 		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic, allowMaps:Bool = false):Dynamic {
-		var parts = variable.split('[');
-		if (parts.length > 1) {
+		// Only an indexed part needs splitting; a plain name skips the array.
+		if (variable.indexOf('[') >= 0) {
+			var parts = variable.split('[');
 			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
 			for (i in 1...parts.length) {
 				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);
@@ -333,8 +356,8 @@ class SourceScriptReflection {
 	public static function writePsychPathPart(instance:Dynamic, variable:String, value:Dynamic,
 		isState:Dynamic->Bool, registry:()->Dynamic, readProperty:(Dynamic,String)->Dynamic,
 		writeProperty:(Dynamic,String,Dynamic)->Void, allowMaps:Bool = false):Dynamic {
-		var parts = variable.split('[');
-		if (parts.length > 1) {
+		if (variable.indexOf('[') >= 0) {
+			var parts = variable.split('[');
 			var target:Dynamic = psychArrayTarget(instance,parts[0],registry,readProperty);
 			for (i in 1...parts.length) {
 				var index:Dynamic = parts[i].substr(0, parts[i].length - 1);

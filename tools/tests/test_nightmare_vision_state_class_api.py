@@ -19,7 +19,7 @@ class NightmareVisionStateClassApiTest(unittest.TestCase):
         capture = "nightmareVisionStartOnTime = Math.max(0, startTimestamp);"
         self.assertIn("startTimestamp = consumeStartingPosition();\n\t\t" + capture, source)
         song_start = source[source.index("function startSong("):source.index("// ---- hscript helper shaders")]
-        self.assertLess(song_start.index("nightmareVisionStartOnTime = 0;"), song_start.index("callNightmareVision('onSongStart'"))
+        self.assertLess(song_start.index("nightmareVisionStartOnTime = 0;"), song_start.index("sourceCallbacks().dispatch(SourceLifecycleEvent.SongStart"))
         self.assertNotIn("startOnTime = 0;", song_start)
         seed = extract_method(source,"function seedNightmareVision(")
         self.assertIn("interp.bindClassParent(PlayState);", seed)

@@ -26,6 +26,43 @@ class TaggedSoundRegistry<T> {
 		return StringTools.trim(Std.string(tag));
 	}
 
+	/**
+		The variable name Psych stores a tagged sound under and hands back from
+		playSound: `sound_` plus the tag with spaces turned into underscores and
+		dots dropped. Null for an untagged sound.
+	*/
+	public static function psychVariableName(tag:Dynamic):Null<String> {
+		var name = key(tag);
+		if (name == '')
+			return null;
+		return 'sound_' + StringTools.replace(StringTools.replace(name, ' ', '_'), '.', '');
+	}
+
+	/** The tag a Psych `sound_<tag>` variable name points at, or null for any other name. */
+	public static function tagFromPsychVariable(variable:String):Null<String> {
+		if (variable == null || !StringTools.startsWith(variable, 'sound_') || variable.length == 'sound_'.length)
+			return null;
+		return variable.substr('sound_'.length);
+	}
+
+	/**
+		The sound a Psych `sound_<name>` variable points at. Psych builds that
+		name with spaces turned into underscores and dots dropped, so a sound
+		tagged 'my tag' answers to sound_my_tag as well as to its own spelling.
+	*/
+	public function findPsychVariable(variable:String):T {
+		var tag = tagFromPsychVariable(variable);
+		if (tag == null)
+			return null;
+		var direct = get(tag);
+		if (direct != null)
+			return direct;
+		for (name in sounds.keys())
+			if (psychVariableName(name) == variable)
+				return get(name);
+		return null;
+	}
+
 	public function get(tag:Dynamic):T {
 		var name = key(tag);
 		if (name == '')

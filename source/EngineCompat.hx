@@ -965,6 +965,14 @@ class EngineCompat {
 			Reflect.setField(payload, 'cancel', function():Void hxcPayloadCancel(payload));
 		if (!hxcHasMethod(payload, 'cancelEvent'))
 			Reflect.setField(payload, 'cancelEvent', function():Void hxcPayloadCancel(payload));
+		// V-Slice's ScriptEvent.stopPropagation(): later scripts in the broadcast
+		// order skip this event. Cancelling is separate; a script may do either.
+		if (!hxcHasField(payload, 'shouldPropagate'))
+			Reflect.setField(payload, 'shouldPropagate', true);
+		if (!hxcHasMethod(payload, 'stopPropagation'))
+			Reflect.setField(payload, 'stopPropagation', function():Void Reflect.setField(payload, 'shouldPropagate', false));
+		if (!hxcHasMethod(payload, 'stopEventPropagation'))
+			Reflect.setField(payload, 'stopEventPropagation', function():Void Reflect.setField(payload, 'shouldPropagate', false));
 		// HXC sometimes stores the event data object in a local and calls its
 		// typed getter.  Attach the same safe surface to both nested objects, but
 		// never walk or mutate arbitrary donor objects.
@@ -2203,7 +2211,31 @@ class EngineCompat {
 			return true;
 		if (name == null)
 			return false;
-		return new EReg('^default(?:Player|Opponent)Strum[XY][0-3]$', '').match(name);
+		return luaStrumSlotName(name);
+	}
+
+	/**
+		Whether `name` reads `default(Player|Opponent)Strum[XY][0-3]`. Scanned by
+		hand because `_G` reads reach this on every access, and on native builds
+		each regex built per call is a native pattern freed only by a finalizer.
+		One final line break is accepted, as the regex `$` did.
+	*/
+	static function luaStrumSlotName(name:String):Bool {
+		var length = name.length;
+		if (length > 0 && name.charCodeAt(length - 1) == '\n'.code)
+			length--;
+		var index = 0;
+		if (StringTools.startsWith(name, 'defaultPlayerStrum'))
+			index = 'defaultPlayerStrum'.length;
+		else if (StringTools.startsWith(name, 'defaultOpponentStrum'))
+			index = 'defaultOpponentStrum'.length;
+		else
+			return false;
+		if (index + 2 != length)
+			return false;
+		var axis = name.charCodeAt(index);
+		var slot = name.charCodeAt(index + 1);
+		return (axis == 'X'.code || axis == 'Y'.code) && slot >= '0'.code && slot <= '3'.code;
 	}
 
 	/** Return whether a dynamic key is one of the explicitly mutable exports. */
@@ -2256,11 +2288,41 @@ class EngineCompat {
 		keeping that distinction here avoids depending on the render group's order.
 	*/
 	public static function luaGetSideDefaultStrum(opponentX:Array<Float>, opponentY:Array<Float>,
-		playerX:Array<Float>, playerY:Array<Float>, side:Dynamic, index:Dynamic, axis:Dynamic):Float {
+		playerX:Array<Float>, playerY:Array<Float>, side:Dynamic, index:Dynamic, axis:Dynamic,
+		?ownValues:Array<Dynamic>):Float {
 		var sideName = side == null ? 'player' : StringTools.trim(Std.string(side)).toLowerCase();
-		if (sideName == 'opponent' || sideName == 'enemy' || sideName == 'dad')
+		var opponent = sideName == 'opponent' || sideName == 'enemy' || sideName == 'dad';
+		// In Psych these are plain Lua globals of each script: once a script
+		// assigns one, its own later reads see that number, not the receptor.
+		if (ownValues != null) {
+			var slot = luaSideStrumSlotOf(opponent, Std.int(Std.parseFloat(Std.string(index))), axis);
+			var own:Dynamic = slot >= 0 && slot < ownValues.length ? ownValues[slot] : null;
+			if (Std.isOfType(own, Float) || Std.isOfType(own, Int))
+				return own;
+		}
+		if (opponent)
 			return luaGetDefaultStrum(opponentX, opponentY, index, axis);
 		return luaGetDefaultStrum(playerX, playerY, index, axis);
+	}
+
+	/**
+		Slot 0-15 of one side strum global in a script's own-value table
+		(opponent X, opponent Y, player X, player Y, four lanes each), or -1.
+	*/
+	public static function luaSideStrumSlot(name:String):Int {
+		if (name == null || !luaStrumSlotName(name))
+			return -1;
+		var opponent = StringTools.startsWith(name, 'defaultOpponentStrum');
+		var index = opponent ? 'defaultOpponentStrum'.length : 'defaultPlayerStrum'.length;
+		return luaSideStrumSlotOf(opponent, name.charCodeAt(index + 1) - '0'.code,
+			name.charCodeAt(index) == 'Y'.code ? 'y' : 'x');
+	}
+
+	static function luaSideStrumSlotOf(opponent:Bool, lane:Int, axis:Dynamic):Int {
+		if (lane < 0 || lane > 3)
+			return -1;
+		var vertical = axis != null && (axis == 'y' || axis == 'Y');
+		return (opponent ? 0 : 8) + (vertical ? 4 : 0) + lane;
 	}
 
 	public static function luaOsClock():Float {
@@ -2337,9 +2399,13 @@ class EngineCompat {
 
 	/** A Psych ghost miss has a direction but no live Note or note-miss ABI. */
 	public static function psychMissPressArguments(name:String, args:Array<Dynamic>):Null<Array<Dynamic>> {
-		if (canonicalCallback(name) != 'noteMiss' || args == null || args.length < 3
+		// Every Lua and plain Psych scope asks this on every broadcast. The
+		// argument shape rejects nearly all of them, so it is tested before the
+		// callback name lookup.
+		if (args == null || args.length < 3
 			|| args[0] != null || !Std.isOfType(args[1], Bool)
-			|| (!Std.isOfType(args[2], Int) && !Std.isOfType(args[2], Float))) return null;
+			|| (!Std.isOfType(args[2], Int) && !Std.isOfType(args[2], Float))
+			|| canonicalCallback(name) != 'noteMiss') return null;
 		return [args[2]];
 	}
 
@@ -2372,62 +2438,10 @@ class EngineCompat {
 	public static function canonicalCallback(name:String):String {
 		if (name == null)
 			return '';
-		switch (callbackLower(name)) {
-			case 'oncreate' | 'start': return 'start';
-			case 'oncreatepost' | 'createpost': return 'createPost';
-			case 'onsongstart' | 'songstart': return 'songStart';
-			case 'onupdate' | 'update': return 'update';
-			case 'onupdatepost' | 'updatepost': return 'updatePost';
-			case 'onbeathit' | 'beathit': return 'beatHit';
-			case 'onstephit' | 'stephit': return 'stepHit';
-			case 'onsectionhit' | 'sectionhit': return 'sectionHit';
-			case 'oncountdowntick' | 'countdowntick': return 'countdownTick';
-			case 'oncountdownstep' | 'countdownstep': return 'countdownStep';
-			case 'oncountdownend' | 'countdownend': return 'countdownEnd';
-			case 'onstartcountdown' | 'startcountdown': return 'startCountdown';
-			case 'oncountdownstarted' | 'countdownstarted': return 'countdownStarted';
-			case 'oncountdownstart' | 'countdownstart': return 'countdownStart';
-			case 'oncustomsubstatecreate' | 'customsubstatecreate': return 'customSubstateCreate';
-			case 'oncustomsubstatecreatepost' | 'customsubstatecreatepost': return 'customSubstateCreatePost';
-			case 'oncustomsubstateupdate' | 'customsubstateupdate': return 'customSubstateUpdate';
-			case 'oncustomsubstateupdatepost' | 'customsubstateupdatepost': return 'customSubstateUpdatePost';
-			case 'oncustomsubstatedestroy' | 'customsubstatedestroy': return 'customSubstateDestroy';
-			case 'ongoodnotehit' | 'goodnotehit': return 'goodNoteHit';
-			case 'onopponentnotehit' | 'opponentnotehit': return 'opponentNoteHit';
-			case 'onnotehit' | 'notehit': return 'noteHit';
-			case 'onnoteincoming' | 'noteincoming': return 'noteIncoming';
-			case 'onnotemiss' | 'notemiss' | 'onmissnote' | 'missnote': return 'noteMiss';
-			case 'onnotemisspress' | 'notemisspress': return 'noteMissPress';
-			case 'onrecalculaterating' | 'recalculaterating': return 'recalculateRating';
-			case 'onopponentnotemiss' | 'opponentnotemiss': return 'opponentNoteMiss';
-			case 'onnoteghostmiss' | 'noteghostmiss': return 'noteGhostMiss';
-			case 'onnoteholddrop' | 'noteholddrop': return 'noteHoldDrop';
-			case 'onsongend' | 'onendsong' | 'songend': return 'songEnd';
-			case 'onsongretry' | 'songretry': return 'songRetry';
-			case 'onsongevent' | 'songevent': return 'songEvent';
-			case 'ontweencompleted' | 'tweencompleted': return 'tweenCompleted';
-			case 'ontimercompleted' | 'timercompleted': return 'timerCompleted';
-			case 'onpause' | 'pause': return 'pause';
-			case 'onresume' | 'resume': return 'resume';
-			case 'onpausesubstateopen' | 'pausesubstateopen': return 'subStateOpenEnd';
-			case 'onpausesubstateclose' | 'pausesubstateclose': return 'subStateCloseBegin';
-			case 'onsongloaded' | 'songloaded': return 'songLoaded';
-			case 'onstatechangebegin' | 'statechangebegin': return 'stateChangeBegin';
-			case 'onstatechangeend' | 'statechangeend': return 'stateChangeEnd';
-			case 'onstateopenend' | 'stateopenend': return 'stateChangeEnd';
-			case 'onsubstateclosebegin' | 'substateclosebegin': return 'subStateCloseBegin';
-			case 'onsubstateopenend' | 'substateopenend': return 'subStateOpenEnd';
-			case 'onsubstateopenbegin' | 'substateopenbegin': return 'subStateOpenBegin';
-			case 'onsubstatecloseend' | 'substatecloseend': return 'subStateCloseEnd';
-			case 'onplaystateenter' | 'playstateenter': return 'playStateEnter';
-			case 'ondifficultyswitch' | 'difficultyswitch': return 'difficultySwitch';
-			case 'oncapsuleselected' | 'capsuleselected': return 'capsuleSelected';
-			case 'onfocusgained' | 'focusgained': return 'focusGained';
-			case 'onfocuslost' | 'focuslost': return 'focusLost';
-			case 'ongameover' | 'ongameoverstart' | 'gameover' | 'gameoverstart': return 'gameOver';
-			case 'ondestroy' | 'destroy': return 'destroy';
-			default: return name;
-		}
+		// Unknown names pass through unchanged so a script's own hook names still
+		// reach it; known spellings come from the shared lifecycle table.
+		var found = ScriptLifecycleNames.canonical(callbackLower(name));
+		return found == null ? name : found;
 	}
 
 	/** Return canonical callback first, followed by known donor spellings.
@@ -2462,115 +2476,10 @@ class EngineCompat {
 		if (reverseBroadcast && canonical != '' && canonical != name)
 			appendName(result, canonical);
 
-			switch (name.toLowerCase()) {
-			case 'start':
-				appendName(result, 'onCreate');
-			case 'createpost':
-				appendName(result, 'onCreatePost');
-			case 'songstart':
-				appendName(result, 'onSongStart');
-			case 'update':
-				appendName(result, 'onUpdate');
-			case 'updatepost':
-				appendName(result, 'onUpdatePost');
-			case 'beathit':
-				appendName(result, 'onBeatHit');
-			case 'stephit':
-				appendName(result, 'onStepHit');
-			case 'sectionhit':
-				appendName(result, 'onSectionHit');
-			case 'countdownend':
-				appendName(result, 'onCountdownEnd');
-				case 'countdowntick':
-					appendName(result, 'onCountdownTick');
-				case 'countdownstep':
-					appendName(result, 'onCountdownStep');
-			case 'startcountdown':
-				appendName(result, 'onStartCountdown');
-			case 'countdownstarted':
-				appendName(result, 'onCountdownStarted');
-			case 'goodnotehit':
-				appendName(result, 'onGoodNoteHit');
-			case 'opponentnotehit':
-				appendName(result, 'onOpponentNoteHit');
-			case 'notemiss':
-				appendName(result, 'onNoteMiss');
-				appendName(result, 'onMissNote');
-			case 'notemisspress':
-				appendName(result, 'onNoteMissPress');
-			case 'recalculaterating':
-				appendName(result, 'onRecalculateRating');
-			case 'opponentnotemiss':
-				appendName(result, 'onOpponentNoteMiss');
-			case 'noteghostmiss':
-				appendName(result, 'onNoteGhostMiss');
-			case 'noteholddrop':
-				appendName(result, 'onNoteHoldDrop');
-		case 'tweencompleted':
-				appendName(result, 'onTweenCompleted');
-			case 'timercompleted':
-				appendName(result, 'onTimerCompleted');
-			case 'destroy':
-				appendName(result, 'onDestroy');
-			case 'songend':
-				appendName(result, 'onEndSong');
-				appendName(result, 'onSongEnd');
-			case 'songretry':
-				appendName(result, 'onSongRetry');
-			case 'countdownstart':
-				appendName(result, 'onCountdownStart');
-			case 'customsubstatecreate':
-				appendName(result, 'onCustomSubstateCreate');
-			case 'customsubstatecreatepost':
-				appendName(result, 'onCustomSubstateCreatePost');
-			case 'customsubstateupdate':
-				appendName(result, 'onCustomSubstateUpdate');
-			case 'customsubstateupdatepost':
-				appendName(result, 'onCustomSubstateUpdatePost');
-			case 'customsubstatedestroy':
-				appendName(result, 'onCustomSubstateDestroy');
-			case 'notehit':
-				appendName(result, 'onNoteHit');
-			case 'noteincoming':
-				appendName(result, 'onNoteIncoming');
-			case 'songevent':
-				appendName(result, 'onSongEvent');
-			case 'songloaded':
-				appendName(result, 'onSongLoaded');
-			case 'statechangebegin':
-				appendName(result, 'onStateChangeBegin');
-			case 'statechangeend':
-				appendName(result, 'onStateChangeEnd');
-				appendName(result, 'onStateOpenEnd');
-				case 'substateclosebegin':
-					appendName(result, 'onSubStateCloseBegin');
-					appendName(result, 'onPauseSubstateClose');
-				case 'substateopenend':
-					appendName(result, 'onSubStateOpenEnd');
-					appendName(result, 'onPauseSubstateOpen');
-				case 'substatecloseend':
-					appendName(result, 'onSubStateCloseEnd');
-				case 'playstateenter':
-					appendName(result, 'onPlayStateEnter');
-			case 'difficultyswitch':
-				appendName(result, 'onDifficultySwitch');
-			case 'capsuleselected':
-				appendName(result, 'onCapsuleSelected');
-			case 'focusgained':
-				appendName(result, 'onFocusGained');
-			case 'focuslost':
-				appendName(result, 'onFocusLost');
-			case 'substateopenbegin':
-				appendName(result, 'onSubStateOpenBegin');
-			case 'gameover':
-				appendName(result, 'onGameOver');
-				appendName(result, 'onGameOverStart');
-			// The old engine used both spellings for these two state hooks.
-			case 'pause':
-				appendName(result, 'onPause');
-			case 'resume':
-				appendName(result, 'onResume');
-		}
+		var spellings = ScriptLifecycleNames.broadcastSpellings(name.toLowerCase());
+		if (spellings != null)
+			for (spelling in spellings)
+				appendName(result, spelling);
 		if (callbackNameCount < CALLBACK_CACHE_LIMIT) {
 			callbackNameCache.set(name, result);
 			callbackNameCount++;
@@ -2924,6 +2833,56 @@ class EngineCompat {
 		}
 	}
 
+	/** True once a handler called stopPropagation() or cleared shouldPropagate. */
+	public static function hxcPayloadStopped(payload:Dynamic):Bool {
+		if (payload == null)
+			return false;
+		try {
+			return Reflect.field(payload, 'shouldPropagate') == false;
+		} catch (_:Dynamic) {
+			return false;
+		}
+	}
+
+	/** The V-Slice event object in a broadcast's arguments, or null when there is none. */
+	public static function hxcPayloadIn(args:Array<Dynamic>):Dynamic {
+		if (args == null)
+			return null;
+		var index = args.length - 1;
+		while (index >= 0) {
+			var value:Dynamic = args[index--];
+			if (value != null && isHxcLifecyclePayload(value))
+				return value;
+		}
+		return null;
+	}
+
+	/** SongRetryEvent: the retry keeps the difficulty being played. */
+	public static function hxcSongRetryPayload(difficulty:String):Dynamic {
+		return hxcLifecyclePayload('songRetry', {difficulty: difficulty == null ? '' : difficulty});
+	}
+
+	/**
+		SongLoadScriptEvent: the song id, the difficulty and the chart's notes and
+		events. `notes` holds copies, so a script reading or partitioning them
+		cannot change the chart the game is playing.
+	*/
+	public static function hxcSongLoadPayload(id:String, difficulty:String, notes:Array<Dynamic>,
+		events:Array<Dynamic>):Dynamic {
+		return hxcLifecyclePayload('songLoaded', {
+			id: id == null ? '' : id,
+			difficulty: difficulty == null ? '' : difficulty,
+			notes: notes == null ? [] : notes,
+			events: events == null ? [] : events
+		});
+	}
+
+	/** DialogueScriptEvent for a conversation's start, lines, skip and end. */
+	public static function hxcDialoguePayload(kind:String, conversationId:String, ?line:Int = 0):Dynamic {
+		var conversation:Dynamic = {id: conversationId == null ? '' : conversationId, currentDialogueEntry: line};
+		return hxcLifecyclePayload(kind, {conversation: conversation, conversationId: conversation.id, line: line});
+	}
+
 	/** Build the shared payload used by native Freeplay selection boundaries. */
 	public static function hxcFreeplayPayload(kind:String, state:Dynamic,
 		?capsule:Dynamic, ?difficulty:Dynamic, ?variation:Dynamic):Dynamic {
@@ -3062,14 +3021,38 @@ class EngineCompat {
 	}
 
 	/** Normalize a nested Psych/Kade property path to the native root names. */
+	// Every Lua getProperty/setProperty normalises its path here, usually the
+	// same few strings each frame. The result depends only on the text, so it
+	// is remembered, bounded like the callback caches and cleared when full.
+	static inline var PROPERTY_PATH_CACHE_LIMIT:Int = 1024;
+	static var propertyPathCache:Map<String, String> = new Map();
+	static var propertyPathCount:Int = 0;
+	static final PROPERTY_PATH_PREFIXES:Array<String> = ['game.', 'currentPlayState.', 'PlayState.instance.',
+		'states.PlayState.instance.'];
+
 	public static function propertyPath(path:Dynamic):String {
 		if (path == null)
 			return '';
-		var value = StringTools.trim(Std.string(path));
+		var text = Std.string(path);
+		var cached = propertyPathCache.get(text);
+		if (cached != null)
+			return cached;
+		var resolved = resolvePropertyPath(text);
+		if (propertyPathCount >= PROPERTY_PATH_CACHE_LIMIT) {
+			propertyPathCache.clear();
+			propertyPathCount = 0;
+		}
+		propertyPathCache.set(text, resolved);
+		propertyPathCount++;
+		return resolved;
+	}
+
+	static function resolvePropertyPath(text:String):String {
+		var value = StringTools.trim(text);
 		if (value == '')
 			return value;
 		value = StringTools.replace(value, '\\', '.');
-		for (prefix in ['game.', 'currentPlayState.', 'PlayState.instance.', 'states.PlayState.instance.']) {
+		for (prefix in PROPERTY_PATH_PREFIXES) {
 			if (value.startsWith(prefix)) {
 				value = value.substr(prefix.length);
 				break;
@@ -4093,6 +4076,13 @@ public static function lyricActor(value:Dynamic):String {
 		while (value.startsWith('./'))
 			value = value.substr(2);
 		var lower = value.toLowerCase();
+		// V-Slice also names the library with a prefix (`shared:characters/bf`).
+		// The shared and preload libraries are the base library, so drop that prefix.
+		for (library in ['shared:', 'preload:'])
+			if (lower.startsWith(library)) {
+				lower = lower.substr(library.length);
+				break;
+			}
 		if (lower.startsWith('assets/'))
 			lower = lower.substr(7);
 		// V-Slice uses `characters/<id>` for the base library.  Accept the

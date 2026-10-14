@@ -254,7 +254,8 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
         self.assertIn("var scriptChangedZoom = cameraZoomChanged(", beat_hit)
         self.assertIn("!inCutscene && !endingSong && !scriptChangedZoom && camBoomSpeed > 0", beat_hit)
         self.assertIn("!scriptChangedZoom && !nativeCamBoomPulse", beat_hit)
-        self.assertIn("&& camZooming && camZoomRate > 0 && curBeat % camZoomRate == 0)", beat_hit)
+        # Source-owned songs also need their owner's camZooms; native songs keep the old gate.
+        self.assertIn("&& camZooming && camZoomRate > 0 && curBeat % camZoomRate == 0 && nativeBeatZoomAllowed())", beat_hit)
         self.assertIn("pulseCameraZoom(0.015 * camZoomIntensity, 0.03 * camZoomIntensity, 1.35, false, true);", beat_hit)
         self.assertEqual(beat_hit.count("setAllHaxeVar('curBeat', curBeat);"), 1)
 
@@ -266,10 +267,17 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 
         camera = source[source.index("\t\tif (camNotes) {"):source.index("\n\t\tif (endingSong)", source.index("\t\tif (camNotes) {"))]
         self.assertIn("final fallbackCamOffset = cameraNoteOffset(defaultCamZoom);", camera)
-        self.assertIn("dadcam = [daCam[0], daCam[1]];", camera)
-        self.assertIn("bfcam = [daCam[0], daCam[1]];", camera)
-        self.assertNotIn("dadcam = [-25, 0]", camera)
-        self.assertNotIn("bfcam = [-25, 0]", camera)
+        self.assertIn("writeCharacterCamNudge(dad, dadcam, fallbackCamOffset,", camera)
+        self.assertIn("writeCharacterCamNudge(boyfriend, bfcam, fallbackCamOffset,", camera)
+        nudge_start = source.index("\tfunction writeCharacterCamNudge(")
+        nudge = source[nudge_start:source.index("\n\toverride public function update(", nudge_start)]
+        self.assertIn("final daCam = actor.camOffsets.get(animName);", nudge)
+        self.assertIn("x = daCam[0];", nudge)
+        self.assertIn("y = daCam[1];", nudge)
+        self.assertIn("x = -fallbackCamOffset;", nudge)
+        self.assertNotIn("25", nudge)
+        self.assertNotIn("dadcam = [", camera)
+        self.assertNotIn("bfcam = [", camera)
 
     def test_add_camera_zoom_distinguishes_intro_targets_from_pulses(self):
         source = (ROOT / "source/PlayState.hx").read_text()

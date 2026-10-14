@@ -67,6 +67,7 @@ class PsychHscriptCustomSubstateFacade {
 class PsychCustomSubstate {public static var name='unnamed';public static var instance:Dynamic;}
 class PsychRatingCompat {}
 class PsychHscriptCamera {}
+class PsychLuaUtilsCompat {public static function getTweenEaseByString(?ease:String=''):String return 'ease:'+ease;}
 class PsychHscriptErrorHandledRuntimeShader {}
 
 class Main {
@@ -98,6 +99,9 @@ class Main {
    +"Type.enumConstructor(Countdown.GO), Type.enumConstructor(Countdown.START)].join(','); "
    +"qualifiedValues = [Countdown.THREE, Countdown.TWO, Countdown.ONE, Countdown.GO, Countdown.START];",
    "plain-import.hx");
+  // Psych 0.7 scripts import its LuaUtils for their own tween eases.
+  plain.evaluate("import psychlua.LuaUtils; luaEase = LuaUtils.getTweenEaseByString('quadOut');","lua-utils.hx");
+  check(plain.variables.get("luaEase")=="ease:quadOut","psychlua.LuaUtils did not resolve to the engine helpers");
   check(plain.variables.get("qualifiedNames")=="THREE,TWO,ONE,GO,START",
    "qualified backend.BaseStage.Countdown import did not resolve through the Psych import binder");
   checkMatches(plain.variables.get("qualifiedValues"),"qualified import binding");

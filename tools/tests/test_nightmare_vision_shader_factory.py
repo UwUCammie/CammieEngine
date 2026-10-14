@@ -18,6 +18,8 @@ class NightmareVisionShaderFactoryTest(unittest.TestCase):
         self.work = Path(self.scratch.name)
         # Paths owns a typed module-name cache; script execution is outside this shader subject.
         self.write("NightmareVisionScriptModule.hx", "class NightmareVisionScriptModule {}")
+        # Paths' lookup memo only reads the import generation counters.
+        self.write("ImportRefreshManager.hx", "class ImportRefreshManager { public static var generation:Int = 0; public static function availabilityRevision():Int return 0; }")
         self.write("RuntimeOwnerAssetIdentity.hx", '''
 typedef RuntimeOwnerAssetIdentityResult = { var state:String; var path:Null<String>; };
 class RuntimeOwnerAssetIdentity {
@@ -110,6 +112,11 @@ class FlxRuntimeShader {
   glVertexSource = vertexSource == null || vertexSource.length == 0 ? 'DEFAULT_VERTEX' : vertexSource;
  }
  public function setFloat(name:String, value:Float):Void writes.push([name, value]);
+ public function setFloatArray(name:String, value:Array<Float>):Void writes.push([name, value]);
+ public function setInt(name:String, value:Int):Void writes.push([name, value]);
+ public function setIntArray(name:String, value:Array<Int>):Void writes.push([name, value]);
+ public function setBool(name:String, value:Bool):Void writes.push([name, value]);
+ public function setBoolArray(name:String, value:Array<Bool>):Void writes.push([name, value]);
  public function compileForTest(vertex:String, fragment:String):lime.graphics.opengl.GLProgram
   return __createGLProgram(vertex, fragment);
  public function __createGLProgram(vertex:String, fragment:String):lime.graphics.opengl.GLProgram {

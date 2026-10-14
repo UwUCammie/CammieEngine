@@ -19,6 +19,13 @@ class FlxRuntimeShader {
  public function new(?fragmentSource:String, ?vertexSource:String) {
   requestedFragment = fragmentSource; requestedVertex = vertexSource;
  }
+ public var writes:Array<String> = [];
+ public function setFloat(name:String, value:Float):Void writes.push(name + '=' + value);
+ public function setFloatArray(name:String, value:Array<Float>):Void writes.push(name + '=' + value.join(','));
+ public function setInt(name:String, value:Int):Void writes.push(name + '=int:' + value);
+ public function setIntArray(name:String, value:Array<Int>):Void writes.push(name + '=int:' + value.join(','));
+ public function setBool(name:String, value:Bool):Void writes.push(name + '=' + value);
+ public function setBoolArray(name:String, value:Array<Bool>):Void writes.push(name + '=' + value.join(','));
  public function toString():String return 'FlxRuntimeShader';
  public function draw():lime.graphics.opengl.GLProgram
   return __createGLProgram(requestedVertex == null ? 'STOCK_VERTEX' : requestedVertex,
@@ -92,6 +99,28 @@ class ShaderRecoveryProbe {
   check(onlyVertex.requestedFragment == null && onlyVertex.requestedVertex.indexOf('x + 48.0') >= 0,
    'vertex-only constructor did not normalise');
   check(plain.compileRecovery == RuntimeShaderSource.PASS_THROUGH, 'native default is pass-through');
+  check(plain.writes.length == 0, 'a shader without initializers gets no default writes');
+
+  // GLSL ES rejects initialized uniforms: the text loses them, the values come back as defaults.
+  var initialized = "#pragma header\nuniform float amount = 0.5;\nuniform  highp  float neg=-0.1 ;\n"
+   + "uniform int steps = 200;\nuniform vec3 tint = vec3(1.0, 0.5, 0.25);\nuniform vec2 splat = vec2(2.0);\n"
+   + "uniform bool on = true;\nuniform float odd = sin(1.0);\nuniform float plain;\n"
+   + "// uniform float commented = 3.0;\nvoid main(){ float local = 1.0; gl_FragColor = vec4(amount); }";
+  var stripped = RuntimeShaderSource.stripUniformInitializers(initialized);
+  check(stripped.indexOf('uniform float amount;') >= 0 && stripped.indexOf('uniform highp float neg;') >= 0
+   && stripped.indexOf('uniform int steps;') >= 0 && stripped.indexOf('uniform vec3 tint;') >= 0
+   && stripped.indexOf('uniform vec2 splat;') >= 0 && stripped.indexOf('uniform bool on;') >= 0
+   && stripped.indexOf('uniform float odd;') >= 0 && stripped.indexOf('uniform float plain;') >= 0, 'initializers stripped: ' + stripped);
+  check(stripped.indexOf('// uniform float commented = 3.0;') >= 0 && stripped.indexOf('float local = 1.0;') >= 0,
+   'comments and non-uniform initializers are left alone');
+  var defaults = [for (entry in RuntimeShaderSource.uniformDefaults(initialized)) entry.type + ' ' + entry.name + '=' + entry.values.join(',')];
+  check(defaults.join('|') == 'float amount=0.5|float neg=-0.1|int steps=200|vec3 tint=1,0.5,0.25|vec2 splat=2,2|bool on=1',
+   'defaults: ' + defaults.join('|'));
+  check(RuntimeShaderSource.prepare(initialized).indexOf('= 0.5') == -1, 'prepare strips initializers');
+  var withDefaults = new RecoveringRuntimeShader(initialized, null);
+  check(withDefaults.requestedFragment.indexOf('uniform float amount;') >= 0, 'compiled text has no initializer');
+  check(withDefaults.writes.join('|') == 'amount=0.5|neg=-0.1|steps=int:200|tint=1,0.5,0.25|splat=2,2|on=true',
+   'defaults applied: ' + withDefaults.writes.join('|'));
 
   FlxRuntimeShader.failing = ['BROKEN_MARK'];
   var broken = "#pragma header\nvoid main(){ BROKEN_MARK; }";

@@ -45,7 +45,7 @@ class Main {static function main(){
         source=(ROOT/'source/CodenameScriptInterp.hx').read_text()
         runtime=(ROOT/'source/HxcCompatRuntime.hx').read_text()
         ownership='\n'.join(extract_method(source,m) for m in ['public function trackReturnedTween(', 'public function ownTween('])
-        helpers='\n'.join(extract_method(runtime,m) for m in ['public static function safeTween(', 'static function runtimeField(', 'static function runtimeFloatValue('])
+        helpers='\n'.join(extract_method(runtime,m) for m in ['public static function safeTween(', 'static function tweenFieldValue(', 'static function runtimeField(', 'static function runtimeFloatValue('])
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as directory:
             work=FixturePath(directory)
             (work/'flixel/tweens').mkdir(parents=True)

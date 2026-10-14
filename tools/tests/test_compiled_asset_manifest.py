@@ -59,6 +59,26 @@ class CompiledAssetManifestTest(unittest.TestCase):
                 self.assertEqual(out['mappedWalk']['status'],'incomplete')
                 self.assertTrue(any('manifest-embedded-unavailable' in x for x in p['diagnostics']))
 
+    def test_files_a_released_build_left_out_are_one_warning(self):
+        # Released builds keep base game entries in their manifests after the
+        # author deleted the files; each one used to count as an import error.
+        manifest={"version":3,"rootPath":"../","assets":[
+            {"id":"kept","path":"assets/pixels.bin","type":"IMAGE"},
+            {"id":"gone-a","path":"assets/week2/gone.png","type":"IMAGE"},
+            {"id":"gone-b","path":"assets/week3/gone.ogg","type":"SOUND"}]}
+        for engine in ["Psych Engine","Nightmare Vision"]:
+            with self.subTest(engine=engine):
+                out=self.profile({"manifest/default.json":json.dumps(manifest),"assets/pixels.bin":b"RGBA"},engine)
+                walk=out['mappedWalk']
+                codes=[item['code'] for item in walk['diagnostics']]
+                self.assertNotIn('candidate-source-missing',codes)
+                summary=[item for item in walk['diagnostics'] if item['code']=='compiled-files-not-shipped']
+                self.assertEqual(len(summary),1,walk['diagnostics'])
+                self.assertEqual(summary[0]['severity'],'warning')
+                self.assertTrue(summary[0]['message'].startswith('2 files'))
+                self.assertEqual([e['assetId'] for e in out['mappedEvents']],['kept'])
+                self.assertEqual(walk['status'],'incomplete')
+
     def test_manifest_escape_and_custom_libraries_are_not_published(self):
         for path in ['../../outside','/absolute','C:/absolute']:
             out=self.profile({'manifest/default.json':json.dumps({'version':3,'rootPath':'../','assets':[

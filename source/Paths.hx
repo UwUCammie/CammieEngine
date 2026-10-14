@@ -15,6 +15,13 @@ class Paths
 	// not cached because Import Settings may add the requested file later in the
 	// same process.
 	static var caseResolvedPaths:Map<String, String> = new Map();
+	/** Entries kept before the cache starts over, as DiskPathMissCache does, so
+		a long session does not hold every path it ever resolved. */
+	static inline var MAX_CASE_RESOLVED_PATHS:Int = 4096;
+	static var caseResolvedCount:Int = 0;
+	/** Import refresh generation the cache was filled under. A refresh can
+		replace whole trees, so resolutions from before it are dropped. */
+	static var caseResolvedGeneration:Int = 0;
 
 	static public function setCurrentLevel(name:String)
 	{
@@ -60,12 +67,18 @@ class Paths
 		var normalized = haxe.io.Path.normalize(path);
 		if (sys.FileSystem.exists(normalized) || OpenFlAssets.exists(normalized))
 			return normalized;
+		if (caseResolvedGeneration != ImportRefreshManager.generation)
+		{
+			clearCaseResolvedPaths();
+			caseResolvedGeneration = ImportRefreshManager.generation;
+		}
 		if (caseResolvedPaths.exists(normalized))
 		{
 			var cached = caseResolvedPaths.get(normalized);
 			if (cached != null && sys.FileSystem.exists(cached))
 				return cached;
 			caseResolvedPaths.remove(normalized);
+			caseResolvedCount--;
 		}
 
 		var parent = haxe.io.Path.directory(normalized);
@@ -104,13 +117,27 @@ class Paths
 			}
 			if (matched != null)
 			{
-				caseResolvedPaths.set(normalized, matched);
+				rememberCaseResolvedPath(normalized, matched);
 				return matched;
 			}
 		}
 		catch (_:Dynamic) {}
 		#end
 		return path;
+	}
+
+	static function rememberCaseResolvedPath(path:String, resolved:String):Void
+	{
+		if (caseResolvedCount >= MAX_CASE_RESOLVED_PATHS)
+			clearCaseResolvedPaths();
+		caseResolvedPaths.set(path, resolved);
+		caseResolvedCount++;
+	}
+
+	static function clearCaseResolvedPaths():Void
+	{
+		caseResolvedPaths.clear();
+		caseResolvedCount = 0;
 	}
 
 	inline static public function file(file:String, type:AssetType = TEXT, ?library:String)

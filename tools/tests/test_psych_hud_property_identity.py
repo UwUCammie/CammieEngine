@@ -33,6 +33,8 @@ class PsychHUDPropertyIdentityTest(unittest.TestCase):
  public function compatReadPathPart(o:Dynamic,k:String):Dynamic return isSourceHUDBarAlias(k)?sourceHUDBarAlias(k):sourceHUDIconAlias(k);
  public function compatWritePathPart(o:Dynamic,k:String,v:Dynamic):Bool {if(isSourceHUDBarAlias(k))writeSourceHUDBarAlias(k,v);else writeSourceHUDIconAlias(k,v);return true;}
  public function compatResolveClass(n:String):Dynamic return n=='PlayState'?PlayState:null;
+ public function compatSourceClientPrefs(n:Dynamic):Dynamic return null;
+ public function compatSourcePreferencePath(prefs:Dynamic,path:Dynamic):String return Std.string(path);
  __ALIASES__
 }'''.replace("__ALIASES__", aliases)
         files["Main.hx"] = r'''class Main {

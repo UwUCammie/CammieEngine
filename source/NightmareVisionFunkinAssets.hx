@@ -88,7 +88,7 @@ class NightmareVisionFunkinAssets {
 		if (selected == null) return '';
 		useCache = useCache && !paths.devModeEnabled();
 		if (useCache && cache.currentTrackedTexts.exists(selected)) {
-			cache.localTrackedAssets.push(selected);
+			cache.trackLocal(selected);
 			return cache.currentTrackedTexts.get(selected);
 		}
 		var text = readText(selected);
@@ -159,9 +159,20 @@ class NightmareVisionFunkinAssets {
 
 	public function getGraphicUnsafe(key:String, useCache:Bool = true, allowGPU:Bool = true):Null<FlxGraphic> {
 		var selected = resolve(key, 'IMAGE');
-		if (selected == null || !exists(selected) || isDirectory(selected)) return null;
+		if (selected == null) return null;
+		// A live tracked graphic was loaded from this exact file, so the two
+		// further scope resolutions and disk checks below only matter for a
+		// miss. A destroyed entry takes the original path.
+		if (useCache) {
+			var tracked = cache.currentTrackedGraphics.get(selected);
+			if (tracked != null && tracked.bitmap != null) {
+				cache.trackLocal(selected);
+				return tracked;
+			}
+		}
+		if (!exists(selected) || isDirectory(selected)) return null;
 		if (useCache && cache.currentTrackedGraphics.exists(selected)) {
-			cache.localTrackedAssets.push(selected);
+			cache.trackLocal(selected);
 			return cache.currentTrackedGraphics.get(selected);
 		}
 		try {
@@ -198,7 +209,7 @@ class NightmareVisionFunkinAssets {
 		if (!exists(selected) || isDirectory(selected)) return null;
 		useCache = useCache && !paths.devModeEnabled();
 		if (useCache && cache.currentTrackedSounds.exists(selected)) {
-			cache.localTrackedAssets.push(selected);
+			cache.trackLocal(selected);
 			return cache.currentTrackedSounds.get(selected);
 		}
 		try {

@@ -199,6 +199,9 @@ class EngineCompat {
  public static function hxcNoteIncomingPayload(note:Dynamic):Dynamic return {};
  public static function hxcApplyNoteCallbackPayload(payload:Dynamic):Void {}
 }
+class HxcCompatRuntime {
+ public static function observeIncoming(_note:Dynamic):Void {}
+}
 class NightmareVisionScriptGroup {
  public static inline var CONTINUE_FUNC:Int=1;
  public static inline var STOP_FUNC:Int=2;
@@ -265,6 +268,7 @@ class PlayState extends SourceSceneFixture {
   return NightmareVisionScriptGroup.CONTINUE_FUNC;
  function nightmareVisionRenderer(_field:Int, ?_sourceField:Dynamic):Dynamic return {configureNote:function(_note:Note):Void {}};
  function tweenVSliceScrollSpeed(speed:Dynamic, duration:Dynamic, ease:Dynamic, lines:Dynamic):Void {}
+ function hscriptCallbackListened(_name:String):Bool return true;
  function callAllHScript(name:String,args:Array<Dynamic>,?skipHxc:Bool=false) {if (name == 'noteLoaded') loaded++;}
  function callHxcNoteHScript(name:String,args:Array<Dynamic>):Void {}
  function dispatchPsychNoteSpawn(_note:Note):Void {}

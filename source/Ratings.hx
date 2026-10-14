@@ -23,69 +23,7 @@ class Ratings
 		}
 
 		// WIFE TIME :)))) (based on Wife3)
-
-		var wifeConditions:Array<Bool> = [
-			accuracy >= 99.9935, // AAAAA
-			accuracy >= 99.980, // AAAA:
-			accuracy >= 99.970, // AAAA.
-			accuracy >= 99.955, // AAAA
-			accuracy >= 99.90, // AAA:
-			accuracy >= 99.80, // AAA.
-			accuracy >= 99.70, // AAA
-			accuracy >= 99, // AA:
-			accuracy >= 96.50, // AA.
-			accuracy >= 93, // AA
-			accuracy >= 90, // A:
-			accuracy >= 85, // A.
-			accuracy >= 80, // A
-			accuracy >= 70, // B
-			accuracy >= 60, // C
-			accuracy < 60 // D
-		];
-
-		for (i in 0...wifeConditions.length)
-		{
-			var b = wifeConditions[i];
-			if (b)
-			{
-				switch (i)
-				{
-					case 0:
-						ranking += " AAAAA";
-					case 1:
-						ranking += " AAAA:";
-					case 2:
-						ranking += " AAAA.";
-					case 3:
-						ranking += " AAAA";
-					case 4:
-						ranking += " AAA:";
-					case 5:
-						ranking += " AAA.";
-					case 6:
-						ranking += " AAA";
-					case 7:
-						ranking += " AA:";
-					case 8:
-						ranking += " AA.";
-					case 9:
-						ranking += " AA";
-					case 10:
-						ranking += " A:";
-					case 11:
-						ranking += " A.";
-					case 12:
-						ranking += " A";
-					case 13:
-						ranking += " B";
-					case 14:
-						ranking += " C";
-					case 15:
-						ranking += " D";
-				}
-				break;
-			}
-		}
+		ranking += wifeLetter(accuracy);
 
 		if (accuracy == 0)
 			ranking = "N/A";
@@ -93,6 +31,33 @@ class Ratings
 			ranking = "BotPlay";
 
 		return ranking;
+	}
+
+	/**
+		The Wife3 letter for an accuracy, with its leading space. The first
+		threshold that matches wins. This runs for the score line, so it checks
+		the thresholds in order instead of building a table on every call. NaN
+		matches none of them and adds nothing, as the table did.
+	**/
+	static function wifeLetter(accuracy:Float):String
+	{
+		if (accuracy >= 99.9935) return " AAAAA";
+		if (accuracy >= 99.980) return " AAAA:";
+		if (accuracy >= 99.970) return " AAAA.";
+		if (accuracy >= 99.955) return " AAAA";
+		if (accuracy >= 99.90) return " AAA:";
+		if (accuracy >= 99.80) return " AAA.";
+		if (accuracy >= 99.70) return " AAA";
+		if (accuracy >= 99) return " AA:";
+		if (accuracy >= 96.50) return " AA.";
+		if (accuracy >= 93) return " AA";
+		if (accuracy >= 90) return " A:";
+		if (accuracy >= 85) return " A.";
+		if (accuracy >= 80) return " A";
+		if (accuracy >= 70) return " B";
+		if (accuracy >= 60) return " C";
+		if (accuracy < 60) return " D";
+		return "";
 	}
 
 	public static function CalculateRating(noteDiff:Float, ?customSafeZone:Float):String // Generate a judgement through some timing shit
@@ -167,6 +132,48 @@ class Ratings
 			return Clear;
 		return None;
 	}
+	// The score line is asked for every frame, but what it shows only changes
+	// on a hit, a miss or an option toggle. Keep the last line with everything
+	// it was built from, so an unchanged frame gets it back without building a
+	// dozen strings.
+	static var rankingLine:String = null;
+	static var rankingScore:Int = 0;
+	static var rankingScoreDef:Int = 0;
+	static var rankingNps:Int = 0;
+	static var rankingAccuracy:Float = 0;
+	static var rankingMisses:Int = 0;
+	static var rankingGoods:Int = 0;
+	static var rankingBads:Int = 0;
+	static var rankingShits:Int = 0;
+	static var rankingSafeFrames:Int = 0;
+	static var rankingNpsDisplay:Bool = false;
+	static var rankingBotplay:Bool = false;
+
+	/** CalculateRanking, reusing the last line while none of its inputs changed. */
+	public static function CalculateRankingCached(score:Int, scoreDef:Int, nps:Int, accuracy:Float):String
+	{
+		var npsDisplay:Bool = FlxG.save.data.npsDisplay ? true : false;
+		var botplay:Bool = FlxG.save.data.botplay ? true : false;
+		if (rankingLine != null && rankingScore == score && rankingScoreDef == scoreDef
+			&& rankingNps == nps && rankingAccuracy == accuracy && rankingMisses == PlayState.misses
+			&& rankingGoods == PlayState.goods && rankingBads == PlayState.bads
+			&& rankingShits == PlayState.shits && rankingSafeFrames == Conductor.safeFrames
+			&& rankingNpsDisplay == npsDisplay && rankingBotplay == botplay)
+			return rankingLine;
+		rankingScore = score;
+		rankingScoreDef = scoreDef;
+		rankingNps = nps;
+		rankingAccuracy = accuracy;
+		rankingMisses = PlayState.misses;
+		rankingGoods = PlayState.goods;
+		rankingBads = PlayState.bads;
+		rankingShits = PlayState.shits;
+		rankingSafeFrames = Conductor.safeFrames;
+		rankingNpsDisplay = npsDisplay;
+		rankingBotplay = botplay;
+		return rankingLine = CalculateRanking(score, scoreDef, nps, accuracy);
+	}
+
 	public static function CalculateRanking(score:Int, scoreDef:Int, nps:Int, accuracy:Float):String
 	{
 		return (FlxG.save.data.npsDisplay ? "NPS: " + nps + (!FlxG.save.data.botplay ? " | " : "") : "") + (!FlxG.save.data.botplay ? // NPS Toggle

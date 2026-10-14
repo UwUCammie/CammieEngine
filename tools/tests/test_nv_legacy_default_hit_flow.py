@@ -64,7 +64,10 @@ class PlayState {
  }
  public function setAllHaxeVar(n:String,v:Dynamic){}
  public var performanceMaxCombo=0;
+ public var sourceScoreNightmare=true;public var healthGainMultiplier=7.;public var holdSubdivisions=3;public var guitarHeroSustains=false;
+ public function nightmareVisionFieldForNote(n:Note):NightmareVisionPlayFieldView throw 'historical hit health must not ask for the modern field';
  __REGISTER_COMBO__
+ __HIT_HEALTH__
  public function updateScoreBar(){events.push('scorebar');}
  public function playNightmareVisionLegacyHitSound(n:Note){if(ClientPrefs.hitsoundVolume>0&&!n.hitsoundDisabled)events.push('sound');}
  public function confirmNightmareVisionLegacyHit(n:Note,f:NightmareVisionPlayFieldView){events.push('confirm');}
@@ -114,6 +117,9 @@ class Main {
         # The legacy flow counts the hit through the shared combo helper.
         host = host.replace('__REGISTER_COMBO__', extract_method((ROOT/'source/PlayState.hx').read_text(),
             'function registerComboHit(').replace('function registerComboHit', 'public function registerComboHit'))
+        # Hit health is the shared source helper in its historical mode.
+        host = host.replace('__HIT_HEALTH__', extract_method((ROOT/'source/PlayState.hx').read_text(),
+            'function applySourceHitHealth(').replace('function applySourceHitHealth', 'public function applySourceHitHealth'))
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
             work=FixturePath(folder)
             for name, text in {'Main':main,'Reference':reference,'PlayState':host,'Note':note,

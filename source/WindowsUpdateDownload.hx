@@ -10,7 +10,27 @@ import sys.io.File;
  * certificate store and follows the release asset redirect while streaming
  * the response to disk. Digest verification remains in the update helper. */
 #if (cpp && windows)
-@:cppFileCode('#include <windows.h>\n#include <urlmon.h>')
+// URLDownloadToFileW blocks for the whole transfer. A collection on any other
+// thread has to wait for every attached thread to reach a safe point, so the
+// call runs inside a GC-free zone. The strings are copied to native buffers
+// first: nothing inside the zone may touch a Haxe object.
+@:cppFileCode('
+#include <windows.h>
+#include <urlmon.h>
+#include <string>
+namespace cammie_update_download {
+ static int toFile(::String url, ::String destination) {
+  hx::strbuf urlBuffer;
+  hx::strbuf destinationBuffer;
+  const std::wstring source(url.wchar_str(&urlBuffer));
+  const std::wstring target(destination.wchar_str(&destinationBuffer));
+  hx::EnterGCFreeZone();
+  HRESULT result=URLDownloadToFileW(NULL,source.c_str(),target.c_str(),0,NULL);
+  hx::ExitGCFreeZone();
+  return (int)result;
+ }
+}
+')
 @:buildXml("<target id='haxe' if='HXCPP_MINGW'><lib name='-lurlmon'/></target><target id='haxe' unless='HXCPP_MINGW'><lib name='urlmon.lib'/></target>")
 #end
 class WindowsUpdateDownload {
@@ -18,7 +38,7 @@ class WindowsUpdateDownload {
 		if (url == null || !StringTools.startsWith(url, 'https://'))
 			throw 'The updater requires an HTTPS URL.';
 		#if (cpp && windows)
-		var result:Int = untyped __cpp__('URLDownloadToFileW(NULL, {0}.__WCStr(), {1}.__WCStr(), 0, NULL)', url, destination);
+		var result:Int = untyped __cpp__('cammie_update_download::toFile({0}, {1})', url, destination);
 		if (result < 0) throw 'Windows HTTPS download failed (HRESULT 0x' + StringTools.hex(result, 8) + ').';
 		#elseif sys
 		var request = new haxe.Http(url);

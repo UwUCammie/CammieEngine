@@ -94,6 +94,11 @@ class Main {static function ok(v:Bool,m:String)if(!v)throw m;static function fac
 
  def run_haxe(self,files):
   files=add_menu_async_contracts(files)
+  # HxcCompatRuntime reaches the window focus events, which hook the window and
+  # the state switch signal; the stub FlxG and openfl.Lib give them nothing to hook.
+  files.setdefault('openfl/Lib.hx','package openfl;class Lib {public static var application:Dynamic=null;}')
+  if 'var signals' not in files['flixel/FlxG.hx']:
+   files['flixel/FlxG.hx']=files['flixel/FlxG.hx'].replace('class FlxG {','class FlxG {public static var signals={preStateSwitch:{add:function(f:Void->Void){}}};',1)
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as tmp:
    for name,content in files.items():
     p=Path(tmp)/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content)

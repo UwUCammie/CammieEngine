@@ -689,6 +689,15 @@ class NightmareVisionScriptInterp extends Interp {
 			var result = extension.call(object, field, args);
 			if (result != null) return result;
 		}
+		// Psych 0.7 runs on Flixel 5, whose cameras still have setFilters; Flixel 6
+		// replaced it with the filters field. A raw camera such as game.camOther
+		// gets the same behaviour as the camera view's helper.
+		if (field == 'setFilters' && isFlixelCamera(object) && Reflect.field(object, field) == null) {
+			var filters:Dynamic = args.length > 0 ? args[0] : null;
+			Reflect.setProperty(object, 'filters', filters);
+			Reflect.setProperty(object, 'filtersEnabled', filters != null);
+			return null;
+		}
 		var method = get(object, field);
 		if (method == null) {
 			var details = isStringMethod(field) ? stringReceiverDetails(object) : '';
@@ -705,6 +714,17 @@ class NightmareVisionScriptInterp extends Interp {
 		}
 		#end
 		return result;
+	}
+
+	/** By class name, so headless tools without Flixel still compile this. */
+	static function isFlixelCamera(object:Dynamic):Bool {
+		if (object == null || Reflect.isFunction(object)) return false;
+		var type:Class<Dynamic> = Type.getClass(object);
+		while (type != null) {
+			if (Type.getClassName(type) == 'flixel.FlxCamera') return true;
+			type = Type.getSuperClass(type);
+		}
+		return false;
 	}
 
 	/** Add evidence for the common String-call failure without changing lookup

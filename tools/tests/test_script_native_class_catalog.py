@@ -29,6 +29,7 @@ STUB_CLASSES = {
     'flixel/addons/display/FlxTiledSprite': 'class FlxTiledSprite {}',
     'flixel/addons/effects/FlxTrail': 'class FlxTrail {}',
     'openfl/filters/ShaderFilter': 'class ShaderFilter {}',
+    'animate/internal/elements/FlxSpriteElement': 'class FlxSpriteElement {}',
 }
 
 MAIN = r'''class Main {
@@ -46,6 +47,9 @@ MAIN = r'''class Main {
    check(item.path.split('.').pop() == item.name || item.path.indexOf(item.name) >= 0,
     'qualified path ' + item.path + ' names the same class as ' + item.name);
   }
+  check(names.get('FlxSpriteElement') == animate.internal.elements.FlxSpriteElement
+   && paths.get('animate.internal.elements.FlxSpriteElement') == animate.internal.elements.FlxSpriteElement,
+   'texture atlas sprite elements are shared under both spellings');
   check(names.get('FlxFlicker') == flixel.effects.FlxFlicker && paths.get('flixel.effects.FlxFlicker') == flixel.effects.FlxFlicker,
    'FlxFlicker is shared under both spellings');
   var onlyNames=new Map<String,Dynamic>();

@@ -95,6 +95,12 @@ class PsychOwnerAudioTest(unittest.TestCase):
                 'public static function destinationKey(path:String):String return path; }',
                 encoding="utf-8",
             )
+            (work / "ImportRefreshManager.hx").write_text(
+                'package; class ImportRefreshManager { public static var generation:Int = 0; '
+                'public static var revision:Int = 0; '
+                'public static function availabilityRevision():Int return revision; }',
+                encoding="utf-8",
+            )
             (work / "PsychOwnerAssetPath.hx").write_text(r'''package;
 import haxe.io.Path;
 import sys.FileSystem;
@@ -155,6 +161,7 @@ class FNFAssets {
 class Paths {
  public static inline var SOUND_EXT = "ogg";
  public static function file(file:String, ?type:Dynamic, ?library:String):String {
+  if (library == "preload") return "assets/" + file;
   var folder = library == null || library == "" ? "preload" : library;
   return folder + ":assets/" + folder + "/" + file;
  }
@@ -190,7 +197,8 @@ class Paths {
                     "\tstatic function sound(owner:", "\tstatic function music(owner:",
                     "\tstatic function inst(owner:", "\tstatic function voices(owner:",
                     "\tstatic function audioOptions(", "\tstatic function returnSound(owner:",
-                    "\tstatic function soundPath(", "\tstatic function ownerOverridePath(",
+                    "\tstatic function soundPath(", "\tstatic function engineSoundPath(",
+                    "\tstatic function ownerOverridePath(",
                     "\tstatic function indexedSoundResolution(", "\tstatic function sourceAudioAssetId(",
                     "public static function formatToSongPath(path:String):String",
                 )
@@ -246,11 +254,36 @@ class Paths {
   FNFAssets.files.set("shared:assets/shared/sounds/coreOnly.ogg", true);
   var nativeFallback = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["coreOnly", false]);
   check(id(nativeFallback) == "shared:assets/shared/sounds/coreOnly.ogg", "no-index native fallback was not preserved");
+  // A sound the shared library lacks comes from the engine's own assets/sounds before beeping.
+  FNFAssets.files.set("assets/sounds/engineMenu.ogg", true);
+  var engineFallback = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["engineMenu", false]);
+  check(id(engineFallback) == "assets/sounds/engineMenu.ogg", "shared miss did not fall back to the engine sound: " + id(engineFallback));
+  FNFAssets.files.set("shared:assets/shared/sounds/engineMenu2.ogg", true);
+  FNFAssets.files.set("assets/sounds/engineMenu2.ogg", true);
+  var sharedWins = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["engineMenu2", false]);
+  check(id(sharedWins) == "shared:assets/shared/sounds/engineMenu2.ogg", "engine sound shadowed the shared library");
   var levelSound = owner + "/compiled/weekend1/sounds/levelOnly.ogg";
   RuntimeOwnerAssetIdentity.results.set("assets/weekend1/sounds/levelOnly.ogg", {state:"found", path:levelSound});
   RuntimeOwnerAssetIdentity.results.set("assets/shared/sounds/levelOnly.ogg", {state:"found", path:owner + "/compiled/shared/sounds/levelOnly.ogg"});
   var levelFirst = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["levelOnly", false]);
   check(id(levelFirst) == levelSound, "current-level owner identity did not precede shared owner identity");
+  var identityRequests = RuntimeOwnerAssetIdentity.requests.length;
+  var levelAgain = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["levelOnly", false]);
+  check(levelAgain == levelFirst && RuntimeOwnerAssetIdentity.requests.length == identityRequests,
+   "a repeated decoded sound walked the owner identity again");
+  var sharedOnly = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["levelOnly", "shared"]);
+  check(sharedOnly != levelFirst, "a different library folder reused another request's remembered file");
+  RuntimeOwnerAssetIdentity.results.set("assets/weekend1/sounds/levelOnly.ogg", {state:"missing", path:null});
+  identityRequests = RuntimeOwnerAssetIdentity.requests.length;
+  ImportRefreshManager.generation++;
+  var afterRefresh = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["levelOnly", false]);
+  check(RuntimeOwnerAssetIdentity.requests.length > identityRequests && afterRefresh != levelFirst,
+   "an import refresh did not force the remembered sound to resolve again");
+  identityRequests = RuntimeOwnerAssetIdentity.requests.length;
+  ImportRefreshManager.revision++;
+  Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["levelOnly", false]);
+  check(RuntimeOwnerAssetIdentity.requests.length > identityRequests,
+   "an identity availability change did not force the remembered sound to resolve again");
   RuntimeOwnerAssetIdentity.results.set("assets/weekend1/sounds/blockedOnly.ogg", {state:"unverified", path:null});
   FNFAssets.files.set("shared:assets/shared/sounds/blockedOnly.ogg", true);
   var blockedFallback = Reflect.callMethod(paths, Reflect.field(paths, "sound"), ["blockedOnly", false]);
@@ -298,7 +331,10 @@ class PsychOwnerSoundCacheProbe {
   var first:Sound = owner.returnSound("owner/a.ogg", false);
   var same = owner.returnSound("owner/a.ogg", false);
   check(first == same && FNFAssets.loads == 1, "owner did not reuse decoded Sound");
-  check(owner.localTrackedAssets.length == 2, "owner-local use tracking failed");
+  check(owner.localTrackedAssets.length == 1 && owner.localTrackedAssets[0] == "owner/a.ogg",
+   "owner-local use tracking did not keep each requested file once");
+  for (_ in 0...50) owner.returnSound("owner/a.ogg", false);
+  check(owner.localTrackedAssets.length == 1, "repeated requests grew owner-local tracking");
   owner.clearStoredMemory();
   check(owner.currentTrackedSounds.exists("owner/a.ogg") && owner.localTrackedAssets.length == 0,
    "first memory clear did not keep current-state Sound");
@@ -322,6 +358,33 @@ class PsychOwnerSoundCacheProbe {
   check(reloaded != first && FNFAssets.loads == 3, "new owner runtime did not decode after release");
   check(other.returnSound("other/a.ogg", false) == distinct && FNFAssets.loads == 3,
    "releasing one owner evicted another owner's cache");
+  // A script may edit the public list; the lookup set must follow it.
+  FNFAssets.files.set("owner/b.ogg", true);
+  fresh.returnSound("owner/b.ogg", false);
+  fresh.localTrackedAssets.resize(0);
+  fresh.localTrackedAssets.push("owner/b.ogg");
+  fresh.returnSound("owner/a.ogg", false);
+  check(fresh.localTrackedAssets.join(",") == "owner/b.ogg,owner/a.ogg",
+   "direct list edits desynchronised owner-local tracking");
+  fresh.localTrackedAssets.remove("owner/a.ogg");
+  fresh.clearStoredMemory();
+  check(fresh.currentTrackedSounds.exists("owner/b.ogg") && !fresh.currentTrackedSounds.exists("owner/a.ogg"),
+   "clearStoredMemory did not follow a direct list edit");
+  fresh.clearStoredMemory();
+  var loadsBeforeMemo = FNFAssets.loads;
+  fresh.rememberResolvedFile("request", "owner/a.ogg");
+  check(fresh.resolvedFile("request") == null, "a remembered file was trusted before its Sound was decoded");
+  fresh.returnSound("owner/a.ogg", false);
+  fresh.rememberResolvedFile("request", "owner/a.ogg");
+  check(fresh.resolvedFile("request") == "owner/a.ogg", "a decoded request was not remembered");
+  fresh.clearStoredMemory();
+  fresh.clearStoredMemory();
+  check(fresh.resolvedFile("request") == null, "a remembered file outlived its evicted Sound");
+  fresh.returnSound("owner/a.ogg", false);
+  fresh.rememberResolvedFile("request", "owner/a.ogg");
+  ImportRefreshManager.generation++;
+  check(fresh.resolvedFile("request") == null, "an import refresh kept a remembered file");
+  check(FNFAssets.loads == loadsBeforeMemo + 2, "remembering resolved files changed Sound decoding");
  }
 }''', encoding="utf-8")
             (work / "DonorOptionalProbe.hx").write_text(r'''package;

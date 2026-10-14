@@ -77,7 +77,9 @@ class LuaCompatRealDonorGapsTest {
    + "end\n";
   var converted = LuaCompat.translate(source, "psych-library-shapes.lua");
   if (!converted.supported) throw converted.diagnostics.join(" | ");
-  if (converted.hscript.indexOf("new EReg") < 0 || converted.hscript.indexOf("FlxMath.lerp") < 0
+  // string.match captures come from the Lua pattern engine, not a translator-built EReg.
+  if (converted.hscript.indexOf("luaStringMatch(input") < 0 || converted.hscript.indexOf("new EReg") >= 0
+   || converted.hscript.indexOf("FlxMath.lerp") < 0
    || converted.hscript.indexOf("luaSequenceLength") < 0
    || converted.hscript.indexOf("'math.fmod(7,4)'") < 0)
    throw "the expected generic helper lowering was not emitted: " + converted.hscript;

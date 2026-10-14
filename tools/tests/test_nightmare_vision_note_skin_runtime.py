@@ -104,6 +104,7 @@ class NoteSplash {
  public var palette:PsychRGBPalette; public var enabled:Bool=true; public var alpha:Float=1; public var flash:Float=0;
  public function new(?palette:PsychRGBPalette) this.palette=palette==null?new PsychRGBPalette():palette.copy();
  public function apply(note:Dynamic):Void {note.shader=palette.shader;}
+ public function copyValues(other:PsychRGBPalette):Void palette.copyValues(other);
 }
 ''',
     "NightmareVisionPaths.hx": r'''import flixel.graphics.frames.FlxAtlasFrames;

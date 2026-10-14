@@ -22,7 +22,10 @@ class Main {
  var lookups=0;
  var calls:Array<String>=[];
  function new() {}
- function getHaxeActor(who:Dynamic):Dynamic {lookups++;return {y:100.0};}
+ function receptorAt(index:Int, wrap:Bool=false):Dynamic {
+  if(index != 0 || wrap) throw "strum callback read the wrong receptor";
+  lookups++;return {y:100.0};
+ }
  function callHscript(name:String,args:Array<Dynamic>,scope:String):Void {
   if(scope != "modchart" || args.length != 0) throw "legacy callback payload changed";
   calls.push(name);

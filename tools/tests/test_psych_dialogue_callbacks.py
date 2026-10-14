@@ -69,6 +69,7 @@ class Main {
  public var swagDialogue:TypeText=new TypeText();
  public var nextDialogueThing:Void->Void;
  public var skipDialogueThing:Void->Void;
+ public var allowInputThing:String->Bool;
  public var finishThing:Void->Void;
  public var nextCalls:Int=0;
  public var skipCalls:Int=0;
@@ -120,6 +121,23 @@ class Main {
   back.updatePsychDialogueInput(false,true);
   check(back.endCalls==1 && back.swagDialogue.skips==0 && back.skipCalls==0,
    "BACK should end immediately without reporting a typewriter skip");
+
+  // A host may refuse a press; a refused press changes nothing, not even the click.
+  var asked:Array<String>=[];
+  var refused=new Main(["typing","next"]);
+  refused.psychInputMode=true;
+  refused.startDialogue();
+  refused.allowInputThing=function(action:String):Bool { asked.push(action); return false; };
+  refused.updatePsychDialogueInput(true,false);
+  refused.swagDialogue.complete();
+  refused.updatePsychDialogueInput(true,false);
+  refused.updatePsychDialogueInput(false,true);
+  check(asked.join(",")=="completeLine,line,skip","presses should be named completeLine, line and skip: "+asked.join(","));
+  check(refused.swagDialogue.skips==0 && refused.endCalls==0 && refused.clickCalls==0
+   && (cast refused.dialogueFile.info:Array<String>).length==2,"a refused press should do nothing");
+  refused.allowInputThing=function(action:String):Bool return true;
+  refused.updatePsychDialogueInput(true,false);
+  check((cast refused.dialogueFile.info:Array<String>).length==1,"an allowed press should advance");
 
   var native=new Main(["native line","next"]);
   native.psychInputMode=false;

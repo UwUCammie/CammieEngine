@@ -57,6 +57,17 @@ class FNFAssets {
 		#end
 	}
 
+	/** Moves whenever a cached path, decode or atlas may be out of date: an
+		import refresh or a file change. Caches compare it with the value they
+		were filled under. */
+	public static function pathEpoch():Int {
+		#if sys
+		return ImportRefreshManager.generation + localPathEpoch;
+		#else
+		return ImportRefreshManager.generation;
+		#end
+	}
+
 	/** Drop every decoded sound kept for reuse. Sounds still playing are not
 		touched, they just stop being shared with later requests. */
 	public static function clearSoundCache():Void {
@@ -470,6 +481,102 @@ class FNFAssets {
      * @return BitmapData the data of the file.
      */
     public static function getBitmapData(id:String, ?useCache:Bool=true):BitmapData {
+		var image:Dynamic = readImage(id, useCache, false);
+		return image;
+    }
+
+	/** Return the cache's canonical graphic for a bitmap loaded from disk.
+	 * FlxG.bitmap.add(bitmap, ..., customKey) can create a second FlxGraphic
+	 * that owns the same BitmapData. Destroying either cache entry then disposes
+	 * pixels still referenced by the other entry, so disk-backed graphics must
+	 * retain the key chosen by getBitmapData's cache registration. */
+	public static function getFlxGraphic(id:String, ?useCache:Bool=true):FlxGraphic {
+		var image:Dynamic = readImage(id, useCache, true);
+		if (image == null)
+			return null;
+		// A disk image comes back as its canonical graphic already. Only other
+		// bitmaps need FlxG.bitmap.add, which scans every cached graphic.
+		if (Std.isOfType(image, FlxGraphic))
+			return image;
+		return FlxG.bitmap.add((image:BitmapData));
+	}
+
+	/**
+		Load an image for the running song and keep it until the song ends, with
+		its texture already uploaded so the first draw does not upload it during
+		gameplay. The pixels stay readable. Returns null when the image cannot be
+		read.
+	**/
+	public static function precacheImage(id:String, upload:Bool = true):Null<FlxGraphic> {
+		var graphic:FlxGraphic = null;
+		try graphic = getFlxGraphic(id) catch (_:Dynamic) return null;
+		retainForSong(graphic, upload);
+		return graphic;
+	}
+
+	/** Keep a graphic until the running song ends (see SongGraphicRetention),
+		uploading its texture first when `upload` is set. */
+	public static function retainForSong(graphic:FlxGraphic, upload:Bool = true):Void {
+		if (graphic == null || graphic.isDestroyed)
+			return;
+		SongGraphicRetention.hold(graphic.key, graphic, pathEpoch(), true);
+		if (upload)
+			uploadTexture(graphic.bitmap);
+	}
+
+	/**
+		retainForSong for a graphic that only ever gets drawn: once its texture
+		is uploaded the pixels are dropped, so the image is held in video memory
+		only, the way Psych's GPU caching holds it (OpenFL's disposeImage, after
+		which the upload releases the pixels). Meant for images the engine
+		preloads ahead of a script that draws them later, which would otherwise
+		keep their decoded pixels in RAM for the whole song. Without a GL
+		context, or when the upload fails, the pixels stay readable exactly as
+		retainForSong leaves them. Returns whether the pixels were released.
+	**/
+	public static function retainForSongOnGpu(graphic:FlxGraphic):Bool {
+		if (graphic == null || graphic.isDestroyed)
+			return false;
+		SongGraphicRetention.hold(graphic.key, graphic, pathEpoch(), true);
+		#if !flash
+		var bitmap = graphic.bitmap;
+		var stage = FlxG.stage;
+		if (!SongTexturePrewarm.canReleasePixels(bitmap != null && bitmap.image != null, bitmap != null && bitmap.readable,
+			SongGraphicRetention.onOwnerThread(), stage != null && stage.context3D != null)) {
+			uploadTexture(bitmap);
+			return false;
+		}
+		bitmap.disposeImage();
+		try bitmap.getTexture(stage.context3D) catch (_:Dynamic) {}
+		if (bitmap.image != null) {
+			// The upload did not get through, so OpenFL kept the pixels: leave
+			// them readable as before.
+			@:privateAccess bitmap.readable = true;
+			return false;
+		}
+		return true;
+		#else
+		return false;
+		#end
+	}
+
+	/** Do the texture upload a first draw would do, now. Only the render thread
+		may touch the GL context, and a missing context (software rendering, a
+		headless run) just leaves the upload to the first draw. */
+	static function uploadTexture(bitmap:BitmapData):Void {
+		#if !flash
+		if (bitmap == null || bitmap.image == null || !SongGraphicRetention.onOwnerThread())
+			return;
+		var stage = FlxG.stage;
+		if (stage == null || stage.context3D == null)
+			return;
+		try bitmap.getTexture(stage.context3D) catch (_:Dynamic) {}
+		#end
+	}
+
+	/** Shared body of getBitmapData and getFlxGraphic. Returns a BitmapData, or
+		the canonical FlxGraphic of a cached disk image when `asGraphic` is set. */
+	static function readImage(id:String, useCache:Bool, asGraphic:Bool):Dynamic {
         #if sys
             // idk if this works lol
 				var resolved = resolveDiskPath(id);
@@ -483,12 +590,20 @@ class FNFAssets {
 			if (path == null)
 				throw 'File $id doesn\'t exist or cannot be read.';
 			var bitmapKey = DiskBitmapCache.key(FileSystem.absolutePath(path));
-			return SongLoadingWork.complete(DiskBitmapCache.getOrLoad(bitmapKey, useCache,
+			var epoch = pathEpoch();
+			// Drop holds from before a file write or import first. A graphic kept
+			// alive only by a hold would otherwise be the cache hit below.
+			SongGraphicRetention.sync(epoch);
+			var canonical:FlxGraphic = null;
+			var bitmap = DiskBitmapCache.getOrLoad(bitmapKey, useCache,
 				function(key:String):BitmapData {
 					var graphic = FlxG.bitmap.get(key);
 					var cached = graphic == null || graphic.isDestroyed ? null : graphic.bitmap;
-					if (cached != null)
+					if (cached != null) {
 						RuntimeDecodeMetrics.recordHit();
+						canonical = graphic;
+						SongGraphicRetention.hold(key, graphic, epoch);
+					}
 					return cached;
 				},
 				function():BitmapData {
@@ -506,22 +621,21 @@ class FNFAssets {
 					}
 				},
 				function(key:String, data:BitmapData):BitmapData {
-					var graphic = FlxG.bitmap.add(data, false, key);
-					return graphic == null ? data : graphic.bitmap;
-				}));
+					// FlxG.bitmap.add would first scan every cached graphic for
+					// this bitmap. A fresh decode is never in the cache, so only
+					// the key needs checking; a live graphic there means another
+					// thread stored the same file first, and that one wins.
+					var graphic = FlxG.bitmap.get(key);
+					if (graphic == null || graphic.isDestroyed || graphic.bitmap == null)
+						graphic = @:privateAccess FlxGraphic.createGraphic(data, key, false, true);
+					canonical = graphic;
+					SongGraphicRetention.hold(key, graphic, epoch);
+					return graphic.bitmap;
+				});
+			return SongLoadingWork.complete(asGraphic && canonical != null ? (canonical:Dynamic) : (bitmap:Dynamic));
         #else
             return SongLoadingWork.complete(Assets.getBitmapData(id, useCache));
         #end
-    }
-
-	/** Return the cache's canonical graphic for a bitmap loaded from disk.
-	 * FlxG.bitmap.add(bitmap, ..., customKey) can create a second FlxGraphic
-	 * that owns the same BitmapData. Destroying either cache entry then disposes
-	 * pixels still referenced by the other entry, so disk-backed graphics must
-	 * retain the key chosen by getBitmapData's cache registration. */
-	public static function getFlxGraphic(id:String, ?useCache:Bool=true):FlxGraphic {
-		var bitmap = getBitmapData(id, useCache);
-		return bitmap == null ? null : FlxG.bitmap.add(bitmap);
 	}
 
 	/**

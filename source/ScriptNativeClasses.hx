@@ -44,7 +44,9 @@ class ScriptNativeClasses {
 			entry('FlxBackdrop', 'flixel.addons.display.FlxBackdrop', flixel.addons.display.FlxBackdrop),
 			entry('FlxTiledSprite', 'flixel.addons.display.FlxTiledSprite', flixel.addons.display.FlxTiledSprite),
 			entry('FlxTrail', 'flixel.addons.effects.FlxTrail', flixel.addons.effects.FlxTrail),
-			entry('ShaderFilter', 'openfl.filters.ShaderFilter', openfl.filters.ShaderFilter)
+			entry('ShaderFilter', 'openfl.filters.ShaderFilter', openfl.filters.ShaderFilter),
+			// A plain texture-atlas timeline element; it wraps a sprite and reads no files.
+			entry('FlxSpriteElement', 'animate.internal.elements.FlxSpriteElement', animate.internal.elements.FlxSpriteElement)
 		];
 		return cached;
 	}

@@ -31,6 +31,46 @@ class SourceVocalRole {
 		return role == '' ? 'player' : role;
 	}
 
+	/**
+		Which stems the source engine would load once a character names its own
+		vocal file. Psych looks for Voices-<vocals_file> instead of Voices-Player
+		(and likewise for the opponent), and never loads a stem neither side asks
+		for. Nothing is dropped unless at least one character's own file is among
+		the stems, so packs that name stems freely and characters without the
+		field keep every stem. A stem whose format already gave it a side
+		(`roles`, as V-Slice lists each side's files) and whose id is not one of
+		the side names is always kept: that format never asked for Psych's rule.
+	*/
+	public static function keepStems(stemIds:Array<Dynamic>, ?playerSuffix:String, ?opponentSuffix:String,
+		?roles:Array<Dynamic>):Array<Bool> {
+		var player = clean(playerSuffix);
+		var opponent = clean(opponentSuffix);
+		var keep = [for (_ in stemIds) true];
+		var playerShipped = false;
+		var opponentShipped = false;
+		for (stemId in stemIds) {
+			var id = clean(stemId);
+			if (id == '')
+				continue;
+			if (id == player)
+				playerShipped = true;
+			if (id == opponent)
+				opponentShipped = true;
+		}
+		if (!playerShipped && !opponentShipped)
+			return keep;
+		for (index in 0...stemIds.length) {
+			var id = clean(stemIds[index]);
+			var role = roles == null || index >= roles.length ? '' : clean(roles[index]);
+			if (role != '' && role != 'shared' && !namesSide(id))
+				continue;
+			var forPlayer = playerShipped ? id == player : id == 'player';
+			var forOpponent = opponentShipped ? id == opponent : (id == 'opp' || id == 'opponent');
+			keep[index] = forPlayer || forOpponent;
+		}
+		return keep;
+	}
+
 	/** True for the ids that mean a side on their own, without character data. */
 	public static function namesSide(stemId:Dynamic):Bool {
 		var id = clean(stemId);

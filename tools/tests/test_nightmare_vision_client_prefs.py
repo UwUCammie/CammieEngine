@@ -62,7 +62,29 @@ class Main {
   eq(prefs.view.timeBarType, 'Time Left', 'unsupported time bar option keeps source default');
   eq(prefs.view.hideHud, false, 'unsupported hide HUD option keeps source default');
   eq(prefs.view.noteOffset, 47.5, 'native host offset seeds owner noteOffset without truncation');
-  eq(prefs.view.framerate, 60, 'fps option does not rewrite source framerate');
+  eq(prefs.view.framerate, 144, 'a capped native fps seeds the framerate scripts scale motion by');
+  eq(prefs.view.unlockedFramerate, false, 'a capped native fps leaves the owner framerate locked');
+  var uncapped = new NightmareVisionClientPrefs('assets/imported_mods/uncapped-mod', new MemoryOwnerSave(),
+   {fpsCap:144, unlimitedFPS:true});
+  eq(uncapped.view.framerate, 60, 'uncapped play has no single rate and keeps the source default');
+  eq(uncapped.view.unlockedFramerate, true, 'uncapped native fps seeds unlockedFramerate');
+  eq(nativeOptions.fpsCap, 144, 'seeding never writes native options');
+  // A framerate the owner saved in an earlier session must not replace the
+  // live engine cap; when uncapped, the saved owner value still loads.
+  var staleRate = new MemoryOwnerSave();
+  Reflect.setField(staleRate.values, NightmareVisionClientPrefs.SAVE_FIELD,
+   {version:1, values:{framerate:60, unlockedFramerate:true, noteSkin:'Saved'}});
+  var capped = new NightmareVisionClientPrefs('assets/imported_mods/stale-rate', staleRate, {fpsCap:144, unlimitedFPS:false});
+  capped.load();
+  eq(capped.view.framerate, 144, 'a saved owner framerate does not replace the live engine cap');
+  eq(capped.view.unlockedFramerate, false, 'a saved owner unlockedFramerate does not replace the live engine setting');
+  eq(capped.view.noteSkin, 'Saved', 'other saved owner values still load');
+  var savedUncapped = new NightmareVisionClientPrefs('assets/imported_mods/stale-rate', staleRate, {fpsCap:144, unlimitedFPS:true});
+  savedUncapped.load();
+  eq(savedUncapped.view.framerate, 60, 'uncapped play still loads the saved owner framerate');
+  var noNative = new NightmareVisionClientPrefs('assets/imported_mods/stale-rate', staleRate);
+  noNative.load();
+  eq(noNative.view.unlockedFramerate, true, 'without native options the saved owner values load as before');
   eq(prefs.getGameplaySetting('healthgain', 9), 1.0, 'source gameplay default');
   eq(prefs.getGameplaySetting('absent', false), false, 'missing gameplay default');
   truth(Std.isOfType(prefs.view.gameplaySettings, StringMap), 'gameplaySettings must be a StringMap');

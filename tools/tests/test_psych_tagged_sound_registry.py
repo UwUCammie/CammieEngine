@@ -59,6 +59,21 @@ class Main {
   check(!registry.put('',new Handle('x')) && !registry.put(true,new Handle('x')) && !registry.put('c',null),
    'empty tags, loop flags and missing handles must not be stored');
   check(TaggedSoundRegistry.key(7)=='7' && TaggedSoundRegistry.key(null)=='','tag keys');
+  // Psych's Lua name for a tagged sound, and the way back from it
+  check(TaggedSoundRegistry.psychVariableName(' my tag.v2 ')=='sound_my_tagv2','psych sound variable name');
+  check(TaggedSoundRegistry.psychVariableName(null)==null && TaggedSoundRegistry.psychVariableName('')==null,
+   'an untagged sound has no variable name');
+  check(TaggedSoundRegistry.tagFromPsychVariable('sound_boom')=='boom','sound variable back to its tag');
+  check(TaggedSoundRegistry.tagFromPsychVariable('sound_')==null && TaggedSoundRegistry.tagFromPsychVariable('dad')==null
+   && TaggedSoundRegistry.tagFromPsychVariable(null)==null,'only sound_<tag> names point at a tag');
+  // the name Psych hands back reaches the sound even when the tag had spaces or dots
+  var spaced=new Handle('spaced');
+  registry.put(' my tag.v2 ',spaced);
+  check(registry.findPsychVariable(TaggedSoundRegistry.psychVariableName(' my tag.v2 '))==spaced,'formatted sound name missed its tag');
+  check(registry.findPsychVariable('sound_my tag.v2')==spaced,'the plain spelling stopped working');
+  check(registry.findPsychVariable('sound_nobody')==null && registry.findPsychVariable('dad')==null
+   && registry.findPsychVariable(null)==null,'an unknown sound name resolved to something');
+  registry.stop('my tag.v2');
 
   // a handle recycled elsewhere drops out on the next lookup
   b.alive=false;

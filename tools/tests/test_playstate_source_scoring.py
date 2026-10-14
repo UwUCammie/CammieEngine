@@ -375,10 +375,13 @@ class PlayStateSourceScoringFixture {
             r"public function sourceScoreLedgerActive\(\):Bool return sourceScoreOwner;")
 
         note_miss = extract_method(self.play, "function noteMissCore(direction:Int = 1,")
+        # The source ledger leaves through sourceNoteMiss; only native counting follows.
         self.assertRegex(note_miss,
-            r"if\s*\(sourceScoreLedgerActive\(\)\)\s*\{\s*if\s*\(countsMiss\)\s*"
-            r"applySourceMiss\(\);\s*\}\s*else\s*misses \+= 1;")
-        self.assertIn("if (!sourceScoreLedgerActive()) updateAccuracy();", note_miss)
+            r"if\s*\(sourceScoreLedgerActive\(\)\)\s*\{\s*sourceNoteMiss\([^;]*\);\s*return;\s*\}")
+        native = note_miss[note_miss.index("sourceNoteMiss("):]
+        self.assertIn("misses += 1;", native)
+        self.assertIn("updateAccuracy();", native)
+        self.assertNotIn("sourceScoreLedgerActive()", native)
         note_miss_wrapper = extract_method(self.play, "function noteMiss(direction:Int = 1,")
         self.assertIn("field.onNoteMiss.dispatch(note, field)", note_miss_wrapper)
         self.assertIn("noteMissCore(direction, playerOne, note, playMissSound, sourceLine);", note_miss_wrapper)

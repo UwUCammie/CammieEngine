@@ -145,7 +145,12 @@ class SourceDeathWiringFixture {
   public var camGame:DeathCamera = new DeathCamera();
   public var curCamPos:DeathCameraPosition = new DeathCameraPosition();
   public function new() {}
+  public var nightmareVisionScripts:Dynamic = null;
   public function sourceScoreLedgerActive():Bool return true;
+  public function selectedPsychSkinRoot():Dynamic return null;
+  public function callAllHScript(name:String, args:Array<Dynamic>):Void {}
+
+__SOURCE_CALLBACKS__
   public function callNightmareVision(name:String, args:Array<Dynamic>):Dynamic {
     DeathTrace.add('callback:' + name);
     callbackSnapshot = [nightmareOwner.stunned, balls, paused, persistentUpdate, persistentDraw];
@@ -337,11 +342,21 @@ class SourceDeathWiringTest(unittest.TestCase):
             "__OPEN_SOURCE_GAME_OVER__",
             "function openSourceGameOver(" + helpers.split("\n\nfunction openSourceGameOver(", 1)[1],
         )
+        fixture = fixture.replace("__SOURCE_CALLBACKS__", "  var sourceCallbackRouter:SourceCallbackRouter;\n"
+                                  + extract_method(self.play_source, "function sourceCallbacks():SourceCallbackRouter"))
         policy = (ROOT / "source/SourceDeathPolicy.hx").read_text(encoding="utf-8")
+        # The real router, reading this fixture's sentinel stand-ins.
+        router = (ROOT / "source/SourceCallbackRouter.hx").read_text(encoding="utf-8")
+        router = router.replace("NightmareVisionScriptGroup.", "SourceDeathWiringTestMain.NightmareVisionScriptGroup.")
+        router = router.replace("ScriptCallbackResult.", "SourceDeathWiringTestMain.ScriptCallbackResult.")
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             work = Path(folder)
             (work / "SourceDeathPolicy.hx").write_text(policy, encoding="utf-8", newline="\n")
+            (work / "SourceCallbackRouter.hx").write_text(router, encoding="utf-8", newline="\n")
+            for name in ("SourceLifecycleEvent", "SourceCallbackOutcome"):
+                (work / (name + ".hx")).write_text(
+                    (ROOT / ("source/" + name + ".hx")).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
             (work / "SourceDeathWiringTestMain.hx").write_text(fixture, encoding="utf-8", newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "SourceDeathWiringTestMain", "--interp"],
@@ -373,7 +388,7 @@ class SourceDeathWiringTest(unittest.TestCase):
         )
         self.assertIn("if(force){", compact_end_song)
         self.assertIn("varcodenameSongEndEvent=newCodenameGameEvent();", compact_end_song)
-        self.assertIn("if(callNightmareVision('onEndSong',[])==NightmareVisionScriptGroup.STOP_FUNC)",
+        self.assertIn("if(sourceCallbacks().dispatch(SourceLifecycleEvent.EndSong,[]).stopped)",
                       compact_end_song)
 
 

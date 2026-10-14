@@ -23,6 +23,9 @@ class PsychMusicBeatStateTest(unittest.TestCase):
   actual=body(actual).replace('timePassedOnState','MusicBeatState.timePassedOnState')
   donor=body(donor).replace('timePassedOnState','MusicBeatState.timePassedOnState')
   bpm=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),'public static function getBPMFromSeconds(')
+  # The shared clock reads the step through the base tempo map conversions.
+  for marker in ['public static function segmentStepCrochet(','public static function getStep(']:
+   bpm+=extract_method((ROOT/'source/Conductor.hx').read_text(encoding='utf-8'),marker)
   files={
    'Host.hx':'import Conductor.BPMChangeEvent;class Host extends Base {'+fields+actual+'public function dispatchSourceStages(n:String,a:Array<Dynamic>):Void{}}',
    'Donor.hx':'class Donor extends Base {'+fields+donor+'public function stagesFunc(f:Dynamic->Void):Void {}}',

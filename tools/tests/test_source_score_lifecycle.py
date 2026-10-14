@@ -110,6 +110,7 @@ class SourceScoreLifecycleFixture {
     public var playHUD:HudMock = new HudMock();
     public var nightmareVisionScripts:Dynamic = null;
     public var selectedRoot:Dynamic = null;
+    var sourceScoreNightmare:Bool = false;
 
     var psychRatingOverrides:Map<String,Dynamic> = [];
     var psychRatingRecalculating:Bool = false;
@@ -165,6 +166,10 @@ __UPDATE_SCORE_BAR_METHOD__
 __RECALCULATE_RATING_METHOD__
 
 __NOTIFY_RATING_METHOD__
+
+__SOURCE_CALLBACKS_METHOD__
+
+    public function callAllHScript(name:String, args:Array<Dynamic>):Void {}
 
     public function selectedPsychSkinRoot():Dynamic return selectedRoot;
 
@@ -520,6 +525,8 @@ class SourceScoreLifecycleTest(unittest.TestCase):
             "__UPDATE_SCORE_BAR_METHOD__": extract_method(play_state, "public function updateScoreBar("),
             "__RECALCULATE_RATING_METHOD__": extract_method(play_state, "public function RecalculateRating("),
             "__NOTIFY_RATING_METHOD__": extract_method(play_state, "function notifyPsychRatingChange("),
+            "__SOURCE_CALLBACKS_METHOD__": "\tvar sourceCallbackRouter:SourceCallbackRouter;\n"
+                + extract_method(play_state, "function sourceCallbacks():SourceCallbackRouter"),
         }
         fixture = FIXTURE
         for placeholder, method in methods.items():
@@ -535,10 +542,15 @@ class SourceScoreLifecycleTest(unittest.TestCase):
             Path(folder, "LifecycleEngineCompat.hx").write_text(ENGINE_COMPAT, newline="\n")
             Path(folder, "LifecycleNightmareVisionScriptGroup.hx").write_text(NV_SCRIPT_GROUP, newline="\n")
             Path(folder, "LifecycleRuntimeSmokeHarness.hx").write_text(RUNTIME_SMOKE_HARNESS, newline="\n")
+            # The real router, reading this fixture's Nightmare Vision sentinels.
+            router = (ROOT / "source/SourceCallbackRouter.hx").read_text(encoding="utf-8")
+            Path(folder, "SourceCallbackRouter.hx").write_text(
+                router.replace("NightmareVisionScriptGroup.", "LifecycleNightmareVisionScriptGroup."), newline="\n")
             Path(folder, "hscript").mkdir()
             Path(folder, "hscript/Interp.hx").write_text(HAXE_INTERP, newline="\n")
             result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / "source"),
+                # The fixture folder is added last so its copies win over source/.
+                [*HAXE_COMMAND, "-cp", str(ROOT / "source"), "-cp", folder,
                  "-main", "SourceScoreLifecycleFixture", "--interp"],
                 cwd=ROOT,
                 capture_output=True,
@@ -565,18 +577,18 @@ class SourceScoreLifecycleTest(unittest.TestCase):
         intro_start = create.index("RuntimeSmokeHarness.markStep('playstate:create:intro-selection-begin');")
         display_start = create.index("RuntimeSmokeHarness.markStep('playstate:create:intro-dispatch-returned');", intro_start)
         initial_score = create[display_start:create.index("RuntimeSmokeHarness.markStep('playstate:create:countdown-returned');", display_start)]
-        on_create_post = create.index("callNightmareVision('onCreatePost', []);", display_start)
+        on_create_post = create.index("sourceCallbacks().dispatch(SourceLifecycleEvent.CreatePost, []);", display_start)
 
         self.assertIn("if (sourceScoreDisplayOwned())", initial_score)
         self.assertEqual(initial_score.count("RecalculateRating(false, false);"), 1)
         self.assertEqual(initial_score.count("if (nightmareVisionScripts != null) updateScoreBar();"), 1)
         self.assertLess(display_start, on_create_post)
         self.assertLess(create.index("startCountdown();", intro_start), display_start)
-        psych_post = create.index("if (selectedPsychSkinRoot() != null) PsychRuntimeBindings.dispatch(this, 'onCreatePost', []);")
-        nightmare_vision_post = create.index("callNightmareVision('onCreatePost', []);", display_start)
-        self.assertLess(display_start, psych_post)
-        self.assertLess(psych_post, nightmare_vision_post)
-        self.assertLess(nightmare_vision_post, create.index("RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');"))
+        # One routed call: a Psych owner hears onCreatePost before Nightmare Vision.
+        router = (ROOT / "source/SourceCallbackRouter.hx").read_text(encoding="utf-8")
+        self.assertIn("table.set(SourceLifecycleEvent.CreatePost, new SourceCallbackRoute(['psych', 'nv'], 'onCreatePost', "
+                      "'onCreatePost', 'Scripts', false, true));", router)
+        self.assertLess(on_create_post, create.index("RuntimeSmokeHarness.markStep('playstate:create:super-create-begin');"))
 
         notify = extract_method(play_state, "function notifyPsychRatingChange(")
         self.assertEqual(notify.count("updateScoreBar(missed);"), 1)

@@ -15,6 +15,15 @@ class SourceVideoPlayback {
 	public static function safeRate(value:Float):Float
 		return Math.isNaN(value) || value <= 0 ? 1.0 : value;
 
+	/** Rate a clip follows from its host state's `playbackRate`, or NaN when the
+		host has no usable one. Unlike safeRate this never invents 1: a clip that
+		only follows its host keeps whatever rate the decoder already has. */
+	public static function hostRate(value:Dynamic):Float {
+		if (value == null) return Math.NaN;
+		var rate = Std.parseFloat(Std.string(value));
+		return Math.isFinite(rate) && rate > 0 ? rate : Math.NaN;
+	}
+
 	/** 0..1 position through the clip, 0 while the length is still unknown. */
 	public static function progress(timeMs:Float, lengthMs:Float):Float {
 		if (Math.isNaN(timeMs) || Math.isNaN(lengthMs) || lengthMs <= 0) return 0.0;

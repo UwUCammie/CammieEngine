@@ -521,6 +521,8 @@ class ImportCompat {{
             (temp_path / "SourceChartReferences.hx").write_text(
                 (ROOT / "source/SourceChartReferences.hx").read_text()
             , newline='\n')
+            for shared in ("SourceOwnerFiles.hx", "CompatCanonicalPath.hx"):
+                (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
             , newline='\n')
@@ -1064,6 +1066,8 @@ class ImportCompat {{
             (temp_path / "SourceChartReferences.hx").write_text(
                 (ROOT / "source/SourceChartReferences.hx").read_text()
             , newline='\n')
+            for shared in ("SourceOwnerFiles.hx", "CompatCanonicalPath.hx"):
+                (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')
             (temp_path / "SourceVocalRole.hx").write_text(
                 (ROOT / "source/SourceVocalRole.hx").read_text(), newline='\n'
             )

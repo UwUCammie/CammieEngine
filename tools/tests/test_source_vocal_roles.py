@@ -42,7 +42,10 @@ RUNTIME_FIXTURE = r'''import flixel.sound.FlxSound;
 
 class StemRoles {
   public var SONG:Dynamic;
+  public var boyfriend:Dynamic;
+  public var dad:Dynamic;
   public function new(format:String) SONG = {format:format};
+  function characterVocalsFile(character:Dynamic):String return character == null ? null : character.vocalsFile;
   RESOLVE
   public function role(entry:Dynamic):String return resolveImportedVocalStemRole(entry);
 }
@@ -72,6 +75,29 @@ class Main {
     // the old class name is the same resolver
     check(NightmareVisionVocalRole.resolve('opp', 'shared') == 'opponent'
       && NightmareVisionVocalRole.resolve('backup', null) == 'player', 'alias drifted');
+
+    // a character's vocals_file names its stem at load, as in Psych
+    var named = new StemRoles('psych_v1');
+    named.boyfriend = {vocalsFile:'bf-alt'};
+    named.dad = {vocalsFile:''};
+    check(named.role({id:'bf-alt', role:'shared'}) == 'player' && named.role({id:'Opponent', role:'shared'}) == 'opponent',
+      'character vocals_file stem');
+    // once a character's own file is there, stems nobody asks for stay silent
+    function kept(ids:Array<Dynamic>, player:String, opponent:String):String
+      return [for (index in 0...ids.length) if (SourceVocalRole.keepStems(ids, player, opponent)[index]) Std.string(ids[index])].join(',');
+    check(kept(['Player', 'Opponent', 'bf-alt', 'gf-alt'], 'bf-alt', null) == 'Opponent,bf-alt',
+      'player file replaces Voices-Player: ' + kept(['Player', 'Opponent', 'bf-alt', 'gf-alt'], 'bf-alt', null));
+    check(kept(['Player', 'Opponent', 'pico'], null, 'Pico') == 'Player,pico', 'opponent file replaces Voices-Opponent');
+    check(kept(['Player', 'Opponent', 'choir'], 'bf-alt', 'rival') == 'Player,Opponent,choir',
+      'nothing is dropped when no character file was shipped');
+    check(kept(['alto', 'bass'], null, null) == 'alto,bass' && kept([null, 'Player'], 'lead', '') == 'null,Player',
+      'free stem names without character files keep every stem');
+    // a format that gave each stem its side (V-Slice) keeps them even when an id
+    // happens to be a character's vocals_file; Psych's own side names still follow the rule
+    var vsliceKeep = SourceVocalRole.keepStems(['pico', 'darnell', 'Player'], 'pico', null, ['player', 'opponent', 'player']);
+    check(vsliceKeep.join(',') == 'true,true,false', 'stems with a format-given side were dropped: ' + vsliceKeep.join(','));
+    check(SourceVocalRole.keepStems(['bf-alt', 'choir'], 'bf-alt', null, ['shared', 'shared']).join(',') == 'true,false',
+      'shared stems still follow the Psych rule');
 
     // the player stem leads even though the files sort opponent first
     check(SourceVocalRole.primaryIndex(['opponent', 'player']) == 1, 'player stem should lead');
@@ -132,8 +158,8 @@ typedef SongImport = { @:optional var vocalStems:Array<SongImportVocalStem>; }
 class Main {
   METHODS
   static function check(ok:Bool, message:String):Void if (!ok) throw message;
-  static function describe(folder:String):String {
-    var song:SongImport = {vocalStems: findImportVocalStems(Path.join([Sys.args()[0], folder]))};
+  static function describe(folder:String, combinedPlaysAsPlayer:Bool = true):String {
+    var song:SongImport = {vocalStems: findImportVocalStems(Path.join([Sys.args()[0], folder]), combinedPlaysAsPlayer)};
     normalizeSourceVocalRoles(song);
     return [for (stem in song.vocalStems) stem.destination + '=' + stem.role].join(',');
   }
@@ -145,8 +171,16 @@ class Main {
     // a player stem alone still replaces the combined file
     check(describe('player-and-combined') == 'Voices-Player.ogg=player',
       'player beside combined: ' + describe('player-and-combined'));
-    // an opponent stem cannot stand in for the combined file
-    check(describe('opponent-and-combined') == '', 'opponent beside combined: ' + describe('opponent-and-combined'));
+    // an opponent stem beside the combined file plays with that file as the
+    // player's voice, the way Psych and Nightmare Vision fall back to it
+    check(describe('opponent-and-combined') == 'Voices.ogg=player,Voices-Opponent.ogg=opponent',
+      'opponent beside combined: ' + describe('opponent-and-combined'));
+    // engines that only load the combined file never played that stem, so it
+    // stays out for them; their other layouts read the same as before
+    check(describe('opponent-and-combined', false) == '',
+      'opponent beside combined without the fallback: ' + describe('opponent-and-combined', false));
+    for (folder in ['pair-and-combined', 'pair', 'player-and-combined', 'named-and-combined', 'mixed-and-combined', 'named', 'combined'])
+      check(describe(folder, false) == describe(folder), 'fallback flag changed ' + folder);
     // other stems beside a combined file stay out, as before
     check(describe('named-and-combined') == '', 'named beside combined: ' + describe('named-and-combined'));
     check(describe('mixed-and-combined') == 'Voices-Opponent.ogg=opponent,Voices-Player.ogg=player',
@@ -165,6 +199,8 @@ class SourceVocalRolesTest(unittest.TestCase):
         fixture = RUNTIME_FIXTURE.replace(
             "RESOLVE", method(play_state, "resolveImportedVocalStemRole"))
         loader = method(play_state, "initializeVocalTracks")
+        self.assertIn("SourceVocalRole.keepStems([for (entry in stems) vocalStemId(entry)]", loader)
+        self.assertIn("if (!keepStem[stemIndex])", loader)
         self.assertLess(loader.index("SourceVocalRole.primaryIndex("), loader.index("vocals = sounds[0].sound"),
                         "the player stem has to be chosen before the main vocal object is")
         getter = method(play_state, "get_opponentVocals")
@@ -184,6 +220,14 @@ class SourceVocalRolesTest(unittest.TestCase):
     def test_importer_keeps_the_split_pair_and_writes_its_roles(self):
         importer = (ROOT / "source/ModuleFunctions.hx").read_text()
         self.assertIn("engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH", importer)
+        # Only the Psych-family discovery asks for the combined-file fallback; the
+        # shared song builder keeps the default for every other engine.
+        self.assertEqual(importer.count("findImportVocalStems(songFolder, true)"), 1)
+        gate = importer.index("if (songData != null && (engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH)) {")
+        fallback = importer.index("findImportVocalStems(songFolder, true)")
+        self.assertLess(gate, fallback)
+        self.assertLess(fallback, importer.index("normalizeSourceVocalRoles(songData);", gate))
+        self.assertIn("var splitVocalStems = findImportVocalStems(audioRoot);", importer)
         methods = "\n".join(method(importer, name) for name in (
             "normalizedImportFileName", "isImportFile", "findImportFile", "findImportVocalStems",
             "normalizeSourceVocalRoles"))

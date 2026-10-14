@@ -40,7 +40,7 @@ class PsychStageTransitionCallbacksTest(unittest.TestCase):
         self.assertIn("if (runPsychStageEndCallback()) return;", source)
         self.assertIn("PsychOwnerPaths.create(ownerRoot, psychStageLibrary)", source)
         self.assertIn("videoCutscene = clip;", source)
-        self.assertIn("var callback = clip.skipRequested ? clip.onSkip : clip.finishCallback;", source)
+        self.assertIn("var callback = clip.skipped || clip.skipRequested ? clip.onSkip : clip.finishCallback;", source)
         # One Enter press skips every cutscene, so the stage video no longer asks for a hold.
         self.assertNotIn("skipHoldSeconds: 1", source)
         self.assertIn("public var cameraSpeed(get, set):Float", source)
