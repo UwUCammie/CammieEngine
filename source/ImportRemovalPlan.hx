@@ -44,6 +44,10 @@ class ImportRemovalPlan {
 	public var candidateSnapshots(default, null):Array<String> = [];
 	public var sharedSnapshots(default, null):Array<String> = [];
 	public var dependents(default, null):Array<String> = [];
+	/** Packages a preview added to the request because they are tied to it. */
+	public var linkedOwners(default, null):Array<String> = [];
+	var dependencyEdges:Array<{root:String, on:String}> = [];
+	static inline var DEPENDS:String = 'Surviving package depends on this selection: ';
 	public var blockers(default, null):Array<String> = [];
 	public var transactionVersions(default, null):Map<String,String> = new Map();
 	public var inventoryComplete(default, null):Bool = false;
@@ -142,7 +146,10 @@ class ImportRemovalPlan {
 					snapshots.get(snapshot)[entry.selected ? 0 : 1] = true;
 				}
 				if (!entry.selected) for (dependency in entry.dependencies) if (affected.exists(dependency))
-					for (root in entry.roots) dependentRoots.set(root, true);
+					for (root in entry.roots) {
+						dependentRoots.set(root, true);
+						plan.dependencyEdges.push({root:root, on:dependency});
+					}
 				var registryBaselines:Map<String,Bool> = new Map();
 				if (entry.selected) {
 					var values:Dynamic = Reflect.field(entry.manifest.revision, 'registries');
@@ -197,7 +204,7 @@ class ImportRemovalPlan {
 				if (refs[0]) (refs[1] ? plan.sharedSnapshots : plan.candidateSnapshots).push(snapshot);
 			}
 			plan.dependents = sortedKeys(dependentRoots);
-			for (root in plan.dependents) plan.blockers.push('Surviving package depends on this selection: ' + root);
+			for (root in plan.dependents) plan.blockers.push(DEPENDS + root);
 			plan.registryPaths = [for (key in sortedKeys(registrySet)) registrySet.get(key)];
 			plan.transactionOwners.sort(Reflect.compare);
 			plan.inventoryComplete = true;
@@ -207,6 +214,23 @@ class ImportRemovalPlan {
 			plan.candidateFiles = []; plan.candidateSnapshots = [];
 		}
 		return plan;
+	}
+
+	/** Recount dependents once a partial removal has narrowed affectedOwners to the
+	 * packages that really go: a survivor that only needs a kept sibling is not one. */
+	public function relink():Array<String> {
+		var found:Map<String,Bool> = new Map();
+		for (edge in dependencyEdges) if (affectedOwners.indexOf(edge.on) >= 0) found.set(edge.root, true);
+		dependents = sortedKeys(found);
+		blockers = [for (blocker in blockers) if (!StringTools.startsWith(blocker, DEPENDS)) blocker];
+		for (root in dependents) blockers.push(DEPENDS + root);
+		return dependents;
+	}
+
+	/** Everything in this plan beyond what was asked for, for a second confirmation. */
+	public function markLinked(requested:Array<String>):Void {
+		var asked = [for (root in requested) ownerRoot(root)];
+		linkedOwners = [for (root in affectedOwners) if (asked.indexOf(root) < 0) root];
 	}
 
 	/** Validated logical roots, including materialized members of a retained family. */

@@ -104,7 +104,7 @@ class RuntimeLibraryRemovalProbe {
 				case 2:
 					if (state.busy) return;
 					check(state.phase == 'preview','Real receipt preview blocked: ' + state.label);
-					check(ui().selected == 0 && ui().actions[0].label.indexOf('Cancel') == 0,'Removal default is destructive');
+					check(ui().selected == 0 && ui().actions[0].label.indexOf('NO') == 0,'Removal default is destructive');
 					check(state.plan.candidateFiles.length > 0 && ui().detail.text.indexOf('preserved') >= 0,'Missing concrete managed preview');
 					var confirmationImage = lime.app.Application.current.window.readPixels(); check(confirmationImage != null,'Missing confirmation framebuffer');
 					File.saveBytes(RuntimeSmokeHarness.config().logPath + '.confirmation.png',confirmationImage.encode());

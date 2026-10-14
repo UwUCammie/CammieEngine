@@ -11,9 +11,12 @@ BODY=r'''  Sys.setCwd(root);
   write(root+"/assets/data/baseSongKeys.json",[]);
   if(mode=="unowned")File.saveContent(root+"/"+ownerRoot+"/local.txt","private local bytes");
   if(mode=="family3") {
-   var blocked=false;
-   try {var corePlan=ImportRemovalTransaction.preview(root,["assets/imported_mods/core"],[]);blocked=corePlan.blockers.length>0;}catch(_:Dynamic)blocked=true;
-   check(blocked,"shared family core could be removed while a surviving member depends on it");
+   // The core cannot leave while members stay, so asking for it asks for the whole
+   // family, and the members are reported as linked for a second confirmation.
+   var corePlan=ImportRemovalTransaction.preview(root,["assets/imported_mods/core"],[]);
+   check(corePlan.selectedOwners.length==1+corePlan.linkedOwners.length && corePlan.linkedOwners.indexOf(ownerRoot)>=0,
+    "shared family core could be removed while a surviving member depends on it: "+corePlan.linkedOwners.join(",")+" / "+corePlan.blockers.join("; "));
+   check(corePlan.linkedOwners.indexOf("assets/imported_mods/core")<0,"requested package reported as its own link");
    check(File.getContent(root+"/assets/imported_mods/core/__nmv_core/core.bin")=="shared core payload","blocked core preview changed bytes");
   }
   var plan=ImportRemovalTransaction.preview(root,[ownerRoot],[]);

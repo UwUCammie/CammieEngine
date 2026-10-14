@@ -55,6 +55,13 @@ class Main {
    visit(path);entries.sort(Reflect.compare);return entries.join("\n");
   }
   var before=tree(root);
+  if(mode=="unknown" || mode=="catalog" || mode=="global") {
+   // A removal tolerates a package no receipt accounts for: it is reported and
+   // left out, while the receipted import beside it is still fully audited.
+   var lenient=ImportInstalledOwnership.inspect(root,manifests,protectedRoots,null,true);
+   check(lenient.complete && lenient.unmanaged.join(",")=="assets/imported_mods/unknown","unmanaged package not reported: "+lenient.blockers.join("; "));
+   check(lenient.charts.length==1 && lenient.charts[0].ownerRoot==ownerRoot && lenient.owners.indexOf("assets/imported_mods/unknown")<0,"unmanaged package joined the audit");
+  }
   var audit=ImportInstalledOwnership.inspect(root,manifests,protectedRoots,mode=="cancel"?function() return true:null);
   if(mode=="valid" || mode=="protected") check(audit.complete && audit.charts.length==1 && audit.charts[0].ownerRoot==ownerRoot,"valid audit failed: "+audit.blockers.join("; "));
   else check(!audit.complete && audit.charts.length==0 && audit.owners.length==0 && audit.blockers.length>0,"invalid audit accepted: "+mode);

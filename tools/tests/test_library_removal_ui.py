@@ -14,7 +14,7 @@ class LibraryRemovalUiTest(unittest.TestCase):
                 (work / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), encoding='utf-8')
             files = {'LibraryPackageLabel.hx':'class LibraryPackageLabel {public static function caption(owner:String,title:String):String return title;}',
                 'LibraryMenuSubState.hx': '''package;
- typedef LibraryMenuAction = {var label:String; var run:Void->Void;}
+ typedef LibraryMenuAction = {var label:String; var run:Void->Void; @:optional var tone:Null<Int>;}
  class LibraryMenuSubState {
  public var actions:Array<LibraryMenuAction>=[]; public var selected:Int=0;
  public var heading:String=''; public var status:flixel.text.FlxText=new flixel.text.FlxText();public var cardTitle:String='';public var cardCaption:String='';public var panelX:Int=0;public var rowsY:Int=0;public static inline var ROW_PITCH:Int=40;public static inline var PANEL_WIDTH:Int=760;
@@ -55,7 +55,11 @@ class LibraryRemovalUiTest(unittest.TestCase):
  var plan:Dynamic={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha'],blockers:[],candidateFiles:[1,2],sharedFiles:[1],candidateSnapshots:[1],sharedSnapshots:[],registryPaths:[1]};
  ImportRemovalManager.state={phase:'preview',busy:false,label:'Review',plan:plan,published:false,cancellable:false};
  var publications=0;var ui=new LibraryRemovalSubState('assets/imported_mods/alpha',function()publications++);ui.create();
- check(ui.selected==0&&ui.actions[0].label.indexOf('Cancel')==0,'destructive default');
+ check(ui.selected==0&&ui.actions[0].label.indexOf('NO')==0,'destructive default');
+ check(ui.actions.length==2&&ui.actions[1].label.indexOf('YES')==0,'confirmation is not a plain yes or no');
+ check(ui.actions[0].tone==LibraryRemovalPresentation.NO_COLOR&&ui.actions[1].tone==LibraryRemovalPresentation.YES_COLOR,'yes and no are not coloured');
+ check((LibraryRemovalPresentation.NO_COLOR>>8&255)>200&&(LibraryRemovalPresentation.NO_COLOR>>16&255)<120,'keeping is not green');
+ check((LibraryRemovalPresentation.YES_COLOR>>16&255)>200&&(LibraryRemovalPresentation.YES_COLOR>>8&255)<120,'removing is not red');
  check(ui.detail.text.indexOf('2 exclusive')>=0&&ui.detail.text.indexOf('1 shared')>=0&&ui.detail.text.indexOf('history are preserved')>=0,'incomplete preview');
  ui.actions[0].run();check(ui.closed&&ImportRemovalManager.confirms==0,'cancel confirmed removal');
  ui=new LibraryRemovalSubState('assets/imported_mods/alpha',function()publications++);ui.create();ui.actions[1].run();
@@ -75,6 +79,19 @@ class LibraryRemovalUiTest(unittest.TestCase):
  var priorConfirms=ImportRemovalManager.confirms;var library=new LibraryActionsSubState('',false,function(_){});library.create();var recoveryIndex=-1;for(i in 0...library.actions.length)if(library.actions[i].label=='Recover interrupted mod removal')recoveryIndex=i;check(recoveryIndex>=0,'empty library has no recovery entry');library.actions[recoveryIndex].run();check(Std.isOfType(library.child,LibraryRemovalSubState)&&library.child.actions[1].label.indexOf('Retry')==0,'generic action did not open recovery');check(ImportRemovalManager.confirms==priorConfirms,'generic recovery started new deletion');library.child.actions[0].run();check(!library.closed,'return closed safe native browsing');flixel.FlxG.state=new FreeplayState();library.actions[recoveryIndex].run();check(Std.isOfType(LoadingState.destination,LibraryRemovalState)&&LoadingState.destination.owner=='','global recovery failed to leave owned scopes through neutral state');check(ImportRemovalManager.confirms==priorConfirms,'neutral empty-owner recovery began deletion');
  check(!LibraryRemovalPresentation.confirmable('preview',true,plan),'busy preview confirmable');
  plan.blockers=[];plan.inventoryComplete=false;check(!LibraryRemovalPresentation.confirmable('preview',false,plan),'incomplete inventory confirmable');
+ // A removal that takes other mods with it asks a second time and names them.
+ var wide:Dynamic={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha','assets/imported_mods/beta','assets/imported_mods/gamma'],linkedOwners:['assets/imported_mods/beta','assets/imported_mods/gamma'],blockers:[],candidateFiles:[1,2,3],sharedFiles:[],candidateSnapshots:[],sharedSnapshots:[],registryPaths:[]};
+ ImportRemovalManager.canPreview=true;ImportRemovalManager.state={phase:'preview',busy:false,label:'Review',plan:wide,published:false,cancellable:false};
+ var before=ImportRemovalManager.confirms;var linkedUi=new LibraryRemovalSubState('assets/imported_mods/alpha');linkedUi.create();
+ check(linkedUi.heading=='Remove installed mod?','first question missing');
+ linkedUi.actions[1].run();
+ check(ImportRemovalManager.confirms==before,'linked mods removed after one confirmation');
+ check(linkedUi.heading=='Also remove 2 linked mods?'&&linkedUi.selected==0,'second question missing or defaults to removal: '+linkedUi.heading);
+ check(linkedUi.actions.length==2&&linkedUi.actions[0].tone==LibraryRemovalPresentation.NO_COLOR&&linkedUi.actions[1].tone==LibraryRemovalPresentation.YES_COLOR,'second question is not coloured');
+ check(linkedUi.actions[1].label.indexOf('3 mods')>=0&&linkedUi.detail.text.indexOf('beta')>=0&&linkedUi.detail.text.indexOf('gamma')>=0,'linked mods are not named');
+ linkedUi.actions[0].run();check(linkedUi.closed&&ImportRemovalManager.confirms==before,'declining linked mods still removed');
+ linkedUi=new LibraryRemovalSubState('assets/imported_mods/alpha');linkedUi.create();linkedUi.actions[1].run();linkedUi.actions[1].run();
+ check(ImportRemovalManager.confirms==before+1,'second confirmation did not remove');
  Sys.println('confirmation contracts passed');
  }}
 ''',

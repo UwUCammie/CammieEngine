@@ -25,10 +25,31 @@ class ImportRemovalTransaction {
 	public static function preview(install:String, selected:Array<String>, protectedRoots:Array<String>,
 		?activeOwners:Array<String>, ?cancel:Void->Bool):ImportRemovalPlan {
 		var manifests = inventory(install,cancel);
-		var plan = ImportRemovalPlan.assess(selected,manifests,true,activeOwners,function() check(cancel));
-		var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel);
+		var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel,true);
+		var chosen = selected == null ? [] : selected.copy();
+		var plan:ImportRemovalPlan = null;
+		var rounds = 0;
+		// A package can be tied to others: one import may have installed several and
+		// be unable to give up just one, and other imports may load content from it.
+		// Rather than refuse, grow the request until nothing left behind needs what
+		// goes. The caller sees the additions in linkedOwners and confirms them.
+		while (true) {
+			plan = ImportRemovalPlan.assess(chosen,manifests,true,activeOwners,function() check(cancel));
+			if (!audit.complete || !plan.inventoryComplete) break;
+			var whole = plan.affectedOwners.copy();
+			var more:Array<String> = [];
+			try ImportRemovalPartition.prepare(install,plan,manifests,audit.charts,cancel) catch (error:Dynamic) {
+				if (cancel != null && cancel()) throw error;
+				// This import cannot be split, so it goes as a whole or not at all.
+				more = [for (root in whole) if (plan.selectedOwners.indexOf(root) < 0) root];
+				if (more.length == 0) throw error;
+			}
+			if (more.length == 0) more = plan.relink();
+			if (more.length == 0 || ++rounds > 64) break;
+			for (root in more) if (chosen.indexOf(root) < 0) chosen.push(root);
+		}
+		if (selected != null && audit.complete && plan.inventoryComplete) plan.markLinked(selected);
 		if (audit.complete) {
-			ImportRemovalPartition.prepare(install,plan,manifests,audit.charts,cancel);
 			var claims:Map<String,Bool> = new Map();
 			for (manifest in manifests) for (file in manifest.files) claims.set(file.path.toLowerCase(),true);
 			var directories = plan.selectedOwners.copy();
@@ -86,7 +107,7 @@ class ImportRemovalTransaction {
 			if (current.blockers.length > 0) throw current.blockers.join('; ');
 			if (fingerprint(current) != fingerprint(reviewed)) throw 'Installed ownership changed. Review the removal again.';
 			var manifests = inventory(install,cancel);
-			var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel);
+			var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel,true);
 			var partition = ImportRemovalPartition.prepare(install,current,manifests,audit.charts,cancel);
 			// Persist identity history before any installed file is changed. Saves,
 			// favorites, categories, difficulty preferences and settings are retained.

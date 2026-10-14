@@ -10,9 +10,11 @@ CHECK=r'''    if(mode=="v3-removal") {
      var selected="assets/imported_mods/"+packageNamespaces[0];
      var survivor="assets/imported_mods/"+packageNamespaces[1];
      var core="assets/imported_mods/"+providerNamespace;
-     var blocked=false;
-     try {var corePreview=ImportRemovalTransaction.preview(install,[core],[]);blocked=corePreview.blockers.length>0;}catch(_:Dynamic)blocked=true;
-     if(!blocked)throw "shared provider deletion was not blocked";
+     // The shared core cannot go while members stay: asking for it widens to the
+     // members, which are reported as linked so the UI asks about them separately.
+     var corePreview=ImportRemovalTransaction.preview(install,[core],[]);
+     if(corePreview.linkedOwners.indexOf(selected)<0 || corePreview.linkedOwners.indexOf(survivor)<0 || corePreview.linkedOwners.indexOf(core)>=0)
+      throw "shared provider deletion did not take its members along: "+corePreview.linkedOwners.join(",")+" / "+corePreview.blockers.join("; ");
      var hashes:Map<String,String>=new Map();
      for(file in committed.files)if(StringTools.startsWith(file.path,survivor+"/"))hashes.set(file.path,ImportSourceSnapshot.sha256File(install+"/"+file.path,65536));
      var preview=ImportRemovalTransaction.preview(install,[selected],[]);

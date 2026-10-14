@@ -21,10 +21,15 @@ class ImportInstalledOwnership {
 	public var blockers(default, null):Array<String> = [];
 	public var charts(default, null):Array<InstalledLibraryIdentity> = [];
 	public var owners(default, null):Array<String> = [];
+	/** Installed packages with no receipt, when the caller asked to tolerate them. */
+	public var unmanaged(default, null):Array<String> = [];
 	function new() {}
 
+	/** With tolerateUnmanaged, a package no receipt accounts for is listed in
+	 * `unmanaged` and left out of the audit instead of failing it. Nothing it holds
+	 * is ever attributed to a retained import, so a removal cannot touch it. */
 	public static function inspect(install:String, manifests:Array<ImportRefreshManifest>,
-		protectedRoots:Array<String>, ?cancel:Void->Bool):ImportInstalledOwnership {
+		protectedRoots:Array<String>, ?cancel:Void->Bool, tolerateUnmanaged:Bool = false):ImportInstalledOwnership {
 		var result = new ImportInstalledOwnership();
 		try {
 			var view = new ImportMetadataInspection(install, cancel);
@@ -55,9 +60,13 @@ class ImportInstalledOwnership {
 					claims.get(path).push({owner:manifest.owner, hash:file.sha256.toLowerCase()});
 				}
 			}
-			function known(root:String):Void {
-				if (!transactions.exists(root) && !protectedOwners.exists(root)) throw 'Installed package has no retained ownership: ' + root;
-				installed.set(root, true);
+			function known(root:String):Bool {
+				if (!transactions.exists(root) && !protectedOwners.exists(root)) {
+					if (!tolerateUnmanaged) throw 'Installed package has no retained ownership: ' + root;
+					if (result.unmanaged.indexOf(root) < 0) result.unmanaged.push(root);
+					return false;
+				}
+				installed.set(root, true); return true;
 			}
 			function claimed(relative:String, root:String):Void {
 				var entries = claims.get(relative.toLowerCase());
@@ -85,7 +94,10 @@ class ImportInstalledOwnership {
 				var record = view.metadata(provenance, 131072);
 				if (Reflect.field(record, 'version') != 1 || text(record, 'destinationFolder') != folder)
 					throw 'Invalid installed chart provenance: ' + folder;
-				var root = ImportRemovalPlan.ownerRoot(text(record, 'sourceOwner')); known(root);
+				var root = ImportRemovalPlan.ownerRoot(text(record, 'sourceOwner'));
+				// A chart whose package has no receipt is not attributed to anyone, but its
+				// metadata is on disk, so an older claim on the same folder is not 'missing'.
+				if (!known(root)) { chartFolders.set(folder.toLowerCase(), true); continue; }
 				var engine = ImportEngine.normalize(text(record, 'sourceEngine'));
 				if (engine == ImportEngine.AUTO || engine != engines.get(root)) throw 'Chart source engine disagrees with retained ownership: ' + folder;
 				var source = text(record, 'sourceFolder');
@@ -108,7 +120,8 @@ class ImportInstalledOwnership {
 					if (!Std.isOfType(dependencies, Array)) throw 'Missing retained dependency metadata: ' + root;
 					var declared = [for (dependency in (cast dependencies:Array<Dynamic>)) ImportRemovalPlan.ownerRoot(Std.string(dependency))];
 					for (entry in (cast roots:Array<Dynamic>)) {
-						var provider = ImportRemovalPlan.ownerRoot(text(entry, 'path')); known(provider);
+						var provider = ImportRemovalPlan.ownerRoot(text(entry, 'path'));
+						if (!known(provider)) continue;
 						if (ImportEngine.normalize(text(entry, 'engine')) == ImportEngine.AUTO
 							|| (!protectedOwners.exists(provider) && ImportEngine.normalize(text(entry, 'engine')) != engines.get(provider)))
 							throw 'Invalid compatibility provider engine: ' + folder;
@@ -135,8 +148,7 @@ class ImportInstalledOwnership {
 					continue;
 				}
 				var root = ImportRemovalPlan.ownerRoot('assets/imported_mods/' + name);
-				if (protectedOwners.exists(root)) continue;
-				known(root);
+				if (protectedOwners.exists(root) || !known(root)) continue;
 				var marker = Path.join([path, '.cammie-owner.json']);
 				if (view.exists(marker)) {
 					var record = view.metadata(marker, 131072);
@@ -160,10 +172,11 @@ class ImportInstalledOwnership {
 			}
 			view.verify();
 			result.owners = [for (root in installed.keys()) root]; result.owners.sort(Reflect.compare);
+			result.unmanaged.sort(Reflect.compare);
 			result.charts.sort(function(a,b) return Reflect.compare(a.folder, b.folder));
 			result.complete = true;
 		} catch (error:Dynamic) {
-			result.charts = []; result.owners = []; result.blockers.push(Std.string(error));
+			result.charts = []; result.owners = []; result.unmanaged = []; result.blockers.push(Std.string(error));
 		}
 		return result;
 	}

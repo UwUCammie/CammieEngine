@@ -12,6 +12,8 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 	var signature:String = '';
 	var notified:Bool = false;
 	var started:Bool = false;
+	/** 0 asks about the chosen mod, 1 asks again about the mods linked to it. */
+	var step:Int = 0;
 
 	public function new(owner:String, ?onPublished:Void->Void, ?displayTitle:String) {
 		super(); this.owner = owner; this.onPublished = onPublished;
@@ -53,16 +55,25 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 			return;
 		}
 		var plan = state.plan;
-		var key = state.phase + ':' + state.busy + ':' + state.cancellable + ':' + state.published + ':' + state.label;
+		var linked = LibraryRemovalPresentation.linked(plan);
+		var confirming = LibraryRemovalPresentation.confirmable(state.phase, state.busy, plan);
+		if (!confirming || linked.length == 0) step = 0;
+		var key = state.phase + ':' + state.busy + ':' + state.cancellable + ':' + state.published + ':' + state.label + ':' + step;
 		if (key != signature) {
 			signature = key;
 			var entries:Array<LibraryMenuSubState.LibraryMenuAction> = [];
 			var title = 'Remove installed mod?';
-			if (LibraryRemovalPresentation.confirmable(state.phase, state.busy, plan)) {
-				entries.push({label:'Cancel (keep installed)', run:leaveOrCancel});
-				entries.push({label:'Remove the listed managed content', run:function() {
-					ImportRemovalManager.confirm(); signature = ''; refreshRemoval();
-				}});
+			if (confirming) {
+				// Keeping is always first, so the default choice never deletes anything.
+				var total = linked.length + 1;
+				if (step == 1) title = 'Also remove ' + linked.length + ' linked mod' + (linked.length == 1 ? '?' : 's?');
+				entries.push({label:step == 1 ? 'NO   Keep all ' + total + ' mods installed' : 'NO   Keep it installed',
+					run:leaveOrCancel, tone:LibraryRemovalPresentation.NO_COLOR});
+				entries.push({label:step == 1 ? 'YES  Remove all ' + total + ' mods' : 'YES  Remove this mod',
+					tone:LibraryRemovalPresentation.YES_COLOR, run:function() {
+						if (step == 0 && linked.length > 0) step = 1; else ImportRemovalManager.confirm();
+						signature = ''; refreshRemoval();
+					}});
 			} else if (state.busy) {
 				title = state.phase == 'preview' ? 'Checking installed mod' : 'Removing installed mod';
 				if (state.cancellable) entries.push({label:'Cancel and restore installed content', run:function() ImportRemovalManager.cancel()});
@@ -78,7 +89,7 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 			}
 			showActions(title, entries);
 		}
-		detail.text = LibraryRemovalPresentation.summary(plan, owner, displayTitle);
+		detail.text = step == 1 ? LibraryRemovalPresentation.linkedSummary(plan) : LibraryRemovalPresentation.summary(plan, owner, displayTitle);
 		if (plan != null && plan.blockers.length > 0) {
 			detail.text = 'No content will be removed.\n' + plan.blockers.join('\n');
 			for (blocker in (cast plan.blockers:Array<String>)) if (blocker.indexOf('active or reserved') >= 0) { detail.text += '\nReturn to Imported Mods before removing an active package.'; break; }

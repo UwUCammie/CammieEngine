@@ -55,7 +55,19 @@ class Main {
     var again=inspect();check(Json.stringify(all)==Json.stringify(again),"unstable ordering");
    case "orphan-pointer": FS.deleteFile(a.manifest);rejects("missing manifest accepted");
    case "hidden-owner": FS.deleteFile(b.pointer);rejects("owner absent from pointer index was skipped");
-   case "missing-state": File.saveContent(records()+"/"+hash("lost")+".json",Json.stringify({id:hash("lost")}));rejects("orphan pointer skipped");
+   case "failed-import-pointer":
+    // An import publishes its pointer first. If it then fails before its first
+    // transaction, the pointer is all that is left and it owns nothing.
+    File.saveContent(records()+"/"+hash("lost")+".json",Json.stringify({id:hash("lost")}));
+    var before=tree(root);var all=inspect();check(all.length==2,"failed import pointer changed the inventory");
+    var plan=ImportRemovalPlan.assess(["assets/imported_mods/alpha"],all,true,[]);
+    check(plan.blockers.length==0 && plan.candidateFiles.length==1,"failed import pointer blocked removing another import");
+    check(tree(root)==before,"failed import pointer inspection mutated state");
+   case "rolled-back-pointer":
+    var id=hash("rolled");var owner="retained-import:"+id;var tx=state()+"/"+hash(owner)+"/transactions/txn-rolled";FS.createDirectory(tx);
+    File.saveContent(tx+"/journal-00000001.json",Json.stringify({schemaVersion:1,owner:owner,transactionId:"txn-rolled",installRoot:root,phase:"rolled-back"}));
+    File.saveContent(records()+"/"+id+".json",Json.stringify({id:id}));
+    check(inspect().length==2,"rolled back import with a pointer blocked the inventory");
    case "bad-pointer": File.saveContent(a.pointer,"{}");rejects("corrupt pointer skipped");
    case "bad-receipt": File.saveContent(a.receipt,"{}");rejects("corrupt receipt accepted");
    case "missing-receipt": FS.deleteFile(a.receipt);rejects("unfinished transaction accepted");
@@ -63,9 +75,24 @@ class Main {
    case "unknown-state": FS.createDirectory(state()+"/unknown");rejects("unknown state skipped");
    case "unknown-record": File.saveContent(records()+"/unexpected.tmp","{}");rejects("uncommitted pointer skipped");
    case "newest-journal": File.saveContent(a.transaction+"/journal-99999999.json","broken");rejects("fell back past malformed newest journal");
-   case "wrong-install":
+   case "moved-install":
+    // The install folder was moved after this import committed. Nothing is left to
+    // roll back into the old folder, so the import stays listed and removable.
     var names=FS.readDirectory(a.transaction);names=[for(n in names)if(StringTools.startsWith(n,"journal-"))n];names.sort(Reflect.compare);
-    var path=a.transaction+"/"+names[names.length-1];var journal:Dynamic=Json.parse(File.getContent(path));journal.installRoot=root+"/elsewhere";File.saveContent(path,Json.stringify(journal));rejects("foreign install accepted");
+    var path=a.transaction+"/"+names[names.length-1];var journal:Dynamic=Json.parse(File.getContent(path));journal.installRoot=root+"/elsewhere";File.saveContent(path,Json.stringify(journal));
+    var before=tree(root);check(inspect().length==2,"committed import was lost after the install moved");
+    check(tree(root)==before,"moved install inspection mutated state");
+   case "moved-unfinished":
+    // Without a receipt the journal could still restore files into the old folder.
+    var names=FS.readDirectory(a.transaction);names=[for(n in names)if(StringTools.startsWith(n,"journal-"))n];names.sort(Reflect.compare);
+    var path=a.transaction+"/"+names[names.length-1];var journal:Dynamic=Json.parse(File.getContent(path));journal.installRoot=root+"/elsewhere";File.saveContent(path,Json.stringify(journal));
+    FS.deleteFile(a.receipt);var before=tree(root);var message="";try inspect() catch(e:Dynamic) message=Std.string(e);
+    check(message.indexOf("different install folder")>=0,"unfinished foreign transaction accepted: "+message);
+    check(tree(root)==before,"unfinished foreign inspection mutated state");
+   case "moved-rolled-back":
+    var id=hash("rolled");var owner="retained-import:"+id;var tx=state()+"/"+hash(owner)+"/transactions/txn-rolled";FS.createDirectory(tx);
+    File.saveContent(tx+"/journal-00000001.json",Json.stringify({schemaVersion:1,owner:owner,transactionId:"txn-rolled",installRoot:root+"/elsewhere",phase:"rolled-back"}));
+    check(inspect().length==2,"rolled back import from the old folder blocked the inventory");
    case "cancel":
     var before=tree(root);var cancelled=false;try inspect(function() return true) catch(e:Dynamic) cancelled=true;
     check(cancelled && tree(root)==before,"cancel did not preserve state");
@@ -89,7 +116,7 @@ class ImportRemovalInventoryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=TEST_TMP) as folder:
             fixture=Path(folder)
             (fixture/'Main.hx').write_text(FIXTURE,encoding='utf-8')
-            for mode in ('empty','valid','orphan-pointer','hidden-owner','missing-state','bad-pointer','bad-receipt','missing-receipt','bad-manifest','unknown-state','unknown-record','newest-journal','wrong-install','cancel','changed-pointer','rolled-back'):
+            for mode in ('empty','valid','orphan-pointer','hidden-owner','failed-import-pointer','rolled-back-pointer','bad-pointer','bad-receipt','missing-receipt','bad-manifest','unknown-state','unknown-record','newest-journal','moved-install','moved-unfinished','moved-rolled-back','cancel','changed-pointer','rolled-back'):
                 with self.subTest(mode=mode):
                     install=fixture/mode;install.mkdir()
                     result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',str(ROOT/'.haxelib/tjson/1,4,0'),'-cp',str(fixture),'--run','Main',mode,str(install)],cwd=fixture,text=True,capture_output=True,timeout=60)

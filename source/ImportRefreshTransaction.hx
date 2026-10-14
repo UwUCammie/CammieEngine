@@ -698,10 +698,10 @@ class ImportRefreshTransaction {
 			if (!~/^[a-f0-9]{64}$/.match(scope)) throw 'Unexpected ownership state entry: $scope';
 			var inspected = inspectOwnerState(inspection, stateRoot, scope, null, cancelCheck);
 			var owner = inspected.owner; var manifest = inspected.manifest;
-			if (manifest == null) {
-				if (owner != null && pointers.exists(owner)) throw 'Retained pointer has no committed manifest: $owner';
-				continue;
-			}
+			// No manifest here means every transaction for this owner rolled back
+			// (inspectOwnerState rejects anything unfinished or half committed), so it
+			// installed nothing, with or without the pointer its import left behind.
+			if (manifest == null) continue;
 			if (!pointers.exists(owner)) throw 'Committed owner has no matching retained pointer: $scope';
 			var record:Dynamic = manifest.revision == null ? null : Reflect.field(manifest.revision, 'importRecord');
 			if (record == null || Reflect.field(record, 'schemaVersion') != 1
@@ -709,7 +709,9 @@ class ImportRefreshTransaction {
 				throw 'Committed retained identity mismatch: $owner';
 			pointers.set(owner, true); result.push(manifest);
 		}
-		for (owner in pointers.keys()) if (!pointers.get(owner)) throw 'Retained pointer has no ownership state: $owner';
+		// A pointer is published before its import's first transaction. One with no
+		// committed manifest belongs to an import that failed or was stopped before it
+		// installed anything, so it owns no files and must not block removing the rest.
 		// Detect a publication during this read. Execution must still reserve owners
 		// and revalidate under its own transaction lock after user confirmation.
 		inspection.verify();
@@ -748,9 +750,13 @@ class ImportRefreshTransaction {
 			var journalOwner:Dynamic = Reflect.field(journal, 'owner');
 			if (!Std.isOfType(journalOwner, String) || digestText(cast journalOwner) != scope
 				|| Reflect.field(journal, 'schemaVersion') != MANIFEST_SCHEMA
-				|| Reflect.field(journal, 'transactionId') != transaction
-				|| !samePath(Path.normalize(Std.string(Reflect.field(journal, 'installRoot'))), install))
+				|| Reflect.field(journal, 'transactionId') != transaction)
 				throw 'Transaction journal identity mismatch: $transaction';
+			// The recorded folder only matters to a transaction that could still be rolled
+			// back into it. A committed or rolled-back one has nothing left to restore, so
+			// an install that was moved or renamed afterwards keeps its history, the same
+			// way recover() treats it.
+			var elsewhere = !samePath(Path.normalize(Std.string(Reflect.field(journal, 'installRoot'))), install);
 			if (owner == null) owner = cast journalOwner;
 			if (owner != journalOwner) throw 'Mixed transaction owners: $scope';
 			if (members.indexOf('receipt.json') >= 0) {
@@ -758,7 +764,8 @@ class ImportRefreshTransaction {
 				validateReceipt(Path.join([path, 'receipt.json']), journal);
 				committed.set(transaction, true);
 			} else if (Reflect.field(journal, 'phase') != 'rolled-back')
-				throw 'Transaction requires recovery before removal: $transaction';
+				throw elsewhere ? 'Unfinished transaction was started in a different install folder: $transaction'
+					: 'Transaction requires recovery before removal: $transaction';
 		}
 		if (raw == null) {
 			if (committed.keys().hasNext()) throw 'Committed owner is missing its manifest: $scope';

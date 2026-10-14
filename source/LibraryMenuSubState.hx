@@ -4,7 +4,7 @@ import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
 
-typedef LibraryMenuAction = {var label:String; var run:Void->Void;}
+typedef LibraryMenuAction = {var label:String; var run:Void->Void; @:optional var tone:Null<Int>;}
 
 /** Bounded, shared action presentation for host library management: a
  * centred popup over the dimmed menu behind it, with the chart it acts on
@@ -63,7 +63,7 @@ class LibraryMenuSubState extends MusicBeatSubstate {
 		}
 		rowsY = panelY + LibraryMenuLayout.rowsTop(hasCard);
 		highlight = new FlxSprite(panelX + 16, rowsY).makeGraphic(PANEL_WIDTH - 32, ROW_PITCH - 6, 0xFF2B3C57); add(highlight);
-		marker = new FlxSprite(panelX + 16, rowsY).makeGraphic(4, ROW_PITCH - 6, 0xFFFFD166); add(marker);
+		marker = new FlxSprite(panelX + 16, rowsY).makeGraphic(6, ROW_PITCH - 6, 0xFFFFFFFF); add(marker);
 		for (i in 0...VISIBLE_ROWS) {
 			var row = new FlxText(panelX + 32, rowsY + i * ROW_PITCH + 4, PANEL_WIDTH - 64, '', 20);
 			row.setFormat('assets/fonts/vcr.ttf', 20, 0xFFFFFFFF, LEFT);
@@ -93,8 +93,15 @@ class LibraryMenuSubState extends MusicBeatSubstate {
 			var label = actions[index].label;
 			if (label.length > 56) label = label.substr(0, 53) + '...';
 			rows[slot].text = label;
-			rows[slot].color = index == selected ? 0xFFFFD76A : 0xFFCFD8E5;
-			if (index == selected) { highlight.y = rowsY + slot * ROW_PITCH; marker.y = highlight.y; }
+			// A toned row keeps its colour whether or not it is selected, so a yes
+			// and a no never look alike; the marker beside the selected one matches.
+			var tone = actions[index].tone;
+			rows[slot].color = tone != null ? tone : index == selected ? 0xFFFFD76A : 0xFFCFD8E5;
+			rows[slot].alpha = tone != null && index != selected ? 0.72 : 1;
+			if (index == selected) {
+				highlight.y = rowsY + slot * ROW_PITCH; marker.y = highlight.y;
+				marker.color = tone != null ? tone : 0xFFFFD166;
+			}
 		}
 		status.text = UserLibrary.error != '' ? UserLibrary.error
 			: (actions.length > 0 ? actions[selected].label + '\n' + (selected + 1) + ' / ' + actions.length : '');

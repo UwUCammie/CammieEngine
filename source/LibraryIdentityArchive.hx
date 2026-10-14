@@ -142,7 +142,7 @@ class LibraryIdentityArchive {
 		if (selected == null || selected.length == 0) throw 'Select a package to archive.';
 		var owners = [for (owner in selected) ImportRemovalPlan.ownerRoot(owner)];
 		var manifests = ImportRefreshTransaction.inspectRetainedManifests(install,Path.join([install,'import-cache/state']),Path.join([install,'import-cache/records']),cancel);
-		var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel);
+		var audit = ImportInstalledOwnership.inspect(install,manifests,protectedRoots,cancel,true);
 		if (!audit.complete) throw audit.blockers.join('; ');
 		var committedOwners:Map<String,Bool> = new Map();
 		for (manifest in manifests) for (owner in ImportRemovalPlan.manifestRoots(manifest)) committedOwners.set(owner,true);

@@ -52,6 +52,10 @@ class Main {
   var dependency=assess(["alpha"],[a,b]);
   check(dependency.dependents.join(",")==root("beta") && dependency.blockers.length>0,"surviving dependency not protected");
   check(assess(["alpha","beta"],[a,b]).dependents.length==0,"selected dependent treated as survivor");
+  check(dependency.relink().join(",")==root("beta"),"relink lost a real dependent");
+  dependency.markLinked([root("alpha")]);check(dependency.linkedOwners.length==0,"request reported as its own link");
+  var widened=assess(["alpha","beta"],[a,b]);widened.markLinked([root("alpha")]);
+  check(widened.linkedOwners.join(",")==root("beta") && widened.blockers.length==0,"added package not reported as linked");
   b.revision.importRecord.runtimeDependencyOwners=[];
   check(assess(["alpha"],[a,b],[root("alpha")]).blockers.length>0,"active selected owner ignored");
   check(assess(["alpha"],[a,b],[root("beta")]).blockers.length==0,"unrelated active owner blocked inventory");
