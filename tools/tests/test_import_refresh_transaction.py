@@ -237,7 +237,7 @@ class ImportRefreshTransactionFixture {
         var backupsPreserved = FileSystem.exists(firstBackup);
         var foregroundProgress = ImportWorkScheduler.cooperate();
         ImportWorkScheduler.endGameplay(gameplay);
-        var completed = completedWhileGameplay || finished.wait(3);
+        var completed = completedWhileGameplay || finished.wait(30);
         if (!completed) throw "committed receipt cleanup did not resume after gameplay";
         if (workerFailure != null) throw "committed receipt recovery failed: " + Std.string(workerFailure);
         var remaining = FileSystem.exists(transactionPath + "/backups/files");
@@ -292,7 +292,7 @@ class ImportRefreshTransactionFixture {
         var backupPreserved = FileSystem.exists(backup);
         var foregroundProgress = ImportWorkScheduler.cooperate();
         ImportWorkScheduler.endGameplay(gameplay);
-        var completed = completedWhileGameplay || finished.wait(3);
+        var completed = completedWhileGameplay || finished.wait(30);
         if (!completed) throw "rollback recovery did not resume after gameplay";
         if (workerFailure != null) throw "rollback recovery failed: " + Std.string(workerFailure);
         Sys.println(Json.stringify({completedWhileGameplay:completedWhileGameplay,

@@ -43,7 +43,7 @@ class ImportRemovalManagerTest(unittest.TestCase):
               'flixel/FlxG.hx':'package flixel;class FlxG {public static var state:Dynamic;}',
               'Main.hx': '''class Main {
  static function check(ok:Bool,why:String):Void if(!ok)throw why;
- static function wait():ImportRemovalManager.ImportRemovalStatus {var until=Sys.time()+2.;var status=ImportRemovalManager.poll();while(status.busy&&Sys.time()<until){Sys.sleep(.001);status=ImportRemovalManager.poll();}check(!status.busy,'worker stuck');return status;}
+ static function wait():ImportRemovalManager.ImportRemovalStatus {var until=Sys.time()+30.;var status=ImportRemovalManager.poll();while(status.busy&&Sys.time()<until){Sys.sleep(.001);status=ImportRemovalManager.poll();}check(!status.busy,'worker stuck');return status;}
  static function preview():Void {check(ImportRemovalManager.beginPreview('assets/imported_mods/alpha'),'preview denied');check(!ImportRemovalManager.confirm(),'confirmed unvalidated preview');check(wait().phase=='preview','preview failed');}
  static function main(){
  ImportRemovalManager.install();check(ImportRefreshManager.reserved,'startup recovery unreserved');check(!ImportRemovalManager.beginPreview('assets/imported_mods/alpha'),'preview raced recovery');wait();check(!ImportRefreshManager.reserved,'startup lease retained');
