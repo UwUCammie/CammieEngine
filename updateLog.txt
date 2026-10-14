@@ -1,6 +1,9 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
+v0.0.42 development - CammieEngine
+- Development continues after the published v0.0.41 checkpoint; remaining roadmap requirements stay open.
+
 v0.0.41 alpha - CammieEngine
 - Fixed freezes of several seconds in Psych songs whose Lua scripts join text and numbers often, for example in tween and timer callbacks. Every number in a .. join built throwaway native patterns, and clearing them later stopped the game.
 - Fixed a crash when a script swaps characters through dadMap, boyfriendMap or gfMap after addCharacterToList.
