@@ -3,6 +3,7 @@ from pathlib import Path
 import re,subprocess,tempfile,unittest
 from haxe_test_support import HAXE_COMMAND,FixturePath
 from test_source_event_preparation import extract_method
+from test_source_builtin_events import builtin_host_stubs,builtin_sources
 ROOT=Path(__file__).resolve().parents[2]
 EVENTS=['Game Flash','Add Camera Zoom','Camera Zoom','HUD Fade','Camera Follow Pos','Screen Shake','Set Cam Zoom','Set Cam Pos','Camera Zoom Chain','Screen Shake Chain']
 
@@ -19,7 +20,7 @@ class PlayState {
  public var actual=false;public var mode=0;public var events:Array<String>=[];public var altered=false;
  public function triggerEventNote(n:String,a:String,b:String) {
   events.push(n+':'+a+':'+b+':remaining='+totalBeat);
-  if(actual)new NightmareVisionLegacyCameraEvents(this).apply(n,a,b);else source(n,a,b);
+  if(actual)applyActual(new NightmareVisionLegacyCameraEvents(this),n,a,b);else source(n,a,b);
   if(n=='Add Camera Zoom'&&!altered) {
    altered=true;
    switch(mode) {
@@ -31,6 +32,12 @@ class PlayState {
   }
  }
  public function new(){}
+ public function applyActual(adapter:NightmareVisionLegacyCameraEvents,n:String,a:String,b:String):Void {
+  if(SourceBuiltinEvents.apply(this,SourceBuiltinEvents.NIGHTMARE_LEGACY,n,a,b)==SourceBuiltinEvents.UNHANDLED)adapter.apply(n,a,b);
+ }
+ function sourceCameraZoomsEnabled():Bool return nightmareVisionPrefs.view.camZooms;
+ function setGameCameraZoom(z:Float):Void {camGame.zoom=z;if(FlxG.camera!=camGame)FlxG.camera.zoom=z;}
+ __STUBS__
  public function legacyScriptRegistry()return registry;
  function setOnHScripts(n:String,v:Dynamic):Void registry.setOnScripts(n,v,registry.hscriptArray);
  __HELPERS__
@@ -51,7 +58,7 @@ class Main {
   s.camTween=FlxTween.tween(FlxG.camera,{zoom:1.2},5);s.camHUDAlphaTween=FlxTween.tween(s.camHUD,{alpha:.2},5);
   var unrelated=FlxTween.tween(s.camHUD,{alpha:.5},10);FlxTween.log=[];
   var error=false;var adapter=new NightmareVisionLegacyCameraEvents(s);
-  try {if(actual)adapter.apply(name,a,b);else s.source(name,a,b);}catch(_:Dynamic)error=true;
+  try {if(actual)s.applyActual(adapter,name,a,b);else s.source(name,a,b);}catch(_:Dynamic)error=true;
   var before=s.snapshot()+'#'+error;
   for(t in FlxTween.all.copy())t.complete();
   return before+'@@'+s.snapshot();
@@ -103,7 +110,8 @@ class FlxTween {
  public function cancel(){active=false;all.remove(this);log.push('cancel:'+name);}
  public function complete(){finished=true;active=false;for(f in Reflect.fields(values))Reflect.setField(target,f,Reflect.field(values,f));all.remove(this);if(options!=null&&options.onComplete!=null)Reflect.callMethod(null,options.onComplete,[this]);}
 }
-class Manager {public function new(){}public function forEach(f:FlxTween->Void)for(t in FlxTween.all)f(t);}
+class Manager {public function new(){}public function forEach(f:FlxTween->Void)for(t in FlxTween.all)f(t);
+ public function containsTweensOf(o:Dynamic,f:Array<String>):Bool {for(t in FlxTween.all)if(t.target==o)return true;return false;}}
 '''
 class HistoricalCameraEventsTest(unittest.TestCase):
  def test_arguments_handles_and_owner_lifetime_match_pinned_source(self):
@@ -120,10 +128,10 @@ class HistoricalCameraEventsTest(unittest.TestCase):
   beat=extract_method(src,'function beatHit(')
   reference+='public function sourceBeat(){'+beat[beat.index('if(totalBeat > 0)'):beat.index("setOnScripts('curBeat'")]+ '}'
   play=(ROOT/'source/PlayState.hx').read_text()
-  helpers='\n'.join(extract_method(play,'function '+n+'(') for n in ['sourceHudFade','sourceCameraFollowPosition'])
+  helpers='\n'.join(extract_method(play,'function '+n+'(') for n in ['sourceHudFade','sourceCameraFollowPosition','pulseCameraZoom','shakeCamerasFromEvent'])
   files={
    'Conductor.hx':'class Conductor {public static var bpm:Float=120;}',
-   'PlayState.hx':HOST.replace('__HELPERS__',helpers).replace('__REFERENCE__',reference),
+   'PlayState.hx':HOST.replace('__STUBS__',builtin_host_stubs(HOST+helpers)).replace('__HELPERS__',helpers).replace('__REFERENCE__',reference),
    'Main.hx':MAIN.replace('__EVENTS__',str(EVENTS)),
    'NightmareVisionLegacyCameraEvents.hx':(ROOT/'source/NightmareVisionLegacyCameraEvents.hx').read_text(),
    'flixel/FlxG.hx':'package flixel;class FlxG {public static var camera:FlxCamera;}',
@@ -132,6 +140,7 @@ class HistoricalCameraEventsTest(unittest.TestCase):
    'flixel/tweens/FlxTween.hx':TWEEN,
    'flixel/tweens/FlxEase.hx':'package flixel.tweens;class FlxEase {public static function linear(t:Float)return t;public static function circOut(t:Float)return Math.sqrt(1-(t-1)*(t-1));}'
   }
+  files.update(builtin_sources())
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
    for name,content in files.items():

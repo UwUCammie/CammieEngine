@@ -181,7 +181,13 @@ class RuntimeSmokeSeekTest(unittest.TestCase):
         repair_method = extract_haxe_method(
             note_source, "public function repairSustainChainAfterSeek():Void"
         )
-        self.assertIn("note.repairSustainChainAfterSeek();", seek_method)
+        # The seek is built from the shared clock move and note retirement.
+        clock_method = extract_haxe_method(self.play_state, "function moveSongClock(target:Float):Void")
+        retire_method = extract_haxe_method(self.play_state, "function retireNotesBefore(cutoff:Float)")
+        self.assertIn("moveSongClock(target);", seek_method)
+        self.assertIn("retireNotesBefore(target);", seek_method)
+        self.assertIn("note.repairSustainChainAfterSeek();", retire_method)
+        seek_method = "\n".join([clock_method, retire_method, seek_method])
         self.assertIn("daNote.prevNote.wasGoodHit && !daNote.canBeHit", self.play_state)
         self.assertIn("daNote.prevNote.alive && daNote.prevNote.isSustainNote", self.play_state)
         fixture = {
@@ -192,6 +198,8 @@ class RuntimeSmokeSeekTest(unittest.TestCase):
   public static var bpm:Float = 100;
   public static var bpmChangeMap:Array<Dynamic> = [{songTime:5000.0,bpm:150.0}];
   public static function changeBPM(value:Float):Void bpm = value;
+  public static var instrumentalOffset:Float = 0;
+  public static function audioTimeFromSong(time:Float):Float return time - instrumentalOffset;
 }
 """,
             "FlxG.hx": """class FlxG {

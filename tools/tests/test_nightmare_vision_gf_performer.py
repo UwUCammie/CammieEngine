@@ -139,8 +139,10 @@ class Main {
         self.assertIn("spawnCrossFade(realActor, note);", good_hit)
         self.assertIn("popUpScore(note.strumTime, note, playerOne);", good_hit,
                       "field ownership still controls scoring")
-        self.assertIn('callAllHScript("playerOneSing", []);', good_hit,
+        self.assertIn("notifyNoteSingObservers(playerOne);", good_hit,
                       "player-owned GF notes keep player callback identity")
+        self.assertIn("if (playerOne) callAllHScript('playerOneSing', []);",
+                      extract_method(self.source, "function notifyNoteSingObservers("))
 
         note_miss = extract_method(self.source, "function noteMissCore(")
         self.assertIn('callAllHScript("playerOneMiss", []);', note_miss,

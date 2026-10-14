@@ -16,10 +16,15 @@ class PsychCustomPauseOwnerTest(unittest.TestCase):
         start = source.index('\t\tif ((psychControls == null ? controls.PAUSE : psychControls.PAUSE) && startedCountdown && canPause')
         end = source.index('\n\t\tvar canShowKeys', start)
         gate = source[start:end]
+        # The gate hands the native open to the shared pause entry.
+        self.assertIn('openPauseMenu();', gate)
+        open_pause = extract_method(source, 'public function openPauseMenu(')
         fixture = r'''
 class NightmareVisionScriptGroup {public static inline var STOP_FUNC:Int=1;}
 class EngineCompat {
  public static function hxcLifecyclePayload(s:String):Dynamic return {};
+ public static function hxcPayloadCanceled(payload:Dynamic):Bool
+  return payload != null && (payload.eventCanceled == true || payload.canceled == true || payload.cancelled == true);
  public static function anyFunctionStop(values:Array<Dynamic>)return values.indexOf("stop")>=0;
 }
 class CoolUtil {public static function pauseTween(x:Dynamic){} public static function resumeTween(x:Dynamic){}}
@@ -48,6 +53,7 @@ class Main {
   if(behavior>=2){compatCustomSubstateOpen=true;compatCustomSubstatePausesGame=behavior==2;
    paused=compatCustomSubstatePausesGame;persistentUpdate=!paused;persistentDraw=true;}
  }
+ OPEN_PAUSE
  function run(){ GATE }
  static function check(ok:Bool,why:String)if(!ok)throw why;
  static function main(){
@@ -60,7 +66,7 @@ class Main {
   s=new Main();s.behavior=3;s.run();check(s.nativeOpens==0&&!s.paused&&s.persistentUpdate&&s.persistentDraw,'nonpausing overlay hidden');check(s.postDispatches==1,'overlay lost paired source post');
  }
 }
-'''.replace('GATE', gate)
+'''.replace('GATE', gate).replace('OPEN_PAUSE', open_pause)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'Main.hx').write_text(fixture, newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', folder,

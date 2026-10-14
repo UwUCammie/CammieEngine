@@ -1,8 +1,31 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.40 development - CammieEngine
-- Development continues after the published v0.0.39 checkpoint; remaining roadmap requirements stay open.
+v0.0.40 alpha - CammieEngine
+- Psych and Nightmare Vision now share one implementation wherever the two engines behave the same: preferences, Discord presence, chart script discovery, built-in chart events, camera targeting, hit and miss handling, character swaps, stage files, event preparation and script globals. Compatibility code now calls base game functions instead of carrying its own copies, and new base game functions were added where none existed.
+- Lua scripts: the translator no longer switches scripts off because of how their code is laid out. One-line functions, if/else in any layout, "else if", one-line loops, do blocks, repeat/until, goto continue and varargs all work. If one function cannot be translated, only that function is disabled and the import report names it.
+- Lua scripts: real Lua patterns in string.find, match, gmatch and gsub; colon string methods on any value, including chains like name:gsub('-', ' '):lower(); multiple return values and assignments like a, b = b, a; metatables with __index, __newindex and __call; the // operator; math.max and math.min with any number of values; table.remove returning the removed value; library tables scripts can add their own functions to.
+- Lua scripts: fixed ^, %, .., # and numeric strings in arithmetic to match Lua; tonumber returns nil for text that is not a number; math.random() returns a decimal; string.format supports the full set of flags and rounds like Lua; pairs loops are faster and no longer skip entries cleared mid-walk.
+- Lua scripts imported before a translator fix are translated again from their original file when the song loads, so fixes reach them without reimporting.
+- Psych scripts get the gameplay globals they expect (botPlay, practice, healthGainMult, curStage, deaths, default character positions and more), the missing Note, Character and PlayState properties, and boyfriendGroup, dadGroup and gfGroup in every song.
+- Psych tweens accept eases in any letter case, startTween honours its options and callbacks, cancelTween stops note tweens, and camera flash and fade accept colour names and full 8 digit colours.
+- Psych sounds: each tag plays its own sound, onSoundFinished fires when a tagged sound ends, and the Play Sound chart event plays its sound. Set Property can set anything a script could.
+- Psych and Nightmare Vision songs with separate player and opponent vocals keep them apart: a miss only silences the player's voice. Mods that ship their own hit or miss sounds play them, and note hit sound settings are followed.
+- startDialogue shows the dialogue file and music a script asks for, and every dialogue file of a song is imported.
+- Psych stage files apply camera_speed, isPixelStage and stageUI, and stages made with the Psych 1.0 stage editor build their listed sprites and preload list.
+- Change Character no longer builds the new character in the middle of a song: characters a chart switches to are built while the song loads.
+- Nightmare Vision mods start on the note keys you bound in the engine and follow the engine's zoom camera option. Scripts get onCountdownTick, song start and end callbacks, countdown controls, scripted substates, menu state classes, the full video sprite API, more Flixel classes without imports and more CoolUtil helpers. A mod's Discord changes are undone when you leave it.
+- Song flow: restarting from the pause menu or game over tells scripts about the retry and clears leftover videos and effects, leaving a story song returns to the story menu, and changing difficulty to a missing chart no longer crashes.
+- V-Slice: scripts can cancel game over, hold the countdown and keep the pause menu open; note events carry and apply health, score, rating and combo changes; onNoteHoldDrop, onSubStateOpenBegin and onFocusLost are dispatched; SetTargetBopSpeed works, including rates faster than once a beat. Sprite events are recognised by what the script does instead of by a fixed event name.
+- V-Slice import: metadata audio offsets, time signatures, per-note parameters, older metadata versions, preview times and sticker packs are kept, and scripted classes respect #if blocks.
+- Import: flat Psych 1.0 charts load, Psych mods without pack.json or Lua are detected, Nightmare Vision content packages can be selected on their own, V-Slice mods that only add variations, characters or patches are detected as V-Slice, and the player3 girlfriend field is kept. Psych songs also see their release's global mods and top-level mods folder. A wrong-engine import is spotted when the chart format proves it.
+- Stutter: the pause menu no longer freezes for a moment when opened, hit sounds and precached sounds are decoded once, rating and combo images load with the song, missing optional files are cheap to check, memory cleanup happens on the loading screen and pause menu, script callbacks make far less garbage, and Freeplay scrolling and library refreshes do less work per frame.
+- Removing a mod no longer fails with "Transaction journal identity mismatch" after the engine folder was moved or renamed. Imports that finished in the old location are accepted; only an import that was interrupted there still blocks removal.
+- An import that failed or was stopped before it installed anything no longer blocks removing every other mod. Its leftover record owns no files and is ignored by the removal check.
+- Removing a mod that other mods are tied to no longer just refuses. The removal now covers the linked mods too: ones that load content from it, and ones installed by the same import when that import cannot give up a single package. Nothing extra is removed without being listed and confirmed.
+- Removing a mod now asks a plain yes or no, with NO in green and YES in red, and NO selected first. When linked mods would go as well, a second question names them and asks again before anything is deleted.
+- A mod folder with no ownership record no longer stops other mods from being removed. That folder itself is left alone and still cannot be removed in game.
+- Incremental alpha release after v0.0.39; remaining roadmap requirements stay open.
 
 v0.0.39 alpha - CammieEngine
 - Skip cutscenes with Left Alt instead of Enter. Enter is the pause key again during every video, and Space no longer skips intro videos. Right Alt does nothing, and a press made while nothing can be skipped is forgotten after a quarter of a second.

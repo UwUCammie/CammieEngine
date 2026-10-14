@@ -46,6 +46,7 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	final conductor = new NightmareVisionConductor();
 	final states:ObjectMap<FlxState, String> = new ObjectMap();
 	final redirectNames:Map<String, String> = new Map();
+	final sourceStateClasses:Map<String, Dynamic> = new Map();
 	final postCallbacks:Array<Void->Void> = [];
 	final previousSkipIn:Bool;
 	final previousSkipOut:Bool;
@@ -319,6 +320,8 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 	public function restoreCompletedWeeks():Void {
 		var value = highscoreSave.getField('weekCompleted');
 		if (value != null) weekCompleted = value;
+		var story = sourceStateClasses.get('StoryMenuState');
+		if (story != null) Reflect.setField(story, 'weekCompleted', weekCompleted);
 	}
 	public function mountPlugins(populateImmediately:Bool = true):Void {
 		ensureAlive();
@@ -447,11 +450,12 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		FlxTransitionableState.skipNextTransOut = skipOut;
 	}
 
+	/** Shares the owner's presence lease with gameplay scripts, so leaving the
+		package restores the engine's presence. */
 	public function changePresence(details:String, state:String = ''):Void {
 		ensureAlive();
-		#if cpp
-		Discord.DiscordClient.changePresence(details, state);
-		#end
+		NightmareVisionDiscordClient.forOwner(paths.root, function() return !released)
+			.changePresence(details, state == '' ? null : state);
 	}
 
 	public function titleInit():Void {
@@ -679,6 +683,19 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 			interp.bindConstructorFactory(type, function(args) return constructor(), null);
 			scope.bindStaticField(type, 'new', function() return constructor);
 		}
+		interp.variables.set('FreeplayState', FreeplayState);
+		interp.bindImport('funkin.states.FreeplayState', FreeplayState);
+		scope.bindRuntimeClass('funkin.states.FreeplayState', FreeplayState);
+		// Source menus with no native port. A package's stateRedirects can point
+		// them at its own scripts; otherwise they open the unported-state screen.
+		for (path in ['funkin.states.StoryMenuState', 'funkin.states.CreditsState',
+			'funkin.states.ModsState', 'funkin.states.options.OptionsState']) {
+			var name = path.split('.').pop();
+			var token = sourceStateClass(name);
+			interp.variables.set(name, token);
+			interp.bindImport(path, token);
+			interp.bindConstructorFactory(token, function(args) return NightmareVisionSourceStateClass.construct(token), null);
+		}
 		scope.bindStaticField(NightmareVisionTitleState, 'initialized', function() return titleInitialized,
 			function(value) return titleInitialized = value);
 		scope.bindStaticField(NightmareVisionTitleState, 'closedState', function() return titleClosedState,
@@ -709,6 +726,16 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		};
 		interp.bindConstructorFactory(NightmareVisionScriptedState, function(args) return scriptedConstructor(args[0]), null);
 		scope.bindStaticField(NightmareVisionScriptedState, 'new', function() return scriptedConstructor);
+		// HScriptState and HScriptSubstate are the older spellings the source preset still ships.
+		interp.variables.set('HScriptState', NightmareVisionScriptedState);
+		interp.variables.set('ScriptedSubstate', NightmareVisionScriptedSubstate);
+		interp.variables.set('HScriptSubstate', NightmareVisionScriptedSubstate);
+		interp.bindImport('funkin.scripting.ScriptedSubstate', NightmareVisionScriptedSubstate);
+		scope.bindRuntimeClass('funkin.scripting.ScriptedSubstate', NightmareVisionScriptedSubstate);
+		var scriptedSubstateConstructor = function(name:String) return new NightmareVisionScriptedSubstate(name, substateHost());
+		interp.bindConstructorFactory(NightmareVisionScriptedSubstate,
+			function(args) return scriptedSubstateConstructor(args[0]), null);
+		scope.bindStaticField(NightmareVisionScriptedSubstate, 'new', function() return scriptedSubstateConstructor);
 		NightmareVisionInputBindings.install(interp, paths.root,
 			function(owner) {
 				ensureAlive();
@@ -718,6 +745,20 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		scope.bindStaticField(CoolUtil, 'switchState', function() return switchWithTransition);
 		scope.bindStaticField(CoolUtil, 'setTransSkip', function() return setTransSkip);
 		if (configureScript != null) configureScript(interp);
+	}
+
+	/** One stand-in per session, so a static one script writes is what the next script reads. */
+	function sourceStateClass(name:String):Dynamic {
+		var existing = sourceStateClasses.get(name);
+		if (existing != null) return existing;
+		var statics:Dynamic = switch (name) {
+			case 'OptionsState': {onPlayState:false};
+			case 'StoryMenuState': {weekCompleted:weekCompleted};
+			default: null;
+		};
+		var created = NightmareVisionSourceStateClass.make(name, createStateFactory(name), statics);
+		sourceStateClasses.set(name, created);
+		return created;
 	}
 
 	function openTransition(state:Dynamic, incoming:Bool, ?complete:Void->Void):Bool {
@@ -739,7 +780,7 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
 		FlxG.signals.preStateCreate.remove(onPreStateCreate);
 		FlxG.signals.postStateSwitch.remove(onPostStateSwitch);
 		for (callback in postCallbacks) FlxG.signals.postStateSwitch.remove(callback);
-		postCallbacks.resize(0); states.clear(); redirectNames.clear();
+		postCallbacks.resize(0); states.clear(); redirectNames.clear(); sourceStateClasses.clear();
 		NightmareVisionPluginHost.releaseOtherOwner('');
 		mainRuntime.release();
 		if (bootstrapServices != null) {

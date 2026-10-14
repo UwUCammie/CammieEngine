@@ -52,9 +52,13 @@ class HxcScriptIdentity {
 		}
 		return output.toString();
 	}
-	/** Balanced top-level class spans; strings, regexes and comments stay opaque. */
+	/**
+		Balanced top-level class spans; strings, regexes and comments stay opaque.
+		Inactive `#if` branches are blanked first (offsets unchanged), so a class
+		only sees the code this build would compile.
+	*/
 	public static function classDeclarations(source:String):Array<HxcScriptClassDeclaration> {
-		var text = source == null ? '' : source;
+		var text = source == null ? '' : HxcPreprocessor.apply(source);
 		var tokens = tokenize(text);
 		var result:Array<HxcScriptClassDeclaration> = [];
 		for (declaration in collectClasses(tokens)) {
@@ -87,7 +91,7 @@ class HxcScriptIdentity {
 		existing family keeps mixed stage/song/module files in that family.
 	*/
 	public static function inspect(source:String, pathFamily:String, fileStem:String):HxcScriptIdentityData {
-		var tokens = tokenize(source == null ? '' : source);
+		var tokens = tokenize(source == null ? '' : HxcPreprocessor.apply(source));
 		var declarations = collectClasses(tokens);
 		var family = pathFamily == null || pathFamily == '' ? 'unknown' : pathFamily;
 		var selected:HxcIdentityClass = null;

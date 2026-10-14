@@ -68,6 +68,7 @@ class ImportedMenuEntry {
 		HxcStateFactory.clearMenuSession();
 		CodenameModRuntime.clearActiveOwner();
 		if (NightmareVisionStateSession.active != null) NightmareVisionStateSession.active.release();
+		NightmareVisionDiscordClient.releaseOwner();
 		ImportedFreeplayCaller.clear();
 		#if sys
 		if (ownerLease != '') ImportRefreshManager.releaseRuntimeOwnerLease(ownerLease);
@@ -155,6 +156,8 @@ class ImportedMenuEntry {
 		ownerLease = acquire(owner);
 		var save = new CodenameOwnerSaveData(owner);
 		var prefs = new NightmareVisionClientPrefs(owner, save, OptionsHandler.options);
+		// Seeded before the session loads this owner's saved binds, so those still win.
+		prefs.seedNativeNoteKeys(cast Controls.getDeCtrls(Controls.KeyboardScheme.Solo(4)));
 		var paths = new NightmareVisionPaths(owner, null, prefs.view, directory);
 		var mods = new NightmareVisionModsContext(owner, directory);
 		paths.bindModFamily(mods);

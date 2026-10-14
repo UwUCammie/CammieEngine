@@ -134,8 +134,10 @@ class ImportCompat {{
                         "static function findImportFile",
                         "static function findImportAudio",
                         "static function findImportVocalStems",
-                        "static function normalizeNightmareVisionVocalRoles",
+                        "static function normalizeSourceVocalRoles",
                         "static function readImportJson",
+                        "static function findImportDialogueFiles",
+                        "static function isImportDialogueJson",
                         "static function convertImportDialogue",
                         "static function importCutsceneScript",
                         "static function importCutsceneBool",
@@ -516,9 +518,15 @@ class ImportCompat {{
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
             , newline='\n')
+            (temp_path / "SourceChartReferences.hx").write_text(
+                (ROOT / "source/SourceChartReferences.hx").read_text()
+            , newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
             , newline='\n')
+            (temp_path / "SourceVocalRole.hx").write_text(
+                (ROOT / "source/SourceVocalRole.hx").read_text(), newline='\n'
+            )
             (temp_path / "NightmareVisionVocalRole.hx").write_text(
                 (ROOT / "source/NightmareVisionVocalRole.hx").read_text()
             , newline='\n')
@@ -898,6 +906,8 @@ class ImportCompat {{
                         "static function findImportAudio",
                         "static function findImportVocalStems",
                         "static function readImportJson",
+                        "static function findImportDialogueFiles",
+                        "static function isImportDialogueJson",
                         "static function convertImportDialogue",
                         "static function importCutsceneScript",
                         "static function importCutsceneBool",
@@ -1051,6 +1061,12 @@ class ImportCompat {{
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
             , newline='\n')
+            (temp_path / "SourceChartReferences.hx").write_text(
+                (ROOT / "source/SourceChartReferences.hx").read_text()
+            , newline='\n')
+            (temp_path / "SourceVocalRole.hx").write_text(
+                (ROOT / "source/SourceVocalRole.hx").read_text(), newline='\n'
+            )
             (temp_path / "ImportCompat.hx").write_text(fixture + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "")
             .replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "")
             .replace("import sys.io.File;", "") + "\n" + directory_listing_source(), newline='\n')

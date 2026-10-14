@@ -49,6 +49,7 @@ class PsychCharacterPositionTest(unittest.TestCase):
         self.assertIn('applyPsychStageJson(Path.join([Path.directory(entry.path), stem + \'.json\']), compatRoot);', stage)
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
@@ -97,6 +98,7 @@ class Probe {
     def test_camera_position_preserves_raw_values_and_uses_psych_role_signs(self):
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'scope/characters').mkdir(parents=True)
@@ -163,6 +165,7 @@ class Probe {
         methods += '\n' + extract_method(play, '\tpublic function syncPsychStageGroupAnchor(')
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'assets/data').mkdir(parents=True)
@@ -257,7 +260,7 @@ class Probe {
             "psychCameraContribution('boyfriend')",
             "cameraTargetForActor(dad, 'dad')",
             "cameraTargetForActor(gf, 'gf')",
-            'applyPsychStageCameraOffsets(data);',
+            'applySourceStageMetadata(meta, SourceStageMetadata.PSYCH);',
             'psychCameraRoot != null && StringTools.trim(psychCameraRoot) != \'\'',
         ):
             self.assertIn(fragment, play)
@@ -275,13 +278,14 @@ class Probe {
         methods = '\n'.join(
             extract_method(play, marker)
             for marker in (
-                '\tfunction psychStagePoint(',
                 '\tfunction clearPsychStageCharacterPosition(',
                 '\tfunction psychCameraContribution(',
                 '\tfunction cameraTargetForActor(',
-                '\tfunction applyPsychStageCameraOffsets(',
+                '\tfunction applyStageCameraOffsets(',
             )
         )
+        # Stage files reach the camera offsets through the shared parser.
+        methods += '\n  function applyPsychStageCameraOffsets(data:Dynamic):Void applyStageCameraOffsets(SourceStageMetadata.parse(data));'
         fixture = '''
 using StringTools;
 class Midpoint { public function put():Void {} public var x:Float; public var y:Float; public function new(x:Float,y:Float) {this.x=x;this.y=y;} }
@@ -392,8 +396,11 @@ class Probe {
 '''
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
+            (work / 'SourceStageMetadata.hx').write_text(
+                (ROOT / 'source/SourceStageMetadata.hx').read_text(), newline='\n')
             (work / 'FNFAssets.hx').write_text('''
 class FNFAssets {
   public static function exists(path:String):Bool return sys.FileSystem.exists(path);

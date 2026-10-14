@@ -1,8 +1,9 @@
-"""Compare historical actor events with pinned source over shared animation services."""
+"""Compare the shared actor events, run with the historical profile, with pinned source."""
 from pathlib import Path
 import re,subprocess,tempfile,unittest
 from haxe_test_support import HAXE_COMMAND,FixturePath
 from test_source_event_preparation import extract_method
+from test_source_builtin_events import builtin_host_stubs,builtin_sources
 ROOT=Path(__file__).resolve().parents[2]
 EVENTS=['Hey!','Set GF Speed','Play Animation','Alt Idle Animation']
 HOST=r'''using StringTools;
@@ -11,6 +12,7 @@ class PlayState {
  public var sourceScoreOwner=true;public var sourceScoreNightmare=true;public var nightmareVisionLegacyFieldCameras=true;
  public var nightmareVisionScripts:Dynamic={};public var gfGroup:Dynamic={};public var gfSpeed(default,set):Int=1;
  public function new(){}
+ __STUBS__
  __METHODS__
  __REFERENCE__
  public function snapshot():String return [Std.string(gfSpeed),Character.snapshot(boyfriend),Character.snapshot(dad),Character.snapshot(gf)].join('|');
@@ -20,7 +22,9 @@ CHAR=r'''class ActorFrame {public var name:String='idle';public function new(){}
 class ActorAnimation {public var curAnim:ActorFrame=new ActorFrame();public function new(){}}
 class Character {
  public var curCharacter:String;public var specialAnim=false;public var heyTimer:Float=0;
- public var idleSuffix='';public var danceEveryNumBeats=2;public var danceEvery=2;public var stunned=false;public var codenameLiveDefinition:Dynamic=null;
+ public var idleSuffix='';public var danceEvery:Float=2;public var stunned=false;public var codenameLiveDefinition:Dynamic=null;
+ public var danceEveryNumBeats(get,set):Int;function get_danceEveryNumBeats():Int return Std.int(danceEvery);function set_danceEveryNumBeats(v:Int):Int {danceEvery=v;return v;}
+ public static function danceDueOnStep(every:Float,step:Int):Bool return every>0&&step%(every*4)==0;
  public var animation=new ActorAnimation();public var events:Array<String>=[];
  public function new(n:String)curCharacter=n;
  public function playAnim(n:String,f:Bool){events.push('play:'+n+':'+f+':'+specialAnim+':'+heyTimer);animation.curAnim.name=n;}
@@ -30,7 +34,7 @@ class Character {
 MAIN=r'''@:access(PlayState) class Main {
  static function run(actual:Bool,n:String,a:String,b:String,mode:Int):String {
   var s=new PlayState();if(mode==1)s.gf=null;if(mode==2)s.dad.curCharacter='gf-car';if(mode==3)s.boyfriend=null;if(mode==4){s.sourceScoreOwner=false;s.sourceScoreNightmare=false;}
-  var error=false;try{if(actual)NightmareVisionLegacyActorEvents.apply(s,n,a,b);else s.reference(n,a,b);}catch(_:Dynamic)error=true;
+  var error=false;try{if(actual)SourceBuiltinEvents.apply(s,SourceBuiltinEvents.NIGHTMARE_LEGACY,n,a,b);else s.reference(n,a,b);}catch(_:Dynamic)error=true;
   return s.snapshot()+'#'+error;
  }
  static function main() {
@@ -67,8 +71,9 @@ class HistoricalActorEventsTest(unittest.TestCase):
   reference+='public function sourceGfDue(beat:Int):Bool return '+gate[1].replace('curBeat','beat')+';'
   play=(ROOT/'source/PlayState.hx').read_text()
   methods='\n'.join(extract_method(play,'function '+n+'(') for n in ['set_gfSpeed','sourceHeyEvent','sourceAnimationEventActor','playSourceEventAnimation','applySourceAltIdleAnimation','girlfriendDanceDue','characterDanceDue'])
-  files={'PlayState.hx':HOST.replace('__METHODS__',methods).replace('__REFERENCE__',reference),'Character.hx':CHAR,'Main.hx':MAIN.replace('__EVENTS__',str(EVENTS))}
-  for name in ['NightmareVisionLegacyActorEvents','PsychHeyEventCompat']:files[name+'.hx']=(ROOT/('source/'+name+'.hx')).read_text()
+  host=HOST.replace('__METHODS__',methods)
+  files={'PlayState.hx':host.replace('__STUBS__',builtin_host_stubs(host)).replace('__REFERENCE__',reference),'Character.hx':CHAR,'Main.hx':MAIN.replace('__EVENTS__',str(EVENTS))}
+  files.update(builtin_sources())
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
    for name,content in files.items():(work/name).write_text(content)

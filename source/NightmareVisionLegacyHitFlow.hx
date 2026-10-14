@@ -19,11 +19,10 @@ class NightmareVisionLegacyHitFlow {
 				return;
 			}
 			if (!note.isSustainNote) {
-				state.combo = Std.int(Math.min(9999, state.combo + 1));
-				state.setAllHaxeVar('combo', state.combo);
+				state.registerComboHit();
 				state.popUpScore(note.strumTime, note, true, false, field);
 			}
-			state.health += note.hitHealth * state.healthGain;
+			state.health += SourceHealthDelta.hit(true, note.hitHealth, state.healthGain);
 		} else state.camZooming = true;
 
 		state.prepareNightmareVisionLegacyHitSingers(note, field, player);

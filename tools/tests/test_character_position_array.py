@@ -34,6 +34,7 @@ class CharacterPositionArrayTest(unittest.TestCase):
         method = extract_method(character, '\tstatic function psychCharacterPositionArray(')
         with tempfile.TemporaryDirectory(dir=TMP) as folder:
             work = Path(folder)
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / 'PsychCharacterPosition.hx').write_text(
                 (ROOT / 'source/PsychCharacterPosition.hx').read_text(), newline='\n')
             (work / 'FNFAssets.hx').write_text('''

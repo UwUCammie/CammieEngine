@@ -6,6 +6,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_chart_format_modules
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,7 @@ class Main {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as work:
             folder = Path(work)
             (folder / "Main.hx").write_text(fixture, newline='\n')
+            install_chart_format_modules(folder)
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(folder), "--run", "Main"],
                 cwd=ROOT,

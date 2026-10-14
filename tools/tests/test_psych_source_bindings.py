@@ -113,6 +113,10 @@ class PsychSourceBindingsFixture {
             "addScore", "setScore", "addMisses", "setMisses", "addHits", "setHits",
             "scorePropertyAlias", "readScorePropertyAlias", "writeScorePropertyAlias",
         ))
+        # The counters are edited by the base game, so the host double runs the
+        # real base functions instead of a copy of their rules.
+        play = (ROOT / "source/PlayState.hx").read_text(encoding="utf-8")
+        host_methods = "\n".join(" public " + extract(play, name) for name in ("scoreValue", "adjustScore"))
         fixture = r'''class PlayState {
  public static var misses:Int=0;
  public static var sicks:Int=1;
@@ -134,6 +138,7 @@ class FixtureHost {
  public function psychScoreChanged():Void changes++;
  public function compatGetProperty(_path:Dynamic):Dynamic return null;
  public function compatSetProperty(_path:Dynamic,_value:Dynamic):Dynamic return null;
+__HOST_METHODS__
 }
 class PsychSourceBindingsFixture {
  var host:FixtureHost;
@@ -180,17 +185,20 @@ __METHODS__
    'native property writes should keep using the Psych presentation adjustment');
   check(host.changes==12, 'each writable alias should announce one score change');
  }
-}'''.replace("__METHODS__", methods)
+}'''.replace("__METHODS__", methods).replace("__HOST_METHODS__", host_methods)
 
         # These installed functions are the writable Psych-facing aliases.
         for name in ("addScore", "setScore", "addMisses", "setMisses", "addHits", "setHits"):
             self.assertIn(f"variables.set('{name}', function(value:Int = 0):Void {name}(value));", source)
-        self.assertIn("host.sourceScoreLedgerActive()", source)
+        self.assertIn("host.adjustScore('hits', value, true);", source)
+        self.assertIn("sourceScoreLedgerActive() ? songHits", host_methods)
         self.assertIn("variables.set('getProperty'", source)
         self.assertIn("variables.set('setProperty'", source)
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             (Path(folder) / "PsychSourceBindingsFixture.hx").write_text(fixture, newline="\n")
+            (Path(folder) / "SourceScoreAdjust.hx").write_text(
+                (ROOT / "source/SourceScoreAdjust.hx").read_text(encoding="utf-8"), newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "--run", "PsychSourceBindingsFixture"],
                 cwd=folder, capture_output=True, text=True, timeout=30,

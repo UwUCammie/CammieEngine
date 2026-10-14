@@ -42,25 +42,24 @@ class PsychRemainingSourceBindingTest(unittest.TestCase):
         source = (ROOT / "source/PsychSourceBindings.hx").read_text()
         methods = "\n".join(extract(source, name) for name in (
             "getPropertyLuaSprite", "setPropertyLuaSprite", "noteTweenDirection",
-            "readTaggedProperty", "writeTaggedProperty", "formatTweenTag", "psychEaseName",
+            "readTaggedProperty", "writeTaggedProperty", "formatTweenTag",
         ))
+        self.assertNotIn("psychEaseName", source)
+        self.assertNotIn("Reflect.field(FlxEase", source)
         fixture = r'''using StringTools;
-class FlxEase { public static var linear='linear'; public static var quadOut='quadOut'; }
-class FlxTween {
- public static var lastTarget:Dynamic; public static var lastProps:Dynamic; public static var lastDuration:Float; public static var lastParams:Dynamic;
- public function new() {}
- public static function tween(target:Dynamic,props:Dynamic,duration:Float,params:Dynamic):FlxTween { lastTarget=target; lastProps=props; lastDuration=duration; lastParams=params; return new FlxTween(); }
-}
 class Note { public var direction:Float = 0; public function new() {} }
-class NoteGroup { public var members:Array<Note>; public var length(get,never):Int; function get_length():Int return members.length; public function new(members:Array<Note>) this.members=members; }
 class FakeHost {
  public var psychScriptVariables:Map<String,Dynamic> = [];
- public var strumLineNotes:NoteGroup;
- public var compatTweens:Map<String,FlxTween>=[];
- public var callbackCalls:Array<Array<Dynamic>>=[];
- public function new() strumLineNotes=new NoteGroup([new Note(),new Note()]);
- public function compatCancelTween(tag:String):Void compatTweens.remove(tag);
- public function callAllHScript(name:String,args:Array<Dynamic>):Void callbackCalls.push([name,args]);
+ public var receptors:Array<Note>;
+ public var wrapped:Array<Bool>=[];
+ public var tweens:Array<Array<Dynamic>>=[];
+ public function new() receptors=[new Note(),new Note()];
+ // The direction tween is only argument preparation: the receptor lookup and
+ // the tag bookkeeping belong to the host and have their own tests.
+ public function receptorAt(index:Int,wrap:Bool=false):Dynamic { wrapped.push(wrap); return receptors[index % receptors.length]; }
+ public function startTaggedTween(tag:String,target:Dynamic,props:Dynamic,duration:Float,?options:Dynamic,?completedArgs:Array<Dynamic>):Dynamic {
+  tweens.push([tag,target,props,duration,options,completedArgs]); return null;
+ }
 }
 class BindingFixture {
  var host:FakeHost;
@@ -76,14 +75,17 @@ class BindingFixture {
   if(binding.setPropertyLuaSprite('missing','position.x',9)) throw 'missing tag write returned true';
   var tag=binding.noteTweenDirection(' turn.one ',1,135.5,0.4,'quadOut');
   if(tag!='tween_turnone') throw 'tween registry tag was not Psych-formatted';
-  if(FlxTween.lastTarget!=host.strumLineNotes.members[1] || FlxTween.lastProps.direction!=135.5 || FlxTween.lastDuration!=0.4 || FlxTween.lastParams.ease!='quadOut') throw 'direction tween arguments changed';
-  if(host.compatTweens.get(tag)==null) throw 'tagged direction tween was not registered';
-  var onComplete=Reflect.field(FlxTween.lastParams,'onComplete'); onComplete(null);
-  if(host.callbackCalls.length!=1 || host.callbackCalls[0][0]!='onTweenCompleted' || host.callbackCalls[0][1][0]!=' turn.one ') throw 'completion callback did not preserve original tag';
-  if(binding.noteTweenDirection(null,0,45,0.2)!=null || Reflect.field(FlxTween.lastParams,'onComplete')!=null || FlxTween.lastProps.direction!=45) throw 'untagged tween behavior changed';
-  host.strumLineNotes.members[0]=null;
-  var before=FlxTween.lastTarget;
-  if(binding.noteTweenDirection('missing',0,30,1)!=null || FlxTween.lastTarget!=before) throw 'missing strum created a tween';
+  var call=host.tweens[0];
+  if(call[1]!=host.receptors[1] || call[2].direction!=135.5 || call[3]!=0.4 || call[4].ease!='quadOut') throw 'direction tween arguments changed';
+  if(call[0]!=' turn.one ') throw 'the tween must be stored under the tag the script gave, so cancelTween finds it';
+  if(call[5].length!=1 || call[5][0]!=' turn.one ') throw 'completion callback did not preserve original tag';
+  if(host.wrapped.join(',')!='true') throw 'direction tween must use the wrapping receptor lookup';
+  if(binding.noteTweenDirection('wrap',3,10,0.1)!='tween_wrap' || host.tweens[1][1]!=host.receptors[1]) throw 'index past the end did not wrap';
+  if(binding.noteTweenDirection(null,0,45,0.2)!=null || host.tweens[2][0]!=null || host.tweens[2][2].direction!=45) throw 'untagged tween behavior changed';
+  if(host.tweens[2][4].ease!='linear') throw 'default ease changed';
+  host.receptors[0]=null;
+  var before=host.tweens.length;
+  if(binding.noteTweenDirection('missing',0,30,1)!=null || host.tweens.length!=before) throw 'missing strum created a tween';
   Sys.println('OK');
  }
 }'''.replace("__METHODS__", methods)

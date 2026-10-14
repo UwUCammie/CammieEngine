@@ -10,6 +10,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_chart_format_modules
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +46,8 @@ def make_fixture(module_source: str, folder: Path) -> Path:
             "static function findImportAudio",
             "static function findImportVocalStems",
             "static function readImportJson",
+            "static function findImportDialogueFiles",
+            "static function isImportDialogueJson",
             "static function convertImportDialogue",
             "static function importCutsceneScript",
             "static function importCutsceneBool",
@@ -157,9 +160,12 @@ class MetaFixture {{
 '''
     path = folder / "MetaFixture.hx"
     path.write_text(source + "\n" + (ROOT / "source/KadeStageSource.hx").read_text().replace("package;", "").replace("import haxe.io.Path;", "").replace("import sys.FileSystem;", "").replace("import sys.io.File;", ""), newline='\n')
+    (folder / "SourceVocalRole.hx").write_text(
+        (ROOT / "source/SourceVocalRole.hx").read_text(), newline='\n')
     (folder / "ImportDirectoryListing.hx").write_text(
         (ROOT / "source/ImportDirectoryListing.hx").read_text()
     , newline='\n')
+    install_chart_format_modules(folder)
     return path
 
 

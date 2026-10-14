@@ -86,6 +86,8 @@ typedef SongImport = {
 	var dialog:String;
 	/** Original FPS/Kade JSON dialogue sidecar; retained beside the generated fallback. */
 	@:optional var dialogueJson:String;
+	/** Other dialogue JSON files in the song folder, for scripts that ask for one by name. */
+	@:optional var dialogueFiles:Array<String>;
 	/** Native dialog.txt text generated from dialogueJson without rewriting the donor. */
 	@:optional var dialogueText:String;
 	/** Original FPS/Kade cutscene metadata sidecar. */
@@ -1191,9 +1193,13 @@ class ModuleFunctions {
 	 */
 	static function findImportVocalStems(basePath:String):Array<SongImportVocalStem> {
 		var stems:Array<SongImportVocalStem> = [];
-		if (basePath == null || !FileSystem.isDirectory(basePath)
-			|| findImportFile(basePath, ['Voices.ogg', 'voices.ogg']) != null)
+		if (basePath == null || !FileSystem.isDirectory(basePath))
 			return stems;
+		// A combined Voices file normally means there is nothing to split. The
+		// exception is a pack that ships the player/opponent pair beside it:
+		// engines that know the pair play it and leave the combined file alone.
+		var combined = findImportFile(basePath, ['Voices.ogg', 'voices.ogg']) != null;
+		var playerStem = false;
 		var entries:Array<String>;
 		try {
 			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(basePath));
@@ -1216,20 +1222,27 @@ class ModuleFunctions {
 			var stemId = entry.substr(7, extensionStart > 7 ? extensionStart - 7 : entry.length - 7);
 			if (StringTools.trim(stemId) == '')
 				continue;
+			if (combined && !SourceVocalRole.namesSide(stemId))
+				continue;
+			if (SourceVocalRole.resolve(stemId, null) == 'player' && SourceVocalRole.namesSide(stemId))
+				playerStem = true;
 			stems.push({source:source, destination:entry, id:stemId, role:'shared'});
 		}
+		// an opponent stem alone cannot replace the combined file
+		if (combined && !playerStem)
+			return [];
 		return stems;
 	}
 
-	/** Nightmare Vision names its two authored buses Voices-player/Voices-opp.
-	 * Store those source IDs as explicit native roles so imported chart metadata
-	 * and the PlayableSong vocal groups agree. */
-	static function normalizeNightmareVisionVocalRoles(songData:SongImport):Void {
+	/** Psych and Nightmare Vision name their two authored buses after the
+	 * side that sings them. Store those source IDs as explicit native roles so
+	 * a player miss only mutes the player and the vocal groups agree. */
+	static function normalizeSourceVocalRoles(songData:SongImport):Void {
 		if (songData == null || songData.vocalStems == null)
 			return;
 		for (stem in songData.vocalStems)
 			if (stem != null)
-				stem.role = NightmareVisionVocalRole.resolve(stem.id, stem.role);
+				stem.role = SourceVocalRole.resolve(stem.id, stem.role);
 	}
 
 	static function vocalStemMetadataMatches(expected:Dynamic, existing:Dynamic):Bool {
@@ -1286,6 +1299,51 @@ class ModuleFunctions {
 		if (path == null || !isImportFile(path))
 			return null;
 		try return CoolUtil.parseJson(File.getContent(path)) catch (_:Dynamic) return null;
+	}
+
+	/**
+	 * Scripts can start any dialogue file of their song by name, so every JSON
+	 * that holds a dialogue list comes along, whatever it is called. Charts sit
+	 * in the same folder; the content decides, not the file name.
+	 */
+	static function findImportDialogueFiles(chartRoot:String, ?alreadyImported:String):Array<String> {
+		var found:Array<String> = [];
+		if (chartRoot == null || !FileSystem.isDirectory(chartRoot))
+			return found;
+		var entries:Array<String>;
+		try {
+			entries = ImportDirectoryListing.normalize(FileSystem.readDirectory(chartRoot));
+		} catch (_:Dynamic) {
+			return found;
+		}
+		entries.sort(function(a:String, b:String):Int {
+			var lower = Reflect.compare(a.toLowerCase(), b.toLowerCase());
+			return lower == 0 ? Reflect.compare(a, b) : lower;
+		});
+		var skip = alreadyImported == null ? null : Path.withoutDirectory(Path.normalize(alreadyImported)).toLowerCase();
+		for (entry in entries) {
+			var lower = entry.toLowerCase();
+			if (!lower.endsWith('.json') || lower == skip)
+				continue;
+			var source = Path.join([chartRoot, entry]);
+			if (!isImportFile(source))
+				continue;
+			if (isImportDialogueJson(source))
+				found.push(source);
+		}
+		return found;
+	}
+
+	static function isImportDialogueJson(path:String):Bool {
+		var text:String;
+		try text = File.getContent(path) catch (_:Dynamic) return false;
+		// charts are big; do not parse one just to learn it is not dialogue
+		if (text == null || text.indexOf('"dialogue"') < 0)
+			return false;
+		var parsed:Dynamic;
+		try parsed = CoolUtil.parseJson(text) catch (_:Dynamic) return false;
+		return parsed != null && !Std.isOfType(parsed, Array) && Std.isOfType(Reflect.field(parsed, 'dialogue'), Array)
+			&& Reflect.field(parsed, 'song') == null;
 	}
 
 	/** Build the native fallback text while retaining the donor JSON unchanged. */
@@ -1730,8 +1788,8 @@ class ModuleFunctions {
 					flatMusicRoot = sourceAudioRoot;
 
 				var songData = songImportFromAssetFolders(songFolder, chartDataFolder, songFolderName, flatMusicRoot);
-				if (songData != null && engine == ImportEngine.NIGHTMARE_VISION)
-					normalizeNightmareVisionVocalRoles(songData);
+				if (songData != null && (engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH))
+					normalizeSourceVocalRoles(songData);
 				// songImportFromRoots normally derives the destination folder from the
 				// chart directory name. For the nested NMV layout that directory is
 				// literally `data`; retain the authored songs/<song> key instead.
@@ -1811,6 +1869,12 @@ class ModuleFunctions {
 							}
 							var sourceChart = readSongChart(chartPath);
 							if (sourceChart != null) {
+								// Charts older than gfVersion name the girlfriend player3.
+								if (songData.gf == 'gf') {
+									var legacyGirlfriend = PsychFamilyChartFields.girlfriend(Reflect.field(sourceChart, 'song'));
+									if (legacyGirlfriend != '')
+										songData.gf = legacyGirlfriend;
+								}
 								var scriptPlan = NightmareVisionScriptDiscovery.discover(songSourceRoot,
 									songFolderName, sourceChart, null, CoolUtil.parseJson);
 								for (diagnostic in NightmareVisionScriptDiscovery.unsupportedDiagnostics(scriptPlan)) {
@@ -1844,6 +1908,12 @@ class ModuleFunctions {
 					inferPsychStageForImport(songData,
 						sourceChart == null ? null : Reflect.field(sourceChart, 'song'),
 						sourceRoot, dataFolder, songFolderName);
+					// Charts older than gfVersion name the girlfriend player3.
+					if (songData.gf == 'gf' && sourceChart != null) {
+						var legacyGirlfriend = PsychFamilyChartFields.girlfriend(Reflect.field(sourceChart, 'song'));
+						if (legacyGirlfriend != '')
+							songData.gf = legacyGirlfriend;
+					}
 				}
 				var key = StringTools.trim(songData.name).toLowerCase();
 				prepareInstalledDependencyRoots(songData, songSourceRoot, engine);
@@ -4529,9 +4599,23 @@ class ModuleFunctions {
 					engine:ImportEngine.MODDING_PLUS, source:source});
 			}
 		}
+		// Psych falls back from the loaded mod to the global mods, the top-level
+		// mods folder and the game assets. Only roots from this same import can
+		// play those parts, so a song never starts borrowing unrelated installs.
+		var chainBatch:Array<PsychFamilyModChain.PsychFamilyModChainRoot> = [];
+		for (root in roots)
+			if (root != null) chainBatch.push({root:root.root, engine:root.engine});
+		var chains:Map<String, Array<PsychFamilyModChain.PsychFamilyModChainRoot>> = new Map();
 		for (candidate in selectSongCandidates(candidates)) {
 			if (candidate == null || candidate.song == null)
 				continue;
+			if (candidate.engine == ImportEngine.PSYCH && candidate.root != null) {
+				var chainKey = importPathKey(candidate.root);
+				if (!chains.exists(chainKey))
+					chains.set(chainKey, PsychFamilyModChain.resolve(candidate.root, candidate.engine, chainBatch));
+				var chain = chains.get(chainKey);
+				if (chain.length > 0) Reflect.setField(candidate.song, 'familyDependencyRoots', chain);
+			}
 			result.push(candidate.song);
 			var key = StringTools.trim(candidate.song.name).toLowerCase();
 			if (!candidate.song.sourceDuplicate && sourcePaths != null && candidate.source != null)
@@ -6006,8 +6090,11 @@ class ModuleFunctions {
 		// Psych calls this field `gfVersion`; native charts use `gf`.  Resolve
 		// both spellings before the importer writes the destination chart so
 		// imported songs do not silently fall back to the stock girlfriend.
-		var chartGirlfriend = chartFieldString(chartSong, 'gf',
-			chartFieldString(chartSong, 'gfVersion', 'gf'));
+		// The engine is not known here, so the legacy player3 spelling is left
+		// to the Psych-family passes that run once it is.
+		var chartGirlfriend = PsychFamilyChartFields.girlfriend(chartSong, false);
+		if (chartGirlfriend == '')
+			chartGirlfriend = 'gf';
 		var modchart = findImportFile(chartRoot, ['modchart.hscript']);
 		var generatedModchart:String = null;
 		var scriptDiagnostics:Array<String> = [];
@@ -6143,6 +6230,9 @@ class ModuleFunctions {
 		var dialogueText = convertImportDialogue(result.dialogueJson, result.p1, result.p2);
 		if (dialogueText != null && StringTools.trim(dialogueText) != '')
 			Reflect.setField(result, 'dialogueText', dialogueText);
+		var namedDialogue = findImportDialogueFiles(chartRoot, result.dialogueJson);
+		if (namedDialogue.length > 0)
+			Reflect.setField(result, 'dialogueFiles', namedDialogue);
 		var cutsceneScript = importCutsceneScript(result.cutsceneJson);
 		if (cutsceneScript != null && StringTools.trim(cutsceneScript) != '') {
 			Reflect.setField(result, 'cutsceneScript', cutsceneScript);
@@ -6640,8 +6730,10 @@ class ModuleFunctions {
 			}
 		}
 		try {
-			var song:Dynamic = parsed == null ? null : Reflect.field(parsed, 'song');
-			return song != null && Std.isOfType(Reflect.field(song, 'notes'), Array) ? parsed : null;
+			// A wrapped chart comes back as it is. A flat one (the song object
+			// saved on its own) gets its wrapper here, so every caller keeps
+			// reading `.song` and the destination is written wrapped.
+			return PsychFamilyChartFields.envelope(parsed);
 		} catch (error:Dynamic) {
 			trace('Unable to inspect imported chart ' + path + ': ' + error);
 			return null;
@@ -6836,6 +6928,12 @@ class ModuleFunctions {
 		if (validImportPath(dialogueSidecar)
 			&& !FileSystem.exists(existingImportChild(dataFolder, 'dialogue.json')))
 			return true;
+		var namedDialogue:Dynamic = Reflect.field(songData, 'dialogueFiles');
+		if (Std.isOfType(namedDialogue, Array))
+			for (source in (cast namedDialogue:Array<Dynamic>))
+				if (validImportPath(source) && !FileSystem.exists(existingImportChild(dataFolder,
+					Path.withoutDirectory(Path.normalize(Std.string(source))))))
+					return true;
 		var cutsceneSidecar:Dynamic = Reflect.field(songData, 'cutsceneJson');
 		if (validImportPath(cutsceneSidecar)
 			&& !FileSystem.exists(existingImportChild(dataFolder, 'cutscene.json')))
@@ -11750,6 +11848,8 @@ class ModuleFunctions {
 			}
 		}
 		var desired = CompatScriptManifest.create(songData.sourceRoot, songData.engine);
+		// Same-import family roots come first, in the source engine's own order.
+		CompatScriptManifest.addDependencyRoots(desired, Reflect.field(songData, 'familyDependencyRoots'));
 		var dependencies:Array<Dynamic> = Reflect.field(songData, 'installedDependencyRoots');
 		if (dependencies != null)
 			for (provider in dependencies)
@@ -13641,14 +13741,7 @@ class ModuleFunctions {
 			// Psych spells this field gfVersion. Convert each difficulty's own
 			// value before applying song-level defaults; an absent Easy value must
 			// still be able to inherit the authored Normal chart at runtime.
-			var currentGf:Dynamic = Reflect.field(chartSong, 'gf');
-			var hasGf = currentGf != null && StringTools.trim(Std.string(currentGf)) != ''
-				&& Std.string(currentGf).toLowerCase() != 'null';
-			var gfVersion:Dynamic = Reflect.field(chartSong, 'gfVersion');
-			if (!hasGf && gfVersion != null && StringTools.trim(Std.string(gfVersion)) != ''
-				&& Std.string(gfVersion).toLowerCase() != 'null')
-				Reflect.setField(chartSong, 'gf', gfVersion);
-			else if (!hasGf && songData.gf != 'gf')
+			if (!PsychFamilyChartFields.normalizeGirlfriend(chartSong) && songData.gf != 'gf')
 				fill('gf', songData.gf);
 		} else
 			fill('gf', songData.gf);
@@ -13917,6 +14010,8 @@ class ModuleFunctions {
 								songData.diagnostics.push(diagnostic);
 						}
 				}
+				// Only the reader needs to know the source was flat.
+				Reflect.deleteField(coolSong, PsychFamilyChartFields.FLAT_MARKER);
 				var coolSongSong:Dynamic = coolSong.song;
 				prepareImportedSongIdentity(coolSongSong, songData, targetFolder);
 				applyImportedVisualMetadata(coolSongSong, songData);
@@ -14006,6 +14101,12 @@ class ModuleFunctions {
 		copyIfPresent(songData.dialog, Path.join([dataFolder, 'dialog.txt']));
 		writeGeneratedDialogue(songData, dataFolder);
 		copyIfPresent(songData.dialogueJson, Path.join([dataFolder, 'dialogue.json']));
+		var namedDialogue:Dynamic = Reflect.field(songData, 'dialogueFiles');
+		if (Std.isOfType(namedDialogue, Array))
+			for (source in (cast namedDialogue:Array<Dynamic>))
+				if (source != null)
+					copyIfPresent(Std.string(source),
+						Path.join([dataFolder, Path.withoutDirectory(Path.normalize(Std.string(source)))]));
 		copyIfPresent(songData.cutsceneJson, Path.join([dataFolder, 'cutscene.json']));
 		copyIfPresent(songData.events, Path.join([dataFolder, 'events.json']));
 		if (songData.modchart != null)

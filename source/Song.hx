@@ -64,6 +64,11 @@ typedef SwagSong = {
 	@:optional var offsets:SongVocalOffsets;
 	/** Raw offset metadata retained when an importer provides it. */
 	@:optional var vocalOffsets:Dynamic;
+	/** Chart time minus audio time in ms; see Conductor.instrumentalOffset. */
+	@:optional var instrumentalOffset:Float;
+	/** Freeplay audio preview window in ms, when the source song names one. */
+	@:optional var previewStart:Float;
+	@:optional var previewEnd:Float;
 	/** Optional V-Slice/TAKEOVER chart sticker identity. */
 	@:optional var stickerPack:String;
 	/** Runtime-only accessor attached to charts loaded from a known song folder. */
@@ -156,14 +161,16 @@ class Song {
 	// `events` is chart content too: a psych event list must not disappear when
 	// its difficulty inherits the normal chart's metadata.
 	static var gameplayFields:Array<String> = [
-		'song', 'notes', 'bpm', 'needsVoices', 'speed', 'format', 'events', 'vocalStems', 'offsets', 'vocalOffsets', 'mania',
+		'song', 'notes', 'bpm', 'needsVoices', 'speed', 'format', 'events', 'vocalStems', 'offsets', 'vocalOffsets',
+		'instrumentalOffset', 'mania',
 		'codenameNoteTypes',
 		'preferredNoteAmount', 'forceJudgements', 'convertMineToNuke',
 		'keys', 'lanes', 'arrowSkins', 'trackSwap'
 	];
 	static var visualFields:Array<String> = [
 		'player1', 'player2', 'gf', 'stage', 'songArtist', 'album', 'difficultyRatings',
-		'difficultyRating', 'authoredDifficultyRatings', 'compatMetadata', 'compatPreserveSongTitle', 'stickerPack', 'uiType', 'cutsceneType',
+		'difficultyRating', 'authoredDifficultyRatings', 'compatMetadata', 'compatPreserveSongTitle', 'stickerPack',
+		'previewStart', 'previewEnd', 'uiType', 'cutsceneType',
 		'isMoody', 'isSpooky', 'isHey', 'isCheer', 'forceLayout',
 		'uiLayoutType', 'cutsceneScript', 'cutsceneStoryOnly', 'cutscenePlayOnce',
 		'arrowSkin', 'splashSkin', 'disableNoteRGB'
@@ -1510,8 +1517,20 @@ class Song {
 		return parsedJson;
 	}
 
+	/**
+	 * `{song: payload}` for a parsed section chart, or null when the document
+	 * is not one. Charts come wrapped (`{"song": {...}}`) or flat (the song
+	 * object saved on its own, as the Psych 1.0 editor does) and everything
+	 * that reads one goes through here so both are accepted the same way.
+	 */
+	public static function chartEnvelope(parsed:Dynamic):Dynamic {
+		return PsychFamilyChartFields.envelope(parsed);
+	}
+
 	public static function parseJSONshit(rawJson:String, ?preserveStageProvenance:Bool = false):SwagSong {
-		var swagShit:SwagSong = cast CoolUtil.parseJson(rawJson).song;
+		var parsed:Dynamic = CoolUtil.parseJson(rawJson);
+		// Anything that is not provably flat keeps the old `.song` read.
+		var swagShit:SwagSong = cast (PsychFamilyChartFields.isFlat(parsed) ? parsed : parsed.song);
 		// Only the chart editor's own autosave path may restore this transient
 		// bit. Ordinary imported/source JSON is user data and cannot spoof it.
 		var storedStageProvenance:Dynamic = Reflect.field(swagShit, 'compatStageAuthored');

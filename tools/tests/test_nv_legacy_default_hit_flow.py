@@ -63,6 +63,8 @@ class PlayState {
   modchartObjects={exists:function(k:String)return false,remove:function(k:String)return false};
  }
  public function setAllHaxeVar(n:String,v:Dynamic){}
+ public var performanceMaxCombo=0;
+ __REGISTER_COMBO__
  public function updateScoreBar(){events.push('scorebar');}
  public function playNightmareVisionLegacyHitSound(n:Note){if(ClientPrefs.hitsoundVolume>0&&!n.hitsoundDisabled)events.push('sound');}
  public function confirmNightmareVisionLegacyHit(n:Note,f:NightmareVisionPlayFieldView){events.push('confirm');}
@@ -109,12 +111,16 @@ class Main {
  }
 }
 """
+        # The legacy flow counts the hit through the shared combo helper.
+        host = host.replace('__REGISTER_COMBO__', extract_method((ROOT/'source/PlayState.hx').read_text(),
+            'function registerComboHit(').replace('function registerComboHit', 'public function registerComboHit'))
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
             work=FixturePath(folder)
             for name, text in {'Main':main,'Reference':reference,'PlayState':host,'Note':note,
                 'NightmareVisionPlayFieldView':'class NightmareVisionPlayFieldView {public var ID=7;public var autoPlayed=false;public var playerControls=false;public function new(){}}',
                 'ClientPrefs':'class ClientPrefs {public static var hitsoundVolume=0.;}',
-                'NightmareVisionLegacyHitFlow':(ROOT/'source/NightmareVisionLegacyHitFlow.hx').read_text()}.items():
+                'NightmareVisionLegacyHitFlow':(ROOT/'source/NightmareVisionLegacyHitFlow.hx').read_text(),
+                'SourceHealthDelta':(ROOT/'source/SourceHealthDelta.hx').read_text()}.items():
                 (work/(name+'.hx')).write_text(text,encoding='utf-8')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],cwd=ROOT,text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

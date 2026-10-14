@@ -7,6 +7,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_chart_format_modules
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -241,6 +242,7 @@ class DifficultyVisualFallbackTest {
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             path = Path(folder) / "DifficultyVisualFallbackTest.hx"
             path.write_text(fixture, newline='\n')
+            install_chart_format_modules(Path(folder))
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder,
                  "-main", "DifficultyVisualFallbackTest", "--interp"],

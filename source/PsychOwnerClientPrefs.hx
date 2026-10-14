@@ -3,15 +3,18 @@ package;
 import flixel.input.gamepad.FlxGamepadInputID;
 import flixel.input.keyboard.FlxKey;
 import haxe.ds.StringMap;
+import SourceOwnerPreferences.*;
 
 using StringTools;
 
-/** Owner-local, mutable ClientPrefs surface for imported Psych scripts. */
+/** Owner-local, mutable ClientPrefs surface for imported Psych scripts. The
+	owner guard, native seeding and loose map helpers are shared with the other
+	Psych-family owners through SourceOwnerPreferences. */
 @:keep
 class PsychOwnerClientPrefs {
 	public static inline var SAVE_FIELD:String = 'psychClientPrefs';
 	public static inline var VERSION:Int = 1;
-	static inline var OWNER_PREFIX:String = 'assets/imported_mods/';
+	static inline var LABEL:String = 'psych-client-prefs';
 	/** Exact nested string paths recognized by the compiled HScript loader. */
 	public final __hscriptStringFieldPaths:Array<String> = ['data.noteSkin', 'defaultData.noteSkin'];
 	static final DATA_FIELDS:Array<String> = [
@@ -45,14 +48,11 @@ class PsychOwnerClientPrefs {
 
 	public function new(ownerRoot:String, ownerSave:Dynamic, ?nativeOptions:Dynamic) {
 		this.ownerRoot = normalizeOwner(ownerRoot);
-		if (ownerSave == null || !Reflect.isFunction(Reflect.field(ownerSave, 'getField'))
-			|| !Reflect.isFunction(Reflect.field(ownerSave, 'setField'))
-			|| !Reflect.isFunction(Reflect.field(ownerSave, 'flush')))
-			throw '[psych-client-prefs] Owner save view is unavailable';
+		requireOwnerSave(ownerSave, LABEL, true);
 		this.ownerSave = ownerSave;
 		defaultData = createDataDefaults();
 		data = createDataDefaults();
-		seedNativeEquivalents(nativeOptions);
+		seedNativeOptions(data, nativeOptions, false);
 		keyBinds = keyboardDefaults();
 		gamepadBinds = gamepadDefaults();
 		loadDefaultKeys();
@@ -87,6 +87,14 @@ class PsychOwnerClientPrefs {
 	public function canReuseFor(owner:String):Bool {
 		if (released) return false;
 		try return normalizeOwner(owner) == ownerRoot catch (_:Dynamic) return false;
+	}
+
+	/** Put the player's engine note keys on the four lanes. Call it before
+		loadPrefs() so binds this owner saved still win; resetKeys keeps the
+		donor defaults captured in the constructor. */
+	public function seedNativeNoteKeys(nativeKeys:Array<Dynamic>):Void {
+		ensureAlive();
+		SourceOwnerPreferences.seedNativeNoteKeys(keyBinds, nativeKeys);
 	}
 
 	/** Read and overlay this owner's saved preferences without binding process globals. */
@@ -209,31 +217,6 @@ class PsychOwnerClientPrefs {
 		runtimeOperations.clear();
 	}
 
-	function seedNativeEquivalents(options:Dynamic):Void {
-		if (options == null) return;
-		seedBool(options, 'downScroll', 'downscroll');
-		seedBool(options, 'middleScroll', 'midscroll');
-		seedBool(options, 'showFPS', 'showFPS');
-		seedBool(options, 'flashing', 'flashingLights');
-		seedBool(options, 'autoPause', 'autoPause');
-		seedBool(options, 'antialiasing', 'antialiasing');
-		seedBool(options, 'shaders', 'gameplayShaders');
-		seedBool(options, 'camZooms', 'zoomCamera');
-		seedNumber(options, 'noteOffset', 'offset');
-	}
-
-	function seedBool(options:Dynamic, target:String, source:String):Void {
-		var value:Dynamic = field(options, source);
-		if (Std.isOfType(value, Bool)) Reflect.setField(data, target, value);
-	}
-
-	function seedNumber(options:Dynamic, target:String, source:String):Void {
-		var value:Dynamic = field(options, source);
-		if (!Std.isOfType(value, Int) && !Std.isOfType(value, Float)) return;
-		var number:Float = value;
-		if (Math.isFinite(number)) Reflect.setField(data, target, number);
-	}
-
 	function runRuntimeOperation(name:String, args:Array<Dynamic>):Dynamic {
 		ensureAlive();
 		var operation = runtimeOperations.get(name);
@@ -266,38 +249,15 @@ class PsychOwnerClientPrefs {
 			target.set(name, cloneValue(mapGet(saved, name)));
 	}
 
-	function callOwnerSave(method:String, args:Array<Dynamic>):Dynamic {
-		var callback:Dynamic = ownerSave == null ? null : Reflect.field(ownerSave, method);
-		if (!Reflect.isFunction(callback))
-			throw '[psych-client-prefs] Owner save method unavailable: ' + method;
-		return Reflect.callMethod(ownerSave, callback, args);
-	}
+	function callOwnerSave(method:String, args:Array<Dynamic>):Dynamic
+		return SourceOwnerPreferences.callOwnerSave(ownerSave, LABEL, method, args);
 
 	function ensureAlive():Void {
 		if (released) throw '[psych-client-prefs] Preference view was released';
 	}
 
-	static function normalizeOwner(owner:String):String {
-		if (owner == null) throw '[psych-client-prefs] Missing owner root';
-		var path = StringTools.replace(owner, '\\', '/');
-		while (path.indexOf('//') >= 0) path = StringTools.replace(path, '//', '/');
-		while (path.length > OWNER_PREFIX.length && path.endsWith('/'))
-			path = path.substr(0, path.length - 1);
-		if (!path.startsWith(OWNER_PREFIX) || path.length <= OWNER_PREFIX.length
-			|| path.indexOf('/../') >= 0 || path.endsWith('/..')
-			|| path.indexOf('/./') >= 0 || path.endsWith('/.'))
-			throw '[psych-client-prefs] Refused an owner outside imported mods';
-		return path;
-	}
-
-	static function gameplayDefaults():StringMap<Dynamic> {
-		var settings = new StringMap<Dynamic>();
-		settings.set('scrollspeed', 1.0); settings.set('scrolltype', 'multiplicative');
-		settings.set('songspeed', 1.0); settings.set('healthgain', 1.0); settings.set('healthloss', 1.0);
-		settings.set('instakill', false); settings.set('practice', false); settings.set('botplay', false);
-		settings.set('opponentplay', false);
-		return settings;
-	}
+	static function normalizeOwner(owner:String):String
+		return SourceOwnerPreferences.normalizeOwner(owner, LABEL);
 
 	static function keyboardDefaults():StringMap<Dynamic> {
 		var keys = new StringMap<Dynamic>();
@@ -334,77 +294,4 @@ class PsychOwnerClientPrefs {
 		for (name in mapKeys(source)) copy.set(name, source.get(name));
 		return copy;
 	}
-
-	static function mapToObject(source:Dynamic):Dynamic {
-		var object:Dynamic = {};
-		for (name in mapKeys(source)) Reflect.setField(object, name, cloneValue(mapGet(source, name)));
-		return object;
-	}
-
-	static function copyIntoMap(source:Dynamic, destination:Dynamic, clone:Bool):Void {
-		if (source == null || destination == null) return;
-		for (name in mapKeys(source)) mapSet(destination, name,
-			clone ? cloneValue(mapGet(source, name)) : mapGet(source, name));
-	}
-
-	static function cloneValue(value:Dynamic):Dynamic {
-		if (value == null) return null;
-		if (Std.isOfType(value, Array)) {
-			var copied:Array<Dynamic> = [];
-			for (item in (cast value:Array<Dynamic>)) copied.push(cloneValue(item));
-			return copied;
-		}
-		if (isStringMap(value)) {
-			var copied = new StringMap<Dynamic>();
-			copyIntoMap(value, copied, true);
-			return copied;
-		}
-		if (isObject(value)) {
-			var copied:Dynamic = {};
-			for (name in Reflect.fields(value)) Reflect.setField(copied, name, cloneValue(Reflect.field(value, name)));
-			return copied;
-		}
-		return value;
-	}
-
-	static function mapKeys(value:Dynamic):Array<String> {
-		var keys:Array<String> = [];
-		if (value == null) return keys;
-		if (isStringMap(value)) {
-			for (key in (cast value:StringMap<Dynamic>).keys()) keys.push(key);
-		} else if (isObject(value)) keys = Reflect.fields(value);
-		return keys;
-	}
-
-	static function mapGet(value:Dynamic, name:String):Dynamic {
-		if (value == null) return null;
-		if (isStringMap(value)) return (cast value:StringMap<Dynamic>).get(name);
-		return Reflect.field(value, name);
-	}
-
-	static function mapSet(value:Dynamic, name:String, item:Dynamic):Void {
-		if (isStringMap(value)) (cast value:StringMap<Dynamic>).set(name, item);
-		else if (isObject(value)) Reflect.setField(value, name, item);
-	}
-
-	static function mapExists(value:Dynamic, name:String):Bool {
-		if (value == null) return false;
-		if (isStringMap(value)) return (cast value:StringMap<Dynamic>).exists(name);
-		return Reflect.hasField(value, name);
-	}
-
-	static function field(value:Dynamic, name:String):Dynamic {
-		if (value == null) return null;
-		if (isStringMap(value)) return (cast value:StringMap<Dynamic>).get(name);
-		return Reflect.field(value, name);
-	}
-
-	static function hasField(value:Dynamic, name:String):Bool {
-		if (value == null) return false;
-		if (isStringMap(value)) return (cast value:StringMap<Dynamic>).exists(name);
-		return Reflect.hasField(value, name);
-	}
-
-	static function isStringMap(value:Dynamic):Bool return value != null && Std.isOfType(value, StringMap);
-	static function isObject(value:Dynamic):Bool return value != null && Type.typeof(value) == TObject;
 }

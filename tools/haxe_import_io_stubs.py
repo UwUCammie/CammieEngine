@@ -17,6 +17,8 @@ IMPORT_IO_MODULES = (
     "PsychFreeplayOrder.hx",
     "FreeplayAuthoredOrder.hx",
     "PsychSongNameCompat.hx",
+    "PsychFamilyChartFields.hx",
+    "PsychFamilyFormatProbe.hx",
     "NightmareVisionSongNameCompat.hx",
     "ImportDirectoryListing.hx",
     "ImportSourceSnapshot.hx",
@@ -40,6 +42,26 @@ class LibraryIdentityArchive {
  public function destinationFor(engine:String,identity:String,fingerprint:String,source:String):String return null;
 }
 """
+
+
+# ImportRootScanner and the importer's chart reader go through these. They only
+# need each other and two small helpers, so any isolated fixture can take them.
+CHART_FORMAT_MODULES = (
+    "PsychFamilyChartFields.hx",
+    "PsychFamilyFormatProbe.hx",
+    "PsychSongNameCompat.hx",
+    "ImportDirectoryListing.hx",
+)
+
+
+def install_chart_format_modules(folder: Path) -> None:
+    """Install the real shared chart/format readers into a fixture class path."""
+    destination = Path(folder)
+    for module in CHART_FORMAT_MODULES:
+        target = destination / module
+        if target.exists():
+            continue
+        target.write_text((ROOT / "source" / module).read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
 
 
 def install_import_io_dependencies(folder: Path) -> None:

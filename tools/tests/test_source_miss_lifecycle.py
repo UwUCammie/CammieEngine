@@ -72,7 +72,12 @@ class SourceMissLifecycleTest(unittest.TestCase):
             "function sourceMissAnimation(",
             "function sourceMissPerformer(",
             "function setSourceVocalVolume(",
-            "function applySourceMiss():Void",
+            "function applySourceMiss(",
+            "function notifyNoteMissObservers(",
+            "function dispatchNightmareVisionNoteMiss(",
+            "function markNightmareVisionTailMissed(",
+            "function reactGirlfriendToComboBreak(",
+            "function playMissSound(",
             "function applySourceMissHealth(",
             "function refreshSourceAccuracy():Void",
             "function sourceMissCounts(",
@@ -389,6 +394,7 @@ class FlxG {
 }
 class TitleState { public static var soundExt:String = '.ogg'; }
 class TailPiece {
+ public var alive:Bool = true;
  var _tooLate:Bool = false;
  public var events:Array<String>;
  public var tooLate(get,set):Bool;
@@ -517,6 +523,8 @@ class PlayState {
   if (name == 'noteMiss') {lastMissCallbackArgs=args; lastMissCallbackSkipPsych=skipPsych;}
  }
  public function sourceScoreLedgerActiveDummy():Bool return true;
+ // Owner sound lookup is covered by test_gameplay_feedback_sounds; only the play is observed here.
+ public function feedbackSound(name:String):Dynamic return name;
  __EXTRACTED_METHODS__
  public function exercise(note:Note, direction:Int=1, playerOne:Bool=true, ?actingOn:Character, ?hxcMissEvent:Dynamic):Void
   sourceNoteMiss(direction, playerOne, note, actingOn == null ? boyfriend : actingOn, hxcMissEvent);

@@ -157,6 +157,9 @@ class Main {
   warmCalls.push(name+':'+isPlayer);
   var actor=new Actor(name); warmed.push(actor); actor.destroy();
  }
+ var swapPreloads:Array<String>=[];
+ function preloadSwapCharacter(slot:String,name:String,wanted:Int=1):Void swapPreloads.push(slot+':'+name+':'+wanted);
+ __SLOT_BODY__
  function codenameSelectedRoot():String return '';
  function currentSongDataPath(name:String):String
   return useExplicitPreloadFile ? preloadFilePath : preloadFilePath+'.missing';
@@ -203,12 +206,13 @@ class Main {
    && scriptOne.alpha==0.00001, 'Psych script preload actors were not retained hidden');
   check(state.warmCalls.length==0, 'Psych script preload used the temporary atlas warmer');
 
-  // The ordinary Psych host still uses the temporary atlas warm-up path.
+  // The ordinary Psych host keeps one built actor for the native swap slot.
   var psychOnly=new Main();
   psychOnly.nightmareVisionScripts=null;
   psychOnly.compatAddCharacterToList('ordinary','boyfriend');
-  check(psychOnly.warmCalls.join(',')=='ordinary:true', 'ordinary preload behavior changed');
-  check(psychOnly.warmed[0].destroyed, 'ordinary warm-up actor was not destroyed');
+  psychOnly.compatAddCharacterToList('second','1');
+  check(psychOnly.swapPreloads.join(',')=='boyfriend:ordinary:1,dad:second:1', 'ordinary preload did not keep a swap actor');
+  check(psychOnly.warmCalls.length==0, 'ordinary preload still built and destroyed a temporary actor');
 
   // Once NV source events have been prepared, their character bank already
   // owns preload responsibility. Keep explicit preload.txt warming active.
@@ -225,8 +229,10 @@ class Main {
    'explicit preload.txt character should use and release the temporary atlas warmer');
  }
 }'''
+        slot = function_body(source, "changeCharacterSlot")
         fixture = fixture.replace("__PRELOAD_BODY__", preload).replace(
-            "__PSYCH_PRELOAD_BODY__", psych_preload).replace("__GROUP_PRELOAD_BODY__", group_preload)
+            "__PSYCH_PRELOAD_BODY__", psych_preload).replace("__GROUP_PRELOAD_BODY__", group_preload).replace(
+            "__SLOT_BODY__", slot)
         cool_util_stub = '''class CoolUtil {
  public static function coolTextFile(path:String):Array<String>
   return sys.io.File.getContent(path).split("\\n");

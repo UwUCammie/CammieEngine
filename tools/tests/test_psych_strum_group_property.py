@@ -36,7 +36,7 @@ class PsychStrumGroupPropertyTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text()
         method_names = (
             "compatPathIndex", "compatReadPathPart", "compatWritePathPart",
-            "compatGroupMember", "compatGetPropertyFromGroup", "compatSetPropertyFromGroup",
+            "receptorAt", "compatGroupMember", "compatGetPropertyFromGroup", "compatSetPropertyFromGroup",
         )
         methods = "\n".join(source_method(source, name) for name in method_names)
         fixture = r'''class GetterGroup {

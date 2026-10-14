@@ -99,17 +99,29 @@ class ImportRefreshFailure {
 				: "A correctly detected copy (\"" + duplicate + "\") is already installed; remove this older copy from the library.");
 
 	/** Compare an explicitly typed, evidence-free root with what detection now
-	 * proves from its executable. Layout hints alone never contradict the receipt. */
+	 * proves, either from its executable or from evidence the scanner marked
+	 * decisive (a chart format, for example). Layout hints alone never
+	 * contradict the receipt. */
 	public static function mismatch(relative:String, recordedType:String, recordedEngine:String, recordedEvidence:Dynamic,
-			detectedEngine:String, detectedEvidence:Array<String>):Null<ImportEngineMismatch> {
+			detectedEngine:String, detectedEvidence:Array<String>, detectedDecisive:Bool = false):Null<ImportEngineMismatch> {
 		var chosen = ImportRevision.normalizeEngine(recordedType);
 		var recorded = ImportRevision.normalizeEngine(recordedEngine);
 		var detected = ImportRevision.normalizeEngine(detectedEngine);
 		if (chosen == "" || recorded == "" || recorded != chosen || detected == "" || detected == recorded) return null;
 		if (Std.isOfType(recordedEvidence, Array) && (cast recordedEvidence:Array<Dynamic>).length > 0) return null;
-		if (detectedEvidence != null) for (line in detectedEvidence)
-			if (line != null && line.toLowerCase().indexOf("executable") >= 0)
+		var first:String = null;
+		if (detectedEvidence != null) for (line in detectedEvidence) {
+			if (line == null || StringTools.trim(line) == "") continue;
+			if (line.toLowerCase().indexOf("executable") >= 0)
 				return {relative:relative == null ? "" : relative, recorded:recorded, detected:detected, evidence:line};
+			if (first == null) first = line;
+		}
+		// Nightmare Vision reads Psych's week, character, stage and chart files,
+		// so a Psych-shaped file proves nothing against a root imported as the
+		// fork. Only the executable can say that one is really Psych.
+		var forkReadsFormat = recorded == "Nightmare Vision" && detected == "Psych Engine";
+		if (detectedDecisive && first != null && !forkReadsFormat)
+			return {relative:relative == null ? "" : relative, recorded:recorded, detected:detected, evidence:first};
 		return null;
 	}
 }

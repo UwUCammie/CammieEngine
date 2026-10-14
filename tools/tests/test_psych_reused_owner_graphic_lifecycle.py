@@ -87,7 +87,7 @@ class PsychOwnerPaths {
 class PsychOwnerAssetPath {
   public static function ownerReferenceAllowed(_owner:String, _path:String):Bool return true;
 }
-class CompatScriptManifest { public static inline var ROOT_PREFIX:String = 'assets/imported_mods'; }
+
 class RuntimeSmokeHarness {
   public static function enabled():Bool return false;
   public static function markStep(_value:String):Void {}

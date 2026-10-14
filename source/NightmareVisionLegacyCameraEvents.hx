@@ -5,7 +5,10 @@ import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
 import flixel.util.FlxColor;
 
-/** Historical event arguments and handle ownership over native camera/tween services. */
+/**
+	Historical-only camera events and handle ownership over native camera/tween
+	services. Events the revision shares with Psych live in SourceBuiltinEvents.
+**/
 @:access(PlayState)
 class NightmareVisionLegacyCameraEvents {
 	var state:PlayState;
@@ -38,18 +41,10 @@ class NightmareVisionLegacyCameraEvents {
 		state.songSpeedTween = null;
 		state = null;
 	}
-	/** False is the source triggerEventNote early return, including notifications. */
-	public function changeScrollSpeed(value1:String, value2:String):Bool {
-		if (state.songSpeedType == 'constant') return false;
-		var multiplier = Std.parseFloat(value1);
-		var duration = Std.parseFloat(value2);
-		if (Math.isNaN(multiplier)) multiplier = 1;
-		if (Math.isNaN(duration)) duration = 0;
-		var target = PlayState.SONG.speed * state.nightmareVisionPrefs.getGameplaySetting('scrollspeed', 1) * multiplier;
-		if (duration <= 0) state.songSpeed = target;
-		else state.songSpeedTween = tween(state, {songSpeed:target}, duration, FlxEase.linear,
+	/** The shared scroll event's tween, owned here so it pauses and dies with this state. */
+	public function tweenSongSpeed(target:Float, duration:Float):Void {
+		state.songSpeedTween = tween(state, {songSpeed:target}, duration, FlxEase.linear,
 			function() state.songSpeedTween = null);
-		return true;
 	}
 	/** Reenter the normal event dispatcher so callbacks can mutate this live chain. */
 	public static function consumeBeat(state:PlayState):Void {
@@ -68,15 +63,6 @@ class NightmareVisionLegacyCameraEvents {
 				var duration = Std.parseFloat(value2);
 				if (Math.isNaN(duration)) duration = 0.5;
 				FlxG.camera.flash(FlxColor.fromString(value1), duration);
-			case 'Add Camera Zoom':
-				if (state.nightmareVisionPrefs.view.camZooms && FlxG.camera.zoom < 1.35) {
-					var game = Std.parseFloat(value1);
-					var hud = Std.parseFloat(value2);
-					if (Math.isNaN(game)) game = 0.015;
-					if (Math.isNaN(hud)) hud = 0.03;
-					FlxG.camera.zoom += game;
-					state.camHUD.zoom += hud;
-				}
 			case 'Camera Zoom':
 				cancel(state.camTween);
 				state.camTween = null;
@@ -102,18 +88,6 @@ class NightmareVisionLegacyCameraEvents {
 					state.camHUDAlphaTween = tween(state.camHUD, {alpha:alpha}, duration, FlxEase.linear,
 						function() state.camHUDAlphaTween = null);
 				});
-			case 'Camera Follow Pos':
-				state.sourceCameraFollowPosition(value1, value2);
-			case 'Screen Shake':
-				var values = [value1, value2];var cameras = [state.camGame, state.camHUD];
-				for (i in 0...cameras.length) {
-					var split = values[i].split(',');
-					var duration = split[0] == null ? 0 : Std.parseFloat(StringTools.trim(split[0]));
-					var intensity = split[1] == null ? 0 : Std.parseFloat(StringTools.trim(split[1]));
-					if (Math.isNaN(duration)) duration = 0;
-					if (Math.isNaN(intensity)) intensity = 0;
-					if (duration > 0 && intensity != 0) cameras[i].shake(intensity, duration);
-				}
 			case 'Camera Zoom Chain':
 				var split = value1.split(',');
 				var game = Std.parseFloat(StringTools.trim(split[0]));

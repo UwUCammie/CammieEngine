@@ -101,7 +101,10 @@ class Main {
         self.assertRegex(source, r'if \(compatCustomSubstateOpen\) \{\s*updateNightmareVisionScreenUnderlay\(\);\s*dispatchNightmareVisionUpdatePost\(sourceBatch\);\s*return;')
         self.assertIn('resumePsychCustomTimeline();', source)
         self.assertIn('subState == compatCustomSubstate && !compatCustomSubstate.sourceLifecycle', source)
-        self.assertIn('if (!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer.finished)', source)
+        # A script-held countdown also stays stopped on resume, but a custom
+        # substate close still must not restart the countdown clock on its own.
+        self.assertRegex(source, r'if \(!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer\.finished'
+            r'\s*&& !hxcCountdownHeld\(\)\)\s*startTimer\.active = true;')
         self.assertIn('super.openSubState(null);', source)
 
 

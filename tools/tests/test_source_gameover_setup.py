@@ -351,6 +351,7 @@ class PlayState {
  public function new(?settings:SourceGameOverSettings) {
   sourceGameOverSettings=settings; if(settings!=null) instance=this;
  }
+ public static function restartCurrentSong(?skipTransition:Bool=false):Void LoadingState.loadAndSwitchState(null);
  public function sourceGameOverMode():Int return sourceGameOverSettings.mode;
  public function psychGameOverCharacterName():Null<String> return sourceGameOverSettings.characterName;
  public function sourceGameOverPsychPaths():Dynamic {

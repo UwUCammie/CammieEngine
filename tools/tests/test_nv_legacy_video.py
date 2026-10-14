@@ -15,12 +15,12 @@ class LegacyVideoTest(unittest.TestCase):
             'Event.hx': """class Event {
  public var handlers:Array<Dynamic>=[]; public function new(){}
  public function has(f:Dynamic):Bool {for(h in handlers)if(Reflect.compareMethods(h,f))return true;return false;}
- public function add(f:Dynamic):Void {if(!has(f))handlers.push(f);}
+ public function add(f:Dynamic,once:Bool=false,priority:Int=0):Void {if(!has(f))handlers.push(f);}
  public function remove(f:Dynamic):Void {handlers=handlers.filter(function(h)return !Reflect.compareMethods(h,f));}
  public function dispatch():Void {for(f in handlers.copy())Reflect.callMethod(null,f,[]);}
 }""",
             'flixel/FlxG.hx': """package flixel; class FlxG {
- public static var autoPause=true;
+ public static var autoPause=true; public static var width=1280; public static var height=720;
  public static var signals={focusGained:new Event(),focusLost:new Event()};
 }""",
             'flixel/util/FlxTimer.hx': """package flixel.util; class FlxTimer {
@@ -31,6 +31,7 @@ class LegacyVideoTest(unittest.TestCase):
             'hxvlc/flixel/FlxInternalVideo.hx': """package hxvlc.flixel; import flixel.FlxG;
  class FlxInternalVideo {
  public var onEndReached=new Event();public var onOpening=new Event();public var onFormatSetup=new Event();
+ public var onPaused=new Event();public var onStopped=new Event();public var rate:Float=1;public var volumeAdjust:Float=1;
  public var onEncounteredError:Dynamic=new Event();public var isPlaying=false;public var disposed=false;
  public var loadOK=true;public var path:String;public var options:Array<String>;public var pauseCalls=0;public var resumeCalls=0;
  var resumeOnFocus=false;public var length:haxe.Int64=0;public var time:haxe.Int64=0;
@@ -47,7 +48,8 @@ class LegacyVideoTest(unittest.TestCase):
 """,
             'hxvlc/flixel/FlxVideoSprite.hx': """package hxvlc.flixel; import hxvlc.openfl.Location;
  class FlxVideoSprite {
- public var bitmap:FlxInternalVideo;public var x:Float;public var y:Float;public var exists=true;
+ public var bitmap:FlxInternalVideo;public var x:Float;public var y:Float;public var exists=true;public var alive=true;
+ public function setGraphicSize(w:Float=0,h:Float=0):Void {}public function updateHitbox():Void {}public function screenCenter():Void {}
  public function new(?instance:Dynamic,x:Float=0,y:Float=0){this.x=x;this.y=y;bitmap=new FlxInternalVideo();}
  public function load(path:Location,?options:Array<String>):Bool return bitmap.load(path,options);
  public function play():Bool return bitmap!=null&&bitmap.play();
@@ -58,6 +60,7 @@ class LegacyVideoTest(unittest.TestCase):
             'NightmareVisionSpriteMethods.hx': 'class NightmareVisionSpriteMethods {public static function bind(a:Dynamic,b:Dynamic):Void{}}',
             'NightmareVisionSpriteRegistry.hx': 'class NightmareVisionSpriteRegistry {public static function peek(a:Dynamic):Dynamic return null;}',
         }
+        files['SourceVideoPlayback.hx']=(ROOT/'source'/'SourceVideoPlayback.hx').read_text()
         for name in ['NightmareVisionVideoSprite','NightmareVisionLegacyVideoSprite']:
             source=(ROOT/'source'/f'{name}.hx').read_text().replace('#if cpp','#if true')
             source=source.replace('@:build(NightmareVisionSpriteMacro.build())','')

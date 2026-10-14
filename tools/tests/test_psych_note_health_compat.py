@@ -114,7 +114,7 @@ __METHODS__
         self.assertIn("if (hitCausesMiss)", hit_method)
         self.assertIn("finishGoodNoteHit(note, playerOne, hxcHitEvent, false)", hit_method)
         self.assertIn("!note.isSustainNote && !hitCausesMiss", hit_method)
-        self.assertIn("setVocalsVolume(0)", method)
+        self.assertIn("muteMissedVocals(playerOne)", method)
         self.assertIn("splashHitCausesMissNote(note)", method)
         self.assertIn("shouldShowNoteSplash(note)", splash_method)
         self.assertIn("!note.isSustainNote && !note.isNoteSplashDisabled()", splash_gate)
@@ -123,7 +123,7 @@ __METHODS__
         self.assertIn("if (restoreVocals)", finish_method)
         self.assertIn("if (!sourceScoreNightmare) note.wasGoodHit = true;", method)
         self.assertIn("if (sourceScoreNightmare) note.wasGoodHit = true;", method)
-        self.assertIn("if (!sourceScoreLedgerActive()) setVocalsVolume(0);", method)
+        self.assertIn("if (!sourceScoreLedgerActive()) muteMissedVocals(playerOne);", method)
         self.assertIn("if (!sourceScoreNightmare) splashHitCausesMissNote(note);", method)
 
         fixture = '''
@@ -163,6 +163,7 @@ class PsychManualHazardFixture {
   public function new() {}
   function sourceScoreLedgerActive():Bool return sourceScoreActive;
   function setVocalsVolume(value:Float):Void vocalVolume = value;
+  function muteMissedVocals(playerOne:Bool):Void setVocalsVolume(0);
   function getNoteStrumline(note:Note):Strumline return strumline;
   function nightmareVisionSkinForField(field:Int):Dynamic return null;
   function noteMiss(direction:Int, playerOne:Bool, note:Null<Note>,

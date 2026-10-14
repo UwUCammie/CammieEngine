@@ -329,7 +329,8 @@ class NightmareVisionInputClockRouteTest(unittest.TestCase):
             work = Path(directory)
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
             (work / "Conductor.hx").write_text(
-                "class Conductor { public static var songPosition:Float=0; }", newline="\n")
+                "class Conductor { public static var songPosition:Float=0; public static var instrumentalOffset:Float=0;"
+                " public static function songTimeFromAudio(time:Float):Float return time+instrumentalOffset; }", newline="\n")
             (work / "FlxG.hx").write_text(
                 "class FlxG { public static var sound:Dynamic={music:null}; }", newline="\n")
             (work / "SourceInputNotes.hx").write_text(

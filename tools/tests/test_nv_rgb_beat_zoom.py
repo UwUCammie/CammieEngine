@@ -14,7 +14,7 @@ class NvRgbBeatZoomTest(unittest.TestCase):
         play = (ROOT / 'source/PlayState.hx').read_text()
         start = play.index('@:keep public var beatsPerZoom(get, set):Int;')
         end = play.index('\n\tpublic var cameraZoomRate', start)
-        helper = method(play, 'function applyNightmareVisionBeatZoom():Void')
+        helper = method(play, 'function applyNightmareVisionBeatZoom():Void') + '\n' + method(play, 'function pulseCameraZoom(')
         self.assertLess(play.index('applyNightmareVisionBeatZoom();'), play.index("callNightmareVision('onBeatHit', []);"))
         self.assertIn('if (nightmareVisionScripts == null && !codenameCameraModuloActive', play)
         fixture = r'''
@@ -40,7 +40,7 @@ class Main {
  var camZoomIntensity:Float=2;
  var camGame:Dynamic={zoom:2.0};
  var camHUD:Dynamic={zoom:1.0};
- function sourceLivePreference(name:String, fallback:Bool):Bool return enabled;
+ function sourceCameraZoomsEnabled():Bool return enabled;
  function setGameCameraZoom(value:Float):Void camGame.zoom=value;
  __HELPER__
  public function new() {FlxTween.game=camGame;FlxTween.hud=camHUD;FlxG.camera=camGame;}

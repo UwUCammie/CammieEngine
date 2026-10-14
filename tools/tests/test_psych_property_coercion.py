@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
+from base_helper_fixtures import cool_util_colors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
@@ -116,7 +118,7 @@ class PropertyCoercionCompat {{
       throw "string property was unexpectedly coerced";
   }}
 }}
-""".format(methods="\n".join(methods))
+""".format(methods="\n".join(methods)) + cool_util_colors()
         fixture = fixture.replace("class PropertyCoercionCompat {", "class PropertyCoercionCompat {\n" + '// No source HUD icon installation occurs in this note/property-only fixture.\n static function sourceHUDIconAlias(_name:String):Dynamic return null;\n static function isSourceHUDIconAlias(_name:String):Bool return false;\n static function writeSourceHUDIconAlias(_name:String,value:Dynamic):Dynamic return value;\n static function sourceHUDBarAlias(_name:String):Dynamic return null;\n static function isSourceHUDBarAlias(_name:String):Bool return false;\n static function writeSourceHUDBarAlias(_name:String,value:Dynamic):Dynamic return value;\n', 1)
         fixture += "\nclass PlayState {}\n"
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:

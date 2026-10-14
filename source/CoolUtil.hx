@@ -9,6 +9,7 @@ import openfl.filters.ColorMatrixFilter;
 import flixel.addons.plugin.taskManager.FlxTask;
 import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
+import flixel.util.FlxColor;
 import tjson.TJSON;
 using StringTools;
 
@@ -182,6 +183,54 @@ class CoolUtil {
 		}
 	}
 
+	/**
+		The one colour reader for script input. Takes what the Psych family
+		accepts: a colour name in any case, RRGGBB or AARRGGBB with or without a
+		`#` or `0x` in front, or a number. Returns null when the value is not a
+		colour at all, for callers that should then leave things alone.
+	*/
+	public static function colorFromStringOrNull(value:Dynamic):Null<Int> {
+		if (value == null)
+			return null;
+		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
+			var numericColor:Int = Std.int(value);
+			// Scripts commonly pass a plain RGB number for a tint and control
+			// alpha separately. Keep an explicit ARGB value, make RGB opaque.
+			return numericColor >= 0 && numericColor <= 0xFFFFFF
+				? numericColor | 0xFF000000 : numericColor;
+		}
+		var text = StringTools.trim(Std.string(value));
+		if (text == '')
+			return null;
+		var digits = text;
+		if (StringTools.startsWith(digits, '#'))
+			digits = digits.substr(1);
+		else if (StringTools.startsWith(digits.toLowerCase(), '0x'))
+			digits = digits.substr(2);
+		var hexColor = new EReg('^[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$', '');
+		if (hexColor.match(digits)) {
+			if (digits.length == 6)
+				digits = 'FF' + digits;
+			// hxcpp's Std.parseInt uses a 32-bit long on Windows: parsing
+			// FFFFFFFF as one integer clamps it to 7FFFFFFF (half alpha).
+			// Combine two 16-bit halves to keep ARGB identical on every target.
+			var high = Std.parseInt('0x' + digits.substr(0, 4));
+			var low = Std.parseInt('0x' + digits.substr(4, 4));
+			if (high != null && low != null)
+				return (high << 16) | low;
+		}
+		var named:Null<Int> = FlxColor.fromString(text);
+		if (named != null)
+			return named;
+		return Std.parseInt(text);
+	}
+
+	/** Same reader for callers that always need a colour: anything unreadable is white. */
+	public static function colorFromString(value:Dynamic):Int {
+		var parsed = colorFromStringOrNull(value);
+		return parsed == null ? 0xFFFFFFFF : parsed;
+	}
+
 	public static function getBlendMode(blend:String) {
 		var daBlend = switch(blend.toLowerCase()) {
 			case "add":
@@ -291,6 +340,73 @@ class CoolUtil {
 			dumbArray.push(i);
 		}
 		return dumbArray;
+	}
+
+	// Psych and Nightmare Vision scripts both call these by the same names, so
+	// one copy here serves every script layer that hands out CoolUtil.
+	public static function capitalize(text:String):String {
+		if (text == null) return text;
+		return text.charAt(0).toUpperCase() + text.substr(1).toLowerCase();
+	}
+
+	/** coolTextFile for text that is already in memory. */
+	public static function listFromString(string:String):Array<String> {
+		var daList:Array<String> = (string == null ? '' : string).trim().split('\n');
+		for (i in 0...daList.length) daList[i] = daList[i].trim();
+		return daList;
+	}
+
+	/** Unknown names fall back to NORMAL rather than null, matching the source helper. */
+	public static function getBlendFromString(?blend:String):BlendMode {
+		var mode = blend == null ? null : getBlendMode(blend.trim());
+		return mode == null ? BlendMode.NORMAL : mode;
+	}
+
+	/** Overwrites the head of fallback with input, so fallback keeps any extra entries. */
+	public static function correctArray<T>(input:Array<T>, fallback:Array<T>):Array<T> {
+		if (input != null) for (i in 0...input.length) fallback[i] = input[i];
+		return fallback;
+	}
+
+	public static function copyMapValues<K, V>(from:Map<K, V>, to:Map<K, V>):Void {
+		if (from == null || to == null) return;
+		for (key in from.keys()) to.set(key, from.get(key));
+	}
+
+	public static function cancelMusicFadeTween():Void {
+		var music = flixel.FlxG.sound.music;
+		if (music == null) return;
+		if (music.fadeTween != null) music.fadeTween.cancel();
+		music.fadeTween = null;
+	}
+
+	/** Same URL checks as the other script-facing link openers. */
+	public static function browserLoad(site:String):Bool
+		return CodenameOpenURLCompat.open(site, function(url:String):Void flixel.FlxG.openURL(url));
+
+	/** Most common opaque colour in the sprite's current frame bitmap, ignoring black. */
+	public static function dominantColor(sprite:FlxSprite):Int {
+		if (sprite == null || sprite.pixels == null) return 0xFF000000;
+		var pixels = sprite.pixels;
+		return dominantPixelColor(Std.int(Math.min(sprite.frameWidth, pixels.width)),
+			Std.int(Math.min(sprite.frameHeight, pixels.height)), pixels.getPixel32);
+	}
+
+	static function dominantPixelColor(width:Int, height:Int, pixelAt:(Int, Int)->Int):Int {
+		var counts = new Map<Int, Int>();
+		var best = 0xFF000000;
+		var bestCount = 0;
+		for (x in 0...width) for (y in 0...height) {
+			var colour = pixelAt(x, y);
+			// The source keeps pixels above 5% alpha and counts them as fully opaque.
+			if (((colour >>> 24) & 0xFF) / 255 <= 0.05) continue;
+			colour = colour | 0xFF000000;
+			if (colour == 0xFF000000) continue;
+			var count = (counts.exists(colour) ? counts.get(colour) : 0) + 1;
+			counts.set(colour, count);
+			if (count > bestCount) {bestCount = count; best = colour;}
+		}
+		return best;
 	}
 	/**
 	 * Compatibility helper from Wednesday's Infidelity. This deliberately only

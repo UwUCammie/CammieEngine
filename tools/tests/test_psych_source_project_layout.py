@@ -6,6 +6,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_chart_format_modules
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -114,6 +115,7 @@ class Main {
             (work / "PsychSongNameCompat.hx").write_text(
                 (ROOT / "source/PsychSongNameCompat.hx").read_text()
             , newline='\n')
+            install_chart_format_modules(work)
             (work / "ImportSettings.hx").write_text(r'''import haxe.io.Path;
 using StringTools;
 class ImportSettings {

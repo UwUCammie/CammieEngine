@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
+from base_helper_fixtures import cool_util_colors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
@@ -128,7 +130,7 @@ __METHODS__
   }
 }
 """.replace("__METHODS__", "\n".join(methods))
-        self.run_haxe(fixture, "IndexedPathCompat")
+        self.run_haxe(fixture + cool_util_colors(), "IndexedPathCompat")
 
     def test_flxg_class_paths_keep_the_real_game_root(self):
         play_state = (ROOT / "source/PlayState.hx").read_text()
@@ -303,6 +305,7 @@ class EngineCompat {
 class GameOverPropertyProbe {
   var nightmareVisionLegacyFieldCameras=false;
   function getLuaObject(n:String,t:Bool):Dynamic return null;
+  function characterGroupForRole(role:String):Dynamic return {group: role};
 __METHODS__
   var sourceScoreOwner:Bool = false;
   var sourceScoreNightmare:Bool = false;
@@ -459,7 +462,7 @@ class ColorCompat {{
     if (object.graphicColor != 0xFF112233) throw "makeGraphic colour was not normalized";
   }}
 }}
-""".format(method=method, graphic_method=graphic_method)
+""".format(method=method, graphic_method=graphic_method) + cool_util_colors()
         self.run_haxe(fixture, "ColorCompat")
 
     @unittest.skipUnless(DONOR.is_dir(), "mounted FNF-Example-Mods corpus is unavailable")

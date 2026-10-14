@@ -12,6 +12,14 @@ typedef EngineCompatEventRoute = {
 	var v3:String;
 }
 
+/** One event row resolved against a root's static event-sprite descriptors. */
+typedef EngineCompatEventSpriteRoute = {
+	var descriptor:Dynamic;
+	var name:String;
+	var x:Float;
+	var y:Float;
+}
+
 /**
 	A read-only verdict for one mounted HXC SongEvent body.  `covered` means the
 	native route implements the operation represented by the body; `gaps` names
@@ -1083,6 +1091,95 @@ class EngineCompat {
 		return hxcAttachPayload(payload);
 	}
 
+	/**
+		Put the game's proposed outcome on a note event so a script reads the
+		real health, score and flags instead of placeholders.  Both score
+		spellings are filled in: note events call it `score`, an empty key press
+		calls it `scoreChange`.
+	*/
+	public static function hxcSeedNoteOutcome(payload:Dynamic, outcome:NoteJudgementOutcome):Void {
+		if (payload == null || outcome == null)
+			return;
+		Reflect.setField(payload, 'healthChange', outcome.healthChange);
+		Reflect.setField(payload, 'score', outcome.score);
+		Reflect.setField(payload, 'scoreChange', outcome.score);
+		Reflect.setField(payload, 'isComboBreak', outcome.isComboBreak);
+		Reflect.setField(payload, 'playSound', outcome.playSound);
+		Reflect.setField(payload, 'doesNotesplash', outcome.doesNotesplash);
+		Reflect.setField(payload, 'playAnim', outcome.playAnim);
+		Reflect.setField(payload, 'hitDiff', outcome.hitDiff);
+		Reflect.setField(payload, 'comboCount', outcome.comboCount);
+		Reflect.setField(payload, 'hasPossibleNotes', outcome.hasPossibleNotes);
+		if (outcome.judgement != null)
+			Reflect.setField(payload, 'judgement', outcome.judgement);
+	}
+
+	/**
+		Copy what scripts wrote on a note event back onto the outcome the game
+		is about to apply.  Only values of the right type are taken, so a script
+		that stores a string or NaN in a number field changes nothing.
+	*/
+	public static function hxcApplyNoteOutcome(payload:Dynamic, outcome:NoteJudgementOutcome):Void {
+		if (payload == null || outcome == null)
+			return;
+		var health = hxcOutcomeNumber(payload, 'healthChange', 100);
+		if (health != null)
+			outcome.healthChange = health;
+		// Take whichever score spelling the script moved.
+		var score = hxcOutcomeNumber(payload, 'score', 10000000);
+		var scoreChange = hxcOutcomeNumber(payload, 'scoreChange', 10000000);
+		if (score != null && Math.round(score) != outcome.score)
+			outcome.score = Math.round(score);
+		else if (scoreChange != null && Math.round(scoreChange) != outcome.score)
+			outcome.score = Math.round(scoreChange);
+		var comboBreak:Dynamic = hxcField(payload, 'isComboBreak');
+		if (Std.isOfType(comboBreak, Bool))
+			outcome.isComboBreak = comboBreak;
+		var playSound:Dynamic = hxcField(payload, 'playSound');
+		if (Std.isOfType(playSound, Bool))
+			outcome.playSound = playSound;
+		var notesplash:Dynamic = hxcField(payload, 'doesNotesplash');
+		if (Std.isOfType(notesplash, Bool))
+			outcome.doesNotesplash = notesplash;
+		var playAnim:Dynamic = hxcField(payload, 'playAnim');
+		if (Std.isOfType(playAnim, Bool))
+			outcome.playAnim = playAnim;
+		// Misses have no rating to rename.
+		var judgement:Dynamic = hxcField(payload, 'judgement');
+		if (outcome.judgement != null && Std.isOfType(judgement, String)) {
+			var accepted = NoteJudgementOutcome.acceptedJudgement(judgement);
+			if (accepted != null && accepted != NoteJudgementOutcome.acceptedJudgement(outcome.judgement))
+				outcome.judgement = accepted;
+		}
+	}
+
+	static function hxcOutcomeNumber(payload:Dynamic, name:String, limit:Float):Null<Float> {
+		var value:Dynamic = hxcField(payload, name);
+		if (!Std.isOfType(value, Int) && !Std.isOfType(value, Float))
+			return null;
+		var number:Float = value;
+		if (!Math.isFinite(number) || Math.abs(number) > limit)
+			return null;
+		return number;
+	}
+
+	/**
+		Event for a hold the player let go of before its end.  `holdNote` is the
+		note that started the hold, `note` the same view under the usual name,
+		and the outcome fields carry what dropping it is about to cost.
+	*/
+	public static function hxcHoldNotePayload(head:Dynamic, playerOne:Bool, direction:Int,
+		?outcome:NoteJudgementOutcome):Dynamic {
+		var payload = hxcNoteCallbackPayload([head, playerOne, direction], 'noteHoldDrop');
+		Reflect.setField(payload, 'holdNote', hxcField(payload, 'note'));
+		// Readable even when no outcome is being tracked for this miss.
+		Reflect.setField(payload, 'score', 0);
+		Reflect.setField(payload, 'isComboBreak', true);
+		Reflect.setField(payload, 'playSound', true);
+		hxcSeedNoteOutcome(payload, outcome);
+		return payload;
+	}
+
 	/** Preserve the scored judgement; V-Slice uses a separate 'perfect' bot hit. */
 	static function hxcJudgementName(value:Dynamic):Dynamic {
 		if (value == null)
@@ -1349,34 +1446,507 @@ class EngineCompat {
 		means the same implementation is available to converted Lua and native
 		HScript modules.
 	*/
-	public static function luaNumber(value:Dynamic):Float {
-		if (value == null)
-			return Math.NaN;
-		var text = StringTools.trim(Std.string(value));
-		if (text == '')
-			return Math.NaN;
-		var parsed = Std.parseFloat(text);
-		return parsed;
+	static var decimalNumber = ~/^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/;
+	static var hexNumber = ~/^([+-]?)0[xX]([0-9a-fA-F]+)$/;
+	// LuaJIT, which Psych runs scripts on, reads these as numbers too.
+	static var specialNumber = ~/^([+-]?)(inf|infinity|nan)$/i;
+
+	static inline function luaIsNumber(value:Dynamic):Bool {
+		return Std.isOfType(value, Float);
 	}
 
+	/** An integral value becomes an Int when it fits, so indices and string joins look like whole numbers. */
+	public static function luaWholeNumber(value:Float):Dynamic {
+		if (value == Math.ffloor(value) && value > -2147483648.0 && value < 2147483648.0)
+			return Std.int(value);
+		return value;
+	}
+
+	/** Lua's tostring. */
 	public static function luaString(value:Dynamic):String {
-		return value == null ? 'nil' : Std.string(value);
+		if (value == null)
+			return 'nil';
+		// Haxe spells these Infinity and NaN; Lua prints inf and nan.
+		if (Std.isOfType(value, Float) && !Math.isFinite(value))
+			return Math.isNaN(value) ? 'nan' : (value < 0 ? '-inf' : 'inf');
+		return Std.string(value);
+	}
+
+	/**
+		Lua's tonumber. nil for anything that is not a number or a complete
+		numeric literal (decimal, exponent or 0x hex); with a base from 2 to 36
+		the text is read as an integer in that base.
+	*/
+	public static function luaNumber(value:Dynamic, ?base:Dynamic):Dynamic {
+		if (base != null && luaIsNumber(base) && base != 10) {
+			var radix:Int = Std.int(base);
+			if (radix < 2 || radix > 36)
+				throw "bad argument #2 to 'tonumber' (base out of range)";
+			if (value == null || Std.isOfType(value, Bool))
+				return null;
+			var digits = luaTrim(Std.string(value)).toLowerCase();
+			var negative = false;
+			if (StringTools.startsWith(digits, '-')) {
+				negative = true;
+				digits = digits.substr(1);
+			}
+			if (radix == 16 && StringTools.startsWith(digits, '0x'))
+				digits = digits.substr(2);
+			if (digits == '')
+				return null;
+			// 0.0 and not 0: a whole-number start would let big values wrap on the script interpreter.
+			var total:Float = 0.0;
+			for (index in 0...digits.length) {
+				var code = digits.charCodeAt(index);
+				var digit = code >= 48 && code <= 57 ? code - 48 : code >= 97 && code <= 122 ? code - 87 : 99;
+				if (digit >= radix)
+					return null;
+				total = total * radix + digit;
+			}
+			return luaWholeNumber(negative ? -total : total);
+		}
+		if (value == null || Std.isOfType(value, Bool))
+			return null;
+		if (luaIsNumber(value))
+			return value;
+		if (!Std.isOfType(value, String))
+			return null;
+		var literal = luaTrim(value);
+		if (hexNumber.match(literal)) {
+			var digits = hexNumber.matched(2).toLowerCase();
+			var total:Float = 0.0;
+			for (index in 0...digits.length) {
+				var code = digits.charCodeAt(index);
+				total = total * 16 + (code <= 57 ? code - 48 : code - 87);
+			}
+			return hexNumber.matched(1) == '-' ? -total : total;
+		}
+		if (specialNumber.match(literal)) {
+			if (specialNumber.matched(2).toLowerCase() == 'nan')
+				return Math.NaN;
+			return specialNumber.matched(1) == '-' ? Math.NEGATIVE_INFINITY : Math.POSITIVE_INFINITY;
+		}
+		if (!decimalNumber.match(literal))
+			return null;
+		if (StringTools.startsWith(literal, '+'))
+			literal = literal.substr(1);
+		var parsed = Std.parseFloat(literal);
+		return Math.isNaN(parsed) ? null : parsed;
+	}
+
+	/** Lua's type(). Engine objects are userdata, script tables are tables. */
+	public static function luaType(value:Dynamic):String {
+		if (value == null)
+			return 'nil';
+		if (Std.isOfType(value, Bool))
+			return 'boolean';
+		if (Std.isOfType(value, String))
+			return 'string';
+		if (luaIsNumber(value))
+			return 'number';
+		if (Std.isOfType(value, Array))
+			return 'table';
+		if (Reflect.isFunction(value))
+			return 'function';
+		// HScript anonymous objects are Lua tables after convertTables(). Native
+		// engine instances remain TClass values and therefore keep userdata.
+		try {
+			switch (Type.typeof(value)) {
+				case TObject: return 'table';
+				case TFunction: return 'function';
+				default:
+			}
+		} catch (_:Dynamic) {}
+		return 'userdata';
+	}
+
+	static function luaTrim(value:String):String {
+		var start = 0;
+		var finish = value.length;
+		while (start < finish && LuaPattern.isSpace(value.charCodeAt(start)))
+			start++;
+		while (finish > start && LuaPattern.isSpace(value.charCodeAt(finish - 1)))
+			finish--;
+		return value.substring(start, finish);
 	}
 
 	/** Lua uses one-based, inclusive string indices (negative values count back). */
 	public static function luaStringSub(value:Dynamic, start:Int, ?finish:Null<Int>):String {
-		var text = value == null ? '' : Std.string(value);
-		if (text == '')
-			return '';
-		var first = luaStringIndex(start, text.length);
-		var last = finish == null ? text.length : luaStringIndex(finish, text.length);
-		if (first < 0)
-			first = 0;
-		if (last >= text.length)
-			last = text.length - 1;
-		if (first >= text.length || last < first)
-			return '';
-		return text.substr(first, last - first + 1);
+		var source = (value == null ? '' : Std.string(value));
+		var length = source.length;
+		var first = start < 0 ? length + start + 1 : start;
+		var last = finish == null ? length : finish < 0 ? length + finish + 1 : finish;
+		if (first < 1)
+			first = 1;
+		if (last > length)
+			last = length;
+		return first > last ? '' : source.substr(first - 1, last - first + 1);
+	}
+
+	public static function luaStringRep(value:Dynamic, count:Int, ?separator:Dynamic):String {
+		var source = (value == null ? '' : Std.string(value));
+		var output = new StringBuf();
+		for (index in 0...count) {
+			if (index > 0 && separator != null)
+				output.add(Std.string(separator));
+			output.add(source);
+		}
+		return output.toString();
+	}
+
+	public static function luaStringReverse(value:Dynamic):String {
+		var source = (value == null ? '' : Std.string(value));
+		var output = new StringBuf();
+		var index = source.length;
+		while (--index >= 0)
+			output.add(source.charAt(index));
+		return output.toString();
+	}
+
+	/** Character codes for positions `start` to `finish` (both default to the first character). */
+	public static function luaStringBytes(value:Dynamic, ?start:Null<Int>, ?finish:Null<Int>):Array<Dynamic> {
+		var source = (value == null ? '' : Std.string(value));
+		var length = source.length;
+		var first = start == null ? 1 : start < 0 ? length + start + 1 : start;
+		var last = finish == null ? first : finish < 0 ? length + finish + 1 : finish;
+		if (first < 1)
+			first = 1;
+		if (last > length)
+			last = length;
+		var codes:Array<Dynamic> = [];
+		for (index in first...last + 1)
+			codes.push(source.charCodeAt(index - 1));
+		return codes;
+	}
+
+	public static function luaStringChars(codes:Array<Dynamic>):String {
+		var output = new StringBuf();
+		for (code in codes)
+			output.add(String.fromCharCode(Std.int(looseNumber(code))));
+		return output.toString();
+	}
+
+	/** string.find: null, or [start, end, captures...]. */
+	public static function luaStringFindAll(value:Dynamic, pattern:Dynamic, ?init:Null<Int>, plain:Bool = false):Array<Dynamic> {
+		if (value == null || pattern == null)
+			return null;
+		return LuaPattern.find(Std.string(value), Std.string(pattern), init, plain);
+	}
+
+	/** string.match: null, or the captures (the whole match when the pattern has none). */
+	public static function luaStringMatchAll(value:Dynamic, pattern:Dynamic, ?init:Null<Int>):Array<Dynamic> {
+		if (value == null || pattern == null)
+			return null;
+		return LuaPattern.match(Std.string(value), Std.string(pattern), init);
+	}
+
+	/** string.gsub: [result, substitution count]. A table replacement is read through `lookup(table, key)` when given. */
+	public static function luaStringGsubAll(value:Dynamic, pattern:Dynamic, replacement:Dynamic, ?maximum:Null<Int>,
+			?lookup:Dynamic->Dynamic->Dynamic):Array<Dynamic> {
+		if (value == null || pattern == null || replacement == null)
+			throw 'lua string.gsub expects string arguments';
+		return LuaPattern.gsub(Std.string(value), Std.string(pattern), replacement, maximum, lookup);
+	}
+
+	/**
+		Lua's string.format: flags (- + space # 0), width, precision and the
+		c d i u o x X e E f g G q s conversions.
+	*/
+	public static function luaStringFormatList(template:String, values:Array<Dynamic>):String {
+		if (template == null)
+			return 'nil';
+		var valueIndex = 0;
+		var output = new StringBuf();
+		var i = 0;
+		while (i < template.length) {
+			var c = template.charAt(i);
+			if (c != '%') {
+				output.add(c);
+				i++;
+				continue;
+			}
+			if (i + 1 < template.length && template.charAt(i + 1) == '%') {
+				output.add('%');
+				i += 2;
+				continue;
+			}
+			var cursor = i + 1;
+			var left = false, plus = false, space = false, alternate = false, zeroPad = false;
+			while (cursor < template.length) {
+				var flag = template.charAt(cursor);
+				if (flag == '-') left = true;
+				else if (flag == '+') plus = true;
+				else if (flag == ' ') space = true;
+				else if (flag == '#') alternate = true;
+				else if (flag == '0') zeroPad = true;
+				else break;
+				cursor++;
+			}
+			var width = 0;
+			while (cursor < template.length && isDigitAt(template, cursor))
+				width = width * 10 + template.charCodeAt(cursor++) - 48;
+			var precision:Null<Int> = null;
+			if (cursor < template.length && template.charAt(cursor) == '.') {
+				cursor++;
+				precision = 0;
+				while (cursor < template.length && isDigitAt(template, cursor))
+					precision = precision * 10 + template.charCodeAt(cursor++) - 48;
+			}
+			if (cursor >= template.length) {
+				output.add('%');
+				i++;
+				continue;
+			}
+			var spec = template.charAt(cursor);
+			var numeric = true;
+			var sign = '';
+			var rendered:String;
+			switch (spec) {
+				case 'c':
+					numeric = false;
+					rendered = String.fromCharCode(Std.int(looseNumber(values[valueIndex++])));
+				case 'd' | 'i' | 'u':
+					var amount = truncate(looseNumber(values[valueIndex++]));
+					sign = amount < 0 ? '-' : plus ? '+' : space ? ' ' : '';
+					rendered = integerDigits(Math.abs(amount));
+					if (precision != null) {
+						rendered = StringTools.lpad(rendered, '0', precision);
+						zeroPad = false;
+					}
+				case 'o':
+					rendered = radixDigits(truncate(looseNumber(values[valueIndex++])), 8);
+					if (alternate && rendered.charAt(0) != '0')
+						rendered = '0' + rendered;
+				case 'x' | 'X':
+					rendered = radixDigits(truncate(looseNumber(values[valueIndex++])), 16);
+					if (precision != null)
+						rendered = StringTools.lpad(rendered, '0', precision);
+					if (alternate && rendered != '0')
+						sign = '0x';
+					if (spec == 'X') {
+						rendered = rendered.toUpperCase();
+						sign = sign.toUpperCase();
+					}
+				case 'f' | 'F' | 'e' | 'E' | 'g' | 'G':
+					var amount = looseNumber(values[valueIndex++]);
+					sign = amount < 0 ? '-' : plus ? '+' : space ? ' ' : '';
+					var magnitude = Math.abs(amount);
+					if (Math.isNaN(amount) || !Math.isFinite(amount)) {
+						rendered = Math.isNaN(amount) ? 'nan' : 'inf';
+						zeroPad = false;
+					} else if (spec == 'f' || spec == 'F')
+						rendered = fixedDigits(magnitude, precision == null ? 6 : precision);
+					else if (spec == 'e' || spec == 'E')
+						rendered = exponentDigits(magnitude, precision == null ? 6 : precision, false);
+					else
+						rendered = generalDigits(magnitude, precision == null ? 6 : precision, alternate);
+					if (spec == 'E' || spec == 'G')
+						rendered = rendered.toUpperCase();
+				case 'q':
+					numeric = false;
+					rendered = quoted(luaString(values[valueIndex++]));
+				case 's':
+					numeric = false;
+					rendered = luaString(values[valueIndex++]);
+					if (precision != null && rendered.length > precision)
+						rendered = rendered.substr(0, precision);
+				default:
+					// Lua refuses anything else, `%5%` included, rather than printing it.
+					throw "invalid option '%" + spec + "' to 'format'";
+			}
+			var padding = width - rendered.length - sign.length;
+			if (padding <= 0)
+				output.add(sign + rendered);
+			else if (left)
+				output.add(sign + rendered + StringTools.rpad('', ' ', padding));
+			else if (zeroPad && numeric)
+				output.add(sign + StringTools.rpad('', '0', padding) + rendered);
+			else
+				output.add(StringTools.rpad('', ' ', padding) + sign + rendered);
+			i = cursor + 1;
+		}
+		return output.toString();
+	}
+
+	static inline function isDigitAt(value:String, index:Int):Bool {
+		var code = value.charCodeAt(index);
+		return code >= 48 && code <= 57;
+	}
+
+	/** Format arguments stay forgiving: nil counts as 0 and numeric text is read as a number. */
+	static function looseNumber(value:Dynamic):Float {
+		if (value == null)
+			return 0;
+		if (luaIsNumber(value))
+			return value;
+		if (Std.isOfType(value, Bool))
+			return value == true ? 1 : 0;
+		var parsed = Std.parseFloat(Std.string(value));
+		return Math.isNaN(parsed) ? 0 : parsed;
+	}
+
+	static inline function truncate(value:Float):Float {
+		return Math.isNaN(value) ? 0 : value < 0 ? Math.fceil(value) : Math.ffloor(value);
+	}
+
+	/** Decimal digits of a non-negative whole number, without going through an Int that could overflow. */
+	static function integerDigits(value:Float):String {
+		if (value < 2147483647)
+			return Std.string(Std.int(value));
+		if (!Math.isFinite(value))
+			return 'inf';
+		var digits = '';
+		while (value >= 1) {
+			var next = Math.ffloor(value / 10);
+			digits = Std.string(Std.int(value - next * 10)) + digits;
+			value = next;
+		}
+		return digits == '' ? '0' : digits;
+	}
+
+	/** Hex or octal digits; a negative number shows its 32 bit pattern, like the C formatter Lua uses. */
+	static function radixDigits(value:Float, radix:Int):String {
+		if (value < 0)
+			value += 4294967296.0;
+		if (value < 0 || !Math.isFinite(value))
+			value = 0;
+		var symbols = '0123456789abcdef';
+		var digits = '';
+		while (value >= 1) {
+			var next = Math.ffloor(value / radix);
+			digits = symbols.charAt(Std.int(value - next * radix)) + digits;
+			value = next;
+		}
+		return digits == '' ? '0' : digits;
+	}
+
+	static function fixedDigits(magnitude:Float, precision:Int):String {
+		var scale = Math.pow(10, precision);
+		var product = magnitude * scale;
+		var scaled = Math.ffloor(product);
+		var rest = product - scaled;
+		if (rest > 0.5)
+			scaled += 1;
+		else if (rest == 0.5) {
+			// The product landed on a half, maybe only after rounding: 2.675 is
+			// really 2.67499..., so C prints 2.67. The exact error of the product
+			// says which side the true value is on, and a true half goes to the
+			// even digit like C does (1.25 -> 1.2, 0.5 -> 0).
+			var error = precision <= 22 ? productError(magnitude * Math.pow(2, precision), Math.pow(5, precision), product) : 0.0;
+			if (error > 0 || (error == 0 && scaled % 2 != 0))
+				scaled += 1;
+		}
+		if (!Math.isFinite(scaled) || scaled >= 9007199254740992.0) {
+			// Too many digits to scale in one go, so the fraction is peeled off a digit at a time.
+			var base = Math.ffloor(magnitude);
+			if (precision <= 0)
+				return integerDigits(base);
+			var rest = magnitude - base;
+			var digits:Array<Int> = [];
+			for (index in 0...precision) {
+				rest *= 10;
+				var digit = Std.int(rest);
+				if (digit > 9)
+					digit = 9;
+				digits.push(digit);
+				rest -= digit;
+			}
+			if (rest >= 0.5) {
+				var slot = precision - 1;
+				while (slot >= 0 && ++digits[slot] > 9) {
+					digits[slot] = 0;
+					slot--;
+				}
+				if (slot < 0)
+					base += 1;
+			}
+			return integerDigits(base) + '.' + digits.join('');
+		}
+		var integral = Math.ffloor(scaled / scale);
+		var fraction = scaled - integral * scale;
+		if (precision <= 0)
+			return integerDigits(integral);
+		return integerDigits(integral) + '.' + StringTools.lpad(integerDigits(fraction), '0', precision);
+	}
+
+	/**
+		How far the rounded product `rounded` of a and b is from the exact one,
+		worked out exactly by splitting both factors in half (Dekker's method).
+		a times 2^p times 5^p is the same exact value as a times 10^p, and both
+		of those factors are exact for the precisions format uses.
+	*/
+	static function productError(a:Float, b:Float, rounded:Float):Float {
+		var split = 134217729.0;
+		var spread = split * a;
+		var aHigh = spread - (spread - a);
+		var aLow = a - aHigh;
+		spread = split * b;
+		var bHigh = spread - (spread - b);
+		var bLow = b - bHigh;
+		return ((aHigh * bHigh - rounded) + aHigh * bLow + aLow * bHigh) + aLow * bLow;
+	}
+
+	static function decimalExponent(magnitude:Float):Int {
+		if (magnitude == 0)
+			return 0;
+		var exponent = Std.int(Math.ffloor(Math.log(magnitude) / Math.log(10)));
+		// The logarithm can land one off right at a power of ten.
+		if (magnitude / Math.pow(10, exponent) >= 10)
+			exponent++;
+		else if (magnitude / Math.pow(10, exponent) < 1)
+			exponent--;
+		return exponent;
+	}
+
+	static function exponentDigits(magnitude:Float, precision:Int, stripZeros:Bool):String {
+		var exponent = decimalExponent(magnitude);
+		var mantissa = fixedDigits(magnitude / Math.pow(10, exponent), precision);
+		if (StringTools.startsWith(mantissa, '10')) {
+			// Rounding carried into a new digit, for example 9.99 at one decimal.
+			exponent++;
+			mantissa = fixedDigits(magnitude / Math.pow(10, exponent), precision);
+		}
+		if (stripZeros)
+			mantissa = stripTrailingZeros(mantissa);
+		var size = exponent < 0 ? -exponent : exponent;
+		return mantissa + 'e' + (exponent < 0 ? '-' : '+') + (size < 10 ? '0' : '') + size;
+	}
+
+	static function generalDigits(magnitude:Float, precision:Int, keepZeros:Bool):String {
+		if (precision == 0)
+			precision = 1;
+		// Which style applies depends on the exponent after rounding to the asked precision.
+		var exponent = decimalExponent(magnitude);
+		if (StringTools.startsWith(fixedDigits(magnitude / Math.pow(10, exponent), precision - 1), '10'))
+			exponent++;
+		if (exponent < -4 || exponent >= precision)
+			return exponentDigits(magnitude, precision - 1, !keepZeros);
+		var fixed = fixedDigits(magnitude, precision - 1 - exponent);
+		return keepZeros ? fixed : stripTrailingZeros(fixed);
+	}
+
+	static function stripTrailingZeros(digits:String):String {
+		if (digits.indexOf('.') < 0)
+			return digits;
+		var finish = digits.length;
+		while (finish > 0 && digits.charAt(finish - 1) == '0')
+			finish--;
+		if (finish > 0 && digits.charAt(finish - 1) == '.')
+			finish--;
+		return digits.substr(0, finish);
+	}
+
+	static function quoted(value:String):String {
+		var output = new StringBuf();
+		output.add('"');
+		for (index in 0...value.length) {
+			var character = value.charAt(index);
+			if (character == '"' || character == '\\' || character == '\n')
+				output.add('\\');
+			output.add(character);
+		}
+		output.add('"');
+		return output.toString();
 	}
 
 	public static function luaStringLen(value:Dynamic):Int {
@@ -1391,221 +1961,47 @@ class EngineCompat {
 		return (value == null ? '' : Std.string(value)).toUpperCase();
 	}
 
-	/** Literal Lua string.find subset. It returns the one-based start index, or
-		nil; HScript call sites consume the first Lua return value as a condition. */
+	/** string.find for callers that only want the first result: the one-based
+		start index, or nil. The full result list is luaStringFindAll(). */
 	public static function luaStringFind(value:Dynamic, pattern:Dynamic,
 		?initial:Null<Int>, ?plain:Null<Bool>):Dynamic {
-		if (value == null || pattern == null)
-			return null;
-		var source = Std.string(value);
-		var needle = Std.string(pattern);
-		if (needle == '')
-			return null;
-		if (plain != true && hasLuaPatternMeta(needle))
-			throw 'unsupported Lua string.find pattern';
-		var start = initial == null ? 0 : luaStringIndex(initial, source.length);
-		if (start < 0) start = 0;
-		if (start > source.length) return null;
-		var found = source.indexOf(needle, start);
-		return found < 0 ? null : found + 1;
+		var found = luaStringFindAll(value, pattern, initial, plain == true);
+		return found == null ? null : found[0];
 	}
 
-	static function hasLuaPatternMeta(pattern:String):Bool {
-		for (i in 0...pattern.length)
-			if ('.^$*+?-[]()'.indexOf(pattern.charAt(i)) >= 0 || pattern.charAt(i) == '%')
-				return true;
-		return false;
+	/** string.match for callers that only want the first capture (or the whole
+		match when the pattern has none). The full list is luaStringMatchAll(). */
+	public static function luaStringMatch(value:Dynamic, pattern:Dynamic, ?initial:Null<Int>):Dynamic {
+		var found = luaStringMatchAll(value, pattern, initial);
+		return found == null ? null : found[0];
 	}
 
-	/** Literal-only Lua gsub subset, paired with LuaCompat's pattern gate. */
-	public static function luaStringGsub(value:Dynamic, pattern:String, replacement:String,
+	/** string.gsub without the substitution count. The replacement can be a
+		string, a function or a table, as in Lua. */
+	public static function luaStringGsub(value:Dynamic, pattern:Dynamic, replacement:Dynamic,
 		?maximum:Null<Int>):String {
-		if (value == null || pattern == null || replacement == null)
-			throw 'lua string.gsub expects string arguments';
-		var source = Std.string(value);
-		var limit = maximum == null ? source.length + 1 : (maximum < 0 ? 0 : maximum);
-		if (pattern == '[^%a%d]') {
-			var output = new StringBuf();
-			var count = 0;
-			for (i in 0...source.length) {
-				var ch = source.charAt(i);
-				var code = source.charCodeAt(i);
-				var alphanumeric = code >= 48 && code <= 57 || code >= 65 && code <= 90
-					|| code >= 97 && code <= 122;
-				if (!alphanumeric && count < limit) {
-					output.add(replacement);
-					count++;
-				} else output.add(ch);
-			}
-			return output.toString();
-		}
-		if (pattern == '%s+') {
-			var output = new StringBuf();
-			var i = 0;
-			var count = 0;
-			while (i < source.length) {
-				if (isLuaWhitespace(source.charCodeAt(i)) && count < limit) {
-					output.add(replacement);
-					count++;
-					i++;
-					while (i < source.length && isLuaWhitespace(source.charCodeAt(i))) i++;
-				} else {
-					output.add(source.charAt(i));
-					i++;
-				}
-			}
-			return output.toString();
-		}
-		if (pattern == '^%s*(.-)%s*$' && replacement == '%1')
-			return limit == 0 ? source : trimLuaWhitespace(source);
-		var literal = new StringBuf();
-		var meta = '.^$*+?-[]()';
-		var i = 0;
-		while (i < pattern.length) {
-			var c = pattern.charAt(i);
-			if (c == '%') {
-				i++;
-				if (i >= pattern.length || meta.indexOf(pattern.charAt(i)) < 0
-					&& pattern.charAt(i) != '%')
-					throw 'unsupported lua string.gsub pattern';
-				literal.add(pattern.charAt(i));
-			} else {
-				if (meta.indexOf(c) >= 0)
-					throw 'unsupported lua string.gsub pattern';
-				literal.add(c);
-			}
-			i++;
-		}
-		var needle = literal.toString();
-		if (needle == '' || replacement.indexOf('%') >= 0)
-			throw 'unsupported lua string.gsub replacement';
-		var output = new StringBuf();
-		var cursor = 0;
-		var count = 0;
-		while (count < limit) {
-			var at = source.indexOf(needle, cursor);
-			if (at < 0) break;
-			output.add(source.substr(cursor, at - cursor));
-			output.add(replacement);
-			cursor = at + needle.length;
-			count++;
-		}
-		output.add(source.substr(cursor));
-		return output.toString();
+		return luaStringGsubAll(value, pattern, replacement, maximum)[0];
 	}
 
-	static function isLuaWhitespace(code:Int):Bool {
-		return code == 32 || code >= 9 && code <= 13;
+	/** First character code of string.byte(value, index); nil past the end. */
+	public static function luaStringByte(value:Dynamic, ?index:Null<Int>):Dynamic {
+		var codes = luaStringBytes(value, index, index);
+		return codes.length == 0 ? null : codes[0];
 	}
 
-	static function trimLuaWhitespace(value:String):String {
-		var start = 0;
-		var finish = value.length;
-		while (start < finish && isLuaWhitespace(value.charCodeAt(start))) start++;
-		while (finish > start && isLuaWhitespace(value.charCodeAt(finish - 1))) finish--;
-		return value.substring(start, finish);
+	public static function luaStringChar(?one:Dynamic, ?two:Dynamic, ?three:Dynamic, ?four:Dynamic,
+		?five:Dynamic, ?six:Dynamic, ?seven:Dynamic, ?eight:Dynamic):String {
+		var codes:Array<Dynamic> = [one, two, three, four, five, six, seven, eight];
+		while (codes.length > 0 && codes[codes.length - 1] == null)
+			codes.pop();
+		return luaStringChars(codes);
 	}
 
-	/**
-		Small, deterministic subset of Lua's string.format used by imported
-		Psych/Kade scripts.  The donor corpus only needs string/integer/float
-		formats plus width/zero-padding (for example %02d and %02X); keeping this
-		adapter here avoids teaching every converted module a different formatter.
-	*/
+	/** Lua's string.format for up to eight values; luaStringFormatList() takes any number. */
 	public static function luaStringFormat(format:String, ?one:Dynamic, ?two:Dynamic,
 		?three:Dynamic, ?four:Dynamic, ?five:Dynamic, ?six:Dynamic,
 		?seven:Dynamic, ?eight:Dynamic):String {
-		if (format == null)
-			return 'nil';
-		var values:Array<Dynamic> = [one, two, three, four, five, six, seven, eight];
-		var valueIndex = 0;
-		var output = new StringBuf();
-		var i = 0;
-		while (i < format.length) {
-			var c = format.charAt(i);
-			if (c != '%') {
-				output.add(c);
-				i++;
-				continue;
-			}
-			if (i + 1 < format.length && format.charAt(i + 1) == '%') {
-				output.add('%');
-				i += 2;
-				continue;
-			}
-			var cursor = i + 1;
-			var zeroPad = false;
-			if (cursor < format.length && format.charAt(cursor) == '0') {
-				zeroPad = true;
-				cursor++;
-			}
-			var widthText = '';
-			while (cursor < format.length) {
-				var widthCode = format.charCodeAt(cursor);
-				if (widthCode < 48 || widthCode > 57)
-					break;
-				widthText += format.charAt(cursor++);
-			}
-			var precision:Null<Int> = null;
-			if (cursor < format.length && format.charAt(cursor) == '.') {
-				cursor++;
-				var precisionText = '';
-				while (cursor < format.length) {
-					var precisionCode = format.charCodeAt(cursor);
-					if (precisionCode < 48 || precisionCode > 57)
-						break;
-					precisionText += format.charAt(cursor++);
-				}
-				if (precisionText != '')
-					precision = Std.parseInt(precisionText);
-			}
-			if (cursor >= format.length) {
-				output.add('%');
-				i++;
-				continue;
-			}
-			var spec = format.charAt(cursor);
-			var value:Dynamic = valueIndex < values.length ? values[valueIndex++] : null;
-			var rendered = switch (spec) {
-				case 'd' | 'i': Std.string(value == null ? 0 : Std.int(Std.parseFloat(Std.string(value))));
-				case 'f' | 'F':
-					var number = value == null ? 0 : Std.parseFloat(Std.string(value));
-					precision == null ? Std.string(number) : formatFloat(number, precision);
-				case 'x': formatHex(value, false);
-				case 'X': formatHex(value, true);
-				case 'q': '"' + luaString(value) + '"';
-				case 's': luaString(value);
-				default: '%' + spec;
-			};
-			if (widthText != '') {
-				var width = Std.parseInt(widthText);
-				while (rendered.length < width)
-					rendered = (zeroPad ? '0' : ' ') + rendered;
-			}
-			output.add(rendered);
-			i = cursor + 1;
-		}
-		return output.toString();
-	}
-
-	static function formatFloat(value:Float, precision:Int):String {
-		var scale = Math.pow(10, precision);
-		var rounded = Math.round(value * scale) / scale;
-		var text = Std.string(rounded);
-		var dot = text.indexOf('.');
-		if (precision <= 0)
-			return dot < 0 ? text : text.substr(0, dot);
-		if (dot < 0)
-			text += '.';
-		while (text.length - text.indexOf('.') - 1 < precision)
-			text += '0';
-		return text;
-	}
-
-	static function formatHex(value:Dynamic, uppercase:Bool):String {
-		var parsed = value == null ? 0 : Std.int(Std.parseFloat(Std.string(value)));
-		var text = StringTools.hex(parsed, 0);
-		return uppercase ? text.toUpperCase() : text.toLowerCase();
+		return luaStringFormatList(format, [one, two, three, four, five, six, seven, eight]);
 	}
 
 	/** Return a one-based Lua table length for array or object-style tables. */
@@ -1644,40 +2040,21 @@ class EngineCompat {
 	}
 
 	/**
-		Translate the small delimiter-pattern form used by Lua string.gmatch
-		(split(input, sep) in the imported camera helper).  Arbitrary Lua
-		patterns remain intentionally unsupported by LuaCompat.
+		string.gmatch as a list with one entry per match: the matched or
+		captured value itself, or the list of captures when the pattern has
+		more than one. A `for a, b in string.gmatch(...)` loop spreads such a
+		list over its variables.
 	*/
-	public static function luaStringGmatch(value:Dynamic, pattern:Dynamic):Array<String> {
-		var text = value == null ? '' : Std.string(value);
-		var expression = pattern == null ? '' : Std.string(pattern);
-		var excluded = '';
-		if (StringTools.startsWith(expression, '([^') && StringTools.endsWith(expression, ']+)'))
-			// Strip the `([^` prefix and `]+)` suffix.  This intentionally only
-			// recognizes the delimiter-class split pattern; arbitrary Lua
-			// patterns remain unsupported by LuaCompat.
-			excluded = expression.substr(3, expression.length - 6);
-		if (excluded == '')
-			return text == '' ? [] : [text];
-		var result:Array<String> = [];
-		var current = new StringBuf();
-		var currentLength = 0;
-		for (i in 0...text.length) {
-			var ch = text.charAt(i);
-			if (excluded.indexOf(ch) >= 0) {
-				if (currentLength > 0) {
-					result.push(current.toString());
-					current = new StringBuf();
-					currentLength = 0;
-				}
-			} else {
-				current.add(ch);
-				currentLength++;
-			}
-		}
-		if (currentLength > 0)
-			result.push(current.toString());
+	public static function luaStringGmatch(value:Dynamic, pattern:Dynamic):Array<Dynamic> {
+		var result:Array<Dynamic> = [];
+		for (captures in luaStringGmatchAll(value, pattern))
+			result.push(captures.length == 1 ? captures[0] : captures);
 		return result;
+	}
+
+	/** string.gmatch as a list of capture lists, for loops that take several variables. */
+	public static function luaStringGmatchAll(value:Dynamic, pattern:Dynamic):Array<Array<Dynamic>> {
+		return LuaPattern.gmatch(value == null ? '' : Std.string(value), pattern == null ? '' : Std.string(pattern));
 	}
 
 	public static function luaMathRad(value:Float):Float {
@@ -1691,27 +2068,6 @@ class EngineCompat {
 	/** Lua's seed is process-global; FlxG owns the actual deterministic RNG. */
 	public static function luaMathRandomSeed(_value:Dynamic):Void {}
 
-	public static function luaType(value:Dynamic):String {
-		if (value == null)
-			return 'nil';
-		if (Std.isOfType(value, Bool))
-			return 'boolean';
-		if (Std.isOfType(value, String))
-			return 'string';
-		if (Std.isOfType(value, Int) || Std.isOfType(value, Float))
-			return 'number';
-		if (Std.isOfType(value, Array))
-			return 'table';
-		// HScript anonymous objects are Lua tables after convertTables(). Native
-		// engine instances remain TClass values and therefore keep userdata.
-		try {
-			switch (Type.typeof(value)) {
-				case TObject: return 'table';
-				default:
-			}
-		} catch (_:Dynamic) {}
-		return 'userdata';
-	}
 
 	public static function luaTableFind(table:Dynamic, value:Dynamic):Int {
 		if (table == null || !Std.isOfType(table, Array))
@@ -1915,9 +2271,6 @@ class EngineCompat {
 		return Date.now().getTime() / 1000;
 	}
 
-	static function luaStringIndex(value:Int, length:Int):Int {
-		return value < 0 ? length + value : value - 1;
-	}
 
 	/** Return the four-argument Psych note ABI from a native Note-like object. */
 	public static function psychNoteCallbackArguments(args:Array<Dynamic>,
@@ -1990,11 +2343,36 @@ class EngineCompat {
 		return [args[2]];
 	}
 
+	// Callback broadcasts run per interpreter several times a frame, and every
+	// toLowerCase or candidate list they built was garbage for the collector.
+	// The names come from engine call sites plus whatever scripts pass to
+	// callOnScripts, so both caches stop growing at a fixed size.
+	static inline var CALLBACK_CACHE_LIMIT:Int = 512;
+	static var callbackLowerCache:Map<String, String> = new Map();
+	static var callbackLowerCount:Int = 0;
+	static var callbackNameCache:Map<String, Array<String>> = new Map();
+	static var callbackNameCount:Int = 0;
+
+	/** name.toLowerCase(), remembered for callback names. */
+	static function callbackLower(name:String):String {
+		if (name == null)
+			return '';
+		var lower = callbackLowerCache.get(name);
+		if (lower != null)
+			return lower;
+		lower = name.toLowerCase();
+		if (callbackLowerCount < CALLBACK_CACHE_LIMIT) {
+			callbackLowerCache.set(name, lower);
+			callbackLowerCount++;
+		}
+		return lower;
+	}
+
 	/** Return the native hook name represented by a donor lifecycle spelling. */
 	public static function canonicalCallback(name:String):String {
 		if (name == null)
 			return '';
-		switch (name.toLowerCase()) {
+		switch (callbackLower(name)) {
 			case 'oncreate' | 'start': return 'start';
 			case 'oncreatepost' | 'createpost': return 'createPost';
 			case 'onsongstart' | 'songstart': return 'songStart';
@@ -2023,6 +2401,7 @@ class EngineCompat {
 			case 'onrecalculaterating' | 'recalculaterating': return 'recalculateRating';
 			case 'onopponentnotemiss' | 'opponentnotemiss': return 'opponentNoteMiss';
 			case 'onnoteghostmiss' | 'noteghostmiss': return 'noteGhostMiss';
+			case 'onnoteholddrop' | 'noteholddrop': return 'noteHoldDrop';
 			case 'onsongend' | 'onendsong' | 'songend': return 'songEnd';
 			case 'onsongretry' | 'songretry': return 'songRetry';
 			case 'onsongevent' | 'songevent': return 'songEvent';
@@ -2038,22 +2417,28 @@ class EngineCompat {
 			case 'onstateopenend' | 'stateopenend': return 'stateChangeEnd';
 			case 'onsubstateclosebegin' | 'substateclosebegin': return 'subStateCloseBegin';
 			case 'onsubstateopenend' | 'substateopenend': return 'subStateOpenEnd';
+			case 'onsubstateopenbegin' | 'substateopenbegin': return 'subStateOpenBegin';
 			case 'onsubstatecloseend' | 'substatecloseend': return 'subStateCloseEnd';
 			case 'onplaystateenter' | 'playstateenter': return 'playStateEnter';
 			case 'ondifficultyswitch' | 'difficultyswitch': return 'difficultySwitch';
 			case 'oncapsuleselected' | 'capsuleselected': return 'capsuleSelected';
 			case 'onfocusgained' | 'focusgained': return 'focusGained';
+			case 'onfocuslost' | 'focuslost': return 'focusLost';
 			case 'ongameover' | 'ongameoverstart' | 'gameover' | 'gameoverstart': return 'gameOver';
 			case 'ondestroy' | 'destroy': return 'destroy';
 			default: return name;
 		}
 	}
 
-	/** Return canonical callback first, followed by known donor spellings. */
+	/** Return canonical callback first, followed by known donor spellings.
+		The list is shared between calls for the same name: callers only read it. */
 	public static function callbackNames(name:String):Array<String> {
-		var result:Array<String> = [];
 		if (name == null)
-			return result;
+			return [];
+		var cached = callbackNameCache.get(name);
+		if (cached != null)
+			return cached;
+		var result:Array<String> = [];
 		// `startCountdown` is also an engine helper seeded into every script
 		// interpreter. It is not itself a donor lifecycle callback; treating that
 		// helper as one makes a broadcast call the native PlayState method again
@@ -2119,6 +2504,8 @@ class EngineCompat {
 				appendName(result, 'onOpponentNoteMiss');
 			case 'noteghostmiss':
 				appendName(result, 'onNoteGhostMiss');
+			case 'noteholddrop':
+				appendName(result, 'onNoteHoldDrop');
 		case 'tweencompleted':
 				appendName(result, 'onTweenCompleted');
 			case 'timercompleted':
@@ -2171,6 +2558,10 @@ class EngineCompat {
 				appendName(result, 'onCapsuleSelected');
 			case 'focusgained':
 				appendName(result, 'onFocusGained');
+			case 'focuslost':
+				appendName(result, 'onFocusLost');
+			case 'substateopenbegin':
+				appendName(result, 'onSubStateOpenBegin');
 			case 'gameover':
 				appendName(result, 'onGameOver');
 				appendName(result, 'onGameOverStart');
@@ -2179,6 +2570,10 @@ class EngineCompat {
 				appendName(result, 'onPause');
 			case 'resume':
 				appendName(result, 'onResume');
+		}
+		if (callbackNameCount < CALLBACK_CACHE_LIMIT) {
+			callbackNameCache.set(name, result);
+			callbackNameCount++;
 		}
 		return result;
 	}
@@ -2208,8 +2603,8 @@ class EngineCompat {
 		// while the native chart pump keeps the legacy four-string event ABI.  The
 		// canonical songEvent hook is dispatched separately from Psych's onEvent,
 		// so adapt only that hook here and keep ordinary onEvent scripts unchanged.
-		if ((canonical != null && canonical.toLowerCase() == 'songevent')
-			|| (selected != null && selected.toLowerCase() == 'onsongevent')) {
+		if ((canonical != null && callbackLower(canonical) == 'songevent')
+			|| (selected != null && callbackLower(selected) == 'onsongevent')) {
 			// fireSongEvent shares one payload across all interpreters so an HXC
 			// handler's cancel()/cancelEvent() can suppress the native event.
 			if (args != null && args.length == 1 && isHxcSongEventPayload(args[0]))
@@ -2220,8 +2615,8 @@ class EngineCompat {
 		// objects. HxcCompat emits canonical names (countdownStart/songEnd), so
 		// recognize both the canonical and donor spellings here. Keeping the
 		// object shared with PlayState lets event.cancel() affect the native pump.
-		var selectedLower = selected == null ? '' : selected.toLowerCase();
-		var canonicalLower = canonical == null ? '' : canonical.toLowerCase();
+		var selectedLower = callbackLower(selected);
+		var canonicalLower = callbackLower(canonical);
 		// Psych custom-event scripts use a three-value event ABI.  The native
 		// event row keeps a fourth slot for HXC/extended charts, but ordinary Lua
 		// callbacks must not receive that extra value (all mounted donor scripts
@@ -2360,7 +2755,7 @@ class EngineCompat {
 		// does not need a chart-side wrapper.  The adapter deliberately also
 		// accepts the direct spellings (goodNoteHit/noteMiss): several Psych packs
 		// use those names without the `on` prefix.
-		switch (selected == null ? '' : selected.toLowerCase()) {
+		switch (selectedLower) {
 			case 'ongoodnotehit' | 'goodnotehit' | 'onopponentnotehit' | 'opponentnotehit'
 				| 'onnotehit' | 'notehit' | 'onnotemiss' | 'notemiss' | 'onmissnote' | 'missnote'
 				| 'onopponentnotemiss' | 'opponentnotemiss':
@@ -2374,7 +2769,8 @@ class EngineCompat {
 			case 'ongoodnotehit' | 'goodnotehit' | 'onopponentnotehit' | 'opponentnotehit'
 				| 'onnotehit' | 'notehit' | 'onnotemiss' | 'notemiss'
 				| 'onopponentnotemiss' | 'opponentnotemiss'
-				| 'onnoteghostmiss' | 'noteghostmiss': true;
+				| 'onnoteghostmiss' | 'noteghostmiss'
+				| 'onnoteholddrop' | 'noteholddrop': true;
 			default: false;
 		};
 	}
@@ -2386,7 +2782,7 @@ class EngineCompat {
 		V-Slice fields (`eventData`, `value1`/`value2`, and cancellation methods)
 		are supplied by the native runtime.
 	*/
-	public static function hxcSongEventPayload(args:Array<Dynamic>):Dynamic {
+	public static function hxcSongEventPayload(args:Array<Dynamic>, ?spriteDescriptor:Dynamic):Dynamic {
 		var name = eventArgument(args, 0, '');
 		var value1 = eventArgument(args, 1, '');
 		var value2 = eventArgument(args, 2, '');
@@ -2442,15 +2838,22 @@ class EngineCompat {
 			case 'vignette':
 				setEventValueIfMissing(value, 'intensity', value1);
 				setEventValueIfMissing(value, 'duration', value2);
-			case 'markov popups':
-				setEventValueIfMissing(value, 'x', value1);
-				setEventValueIfMissing(value, 'y', value2);
+			case 'set target bop speed':
+				setEventValueIfMissing(value, 'target', value1);
+				setEventValueIfMissing(value, 'rate', value2);
 			case 'camera fade':
 				setEventValueIfMissing(value, 'shouldFadeIn', value1 == '1' || value1.toLowerCase() == 'true');
 				setEventValueIfMissing(value, 'duration', value2);
 			case 'lyrics':
 				setEventValueIfMissing(value, 'text', value1);
 				setEventValueIfMissing(value, 'duration', value2);
+		}
+		// A sprite event row with plain positional slots gets the field names
+		// its own script reads.  Rows that kept their object payload already
+		// have them.
+		if (spriteDescriptor != null && value1.indexOf('{') != 0) {
+			setEventValueIfMissing(value, Std.string(Reflect.field(spriteDescriptor, 'xField')), value1);
+			setEventValueIfMissing(value, Std.string(Reflect.field(spriteDescriptor, 'yField')), value2);
 		}
 		var eventData:Dynamic = {eventKind: name, value: value, activated: false, time: eventTime,
 			nativeHandled: false, handled: false};
@@ -2502,6 +2905,23 @@ class EngineCompat {
 		Reflect.setField(payload, 'cancel', cancel);
 		Reflect.setField(payload, 'cancelEvent', cancel);
 		return hxcAttachPayload(payload);
+	}
+
+	/**
+		True once a handler cancelled this event.  cancel() sets all three
+		spellings together, but a script may also write just one of them, so the
+		game asks here instead of repeating the test at every dispatch.
+	*/
+	public static function hxcPayloadCanceled(payload:Dynamic):Bool {
+		if (payload == null)
+			return false;
+		try {
+			return Reflect.field(payload, 'eventCanceled') == true
+				|| Reflect.field(payload, 'canceled') == true
+				|| Reflect.field(payload, 'cancelled') == true;
+		} catch (_:Dynamic) {
+			return false;
+		}
 	}
 
 	/** Build the shared payload used by native Freeplay selection boundaries. */
@@ -2861,6 +3281,8 @@ class EngineCompat {
 				return 'Change Scroll Speed';
 			case 'setcamerabop':
 				return 'Set Camera Bop';
+			case 'settargetbopspeed' | 'set target bop speed':
+				return 'Set Target Bop Speed';
 			case 'screen shake event' | 'screenshake':
 				return 'Screen Shake';
 			case 'flash' | 'flash camera' | 'camera flash event' | 'cameraflash':
@@ -2875,8 +3297,7 @@ class EngineCompat {
 			// the donor event class/body is never instantiated at runtime.
 			case 'vignevent' | 'vignetteevent' | 'extra-events-vignevent':
 				return 'Vignette';
-			case 'eyepopup' | 'markovpopupsevent' | 'markov popups' | 'markov pop ups':
-				return 'Markov Popups';
+
 			case 'playanimation' | 'play animation':
 				return 'Play Animation';
 			case 'sethealthicon' | 'set health icon':
@@ -2901,6 +3322,69 @@ class EngineCompat {
 		var canonical = eventName(sourceName == null ? '' : Std.string(sourceName));
 		Reflect.setField(descriptor, 'canonicalName', canonical);
 		return HxcEventSpriteDescriptor.normalize(descriptor);
+	}
+
+	/**
+		Whole beats between idle dances for an authored dance rate.  The game
+		dances on beats, so a rate under one beat is the fastest it can do (every
+		beat); zero or less means never dance on its own.
+	*/
+	public static function danceIntervalBeats(rate:Float):Int {
+		if (Math.isNaN(rate))
+			return 1;
+		if (rate <= 0)
+			return 0;
+		if (rate < 1)
+			return 1;
+		return Std.int(Math.min(Math.round(rate), 1024));
+	}
+
+	/** Pick the sprite descriptor an event row belongs to.  The aliased
+	 * spelling goes first so a descriptor stored under a native name still
+	 * matches, then the name exactly as the chart wrote it. */
+	public static function eventSpriteDescriptorForName(descriptors:Array<Dynamic>, name:Dynamic):Dynamic {
+		if (descriptors == null || descriptors.length == 0 || name == null)
+			return null;
+		var original = Std.string(name);
+		var found = HxcEventSpriteDescriptor.find(descriptors, eventName(original));
+		return found != null ? found : HxcEventSpriteDescriptor.find(descriptors, original);
+	}
+
+	/**
+		Resolve one event row against a root's sprite descriptors.  Nothing here
+		knows an event by name: the descriptor says which payload fields hold the
+		position, and rows without an object payload fall back to the first two
+		value slots.  Returns null when no descriptor owns the event.
+	*/
+	public static function routeEventSprite(descriptors:Array<Dynamic>, name:Dynamic, v1:Dynamic,
+		v2:Dynamic, v3:Dynamic):EngineCompatEventSpriteRoute {
+		var descriptor = eventSpriteDescriptorForName(descriptors, name);
+		if (descriptor == null)
+			return null;
+		return {
+			descriptor: descriptor,
+			name: Std.string(Reflect.field(descriptor, 'canonicalName')),
+			x: eventSpriteCoordinate(v1, v3, Std.string(Reflect.field(descriptor, 'xField')), v1),
+			y: eventSpriteCoordinate(v1, v3, Std.string(Reflect.field(descriptor, 'yField')), v2)
+		};
+	}
+
+	static function eventSpriteCoordinate(v1:Dynamic, v3:Dynamic, field:String, positional:Dynamic):Float {
+		for (raw in [v1, v3]) {
+			if (raw == null)
+				continue;
+			try {
+				var parsed:Dynamic = Json.parse(Std.string(raw));
+				var value:Dynamic = parsed == null ? null : Reflect.field(parsed, field);
+				if (value != null) {
+					var number = Std.parseFloat(Std.string(value));
+					if (!Math.isNaN(number) && Math.abs(number) <= 1000000)
+						return number;
+				}
+			} catch (_:Dynamic) {}
+		}
+		var result = positional == null ? 0 : Std.parseFloat(StringTools.trim(Std.string(positional)));
+		return Math.isNaN(result) || Math.abs(result) > 1000000 ? 0 : result;
 	}
 
 	/**
@@ -3184,6 +3668,12 @@ public static function lyricActor(value:Dynamic):String {
 				route.v1 = firstValue(values, ['scroll', 'speed'], '1');
 				route.v2 = firstValue(values, ['duration'], '4');
 				route.v3 = packEventOptions(values, ['ease', 'easeDir', 'absolute', 'strumline']);
+			case 'set target bop speed':
+				// Who dances and how many beats apart; the player is the default
+				// target and one beat the default rate.
+				route.name = 'Set Target Bop Speed';
+				route.v1 = firstValue(values, ['target'], 'boyfriend');
+				route.v2 = firstValue(values, ['rate'], '1');
 			case 'set camera bop':
 				route.name = 'Set Camera Bop';
 				route.v1 = firstValue(values, ['rate'], '4');
@@ -3197,12 +3687,7 @@ public static function lyricActor(value:Dynamic):String {
 				route.v1 = firstValue(values, ['intensity'], '1');
 				route.v2 = firstValue(values, ['duration'], '4');
 				route.v3 = packEventOptions(values, ['ease', 'easeDir']);
-			case 'markov popups':
-				// Preserve the event's authored coordinate payload for the generic
-				// manifest-scoped static sprite adapter.
-				route.name = 'Markov Popups';
-				route.v1 = firstValue(values, ['x'], '0');
-				route.v2 = firstValue(values, ['y'], '0');
+
 			case 'camera flash':
 				route.name = 'Camera Flash';
 				// V-Slice's extra-events camera flash uses a step-count duration,
@@ -3266,6 +3751,12 @@ public static function lyricActor(value:Dynamic):String {
 		var canonical = canonicalName == null ? '' : canonicalName.toLowerCase();
 		if (canonical == '' || body == '')
 			return {covered:true, gaps:[]};
+		// A body that is a complete static sprite description is covered by the
+		// descriptor route whatever the event is called.
+		var spriteDescriptor = eventSpriteDescriptorFromSource(source);
+		if (spriteDescriptor != null
+			&& StringTools.trim(Std.string(Reflect.field(spriteDescriptor, 'canonicalName'))).toLowerCase() == canonical)
+			return {covered:true, gaps:[]};
 
 		switch (canonical) {
 			case 'add camera zoom':
@@ -3289,12 +3780,7 @@ public static function lyricActor(value:Dynamic):String {
 					|| lower.indexOf('charchange') < 0;
 				if (!result.covered)
 					result.gaps.push('character replacement payload semantics were not found');
-			case 'markov popups':
-				var spriteDescriptor = eventSpriteDescriptorFromSource(source);
-				result.covered = spriteDescriptor != null
-					&& StringTools.trim(Std.string(Reflect.field(spriteDescriptor, 'canonicalName'))).toLowerCase() == canonical;
-				if (!result.covered)
-					result.gaps.push('static HXC event-sprite semantics were not found');
+
 			case 'vignette':
 				result.covered = lower.indexOf('intensity') >= 0 && lower.indexOf('duration') >= 0;
 				if (!result.covered)
@@ -3410,7 +3896,7 @@ public static function lyricActor(value:Dynamic):String {
 				| 'onbeathit' | 'onstephit' | 'onsectionhit' | 'oncountdowntick'
 				| 'oncountdownstart' | 'oncountdownend' | 'ongoodnotehit' | 'onopponentnotehit' | 'onnotehit'
 				| 'onnoteincoming' | 'onnotemiss' | 'onmissnote' | 'onopponentnotemiss' | 'onsongend'
-				| 'onnoteghostmiss' | 'onsubstateopenend' | 'onsubstateclosebegin'
+				| 'onnoteghostmiss' | 'onnoteholddrop' | 'onsubstateopenend' | 'onsubstateclosebegin'
 				| 'onpausesubstateopen' | 'onpausesubstateclose'
 				| 'ontweencompleted' | 'ontimercompleted' | 'onstartcountdown'
 				| 'onendsong' | 'onsongretry' | 'onpause' | 'onresume' | 'onstateopenend'

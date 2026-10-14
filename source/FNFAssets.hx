@@ -33,7 +33,37 @@ class FNFAssets {
 	// Keep only successful resolutions. Imports can add a previously-missing
 	// file while the game is running, so misses must never be cached.
 	static var caseResolvedPaths:Map<String, String> = new Map<String, String>();
+	// Recent misses for repeated probes. See DiskPathMissCache for why this is
+	// safe even though files can appear while the game runs.
+	static var pathMisses:DiskPathMissCache = new DiskPathMissCache();
+	static var diskSounds:DiskSoundCache<Sound> = new DiskSoundCache<Sound>();
+	// Moves when this class writes a file or a caller says the disk changed.
+	static var localPathEpoch:Int = 0;
+	static var localSoundEpoch:Int = 0;
+	#if target.threaded
+	// Loading workers probe and decode too. Two locks so a long decode never
+	// blocks a cheap exists check on another thread.
+	static var pathLock:sys.thread.Mutex = new sys.thread.Mutex();
+	static var soundLock:sys.thread.Mutex = new sys.thread.Mutex();
 	#end
+	#end
+
+	/** Tell the asset layer that files were added, removed or renamed by code
+		that did not go through it. Imports already do this through their
+		refresh generation. */
+	public static function invalidatePathCache():Void {
+		#if sys
+		localPathEpoch++;
+		#end
+	}
+
+	/** Drop every decoded sound kept for reuse. Sounds still playing are not
+		touched, they just stop being shared with later requests. */
+	public static function clearSoundCache():Void {
+		#if sys
+		localSoundEpoch++;
+		#end
+	}
 
 	/**
 	 * Resolve one dynamic asset id against the native filesystem using the
@@ -127,7 +157,108 @@ class FNFAssets {
 		caseResolvedPaths.set(absolute, current);
 		return Path.normalize(current);
 	}
+
+	/** resolveDiskPath for probes that repeat. A recent miss is answered after
+		one exact-spelling check instead of listing every parent directory. */
+	static function resolveProbedDiskPath(id:String):Null<String> {
+		if (id == null)
+			return null;
+		var epoch = ImportRefreshManager.generation + localPathEpoch;
+		var now = haxe.Timer.stamp();
+		#if target.threaded pathLock.acquire(); #end
+		var missed = pathMisses.missedAt(id, epoch, now);
+		#if target.threaded pathLock.release(); #end
+		if (missed != null) {
+			if (!FileSystem.exists(missed))
+				return null;
+			#if target.threaded pathLock.acquire(); #end
+			pathMisses.forget(id);
+			#if target.threaded pathLock.release(); #end
+		}
+		var resolved = resolveDiskPath(id);
+		if (resolved == null) {
+			var absolute = inScopeAbsolutePath(id);
+			if (absolute != null) {
+				#if target.threaded pathLock.acquire(); #end
+				pathMisses.remember(id, absolute, epoch, now);
+				#if target.threaded pathLock.release(); #end
+			}
+		}
+		return resolved;
+	}
+
+	/** Absolute form of an id under the game folder, null for anything else. */
+	static function inScopeAbsolutePath(id:String):Null<String> {
+		if (id == null || StringTools.trim(id) == '' || id.indexOf(String.fromCharCode(0)) >= 0)
+			return null;
+		var normalized = Path.normalize(id);
+		if (normalized == null || normalized == '')
+			return null;
+		var absolute = Path.normalize(FileSystem.absolutePath(normalized));
+		var root = Path.normalize(FileSystem.absolutePath(Main.cwd == null ? Sys.getCwd() : Main.cwd));
+		return absolute.startsWith(root + '/') ? absolute : null;
+	}
+
+	/** Decode a disk sound, sharing one decode between requests for the same
+		file. `pin` keeps it whatever its size until the cache is cleared. */
+	static function diskSound(path:String, useCache:Bool, pin:Bool):Sound {
+		var load = function():Sound {
+			try {
+				return Sound.fromFile(path);
+			} catch (e:Any) {
+				throw 'File $path doesn\'t exist or cannot be read.';
+			}
+		};
+		if (!useCache)
+			return load();
+		var epoch = ImportRefreshManager.generation + localSoundEpoch;
+		var key = FileSystem.absolutePath(path);
+		#if target.threaded soundLock.acquire(); #end
+		var cached = diskSounds.peek(key, epoch);
+		#if target.threaded soundLock.release(); #end
+		if (cached != null)
+			return cached;
+		// Decode outside the lock: holding it for a whole decode made a loader
+		// thread and the game thread wait on each other even for different
+		// files. Two threads racing on the same file both decode and the first
+		// one stored wins, which only costs that one extra decode.
+		var decoded = load();
+		#if target.threaded soundLock.acquire(); #end
+		var sound:Sound = null;
+		try {
+			sound = diskSounds.getOrLoad(key, true, epoch,
+				function():Float return FileSystem.stat(path).size, function():Sound return decoded, pin);
+		} catch (error:Dynamic) {
+			#if target.threaded soundLock.release(); #end
+			throw error;
+		}
+		#if target.threaded soundLock.release(); #end
+		return sound;
+	}
 	#end
+
+	/**
+		Decode a sound ahead of time and keep it until the sound cache is
+		cleared, so the first play does not decode mid-song. Returns null when
+		the file is missing or unreadable.
+	**/
+	public static function precacheSound(id:String):Null<Sound> {
+		#if sys
+		var path = resolveDiskPath(id);
+		if (path != null) {
+			try {
+				return SongLoadingWork.complete(diskSound(path, true, true));
+			} catch (_:Dynamic) {
+				return null;
+			}
+		}
+		#end
+		try {
+			return exists(id) ? getSound(id) : null;
+		} catch (_:Dynamic) {
+			return null;
+		}
+	}
     /**
      * Get text content of a file. 
      * @param id Path to file.
@@ -293,7 +424,8 @@ class FNFAssets {
 			default: 
 				#if sys
 				if (ImportIO.current() != null) return ImportFileSystem.exists(id);
-				return resolveDiskPath(id, directoryEntries) != null || Assets.exists(id);
+				return (directoryEntries == null ? resolveProbedDiskPath(id) : resolveDiskPath(id, directoryEntries)) != null
+					|| Assets.exists(id);
 				#else
 				return Assets.exists(id);
 				#end
@@ -452,11 +584,9 @@ class FNFAssets {
 					throw "Tried to access a file that is out of scope.";
 			if (path == null)
 				throw 'File $id doesn\'t exist or cannot be read.';
-		try {
-			return SongLoadingWork.complete(Sound.fromFile(path));
-		} catch (e:Any) {
-			throw 'File $path doesn\'t exist or cannot be read.';
-		}
+		// Short sounds are decoded once and shared. Streamed music never comes
+		// through here, see getMusic.
+		return SongLoadingWork.complete(diskSound(path, useCache, false));
         #else
             return SongLoadingWork.complete(Assets.getSound(id, useCache));
         #end
@@ -476,6 +606,7 @@ class FNFAssets {
 			} catch(e:Any) {
 				throw "Couldn't save to "+ id +". Is it in use?";
 			}
+			invalidatePathCache();
         #else
             askToSave(id, data);
         #end
@@ -495,6 +626,8 @@ class FNFAssets {
 		} catch (e:Any) {
 			throw "Couldn't save to " + id + ". Is it in use?";
 		}
+		invalidatePathCache();
+		clearSoundCache();
 		#else
 		askToSave(id, data);
 		#end

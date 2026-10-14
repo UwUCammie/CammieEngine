@@ -35,9 +35,8 @@ class ImportInstalledDependencyRoots {
 		var stage = stringField(song, 'stage');
 		if (!safeRelative(stage, false)) return result;
 		var actors:Array<String> = [];
-		var girlfriend = stringField(song, 'gfVersion');
-		if (girlfriend == '' && dialect == ImportEngine.NIGHTMARE_VISION) girlfriend = stringField(song, 'player3');
-		if (girlfriend == '') girlfriend = stringField(song, 'gf');
+		// Both engines fall back from gfVersion to the older player3 field.
+		var girlfriend = PsychFamilyChartFields.girlfriend(song);
 		for (actor in [stringField(song, 'player1'), stringField(song, 'player2'), girlfriend]) {
 			if (actor == '' || builtin(actor)) continue;
 			if (!safeRelative(actor, false)) return result;

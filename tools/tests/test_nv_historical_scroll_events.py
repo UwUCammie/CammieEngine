@@ -4,6 +4,7 @@ import subprocess,tempfile,unittest
 from haxe_test_support import HAXE_COMMAND,FixturePath
 from test_source_event_preparation import extract_method
 from test_nv_historical_camera_events import TWEEN
+from test_source_builtin_events import builtin_host_stubs,builtin_sources
 ROOT=Path(__file__).resolve().parents[2]
 class HistoricalScrollEventsTest(unittest.TestCase):
  def test_source_event_and_generation_contract(self):
@@ -15,10 +16,12 @@ class HistoricalScrollEventsTest(unittest.TestCase):
   reference='function sourceEvent(eventName:String,value1:String,value2:String){switch(eventName){'+case+'}registry.notifyEvent(eventName,value1,value2);}'
   play=(ROOT/'source/PlayState.hx').read_text()
   wrapper=extract_method(play,'function fireSongEvent(')
-  native=extract_method(play,"if (nightmareVisionLegacyFieldCameras && e.name == 'Change Scroll Speed')")
+  native='if (applySourceBuiltinEvent(e, psychStageEvent, suppressHistoricalNotification)) return;'
+  self.assertIn(native,extract_method(play,'function fireNativeSongEvent('))
+  shared='\n'.join(extract_method(play,'function '+n+'(') for n in ['applySourceBuiltinEvent','sourceBuiltinEventProfile','setSongSpeed','sourceScrollSpeedSetting'])
   init=extract_method(play,'function initializeHistoricalSongSpeed(')
   controller=(ROOT/'source/NightmareVisionLegacyCameraEvents.hx').read_text()
-  methods='\n'.join(extract_method(controller,m) for m in ['function cancel(', 'function tween(', 'public function setActive(', 'public function destroy(', 'public function changeScrollSpeed('])
+  methods='\n'.join(extract_method(controller,m) for m in ['function cancel(', 'function tween(', 'public function setActive(', 'public function destroy(', 'public function tweenSongSpeed('])
   owner='import flixel.tweens.FlxTween;import flixel.tweens.FlxEase;class NightmareVisionLegacyCameraEvents {var state:PlayState;var owned:Array<FlxTween>=[];public function new(s:PlayState)state=s;'+methods+'}'
   host=r'''import flixel.tweens.FlxTween;import flixel.tweens.FlxEase;
 class Prefs {
@@ -43,13 +46,16 @@ class PlayState {
  function callNightmareVision(n:String,a:Array<Dynamic>):Dynamic return 0;
  function legacyScriptRegistry():Registry return registry;
  function dispatchPsychCompiledStageEvent(e:Dynamic):Void {}
+ function sourceNoteTimingMode():Int return 2;
+ function historicalNightmareCameraEvent(n:String,a:String,b:String):Bool return false;
+ __STUBS__
  function fireNativeSongEvent(e:Dynamic,?suppressHistoricalNotification:Void->Void):Void {var psychStageEvent=e; __NATIVE__ }
  public function fire(a:String,b:String):Void {if(actual)fireSongEvent({name:'Change Scroll Speed',v1:a,v2:b});else sourceEvent('Change Scroll Speed',a,b);}
  public function initialize(){if(actual)initializeHistoricalSongSpeed();else {__SOURCE_INIT__}}
  public function snapshot():String return songSpeed+'#'+songSpeedType+'#'+(songSpeedTween==null?'null':songSpeedTween.name)+'#'+events.join('|')+'#'+FlxTween.log.join('|');
  __METHODS__
 }
-'''.replace('__NATIVE__',native).replace('__METHODS__',wrapper+'\n'+reference+'\n'+init).replace('__SOURCE_INIT__',source_init)
+'''.replace('__NATIVE__',native).replace('__METHODS__',wrapper+'\n'+reference+'\n'+init+'\n'+shared).replace('__SOURCE_INIT__',source_init)
   main=r'''import PlayState;import flixel.tweens.FlxTween;
 class Main {
  static function run(actual:Bool,t:String,p:Float,mode:Int,a:String,b:String):String {
@@ -66,7 +72,9 @@ class Main {
   if(expected!=actual)throw t+':'+p+':'+mode+':'+a+':'+b+'\n'+expected+'\n'+actual;count++;
  }trace(count+' scroll event/notification sequences');
  }}'''
+  host=host.replace('__STUBS__',builtin_host_stubs(host))
   files={'Main.hx':main,'PlayState.hx':host,'NightmareVisionLegacyCameraEvents.hx':owner,'flixel/tweens/FlxTween.hx':TWEEN,'flixel/tweens/FlxEase.hx':'package flixel.tweens;class FlxEase {public static function linear(t:Float)return t;}'}
+  files.update(builtin_sources())
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder)
    for name,content in files.items():

@@ -325,6 +325,33 @@ class Note extends DynamicSprite {
 	@:keep public var visualTime:Float = 0;
 	@:keep public var mAngle:Float = 0;
 	@:keep public var hitsoundDisabled:Bool = false;
+	/** Sound a hit plays, as a name under the sounds folder. */
+	@:keep public var hitsound:String = 'hitsound';
+	/** Play the hitsound even when the player turned hitsounds off. */
+	@:keep public var hitsoundForce:Bool = false;
+	/** Reads back the volume the hit will really play at; writing sets the
+	 * note's own volume, which only matters for a forced hitsound. */
+	@:keep public var hitsoundVolume(get, default):Float = 1.0;
+	function get_hitsoundVolume():Float
+		return sourceHitsoundVolume(PlayState.instance == null ? 0 : PlayState.instance.sourceHitsoundPreference(),
+			hitsoundForce, hitsoundVolume);
+	public static function sourceHitsoundVolume(preference:Float, force:Bool, own:Float):Float {
+		if (preference > 0) return preference;
+		return force ? own : 0.0;
+	}
+	/** Free form values scripts hang on a note. Made on first use, most notes never get one. */
+	@:keep public var extraData(get, set):Map<String, Dynamic>;
+	var storedExtraData:Map<String, Dynamic> = null;
+	function get_extraData():Map<String, Dynamic> {
+		if (storedExtraData == null) storedExtraData = new Map<String, Dynamic>();
+		return storedExtraData;
+	}
+	function set_extraData(value:Map<String, Dynamic>):Map<String, Dynamic> return storedExtraData = value;
+	/** True once the note was hit. Scripts may also set it themselves, and that sticks. */
+	@:keep public var noteWasHit(get, set):Bool;
+	var storedNoteWasHit:Bool = false;
+	function get_noteWasHit():Bool return storedNoteWasHit || wasGoodHit;
+	function set_noteWasHit(value:Bool):Bool return storedNoteWasHit = value;
 	public var nightmareVisionLegacyGeometry:Bool = false;
 	public var nightmareVisionSustainInitialized:Bool = false;
 	public var nightmareVisionSustainInitialWidth:Float = 0;
@@ -493,6 +520,16 @@ class Note extends DynamicSprite {
 	public var altNote:Bool = false;
 	/** Whether this note should emit a character crossfade afterimage. */
 	public var crossFade:Bool = false;
+	/** Named per-note chart parameters ({name, value}), as V-Slice note kinds read them; null when none were authored. */
+	@:keep public var params:Array<Dynamic> = null;
+	/** Value of a named chart parameter, or null. */
+	@:keep public function getParam(name:String):Dynamic {
+		if (params != null)
+			for (param in params)
+				if (param != null && param.name == name)
+					return param.value;
+		return null;
+	}
 	public var altNum:Int = 0;
 	public var isPixel:Bool = false;
 	/** Authored NMV type behavior remains separate from Psych ignoreNote. */
@@ -835,6 +872,10 @@ class Note extends DynamicSprite {
 	/** Psych/Kade GF Sing notes use the girlfriend actor without changing the
 		chart row's authored string noteType. */
 	public var forceGfSing:Bool = false;
+	/** The name scripts use for the same switch. */
+	@:keep public var gfNote(get, set):Bool;
+	function get_gfNote():Bool return forceGfSing;
+	function set_gfNote(value:Bool):Bool return forceGfSing = value;
 	public var customNotePath:Null<String> = null;
 	public var customSustainPath:Null<String> = null;
 	/** Optional V-Slice hold-cover effect currently attached to this hold. */

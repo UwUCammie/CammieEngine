@@ -20,11 +20,9 @@ class NvModConfigRuntimeTest(unittest.TestCase):
 class Image {public var bytes:haxe.io.Bytes;public function new(b:haxe.io.Bytes){bytes=b;}
  public static function fromBytes(b:haxe.io.Bytes):Image return new Image(b);}
 '''
-        stubs['Discord.hx'] = '''class DiscordClient {
- public static var id:String='host-rpc'; public static var requested:Array<String>=[];
- public static function getClientId():String return id;
- public static function setClientId(value:String):Void {id=value;requested.push(value);}
-}'''
+        # The real Discord client runs its non-native request bookkeeping here,
+        # so the owner presence lease is exercised end to end.
+        stubs.pop('Discord.hx', None)
         stubs['lime/app/Application.hx'] = '''package lime.app;
 class Application {public static var current:Dynamic={meta:{get:function(key:String):String return 'Source title'}};}
 '''
@@ -35,6 +33,7 @@ class Main {
  public static var failSave:Bool=false;
  static function check(ok:Bool,message:String):Void if(!ok) throw message;
  static function main() {
+  DiscordClient.setClientId('host-rpc');
   var a='assets/imported_mods/alpha'; var b='assets/imported_mods/beta';
   var family=new NightmareVisionModFamilySession('alpha',a,[{directory:'alpha',root:a},{directory:'beta',root:b}]);
   var mods=new NightmareVisionModsContext(a,'alpha',family);
@@ -50,9 +49,10 @@ class Main {
   var sourceOptions=mods.optionSession;
   sourceOptions.addForMod('alpha','score-display','bool',true);
   sourceOptions.setValue('score-display',false);
-  var writesBefore=DiscordClient.requested.length;
+  check(DiscordClient.getClientId()!='host-rpc','config applies its RPC id');
+  var writesBefore=DiscordClient.getRequestedSnapshot().identityRevision;
   mods.currentModDirectory='beta';
-  check(flixel.FlxG.stage.window.title=='Alpha title' && DiscordClient.requested.length==writesBefore,'assignment does not apply config or transition');
+  check(flixel.FlxG.stage.window.title=='Alpha title' && DiscordClient.getRequestedSnapshot().identityRevision==writesBefore,'assignment does not apply config or transition');
   mods.applyModConfig('alpha');
   check(runtime.selectedRoot==b && sourceOptions.currentMod=='beta','explicit config lookup keeps selected option/asset identity');
   check(icons[1].bytes.toString()=='beta icon','explicit lookup uses selected source Paths');
@@ -69,12 +69,21 @@ class Main {
   failSave=true; var rejected=false;
   try runtime.release() catch(error:Dynamic) rejected=true;
   check(rejected && NightmareVisionModConfigRuntime.active==null,'teardown reports flush failure after releasing native ownership');
-  check(flixel.FlxG.stage.window.title=='Host title' && DiscordClient.id=='host-rpc','native title/RPC restored');
+  check(flixel.FlxG.stage.window.title=='Host title' && DiscordClient.getClientId()=='host-rpc','native title/RPC restored');
   check(flixel.FlxG.save.data.nativeSentinel==42,'native settings untouched');
   check(icons[icons.length-1].bytes.toString()=='native icon','native branding restored');
   rejected=false; try sourceOptions.getValue('score-display') catch(error:Dynamic) rejected=true;
   check(rejected,'failed flush still retires source option view');
   mods.release();
+  failSave=false;
+  var mods2=new NightmareVisionModsContext(a,'alpha',new NightmareVisionModFamilySession('alpha',a,[{directory:'alpha',root:a}]));
+  var paths2=new NightmareVisionPaths(a,null,null,'alpha'); paths2.bindModFamily(mods2);
+  var runtime2=new NightmareVisionModConfigRuntime(mods2,paths2);
+  mods2.applyModConfig();
+  DiscordClient.setClientId('engine-later');
+  runtime2.release();
+  check(DiscordClient.getClientId()=='engine-later','a newer engine RPC id survives the owner leaving');
+  mods2.release();
  }
 }'''
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as temp:

@@ -183,6 +183,7 @@ class Main {
         dispatch = extract_method(self.play, "function dispatchNightmareVisionNoteHit(note:Note,")
         detach = extract_method(self.play, "function detachNightmareVisionTap(")
         auto_loop = extract_method(self.play, "function processNightmareVisionAutoHits(")
+        register_combo = extract_method(self.play, "function registerComboHit(")
         fixture = r'''
 class Note {public var noteSplashDisabled=false;
  public static inline var NOTE_AMOUNT:Int = 4;
@@ -336,6 +337,12 @@ class FlxG { public static var sound:SoundApi = new SoundApi(); }
 class FNFAssets { public static function getSound(path:String):Dynamic return null; }
 class Conductor { public static var songPosition:Float = 1; }
 class Main {
+ // The host's shared hit sound route; only the order of that play is pinned here,
+ // its file and volume rules are covered by test_gameplay_feedback_sounds.
+ function playNoteHitSound(n:Note):Void
+  if (OptionsHandler.options.hitSounds && !n.hitsoundDisabled && !n.isSustainNote)
+   FlxG.sound.play(FNFAssets.getSound('assets/sounds/hitSound.ogg'));
+ __REGISTER_COMBO__
  function dispatchHistoricalNightmareNoteHit(n:NVNote,c:String):Void events.push("legacy-notify:"+c);
  public var nightmareVisionLegacyFieldCameras=false;
  public var combo:Int=0; public var performanceMaxCombo:Int=0;
@@ -591,6 +598,7 @@ __AUTO_LOOP__
         fixture = fixture.replace("__FIELD_FOR_NOTE__", field_for_note).replace(
             "__REMOVE_FIELD_NOTE__", remove_field_note
         ).replace("__FIELD_HIT_SIGNAL__", hit_signal).replace("__PRE_METHOD__", pre)
+        fixture = fixture.replace("__REGISTER_COMBO__", register_combo)
         fixture = fixture.replace("__DISPATCH_METHOD__", dispatch).replace(
             "__DETACH_METHOD__", detach
         ).replace("__AUTO_LOOP__", auto_loop)

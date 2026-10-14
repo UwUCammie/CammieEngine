@@ -1,4 +1,4 @@
-"""Psych's onCreatePost character preload must reach the native atlas warmer."""
+"""Psych's onCreatePost character preload must keep an actor for the native swap."""
 from haxe_test_support import HAXE_COMMAND
 
 import os
@@ -20,6 +20,8 @@ class PsychCharacterPreloadBridgeTest(unittest.TestCase):
         start = play.index("\tfunction compatAddCharacterToList(")
         end = play.index("\n\t}", start) + 3
         method = play[start:end]
+        slot_start = play.index("\tstatic function changeCharacterSlot(")
+        method += play[slot_start:play.index("\n\t}", slot_start) + 3]
         fixture = '''using StringTools;
 class Character {
   public static function characterExists(name:String):Bool return name == "bf-jam-car" || name == "gf-swag";
@@ -41,6 +43,8 @@ class PlayState {
   function addNightmareVisionCharacterToList(name:String,role:Int):Void nightmareVisionCharacterBank(role).addToList(name);
   function warmCharacterAtlas(name:String, isPlayer:Bool = false):Void
     warmed.push(name + ":" + isPlayer);
+  function preloadSwapCharacter(slot:String, name:String, wanted:Int = 1):Void
+    warmed.push(name + ":" + slot);
 ''' + method + '''
   static function main():Void {
     var state = new PlayState();
@@ -48,7 +52,7 @@ class PlayState {
     state.compatAddCharacterToList("gf-swag", "gf");
     state.compatAddCharacterToList("missing", "dad");
     state.compatAddCharacterToList(null, "boyfriend");
-    if (state.warmed.join(",") != "bf-jam-car:true,gf-swag:false")
+    if (state.warmed.join(",") != "bf-jam-car:boyfriend,gf-swag:gf")
       throw "Psych character preload did not preserve selected role or missing dependency";
 
     // The Nightmare Vision host retains these preloads in the role bank.

@@ -164,9 +164,13 @@ class Main {
         closed = source.index("super.closeSubState();")
         resumed = source.index("if (resumeEventVideo) setCodenameScriptsPaused(false);", closed)
         self.assertLess(closed, resumed)
-        cancelled = source.index("pauseEvent.eventCanceled == true")
-        actual_open = source.index("openSubState(new PauseSubState", cancelled)
-        self.assertLess(cancelled, actual_open)
+        cancelled = source.index("EngineCompat.hxcPayloadCanceled(pauseEvent)")
+        # Once nothing cancelled it, the gate hands the open to the shared pause entry.
+        self.assertLess(cancelled, source.index("openPauseMenu();", cancelled))
+        open_pause = source[source.index("public function openPauseMenu():Void"):]
+        open_pause = open_pause[:open_pause.index("\n\t}")]
+        self.assertLess(open_pause.index("callCodenameEvent('onGamePause'"),
+                        open_pause.index("openSubState(new PauseSubState"))
 
     def test_real_scene_bindings_borrow_hud_and_keep_removed_owned_props(self):
         source = self.source

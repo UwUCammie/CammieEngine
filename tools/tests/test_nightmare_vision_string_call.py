@@ -116,11 +116,26 @@ class Main {
 }'''
 
         with tempfile.TemporaryDirectory(prefix="nmv-string-call-", dir=ROOT / "tmp") as scratch:
+            # The chart globals come from the snapshot shared with the Psych Lua
+            # seed, so the pin follows the value from the chart to the NMV host.
             play_state = (ROOT / "source/PlayState.hx").read_text()
-            for source_binding in ("'bpm' => SONG.bpm", "'scrollSpeed' => SONG.speed",
-                "'songName' => SONG.song"):
-                self.assertIn(source_binding, play_state,
-                    f"NMV host must seed source chart global {source_binding} before parent lookup")
+            globals_source = (ROOT / "source/SourceGameplayGlobals.hx").read_text()
+            bindings_source = (ROOT / "source/NightmareVisionSourceBindings.hx").read_text()
+            for chart_value in ("songBpm: SONG == null ? Conductor.bpm : SONG.bpm",
+                "songSpeed: SONG == null ? 1 : SONG.speed", "songName: title,"):
+                self.assertIn(chart_value, play_state,
+                    f"gameplay state must read source chart value {chart_value}")
+            for source_binding in ("'bpm' => state.songBpm", "'scrollSpeed' => state.songSpeed",
+                "'songName' => text(state.songName)"):
+                self.assertIn(source_binding, globals_source,
+                    f"shared gameplay globals must expose {source_binding}")
+            gameplay_names = bindings_source.split("gameplayNames:Array<String> = [", 1)[1].split("];", 1)[0]
+            for name in ("'bpm'", "'scrollSpeed'", "'songName'"):
+                self.assertIn(name, gameplay_names,
+                    f"NMV host must seed source chart global {name} before parent lookup")
+            self.assertIn("NightmareVisionSourceBindings.bindGameplay(interp, this, true, fields,", play_state)
+            self.assertIn("for (name in gameplayNames) if (fields != null && fields.exists(name)) set(vars, name, fields.get(name));",
+                bindings_source)
             work = Path(scratch)
             write_flixel_point_stub(work)
             (work / "Main.hx").write_text(fixture, newline='\n')

@@ -164,6 +164,15 @@ class RuntimeSmokeHarness {
 	static var nightmareVisionSplashSeen:Map<Int, Bool> = new Map();
 	static var nightmareVisionLiveSamples:Map<String, Bool> = new Map();
 	static var nightmareVisionLiveCount:Int = 0;
+	static var hitchTracker:FrameHitchTracker = new FrameHitchTracker();
+	static var renderTimingInstalled:Bool = false;
+	#if sys
+	// one append handle for the whole run: opening and closing the log for
+	// every line cost more than the work some of those lines describe
+	static var logStream:sys.io.FileOutput = null;
+	static var logStreamPath:String = '';
+	static var logMutex:sys.thread.Mutex = new sys.thread.Mutex();
+	#end
 	static var liveVisualNoteKinds:Map<String, Bool> = new Map();
 	static var receptorVisualStates:Map<String, Bool> = new Map();
 	static var chartEditorPhase:Int = 0;
@@ -863,6 +872,13 @@ class RuntimeSmokeHarness {
 		Reflect.setField(snapshot, 'visit', visitsStarted);
 		Reflect.setField(snapshot, 'elapsedMs', (haxe.Timer.stamp() - playStateLoadStartedAt) * 1000);
 		emit('playstate_ready', snapshot);
+		// Pacing runs time one forced full collection on the loaded song, so the
+		// size of a collector pause is measured instead of guessed from hitches.
+		if (config().frameStats || config().pacingOnly == true) {
+			var gc = EngineMemory.probe();
+			emit('gc_probe', {ms: gc.seconds * 1000, usedBeforeBytes: gc.usedBefore,
+				usedAfterBytes: gc.usedAfter, reservedAfterBytes: gc.reservedAfter, song: name});
+		}
 		var visualState = PlayState.instance;
 		if (visualState != null) {
 			emit('stage_visual', RuntimeSmokeVisuals.stage(visualState.curStage));
@@ -1035,7 +1051,9 @@ class RuntimeSmokeHarness {
 	/** Bounded final-frame NMV geometry, sampled only in explicit profiler runs.
 	 * Construction snapshots cannot prove that notes follow live modifiers. */
 	public static function markLiveNightmareVisionNote(note:Note, receptor:FlxSprite):Void {
-		if (!profileEnabled() || finished || note == null || receptor == null
+		// Pacing runs are for timing only: these samples come in a burst for every
+		// visible note at each 5 s boundary and showed up as frame spikes.
+		if (!profileEnabled() || config().pacingOnly == true || finished || note == null || receptor == null
 			|| note.nightmareVisionRenderer == null || !note.visible || !note.active
 			|| nightmareVisionLiveCount >= 512 || Math.abs(note.strumTime - Conductor.songPosition) > 2000) return;
 		var key = note.sourcePlayfieldIndex + ':' + note.sourceDirection + ':'
@@ -1835,6 +1853,36 @@ class RuntimeSmokeHarness {
 		FlxG.signals.preDraw.add(onFramePreDraw);
 		FlxG.signals.postDraw.add(onFramePostDraw);
 		RuntimeSmokePauseInput.install();
+		installRenderTiming();
+	}
+
+	/** Time OpenFL's own render (texture uploads, shader compiles, filters),
+		which runs after flixel's draw and was invisible to the section timers.
+		OpenFL's window render listener is what broadcasts ENTER_FRAME, so the
+		whole flixel update and draw runs inside it: the render window opens at
+		the end of onFramePostDraw instead of in a listener ahead of OpenFL's. */
+	static function installRenderTiming():Void {
+		#if sys
+		if (renderTimingInstalled || config().pacingOnly != true)
+			return;
+		var window = Application.current == null ? null : Application.current.window;
+		if (window == null)
+			return;
+		renderTimingInstalled = true;
+		// before the note readback listener (-1000), so a readback is not render time
+		window.onRender.add(onRenderTimingEnd, false, -500);
+		#end
+	}
+
+	static function onRenderTimingEnd(context:lime.graphics.RenderContext):Void
+		hitchTracker.endRender(nowMs());
+
+	static function currentHeapBytes():Float {
+		#if cpp
+		return cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_CURRENT);
+		#else
+		return -1;
+		#end
 	}
 
 	static function onFramePreUpdate():Void {
@@ -1844,6 +1892,8 @@ class RuntimeSmokeHarness {
 			pacingCountersConfigured = true;
 		}
 		frameStart = nowMs();
+		if (config().pacingOnly == true)
+			hitchTracker.beginFrame(frameStart, currentHeapBytes());
 		frameSlowestSection = '';
 		frameSlowestSectionMs = 0;
 		frameDelta = 0;
@@ -1882,9 +1932,17 @@ class RuntimeSmokeHarness {
 		var now = nowMs();
 		costs.push(now - frameStart);
 		drawCosts.push(now - drawStart);
-		if (config().pacingOnly == true && (frameDelta > 33.4 || now - frameStart > 33.4))
+		// One event per slow frame. A long gap that is only the previous slow
+		// frame's own update and draw is not reported again.
+		if (config().pacingOnly == true && hitchTracker.endFrame(now, currentHeapBytes()))
 			emit('frame_hitch', {songPosition: playStateReady ? Conductor.songPosition : null,
-				gapMs: frameDelta, updateDrawMs: now - frameStart,
+				gapMs: hitchTracker.gapMs, updateDrawMs: hitchTracker.insideMs,
+				previousRenderMs: hitchTracker.renderMs, outsideMs: hitchTracker.outsideMs,
+				cause: hitchTracker.cause(),
+				collectedInside: hitchTracker.collectedInside,
+				collectedOutside: hitchTracker.collectedOutside,
+				heapDropBytes: hitchTracker.heapDropBytes,
+				harnessMs: hitchTracker.harnessMs,
 				slowestSection: frameSlowestSection, slowestSectionMs: frameSlowestSectionMs,
 				heap: frameHeapSnapshot()});
 		totalFrames++;
@@ -1894,6 +1952,9 @@ class RuntimeSmokeHarness {
 			lastSummaryAt = now;
 			emitFrameSummary();
 		}
+		// last, so the harness's own reporting above is not counted as render
+		if (renderTimingInstalled)
+			hitchTracker.beginRender(nowMs());
 	}
 
 	/** Capture the fully drawn native window once an actual gameplay note is on screen. */
@@ -2747,6 +2808,8 @@ class RuntimeSmokeHarness {
 			bitmapMB: Math.round(cache.mb),
 			bitmapTop: cache.top,
 			heap: config().pacingOnly == true ? frameHeapSnapshot() : null,
+			// with suspectedCollections this gives the collector's cadence
+			allocatedBytes: config().pacingOnly == true ? hitchTracker.takeAllocatedBytes() : null,
 			currentFPS: Main.fpsCounter == null ? null : Main.fpsCounter.currentFPS,
 			averageFPS: Main.fpsCounter == null ? null : Main.fpsCounter.averageFPS,
 			sectionMs: sections
@@ -2762,7 +2825,11 @@ class RuntimeSmokeHarness {
 		#if cpp
 		return {currentBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_CURRENT),
 			liveBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE),
-			reservedBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_RESERVED)};
+			reservedBytes: cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_RESERVED),
+			requestedCollects: EngineMemory.collectCount,
+			suspectedCollections: hitchTracker.suspectedCollections,
+			lastCollectMs: EngineMemory.lastCollectSeconds * 1000,
+			lastCollectReason: EngineMemory.lastReason};
 		#else
 		return null;
 		#end
@@ -2825,6 +2892,7 @@ class RuntimeSmokeHarness {
 
 
 	static function emit(event:String, extra:Dynamic):Void {
+		var emitStart = nowMs();
 		var payload:Dynamic = {
 			event: event,
 			marker: 'runtime-smoke',
@@ -2839,18 +2907,36 @@ class RuntimeSmokeHarness {
 		#if sys
 		Sys.println(line);
 		var path = config() == null ? '' : config().logPath;
-		if (path != null && StringTools.trim(path) != '') {
-			try {
-				ensureParent(path);
-				var stream = File.append(path, false);
-				stream.writeString(line + '\n');
-				stream.close();
-			} catch (error:Dynamic) {
-				Sys.println('RUNTIME_SMOKE|' + Json.stringify({event: 'log_failure', detail: Std.string(error)}));
-			}
-		}
+		if (path != null && StringTools.trim(path) != '')
+			appendLogLine(path, line);
 		#end
+		hitchTracker.addHarnessTime(nowMs() - emitStart);
 	}
+
+	#if sys
+	static function appendLogLine(path:String, line:String):Void {
+		logMutex.acquire();
+		try {
+			if (logStream == null || logStreamPath != path) {
+				if (logStream != null)
+					try logStream.close() catch (_:Dynamic) {}
+				logStream = null;
+				ensureParent(path);
+				logStream = File.append(path, false);
+				logStreamPath = path;
+			}
+			logStream.writeString(line + '\n');
+			// flushed per line so a crash or Sys.exit still leaves every line on disk
+			logStream.flush();
+		} catch (error:Dynamic) {
+			if (logStream != null)
+				try logStream.close() catch (_:Dynamic) {}
+			logStream = null;
+			Sys.println('RUNTIME_SMOKE|' + Json.stringify({event: 'log_failure', detail: Std.string(error)}));
+		}
+		logMutex.release();
+	}
+	#end
 
 	static function safeToken(raw:Null<String>):String {
 		if (raw == null)

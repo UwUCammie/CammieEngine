@@ -35,6 +35,9 @@ class Conductor {
  public static var bpm:Float=120;
  public static var crochet:Float=500;
  public static var stepCrochet:Float=125;
+ // No instrumental offset here, so chart time and audio time are the same.
+ public static inline function songTimeFromAudio(audioTime:Float):Float return audioTime;
+ public static inline function audioTimeFromSong(songTime:Float):Float return songTime;
 }
 class SongStub { public var song:String=''; public function new() {} }
 class FNFAssets {
@@ -92,6 +95,8 @@ class DemoTest {
  var demoMode=true; var demoPlaybackRate:Float=1;
  var demoSpeedTxt={text:""}; var vocals=new Audio();
  var missesTxt:Dynamic=null; var misses=0; var comboBreaks=true;
+ // The update loop caches the misses label so it only rebuilds the string on change.
+ var missesLabel:String=null; var missesLabelCount:Int=0; var missesLabelBreaks:Bool=true;
  var paused=false; var startingSong=false; var endingSong=false;
  var psychGameOverTransitionPending=false;
  var startedCountdown=true; var inCutscene=false;

@@ -13,6 +13,11 @@ class PsychCharacterPlayAnimTest(unittest.TestCase):
         start = source.index('function compatCharacterPlayAnim(')
         end = source.index('\n\tfunction compatObjectPlayAnimation', start)
         method = source[start:end]
+        # The role table is shared with the other character callbacks.
+        for marker, stop in (('public function characterForRole(', '\n\tstatic function characterGroupRole('),
+                             ('static function characterGroupRole(', '\n\t/** Psych\'s boyfriendGroup')):
+            role_start = source.index(marker)
+            method += '\n' + source[role_start:source.index(stop, role_start)]
         self.assertIn("interp.variables.set('characterPlayAnim', compatCharacterPlayAnim)", source)
         fixture = """
 class Character {

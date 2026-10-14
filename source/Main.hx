@@ -43,6 +43,7 @@ class Main extends Sprite {
 		RuntimeSmokeHarness.applyRuntimeRoot();
 		RuntimeSmokeSaveIsolation.install(RuntimeImportSmokeHarness.enabled() || ImportedMenuSmokeHarness.enabled());
 		cwd = Sys.getCwd();
+		EngineMemory.applyStartupTuning(Sys.args());
 		ImportRemovalManager.install();
 		RuntimeImportPerformanceProbe.run();
 		#end

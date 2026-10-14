@@ -75,7 +75,7 @@ import flixel.animation.FlxAnimationController;
 import flixel.system.FlxAssets.FlxGraphicAsset;
 class Scale {public var x:Float=1;public var y:Float=1;public function new(){} public function set(x:Float=1,y:Float=1):Void{this.x=x;this.y=y;}}
 class FlxSprite {
- public var x:Float; public var y:Float; public var active:Bool=true; public var exists:Bool=true;public var frameWidth=150;public var frameHeight=150;
+ public var x:Float; public var y:Float; public var active:Bool=true; public var exists:Bool=true;public var alive:Bool=true;public var frameWidth=150;public var frameHeight=150;
  public var camera:Dynamic; public var cameras:Array<Dynamic>;
  public var scale:Scale=new Scale(); public var graphic:Dynamic; public var hitboxUpdates:Int=0;
  public var animation:FlxAnimationController = new FlxAnimationController();

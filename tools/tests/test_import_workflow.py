@@ -1301,7 +1301,7 @@ class Main {{
     sourceFolder:null, sourceSelectableDifficulties:null, sourceUnsupportedDifficulties:null,
     sourceRoot:null, engine:null, importSourceInfo:null
   }};
-  static function normalizeNightmareVisionVocalRoles(songData:SongImport):Void {{}}
+  static function normalizeSourceVocalRoles(songData:SongImport):Void {{}}
   static function validateAndRecordSongImport(collector:SongImportRejectionCollector, songData:SongImport,
       sourceRoot:String, dataFolder:String, engine:String):Bool return songData != null;
   static function importSongFolderName(songData:SongImport):String return songData.name;
@@ -1348,6 +1348,7 @@ typedef SongImport = {
   var sourceUnsupportedDifficulties:Array<String>;
   var sourceRoot:Null<String>;
   var engine:Null<String>;
+  @:optional var gf:String;
   var importSourceInfo:SongImportSource;
 }
 typedef SongImportSource = {

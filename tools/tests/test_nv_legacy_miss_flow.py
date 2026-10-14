@@ -14,11 +14,13 @@ class LegacyMissFlowTest(unittest.TestCase):
   press=extract_method(src,'function noteMissPress(').replace('function noteMissPress(', 'public function sourcePress(').replace('songMisses','PlayState.misses').replace('ClientPrefs.ghostTapping','nightmareVisionPrefs.view.ghostTapping')
   press=press.replace("FlxG.sound.play(Paths.soundRandom('missnote', 1, 3), FlxG.random.float(0.1, 0.2));", 'playHistoricalNightmareMissSound();')
   retire=extract_method((ROOT/'source/PlayState.hx').read_text(),'function retireNightmareVisionLegacyNote(').replace('function retire','public function retire')
+  # The legacy flow books the miss through the shared ledger helper.
+  retire+=extract_method((ROOT/'source/PlayState.hx').read_text(),'function applySourceMiss(').replace('function applySourceMiss','public function applySourceMiss')
   host=r'''
 class PlayState {
  public var events:Array<String>=[];public var notes:Group;public var vocals:Voice;
  public var modchartObjects:Map<String,Dynamic>=[];public var health=1.;public var healthLoss=2.;public var combo=8;
- public var instakillOnMiss=false;public var practiceMode=false;public var endingSong=true;
+ public var instakillOnMiss=false;public var practiceMode=false;public var endingSong=true;public var sourceScoreNightmare=true;
  public static var misses=2;public var songScore=70;public var totalPlayed=3;
  public var boyfriend:Character;public var gf:Character;public var nightmareVisionPrefs:Dynamic={view:{ghostTapping:false}};
  public var singAnimations=['LEFT','DOWN','UP','RIGHT','EXTRA'];

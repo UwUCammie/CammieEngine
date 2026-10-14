@@ -56,6 +56,21 @@ class ImportRefreshFailureTest(unittest.TestCase):
   check(ImportRefreshFailure.mismatch('bin', 'Nightmare Vision', 'Nightmare Vision', [], 'Psych Engine', ['pack.json present', 'Lua scripts']) == null, 'layout hints overrode an explicit choice');
   check(ImportRefreshFailure.mismatch('bin', 'Nightmare Vision', 'Nightmare Vision', [], 'Nightmare Vision', proof) == null, 'same engine reported');
   check(ImportRefreshFailure.mismatch('bin', 'Nightmare Vision', 'Nightmare Vision', [], '', proof) == null && ImportRefreshFailure.mismatch('bin', 'Nightmare Vision', 'Nightmare Vision', [], 'Psych Engine', null) == null, 'unknown detection reported');
+  // A format the scanner marks decisive (a chart pair) is proof too; the same
+  // lines without the decisive flag are still only hints.
+  var chartPair = ['', 'V-Slice chart pair: data/songs/*/*-metadata.json and *-chart.json', 'V-Slice Polymod merge folder: _merge'];
+  var byFormat = ImportRefreshFailure.mismatch('', 'Psych Engine', 'Psych Engine', [], 'V-Slice', chartPair, true);
+  check(byFormat != null && byFormat.detected == 'V-Slice' && byFormat.recorded == 'Psych Engine' && byFormat.evidence == chartPair[1], 'decisive format evidence ignored');
+  check(ImportRefreshFailure.mismatch('', 'Psych Engine', 'Psych Engine', [], 'V-Slice', chartPair) == null, 'non-decisive evidence contradicted the receipt');
+  check(ImportRefreshFailure.mismatch('', 'Psych Engine', 'Psych Engine', ['Psych week file'], 'V-Slice', chartPair, true) == null, 'decisive evidence overrode recorded evidence');
+  check(ImportRefreshFailure.mismatch('', 'Psych Engine', 'Psych Engine', [], 'V-Slice', [], true) == null, 'decisive flag without any evidence line reported');
+  // The fork reads Psych's own formats, so those never contradict it; its own
+  // package layout still contradicts a Psych receipt, and an executable still wins.
+  var psychWeek = ['Psych Engine week file listing a charted song: weeks/*.json'];
+  check(ImportRefreshFailure.mismatch('', 'Nightmare Vision', 'Nightmare Vision', [], 'Psych Engine', psychWeek, true) == null, 'shared Psych format contradicted a fork receipt');
+  check(ImportRefreshFailure.mismatch('', 'Nightmare Vision', 'Nightmare Vision', [], 'Psych Engine', proof, true) != null, 'executable proof lost for the fork');
+  var nvSongs = ['Nightmare Vision package song layout: songs/<song>/data/<chart>.json beside the song audio'];
+  check(ImportRefreshFailure.mismatch('', 'Psych Engine', 'Psych Engine', [], 'Nightmare Vision', nvSongs, true) != null, 'fork-only format did not contradict a Psych receipt');
   var alone = ImportRefreshFailure.mistyped(found, null); var copy = ImportRefreshFailure.mistyped(found, 'pack');
   check(ImportRefreshFailure.isMistyped(alone) && ImportRefreshFailure.isMistyped(copy) && !ImportRefreshFailure.isMistyped('other') && !ImportRefreshFailure.isMistyped(null), 'prefix');
   check(alone.indexOf('imported as Nightmare Vision') > 0 && alone.indexOf('bin is Psych Engine') > 0 && alone.indexOf('Auto detection') > 0, 'explanation');
@@ -87,6 +102,9 @@ class ImportRefreshFailureTest(unittest.TestCase):
         detect = manager[manager.index('\tstatic function retainedEngineMismatch('):manager.index('\tstatic function correctlyTypedCopy(')]
         self.assertLess(detect.index('ImportRootScanner.setRetainedSourceEngines(null)'), detect.index('ImportRootScanner.inspectRoot('))
         self.assertLess(detect.index('ImportRootScanner.inspectRoot('), detect.index('ImportRootScanner.setRetainedSourceEngines(previousEngines)'))
+        self.assertIn('inspected.engine, inspected.evidence, inspected.decisive == true)', detect)
+        scanner = (ROOT / 'source/ImportRootScanner.hx').read_text(encoding='utf-8')
+        self.assertIn('decisive: decisiveEvidenceByEngine.get(bestEngine) == true,', scanner)
 
 
 if __name__ == '__main__':

@@ -109,7 +109,7 @@ class Main {
  public function exists(name:String):Bool return names.indexOf(name) >= 0;
 }
 class Character {
- public var danceEvery:Int = 1;
+ public var danceEvery:Float = 1;
  public var danceEveryNumBeats(get,set):Int;
  public var danceIdle:Bool = false;
  public var idleSuffix:String = '';

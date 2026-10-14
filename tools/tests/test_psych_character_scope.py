@@ -419,6 +419,7 @@ class Probe {{
             (work / "ImportDirectoryListing.hx").write_text(
                 (ROOT / "source/ImportDirectoryListing.hx").read_text()
             , newline='\n')
+            (work / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             (work / "PsychCharacterPosition.hx").write_text(position, newline='\n')
             (work / "FNFAssets.hx").write_text('''
 class FNFAssets {

@@ -213,6 +213,7 @@ class DialogueBox {
  public var nextDialogueThing:Void->Void;
  public var skipDialogueThing:Void->Void;
  public var exists:Bool=false;
+ public var alive:Bool=true;
  public var cameras:Dynamic;
  public function new() {}
 }
@@ -231,6 +232,15 @@ class Main {
   members.push(box);
  }
  public function startCountdown():Void countdownCalls++;
+ // the opening dialogue never needs the on-demand path
+ public var scriptDialogueBox:DialogueBox;
+ public var endingSong:Bool=false;
+ public var musicRequests:Array<String>=[];
+ public function endSong():Void {}
+ public function playDialogueMusic(music:String):Void musicRequests.push(music);
+ public function compatDialogueText(name:String):String throw 'the prepared dialogue was looked up again';
+ public function showDialogueFromData(text:String,?music:String,?onFinish:Void->Void,
+  ?prepare:DialogueBox->Void):DialogueBox throw 'the prepared dialogue was rebuilt';
  PREPARE
  START
  static function check(ok:Bool,message:String):Void if(!ok) throw message;
@@ -241,6 +251,7 @@ class Main {
   var first=host.doof;
   check(host.inCutscene && host.members.length==1 && host.addSawPrepared,
    'compatStartDialogue should prepare source callbacks before adding the box');
+  check(host.musicRequests.join('|')=='music','the requested dialogue music was dropped');
   first.nextDialogueThing();
   first.skipDialogueThing();
   check(host.dialogueCount==1,'skip should report the current count without incrementing it');
@@ -260,7 +271,9 @@ class Main {
   check(host.countdownCalls==0,
    'a STOP return from callback dispatch should not cancel dialogue count updates');
  }
-}'''.replace("PREPARE", prepare).replace("START", start)
+}'''.replace("PREPARE", prepare).replace("START", "\n".join(
+            [function_body(play, name) for name in (
+                "dialogueBoxShowing", "compatDialogueName", "compatDialogueIsPrepared")] + [start]))
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as directory:
             work = Path(directory)
             (work / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")

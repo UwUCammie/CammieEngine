@@ -105,17 +105,74 @@ class SourceScriptReflection {
 	public static function getLegacyObjectOrder(path:String, instance:()->Dynamic,
 		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Int {
 		var object = legacyOrderObject(path, instance, resolveObject, readProperty);
-		if (object != null) return instance().members.indexOf(object);
+		if (object != null) return memberIndex(instance(), object);
 		missing();
 		return -1;
+	}
+
+	/** A draw-order container is either a plain array or something with `members`. */
+	static function memberList(container:Dynamic):Array<Dynamic> {
+		if (container == null) return null;
+		if (Std.isOfType(container, Array)) return cast container;
+		var members:Dynamic = Reflect.getProperty(container, 'members');
+		return Std.isOfType(members, Array) ? cast members : null;
+	}
+
+	public static function memberIndex(container:Dynamic, object:Dynamic):Int {
+		var list = memberList(container);
+		return list == null ? -1 : list.indexOf(object);
+	}
+
+	/** Groups splice on removal so the indices after it stay packed. */
+	public static function removeMember(container:Dynamic, object:Dynamic):Void {
+		if (container == null) return;
+		if (Std.isOfType(container, Array)) (cast container:Array<Dynamic>).remove(object);
+		else container.remove(object, true);
+	}
+
+	/** `clamp` keeps the position inside the list; without it the container decides. */
+	public static function insertMember(container:Dynamic, object:Dynamic, position:Int, clamp:Bool = false):Void {
+		if (container == null) return;
+		if (clamp) {
+			var list = memberList(container);
+			var length = list == null ? 0 : list.length;
+			if (position < 0) position = 0;
+			if (position > length) position = length;
+		}
+		if (Std.isOfType(container, Array)) (cast container:Array<Dynamic>).insert(position, object);
+		else container.insert(position, object);
+	}
+
+	/** Take the object out if it is there, then put it at the final index asked for. */
+	public static function reorderMember(container:Dynamic, object:Dynamic, position:Int, clamp:Bool = false):Bool {
+		if (container == null || object == null) return false;
+		// A group name can point at any field. Something that is not a list
+		// has no order to change.
+		if (memberList(container) == null) return false;
+		if (memberIndex(container, object) >= 0) removeMember(container, object);
+		insertMember(container, object, position, clamp);
+		return true;
+	}
+
+	/**
+		Where a script's reorder happens. A named group or array on the current
+		state wins; otherwise it is the open custom substate, and failing that
+		the state itself. `gameOver` stands in for the state while the player is
+		dead, because that is the screen scripts are drawing on then.
+	*/
+	public static function orderContainer(state:Dynamic, customSubstate:Dynamic, gameOver:Dynamic, ?group:String):Dynamic {
+		var target:Dynamic = gameOver != null ? gameOver : state;
+		if (group != null && StringTools.trim(group) != '')
+			return target == null ? null : Reflect.getProperty(target, StringTools.trim(group));
+		return customSubstate != null ? customSubstate : target;
 	}
 	public static function setLegacyObjectOrder(path:String, position:Int, instance:()->Dynamic,
 		resolveObject:String->Dynamic, readProperty:(Dynamic,String)->Dynamic, missing:()->Void):Void {
 		var object = legacyOrderObject(path, instance, resolveObject, readProperty);
 		if (object == null) {missing();return;}
-		instance().remove(object, true);
+		removeMember(instance(), object);
 		// Removal listeners can change the active scene before insertion.
-		instance().insert(position, object);
+		insertMember(instance(), object, position);
 	}
 
 	public static function legacyGroupRoot(path:String, instance:()->Dynamic,

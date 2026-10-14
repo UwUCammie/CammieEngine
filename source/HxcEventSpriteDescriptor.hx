@@ -223,20 +223,61 @@ class HxcEventSpriteDescriptor {
 		return Json.stringify({version: CATALOG_VERSION, descriptors: clean});
 	}
 
+	/**
+		Find the descriptor an event row belongs to.  A row can carry the routed
+		name, the id the event class registered, or (rows written by older
+		imports) a spaced spelling of the class name, so those are tried in that
+		order.  Two different descriptors on the same step are never guessed
+		between.
+	*/
 	public static function find(descriptors:Array<Dynamic>, eventName:String):Dynamic {
-		if (descriptors == null || eventName == null || StringTools.trim(eventName) == '')
+		if (descriptors == null || descriptors.length == 0 || eventName == null
+			|| StringTools.trim(eventName) == '')
 			return null;
-		var match:Dynamic = null;
 		var key = StringTools.trim(eventName).toLowerCase();
+		var compactKey = compactIdentity(key);
+		var clean:Array<Dynamic> = [];
 		for (item in descriptors) {
-			var clean = normalize(item);
-			if (clean == null || stringField(clean, 'canonicalName').toLowerCase() != key)
-				continue;
-			if (match != null && Json.stringify(match) != Json.stringify(clean))
-				return null;
-			match = clean;
+			var normalized = normalize(item);
+			if (normalized != null)
+				clean.push(normalized);
 		}
-		return match;
+		for (step in 0...3) {
+			var match:Dynamic = null;
+			for (item in clean) {
+				if (!matchesIdentity(item, step, key, compactKey))
+					continue;
+				if (match != null && Json.stringify(match) != Json.stringify(item))
+					return null;
+				match = item;
+			}
+			if (match != null)
+				return match;
+		}
+		return null;
+	}
+
+	static function matchesIdentity(descriptor:Dynamic, step:Int, key:String, compactKey:String):Bool {
+		switch (step) {
+			case 0:
+				return stringField(descriptor, 'canonicalName').toLowerCase() == key;
+			case 1:
+				return stringField(descriptor, 'sourceName').toLowerCase() == key;
+			default:
+				if (compactKey == '')
+					return false;
+				var className = compactIdentity(stringField(descriptor, 'className'));
+				if (className == compactKey)
+					return true;
+				// Event classes are usually named `<Something>Event`.
+				return className.endsWith('event')
+					&& className.substr(0, className.length - 'event'.length) == compactKey;
+		}
+	}
+
+	/** Lower case letters and digits only, so `Overlay Cue` equals `OverlayCue`. */
+	static function compactIdentity(value:String):String {
+		return value == null ? '' : new EReg('[^a-z0-9]', 'g').replace(value.toLowerCase(), '');
 	}
 
 	public static function safeAtlasKey(value:String):String {

@@ -21,10 +21,11 @@ class SourceCharacterDanceLifecycleTest(unittest.TestCase):
         self.assertIn('&& girlfriendDanceDue(curBeat)', source)
         fixture = '''using StringTools;
 class Character {
- public var danceEvery:Int = 2;
+ public var danceEvery:Float = 2;
  public var danceEveryNumBeats(get,set):Int;
- function get_danceEveryNumBeats():Int return danceEvery;
- function set_danceEveryNumBeats(value:Int):Int return danceEvery = value;
+ function get_danceEveryNumBeats():Int return Std.int(danceEvery);
+ function set_danceEveryNumBeats(value:Int):Int {danceEvery = value; return value;}
+ public static function danceDueOnStep(every:Float, step:Int):Bool return every > 0 && step % (every * 4) == 0;
  public var animation:Dynamic = {curAnim:{name:"idle"}};
  public var stunned=false;
  public var codenameLiveDefinition:Dynamic = null;

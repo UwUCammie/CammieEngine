@@ -37,6 +37,13 @@ class NightmareVisionChartCompat {
 		var diagnostics:Array<String> = [];
 		var supported = true;
 		var song:Dynamic = chart == null ? null : Reflect.field(chart, 'song');
+		// The source loader throws on a chart without the {"song": ...} wrapper,
+		// including one the importer wrapped itself for the rest of the family.
+		if (PsychFamilyChartFields.wasFlat(chart)) {
+			diagnostics.push(message('nightmare-vision-chart-invalid', sourcePath,
+				'expected a song object, the chart is saved without its song wrapper'));
+			return {chart:chart, supported:false, diagnostics:diagnostics};
+		}
 		if (song == null || !Std.isOfType(Reflect.field(song, 'notes'), Array)) {
 			diagnostics.push(message('nightmare-vision-chart-invalid', sourcePath,
 				'expected a song object with a notes array'));
@@ -132,17 +139,9 @@ class NightmareVisionChartCompat {
 			Reflect.setField(song, 'arrowSkins', [for (_ in 0...lanes) 'default']);
 		if (Reflect.field(song, 'trackSwap') == null)
 			Reflect.setField(song, 'trackSwap', false);
-		if (Reflect.field(song, 'gf') == null || StringTools.trim(Std.string(Reflect.field(song, 'gf'))) == '') {
-			var gfVersion:Dynamic = Reflect.field(song, 'gfVersion');
-			if (gfVersion == null)
-				gfVersion = Reflect.field(song, 'player3');
-			if (gfVersion != null)
-				Reflect.setField(song, 'gf', gfVersion);
-		}
-		if (Reflect.field(song, 'needsVoices') == null)
-			Reflect.setField(song, 'needsVoices', true);
-		if (Reflect.field(song, 'speed') == null)
-			Reflect.setField(song, 'speed', 1);
+		// Girlfriend spelling and the plain defaults are the same as Psych's.
+		PsychFamilyChartFields.normalizeGirlfriend(song);
+		PsychFamilyChartFields.fillSharedDefaults(song);
 		if (legacyFormat)
 			Reflect.setField(song, 'format', 'nmv2');
 		return {chart:chart, supported:true, diagnostics:diagnostics};

@@ -133,10 +133,11 @@ class PlayState {
  public function restoreSourceHitVocals(_note:FixtureNote,playerOne:Bool):Void
   events.push('restore:'+(playerOne?'player':'opponent'));
  public function dispatchNightmareVisionNoteHit(_note:FixtureNote):Void events.push('nightmare-hit');
- public function callAllHScript(name:String,args:Array<Dynamic>,_skipHxc:Bool,
-  ?returnValues:Array<Dynamic>,?hxcArgs:Array<Dynamic>,?skipPsych:Bool=false):Void {
+ public function callAllHScript(name:String,args:Array<Dynamic>,?_skipHxc:Bool=false,
+  ?returnValues:Array<Dynamic>,?hxcArgs:Array<Dynamic>,?skipPsych:Bool=false,?skipLua:Bool=false):Void {
   ownerCalls.push([name,args,skipPsych]);events.push('all:'+name);
  }
+ public function callCutsceneOpponentSing():Void events.push('cutscene-sing');
  public function callHscript(name:String,_args:Array<Dynamic>,_scope:String):Bool {
   events.push('modchart:'+name);return true;
  }
@@ -155,6 +156,7 @@ class PlayState {
    function(name,args,family) return PsychRuntimeBindings.dispatch(this,name,args,family));
  }
  public function setVocalsVolume(_volume:Float):Void events.push('vocal-write');
+ public function muteMissedVocals(_playerOne:Bool):Void events.push('vocal-write');
  public function splashHitCausesMissNote(_note:FixtureNote):Void {hazardSplashCalls++;events.push('hazard-splash');}
 
  __EXTRACTED_METHODS__
@@ -374,6 +376,8 @@ class SourceHitLifecycleTest(unittest.TestCase):
             "function dispatchPsychNoteHitPre(",
             "function dispatchPsychNoteHit(",
             "function finishGoodNoteHit(",
+            "function notifyNoteHitObservers(",
+            "function notifyNoteSingObservers(",
         )
         methods = "\n".join(
             extract_method(play_state, marker).replace(marker, "public " + marker, 1)
@@ -404,6 +408,8 @@ class SourceHitLifecycleTest(unittest.TestCase):
             "function dispatchPsychNoteHitPre(",
             "function dispatchPsychNoteHit(",
             "function finishGoodNoteHit(",
+            "function notifyNoteHitObservers(",
+            "function notifyNoteSingObservers(",
             "function dispatchHxcAutoNoteHit(",
             "function dispatchHitCausesMiss(",
         )

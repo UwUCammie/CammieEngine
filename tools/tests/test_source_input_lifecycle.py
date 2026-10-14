@@ -460,7 +460,7 @@ class Main {
             (temp / "Main.hx").write_text(fixture, newline="\n")
             for name in ("SourceInputNotes.hx", "ScriptCallbackResult.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
-            (temp / "Conductor.hx").write_text("class Conductor { public static var songPosition:Float=0; }", newline="\n")
+            (temp / "Conductor.hx").write_text("class Conductor { public static var songPosition:Float=0; public static inline function songTimeFromAudio(t:Float):Float return t; public static inline function audioTimeFromSong(t:Float):Float return t; }", newline="\n")
             (temp / "FlxG.hx").write_text("class FlxG { public static var sound:Dynamic={music:{playing:false,time:0.0}}; }", newline="\n")
             (temp / "lime/system/System.hx").parent.mkdir(parents=True, exist_ok=True)
             (temp / "lime/system/System.hx").write_text("package lime.system; class System { public static function getTimer():Float return 0; }", newline="\n")

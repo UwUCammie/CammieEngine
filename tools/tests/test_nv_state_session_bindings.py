@@ -27,6 +27,7 @@ FIXTURE_TYPE_RENAMES = {
     "NightmareVisionFlashingState": "FixtureFlashingState",
     "NightmareVisionUnportedState": "FixtureUnportedState",
     "NightmareVisionScriptedState": "FixtureScriptedState",
+    "NightmareVisionScriptedSubstate": "FixtureScriptedSubstate",
     "NightmareVisionMusicBeatSubstateHost": "FixtureMusicBeatSubstateHost",
     "NightmareVisionMusicBeatSubstate": "FixtureMusicBeatSubstate",
     "NightmareVisionScriptGroup": "FixtureScriptGroup",
@@ -119,6 +120,7 @@ SESSION_METHODS = (
     "public function releaseStateResources(",
     "public function release():Void {",
     "public function install(",
+    "function sourceStateClass(",
 )
 
 
@@ -138,6 +140,10 @@ class NVStateSessionBindingsTest(unittest.TestCase):
         self.assertIn("mainRuntime.release();", session_source)
         self.assertIn("startFullScreen:false", session_source)
         self.assertNotIn("startFullscreen:", session_source)
+        # Menu presence goes through the owner's lease, never straight to the daemon.
+        presence = extract_method(session_source, "public function changePresence(")
+        self.assertIn("NightmareVisionDiscordClient.forOwner(paths.root", presence)
+        self.assertNotIn("Discord.DiscordClient", presence)
 
         extracted_methods = [extract_method(session_source, marker) for marker in SESSION_METHODS]
         for marker in ("function installBindings(", "public function installBindings(",
@@ -205,6 +211,7 @@ import StateSessionFixtureTypes.NightmareVisionMusicBeatSubstate;
 import StateSessionFixtureTypes.NightmareVisionScriptBindings;
 import StateSessionFixtureTypes.NightmareVisionScriptInterp;
 import StateSessionFixtureTypes.NightmareVisionScriptedState;
+import StateSessionFixtureTypes.NightmareVisionScriptedSubstate;
 import StateSessionFixtureTypes.NightmareVisionMusicBeatSubstate;
 import StateSessionFixtureTypes.NightmareVisionUnportedState;
 import StateSessionFixtureTypes.NightmareVisionTitleState;
@@ -263,6 +270,8 @@ class NightmareVisionStateSession implements INightmareVisionStateFactoryHost {
  final conductor = new Conductor();
  final states:ObjectMap<FlxState, String> = new ObjectMap();
  final redirectNames:Map<String, String> = new Map();
+ final sourceStateClasses:Map<String, Dynamic> = new Map();
+ public var weekCompleted:Dynamic = new Map<String, Bool>();
  final postCallbacks:Array<Void->Void> = [];
  final previousSkipIn:Bool;
  final previousSkipOut:Bool;
@@ -514,6 +523,10 @@ class NightmareVisionMusicBeatSubstate {
  public final sourceHost:Dynamic;
  public function new(host:Dynamic) {sourceHost=host;}
 }
+class NightmareVisionScriptedSubstate extends NightmareVisionMusicBeatSubstate {
+ public final scriptName:String;
+ public function new(name:String, host:Dynamic) {super(host);scriptName=name;}
+}
 typedef NightmareVisionMusicBeatSubstateHost = Dynamic;
 class NightmareVisionScriptGroup {}
 class CoolUtil {}
@@ -580,6 +593,7 @@ import StateSessionFixtureTypes.NightmareVisionMusicBeatState;
 import StateSessionFixtureTypes.NightmareVisionMusicBeatSubstate;
 import StateSessionFixtureTypes.NightmareVisionScriptInterp;
 import StateSessionFixtureTypes.NightmareVisionScriptedState;
+import StateSessionFixtureTypes.NightmareVisionScriptedSubstate;
 import StateSessionFixtureTypes.NightmareVisionTitleState;
 import StateSessionFixtureTypes.NightmareVisionUnportedState;
 import StateSessionFixtureTypes.OwnerConfig;
@@ -715,6 +729,23 @@ class Main {
   check((cast scopedScript:NightmareVisionScriptedState).scriptName=='ScopedOriginalName'
    && Reflect.field((cast scopedScript:NightmareVisionScriptedState).host,'session')==session,
    'ScriptedState class-scope .new must preserve its source name and captured session');
+  check(interp.variables.get('HScriptState')==scriptedType,
+   'HScriptState must be the same scripted state class');
+  var scriptedSubType:Dynamic=interp.imports.get('funkin.scripting.ScriptedSubstate');
+  check(scriptedSubType==NightmareVisionScriptedSubstate
+   && interp.variables.get('ScriptedSubstate')==scriptedSubType
+   && interp.variables.get('HScriptSubstate')==scriptedSubType
+   && interp.scope.runtimeClasses.get('funkin.scripting.ScriptedSubstate')==scriptedSubType,
+   'ScriptedSubstate and HScriptSubstate must bind as the source scripted substate class');
+  var directSub:Dynamic=interp.construct(scriptedSubType,['Pause']);
+  check(Std.isOfType(directSub,NightmareVisionScriptedSubstate)
+   && (cast directSub:NightmareVisionScriptedSubstate).scriptName=='Pause'
+   && Reflect.field((cast directSub:NightmareVisionScriptedSubstate).sourceHost,'session')==session
+   && Reflect.isFunction(Reflect.field((cast directSub:NightmareVisionScriptedSubstate).sourceHost,'createSubstateScript')),
+   'new ScriptedSubstate(name) must keep the name and use the substate host');
+  var scopedSub:Dynamic=call(interp.scope.readStatic(scriptedSubType,'new'),['Death']);
+  check((cast scopedSub:NightmareVisionScriptedSubstate).scriptName=='Death',
+   'ScriptedSubstate class-scope .new must preserve its script name');
 
   var genericState:Dynamic=session.createStateFactory('AdditionalSourceState')();
   check(Std.isOfType(genericState,NightmareVisionUnportedState)
@@ -800,6 +831,39 @@ class Main {
   check(paths.lookups==beforeFallbackReset,
    'reset after a failed redirect must not re-check a newly available config redirect');
   FlxG.signals.postStateSwitch.dispatch([]);
+
+  // Source menus with no native port construct through the session factory,
+  // so a package redirect still applies and statics are shared per session.
+  var options:Dynamic=interp.variables.get('OptionsState');
+  check(options!=null && interp.imports.get('funkin.states.options.OptionsState')==options
+   && interp.variables.get('StoryMenuState')!=null
+   && interp.variables.get('StoryMenuState')==interp.imports.get('funkin.states.StoryMenuState')
+   && interp.variables.get('CreditsState')==interp.imports.get('funkin.states.CreditsState'),
+   'unported source menus must bind by bare name and source import');
+  check(interp.variables.get('FreeplayState')==FreeplayState
+   && interp.imports.get('funkin.states.FreeplayState')==FreeplayState,
+   'FreeplayState must be a script symbol, not only a constructor');
+  check(Reflect.field(options,'onPlayState')==false,'OptionsState.onPlayState starts false');
+  Reflect.setField(options,'onPlayState',true);
+  check(Reflect.callMethod(session,Reflect.field(session,'sourceStateClass'),['OptionsState'])==options,
+   'every script in the session shares one OptionsState');
+  check(Reflect.field(interp.variables.get('StoryMenuState'),'weekCompleted')==session.weekCompleted,
+   'StoryMenuState.weekCompleted is the session record');
+  var unported:Dynamic=interp.construct(interp.variables.get('CreditsState'),[]);
+  check(Std.isOfType(unported,NightmareVisionUnportedState) && session.requestedStateName(unported)=='CreditsState',
+   'an unredirected source menu opens the unported screen under its own name');
+  check(Reflect.isFunction(Reflect.field(options,'new')),'OptionsState.new is a constructor reference');
+  mods.currentModConfig={stateRedirects:{OptionsState:'OptionsScript'}};
+  paths.files.set(ownerA + '/scripts/states/OptionsScript.hscript',true);
+  call(switchRequest,[function():Dynamic return interp.construct(options,[])]);
+  check(Std.isOfType(FlxG.state,NightmareVisionScriptedState)
+   && (cast FlxG.state:NightmareVisionScriptedState).scriptName=='OptionsScript',
+   'a stateRedirects entry sends new OptionsState() to the package script');
+  FlxG.signals.postStateSwitch.dispatch([]);
+  mods.currentModConfig={stateRedirects:{}};
+  call(switchRequest,[session.createStateFactory('TitleState')]);
+  FlxG.signals.postStateSwitch.dispatch([]);
+  mods.currentModConfig=configA;
 
   // An unrelated destination retires the owner after old-state destruction
   // and before that destination creates its UI.

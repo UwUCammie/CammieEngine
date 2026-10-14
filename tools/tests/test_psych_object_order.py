@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import unittest
 
+from base_helper_fixtures import copy_sources
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,7 +23,10 @@ class PsychObjectOrderTest(unittest.TestCase):
   public var tag:String;
   public function new(tag:String) this.tag = tag;
 }
+class PsychCustomSubstate { public static var instance:Dynamic = null; }
+class GameOverSubstate { public static var instance:Dynamic = null; }
 class State {
+  var isDead:Bool = false;
   public var members:Array<FlxBasic> = [];
   public function new() {
     for (tag in ['A','B','C','D']) members.push(new FlxBasic(tag));
@@ -60,6 +65,8 @@ class Main {
                                   "public function compatGetObjectOrder(", 1)
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "Main.hx").write_text(fixture, newline='\n')
+            # The reorder step itself is the shared one the other script layers use.
+            copy_sources(tmp, "SourceScriptReflection.hx")
             result = subprocess.run([
                 *HAXE_COMMAND, "-cp", tmp,
                 "-main", "Main", "--interp",

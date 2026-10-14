@@ -184,6 +184,9 @@ class FreeplayState extends MusicBeatState {
 	var etooltip:Tooltip;
 	// deferred icon/rank-star creation + audio preview state
 	var iconQueue:Array<Int> = [];
+	// Icon builds decode an image each. Stop starting new ones once a few
+	// milliseconds are spent so a slow decode never stacks with three more.
+	var iconBuildBudget:FrameBudget = new FrameBudget(0.003, 4);
 	// only build icon/score info for the closest charts around the selection:
 	// with 1273 songs, building every song's icon bitmap + per-difficulty
 	// rank-star save lookups is wasted work for songs off-screen
@@ -913,8 +916,16 @@ class FreeplayState extends MusicBeatState {
 		}
 		var selectedPendingKey = curSelected >= 0 && curSelected < songs.length
 			&& songs[curSelected].isProvisional ? songs[curSelected].pendingKey : '';
+		// Library refreshes force this; split its cost for the profiler then only.
+		var availabilityProfile = force && RuntimeSmokeHarness.enabled();
+		var availabilityMark = availabilityProfile ? haxe.Timer.stamp() : 0.0;
 		var rowsChanged = reconcilePendingSongs();
 		libraryOrderKey = ''; // Readiness changes reorder even when registry membership is unchanged.
+		if (availabilityProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-avail-reconcile', now - availabilityMark);
+			availabilityMark = now;
+		}
 		if (grpSongs != null) {
 			if (rowsChanged) {
 
@@ -927,8 +938,18 @@ class FreeplayState extends MusicBeatState {
 			}
 			for (index in rowSongIndices)
 				updateRenderedRowAvailability(index);
+			if (availabilityProfile) {
+				var now = haxe.Timer.stamp();
+				RuntimeSmokeHarness.profileSection('fp-avail-rows', now - availabilityMark);
+				availabilityMark = now;
+			}
 			if (denseBrowser) layoutChartRows();
 			rebuildIconQueue();
+			if (availabilityProfile) {
+				var now = haxe.Timer.stamp();
+				RuntimeSmokeHarness.profileSection('fp-avail-layout', now - availabilityMark);
+				availabilityMark = now;
+			}
 			if (curSelected >= 0 && curSelected < songs.length
 				&& !availabilityAllowsSelection(curSelected) && previewSound != null)
 				stopPreviewSound();
@@ -1420,6 +1441,10 @@ class FreeplayState extends MusicBeatState {
 			isProvisionalSelection(curSelected) ? '' : selectedDifficultyName, scope);
 
 	function reloadAfterImport():Void {
+		// The whole refresh used to show up as one unexplained long frame.
+		// Time each part so a slow one can be named.
+		var refreshProfile = RuntimeSmokeHarness.enabled();
+		var refreshMark = refreshProfile ? haxe.Timer.stamp() : 0.0;
 		var bookmark = captureRefreshBookmark(refreshViewScope());
 		var generation = currentSongListGeneration;
 		#if sys
@@ -1492,6 +1517,7 @@ class FreeplayState extends MusicBeatState {
 		songRows = []; sourceRows = []; iconArray = []; starArray = []; hxcCapsuleViews = []; isPixelIcon = [];
 		var oldChars = charJson; var oldIconDefinitions = iconJson;
 		charJson = nextChars; iconJson = nextIconDefinitions;
+		var definitionChanges:Map<String, Bool> = new Map();
 		for (i in 0...songs.length) {
 			var previous = retained[i]; var song = songs[i];
 			var old = previous < 0 ? null : oldSongs[previous];
@@ -1507,8 +1533,7 @@ class FreeplayState extends MusicBeatState {
 			}
 			var graphicsChanged = old != null && (old.songCharacter != song.songCharacter
 				|| old.songName != song.songName || old.isProvisional != song.isProvisional
-				|| Json.stringify(Reflect.field(oldChars, old.songCharacter)) != Json.stringify(Reflect.field(charJson, song.songCharacter))
-				|| Json.stringify(Reflect.field(oldIconDefinitions, old.songCharacter)) != Json.stringify(Reflect.field(iconJson, song.songCharacter))
+				|| characterDefinitionChanged(definitionChanges, oldChars, oldIconDefinitions, old.songCharacter, song.songCharacter)
 				|| (song.ownerRoot != '' && old.cachedAvailability != null && !old.cachedAvailability.ready));
 			if (graphicsChanged) {
 				if (icon != null) { remove(icon, true); icon.destroy(); icon = null; }
@@ -1526,12 +1551,27 @@ class FreeplayState extends MusicBeatState {
 		iconQueue.resize(0); libraryOrderKey = ''; libraryFavoriteData = null;
 		ChartDensityCache.clear(); chartDensityGeneration = generation; currentSongListGeneration = generation; duplicateCache = []; baseFingerprints = null;
 		refreshNotice = ''; refreshBookmark = bookmark;
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-rows', now - refreshMark);
+			refreshMark = now;
+		}
 		restoreRefreshSelection();
 		#if sys
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-selection', now - refreshMark);
+			refreshMark = now;
+		}
 		baseSongCount = nextBaseCount; importRefreshGeneration = generation;
 		importAvailability = nextAvailability;
 		importAvailabilityAppliedRevision = -1;
 		refreshImportAvailability(true);
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-import-availability', now - refreshMark);
+			refreshMark = now;
+		}
 		#end
 		var sameSelection = oldSelected != null && curSelected >= 0 && curSelected < songs.length
 			&& refreshSelectionKey(curSelected) == bookmark.key && oldSelected.songName == songs[curSelected].songName
@@ -1542,11 +1582,26 @@ class FreeplayState extends MusicBeatState {
 			previewGen++; stopPreviewSound(); previewCache = new Map(); previewOrder.resize(0); previewTimer = 0.6;
 			scrollMotion.reset();
 		}
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-availability', now - refreshMark);
+			refreshMark = now;
+		}
 		for (index in rowSongIndices) refreshRankStarsFor(index, true);
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-stars', now - refreshMark);
+			refreshMark = now;
+		}
 		applySearchFilter(true); rebuildIconQueue();
 		difficultySongKey = ''; restoreLibraryDifficulty(); restoreRefreshDifficulty();
 		if (songs.length > 0 && anyVisible()) changeDiff(0);
 		createdViewScope = refreshViewScope();
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-filter', now - refreshMark);
+			refreshMark = now;
+		}
 		#if sys
 		if (hxcRuntime != null) {
 			var capsule = hxcCapsuleView(curSelected);
@@ -1554,7 +1609,28 @@ class FreeplayState extends MusicBeatState {
 			hxcRuntime.refresh(payload, hxcRootReady, hxcSongReady, hxcRootKnown);
 		}
 		#end
+		if (refreshProfile) {
+			var now = haxe.Timer.stamp();
+			RuntimeSmokeHarness.profileSection('fp-refresh-hxc', now - refreshMark);
+			refreshMark = now;
+		}
 		if (denseBrowser) { applyListLayout(); updateBrowserDetails(); }
+		if (refreshProfile)
+			RuntimeSmokeHarness.profileSection('fp-refresh-layout', haxe.Timer.stamp() - refreshMark);
+	}
+
+	/** Many rows share a character, so a library refresh compares each pair
+		of character and icon definitions once instead of once per row. */
+	function characterDefinitionChanged(memo:Map<String, Bool>, oldChars:Dynamic, oldIcons:Dynamic,
+		oldName:String, newName:String):Bool {
+		var key = oldName + '\n' + newName;
+		var known:Null<Bool> = memo.get(key);
+		if (known != null)
+			return known;
+		var changed = Json.stringify(Reflect.field(oldChars, oldName)) != Json.stringify(Reflect.field(charJson, newName))
+			|| Json.stringify(Reflect.field(oldIcons, oldName)) != Json.stringify(Reflect.field(iconJson, newName));
+		memo.set(key, changed);
+		return changed;
 	}
 
 	function preparedSongKey(song:SongMetadata):String {
@@ -1788,9 +1864,13 @@ class FreeplayState extends MusicBeatState {
 			Conductor.songPosition += FlxG.elapsed * 1000;
 
 		// trickle deferred icon/star creation in - a few per frame
-		var buildBudget:Int = 4;
-		while (iconQueue.length > 0 && buildBudget-- > 0)
-			buildIconFor(iconQueue.shift());
+		iconBuildBudget.restart();
+		var builtIcons = false;
+		while (iconQueue.length > 0 && iconBuildBudget.next())
+			if (buildIconFor(iconQueue.shift(), true))
+				builtIcons = true;
+		// One layout pass for the whole batch, not one per icon.
+		if (builtIcons && denseBrowser) { applyListLayout(); updateBrowserDetails(); }
 		if (smokeProfile)
 			RuntimeSmokeHarness.profileSection('fp-update-icons', haxe.Timer.stamp() - profileMark);
 
@@ -2741,10 +2821,13 @@ class FreeplayState extends MusicBeatState {
 		}
 	}
 
-	function buildIconFor(i:Int) {
+	/** Builds one row's icon and stars and returns true when something was
+		built. A caller draining several rows passes deferLayout and lays the
+		list out once after its batch. */
+	function buildIconFor(i:Int, deferLayout:Bool = false):Bool {
 		if (i < 0 || i >= songs.length || iconArray[i] != null || songRows[i] == null
 			|| !availabilityAllowsSelection(i))
-			return;
+			return false;
 		var icon:HealthIcon = new HealthIcon(songs[i].songCharacter, false, false, false, songs[i].songName);
 		icon.sprTracker = denseBrowser ? null : songRows[i];
 		if (denseBrowser) {
@@ -2760,7 +2843,8 @@ class FreeplayState extends MusicBeatState {
 		if (i < hxcCapsuleViews.length && hxcCapsuleViews[i] != null)
 			Reflect.setField(hxcCapsuleViews[i], 'pixelIcon', icon);
 		if (i == curSelected) icon.alpha = 1;
-		if (denseBrowser) { applyListLayout(); updateBrowserDetails(); }
+		if (denseBrowser && !deferLayout) { applyListLayout(); updateBrowserDetails(); }
+		return true;
 	}
 
 	/** Reconcile only the materialized row when refreshed support changes. */

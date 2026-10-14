@@ -254,10 +254,11 @@ class HxcCompat {
 		'onBeatHit', 'onStepHit', 'onSectionHit', 'onCountdownStart',
 		'onCountdownTick', 'onCountdownStep', 'onCountdownEnd', 'onStartCountdown', 'onGoodNoteHit', 'onOpponentNoteHit',
 		'onNoteHit', 'onNoteIncoming', 'onNoteMiss', 'onOpponentNoteMiss',
-		'onNoteGhostMiss',
+		'onNoteGhostMiss', 'onNoteHoldDrop',
 		'onSongEvent', 'onSongEnd', 'onEndSong', 'onSongRetry', 'onPause', 'onResume',
 		'onPauseSubstateOpen', 'onPauseSubstateClose',
-		'onStateOpenEnd', 'onSubStateOpenEnd', 'onSubStateCloseEnd', 'onPlayStateEnter',
+		'onStateOpenEnd', 'onSubStateOpenBegin', 'onSubStateOpenEnd', 'onSubStateCloseEnd', 'onPlayStateEnter',
+		'onFocusLost',
 		'onDifficultySwitch', 'onCapsuleSelected', 'onDestroy'
 	];
 
@@ -438,7 +439,7 @@ class HxcCompat {
 			// callback's safety result independent from the descriptor: a synthetic
 			// native shader hook may cover the bounded filter operation, but it must
 			// never make an otherwise unsafe donor callback executable.  This is
-			// important for mixed callbacks such as Markov's onCountdownStart, where
+			// important for mixed callbacks such as a song's onCountdownStart, where
 			// only the StaticShader graph is portable and the surrounding object graph
 			// is intentionally retained as a diagnostic.
 			if (runtimeShaderDescriptors.length > 0)
@@ -812,10 +813,14 @@ class HxcCompat {
 				'HXC class declaration was not recognized; no foreign code was executed.'));
 		} else if (kind == 'song-event') {
 			var canonical = EngineCompat.eventName(identifier);
-			var inferred = inferEventAction(clean);
+			// A one-shot sprite event is fully described by its own literals, so
+			// it keeps the id it registered and skips the action guesser.
+			var spriteDescriptor:Dynamic = canonical == identifier
+				? EngineCompat.eventSpriteDescriptorFromSource(clean) : null;
+			var inferred = spriteDescriptor != null ? '' : inferEventAction(clean);
 			if ((canonical == '' || canonical == identifier) && inferred != '')
 				canonical = inferred;
-			if (isNativeEvent(canonical)) {
+			if (isNativeEvent(canonical) || spriteDescriptor != null) {
 				adapters.push({
 					sourceName: identifier,
 					canonicalName: canonical,
@@ -1366,6 +1371,8 @@ class HxcCompat {
 					case 'events': callbackName == 'songLoaded';
 					case 'targetState': callbackName == 'stateChangeBegin'
 						|| callbackName == 'stateChangeEnd' || callbackName == 'subStateOpenEnd'
+						|| callbackName == 'subStateOpenBegin'
+						|| callbackName == 'focusGained' || callbackName == 'focusLost'
 						|| callbackName == 'subStateCloseBegin' || callbackName == 'subStateCloseEnd'
 						|| callbackName == 'gameOver' || callbackName == 'difficultySwitch'
 						|| callbackName == 'capsuleSelected';
@@ -1439,6 +1446,8 @@ class HxcCompat {
 			return true;
 		for (field in ['.eventCanceled', '.canceled', '.cancelled', '.eventKind', '.cancel', '.cancelEvent', '.step', '.beat',
 			'.elapsed', '.healthChange', '.judgement', '.dir', '.direction', '.playerOne',
+			'.score', '.scoreChange', '.isComboBreak', '.playSound', '.doesNotesplash', '.playAnim',
+			'.hitDiff', '.comboCount', '.hasPossibleNotes', '.holdNote',
 			'.isPlayer', '.goodHit', '.countdownStep', '.songPosition', '.songLength', '.value',
 			'.events', '.events.length', '.targetState', '.capsule', '.freeplayState', '.difficulty', '.variation', '.character',
 			// EngineCompat.hxcFreeplayPayload exposes a shallow capsule view.  These
@@ -1713,7 +1722,7 @@ class HxcCompat {
 		case 'Add Camera Zoom' | 'Zoom Camera' | 'Change Character' | 'Change Stage'
 				| 'Camera Flash' | 'Camera Fade' | 'Lyrics' | 'Play Video'
 				| 'Change Scroll Speed' | 'Set Camera Bop' | 'Play Animation'
-				| 'Camera Follow Pos' | 'Set Cam Zoom' | 'Vignette' | 'Markov Popups'
+				| 'Camera Follow Pos' | 'Set Cam Zoom' | 'Vignette'
 				| 'Note Swap':
 				return true;
 			default:
@@ -1748,6 +1757,7 @@ class HxcCompat {
 			case 'onnotemiss' | 'notemiss': return 'noteMiss';
 			case 'onopponentnotemiss' | 'opponentnotemiss': return 'opponentNoteMiss';
 			case 'onnoteghostmiss' | 'noteghostmiss': return 'noteGhostMiss';
+			case 'onnoteholddrop' | 'noteholddrop': return 'noteHoldDrop';
 			case 'onsongend' | 'onendsong' | 'songend': return 'songEnd';
 			case 'onsongretry' | 'songretry': return 'songRetry';
 			case 'onsongevent' | 'songevent': return 'songEvent';
@@ -1761,11 +1771,13 @@ class HxcCompat {
 			case 'onstateopenend' | 'stateopenend': return 'stateChangeEnd';
 			case 'onsubstateclosebegin' | 'substateclosebegin': return 'subStateCloseBegin';
 			case 'onsubstateopenend' | 'substateopenend': return 'subStateOpenEnd';
+			case 'onsubstateopenbegin' | 'substateopenbegin': return 'subStateOpenBegin';
 			case 'onsubstatecloseend' | 'substatecloseend': return 'subStateCloseEnd';
 			case 'onplaystateenter' | 'playstateenter': return 'playStateEnter';
 			case 'ondifficultyswitch' | 'difficultyswitch': return 'difficultySwitch';
 			case 'oncapsuleselected' | 'capsuleselected': return 'capsuleSelected';
 			case 'onfocusgained' | 'focusgained': return 'focusGained';
+			case 'onfocuslost' | 'focuslost': return 'focusLost';
 			case 'ongameover' | 'gameover': return 'gameOver';
 			case 'ondestroy' | 'destroy': return 'destroy';
 			default: return '';
@@ -2206,9 +2218,9 @@ class HxcCompat {
 		var pulseHelper = pulse == null || Reflect.field(pulse, 'emittable') != true
 			? '' : Std.string(Reflect.field(pulse, 'helperName'));
 		var pulseDuration:Float = pulse == null ? 0.5 : cast Reflect.field(pulse, 'pulseDuration');
-		// The descriptor is intentionally neutral about class/song names. The bloom
-		// option in Rabbit Hole is merely one instance of the generic option-gated
-		// camera-filter contract; Markov's pulse helper is recognized structurally.
+		// The descriptor is intentionally neutral about class/song names. A bloom
+		// option is merely one instance of the generic option-gated camera-filter
+		// contract; a pulse helper is recognized structurally.
 		return {
 			shaderName: fragment,
 			cameras: cameras,
@@ -4996,7 +5008,7 @@ class HxcCompat {
 		// Constants is lowered to this owner-scoped mutable facade.  Only its
 		// declared fields may seed module state; arbitrary runtime calls and
 		// foreign object reads remain outside the initializer boundary.
-		if (new EReg('^HxcCompatRuntime\\s*\\.\\s*constantsForRoot\\s*\\(\\s*hxcAssetRoot\\s*\\)\\s*\\.\\s*(?:TITLE|VERSION|COLOR_HEALTH_BAR_GREEN|COLOR_HEALTH_BAR_RED|COUNTDOWN_VOLUME|DEFAULT_CAMERA_FOLLOW_RATE|DEFAULT_VARIATION|PIXELS_PER_MS|PIXEL_ART_SCALE|STRUMLINE_X_OFFSET|STRUMLINE_Y_OFFSET|DEFAULT_DIFFICULTY_LIST_FULL)$', 'm')
+		if (new EReg('^HxcCompatRuntime\\s*\\.\\s*constantsForRoot\\s*\\(\\s*hxcAssetRoot\\s*\\)\\s*\\.\\s*(?:TITLE|VERSION|COLOR_HEALTH_BAR_GREEN|COLOR_HEALTH_BAR_RED|COUNTDOWN_VOLUME|HEALTH_MAX|HEALTH_MIN|HEALTH_STARTING|HEALTH_SICK_BONUS|HEALTH_GOOD_BONUS|HEALTH_BAD_BONUS|HEALTH_SHIT_BONUS|HEALTH_MISS_PENALTY|HEALTH_GHOST_MISS_PENALTY|MS_PER_SEC|SECS_PER_MIN|STEPS_PER_BEAT|DEFAULT_CAMERA_FOLLOW_RATE|DEFAULT_VARIATION|PIXELS_PER_MS|PIXEL_ART_SCALE|STRUMLINE_X_OFFSET|STRUMLINE_Y_OFFSET|DEFAULT_DIFFICULTY_LIST_FULL)$', 'm')
 			.match(value))
 			return true;
 		if (new EReg('^__hxcStore\\.getSave\\(\\s*\\)$', 'm').match(value))
@@ -8705,6 +8717,10 @@ class HxcCompat {
 			.replace(output, 'HxcCompatRuntime.skipCountdown(PlayState.instance)');
 		output = new EReg('\\bCountdown\\s*\\.\\s*stopCountdown\\s*\\(\\s*\\)', 'g')
 			.replace(output, 'HxcCompatRuntime.stopCountdown(PlayState.instance)');
+		output = new EReg('\\bCountdown\\s*\\.\\s*pauseCountdown\\s*\\(\\s*\\)', 'g')
+			.replace(output, 'HxcCompatRuntime.pauseCountdown(PlayState.instance)');
+		output = new EReg('\\bCountdown\\s*\\.\\s*resumeCountdown\\s*\\(\\s*\\)', 'g')
+			.replace(output, 'HxcCompatRuntime.resumeCountdown(PlayState.instance)');
 		output = new EReg('\\bFullScreenScaleMode\\s*\\.', 'g')
 			.replace(output, 'HxcCompatRuntime.fullScreenScaleMode.');
 		// VideoCutscene.play is a static donor helper. Parse its balanced argument
@@ -10861,7 +10877,7 @@ class HxcCompat {
 			return result;
 		var facadeMembers:Dynamic = {
 			PlayStatePlaylist: ['isStoryMode'],
-			Countdown: ['skipCountdown', 'stopCountdown'],
+			Countdown: ['skipCountdown', 'stopCountdown', 'pauseCountdown', 'resumeCountdown'],
 			VideoCutscene: ['play'],
 			CutsceneType: ['ENDING', 'INTRO'],
 			FullScreenScaleMode: ['enabled', 'gameCutoutSize', 'wideScale', 'removeCutouts'],

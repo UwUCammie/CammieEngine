@@ -148,8 +148,15 @@ class CodenameShaderSourceTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+        # Raw source and named shader files both reach the one base constructor,
+        # which normalises each half through RuntimeShaderSource.prepare.
         loader = (ROOT / "source/ShaderHandler.hx").read_text()
-        self.assertGreaterEqual(loader.count("CodenameShaderSource.normalizeOpenFL(s)"), 2)
+        self.assertIn("class CoolRuntimeShader extends RecoveringRuntimeShader", loader)
+        self.assertIn("super(fragmentText(frag), vertex,", loader)
+        base = (ROOT / "source/RecoveringRuntimeShader.hx").read_text()
+        self.assertIn("super(RuntimeShaderSource.prepare(fragmentSource), RuntimeShaderSource.prepare(vertexSource));", base)
+        prepare = (ROOT / "source/RuntimeShaderSource.hx").read_text()
+        self.assertIn("CodenameShaderSource.normalizeOpenFL(source)", prepare)
 
 
 if __name__ == "__main__":

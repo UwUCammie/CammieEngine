@@ -9,6 +9,7 @@ class NightmareVisionSourceBindings {
 	public static inline var SOURCE_VERSION:String = '1.0';
 	static inline var ASSET_REDIRECT:Bool = #if ASSET_REDIRECT true #else false #end;
 
+	// The subset of SourceGameplayGlobals.snapshot() the donor preset defines.
 	static final gameplayNames:Array<String> = [
 		'bpm', 'scrollSpeed', 'songName', 'isStoryMode', 'difficulty', 'weekRaw',
 		'seenCutscene', 'week', 'difficultyName', 'songLength', 'healthGainMult',

@@ -52,6 +52,18 @@ class PsychScriptDiscovery {
 	// the runtime decides whether it can be executed as a callback.
 	static var scriptExtensions:Array<String> = ['.hscript', '.lua', '.hx'];
 
+	// Psych's built-in note types, in the order old charts index them by number.
+	static final DEFAULT_NOTE_TYPES:Array<String> = ['', 'Alt Animation', 'Hey!', 'Hurt Note', 'GF Sing', 'No Animation'];
+
+	public static function defaultNoteTypeName(index:Int):String
+		return index >= 0 && index < DEFAULT_NOTE_TYPES.length ? DEFAULT_NOTE_TYPES[index] : '';
+
+	/** A `[time, -1, name, ...]` section row is an event here whether or not the
+	 * chart also has an events list, because that is how the song's event pump
+	 * reads these charts. */
+	static function legacyEventRow(values:Array<Dynamic>, hasEvents:Bool):Bool
+		return numericInt(values[1]) == -1;
+
 	/** Build a deterministic read-only plan for one chart.  `companionEvents`
 	 * accepts a Psych/FPS `events.json` payload because many donor charts keep
 	 * custom-event references outside the chart envelope. */
@@ -83,17 +95,21 @@ class PsychScriptDiscovery {
 				collectStageScripts(contentRoot, plan.stage, entries, seen);
 		}
 
-		var eventNames:Array<String> = [];
-		var noteTypeNames:Array<String> = [];
-		// This opt-in forensic path records chart and row coordinates before
-		// touching nested section-note arrays. Keep the ordinary walk unchanged
-		// so mounted scans pay no per-row diagnostic branch or output cost.
-		if (Sys.getEnv('DISAPPOINTINGPLUS_PSYCH_DISCOVERY_TRACE') == '1')
-			collectChartReferencesTraced(chartData, eventNames, noteTypeNames,
-				diagnosticSource, root, plan.song);
-		else
-			collectChartReferences(chartData, eventNames, noteTypeNames);
-		collectEvents(companionEvents, eventNames);
+		// This opt-in forensic path records chart and row coordinates before the
+		// shared walk touches nested section-note arrays.
+		var report:(String, Int, Int)->Void = null;
+		if (Sys.getEnv('DISAPPOINTINGPLUS_PSYCH_DISCOVERY_TRACE') == '1') {
+			// Emit the expensive source identity once. Subsequent coordinates belong
+			// to this chart until the next chart header in this synchronous traversal.
+			traceChartReference('chart', diagnosticSource, root, plan.song, -1, -1, 'begin');
+			report = function(phase:String, sectionIndex:Int, rowIndex:Int):Void
+				traceChartReference(phase, null, null, null, sectionIndex, rowIndex,
+					phase == 'row' ? 'before-typecheck' : 'begin');
+		}
+		var references = SourceChartReferences.collect(chartData, companionEvents, defaultNoteTypeName,
+			legacyEventRow, cleanReference, report);
+		var eventNames = references.events;
+		var noteTypeNames = references.noteTypes;
 		for (contentRoot in contentRoots) {
 			collectReferencedScripts(contentRoot, 'custom_events', eventNames, CUSTOM_EVENT, entries, seen);
 			collectReferencedScripts(contentRoot, 'custom_notetypes', noteTypeNames, CUSTOM_NOTE_TYPE, entries, seen);
@@ -352,69 +368,6 @@ class PsychScriptDiscovery {
 		};
 	}
 
-	static function collectChartReferences(chartData:Dynamic, eventNames:Array<String>, noteTypeNames:Array<String>):Void {
-		if (chartData == null)
-			return;
-		collectEvents(field(chartData, 'events'), eventNames);
-		var notes:Dynamic = field(chartData, 'notes');
-		if (!Std.isOfType(notes, Array))
-			return;
-		for (section in (cast notes:Array<Dynamic>)) {
-			var rows:Dynamic = field(section, 'sectionNotes');
-			if (!Std.isOfType(rows, Array))
-				continue;
-			for (row in (cast rows:Array<Dynamic>)) {
-				if (!Std.isOfType(row, Array))
-					continue;
-				var values:Array<Dynamic> = cast row;
-				if (values.length >= 2 && numericInt(values[1]) == -1 && values.length >= 3)
-					addReference(eventNames, values[2]);
-				if (values.length >= 4 && Std.isOfType(values[3], String))
-					addNoteType(noteTypeNames, values[3]);
-			}
-		}
-	}
-
-	/** Same chart walk as collectChartReferences with opt-in provenance markers
-	 * for the native mounted-corpus scanner. The separate method leaves the
-	 * default hot path without per-row trace checks. */
-	static function collectChartReferencesTraced(chartData:Dynamic, eventNames:Array<String>,
-		noteTypeNames:Array<String>, diagnosticSource:String, root:String, song:String):Void {
-		// Emit the expensive source identity once. Subsequent coordinates belong
-		// to this chart until the next chart header in this synchronous traversal.
-		traceChartReference('chart', diagnosticSource, root, song, -1, -1, 'begin');
-		if (chartData == null)
-			return;
-		collectEvents(field(chartData, 'events'), eventNames);
-		var notes:Dynamic = field(chartData, 'notes');
-		if (!Std.isOfType(notes, Array))
-			return;
-		var sectionIndex = 0;
-		for (section in (cast notes:Array<Dynamic>)) {
-			traceChartReference('section', null, null, null, sectionIndex, -1, 'begin');
-			var rows:Dynamic = field(section, 'sectionNotes');
-			if (!Std.isOfType(rows, Array)) {
-				sectionIndex++;
-				continue;
-			}
-			var rowIndex = 0;
-			for (row in (cast rows:Array<Dynamic>)) {
-				// Flush before any row dereference so a native fault retains its
-				// coordinates. Per-index markers altered scan cost substantially.
-				traceChartReference('row', null, null, null, sectionIndex, rowIndex++,
-					'before-typecheck');
-				if (!Std.isOfType(row, Array))
-					continue;
-				var values:Array<Dynamic> = cast row;
-				if (values.length >= 2 && numericInt(values[1]) == -1 && values.length >= 3)
-					addReference(eventNames, values[2]);
-				if (values.length >= 4 && Std.isOfType(values[3], String))
-					addNoteType(noteTypeNames, values[3]);
-			}
-			sectionIndex++;
-		}
-	}
-
 	static function traceChartReference(phase:String, diagnosticSource:String, root:String, song:String,
 		sectionIndex:Int, rowIndex:Int, detail:String):Void {
 		var output = Sys.stderr();
@@ -433,92 +386,13 @@ class PsychScriptDiscovery {
 			'|', '\\|'), '\n', '\\n');
 	}
 
-	static function collectEvents(value:Dynamic, names:Array<String>):Void {
-		if (value == null)
-			return;
-		if (Std.isOfType(value, Array)) {
-			for (item in (cast value:Array<Dynamic>)) {
-				if (Std.isOfType(item, Array)) {
-					var row:Array<Dynamic> = cast item;
-					if (row.length >= 2 && Std.isOfType(row[1], Array)) {
-						for (event in (cast row[1]:Array<Dynamic>))
-							addEventRecord(names, event);
-					} else if (row.length >= 3 && numericInt(row[1]) == -1) {
-						addReference(names, row[2]);
-					} else
-						addEventRecord(names, row);
-				} else if (Std.isOfType(item, String))
-					addReference(names, item);
-				else
-					addEventRecord(names, item);
-			}
-		} else if (Reflect.hasField(value, 'events'))
-			collectEvents(Reflect.field(value, 'events'), names);
-		else
-			addEventRecord(names, value);
-	}
-
-	static function addEventRecord(names:Array<String>, record:Dynamic):Void {
-		if (record == null)
-			return;
-		if (Std.isOfType(record, String)) {
-			addReference(names, record);
-			return;
-		}
-		if (Std.isOfType(record, Array)) {
-			var values:Array<Dynamic> = cast record;
-			if (values.length > 0)
-				addReference(names, values[0]);
-			return;
-		}
-		// Modern Psych chart records use the compact `e` key (with `t` for
-		// time and `v` for values).  Older wrappers use the more descriptive
-		// names below.  The discovery plan only needs the event name, but it must
-		// recognize both spellings so the corresponding custom_event Lua module
-		// is loaded before the first event fires.
-		for (fieldName in ['e', 'name', 'event', 'eventName', 'type']) {
-			var value:Dynamic = Reflect.field(record, fieldName);
-			if (value != null) {
-				addReference(names, value);
-				return;
-			}
-		}
-	}
-
-	static function addReference(names:Array<String>, value:Dynamic):Void {
-		if (value == null)
-			return;
-		var text = cleanReference(Std.string(value));
-		if (text != '' && names.indexOf(text) < 0)
-			names.push(text);
-	}
-
-	static function addNoteType(names:Array<String>, value:Dynamic):Void {
-		var text = cleanReference(Std.string(value));
-		if (text == '')
-			return;
-		var lower = text.toLowerCase();
-		if (lower == 'normal' || lower == 'default' || lower == 'alt' || lower == 'alt animation'
-			|| lower == 'gf sing' || lower == 'hurt note' || lower == "can't hit" || lower == 'no animation')
-			return;
-		if (names.indexOf(text) < 0)
-			names.push(text);
-	}
 	#end
 
-	static function chartSongData(chart:Dynamic):Dynamic {
-		if (chart == null)
-			return null;
-		var nested = field(chart, 'song');
-		if (nested != null && !Std.isOfType(nested, String))
-			return nested;
-		return chart;
-	}
+	static function chartSongData(chart:Dynamic):Dynamic
+		return SourceChartReferences.songData(chart);
 
-	static function chartSongName(chart:Dynamic):String {
-		var data = chartSongData(chart);
-		return data == null ? '' : stringField(data, 'song');
-	}
+	static function chartSongName(chart:Dynamic):String
+		return SourceChartReferences.songName(chart);
 
 	static function field(value:Dynamic, name:String):Dynamic {
 		return value == null ? null : Reflect.field(value, name);
@@ -540,39 +414,14 @@ class PsychScriptDiscovery {
 		return value == null ? '' : StringTools.trim(value);
 	}
 
-	static function cleanReference(value:String):String {
-		if (value == null)
-			return '';
-		var result = StringTools.trim(StringTools.replace(value, '\\', '/'));
-		while (result.startsWith('./'))
-			result = result.substr(2);
-		if (result == '' || result.startsWith('/') || result.indexOf(':') == 1)
-			return '';
-		for (part in result.split('/'))
-			if (part == '' || part == '.' || part == '..')
-				return '';
-		return result;
-	}
+	static function cleanReference(value:String):String
+		return SourceChartReferences.cleanReference(value);
 
-	static function stripScriptExtension(value:String):String {
-		if (value == null)
-			return '';
-		var lower = value.toLowerCase();
-		for (extension in scriptExtensions)
-			if (lower.endsWith(extension))
-				return value.substr(0, value.length - extension.length);
-		return value;
-	}
+	static function stripScriptExtension(value:String):String
+		return SourceChartReferences.stripScriptExtension(value, scriptExtensions);
 
-	static function isScriptFile(value:String):Bool {
-		if (value == null)
-			return false;
-		var lower = value.toLowerCase();
-		for (extension in scriptExtensions)
-			if (lower.endsWith(extension))
-				return true;
-		return false;
-	}
+	static function isScriptFile(value:String):Bool
+		return SourceChartReferences.isScriptFile(value, scriptExtensions);
 
 	static function normalizePath(value:String):String {
 		if (value == null || StringTools.trim(value) == '')

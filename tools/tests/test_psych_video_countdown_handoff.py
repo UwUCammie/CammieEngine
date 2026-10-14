@@ -49,6 +49,11 @@ class RuntimeSongExitProbe {public static function mark(s:String):Void {}}
 class ScriptCallbackResult {public static var STOP=1;}
 class EngineCompat {public static function anyFunctionStop(a:Array<Dynamic>):Bool return a.indexOf(1)>=0;}
 class PsychRuntimeBindings {public static function dispatch(h:Dynamic,n:String,a:Array<Dynamic>):Dynamic {var cb:Dynamic=Reflect.field(h,'gateCallback');return cb==null?(Reflect.field(h,'allowCountdown')?0:1):cb();}}
+class VolumeBusFixture {
+ public var releases=0;
+ public function new() {}
+ public function release():Void releases++;
+}
 class HoldLedgerFixture {
  public var clearCalls=0;
  public function new() {}
@@ -66,6 +71,8 @@ class Main {
  var nightmareVisionHoldLedger:HoldLedgerFixture=new HoldLedgerFixture();
  var releasedHoldActors:Array<Dynamic>=[];var releaseHoldCalls=0;
  var customTeardownCalls=0;
+ // Teardown hands the instrumental back to its own group before anything else.
+ var songVolumeBus:VolumeBusFixture=null;
  function destroyPsychCustomSubstates():Void {if(psychVideoHostDestroyed)throw "substate teardown ran after video release";customTeardownCalls++;}
  function generatePlayfields():Void throw "Psych video countdown entered NV receptor generation";
  public function new(){FlxG.state=this;}
@@ -103,7 +110,9 @@ class Main {
   h=new Main();h.psychStartVideo('owner','intro',true,true,false,false);v=h.psychSourceVideo;check(v.starts==0&&!h.inCutscene,'mid-song manual play');v.finish();check(h.countdowns==0&&h.ends==0,'mid-song no handoff');
   h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');v=h.psychSourceVideo;v.finish();
   h.psychStartVideo('owner','intro');h.hxcCountdownHookDispatching=false;FlxTimer.tick();check(h.countdowns==0,'replacement cancels queued old handoff');
-  h=new Main();h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.teardown();
+  var bus=new VolumeBusFixture();
+  h=new Main();h.songVolumeBus=bus;h.hxcCountdownHookDispatching=true;h.psychStartVideo('owner','intro');h.psychSourceVideo.finish();h.teardown();
+  check(bus.releases==1&&h.songVolumeBus==null,'teardown releases the song volume bus once');
   check(h.customTeardownCalls==1&&h.nightmareVisionHoldLedger.clearCalls==1&&h.releaseHoldCalls==1
     &&h.releasedHoldActors.join(',')=='held-actor','destroy releases and records source hold actors');
   FlxTimer.tick();check(h.countdowns==0&&h.ends==0,'destroy cancels');

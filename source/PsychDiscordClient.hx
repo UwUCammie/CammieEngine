@@ -42,18 +42,8 @@ class PsychDiscordClient {
 		?smallImageKey:String, ?hasStartTimestamp:Bool, ?endTimestamp:Float,
 		largeImageKey:String = 'icon'):Void {
 		ensureActive();
-		var startTimestamp:Float = if (hasStartTimestamp) Date.now().getTime() else 0;
-		var finishTimestamp:Float = endTimestamp == null ? 0 : endTimestamp;
-		if (finishTimestamp > 0) finishTimestamp = startTimestamp + finishTimestamp;
-		lease.publish({
-			state:state,
-			details:details,
-			smallImageKey:smallImageKey,
-			largeImageKey:largeImageKey,
-			largeImageText:'Engine Version: ' + PSYCH_ENGINE_VERSION,
-			startTimestamp:Std.int(startTimestamp / 1000),
-			endTimestamp:Std.int(finishTimestamp / 1000)
-		});
+		lease.publish(SourceDiscordPresenceLease.sourcePresence(details, state, smallImageKey,
+			hasStartTimestamp == true, endTimestamp, largeImageKey, 'Engine Version: ' + PSYCH_ENGINE_VERSION));
 	}
 
 	public function changeDiscordClientID(?newID:String):Void {

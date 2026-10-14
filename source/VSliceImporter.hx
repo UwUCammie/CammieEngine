@@ -110,6 +110,15 @@ typedef VSliceStageConversion = {
 	var diagnostics:Array<VSliceDiagnostic>;
 }
 
+/** Pure conversion output for one V-Slice data/levels definition. */
+typedef VSliceLevelConversion = {
+	/** Native storySonglist week entry, or null when the level has no songs. */
+	var week:Dynamic;
+	/** Title image copy into the native campaign-ui-week folder. */
+	var assets:Array<VSliceAssetMapping>;
+	var diagnostics:Array<VSliceDiagnostic>;
+}
+
 /** Pure conversion output for one V-Slice data/notestyles definition. */
 typedef VSliceNoteStyleConversion = {
 	/** Destination UI registry key.  It is namespaced to avoid donor ids
@@ -278,6 +287,12 @@ class VSliceImporter {
 	public static function convert(metadata:Dynamic, chart:Dynamic, ?sourcePath:String):VSliceConversionResult {
 		var diagnostics:Array<VSliceDiagnostic> = [];
 		var origin = sourcePath == null ? '' : sourcePath;
+		var migratedMetadata = migrateMetadata(metadata);
+		if (migratedMetadata != metadata) {
+			metadata = migratedMetadata;
+			diagnostics.push(makeDiagnostic('info', 'metadata-migrated',
+				'Older V-Slice metadata field names were read as their current equivalents.', origin));
+		}
 		if (!isVSliceMetadata(metadata))
 			diagnostics.push(makeDiagnostic('warning', 'metadata-version',
 				'Metadata is not recognised as a V-Slice version 2 document.', origin));
@@ -330,6 +345,187 @@ class VSliceImporter {
 			noteStyleConversions: noteStyleConversions,
 			diagnostics: diagnostics
 		};
+	}
+
+	/**
+		Convert a V-Slice `data/levels/<id>.json` story level into a native
+		storySonglist week. The title PNG becomes the week's campaign image,
+		the level name its description, `background` its menu colour, and
+		`visible: false` keeps it out of release builds the way the native debug
+		flag does. `songNames` maps lowercase song ids to the imported native
+		song names; ids it does not know are kept as authored. Props are not
+		mapped onto the fixed native story characters, so they are reported.
+		Order levels by id when importing several, as the V-Slice registry does.
+	*/
+	public static function convertLevel(data:Dynamic, ?sourceRoot:String, id:String,
+		?songNames:Map<String, String>):VSliceLevelConversion {
+		var findings:Array<VSliceDiagnostic> = [];
+		var root = normalizeSourceRoot(sourceRoot);
+		var levelId = id == null ? '' : id.trim();
+		var origin = levelId == '' ? root : root + '/data/levels/' + levelId + '.json';
+		var result:VSliceLevelConversion = {week: null, assets: [], diagnostics: findings};
+		var rawSongs = field(data, 'songs');
+		var songs:Array<String> = [];
+		if (Std.isOfType(rawSongs, Array))
+			for (entry in (cast rawSongs:Array<Dynamic>)) {
+				var songId = stringValue(entry, '');
+				if (songId == '')
+					continue;
+				var nativeName = songNames == null ? null : songNames.get(songId.toLowerCase());
+				songs.push(nativeName == null || nativeName == '' ? songId : nativeName);
+			}
+		if (songs.length == 0) {
+			findings.push(makeDiagnostic('warning', 'level-missing-songs',
+				'V-Slice level ' + levelId + ' lists no songs, so no story week was made.', origin));
+			return result;
+		}
+		var weekName = safeStem(levelId == '' ? stringValue(field(data, 'name'), 'v-slice-level') : levelId);
+		var week:Dynamic = {
+			name: weekName,
+			desc: stringValue(field(data, 'name'), levelId),
+			animation: '',
+			songs: songs
+		};
+		var background = field(data, 'background');
+		var color = levelBackgroundColor(background == null ? '#F9CF51' : background);
+		if (color != null)
+			week.color = color;
+		else
+			findings.push(makeDiagnostic('info', 'level-background-image',
+				'V-Slice level ' + levelId + ' uses an image background; the story menu keeps its default colour.', origin));
+		if (field(data, 'visible') == false)
+			week.visibleFlags = ['debug'];
+		var titleAsset = stringValue(field(data, 'titleAsset'), '');
+		if (titleAsset == '') {
+			findings.push(makeDiagnostic('warning', 'level-missing-title',
+				'V-Slice level ' + levelId + ' has no titleAsset image.', origin));
+		} else {
+			var title = resolveVSliceAsset(root, titleAsset, '.png');
+			result.assets.push({
+				source: title.path,
+				destination: 'assets/images/campaign-ui-week/' + weekName + '.png',
+				kind: 'level-title',
+				supported: title.found == true
+			});
+			if (title.found != true)
+				findings.push(makeDiagnostic('warning', 'missing-level-title',
+					'V-Slice level title image was not found: ' + titleAsset, origin));
+		}
+		var props = field(data, 'props');
+		if (Std.isOfType(props, Array) && (cast props:Array<Dynamic>).length > 0)
+			findings.push(makeDiagnostic('info', 'level-props-unmapped',
+				'V-Slice level ' + levelId + ' props are not mapped onto the native story characters.', origin));
+		result.week = week;
+		return result;
+	}
+
+	/** An ARGB colour for a V-Slice level background, or null when it is an image path. */
+	static function levelBackgroundColor(value:Dynamic):Null<Int> {
+		if (Std.isOfType(value, String) && !Std.string(value).trim().startsWith('#')
+			&& !Std.string(value).trim().toLowerCase().startsWith('0x'))
+			return null;
+		var literal = colorLiteral(value);
+		if (literal == null || !new EReg('^0x[0-9A-F]{8}$', '').match(literal))
+			return null;
+		var alpha = Std.parseInt('0x' + literal.substr(2, 2));
+		var rgb = Std.parseInt('0x' + literal.substr(4));
+		return (alpha << 24) | rgb;
+	}
+
+	/**
+		Bring 2.0.x and 2.1.x metadata up to the field names the converter reads.
+		2.0 keeps the characters in a playableChars map keyed by player id (with
+		g/o/i short names), and both older versions call noteStyle noteSkin.
+		Returns the input untouched when nothing needs changing, otherwise a
+		migrated copy, so the caller's parsed document is never rewritten.
+	*/
+	public static function migrateMetadata(metadata:Dynamic):Dynamic {
+		var playData = field(metadata, 'playData');
+		if (playData == null)
+			return metadata;
+		var playable = field(playData, 'playableChars');
+		var playerIds = safeFields(playable);
+		var needsCharacters = field(playData, 'characters') == null && playerIds.length > 0;
+		var needsNoteStyle = field(playData, 'noteStyle') == null && stringValue(field(playData, 'noteSkin'), '') != '';
+		if (!needsCharacters && !needsNoteStyle)
+			return metadata;
+		var migrated:Dynamic = Json.parse(Json.stringify(metadata));
+		var migratedPlayData = field(migrated, 'playData');
+		if (needsCharacters) {
+			// The reference takes the map's first key. Map order is not stable
+			// across targets, so sort the ids to keep repeat imports identical.
+			playerIds.sort(function(a, b) return a < b ? -1 : a > b ? 1 : 0);
+			var player = playerIds[0];
+			var entry = field(playable, player);
+			var characters:Dynamic = {
+				player: player,
+				girlfriend: playableCharacterField(entry, 'g', 'girlfriend'),
+				opponent: playableCharacterField(entry, 'o', 'opponent'),
+				instrumental: playableCharacterField(entry, 'i', 'inst')
+			};
+			Reflect.setField(migratedPlayData, 'characters', characters);
+		}
+		if (needsNoteStyle)
+			Reflect.setField(migratedPlayData, 'noteStyle', stringValue(field(playData, 'noteSkin'), ''));
+		return migrated;
+	}
+
+	static function playableCharacterField(entry:Dynamic, shortName:String, longName:String):String {
+		var value = field(entry, shortName);
+		if (value == null)
+			value = field(entry, longName);
+		return value == null ? '' : Std.string(value).trim();
+	}
+
+	/**
+		The instrumental offset V-Slice applies for the selected instrumental:
+		its altInstrumentals entry when there is one, otherwise the base value.
+	*/
+	public static function instrumentalOffsetFor(offsets:Dynamic, instrumental:String):Float {
+		var value = finiteNumber(field(offsets, 'instrumental'), 0);
+		if (instrumental != null && instrumental.trim() != '') {
+			var alternate = field(field(offsets, 'altInstrumentals'), instrumental.trim());
+			if (alternate != null)
+				value = finiteNumber(alternate, value);
+		}
+		return value;
+	}
+
+	/**
+		Per-character vocal offsets flattened into the keys SongVocalOffsets
+		looks up: `character` for the base instrumental and
+		`character|instrumental` for an alternate one. Null when none are authored.
+	*/
+	public static function vocalOffsetTable(offsets:Dynamic):Dynamic {
+		var result:Dynamic = {};
+		var count = 0;
+		var vocals = field(offsets, 'vocals');
+		for (character in safeFields(vocals)) {
+			var value = finiteNumber(field(vocals, character), Math.NaN);
+			if (!Math.isNaN(value) && character.trim() != '') {
+				Reflect.setField(result, character.trim(), value);
+				count++;
+			}
+		}
+		var alternates = field(offsets, 'altVocals');
+		for (instrumental in safeFields(alternates)) {
+			var table = field(alternates, instrumental);
+			for (character in safeFields(table)) {
+				var value = finiteNumber(field(table, character), Math.NaN);
+				if (!Math.isNaN(value) && character.trim() != '' && instrumental.trim() != '') {
+					Reflect.setField(result, character.trim() + '|' + instrumental.trim(), value);
+					count++;
+				}
+			}
+		}
+		return count == 0 ? null : result;
+	}
+
+	static function finiteNumber(value:Dynamic, fallback:Float):Float {
+		if (value == null || Std.isOfType(value, Bool))
+			return fallback;
+		var number = numberValue(value, Math.NaN);
+		return Math.isNaN(number) || !Math.isFinite(number) ? fallback : number;
 	}
 
 	/**
@@ -2881,6 +3077,7 @@ class VSliceImporter {
 		}
 		if (noteStyleConversions == null)
 			noteStyleConversions = [];
+		metadata = migrateMetadata(metadata);
 		var origin = sourcePath == null ? '' : sourcePath;
 		var name = songName == null || songName.trim() == '' ? stringValue(field(metadata, 'songName'), 'v-slice-song') : songName;
 		if (name.trim() == '')
@@ -2922,9 +3119,8 @@ class VSliceImporter {
 		var girlfriendValue:Dynamic = field(characters, 'girlfriend');
 		if (girlfriendValue == null)
 			girlfriendValue = field(characters, 'gf');
-		// V-Slice renders no girlfriend unless the playData explicitly names one
-		// (fantasy-girl-01 omits the key and its reference video has no gf), so
-		// both an absent and a blank field mean no-gf - never the native default.
+		// V-Slice renders no girlfriend unless the playData explicitly names one,
+		// so both an absent and a blank field mean no-gf, never the native default.
 		var girlfriend = girlfriendValue == null
 			? 'no-gf'
 			: (StringTools.trim(Std.string(girlfriendValue)) == '' ? 'no-gf' : Std.string(girlfriendValue).trim());
@@ -3005,6 +3201,11 @@ class VSliceImporter {
 			var row:Array<Dynamic> = [time, nativeLane, sustain];
 			if (kind.alt > 0)
 				row.push(kind.alt);
+			var params = NoteRowParams.fromVSlice(field(rawNote, 'p'));
+			if (params == null)
+				params = NoteRowParams.fromVSlice(field(rawNote, 'params'));
+			if (params != null)
+				row = NoteRowParams.apply(row, params);
 			noteRows.push({time: time, row: row, sustainEnd: time + sustain});
 			if (time + sustain > maxTime)
 				maxTime = time + sustain;
@@ -3051,6 +3252,24 @@ class VSliceImporter {
 			var vocalStems = vocalStemMetadata(metadata);
 			if (vocalStems.length > 0)
 				songData.vocalStems = vocalStems;
+			// Offsets fix the chart against its audio, so they travel with the
+			// chart; zero and absent values leave the field out entirely.
+			var authoredOffsets = field(metadata, 'offsets');
+			var instrumentalOffset = instrumentalOffsetFor(authoredOffsets, stringValue(field(characters, 'instrumental'), ''));
+			if (instrumentalOffset != 0)
+				songData.instrumentalOffset = instrumentalOffset;
+			var vocalOffsets = vocalOffsetTable(authoredOffsets);
+			if (vocalOffsets != null)
+				songData.vocalOffsets = vocalOffsets;
+			var previewStart = finiteNumber(field(playData, 'previewStart'), Math.NaN);
+			if (!Math.isNaN(previewStart) && previewStart >= 0)
+				songData.previewStart = previewStart;
+			var previewEnd = finiteNumber(field(playData, 'previewEnd'), Math.NaN);
+			if (!Math.isNaN(previewEnd) && previewEnd > 0 && (Math.isNaN(previewStart) || previewEnd > previewStart))
+				songData.previewEnd = previewEnd;
+			var stickerPack = stringValue(field(playData, 'stickerPack'), '');
+			if (stickerPack != '')
+				songData.stickerPack = stickerPack;
 			if (events.length > 0)
 				songData.events = events;
 
@@ -3303,12 +3522,65 @@ class VSliceImporter {
 			}
 			if (time < 0)
 				time = 0;
-			result.push({t: time, bpm: bpm});
+			var numerator = timeSignaturePart(field(entry, 'n'));
+			var denominator = timeSignaturePart(field(entry, 'd'));
+			if (numerator < 0 || denominator < 0) {
+				findings.push(makeDiagnostic('warning', 'invalid-time-signature',
+					'V-Slice timeChanges contains a time signature that is not a positive whole number; using 4/4.', origin, difficulty));
+				numerator = 4;
+				denominator = 4;
+			}
+			result.push({t: time, bpm: bpm, n: numerator, d: denominator});
 		}
 		result.sort(function(a, b) return a.t < b.t ? -1 : a.t > b.t ? 1 : 0);
 		if (result.length == 0)
 			result.push({t: 0.0, bpm: DEFAULT_BPM});
 		return result;
+	}
+
+	/** An authored n or d value: 4 when absent, -1 when unusable. */
+	static function timeSignaturePart(value:Dynamic):Int {
+		if (value == null)
+			return 4;
+		var number = finiteNumber(value, Math.NaN);
+		if (Math.isNaN(number) || number < 1 || number != Math.ffloor(number) || number > 64)
+			return -1;
+		return Std.int(number);
+	}
+
+	/**
+		Native steps in one measure of the time signature active at `time`.
+		Native steps stay quarter-note sixteenths, so a measure is n * 16 / d of
+		them: 12 for 3/4 and 6/8, 14 for 7/8.
+	*/
+	static function measureStepsAt(changes:Array<Dynamic>, time:Float):Int {
+		var numerator:Int = 4;
+		var denominator:Int = 4;
+		for (change in changes) {
+			if (change.t > time + EPSILON)
+				break;
+			if (change.n != null && change.d != null) {
+				numerator = change.n;
+				denominator = change.d;
+			}
+		}
+		var steps = Std.int(Math.round(numerator * DEFAULT_SECTION_STEPS / denominator));
+		return steps < 1 ? 1 : steps;
+	}
+
+	/** The [n, d] pair active at `time`, or null for plain 4/4. */
+	static function timeSignatureAt(changes:Array<Dynamic>, time:Float):Null<Array<Int>> {
+		var numerator:Int = 4;
+		var denominator:Int = 4;
+		for (change in changes) {
+			if (change.t > time + EPSILON)
+				break;
+			if (change.n != null && change.d != null) {
+				numerator = change.n;
+				denominator = change.d;
+			}
+		}
+		return numerator == 4 && denominator == 4 ? null : [numerator, denominator];
 	}
 
 	static function buildSections(noteRows:Array<Dynamic>, maxTime:Float, changes:Array<Dynamic>):Array<Dynamic> {
@@ -3320,7 +3592,7 @@ class VSliceImporter {
 			if (bpm <= 0)
 				bpm = DEFAULT_BPM;
 			var stepMs = 60000.0 / bpm / 4.0;
-			var next = cursor + stepMs * DEFAULT_SECTION_STEPS;
+			var next = cursor + stepMs * measureStepsAt(changes, cursor);
 			for (change in changes) {
 				if (change.t > cursor + EPSILON && change.t < next - EPSILON) {
 					next = change.t;
@@ -3342,7 +3614,7 @@ class VSliceImporter {
 			sectionNotes.sort(function(a:Array<Dynamic>, b:Array<Dynamic>)
 				return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
 			var previousBpm:Float = sections.length == 0 ? bpm : sections[sections.length - 1].bpm;
-			sections.push({
+			var section:Dynamic = {
 				sectionNotes: sectionNotes,
 				lengthInSteps: length,
 				mustHitSection: true,
@@ -3350,7 +3622,12 @@ class VSliceImporter {
 				changeBPM: sections.length > 0 && Math.abs(previousBpm - bpm) > EPSILON,
 				altAnim: false,
 				altAnimNum: 0
-			});
+			};
+			// Only non-4/4 measures carry the field, so 4/4 output stays unchanged.
+			var signature = timeSignatureAt(changes, cursor);
+			if (signature != null)
+				section.timeSignature = signature;
+			sections.push(section);
 			cursor = actualEnd;
 			// A BPM boundary can be a fractional step.  Keep the next segment at
 			// that boundary so native `changeBPM` still receives the authored tempo.

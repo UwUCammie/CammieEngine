@@ -37,6 +37,7 @@ class PsychCombinedStrumGroupTest(unittest.TestCase):
         methods = "\n".join(
             source_method(source, name)
             for name in (
+                "receptorAt",
                 "compatGroupMember",
                 "compatGetPropertyFromGroup",
                 "compatSetPropertyFromGroup",

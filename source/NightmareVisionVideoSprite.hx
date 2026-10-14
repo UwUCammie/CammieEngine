@@ -5,6 +5,7 @@ import flixel.util.FlxTimer;
 import hxvlc.flixel.FlxVideoSprite;
 import hxvlc.openfl.Location;
 import sys.FileSystem;
+import SourceVideoPlayback.SourceVideoCallback;
 
 using StringTools;
 
@@ -23,9 +24,16 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 	public var ownerRoot(default, null):String;
 	public var tiedToGame:Bool = true;
 	public var canSkip:Bool = false;
+	public var playbackRate(default, set):Float = 1.0;
+	/** 0..1 like the source; it scales the game volume rather than replacing it. */
+	public var volume(default, set):Float = 1.0;
+	public var isPlaying(get, never):Bool;
+	public var progress(get, never):Float;
+	public var currentTime(get, never):Int;
+	public var duration(get, never):Int;
 	var ownerPaths:Dynamic;
-	var formatCallbacks:Array<Dynamic> = [];
-	var endCallbacks:Array<Dynamic> = [];
+	var formatCallbacks:Array<SourceVideoCallback> = [];
+	var endCallbacks:Array<SourceVideoCallback> = [];
 	var startTimer:FlxTimer;
 	var formatted:Bool = false;
 	var finished:Bool = false;
@@ -61,21 +69,94 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 	}
 
 	/** Register the source `onFormat` callback, including late registrations. */
-	public function onFormat(callback:Dynamic):Void {
-		if (callback == null || !Reflect.isFunction(callback))
-			return;
-		formatCallbacks.push(callback);
-		if (formatted)
-			invokeCallback(callback, 'format');
-	}
+	public function onFormat(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		register(formatCallbacks, callback, once, priority, formatted, 'format');
 
 	/** Register the source `onEnd` callback, including load and decoder errors. */
-	public function onEnd(callback:Dynamic):Void {
+	public function onEnd(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		register(endCallbacks, callback, once, priority, finished, 'end');
+
+	// A late registration still hears an event that already happened, so a
+	// `once` callback is spent on the spot instead of being kept.
+	function register(list:Array<SourceVideoCallback>, callback:Dynamic, once:Bool, priority:Int,
+		alreadyHappened:Bool, phase:String):Void {
 		if (callback == null || !Reflect.isFunction(callback))
 			return;
-		endCallbacks.push(callback);
-		if (finished)
-			invokeCallback(callback, 'end');
+		if (!(alreadyHappened && once))
+			SourceVideoPlayback.insertByPriority(list, {callback:callback, once:once, priority:priority});
+		if (alreadyHappened)
+			invokeCallback(callback, phase);
+	}
+
+	// The remaining decoder events go straight to hxvlc, wrapped so a script
+	// error is reported instead of breaking the decoder's own dispatch.
+	public function onStart(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		if (bitmap != null && Reflect.isFunction(callback))
+			bitmap.onOpening.add(function() invokeCallback(callback, 'start'), once, priority);
+
+	public function onPause(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		if (bitmap != null && Reflect.isFunction(callback))
+			bitmap.onPaused.add(function() invokeCallback(callback, 'pause'), once, priority);
+
+	public function onStop(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		if (bitmap != null && Reflect.isFunction(callback))
+			bitmap.onStopped.add(function() invokeCallback(callback, 'stop'), once, priority);
+
+	public function onError(callback:Dynamic, once:Bool = false, priority:Int = 0):Void
+		if (bitmap != null && Reflect.isFunction(callback))
+			bitmap.onEncounteredError.add(function(error:String) invokeCallback(callback, 'error', [error]), once, priority);
+
+	function set_playbackRate(value:Float):Float {
+		playbackRate = SourceVideoPlayback.safeRate(value);
+		if (bitmap != null) bitmap.rate = playbackRate;
+		return playbackRate;
+	}
+
+	// hxvlc rewrites bitmap.volume from the game volume every frame; the
+	// adjustment is the part that sticks.
+	function set_volume(value:Float):Float {
+		volume = SourceVideoPlayback.clampVolume(value);
+		if (bitmap != null) bitmap.volumeAdjust = volume;
+		return volume;
+	}
+
+	function get_isPlaying():Bool return !disposed && bitmap != null && bitmap.isPlaying;
+	function get_progress():Float return bitmap == null ? 0.0
+		: SourceVideoPlayback.progress(haxe.Int64.toInt(bitmap.time), haxe.Int64.toInt(bitmap.length));
+	function get_currentTime():Int return bitmap == null ? -1 : haxe.Int64.toInt(bitmap.time);
+	function get_duration():Int return bitmap == null ? -1 : haxe.Int64.toInt(bitmap.length);
+
+	public function seekTo(time:Int):Void
+		if (!disposed && bitmap != null) bitmap.time = haxe.Int64.ofInt(time < 0 ? 0 : time);
+
+	public function seekToProgress(value:Float):Void {
+		if (disposed || bitmap == null) return;
+		var target = SourceVideoPlayback.seekTime(value, haxe.Int64.toInt(bitmap.length));
+		if (target >= 0) bitmap.time = haxe.Int64.ofInt(target);
+	}
+
+	/** Scale and centre over the whole game window; meant for onFormat. */
+	public function fitToScreen():Void {
+		setGraphicSize(flixel.FlxG.width, flixel.FlxG.height);
+		updateHitbox();
+		screenCenter();
+	}
+
+	/** The source `instances` list, narrowed to one owner so scripts only see their own clips. */
+	public static function instancesFor(root:String):Array<NightmareVisionVideoSprite> {
+		var result:Array<NightmareVisionVideoSprite> = [];
+		for (video in live) if (video != null && !video.disposed && (root == null || video.ownerRoot == root)) result.push(video);
+		return result;
+	}
+
+	public static function forEach(callback:Dynamic, ?root:String):Void {
+		if (!Reflect.isFunction(callback)) return;
+		for (video in instancesFor(root)) Reflect.callMethod(null, callback, [video]);
+	}
+
+	public static function forEachAlive(callback:Dynamic, ?root:String):Void {
+		if (!Reflect.isFunction(callback)) return;
+		for (video in instancesFor(root)) if (video.exists && video.alive) Reflect.callMethod(null, callback, [video]);
 	}
 
 	/** Resolve only a path selected by the bound Nightmare Vision Paths facade. */
@@ -111,11 +192,11 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 		}
 	}
 
-	/** Start after the next frame, as the source video-sprite helper does. */
-	public function delayAndStart():Void {
+	/** Start after the next frame, or after `delay` seconds, as the source helper does. */
+	public function delayAndStart(delay:Float = 0):Void {
 		if (disposed || finished || !loaded || startTimer != null)
 			return;
-		startTimer = new FlxTimer().start(0.001, function(_:FlxTimer) {
+		startTimer = new FlxTimer().start(Math.isNaN(delay) || delay < 0.001 ? 0.001 : delay, function(_:FlxTimer) {
 			startTimer = null;
 			if (disposed || finished || !loaded)
 				return;
@@ -214,8 +295,7 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 			return;
 		formatted = true;
 		trace('[nightmare-vision-video] phase=format path=' + resolvedPath);
-		for (callback in formatCallbacks.copy())
-			invokeCallback(callback, 'format');
+		SourceVideoPlayback.dispatch(formatCallbacks, function(callback) invokeCallback(callback, 'format'));
 	}
 
 	function finish(reason:String):Void {
@@ -227,16 +307,15 @@ class NightmareVisionVideoSprite extends FlxVideoSprite {
 			startTimer = null;
 		}
 		trace('[nightmare-vision-video] phase=end reason=' + reason + ' path=' + resolvedPath);
-		for (callback in endCallbacks.copy())
-			invokeCallback(callback, 'end');
+		SourceVideoPlayback.dispatch(endCallbacks, function(callback) invokeCallback(callback, 'end'));
 		if (oneTimeUse)
 			destroy();
 	}
 
-	function invokeCallback(callback:Dynamic, phase:String):Void {
+	function invokeCallback(callback:Dynamic, phase:String, ?args:Array<Dynamic>):Void {
 		if (callback == null || !Reflect.isFunction(callback))
 			return;
-		try Reflect.callMethod(null, callback, []) catch (error:Dynamic)
+		try Reflect.callMethod(null, callback, args == null ? [] : args) catch (error:Dynamic)
 			trace('[nightmare-vision-video-callback-error] phase=' + phase + ': ' + Std.string(error));
 	}
 
@@ -308,8 +387,14 @@ class NightmareVisionVideoSprite extends FlxSprite {
 	public var ownerRoot(default, null):String;
 	public var tiedToGame:Bool = true;
 	public var canSkip:Bool = false;
+	public var playbackRate(default, set):Float = 1.0;
+	public var volume(default, set):Float = 1.0;
+	public var isPlaying(get, never):Bool;
+	public var progress(get, never):Float;
+	public var currentTime(get, never):Int;
+	public var duration(get, never):Int;
 	var ownerPaths:Dynamic;
-	var endCallbacks:Array<Dynamic> = [];
+	var endCallbacks:Array<SourceVideoPlayback.SourceVideoCallback> = [];
 	var finished:Bool = false;
 	var oneTimeUse:Bool = true;
 
@@ -325,11 +410,41 @@ class NightmareVisionVideoSprite extends FlxSprite {
 		live.push(this);
 	}
 
-	public function onFormat(_callback:Dynamic):Void {}
-	public function onEnd(callback:Dynamic):Void {
+	// Same members as the decoder build so scripts never hit an unknown field;
+	// without a decoder only the end callbacks ever fire.
+	public function onFormat(_callback:Dynamic, once:Bool = false, priority:Int = 0):Void {}
+	public function onEnd(callback:Dynamic, once:Bool = false, priority:Int = 0):Void {
 		if (callback == null || !Reflect.isFunction(callback)) return;
-		endCallbacks.push(callback);
+		if (!(finished && once))
+			SourceVideoPlayback.insertByPriority(endCallbacks, {callback:callback, once:once, priority:priority});
 		if (finished) invokeCallback(callback);
+	}
+	public function onStart(_callback:Dynamic, once:Bool = false, priority:Int = 0):Void {}
+	public function onPause(_callback:Dynamic, once:Bool = false, priority:Int = 0):Void {}
+	public function onStop(_callback:Dynamic, once:Bool = false, priority:Int = 0):Void {}
+	public function onError(_callback:Dynamic, once:Bool = false, priority:Int = 0):Void {}
+	function set_playbackRate(value:Float):Float return playbackRate = SourceVideoPlayback.safeRate(value);
+	function set_volume(value:Float):Float return volume = SourceVideoPlayback.clampVolume(value);
+	function get_isPlaying():Bool return false;
+	function get_progress():Float return 0.0;
+	function get_currentTime():Int return -1;
+	function get_duration():Int return -1;
+	public function seekTo(_time:Int):Void {}
+	public function seekToProgress(_value:Float):Void {}
+	public function fitToScreen():Void {}
+
+	public static function instancesFor(root:String):Array<NightmareVisionVideoSprite> {
+		var result:Array<NightmareVisionVideoSprite> = [];
+		for (video in live) if (video != null && (root == null || video.ownerRoot == root)) result.push(video);
+		return result;
+	}
+	public static function forEach(callback:Dynamic, ?root:String):Void {
+		if (!Reflect.isFunction(callback)) return;
+		for (video in instancesFor(root)) Reflect.callMethod(null, callback, [video]);
+	}
+	public static function forEachAlive(callback:Dynamic, ?root:String):Void {
+		if (!Reflect.isFunction(callback)) return;
+		for (video in instancesFor(root)) if (video.exists && video.alive) Reflect.callMethod(null, callback, [video]);
 	}
 
 	public function load(_location:Dynamic, ?_options:Array<String>):Bool {
@@ -338,14 +453,14 @@ class NightmareVisionVideoSprite extends FlxSprite {
 		return false;
 	}
 
-	public function delayAndStart():Void {}
+	public function delayAndStart(delay:Float = 0):Void {}
 	public function play():Bool return false;
 	public function skip():Void finish();
 
 	function finish():Void {
 		if (finished) return;
 		finished = true;
-		for (callback in endCallbacks.copy()) invokeCallback(callback);
+		SourceVideoPlayback.dispatch(endCallbacks, invokeCallback);
 		if (oneTimeUse)
 			destroy();
 	}

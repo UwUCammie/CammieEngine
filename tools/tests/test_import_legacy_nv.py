@@ -12,7 +12,8 @@ class LegacyNightmareVisionTest(unittest.TestCase):
     def test_legacy_identity_beats_inherited_psych_and_owns_content(self):
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             work = FixturePath(folder)
-            for name in ('ImportEngine', 'ImportRootScanner', 'ImportDirectoryListing', 'PsychSongNameCompat', 'NightmareVisionAssetCollector'):
+            for name in ('ImportEngine', 'ImportRootScanner', 'ImportDirectoryListing', 'PsychSongNameCompat',
+                         'PsychFamilyChartFields', 'PsychFamilyFormatProbe', 'NightmareVisionAssetCollector'):
                 (work / (name + '.hx')).write_text((ROOT / 'source' / (name + '.hx')).read_text(), newline='\n')
             for name, markers in (
                 ('legacy', b'PsychEngineVersion\0Nightmare Vision Engine\0meta.data.scripts.IFunkinScript'),

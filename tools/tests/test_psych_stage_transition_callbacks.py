@@ -34,7 +34,9 @@ class PsychStageTransitionCallbacksTest(unittest.TestCase):
             "function runPsychStageStartCallback(",
             "function runPsychStageEndCallback(",
         ))
-        self.assertIn("if (psychCompiledStageCreated && runPsychStageStartCallback())", source)
+        # Any script family can replace the start step now, not only a compiled stage.
+        self.assertIn("\t\tif (runPsychStageStartCallback()) {", source)
+        self.assertNotIn("psychCompiledStageCreated && runPsychStageStartCallback()", source)
         self.assertIn("if (runPsychStageEndCallback()) return;", source)
         self.assertIn("PsychOwnerPaths.create(ownerRoot, psychStageLibrary)", source)
         self.assertIn("videoCutscene = clip;", source)
@@ -45,7 +47,7 @@ class PsychStageTransitionCallbacksTest(unittest.TestCase):
         self.assertIn("function set_cameraSpeed(value:Float):Float return camSpeed = value;", source)
         self.assertIn("public function moveCameraSection(?sec:Null<Int>):Void", source)
         self.assertIn("psychCameraCompatibilityActive && isCameraOnForcedPos", source)
-        self.assertIn("if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)\n\t\t\twatchedCutscene = true;", source)
+        self.assertIn("if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)\n\t\t\t\twatchedCutscene = true;", source)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             (Path(folder) / "Main.hx").write_text(
                 """class RuntimeSmokeHarness { public static function enabled():Bool return false; }

@@ -292,6 +292,7 @@ class OwnershipSnapshotTest {
 class FakeBasic { public function new() {} }
 class FakeTimer {
  public var active:Bool = true;
+ public var finished:Bool = false;
  public function new() {}
  public function start(delay:Float, callback:Dynamic->Void):FakeTimer return this;
  public function cancel():Void { active = false; }
@@ -336,6 +337,7 @@ class EarlyHandoffTest {
  var psychSourceCreationReady:Bool = true;
  var startedCountdown:Bool = false;
  var startTimer:FakeTimer = null;
+ var countdownDelayTimer:FakeTimer = null;
  var hxcCutsceneTimelineRuntime:FakeTimeline = null;
  var inCutscene:Bool = false;
  var hxcScriptInCutscene:Bool = false;
@@ -379,6 +381,15 @@ class EarlyHandoffTest {
    throw 'late cutscene addition escaped cleanup';
   if (PlayState.globalSprites.exists('first') || PlayState.globalSprites.exists('late'))
    throw 'cutscene globals survived handoff';
+
+  // A countdown already waiting out its delay must not hand the cutscene off again.
+  var delayed = new EarlyHandoffTest();
+  delayed.countdownDelayTimer = new FakeTimer();
+  delayed.inCutscene = true;
+  delayed.cutsceneSprites.push(first);
+  delayed.startCountdown();
+  if (!delayed.inCutscene || delayed.removed.length != 0 || delayed.cutsceneSprites.length != 1)
+   throw 'pending countdown delay handed the cutscene off twice';
 
   var creating = new EarlyHandoffTest();
   creating.psychSourceCreationReady = false;

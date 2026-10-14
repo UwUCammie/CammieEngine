@@ -1,105 +1,217 @@
-"""Role-scoped vocal volume updates preserve split vocal buses."""
-
-from pathlib import Path
+"""Split vocal stems keep the player and the opponent on separate buses."""
+from haxe_test_support import HAXE_COMMAND, FixturePath as Path
+import re
 import subprocess
 import tempfile
 import unittest
-
-from haxe_test_support import HAXE_COMMAND, FixturePath
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class SourceVocalRolesTest(unittest.TestCase):
-    def test_actual_vocal_tracks_keep_roles_isolated_and_legacy_fanout(self):
-        tracks_source = (ROOT / "source/VocalTracks.hx").read_text(encoding="utf-8")
-        sound_stub = r'''package flixel.sound;
+def method(source: str, name: str) -> str:
+    match = re.search(r"^\t(?:@:keep |override |public |static |private )*function " + re.escape(name) + r"\(",
+                      source, re.M)
+    if match is None:
+        raise AssertionError(name)
+    brace = source.index("{", match.start())
+    depth = 0
+    for pos in range(brace, len(source)):
+        depth += (source[pos] == "{") - (source[pos] == "}")
+        if depth == 0:
+            return source[match.start():pos + 1]
+    raise AssertionError(name)
+
+
+FLX_SOUND = '''package flixel.sound;
 class FlxSound {
- public var id:Int;
- public var playing:Bool=false;
- public var time:Float=0;
- public var volume:Float=1;
- public var pitch:Float=1;
- public function new(id:Int) this.id=id;
- public function play():FlxSound {playing=true;return this;}
- public function pause():FlxSound {playing=false;return this;}
- public function stop():FlxSound {playing=false;return this;}
- public function getActualVolume():Float return volume;
- public function destroy():Void {}
+  public var volume:Float = 1;
+  public var time:Float = 0;
+  public var pitch:Float = 1;
+  public var name:String;
+  public function new(?name:String) this.name = name;
+  public function play():Void {}
+  public function pause():Void {}
+  public function stop():Void {}
+  public function destroy():Void {}
+  public function getActualVolume():Float return volume;
 }
 '''
-        main = r'''import flixel.sound.FlxSound;
+
+RUNTIME_FIXTURE = r'''import flixel.sound.FlxSound;
+
+class StemRoles {
+  public var SONG:Dynamic;
+  public function new(format:String) SONG = {format:format};
+  RESOLVE
+  public function role(entry:Dynamic):String return resolveImportedVocalStemRole(entry);
+}
+
 class Main {
- static function check(ok:Bool,message:String):Void if(!ok) throw message;
- static function near(actual:Float,expected:Float,message:String):Void
-  if(Math.abs(actual-expected)>0.00001) throw message;
- static function main():Void {
-  var opponentPrimary=new FlxSound(1);
-  var playerStem=new FlxSound(2);
-  var opponentStem=new FlxSound(3);
-  opponentPrimary.volume=0.2;
-  playerStem.volume=0.3;
-  opponentStem.volume=0.4;
-  var tracks=new VocalTracks(opponentPrimary,[playerStem,opponentStem]);
-  tracks.setRole(opponentPrimary,'opponent');
-  tracks.setRole(playerStem,'player');
-  tracks.setRole(opponentStem,'opponent');
-  check(tracks.hasRole('OPPONENT') && tracks.hasRole('Player') && !tracks.hasRole('missing'),
-   'role lookup is case-insensitive and reports only present buses');
+  static function check(ok:Bool, message:String):Void if (!ok) throw message;
+  static function main():Void {
+    // the conventional names, whatever their case, with or without the old 'shared' role
+    check(SourceVocalRole.resolve('Player', null) == 'player', 'Player id');
+    check(SourceVocalRole.resolve('Opponent', 'shared') == 'opponent', 'Opponent id over shared');
+    check(SourceVocalRole.resolve('opp', null) == 'opponent', 'short opponent id');
+    check(SourceVocalRole.resolve(' OPPONENT ', '') == 'opponent', 'padded id');
+    // an authored role always wins over the id
+    check(SourceVocalRole.resolve('opp', 'mix-bus') == 'mix-bus', 'authored role lost');
+    check(SourceVocalRole.resolve('backup', 'Opponent') == 'opponent', 'authored role should be normalized');
+    // ids that name no side keep their old defaults
+    check(SourceVocalRole.resolve('choir', 'shared') == 'shared', 'unknown shared stem changed bus');
+    check(SourceVocalRole.resolve('choir', null) == 'player', 'unlabeled stem lost its player default');
+    check(SourceVocalRole.resolve(null, null) == 'player', 'missing id');
+    // a character can ask for its own file suffix
+    check(SourceVocalRole.resolve('Lead', 'shared', 'lead', 'rival') == 'player', 'player suffix');
+    check(SourceVocalRole.resolve('rival', null, 'lead', 'Rival') == 'opponent', 'opponent suffix');
+    check(SourceVocalRole.resolve('duo', 'shared', 'duo', 'duo') == 'player', 'a shared suffix belongs to the player');
+    check(SourceVocalRole.resolve('choir', 'shared', 'lead', '') == 'shared', 'empty suffix matched a stem');
+    check(SourceVocalRole.namesSide('Opponent') && SourceVocalRole.namesSide('player')
+      && !SourceVocalRole.namesSide('lead') && !SourceVocalRole.namesSide(null), 'side names');
+    // the old class name is the same resolver
+    check(NightmareVisionVocalRole.resolve('opp', 'shared') == 'opponent'
+      && NightmareVisionVocalRole.resolve('backup', null) == 'player', 'alias drifted');
 
-  check(tracks.setRoleVolume('OPPONENT',0.55), 'opponent role setter should find both opponent stems');
-  near(opponentPrimary.volume,0.55,'primary opponent stem was updated');
-  near(opponentStem.volume,0.55,'secondary opponent stem was updated');
-  near(playerStem.volume,0.3,'opponent update did not touch player stem');
-  tracks.syncPrimaryVolume();
-  near(playerStem.volume,0.3,'scoped primary write did not fan out on sync');
-  near(opponentStem.volume,0.55,'scoped role write kept matching group volumes');
+    // the player stem leads even though the files sort opponent first
+    check(SourceVocalRole.primaryIndex(['opponent', 'player']) == 1, 'player stem should lead');
+    check(SourceVocalRole.primaryIndex(['shared', 'shared']) == 0
+      && SourceVocalRole.primaryIndex(['opponent']) == 0
+      && SourceVocalRole.primaryIndex([]) == 0 && SourceVocalRole.primaryIndex(null) == 0,
+      'songs without a player stem keep their first track');
 
-  check(tracks.setRoleVolume('player',0.8), 'player role setter should find player stem');
-  near(playerStem.volume,0.8,'player stem received its scoped volume');
-  near(opponentPrimary.volume,0.55,'player update did not touch opponent primary');
-  tracks.syncPrimaryVolume();
-  near(playerStem.volume,0.8,'player scoped write survived primary sync');
+    // charts imported before roles were written still split by stem id at load
+    for (format in ['psych_v1', 'nmv2', '']) {
+      var roles = new StemRoles(format);
+      check(roles.role({id:'Opponent', role:'shared', file:'Voices-Opponent.ogg'}) == 'opponent',
+        format + ': stale shared opponent stem');
+      check(roles.role({id:'Player', role:'shared'}) == 'player', format + ': stale shared player stem');
+      check(roles.role({id:'choir', role:'shared'}) == 'shared', format + ': unknown stem');
+      check(roles.role('Voices-extra.ogg') == 'player' && roles.role({role:null}) == 'player',
+        format + ': plain entries');
+    }
 
-  check(!tracks.hasRole('unknown') && !tracks.setRoleVolume('unknown',0.1),
-   'unknown role has no implicit volume target');
-  near(opponentPrimary.volume,0.55,'unknown role did not mutate primary');
-  near(playerStem.volume,0.8,'unknown role did not mutate player');
+    // a player miss mutes the player bus and leaves the opponent singing
+    var opponent = new FlxSound('opponent');
+    var player = new FlxSound('player');
+    var tracks = new VocalTracks(player);
+    tracks.setRole(player, SourceVocalRole.resolve('Player', 'shared'));
+    tracks.add(opponent, SourceVocalRole.resolve('Opponent', 'shared'));
+    check(tracks.setRoleVolume('player', 0, true), 'player bus missing');
+    check(player.volume == 0 && opponent.volume == 1, 'a player miss muted the opponent');
+    check(tracks.setRoleVolume('opponent', 0.5) && opponent.volume == 0.5 && player.volume == 0,
+      'opponent bus is not independent');
+    check(tracks.primaryFor('opponent') == opponent && tracks.primaryFor('Player') == player
+      && tracks.primaryFor('shared') == null, 'one sound per side');
+    // muting the player must not look like a script write that drags the others along
+    tracks.syncPrimaryVolume();
+    check(opponent.volume == 0.5, 'bus mute was mirrored to the other stems');
 
-  var sharedA=new FlxSound(4);
-  var sharedB=new FlxSound(5);
-  var shared=new VocalTracks(sharedA,[sharedB]);
-  shared.setRole(sharedA,'shared');
-  shared.setRole(sharedB,'shared');
-  check(!shared.setRoleVolume('player',0.6),
-   'role setter does not use a shared bus unless fallback is requested');
-  near(sharedA.volume,1,'missing role without fallback leaves shared primary unchanged');
-  check(shared.setRoleVolume('player',0.65,true),
-   'explicit fallback uses shared stems when the requested role is absent');
-  near(sharedA.volume,0.65,'shared primary fallback volume');
-  near(sharedB.volume,0.65,'all shared fallback stems update');
-  shared.setPlayerVolume(0.7);
-  near(shared.getPlayerVolume(),0.7,'legacy player volume keeps its shared fallback');
-  near(sharedB.volume,0.7,'legacy player setter updates all shared stems');
-
-  opponentPrimary.volume=0.42;
-  tracks.syncPrimaryVolume();
-  near(playerStem.volume,0.42,'direct legacy primary writes still fan out');
-  near(opponentStem.volume,0.42,'legacy fanout still reaches every other role');
- }
+    // one combined track still mutes on a miss through the shared fallback
+    var combined = new FlxSound('combined');
+    var single = new VocalTracks(combined);
+    single.setRole(combined, 'shared');
+    check(single.setRoleVolume('player', 0, true) && combined.volume == 0, 'combined track fallback');
+    check(single.primaryFor('opponent') == null, 'combined track has no opponent stem');
+  }
 }
 '''
-        with tempfile.TemporaryDirectory(prefix="source-vocal-roles-", dir=ROOT / "tmp") as folder:
-            scratch = FixturePath(folder)
-            (scratch / "flixel/sound").mkdir(parents=True)
-            (scratch / "flixel/sound/FlxSound.hx").write_text(sound_stub, encoding="utf-8", newline="\n")
-            (scratch / "VocalTracks.hx").write_text(tracks_source, encoding="utf-8", newline="\n")
-            (scratch / "Main.hx").write_text(main, encoding="utf-8", newline="\n")
-            result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(scratch), "--main", "Main", "--interp"],
-                cwd=ROOT, capture_output=True, text=True, timeout=60,
-            )
+
+IMPORT_FIXTURE = r'''import sys.FileSystem;
+import haxe.io.Path;
+using StringTools;
+
+typedef SongImportVocalStem = {
+  var source:String;
+  var destination:String;
+  @:optional var id:String;
+  @:optional var role:String;
+}
+typedef SongImport = { @:optional var vocalStems:Array<SongImportVocalStem>; }
+
+class Main {
+  METHODS
+  static function check(ok:Bool, message:String):Void if (!ok) throw message;
+  static function describe(folder:String):String {
+    var song:SongImport = {vocalStems: findImportVocalStems(Path.join([Sys.args()[0], folder]))};
+    normalizeSourceVocalRoles(song);
+    return [for (stem in song.vocalStems) stem.destination + '=' + stem.role].join(',');
+  }
+  static function main():Void {
+    // the split pair is played instead of the combined file beside it
+    check(describe('pair-and-combined') == 'Voices-Opponent.ogg=opponent,Voices-Player.ogg=player',
+      'pair beside combined: ' + describe('pair-and-combined'));
+    check(describe('pair') == 'Voices-Opponent.ogg=opponent,Voices-Player.ogg=player', 'pair: ' + describe('pair'));
+    // a player stem alone still replaces the combined file
+    check(describe('player-and-combined') == 'Voices-Player.ogg=player',
+      'player beside combined: ' + describe('player-and-combined'));
+    // an opponent stem cannot stand in for the combined file
+    check(describe('opponent-and-combined') == '', 'opponent beside combined: ' + describe('opponent-and-combined'));
+    // other stems beside a combined file stay out, as before
+    check(describe('named-and-combined') == '', 'named beside combined: ' + describe('named-and-combined'));
+    check(describe('mixed-and-combined') == 'Voices-Opponent.ogg=opponent,Voices-Player.ogg=player',
+      'mixed beside combined: ' + describe('mixed-and-combined'));
+    // packs with their own stem names keep every stem on the shared bus
+    check(describe('named') == 'Voices-alto.ogg=shared,Voices-bass.ogg=shared', 'named: ' + describe('named'));
+    check(describe('combined') == '' && describe('nowhere') == '', 'no stems expected');
+  }
+}
+'''
+
+
+class SourceVocalRolesTest(unittest.TestCase):
+    def test_stem_ids_resolve_to_separate_player_and_opponent_buses(self):
+        play_state = (ROOT / "source/PlayState.hx").read_text()
+        fixture = RUNTIME_FIXTURE.replace(
+            "RESOLVE", method(play_state, "resolveImportedVocalStemRole"))
+        loader = method(play_state, "initializeVocalTracks")
+        self.assertLess(loader.index("SourceVocalRole.primaryIndex("), loader.index("vocals = sounds[0].sound"),
+                        "the player stem has to be chosen before the main vocal object is")
+        getter = method(play_state, "get_opponentVocals")
+        self.assertIn("vocalTracks.primaryFor('opponent')", getter)
+        self.assertIn("public var opponentVocals(get, never):FlxSound;", play_state)
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
+            work = Path(scratch)
+            (work / "flixel/sound").mkdir(parents=True)
+            (work / "flixel/sound/FlxSound.hx").write_text(FLX_SOUND, newline="\n")
+            for name in ("SourceVocalRole.hx", "NightmareVisionVocalRole.hx", "VocalTracks.hx"):
+                (work / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
+            (work / "Main.hx").write_text(fixture, newline="\n")
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(work), "--run", "Main"], cwd=ROOT,
+                                    capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_importer_keeps_the_split_pair_and_writes_its_roles(self):
+        importer = (ROOT / "source/ModuleFunctions.hx").read_text()
+        self.assertIn("engine == ImportEngine.NIGHTMARE_VISION || engine == ImportEngine.PSYCH", importer)
+        methods = "\n".join(method(importer, name) for name in (
+            "normalizedImportFileName", "isImportFile", "findImportFile", "findImportVocalStems",
+            "normalizeSourceVocalRoles"))
+        layouts = {
+            "pair-and-combined": ["Inst.ogg", "Voices.ogg", "Voices-Player.ogg", "Voices-Opponent.ogg"],
+            "pair": ["Inst.ogg", "Voices-Player.ogg", "Voices-Opponent.ogg"],
+            "player-and-combined": ["Inst.ogg", "Voices.ogg", "Voices-Player.ogg"],
+            "opponent-and-combined": ["Inst.ogg", "Voices.ogg", "Voices-Opponent.ogg"],
+            "named-and-combined": ["Inst.ogg", "Voices.ogg", "Voices-alto.ogg"],
+            "mixed-and-combined": ["Inst.ogg", "Voices.ogg", "Voices-alto.ogg", "Voices-Player.ogg",
+                                   "Voices-Opponent.ogg"],
+            "named": ["Inst.ogg", "Voices-alto.ogg", "Voices-bass.ogg"],
+            "combined": ["Inst.ogg", "Voices.ogg"],
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
+            work = Path(scratch)
+            songs = work / "songs"
+            for folder, files in layouts.items():
+                (songs / folder).mkdir(parents=True)
+                for name in files:
+                    (songs / folder / name).write_bytes(b"audio")
+            code = work / "code"
+            code.mkdir()
+            for name in ("SourceVocalRole.hx", "ImportDirectoryListing.hx"):
+                (code / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
+            (code / "Main.hx").write_text(IMPORT_FIXTURE.replace("METHODS", methods), newline="\n")
+            result = subprocess.run([*HAXE_COMMAND, "-cp", str(code), "--run", "Main", str(songs)], cwd=ROOT,
+                                    capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 

@@ -222,7 +222,8 @@ __METHOD__
         }
         self.assertIn('if (video.skipped)', play_state)
         self.assertIn('skipCompatEventVideoToEnd(eventTime, video.durationMs)', play_state)
-        self.assertIn('unspawnNotes[0].strumTime < target', play_state)
+        self.assertIn('unspawnNotes[0].strumTime < cutoff', play_state)
+        self.assertIn('var retired = retireNotesBefore(target);', play_state)
         self.assertIn('songEvents[songEventIndex].time < target', play_state)
         self.assertIn("EngineCompat.eventName(event.name) != 'Play Video'", play_state)
         self.assertIn('fireSongEvent(event);', play_state)
@@ -243,6 +244,11 @@ __METHOD__
             play_state, 'function seekForwardSongTime(target:Float, captureSmokeState:Bool):Dynamic')
         repair_method = self.extract_method(
             note_source, 'public function repairSustainChainAfterSeek():Void')
+        # The seek is built from the shared clock move and note retirement.
+        seek_method = '\n'.join([
+            self.extract_method(play_state, 'function moveSongClock(target:Float):Void'),
+            self.extract_method(play_state, 'function retireNotesBefore(cutoff:Float)'),
+            seek_method])
         method = self.extract_method(play_state,
                                      'function skipCompatEventVideoToEnd(eventTime:Float, durationMs:Float):Void')
         method = method.replace('function skipCompatEventVideoToEnd(',
@@ -256,6 +262,8 @@ __METHOD__
                 public static var bpm:Float=100;
                 public static var bpmChangeMap:Array<{songTime:Float,bpm:Float}>=[{songTime:10000,bpm:150}];
                 public static function changeBPM(value:Float):Void bpm=value;
+                public static var instrumentalOffset:Float=0;
+                public static function audioTimeFromSong(time:Float):Float return time-instrumentalOffset;
             }''',
             'EngineCompat.hx': '''class EngineCompat {
                 public static function eventName(name:String):String

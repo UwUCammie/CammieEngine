@@ -744,9 +744,9 @@ class PsychGlobalPackImporter {
 				if (FileSystem.stat(path).size > MAX_CHART_BYTES)
 					continue;
 				var chart:Dynamic = Json.parse(File.getContent(path));
-				var song:Dynamic = chart == null ? null : Reflect.field(chart, 'song');
-				if (song != null && Std.isOfType(Reflect.field(song, 'notes'), Array)
-					&& Reflect.field(song, 'bpm') != null)
+				// Wrapped or flat, a pack holding a chart is not chart-free.
+				var song:Dynamic = PsychFamilyChartFields.payload(chart);
+				if (song != null && Reflect.field(song, 'bpm') != null)
 					return true;
 			} catch (_:Dynamic) {
 				// JSONC chart envelopes cannot be proven absent.  Conservatively reject

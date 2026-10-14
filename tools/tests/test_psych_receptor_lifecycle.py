@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from haxe_test_support import HAXE_COMMAND, ROOT
 from test_source_event_preparation import extract_method
+from base_helper_fixtures import copy_sources
 
 class PsychReceptorLifecycleTest(unittest.TestCase):
     def test_intro_takeover_and_rebuilt_index(self):
@@ -14,13 +15,13 @@ class PsychReceptorLifecycleTest(unittest.TestCase):
                           for name in ['startIntroTween', 'cancelIntroTween'])
         index = extract_method(play, 'public function refreshPsychStrumIndex(')
         begin = extract_method(play, 'function beginPsychCountdownReceptors(').replace('function ', 'public function ', 1)
-        defaults = '\n'.join(extract_method(play, 'function ' + name + '(').replace('function ', 'public function ', 1) for name in ['captureLuaDefaultStrums', 'publishPsychDefaultStrums'])
+        defaults = '\n'.join(extract_method(play, 'function ' + name + '(').replace('function ', 'public function ', 1) for name in ['receptorCount', 'receptorAt', 'captureLuaDefaultStrums', 'publishPsychDefaultStrums'])
         countdown = extract_method(play, 'public function startCountdown(')
         self.assertLess(countdown.index('if (sourceCountdownStopped)'), countdown.index('beginPsychCountdownReceptors();'))
         self.assertLess(countdown.index('beginPsychCountdownReceptors();'), countdown.index('notifySourceCountdownStarted();'))
         self.assertEqual(play.count('SONG.uiType, false, nightmareVisionScripts == null && !(sourceScoreOwner && !sourceScoreNightmare)'), 2)
         self.assertIn('PlayState.instance.refreshPsychStrumIndex()', extract_method(strums, 'public function changeType('))
-        self.assertIn('.cancelIntroTween(field)', extract_method(play, 'function compatTweenObject('))
+        self.assertIn('.cancelIntroTween(field)', extract_method(play, 'function compatTweenProperty('))
         fixture = r'''class Note {public static var NOTE_AMOUNT=1;}
 class Script {public var variables:Map<String,Dynamic>=[];public function new(){}}
 class FlxEase {public static function circOut(v:Float):Float return v;}
@@ -106,5 +107,6 @@ class Main {
 }'''.replace('__INTRO__',intro).replace('__INDEX__',index).replace('__BEGIN__',begin).replace('__DEFAULTS__',defaults)
         with tempfile.TemporaryDirectory() as temp:
             Path(temp, 'Main.hx').write_text(fixture, encoding='utf-8')
+            copy_sources(temp, 'CombinedReceptorIndex.hx')
             result=subprocess.run([*HAXE_COMMAND,'-cp',temp,'-main','Main','--interp'],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

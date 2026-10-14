@@ -795,6 +795,10 @@ class ImportScanJob {
 			if (song != null && !Std.isOfType(song, String)
 				&& (Reflect.hasField(song, 'notes') || Reflect.hasField(song, 'bpm')))
 				cached = song;
+			// The Psych 1.0 editor saves the song object without the wrapper.
+			// The shared check wants real sections, so sidecars stay out.
+			else if (PsychFamilyChartFields.isFlat(parsed))
+				cached = parsed;
 		} catch (_:Dynamic) {
 			cached = null;
 		}

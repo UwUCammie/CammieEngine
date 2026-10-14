@@ -47,6 +47,18 @@ class Main {
  static var storyDifficultyText='authored-difficulty';
  static var tween:Array<Dynamic>=[];
  static function currentSongDataFolder():String return 'assets/data/fixture-song';
+ static var sourceGameplayGlobalsSeeded:Bool = false;
+ static function currentChartSection():Dynamic return {mustHitSection:true};
+ static function sourceGameplayState(section:Dynamic, modFolder:String):SourceGameplayGlobals.SourceGameplayState {
+  return {
+   songName:'fixture-song', songPath:'fixture-song', songBpm:100, songSpeed:1, songLength:1000,
+   stage:'stage', hasVocals:true, storyMode:false, difficulty:1, difficultyName:'authored-difficulty',
+   week:'1', seenCutscene:false, startedCountdown:false, botPlay:true, practice:false,
+   healthGainMult:1, healthLossMult:1, instakillOnMiss:false, deaths:0, section:section,
+   curDecBeat:0, curDecStep:0, boyfriendX:770, boyfriendY:100, opponentX:100, opponentY:100,
+   girlfriendX:400, girlfriendY:130, modFolder:modFolder
+  };
+ }
  static function compatNoteTween(tag:String,note:Dynamic,property:String,value:Float,
   duration:Float,?ease:String):Void tween=[tag,note,property,value,duration,ease];
  static function seed(interp:Interp):Void {
@@ -63,13 +75,17 @@ class Main {
   if (!lua.smokeDiagnosticsEnabled) throw 'Lua compatibility scope lost smoke diagnostics setting';
   if (!canCall(lua)) throw 'new script closed';
   if (lua.variables.get('difficultyName')!='authored-difficulty') throw 'missing difficulty name';
+  if (lua.variables.get('botPlay')!=true || lua.variables.get('defaultOpponentX')!=100
+   || lua.variables.get('mustHitSection')!=true || !sourceGameplayGlobalsSeeded)
+   throw 'Lua scope did not receive the shared gameplay globals';
   Reflect.callMethod(null,lua.variables.get('noteTweenAlpha'),['fade',7,0.25,1.5,'quartInOut']);
   if (tween[0]!='fade' || tween[1]!=7 || tween[2]!='alpha' || tween[3]!=0.25
    || tween[4]!=1.5 || tween[5]!='quartInOut') throw 'alpha tween contract';
   Reflect.callMethod(null,lua.variables.get('close'),[true]);
   if (canCall(lua)) throw 'closed script still called';
   var other=new Interp(); seed(other);
-  if (!canCall(other) || other.variables.exists('close')) throw 'non-Lua scope changed';
+  if (!canCall(other) || other.variables.exists('close') || other.variables.exists('botPlay'))
+   throw 'non-Lua scope changed';
   other.variables.set('__compatClosed',true);
   if (canCall(other)) throw 'removed static Lua stage still called';
  }
@@ -77,6 +93,8 @@ class Main {
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             (Path(scratch) / "Main.hx").write_text(fixture, newline='\n')
+            (Path(scratch) / "SourceGameplayGlobals.hx").write_text(
+                (ROOT / "source/SourceGameplayGlobals.hx").read_text(encoding="utf-8"), newline='\n')
             result = subprocess.run([*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                                     cwd=ROOT, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

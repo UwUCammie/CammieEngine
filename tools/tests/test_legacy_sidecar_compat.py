@@ -32,7 +32,10 @@ class LegacySidecarCompatibilityTest(unittest.TestCase):
         self.assertIn("copyIfPresent(songData.dialogueJson", self.module)
         self.assertIn("copyIfPresent(songData.cutsceneJson", self.module)
         self.assertIn("copyIfPresent(songData.events", self.module)
-        self.assertIn("chartFieldString(chartSong, 'gfVersion', 'gf')", self.module)
+        # gf / gfVersion resolution now lives in the shared Psych-family helper.
+        self.assertIn("PsychFamilyChartFields.girlfriend(chartSong, false)", self.module)
+        self.assertIn("names = legacyPlayer3 ? ['gf', 'gfVersion', 'player3'] : ['gf', 'gfVersion']",
+                      (ROOT / "source/PsychFamilyChartFields.hx").read_text())
         self.assertIn("findImportFile(chartRoot, ['events.json', 'events.jsonc'])", self.module)
         self.assertIn("Path.join([songFolder, 'Voices.ogg'])", self.module)
         self.assertIn("cutsceneScript", self.module)

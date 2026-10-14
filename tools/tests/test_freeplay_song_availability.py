@@ -240,7 +240,11 @@ class Main {
         refresh = refresh.replace('function refreshImportAvailability(', 'public function refreshImportAvailability(', 1)
         interaction = interaction.replace('function refreshAvailabilityForInteraction()',
                                           'public function refreshAvailabilityForInteraction()', 1)
-        main = r'''class ImportRefreshManager {
+        main = r'''class RuntimeSmokeHarness {
+  public static function enabled():Bool return false;
+  public static function profileSection(section:String, seconds:Float):Void {}
+}
+class ImportRefreshManager {
   public static var revision:Int = 1;
   public static var snapshot:Dynamic = {revision:1,pendingSongs:[]};
   public static function availabilityRevision():Int return revision;

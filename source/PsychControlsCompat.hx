@@ -91,6 +91,60 @@ class PsychControlsCompat {
 	/** Psych JUST_RELEASED query for an arbitrary named action. */
 	@:keep public function justReleased(name:String):Bool return query(name, 'justReleased');
 
+	/**
+		The name a script callback means. Psych's key callbacks treat the four
+		bare directions as the note keys and pass every other name through as an
+		action, so `left`, ` LEFT ` and `note_left` are all the same question.
+	*/
+	public static function actionName(name:String):String {
+		var token = name == null ? '' : StringTools.trim(name).toLowerCase();
+		return switch (token) {
+			case 'left': 'note_left';
+			case 'down': 'note_down';
+			case 'up': 'note_up';
+			case 'right': 'note_right';
+			case 'confirm': 'accept';
+			default: token;
+		};
+	}
+
+	/** Actions the source engine binds out of the box. */
+	public static function knownAction(name:String):Bool {
+		return switch (name) {
+			case 'note_left' | 'note_down' | 'note_up' | 'note_right'
+				| 'ui_left' | 'ui_down' | 'ui_up' | 'ui_right'
+				| 'accept' | 'back' | 'pause' | 'reset'
+				| 'volume_mute' | 'volume_up' | 'volume_down' | 'debug_1' | 'debug_2' | 'fullscreen': true;
+			default: false;
+		};
+	}
+
+	/** Actions the game's own controls have an entry for. They are asked by
+		name, and a name they do not hold has nothing to read, so only these
+		count as actions when there are no source bindings. */
+	public static function nativeAction(name:String):Bool {
+		return switch (name) {
+			case 'note_left' | 'note_down' | 'note_up' | 'note_right'
+				| 'ui_left' | 'ui_down' | 'ui_up' | 'ui_right'
+				| 'accept' | 'back' | 'pause' | 'reset': true;
+			default: false;
+		};
+	}
+
+	/** True when the name is an action here, including ones the owner's own bindings add. */
+	@:keep public function hasAction(name:String):Bool {
+		var action = actionName(name);
+		return knownAction(action) || (_keyboardBinds != null && _keyboardBinds.exists(action))
+			|| (_gamepadBinds != null && _gamepadBinds.exists(action));
+	}
+
+	/** Script-facing lookup: normalises the name, then asks like `controls` does. */
+	@:keep public function actionState(name:String, phase:String):Bool return query(actionName(name), phase);
+
+	/** The same lookup against the game's own controls, for scripts with no source bindings. */
+	public static function nativeActionState(controls:Dynamic, name:String, phase:String):Bool
+		return queryNativeControls(controls, actionName(name), phase);
+
 	/** Query the note-key arrays captured by Psych's PlayState at scene creation. */
 	@:keep public function queryKeyboard(keys:Array<FlxKey>, phase:String):Bool
 		return !released && inputDevice.queryKeyboard(keys, phase);

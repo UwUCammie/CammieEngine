@@ -213,12 +213,12 @@ __HELPERS__
         # suppression applies only to a stunned empty Nightmare press.
         self.assertIn("if(sourceScoreLedgerActive())applySourceMissHealth(note,playerOne,missReaction);", compact_common)
         self.assertIn("if(playMissSound&&missReaction)", compact_common)
-        self.assertIn("if(missReaction&&(note==null||note.allowsAnimation(true)))", compact_common)
+        self.assertIn("if(missReaction&&(missOutcome==null||missOutcome.playAnim)&&(note==null||note.allowsAnimation(true)))", compact_common)
         self.assertIn("if(countsMiss)applySourceMiss();", compact_common)
         for callback in (
             'callAllHScript("playerOneMiss", []);',
             "dispatchPsychCompiledStage('noteMissPress', [direction]);",
-            'callAllHScript("noteMiss", [note, playerOne, direction, hxcMissEvent], true);',
+            "notifyNoteMissObservers(note, playerOne, direction, hxcMissEvent, false);",
         ):
             self.assertIn(callback, miss_method)
             self.assertNotIn(callback, common)

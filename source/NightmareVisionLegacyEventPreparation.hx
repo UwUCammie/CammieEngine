@@ -27,8 +27,7 @@ class NightmareVisionLegacyEventPreparation {
 		var offset:Float = global('eventEarlyTrigger', [Reflect.getProperty(event, 'event'),
 			Reflect.getProperty(event, 'value1'), Reflect.getProperty(event, 'value2')]);
 		if (scripts().exists(Reflect.getProperty(event, 'event'))) offset = invoke(event, 'getOffset', scripts, call);
-		if (offset != 0) return offset;
-		return Reflect.getProperty(event, 'event') == 'Kill Henchmen' ? 280 : 0;
+		return SourceEventPreparation.earlyOffsetFor(Reflect.getProperty(event, 'event'), offset);
 	}
 
 	/** Public eventPushed and generation share builtin ownership and callback arguments. */

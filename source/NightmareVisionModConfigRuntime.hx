@@ -2,7 +2,6 @@ package;
 
 import flixel.FlxG;
 import lime.graphics.Image;
-import Discord.DiscordClient;
 
 /** Native configuration services captured for a whole imported owner session.
 	No callback captures a PlayState, so persistent plugins and later songs share
@@ -22,7 +21,6 @@ class NightmareVisionModConfigRuntime implements NightmareVisionModConfigHost {
 	public var liveConfig(get, never):Dynamic;
 	function get_liveConfig():Dynamic return mods.currentModConfig;
 	final previousTitle:String;
-	final previousRpc:String;
 	var released:Bool = false;
 
 	public function new(mods:NightmareVisionModsContext, paths:NightmareVisionPaths) {
@@ -34,7 +32,6 @@ class NightmareVisionModConfigRuntime implements NightmareVisionModConfigHost {
 		}
 		this.mods = mods; this.paths = this.persistentPaths = paths;
 		previousTitle = FlxG.stage.window.title;
-		previousRpc = DiscordClient.getClientId();
 		options = new NightmareVisionSourceOptions(paths.root, new CodenameOwnerSaveData(paths.root));
 		options.bindFamily(function(directory) return directory == mods.currentModDirectory
 			? mods.selectedRoot() : mods.rootForDirectory(directory),
@@ -93,7 +90,12 @@ class NightmareVisionModConfigRuntime implements NightmareVisionModConfigHost {
 	public function setTransition(transition:NightmareVisionModTransition):Void {
 		ensureAlive(); transitionIn = transition; transitionOut = transition;
 	}
-	public function setRpcId(clientId:String):Void {ensureAlive(); DiscordClient.setClientId(clientId);}
+	/** Goes through the owner's presence lease, which hands the engine its id
+		back when the owner leaves unless something wrote a newer one since. */
+	public function setRpcId(clientId:String):Void {
+		ensureAlive();
+		NightmareVisionDiscordClient.forOwner(mods.ownerRoot, function() return !released).rpcId = clientId;
+	}
 	public function setDefaultFont(path:String):Void {
 		ensureAlive(); paths.DEFAULT_FONT = path; persistentPaths.DEFAULT_FONT = path;
 	}
@@ -114,7 +116,7 @@ class NightmareVisionModConfigRuntime implements NightmareVisionModConfigHost {
 		try options.release() catch (error:Dynamic) failure = error;
 		if (active == this) {
 			try FlxG.stage.window.title = previousTitle catch (error:Dynamic) {if (failure == null) failure = error;}
-			try DiscordClient.setClientId(previousRpc) catch (error:Dynamic) {if (failure == null) failure = error;}
+			try NightmareVisionDiscordClient.releaseOwner() catch (error:Dynamic) {if (failure == null) failure = error;}
 			try {
 				var icon = haxe.Resource.getBytes('cammie-native-window-icon');
 				if (icon != null) FlxG.stage.window.setIcon(Image.fromBytes(icon));

@@ -36,6 +36,27 @@ class SourceDiscordPresenceLease {
 		lastIdentityRevision = initial.identityRevision;
 	}
 
+	/** Build the rich presence request a Psych-family DiscordClient.changePresence
+		makes. Both donors do the same timestamp maths: the start is "now" when
+		asked for, a positive end is a duration counted from that start, and both
+		are sent as whole seconds. `now` is only passed by tests. */
+	public static function sourcePresence(details:String, state:Null<String>, smallImageKey:Null<String>,
+		hasStartTimestamp:Bool, endTimestamp:Null<Float>, largeImageKey:String, largeImageText:String,
+		?now:Null<Float>):Dynamic {
+		var startTimestamp:Float = !hasStartTimestamp ? 0 : (now == null ? Date.now().getTime() : now);
+		var finishTimestamp:Float = endTimestamp == null ? 0 : endTimestamp;
+		if (finishTimestamp > 0) finishTimestamp = startTimestamp + finishTimestamp;
+		return {
+			state:state,
+			details:details,
+			smallImageKey:smallImageKey,
+			largeImageKey:largeImageKey,
+			largeImageText:largeImageText,
+			startTimestamp:Std.int(startTimestamp / 1000),
+			endTimestamp:Std.int(finishTimestamp / 1000)
+		};
+	}
+
 	public function publish(presence:Dynamic):Void {
 		ensureActive();
 		var current = presence == null ? driver.clear() : driver.publish(presence);

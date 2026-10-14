@@ -111,15 +111,23 @@ class Fixture {
         result = self.run_haxe(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_dynamic_bracket_expression_still_reports_a_specific_table_key_error(self):
+    def test_dynamic_bracket_expression_builds_the_table_at_run_time(self):
         fixture = r'''
 class Fixture {
  static function main() {
   var converted = LuaCompat.translate(
-   "function onCreate()\n local key = 'x'\n local values = {[key] = function() end}\nend",
+   "function onCreate()\n local key = 'x'\n local values = {[key] = function() return 7 end}\n return values.x()\nend",
    'dynamic-function-table.lua');
-  if (converted.supported || converted.diagnostics.join(' | ').indexOf('lua-table-key') < 0)
-   throw 'unsupported dynamic table key lost its diagnostic: ' + converted.diagnostics.join(' | ');
+  if (!converted.supported)
+   throw 'computed table key was rejected: ' + converted.diagnostics.join(' | ');
+  var interp = new LuaCompatInterp();
+  interp.execute(new hscript.Parser().parseString(converted.hscript));
+  if (Reflect.callMethod(null, interp.variables.get('onCreate'), []) != 7)
+   throw 'computed table key did not hold its function';
+  // A key that is not an expression at all is still reported.
+  var broken = LuaCompat.translate("local values = {1 + 2 = 3}", 'bad-key.lua');
+  if (broken.supported || broken.diagnostics.join(' | ').indexOf('lua-table-key') < 0)
+   throw 'invalid table key lost its diagnostic: ' + broken.diagnostics.join(' | ');
  }
 }
 '''

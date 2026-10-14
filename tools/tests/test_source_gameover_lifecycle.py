@@ -240,9 +240,15 @@ class Main {
 
     def test_menu_callback_and_end_callback_order(self):
         back = extract_method(self.source, "function sourceBackToMenu():Void")
-        self.assertLess(back.index("sourceGameOverResetForMenu()"), back.index("loadAndSwitchState"))
-        self.assertLess(back.index("loadAndSwitchState"), back.index("playMusic"))
-        self.assertLess(back.index("playMusic"), back.index("onGameOverConfirm", back.index("playMusic")))
+        # The menu switch and its music are the shared exit, run here for real.
+        play_source = (ROOT / "source" / "PlayState.hx").read_text(encoding="utf-8")
+        exit_to_menu = extract_method(play_source, "public static function exitToMenu(")
+        song_flow = (ROOT / "source" / "SongFlow.hx").read_text(encoding="utf-8").replace("package;", "", 1)
+        shared_exit = "PlayState.exitToMenu(false, true)"
+        self.assertLess(back.index("sourceGameOverResetForMenu()"), back.index(shared_exit))
+        self.assertLess(back.index(shared_exit), back.index("onGameOverConfirm", back.index(shared_exit)))
+        self.assertNotIn("loadAndSwitchState", back)
+        self.assertLess(exit_to_menu.index("loadAndSwitchState"), exit_to_menu.index("playMusic"))
         end = extract_method(self.source, "function endBullshit():Void")
         self.assertLess(end.index("new FlxTimer().start"), end.index("notifySourceGameOverConfirmed()"))
 
@@ -259,6 +265,7 @@ class SoundFrontEnd {
 class SourceGameOverSettings { public static inline var PSYCH:Int=1; }
 class Camera {
  public var visible(get,set):Bool;
+ public var followLerp:Float=1;
  var value:Bool=true;
  public function new() {}
  function get_visible():Bool return value;
@@ -268,6 +275,8 @@ class FlxG {
  public static var sound:SoundFrontEnd=new SoundFrontEnd();
  public static var camera:Camera=new Camera();
 }
+class PsychOwnerChartingMode { public static function clear(owner:String):Void Trace.add("charting.clear"); }
+''' + song_flow + r'''
 class HxcCompatRuntime { public static function clearGameOverCharacter(value:Dynamic):Void Trace.add("hxc.clear"); }
 class Paths { public static function music(key:String):String return key; }
 class StoryMenuState { public function new() {} }
@@ -279,6 +288,13 @@ class LoadingState {
 }
 class PlayState {
  public static var isStoryMode:Bool=true;
+ public static var instance:PlayState=null;
+ public static var balls:Int=0;
+ public static var watchedCutscene:Bool=false;
+ public var canResync:Bool=true;
+ static function psychChartingOwnerRoot():String return "";
+ static function skipNextSongTransition(skip:Bool):Void if (skip) Trace.add("skip.transition");
+ ''' + exit_to_menu + r'''
  public function new() {}
  public function sourceGameOverResetForMenu():Void Trace.add("reset");
  public function sourceGameOverCall(hook:String,args:Array<Dynamic>):Dynamic {

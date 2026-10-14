@@ -11,6 +11,7 @@ from haxe_test_support import FixturePath as Path
 import subprocess
 import tempfile
 import unittest
+from tools.haxe_import_io_stubs import install_chart_format_modules
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,7 @@ class ImportEngineRegistryTest(unittest.TestCase):
         (folder / "PsychSongNameCompat.hx").write_text(
             (ROOT / "source/PsychSongNameCompat.hx").read_text()
         , newline='\n')
+        install_chart_format_modules(folder)
 
     def test_labels_are_stable_and_do_not_claim_unsupported_kate_engine(self):
         for label in (

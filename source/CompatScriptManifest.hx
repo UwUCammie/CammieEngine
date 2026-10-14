@@ -129,6 +129,24 @@ class CompatScriptManifest {
 		};
 	}
 
+	/** Append source roots from the same import as resource-only dependencies,
+	 * each under its own destination namespace and in the order given. One that
+	 * maps onto the owner collapses into it when the manifest is normalized. */
+	public static function addDependencyRoots(data:CompatScriptManifestData, sources:Array<Dynamic>):Void {
+		if (data == null || data.roots == null || sources == null)
+			return;
+		for (source in sources) {
+			if (source == null)
+				continue;
+			var root:Dynamic = Reflect.field(source, 'root');
+			if (root == null || StringTools.trim(Std.string(root)) == '')
+				continue;
+			var engineValue:Dynamic = Reflect.field(source, 'engine');
+			var engine = engineValue == null ? '' : Std.string(engineValue);
+			data.roots.push({engine:engine, path:destinationRoot(Std.string(root), engine), dependency:true});
+		}
+	}
+
 	public static function stringify(data:CompatScriptManifestData):String {
 		return Json.stringify(normalize(data));
 	}

@@ -38,7 +38,7 @@ class VSliceStartTimestampTest(unittest.TestCase):
         self.assertIn("startTimestamp = consumeStartingPosition();", create_head)
         self.assertLess(capture_at, create_end)
         self.assertIn("if (daStrumTime >= startTimestamp)", source)
-        self.assertIn("Conductor.songPosition = startTimestamp;", source)
+        self.assertIn("Conductor.songPosition = Conductor.audioStartSongTime(startTimestamp);", source)
 
         fixture = f'''class TimestampHarness {{
  public static var startingPosition:Float = 0;

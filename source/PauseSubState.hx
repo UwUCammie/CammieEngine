@@ -61,12 +61,17 @@ class PauseSubState extends MusicBeatSubstate {
 	public function new(x:Float, y:Float, camera:FlxCamera) {
 		super();
 
-		var pauseTrack = 'breakfast' + HxcCompatRuntime.pauseMusicSuffix + TitleState.soundExt;
-		if (!FNFAssets.exists('assets/music/' + pauseTrack))
-			pauseTrack = 'breakfast' + TitleState.soundExt;
-		pauseMusic = new FlxSound().loadEmbedded('assets/music/' + pauseTrack, true, true);
+		// The track was picked while the song loaded and it is streamed, so
+		// opening the menu neither probes the disk nor decodes the whole file
+		// on the frame the player presses pause.
+		var pauseTrack = PauseMusicTrack.pathFor(HxcCompatRuntime.pauseMusicSuffix, TitleState.soundExt,
+			ImportRefreshManager.generation, function(path:String):Bool return FNFAssets.exists(path));
+		var pauseStream:openfl.media.Sound = null;
+		try pauseStream = FNFAssets.getMusic(pauseTrack) catch (_:Dynamic) {}
+		pauseMusic = pauseStream != null ? new FlxSound().loadEmbedded(pauseStream, true, true)
+			: new FlxSound().loadEmbedded(pauseTrack, true, true);
 		pauseMusic.volume = 0;
-		pauseMusic.play(false, FlxG.random.int(0, Std.int(pauseMusic.length / 2)));
+		pauseMusic.play(false, FlxG.random.int(0, PauseMusicTrack.latestStart(pauseMusic.length)));
 		FlxG.sound.list.add(pauseMusic);
 
 		nativePauseBackdrop = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
@@ -106,6 +111,9 @@ class PauseSubState extends MusicBeatSubstate {
 		FlxG.cameras.add(pauseCamera, false);
 		cameras = [pauseCamera];
 		codenameInitPauseScript();
+		// Nothing is moving while the menu fades in, so pay for a full
+		// collection here instead of somewhere in the middle of the song.
+		EngineMemory.collectNow(true, 'pause');
 	}
 
 	/** Run only the module script belonging to the explicitly active owner. */
@@ -363,22 +371,8 @@ class PauseSubState extends MusicBeatSubstate {
 	}
 
 	function exitPauseToMenu():Void {
-		// State creation can select another chart owner. Capture this owner before
-		// switching, then clear its flag in the donor's post-switch order.
-		var chartingOwner = PlayState.psychChartingOwnerRoot();
-		if (chartingOwner != '') {
-			PlayState.balls = 0;
-			PlayState.watchedCutscene = false;
-			if (PlayState.instance != null) PlayState.instance.canResync = false;
-		}
-		if (PlayState.isStoryMode)
-			LoadingState.loadAndSwitchState(new StoryMenuState());
-		else
-			ImportedMenuEntry.returnToFreeplay();
-		if (chartingOwner != '') {
-			PsychOwnerChartingMode.clear(chartingOwner);
-			if (FlxG.camera != null) FlxG.camera.followLerp = 0;
-		}
+		// Leaving is the same from every screen, so the song decides where to go.
+		PlayState.exitToMenu();
 	}
 
 	override function update(elapsed:Float) {
@@ -408,10 +402,10 @@ class PauseSubState extends MusicBeatSubstate {
 					case "Resume":
 						close();
 					case "Restart Song":
-						FlxG.resetState();
+						PlayState.restartCurrentSong();
 					case "Replay Cutscene":
 						PlayState.watchedCutscene = false;
-						FlxG.resetState();
+						PlayState.restartCurrentSong();
 					case "Charting":
 						openPauseChartEditor();
 					case "Exit to menu":
@@ -444,11 +438,8 @@ class PauseSubState extends MusicBeatSubstate {
 					curSelected = 0;
 					changeSelection();
 				} else {
-					PlayState.SONG = daSelected.toLowerCase() == 'normal'
-						? Song.loadFromJson(PlayState.SONG.song.toLowerCase(), PlayState.SONG.song.toLowerCase())
-						: Song.loadFromJson(PlayState.SONG.song.toLowerCase() + '-' + daSelected.toLowerCase(), PlayState.SONG.song.toLowerCase());
-					PlayState.storyDifficulty = diffs[curSelected - 1];
-					FlxG.resetState();
+					// Same loader scripts use: a chart that will not load keeps this menu open.
+					PlayState.loadSongByName(null, diffs[curSelected - 1]);
 				}
 			}
 		}

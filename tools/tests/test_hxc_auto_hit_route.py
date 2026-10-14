@@ -271,8 +271,14 @@ class Main {
         body = state[gate:state.index("EngineCompat.hxcApplyNoteCallbackPayload(hxcHitEvent);", gate)]
         self.assertIn("if (!note.isSustainNote) {", body)
         self.assertIn('callHxcNoteHScript("noteHit"', body)
+        # Every hit route reaches the generic hooks through one helper; the
+        # Psych route skips the Psych broadcast it already made itself.
         self.assertIn(
-            'callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true, null, null, psychSource);',
+            "notifyNoteHitObservers(note, playerOne, goodhit, hxcHitEvent, psychSource, false, false);",
+            state,
+        )
+        self.assertIn(
+            "callAllHScript(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note, playerOne], true, null, null,",
             state,
         )
 

@@ -61,7 +61,7 @@ class HistoricalEventPreparationTest(unittest.TestCase):
   ref=REFERENCE.replace('__METHODS__','\n'.join(methods)).replace('function callScript','public function callScript').replace('function callOnScripts','public function callOnScripts')
   with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as folder:
    work=FixturePath(folder);(work/'Main.hx').write_text(ref+MAIN)
-   for name in ['SourceEventNote','NightmareVisionLegacyEventPreparation']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
+   for name in ['SourceEventNote','SourceEventPreparation','NightmareVisionLegacyEventPreparation']:(work/(name+'.hx')).write_text((ROOT/'source'/(name+'.hx')).read_text())
    result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'-main','Main','--interp'],cwd=ROOT,text=True,capture_output=True,timeout=60)
    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 if __name__=='__main__':unittest.main()

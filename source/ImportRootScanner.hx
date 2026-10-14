@@ -41,6 +41,9 @@ typedef ImportRoot = {
 	/** Additional logical asset roots from a source project mapping. */
 	@:optional var supplementalAssetRoots:Array<ImportRootAssetSource>;
 	var paths:ImportRootPaths;
+	/** The chosen engine's evidence proves the format on its own (a chart
+	 * shape or executable marker), not just a layout hint. */
+	@:optional var decisive:Bool;
 }
 
 typedef ImportRootScanProgress = {
@@ -188,6 +191,9 @@ class ImportRootScanner {
 	// importer had a chance to inspect it.
 	static inline var MAX_VSLICE_SONG_DIRECTORIES:Int = 128;
 	static inline var MAX_VSLICE_SONG_FILES:Int = 128;
+	static inline var MAX_VSLICE_REGISTRY_FILES:Int = 8;
+	static inline var MAX_VSLICE_SCRIPT_DIRECTORIES:Int = 64;
+	static inline var MAX_NIGHTMARE_VISION_PACKAGE_SONGS:Int = 16;
 	// Codename probes stay bounded for the same reason as the V-Slice ones.
 	static inline var MAX_CODENAME_SONG_DIRECTORIES:Int = 64;
 	static inline var MAX_CODENAME_MOD_DIRECTORIES:Int = 16;
@@ -295,6 +301,13 @@ class ImportRootScanner {
 					// whole game was selected.
 					if (existing.engine == ImportEngine.NIGHTMARE_VISION
 						&& isNightmareVisionContentPackage(existing.root, match.root)) {
+						isContentChild = true;
+						break;
+					}
+					// A game's asset libraries (assets/preload, assets/game, a base
+					// game folder) hold the same week/character/stage files a mod
+					// does. They belong to the game root that was already found.
+					if (isOwnAssetTree(existing, match)) {
 						isContentChild = true;
 						break;
 					}
@@ -412,15 +425,27 @@ class ImportRootScanner {
 		var nestedNightmareVisionOwner = nightmareVisionContentOwner(root, executableMarkerCache);
 		var nestedNightmareVisionSongs = nestedNightmareVisionOwner != ''
 			&& hasNightmareVisionNestedSongLayout(root, rootEntries);
-		if ((nestedNightmareVisionSongs || nestedNightmareVisionChart)
+		// A package picked on its own has no parent game to vouch for it, so
+		// its own songs/<song>/data charts have to do that.
+		var standaloneNightmareVisionSongs = nestedNightmareVisionOwner == ''
+			&& hasNightmareVisionPackageSongs(root, rootEntries);
+		if ((nestedNightmareVisionSongs || nestedNightmareVisionChart || standaloneNightmareVisionSongs)
 			&& (layout.data == null || layout.data == '')) {
 			var nestedSongsRoot = findDirectory(rootEntries, root, 'songs');
 			if (nestedSongsRoot != '')
 				layout.data = nestedSongsRoot;
 		}
 		if (!hasImportShape(root, layout, rootEntries) && !nightmareVisionProject && !nightmareVisionChart
-			&& !nestedNightmareVisionSongs)
+			&& !nestedNightmareVisionSongs && !standaloneNightmareVisionSongs)
 			return null;
+		// Psych and its forks share their week/character/stage files. Read
+		// them once here, each engine case below asks the same probe.
+		// The folder holding data/ is a base too: packaged games keep their
+		// definitions in an asset library (assets/preload) the layout only
+		// exposes through its chart folder.
+		var chartLibrary = layout.data == null || layout.data == '' ? '' : Path.directory(Path.normalize(layout.data));
+		var familyProbe = new PsychFamilyFormatProbe([root, layout.contentRoot, layout.shared, layout.data, chartLibrary],
+			[layout.data, layout.audio]);
 		var executableMarkers = probeExecutableMarkers(root, rootEntries, executableMarkerCache);
 		var lowerRootEntries:Array<String> = [for (entry in rootEntries) entry.toLowerCase()];
 		var selected = ImportEngine.normalize(requestedEngine);
@@ -434,7 +459,8 @@ class ImportRootScanner {
 		if (selected != ImportEngine.AUTO)
 			enginesToScore = [selected];
 		for (engine in enginesToScore) {
-			var result = scoreEngine(root, layout, engine, executableMarkers, rootEntries, lowerRootEntries);
+			var result = scoreEngine(root, layout, engine, executableMarkers, rootEntries, lowerRootEntries,
+				familyProbe, standaloneNightmareVisionSongs);
 			scores.set(engine, result.score);
 			evidenceByEngine.set(engine, result.evidence);
 			decisiveEvidenceByEngine.set(engine, result.decisive);
@@ -498,6 +524,7 @@ class ImportRootScanner {
 			engine: bestEngine,
 			confidence: confidence,
 			evidence: evidence.copy(),
+			decisive: decisiveEvidenceByEngine.get(bestEngine) == true,
 			data: layout.data,
 			audio: layout.audio,
 			images: layout.images,
@@ -546,7 +573,8 @@ class ImportRootScanner {
 
 	#if sys
 	static function scoreEngine(root:String, layout:Dynamic, engine:String,
-		executableMarkers:Array<String>, entries:Array<String>, lowerEntries:Array<String>):{score:Int, evidence:Array<String>, decisive:Bool} {
+		executableMarkers:Array<String>, entries:Array<String>, lowerEntries:Array<String>,
+		?familyProbe:PsychFamilyFormatProbe, ?standaloneNightmareVisionSongs:Bool = false):{score:Int, evidence:Array<String>, decisive:Bool} {
 		var score = 0;
 		var evidence:Array<String> = [];
 		var decisive = false;
@@ -567,11 +595,11 @@ class ImportRootScanner {
 					score += 30;
 					evidence.push('V-Slice/Polymod marker: _polymod_meta.json');
 				}
-				var hasVSliceChartPair = hasVSlicelikeCharts(layout.data);
-				if (hasVSliceChartPair) {
-					score += 60;
-					evidence.push('V-Slice chart pair: data/songs/*/*-metadata.json and *-chart.json');
-					decisive = true;
+				for (found in vsliceFormatEvidence(root, layout, entries)) {
+					score += found.score;
+					evidence.push(found.text);
+					if (found.decisive)
+						decisive = true;
 				}
 				if (hasDirectory(entries, 'shared') && directData && directSongs) {
 					score += 10;
@@ -655,6 +683,30 @@ class ImportRootScanner {
 					evidence.push('Nightmare Vision nested chart metadata: format=nmv2 in songs/<song>/data');
 					decisive = true;
 				}
+				if (standaloneNightmareVisionSongs) {
+					// Nobody else keeps charts in a data folder inside each song
+					// folder, right next to that song's audio.
+					score += 120;
+					evidence.push('Nightmare Vision package song layout: songs/<song>/data/<chart>.json beside the song audio');
+					decisive = true;
+				}
+				if (hasMeta && hasNightmareVisionPackageMeta(root, entries)) {
+					score += 40;
+					evidence.push('Nightmare Vision package meta.json fields');
+				}
+				// Folder names below are only supporting evidence. They must not
+				// be what unlocks the shared family formats further down.
+				var ownMarker = score > 0;
+				var packageFolders = nightmareVisionPackageFolders(root, layout, entries);
+				if (packageFolders.length > 0) {
+					score += 10 * packageFolders.length;
+					evidence.push('Nightmare Vision package folders: ' + packageFolders.join(', '));
+				}
+				// The fork reads the family's week/character/stage files too. They
+				// only count once one of its own markers above has shown up, so a
+				// plain Psych mod is never pulled over here.
+				if (ownMarker && scorePsychFamilyShapes(familyProbe, 'Nightmare Vision', evidence, function(points:Int) score += points))
+					decisive = true;
 
 			case ImportEngine.PSYCH:
 				// NV is a Psych fork: inherited scripts, packs and version strings
@@ -703,6 +755,15 @@ class ImportRootScanner {
 				if (hasPsychSongDataCharts(layout.data)) {
 					score += 85;
 					evidence.push('Psych Engine chart layout: data/songData/<song>/*.json');
+					decisive = true;
+				}
+				// Mods without pack.json or Lua still carry the family's JSON
+				// formats. These are read by shape, a folder name is not enough.
+				if (scorePsychFamilyShapes(familyProbe, 'Psych Engine', evidence, function(points:Int) score += points))
+					decisive = true;
+				if (PsychFamilyFormatProbe.hasFlatPsychChart(layout.data)) {
+					score += 85;
+					evidence.push('Psych Engine flat chart: format=psych_v1 without a song wrapper');
 					decisive = true;
 				}
 
@@ -761,7 +822,9 @@ class ImportRootScanner {
 				}
 
 			case ImportEngine.LEGACY_POLYMOD:
-				if (hasPolymod) {
+				// _polymod_meta.json is shared with V-Slice. Once the root shows
+				// V-Slice formats the marker says nothing about a legacy build.
+				if (hasPolymod && vsliceFormatEvidence(root, layout, entries).length == 0) {
 					score += 65;
 					evidence.push('Legacy FNF/Polymod marker: _polymod_meta.json');
 				}
@@ -777,6 +840,146 @@ class ImportRootScanner {
 		return {score:score, evidence:evidence, decisive:decisive};
 	}
 
+	/** Score the week/character/stage/script shapes Psych and its forks have
+	 * in common. Returns true when the evidence is decisive on its own. */
+	static function scorePsychFamilyShapes(familyProbe:PsychFamilyFormatProbe, label:String,
+		evidence:Array<String>, add:Int->Void):Bool {
+		if (familyProbe == null)
+			return false;
+		var shapes = familyProbe.shapes();
+		if (shapes.weekSongChart) {
+			add(60);
+			evidence.push(label + ' week file listing a charted song: weeks/*.json');
+		} else if (shapes.week) {
+			add(25);
+			evidence.push(label + ' week file: weeks/*.json');
+		}
+		if (shapes.character) {
+			add(40);
+			evidence.push(label + ' character file: characters/*.json');
+		}
+		if (shapes.stage) {
+			add(30);
+			evidence.push(label + ' stage file: stages/*.json');
+		}
+		if (shapes.haxeCallback) {
+			add(25);
+			evidence.push(label + ' HScript callbacks: on* functions in song, stage or global scripts');
+		}
+		return shapes.weekSongChart;
+	}
+
+	/**
+		V-Slice formats found in a root, apart from the Polymod marker it shares
+		with legacy builds. The legacy case asks the same question to decide
+		whether that marker still means anything.
+	*/
+	static function vsliceFormatEvidence(root:String, layout:Dynamic,
+		entries:Array<String>):Array<{score:Int, text:String, decisive:Bool}> {
+		var found:Array<{score:Int, text:String, decisive:Bool}> = [];
+		if (hasVSlicelikeCharts(layout.data))
+			found.push({score:60, text:'V-Slice chart pair: data/songs/*/*-metadata.json and *-chart.json', decisive:true});
+		var apiVersion = vslicePolymodApiVersion(root, entries);
+		if (apiVersion != '')
+			found.push({score:40, text:'V-Slice Polymod API version: ' + apiVersion, decisive:false});
+		var registry = vsliceRegistryKind(layout.data);
+		if (registry != '')
+			found.push({score:50, text:'V-Slice versioned registry entry: data/' + registry + '/*.json', decisive:true});
+		var scripts = findDirectory(entries, root, 'scripts');
+		if (scripts != '' && hasVSliceScriptModule(scripts))
+			found.push({score:40, text:'V-Slice script modules: scripts/**/*.hxc', decisive:true});
+		if (findDirectory(entries, root, '_merge') != '')
+			found.push({score:25, text:'V-Slice Polymod merge folder: _merge', decisive:false});
+		return found;
+	}
+
+	/** api_version from _polymod_meta.json when it is from the V-Slice era.
+	 * Builds before it left this at the Polymod template value of 0.1.0. */
+	static function vslicePolymodApiVersion(root:String, entries:Array<String>):String {
+		var path = findFile(entries, root, '_polymod_meta.json');
+		if (path == '')
+			return '';
+		try {
+			if (FileSystem.stat(path).size > MAX_PROJECT_MARKER_BYTES)
+				return '';
+			var value:Dynamic = Reflect.field(haxe.Json.parse(File.getContent(path)), 'api_version');
+			if (!Std.isOfType(value, String))
+				return '';
+			var version = StringTools.trim(cast value);
+			var pattern = ~/^([0-9]+)\.([0-9]+)(?:\.[0-9]+)*/;
+			if (!pattern.match(version))
+				return '';
+			var major = Std.parseInt(pattern.matched(1));
+			var minor = Std.parseInt(pattern.matched(2));
+			return (major > 0 || minor >= 3) ? version : '';
+		} catch (_:Dynamic) {
+			return '';
+		}
+	}
+
+	/** First V-Slice registry folder holding a versioned entry of its kind. */
+	static function vsliceRegistryKind(dataPath:String):String {
+		if (dataPath == null || dataPath == '')
+			return '';
+		var dataEntries = readDirectory(dataPath);
+		for (kind in ['characters', 'stages', 'levels', 'notestyles', 'players']) {
+			var folder = findDirectory(dataEntries, dataPath, kind);
+			if (folder == '')
+				continue;
+			var checked = 0;
+			for (file in readDirectory(folder)) {
+				if (!file.toLowerCase().endsWith('.json'))
+					continue;
+				if (checked++ >= MAX_VSLICE_REGISTRY_FILES)
+					break;
+				var path = Path.join([folder, file]);
+				try {
+					if (FileSystem.isDirectory(path) || FileSystem.stat(path).size > MAX_PROJECT_MARKER_BYTES)
+						continue;
+					if (isVSliceRegistryEntry(kind, haxe.Json.parse(File.getContent(path))))
+						return kind;
+				} catch (_:Dynamic) {}
+			}
+		}
+		return '';
+	}
+
+	/** Every V-Slice registry entry carries a semver `version` string. The
+	 * keys beside it differ per kind and keep other JSON out. */
+	static function isVSliceRegistryEntry(kind:String, entry:Dynamic):Bool {
+		if (entry == null || !Std.isOfType(Reflect.field(entry, 'version'), String))
+			return false;
+		var has = function(name:String):Bool return Reflect.field(entry, name) != null;
+		return switch (kind) {
+			case 'characters': has('renderType') || has('assetPath');
+			case 'stages': Std.isOfType(Reflect.field(entry, 'props'), Array) && has('characters');
+			case 'levels': Std.isOfType(Reflect.field(entry, 'songs'), Array) && has('titleAsset');
+			case 'notestyles': has('assets');
+			case 'players': has('freeplayDJ') || has('charSelect') || has('ownedChars');
+			default: false;
+		}
+	}
+
+	/** Any .hxc module below scripts/, a few levels deep at most. */
+	static function hasVSliceScriptModule(scripts:String):Bool {
+		var queue:Array<{path:String, depth:Int}> = [{path:scripts, depth:0}];
+		var cursor = 0;
+		while (cursor < queue.length && cursor < MAX_VSLICE_SCRIPT_DIRECTORIES) {
+			var item = queue[cursor++];
+			for (entry in readDirectory(item.path)) {
+				var path = Path.join([item.path, entry]);
+				var directory = false;
+				try directory = FileSystem.isDirectory(path) catch (_:Dynamic) continue;
+				if (directory) {
+					if (item.depth < 3)
+						queue.push({path:path, depth:item.depth + 1});
+				} else if (entry.toLowerCase().endsWith('.hxc'))
+					return true;
+			}
+		}
+		return false;
+	}
+
 	static function hasImportShape(root:String, layout:Dynamic, entries:Array<String>):Bool {
 		var marker = hasFile(entries, '_polymod_meta.json') || hasFile(entries, 'pack.json')
 			|| hasFile(entries, 'meta.json') || hasDirectory(entries, 'manifest');
@@ -789,6 +992,15 @@ class ImportRootScanner {
 		// those packs through their owner-scoped importer.
 		if (layout.scripts != '') contentCount++;
 		if (layout.shared != '') contentCount++;
+		// Definition-only Psych-family mods (weeks, characters or stages next to
+		// one media folder) are importable too. Which engine they are is still
+		// decided from the files themselves.
+		if (hasDirectory(entries, 'weeks') || hasDirectory(entries, 'characters')
+			|| hasDirectory(entries, 'stages'))
+			contentCount++;
+		// A Polymod mod can consist of nothing but patches to base files.
+		if (hasDirectory(entries, '_append') || hasDirectory(entries, '_merge'))
+			contentCount++;
 		return contentCount >= 2 || (marker && contentCount >= 1);
 	}
 
@@ -874,6 +1086,23 @@ class ImportRootScanner {
 
 	/** True only for a direct content/<pack> child; nested engine roots outside
 	 * this authored NMV container remain independent scan results. */
+	/** True when a candidate root is part of an already found root: it sits in
+	 * that root's assets/ tree, or both read their charts from one folder. */
+	static function isOwnAssetTree(owner:ImportRoot, candidate:ImportRoot):Bool {
+		if (owner == null || candidate == null)
+			return false;
+		if (owner.data != null && owner.data != '' && candidate.data != null && candidate.data != ''
+			&& identityKey(owner.data) == identityKey(candidate.data))
+			return true;
+		var assets = canonicalize(Path.join([owner.root, 'assets']));
+		var path = canonicalize(candidate.root);
+		#if windows
+		assets = assets.toLowerCase();
+		path = path.toLowerCase();
+		#end
+		return assets != '' && (path == assets || StringTools.startsWith(path, assets + '/'));
+	}
+
 	static function isNightmareVisionContentPackage(ownerRoot:String, candidateRoot:String):Bool {
 		if (ownerRoot == null || candidateRoot == null)
 			return false;
@@ -901,6 +1130,96 @@ class ImportRootScanner {
 				return true;
 		}
 		return false;
+	}
+
+	/**
+		The package layout proven from the package itself: a song folder with a
+		data/ child holding a wrapped section chart, next to that song's audio.
+		Codename also nests per-song folders but uses charts/ plus a per-song
+		meta.json, which is skipped here.
+	*/
+	static function hasNightmareVisionPackageSongs(root:String, rootEntries:Array<String>):Bool {
+		var songs = findDirectory(rootEntries, root, 'songs');
+		if (songs == '')
+			return false;
+		var checkedDirectories = 0;
+		var checkedCharts = 0;
+		for (entry in readDirectory(songs)) {
+			var song = Path.join([songs, entry]);
+			try {
+				if (!FileSystem.isDirectory(song))
+					continue;
+			} catch (_:Dynamic) continue;
+			if (checkedDirectories++ >= MAX_NIGHTMARE_VISION_PACKAGE_SONGS)
+				break;
+			var songEntries = readDirectory(song);
+			var dataPath = findDirectory(songEntries, song, 'data');
+			if (dataPath == '' || isCodenameSongFolder(song))
+				continue;
+			var hasAudio = findDirectory(songEntries, song, 'audio') != '';
+			if (!hasAudio)
+				for (file in songEntries)
+					if (file.toLowerCase().startsWith('inst.'))
+						hasAudio = true;
+			if (!hasAudio)
+				continue;
+			for (fileName in readDirectory(dataPath)) {
+				var lower = fileName.toLowerCase();
+				if (!lower.endsWith('.json') && !lower.endsWith('.jsonc'))
+					continue;
+				if (checkedCharts++ >= MAX_NIGHTMARE_VISION_PACKAGE_SONGS)
+					return false;
+				var chartPath = Path.join([dataPath, fileName]);
+				try {
+					if (FileSystem.isDirectory(chartPath)
+						|| FileSystem.stat(chartPath).size > MAX_ENGINE_CHART_BYTES)
+						continue;
+					var chart:Dynamic = haxe.Json.parse(File.getContent(chartPath));
+					// The source loader throws on a chart without the wrapper.
+					if (PsychFamilyFormatProbe.isSectionChart(chart) && !PsychFamilyChartFields.isFlat(chart))
+						return true;
+				} catch (_:Dynamic) {}
+			}
+		}
+		return false;
+	}
+
+	/** A package meta.json: the boolean `global` switch, or one of the
+	 * window/transition fields only this engine's packages define. */
+	static function hasNightmareVisionPackageMeta(root:String, entries:Array<String>):Bool {
+		var path = findFile(entries, root, 'meta.json');
+		if (path == '')
+			return false;
+		try {
+			if (FileSystem.stat(path).size > MAX_PROJECT_MARKER_BYTES)
+				return false;
+			var meta:Dynamic = haxe.Json.parse(File.getContent(path));
+			if (meta == null)
+				return false;
+			for (name in ['windowTitle', 'iconFile', 'defaultTransition', 'stateRedirects'])
+				if (Reflect.field(meta, name) != null)
+					return true;
+			return Std.isOfType(Reflect.field(meta, 'global'), Bool)
+				&& Std.isOfType(Reflect.field(meta, 'name'), String);
+		} catch (_:Dynamic) {
+			return false;
+		}
+	}
+
+	/** Package-only folders, as supporting evidence. */
+	static function nightmareVisionPackageFolders(root:String, layout:Dynamic, entries:Array<String>):Array<String> {
+		var found:Array<String> = [];
+		var data = findDirectory(entries, root, 'data');
+		if (data != '') {
+			var dataEntries = readDirectory(data);
+			for (name in ['noteskins', 'notetypes', 'events'])
+				if (findDirectory(dataEntries, data, name) != '')
+					found.push('data/' + name);
+		}
+		var scripts = findDirectory(entries, root, 'scripts');
+		if (scripts != '' && findDirectory(readDirectory(scripts), scripts, 'states') != '')
+			found.push('scripts/states');
+		return found;
 	}
 
 	/** Nightmare Vision has its own published package id even though its source
@@ -1072,9 +1391,8 @@ class ImportRootScanner {
 						|| FileSystem.stat(chartPath).size > MAX_ENGINE_CHART_BYTES)
 						continue;
 					var chart:Dynamic = haxe.Json.parse(File.getContent(chartPath));
-					var song:Dynamic = Reflect.field(chart, 'song');
-					if (song != null && Std.isOfType(Reflect.field(song, 'notes'), Array)
-						&& Reflect.field(song, 'bpm') != null)
+					var song:Dynamic = PsychFamilyChartFields.payload(chart);
+					if (song != null && Reflect.field(song, 'bpm') != null)
 						return true;
 				} catch (_:Dynamic) {}
 			}
@@ -1192,16 +1510,24 @@ class ImportRootScanner {
 				if (!FileSystem.isDirectory(songPath)) continue;
 			} catch (_:Dynamic) continue;
 			var files = readDirectory(songPath);
-			var hasMetadata = false;
-			var hasChart = false;
+			// A song can exist only as a variation (x-metadata-erect.json with
+			// x-chart-erect.json). The pair has to share its variation, '' being
+			// the base one.
+			var metadataVariations:Array<String> = [];
+			var chartVariations:Array<String> = [];
+			var metadataName = ~/-metadata(-[^.\/]+)?\.json$/;
+			var chartName = ~/-chart(-[^.\/]+)?\.json$/;
 			var seen = 0;
 			for (file in files) {
 				if (seen++ >= MAX_VSLICE_SONG_FILES) break;
 				var lower = file.toLowerCase();
-				if (lower.indexOf('-metadata.json') >= 0) hasMetadata = true;
-				if (lower.indexOf('-chart.json') >= 0) hasChart = true;
+				if (metadataName.match(lower))
+					metadataVariations.push(metadataName.matched(1) == null ? '' : metadataName.matched(1));
+				if (chartName.match(lower))
+					chartVariations.push(chartName.matched(1) == null ? '' : chartName.matched(1));
 			}
-			if (hasMetadata && hasChart) return true;
+			for (variation in metadataVariations)
+				if (chartVariations.indexOf(variation) >= 0) return true;
 		}
 		return false;
 	}
@@ -1454,21 +1780,12 @@ class ImportRootScanner {
 					if (FileSystem.isDirectory(path)) continue;
 					var lower = file.toLowerCase();
 					if (lower.endsWith('.lua') && FileSystem.stat(path).size <= MAX_PROJECT_MARKER_BYTES) {
-						var contents = File.getContent(path);
-						contents = ~/--\[\[[\s\S]*?\]\]/g.replace(contents, '');
-						if (~/^[ \t]*(?:local[ \t]+)?function[ \t]+on(?:Create|CreatePost|StartCountdown|SongStart|Update|UpdatePost|Event)[ \t]*\(/m.match(contents))
+						if (PsychFamilyFormatProbe.declaresLuaCallback(File.getContent(path)))
 							hasCallback = true;
 					} else if ((lower.endsWith('.json') || lower.endsWith('.jsonc'))
 						&& FileSystem.stat(path).size <= MAX_ENGINE_CHART_BYTES) {
-						var chart:Dynamic = haxe.Json.parse(File.getContent(path));
-						var song:Dynamic = Reflect.field(chart, 'song');
-						var sections:Dynamic = song == null ? null : Reflect.field(song, 'notes');
-						var bpm = song == null ? Math.NaN : Std.parseFloat(Std.string(Reflect.field(song, 'bpm')));
-						if (Std.isOfType(sections, Array) && !Math.isNaN(bpm) && bpm > 0)
-							for (section in (cast sections:Array<Dynamic>))
-								if (section != null && Std.isOfType(Reflect.field(section, 'sectionNotes'), Array)) {
-									hasChart = true; break;
-								}
+						if (PsychFamilyFormatProbe.isSectionChart(haxe.Json.parse(File.getContent(path))))
+							hasChart = true;
 					}
 				} catch (_:Dynamic) {}
 				if (hasChart && hasCallback) return true;

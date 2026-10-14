@@ -34,9 +34,9 @@ class NightmareVisionSplitVocalsTest(unittest.TestCase):
             "private function resolveImportedVocalStemRole",
         ):
             self.assertIn(marker, play_state)
-        self.assertIn("format == 'nmv2'", play_state)
-        self.assertIn("NightmareVisionVocalRole.resolve(authoredId, authoredRole)", play_state)
-        self.assertIn("normalizeNightmareVisionVocalRoles(songData)", importer)
+        self.assertIn("format != 'nmv2'", play_state)
+        self.assertIn("SourceVocalRole.resolve(authoredId, authoredRole)", play_state)
+        self.assertIn("normalizeSourceVocalRoles(songData)", importer)
         self.assertIn("nmv-vocal-groups:", play_state)
         self.assertIn("nmv-vocal-pcm:", play_state)
         self.assertIn("markNightmareVisionVocalPcmSmoke();", play_state)
@@ -115,9 +115,14 @@ class SplitVocalTestMain {
     if (nmvRoles.preferred("player", {id:"opp"}) != "opponent")
       throw "preferred NMV alternate encoding lost its ID-derived role";
     var psychRoles = new VocalRoleResolver("psych_v1");
-    if (psychRoles.resolve({id:"opp", role:"shared"}) != "shared"
-        || psychRoles.resolve({id:"player", role:"mix-bus"}) != "mix-bus")
-      throw "NMV stem-ID inference changed non-NMV role behavior";
+    // Psych names its two buses the same way, so the stem id decides there too;
+    // an authored role and an id that names no side are left alone.
+    if (psychRoles.resolve({id:"opp", role:"shared"}) != "opponent"
+        || psychRoles.resolve({id:"Player", role:"shared"}) != "player"
+        || psychRoles.resolve({id:"choir", role:"shared"}) != "shared"
+        || psychRoles.resolve({id:"player", role:"mix-bus"}) != "mix-bus"
+        || psychRoles.resolve("Voices.ogg") != "player")
+      throw "split-stem ids did not resolve the same way outside NMV";
     if (psychRoles.preferred("opponent", "Voices-opp.ogg") != "opponent"
         || psychRoles.preferred("opponent", {id:"opp"}) != "opponent"
         || psychRoles.preferred("opponent", {role:"player"}) != "player")

@@ -232,7 +232,15 @@ class SourceGameplayPreferencesWiringTest(unittest.TestCase):
         self.assertLess(nv_init.index("initializeSourceGameplayPreferences(nightmareVisionPrefs, true)"),
                         nv_init.index("callNightmareVision('onAddSpriteGroups'"))
         update = extract_method(play, "override public function update(elapsed:Float)")
-        self.assertIn("!sourceLivePreference('noReset', false)", update)
+        # The reset gate moved into SongFlow; the live flag still has to reach it
+        # as the "disabled by preference" argument, and that argument has to block.
+        reset_call = update[update.index("SongFlow.resetKeyAllowed("):]
+        reset_call = reset_call[:reset_call.index(") {")]
+        self.assertTrue(reset_call.rstrip().endswith("sourceLivePreference('noReset', false))"), reset_call)
+        song_flow = (PLAY_STATE.parent / "SongFlow.hx").read_text(encoding="utf-8")
+        reset_gate = extract_method(song_flow, "public static function resetKeyAllowed(")
+        self.assertIn("resetDisabledByPreference:Bool", reset_gate)
+        self.assertIn("&& !resetDisabledByPreference", reset_gate)
         psych_press = extract_method(play, "function psychSourceKeyPressed(")
         self.assertIn("sourceLivePreference('ghostTapping', ghostTapping)", psych_press)
         note_miss = extract_method(play, "function noteMissCore(direction:Int = 1,")

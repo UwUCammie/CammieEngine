@@ -78,7 +78,7 @@ class SourceEventPreparationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             (temp / "Main.hx").write_text(main_source, newline="\n")
-            for name in ("SourceEventNote.hx", "ScriptCallbackResult.hx", "NightmareVisionLegacyEventPreparation.hx", "NightmareVisionLegacyEventQueue.hx"):
+            for name in ("SourceEventNote.hx", "SourceEventPreparation.hx", "ScriptCallbackResult.hx", "NightmareVisionLegacyEventPreparation.hx", "NightmareVisionLegacyEventQueue.hx"):
                 (temp / name).write_text((ROOT / "source" / name).read_text(), newline="\n")
             velocity = (ROOT / "source/NightmareVisionScrollVelocity.hx").read_text()
             velocity = velocity.replace("import nightmarevision.modchart.NightmareVisionModchartTransform;", "")
@@ -483,7 +483,7 @@ class Main {
         self.assertIn("var daStrumTime:Float = songNotes[0] + sourceChartNoteOffset();", generate)
         self.assertIn("SongEvents.isNightmareVisionLegacyEventRow(songNotes, songData.keys == null ? 4 : songData.keys)", generate)
         nv_prepare = extract_method(self.play, "function prepareNightmareVisionSourceEvents()")
-        self.assertIn("new SourceEventNote(row, sourceChartNoteOffset())", nv_prepare)
+        self.assertIn("SourceEventPreparation.prepare(songEvents, sourceChartNoteOffset(), sourceEventViews", nv_prepare)
         note_offset = extract_method(self.play, "function sourceChartNoteOffset()")
         self.assertIn("return nightmareVisionPrefs != null ? nightmareVisionPrefs.view.noteOffset", note_offset)
         self.assertIn(": psychClientPrefs != null ? psychClientPrefs.data.noteOffset : OptionsHandler.options.offset;",

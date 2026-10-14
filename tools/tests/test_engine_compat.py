@@ -244,7 +244,8 @@ class EngineCompatTest {
 		var timerArgs = EngineCompat.callbackArguments("timerCompleted", "onTimerCompleted", ["tag", 2, 1]);
 		if (timerArgs.length != 3 || timerArgs[1] != 2 || timerArgs[2] != 1)
 			fail("onTimerCompleted donor signature adapter");
-		if (EngineCompat.luaStringFormat("%02X:%02d:%.1f:%s:%%", 15, 3, 1.25, "ok") != "0F:03:1.3:ok:%")
+		// 1.25 is exactly half way, so like C and real Lua it goes to the even digit.
+		if (EngineCompat.luaStringFormat("%02X:%02d:%.1f:%s:%%", 15, 3, 1.25, "ok") != "0F:03:1.2:ok:%")
 			fail("Lua string.format adapter");
 		var list:Array<Dynamic> = ["a", "b"];
 		if (EngineCompat.luaTableLength(list) != 2 || EngineCompat.luaTableKey(list, 2) != 2
@@ -284,7 +285,7 @@ class EngineCompatTest {
 		if (EngineCompat.eventName("extra-events-cameraFadeEvent") != "Camera Fade") fail("V-Slice fade alias");
 		if (EngineCompat.eventName("extra-events-addLyricsEvent") != "Lyrics") fail("V-Slice lyrics alias");
 		if (EngineCompat.eventName("extra-events-vignEvent") != "Vignette") fail("V-Slice vignette alias");
-		if (EngineCompat.eventName("EyePopup") != "Markov Popups") fail("TAKEOVER eye popup alias");
+		if (EngineCompat.eventName("OverlayCue") != "OverlayCue") fail("sprite events keep the id they registered");
 		var eventSource = "class OverlayCueEvent extends ScriptedSongEvent { function new() super('OverlayCue'); function handleEvent(data) { var cueX = data.value.x; var cueY = data.value.y; var cue = new FlxSprite(cueX, cueY); cue.frames = Paths.getSparrowAtlas('ui/overlay'); cue.animation.addByPrefix('pulse', 'Overlay Pulse', 18, false); cue.animation.play('pulse'); cue.scrollFactor.set(0, 0); cue.cameras = [PlayState.instance.camHUD]; cue.animation.finishCallback = function(s:String) { PlayState.instance.remove(cue); cue.kill(); cue = null; }; } }";
 		var eventAssets = EngineCompat.eventAssetNamesInSource(eventSource);
 		if (eventAssets.length != 1 || eventAssets[0] != "ui/overlay") fail("generic HXC event asset extraction");
@@ -376,9 +377,10 @@ class EngineCompatTest {
 			|| vignettePayload.eventData.value.ease != "sine"
 			|| vignettePayload.eventData.value.easeDir != "Out")
 			fail("HXC vignette payload fields");
-		var eyePopupPayload = EngineCompat.hxcSongEventPayload(["Markov Popups", "240", "96", ""]);
-		if (eyePopupPayload.eventData.value.x != "240" || eyePopupPayload.eventData.value.y != "96")
-			fail("HXC eye popup payload fields");
+		var cueDescriptor = EngineCompat.eventSpriteDescriptorFromSource(eventSource);
+		var cuePayload = EngineCompat.hxcSongEventPayload(["Overlay Cue", "240", "96", ""], cueDescriptor);
+		if (cuePayload.eventData.value.x != "240" || cuePayload.eventData.value.y != "96")
+			fail("HXC sprite event payload fields");
 		var countdown = EngineCompat.hxcCountdownStartPayload();
 		var countdownArgs = EngineCompat.callbackArguments("countdownStart", "onCountdownStart", [countdown]);
 		if (countdownArgs.length != 1 || countdownArgs[0] != countdown
@@ -582,9 +584,12 @@ class EngineCompatTest {
 			|| characterByStandardFields == null || characterByStandardFields.v1 != "bf"
 			|| characterByStandardFields.v2 != "pomni")
 			fail("character replacement routing must follow payload fields, not event spelling");
-		var eyePopup = EngineCompat.routeVSliceEvent("EyePopup", {x: 240, y: 96});
-		if (eyePopup.name != "Markov Popups" || eyePopup.v1 != "240" || eyePopup.v2 != "96")
-			fail("TAKEOVER eye popup payload route");
+		var cueRoute = EngineCompat.routeEventSprite([cueDescriptor], "OverlayCue",
+			haxe.Json.stringify({x: 240, y: 96}), "", "");
+		if (cueRoute == null || cueRoute.name != "OverlayCue" || cueRoute.x != 240 || cueRoute.y != 96)
+			fail("sprite event payload route");
+		if (EngineCompat.routeVSliceEvent("OverlayCue", {x: 240, y: 96}) != null)
+			fail("sprite events must not live in the fixed name table");
 		if (EngineCompat.routeVSliceEvent("Zoom Rabbit", {value1: "", value2: "0.55"}) != null)
 			fail("custom HXC event was replaced by a native route");
 		var noteSwap = EngineCompat.routeVSliceEvent("NoteSwapEvent",
@@ -786,7 +791,7 @@ class NotePoint {
         self.assertIn("callAllHScript('updatePost', [elapsed]);", source)
         self.assertIn("EngineCompat.hxcCountdownStartPayload()", source)
         self.assertIn("callAllHScript('countdownStart', [countdownEvent]);", source)
-        self.assertIn("if (countdownEvent.eventCanceled == true", source)
+        self.assertIn("if (EngineCompat.hxcPayloadCanceled(countdownEvent)) {", source)
         self.assertIn("EngineCompat.hxcNoteIncomingPayload(dunceNote)", source)
         self.assertIn('callAllHScript("noteIncoming", [dunceNote, incomingEvent], true);', source)
         self.assertIn('callHxcNoteHScript("noteIncoming", [dunceNote, incomingEvent]);', source)

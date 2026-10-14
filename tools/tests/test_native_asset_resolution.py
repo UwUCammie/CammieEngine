@@ -195,6 +195,8 @@ class FNFAssets {{
     resolverCalls++;
     return resolution;
   }}
+  // exists() goes through the probe resolver; it still walks the disk once.
+  static function resolveProbedDiskPath(id:String):Null<String> return resolveDiskPath(id);
   static function isInScope(_id:String):Bool return true;
   static function existsAmbig(_ids:Array<String>, _extensions:Array<String>):String return "";
 {exists}

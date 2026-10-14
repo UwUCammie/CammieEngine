@@ -228,7 +228,9 @@ class TerribleFateCharacterSwapTest(unittest.TestCase):
         source = SOURCE.read_text()
         start = source.index("case 'Change Character':")
         end = source.index("case 'Hey!':", start)
-        self.assertIn("case '' | '0' | 'bf' | 'boyfriend': 'bf';", source[start:end])
+        self.assertIn("var slot = changeCharacterSlot(e.v1);", source[start:end])
+        helper = source.index("static function changeCharacterSlot(")
+        self.assertIn("case '' | '0' | 'bf' | 'boyfriend': 'boyfriend';", source[helper:helper + 400])
 
         events = json.loads(chart_fixture.read_text())
         rows = [row for section in events['song']['notes'] for row in section['sectionNotes']]

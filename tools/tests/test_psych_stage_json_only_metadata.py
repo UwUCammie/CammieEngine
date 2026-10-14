@@ -59,11 +59,11 @@ class Probe {
  public var gf:Actor=new Actor();public var dad:Actor=null;public var boyfriend:Actor=null;
  var psychStageLibrary:String;var curStage:Dynamic={defaultZoom:1.0};var defaultCamZoom:Float=1;
  var swapOffsetsBeforePsychStage:Array<Float>;var swapOffsets:Array<Float>=[];var psychStageCharacterRoot:String;
- function setGameCameraZoom(v:Float):Void {}
- function psychStagePoint(data:Dynamic,key:String):Array<Float> return null;
+ var psychStageObjectsBuilt:Bool=false;
+ function applySourceStageMetadata(meta:SourceStageMetadata,profile:Dynamic):Void {}
+ function buildSourceStageObjects(meta:SourceStageMetadata,owner:String):Void {}
  function rememberPsychStagePoint(key:String,point:Array<Float>):Void {}
  function stageCharacterOffset(actor:Actor,role:String):Array<Float> return [0,0];
- function applyPsychStageCameraOffsets(data:Dynamic):Void {}
  function refreshPsychStageCameraTarget():Void {}
  public function new(){}
  __APPLY__
@@ -80,6 +80,8 @@ class Probe {
 }'''.replace('__APPLY__',apply)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             (Path(folder) / 'Probe.hx').write_text(fixture, newline='\n')
+            (Path(folder) / 'SourceStageMetadata.hx').write_text(
+                (ROOT / 'source/SourceStageMetadata.hx').read_text(), newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', folder, '-main', 'Probe', '--interp'],
                                     cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

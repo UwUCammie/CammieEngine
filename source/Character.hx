@@ -305,6 +305,39 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	}
 	/** Psych Lua reads this to reuse the actor's currently selected atlas. */
 	public var imageFile:String = '';
+	// The authored character JSON values scripts read back, filled in by
+	// applySourceDefinitionFields(). They describe the file, not the live sprite.
+	@:keep public var jsonScale:Float = 1;
+	@:keep public var originalFlipX:Bool = false;
+	@:keep public var noAntialiasing:Bool = false;
+	@:keep public var animationsArray:Array<Dynamic> = [];
+	@:keep public var vocalsFile:String = '';
+	/** Free form values scripts hang on a character. Made on first use. */
+	@:keep public var extraData(get, set):Map<String, Dynamic>;
+	var storedExtraData:Map<String, Dynamic> = null;
+	function get_extraData():Map<String, Dynamic> {
+		if (storedExtraData == null) storedExtraData = new Map<String, Dynamic>();
+		return storedExtraData;
+	}
+	function set_extraData(value:Map<String, Dynamic>):Map<String, Dynamic> return storedExtraData = value;
+	@:keep public var isAnimateAtlas(get, never):Bool;
+	function get_isAnimateAtlas():Bool return isAnimate;
+	/** Freezes or resumes whatever animation is playing right now. */
+	@:keep public var animPaused(get, set):Bool;
+	function get_animPaused():Bool
+		return animation != null && animation.curAnim != null && animation.curAnim.paused;
+	function set_animPaused(value:Bool):Bool {
+		if (animation != null && animation.curAnim != null) animation.curAnim.paused = value;
+		return value;
+	}
+	function applySourceDefinitionFields(definition:Dynamic):Void {
+		var authored = SourceCharacterDefinition.fields(definition);
+		jsonScale = authored.jsonScale;
+		originalFlipX = authored.originalFlipX;
+		noAntialiasing = authored.noAntialiasing;
+		animationsArray = authored.animationsArray;
+		vocalsFile = authored.vocalsFile;
+	}
 
 	public var curCharacter:String = 'bf';
 	public var altAnim:String = "";
@@ -361,12 +394,25 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 	public var holdTimer:Float = 0;
 	/** Number of beats between automatic V-Slice/character idle dances.  A
 	 * non-positive value disables the automatic beat dance; explicit sing/event
-	 * animation calls remain unaffected. */
-	public var danceEvery:Int = 1;
+	 * animation calls remain unaffected.  It can be a fraction: V-Slice bops on
+	 * steps, so 0.5 dances every other step and 1.5 every six steps. */
+	public var danceEvery:Float = 1;
 	/** Psych/NV's reflected cadence shares the host's automatic dance gate. */
 	@:keep public var danceEveryNumBeats(get, set):Int;
-	function get_danceEveryNumBeats():Int return danceEvery;
-	function set_danceEveryNumBeats(value:Int):Int return danceEvery = value;
+	function get_danceEveryNumBeats():Int return wholeDanceBeats(danceEvery);
+	function set_danceEveryNumBeats(value:Int):Int {
+		danceEvery = value;
+		return value;
+	}
+	/** Psych and NV count whole beats, so anything faster than a beat reads as one. */
+	public static function wholeDanceBeats(every:Float):Int
+		return Math.isNaN(every) || every <= 0 ? 0 : every < 1 ? 1 : Std.int(every);
+	/** V-Slice's Bopper gate: dance when the step is a multiple of the rate in steps. */
+	public static function danceDueOnStep(every:Float, step:Int):Bool
+		return every > 0 && step % (every * 4) == 0;
+	/** An authored dance rate, unreadable values keep the default of once a beat. */
+	public static function danceRate(rate:Float):Float
+		return Math.isNaN(rate) ? 1 : rate <= 0 ? 0 : Math.min(rate, 1024);
 	@:keep public var danceIdle:Bool = false;
 	var sourceDanceNightmare:Bool = false;
 	/** Whether this actor's live animation contract is owned by Nightmare Vision.
@@ -1299,6 +1345,10 @@ class Character extends DisSprite implements CodenameCharacterAccess {
 			psychCameraRoot, function(path:String):Null<String> return FNFAssets.exists(path) ? FNFAssets.getText(path) : null);
 		cameraPosition = psychCameraRoot == null || StringTools.trim(psychCameraRoot) == '' ? [0, 0]
 			: PsychCharacterPosition.characterCameraPosition(visualCharacterId, psychCameraRoot);
+		// Both families author the same JSON, so one place copies it onto the character.
+		applySourceDefinitionFields(nightmareVisionCharacterOwned ? nightmareVisionOwnedCharacter
+			: SourceCharacterDefinition.read(visualCharacterId, psychCameraRoot,
+				function(path:String):Null<String> return FNFAssets.exists(path) ? FNFAssets.getText(path) : null));
 		// Keep the authored id on the Character even when the resolver chooses a
 		// complete sibling/alias visual.  Only the interpreter's asset root is
 		// substituted; mutating curCharacter here loses chart identity and made

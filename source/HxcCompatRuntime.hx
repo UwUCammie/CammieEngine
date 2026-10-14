@@ -785,6 +785,19 @@ class HxcCompatRuntime {
 				COLOR_HEALTH_BAR_GREEN: 0xFF66FF33,
 				COLOR_HEALTH_BAR_RED: 0xFFFF0000,
 				COUNTDOWN_VOLUME: 0.6,
+				// Health and timing defaults come from the game's own table.
+				HEALTH_MAX: GameplayConstants.HEALTH_MAX,
+				HEALTH_MIN: GameplayConstants.HEALTH_MIN,
+				HEALTH_STARTING: GameplayConstants.HEALTH_STARTING,
+				HEALTH_SICK_BONUS: GameplayConstants.HEALTH_SICK_BONUS,
+				HEALTH_GOOD_BONUS: GameplayConstants.HEALTH_GOOD_BONUS,
+				HEALTH_BAD_BONUS: GameplayConstants.HEALTH_BAD_BONUS,
+				HEALTH_SHIT_BONUS: GameplayConstants.HEALTH_SHIT_BONUS,
+				HEALTH_MISS_PENALTY: GameplayConstants.HEALTH_MISS_PENALTY,
+				HEALTH_GHOST_MISS_PENALTY: GameplayConstants.HEALTH_GHOST_MISS_PENALTY,
+				MS_PER_SEC: GameplayConstants.MS_PER_SEC,
+				SECS_PER_MIN: GameplayConstants.SECS_PER_MIN,
+				STEPS_PER_BEAT: GameplayConstants.STEPS_PER_BEAT,
 				DEFAULT_CAMERA_FOLLOW_RATE: 0.04,
 				DEFAULT_VARIATION: "default",
 				PIXELS_PER_MS: 0.45,
@@ -912,6 +925,26 @@ class HxcCompatRuntime {
 		if (owner == null)
 			return false;
 		var method = runtimeField(owner, 'hxcStopCountdown');
+		if (method == null || !Reflect.isFunction(method))
+			return false;
+		try return Reflect.callMethod(owner, method, []) == true catch (_:Dynamic) return false;
+	}
+
+	/** Hold the countdown on its current step; the owner keeps the timer. */
+	public static function pauseCountdown(state:Dynamic):Bool {
+		return callCountdownOwner(state, 'hxcPauseCountdown');
+	}
+
+	/** Let a countdown held by pauseCountdown (or a cancelled step) run on. */
+	public static function resumeCountdown(state:Dynamic):Bool {
+		return callCountdownOwner(state, 'hxcResumeCountdown');
+	}
+
+	static function callCountdownOwner(state:Dynamic, name:String):Bool {
+		var owner = state == null ? resolveActiveState() : state;
+		if (owner == null)
+			return false;
+		var method = runtimeField(owner, name);
 		if (method == null || !Reflect.isFunction(method))
 			return false;
 		try return Reflect.callMethod(owner, method, []) == true catch (_:Dynamic) return false;

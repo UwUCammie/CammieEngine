@@ -47,10 +47,18 @@ class LuaCompatTest {
    throw "compact then or standard-library helpers did not execute";
   if (EngineCompat.luaStringGsub("a.b.c", "%.", "", 1) != "ab.c")
    throw "literal gsub maximum replacement count";
-  var unsupported = LuaCompat.translate(
+  // Any other pattern goes to the string library of the Lua scope.
+  var classPattern = LuaCompat.translate(
    "function onCreate()\n bit = string.gsub('a1', '%d', '')\nend", "class-pattern.lua");
-  if (unsupported.supported || unsupported.diagnostics.join(" | ").indexOf("lua-string-library") < 0)
-   throw "unsupported Lua pattern silently accepted";
+  if (!classPattern.supported) throw classPattern.diagnostics.join(" | ");
+  interp.execute(new hscript.Parser().parseString(classPattern.hscript));
+  Reflect.callMethod(null, interp.variables.get("onCreate"), []);
+  if (interp.variables.get("bit") != "a")
+   throw "class pattern gsub gave " + interp.variables.get("bit");
+  var unknown = LuaCompat.translate(
+   "function onCreate()\n bit = string.shuffle('a1')\nend", "unknown-helper.lua");
+  if (unknown.supported || unknown.diagnostics.join(" | ").indexOf("lua-string-library") < 0)
+   throw "unknown string helper silently accepted";
  }
 }
 '''
@@ -242,11 +250,11 @@ class LuaCompatTest {
 class LuaCompatTest {
     static function fail(message:String):Void throw message;
     static function main() {
-        var source = "function onCreate()\n  runHaxeCode([[ FlxG.game.setFilters([]); ]])\n  setmetatable({}, {})\nend";
+        var source = "function onCreate()\n  runHaxeCode([[ FlxG.game.setFilters([]); ]])\n  coroutine.resume(coroutine.create(onCreate))\nend";
         var converted = LuaCompat.translate(source, "unsafe.lua");
         if (converted.supported) fail("unsafe source was marked supported");
         var all = converted.diagnostics.join(" | ");
-        if (all.indexOf("lua-metatable") < 0 || all.indexOf("lua-raw-haxe") >= 0) fail(all);
+        if (all.indexOf("lua-coroutine") < 0 || all.indexOf("lua-raw-haxe") >= 0) fail(all);
         if (converted.hscript.indexOf("FlxG.game.setFilters") >= 0) fail("raw Haxe leaked into output");
         new hscript.Parser().parseString(converted.hscript);
         Sys.println("ok");
@@ -409,7 +417,7 @@ class LuaCompatTest {
         result = self.run_fixture(fixture)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_unknown_dynamic_globals_stay_diagnostic_and_non_executable(self):
+    def test_script_globals_route_through_the_scope_and_engine_slots_stay_read_only(self):
         fixture = r'''
 class LuaCompatTest {
     static function main() {
@@ -423,9 +431,17 @@ class LuaCompatTest {
             throw "unknown dynamic global was marked supported";
         if (converted.diagnostics.join(" | ").indexOf("lua-global-table") < 0)
             throw "unknown dynamic global lost its diagnostic: " + converted.diagnostics.join(" | ");
+        // A script's own keys go to its own globals, never to the engine-routed store.
         if (converted.hscript.indexOf("luaSetScriptGlobal") >= 0
                 || converted.hscript.indexOf("luaGetScriptGlobal") >= 0)
-            throw "unknown dynamic global was routed";
+            throw "script global was written to the engine-routed store";
+        if (converted.hscript.indexOf("luaGlobalSet(\"secret\", 2);") < 0
+                || converted.hscript.indexOf("luaGlobalSet('notWhitelisted' + (\"\" + suffix), 1);") < 0)
+            throw "script global write was not routed: " + converted.hscript;
+        // The engine's default strum slot is still not writable.
+        if (converted.hscript.indexOf("// LuaCompat unsupported expression: _G['defaultStrum'") < 0
+                || converted.hscript.indexOf("luaGlobalSet('defaultStrum'") >= 0)
+            throw "default strum write was routed: " + converted.hscript;
         new hscript.Parser().parseString(converted.hscript);
         trace("OK");
     }
@@ -876,11 +892,12 @@ class LuaCompatTest {
             "getmousex", "getmousey", "getmouseclicked", "playmusic",
         ):
             self.assertIn("'" + routed + "'", lower, routed)
-        # Raw Haxe, unknown _G/metatable use and complex string iteration
-        # remain explicit diagnostics. They must not be mislabeled as support.
+        # Raw Haxe, unknown _G use and coroutines remain explicit diagnostics.
+        # They must not be mislabeled as support. Metatables are routed now
+        # (see test_lua_metatables.py).
         self.assertIn("lua-raw-haxe", (ROOT / "source/LuaCompat.hx").read_text())
         self.assertIn("lua-global-table", (ROOT / "source/LuaCompat.hx").read_text())
-        self.assertIn("lua-metatable", (ROOT / "source/LuaCompat.hx").read_text())
+        self.assertIn("lua-coroutine", (ROOT / "source/LuaCompat.hx").read_text())
 
     def test_importer_and_runtime_use_the_same_central_adapter(self):
         module = (ROOT / "source/ModuleFunctions.hx").read_text()

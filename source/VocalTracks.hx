@@ -52,6 +52,15 @@ class VocalTracks {
 			if (tracks[index] != null && roles[index] == wanted) tracks[index]];
 	}
 
+	/** The first stem of a role, for callers that expect one sound per side. */
+	public function primaryFor(role:String):FlxSound {
+		var wanted = normalizeRole(role);
+		for (index in 0...tracks.length)
+			if (tracks[index] != null && roles[index] == wanted)
+				return tracks[index];
+		return null;
+	}
+
 	public function hasRole(role:String):Bool {
 		var wanted = normalizeRole(role);
 		for (index in 0...tracks.length)

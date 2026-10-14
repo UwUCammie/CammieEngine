@@ -73,6 +73,12 @@ class RuntimeDecodeMetrics {
  public static function snapshot():Dynamic return {};
 }
 class RuntimeSmokeState {public function new() {}}
+// Readiness only probes the collector in frame stats or pacing runs, which
+// this fixture leaves off, so a stub that would fail loudly is enough.
+class EngineMemory {
+ public static function probe():{seconds:Float, usedBefore:Float, usedAfter:Float, reservedAfter:Float}
+  throw "gc probe ran without frame stats";
+}
 class Note {}
 class FlxG {
  public static var switches=0;

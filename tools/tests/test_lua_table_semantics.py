@@ -150,8 +150,12 @@ class Fixture {
         self.assertIn('smokeDiagnosticsEnabled = RuntimeSmokeHarness.enabled()', seed)
         self.assertIn("setAllHaxeVar('crochet', Conductor.crochet);", sync)
         self.assertIn('case ECall(target, params):', lua_expr)
-        self.assertIn('isSongPositionCall(target)', lua_expr)
-        self.assertIn('lastSongPositionCallProbe', lua_expr)
+        # Calls are carried out by callValues, which is where the probe now sits.
+        lua_call = extract_method(lua_interp,
+                                  'function callValues(target:Expr, params:Array<Expr>, wantMulti:Bool):Dynamic')
+        self.assertIn('callValues(target, params, false)', lua_expr)
+        self.assertIn('isSongPositionCall(target)', lua_call)
+        self.assertIn('lastSongPositionCallProbe', lua_call)
         fixture = r'''
 class Conductor {
  static public var crochet:Float = 500;
@@ -286,6 +290,8 @@ class Fixture {
     def test_only_proven_lua_sources_select_lua_interpreter(self):
         play_state = (ROOT / "source/PlayState.hx").read_text()
         selector = extract_method(play_state, "function luaProgramFor(")
+        selector += "\n" + extract_method(play_state, "function freshLuaSiblingTranslation(")
+        selector += "\n" + extract_method(play_state, "function generatedHscriptOnDisk(")
         fixture = r'''
 using StringTools;
 class FNFAssets {
@@ -337,6 +343,27 @@ class Fixture {
   if (state.luaProgramFor('legacy.hscript',oldGenerated+' // edited').translated
    || state.luaProgramFor('native.hscript',oldGenerated).translated)
    throw 'native/edited HScript was reclassified as Lua';
+  // A marked file written by an older translator is rebuilt from its .lua sibling.
+  var staleMarked = marker + 'function onCreate() {\nluaOldHelper();\n}';
+  // Marked text that the loader itself just translated from the .lua (no
+  // generated file on disk) is kept as handed over, whatever path spelling.
+  if (state.luaProgramFor('legacy.hscript',staleMarked).source != staleMarked
+   || state.luaProgramFor('legacy',staleMarked).source != staleMarked)
+   throw 'load-time Lua translation was translated a second time';
+  FNFAssets.texts.set('legacy.hscript',staleMarked);
+  var refreshed = state.luaProgramFor('legacy.hscript',staleMarked);
+  if (!refreshed.translated || refreshed.source != marked)
+   throw 'stale generated sibling was preferred over its Lua source';
+  if (state.luaProgramFor('legacy',staleMarked).source != marked)
+   throw 'extensionless lookup of a stale generated sibling was not refreshed';
+  // Without a sibling the marked text is all there is.
+  FNFAssets.texts.set('orphan.hscript',staleMarked);
+  var orphan = state.luaProgramFor('orphan.hscript',staleMarked);
+  if (!orphan.translated || orphan.source != staleMarked)
+   throw 'marked script without a Lua sibling lost its source';
+  // Embedded stage callbacks are handed over as they are.
+  if (state.luaProgramFor('legacy.hscript',staleMarked,true).source != staleMarked)
+   throw 'mixed stage override was retranslated';
  }
 }
 '''

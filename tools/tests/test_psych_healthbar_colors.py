@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
+from base_helper_fixtures import cool_util_colors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / ".tools/haxe/haxe"
@@ -94,7 +96,7 @@ __METHODS__
 }
 '''.replace("__METHODS__", methods)
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
-            Path(folder, "PsychHealthBarFixture.hx").write_text(fixture, newline='\n')
+            Path(folder, "PsychHealthBarFixture.hx").write_text(fixture + cool_util_colors(), newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-main", "PsychHealthBarFixture", "--interp"],
                 cwd=ROOT, env={**os.environ, "TMPDIR": str(ROOT / "tmp")},

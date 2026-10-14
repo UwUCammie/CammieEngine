@@ -263,20 +263,16 @@ class PsychHscriptCustomSubstateFacade {
 
 #if (!flash && sys)
 /** Source-compatible constructor and compile-error callback without donor crash I/O. */
-class PsychHscriptErrorHandledRuntimeShader extends FlxRuntimeShader {
+class PsychHscriptErrorHandledRuntimeShader extends RecoveringRuntimeShader {
 	public var shaderName:String = '';
 	public dynamic function onError(error:Dynamic):Void {}
 
 	public function new(?shaderName:String, ?fragmentSource:String, ?vertexSource:String) {
+		// Psych leaves a failed shader without a program and tells the script.
+		super(fragmentSource, vertexSource, RuntimeShaderSource.NULL_PROGRAM, shaderName);
 		this.shaderName = shaderName == null ? '' : shaderName;
-		super(fragmentSource, vertexSource);
-	}
-
-	override function __createGLProgram(vertexSource:String, fragmentSource:String):GLProgram {
-		try return super.__createGLProgram(vertexSource, fragmentSource) catch (error:Dynamic) {
-			try onError(error) catch (_:Dynamic) {}
-			return null;
-		}
+		// Scripts assign onError after construction, so look it up when it fires.
+		onCompileError = function(error:Dynamic):Void onError(error);
 	}
 }
 #end

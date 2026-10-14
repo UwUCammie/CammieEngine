@@ -159,7 +159,11 @@ class Main {
         miss = source[source.index("\tfunction noteMiss("):source.index("\n\tfunction badNoteCheck(")]
         self.assertLess(miss.index("callHxcNoteHScript('noteGhostMiss'"),
                         miss.index("if (note != null) {\n\t\t\t\thxcMissEvent"))
-        self.assertIn('callAllHScript("noteMiss", [note, playerOne, direction, hxcMissEvent], true)', miss)
+        # The post-miss broadcast is shared by every miss path; noteMiss must still reach it with the HXC event.
+        self.assertIn("notifyNoteMissObservers(", miss)
+        observers = source[source.index("\tfunction notifyNoteMissObservers("):]
+        observers = observers[:observers.index("\n\t}\n")]
+        self.assertIn("callAllHScript('noteMiss', [note, playerOne, direction, hxcMissEvent], true", observers)
 
 
 if __name__ == "__main__":

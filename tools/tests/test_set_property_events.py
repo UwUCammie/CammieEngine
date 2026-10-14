@@ -11,10 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HAXE = ROOT / '.tools/haxe/haxe'
 
 
-def set_property_switch_body():
+def set_property_case_body():
     source = (ROOT / 'source/PlayState.hx').read_text()
-    start = source.index("case 'Set Property':")
-    start = source.index('switch (k) {', start)
+    start = source.index("case 'Set Property':", source.index('switch (EngineCompat.eventName(e.name))'))
     end = source.index('\n\t\t\tdefault:', start)
     return source[start:end]
 
@@ -35,10 +34,9 @@ class SetPropertyTest(unittest.TestCase):
         ]
         if not all(path.is_file() for path in fixtures):
             self.skipTest('mounted Infidelity character fixtures unavailable: ' + ', '.join(str(path) for path in fixtures))
-        # 1) the inner switch of 'Set Property' with the three ported keys
-        # 2) Paths.getCharacterJson (sliced from Paths.hx) against the real
+        # 1) Paths.getCharacterJson (sliced from Paths.hx) against the real
         #    ported character folder on disk
-        # 3) a real hscript Interp seeded like PluginManager must resolve
+        # 2) a real hscript Interp seeded like PluginManager must resolve
         #    Paths.getCharacterJson (before the fix: EUnknownVariable)
         paths_source = (ROOT / 'source/Paths.hx').read_text()
         gcj_start = paths_source.index('static public function getCharacterJson')
@@ -82,29 +80,7 @@ class Paths {
 	}
 }
 class SetPropertyFixture {
-	static var defaultCamZoom:Float = 1.05;
-	static var camZoomIntensity:Float = 1;
-	static var camZoomDecay:Float = 1;
-	static var camGame = {angle: 0.0};
-	static var camHUD = {angle: 0.0};
-	static var camSpeed:Float = 0;
-	static function parseF(v:String):Float {
-		if (v == null || v == '') return 0;
-		return Std.parseFloat(v);
-	}
-	static function fire(e:{v1:String, v2:String}) {
-		var k = StringTools.trim(e.v1);
-		var val = parseF(e.v2);
-''' + set_property_switch_body() + '''
-	}
 	static function main() {
-		fire({v1: 'defaultCamZoom', v2: '0.7'});
-		if (defaultCamZoom != 0.7) throw 'defaultCamZoom not applied';
-		fire({v1: 'camZoomingMult', v2: '2'});
-		if (camZoomIntensity != 2) throw 'camZoomingMult not applied';
-		fire({v1: 'camZoomingDecay', v2: '3.5'});
-		if (camZoomDecay != 3.5) throw 'camZoomingDecay not applied';
-
 		var frames = Paths.getCharacterJson('infidelitybfnew');
 		if (frames == null) throw 'getCharacterJson returned null';
 		if (frames.png != 'assets/images/custom_chars/infidelitybfnew/char.png')
@@ -151,8 +127,16 @@ class SetPropertyFixture {
             for key in keys:
                 if f'"{key}"' in text:
                     script_handled.add(key)
-        switch_body = set_property_switch_body()
-        missing = sorted(k for k in keys - script_handled if ("case '" + k + "'") not in switch_body)
+        # The event goes through the script property writer, so any key a
+        # script setProperty can reach is handled; the Psych spellings the
+        # old per-key switch knew are real aliases on PlayState.
+        case_body = set_property_case_body()
+        self.assertIn('setEventProperty(', case_body)
+        self.assertNotIn('switch', case_body)
+        play = (ROOT / 'source/PlayState.hx').read_text()
+        for alias in ['camZoomingMult', 'camZoomingDecay', 'cameraSpeed']:
+            self.assertIn('@:keep public var ' + alias + '(get, set):Float;', play)
+        missing = [] if 'setEventProperty(' in case_body else sorted(keys - script_handled)
         self.assertEqual(missing, [], f'Set Property keys with no handler: {missing}')
 
     def test_plugin_manager_seeds_paths(self):

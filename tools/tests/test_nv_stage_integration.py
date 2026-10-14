@@ -116,7 +116,10 @@ class Main {
 
  def test_actual_host_swap_transfers_only_mounted_owned_groups_and_current_script(self):
   from test_source_event_preparation import extract_method
-  method=extract_method((ROOT/'source/PlayState.hx').read_text(),'function swapNightmareVisionStage(')
+  play=(ROOT/'source/PlayState.hx').read_text()
+  method=extract_method(play,'function swapNightmareVisionStage(')
+  # The swap applies its stage file through the shared stage-metadata path.
+  method+='\n'+'\n'.join(extract_method(play,'\tfunction '+name) for name in ('applySourceStageMetadata(','nightmareVisionStageMetadata(','rememberStageAnchor(','applyStageCameraOffsets('))
   helpers={'StageHelper.hx': 'class StageHelper {public var stageData:Dynamic;public var defaultZoom:Float;public function new(n:String){}public function getInfo(r:String):Dynamic return {x:0.,y:0.};}',
    'NightmareVisionStageData.hx':'class NightmareVisionStageData {public static function normalizeStageId(n:String):String return n==null?"":StringTools.trim(n);public static function load(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getLegacyStageFile(r:String,n:String):Dynamic return n=="missing"?null:StageIO.current.data;public static function getLegacyTemplateStageFile():Dynamic return StageIO.current.data;public static function getTemplateStageFile():Dynamic return StageIO.current.data;}'}
   main=r'''
@@ -127,10 +130,14 @@ class Host extends FlxTypedContainer<FlxBasic> {
  public var nightmareVisionPlugins:Dynamic;public var nightmareVisionActiveMods:Dynamic;public var nightmareVisionActiveDifficulty:Dynamic;
  public var nightmareVisionStageConstructionInterp:NightmareVisionScriptInterp;public var nightmareVisionScripts:{group:NightmareVisionScriptGroup};
  public var boyfriendPosition=new flixel.math.FlxPoint();public var dadPosition=new flixel.math.FlxPoint();public var gfPosition=new flixel.math.FlxPoint();
- public var supported:Array<NightmareVisionCharacterGroup>=[];public var camerasApplied=0;
+ public var supported:Array<NightmareVisionCharacterGroup>=[];
+ public var psychStageCameraBoyfriend:Array<Float>;public var psychStageCameraOpponent:Array<Float>;public var psychStageCameraGirlfriend:Array<Float>;
+ public var cameraSpeed:Float=1;public static var stageUI:String='normal';public var zoomSnaps=0;public var pixelUI:Bool=false;
+ static function stageUIIsPixel(v:String):Bool return v=='pixel';
+ function setGameCameraZoom(z:Float):Void zoomSnaps++;
  public function new(p:NightmareVisionPaths){super();nightmareVisionPaths=p;nightmareVisionStageConstructionInterp=new NightmareVisionScriptInterp();nightmareVisionScripts={group:new NightmareVisionScriptGroup(this)};}
  public function isNightmareVisionRoleGroup(o:Dynamic):Bool return supported.indexOf(cast o)>=0;
- public function applyPsychStageCameraOffsets(d:Dynamic):Void camerasApplied++;
+
  public function refreshNightmareVisionStage():Void {}
  static function loadNightmareVisionStageFile(p:NightmareVisionPaths,prefs:Dynamic,plugins:Dynamic,mods:Dynamic,difficulty:Dynamic,lease:NightmareVisionSpriteOwner,path:String,shared:Map<String,Dynamic>):NightmareVisionScriptModule {
   lease.requireActive();return StageIO.current.load(path,shared);
@@ -149,6 +156,7 @@ class Main {static function ok(v:Bool,m:String):Void {if(!v)throw m;}static func
  var before=io.calls.length;ok(!host.swapNightmareVisionStage("missing")&&teardown==0&&host.stage==old&&old.members.indexOf(role)>=0,"unavailable does not mutate callbacks/ownership");
  io.scriptFiles.set("data/stages/next/script.hx",true);io.source="function onLoad() io.tick();";io.data.stageObjects=[{id:"newProp"}];var x=actor.x,y=actor.y;
  ok(host.swapNightmareVisionStage("next"),"available source host swap");
+ ok(host.psychStageCameraBoyfriend!=null&&host.psychStageCameraBoyfriend[0]==0&&host.zoomSnaps==0,"swap resets stage camera offsets without snapping the zoom");
  ok(teardown==1&&module.released&&prop.destroyed==1,"registered module lifecycle and old props once");
  ok(host.members[originalSlot]==host.stage&&host.stage.members.indexOf(role)>=0&&role.container==host.stage&&host.members.indexOf(role)<0,"outer slot and sole native ownership");
  ok(actor.x==x&&actor.y==y&&role.x==100&&role.y==200&&role.alpha==.6&&role.map.get("cached")==actor&&actor.destroyed==0,"cache/transform preserved");

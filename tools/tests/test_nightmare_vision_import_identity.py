@@ -7,7 +7,7 @@ import json
 import subprocess
 import tempfile
 import unittest
-from tools.haxe_import_io_stubs import install_import_io_dependencies
+from tools.haxe_import_io_stubs import install_chart_format_modules, install_import_io_dependencies
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,6 +58,7 @@ class NightmareVisionImportIdentityTest(unittest.TestCase):
             (work / "PsychSongNameCompat.hx").write_text(
                 (ROOT / "source/PsychSongNameCompat.hx").read_text()
             , newline='\n')
+            install_chart_format_modules(work)
             (work / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", temp, "--run", "Main", *((path).as_posix() for path in paths)],

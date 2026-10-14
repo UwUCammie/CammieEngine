@@ -209,6 +209,7 @@ class PsychHscriptCompatTest(unittest.TestCase):
             temp = Path(folder)
             shutil.copy(ROOT / "source/PsychHscriptCompat.hx", temp / "PsychHscriptCompat.hx")
             shutil.copy(ROOT / "source/PsychScriptDiscovery.hx", temp / "PsychScriptDiscovery.hx")
+            shutil.copy(ROOT / "source/SourceChartReferences.hx", temp / "SourceChartReferences.hx")
             (temp / "Main.hx").write_text(MAIN, newline="\n")
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "-cp", str(ROOT / ".haxelib/hscript/2,5,0"),
@@ -390,7 +391,7 @@ function onCreate() {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
-            for module in ("PsychHscriptCompat.hx", "PsychScriptDiscovery.hx"):
+            for module in ("PsychHscriptCompat.hx", "PsychScriptDiscovery.hx", "SourceChartReferences.hx"):
                 shutil.copy(ROOT / "source" / module, temp / module)
             (temp / "StageFallbackFixture.hx").write_text(fixture_source, newline="\n")
             root = temp / "psych-mod"

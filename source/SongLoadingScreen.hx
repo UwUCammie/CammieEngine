@@ -328,7 +328,12 @@ class SongLoadingScreen {
 			if (active) complete(1, progress.label);
 			return;
 		}
-		if (progress.completed == 3) complete(4, progress.label);
+		if (progress.completed == 3) {
+			// The new state exists and the overlay still covers it: the best
+			// moment to clear out everything loading left behind.
+			EngineMemory.collectNow(true, 'loading-handoff', true);
+			complete(4, progress.label);
+		}
 		else if (progress.completed == 4 && readyFrameRendered) {
 			log('hidden'); cancel();
 		}

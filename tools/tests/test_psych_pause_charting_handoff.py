@@ -17,6 +17,10 @@ class PsychPauseChartingHandoffTest(unittest.TestCase):
         methods = '\n'.join(method(source, marker) for marker in (
             'function openPauseChartEditor()', 'function exitPauseToMenu()',
         ))
+        # The pause menu leaves through the song's shared exit, so run that too.
+        self.assertIn('PlayState.exitToMenu();', method(source, 'function exitPauseToMenu()'))
+        play_source = (ROOT / 'source/PlayState.hx').read_text(encoding='utf-8')
+        exit_to_menu = method(play_source, 'public static function exitToMenu(')
         fixture = '''@:access(PauseSubState)
 class Main {
  static function check(value:Bool, message:String):Void if (!value) throw message;
@@ -77,6 +81,8 @@ class PlayState {
  public var editorEntries:Int = 0;
  public function new() {}
  public static function psychChartingOwnerRoot():String return owner;
+ static function skipNextSongTransition(skip:Bool):Void {}
+ @@EXIT@@
  private function openChartEditor():Void {
   editorEntries++;
   canResync = false;
@@ -98,11 +104,15 @@ class LoadingState {
  }
 }
 class ImportedMenuEntry { public static function returnToFreeplay():Void LoadingState.loadAndSwitchState(new FreeplayState()); }
-class FlxG { public static var camera:Dynamic = {followLerp:1.0}; }
+class FlxG {
+ public static var camera:Dynamic = {followLerp:1.0};
+ public static var sound:Dynamic = {playMusic:function(path:Dynamic):Void throw 'pause exit started menu music'};
+}
+class Paths { public static function music(key:String):String return key; }
 class ChartingState { public function new() {} }
 class FreeplayState { public function new() {} }
 class StoryMenuState { public function new() {} }
-'''.replace('@@METHODS@@', methods)
+'''.replace('@@METHODS@@', methods).replace('@@EXIT@@', exit_to_menu)
         with tempfile.TemporaryDirectory(dir=ROOT / 'tmp') as folder:
             Path(folder, 'Main.hx').write_text(fixture, encoding='utf-8', newline='\n')
             result = subprocess.run([*HAXE_COMMAND, '-cp', str(ROOT / 'source'), '-cp', folder,

@@ -43,7 +43,10 @@ class Sound {{
   public static function fromFile(_path:String):Sound return new Sound();
 }}
 class FNFAssets {{
+  public static var decodes:Int = 0;
   public static function exists(path:String):Bool return path.endsWith('.ogg');
+  // Script sounds decode through the base sound cache, never straight from disk.
+  public static function getSound(_path:String):Sound {{ decodes++; return new Sound(); }}
 }}
 class FlxSoundGroup {{
   public var volume:Float;
@@ -115,6 +118,8 @@ class Test {{
         || repeated.groupVolumeAtPlay != 0.4 || repeated.globalVolumeAtPlay != 0.75
         || repeated.volume != 0.4 || Math.abs(repeated.effectiveVolumeAtPlay - 0.12) > 0.0001)
       throw 'reused script SFX lost its updated group, master, or authored volume';
+    if (FNFAssets.decodes != 1)
+      throw 'a repeated script SFX asked for ' + FNFAssets.decodes + ' decodes';
   }}
 }}
 '''
@@ -171,6 +176,10 @@ class Test {{
     FlxSound.group.remove(this);
   }}
 }}
+class FNFAssets {{
+  public static var soundCacheClears:Int = 0;
+  public static function clearSoundCache():Void soundCacheClears++;
+}}
 class Test {{
   static var hscriptFlxSounds:Map<String,FlxSound> = [];
   static var hscriptFlxSoundLooped:Map<String,Bool> = [];
@@ -200,6 +209,8 @@ class Test {{
     if (hscriptFlxSounds.keys().hasNext() || hscriptFlxSoundLooped.keys().hasNext()
         || hscriptSoundCache.keys().hasNext() || hscriptSoundLastPlay.keys().hasNext())
       throw 'per-song HScript sound cache maps were retained';
+    if (FNFAssets.soundCacheClears != 1)
+      throw 'song teardown did not release the shared decoded sounds';
   }}
 }}
 '''

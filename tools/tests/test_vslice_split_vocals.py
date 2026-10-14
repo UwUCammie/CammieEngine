@@ -50,7 +50,7 @@ class VSliceSplitVocalsTest(unittest.TestCase):
         for wrapper in (
             "playVocals();",
             "pauseVocals();",
-            "seekVocals(Conductor.songPosition);",
+            "seekVocals(FlxG.sound.music.time);",
             "setVocalsVolume(0);",
             "destroyVocals();",
         ):

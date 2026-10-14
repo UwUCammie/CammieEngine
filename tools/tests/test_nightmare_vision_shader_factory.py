@@ -244,7 +244,8 @@ class NightmareVisionShaderFactoryTestMain {
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("nightmare-vision-shader-factory-ok", result.stdout)
-        self.assertIn("[nightmare-vision-shader-compile] fragment=",
+        # The recovery and its log line belong to the shared runtime shader now.
+        self.assertIn("[shader-compile-error] fragment=",
                       result.stdout + result.stderr)
         self.assertIn(": shader compile failure", result.stdout + result.stderr)
         self.assertIn("assets/imported_mods/nmv-selected/shaders/broken.frag",

@@ -33,7 +33,9 @@ class PsychCameraAliasTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text()
         layer = extract_method(source, "public static function psychCameraLayerName")
         camera = extract_method(source, "function compatCameraForName")
-        camera = camera.replace(":FlxCamera", ":FixtureCamera")
+        # The default route asks the script variables for a camera with that tag.
+        camera = (camera + "\n" + extract_method(source, "function scriptCameraNamed")).replace(
+            "FlxCamera", "FixtureCamera")
         fixture = """
 class FixtureCamera {
   public var alpha:Float;
@@ -43,6 +45,7 @@ class PsychCameraLayerCompat {
   var camGame:FixtureCamera;
   var camHUD:FixtureCamera;
   var camOther:FixtureCamera;
+  var psychScriptVariables:Map<String, Dynamic> = [];
   public function new() {
     camGame = new FixtureCamera(1);
     camHUD = new FixtureCamera(1);
@@ -66,6 +69,17 @@ class PsychCameraLayerCompat {
     if (psychCameraLayerName("camGameHud") != "hud"
       || psychCameraLayerName(null) != "game")
       throw "camera alias normalization changed";
+    var made = new FixtureCamera(1);
+    state.psychScriptVariables.set("camBars", made);
+    if (state.compatCameraForName("camBars") != made)
+      throw "a camera the script made was not found by its tag";
+    state.psychScriptVariables.set("notCamera", "text");
+    if (state.compatCameraForName("notCamera") != state.camGame
+      || state.compatCameraForName("missing") != state.camGame)
+      throw "an unknown camera name must fall back to the game camera";
+    state.psychScriptVariables.set("camHUD", made);
+    if (state.compatCameraForName("camHUD") != state.camHUD)
+      throw "a script variable must not shadow a built-in camera name";
   }
 }
 """.replace("{layer}", layer).replace("{camera}", camera)
@@ -109,7 +123,8 @@ class PsychCameraLayerCompat {
     def test_camera_assignment_calls_native_basic_setter(self):
         source = (ROOT / "source/PlayState.hx").read_text()
         layer = extract_method(source, "public static function psychCameraLayerName")
-        camera = extract_method(source, "function compatCameraForName").replace(":FlxCamera", ":FixtureCamera")
+        camera = (extract_method(source, "function compatCameraForName") + "\n"
+                  + extract_method(source, "function scriptCameraNamed")).replace("FlxCamera", "FixtureCamera")
         setter = extract_method(source, "function compatSetObjectCamera")
         fixture = r'''class FixtureCamera { public function new() {} }
 class FlxBasic {
@@ -130,6 +145,7 @@ class PsychCameraSetterFixture {
  var camGame = new FixtureCamera();
  var camHUD = new FixtureCamera();
  var camOther = new FixtureCamera();
+ var psychScriptVariables:Map<String, Dynamic> = [];
  var sprite = new FlxBasic();
  var psychGlobalProviderFirstSprite:FlxBasic = null;
  public function new() {}

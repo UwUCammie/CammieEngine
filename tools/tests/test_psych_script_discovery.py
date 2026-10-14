@@ -62,6 +62,7 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             shutil.copy(ROOT / "source/PsychScriptDiscovery.hx", temp / "PsychScriptDiscovery.hx")
+            shutil.copy(ROOT / "source/SourceChartReferences.hx", temp / "SourceChartReferences.hx")
             (temp / "Main.hx").write_text(MAIN, newline='\n')
             args = []
             for root, chart, song in plans:
@@ -92,6 +93,7 @@ class PsychScriptDiscoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as folder:
             temp = Path(folder)
             shutil.copy(ROOT / "source/PsychScriptDiscovery.hx", temp / "PsychScriptDiscovery.hx")
+            shutil.copy(ROOT / "source/SourceChartReferences.hx", temp / "SourceChartReferences.hx")
             (temp / "Main.hx").write_text(COMPANION_MAIN, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", folder, "--run", "Main", str(root), str(chart), str(companion)],

@@ -71,26 +71,25 @@ class ShaderHandler {
 	}
 }
 
-class CoolRuntimeShader extends FlxRuntimeShader {
-	//uhhhhhh
-	public function new(frag, ?vertex:String) {
-		if ((frag is String)) {
-			var s:String = frag;
-			// old-engine scripts pass RAW GLSL source (lofright's stage
-			// grayscale, etc.) - if it looks like shader code, hand it
-			// straight through instead of treating it as a shader NAME and
-			// trying to read 'assets/shaders/#pragma header...}.frag'
-			if (StringTools.ltrim(s).indexOf('#pragma') == 0 || s.indexOf('void main') != -1) {
-				super(CodenameShaderSource.normalizeOpenFL(s), vertex == null ? null : CodenameShaderSource.normalizeOpenFL(vertex));
-				return;
-			}
-			var path = ShaderPaths.resolve(s);
-			if (path == null) throw 'Shader not found: $s';
-			s = FNFAssets.getText(path);
-			super(CodenameShaderSource.normalizeOpenFL(s), vertex == null ? null : CodenameShaderSource.normalizeOpenFL(vertex));
-			return;
-		}
-		 super(frag, vertex);
+
+
+class CoolRuntimeShader extends RecoveringRuntimeShader {
+	/** `isSource` is for callers that already hold the shader text and must
+		not have it second-guessed as a name. */
+	public function new(frag:Dynamic, ?vertex:String, ?recovery:Int, ?label:String, ?isSource:Bool) {
+		var named = (frag is String) && isSource != true && !RuntimeShaderSource.looksLikeSource(frag);
+		super(fragmentText(frag, isSource == true), vertex, recovery, label != null ? label : (named ? Std.string(frag) : null));
+	}
+
+	/** Older scripts pass raw GLSL where newer ones pass a shader name. Text
+		that looks like shader code is used as is, anything else is looked up. */
+	static function fragmentText(frag:Dynamic, isSource:Bool):String {
+		if (!(frag is String)) return null;
+		var s:String = frag;
+		if (isSource || RuntimeShaderSource.looksLikeSource(s)) return s;
+		var path = ShaderPaths.resolve(s);
+		if (path == null) throw 'Shader not found: $s';
+		return FNFAssets.getText(path);
 	}
 
 	/**

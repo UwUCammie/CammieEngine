@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from test_psych_animation_indices import extract_method
+from base_helper_fixtures import COLOR_HELPERS, cool_util_class
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,7 +29,8 @@ class PsychRenderPrimitivesTest(unittest.TestCase):
         source = (ROOT / "source/PlayState.hx").read_text()
         methods = "\n".join(extract_method(source, marker) for marker in [
             "function compatMakeLuaSprite(", "function compatRemoveLuaSprite(", "function compatLoadGraphic(",
-            "function compatTweenObject(", "function compatCancelTween(",
+            "public static function scriptTweenType(", "public function startTaggedTween(",
+            "function compatTweenObject(", "function compatTweenProperty(", "function compatCancelTween(",
             "function compatDoTween(",
             "function compatParseColor(",
         ])
@@ -75,6 +77,7 @@ class FlxCamera {
  public function new() {}
 }
 class FlxEase { public static function linear(t:Float):Float return t; }
+enum abstract FlxTweenType(Int) from Int to Int { var PERSIST=1; var LOOPING=2; var PINGPONG=4; var ONESHOT=8; var BACKWARD=16; }
 class FlxTween {
  public var route:String; public var start:Int; public var end:Int;
  public var sprite:FlxSprite;
@@ -181,6 +184,9 @@ class RenderFixture {
  }
 }
 '''
+        # Colours come from the real shared reader; the ease table has its own test.
+        fixture += cool_util_class(*COLOR_HELPERS,
+            extra=" public static function getEaseFromString(name:String):Dynamic return FlxEase.linear;")
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / "Strumline.hx").write_text("class Strumline {} class StrumNote { public function cancelIntroTween(field:String):Void {} }")
             (Path(folder) / "RenderFixture.hx").write_text(fixture, newline='\n')

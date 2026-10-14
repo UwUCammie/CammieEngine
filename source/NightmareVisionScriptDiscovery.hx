@@ -139,26 +139,25 @@ class NightmareVisionScriptDiscovery {
 		}
 
 		// NMV note type scripts are selected only for types used by chart notes.
-		var noteTypes = chartNoteTypes(songData);
-		for (noteType in noteTypes) {
+		var sidecar = companionEvents;
+		if (sidecar == null) sidecar = readEventsSidecar(roots, plan.song, plan.coverageNotes, parseJson);
+		var references = SourceChartReferences.collect(songData, sidecar, NightmareVisionChartCompat.noteTypeName,
+			legacyEventRow, cleanRelative);
+		for (noteType in references.noteTypes) {
 			var selected = resolveFirst(roots.ownerFirst,
 				['data/notetypes/' + noteType, 'notetypes/' + noteType]);
 			if (selected != null)
 				addEntry(entries, seenPaths, 'notetype', noteType, selected.path, selected.relative);
 		}
 
-		var events = eventNames(songData);
-		var sidecar = companionEvents;
-		if (sidecar == null) sidecar = readEventsSidecar(roots, plan.song, plan.coverageNotes, parseJson);
-		appendEventNames(events, sidecar);
-		for (eventName in events) {
+		for (eventName in references.events) {
 			var selected = resolveFirst(roots.ownerFirst,
 				['data/events/' + eventName, 'events/' + eventName]);
 			if (selected != null)
 				addEntry(entries, seenPaths, 'event', eventName, selected.path, selected.relative);
 		}
 		for (payload in [songData, sidecar])
-			for (event in eventEntries(payload)) {
+			for (event in SourceChartReferences.eventRows(payload, legacyEventRow)) {
 				if (event.length < 3 || event[0] != 'Change Character' || !Std.isOfType(event[2], String)) continue;
 				var name = cleanRelative(cast event[2]);
 				if (name == '') continue;
@@ -340,11 +339,8 @@ class NightmareVisionScriptDiscovery {
 		return null;
 	}
 
-	static function chartSongData(chart:Dynamic):Dynamic {
-		if (chart == null) return null;
-		var song = Reflect.field(chart, 'song');
-		return song == null || Std.isOfType(song, String) ? chart : song;
-	}
+	static function chartSongData(chart:Dynamic):Dynamic
+		return SourceChartReferences.songData(chart);
 
 	static function chartSongName(chart:Dynamic):String {
 		return stringField(chartSongData(chart), 'song');
@@ -357,91 +353,16 @@ class NightmareVisionScriptDiscovery {
 		return field == 'song' ? cleanName(cast result) : cleanRelative((cast result:String).trim());
 	}
 
-	static function chartNoteTypes(songData:Dynamic):Array<String> {
-		var result:Array<String> = [];
-		var seen:Map<String, Bool> = new Map();
-		var notes:Dynamic = songData == null ? null : Reflect.field(songData, 'notes');
-		if (!Std.isOfType(notes, Array)) return result;
-		for (section in (cast notes:Array<Dynamic>)) {
-			var rows:Dynamic = section == null ? null : Reflect.field(section, 'sectionNotes');
-			if (!Std.isOfType(rows, Array)) continue;
-			for (row in (cast rows:Array<Dynamic>)) {
-				if (!Std.isOfType(row, Array)) continue;
-				var values:Array<Dynamic> = cast row;
-				if (values.length < 4) continue;
-				if (Reflect.field(songData, 'events') == null && values[1] < 0) continue;
-				var value:Dynamic = values[3];
-				var index = Std.isOfType(value, String) ? null : Std.parseInt(Std.string(value));
-				var name = cleanRelative(Std.isOfType(value, String) ? cast value
-					: (index == null ? '' : NightmareVisionChartCompat.noteTypeName(index)));
-				if (name == '' || seen.exists(name.toLowerCase())) continue;
-				seen.set(name.toLowerCase(), true);
-				result.push(name);
-			}
-		}
-		return result;
-	}
+	/** Chart.correctFormat pulls old in-section event rows out only when the
+	 * chart has no events list; with one, such a row stays a note. */
+	static function legacyEventRow(values:Array<Dynamic>, hasEvents:Bool):Bool
+		return !hasEvents && values[1] < 0;
 
-	static function eventNames(songData:Dynamic):Array<String> {
-		var result:Array<String> = [];
-		appendEventNames(result, songData);
-		return result;
-	}
+	static function isScriptFile(path:String):Bool
+		return SourceChartReferences.isScriptFile(path, scriptExtensions);
 
-	static function eventEntries(value:Dynamic):Array<Array<Dynamic>> {
-		var result:Array<Array<Dynamic>> = [];
-		var data = value;
-		if (data != null && !Std.isOfType(data, Array)) {
-			data = chartSongData(data);
-			var events = Reflect.field(data, 'events');
-			// Chart.correctFormat extracts legacy event rows only when the events
-			// field is absent. Inspect without splicing the donor note arrays.
-			if (events == null) {
-				var sections:Dynamic = Reflect.field(data, 'notes');
-				if (Std.isOfType(sections, Array)) for (section in (cast sections:Array<Dynamic>)) {
-					var notes:Dynamic = section == null ? null : Reflect.field(section, 'sectionNotes');
-					if (!Std.isOfType(notes, Array)) continue;
-					for (row in (cast notes:Array<Dynamic>)) {
-						if (!Std.isOfType(row, Array)) continue;
-						var values:Array<Dynamic> = cast row;
-						if (values.length >= 5 && values[1] < 0)
-							result.push([values[2], values[3], values[4]]);
-					}
-				}
-				return result;
-			}
-			data = events;
-		}
-		if (!Std.isOfType(data, Array)) return result;
-		for (row in (cast data:Array<Dynamic>)) {
-			if (!Std.isOfType(row, Array)) continue;
-			var values:Array<Dynamic> = cast row;
-			if (values.length < 2 || !Std.isOfType(values[1], Array)) continue;
-			for (event in (cast values[1]:Array<Dynamic>))
-				if (Std.isOfType(event, Array)) result.push(cast event);
-		}
-		return result;
-	}
-
-	static function appendEventNames(result:Array<String>, value:Dynamic):Void {
-		for (event in eventEntries(value)) {
-			if (event.length == 0 || !Std.isOfType(event[0], String)) continue;
-			var name = cleanRelative(cast event[0]);
-			if (name != '' && result.indexOf(name) < 0) result.push(name);
-		}
-	}
-
-	static function isScriptFile(path:String):Bool {
-		var lower = path.toLowerCase();
-		for (extension in scriptExtensions) if (lower.endsWith(extension)) return true;
-		return false;
-	}
-
-	static function stripExtension(path:String):String {
-		for (extension in scriptExtensions) if (path.toLowerCase().endsWith(extension))
-			return path.substr(0, path.length - extension.length);
-		return path;
-	}
+	static function stripExtension(path:String):String
+		return SourceChartReferences.stripScriptExtension(path, scriptExtensions);
 
 	static function safeSegment(value:String):Bool {
 		return value != null && value != '' && value != '.' && value != '..'

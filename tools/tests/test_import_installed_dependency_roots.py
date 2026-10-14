@@ -124,6 +124,22 @@ chart.gfVersion="gf";
 if(ImportInstalledDependencyRoots.resolve(Sys.getCwd()+"/addon","Nightmare Vision",chart).providers.length!=1) throw "obsolete NV third-role alias displaced gfVersion";
 ''',[install])
 
+    def test_psych_reads_the_legacy_third_role_like_the_fork(self):
+        with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
+            scratch=Path(temp)
+            install=scratch/'install'
+            (install/'addon').mkdir(parents=True)
+            self.provider(install,'provider')
+            self.run_haxe(scratch,r'''
+Sys.setCwd(Sys.args()[0]);
+var chart:Dynamic={player1:"unique-player",player2:"unique-opponent",stage:"room"};
+if(ImportInstalledDependencyRoots.resolve(Sys.getCwd()+"/addon","Psych Engine",chart).providers.length!=1) throw "Psych provider missing";
+chart.player3="unique-girlfriend";
+if(ImportInstalledDependencyRoots.resolve(Sys.getCwd()+"/addon","Psych Engine",chart).providers.length!=0) throw "Psych ignored the legacy third role";
+chart.gfVersion="gf";
+if(ImportInstalledDependencyRoots.resolve(Sys.getCwd()+"/addon","Psych Engine",chart).providers.length!=1) throw "legacy third role displaced gfVersion";
+''',[install])
+
     def test_staged_owner_reads_and_commit_integrity(self):
         with tempfile.TemporaryDirectory(dir=ROOT/'tmp') as temp:
             scratch=Path(temp)

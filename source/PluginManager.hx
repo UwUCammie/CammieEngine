@@ -78,6 +78,8 @@ class PluginManager {
     }
     
     public static function addVarsToInterp<T:Interp>(interp:T):T {
+		// Shared plain classes first; the adapters set below replace any overlap.
+		ScriptNativeClasses.seed(function(name, value) interp.variables.set(name, value));
 		interp.variables.set("Conductor", Conductor);
 		interp.variables.set("FlxSprite", DynamicSprite);
         interp.variables.set("DisSprite", DisSprite);

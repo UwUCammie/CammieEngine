@@ -16,7 +16,8 @@ class PsychMouseCoordinatesTest(unittest.TestCase):
         pointer = (ROOT / '.haxelib/flixel/6,1,2/flixel/input/FlxPointer.hx').read_text()
         methods = '\n'.join(extract_method(source, name) for name in (
             'public static function psychCameraLayerName',
-            'function compatCameraForName', 'function compatMouseX', 'function compatMouseY'))
+            'function compatCameraForName', 'function scriptCameraNamed',
+            'function compatMouseX', 'function compatMouseY'))
         transform = extract_method(pointer, 'public function getScreenPosition(')
         fixture = '''
 class FlxPoint {
@@ -41,6 +42,7 @@ class Main {
  var camGame=new FlxCamera(10,20,2);
  var camHUD=new FlxCamera(20,30,1);
  var camOther=new FlxCamera(40,50,.5);
+ var psychScriptVariables:Map<String,Dynamic>=[];
  public function new() {FlxG.camera=camGame;}
  METHODS
  static function equal(actual:Float,expected:Float) {

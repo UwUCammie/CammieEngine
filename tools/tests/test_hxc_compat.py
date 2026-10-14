@@ -1091,14 +1091,34 @@ class Main {{
         result = self.run_fixture(main, [ROOT / ".haxelib/hscript/2,5,0"])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_markov_eye_popup_event_routes_without_claiming_body_execution(self):
+    def test_static_sprite_event_routes_by_its_descriptor_not_by_name(self):
         eye_popup = r'''
-class MarkovPopupsEvent extends ScriptedSongEvent {
-    function new() { super('EyePopup'); }
+class OverlayCueEvent extends ScriptedSongEvent {
+    function new() { super('OverlayCue'); }
     function handleEvent(data) {
         var x = data.value.x;
         var y = data.value.y;
-        Paths.getSparrowAtlas('MarkovEyes');
+        var cue = new FlxSprite(x, y);
+        cue.frames = Paths.getSparrowAtlas('ui/overlay');
+        cue.animation.addByPrefix('pulse', 'Overlay Pulse', 18, false);
+        cue.animation.play('pulse');
+        cue.scrollFactor.set(0, 0);
+        cue.cameras = [PlayState.instance.camHUD];
+        cue.animation.finishCallback = function(s:String) {
+            PlayState.instance.remove(cue);
+            cue.kill();
+        };
+    }
+}
+'''
+        # Same id and fields, but the body is not the whole static sprite shape.
+        partial = r'''
+class OverlayCueEvent extends ScriptedSongEvent {
+    function new() { super('OverlayCue'); }
+    function handleEvent(data) {
+        var x = data.value.x;
+        var y = data.value.y;
+        Paths.getSparrowAtlas('ui/overlay');
     }
 }
 '''
@@ -1111,14 +1131,18 @@ class Main {{
     return false;
   }}
   static function main() {{
-    var result = HxcCompat.analyze({hx_string(eye_popup)}, "scripts/events/EyePopup.hxc");
-    if (result.kind != "song-event" || result.identifier != "EyePopup") fail("eye event identity");
-    if (result.eventAdapters.length != 1 || result.eventAdapters[0].canonicalName != "Markov Popups")
-      fail("eye popup native route");
+    var result = HxcCompat.analyze({hx_string(eye_popup)}, "scripts/events/OverlayCue.hxc");
+    if (result.kind != "song-event" || result.identifier != "OverlayCue") fail("sprite event identity");
+    if (result.eventAdapters.length != 1 || result.eventAdapters[0].canonicalName != "OverlayCue")
+      fail("sprite event descriptor route");
     if (result.fields.length != 2 || result.fields.indexOf("x") < 0 || result.fields.indexOf("y") < 0)
-      fail("eye popup fields");
-    if (hasCode(result, "unsupported-hxc-event-body") || hasCode(result, "unsupported-hxc-event"))
-      fail("eye body/identity diagnostics");
+      fail("sprite event fields");
+    if (hasCode(result, "unsupported-hxc-event-body") || hasCode(result, "unsupported-hxc-event")
+      || hasCode(result, "hxc-event-body-gap"))
+      fail("sprite event body/identity diagnostics");
+    var partial = HxcCompat.analyze({hx_string(partial)}, "scripts/events/OverlayCue.hxc");
+    if (partial.eventAdapters.length != 0)
+      fail("an event name alone must not claim the sprite route");
   }}
 }}'''
         result = self.run_fixture(main, [ROOT / ".haxelib/hscript/2,5,0"])
@@ -1152,7 +1176,7 @@ class Main {{
       || vignette.fields.indexOf("easeDir") < 0 || hasCode(vignette, "unsupported-hxc-event"))
       fail("real VignEvent adapter");
     if (eye.className != "MarkovPopupsEvent" || eye.identifier != "EyePopup"
-      || eye.eventAdapters.length != 1 || eye.eventAdapters[0].canonicalName != "Markov Popups"
+      || eye.eventAdapters.length != 1 || eye.eventAdapters[0].canonicalName != "EyePopup"
       || eye.fields.length != 2 || eye.fields.indexOf("x") < 0 || eye.fields.indexOf("y") < 0
       || hasCode(eye, "unsupported-hxc-event"))
       fail("real EyePopup adapter");
@@ -1180,7 +1204,7 @@ class Main {{
             "v-slice/TAKEOVER-PLUS-PLUS-V10/DDTO++_V10_RELEASE/scripts/events/CharacterResetHandlerCL.hxc":
                 ("module", "CharacterResetHandlerCL", "CharacterResetHandlerCL", ""),
             "v-slice/TAKEOVER-PLUS-PLUS-V10/DDTO++_V10_RELEASE/scripts/events/EyePopup.hxc":
-                ("song-event", "MarkovPopupsEvent", "EyePopup", "Markov Popups"),
+                ("song-event", "MarkovPopupsEvent", "EyePopup", "EyePopup"),
             "v-slice/TAKEOVER-PLUS-PLUS-V10/DDTO++_V10_RELEASE/scripts/events/NoteSwapEvent.hxc":
                 ("song-event", "NoteSwapEvent", "NoteSwapEvent", "Note Swap"),
             "v-slice/Wacky World UPDATE [V-Slice]/scripts/events/ChangeCharacterScriptEvent.hxc":

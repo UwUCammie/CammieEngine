@@ -12,17 +12,14 @@ class NightmareVisionLegacyMissFlow {
 				state.retireNightmareVisionLegacyNote(candidate);
 		});
 		state.combo = 0;
-		state.health -= note.missHealth * state.healthLoss;
+		// This revision has no native health modifier and no hold subdivision.
+		state.health -= SourceHealthDelta.miss(true, note.missHealth, state.healthLoss);
 		if (state.instakillOnMiss) {
 			state.setSourceVocalVolume('player', 0);
 			state.doDeathCheck(true);
 		}
-		var delta = SourceScoreLedger.miss(true, state.practiceMode);
-		PlayState.misses += delta.missDelta;
 		state.setSourceVocalVolume('player', 0);
-		state.songScore += delta.score;
-		state.totalPlayed += delta.played;
-		state.refreshSourceAccuracy();
+		state.applySourceMiss();
 		state.RecalculateRating();
 		var actor = note.forceGfSing ? state.gf : state.boyfriend;
 		if (actor != null && !note.noMissAnimation && actor.hasMissAnimations
@@ -43,11 +40,7 @@ class NightmareVisionLegacyMissFlow {
 			}
 			if (state.combo > 5 && state.gf != null && state.gf.animOffsets.exists('sad')) state.gf.playAnim('sad');
 			state.combo = 0;
-			var delta = SourceScoreLedger.miss(true, state.practiceMode, state.endingSong, true);
-			state.songScore += delta.score;
-			PlayState.misses += delta.missDelta;
-			state.totalPlayed += delta.played;
-			state.refreshSourceAccuracy();
+			state.applySourceMiss(true);
 			state.RecalculateRating();
 			state.playHistoricalNightmareMissSound();
 			if (state.boyfriend.hasMissAnimations && anim && state.boyfriend.animTimer <= 0 && !state.boyfriend.voicelining)

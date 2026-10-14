@@ -1197,6 +1197,7 @@ class Main {
         files["ImportRootScanner.hx"] = scanner
         files["NightmareVisionChartCompat.hx"] = (ROOT / "source/NightmareVisionChartCompat.hx").read_text()
         files["NightmareVisionScriptDiscovery.hx"] = (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
+        files["SourceChartReferences.hx"] = (ROOT / "source/SourceChartReferences.hx").read_text()
         files["CodenameImporter.hx"] = codename
         files["CodenameCharacterAtlas.hx"] = (ROOT / "source/CodenameCharacterAtlas.hx").read_text()
         files["CodenameStrumlineLayout.hx"] = (ROOT / "source/CodenameStrumlineLayout.hx").read_text()

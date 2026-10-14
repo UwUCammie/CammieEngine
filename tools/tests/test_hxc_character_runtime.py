@@ -400,6 +400,8 @@ class Main {{
             (temp / "NativeDirectoryListing.hx").write_text((ROOT / "source/NativeDirectoryListing.hx").read_text(), newline='\n')
             (temp / "HxcScriptIdentity.hx").write_text(
                 (ROOT / "source/HxcScriptIdentity.hx").read_text(), newline='\n')
+            (temp / "HxcPreprocessor.hx").write_text(
+                (ROOT / "source/HxcPreprocessor.hx").read_text(), newline='\n')
             (temp / "Main.hx").write_text(main, newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", str(temp), "--run", "Main"],

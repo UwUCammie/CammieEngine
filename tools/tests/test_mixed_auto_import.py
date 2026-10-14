@@ -69,10 +69,12 @@ class MixedAutoImportTest(unittest.TestCase):
                 "static function findImportFile",
                 "static function findImportAudio",
                 "static function findImportVocalStems",
-                "static function normalizeNightmareVisionVocalRoles",
+                "static function normalizeSourceVocalRoles",
                 "static function vocalStemMetadataMatches",
                 "static function updateChartVocalStemMetadata",
                 "static function readImportJson",
+                "static function findImportDialogueFiles",
+                "static function isImportDialogueJson",
                 "static function convertImportDialogue",
                 "static function importCutsceneScript",
                 "static function importCutsceneBool",
@@ -500,6 +502,9 @@ class Main {{
             for dependency in ("ImportSongOwnership.hx", "CompatScriptManifest.hx", "DifficultySongMedia.hx",
                                "ImportInstalledDependencyRoots.hx", "CompatCanonicalPath.hx"):
                 (temp_path / dependency).write_text((ROOT / "source" / dependency).read_text(), newline='\n')
+            (temp_path / "SourceVocalRole.hx").write_text(
+                (ROOT / "source/SourceVocalRole.hx").read_text(), newline='\n'
+            )
             (temp_path / "NightmareVisionVocalRole.hx").write_text(
                 (ROOT / "source/NightmareVisionVocalRole.hx").read_text(), newline='\n'
             )
@@ -508,6 +513,9 @@ class Main {{
             , newline='\n')
             (temp_path / "NightmareVisionScriptDiscovery.hx").write_text(
                 (ROOT / "source/NightmareVisionScriptDiscovery.hx").read_text()
+            , newline='\n')
+            (temp_path / "SourceChartReferences.hx").write_text(
+                (ROOT / "source/SourceChartReferences.hx").read_text()
             , newline='\n')
             (temp_path / "NightmareVisionDifficultyCompat.hx").write_text(
                 (ROOT / "source/NightmareVisionDifficultyCompat.hx").read_text()
@@ -527,6 +535,8 @@ class Main {{
             (temp_path / "HxcScriptIdentity.hx").write_text(
                 (ROOT / "source/HxcScriptIdentity.hx").read_text()
             , newline='\n')
+            for shared in ("HxcPreprocessor.hx", "NoteRowParams.hx"):
+                (temp_path / shared).write_text((ROOT / "source" / shared).read_text(), newline='\n')
             (temp_path / "HxcScriptDiscovery.hx").write_text(
                 (ROOT / "source/HxcScriptDiscovery.hx").read_text()
             , newline='\n')

@@ -75,6 +75,7 @@ import flixel.text.FlxText.FlxTextAlign;
 import flixel.text.FlxText.FlxTextBorderStyle;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
+import flixel.tweens.FlxTween.FlxTweenType;
 import flixel.ui.FlxBar;
 import flixel.ui.FlxBar.FlxBarFillDirection;
 import flixel.util.FlxCollision;
@@ -889,7 +890,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function playHistoricalNightmareMissSound():Void {
-		FlxG.sound.play(nightmareVisionPaths.soundRandom('missnote', 1, 3), FlxG.random.float(0.1, 0.2));
+		playMissSound();
 	}
 
 	function broadcastHistoricalNightmareScripts(name:String, args:Array<Dynamic>):Dynamic {
@@ -1203,7 +1204,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var spriteOwner = NightmareVisionSpriteRegistry.setup(paths);
 		interp.sourceSpriteOwner = spriteOwner;
 		interp.cameraShaders = new NightmareVisionCameraShaders();
+		// Shared plain classes go in first so the owner adapters below win any overlap.
+		ScriptNativeClasses.seed(function(name, value) interp.variables.set(name, value), function(path, value) {
+			interp.bindImport(path, value);
+			interp.sourceClassScope().bindRuntimeClass(path, value);
+		});
 		for (name => value in preset) interp.variables.set(name, value);
+		interp.variables.set('SortUtil', NightmareVisionSortUtil);
+		interp.bindImport('funkin.utils.SortUtil', NightmareVisionSortUtil);
+		interp.sourceClassScope().bindRuntimeClass('funkin.utils.SortUtil', NightmareVisionSortUtil);
 		for (name => value in NightmareVisionLegacyClassAliases.create(PlayState, GameOverSubstate, nightmareVisionConductor, prefs.view, paths, CoolUtil)) {
 			interp.bindImport(name, value);
 			interp.sourceClassScope().bindRuntimeClass(name, value);
@@ -1227,6 +1236,14 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.bindImport('funkin.objects.Bopper', NightmareVisionBopper);
 		interp.bindImport('funkin.objects.BGSprite', NightmareVisionBGSprite);
 		interp.bindImport('funkin.video.FunkinVideoSprite', NightmareVisionVideoSprite);
+		// The source's static instance list, narrowed to this owner's clips.
+		var videoOwner = paths.root;
+		interp.sourceClassScope().bindStaticField(NightmareVisionVideoSprite, 'instances',
+			function() return NightmareVisionVideoSprite.instancesFor(videoOwner));
+		interp.sourceClassScope().bindStaticField(NightmareVisionVideoSprite, 'forEach',
+			function() return function(callback:Dynamic) NightmareVisionVideoSprite.forEach(callback, videoOwner));
+		interp.sourceClassScope().bindStaticField(NightmareVisionVideoSprite, 'forEachAlive',
+			function() return function(callback:Dynamic) NightmareVisionVideoSprite.forEachAlive(callback, videoOwner));
 		interp.bindImport('funkin.game.shaders.HSLColorSwap', NightmareVisionHSLColorSwap);
 		interp.variables.set('ColorSwap', NightmareVisionColorSwap);
 		interp.bindImport('funkin.game.shaders.ColorSwap', NightmareVisionColorSwap);
@@ -1292,11 +1309,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			function(x, y) return FlxPoint.weak(x, y));
 		interp.variables.set('WindowUtil', windowUtil);
 		interp.bindImport('funkin.utils.WindowUtil', windowUtil);
-		var discordClient = new NightmareVisionDiscordClient(function(details, state, smallImageKey, hasStartTimestamp, endTimestamp, largeImageKey) {
-			#if cpp
-			DiscordClient.changePresenceWithImages(details, state, smallImageKey, hasStartTimestamp, endTimestamp, largeImageKey);
-			#end
-		}, DiscordClient.getClientId, DiscordClient.setClientId);
+		// Same lease the Psych facade writes through, so a script that changes
+		// the presence or rpcId does not leave it changed after this owner.
+		var discordClient = NightmareVisionDiscordClient.forOwner(paths.root);
 		interp.variables.set('DiscordClient', discordClient);
 		interp.bindImport('funkin.api.DiscordClient', discordClient);
 		interp.bindImport('funkin.scripts.ScriptClasses.ScriptedFlxColor', NightmareVisionColor);
@@ -1414,17 +1429,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// These are chart-local source snapshots. Persistent plugins receive only
 		// the owner preset above and must not capture a song's destroyed state.
 		var firstSection = SONG.notes == null || SONG.notes.length == 0 ? null : SONG.notes[0];
-		var fields:Map<String, Dynamic> = [
-			'bpm' => SONG.bpm, 'scrollSpeed' => SONG.speed, 'songName' => SONG.song,
-			'isStoryMode' => isStoryMode,
-			'difficulty' => nightmareVisionActiveDifficulty.currentDifficultyIndex,
-			'difficultyName' => nightmareVisionActiveDifficulty.getCurrentDifficultyString(),
-			'seenCutscene' => watchedCutscene, 'songLength' => songLength,
-			'healthGainMult' => healthGainMultiplier, 'healthLossMult' => healthLossMultiplier,
-			'botPlay' => demoMode || compatGetProperty('cpuControlled') == true,
-			'practice' => practiceMode, 'startedCountdown' => startedCountdown,
-			'mustHitSection' => firstSection == null ? false : firstSection.mustHitSection
-		];
+		var fields = SourceGameplayGlobals.snapshot(sourceGameplayState(firstSection, ''));
+		// This family keeps its own difficulty list, so the index and name come from it.
+		fields.set('difficulty', nightmareVisionActiveDifficulty.currentDifficultyIndex);
+		fields.set('difficultyName', nightmareVisionActiveDifficulty.getCurrentDifficultyString());
 		NightmareVisionSourceBindings.bindGameplay(interp, this, true, fields,
 			function(path:String):Dynamic return nightmareVisionScripts == null ? null : nightmareVisionScripts.loadDynamic(path), function() return PlayState.instance.variables);
 		if (entry.scope != 'stage' && entry.scope != 'stage-standalone') interp.bindLiveValue('stage', function() return stage, function(value) return stage = cast value, function() return this);
@@ -1513,6 +1521,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionActiveDifficulty.release();
 			nightmareVisionActiveDifficulty = null;
 		}
+		NightmareVisionDiscordClient.releaseOwner(root);
 		if (nightmareVisionActivePrefs != null && !nightmareVisionActivePrefs.canReuseFor(root)) {
 			nightmareVisionActivePrefs.release();
 			nightmareVisionActivePrefs = null;
@@ -1555,6 +1564,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		nightmareVisionActiveDifficulty.selectDifficulty(sourceIndex);
 		if (nightmareVisionActivePrefs == null) {
 			nightmareVisionActivePrefs = new NightmareVisionClientPrefs(root, new CodenameOwnerSaveData(root), OptionsHandler.options);
+			// Same order as the Psych owner: native note keys first, then this
+			// owner's saved binds on top.
+			nightmareVisionActivePrefs.seedNativeNoteKeys(cast Controls.getDeCtrls(Solo(4)));
 			nightmareVisionActivePrefs.load();
 		}
 		nightmareVisionPrefs = nightmareVisionActivePrefs;
@@ -1639,17 +1651,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		stage = NightmareVisionStageScene.create(SONG.stage, stageOwner, legacyStage);
 		curStage.stageData = NightmareVisionStageScene.data(stage);
 		restoreNightmareVisionPixelStage();
-		var data:Dynamic = NightmareVisionStageScene.data(stage);
-		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
-		setGameCameraZoom(defaultCamZoom);
 		psychCameraCompatibilityActive = true;
 		psychStageCharacterRoot = root;
-		applyPsychStageCameraOffsets(data);
-		for (slot in [{role:'bf', field:'boyfriend'}, {role:'dad', field:'opponent'}, {role:'gf', field:'girlfriend'}]) {
-			var point:Array<Dynamic> = Reflect.field(data, slot.field);
-			var info = curStage.getInfo(slot.role);
-			info.x = point[0]; info.y = point[1];
-		}
+		applySourceStageMetadata(nightmareVisionStageMetadata(NightmareVisionStageScene.data(stage)),
+			SourceStageMetadata.NIGHTMARE_VISION_CREATE);
 		initializeNightmareVisionCharacterGroups();
 		nightmareVisionScripts = new NightmareVisionGameplayScripts(this, plan,
 			File.getContent, seedNightmareVision, function(name, phase, error) {
@@ -1747,7 +1752,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var psychStageGroupCameras:Map<String, Array<FlxCamera>> = new Map();
 	@:keep public function setPsychStageGroupCameras(role:String, cameras:Array<Dynamic>):Void {
 		psychStageGroupCameras.set(role, cast cameras);
-		var actor = role == 'bf' ? boyfriend : role == 'dad' ? dad : gf;
+		var actor = characterForRole(role);
 		if (actor != null) actor.cameras = cast cameras;
 	}
 
@@ -1765,10 +1770,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			dadGhost=new FlxSprite();bfGhost=new FlxSprite();
 			nightmareVisionLegacyGhosts=[dadGhost,bfGhost];
 		}
+		// The role positions were already written by applySourceStageMetadata.
 		var data:Dynamic = curStage.stageData;
-		boyfriendPosition.set(data.boyfriend[0], data.boyfriend[1]);
-		dadPosition.set(data.opponent[0], data.opponent[1]);
-		gfPosition.set(data.girlfriend[0], data.girlfriend[1]);
 		var owner = NightmareVisionCharacterGroupBindings.owner(nightmareVisionPaths, nightmareVisionCharacterScene);
 		if (boyfriendGroup == null) boyfriendGroup = new NightmareVisionCharacterGroup(boyfriendPosition.x, boyfriendPosition.y, cast 0, owner);
 		if (dadGroup == null) dadGroup = new NightmareVisionCharacterGroup(dadPosition.x, dadPosition.y, cast 1, owner);
@@ -1906,8 +1909,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return FNFAssets.exists(selected);
 			},
 			uiPrefix:function() return nightmare ? (cast paths:NightmareVisionPaths).UI_PREFIX : '',
-			antialiasing:function() return nightmare ? nightmareVisionPrefs.view.antialiasing
-				: psychClientPrefs == null ? OptionsHandler.options.antialiasing : psychClientPrefs.data.antialiasing
+			antialiasing:function() return SourceGameplayPreferences.antialiasing(
+				nightmare ? cast nightmareVisionPrefs : cast psychClientPrefs, nightmare, OptionsHandler.options.antialiasing)
 		};
 	}
 	function isSourceHUDIconAlias(name:String):Bool {
@@ -1956,16 +1959,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionSourceIconP1 = new NightmareVisionHealthIcon(boyfriend.healthIcon, true, owner);
 			nightmareVisionSourceIconP2 = new NightmareVisionHealthIcon(dad.healthIcon, false, owner);
 			for (icon in [nightmareVisionSourceIconP1, nightmareVisionSourceIconP2]) {
-				icon.alphaMultipler = nightmareVisionPrefs.view.healthBarAlpha;
-				icon.visible = !nightmareVisionPrefs.view.hideHud;
+				icon.alphaMultipler = SourceGameplayPreferences.healthBarAlpha(nightmareVisionPrefs, true);
+				icon.visible = !SourceGameplayPreferences.hideHud(nightmareVisionPrefs, true);
 			}
 		} else {
 			var owner = sourceHealthIconOwner(false);
 			psychSourceIconP1 = new PsychSourceHealthIcon(boyfriend.healthIcon, true, true, owner);
 			psychSourceIconP2 = new PsychSourceHealthIcon(dad.healthIcon, false, true, owner);
 			for (icon in [psychSourceIconP1, psychSourceIconP2]) {
-				icon.alpha = psychClientPrefs == null ? 1 : psychClientPrefs.data.healthBarAlpha;
-				icon.visible = psychClientPrefs == null || psychClientPrefs.data.hideHud != true;
+				icon.alpha = SourceGameplayPreferences.healthBarAlpha(psychClientPrefs, false);
+				icon.visible = !SourceGameplayPreferences.hideHud(psychClientPrefs, false);
 			}
 		}
 		for (player in [true, false]) {
@@ -2011,7 +2014,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			}
 			return Reflect.callMethod(paths, Reflect.field(paths, 'image'), [image]);
 		},
-			antialiasing:function() return psychClientPrefs == null ? OptionsHandler.options.antialiasing : psychClientPrefs.data.antialiasing};
+			antialiasing:function() return SourceGameplayPreferences.antialiasing(
+				nightmare ? cast nightmareVisionPrefs : cast psychClientPrefs, nightmare, OptionsHandler.options.antialiasing)};
 	}
 	function isSourceHUDBarAlias(name:String):Bool {
 		return sourceHUDBarMode != 0 && ['healthbar', 'healthbarbg', 'timebar', 'timebarbg', 'songposbar', 'songposbg'].indexOf(name.toLowerCase()) >= 0;
@@ -2094,7 +2098,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return {
 			image:function(file, parentFolder) return Reflect.callMethod(paths, Reflect.field(paths, 'image'), [file, parentFolder]),
 			sparrowAtlas:function(file, parentFolder) return Reflect.callMethod(paths, Reflect.field(paths, 'getSparrowAtlas'), [file, parentFolder]),
-			antialiasing:function() return psychClientPrefs == null ? OptionsHandler.options.antialiasing : psychClientPrefs.data.antialiasing
+			antialiasing:function() return SourceGameplayPreferences.antialiasing(psychClientPrefs, false, OptionsHandler.options.antialiasing)
 		};
 	}
 	function bindSourceAttachmentClasses(interp:NightmareVisionScriptInterp, nightmare:Bool, ?paths:Dynamic):Void {
@@ -2245,16 +2249,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			nightmareVisionSourceHealthBar = new NightmareVisionBar(0, FlxG.height * (downscroll ? 0.11 : 0.89), healthImage, function() return health, healthBounds.min, healthBounds.max, owner);
 			nightmareVisionSourceTimeBar = new NightmareVisionBar(0, songName.y + songName.height / 4, timeImage, function() return songPositionBar, 0, 1, owner);
 			nightmareVisionSourceHealthBar.leftToRight = false;
-			nightmareVisionSourceHealthBar.alphaMultipler = nightmareVisionPrefs.view.healthBarAlpha;
-			nightmareVisionSourceHealthBar.visible = !nightmareVisionPrefs.view.hideHud;
+			nightmareVisionSourceHealthBar.alphaMultipler = SourceGameplayPreferences.healthBarAlpha(nightmareVisionPrefs, true);
+			nightmareVisionSourceHealthBar.visible = !SourceGameplayPreferences.hideHud(nightmareVisionPrefs, true);
 			for (bar in [nightmareVisionSourceHealthBar, nightmareVisionSourceTimeBar]) {bar.screenCenter(X);bar.scrollFactor.set();bar.cameras = [camHUD];}
 		} else {
 			var owner = sourceBarOwner(false);
 			psychSourceHealthBar = new PsychSourceBar(0, FlxG.height * (downscroll ? 0.11 : 0.89), 'healthBar', function() return health, 0, 2, owner);
 			psychSourceTimeBar = new PsychSourceBar(0, songName.y + songName.height / 4, 'timeBar', function() return songPositionBar, 0, 1, owner);
 			psychSourceHealthBar.leftToRight = false;
-			psychSourceHealthBar.visible = psychClientPrefs == null || psychClientPrefs.data.hideHud != true;
-			psychSourceHealthBar.alpha = psychClientPrefs == null ? 1 : psychClientPrefs.data.healthBarAlpha;
+			psychSourceHealthBar.visible = !SourceGameplayPreferences.hideHud(psychClientPrefs, false);
+			psychSourceHealthBar.alpha = SourceGameplayPreferences.healthBarAlpha(psychClientPrefs, false);
 			for (bar in [psychSourceHealthBar, psychSourceTimeBar]) {bar.screenCenter(X);bar.scrollFactor.set();bar.cameras = [camHUD];}
 			timeBar = psychSourceTimeBar; timeBarBG = psychSourceTimeBar.bg;
 		}
@@ -2277,15 +2281,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		PlayState.globalSprites.set('timeBarBG', cast sourceHUDBarAlias('timeBarBG'));
 		PlayState.globalSprites.set('songPosBG', cast sourceHUDBarAlias('timeBarBG'));
 		if (mode == 1) {
-			var showTime = psychClientPrefs == null || psychClientPrefs.data.timeBarType != 'Disabled';
+			var showTime = SourceGameplayPreferences.timeBarType(psychClientPrefs, false) != 'Disabled';
 			psychSourceTimeBar.visible = songName.visible = showTime;
 			psychSourceTimeBar.alpha = songName.alpha = 0;
 		}
 
 		var sourceHealth:Dynamic = sourceHUDBarAlias('healthBar');
 		iconP1.y = iconP2.y = Reflect.getProperty(sourceHealth, 'y') - 75;
-		var hidden = mode == 2 ? nightmareVisionPrefs.view.hideHud : psychClientPrefs != null && psychClientPrefs.data.hideHud == true;
-		var alpha = mode == 2 ? nightmareVisionPrefs.view.healthBarAlpha : psychClientPrefs == null ? 1 : psychClientPrefs.data.healthBarAlpha;
+		var sourceOwner:Dynamic = mode == 2 ? cast nightmareVisionPrefs : cast psychClientPrefs;
+		var hidden = SourceGameplayPreferences.hideHud(sourceOwner, mode == 2);
+		var alpha = SourceGameplayPreferences.healthBarAlpha(sourceOwner, mode == 2);
 		iconP1.visible = iconP2.visible = !hidden;
 		iconP1.alpha = iconP2.alpha = alpha;
 		updateHealthColors();
@@ -2528,11 +2533,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	@:keep public function getCharacterCameraPos(actor:Character):FlxPoint {
 		if (actor == null) return FlxPoint.weak();
 		var desired = actor.getMidpoint();
+		var side = actor.isPlayer ? SourceCameraFollowPointMath.PLAYER : SourceCameraFollowPointMath.OPPONENT;
 		var offsets = actor.isPlayer ? boyfriendCameraOffset : opponentCameraOffset;
-		desired.y += -100 + actor.cameraPosition[1] + offsets[1];
-		if (actor.isPlayer) desired.x -= 100 + actor.cameraPosition[0];
-		else desired.x += 100 + actor.cameraPosition[0];
-		desired.x += offsets[0];
+		// Psych's focus formula with this dialect's narrower opponent base.
+		desired.x += SourceCameraFollowPointMath.focusOffsetX(side, actor.cameraPosition[0], offsets[0],
+			SourceCameraFollowPointMath.NIGHTMARE_OPPONENT_BASE_X);
+		desired.y += SourceCameraFollowPointMath.focusOffsetY(side, actor.cameraPosition[1], offsets[1]);
 		return desired;
 	}
 
@@ -3191,6 +3197,55 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 	// psych 'Set Property: camZoomingDecay' - 1 = stock 0.95 lerp speed
 	public var camZoomDecay:Float = 1;
+	// Psych and Nightmare Vision scripts read and write it under this name.
+	@:keep public var camZoomingDecay(get, set):Float;
+	@:keep function get_camZoomingDecay():Float return camZoomDecay;
+	@:keep function set_camZoomingDecay(value:Float):Float return camZoomDecay = value;
+
+	// Countdown options a song's scripts can change before or during it.
+	/** Extra text on the intro sound names, for a song with its own countdown voice. */
+	@:keep public var introSoundsSuffix:String = '';
+	/** Off for a silent countdown. */
+	@:keep public var countdownSounds:Bool = true;
+	/** Seconds to wait between the countdown being allowed and it starting. */
+	@:keep public var countdownDelay:Float = 0;
+	var countdownDelayTimer:FlxTimer = null;
+	/** The ready, set and go sprites, each from the moment it is shown. */
+	@:keep public var countdownReady:FlxSprite = null;
+	@:keep public var countdownSet:FlxSprite = null;
+	@:keep public var countdownGo:FlxSprite = null;
+	/** Off while a song does not want the reset key to kill the player. */
+	@:keep public var canReset:Bool = true;
+	/** Off while a song does not want the chart and animation editors opened. */
+	@:keep public var canAccessEditors:Bool = true;
+
+	/** Scales the instrumental and every vocal stem together, on top of
+	 * whatever volume each of them is set to. */
+	@:keep public var songVolumeMultiplier(default, set):Float = 1;
+	var songVolumeBus:SongVolumeBus = null;
+	function set_songVolumeMultiplier(value:Float):Float {
+		songVolumeMultiplier = Math.isFinite(value) ? Math.max(0, value) : 1;
+		applySongVolumeMultiplier();
+		return songVolumeMultiplier;
+	}
+	/** Song audio is rebuilt when the song starts, so this is run again then. */
+	function applySongVolumeMultiplier():Void {
+		if (songVolumeBus == null) {
+			// Songs that never touch it keep their sounds where Flixel put them.
+			if (songVolumeMultiplier == 1) return;
+			songVolumeBus = new SongVolumeBus();
+		}
+		songVolumeBus.attach(FlxG.sound.music);
+		if (vocalTracks != null)
+			for (sound in vocalTracks.tracks) songVolumeBus.attach(sound);
+		else
+			songVolumeBus.attach(vocals);
+		songVolumeBus.setMultiplier(songVolumeMultiplier);
+	}
+	// Nightmare Vision's name for it.
+	@:keep public var volumeMult(get, set):Float;
+	@:keep function get_volumeMult():Float return songVolumeMultiplier;
+	@:keep function set_volumeMult(value:Float):Float return songVolumeMultiplier = value;
 	private var camZooming:Bool = false;
 	// PERFEXION's Cam Boom Speed custom event changes the beat cadence and
 	// intensity of the ordinary Add Camera Zoom pulse. Zero is its authored
@@ -3307,7 +3362,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		}
 		if (hscriptSoundCache.get(resolved) == null) {
 			try {
-				hscriptSoundCache.set(resolved, Sound.fromFile(resolved));
+				// Through the base sound cache, so a sound decoded by precacheSound
+				// is the one that plays instead of being decoded a second time.
+				hscriptSoundCache.set(resolved, FNFAssets.getSound(resolved));
 			} catch (e:Dynamic) {
 				trace('preloadSound: failed ' + resolved + ': ' + e);
 				return false;
@@ -3324,6 +3381,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		hscriptFlxSounds.clear();
 		hscriptFlxSoundLooped.clear();
 		hscriptSoundCache.clear();
+		FNFAssets.clearSoundCache();
 		hscriptSoundLastPlay.clear();
 	}
 
@@ -3368,6 +3426,65 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return flxsnd;
 		}
 		return FlxG.sound.play(path, volume, looped);
+	}
+
+	/** A fresh, not yet playing sound for one tag, decoded through the script sound cache. */
+	static function newTaggedSound(sound:Dynamic, volume:Float, looped:Bool):FlxSound {
+		var decoded:Sound = null;
+		if (Std.isOfType(sound, Sound))
+			decoded = cast sound;
+		else if ((sound is String)) {
+			var resolved = resolveHscriptSoundPath(cast sound);
+			if (resolved == null) {
+				trace('playTaggedSound: missing ' + sound + ' (skipped)');
+				return null;
+			}
+			if (!preloadHscriptSound(resolved))
+				return null;
+			decoded = hscriptSoundCache.get(resolved);
+		}
+		if (decoded == null)
+			return null;
+		return FlxG.sound.load(decoded, volume, looped, null, true);
+	}
+
+	/**
+	 * Play a sound that scripts address by tag afterwards. Every tag gets a
+	 * sound of its own, so two tags on one file do not fight over it, and a tag
+	 * that is played again replaces what it had. `onFinished` hears the tag each
+	 * time the sound reaches its end. Without a tag this is the pooled
+	 * hscriptSafePlay, which is the one that survives per-frame spam.
+	 */
+	public function playTaggedSound(tag:Dynamic, sound:Dynamic, volume:Float = 1,
+		looped:Bool = false, ?onFinished:String->Void):FlxSound {
+		var name = TaggedSoundRegistry.key(tag);
+		if (name == '')
+			return hscriptSafePlay(sound, volume, looped);
+		var playback = newTaggedSound(sound, volume, looped);
+		if (playback == null)
+			return null;
+		taggedSounds.put(name, playback);
+		playback.onComplete = function():Void {
+			if (taggedSounds.finished(name, playback, looped) && onFinished != null)
+				onFinished(name);
+		};
+		playback.play();
+		return playback;
+	}
+
+	/** The sound a script means by `tag`; an empty tag is the music where that makes sense. */
+	public function soundForTag(tag:Dynamic, emptyMeansMusic:Bool = false):FlxSound {
+		return taggedSounds.resolve(tag, emptyMeansMusic, FlxG.sound.music);
+	}
+
+	/** Stop a tagged sound and free its tag; an empty tag stops the music. */
+	public function stopTaggedSound(tag:Dynamic):Void {
+		if (TaggedSoundRegistry.key(tag) == '') {
+			if (FlxG.sound.music != null)
+				FlxG.sound.music.stop();
+			return;
+		}
+		taggedSounds.stop(tag);
 	}
 
 	public var gfSpeed(default, set):Int = 1;
@@ -3937,7 +4054,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var snekNumber:Float = 0;
 	var drunkNotes:Bool = false;
 	var alcholTimer:FlxTimer;
-	var notesHitArray:Array<Date> = [];
+	// Hit times in milliseconds. Plain numbers, so a hit and the per-frame
+	// readout allocate nothing.
+	var notesHitArray:Array<Float> = [];
+	// Reused every frame instead of building two fresh arrays.
+	var sourceJustPressedScratch:Array<Bool> = [];
+	var sourceJustReleasedScratch:Array<Bool> = [];
+	var missesLabel:String = null;
+	var missesLabelCount:Int = 0;
+	var missesLabelBreaks:Bool = true;
 	var alcholNumber:Float = 0;
 	var inALoop:Bool = false;
 	var useVictoryScreen:Bool = true;
@@ -4044,11 +4169,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var psychGameOverTransitionPending:Bool = false;
 	var psychFlxGGameTicksProbeEmitted:Bool = false;
 	/** Psych playSound tags identify this song's fade/stop targets. */
-	var psychTaggedSounds:Map<String, FlxSound> = new Map();
+	// autoDestroy sounds: stop() hands the object back to flixel's pool, so
+	// silencing one is also how it gets released
+	var taggedSounds:TaggedSoundRegistry<FlxSound> = new TaggedSoundRegistry<FlxSound>(
+		function(sound:FlxSound):Bool return sound.exists,
+		function(sound:FlxSound):Void sound.stop());
 	var hxcCompatScriptsLoaded:Bool = false;
 	var hxcSongLoadedDispatched:Bool = false;
 	var hxcCountdownEndDispatched:Bool = false;
 	var hxcCountdownStopRequested:Bool = false;
+	// The countdown timer a script is holding between two steps, if any.
+	var hxcHeldCountdownTimer:FlxTimer = null;
 	// Some donor engines expose the native startCountdown() helper in the same
 	// namespace as their onStartCountdown hook.  During the hook broadcast a
 	// bare startCountdown() therefore resolves to this PlayState method again
@@ -5397,22 +5528,65 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	function getHaxeActor(who:Dynamic):Dynamic {
 		switch (Std.string(who)) {
-			case "boyfriend" | "bf":
-				return boyfriend;
-			case "girlfriend" | "gf":
-				return gf;
-			case "dad":
-				return dad;
+			case "boyfriend" | "bf" | "girlfriend" | "gf" | "dad" | "opponent":
+				return characterForRole(Std.string(who));
 			default:
-				// the old engine indexed ONE combined strum array:
-				// enemy lanes 0-3, player lanes 4-7 (purgatory scatters
-				// getHaxeActor(0..7) at its finale)
+				// the old engine indexed ONE combined strum array: enemy
+				// lanes first, player lanes after
 				var num = Std.parseInt(Std.string(who));
-				if (num >= Note.NOTE_AMOUNT)
-					return playerStrums.members[num - Note.NOTE_AMOUNT];
-				else
-					return enemyStrums.members[num];
+				return num == null ? null : receptorAt(num);
 		}
+	}
+
+	/** The character a role name means: dad or opponent, gf or girlfriend, and
+	 * anything else is the boyfriend, like Psych's character callbacks. */
+	public function characterForRole(role:String):Character {
+		return switch (characterGroupRole(role)) {
+			case 'dad': dad;
+			case 'gf': gf;
+			default: boyfriend;
+		};
+	}
+
+	static function characterGroupRole(role:String):String {
+		return switch (role == null ? '' : StringTools.trim(role).toLowerCase()) {
+			case 'dad' | 'opponent': 'dad';
+			case 'gf' | 'girlfriend': 'gf';
+			default: 'bf';
+		};
+	}
+
+	/** Psych's boyfriendGroup/dadGroup/gfGroup. Nightmare Vision has real groups;
+	 * everyone else gets one cached view per role over the state's own actor,
+	 * shared by Lua, HScript and the compiled stage. */
+	var psychCharacterGroups:Map<String, PsychBaseStageActorGroupCompat>;
+	public function characterGroupForRole(role:String):Dynamic {
+		var key = characterGroupRole(role);
+		var nightmare:Dynamic = key == 'dad' ? dadGroup : key == 'gf' ? gfGroup : boyfriendGroup;
+		if (nightmare != null) return nightmare;
+		if (psychCharacterGroups == null) psychCharacterGroups = new Map();
+		var group = psychCharacterGroups.get(key);
+		if (group == null) {
+			group = new PsychBaseStageActorGroupCompat(this, key);
+			psychCharacterGroups.set(key, group);
+		}
+		return group;
+	}
+
+	/** getCharacterX/Y: Psych reads the group's stage position, not the sprite's. */
+	public function characterGroupPosition(role:String, axis:String):Float {
+		var group:Dynamic = characterGroupForRole(role);
+		try {
+			var value:Dynamic = Reflect.getProperty(group, axis == 'y' ? 'y' : 'x');
+			return Std.isOfType(value, Int) || Std.isOfType(value, Float) ? value : 0;
+		} catch (_:Dynamic) {
+			return 0;
+		}
+	}
+
+	public function setCharacterGroupPosition(role:String, axis:String, value:Float):Void {
+		var group:Dynamic = characterGroupForRole(role);
+		try Reflect.setProperty(group, axis == 'y' ? 'y' : 'x', value) catch (_:Dynamic) {}
 	}
 
 	/**
@@ -5557,6 +5731,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				return FlxG;
 			case 'song' | 'songdata':
 				return SONG;
+			case 'boyfriendgroup' | 'dadgroup' | 'gfgroup':
+				if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
+				return characterGroupForRole(root.substr(0, root.length - 'Group'.length));
 			default:
 				if (psychScriptVariables.exists(root)) return psychScriptVariables.get(root);
 				var value:Dynamic = null;
@@ -5971,18 +6148,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// and its legacy combined group is intentionally not added to the state;
 		// present the donor ordering here so group reads and writes stay live.
 		if (requested == 'strumlinenotes') {
-			var i = Std.int(Std.parseFloat(Std.string(index)));
-			if (i < 0)
-				return null;
-			if (enemyStrums != null && enemyStrums.members != null) {
-				if (i < enemyStrums.members.length)
-					return enemyStrums.members[i];
-				i -= enemyStrums.members.length;
-			}
-			if (playerStrums != null && playerStrums.members != null
-				&& i < playerStrums.members.length)
-				return playerStrums.members[i];
-			return null;
+			var i = Std.parseFloat(Std.string(index));
+			return Math.isFinite(i) ? receptorAt(Std.int(i)) : null;
 		}
 		var group = compatGetProperty(groupName);
 		if (group == null)
@@ -6293,22 +6460,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function runPsychGameOverTransition():Void {
-		stopVocals();
-		if (FlxG.sound.music != null)
-			FlxG.sound.music.stop();
-		if (inALoop) {
-			FlxG.resetState();
-		} else if (FlxG.random.bool(0.1)) {
-			// gitaroo man easter egg
-			LoadingState.loadAndSwitchState(new GitarooPause());
-		} else {
+		var looping = inALoop;
+		var gitaroo = !looping && FlxG.random.bool(0.1);
+		if (!looping && !gitaroo) {
+			// The song is only paused while scripts are asked.  Stopping it
+			// rewinds it, and a script that calls the game over off has to be
+			// able to carry on from where the player died.
+			pauseVocals();
+			if (FlxG.sound.music != null)
+				FlxG.sound.music.pause();
 			if (camGame != null)
 				camGame.stopFlash();
 			if (camHUD != null)
 				camHUD.stopFlash();
 			if (camOther != null)
 				camOther.stopFlash();
-			callAllHScript('gameOver', [EngineCompat.hxcLifecyclePayload('gameOver', {targetState: this})]);
+			if (dispatchCancelableLifecycle('gameOver',
+				EngineCompat.hxcLifecyclePayload('gameOver', {targetState: this}))) {
+				cancelPendingGameOver();
+				return;
+			}
+		}
+		stopVocals();
+		if (FlxG.sound.music != null)
+			FlxG.sound.music.stop();
+		if (looping) {
+			FlxG.resetState();
+		} else if (gitaroo) {
+			// gitaroo man easter egg
+			LoadingState.loadAndSwitchState(new GitarooPause());
+		} else {
 			#if cpp
 			stopCompatEventVideo();
 			#end
@@ -6316,7 +6497,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			openSubState(new GameOverSubstate(getHaxeActor("bf")));
 			#if windows
 			// Game Over doesn't get his own variable because it's only used here
-			DiscordClient.changePresence("GAME OVER -- "
+			if (automatedDiscord) DiscordClient.changePresence("GAME OVER -- "
 				+ SONG.song
 				+ " ("
 				+ storyDifficultyText
@@ -6331,6 +6512,21 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				playingAsRpc);
 			#end
 		}
+	}
+
+	/** A script cancelled the game over, so hand the frame loop back.  Health
+	 * is left alone: while it stays at the limit the event is sent again next
+	 * frame, which is what lets a script hold the screen off until its own
+	 * death sequence is done.  Music and vocals stay paused where they were,
+	 * for the script to resume or replace. */
+	function cancelPendingGameOver():Void {
+		psychGameOverTransitionPending = false;
+		if (boyfriend != null)
+			boyfriend.stunned = false;
+		paused = false;
+		persistentUpdate = true;
+		persistentDraw = true;
+		setAllHaxeVar("paused", paused);
 	}
 
 	public function psychGameOverSoundPath(property:String, preferSounds:Bool):Null<String> {
@@ -6446,8 +6642,17 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return switch (psychCameraLayerName(cameraName)) {
 			case 'hud': camHUD;
 			case 'other': camOther;
-			default: camGame;
+			default: scriptCameraNamed(cameraName, camGame);
 		};
+	}
+
+	/** A camera a script made itself is kept in the script variables under its
+		tag. Any name that is not one of those gets the fallback, like Psych. */
+	function scriptCameraNamed(cameraName:Dynamic, fallback:FlxCamera):FlxCamera {
+		if (cameraName == null || psychScriptVariables == null)
+			return fallback;
+		var stored:Dynamic = psychScriptVariables.get(Std.string(cameraName));
+		return Std.isOfType(stored, FlxCamera) ? cast stored : fallback;
 	}
 
 	function compatSetObjectCamera(name:Dynamic, cameraName:Dynamic):Void {
@@ -7079,11 +7284,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 	/** Psych's legacy character-only animation callback, including its BF default. */
 	function compatCharacterPlayAnim(role:String, name:String, force:Bool = false):Void {
-		var actor:Character = switch (role == null ? '' : role.toLowerCase()) {
-			case 'dad': dad;
-			case 'gf' | 'girlfriend': gf;
-			default: boyfriend;
-		};
+		var actor = characterForRole(role);
 		if (actor != null && actor.hasAnimation(name))
 			actor.playAnim(name, force);
 	}
@@ -7136,41 +7337,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		menus/modcharts do not silently lose their text colours.
 	*/
 	function compatParseColor(value:Dynamic):Dynamic {
-		if (value == null)
-			return null;
-		if (Std.isOfType(value, Int) || Std.isOfType(value, Float)) {
-			var numericColor:Int = Std.int(value);
-			// Psych Lua commonly supplies an RGB number (0xRRGGBB) for a
-			// sprite tint. Its alpha is controlled separately; preserve explicit
-			// ARGB values while making these RGB tints opaque on every renderer.
-			return numericColor >= 0 && numericColor <= 0xFFFFFF
-				? numericColor | 0xFF000000 : numericColor;
-		}
-		var text = StringTools.trim(Std.string(value));
-		if (text == '')
-			return null;
-		var digits = text;
-		if (StringTools.startsWith(digits, '#'))
-			digits = digits.substr(1);
-		else if (StringTools.startsWith(digits.toLowerCase(), '0x'))
-			digits = digits.substr(2);
-		var hexColor = new EReg('^[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$', '');
-		if (hexColor.match(digits)) {
-			if (digits.length == 6)
-				digits = 'FF' + digits;
-			// hxcpp's Std.parseInt uses a 32-bit long on Windows: parsing
-			// FFFFFFFF as one integer clamps it to 7FFFFFFF (half alpha).
-			// Combine two 16-bit halves to keep ARGB identical on every target.
-			var high = Std.parseInt('0x' + digits.substr(0, 4));
-			var low = Std.parseInt('0x' + digits.substr(4, 4));
-			if (high != null && low != null)
-				return (high << 16) | low;
-		}
-		var prefixed = FlxColor.fromString(text);
-		if (prefixed != null)
-			return prefixed;
-		var decimal = Std.parseInt(text);
-		return decimal == null ? null : decimal;
+		return CoolUtil.colorFromStringOrNull(value);
 	}
 
 	function compatSetTextColor(name:Dynamic, color:Dynamic):Void {
@@ -7398,8 +7565,127 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		compatTweens.remove(tag);
 	}
 
+	/** Psych's tween type names. Anything it does not know plays once. */
+	public static function scriptTweenType(value:Dynamic):FlxTweenType {
+		return switch (value == null ? '' : StringTools.trim(Std.string(value)).toLowerCase()) {
+			case 'backward': FlxTweenType.BACKWARD;
+			case 'looping' | 'loop': FlxTweenType.LOOPING;
+			case 'persist': FlxTweenType.PERSIST;
+			case 'pingpong': FlxTweenType.PINGPONG;
+			default: FlxTweenType.ONESHOT;
+		};
+	}
+
+	/**
+		Every tween a script starts goes through here, so there is one tag map,
+		one "a new tween replaces the old one with the same tag" rule and one
+		completion callback. `options` takes Psych's names: ease (a name in any
+		case, or a function), type, startDelay, loopDelay, and onUpdate, onStart
+		and onComplete as names of script functions. `completedArgs` is what
+		tweenCompleted receives; leave it out for a tween scripts never hear about.
+	*/
+	public function startTaggedTween(tag:String, target:Dynamic, props:Dynamic, duration:Float,
+		?options:Dynamic, ?completedArgs:Array<Dynamic>):FlxTween {
+		compatCancelTween(tag);
+		if (target == null || props == null)
+			return null;
+		var option = function(name:String):Dynamic {
+			if (options == null)
+				return null;
+			try return Reflect.field(options, name) catch (_:Dynamic) return null;
+		};
+		var params:Dynamic = {};
+		var easeValue:Dynamic = option('ease');
+		if (Reflect.isFunction(easeValue))
+			Reflect.setField(params, 'ease', easeValue);
+		else if (easeValue != null && StringTools.trim(Std.string(easeValue)) != '')
+			Reflect.setField(params, 'ease', CoolUtil.getEaseFromString(Std.string(easeValue)));
+		var type = scriptTweenType(option('type'));
+		if (option('type') != null)
+			Reflect.setField(params, 'type', type);
+		for (name in ['startDelay', 'loopDelay']) {
+			var raw:Dynamic = option(name);
+			var delay = raw == null ? Math.NaN : Std.parseFloat(Std.string(raw));
+			if (Math.isFinite(delay))
+				Reflect.setField(params, name, delay);
+		}
+		var callbackArgs:Array<Dynamic> = completedArgs != null ? completedArgs : [tag];
+		var named = function(name:String):String {
+			var raw:Dynamic = option(name);
+			if (raw == null || !Std.isOfType(raw, String))
+				return null;
+			var text = StringTools.trim(Std.string(raw));
+			return text == '' ? null : text;
+		};
+		var updateName = named('onUpdate');
+		var startName = named('onStart');
+		var completeName = named('onComplete');
+		if (updateName != null)
+			Reflect.setField(params, 'onUpdate', function(_) callAllHScript(updateName, callbackArgs));
+		if (startName != null)
+			Reflect.setField(params, 'onStart', function(_) callAllHScript(startName, callbackArgs));
+		var created:FlxTween = null;
+		Reflect.setField(params, 'onComplete', function(_) {
+			// Looping and ping-pong tweens finish once per pass and keep running,
+			// so only a tween that is really over gives its tag back.
+			if (tag != null && (type == FlxTweenType.ONESHOT || type == FlxTweenType.BACKWARD)
+				&& compatTweens.get(tag) == created)
+				compatTweens.remove(tag);
+			// A script that named its own completion function gets that call
+			// instead of the general one, never both.
+			if (completeName != null)
+				callAllHScript(completeName, callbackArgs);
+			else if (tag != null && completedArgs != null)
+				callAllHScript('tweenCompleted', completedArgs);
+		});
+		var time = Math.max(0, duration);
+		var fields = Reflect.fields(props);
+		var colorField = fields.length == 1 && fields[0].toLowerCase() == 'color' ? fields[0] : null;
+		var colorValue:Dynamic = null;
+		if (colorField != null) {
+			// Scripts give a tween colour as bare RGB(A) hex text or a name, but
+			// the live field is a number. Convert here so camera, sprite, text
+			// and character colour tweens all read colours the same way.
+			colorValue = Reflect.field(props, colorField);
+			var parsedColor = compatParseColor(colorValue);
+			if (parsedColor != null) {
+				colorValue = parsedColor;
+				props = {};
+				Reflect.setField(props, colorField, colorValue);
+			}
+		}
+		if (colorField != null && Std.isOfType(target, FlxSprite)) {
+			// Packed RGB integers cannot be interpolated as a scalar: channel
+			// carries produce unrelated colours and flashes between endpoints.
+			// Psych uses Flixel's channel-wise ColorTween with the current alpha.
+			var sprite:FlxSprite = cast target;
+			var fromColor:FlxColor = sprite.color;
+			fromColor.alphaFloat = sprite.alpha;
+			created = FlxTween.color(sprite, time, fromColor, cast colorValue, params);
+		} else if (colorField != null && Std.isOfType(target, FlxCamera)) {
+			// Psych passes the camera as Dynamic to FlxTween.color's FlxSprite
+			// argument. hxcpp turns that incompatible cast into a null sprite:
+			// the tween still completes, but does not tint the camera canvas.
+			var camera:FlxCamera = cast target;
+			var fromColor:FlxColor = camera.color;
+			fromColor.alphaFloat = camera.alpha;
+			created = FlxTween.color(null, time, fromColor, cast colorValue, params);
+		} else
+			created = FlxTween.tween(target, props, time, params);
+		if (tag != null)
+			compatTweens.set(tag, created);
+		return created;
+	}
+
 	function compatTweenObject(tag:String, target:Dynamic, property:String, value:Dynamic,
-		duration:Float, ?ease:String):Void {
+		duration:Float, ?ease:String, ?completedArgs:Array<Dynamic>):Void {
+		compatTweenProperty(tag, target, property, value, duration, {ease: ease},
+			completedArgs == null ? [tag] : completedArgs);
+	}
+
+	/** Tween one property, which may be a dotted path below the target. */
+	function compatTweenProperty(tag:String, target:Dynamic, property:String, value:Dynamic,
+		duration:Float, options:Dynamic, completedArgs:Array<Dynamic>):Void {
 		if (target == null || property == null || StringTools.trim(property) == '')
 			return;
 		compatCancelTween(tag);
@@ -7414,52 +7700,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			return;
 		if (sourceScoreOwner && Std.isOfType(owner, Strumline.StrumNote))
 			(cast owner:Strumline.StrumNote).cancelIntroTween(field);
-		var tweenValue:Dynamic = value;
-		// Psych's doTweenColor/makeGraphic APIs take a bare RGB(A) hex string,
-		// but FlxTween interpolates the live numeric FlxColor field. Normalize at
-		// this shared tween boundary so camera, sprite, text, and character color
-		// tweens all use the same engine-level conversion.
-		if (field.toLowerCase() == 'color') {
-			var parsedColor = compatParseColor(value);
-			if (parsedColor != null)
-				tweenValue = parsedColor;
-		}
 		var props:Dynamic = {};
-		Reflect.setField(props, field, tweenValue);
-		var created:FlxTween = null;
-		var complete = function(_) {
-			if (tag != null && compatTweens.get(tag) == created)
-				compatTweens.remove(tag);
-			if (tag != null)
-				callAllHScript('tweenCompleted', [tag]);
-		};
-		var easeFunction:Dynamic = null;
-		if (ease != null && StringTools.trim(ease) != '')
-			easeFunction = Reflect.field(FlxEase, ease);
-		if (field.toLowerCase() == 'color' && Std.isOfType(owner, FlxSprite)) {
-			// Packed RGB integers cannot be interpolated as a scalar: channel
-			// carries produce unrelated colours and flashes between endpoints.
-			// Psych uses Flixel's channel-wise ColorTween with the current alpha.
-			var sprite:FlxSprite = cast owner;
-			var fromColor:FlxColor = sprite.color;
-			fromColor.alphaFloat = sprite.alpha;
-			created = FlxTween.color(sprite, Math.max(0, duration), fromColor,
-				cast tweenValue, {ease: easeFunction, onComplete: complete});
-		} else if (field.toLowerCase() == 'color' && Std.isOfType(owner, FlxCamera)) {
-			// Psych passes the camera as Dynamic to FlxTween.color's FlxSprite
-			// argument. hxcpp turns that incompatible cast into a null sprite:
-			// the tween still completes, but does not tint the camera canvas.
-			var camera:FlxCamera = cast owner;
-			var fromColor:FlxColor = camera.color;
-			fromColor.alphaFloat = camera.alpha;
-			created = FlxTween.color(null, Math.max(0, duration), fromColor,
-				cast tweenValue, {ease: easeFunction, onComplete: complete});
-		} else if (easeFunction != null)
-			created = FlxTween.tween(owner, props, Math.max(0, duration), {ease: easeFunction, onComplete: complete});
-		else
-			created = FlxTween.tween(owner, props, Math.max(0, duration), {onComplete: complete});
-		if (tag != null)
-			compatTweens.set(tag, created);
+		Reflect.setField(props, field, value);
+		startTaggedTween(tag, owner, props, duration, options, completedArgs);
 	}
 
 	function compatDoTween(tag:String, objectName:Dynamic, property:String, value:Dynamic,
@@ -7470,20 +7713,34 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// the existing property bridge only when no exact tag matched.
 		if (target == null)
 			target = compatGetProperty(objectName);
-		compatTweenObject(tag, target, property, value, duration, ease);
+		// Psych tells the script which object finished as well as which tag.
+		compatTweenObject(tag, target, property, value, duration, ease, [tag, objectName]);
+	}
+
+	/** How many receptors the combined script index covers: opponent lanes, then player lanes. */
+	public function receptorCount():Int {
+		return CombinedReceptorIndex.count(
+			enemyStrums == null || enemyStrums.members == null ? 0 : enemyStrums.members.length,
+			playerStrums == null || playerStrums.members == null ? 0 : playerStrums.members.length);
+	}
+
+	/**
+		The receptor at a combined index, read from the two live strumlines so
+		it is right in every mode and after a strumline is rebuilt. `wrap`
+		applies the note tween rule, where an index past the end starts over.
+	*/
+	public function receptorAt(index:Int, wrap:Bool = false):Dynamic {
+		var slot = CombinedReceptorIndex.resolve(index,
+			enemyStrums == null || enemyStrums.members == null ? 0 : enemyStrums.members.length,
+			playerStrums == null || playerStrums.members == null ? 0 : playerStrums.members.length, wrap);
+		if (slot == null)
+			return null;
+		return slot[0] == CombinedReceptorIndex.OPPONENT ? enemyStrums.members[slot[1]] : playerStrums.members[slot[1]];
 	}
 
 	function compatNoteTarget(note:Dynamic):Dynamic {
-		var index = Std.int(Std.parseFloat(Std.string(note)));
-		if (index < 0)
-			return null;
-		if (strumLineNotes != null && index < strumLineNotes.members.length
-			&& strumLineNotes.members[index] != null)
-			return strumLineNotes.members[index];
-		if (index < Note.NOTE_AMOUNT)
-			return enemyStrums == null || index >= enemyStrums.members.length ? null : enemyStrums.members[index];
-		var playerIndex = index - Note.NOTE_AMOUNT;
-		return playerStrums == null || playerIndex >= playerStrums.members.length ? null : playerStrums.members[playerIndex];
+		var index = Std.parseFloat(Std.string(note));
+		return Math.isFinite(index) ? receptorAt(Std.int(index), true) : null;
 	}
 
 	function compatNoteTween(tag:String, note:Dynamic, property:String, value:Float,
@@ -7491,25 +7748,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		compatTweenObject(tag, compatNoteTarget(note), property, value, duration, ease);
 	}
 
-	function compatSetObjectOrder(name:Dynamic, order:Dynamic, ?front:Bool = false):Void {
+	// Psych's third argument is a group name. Older scripts passed a boolean
+	// there that never did anything, so only text counts as a group.
+	function compatSetObjectOrder(name:Dynamic, order:Dynamic, ?group:Dynamic):Void {
 		var object:Dynamic = compatFindObject(name);
 		if (object == null || !Std.isOfType(object, FlxBasic))
 			return;
-		var current = members.indexOf(cast object);
-		var target = Std.int(Std.parseFloat(Std.string(order)));
-		if (target < 0)
-			target = 0;
-		if (current >= 0) {
-			remove(cast object, true);
-		}
-		if (target > members.length)
-			target = members.length;
-		insert(target, cast object);
+		reorderObject(object, Std.int(Std.parseFloat(Std.string(order))),
+			Std.isOfType(group, String) ? Std.string(group) : null);
 	}
 
-	function compatGetObjectOrder(name:Dynamic):Int {
+	function compatGetObjectOrder(name:Dynamic, ?group:Dynamic):Int {
 		var object:Dynamic = compatFindObject(name);
-		return object == null || !Std.isOfType(object, FlxBasic) ? -1 : members.indexOf(cast object);
+		return object == null || !Std.isOfType(object, FlxBasic) ? -1
+			: objectOrder(object, Std.isOfType(group, String) ? Std.string(group) : null);
+	}
+
+	function objectOrderContainer(?groupName:String):Dynamic {
+		return SourceScriptReflection.orderContainer(this, PsychCustomSubstate.instance,
+			isDead ? GameOverSubstate.instance : null, groupName);
+	}
+
+	/** Move an object to a draw position inside the container scripts are
+		working in right now, or inside a named group or array. */
+	public function reorderObject(object:Dynamic, position:Int, ?groupName:String):Bool {
+		return SourceScriptReflection.reorderMember(objectOrderContainer(groupName), object, position, true);
+	}
+
+	/** Draw position of an object in that same container, or -1. */
+	public function objectOrder(object:Dynamic, ?groupName:String):Int {
+		return SourceScriptReflection.memberIndex(objectOrderContainer(groupName), object);
 	}
 
 	/** Psych passes the values to leave out as comma separated text; a list is
@@ -7535,52 +7803,50 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return FlxG.random.float(min, max, skipped.length == 0 ? null : skipped);
 	}
 
-	function compatLuaRandom(?first:Null<Int>, ?second:Null<Int>):Int {
+	// Lua's math.random: no arguments is a float in [0, 1), one is 1..m, two are m..n.
+	function compatLuaRandom(?first:Null<Int>, ?second:Null<Int>):Dynamic {
 		if (first == null)
-			return FlxG.random.int(0, FlxMath.MAX_VALUE_INT);
+			return FlxG.random.float(0, 1);
 		if (second == null)
 			return FlxG.random.int(1, first);
 		return FlxG.random.int(first, second);
 	}
 
-	function compatKeyboardJustPressed(key:String):Bool {
+	/** One raw keyboard key by name. `phase` is justPressed, pressed or justReleased. */
+	function compatKeyboardState(key:String, phase:String):Bool {
 		if (key == null)
 			return false;
 		var token = StringTools.trim(key).toUpperCase();
 		var keyCode = FlxKey.fromString(token);
 		if (keyCode == FlxKey.NONE)
 			return false;
-		try return Reflect.getProperty(FlxG.keys.justPressed, token) == true catch (_:Dynamic) return false;
+		try return Reflect.getProperty(Reflect.getProperty(FlxG.keys, phase), token) == true catch (_:Dynamic) return false;
 	}
 
-	function compatKeyJustPressed(key:String):Bool {
-		if (key == null)
-			return false;
-		var token = StringTools.trim(key).toLowerCase();
-		switch (token) {
-			case 'back': return controls.BACK;
-			case 'pause': return controls.PAUSE;
-			case 'accept' | 'confirm': return controls.ACCEPT;
-			case 'up': return controls.UP_P;
-			case 'down': return controls.DOWN_P;
-			case 'left': return controls.LEFT_P;
-			case 'right': return controls.RIGHT_P;
-			default: return compatKeyboardJustPressed(key);
-		}
+	function compatKeyboardJustPressed(key:String):Bool {
+		return compatKeyboardState(key, 'justPressed');
+	}
+
+	/**
+		State of a named input action, for every script language. Left, down,
+		up and right mean the note keys and anything else is an action name
+		(accept, back, pause, reset, ui_up, note_left and so on), answered by
+		the same lookup the script `controls` object uses, so Lua and HScript in
+		one mod can never disagree. `phase` is justPressed, pressed or
+		justReleased.
+	*/
+	public function actionState(name:String, phase:String):Bool {
+		var known = psychControls != null ? psychControls.hasAction(name)
+			: PsychControlsCompat.nativeAction(PsychControlsCompat.actionName(name));
+		// Not an action anywhere: older scripts pass a plain key name here.
+		if (!known)
+			return compatKeyboardState(name, phase);
+		return psychControls != null ? psychControls.actionState(name, phase)
+			: PsychControlsCompat.nativeActionState(controls, name, phase);
 	}
 
 	function compatGetColorFromHex(value:Dynamic):Int {
-		if (value == null)
-			return 0xFFFFFFFF;
-		var text = StringTools.trim(Std.string(value));
-		if (text.charAt(0) == '#')
-			text = text.substr(1);
-		if (StringTools.startsWith(text.toLowerCase(), '0x'))
-			text = text.substr(2);
-		var parsed = Std.parseInt('0x' + text);
-		if (parsed == null)
-			return 0xFFFFFFFF;
-		return text.length <= 6 ? (parsed | 0xFF000000) : parsed;
+		return CoolUtil.colorFromString(value);
 	}
 
 	function compatSetBlendMode(name:Dynamic, mode:String):Void {
@@ -7610,7 +7876,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function compatPrecacheSound(path:String):Void {
 		var resolved = compatSoundPath(path, true);
 		if (resolved != null)
-			try FNFAssets.getSound(resolved) catch (_:Dynamic) {}
+			FNFAssets.precacheSound(resolved);
 	}
 
 	function compatPrecacheMusic(path:String):Void {
@@ -7629,32 +7895,159 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			target.shake(intensity, duration);
 	}
 
+	/** Flash a camera by script name. The colour is anything CoolUtil.colorFromString reads. */
+	public function flashCamera(cameraName:Dynamic, color:Dynamic, duration:Float, forced:Bool = false):Void {
+		var target = compatCameraForName(cameraName);
+		if (target != null)
+			target.flash(CoolUtil.colorFromString(color), Math.max(0, duration), null, forced);
+	}
+
+	/** Fade a camera by script name. `fadeIn` starts covered and clears, the
+		other way round from a normal fade. */
+	public function fadeCamera(cameraName:Dynamic, color:Dynamic, duration:Float, forced:Bool = false,
+		fadeIn:Bool = false):Void {
+		var target = compatCameraForName(cameraName);
+		if (target != null)
+			target.fade(CoolUtil.colorFromString(color), Math.max(0, duration), fadeIn, null, forced);
+	}
+
 	function compatCameraFlash(cameraName:String, color:Dynamic, duration:Float, ?forced:Bool = false):Void {
-		var target = compatCameraForName(cameraName);
-		if (target != null)
-			target.flash(compatGetColorFromHex(color), Math.max(0, duration), null, forced);
+		flashCamera(cameraName, color, duration, forced == true);
 	}
 
-	function compatCameraFade(cameraName:String, color:Dynamic, duration:Float, ?forced:Bool = false):Void {
-		var target = compatCameraForName(cameraName);
-		if (target != null)
-			target.fade(compatGetColorFromHex(color), Math.max(0, duration), false, null, forced);
+	// Psych names its fifth argument fadeOut, and hands it to the camera as the
+	// "start covered" flag.
+	function compatCameraFade(cameraName:String, color:Dynamic, duration:Float, ?forced:Bool = false,
+		?fadeOut:Bool = false):Void {
+		fadeCamera(cameraName, color, duration, forced == true, fadeOut == true);
 	}
 
-	/** Psych dialogue begins after a Lua timer and returns to the same countdown
-	 * gate when the last line closes. The native dialogue was prepared at create. */
+	/** The box put up by showDialogueFromData, so a second request waits its turn. */
+	var scriptDialogueBox:DialogueBox;
+
+	/**
+	 * Show a dialogue box built from native dialogue text, whenever a script
+	 * asks for one. `music` replaces the box's own tune, `onFinish` runs when
+	 * the last line is dismissed and `prepare` sees the box before it starts
+	 * updating. Returns null while an earlier box is still on screen, and while
+	 * the song itself is playing.
+	 */
+	public function showDialogueFromData(text:String, ?music:String, ?onFinish:Void->Void,
+		?prepare:DialogueBox->Void):DialogueBox {
+		if (text == null || dialogueBoxShowing(scriptDialogueBox) || dialogueBoxShowing(doof))
+			return null;
+		if (dialogueWouldReplaceSong()) {
+			trace('[dialogue] skipped: a dialogue box cannot open while the song is playing');
+			return null;
+		}
+		var box = new DialogueBox(false, text);
+		box.scrollFactor.set();
+		box.finishThing = onFinish;
+		if (prepare != null)
+			prepare(box);
+		box.cameras = [camHUD];
+		inCutscene = true;
+		scriptDialogueBox = box;
+		add(box);
+		playDialogueMusic(music);
+		return box;
+	}
+
+	function dialogueBoxShowing(box:DialogueBox):Bool {
+		return box != null && box.exists && members.indexOf(box) >= 0;
+	}
+
+	/**
+	 * A dialogue box starts its own tune on the music channel when it is built
+	 * and fades that channel out when it closes. Between the song's first and
+	 * last note that channel is the instrumental, so a box would end the song.
+	 */
+	function dialogueWouldReplaceSong():Bool {
+		return generatedMusic && !startingSong && !endingSong
+			&& FlxG.sound.music != null && FlxG.sound.music.playing;
+	}
+
+	/** Dialogue music fades in over whatever the box started on its own. */
+	function playDialogueMusic(music:String):Void {
+		if (music == null || StringTools.trim(music) == '')
+			return;
+		compatPlayMusic(music, 0, true);
+		if (FlxG.sound.music != null)
+			FlxG.sound.music.fadeIn(2, 0, 1);
+	}
+
+	/** Script file argument without folders tricks or the optional extension; '' when unusable. */
+	static function compatDialogueName(file:String):String {
+		var name = file == null ? '' : StringTools.trim(StringTools.replace(file, '\\', '/'));
+		if (StringTools.endsWith(name.toLowerCase(), '.json'))
+			name = name.substr(0, name.length - 5);
+		if (name.indexOf('..') >= 0 || name.indexOf(':') >= 0 || StringTools.startsWith(name, '/'))
+			return '';
+		return name;
+	}
+
+	/** The opening dialogue is already built at create under these names. */
+	static function compatDialogueIsPrepared(name:String):Bool {
+		var lower = name.toLowerCase();
+		return lower == '' || lower == 'dialogue' || lower == 'dialog';
+	}
+
+	/**
+	 * Native dialogue text for one of the current song's dialogue files, looked
+	 * up beside the imported chart first and in the selected mod second.
+	 */
+	function compatDialogueText(name:String):String {
+		if (name == null || name == '' || SONG == null)
+			return null;
+		var candidates:Array<String> = [currentSongDataPath(name + '.json')];
+		var owner = selectedPsychSkinRoot();
+		if (owner != null && SONG.song != null) {
+			var mounted:Dynamic = compatPsychPathCall(owner, 'json',
+				[PsychOwnerPaths.formatToSongPath(SONG.song) + '/' + name]);
+			if (mounted != null)
+				candidates.push(Std.string(mounted));
+		}
+		for (candidate in candidates) {
+			if (!FNFAssets.exists(candidate))
+				continue;
+			try {
+				var text = EngineCompat.legacyDialogueText(CoolUtil.parseJson(FNFAssets.getText(candidate)),
+					SONG.player1, SONG.player2);
+				if (text != null)
+					return text;
+			} catch (error:Dynamic) {
+				trace('[psych-dialogue] could not read ' + candidate + ': ' + error);
+			}
+		}
+		return null;
+	}
+
 	function compatStartDialogue(?file:String, ?music:String):Void {
-		if (doof == null) {
-			trace('[psych-dialogue-missing] ' + file + '; resuming countdown');
-			startCountdown();
+		if (dialogueBoxShowing(scriptDialogueBox))
+			return;
+		var name = compatDialogueName(file);
+		// Psych dialogue begins after a Lua timer and returns to the same countdown
+		// gate when the last line closes, so the box built at create serves it. A
+		// box that has already run its course is gone for good and cannot.
+		if (doof != null && doof.alive && compatDialogueIsPrepared(name)) {
+			if (doof.exists && members.indexOf(doof) >= 0)
+				return;
+			inCutscene = true;
+			preparePsychDialogue(doof);
+			doof.cameras = [camHUD];
+			add(doof);
+			playDialogueMusic(music);
 			return;
 		}
-		if (doof.exists && members.indexOf(doof) >= 0)
+		// after the last note the dialogue hands back to the ending, not the countdown
+		var resume:Void->Void = endingSong ? function():Void endSong() : startCountdown;
+		var text = compatDialogueText(name);
+		if (text == null) {
+			trace('[psych-dialogue-missing] ' + file + '; resuming');
+			resume();
 			return;
-		inCutscene = true;
-		preparePsychDialogue(doof);
-		doof.cameras = [camHUD];
-		add(doof);
+		}
+		showDialogueFromData(text, music, resume, preparePsychDialogue);
 	}
 
 	@:keep public var dialogueCount:Int = 0;
@@ -7674,21 +8067,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var object:Dynamic = compatFindObject(name);
 		if (object == null || shaderName == null)
 			return;
-		var frag = resolveCompatShader(shaderName);
-		if (frag == null)
-			return;
-		try object.shader = new ShaderHandler.CoolRuntimeShader(frag) catch (_:Dynamic) {}
+		scriptShaderRegistry().setOn(object, shaderName, compatShaderSources);
 	}
 
 	function compatSetShaderFloat(name:Dynamic, variable:String, value:Float):Void {
 		var object:Dynamic = compatFindObject(name);
 		if (object == null || variable == null)
 			return;
-		try {
-			var shader:Dynamic = object.shader;
-			if (shader != null)
-				shader.setFloat(variable, value);
-		} catch (_:Dynamic) {}
+		var shader:Dynamic = null;
+		try shader = object.shader catch (_:Dynamic) {}
+		RuntimeShaderRegistry.setValue(shader, variable, value, 'Float');
 	}
 
 	function compatShaderCamera(name:String):FlxCamera {
@@ -7908,18 +8296,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			greenOffset: Std.parseFloat(Std.string(green)),
 			blueOffset: Std.parseFloat(Std.string(blue))
 		};
-		var tag = '__lua_color_' + (name == null ? 'actor' : name);
-		compatCancelTween(tag);
-		var created:FlxTween = null;
-		var complete = function(_) {
-			if (compatTweens.get(tag) == created)
-				compatTweens.remove(tag);
-		};
-		created = FlxTween.tween(transform, props, Math.max(0, duration), {
-			ease: FlxEase.linear,
-			onComplete: complete
-		});
-		compatTweens.set(tag, created);
+		// An engine-side tween: it takes a tag so a second call replaces the
+		// first, but no script is told when it ends.
+		startTaggedTween('__lua_color_' + (name == null ? 'actor' : name), transform, props, duration,
+			{ease: 'linear'});
 	}
 
 	function compatTweenCharacterColorHex(name:String, hexColor:Dynamic, duration:Float):Void {
@@ -8012,7 +8392,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatCharacterDance(name:String):Void {
-		var actor = getHaxeActor(name);
+		var actor = characterForRole(name);
 		if (actor != null)
 			try actor.dance() catch (_:Dynamic) {}
 	}
@@ -8134,12 +8514,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			: path == null ? null : compatSoundPath(Std.string(path), true);
 		if (resolved == null) return null;
 		var looped = loopArgument || (Std.isOfType(tagOrLoop, Bool) && tagOrLoop == true);
-		var sound = hscriptSafePlay(resolved, volume, looped);
-		if (sound != null && Std.isOfType(tagOrLoop, String)) {
-			var tag = StringTools.trim(cast tagOrLoop);
-			if (tag != '') psychTaggedSounds.set(tag, sound);
-		}
-		return sound;
+		return playTaggedSound(Std.isOfType(tagOrLoop, String) ? tagOrLoop : null, resolved,
+			volume, looped, compatSoundFinished);
+	}
+
+	function compatSoundFinished(tag:String):Void {
+		callAllHScript('onSoundFinished', [tag]);
 	}
 
 	function compatPlaySoundForOwner(ownerRoot:String, path:Dynamic, volume:Float = 1,
@@ -8178,31 +8558,22 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	}
 
 	function compatTaggedSound(tag:Dynamic):FlxSound {
-		if (tag == null) return null;
-		var key = StringTools.trim(Std.string(tag));
-		var sound = psychTaggedSounds.get(key);
-		if (sound != null && !sound.exists) {
-			psychTaggedSounds.remove(key);
-			return null;
-		}
-		return sound;
+		return soundForTag(tag);
 	}
 
 	function compatSoundFadeOut(tag:Dynamic, duration:Float, toVolume:Float = 0):Void {
-		var sound = compatTaggedSound(tag);
+		var sound = soundForTag(tag, true);
 		if (sound != null) sound.fadeOut(Math.max(0, duration), toVolume);
 	}
 
 	function compatSoundFadeIn(tag:Dynamic, duration:Float, fromVolume:Float = 0,
 		toVolume:Float = 1):Void {
-		var sound = compatTaggedSound(tag);
+		var sound = soundForTag(tag, true);
 		if (sound != null) sound.fadeIn(Math.max(0, duration), fromVolume, toVolume);
 	}
 
 	function compatStopSound(tag:Dynamic):Void {
-		var sound = compatTaggedSound(tag);
-		if (sound != null) sound.stop();
-		if (tag != null) psychTaggedSounds.remove(StringTools.trim(Std.string(tag)));
+		stopTaggedSound(tag);
 	}
 
 	function compatCallMethodFromClass(className:String, methodName:String,
@@ -8390,7 +8761,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		setAllHaxeVar('customSubstateName', 'unnamed');
 	}
 
-	function compatRestartSong(?skipTransition:Bool = false):Void {
+	/** Retry the song being played. The pause menu, game over and scripts
+	 * all come through here, so every retry tells the song's scripts first
+	 * and leaves no video, flash or shader behind for the next attempt. */
+	@:keep public function restartSong(?skipTransition:Bool = false):Void {
 		// V-Slice modules receive a final retry hook before the old state is
 		// replaced. EngineCompat adapts this to a mutable HXC lifecycle payload
 		// while ordinary HScript keeps its empty-argument callback ABI.
@@ -8409,78 +8783,121 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		hxcClearRuntimeShaderBindings();
 		paused = false;
 		compatCustomSubstateOpen = false;
+		skipNextSongTransition(skipTransition);
 		LoadingState.loadAndSwitchState(new PlayState());
 	}
+
+	/** Retry from anywhere, including a substate that outlived its song. */
+	@:keep public static function restartCurrentSong(?skipTransition:Bool = false):Void {
+		if (instance != null) {
+			instance.restartSong(skipTransition);
+			return;
+		}
+		skipNextSongTransition(skipTransition);
+		LoadingState.loadAndSwitchState(new PlayState());
+	}
+
+	static function skipNextSongTransition(skip:Bool):Void {
+		if (!skip) return;
+		FlxTransitionableState.skipNextTransIn = true;
+		FlxTransitionableState.skipNextTransOut = true;
+	}
+
+	/** Leave the song for the menu it was started from. Shared by the pause
+	 * menu, game over and scripts so story mode never lands in Freeplay. */
+	@:keep public static function exitToMenu(?skipTransition:Bool = false, ?menuMusic:Bool = false):Void {
+		// State creation can select another chart owner. Capture this owner before
+		// switching, then clear its flag in the donor's post-switch order.
+		var chartingOwner = psychChartingOwnerRoot();
+		if (chartingOwner != '') {
+			balls = 0;
+			watchedCutscene = false;
+			if (instance != null) instance.canResync = false;
+		}
+		skipNextSongTransition(skipTransition);
+		if (SongFlow.exitMenu(isStoryMode) == SongFlow.MENU_STORY)
+			LoadingState.loadAndSwitchState(new StoryMenuState());
+		else
+			ImportedMenuEntry.returnToFreeplay();
+		if (menuMusic)
+			FlxG.sound.playMusic(Paths.music('freakyMenu'));
+		if (chartingOwner != '') {
+			PsychOwnerChartingMode.clear(chartingOwner);
+			if (FlxG.camera != null) FlxG.camera.followLerp = 0;
+		}
+	}
+
+	/** Load a song and switch to it. No name reloads the current song, and the
+	 * difficulty can be an index or a name; anything else keeps the one being
+	 * played. A chart that does not load leaves the current song untouched. */
+	@:keep public static function loadSongByName(name:Null<String>, ?difficulty:Dynamic,
+			?skipTransition:Bool = false):Bool {
+		var target = SongFlow.loadTarget(name, difficulty, SONG == null ? null : SONG.song, storyDifficulty,
+			DifficultyManager.getDifficultyNames(), DifficultyManager.getDefaultDiff());
+		if (target == null)
+			return false;
+		try {
+			var loaded = Song.loadFromJson(target.chart, target.song.toLowerCase());
+			if (loaded == null)
+				throw 'Chart loader returned no chart';
+			SONG = loaded;
+			storyDifficulty = target.difficulty;
+		} catch (error:Dynamic) {
+			trace('loadSong failed for ' + target.song + ' (' + target.chart + '): ' + error);
+			return false;
+		}
+		skipNextSongTransition(skipTransition);
+		LoadingState.loadAndSwitchState(new PlayState());
+		return true;
+	}
+
+	function compatRestartSong(?skipTransition:Bool = false):Void restartSong(skipTransition);
 
 	function compatExitSong(?skipTransition:Bool = false):Void {
 		paused = false;
 		compatCustomSubstateOpen = false;
-		ImportedMenuEntry.returnToFreeplay();
+		exitToMenu(skipTransition, true);
 	}
 
-	function compatLoadSong(songName:String, ?difficulty:String = ''):Void {
-		if (songName == null || StringTools.trim(songName) == '')
-			return;
-		var clean = StringTools.trim(songName);
-		var chart = StringTools.trim(difficulty == null ? '' : difficulty);
-		if (chart == '')
-			chart = clean.toLowerCase();
-		try {
-			PlayState.SONG = Song.loadFromJson(chart.toLowerCase(), clean);
-			LoadingState.loadAndSwitchState(new PlayState());
-		} catch (error:Dynamic) {
-			trace('compat loadSong failed for ' + clean + ': ' + error);
-		}
-	}
+	function compatLoadSong(?songName:String, ?difficulty:Dynamic):Void loadSongByName(songName, difficulty);
 
 	function compatStartTween(tag:String, targetName:Dynamic, value:Dynamic, duration:Float,
 		?options:Dynamic):Void {
-		var ease:String = null;
-		if (options != null)
-			try ease = Std.string(Reflect.field(options, 'ease')) catch (_:Dynamic) {}
 		var targetText = targetName == null ? '' : Std.string(targetName);
-		// Psych allows tweening a bare PlayState field (defaultCamZoom is the
-		// common example).  Do not pass its current scalar value as a tween
-		// owner: route the field through the canonical PlayState object.
-		if (targetText.indexOf('.') < 0) {
+		var completedArgs:Array<Dynamic> = [tag, targetText];
+		var valueSet = value != null && Reflect.isObject(value) && !Std.isOfType(value, String);
+		// A bare PlayState field with a single number (defaultCamZoom is the
+		// common example) is tweened on the PlayState itself, not on the
+		// field's current value. A set of values always means an object, even
+		// when that object is also a PlayState field such as a character.
+		if (!valueSet && targetText.indexOf('.') < 0) {
 			try {
 				if (Reflect.hasField(this, targetText)) {
-					compatTweenObject(tag, this, targetText, value, duration, ease);
+					compatTweenProperty(tag, this, targetText, value, duration, options, completedArgs);
 					return;
 				}
 			} catch (_:Dynamic) {}
 		}
 		var object = compatFindObject(targetText);
+		// Same second chance doTween gives: a property path such as a sprite's scale.
+		if (object == null && targetText != '')
+			object = compatGetProperty(targetText);
 		if (object == null)
 			return;
 		// The object-form Psych API (startTween(tag, object, {x: ...}, ...))
 		// maps directly onto FlxTween and preserves all supplied fields.
-		if (value != null && Reflect.isObject(value) && !Std.isOfType(value, String)) {
-			compatCancelTween(tag);
-			var created:FlxTween = null;
-			var complete = function(_) {
-				if (tag != null && compatTweens.get(tag) == created)
-					compatTweens.remove(tag);
-				if (tag != null)
-					callAllHScript('tweenCompleted', [tag]);
-			};
-			var params:Dynamic = {onComplete: complete};
-			if (ease != null && StringTools.trim(ease) != '')
-				Reflect.setField(params, 'ease', Reflect.field(FlxEase, ease));
-			created = FlxTween.tween(object, value, Math.max(0, duration), params);
-			if (tag != null)
-				compatTweens.set(tag, created);
-		}
+		if (valueSet)
+			startTaggedTween(tag, object, value, duration, options, completedArgs);
 	}
 
 	function captureLuaDefaultStrums():Void {
-		if (luaDefaultStrumsCaptured || strumLineNotes == null || strumLineNotes.members.length == 0)
+		// Read the live strumlines: the combined group is only filled in one
+		// mode, and the defaults have to exist in all of them.
+		var count = receptorCount();
+		if (luaDefaultStrumsCaptured || count == 0)
 			return;
-		var count = Note.NOTE_AMOUNT * 2;
 		for (i in 0...count) {
-			var target:Dynamic = null;
-			if (strumLineNotes != null && i >= 0 && i < strumLineNotes.members.length)
-				target = strumLineNotes.members[i];
+			var target:Dynamic = receptorAt(i);
 			luaDefaultStrumX.push(target == null ? 0 : target.x);
 			luaDefaultStrumY.push(target == null ? 0 : target.y);
 		}
@@ -8590,7 +9007,134 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				luaDefaultPlayerStrumX, luaDefaultPlayerStrumY, side, index, axis));
 	}
 
+	// True once any interpreter received the shared gameplay globals, so songs
+	// without such scripts skip the refresh work entirely.
+	var sourceGameplayGlobalsSeeded:Bool = false;
+	var sourceGameplayGlobalsBotPlay:Bool = false;
+	var sourceGameplayGlobalsDecStep:Float = Math.NaN;
+
+	/** The player's hitsound volume from whichever preference set the song runs on. */
+	@:keep public function sourceHitsoundPreference():Float {
+		var prefs:Dynamic = sourceScoreNightmare ? (nightmareVisionPrefs == null ? null : nightmareVisionPrefs.view)
+			: (psychClientPrefs == null ? null : psychClientPrefs.data);
+		var volume:Dynamic = prefs == null ? null : Reflect.getProperty(prefs, 'hitsoundVolume');
+		return Std.isOfType(volume, Float) ? volume : 0;
+	}
+
+	/** Extra zoom on top of the resting camera zoom, so an event can push in or
+	 * out without overwriting the base other code keeps setting. */
+	@:keep public var defaultCamZoomAdd:Float = 0;
+	public static function restingZoom(base:Float, add:Float):Float {
+		return base + add;
+	}
+	/** Scripts turn this off to write the rich presence themselves. */
+	@:keep public var automatedDiscord:Bool = true;
+
+	/** How far ahead of the song, in milliseconds, notes spawn. Writes are capped
+	 * so one assignment can't spawn a whole chart in a single frame. */
+	@:keep public var spawnTime(get, set):Float;
+	function get_spawnTime():Float return noteSpawnLookahead;
+	function set_spawnTime(value:Float):Float return noteSpawnLookahead = clampSpawnTime(value);
+	public static function clampSpawnTime(value:Float):Float {
+		if (Math.isNaN(value)) return 1500;
+		return Math.max(0, Math.min(value, 10000));
+	}
+	// Plain members scripts read and write. Nothing in the base game drives them.
+	@:keep public static var campaignMisses:Int = 0;
+	@:keep public var botplaySine:Float = 0;
+
+	// The UI skin name scripts know: 'normal', 'pixel' or '<name>-pixel'. Only
+	// its pixel half changes anything here, the rest is kept so a script reads
+	// back what it wrote.
+	var storedStageUI:String = 'normal';
+	@:keep public static var stageUI(get, set):String;
+	static function get_stageUI():String {
+		if (instance == null) return 'normal';
+		// The pixel switch can also be flipped directly, and that one wins.
+		if (stageUIIsPixel(instance.storedStageUI) == instance.pixelUI) return instance.storedStageUI;
+		return instance.pixelUI ? 'pixel' : 'normal';
+	}
+	static function set_stageUI(value:String):String {
+		if (instance == null) return value;
+		instance.storedStageUI = value == null ? 'normal' : value;
+		instance.pixelUI = stageUIIsPixel(instance.storedStageUI);
+		return instance.storedStageUI;
+	}
+	@:keep public static var uiPrefix(get, never):String;
+	static function get_uiPrefix():String return stageUIPrefix(stageUI);
+	@:keep public static var uiPostfix(get, never):String;
+	static function get_uiPostfix():String return stageUIPostfix(stageUI);
+	public static function stageUIIsPixel(value:String):Bool {
+		return value != null && (value == 'pixel' || StringTools.endsWith(value, '-pixel'));
+	}
+	public static function stageUIPrefix(value:String):String {
+		if (value == null || value == 'normal') return '';
+		return StringTools.trim(value.split('-pixel')[0]);
+	}
+	public static function stageUIPostfix(value:String):String {
+		return stageUIIsPixel(value) ? '-pixel' : '';
+	}
+
+	/** Botplay as scripts see it, whichever of the two switches turned it on. */
+	function sourceBotPlay():Bool
+		return demoMode || (!sourceScoreLedgerActive() && FlxG.save != null && FlxG.save.data != null && FlxG.save.data.botplay == true);
+
+	function currentChartSection():Dynamic {
+		if (SONG == null || SONG.notes == null || SONG.notes.length == 0) return null;
+		return SONG.notes[Std.int(Math.max(0, Math.min(curSection, SONG.notes.length - 1)))];
+	}
+
+	/** Values behind the gameplay globals shared by the Psych and Nightmare Vision seeds. */
+	function sourceGameplayState(section:Dynamic, modFolder:String):SourceGameplayGlobals.SourceGameplayState {
+		var title = SONG == null || SONG.song == null ? '' : Std.string(SONG.song);
+		return {
+			songName: title, songPath: psychSongPath(title),
+			songBpm: SONG == null ? Conductor.bpm : SONG.bpm, songSpeed: SONG == null ? 1 : SONG.speed,
+			songLength: songLength, stage: SONG == null || SONG.stage == null ? '' : Std.string(SONG.stage),
+			hasVocals: SONG != null && SONG.needsVoices == true,
+			storyMode: isStoryMode, difficulty: storyDifficulty, difficultyName: storyDifficultyText,
+			week: storyWeek, seenCutscene: watchedCutscene, startedCountdown: startedCountdown,
+			botPlay: sourceBotPlay(), practice: practiceMode,
+			healthGainMult: healthGainMultiplier, healthLossMult: healthLossMultiplier,
+			instakillOnMiss: instakillOnMiss, deaths: deathCounter, section: section,
+			curDecBeat: sourceGameplayDecimalStep() / 4, curDecStep: sourceGameplayDecimalStep(),
+			boyfriendX: BF_X, boyfriendY: BF_Y, opponentX: DAD_X, opponentY: DAD_Y,
+			girlfriendX: GF_X, girlfriendY: GF_Y, modFolder: modFolder
+		};
+	}
+
+	function refreshSourceGameplayGlobal(name:String, value:Dynamic):Void {
+		if (!sourceGameplayGlobalsSeeded) return;
+		for (interp in hscriptStates) SourceGameplayGlobals.refresh(interp.variables, name, value);
+	}
+
+	/** The fractional step scripts see. The state's own field only moves in
+	 * songs with a modifier manager or source stages, so every other song
+	 * samples the clock here instead of handing out a number that never changes. */
+	function sourceGameplayDecimalStep():Float
+		return modManager != null || stages.length > 0 ? curDecStep : PsychBeatClock.getDecimalStep();
+
+	/** The fractional clock moves every frame and botplay can flip at any time. */
+	function refreshSourceGameplayFrameGlobals():Void {
+		if (!sourceGameplayGlobalsSeeded) return;
+		var decStep = sourceGameplayDecimalStep();
+		if (decStep != sourceGameplayGlobalsDecStep) {
+			sourceGameplayGlobalsDecStep = decStep;
+			refreshSourceGameplayGlobal('curDecStep', decStep);
+			refreshSourceGameplayGlobal('curDecBeat', decStep / 4);
+		}
+		var botPlay = sourceBotPlay();
+		if (botPlay != sourceGameplayGlobalsBotPlay) {
+			sourceGameplayGlobalsBotPlay = botPlay;
+			refreshSourceGameplayGlobal('botPlay', botPlay);
+		}
+	}
+
 	function seedEngineCompat(interp:Interp, ?extraPsychOwnerRoot:String):Void {
+		// Mixed native scripts can hold translated Lua callbacks in an ordinary
+		// interpreter. This only fills names that are missing; a Lua scope puts
+		// its own result-list versions back in installTableHelpers.
+		LuaCompatInterp.seedPlainHelpers(interp);
 		interp.variables.set('songLength', songLength);
 		var originValue:Dynamic = interp.variables.get('__compatDiagnosticSource');
 		var origin = originValue == null ? null : Std.string(originValue);
@@ -8614,6 +9158,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			// HUD also has a `songName` FlxText; Lua must not receive that object.
 			interp.variables.set('songName', SONG == null ? '' : SONG.song);
 			interp.variables.set('difficultyName', storyDifficultyText);
+			// The gameplay globals every Lua state gets. Names seeded earlier with a
+			// live engine value keep theirs.
+			SourceGameplayGlobals.seedMissing(interp.variables, SourceGameplayGlobals.snapshot(
+				sourceGameplayState(currentChartSection(), SourceGameplayGlobals.folderName(psychScriptOwner))));
+			sourceGameplayGlobalsSeeded = true;
 			interp.variables.set('__compatClosed', false);
 			// Psych's local close callback accepts no arguments; Lua ignores the
 			// optional boolean passed by some donor scripts.
@@ -8752,7 +9301,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('getRandomBool', compatRandomBool);
 		interp.variables.set('luaMathRandom', compatLuaRandom);
 		interp.variables.set('keyboardJustPressed', compatKeyboardJustPressed);
-		interp.variables.set('keyJustPressed', compatKeyJustPressed);
+		interp.variables.set('keyJustPressed', function(?name:String = '') return actionState(name, 'justPressed'));
+		interp.variables.set('keyPressed', function(?name:String = '') return actionState(name, 'pressed'));
+		interp.variables.set('keyReleased', function(?name:String = '') return actionState(name, 'justReleased'));
 		interp.variables.set('getMouseX', compatMouseX);
 		interp.variables.set('getMouseY', compatMouseY);
 		interp.variables.set('getMouseClicked', compatMouseClicked);
@@ -8815,6 +9366,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		interp.variables.set('luaStringGsub', EngineCompat.luaStringGsub);
 		interp.variables.set('luaStringFormat', EngineCompat.luaStringFormat);
 		interp.variables.set('luaStringGmatch', EngineCompat.luaStringGmatch);
+		interp.variables.set('luaStringGmatchAll', EngineCompat.luaStringGmatchAll);
+		interp.variables.set('luaStringMatch', EngineCompat.luaStringMatch);
+		interp.variables.set('luaStringRep', EngineCompat.luaStringRep);
+		interp.variables.set('luaStringReverse', EngineCompat.luaStringReverse);
+		interp.variables.set('luaStringByte', EngineCompat.luaStringByte);
+		interp.variables.set('luaStringChar', EngineCompat.luaStringChar);
 		interp.variables.set('luaMathRad', EngineCompat.luaMathRad);
 		interp.variables.set('luaMathClamp', EngineCompat.luaMathClamp);
 		interp.variables.set('luaMathRandomSeed', EngineCompat.luaMathRandomSeed);
@@ -9624,8 +10181,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function luaProgramFor(path:String, source:String, ?mixedOverride:Bool = false):Dynamic {
 		if (source == null)
 			return {translated: false, source: source};
-		if (StringTools.startsWith(source, LuaCompat.TRANSLATED_MARKER))
-			return {translated: true, source: source};
+		if (StringTools.startsWith(source, LuaCompat.TRANSLATED_MARKER)) {
+			// A marked file was written by the importer from its .lua sibling with
+			// whatever translator it had then. Translate the sibling again so a
+			// translator fix reaches scripts imported before it. Only when that
+			// file is really on disk: getCompatibleHscript also hands back marked
+			// text it just translated from the .lua itself (with the Psych owner's
+			// embedded-HScript setting), and that must not be redone or replaced.
+			var fresh = mixedOverride || !generatedHscriptOnDisk(path) ? null : freshLuaSiblingTranslation(path);
+			return {translated: true, source: fresh == null ? source : fresh};
+		}
 		// PsychStageCompat can provide native stage scaffolding with embedded
 		// translated callbacks. Its unmarked override retains native indexing.
 		if (mixedOverride)
@@ -9633,16 +10198,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var lower = path.toLowerCase();
 		if (lower.endsWith('.lua'))
 			return {translated: true, source: source};
-		var stem = lower.endsWith('.hscript') || lower.endsWith('.hxs')
-			? path.substr(0, path.lastIndexOf('.')) : path;
-		var sibling = stem + '.lua';
-		if (!FNFAssets.exists(sibling))
-			return {translated: false, source: source};
 		try {
-			var translated = LuaCompat.translate(FNFAssets.getText(sibling), sibling).hscript;
-			var marker = LuaCompat.TRANSLATED_MARKER + '\n';
-			if (translated == null || !StringTools.startsWith(translated, marker))
+			var translated = freshLuaSiblingTranslation(path);
+			if (translated == null)
 				return {translated: false, source: source};
+			var marker = LuaCompat.TRANSLATED_MARKER + '\n';
 			var unmarked = translated.substr(marker.length);
 			if (source == unmarked)
 				return {translated: true, source: translated};
@@ -9660,6 +10220,36 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				? {translated: true, source: translated} : {translated: false, source: source};
 		} catch (_:Dynamic) {
 			return {translated: false, source: source};
+		}
+	}
+
+	/** True when the script at path resolves to a .hscript/.hxs file rather than
+	 * to a .lua module translated on load. Same lookup as getCompatibleHscript. */
+	function generatedHscriptOnDisk(path:String):Bool {
+		var lower = path.toLowerCase();
+		if (lower.endsWith('.hscript') || lower.endsWith('.hxs'))
+			return FNFAssets.exists(path);
+		if (lower.endsWith('.lua') || lower.endsWith('.hx'))
+			return false;
+		return FNFAssets.exists(path + '.hscript') || FNFAssets.exists(path + '.hxs');
+	}
+
+	/** Marked translation of the .lua file beside a generated .hscript, or null
+	 * when there is none or it no longer translates. Translated the same way the
+	 * importer wrote the sibling, so an unchanged script gives the same text. */
+	function freshLuaSiblingTranslation(path:String):String {
+		var lower = path.toLowerCase();
+		var stem = lower.endsWith('.hscript') || lower.endsWith('.hxs')
+			? path.substr(0, path.lastIndexOf('.')) : path;
+		var sibling = stem + '.lua';
+		if (!FNFAssets.exists(sibling))
+			return null;
+		try {
+			var translated = LuaCompat.translate(FNFAssets.getText(sibling), sibling).hscript;
+			return translated != null && StringTools.startsWith(translated, LuaCompat.TRANSLATED_MARKER + '\n')
+				? translated : null;
+		} catch (_:Dynamic) {
+			return null;
 		}
 	}
 
@@ -13009,16 +13599,52 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			girlfriendPsychCameraContribution: psychCameraContribution('gf')
 		});
 	}
-	function psychStagePoint(data:Dynamic, field:String):Null<Array<Float>> {
-		if (data == null || !Reflect.hasField(data, field))
-			return null;
-		var value:Dynamic = Reflect.field(data, field);
-		if (!Std.isOfType(value, Array) || (cast value:Array<Dynamic>).length < 2)
-			return null;
-		var values:Array<Dynamic> = cast value;
-		var x = Std.parseFloat(Std.string(values[0]));
-		var y = Std.parseFloat(Std.string(values[1]));
-		return Math.isNaN(x) || Math.isNaN(y) ? null : [x, y];
+	/**
+		The stage-file fields Psych and Nightmare Vision read the same way, applied
+		in one place. What only one engine does with them (Psych moving its actors,
+		NV building role groups) stays with the caller, and `profile` covers the
+		few fields the two read differently.
+	**/
+	function applySourceStageMetadata(meta:SourceStageMetadata, profile:SourceStageMetadata.SourceStageApplyProfile):Void {
+		rememberStageAnchor('bf', meta.boyfriend);
+		rememberStageAnchor('dad', meta.opponent);
+		rememberStageAnchor('gf', meta.girlfriend);
+		if (profile.groupPositions) {
+			if (meta.boyfriend != null) boyfriendPosition.set(meta.boyfriend[0], meta.boyfriend[1]);
+			if (meta.opponent != null) dadPosition.set(meta.opponent[0], meta.opponent[1]);
+			if (meta.girlfriend != null) gfPosition.set(meta.girlfriend[0], meta.girlfriend[1]);
+		}
+		if (meta.defaultZoom != null) {
+			if (curStage != null)
+				curStage.defaultZoom = meta.defaultZoom;
+			defaultCamZoom = meta.defaultZoom;
+			if (profile.snapZoom)
+				setGameCameraZoom(meta.defaultZoom);
+		}
+		if (profile.cameraSpeed && meta.cameraSpeed != null)
+			cameraSpeed = meta.cameraSpeed;
+		// The UI pack, the notes and their sustain shapes were already built from
+		// the chart by the time a stage file is read, so flipping pixel mode here
+		// would leave pixel receptors and countdown over normal notes. Scripts
+		// still read back the stage's own UI name when it agrees on pixel mode.
+		if (profile.stageUI && meta.stageUI != null && stageUIIsPixel(meta.stageUI) == pixelUI)
+			stageUI = meta.stageUI;
+		applyStageCameraOffsets(meta);
+	}
+
+	/** NV stage files fall back to its own template for anything missing or broken. */
+	function nightmareVisionStageMetadata(data:Dynamic):SourceStageMetadata {
+		return SourceStageMetadata.parse(data, SourceStageMetadata.parse(NightmareVisionStageData.getTemplateStageFile()));
+	}
+
+	function rememberStageAnchor(role:String, point:Null<Array<Float>>):Void {
+		if (point == null || curStage == null)
+			return;
+		var info = curStage.getInfo(role);
+		if (info != null) {
+			info.x = point[0];
+			info.y = point[1];
+		}
 	}
 
 	function rememberPsychStagePoint(role:String, point:Null<Array<Float>>):Void {
@@ -13146,8 +13772,10 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionScripts != null) {
 			if (gf != null && section.gfSection == true) {
 				var point = gf.getMidpoint();
-				camFollow.setPosition(point.x + gf.cameraPosition[0] + girlfriendCameraOffset[0],
-					point.y + gf.cameraPosition[1] + girlfriendCameraOffset[1]);
+				var side = SourceCameraFollowPointMath.GIRLFRIEND;
+				camFollow.setPosition(point.x + SourceCameraFollowPointMath.focusOffsetX(side, gf.cameraPosition[0],
+						girlfriendCameraOffset[0], SourceCameraFollowPointMath.NIGHTMARE_OPPONENT_BASE_X),
+					point.y + SourceCameraFollowPointMath.focusOffsetY(side, gf.cameraPosition[1], girlfriendCameraOffset[1]));
 				point.put();
 				applyNightmareVisionSingDisplacement(gf);
 				callNightmareVision('onMoveCamera', ['gf']);
@@ -13227,16 +13855,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function holdVSliceSectionCamera():Bool
 		return vSliceCameraHoldsFocus && scriptableCamera == 'false';
 
-	function applyPsychStageCameraOffsets(data:Dynamic):Void {
-		psychStageCameraBoyfriend = psychStagePoint(data, 'camera_boyfriend');
-		psychStageCameraOpponent = psychStagePoint(data, 'camera_opponent');
-		psychStageCameraGirlfriend = psychStagePoint(data, 'camera_girlfriend');
-		if (psychStageCameraBoyfriend == null)
-			psychStageCameraBoyfriend = [0, 0];
-		if (psychStageCameraOpponent == null)
-			psychStageCameraOpponent = [0, 0];
-		if (psychStageCameraGirlfriend == null)
-			psychStageCameraGirlfriend = [0, 0];
+	// Kept apart from Character.followCam so a repeated stage load or a character
+	// replacement composes each authored offset exactly once. Missing offsets
+	// arrive as [0, 0], which also clears the previous stage's values.
+	function applyStageCameraOffsets(meta:SourceStageMetadata):Void {
+		psychStageCameraBoyfriend = meta.cameraBoyfriend;
+		psychStageCameraOpponent = meta.cameraOpponent;
+		psychStageCameraGirlfriend = meta.cameraGirlfriend;
 	}
 
 	function stageCharacterOffset(actor:Character, role:String):Array<Float> {
@@ -13276,25 +13901,19 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			var data:Dynamic = CoolUtil.parseJson(FNFAssets.getText(path));
 			if (data == null)
 				return;
+			var meta = SourceStageMetadata.parse(data);
 			// Keep the host's required GF reference while honoring the source stage's hidden role.
-			if (gf != null && Reflect.field(data, 'hide_girlfriend') == true) gf.visible = false;
-			var sourceLibrary = Reflect.field(data, 'directory');
-			var cleanLibrary = sourceLibrary == null ? null
-				: PsychOwnerAssetPath.cleanId(Std.string(sourceLibrary));
+			if (gf != null && meta.hideGirlfriend) gf.visible = false;
+			var cleanLibrary = meta.directory == null ? null
+				: PsychOwnerAssetPath.cleanId(meta.directory);
 			psychStageLibrary = cleanLibrary != null && cleanLibrary.indexOf('/') < 0
 				? cleanLibrary : null;
-			var zoom = Reflect.field(data, 'defaultZoom');
-			if (zoom != null) {
-				var parsedZoom = Std.parseFloat(Std.string(zoom));
-				if (!Math.isNaN(parsedZoom) && parsedZoom > 0) {
-					curStage.defaultZoom = parsedZoom;
-					defaultCamZoom = parsedZoom;
-					setGameCameraZoom(parsedZoom);
-				}
-			}
-			var bfPoint = psychStagePoint(data, 'boyfriend');
-			var opponentPoint = psychStagePoint(data, 'opponent');
-			var gfPoint = psychStagePoint(data, 'girlfriend');
+			// Missing points stay null here, so the native start position is kept.
+			// This also stores the camera offsets apart from Character.followCam.
+			applySourceStageMetadata(meta, SourceStageMetadata.PSYCH);
+			var bfPoint = meta.boyfriend;
+			var opponentPoint = meta.opponent;
+			var gfPoint = meta.girlfriend;
 			var dadPoint = dad != null && dad.likeGf ? gfPoint : opponentPoint;
 			if (bfPoint != null || opponentPoint != null || gfPoint != null) {
 				if (swapOffsetsBeforePsychStage == null)
@@ -13316,9 +13935,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 				var gfPosition = stageCharacterOffset(gf, 'gf');
 				gf.setPosition(gfPoint[0] + gfPosition[0], gfPoint[1] + gfPosition[1]);
 			}
-			// Store stage offsets separately from Character.followCam so a repeated
-			// stage load or character replacement composes each authored value once.
-			applyPsychStageCameraOffsets(data);
+			// The same stage file can be reached from more than one loader; Psych
+			// only builds its sprites once, before the stage scripts run.
+			if (!psychStageObjectsBuilt && (meta.objects != null || meta.preload != null)) {
+				psychStageObjectsBuilt = true;
+				buildSourceStageObjects(meta, scopedRoot);
+			}
 			// Camera follow is initialized before imported stage JSON positions its
 			// characters. Recompute the first-section target after all stage camera
 			// offsets are applied so the initial frame matches normal section follow.
@@ -13327,6 +13949,72 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			trace('[psych-stage-json-error] ' + path + ': ' + Std.string(error));
 		}
 	}
+	var psychStageObjectsBuilt:Bool = false;
+
+	/**
+		Psych 1.0 stage files can list their sprites and preloads instead of
+		scripting them. Sprites go through the normal Lua sprite registry, so
+		stage scripts and getProperty find them by name.
+	**/
+	function buildSourceStageObjects(meta:SourceStageMetadata, ownerRoot:String):Void {
+		// There is no low quality mode here, so the high quality entries apply.
+		var preload = SourceStageObjects.preloadPlan(meta.preload, false, isStoryMode);
+		for (image in preload.images) compatPrecacheImageForOwner(ownerRoot, image);
+		for (sound in preload.sounds) compatPrecacheSoundForOwner(ownerRoot, sound);
+		for (track in preload.music) compatPrecacheMusicForOwner(ownerRoot, track);
+		if (meta.objects == null)
+			return;
+		for (object in SourceStageObjects.plan(meta.objects, false, isStoryMode, meta.hideGirlfriend)) {
+			try {
+				var tag = object.name;
+				var sprite = object.type == 'animatedSprite'
+					? compatMakeAnimatedLuaSpriteForOwner(ownerRoot, tag, object.image, object.x, object.y)
+					: compatMakeLuaSpriteForOwner(ownerRoot, tag, object.image, object.x, object.y);
+				if (sprite == null)
+					continue;
+				if (object.type == 'square')
+					sprite.makeGraphic(1, 1, FlxColor.WHITE);
+				for (anim in object.animations) {
+					if (anim.indices == null)
+						compatAddAnimationByPrefix(tag, anim.anim, anim.prefix, anim.fps, anim.loop);
+					else
+						compatAddAnimationByIndices(tag, anim.anim, anim.prefix, anim.indices, anim.fps, anim.loop);
+				}
+				if (object.firstAnimation != null) {
+					compatPlayAnim(tag, object.firstAnimation, true);
+					// Plain sprites have no per-animation offsets, so only the
+					// starting animation's offset is honoured.
+					for (anim in object.animations)
+						if (anim.anim == object.firstAnimation && anim.offsets != null)
+							sprite.offset.set(anim.offsets[0], anim.offsets[1]);
+				}
+				if (object.flipX != null) sprite.flipX = object.flipX;
+				if (object.flipY != null) sprite.flipY = object.flipY;
+				if (object.antialiasing != null) sprite.antialiasing = object.antialiasing;
+				if (!OptionsHandler.options.antialiasing) sprite.antialiasing = false;
+				if (object.scale != null && (object.scale[0] != 1 || object.scale[1] != 1)) {
+					sprite.scale.set(object.scale[0], object.scale[1]);
+					sprite.updateHitbox();
+				}
+				sprite.scrollFactor.set(object.scroll[0], object.scroll[1]);
+				if (object.color != null) {
+					var color:Null<Int> = compatParseColor(object.color);
+					if (color != null) sprite.color = color;
+				}
+				if (object.alpha != null) sprite.alpha = object.alpha;
+				if (object.angle != null) sprite.angle = object.angle;
+				addHscriptSprite(sprite, switch (object.behind) {
+					case 'gf': BEHIND_GF;
+					case 'dad': BEHIND_DAD;
+					case 'boyfriend': BEHIND_BF;
+					default: BEHIND_NONE;
+				});
+			} catch (error:Dynamic) {
+				trace('[psych-stage-objects] ' + Std.string(object.name) + ': ' + Std.string(error));
+			}
+		}
+	}
+
 	function loadPsychStageCompat():Bool {
 		#if sys
 		for (compatRoot in compatScriptRoots()) {
@@ -13500,6 +14188,29 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return psychCompiledStageRuntime != null && psychCompiledStageRuntime.active;
 	}
 
+	// A song's start and end steps can be swapped by its scripts for an intro
+	// or an ending of their own. There is one slot for each, whatever name the
+	// script's engine uses: songStartCallback / songEndCallback in Nightmare
+	// Vision, startCallback / endCallback and the BaseStage setters in Psych.
+	@:keep public var songStartCallback(get, set):Dynamic;
+	@:keep public var songEndCallback(get, set):Dynamic;
+	@:keep public var startCallback(get, set):Dynamic;
+	@:keep public var endCallback(get, set):Dynamic;
+	@:keep function get_songStartCallback():Dynamic return SongFlow.handoffCurrent(psychStageStartCallback, startCountdown);
+	@:keep function set_songStartCallback(value:Dynamic):Dynamic {
+		psychStageStartCallback = SongFlow.handoffSlot(value, startCountdown);
+		return value;
+	}
+	@:keep function get_songEndCallback():Dynamic return SongFlow.handoffCurrent(psychStageEndCallback, endSong);
+	@:keep function set_songEndCallback(value:Dynamic):Dynamic {
+		psychStageEndCallback = SongFlow.handoffSlot(value, endSong);
+		return value;
+	}
+	@:keep function get_startCallback():Dynamic return get_songStartCallback();
+	@:keep function set_startCallback(value:Dynamic):Dynamic return set_songStartCallback(value);
+	@:keep function get_endCallback():Dynamic return get_songEndCallback();
+	@:keep function set_endCallback(value:Dynamic):Dynamic return set_songEndCallback(value);
+
 	/** Psych BaseStage replaces these native transition hooks during create().
 	 * Keep them on this PlayState so a source stage cannot retain another song's
 	 * callback after its owner scope is released. */
@@ -13599,19 +14310,16 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function preparePsychSourceEvents():Void {
 		if (psychSourceEventsPrepared || nightmareVisionScripts != null || selectedPsychSkinRoot() == null) return;
 		psychSourceEventsPrepared = true;
-		var pushedNames:Map<String, Bool> = new Map();
-		for (row in songEvents) {
-			var event = new SourceEventNote(row, OptionsHandler.options.offset);
-			sourceEventViews.push(event);
-			precachePsychSourceEvent(event);
-			dispatchPsychCompiledStage('eventPushedUnique', [event]);
-			if (!pushedNames.exists(event.event)) {
-				pushedNames.set(event.event, true);
-				dispatchPsychCompiledStage('eventPushed', [event]);
-			}
-			PsychRuntimeBindings.dispatch(this, 'onEventPushed',
-				[event.event, event.value1 == null ? '' : event.value1, event.value2 == null ? '' : event.value2, event.strumTime]);
-		}
+		// No earlyOffset hook: Psych asks for offsets in finalizePsychSourceEvents.
+		SourceEventPreparation.prepare(songEvents, OptionsHandler.options.offset, sourceEventViews, {
+			beforeFirstPush:function(event) {
+				precachePsychSourceEvent(event);
+				dispatchPsychCompiledStage('eventPushedUnique', [event]);
+			},
+			firstPush:function(event) dispatchPsychCompiledStage('eventPushed', [event]),
+			push:function(event) PsychRuntimeBindings.dispatch(this, 'onEventPushed',
+				[event.event, event.value1 == null ? '' : event.value1, event.value2 == null ? '' : event.value2, event.strumTime])
+		});
 	}
 
 	function precachePsychSourceEvent(event:SourceEventNote):Void {
@@ -13623,13 +14331,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	function finalizePsychSourceEvents():Void {
 		if (psychSourceEventsFinalized || !psychSourceEventsPrepared) return;
 		psychSourceEventsFinalized = true;
-		for (event in sourceEventViews) {
-			var returned = PsychRuntimeBindings.dispatch(this, 'eventEarlyTrigger',
-				[event.event, event.value1, event.value2, event.strumTime], 'Scripts', true);
-			var early = sourceEventEarlyOffset(returned, event.event);
-			if (early == null || early == 0) early = event.event == 'Kill Henchmen' ? 280 : 0;
-			event.strumTime -= early;
-		}
+		SourceEventPreparation.applyEarlyOffsets(sourceEventViews, function(event) return sourceEventEarlyOffset(
+			PsychRuntimeBindings.dispatch(this, 'eventEarlyTrigger',
+				[event.event, event.value1, event.value2, event.strumTime], 'Scripts', true), event.event));
 		sortSourceSongEvents();
 	}
 
@@ -13663,26 +14367,25 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (nightmareVisionLegacyFieldCameras) {
 			prepareHistoricalNightmareVisionSourceEvents();
 		} else {
-		var pushedNames:Map<String, Bool> = new Map();
-		for (row in songEvents) {
-			var event = new SourceEventNote(row, sourceChartNoteOffset());
-			sourceEventViews.push(event);
-			if (!pushedNames.exists(event.event)) {
+		SourceEventPreparation.prepare(songEvents, sourceChartNoteOffset(), sourceEventViews, {
+			firstPush:function(event) {
 				var firstName = event.event;
 				nightmareVisionScripts.callEvent(firstName, 'onFirstPush', [event]);
-				pushedNames.set(firstName, true);
+			},
+			// The global answer wins; the event's own module is asked only when
+			// the global one continues.
+			earlyOffset:function(event) {
+				var early = sourceEventEarlyOffset(callNightmareVision('eventEarlyTrigger', [event.event, event.value1, event.value2]), event.event);
+				if (early == null || early == NightmareVisionScriptGroup.CONTINUE_FUNC)
+					early = sourceEventEarlyOffset(nightmareVisionScripts.callEvent(event.event, 'offsetStrumTime', [event]), event.event);
+				return early;
+			},
+			push:function(event) {
+				if (!precacheNightmareVisionSourceEvent(event))
+					nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);
+				callNightmareVision('onEventPush', [event]);
 			}
-			var returned = callNightmareVision('eventEarlyTrigger', [event.event, event.value1, event.value2]);
-			var early = sourceEventEarlyOffset(returned, event.event);
-			if (early == null || early == NightmareVisionScriptGroup.CONTINUE_FUNC)
-				early = sourceEventEarlyOffset(nightmareVisionScripts.callEvent(event.event, 'offsetStrumTime', [event]), event.event);
-			if (early == null || early == NightmareVisionScriptGroup.CONTINUE_FUNC)
-				early = event.event == 'Kill Henchmen' ? 280 : 0;
-			event.strumTime -= early;
-			if (!precacheNightmareVisionSourceEvent(event))
-				nightmareVisionScripts.callEvent(event.event, 'onPush', [event]);
-			callNightmareVision('onEventPush', [event]);
-		}
+		});
 		}
 		sortSourceSongEvents();
 		} catch (error:Dynamic) {
@@ -14057,7 +14760,12 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		// screen is open). Legacy HScript cutscenes use this name as their explicit
 		// final handoff, so keep their direct path intact.
 		if (Std.isOfType(interp, LuaCompatInterp))
-			interp.variables.set("endSong", function () this.endSong());
+			interp.variables.set("endSong", function () {
+				// Psych drops whatever is still on the chart before it ends a song,
+				// so a script ending early is not left with notes to miss.
+				retireNotesBefore(Math.POSITIVE_INFINITY);
+				this.endSong();
+			});
 		else
 			interp.variables.set("endSong", function () {if (endingSong) endForReal();});
 		trace("set vars");
@@ -14605,6 +15313,119 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 	var camNotes:Bool = false;
 	var songName:FlxText;
 	var uiSmelly:TUI;
+	/** Digit image choices for the current UI pack, resolved once. */
+	var ratingPopupAssets:RatingPopupAssets;
+	/** Decoded once per song. Playing it used to decode the file on every hit. */
+	var hitSoundAsset:Sound;
+	var hitSoundResolved:Bool = false;
+
+	/** Hit and miss sounds by name, resolved once per song so a hit never probes the disk. */
+	var feedbackSounds:Map<String, Sound> = new Map();
+
+	/**
+		The one hit sound route for every family. Psych's note.hitsound,
+		hitsoundVolume and hitsoundForce decide what plays; sustain pieces and
+		disabled notes stay quiet like they do in every source engine.
+	**/
+	function playNoteHitSound(note:Note):Void {
+		if (note == null || note.isSustainNote || note.hitsoundDisabled) return;
+		var volume = GameplayFeedbackSounds.hitVolume(note.hitsoundVolume,
+			OptionsHandler.options != null && OptionsHandler.options.hitSounds);
+		if (volume <= 0) return;
+		var sound = feedbackSound(note.hitsound);
+		if (sound != null) FlxG.sound.play(sound, volume);
+	}
+
+	/** Every family plays one of three miss sounds quietly at a random volume. */
+	function playMissSound():Void {
+		var sound = feedbackSound(GameplayFeedbackSounds.missName(FlxG.random.int(1, 3)));
+		var volume = FlxG.random.float(0.1, 0.2);
+		if (sound != null) FlxG.sound.play(sound, volume);
+	}
+
+	function feedbackSound(name:String):Sound {
+		// Keyed by the name as written, so a hit after the first does no string work.
+		var requested = name == null ? GameplayFeedbackSounds.HIT : name;
+		if (feedbackSounds.exists(requested)) return feedbackSounds.get(requested);
+		var key = GameplayFeedbackSounds.safeName(requested, GameplayFeedbackSounds.HIT);
+		if (key != requested && feedbackSounds.exists(key)) {
+			var known = feedbackSounds.get(key);
+			feedbackSounds.set(requested, known);
+			return known;
+		}
+		var nativeFile = GameplayFeedbackSounds.nativePath(key, TitleState.soundExt);
+		var path = GameplayFeedbackSounds.resolve(key, feedbackOwnerSoundPath, nativeFile);
+		var sound:Sound = null;
+		if (path == nativeFile && key.toLowerCase() == GameplayFeedbackSounds.HIT && hitSoundResolved)
+			sound = hitSoundAsset;
+		else sound = FNFAssets.precacheSound(path);
+		feedbackSounds.set(key, sound);
+		feedbackSounds.set(requested, sound);
+		return sound;
+	}
+
+	/** The song owner's own copy of a sound, the way its Paths would find it. */
+	function feedbackOwnerSoundPath(name:String):Null<String> {
+		if (sourceScoreNightmare) {
+			if (nightmareVisionPaths == null) return null;
+			var found = nightmareVisionPaths.findFileWithExts('sounds/' + name, ['ogg', 'wav']);
+			return found != null && nightmareVisionPaths.exists(found) ? found : null;
+		}
+		if (!sourceScoreLedgerActive()) return null;
+		var owner = selectedPsychSkinRoot();
+		if (owner == null) return null;
+		var paths:Dynamic = PsychOwnerPaths.create(owner, psychStageLibrary);
+		var owned:Dynamic = Reflect.callMethod(paths, Reflect.field(paths, '__sourceOwnedPath'),
+			['sounds/' + name + '.' + Paths.SOUND_EXT]);
+		return Std.isOfType(owned, String) && FNFAssets.exists(owned) ? owned : null;
+	}
+
+	static function popupImageExists(path:String):Bool {
+		return FNFAssets.exists(path);
+	}
+
+	function popupAssets():RatingPopupAssets {
+		var epoch = ImportRefreshManager.generation;
+		if (ratingPopupAssets == null || !ratingPopupAssets.matches(uiSmelly.uses, uiSmelly.isPixel, epoch))
+			ratingPopupAssets = new RatingPopupAssets(uiSmelly.uses, uiSmelly.isPixel, popupImageExists, epoch);
+		return ratingPopupAssets;
+	}
+
+	function comboDigitPath(numeral:String):String {
+		var known = popupAssets().digit(numeral);
+		return known != null ? known
+			: RatingPopupAssets.digitPath(uiSmelly.uses, numeral, uiSmelly.isPixel, popupImageExists);
+	}
+
+	/**
+		Load what a note hit shows and plays while the loading screen is still
+		up. A popup graphic is otherwise thrown away when its last sprite fades
+		and decoded again for the next hit, so these are kept for the song.
+	**/
+	function preloadHitFeedback():Void {
+		// The pause menu reads this answer instead of probing the disk itself.
+		PauseMusicTrack.pathFor(HxcCompatRuntime.pauseMusicSuffix, TitleState.soundExt,
+			ImportRefreshManager.generation, popupImageExists);
+		if (OptionsHandler.options.hitSounds && !hitSoundResolved) {
+			hitSoundResolved = true;
+			hitSoundAsset = FNFAssets.precacheSound('assets/sounds/hitSound.ogg');
+		}
+		// Source HUDs draw their own popups from their own skins.
+		if (uiSmelly == null || nightmareVisionScripts != null)
+			return;
+		var keep = function(graphic:flixel.graphics.FlxGraphic):Void {
+			if (graphic != null)
+				graphic.destroyOnNoUse = false;
+		};
+		popupAssets().preload(function(path:String):Void keep(FNFAssets.getFlxGraphic(path)));
+		for (name in RatingPopupAssets.RATINGS) {
+			try {
+				var warm = new Judgement(0, 0, name, preferredJudgement, false, pixelUI);
+				keep(warm.graphic);
+				warm.destroy();
+			} catch (_:Dynamic) {}
+		}
+	}
 	/** Completed scene objects, measured after atomic source initialization. */
 	public function songLoadingSummary():String {
 		var generated = unspawnNotes == null ? 0 : unspawnNotes.length;
@@ -14839,6 +15660,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		grpNoteSplashes.add(sploosh);
 		Conductor.mapBPMChanges(SONG);
 		Conductor.changeBPM(SONG.bpm);
+		Conductor.instrumentalOffset = Conductor.chartInstrumentalOffset(SONG);
 		initialStepCrochet = Conductor.stepCrochet;
 		SongLoadingScreen.workUnit();
 		var dialogSuffix = "";
@@ -15413,6 +16235,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			dispatchPsychCompiledStage('createPost', []);
 		//add(curStage);
 
+		preloadHitFeedback();
 		trace('stage done');
 		RuntimeSmokeHarness.markLoadPhase('stage_loaded');
 		SongLoadingScreen.workUnit();
@@ -15456,7 +16279,11 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var shouldShowCutscene = importedCutscene != ''
 			? shouldPlayImportedCutscene()
 			: ((alwaysDoCutscenes || isStoryMode) && !watchedCutscene);
-		if (psychCompiledStageCreated && runPsychStageStartCallback()) {
+		// A stage that failed to build is gone, so the intro it asked for must
+		// not be left in charge of starting the song.
+		if (psychCompiledStageSource != null && !psychCompiledStageCreated)
+			psychStageStartCallback = null;
+		if (runPsychStageStartCallback()) {
 			// The source callback owns the countdown or intro-video handoff.
 		} else if (shouldShowCutscene) {
 			inCutscene = true;
@@ -15743,6 +16570,87 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		return seekForwardSongTime(target, true);
 	}
 
+	/** Put the audio, the Conductor and the frame clocks on one song time. */
+	function moveSongClock(target:Float):Void {
+		pauseVocals();
+		var audioTarget = Math.max(0, Conductor.audioTimeFromSong(target));
+		FlxG.sound.music.time = audioTarget;
+		seekVocals(audioTarget);
+		playVocals();
+		Conductor.songPosition = target;
+		Conductor.lastSongPos = target;
+		songTime = target;
+		previousFrameTime = FlxG.game.ticks;
+	}
+
+	/** Drop every pending and on-screen note that starts before the cutoff,
+	 * without counting any of them as a miss. Returns how many pending and
+	 * how many on-screen notes went, in that order. */
+	function retireNotesBefore(cutoff:Float):Array<Int> {
+		var removedUnspawnNotes = 0;
+		var removedActiveNotes = 0;
+		while (unspawnNotes.length > 0 && unspawnNotes[0].strumTime < cutoff) {
+			var old = unspawnNotes.shift();
+			// Later sustain segments keep prevNote references after they leave the
+			// active queue. Mark the predecessor dead before destroy() clears its
+			// FlxSprite fields, so their alive-gated update paths cannot touch a
+			// destroyed scale/animation/height object on the next frame.
+			old.kill();
+			old.destroy();
+			removedUnspawnNotes++;
+		}
+		for (note in notes.members.copy()) {
+			if (note != null && note.strumTime < cutoff) {
+				nightmareVisionRemoveFieldNoteMembership(note);
+				notes.remove(note, true);
+				// A surviving sustain may still refer to this note as prevNote.
+				// Keep the same dead-before-destroy invariant as unspawn notes.
+				note.kill();
+				note.destroy();
+				removedActiveNotes++;
+			}
+		}
+		// Survivors can still link to an earlier note that was just retired.
+		// Repair both queues before normal update touches any sustain predecessor.
+		for (note in unspawnNotes)
+			if (note != null)
+				note.repairSustainChainAfterSeek();
+		for (note in notes.members)
+			if (note != null)
+				note.repairSustainChainAfterSeek();
+		return [removedUnspawnNotes, removedActiveNotes];
+	}
+
+	/** Jump to a song time in either direction. Notes are left alone unless
+	 * asked, so jumping back replays what is still on the chart. */
+	@:keep public function seekSongTime(time:Float, clearNotes:Bool = false):Bool {
+		if (FlxG.sound.music == null || startingSong || endingSong || !Math.isFinite(time))
+			return false;
+		if (time < 0) time = 0;
+		if (songLength > 0 && time > songLength) time = songLength;
+		if (clearNotes) clearNotesBefore(time);
+		moveSongClock(time);
+		return true;
+	}
+
+	/** Drop the notes a jump to this time would otherwise leave to be missed. */
+	@:keep public function clearNotesBefore(time:Float):Void {
+		if (Math.isNaN(time)) return;
+		retireNotesBefore(SongFlow.clearNotesCutoff(time));
+	}
+
+	/** End the song now, the way running out of music does. Audio is
+	 * silenced first so nothing plays under an ending cutscene. */
+	@:keep public function finishSong(?ignoreNoteOffset:Bool = false):Void {
+		if (FlxG.sound.music != null) FlxG.sound.music.volume = 0;
+		setVocalsVolume(0);
+		pauseVocals();
+		endSong();
+	}
+
+	// Psych and Nightmare Vision spell the seek this way.
+	@:keep public function setSongTime(time:Float):Void seekSongTime(time);
+
 	/** Apply the shared forward-seek state update used by smoke and video skip. */
 	function seekForwardSongTime(target:Float, captureSmokeState:Bool):Dynamic {
 		if (FlxG.sound.music == null || startingSong || endingSong
@@ -15755,50 +16663,15 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		var conductorLastPositionBefore = Conductor.lastSongPos;
 		var songTimeBefore = songTime;
 		var eventIndexBefore = songEventIndex;
-		var removedUnspawnNotes = 0;
-		var removedActiveNotes = 0;
 		var firedEvents = 0;
 		var skippedVideoEvents = 0;
-		pauseVocals();
-		FlxG.sound.music.time = target;
-		seekVocals(target);
-		playVocals();
-		Conductor.songPosition = target;
-		Conductor.lastSongPos = target;
-		songTime = target;
-		previousFrameTime = FlxG.game.ticks;
+		moveSongClock(target);
 
 		// Crossing the video segment is a seek, not a run of missed notes.
 		// Keep the first note and event at the landing time.
-		while (unspawnNotes.length > 0 && unspawnNotes[0].strumTime < target) {
-			var old = unspawnNotes.shift();
-			// Later sustain segments keep prevNote references after they leave the
-			// active queue. Mark the predecessor dead before destroy() clears its
-			// FlxSprite fields, so their alive-gated update paths cannot touch a
-			// destroyed scale/animation/height object on the next frame.
-			old.kill();
-			old.destroy();
-			if (captureSmokeState) removedUnspawnNotes++;
-		}
-		for (note in notes.members.copy()) {
-			if (note != null && note.strumTime < target) {
-				nightmareVisionRemoveFieldNoteMembership(note);
-				notes.remove(note, true);
-				// A surviving sustain may still refer to this note as prevNote.
-				// Keep the same dead-before-destroy invariant as unspawn notes.
-				note.kill();
-				note.destroy();
-				if (captureSmokeState) removedActiveNotes++;
-			}
-		}
-		// Survivors can still link to an earlier note that was just retired.
-		// Repair both queues before normal update touches any sustain predecessor.
-		for (note in unspawnNotes)
-			if (note != null)
-				note.repairSustainChainAfterSeek();
-		for (note in notes.members)
-			if (note != null)
-				note.repairSustainChainAfterSeek();
+		var retired = retireNotesBefore(target);
+		var removedUnspawnNotes = retired[0];
+		var removedActiveNotes = retired[1];
 		var bpm = SONG.bpm;
 		for (change in Conductor.bpmChangeMap)
 			if (change.songTime <= target)
@@ -16419,16 +17292,8 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		stage = NightmareVisionStageScene.create(name, owner, legacyStage);
 		curStage = new StageHelper(name);
 		curStage.stageData = NightmareVisionStageScene.data(stage);
-		var data:Dynamic = NightmareVisionStageScene.data(stage);
-		curStage.defaultZoom = defaultCamZoom = data.defaultZoom;
-		applyPsychStageCameraOffsets(data);
-		for (slot in [{role:'bf',field:'boyfriend'}, {role:'dad',field:'opponent'}, {role:'gf',field:'girlfriend'}]) {
-			var point:Array<Dynamic> = Reflect.field(data, slot.field);
-			var info = curStage.getInfo(slot.role);info.x = point[0];info.y = point[1];
-		}
-		boyfriendPosition.set(data.boyfriend[0], data.boyfriend[1]);
-		dadPosition.set(data.opponent[0], data.opponent[1]);
-		gfPosition.set(data.girlfriend[0], data.girlfriend[1]);
+		applySourceStageMetadata(nightmareVisionStageMetadata(curStage.stageData),
+			SourceStageMetadata.NIGHTMARE_VISION_SWAP);
 		NightmareVisionStageScene.load(stage, nightmareVisionScripts.group);
 		if (index >= 0) insert(index, stage);
 		for (group in transferred) {
@@ -16506,11 +17371,107 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		};
 	}
 
+	/**
+		Send one cancelable lifecycle event to every script scope and report
+		whether a handler cancelled it.  `legacyArgs` is what scopes without the
+		event-object ABI receive when their hook takes something else (Psych's
+		onPause takes nothing, for example).
+	*/
+	function dispatchCancelableLifecycle(name:String, payload:Dynamic, ?results:Array<Dynamic>,
+		?legacyArgs:Array<Dynamic>):Bool {
+		if (legacyArgs != null)
+			callAllHScript(name, legacyArgs, false, results, [payload]);
+		else
+			callAllHScript(name, [payload], false, results);
+		return EngineCompat.hxcPayloadCanceled(payload);
+	}
+
+	/** Same event, but only for scopes that take the event object.  Used where
+	 * the other script families are told later in the same flow. */
+	function dispatchCancelableHxcLifecycle(name:String, payload:Dynamic):Bool {
+		var keys:Array<String> = [];
+		for (key in hscriptStates.keys())
+			if (hxcPayloadStates.get(key) == true)
+				keys.push(key);
+		for (key in keys)
+			if (hscriptStates.exists(key))
+				callHscript(name, [payload], key, true);
+		return EngineCompat.hxcPayloadCanceled(payload);
+	}
+
+	/** Open the pause menu right now. The pause key asks the song's scripts
+	 * first and then lands here; a script calling this skips the asking. */
+	@:keep public function openPauseMenu():Void {
+		if (!paused) {
+			persistentUpdate = false;
+			persistentDraw = true;
+			paused = true;
+			setAllHaxeVar("paused", paused);
+		}
+		CoolUtil.pauseTween(curCamPos);
+		CoolUtil.pauseTween(curCamZoom);
+		for (tween in vSliceScrollTweens) CoolUtil.pauseTween(tween);
+
+		callCodenameEvent('onGamePause', new CodenameGameEvent());
+		openSubState(new PauseSubState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y, camHUD));
+	}
+
+	/** Second half of a countdown tick, once its sprite and sound exist.
+	 * Nightmare Vision scripts get the tick here so they can restyle or hide
+	 * what was just shown. Ticks count 0 to 4, like the countdown itself. */
+	function callCountdownTickShown(tick:Int):Void {
+		callNightmareVision('onCountdownTick', [tick]);
+	}
+
+	/** The intro sound for one countdown step: the script's suffixed one when
+	 * the song ships it, otherwise the UI pack's or the stock sound. */
+	function countdownIntroSound(name:String, uiSuffix:String, uiPackPath:String):Sound {
+		var names = SongFlow.introSoundNames(name, introSoundsSuffix, uiSuffix, countdownSounds);
+		if (names.length == 0)
+			return null;
+		for (index in 0...names.length - 1) {
+			var scripted = nightmareVisionPaths != null
+				? nightmareVisionPaths.findFileWithExts('sounds/' + names[index], ['ogg', 'wav'])
+				: compatSoundPath(names[index], true);
+			if (scripted != null && FNFAssets.exists(scripted))
+				return FNFAssets.getSound(scripted);
+		}
+		return FNFAssets.getAssetWithBackup(uiPackPath + name + uiSuffix + '.ogg', 'assets/sounds/' + name + uiSuffix + '.ogg', SOUND);
+	}
+
 	function callCountdownTick(tick:Int, tmr:FlxTimer) {
 		dispatchPsychCompiledStage('countdownTick', [psychCompiledCountdownValue(tick), tick]);
-		callAllHScript('countdownStep', [EngineCompat.hxcCountdownStepPayload(tick)]);
+		// The final tick is the countdown ending, which has its own event and
+		// nothing left to hold.
+		if (dispatchCancelableLifecycle('countdownStep', EngineCompat.hxcCountdownStepPayload(tick))
+			&& tick < 4)
+			hxcPauseCountdown();
 		callAllHScript('countdownTick', [tick, tmr]);
 	}
+	/** Hold the countdown on the step it just showed.  The rest of that step
+	 * (popup and sound) still plays; only the next ones wait.  The held timer
+	 * itself is remembered, so a fresh countdown is never mistaken for a held one. */
+	@:keep public function hxcPauseCountdown():Bool {
+		if (startTimer == null || startTimer.finished)
+			return false;
+		hxcHeldCountdownTimer = startTimer;
+		startTimer.active = false;
+		return true;
+	}
+
+	@:keep public function hxcResumeCountdown():Bool {
+		if (!hxcCountdownHeld())
+			return false;
+		hxcHeldCountdownTimer = null;
+		// While the pause menu is up it owns the timer and restarts it on close.
+		if (!startTimer.finished && !paused)
+			startTimer.active = true;
+		return true;
+	}
+
+	inline function hxcCountdownHeld():Bool
+		return startTimer != null && hxcHeldCountdownTimer == startTimer;
+
 	function removeGlobalSpriteReferences(sprite:FlxBasic):Void {
 		var names:Array<String> = [];
 		for (name in PlayState.globalSprites.keys())
@@ -16569,6 +17530,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 			hxcCountdownHookDispatching = false;
 			return;
 		}
+		// Scripts already let this countdown through and it is waiting out its
+		// delay. Asking again must not set the field up a second time.
+		if (countdownDelayTimer != null && !countdownDelayTimer.finished) return;
 		#if cpp
 		if (compatEventVideo != null) stopCompatEventVideo();
 		#end
@@ -16687,8 +17651,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-begin');
 		callAllHScript('countdownStart', [countdownEvent]);
 		RuntimeSmokeHarness.markStep('countdown:countdownStart-callback-complete');
-		if (countdownEvent.eventCanceled == true || countdownEvent.canceled == true
-			|| countdownEvent.cancelled == true) {
+		if (EngineCompat.hxcPayloadCanceled(countdownEvent)) {
 			RuntimeSmokeHarness.markStep('countdown:cancelled-by-countdownStart');
 			return;
 		}
@@ -16744,133 +17707,147 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 		if (duoMode)
 			controls.setKeyboardScheme(Duo(true));
 
-		talking = false;
-		startedCountdown = true;
-		// Psych marks a stage-owned intro seen at countdown handoff even when
-		// it has no native cutsceneType metadata.
-		if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)
-			watchedCutscene = true;
-		Conductor.songPosition = -Conductor.crochet * 5;
-		notifySourceCountdownStarted();
-		if (skipCountdown) Conductor.songPosition = 0;
-		RuntimeSmokeHarness.markStep('countdown:timer-setup-begin');
-		if (!skipCountdown) {
+		// Everything from here on is the countdown actually starting. A song can
+		// ask for a pause before that, once its scripts have let it through and
+		// the notes it will play are on the field.
+		var beginCountdownClock = function():Void {
+			talking = false;
+			startedCountdown = true;
+			// Psych marks a stage-owned intro seen at countdown handoff even when
+			// it has no native cutsceneType metadata.
+			if (psychCompiledStageRuntime != null && psychCompiledStageRuntime.active)
+				watchedCutscene = true;
+			Conductor.songPosition = -Conductor.crochet * 5;
+			notifySourceCountdownStarted();
+			if (skipCountdown) Conductor.songPosition = 0;
+			RuntimeSmokeHarness.markStep('countdown:timer-setup-begin');
+			if (!skipCountdown) {
 
-			var swagCounter:Int = 0;
+				var swagCounter:Int = 0;
 
-			startTimer = new FlxTimer().start(Conductor.crochet / 1000, function(tmr:FlxTimer) {
-				// Live Codename actors dance through their source beat/update hooks.
-				// The legacy countdown must not bypass those hooks with another dance.
-				if ((!duoMode || opponentPlayer) && dad.codenameLiveDefinition == null)
-					dad.dance();
-				if (opponentPlayer && boyfriend.codenameLiveDefinition == null)
-					boyfriend.dance();
-				if (nightmareVisionLegacyFieldCameras ? girlfriendDanceDue(tmr.loopsLeft) : gf.codenameLiveDefinition == null) gf.dance();
+				startTimer = new FlxTimer().start(Conductor.crochet / 1000, function(tmr:FlxTimer) {
+					// Live Codename actors dance through their source beat/update hooks.
+					// The legacy countdown must not bypass those hooks with another dance.
+					if ((!duoMode || opponentPlayer) && dad.codenameLiveDefinition == null)
+						dad.dance();
+					if (opponentPlayer && boyfriend.codenameLiveDefinition == null)
+						boyfriend.dance();
+					if (nightmareVisionLegacyFieldCameras ? girlfriendDanceDue(tmr.loopsLeft) : gf.codenameLiveDefinition == null) gf.dance();
 
-				var introAssets:Map<String, Array<String>> = new Map<String, Array<String>>();
+					var introAssets:Map<String, Array<String>> = new Map<String, Array<String>>();
 
-				for (field in Reflect.fields(Judgement.uiJson)) {
-					if (Reflect.field(Judgement.uiJson, field).isPixel)
-						introAssets.set(field, [
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/ready-pixel.png',
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/set-pixel.png',
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/date-pixel.png']);
-					else
-						introAssets.set(field, [
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/ready.png',
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/set.png',
-							'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/go.png']);
-				}
-
-				var introAlts:Array<String> = introAssets.get('default');
-				var altSuffix:String = "";
-				var intro3Sound:Sound;
-				var intro2Sound:Sound;
-				var intro1Sound:Sound;
-				var introGoSound:Sound;
-				for (value in introAssets.keys()) {
-					if (value == SONG.uiType) {
-						introAlts = introAssets.get(value);
-						// ok so apparently a leading slash means absolute soooooo
-						if (pixelUI)
-							altSuffix = '-pixel';
+					for (field in Reflect.fields(Judgement.uiJson)) {
+						if (Reflect.field(Judgement.uiJson, field).isPixel)
+							introAssets.set(field, [
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/ready-pixel.png',
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/set-pixel.png',
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/date-pixel.png']);
+						else
+							introAssets.set(field, [
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/ready.png',
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/set.png',
+								'custom_ui/ui_packs/' + Reflect.field(Judgement.uiJson, field).uses + '/go.png']);
 					}
+
+					var introAlts:Array<String> = introAssets.get('default');
+					var altSuffix:String = "";
+					var intro3Sound:Sound;
+					var intro2Sound:Sound;
+					var intro1Sound:Sound;
+					var introGoSound:Sound;
+					for (value in introAssets.keys()) {
+						if (value == SONG.uiType) {
+							introAlts = introAssets.get(value);
+							// ok so apparently a leading slash means absolute soooooo
+							if (pixelUI)
+								altSuffix = '-pixel';
+						}
+					}
+
+					// god is dead for we have killed him
+					final uipackPath = 'assets/images/custom_ui/ui_packs/' + uiSmelly.uses + '/';
+					intro3Sound = countdownIntroSound('intro3', altSuffix, uipackPath);
+					intro2Sound = countdownIntroSound('intro2', altSuffix, uipackPath);
+					intro1Sound = countdownIntroSound('intro1', altSuffix, uipackPath);
+					introGoSound = countdownIntroSound('introGo', altSuffix, uipackPath);
+					/*if (FNFAssets.exists("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro3' + altSuffix + '.ogg')) {
+						intro3Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro3' + altSuffix + '.ogg');
+						intro2Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro2' + altSuffix + '.ogg');
+						intro1Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro1' + altSuffix + '.ogg');
+						// apparently this crashes if we do it from audio buffer?
+						// no it just understands 'hey that file doesn't exist better do an error'
+						introGoSound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/introGo' + altSuffix + '.ogg');
+					} else {
+						intro3Sound = FNFAssets.getSound('assets/sounds/intro3.ogg');
+						intro2Sound = FNFAssets.getSound('assets/sounds/intro2.ogg');
+						intro1Sound = FNFAssets.getSound('assets/sounds/intro1.ogg');
+						introGoSound = FNFAssets.getSound('assets/sounds/introGo.ogg');
+					}*/
+
+					callCountdownTick(swagCounter, tmr);
+
+					switch (swagCounter) {
+						case 0:
+							if (intro3Sound != null) FlxG.sound.play(intro3Sound, 0.6);
+						case 1:
+							// my life is a lie, it was always this simple
+							countdownPopup(0, 'assets/images/' + introAlts[0]);
+							if (intro2Sound != null) FlxG.sound.play(intro2Sound, 0.6);
+						case 2:
+							countdownPopup(1, 'assets/images/' + introAlts[1]);
+							if (intro1Sound != null) FlxG.sound.play(intro1Sound, 0.6);
+						case 3:
+							countdownPopup(2, 'assets/images/' + introAlts[2]);
+							if (introGoSound != null) FlxG.sound.play(introGoSound, 0.6);
+						case 4:
+							// what is this here for?
+					}
+
+					callCountdownTickShown(swagCounter);
+
+					swagCounter += 1;
+					// generateSong('fresh');
+				}, 5);
+			} else {
+				// this prevents the game from crashing when pausing/dying
+				startTimer = new FlxTimer().start(0.1, function(tmr:FlxTimer) {
+					trace('countdown skipped');
+				});
+			}
+			RuntimeSmokeHarness.markStep('countdown:timer-setup-complete');
+			/*
+			regenTimer = new FlxTimer().start(2, function (tmr:FlxTimer) {
+				var bonus = drainBy;
+				if (opponentPlayer) {
+					bonus = -1 * drainBy;
 				}
-
-				// god is dead for we have killed him
-				final uipackPath = 'assets/images/custom_ui/ui_packs/' + uiSmelly.uses + '/';
-				intro3Sound = FNFAssets.getAssetWithBackup(uipackPath + 'intro3' + altSuffix + '.ogg', 'assets/sounds/intro3' + altSuffix + '.ogg', SOUND);
-				intro2Sound = FNFAssets.getAssetWithBackup(uipackPath + 'intro2' + altSuffix + '.ogg', 'assets/sounds/intro2' + altSuffix + '.ogg', SOUND);
-				intro1Sound = FNFAssets.getAssetWithBackup(uipackPath + 'intro1' + altSuffix + '.ogg', 'assets/sounds/intro1' + altSuffix + '.ogg', SOUND);
-				introGoSound = FNFAssets.getAssetWithBackup(uipackPath + 'introGo' + altSuffix + '.ogg', 'assets/sounds/introGo' + altSuffix + '.ogg', SOUND);
-				/*if (FNFAssets.exists("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro3' + altSuffix + '.ogg')) {
-					intro3Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro3' + altSuffix + '.ogg');
-					intro2Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro2' + altSuffix + '.ogg');
-					intro1Sound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/intro1' + altSuffix + '.ogg');
-					// apparently this crashes if we do it from audio buffer?
-					// no it just understands 'hey that file doesn't exist better do an error'
-					introGoSound = FNFAssets.getSound("assets/images/custom_ui/ui_packs/" + uiSmelly.uses + '/introGo' + altSuffix + '.ogg');
-				} else {
-					intro3Sound = FNFAssets.getSound('assets/sounds/intro3.ogg');
-					intro2Sound = FNFAssets.getSound('assets/sounds/intro2.ogg');
-					intro1Sound = FNFAssets.getSound('assets/sounds/intro1.ogg');
-					introGoSound = FNFAssets.getSound('assets/sounds/introGo.ogg');
-				}*/
-
-				callCountdownTick(swagCounter, tmr);
-
-				switch (swagCounter) {
-					case 0:
-						FlxG.sound.play(intro3Sound, 0.6);
-					case 1:
-						// my life is a lie, it was always this simple
-						countdownPopup(0, 'assets/images/' + introAlts[0]);
-						FlxG.sound.play(intro2Sound, 0.6);
-					case 2:
-						countdownPopup(1, 'assets/images/' + introAlts[1]);
-						FlxG.sound.play(intro1Sound, 0.6);
-					case 3:
-						countdownPopup(2, 'assets/images/' + introAlts[2]);
-						FlxG.sound.play(introGoSound, 0.6);
-					case 4:
-						// what is this here for?
+				if (poisonExr && !paused)
+					health -= bonus;
+				if (supLove && !paused)
+					health +=  bonus;
+			}, 0);
+			*/
+			sickFastTimer = new FlxTimer().start(2, function (tmr:FlxTimer) {
+				if (accelNotes && !paused) {
+					trace("tick:" + noteSpeed);
+					noteSpeed += 0.01;
 				}
-
-				swagCounter += 1;
-				// generateSong('fresh');
-			}, 5);
-		} else {
-			// this prevents the game from crashing when pausing/dying
-			startTimer = new FlxTimer().start(0.1, function(tmr:FlxTimer) {
-				trace('countdown skipped');
+			}, 0);
+			var snekBase:Float = 0;
+			var snekTimer = new FlxTimer().start(0.01, function (tmr:FlxTimer) {
+				if (snakeNotes && !paused) {
+					snekNumber = Math.sin(snekBase) * 100;
+					snekBase += Math.PI/100;
+				}
+			}, 0);
+		};
+		if (countdownDelay > 0) {
+			countdownDelayTimer = new FlxTimer().start(countdownDelay, function(_:FlxTimer) {
+				if (!startedCountdown) beginCountdownClock();
 			});
+			return;
 		}
-		RuntimeSmokeHarness.markStep('countdown:timer-setup-complete');
-		/*
-		regenTimer = new FlxTimer().start(2, function (tmr:FlxTimer) {
-			var bonus = drainBy;
-			if (opponentPlayer) {
-				bonus = -1 * drainBy;
-			}
-			if (poisonExr && !paused)
-				health -= bonus;
-			if (supLove && !paused)
-				health +=  bonus;
-		}, 0);
-		*/
-		sickFastTimer = new FlxTimer().start(2, function (tmr:FlxTimer) {
-			if (accelNotes && !paused) {
-				trace("tick:" + noteSpeed);
-				noteSpeed += 0.01;
-			}
-		}, 0);
-		var snekBase:Float = 0;
-		var snekTimer = new FlxTimer().start(0.01, function (tmr:FlxTimer) {
-			if (snakeNotes && !paused) {
-				snekNumber = Math.sin(snekBase) * 100;
-				snekBase += Math.PI/100;
-			}
-		}, 0);
+		beginCountdownClock();
 	}
 
 	public function countdownPopup(stage:Int = 0, sussyPath:String = 'none') {
@@ -16888,6 +17865,13 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		var countImage = FNFAssets.getBitmapData(sussyPath);
 		var count:FlxSprite = new FlxSprite().loadGraphic(countImage);
+		// Scripts restyle or hide these by name while they are on screen.
+		switch (stage) {
+			case 0: countdownReady = count;
+			case 1: countdownSet = count;
+			case 2: countdownGo = count;
+			default:
+		}
 		count.scrollFactor.set();
 
 		if (pixelUI)
@@ -17014,6 +17998,7 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		FlxG.sound.music.onComplete = function() handleSongAudioComplete();
 		playVocals();
+		applySongVolumeMultiplier();
 		applyDemoPlaybackRate();
 
 		if (!hxcCountdownEndDispatched) {
@@ -17046,9 +18031,9 @@ class PlayState extends MusicBeatState implements CodenameGameplayAccess impleme
 
 		pauseVocals();
 		FlxG.sound.music.pause();
-		Conductor.songPosition = startTimestamp;
-		FlxG.sound.music.time = Conductor.songPosition;
-		seekVocals(Conductor.songPosition);
+		Conductor.songPosition = Conductor.audioStartSongTime(startTimestamp);
+		FlxG.sound.music.time = Conductor.audioTimeFromSong(Conductor.songPosition);
+		seekVocals(FlxG.sound.music.time);
 		FlxG.sound.music.play();
 		playVocals();
 		dispatchPsychCompiledStage('startSong', []);
@@ -17852,23 +18837,54 @@ void main(void) {
 		updateHealthColors();
 	}
 
-	// psych shader API some modcharts use (schoolhouse's radial blur overlay);
-	// runtime frag shaders live at assets/shaders/<name>.frag
+	var scriptShaders:RuntimeShaderRegistry;
+
+	/** Shaders loaded by name through the state's own script API. Imported
+		Psych owners keep a registry each, so this one never sees their files. */
+	function scriptShaderRegistry():RuntimeShaderRegistry {
+		if (scriptShaders == null)
+			scriptShaders = new RuntimeShaderRegistry(function():Bool return OptionsHandler.options.gameplayShaders,
+				function(fragment:String, vertex:String, name:String):Dynamic
+					return new ShaderHandler.CoolRuntimeShader(fragment, vertex, null, name, true));
+		return scriptShaders;
+	}
+
+	/** Psych scripts read the loaded shader sources as game.runtimeShaders. */
+	@:keep public var runtimeShaders(get, never):Map<String, Array<String>>;
+	function get_runtimeShaders():Map<String, Array<String>> return scriptShaderRegistry().sources;
+
+	/** Fragment text for a shader name, plus the vertex file beside it when there is one. */
+	function compatShaderSources(name:String):Array<String> {
+		var fragPath = resolveCompatShader(name);
+		if (fragPath == null)
+			return null;
+		var frag:String = null;
+		var vert:String = null;
+		try frag = FNFAssets.getText(fragPath) catch (_:Dynamic) {}
+		var vertPath = Path.withExtension(fragPath, 'vert');
+		try if (FNFAssets.exists(vertPath)) vert = FNFAssets.getText(vertPath) catch (_:Dynamic) {}
+		return [frag, vert];
+	}
+
+	// psych shader API some modcharts use; runtime shaders live at
+	// assets/shaders/<name>.frag with an optional <name>.vert beside it
 	public function initLuaShader(name:String):Bool {
-		var frag = resolveCompatShader(name);
-		if (frag != null)
+		if (scriptShaderRegistry().init(name, compatShaderSources))
 			return true;
-		trace('initLuaShader: $frag missing');
+		if (scriptShaderRegistry().isEnabled())
+			trace('initLuaShader: $name missing');
 		return false;
 	}
 
 	public function createRuntimeShader(name:String):ShaderHandler.CoolRuntimeShader {
-		var frag = resolveCompatShader(name);
-		if (frag == null) {
-			trace('createRuntimeShader: $frag missing');
-			return null;
-		}
-		return new ShaderHandler.CoolRuntimeShader(frag);
+		// With shaders turned off Psych still hands the script a shader, just
+		// a stock one, so the script's uniform calls have something to land on.
+		if (!scriptShaderRegistry().isEnabled())
+			return new ShaderHandler.CoolRuntimeShader(null, null, null, name);
+		var shader:Dynamic = scriptShaderRegistry().create(name, compatShaderSources);
+		if (shader == null)
+			trace('createRuntimeShader: $name missing');
+		return cast shader;
 	}
 
 	/**
@@ -18019,7 +19035,7 @@ void main(void) {
 		return changed;
 	}
 
-	/** Native pulse used by HXC helpers such as Markov's funnyGlitch. */
+	/** Native pulse used by HXC shader pulse helpers. */
 	public function hxcPulseRuntimeShader(handle:Dynamic, from:Float, to:Float,
 		pulseDuration:Float, holdDuration:Float, ?ease:Dynamic, ?uniformName:String):Bool {
 		var binding = hxcRuntimeShaderBinding(handle);
@@ -18419,25 +19435,11 @@ void main(void) {
 		return descriptors;
 	}
 
-	function hxcEventSpriteCoordinate(event:Dynamic, field:String, slot:String):Float {
-		if (event == null)
-			return 0;
-		for (raw in [Reflect.field(event, 'v1'), Reflect.field(event, 'v3')]) {
-			if (raw == null)
-				continue;
-			try {
-				var parsed:Dynamic = Json.parse(Std.string(raw));
-				var value:Dynamic = parsed == null ? null : Reflect.field(parsed, field);
-				if (value != null) {
-					var number = Std.parseFloat(Std.string(value));
-					if (!Math.isNaN(number) && Math.abs(number) <= 1000000)
-						return number;
-				}
-			} catch (_:Dynamic) {}
-		}
-		var positional:Dynamic = Reflect.field(event, slot);
-		var result = positional == null ? 0 : parseF(Std.string(positional));
-		return Math.isNaN(result) || Math.abs(result) > 1000000 ? 0 : result;
+	/** The validated sprite descriptor an event row belongs to, looked up in
+	 * the selected root only. */
+	function hxcEventSpriteDescriptorFor(name:Dynamic):Dynamic {
+		var root = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
+		return EngineCompat.eventSpriteDescriptorForName(hxcEventSpriteDescriptors(root), name);
 	}
 
 	/** Render a static imported HXC event sprite when its selected root contains
@@ -18447,10 +19449,12 @@ void main(void) {
 		if (event == null)
 			return false;
 		var root = CompatScriptManifest.selectedRoot(getCompatScriptManifest());
-		var descriptor = HxcEventSpriteDescriptor.find(hxcEventSpriteDescriptors(root),
-			EngineCompat.eventName(Std.string(Reflect.field(event, 'name'))));
-		if (descriptor == null)
+		var spriteRoute = EngineCompat.routeEventSprite(hxcEventSpriteDescriptors(root),
+			Reflect.field(event, 'name'), Reflect.field(event, 'v1'), Reflect.field(event, 'v2'),
+			Reflect.field(event, 'v3'));
+		if (spriteRoute == null)
 			return false;
+		var descriptor = spriteRoute.descriptor;
 		if (curStage == null || isMinimalMode)
 			return true;
 		var atlasKey = Std.string(Reflect.field(descriptor, 'atlasKey'));
@@ -18459,8 +19463,8 @@ void main(void) {
 			'HXC event ' + Std.string(Reflect.field(descriptor, 'canonicalName')));
 		if (atlas == null)
 			return true;
-		var x = hxcEventSpriteCoordinate(event, Std.string(Reflect.field(descriptor, 'xField')), 'v1');
-		var y = hxcEventSpriteCoordinate(event, Std.string(Reflect.field(descriptor, 'yField')), 'v2');
+		var x = spriteRoute.x;
+		var y = spriteRoute.y;
 		var camera = Std.string(Reflect.field(descriptor, 'camera')) == 'hud' ? camHUD : camGame;
 		if (camera == null)
 			return true;
@@ -19003,10 +20007,7 @@ void main(void) {
 		codenameCameraModuloLastBucket = bucket;
 		// Match this fork's normal camera bop while applying Codename's configured
 		// strength. Camera decay remains owned by PlayState's usual update path.
-		if (camGame.zoom < 1.35) {
-			setGameCameraZoom(camGame.zoom + 0.015 * codenameCameraModuloConfig.strength);
-			camHUD.zoom += 0.03 * codenameCameraModuloConfig.strength;
-		}
+		pulseCameraZoom(0.015 * codenameCameraModuloConfig.strength, 0.03 * codenameCameraModuloConfig.strength, 1.35, false, true);
 	}
 
 	/** Route chart and script-created Codename events through the same mutable
@@ -19043,7 +20044,8 @@ void main(void) {
 			}
 		}
 		var notify = true;
-		if (nightmareVisionLegacyFieldCameras)
+		// Both Nightmare Vision revisions return from some built-ins before telling scripts.
+		if (nightmareVisionScripts != null || nightmareVisionLegacyFieldCameras)
 			fireNativeSongEvent(e, function() notify = false);
 		else fireNativeSongEvent(e);
 		if (e != null && notify) {
@@ -19079,6 +20081,26 @@ void main(void) {
 			nightmare ? ImportEngine.NIGHTMARE_VISION : ImportEngine.PSYCH, name, callable);
 	}
 
+	/**
+		Psych and Nightmare Vision songs run their source built-in event bodies
+		before any host alias routing, so a source chart never reaches the
+		host's own heuristics for those names. True when the event is done.
+	**/
+	function applySourceBuiltinEvent(e:Dynamic, psychStageEvent:Dynamic, ?suppressHistoricalNotification:Void->Void):Bool {
+		var profile = sourceBuiltinEventProfile();
+		if (profile < 0) return false;
+		var result = SourceBuiltinEvents.apply(this, profile, e.name, e.v1, e.v2);
+		if (result == SourceBuiltinEvents.STOPPED) {
+			if (suppressHistoricalNotification != null) suppressHistoricalNotification();
+			return true;
+		}
+		if (result == SourceBuiltinEvents.UNHANDLED
+			&& !(nightmareVisionLegacyFieldCameras && historicalNightmareCameraEvent(e.name, e.v1, e.v2)))
+			return false;
+		dispatchPsychCompiledStageEvent(psychStageEvent);
+		return true;
+	}
+
 	function fireNativeSongEvent(e:Dynamic, ?suppressHistoricalNotification:Void->Void) {
 		var psychStageEvent:Dynamic = e;
 		var eventNameLower = e == null || e.name == null ? ''
@@ -19108,7 +20130,7 @@ void main(void) {
 		// onEvent broadcast; EngineCompat.callbackArguments performs the payload
 		// adaptation without changing the chart's event row.
 		var hxcEvent = EngineCompat.hxcSongEventPayload(
-			[e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3, e.time]);
+			[e.name, e.v1, e.v2, e.v3 == null ? '' : e.v3, e.time], hxcEventSpriteDescriptorFor(e.name));
 		callAllHScript('songEvent', [hxcEvent], false, null, null,
 			nightmareVisionLegacyFieldCameras, nightmareVisionLegacyFieldCameras);
 		// HXC's eventCanceled flag is intentionally honored only for this donor
@@ -19127,27 +20149,7 @@ void main(void) {
 			return;
 		}
 
-		if (nightmareVisionLegacyFieldCameras && e.name == 'Set Property') {
-			historicalSetProperty(e.v1, e.v2);
-			dispatchPsychCompiledStageEvent(psychStageEvent);
-			return;
-		}
-
-		if (nightmareVisionLegacyFieldCameras && e.name == 'Change Scroll Speed') {
-			if (nightmareVisionCameraEvents == null) nightmareVisionCameraEvents = new NightmareVisionLegacyCameraEvents(this);
-			if (!nightmareVisionCameraEvents.changeScrollSpeed(e.v1, e.v2)) {
-				if (suppressHistoricalNotification != null) suppressHistoricalNotification();
-				return;
-			}
-			dispatchPsychCompiledStageEvent(psychStageEvent);
-			return;
-		}
-
-		if (nightmareVisionLegacyFieldCameras && (historicalNightmareCameraEvent(e.name, e.v1, e.v2)
-			|| NightmareVisionLegacyActorEvents.apply(this, e.name, e.v1, e.v2))) {
-			dispatchPsychCompiledStageEvent(psychStageEvent);
-			return;
-		}
+		if (applySourceBuiltinEvent(e, psychStageEvent, suppressHistoricalNotification)) return;
 
 		// A referenced Psych custom Flash.lua owns the legacy `Flash` event.  The
 		// native alias remains the fallback for charts without that handler, while
@@ -19199,7 +20201,7 @@ void main(void) {
 				var cameraZoom = e.v1 == '' ? 0.015 : parseF(e.v1);
 				var hudZoom = e.v2 == '' ? 0.03 : parseF(e.v2);
 				if (StringTools.trim(e.v3).toLowerCase() == 'psych') {
-					// TAKEOVER's AddCamZoomPsych leaves the gameplay camera for
+					// The AddCamZoomPsych spelling leaves the gameplay camera for
 					// the ordinary beat bop and raises its multiplier instead.
 					cameraBopMultiplier += cameraZoom;
 					camHUD.zoom += hudZoom;
@@ -19227,18 +20229,13 @@ void main(void) {
 				// Psych's normal event is additive and does not enable the separate
 				// camZooming return lerp.  A proven legacy intro sequence instead
 				// uses paired .3..2 values as absolute targets; setting those values
-				// directly makes Locked linger at 0.5, 0.6, ... rather than stacking
+				// directly makes such an intro linger at 0.5, 0.6, ... rather than stacking
 				// to an impossible 4x zoom. Note hits and explicit SetCameraBop/
 				// Zoom Camera events still opt into the decay path.
 				}
 			case 'Screen Shake':
 				// values are "duration, intensity" per the old chart editor docs
-				var g = StringTools.trim(e.v1).split(',');
-				var h = StringTools.trim(e.v2).split(',');
-				if (g.length == 2)
-					FlxG.camera.shake(parseF(g[1]), parseF(g[0]));
-				if (h.length == 2)
-					camHUD.shake(parseF(h[1]), parseF(h[0]));
+				shakeCamerasFromEvent(e.v1, e.v2);
 			case 'Focus Camera':
 				// V-Slice FocusCamera carries a character slot plus optional
 				// duration/ease fields. The importer keeps those named fields in v3;
@@ -19274,7 +20271,7 @@ void main(void) {
 			case 'Camera Follow Pos' | 'Camera Position':
 				// old-engine semantics, proven by the corpus: 13 songs fire
 				// this with EMPTY args as a release, and one-shot users
-				// (zoinks, tone-it-down, control's modchart at step 12...)
+				// (including modcharts that fire it once early in the song)
 				// expect the camera to STAY locked where it was sent - the
 				// per-section auto-follow must not override it. Coords lock
 				// the camera (scriptable 'static'), empty args release it
@@ -19306,7 +20303,7 @@ void main(void) {
 					scriptableCamera = 'false';
 				}
 			case 'Camera Target':
-				// Funkadelix/V-Slice uses role names for a camera lock.  Reuse the
+				// Some V-Slice exports use role names for a camera lock.  Reuse the
 				// existing scriptable-camera modes so automatic section following
 				// and donor camera targets share one native path.
 				var cameraTarget = StringTools.trim(e.v1).toLowerCase();
@@ -19337,20 +20334,14 @@ void main(void) {
 					changeNightmareVisionCharacterEvent(e.v1, e.v2);
 					return;
 				}
-				var slot = switch (StringTools.trim(e.v1)) {
-					// Old Modding Plus charts left player1 blank. Terrible Fate
-					// uses this form for its bfdrowned/benbf swaps.
-					case '' | '0' | 'bf' | 'boyfriend': 'bf';
-					case '2' | 'gf' | 'girlfriend': 'gf';
-					default: 'dad';
-				};
+				var slot = changeCharacterSlot(e.v1);
 				var target = e.v2 != null ? StringTools.trim(e.v2) : '';
 				// many ported charts swap to chars that were never ported
 				// (locked's agoti-eye, gorefest's grimware...) - swapping to
 				// a failsafe dad is worse than keeping the current char
 				if (target.length > 0 && Character.characterExists(target)) {
 					switchCharacter(target, slot);
-					psychChangedCharacters.set(slot == 'bf' ? 'boyfriendName' : slot == 'gf' ? 'gfName' : 'dadName', target);
+					psychChangedCharacters.set(slot == 'boyfriend' ? 'boyfriendName' : slot == 'gf' ? 'gfName' : 'dadName', target);
 					for (name => value in psychCharacterNames()) setAllHaxeVar(name, value);
 				} else if (target.length > 0) {
 					trace('change character to missing $target skipped');
@@ -19372,6 +20363,8 @@ void main(void) {
 					gf.playAnim('cheer', true);
 			case 'Set GF Speed':
 				gfSpeed = Std.int(Math.max(1, parseF(e.v1)));
+			case 'Set Target Bop Speed':
+				setTargetDanceRate(e.v1, e.v2 == null || StringTools.trim(e.v2) == '' ? 1 : parseF(e.v2));
 			case 'Set Cam Zoom' | 'Set Default Cam Zoom' | 'Change Camera Zoom' | 'Cambiar Zoom Default' | 'zoom out'
 				| 'Zoom' | 'zoom':
 				var setZoom = parseF(e.v1);
@@ -19386,7 +20379,7 @@ void main(void) {
 					setGameCameraZoom(setZoom);
 				}
 			case 'Legacy Camera Zoom':
-				// FPS Plus/Kade `camZoom` and PERFEXION's ZoomBoom use seconds,
+				// FPS Plus/Kade `camZoom` and the ZoomBoom custom event use seconds,
 				// an absolute target, and a circOut tween.  Empty camZoom pulses
 				// carry no target and are intentionally inert rather than setting
 				// the camera to zero.
@@ -19457,7 +20450,7 @@ void main(void) {
 						dispatchPsychCompiledStageEvent(psychStageEvent);
 						return;
 				}
-				// Psych uses v1=color/v2=duration. Funkadelix instead uses
+				// Psych uses v1=color/v2=duration. Some V-Slice exports instead use
 				// v1=hud (or game/both) and v2=duration; V-Slice may pack
 				// applyToHud/color/duration in v3. Keep the authored target on
 				// its matching native camera, including Psych's overlay camera.
@@ -19609,7 +20602,7 @@ void main(void) {
 			case 'Set Camera Bop':
 				SetCameraBop({rate: parseF(e.v1), intensity: parseF(e.v2)});
 			case 'Cam Boom Speed':
-				// PERFEXION's Lua custom event stores a beat interval and a
+				// The Cam Boom Speed Lua custom event stores a beat interval and a
 				// multiplier, with 0/0 meaning disabled in the authored charts.
 				camBoomSpeed = Std.int(parseF(e.v1));
 				if (camBoomSpeed < 0)
@@ -19681,7 +20674,7 @@ void main(void) {
 					dispatchPsychCompiledStageEvent(psychStageEvent);
 					return;
 				}
-				// Native legacy rows use v2 as a fade duration. Funkadelix uses
+				// Native legacy rows use v2 as a fade duration. Some exports use
 				// the same slot for an actor id, so accept both without changing
 				// the old numeric form.
 				var lyricMeta = EngineCompat.lyricDurationOrActor(e.v2);
@@ -19703,7 +20696,7 @@ void main(void) {
 				var secondActor = EngineCompat.lyricActor(e.v2);
 				setLyricLine(e.v1, secondActor, true, 0);
 			case 'Clear Lyrics':
-				// Funkadelix stores the actor in value1 (some exports use value2).
+				// The actor is usually in value1 (some exports use value2).
 				var clearActor = StringTools.trim(e.v1) == '' ? e.v2 : e.v1;
 				clearLyricLines(clearActor);
 			case 'Image Flash' | 'Image Appearance':
@@ -19777,32 +20770,9 @@ void main(void) {
 				else
 					FlxTween.tween(camHUD, {alpha: 0}, 0.5);
 			case 'Set Property':
-				// resolvable subset of the psych-style event; unknown props are
-				// inert (they were inert in the old engine too)
-				var k = StringTools.trim(e.v1);
-				var val = parseF(e.v2);
-				switch (k) {
-					case 'cameraSpeed':
-						camSpeed = val;
-					case 'camGame.angle' | 'camera.angle':
-						camGame.angle = val;
-					case 'camHUD.angle':
-						camHUD.angle = val;
-					case 'defaultCamZoom':
-						// psych/FPS-ported name for the engine's default zoom;
-						// behaves like the existing 'Set Cam Zoom' event (instant)
-						defaultCamZoom = val;
-					case 'camZoomingMult':
-						// psych name for the beat-bump size multiplier
-						camZoomIntensity = val;
-					case 'camZoomingDecay':
-						// psych name for how fast zoom returns to default; the
-						// engine's return lerp is fixed at 0.95 so scale the
-						// per-frame approach by it (1 = stock speed)
-						camZoomDecay = val;
-					default:
-						trace('Set Property: ${e.v1} unhandled (inert)');
-				}
+				// Same writer as the script setProperty, so the Psych names
+				// (cameraSpeed, camZoomingMult, camZoomingDecay...) are its aliases.
+				setEventProperty(StringTools.trim(e.v1), SourceBuiltinEvents.propertyValue(e.v2));
 			default:
 				// mod-specific: onEvent above is the whole handler
 		}
@@ -19876,6 +20846,87 @@ void main(void) {
 			camGame.zoom = zoom;
 		if (FlxG.camera != null && FlxG.camera != camGame)
 			FlxG.camera.zoom = zoom;
+	}
+
+	/**
+		The one camera bump every beat pulse and Add Camera Zoom event uses.
+		maxGameZoom (when above 0) skips the whole bump once the game camera is
+		already zoomed that far, the way Psych caps at 1.35. respectTweens leaves
+		a camera alone while a zoom tween owns it, as newer Nightmare Vision does.
+		Scripts may swap FlxG.camera, and the sources bump whatever it is. The
+		native pulses pass gameplayCamera: they always meant camGame, and the
+		zoom setter puts FlxG.camera back on it.
+	**/
+	public function pulseCameraZoom(gameAmount:Float, hudAmount:Float, maxGameZoom:Float = 0,
+		respectTweens:Bool = false, gameplayCamera:Bool = false):Void {
+		var camera = gameplayCamera ? camGame : FlxG.camera;
+		if (maxGameZoom > 0 && camera != null && camera.zoom >= maxGameZoom) return;
+		@:privateAccess if (camera != null && !(respectTweens && FlxTween.globalManager.containsTweensOf(camera, ['zoom']))) {
+			if (camera == camGame) setGameCameraZoom(camera.zoom + gameAmount);
+			else camera.zoom += gameAmount;
+		}
+		@:privateAccess if (camHUD != null && !(respectTweens && FlxTween.globalManager.containsTweensOf(camHUD, ['zoom'])))
+			camHUD.zoom += hudAmount;
+	}
+
+	/** The host zoom option turns every bump off; a selected source owner's camZooms can also turn them off. */
+	function sourceCameraZoomsEnabled():Bool {
+		return OptionsHandler.options.zoomCamera && (!sourceScoreOwner || sourceLivePreference('camZooms', true));
+	}
+
+	/** Psych's Screen Shake: each camera reads its own "duration, intensity" text. */
+	public function shakeCamerasFromEvent(gameValue:String, hudValue:String):Void {
+		var game = CameraEventValues.shake(gameValue);
+		if (game != null && camGame != null) camGame.shake(game[1], game[0]);
+		var hud = CameraEventValues.shake(hudValue);
+		if (hud != null && camHUD != null) camHUD.shake(hud[1], hud[0]);
+	}
+
+	/** Which source dialect's built-in event bodies apply to this song, or -1 for the host switch. */
+	function sourceBuiltinEventProfile():Int {
+		return switch (sourceNoteTimingMode()) {
+			case 1: SourceBuiltinEvents.PSYCH;
+			case 2: nightmareVisionLegacyFieldCameras ? SourceBuiltinEvents.NIGHTMARE_LEGACY : SourceBuiltinEvents.NIGHTMARE;
+			default: -1;
+		};
+	}
+
+	/**
+		The player's scroll multiplier as the source speed events see it. Only the
+		historical Nightmare Vision revision reads it from the owner; other songs
+		start from the host speed, so their events keep scaling the chart speed alone.
+	**/
+	function sourceScrollSpeedSetting():Float {
+		if (nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras)
+			return nightmareVisionPrefs.getGameplaySetting('scrollspeed', 1);
+		return 1;
+	}
+
+	/** Set the live song speed now, or tween it linearly over the given seconds. */
+	public function setSongSpeed(target:Float, seconds:Float):Void {
+		if (seconds <= 0) {
+			songSpeed = target;
+			return;
+		}
+		// The historical revision's event tweens pause and die with its own controller.
+		if (nightmareVisionScripts != null && nightmareVisionLegacyFieldCameras) {
+			if (nightmareVisionCameraEvents == null) nightmareVisionCameraEvents = new NightmareVisionLegacyCameraEvents(this);
+			nightmareVisionCameraEvents.tweenSongSpeed(target, seconds);
+			return;
+		}
+		songSpeedTween = FlxTween.tween(this, {songSpeed: target}, seconds, {ease: FlxEase.linear,
+			onComplete: function(_) songSpeedTween = null});
+	}
+
+	/** Psych's Set Property event: any property path the script setProperty can reach. */
+	public function setEventProperty(path:String, value:Dynamic):Void {
+		try compatSetProperty(path, value)
+		catch (error:Dynamic) trace('[set-property-event] ' + path + ' could not be set: ' + Std.string(error));
+	}
+
+	/** Psych's Play Sound event, resolved through the song's owner like a script playSound. */
+	public function playEventSound(path:String, volume:Float):Void {
+		compatPlaySoundForOwner(selectedPsychSkinRoot(), path, volume);
 	}
 
 	/** Cancel donor camera-follow tweens without exposing the donor camera API. */
@@ -19997,10 +21048,10 @@ void main(void) {
 			? null : Reflect.field(entry, 'role');
 		var authoredId:Dynamic = entry == null || Std.isOfType(entry, String)
 			? null : Reflect.field(entry, 'id');
-		var format = SONG == null || SONG.format == null ? '' : StringTools.trim(SONG.format).toLowerCase();
-		if (format == 'nmv2')
-			return NightmareVisionVocalRole.resolve(authoredId, authoredRole);
-		return authoredRole == null ? 'player' : Std.string(authoredRole);
+		// Every format goes through the one resolver. Songs imported before the
+		// importer wrote real roles still carry 'shared' on each stem, and the
+		// stem id is enough to tell the two sides apart without a re-import.
+		return SourceVocalRole.resolve(authoredId, authoredRole);
 	}
 
 	private function resolvePreferredVocalStemRole(currentRole:String, entry:Dynamic):String {
@@ -20185,6 +21236,10 @@ void main(void) {
 					+ SONG.song + '; using a silent vocal track.');
 		}
 		else {
+			// stems load in file name order, which puts an opponent stem first
+			var lead = SourceVocalRole.primaryIndex([for (entry in sounds) entry.role]);
+			if (lead > 0)
+				sounds.unshift(sounds.splice(lead, 1)[0]);
 			vocals = sounds[0].sound;
 			vocalTracks = new VocalTracks(vocals);
 			for (index in 1...sounds.length)
@@ -20586,6 +21641,7 @@ void main(void) {
 				// its section. Store the resolved side-specific value on every
 				// note so hits, autoplay, and sustain generation share one path.
 				var noteCrossFade:Bool = songNotes.length > 12 && songNotes[12] == true;
+				swagNote.params = NoteRowParams.read(songNotes);
 				swagNote.crossFade = swagNote.crossFade || noteCrossFade
 					|| sectionHasCrossFade(section, gottaHitNote);
 				/*if (!swagNote.dontEdit && !swagNote.mineNote && !swagNote.nukeNote && !swagNote.isLiftNote) {
@@ -20689,6 +21745,7 @@ void main(void) {
 							sustainNote.oppMode = opponentPlayer;
 							sustainNote.funnyMode = demoMode;
 							sustainNote.crossFade = swagNote.crossFade;
+							sustainNote.params = swagNote.params;
 
 							sustainNote.scrollFactor.set();
 							unspawnNotes.push(sustainNote);
@@ -21506,7 +22563,7 @@ void main(void) {
 				compatClearCharacterTrail(boyfriend);
 				remove(boyfriend, sourceSlot);
 				boyfriend.destroy();
-				boyfriend = new Character(swapOffsets[0], swapOffsets[1], charTo, codenameInitialActorIsPlayer('player', charTo, true), codenamePrimaryConstruction('player', charTo));
+				boyfriend = takeSwapCharacter('boyfriend', charTo);
 				boyfriend.characterType = 'boyfriend';
 				loadHxcCharacterCompat(boyfriend.curCharacter, 'boyfriend', boyfriend);
 				compatEnableCharacterTrail(boyfriend);
@@ -21551,7 +22608,7 @@ void main(void) {
 				compatClearCharacterTrail(dad);
 				remove(dad, sourceSlot);
 				dad.destroy();
-				dad = new Character(swapOffsets[4], swapOffsets[5], charTo, codenameInitialActorIsPlayer('opponent', charTo, false), codenamePrimaryConstruction('opponent', charTo));
+				dad = takeSwapCharacter('dad', charTo);
 				dad.characterType = 'dad';
 				loadHxcCharacterCompat(dad.curCharacter, 'dad', dad);
 				compatEnableCharacterTrail(dad);
@@ -21594,7 +22651,7 @@ void main(void) {
 				compatClearCharacterTrail(gf);
 				remove(gf, sourceSlot);
 				gf.destroy();
-				gf = new Character(swapOffsets[2], swapOffsets[3], charTo, codenameInitialActorIsPlayer('gf', charTo, false), codenamePrimaryConstruction('gf', charTo));
+				gf = takeSwapCharacter('gf', charTo);
 				gf.characterType = 'gf';
 				loadHxcCharacterCompat(gf.curCharacter, 'gf', gf);
 				compatEnableCharacterTrail(gf);
@@ -21702,8 +22759,78 @@ void main(void) {
 			return;
 		}
 		if (!Character.characterExists(characterName)) return;
+		// Keep the built actor for the swap instead of throwing it away.
 		var side = role == null ? '' : StringTools.trim(Std.string(role)).toLowerCase();
-		warmCharacterAtlas(characterName, side == '0' || side == 'boyfriend' || side == 'bf' || side == 'player');
+		preloadSwapCharacter(changeCharacterSlot(side), characterName);
+	}
+
+	/** Change Character's slot for the event's first value. Old charts leave
+	 * it blank for the player. Case is ignored like Psych does, and so the
+	 * load-time preload and the swap always agree on the slot. */
+	static function changeCharacterSlot(value:Dynamic):String {
+		return switch (value == null ? '' : StringTools.trim(Std.string(value)).toLowerCase()) {
+			case '' | '0' | 'bf' | 'boyfriend': 'boyfriend';
+			case '2' | 'gf' | 'girlfriend': 'gf';
+			default: 'dad';
+		};
+	}
+
+	/** Characters built during loading for the native swap, so switchCharacter
+	 * does not build one mid-song. */
+	var swapCharacterCache:CharacterSlotCache<Character>;
+
+	static function swapSlotIndex(slot:String):Int
+		return slot == 'boyfriend' ? 0 : slot == 'gf' ? 2 : 4;
+
+	/** The exact Character switchCharacter would build for this slot. */
+	function constructSwapCharacter(slot:String, name:String, x:Float, y:Float):Character {
+		var role = slot == 'boyfriend' ? 'player' : slot == 'dad' ? 'opponent' : 'gf';
+		return new Character(x, y, name, codenameInitialActorIsPlayer(role, name, slot == 'boyfriend'),
+			codenamePrimaryConstruction(role, name));
+	}
+
+	/** Build actors for later swaps into this slot while still loading. */
+	function preloadSwapCharacter(slot:String, name:String, wanted:Int = 1):Void {
+		if (swapCharacterCache == null)
+			swapCharacterCache = new CharacterSlotCache<Character>(constructSwapCharacter,
+				disposeSwapCharacter);
+		var index = swapSlotIndex(slot);
+		try {
+			swapCharacterCache.reserve(slot, name, swapOffsets[index], swapOffsets[index + 1], wanted);
+		} catch (error:Dynamic) {
+			trace('preload character ' + name + ' failed: ' + Std.string(error));
+		}
+	}
+
+	/** Leftovers are freed while the state tears down, so one bad actor must
+	 * not stop the rest of destroy(). */
+	static function disposeSwapCharacter(actor:Character):Void {
+		try {
+			actor.destroy();
+		} catch (error:Dynamic) {
+			trace('preload character ' + actor.curCharacter + ' cleanup failed: ' + Std.string(error));
+		}
+	}
+
+	/** A preloaded actor for this swap, or a new one when none was built. */
+	function takeSwapCharacter(slot:String, name:String):Character {
+		var index = swapSlotIndex(slot);
+		var x = swapOffsets[index];
+		var y = swapOffsets[index + 1];
+		var ready = swapCharacterCache == null ? null : swapCharacterCache.take(slot, name);
+		if (ready == null) return constructSwapCharacter(slot, name, x, y);
+		// Scripts can move the slot after loading; carry the ready actor along so
+		// it ends up where a freshly built one would.
+		moveFreshCharacter(ready.actor, x - ready.x, y - ready.y);
+		return ready.actor;
+	}
+
+	static function moveFreshCharacter(actor:Character, dx:Float, dy:Float):Void {
+		if (dx == 0 && dy == 0) return;
+		actor.x += dx;
+		actor.y += dy;
+		if (actor.originalPosition != null) actor.originalPosition.add(dx, dy);
+		if (actor.cameraFocusPoint != null) actor.cameraFocusPoint.add(dx, dy);
 	}
 
 	function warmCharacterAtlas(name:String, ?isPlayer:Bool = false):Void {
@@ -21728,6 +22855,9 @@ void main(void) {
 	function preloadSwapCharacters() {
 		var names:Array<String> = [];
 		var playerNames:Map<String, Bool> = new Map();
+		// Native swaps know their slot, so those actors are kept for the swap.
+		var swaps:Map<String, Int> = new Map();
+		var swapOrder:Array<String> = [];
 		for (e in songEvents) {
 			if (nightmareVisionScripts != null && e.name == 'Change Character' && e.v2 != null) {
 				if (nightmareVisionSourceEventsPrepared) continue;
@@ -21753,10 +22883,19 @@ void main(void) {
 			}
 			if (e.name == 'Change Character' && e.v2 != null) {
 				var n = StringTools.trim(Std.string(e.v2));
-				if (n.length > 0 && n != SONG.player1 && n != SONG.player2 && n != SONG.gf
-					&& names.indexOf(n) == -1)
-					names.push(n);
+				// Every swap builds a new actor, even back to a starting character.
+				if (n.length > 0) {
+					var swap = changeCharacterSlot(e.v1) + '|' + n;
+					if (!swaps.exists(swap)) swapOrder.push(swap);
+					swaps.set(swap, swaps.exists(swap) ? swaps.get(swap) + 1 : 1);
+				}
 			}
+		}
+		for (swap in swapOrder) {
+			var split = swap.indexOf('|');
+			var slot = swap.substr(0, split);
+			var n = swap.substr(split + 1);
+			if (Character.characterExists(n)) preloadSwapCharacter(slot, n, swaps.get(swap));
 		}
 		#if desktop
 		var preloadPath = currentSongDataPath('preload.txt');
@@ -21876,6 +23015,29 @@ void main(void) {
 	override public function onFocusLost():Void {
 		super.onFocusLost();
 		callCodenameScripts('onFocusLost', []);
+		callAllHScript('focusLost', [EngineCompat.hxcLifecyclePayload('focusLost', {targetState: this})]);
+	}
+
+	// Counts substates that really went on to open, so a refusal can tell
+	// whether the script opened one of its own in the same breath.
+	var subStateOpensAccepted:Int = 0;
+
+	/** A script refused the substate, so whatever was frozen for it runs again. */
+	function subStateOpenRefused():Void {
+		if (psychGameOverTransitionPending) {
+			cancelPendingGameOver();
+			return;
+		}
+		if (paused && subState == null) {
+			paused = false;
+			persistentUpdate = true;
+			persistentDraw = true;
+			setAllHaxeVar("paused", paused);
+			// The pause menu freezes these before it asks to open.
+			CoolUtil.resumeTween(curCamPos);
+			CoolUtil.resumeTween(curCamZoom);
+			for (tween in vSliceScrollTweens) CoolUtil.resumeTween(tween);
+		}
 	}
 
 	function psychSourceSubstateSemantics(target:FlxSubState):Bool {
@@ -21884,6 +23046,15 @@ void main(void) {
 	}
 
 	override function openSubState(SubState:FlxSubState) {
+		// Scripts get to refuse a substate before anything is paused for it.
+		var opensBefore = subStateOpensAccepted;
+		if (dispatchCancelableHxcLifecycle('subStateOpenBegin',
+			EngineCompat.hxcLifecyclePayload('subStateOpenBegin', {targetState: SubState}))) {
+			if (subStateOpensAccepted == opensBefore)
+				subStateOpenRefused();
+			return;
+		}
+		subStateOpensAccepted++;
 		var psychSourcePause = psychSourceSubstateSemantics(SubState);
 		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(false);
 		dispatchPsychCompiledStage('openSubState', [SubState]);
@@ -21901,7 +23072,7 @@ void main(void) {
 			controls.setKeyboardScheme(Solo(Note.NOTE_AMOUNT));
 			#if windows
 			var ae = FNFAssets.getText("assets/discord/presence/playpause.txt");
-			DiscordClient.changePresence(ae
+			if (automatedDiscord) DiscordClient.changePresence(ae
 				+ SONG.song
 				+ " ("
 				+ storyDifficultyText
@@ -21934,6 +23105,12 @@ void main(void) {
 		var psychSourcePause = psychSourceSubstateSemantics(subState);
 		var codenameClosingSubstate = subState != null;
 		var closingNativePause = paused && subState != null && Std.isOfType(subState, PauseSubState);
+		// The resume event can be cancelled, and cancelling means the pause
+		// menu simply stays open, so ask before anything is un-paused.
+		var hxcResumeDispatched = closingNativePause && !psychSourcePause;
+		if (hxcResumeDispatched
+			&& dispatchCancelableHxcLifecycle('onResume', EngineCompat.hxcLifecyclePayload('resume')))
+			return;
 		var resumeEventVideo = paused;
 		if (paused && nightmareVisionCameraEvents != null) nightmareVisionCameraEvents.setActive(true);
 		var resumePsychCustom = compatCustomSubstatePausesGame
@@ -21954,14 +23131,15 @@ void main(void) {
 			if (duoMode)
 				controls.setKeyboardScheme(Duo(true));
 			if (psychSourcePause) SourcePauseTasks.setActive(true);
-			if (!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer.finished)
+			if (!psychSourcePause && !resumePsychCustom && startTimer != null && !startTimer.finished
+				&& !hxcCountdownHeld())
 				startTimer.active = true;
 			paused = false;
 			applyDemoPlaybackRate();
 			setAllHaxeVar("paused", paused);
 			if (psychSourcePause) PsychRuntimeBindings.dispatch(this, 'onResume', []);
 			else {
-				callAllHScript('onResume', []);
+				callAllHScript('onResume', [], hxcResumeDispatched);
 				callNightmareVision('onResume', []);
 			}
 
@@ -22010,7 +23188,7 @@ void main(void) {
 					songLength
 					- Conductor.songPosition, playingAsRpc);*/
 			} else {
-				DiscordClient.changePresence(customPrecence, SONG.song
+				if (automatedDiscord) DiscordClient.changePresence(customPrecence, SONG.song
 					+ " ("
 					+ storyDifficultyText
 					+ ") "
@@ -22041,8 +23219,8 @@ void main(void) {
 		pauseVocals();
 
 		FlxG.sound.music.play();
-		Conductor.songPosition = FlxG.sound.music.time;
-		seekVocals(Conductor.songPosition);
+		Conductor.songPosition = Conductor.songTimeFromAudio(FlxG.sound.music.time);
+		seekVocals(FlxG.sound.music.time);
 		playVocals();
 		
 		#if windows
@@ -22138,7 +23316,7 @@ void main(void) {
 			var completedAudio = music.time <= 0 && endWindow > 0
 				&& Conductor.songPosition > 0
 				&& Conductor.songPosition >= songLength - endWindow;
-			Conductor.songPosition = demoSongFinished || completedAudio ? songLength : music.time;
+			Conductor.songPosition = demoSongFinished || completedAudio ? songLength : Conductor.songTimeFromAudio(music.time);
 		}
 	}
 
@@ -22251,8 +23429,17 @@ void main(void) {
 		syncPsychTimingGlobals();
 		syncVocalTrackState();
 		markNightmareVisionVocalPcmSmoke();
-		if (missesTxt != null)
-			missesTxt.text = (comboBreaks ? 'Combo Breaks: ' : 'Misses: ') + misses;
+		if (missesTxt != null) {
+			// Build the label only when it changes. It is still put back every
+			// frame, so text written by anything else is replaced as before.
+			if (missesLabel == null || missesLabelCount != misses || missesLabelBreaks != comboBreaks) {
+				missesLabelCount = misses;
+				missesLabelBreaks = comboBreaks;
+				missesLabel = (comboBreaks ? 'Combo Breaks: ' : 'Misses: ') + misses;
+			}
+			if (missesTxt.text != missesLabel)
+				missesTxt.text = missesLabel;
+		}
 		if (smokeProfileAt > 0) {
 			var now = haxe.Timer.stamp();
 			RuntimeSmokeHarness.profileSection('play-timing-audio-sync', now - smokeProfileAt);
@@ -22363,16 +23550,7 @@ void main(void) {
 		}
 		#end
 
-		var joe = notesHitArray.length-1;
-		while (joe >= 0) {
-			var mama:Date = notesHitArray[joe];
-			if (mama != null && mama.getTime() + 1000 < Date.now().getTime())
-				notesHitArray.remove(mama);
-			else
-				joe = 0;
-			joe--;
-		}
-		nps = notesHitArray.length;
+		nps = HitRateWindow.prune(notesHitArray, Sys.time() * 1000);
 		setAllHaxeVar('nps', nps);
 
 		// An imported update hook or an event above can seek the Conductor clock.
@@ -22396,6 +23574,7 @@ void main(void) {
 			curDecStep = PsychBeatClock.getDecimalStep();
 			curDecBeat = curDecStep / 4;
 		}
+		refreshSourceGameplayFrameGlobals();
 		if (nightmareVisionScripts != null && notes != null) {
 			for (note in notes.members) if (note != null && note.alive) {
 				var field = nightmareVisionFieldForNote(note);
@@ -22409,8 +23588,14 @@ void main(void) {
 			}
 			if (!paused && !inCutscene) {
 				var sourceInput = nightmareVisionInputScope == null ? null : nightmareVisionInputScope.input;
-				var pressed = sourceInput == null ? [] : [for (key in 0...sourceInput.justPressedActions.length) sourceInput.inputJustPressed(key)];
-				var released = sourceInput == null ? [] : [for (key in 0...sourceInput.justReleasedActions.length) sourceInput.inputJustReleased(key)];
+				var pressed = sourceJustPressedScratch;
+				var released = sourceJustReleasedScratch;
+				pressed.resize(0);
+				released.resize(0);
+				if (sourceInput != null) {
+					for (key in 0...sourceInput.justPressedActions.length) pressed.push(sourceInput.inputJustPressed(key));
+					for (key in 0...sourceInput.justReleasedActions.length) released.push(sourceInput.inputJustReleased(key));
+				}
 				for (field in nightmareVisionFields) if (field != null && field.canInput()) {
 					var line = field.strumline;
 					if (line != null) for (strum in line.members) if (strum != null) {
@@ -22515,8 +23700,7 @@ void main(void) {
 			var pauseResults:Array<Dynamic> = [];
 			var pauseEvent = EngineCompat.hxcLifecyclePayload('pause');
 			callAllHScript('onPause', [], false, pauseResults, [pauseEvent]);
-			if (pauseEvent.eventCanceled == true || pauseEvent.canceled == true
-				|| pauseEvent.cancelled == true || EngineCompat.anyFunctionStop(pauseResults)) {
+			if (EngineCompat.hxcPayloadCanceled(pauseEvent) || EngineCompat.anyFunctionStop(pauseResults)) {
 				// Psych's onPause gate is allowed to consume the key press (custom
 				// pause screens use this to count attempts). Restore the state flags
 				// that were staged before the callback so the native pause substate is
@@ -22532,14 +23716,8 @@ void main(void) {
 					dispatchNightmareVisionUpdatePost(sourceBatch);
 					return;
 				}
-			} else {
-				CoolUtil.pauseTween(curCamPos);
-				CoolUtil.pauseTween(curCamZoom);
-				for (tween in vSliceScrollTweens) CoolUtil.pauseTween(tween);
-
-				callCodenameEvent('onGamePause', new CodenameGameEvent());
-				openSubState(new PauseSubState(boyfriend.getScreenPosition().x, boyfriend.getScreenPosition().y, camHUD));
-			}
+			} else
+				openPauseMenu();
 		}
 
 		var canShowKeys = true;
@@ -22551,7 +23729,7 @@ void main(void) {
 			});
 		}
 
-		if (FlxG.keys.justPressed.SEVEN && !OptionsHandler.options.danceMode) {
+		if (FlxG.keys.justPressed.SEVEN && !OptionsHandler.options.danceMode && canAccessEditors) {
 			if (psychChartingOwnerRoot() != '')
 				openChartEditor();
 			else {
@@ -22698,12 +23876,12 @@ void main(void) {
 			#end
 		}
 
-		if (FlxG.keys.justPressed.EIGHT && !OptionsHandler.options.danceMode) // stop checking for debug so i can fix my offsets!
+		if (FlxG.keys.justPressed.EIGHT && !OptionsHandler.options.danceMode && canAccessEditors) // stop checking for debug so i can fix my offsets!
 			LoadingState.loadAndSwitchState(new AnimationDebug(SONG.player2, SONG.player1, SONG.gf));
 		if (startingSong) {
 			if (startedCountdown) {
 				Conductor.songPosition += FlxG.elapsed * 1000;
-				if (Conductor.songPosition >= 0)
+				if (Conductor.songPosition >= Conductor.songStartThreshold(startTimestamp))
 					startSong();
 			}
 		} else {
@@ -22882,7 +24060,7 @@ void main(void) {
 		// cutscene is still running.
 		if (camZooming && !inCutscene) {
 			ensureGameplayCameraBinding();
-			camGame.zoom = FlxMath.lerp(gameplayZoomBase(), camGame.zoom, cameraZoomDecayRetention(elapsed, camZoomDecay));
+			camGame.zoom = FlxMath.lerp(restingZoom(gameplayZoomBase(), defaultCamZoomAdd), camGame.zoom, cameraZoomDecayRetention(elapsed, camZoomDecay));
 			camHUD.zoom = FlxMath.lerp(defaultHudZoom, camHUD.zoom, cameraZoomDecayRetention(elapsed, camZoomDecay));
 		}
 		// Beat decay runs after MusicBeatState.update(), which is also where
@@ -22895,8 +24073,9 @@ void main(void) {
 		// better streaming of shit
 
 		// RESET = Quick Game Over Screen
-		if ((psychControls == null ? controls.RESET : psychControls.RESET) && !duoMode && !inCutscene && !compatEventVideoControlsDisabled
-			&& !hxcVideoControlsDisabled && !sourceLivePreference('noReset', false)) {
+		if ((psychControls == null ? controls.RESET : psychControls.RESET)
+			&& SongFlow.resetKeyAllowed(canReset, duoMode, inCutscene,
+				compatEventVideoControlsDisabled || hxcVideoControlsDisabled, sourceLivePreference('noReset', false))) {
 			if (opponentPlayer)
 				health = 2;
 			else
@@ -23402,7 +24581,7 @@ void main(void) {
 						// always show the graphic
 						noteMiss(daNote.noteData, daNote.mustPress, daNote, false);
 						if (!sourceScoreLedgerActive() && !OptionsHandler.options.dontMuteMiss)
-							setVocalsVolume(0);
+							muteMissedVocals(daNote.mustPress);
 						if (poisonPlus && poisonTimes < 3) {
 							poisonTimes += 1;
 							var poisonPlusTimer = new FlxTimer().start(0.5, function(tmr:FlxTimer) {
@@ -24073,6 +25252,10 @@ void main(void) {
 
 		var daRating:String = "sick";
 		if (!sourceLedger) daNote.rating = noteRatingAtHit(daNote);
+		// A script that re-rated this hit owns the name; the scoring below uses it.
+		if (!sourceLedger && activeHitOutcome != null && activeHitOutcomeNote == daNote
+			&& activeHitOutcome.judgementChanged())
+			daNote.rating = activeHitOutcome.judgement;
 		daRating = sourceLedger ? sourceRating.name : daNote.rating;
 		trace(daRating);
 		var healthBonus = 0.0;
@@ -24162,7 +25345,7 @@ void main(void) {
 						sicks++;
 					}
 
-					if (shouldShowNoteSplash(daNote)) {
+					if (shouldShowNoteSplash(daNote) && !hitOutcomeDeniesSplash(daNote)) {
 						final strums = getNoteStrumline(daNote);
 						if (strums != null && strums.showNotesplash) {
 							var recycledNote = strums.doSplash(daNote.noteData);
@@ -24288,13 +25471,7 @@ void main(void) {
 
 		var daLoop:Int = 0;
 		for (numBer in seperatedScore) {
-			var numImage:BitmapData;
-			if (FNFAssets.exists('assets/images/custom_ui/ui_packs/' + uiSmelly.uses + '/num' + numBer + pixelShitPart + ".png"))
-				numImage = FNFAssets.getBitmapData('assets/images/custom_ui/ui_packs/' + uiSmelly.uses + '/num' + numBer + pixelShitPart + ".png");
-			else if (uiSmelly.isPixel)
-				numImage = FNFAssets.getBitmapData('assets/images/weeb/pixelUI/num' + numBer + '-pixel.png');
-			else
-				numImage = FNFAssets.getBitmapData('assets/images/num' + numBer + '.png');
+			var numImage:BitmapData = FNFAssets.getBitmapData(comboDigitPath(numBer));
 			var numScore:FlxSprite = new FlxSprite().loadGraphic(numImage);
 			numScore.screenCenter();
 			numScore.x = rating.x + (43 * daLoop) - 90;
@@ -24383,10 +25560,7 @@ void main(void) {
 			activePsychClientPrefs = new PsychOwnerClientPrefs(ownerRoot, new CodenameOwnerSaveData(ownerRoot), OptionsHandler.options);
 			// Start with the user's native note keys, then overlay this mod owner's
 			// saved source bindings. Factory resetKeys defaults remain donor defaults.
-			var nativeKeys = Controls.getDeCtrls(Solo(4));
-			var actions = ['note_left', 'note_down', 'note_up', 'note_right'];
-			for (i in 0...actions.length) if (nativeKeys[i] != null)
-				activePsychClientPrefs.keyBinds.set(actions[i], nativeKeys[i].copy());
+			activePsychClientPrefs.seedNativeNoteKeys(cast Controls.getDeCtrls(Solo(4)));
 			psychPreferenceVolumeKeys = new PsychPreferenceVolumeKeys(activePsychClientPrefs);
 			activePsychClientPrefs.loadPrefs();
 		} else {
@@ -24551,14 +25725,15 @@ void main(void) {
 		var show = !sourceScoreNightmare || nightmareVisionFieldForNote(note).showRatings;
 		if (sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 		if (show && !note.isSustainNote && !note.hitCausesMiss) {
-			combo = Std.int(Math.min(9999, combo + 1));
+			registerComboHit(false);
 			popUpScore(note.strumTime, note, playerOne);
 		}
 		if (!sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 	}
 
-	function applySourceMiss():Void {
-		var delta = SourceScoreLedger.miss(sourceScoreNightmare, practiceMode, endingSong);
+	/** An empty key press counts differently from a missed note only in Nightmare Vision. */
+	function applySourceMiss(emptyPress:Bool = false):Void {
+		var delta = SourceScoreLedger.miss(sourceScoreNightmare, practiceMode, endingSong, emptyPress);
 		songScore += delta.score;
 		misses += delta.missDelta;
 		totalPlayed += delta.played;
@@ -24660,6 +25835,35 @@ void main(void) {
 		psychRatingOverrides.set(name, value);
 		psychScoreSnapshot = null;
 		for (interp in hscriptStates) refreshPsychScoreGlobals(interp);
+	}
+
+	/** Score, misses or hits as scripts read them, null for any other name. */
+	@:keep public function scoreValue(field:String):Null<Int> {
+		return switch (field) {
+			case 'score': songScore;
+			case 'misses': PlayState.misses;
+			case 'hits': sourceScoreLedgerActive() ? songHits : SourceScoreAdjust.hitTotal(
+				PlayState.sicks + PlayState.goods + PlayState.bads + PlayState.shits, psychHitsAdjustment);
+			default: null;
+		};
+	}
+
+	/** Script edit of score, misses or hits. `relative` adds to the counter,
+	 * otherwise it is replaced. Returns false for a name that is not a counter. */
+	@:keep public function adjustScore(field:String, value:Int, relative:Bool):Bool {
+		var current = scoreValue(field);
+		if (current == null) return false;
+		var next = SourceScoreAdjust.apply(current, value, relative);
+		switch (field) {
+			case 'score': songScore = next;
+			case 'misses': PlayState.misses = next;
+			default:
+				if (sourceScoreLedgerActive()) songHits = next;
+				else psychHitsAdjustment = SourceScoreAdjust.hitAdjustment(next,
+					PlayState.sicks + PlayState.goods + PlayState.bads + PlayState.shits);
+		}
+		psychScoreChanged();
+		return true;
 	}
 
 	public function psychScoreChanged():Void {
@@ -25077,7 +26281,7 @@ void main(void) {
 		if (key < 0) return;
 		var previousTime = Conductor.songPosition;
 		if (!demoMode && !paused && startedCountdown && nightmareVisionCurrentInputEvent != null) {
-			if (FlxG.sound.music != null && FlxG.sound.music.playing) Conductor.songPosition = FlxG.sound.music.time;
+			if (FlxG.sound.music != null && FlxG.sound.music.playing) Conductor.songPosition = Conductor.songTimeFromAudio(FlxG.sound.music.time);
 			Conductor.songPosition -= lime.system.System.getTimer() - nightmareVisionCurrentInputEvent.timer;
 		}
 		if (!demoMode && !paused && startedCountdown && generatedMusic && !endingSong
@@ -25897,15 +27101,10 @@ void main(void) {
 				applySourceMiss();
 				notifyPsychRatingChange(true);
 				sourceMissAnimation(direction, note, actingOn);
-				var performer = sourceMissPerformer(note, actingOn);
-				if (performer != gf && previousCombo > 5 && gf != null && gf.hasAnimation('sad')) {
-					gf.playAnim('sad', true);
-					gf.specialAnim = true;
-				}
+				reactGirlfriendToComboBreak(previousCombo, sourceMissPerformer(note, actingOn), false);
 				setSourceVocalVolume('player', 0);
 			}
-			if (note == null)
-				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
+			if (note == null) playMissSound();
 			dispatchPsychCompiledStage(note == null ? 'noteMissPress' : 'noteMiss', note == null ? [direction] : [cast note]);
 			PsychMissCallbacks.dispatch(note, direction, note == null ? -1 : notes.members.indexOf(note),
 				function(name:String, args:Array<Dynamic>, family:String):Dynamic {
@@ -25918,23 +27117,14 @@ void main(void) {
 			var fieldID = field == null ? (note == null ? -1 : note.sourcePlayfieldIndex) : field.ID;
 			applySourceMissHealth(note, playerOne, reacts);
 			if (reacts) sourceMissAnimation(direction, note, actingOn);
-			if (note == null && reacts)
-				FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
+			if (note == null && reacts) playMissSound();
 			if (note != null) {
-				if (nightmareVisionNoteTypes != null) {
-					var result = nightmareVisionNoteTypes.noteMiss(note, fieldID);
-					if (result != NightmareVisionScriptGroup.STOP_FUNC)
-						nightmareVisionScripts.call('noteMiss', [note, fieldID], false,
-							[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
-				}
-				if (!note.hitCausesMiss && !note.canMiss && note.nightmareVisionTailState != null) {
-					note.nightmareVisionTailState.missed = true;
-					for (piece in note.nightmareVisionTailState.notes) if (piece != null) piece.tooLate = true;
-				}
+				dispatchNightmareVisionNoteMiss(note, fieldID);
+				if (!note.hitCausesMiss && !note.canMiss) markNightmareVisionTailMissed(note, false);
 				note.alphaMod *= 0.3;
 			}
 			if (sourceMissCounts(note)) {
-				if (combo > 5 && gf != null && gf.hasAnimation('sad')) gf.playAnimForDuration('sad', 1, true);
+				reactGirlfriendToComboBreak(combo, null, true);
 				combo = 0;
 				setSourceVocalVolume('player', 0);
 				if (instakillOnMiss) doDeathCheck(true);
@@ -25949,8 +27139,53 @@ void main(void) {
 		setAllHaxeVar('songScore', songScore);
 		if (note != null && note.noteMiss != null) callHscript(note.noteMiss, [note], 'modchart');
 		callAllHScript(playerOne ? 'playerOneMiss' : 'playerTwoMiss', [], false, null, null, true);
-		callAllHScript('noteMiss', [note, playerOne, direction, hxcMissEvent], true, null, null, true);
-		if (!playerOne) callAllHScript('opponentNoteMiss', [note], true, null, null, true);
+		notifyNoteMissObservers(note, playerOne, direction, hxcMissEvent, true);
+	}
+
+	/** Generic miss hooks every family hears last. Source routes already told
+	 * their own Psych scripts, so those skip the Psych broadcast. */
+	function notifyNoteMissObservers(note:Null<Note>, playerOne:Bool, direction:Int, hxcMissEvent:Dynamic,
+		skipPsych:Bool):Void {
+		callAllHScript('noteMiss', [note, playerOne, direction, hxcMissEvent], true, null, null, skipPsych);
+		if (!playerOne) callAllHScript('opponentNoteMiss', [note], true, null, null, skipPsych);
+	}
+
+	/** Nightmare Vision note type and script miss hooks; a note type can stop the script call. */
+	function dispatchNightmareVisionNoteMiss(note:Note, fieldID:Int):Void {
+		if (nightmareVisionNoteTypes == null || note == null) return;
+		var result = nightmareVisionNoteTypes.noteMiss(note, fieldID);
+		if (result != NightmareVisionScriptGroup.STOP_FUNC)
+			nightmareVisionScripts.call('noteMiss', [note, fieldID], false,
+				[NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
+	}
+
+	/** A missed head takes the rest of its hold with it. */
+	function markNightmareVisionTailMissed(note:Note, liveOnly:Bool):Void {
+		if (note == null || note.nightmareVisionTailState == null) return;
+		note.nightmareVisionTailState.missed = true;
+		for (piece in note.nightmareVisionTailState.notes)
+			if (piece != null && (!liveOnly || piece.alive)) piece.tooLate = true;
+	}
+
+	/**
+	 * GF reacts when a combo of more than five breaks, unless she is the one who
+	 * missed. Psych holds the pose as a special animation; Nightmare Vision plays
+	 * it for one second.
+	 */
+	function reactGirlfriendToComboBreak(previousCombo:Int, performer:Character, timed:Bool):Void {
+		if (previousCombo <= 5 || gf == null || performer == gf || !gf.hasAnimation('sad')) return;
+		if (timed) gf.playAnimForDuration('sad', 1, true);
+		else {
+			gf.playAnim('sad', true);
+			gf.specialAnim = true;
+		}
+	}
+
+	/** One more note in the combo, capped where the source engines cap it. */
+	function registerComboHit(publish:Bool = true):Void {
+		combo = Std.int(Math.min(9999, combo + 1));
+		if (publish) setAllHaxeVar('combo', combo);
+		performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 	}
 
 	function sourceMissAnimation(direction:Int, note:Null<Note>, actingOn:Character):Void {
@@ -25982,9 +27217,35 @@ void main(void) {
 		return actor;
 	}
 
+	/**
+	 * The opponent's own vocal stem, next to `vocals` for the player. Songs
+	 * with one combined track get a silent stand-in so script writes are safe.
+	 */
+	@:keep public var opponentVocals(get, never):FlxSound;
+	var silentOpponentVocals:FlxSound;
+
+	@:keep function get_opponentVocals():FlxSound {
+		var stem = vocalTracks == null ? null : vocalTracks.primaryFor('opponent');
+		if (stem != null)
+			return stem;
+		if (silentOpponentVocals == null)
+			silentOpponentVocals = new FlxSound();
+		return silentOpponentVocals;
+	}
+
 	function setSourceVocalVolume(role:String, value:Float):Void {
 		if (vocalTracks != null) vocalTracks.setRoleVolume(role, value, role == 'player');
 		else if (role == 'player' && vocals != null) vocals.volume = value;
+	}
+
+	/**
+	 * Outside the source ledgers a miss quiets the side that missed. With split
+	 * stems the other side keeps singing, like in Psych and Nightmare Vision; a
+	 * single combined track still goes silent.
+	 */
+	function muteMissedVocals(playerOne:Bool):Void {
+		if (vocalTracks == null || !vocalTracks.setRoleVolume(playerOne ? 'player' : 'opponent', 0, true))
+			setVocalsVolume(0);
 	}
 
 	function restoreSourceHitVocals(note:Note, playerOne:Bool):Void {
@@ -26037,23 +27298,37 @@ void main(void) {
 		if (authoredLine != null || sourceScoreLedgerActive() || !actingOn.stunned) {
 			// HXC note callbacks receive one shared mutable event. Run them before
 			// native miss bookkeeping so cancelEvent() has the donor meaning.
+			var missOutcome:NoteJudgementOutcome = noteOutcomeWanted()
+				? proposeMissOutcome(note, playMissSound) : null;
+			if (note != null && note.isSustainNote && playerOne
+				&& onHoldDropped(note, playerOne, direction, missOutcome))
+				return;
 			if (note == null && playerOne) {
 				// A ghost miss has no live Note object, but V-Slice still exposes the
 				// lane direction through NoteScriptEvent.dir. Keep this dispatch HXC-
 				// only; Psych/Kade retain their historical noteMiss route below.
 				var hxcGhostEvent = EngineCompat.hxcNoteCallbackPayload(
 					[note, playerOne, direction], 'noteGhostMiss');
+				EngineCompat.hxcSeedNoteOutcome(hxcGhostEvent, missOutcome);
 				callHxcNoteHScript('noteGhostMiss', [note, playerOne, direction, hxcGhostEvent]);
 				EngineCompat.hxcApplyNoteCallbackPayload(hxcGhostEvent);
+				EngineCompat.hxcApplyNoteOutcome(hxcGhostEvent, missOutcome);
+				// A cancelled empty press costs nothing at all.
+				if (EngineCompat.hxcPayloadCanceled(hxcGhostEvent))
+					return;
 			}
 			var hxcMissEvent:Dynamic = null;
 			if (note != null) {
 				hxcMissEvent = EngineCompat.hxcNoteCallbackPayload([note, playerOne, direction], "noteMiss");
+				EngineCompat.hxcSeedNoteOutcome(hxcMissEvent, missOutcome);
 				callHxcNoteHScript("noteMiss", [note, playerOne, direction, hxcMissEvent]);
 				if (!playerOne)
 					callHxcNoteHScript("opponentNoteMiss", [note, playerOne, direction, hxcMissEvent]);
 				EngineCompat.hxcApplyNoteCallbackPayload(hxcMissEvent);
+				EngineCompat.hxcApplyNoteOutcome(hxcMissEvent, missOutcome);
 			}
+			// From here on the sound follows whatever the scripts left on the event.
+			if (missOutcome != null) playMissSound = missOutcome.playSound;
 			if ((hxcMissEvent != null && (hxcMissEvent.eventCanceled == true || hxcMissEvent.canceled == true
 				|| hxcMissEvent.cancelled == true)) || (note != null && !note.alive))
 				return;
@@ -26076,25 +27351,24 @@ void main(void) {
 
 				if (sourceScoreLedgerActive()) applySourceMissHealth(note, playerOne, missReaction);
 				else {
-					var healthBonus = -0.04 * healthLossMultiplier;
+					var healthBonus = -GameplayConstants.HEALTH_GHOST_MISS_PENALTY * healthLossMultiplier;
 					if (note != null) healthBonus = note.getHealth('miss');
+					if (missOutcome != null && missOutcome.healthChanged()) healthBonus = missOutcome.healthChange;
 					if (playerOne) health += healthBonus; else health -= healthBonus;
 				}
 				if (countsMiss && combo > 5 && gf.gfEpicLevel >= EpicLevel.Level_Sadness)
 					gf.playAnim('sad');
 				if (!sourceScoreLedgerActive()) updateAccuracy();
-				if (countsMiss) combo = 0;
+				if (countsMiss && (missOutcome == null || missOutcome.isComboBreak)) combo = 0;
 				setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 				if (!sourceScoreLedgerActive() && !practiceMode && !demoMode)
-					songScore -= 5;
+					songScore += missOutcome != null && missOutcome.scoreChanged()
+						? missOutcome.score : -GameplayConstants.SCORE_MISS_PENALTY;
 				setAllHaxeVar('songScore', songScore);
 				if (countsMiss) trueScore -= 5;
 				if (instakillOnMiss && countsMiss) health = 0;
 				if (countsMiss) notifyPsychRatingChange(true);
-				if (playMissSound && missReaction)
-					FlxG.sound.play('assets/sounds/missnote' + FlxG.random.int(1, 3) + TitleState.soundExt, FlxG.random.float(0.1, 0.2));
-				// FlxG.sound.play('assets/sounds/missnote1' + TitleState.soundExt, 1, false);
-				// FlxG.log.add('played imss note');
+				if (playMissSound && missReaction) this.playMissSound();
 
 				if (authoredLine != null) {
 					var stunned:Array<Character> = [];
@@ -26112,7 +27386,8 @@ void main(void) {
 						actingOn.stunned = false;
 					});
 				}
-				if (missReaction && (note == null || note.allowsAnimation(true))) {
+				if (missReaction && (missOutcome == null || missOutcome.playAnim)
+					&& (note == null || note.allowsAnimation(true))) {
 					if (note != null && note.shouldBeSung) {
 						var singAnim = currentKey.getSing(note.noteData);
 						var singNum = 0;
@@ -26160,18 +27435,9 @@ void main(void) {
 			// Keep the live Note for native hooks, and append the raw direction so
 			// EngineCompat can expose Psych's (id, direction, noteType,
 			// isSustainNote) ABI even when a miss has no Note instance.
-			if (nightmareVisionNoteTypes != null && note != null) {
-				var result = nightmareVisionNoteTypes.noteMiss(note, note.sourcePlayfieldIndex);
-				if (result != NightmareVisionScriptGroup.STOP_FUNC)
-					nightmareVisionScripts.call('noteMiss', [note, note.sourcePlayfieldIndex], false, [NightmareVisionNoteTypeRuntime.noteTypeOf(note)]);
-			}
-			if (note != null && note.nightmareVisionTailState != null && !note.canMiss) {
-				note.nightmareVisionTailState.missed = true;
-				for (piece in note.nightmareVisionTailState.notes) if (piece != null && piece.alive) piece.tooLate = true;
-			}
-			callAllHScript("noteMiss", [note, playerOne, direction, hxcMissEvent], true);
-			if (!playerOne)
-				callAllHScript("opponentNoteMiss", [note], true);
+			if (note != null) dispatchNightmareVisionNoteMiss(note, note.sourcePlayfieldIndex);
+			if (note != null && !note.canMiss) markNightmareVisionTailMissed(note, true);
+			notifyNoteMissObservers(note, playerOne, direction, hxcMissEvent, false);
 		}
 	}
 
@@ -26300,6 +27566,9 @@ void main(void) {
 		// payload keeps the live Note separately, so generic cancellation and
 		// graphics writes can be observed without changing Psych's ABI.
 		var hxcHitEvent = EngineCompat.hxcNoteCallbackPayload([playerOne, note, false], "noteHit");
+		var hitOutcome:NoteJudgementOutcome = !note.isSustainNote && noteOutcomeWanted()
+			? proposeHitOutcome(note) : null;
+		EngineCompat.hxcSeedNoteOutcome(hxcHitEvent, hitOutcome);
 		// V-Slice's authored hold uses a separate SustainTrail. Generated
 		// legacy sustain segments must not send extra NoteHit events.
 		if (!note.isSustainNote) {
@@ -26307,6 +27576,7 @@ void main(void) {
 			callHxcNoteHScript(playerOne ? "goodNoteHit" : "opponentNoteHit",
 				[playerOne, note, false, hxcHitEvent]);
 			EngineCompat.hxcApplyNoteCallbackPayload(hxcHitEvent);
+			EngineCompat.hxcApplyNoteOutcome(hxcHitEvent, hitOutcome);
 		}
 		if (hxcHitEvent.eventCanceled == true || hxcHitEvent.canceled == true
 			|| hxcHitEvent.cancelled == true || !note.alive) {
@@ -26320,9 +27590,13 @@ void main(void) {
 			return;
 		}
 		if (hitCodenameNote(note)) return;
+		// Psych plays the hit sound straight after Pre, hazards included, and only
+		// for the player. Everything else keeps it with the singing below.
+		var psychHitSound = sourceScoreLedgerActive() && !sourceScoreNightmare;
+		if (psychHitSound && playerOne) playNoteHitSound(note);
 		var hitCausesMiss = dispatchHitCausesMiss(note, playerOne);
 		if (!note.isSustainNote && !hitCausesMiss)
-			notesHitArray.push(Date.now());
+			notesHitArray.push(Sys.time() * 1000);
 		if (hitCausesMiss) {
 			if (sourceScoreNightmare) {
 				if (!note.isSustainNote) invalidateSourceInputNote(note);
@@ -26364,12 +27638,19 @@ void main(void) {
 			var sourceLedger = sourceScoreLedgerActive();
 			var sourcePopup = !sourceScoreNightmare || (nightmareVisionFieldForNote(note).playerControls
 				&& nightmareVisionFieldForNote(note).showRatings);
-			if (sourceLedger && sourcePopup && !note.isSustainNote) { combo = Std.int(Math.min(9999, combo + 1)); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo)); }
+			if (sourceLedger && sourcePopup && !note.isSustainNote) registerComboHit(false);
 			if (sourceLedger && sourceScoreNightmare) applySourceHitHealth(note, playerOne);
+			activeHitOutcome = hitOutcome;
+			activeHitOutcomeNote = note;
 			if (!sourceLedger || sourcePopup) popUpScore(note.strumTime, note, playerOne);
+			activeHitOutcome = null;
+			activeHitOutcomeNote = null;
+			applyHitOutcomeChanges(note, playerOne, hitOutcome);
 			if (sourceLedger && !sourceScoreNightmare) applySourceHitHealth(note, playerOne);
 			if (!note.isSustainNote) {
 				if (!sourceLedger) combo += 1;
+				if (hitOutcome != null && hitOutcome.comboBreakChanged())
+					combo = hitOutcome.isComboBreak ? 0 : hitOutcome.comboCount + 1;
 				setAllHaxeVar("combo", combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
 
 				if (combo == 50)
@@ -26425,15 +27706,8 @@ void main(void) {
 
 				// callAllHScript("noteHit", [playerOne, note, goodhit]);
 				
-				if (OptionsHandler.options.hitSounds && !note.isSustainNote)
-					FlxG.sound.play(FNFAssets.getSound("assets/sounds/hitSound.ogg"));
-
-				if (playerOne)
-					callAllHScript("playerOneSing", []);
-				else {
-					callAllHScript("playerTwoSing", []);
-					callCutsceneOpponentSing();
-				}
+				if (!psychHitSound) playNoteHitSound(note);
+				notifyNoteSingObservers(playerOne);
 				
 			}
 
@@ -26466,9 +27740,108 @@ void main(void) {
 		if (!sourceScoreNightmare) note.wasGoodHit = true;
 		noteMiss(note.noteData, playerOne, note);
 		if (sourceScoreNightmare) note.wasGoodHit = true;
-		if (!sourceScoreLedgerActive()) setVocalsVolume(0);
+		if (!sourceScoreLedgerActive()) muteMissedVocals(playerOne);
 		if (!sourceScoreNightmare) splashHitCausesMissNote(note);
 		return true;
+	}
+
+	// Holds the player already let go of, and whether a script let that drop
+	// off without a penalty.  Keyed by the live head note, so a restarted song
+	// (fresh notes) never matches an old entry.
+	var droppedHolds:haxe.ds.ObjectMap<Note, Bool> = new haxe.ds.ObjectMap<Note, Bool>();
+
+	/**
+		Base hook for a hold released before its end.  A hold is a row of
+		sustain pieces here, so the drop is the first piece that goes by unheld
+		after the head was hit; the pieces after it belong to the same drop and
+		do not announce it again.  Returns true when a script cancelled the
+		drop, which lets the rest of that hold go by without a penalty too.
+	*/
+	function onHoldDropped(piece:Note, playerOne:Bool, direction:Int, outcome:NoteJudgementOutcome):Bool {
+		// Nobody to tell, so nothing to look up or remember.
+		if (!hasEventObjectScope())
+			return false;
+		var head:Note = cast NoteHoldCoverCompat.resolveHead(piece);
+		if (head == null || head == piece || head.isSustainNote)
+			return false;
+		if (droppedHolds.exists(head))
+			return droppedHolds.get(head);
+		// A head that was missed already paid as a plain miss.
+		if (!head.wasGoodHit)
+			return false;
+		var event = EngineCompat.hxcHoldNotePayload(head, playerOne, direction, outcome);
+		callHxcNoteHScript('noteHoldDrop', [head, playerOne, direction, event]);
+		EngineCompat.hxcApplyNoteCallbackPayload(event);
+		EngineCompat.hxcApplyNoteOutcome(event, outcome);
+		var forgiven = EngineCompat.hxcPayloadCanceled(event);
+		droppedHolds.set(head, forgiven);
+		return forgiven;
+	}
+
+	// The outcome of the hit being scored right now, so the score popup can
+	// honour a changed rating or a refused splash without a longer signature.
+	var activeHitOutcome:NoteJudgementOutcome = null;
+	var activeHitOutcomeNote:Note = null;
+
+	/** Outcomes are only worth working out when a script can read them, and
+	 * the source score ledgers keep their own judgement numbers. */
+	function noteOutcomeWanted():Bool {
+		return !sourceScoreLedgerActive() && hasEventObjectScope();
+	}
+
+	/** Every loaded script has an entry in the table; only the ones that take
+	 * the event object are marked true. */
+	function hasEventObjectScope():Bool {
+		for (wanted in hxcPayloadStates)
+			if (wanted)
+				return true;
+		return false;
+	}
+
+	/** What the native judgement is about to give for this hit. */
+	function proposeHitOutcome(note:Note):NoteJudgementOutcome {
+		var rating = note.rating;
+		var counted = !note.dontCountNote;
+		return NoteJudgementOutcome.hit(note.getHealth(rating),
+			counted ? Math.round(ConvertScore.convertScore(adjustedNoteDiff(note)) * ModifierState.scoreMultiplier) : 0,
+			rating, counted && !note.mineNote && (rating == 'shit' || rating == 'wayoff'),
+			rating == 'sick' && !note.mineNote && shouldShowNoteSplash(note),
+			Conductor.songPosition - note.strumTime, combo);
+	}
+
+	/** What the native judgement is about to take for a miss or empty press. */
+	function proposeMissOutcome(note:Null<Note>, playMissSound:Bool):NoteJudgementOutcome {
+		return NoteJudgementOutcome.miss(
+			note != null ? note.getHealth('miss') : -GameplayConstants.HEALTH_GHOST_MISS_PENALTY * healthLossMultiplier,
+			-GameplayConstants.SCORE_MISS_PENALTY, true, playMissSound, combo);
+	}
+
+	inline function hitOutcomeDeniesSplash(note:Note):Bool {
+		return activeHitOutcome != null && activeHitOutcomeNote == note
+			&& activeHitOutcome.notesplashChanged() && !activeHitOutcome.doesNotesplash;
+	}
+
+	/** Move from what the score popup already applied to what a script asked
+	 * for.  Nothing happens for an outcome no script touched. */
+	function applyHitOutcomeChanges(note:Note, playerOne:Bool, outcome:NoteJudgementOutcome):Void {
+		if (outcome == null || !outcome.anyChanged())
+			return;
+		if (outcome.healthChanged()) {
+			var delta = outcome.healthChange - note.getHealth(note.rating);
+			if (playerOne) health += delta; else health -= delta;
+		}
+		if (outcome.scoreChanged()) {
+			var extra = outcome.scoreDelta();
+			songScore += extra;
+			songScoreDef += extra;
+			trueScore += extra;
+			setAllHaxeVar('songScore', songScore);
+			setAllHaxeVar('songScoreDef', songScoreDef);
+		}
+		// A hit re-rated to the top rating already got its splash from the popup.
+		if (outcome.notesplashChanged() && outcome.doesNotesplash
+			&& (note.rating != 'sick' || note.mineNote))
+			splashHitCausesMissNote(note);
 	}
 
 	/** Shared global and note-local gates for native and Psych note splashes. */
@@ -26554,9 +27927,7 @@ void main(void) {
 
 		// The donor plays the hit sound after early-return checks and before its
 		// hit-causes-miss handling.
-		if (field.playerControls && OptionsHandler.options.hitSounds
-			&& Reflect.field(note, 'hitsoundDisabled') != true)
-			FlxG.sound.play(FNFAssets.getSound('assets/sounds/hitSound.ogg'));
+		if (field.playerControls) playNoteHitSound(note);
 
 		if (field.playerControls && note.hitCausesMiss) {
 			dispatchHitCausesMiss(note, true);
@@ -26570,8 +27941,7 @@ void main(void) {
 		}
 
 		if (field.playerControls && nightmareVisionLegacyFieldCameras && !note.isSustainNote) {
-			combo = Std.int(Math.min(9999, combo + 1));
-			setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
+			registerComboHit();
 			popUpScore(note.strumTime, note, playerOne, false, field);
 		}
 		if (field.playerControls) {
@@ -26635,9 +28005,7 @@ void main(void) {
 	}
 
 	function playNightmareVisionLegacyHitSound(note:Note):Void {
-		var volume:Float = nightmareVisionPrefs.view.hitsoundVolume;
-		if (volume > 0 && !note.hitsoundDisabled)
-			FlxG.sound.play(nightmareVisionPaths.sound('hitsound'), volume);
+		playNoteHitSound(note);
 	}
 
 	function confirmNightmareVisionLegacyHit(note:Note, field:NightmareVisionPlayFieldView):Void {
@@ -26767,8 +28135,7 @@ void main(void) {
 			else setSourceVocalVolume('player', 1);
 		}
 		if (!nightmareVisionLegacyFieldCameras && field.playerControls && field.showRatings && !note.isSustainNote) {
-			combo = Std.int(Math.min(9999, combo + 1));
-			setAllHaxeVar('combo', combo); performanceMaxCombo = Std.int(Math.max(performanceMaxCombo, combo));
+			registerComboHit();
 			popUpScore(note.strumTime, note, playerOne, false, field);
 		}
 		if (!accepted) return;
@@ -26785,20 +28152,9 @@ void main(void) {
 				[observerPlayer, note, false, hxcEvent]);
 			EngineCompat.hxcApplyNoteCallbackPayload(hxcEvent);
 		}
-		callAllHScript('noteHit', [observerPlayer, note, note.wasGoodHit, hxcEvent], true, null, null, false, nightmareVisionLegacyFieldCameras);
-		callAllHScript(observerPlayer ? 'goodNoteHit' : 'opponentNoteHit',
-			[note, observerPlayer], true, null, null, false, nightmareVisionLegacyFieldCameras);
-		if (observerPlayer) callAllHScript('playerOneSing', []);
-		else {
-			callAllHScript('playerTwoSing', []);
-			callCutsceneOpponentSing();
-		}
-		if (note.noteHit != null) callHscript(note.noteHit, [note], 'modchart');
-		if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll)
-			|| (note.y > getHaxeActor('0').y + 20 && downscroll))) {
-			callHscript(note.noteStrum, [], 'modchart');
-			note.noteStrum = null;
-		}
+		// The historical revision keeps Lua out of these generic hooks.
+		notifyNoteHitObservers(note, observerPlayer, note.wasGoodHit, hxcEvent, false,
+			nightmareVisionLegacyFieldCameras, true);
 		if (!autoAttempt && !note.dontCountNote) notesPassing += 1;
 	}
 
@@ -26869,21 +28225,41 @@ void main(void) {
 		var psychSource = sourceScoreLedgerActive() && !sourceScoreNightmare;
 		if (psychSource) dispatchPsychNoteHit(note, playerOne);
 		else dispatchPsychCompiledStage(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note]);
-		callAllHScript("noteHit", [playerOne, note, goodhit, hxcHitEvent], true, null, null, psychSource);
-		callAllHScript(playerOne ? "goodNoteHit" : "opponentNoteHit", [note, playerOne], true, null, null, psychSource);
-		if (note.noteHit != null)
-			callHscript(note.noteHit, [note], "modchart");
-
-		if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll)
-			|| (note.y > getHaxeActor('0').y + 20 && downscroll))) {
-			callHscript(note.noteStrum, [], "modchart");
-			note.noteStrum = null;
-		}
+		notifyNoteHitObservers(note, playerOne, goodhit, hxcHitEvent, psychSource, false, false);
 		if ((nightmareVisionScripts != null || psychSource) && note.isSustainNote) return;
 		note.kill();
 		nightmareVisionRemoveFieldNoteMembership(note);
 		notes.remove(note, true);
 		note.destroy();
+	}
+
+	/**
+	 * What every accepted hit tells scripts, the same for the native, Psych and
+	 * Nightmare Vision routes. The flags only say which script families already
+	 * heard about the hit through their own route, and whether the sing hooks
+	 * still have to fire here (goodNoteHit fires them next to the animation).
+	 */
+	function notifyNoteHitObservers(note:Note, playerOne:Bool, wasGoodHit:Bool, hxcEvent:Dynamic,
+		skipPsych:Bool, skipLua:Bool, singHooks:Bool):Void {
+		callAllHScript('noteHit', [playerOne, note, wasGoodHit, hxcEvent], true, null, null, skipPsych, skipLua);
+		callAllHScript(playerOne ? 'goodNoteHit' : 'opponentNoteHit', [note, playerOne], true, null, null,
+			skipPsych, skipLua);
+		if (singHooks) notifyNoteSingObservers(playerOne);
+		if (note.noteHit != null) callHscript(note.noteHit, [note], 'modchart');
+		if (note.noteStrum != null && ((note.y < getHaxeActor('0').y - 20 && !downscroll)
+			|| (note.y > getHaxeActor('0').y + 20 && downscroll))) {
+			callHscript(note.noteStrum, [], 'modchart');
+			note.noteStrum = null;
+		}
+	}
+
+	/** The old Modding Plus sing hooks; an opponent sing can also release a cutscene. */
+	function notifyNoteSingObservers(playerOne:Bool):Void {
+		if (playerOne) callAllHScript('playerOneSing', []);
+		else {
+			callAllHScript('playerTwoSing', []);
+			callCutsceneOpponentSing();
+		}
 	}
 
 	var sectionSteps:Int = 0;
@@ -26901,14 +28277,18 @@ void main(void) {
 			compatEventVideo.resyncSongTime(
 				Math.max(0, Conductor.songPosition - compatEventVideoEventTime));
 		#end
-		if (SONG.needsVoices && !demoSongFinished) {
-			if (vocalTime() > Conductor.songPosition + 20 || vocalTime() < Conductor.songPosition - 20) {
+		// A positive instrumental offset lets steps tick before startSong; the
+		// music is still waiting then, and a resync would start it early.
+		if (SONG.needsVoices && !demoSongFinished && !startingSong) {
+			var vocalDrift = vocalTime() - Conductor.audioTimeFromSong(Conductor.songPosition);
+			if (vocalDrift > 20 || vocalDrift < -20) {
 				resyncVocals();
 			}
 		}
 
 		setAllHaxeVar("curStep", curStep);
 		syncPsychTimingGlobals();
+		danceCharactersBetweenBeats(curStep);
 		callNightmareVision('onStepHit', []);
 		callAllHScript("stepHit", [curStep]);
 		refreshCodenameCharacterScopes();
@@ -26928,6 +28308,7 @@ void main(void) {
 			&& SONG.notes[curSection] != null) {
 			setAllHaxeVar("mustHitSection", SONG.notes[curSection].mustHitSection);
 			setAllHaxeVar("gfSection", SONG.notes[curSection].gfSection == true);
+			refreshSourceGameplayGlobal('altAnim', SONG.notes[curSection].altAnim == true);
 		}
 		setAllHaxeVar("crochet", Conductor.crochet);
 		if (curSection != previousSection) {
@@ -27007,6 +28388,46 @@ void main(void) {
 		return beat % gfSpeed == 0 && characterDanceDue(gf, beat);
 	}
 
+	/**
+		Set how often a character, or a named stage prop that dances on its own,
+		does its idle.  `rate` is in beats.  Returns false when nothing by that
+		name can take a dance rate.
+	*/
+	public function setTargetDanceRate(target:String, rate:Float):Bool {
+		var interval = EngineCompat.danceIntervalBeats(rate);
+		var name = target == null ? '' : StringTools.trim(target);
+		var actor:Character = null;
+		switch (name.toLowerCase()) {
+			case '' | 'boyfriend' | 'bf' | 'player':
+				actor = boyfriend;
+			case 'dad' | 'opponent':
+				actor = dad;
+			case 'girlfriend' | 'gf':
+				actor = gf;
+			default:
+				var prop:Dynamic = PlayState.globalSprites.get(name);
+				if (prop == null)
+					return false;
+				if (Std.isOfType(prop, Character)) {
+					actor = cast prop;
+				} else {
+					var type = Type.getClass(prop);
+					var fields = type == null ? [] : Type.getInstanceFields(type);
+					for (field in ['danceEvery', 'danceEveryNumBeats'])
+						if (fields.indexOf(field) >= 0) {
+							Reflect.setProperty(prop, field, interval);
+							return true;
+						}
+					return false;
+				}
+		}
+		if (actor == null)
+			return false;
+		// Characters keep the fraction; their step gate can dance faster than a beat.
+		actor.danceEvery = Character.danceRate(rate);
+		return true;
+	}
+
 	/** Return whether a character's authored idle cadence is due on this beat.
 	 * The default value of one preserves the native behaviour; zero is useful
 	 * for V-Slice characters which intentionally never auto-dance. */
@@ -27014,27 +28435,36 @@ void main(void) {
 		if (character == null || character.animation == null
 			|| character.codenameLiveDefinition != null || character.danceEvery <= 0)
 			return false;
-		var interval = character.danceEveryNumBeats;
-		return interval > 0 && beat % interval == 0;
+		// Same step gate as the between-beat dances, so whole rates stay beat % n.
+		return Character.danceDueOnStep(character.danceEvery, beat * 4);
+	}
+
+	/** Fractional rates (V-Slice bop speed) also land between beats; beatHit
+	 * still owns the on-beat dances, so this only looks at the other steps. */
+	function danceCharactersBetweenBeats(step:Int):Void {
+		if (step % 4 == 0 || nightmareVisionScripts != null) return;
+		danceBetweenBeats(dad, step);
+		danceBetweenBeats(boyfriend, step);
+		if (!gfSinging || !Character.animationName(gf).startsWith('sing'))
+			danceBetweenBeats(gf, step);
+	}
+
+	function danceBetweenBeats(actor:Character, step:Int):Void {
+		if (actor == null || actor.animation == null || actor.codenameLiveDefinition != null) return;
+		var every = actor.danceEvery;
+		if (every <= 0 || every == Math.ffloor(every) || !Character.danceDueOnStep(every, step)) return;
+		var animation = Character.animationName(actor);
+		if (animation.startsWith('sing') || actor.singPriority.contains(animation)) return;
+		actor.dance();
 	}
 
 	/** NV pulses before onBeatHit, honors camera tweens, and resets zero cadence. */
 	function applyNightmareVisionBeatZoom():Void {
 		if (nightmareVisionScripts == null) return;
 		if (beatsPerZoom == 0) beatsPerZoom = 4;
-		if (!camZooming || !sourceLivePreference('camZooms', true) || curBeat % beatsPerZoom != 0) return;
-		var camera = FlxG.camera;
-		if (nightmareVisionLegacyFieldCameras) {
-			camera.zoom += 0.015 * camZoomingMult;
-			camHUD.zoom += 0.03 * camZoomingMult;
-			return;
-		}
-		@:privateAccess if (camera != null && !FlxTween.globalManager.containsTweensOf(camera, ['zoom'])) {
-			if (camera == camGame) setGameCameraZoom(camera.zoom + 0.015 * camZoomIntensity);
-			else camera.zoom += 0.015 * camZoomIntensity;
-		}
-		@:privateAccess if (!FlxTween.globalManager.containsTweensOf(camHUD, ['zoom']))
-			camHUD.zoom += 0.03 * camZoomIntensity;
+		if (!camZooming || !sourceCameraZoomsEnabled() || curBeat % beatsPerZoom != 0) return;
+		// The historical revision bumps even while a zoom tween runs; newer ones leave tweened cameras alone.
+		pulseCameraZoom(0.015 * camZoomingMult, 0.03 * camZoomingMult, 0, !nightmareVisionLegacyFieldCameras);
 	}
 
 	function finishHistoricalNightmareBeat():Void {
@@ -27101,20 +28531,15 @@ void main(void) {
 			// Match Cam Boom Speed.lua: first apply the normal Add Camera Zoom
 			// pulse, then add its high-zoom reinforcement when the resulting
 			// gameplay camera is already at/above 1.35.
-			setGameCameraZoom(camGame.zoom + 0.015 * camBoomIntensity);
-			camHUD.zoom += 0.03 * camBoomIntensity;
-			if (camGame.zoom >= 1.35) {
-				setGameCameraZoom(camGame.zoom + 0.025 * camBoomIntensity);
-				camHUD.zoom += 0.03 * camBoomIntensity;
-			}
+			pulseCameraZoom(0.015 * camBoomIntensity, 0.03 * camBoomIntensity, 0, false, true);
+			if (camGame.zoom >= 1.35)
+				pulseCameraZoom(0.025 * camBoomIntensity, 0.03 * camBoomIntensity, 0, false, true);
 			nativeCamBoomPulse = true;
 		}
 		
 		if (nightmareVisionScripts == null && !codenameCameraModuloActive && !inCutscene && !endingSong && !scriptChangedZoom && !nativeCamBoomPulse
-			&& camZooming && camGame.zoom < 1.35 && camZoomRate > 0 && curBeat % camZoomRate == 0) {
-			setGameCameraZoom(camGame.zoom + 0.015 * camZoomIntensity);
-			camHUD.zoom += 0.03 * camZoomIntensity;
-		}
+			&& camZooming && camZoomRate > 0 && curBeat % camZoomRate == 0)
+			pulseCameraZoom(0.015 * camZoomIntensity, 0.03 * camZoomIntensity, 1.35, false, true);
 
 		if (sourceNoteTimingMode() == 0 && iconP1auto && iconP1.autoUpdate)
 			iconP1.dance();
@@ -27146,6 +28571,7 @@ void main(void) {
 	}
 
 	function updatePresence():Void {
+		if (!automatedDiscord) return;
 		#if windows
 		// Updating Discord Rich Presence.
 		DiscordClient.changePresence(customPrecence
@@ -27208,6 +28634,12 @@ void main(void) {
 	override public function destroy() {
 		RuntimeSongExitProbe.mark("destroy-begin");
 		SongLoadingScreen.beginWork('cleanup', 7, 0.05, 0.5);
+		// The instrumental outlives the song. Hand it back to its own sound
+		// group so a song that turned itself down cannot quieten the menus.
+		if (songVolumeBus != null) {
+			songVolumeBus.release();
+			songVolumeBus = null;
+		}
 		destroyPsychCustomSubstates();
 		releaseNightmareVisionHoldActors(nightmareVisionHoldLedger.clearAll());
 		psychVideoHostDestroyed = true;
@@ -27368,9 +28800,7 @@ void main(void) {
 		// A converted Psych script may fail before its onDestroy hook reaches the
 		// adapter. Always detach the native signal before the state is released.
 		compatRemoveShaderCoordFix();
-		for (sound in psychTaggedSounds)
-			if (sound != null && sound.exists) sound.stop();
-		psychTaggedSounds.clear();
+		taggedSounds.clear();
 		clearEngineCompatObjects();
 		clearCodenameNativeEventTweens();
 		resetDemoPlaybackRate();
@@ -27437,6 +28867,7 @@ void main(void) {
 		for(sprite in nightmareVisionLegacyGhosts) if(sprite.animation!=null) sprite.destroy();
 		nightmareVisionLegacyGhosts=[];bfGhost=null;dadGhost=null;focusedChar=null;
 		boyfriendMap=null;dadMap=null;gfMap=null;
+		if (swapCharacterCache != null) {swapCharacterCache.release(); swapCharacterCache = null;}
 		for (owner in sourceIconAssetOwners) {owner.release(); SongLoadingWork.complete(true, 'cleanup');}
 		sourceIconAssetOwners.clear();
 		psychSourceIconP1 = null;psychSourceIconP2 = null;

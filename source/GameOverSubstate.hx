@@ -713,11 +713,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 		if (FlxG.sound.music != null) FlxG.sound.music.stop();
 		owner.sourceGameOverResetForMenu();
 
-		if (PlayState.isStoryMode)
-			LoadingState.loadAndSwitchState(new StoryMenuState());
-		else
-			ImportedMenuEntry.returnToFreeplay();
-		FlxG.sound.playMusic(Paths.music('freakyMenu'));
+		PlayState.exitToMenu(false, true);
 
 		// Psych's false confirmation is deliberately after the menu transition
 		// and its music, matching the donor's onGameOverConfirm([false]) timing.
@@ -767,10 +763,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 			HxcCompatRuntime.clearGameOverCharacter(bf);
 			if (FlxG.sound.music != null) FlxG.sound.music.stop();
 
-			if (PlayState.isStoryMode)
-				LoadingState.loadAndSwitchState(new StoryMenuState());
-			else
-				ImportedMenuEntry.returnToFreeplay();
+			PlayState.exitToMenu();
 			return;
 		}
 
@@ -920,7 +913,7 @@ class GameOverSubstate extends MusicBeatSubstate {
 				FlxG.camera.fade(FlxColor.BLACK, 2, false, function() {
 					hxcClearDeathOverlays();
 					HxcCompatRuntime.clearGameOverCharacter(bf);
-					LoadingState.loadAndSwitchState(new PlayState());
+					PlayState.restartCurrentSong();
 				});
 			});
 			notifySourceGameOverConfirmed();

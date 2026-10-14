@@ -27,6 +27,11 @@ class KadeNoteConversionTest(unittest.TestCase):
             , newline='\n')
             (folder_path / "ScriptCallbackResult.hx").write_text((ROOT / "source/ScriptCallbackResult.hx").read_text(), newline="\n")
             (folder_path / "ImportEngine.hx").write_text((ROOT / "source/ImportEngine.hx").read_text(), newline="\n")
+            # EngineCompat's HScript judgement hooks take the shared outcome type.
+            (folder_path / "NoteJudgementOutcome.hx").write_text((ROOT / "source/NoteJudgementOutcome.hx").read_text(), newline="\n")
+            # The Lua string library helpers in EngineCompat run on the shared pattern engine.
+            for helper in ("LuaPattern.hx", "LuaValues.hx"):
+                (folder_path / helper).write_text((ROOT / "source" / helper).read_text(), newline="\n")
             (folder_path / "NoteTypeCompat.hx").write_text(
                 (ROOT / "source/NoteTypeCompat.hx").read_text()
             , newline='\n')

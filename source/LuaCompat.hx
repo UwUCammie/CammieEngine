@@ -44,6 +44,13 @@ class LuaCompat {
 	*/
 	static inline var LOOP_GUARD_ITERATIONS:Int = 1000000;
 	static var closureCounter:Int = 0;
+	// Whether any function body reads its `...`. When none does, a `...`
+	// parameter is simply dropped and the function stays a plain one.
+	static var varargsUsed:Bool = false;
+	// One entry per open named function: the statement to add after its body.
+	static var functionClosers:Array<Null<String>> = [];
+	static var scriptLibraryMembers:Array<String> = [];
+	static inline var LOOP_CONTINUE_MARK:String = '__luaCompatLoopContinue__';
 
 	static function loopGuardName(?id:Int):String {
 		if (id == null)
@@ -88,7 +95,11 @@ class LuaCompat {
 		var masked = allowEmbeddedHscript ? routed : maskRawHaxe(routed, name, diagnostics);
 		masked = stripComments(masked);
 		masked = maskLongStrings(masked, name, diagnostics);
+		masked = normalizeLuaLiterals(masked);
 		masked = renameReservedLuaIdentifiers(masked);
+		varargsUsed = luaVarargsReadInBodies(masked);
+		scriptLibraryMembers = collectScriptLibraryMembers(masked);
+		functionClosers = [];
 		// Anonymous Lua closures are lowered into protected placeholders before
 		// table conversion so their HScript block braces are never mistaken for
 		// Lua table constructors.
@@ -99,6 +110,8 @@ class LuaCompat {
 		// and other Lua-only details, so remove only the recognized definitions
 		// and leave every other user-defined function untouched.
 		masked = maskKnownLibraryDefinitions(masked);
+		// A masked definition now means the engine helper, so its calls are routed again.
+		scriptLibraryMembers = collectScriptLibraryMembers(masked);
 		masked = convertTables(masked, name, diagnostics);
 		// Lua treats an undeclared global read as nil. Preserve that behavior for
 		// a simple addLuaSprite layer variable by deferring its lookup to a safe
@@ -111,54 +124,395 @@ class LuaCompat {
 		// generated HScript function body is not mistaken for another Lua table.
 		masked = routeTableCopyHelper(masked);
 
-		var lines = joinLuaLines(StringTools.replace(masked, '\r\n', '\n').split('\n'));
+		var lines = prepareLuaLines(masked);
 		var output:Array<String> = [];
 		var blocks:Array<String> = [];
+		// A unit is one top-level statement or one whole function. If the finished
+		// program does not parse, only the units at fault are dropped.
+		var units:Array<{start:Int, end:Int, lua:String}> = [];
+		var unitStart = -1;
+		var unitLua = '';
 		for (rawLine in lines) {
 			var line = StringTools.trim(rawLine);
 			if (line == '') {
 				output.push('');
 				continue;
 			}
+			if (unitStart < 0) {
+				unitStart = output.length;
+				unitLua = line;
+			}
 			var converted = translateLine(line, blocks, name, diagnostics);
 			for (part in converted)
 				output.push(part);
+			if (blocks.length == 0) {
+				units.push({start: unitStart, end: output.length, lua: unitLua});
+				unitStart = -1;
+			}
 		}
 		while (blocks.length > 0) {
 			var ended = blocks.pop();
-			if (ended == 'function')
+			if (ended == 'function') {
 				output.push('return null;');
+				functionClosers.pop();
+			}
 			output.push('}');
 			addDiagnostic(diagnostics, name, 'lua-unclosed-block', 'Implicitly closed an unterminated Lua block.');
 		}
+		if (unitStart >= 0)
+			units.push({start: unitStart, end: output.length, lua: unitLua});
 
-		var generated = TRANSLATED_MARKER + '\n' + output.join('\n');
-		// Placeholders are restored from the outside in, so a closure containing
-		// another closure restores its nested function values after its own body.
-		for (index in 0...protectedClosures.length) {
-			var closure = protectedClosures[protectedClosures.length - index - 1];
-			generated = StringTools.replace(generated, closure.token, closure.value);
-		}
-		// Embedded Haxe literals are restored only after every Lua rewrite. A
-		// donor body containing e.g. `math.sin` or `string.format` must reach
-		// runHaxeCode byte-for-byte instead of being treated as Lua expression text.
-		for (literal in protectedHaxeLiterals)
-			generated = StringTools.replace(generated, literal.token, literal.expression
-				? literal.value : quoteHaxeString(literal.value));
+		var restore = function(text:String):String {
+			// Placeholders are restored from the outside in, so a closure containing
+			// another closure restores its nested function values after its own body.
+			for (index in 0...protectedClosures.length) {
+				var closure = protectedClosures[protectedClosures.length - index - 1];
+				text = StringTools.replace(text, closure.token, closure.value);
+			}
+			// Embedded Haxe literals are restored only after every Lua rewrite. A
+			// donor body containing e.g. `math.sin` or `string.format` must reach
+			// runHaxeCode byte-for-byte instead of being treated as Lua expression text.
+			for (literal in protectedHaxeLiterals)
+				text = StringTools.replace(text, literal.token, literal.expression
+					? literal.value : quoteHaxeString(literal.value));
+			return text;
+		};
+		var generated = restore(TRANSLATED_MARKER + '\n' + output.join('\n'));
 		// Never hand an invalid generated program to the runtime interpreter. The
 		// bridge is intentionally partial, but partial support must still fail as a
 		// precise diagnostic rather than as a song-load parser exception.
 		try {
 			new hscript.Parser().parseString(generated);
 		} catch (error:Dynamic) {
-			addDiagnostic(diagnostics, name, 'lua-generated-syntax',
-				'The translated HScript was not parseable and was disabled safely: ' + Std.string(error));
-			generated = '// LuaCompat disabled an unparseable donor script: ' + safeComment(name);
+			var salvaged = disableUnparseableUnits(output, units, restore, source, name, diagnostics);
+			if (salvaged != null)
+				generated = salvaged;
+			else {
+				addDiagnostic(diagnostics, name, 'lua-generated-syntax',
+					'The translated HScript was not parseable and was disabled safely: ' + Std.string(error));
+				generated = '// LuaCompat disabled an unparseable donor script: ' + safeComment(name);
+			}
 		}
 		// A script with no executable callbacks is not useful as a runtime
 		// module, but returning the text still makes importer diagnostics useful.
 		var supported = diagnostics.length == 0;
 		return {hscript: generated, supported: supported, diagnostics: diagnostics};
+	}
+
+	/**
+		One function or statement that does not parse must not take the rest of
+		the script with it. Each top-level unit is checked alone; a bad function
+		becomes a stub returning nil, a bad statement becomes a comment. Returns
+		null when that still does not give a program that parses.
+	*/
+	static function disableUnparseableUnits(output:Array<String>, units:Array<{start:Int, end:Int, lua:String}>,
+		restore:String->String, luaSource:String, origin:String, diagnostics:Array<String>):Null<String> {
+		var lines = output.copy();
+		var disabled = 0;
+		for (unit in units) {
+			var failure:String = null;
+			try {
+				new hscript.Parser().parseString(restore(output.slice(unit.start, unit.end).join('\n')));
+			} catch (error:Dynamic) {
+				failure = Std.string(error);
+			}
+			if (failure == null)
+				continue;
+			disabled++;
+			var header = ~/^(local\s+)?function\s+([A-Za-z_][A-Za-z0-9_.:]*)/;
+			var functionName:String = header.match(unit.lua) ? header.matched(2) : null;
+			var isLocal = functionName != null && header.matched(1) != null;
+			var what = functionName == null ? 'a statement' : 'function ' + functionName;
+			var sourceLine = luaSourceLine(luaSource, unit.lua);
+			addDiagnostic(diagnostics, origin, 'lua-generated-syntax', 'Disabled ' + what
+				+ (sourceLine > 0 ? ' at Lua line ' + sourceLine : '')
+				+ ' because its translated HScript was not parseable (' + failure + '): ' + safeComment(unit.lua));
+			for (index in unit.start...unit.end)
+				lines[index] = '';
+			lines[unit.start] = '// LuaCompat disabled ' + what + ': ' + safeComment(unit.lua);
+			if (functionName != null && unit.end - unit.start > 1) {
+				// Callers get nil back instead of a "cannot call null" error.
+				var plain = StringTools.replace(functionName, ':', '.');
+				lines[unit.start + 1] = isLocal ? 'var ' + plain + ' = function() { return null; };'
+					: plain.indexOf('.') >= 0 ? plain + ' = function() { return null; };'
+					: 'function ' + plain + '() { return null; }';
+			}
+		}
+		if (disabled == 0)
+			return null;
+		var candidate = restore(TRANSLATED_MARKER + '\n' + lines.join('\n'));
+		try {
+			new hscript.Parser().parseString(candidate);
+		} catch (error:Dynamic) {
+			return null;
+		}
+		return candidate;
+	}
+
+	/** Line of the first place `text` shows up in the Lua file, 0 when it cannot be found. */
+	static function luaSourceLine(luaSource:String, text:String):Int {
+		if (luaSource == null || text == null || text == '')
+			return 0;
+		var at = luaSource.indexOf(text);
+		return at < 0 ? 0 : luaSource.substr(0, at).split('\n').length;
+	}
+
+	/** Whether `...` is read anywhere, as opposed to only standing in parameter lists. */
+	static function luaVarargsReadInBodies(source:String):Bool {
+		if (source == null || source.indexOf('...') < 0)
+			return false;
+		var withoutParameters = ~/function([^()\n]*)\(([^()]*)\)/g.map(source, function(match:EReg):String {
+			return 'function' + match.matched(1) + '(' + StringTools.replace(match.matched(2), '...', '') + ')';
+		});
+		return containsOutsideStrings(withoutParameters, '...');
+	}
+
+	/** Number of named parameters before `...`, or -1 for a function without varargs. */
+	static function luaVarargFixedCount(args:String):Int {
+		if (args == null || args.indexOf('...') < 0)
+			return -1;
+		var count = 0;
+		for (piece in args.split(','))
+			if (~/^[A-Za-z_][A-Za-z0-9_]*$/.match(StringTools.trim(piece)))
+				count++;
+		return count;
+	}
+
+	/** Lay the source out the way the line translator reads it. */
+	static function prepareLuaLines(masked:String):Array<String> {
+		var normalized = normalizeLuaBlockLayout(StringTools.replace(masked, '\r\n', '\n'));
+		return routeLoopContinueLabels(joinLuaLines(normalized.split('\n')));
+	}
+
+	/**
+		Lua does not care where a block keyword sits on a line; the line
+		translator does. Put a line break after `then`, `else`, `do`, `repeat` and
+		a named function header, and before `end`, `else`, `elseif` and `until`,
+		so `if a then b() else c() end`, `else if`, one-line functions and loops
+		all arrive in the one shape it knows. Text inside strings, brackets and
+		already lowered closures is left alone, and a line that is already laid
+		out this way comes back unchanged.
+	*/
+	static function normalizeLuaBlockLayout(source:String):String {
+		if (source == null || source == '')
+			return source;
+		var out = new StringBuf();
+		var depth = 0;
+		var headers = 0;
+		var lineHasText = false;
+		var breakPending = false;
+		var length = source.length;
+		var i = 0;
+		function put(value:String):Void {
+			if (breakPending) {
+				out.add('\n');
+				breakPending = false;
+			}
+			out.add(value);
+			lineHasText = true;
+		}
+		function ownLine():Void {
+			if (lineHasText) {
+				out.add('\n');
+				lineHasText = false;
+			}
+			breakPending = false;
+		}
+		while (i < length) {
+			var c = source.charAt(i);
+			if (c == '\n') {
+				// `if a` with `then` on the next line is still one header.
+				if (headers > 0 && depth == 0 && !breakPending && luaNextWordIsBlockOpener(source, i + 1)) {
+					out.add(' ');
+					i++;
+					continue;
+				}
+				out.add(c);
+				lineHasText = false;
+				breakPending = false;
+				i++;
+				continue;
+			}
+			if (isSpace(c)) {
+				out.add(c);
+				i++;
+				continue;
+			}
+			if (c == '"' || c == "'") {
+				var stringEnd = skipLuaQuotedString(source, i);
+				put(source.substr(i, stringEnd - i));
+				i = stringEnd;
+				continue;
+			}
+			if (c == '(' || c == '[' || c == '{')
+				depth++;
+			else if (c == ')' || c == ']' || c == '}')
+				depth--;
+			if (!isIdentifierStart(c)) {
+				put(c);
+				i++;
+				continue;
+			}
+			var start = i++;
+			while (i < length && isWord(source.charAt(i)))
+				i++;
+			var word = source.substr(start, i - start);
+			var previous = start == 0 ? '' : source.charAt(start - 1);
+			if (depth != 0 || previous == '.' || isWord(previous)) {
+				put(word);
+				continue;
+			}
+			switch (word) {
+				case 'if' | 'while' | 'for':
+					headers++;
+					put(word);
+				case 'elseif':
+					ownLine();
+					headers++;
+					put(word);
+				case 'then' | 'do':
+					if (headers > 0)
+						headers--;
+					put(word);
+					breakPending = true;
+				case 'repeat':
+					put(word);
+					breakPending = true;
+				case 'else':
+					ownLine();
+					put(word);
+					breakPending = true;
+				case 'until':
+					ownLine();
+					put(word);
+				case 'end':
+					ownLine();
+					put(word);
+					var after = i;
+					while (after < length && (source.charAt(after) == ' ' || source.charAt(after) == '\t'))
+						after++;
+					if (after < length && source.charAt(after) == ';') {
+						out.add(';');
+						i = after + 1;
+					}
+					breakPending = true;
+				case 'function':
+					put(word);
+					var nameStart = i;
+					while (nameStart < length && (source.charAt(nameStart) == ' ' || source.charAt(nameStart) == '\t'))
+						nameStart++;
+					if (nameStart < length && isIdentifierStart(source.charAt(nameStart))) {
+						var open = source.indexOf('(', nameStart);
+						var close = open < 0 ? -1 : matchingDelimiter(source, open, '(', ')');
+						if (close >= 0 && ~/^[A-Za-z_][A-Za-z0-9_.:]*\s*$/.match(source.substr(nameStart, open - nameStart))) {
+							out.add(source.substr(i, close + 1 - i));
+							i = close + 1;
+							breakPending = true;
+						}
+					}
+				default:
+					put(word);
+			}
+		}
+		return out.toString();
+	}
+
+	static function luaNextWordIsBlockOpener(source:String, from:Int):Bool {
+		var cursor = from;
+		while (cursor < source.length && isSpace(source.charAt(cursor)))
+			cursor++;
+		for (word in ['then', 'do'])
+			if (source.substr(cursor, word.length) == word
+				&& (cursor + word.length >= source.length || !isWord(source.charAt(cursor + word.length))))
+				return true;
+		return false;
+	}
+
+	/**
+		`goto continue` with the label as the last statement of a loop body is
+		Lua's spelling of `continue`. Route exactly that shape; any other goto
+		keeps its diagnostic.
+	*/
+	static function routeLoopContinueLabels(lines:Array<String>):Array<String> {
+		var label = ~/^::\s*([A-Za-z_][A-Za-z0-9_]*)\s*::$/;
+		for (index in 0...lines.length) {
+			if (!label.match(StringTools.trim(lines[index])))
+				continue;
+			var name = label.matched(1);
+			var next = index + 1;
+			while (next < lines.length && StringTools.trim(lines[next]) == '')
+				next++;
+			if (next >= lines.length || !luaLineClosesBlock(lines[next]) || StringTools.startsWith(StringTools.trim(lines[next]), 'until'))
+				continue;
+			// Walk back to the line that opened the block this label ends.
+			var opener = index - 1;
+			var nested = 0;
+			while (opener >= 0) {
+				if (luaLineClosesBlock(lines[opener]))
+					nested++;
+				else if (luaLineBlockOpener(lines[opener]) != null) {
+					if (nested == 0)
+						break;
+					nested--;
+				}
+				opener--;
+			}
+			if (opener < 0)
+				continue;
+			var kind = luaLineBlockOpener(lines[opener]);
+			if (kind != 'for' && kind != 'while')
+				continue;
+			// Only a goto in this loop itself is a continue; one inside a nested
+			// loop or function would have to leave that inner block first.
+			var inner:Array<String> = [];
+			var routed = false;
+			for (at in opener + 1...index) {
+				var text = StringTools.trim(lines[at]);
+				var opened = luaLineBlockOpener(text);
+				if (opened != null) {
+					inner.push(opened);
+					continue;
+				}
+				if (luaLineClosesBlock(text)) {
+					inner.pop();
+					continue;
+				}
+				if (text != 'goto ' + name && text != 'goto ' + name + ';')
+					continue;
+				var crossesLoop = false;
+				for (open in inner)
+					if (open != 'if' && open != 'do')
+						crossesLoop = true;
+				if (!crossesLoop) {
+					lines[at] = LOOP_CONTINUE_MARK;
+					routed = true;
+				}
+			}
+			if (routed)
+				lines[index] = '';
+		}
+		return lines;
+	}
+
+	static function luaLineClosesBlock(line:String):Bool {
+		var text = StringTools.trim(line);
+		return text == 'end' || text == 'end;' || text == 'until' || StringTools.startsWith(text, 'until ');
+	}
+
+	/** The block keyword a normalized line opens, or null when it opens none. */
+	static function luaLineBlockOpener(line:String):Null<String> {
+		var text = StringTools.trim(line);
+		if (text == 'do' || text == 'repeat')
+			return text;
+		if (~/^if[^A-Za-z0-9_].*[^A-Za-z0-9_]then$/.match(text))
+			return 'if';
+		if (~/^for[^A-Za-z0-9_].*[^A-Za-z0-9_]do$/.match(text))
+			return 'for';
+		if (~/^while[^A-Za-z0-9_].*[^A-Za-z0-9_]do$/.match(text))
+			return 'while';
+		if (~/^(?:local\s+)?function\s+[A-Za-z_][A-Za-z0-9_.:]*\s*\(.*\)$/.match(text))
+			return 'function';
+		return null;
 	}
 
 	/** Return a valid UTF-8 string without asking String.charAt to decode the
@@ -265,6 +619,9 @@ class LuaCompat {
 		var text = StringTools.trim(value);
 		if (text == 'return')
 			return true;
+		// A trailing `...` is the varargs value, not a dangling `..`.
+		if (StringTools.endsWith(text, '...'))
+			return false;
 		for (suffix in ['=', '+', '-', '*', '/', '%', '..', ',', ' and', ' or'])
 			if (StringTools.endsWith(text, suffix))
 				return true;
@@ -448,9 +805,12 @@ class LuaCompat {
 				continue;
 			}
 			var body = source.substr(close + 1, endToken.startIndex - close - 1);
-			var args = cleanArguments(source.substr(open + 1, close - open - 1), origin, diagnostics);
+			var rawArgs = source.substr(open + 1, close - open - 1);
+			var args = cleanArguments(rawArgs, origin, diagnostics);
 			var convertedBody = translateLuaFunctionBody(body, origin, diagnostics, protected);
 			var functionValue = 'function(' + args + ') { ' + convertedBody + ' }';
+			if (varargsUsed && luaVarargFixedCount(rawArgs) >= 0)
+				functionValue = 'luaVarargFunction(' + luaVarargFixedCount(rawArgs) + ', ' + functionValue + ')';
 			var closureToken = '__luaCompatClosure' + closureCounter++ + '__';
 			while (source.indexOf(closureToken) >= 0
 				|| Lambda.exists(protected, function(entry) return entry.token == closureToken))
@@ -504,9 +864,10 @@ class LuaCompat {
 		masked = convertTables(masked, origin, diagnostics);
 		masked = routeOptionalAddLuaSpriteLayers(masked);
 		masked = routeTableCopyHelper(masked);
-		var lines = joinLuaLines(StringTools.replace(masked, '\r\n', '\n').split('\n'));
+		var lines = prepareLuaLines(masked);
 		var output:Array<String> = [];
 		var blocks:Array<String> = [];
+		var openClosers = functionClosers.length;
 		for (rawLine in lines) {
 			var line = StringTools.trim(rawLine);
 			if (line == '') {
@@ -516,6 +877,8 @@ class LuaCompat {
 			for (part in translateLine(line, blocks, origin, diagnostics))
 				output.push(part);
 		}
+		while (functionClosers.length > openClosers)
+			functionClosers.pop();
 		while (blocks.length > 0) {
 			blocks.pop();
 			output.push('}');
@@ -724,13 +1087,22 @@ class LuaCompat {
 			return result;
 		}
 
-		var functionMatch = ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(([^)]*)\)\s*$/;
+		var functionMatch = ~/^(?:local\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?::[A-Za-z_][A-Za-z0-9_]*)?)\s*\(([^)]*)\)\s*$/;
 		if (functionMatch.match(text)) {
 			var functionName = functionMatch.matched(1);
-			var args = cleanArguments(functionMatch.matched(2), origin, diagnostics);
+			var rawArgs = functionMatch.matched(2);
+			if (functionName.indexOf(':') >= 0) {
+				// `function obj:method(a)` is `obj.method = function(self, a)`.
+				functionName = StringTools.replace(functionName, ':', '.');
+				rawArgs = StringTools.trim(rawArgs) == '' ? 'self' : 'self, ' + rawArgs;
+			}
+			var args = cleanArguments(rawArgs, origin, diagnostics);
 			result.push(namedFunctionStatement(functionName, args, null,
 				isLocalNamedFunction(text), blocks));
 			blocks.push('function');
+			var fixed = luaVarargFixedCount(rawArgs);
+			functionClosers.push(varargsUsed && fixed >= 0
+				? functionName + ' = luaVarargFunction(' + fixed + ', ' + functionName + ');' : null);
 			return result;
 		}
 		if (~/^(?:local\s+)?function\s+/.match(text)) {
@@ -759,6 +1131,15 @@ class LuaCompat {
 			blocks.push('if');
 			return result;
 		}
+		if (text == 'do') {
+			result.push('{');
+			blocks.push('do');
+			return result;
+		}
+		if (text == LOOP_CONTINUE_MARK) {
+			result.push('continue;');
+			return result;
+		}
 		var whileMatch = ~/^while\s+(.+)\s+do\s*$/;
 		if (whileMatch.match(text)) {
 			var guardName = loopGuardName();
@@ -769,26 +1150,37 @@ class LuaCompat {
 			return result;
 		}
 
-		var numericFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*,\s*(.+?)(?:\s*,\s*(.+?))?\s+do\s*$/;
-		if (numericFor.match(text)) {
+		var numericFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)\s+do\s*$/;
+		var numericBounds:Array<String> = numericFor.match(text) ? splitTopLevel(numericFor.matched(2), ',') : [];
+		if (numericBounds.length == 2 || numericBounds.length == 3) {
 			var variable = numericFor.matched(1);
-			var first = numericFor.matched(2);
-			var last = numericFor.matched(3);
-			var step = numericFor.matched(4);
-			if (step != null && StringTools.trim(step) != '' && StringTools.trim(step) != '1') {
+			var first = StringTools.trim(numericBounds[0]);
+			var last = StringTools.trim(numericBounds[1]);
+			var step = numericBounds.length == 3 ? StringTools.trim(numericBounds[2]) : null;
+			// Whole-number literals count up through a ready-made range. Anything
+			// else may be fractional or run backwards, so it is stepped as a number.
+			if ((step != null && step != '' && step != '1') || !~/^-?[0-9]+$/.match(first)) {
 				var loopId = collectionCounter++;
 				var startName = '__luaForStart' + loopId;
 				var endName = '__luaForEnd' + loopId;
 				var stepName = '__luaForStep' + loopId;
+				var valueName = '__luaForValue' + loopId;
+				var firstName = '__luaForFirst' + loopId;
 				var guardName = loopGuardName(loopId);
-				result.push('var ' + startName + ' = Std.int(' + convertExpression(first, origin, diagnostics) + ');');
-				result.push('var ' + endName + ' = Std.int(' + convertExpression(last, origin, diagnostics) + ');');
-				result.push('var ' + stepName + ' = Std.int(' + convertExpression(step, origin, diagnostics) + ');');
+				result.push('var ' + startName + ' = ' + convertExpression(first, origin, diagnostics) + ';');
+				result.push('var ' + endName + ' = ' + convertExpression(last, origin, diagnostics) + ';');
+				result.push('var ' + stepName + ' = ' + (step == null || step == '' ? '1'
+					: convertExpression(step, origin, diagnostics)) + ';');
 				result.push('if (' + stepName + ' != 0) {');
-				result.push('var ' + variable + ' = ' + startName + ';');
+				result.push('var ' + valueName + ' = ' + startName + ';');
+				result.push('var ' + firstName + ' = true;');
 				result.push('var ' + guardName + ' = 0;');
-				result.push('while ((' + stepName + ' > 0 && ' + variable + ' <= ' + endName + ') || ('
-					+ stepName + ' < 0 && ' + variable + ' >= ' + endName + ')) {');
+				// The step sits at the top so a `continue` cannot skip it.
+				result.push('while (true) {');
+				result.push('if (' + firstName + ') ' + firstName + ' = false; else ' + valueName + ' += ' + stepName + ';');
+				result.push('if (!((' + stepName + ' > 0 && ' + valueName + ' <= ' + endName + ') || ('
+					+ stepName + ' < 0 && ' + valueName + ' >= ' + endName + '))) break;');
+				result.push('var ' + variable + ' = ' + valueName + ';');
 				result.push(guardIncrement(guardName));
 				blocks.push('for-step:' + variable + ':' + loopId);
 				return result;
@@ -840,6 +1232,28 @@ class LuaCompat {
 			return result;
 		}
 
+		// Any other `for ... in`: a gmatch with several captures, `next, t`, or
+		// the script's own iterator function, stepped until it returns nil.
+		var genericFor = ~/^for\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+in\s+(.+)\s+do\s*$/;
+		if (genericFor.match(text)) {
+			var loopNames = [for (loopName in genericFor.matched(1).split(',')) StringTools.trim(loopName)];
+			var sources = [for (part in splitTopLevel(genericFor.matched(2), ',')) convertExpression(StringTools.trim(part), origin, diagnostics)];
+			var iteratorId = collectionCounter++;
+			var iteratorName = '__luaIterator' + iteratorId;
+			var stepName = '__luaIteratorStep' + iteratorId;
+			var guardName = loopGuardName(iteratorId);
+			result.push('var ' + iteratorName + ' = luaIterator(' + sources.join(', ') + ');');
+			result.push('var ' + guardName + ' = 0;');
+			result.push('while (true) {');
+			result.push('var ' + stepName + ' = luaAssignValues(' + loopNames.length + ', ' + iteratorName + '());');
+			result.push('if (' + stepName + '[0] == null) break;');
+			for (index in 0...loopNames.length)
+				result.push('var ' + loopNames[index] + ' = ' + stepName + '[' + index + '];');
+			result.push(guardIncrement(guardName));
+			blocks.push('for');
+			return result;
+		}
+
 		if (text == 'end' || text == 'end;') {
 			var ended = blocks.length == 0 ? null : blocks[blocks.length - 1];
 			if (blocks.length == 0)
@@ -849,28 +1263,39 @@ class LuaCompat {
 			if (ended == 'function')
 				result.push('return null;');
 			if (ended != null && StringTools.startsWith(ended, 'for-step:')) {
-				// Lua's numeric loop advances after each body execution. Without
-				// this update every non-unit step spins until the watchdog fires.
-				var parts = ended.split(':');
-				result.push(parts[1] + ' += __luaForStep' + parts[2] + ';');
 				result.push('}');
 				result.push('} else { throw "lua numeric for step is zero"; }');
 			} else
 				result.push('}');
+			if (ended == 'function') {
+				var closer = functionClosers.pop();
+				if (closer != null)
+					result.push(closer);
+			}
 			return result;
 		}
 		if (text == 'repeat') {
-			addDiagnostic(diagnostics, origin, 'lua-repeat', 'repeat/until loops are not routed by the deterministic bridge.');
-			result.push('// LuaCompat unsupported control flow: repeat');
-			result.push('if (false) {');
+			// The condition is checked inside the block because Lua lets `until`
+			// read the locals of the loop body.
+			var guardName = loopGuardName();
+			result.push('var ' + guardName + ' = 0;');
+			result.push('while (true) {');
+			result.push(guardIncrement(guardName));
 			blocks.push('repeat');
 			return result;
 		}
-		if (StringTools.startsWith(text, 'until ')) {
-			addDiagnostic(diagnostics, origin, 'lua-until', 'repeat/until loops are not routed by the deterministic bridge.');
-			if (blocks.length > 0 && blocks[blocks.length - 1] == 'repeat')
+		if (StringTools.startsWith(text, 'until ') || StringTools.startsWith(text, 'until(')) {
+			if (blocks.length > 0 && blocks[blocks.length - 1] == 'repeat') {
 				blocks.pop();
-			result.push('} // LuaCompat unsupported control flow: ' + safeComment(text));
+				var untilCondition = StringTools.trim(text.substr(5));
+				if (StringTools.endsWith(untilCondition, ';'))
+					untilCondition = untilCondition.substr(0, untilCondition.length - 1);
+				result.push('if (' + convertExpression(untilCondition, origin, diagnostics) + ') break;');
+				result.push('}');
+			} else {
+				addDiagnostic(diagnostics, origin, 'lua-until', 'until has no open repeat block.');
+				result.push('// LuaCompat unsupported control flow: ' + safeComment(text));
+			}
 			return result;
 		}
 
@@ -882,6 +1307,12 @@ class LuaCompat {
 		if (text == 'continue' || text == 'continue;') {
 			addDiagnostic(diagnostics, origin, 'lua-continue', 'continue is not part of the HScript subset.');
 			result.push('// LuaCompat unsupported control flow: continue');
+			return result;
+		}
+
+		var returned = splitReturnValues(text, origin, diagnostics);
+		if (returned != null) {
+			result.push(returned);
 			return result;
 		}
 
@@ -1154,6 +1585,37 @@ class LuaCompat {
 		return result.length == 0 ? [value] : result;
 	}
 
+	/** `return a, b` hands back several values; a single value stays a plain return. */
+	static function splitReturnValues(text:String, origin:String, diagnostics:Array<String>):Null<String> {
+		if (!StringTools.startsWith(text, 'return') || text.length <= 6 || isWord(text.charAt(6)))
+			return null;
+		var rest = StringTools.trim(text.substr(6));
+		if (StringTools.endsWith(rest, ';'))
+			rest = StringTools.trim(rest.substr(0, rest.length - 1));
+		var values = splitTopLevel(rest, ',');
+		if (values.length < 2)
+			return null;
+		var unsupported = unsupportedLibrary(rewriteDynamicGlobals(rest));
+		if (unsupported != null)
+			return null;
+		return 'return luaValues(' + [for (value in values) convertExpression(StringTools.trim(value), origin, diagnostics)].join(', ') + ');';
+	}
+
+	/** Whether `name` is read as a whole word anywhere in `text`, strings aside. */
+	static function luaMentionsName(text:String, name:String):Bool {
+		var from = 0;
+		while (true) {
+			var at = indexOutsideStrings(text, name, from);
+			if (at < 0)
+				return false;
+			var before = at == 0 ? '' : text.charAt(at - 1);
+			var after = at + name.length >= text.length ? '' : text.charAt(at + name.length);
+			if (!isWord(before) && before != '.' && !isWord(after))
+				return true;
+			from = at + name.length;
+		}
+	}
+
 	/** Lower the simple parallel assignments used by Lua matrix helpers. */
 	static function splitMultipleAssignment(text:String, origin:String, diagnostics:Array<String>):Null<Array<String>> {
 		var equal = topLevelEquals(text);
@@ -1192,7 +1654,49 @@ class LuaCompat {
 		}
 		if (names.length <= 1)
 			return null;
+		if (StringTools.endsWith(right, ';'))
+			right = StringTools.trim(right.substr(0, right.length - 1));
 		var values = splitTopLevel(right, ',');
+		var targets:Array<String> = [];
+		var needsSlots = false;
+		for (nameRaw in names) {
+			var target = StringTools.trim(nameRaw);
+			if (~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(target))
+				targets.push(target);
+			else if (!local && ~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*|\[.+\])+$/.match(target)) {
+				// An indexed slot such as `t[i]` reads other values while it is set.
+				targets.push(convertExpression(target, origin, diagnostics));
+				needsSlots = true;
+			} else
+				return null;
+			var root = ~/^[A-Za-z_][A-Za-z0-9_]*/;
+			if (root.match(target) && luaMentionsName(right, root.matched(0)))
+				needsSlots = true;
+		}
+		// A call or `...` in the last place fills every name that is left.
+		var lastValue = StringTools.trim(values[values.length - 1]);
+		var expands = values.length < names.length && (StringTools.endsWith(lastValue, ')') || lastValue == '...');
+		if (needsSlots || expands) {
+			// Lua works out every right-hand value before it assigns any of them,
+			// which is what makes `a, b = b, a` a swap.
+			if (unsupportedLibrary(rewriteDynamicGlobals(right)) != null)
+				return null;
+			var slotsName = '__luaMulti' + collectionCounter++;
+			var slotValues = [for (value in values) convertExpression(StringTools.trim(value), origin, diagnostics)];
+			var slots:Array<String> = [];
+			if (expands) {
+				slots.push('var ' + slotsName + ' = luaAssignValues(' + targets.length + ', ' + slotValues.join(', ') + ');');
+				for (index in 0...targets.length)
+					slots.push((local ? 'var ' : '') + targets[index] + ' = ' + slotsName + '[' + index + '];');
+			} else {
+				for (index in 0...slotValues.length)
+					slots.push('var ' + slotsName + '_' + index + ' = ' + slotValues[index] + ';');
+				for (index in 0...targets.length)
+					slots.push((local ? 'var ' : '') + targets[index] + ' = '
+						+ (index < slotValues.length ? slotsName + '_' + index : 'null') + ';');
+			}
+			return slots;
+		}
 		var result:Array<String> = [];
 		for (index in 0...names.length) {
 			var name = StringTools.trim(names[index]);
@@ -1297,27 +1801,70 @@ class LuaCompat {
 		return StringTools.replace(StringTools.replace(value, '\\', '\\\\'), '"', '\\"');
 	}
 
+	// Words that cannot end a statement, and words that cannot start one.
+	static var luaStatementLeadWords:Array<String> = ['local', 'return', 'goto', 'not', 'function', 'for', 'if',
+		'elseif', 'while', 'until', 'repeat', 'var'];
+	static var luaStatementJoinWords:Array<String> = ['and', 'or', 'then', 'do', 'in', 'else', 'elseif', 'end', 'until'];
+
 	static function splitInlineStatements(value:String):Array<String> {
 		var result:Array<String> = [];
 		var quote = '';
 		var depth = 0;
 		var start = 0;
 		var i = 0;
+		// Where a finished name, number or string ended. Another name right after
+		// it, with only spaces between, starts the next statement: `a = 1 b = 2`.
+		var valueEnd = -1;
 		while (i < value.length) {
 			var c = value.charAt(i);
 			if (quote != '') {
 				if (c == '\\') { i += 2; continue; }
-				if (c == quote) quote = '';
+				if (c == quote) {
+					quote = '';
+					valueEnd = depth == 0 ? i + 1 : -1;
+				}
 				i++;
 				continue;
 			}
 			if (c == '"' || c == "'") { quote = c; i++; continue; }
+			if (depth == 0 && isIdentifierStart(c) && (i == 0 || !isWord(value.charAt(i - 1)))) {
+				var nameEnd = i + 1;
+				while (nameEnd < value.length && isWord(value.charAt(nameEnd))) nameEnd++;
+				var name = value.substr(i, nameEnd - i);
+				if (i > 0 && value.charAt(i - 1) == '.') {
+					valueEnd = nameEnd;
+					i = nameEnd;
+					continue;
+				}
+				if (valueEnd >= 0 && valueEnd < i && StringTools.trim(value.substr(valueEnd, i - valueEnd)) == ''
+					&& luaStatementJoinWords.indexOf(name) < 0) {
+					result.push(StringTools.trim(value.substr(start, i - start)));
+					start = i;
+				}
+				valueEnd = luaStatementLeadWords.indexOf(name) >= 0 || luaStatementJoinWords.indexOf(name) >= 0
+					? -1 : nameEnd;
+				i = nameEnd;
+				continue;
+			}
+			if (depth == 0 && isDigit(c) && (i == 0 || !isWord(value.charAt(i - 1)))) {
+				i = luaNumberEnd(value, i);
+				valueEnd = i;
+				continue;
+			}
+			// `...` is a value too: `local a, b = ... return b` is two statements.
+			if (depth == 0 && c == '.' && value.substr(i, 3) == '...') {
+				i += 3;
+				valueEnd = i;
+				continue;
+			}
+			if (!isSpace(c)) valueEnd = -1;
 			if (c == '(' || c == '[' || c == '{') depth++;
 			else if (c == ')' || c == ']' || c == '}') depth--;
 			if (depth == 0 && (c == ')' || c == ']' || c == '}')) {
 				var cursor = i + 1;
 				while (cursor < value.length && isSpace(value.charAt(cursor))) cursor++;
-				if (cursor > i + 1 && cursor < value.length) {
+				// `f(a)g(b)` with nothing between is two calls as well.
+				if ((cursor > i + 1 || c == ')') && cursor < value.length) {
 					var wordEnd = cursor;
 					while (wordEnd < value.length && isWord(value.charAt(wordEnd))) wordEnd++;
 					var word = value.substr(cursor, wordEnd - cursor);
@@ -1348,16 +1895,19 @@ class LuaCompat {
 	static function cleanArguments(args:String, origin:String, diagnostics:Array<String>):String {
 		if (args == null || StringTools.trim(args) == '')
 			return '';
-		if (args.indexOf('...') >= 0) {
-			addDiagnostic(diagnostics, origin, 'lua-varargs', 'Lua varargs (...) are not routed by the bridge.');
-			return '';
-		}
 		var pieces = args.split(',');
 		var out:Array<String> = [];
 		for (piece in pieces) {
 			var arg = StringTools.trim(piece);
 			if (arg == '')
 				continue;
+			if (arg == '...') {
+				// The extra arguments arrive as one list (see luaVarargFunction).
+				// A function that never reads them just lets them fall away.
+				if (varargsUsed)
+					out.push('?__luaVarargs');
+				continue;
+			}
 			var equal = arg.indexOf('=');
 			if (equal >= 0) {
 				addDiagnostic(diagnostics, origin, 'lua-default-arg', 'Lua default arguments are not routed: ' + arg);
@@ -1481,80 +2031,363 @@ class LuaCompat {
 		return -1;
 	}
 
-	/**
-		Lua's colon call implicitly passes the receiver as argument one.  The
-		bridge only lowers side-effect-free identifier/property receivers, so a
-		complex expression is left untouched and remains diagnosable.
-	*/
-	static function rewriteColonCalls(value:String, origin:String, diagnostics:Array<String>):String {
-		if (value == null || value.indexOf(':') < 0)
-			return value;
-		var out = new StringBuf();
-		var cursor = 0;
-		var i = 0;
-		var quote = '';
-		while (i < value.length) {
-			var c = value.charAt(i);
-			if (quote != '') {
-				if (c == '\\') { i += 2; continue; }
-				if (c == quote) quote = '';
-				i++;
-				continue;
-			}
-			if (c == '"' || c == "'") { quote = c; i++; continue; }
-			if (c != ':') { i++; continue; }
-			var receiverStart = colonReceiverStart(value, i);
-			if (receiverStart < 0) { i++; continue; }
-			var receiverPrefix = receiverStart - 1;
-			while (receiverPrefix >= 0 && isSpace(value.charAt(receiverPrefix))) receiverPrefix--;
-			// `convertTables()` already uses HScript's `key: value` spelling for
-			// anonymous objects.  A call-shaped value after `{`/`,` is therefore a
-			// table field, not Lua's receiver-colon syntax.
-			if (receiverPrefix >= 0 && (value.charAt(receiverPrefix) == '{' || value.charAt(receiverPrefix) == ',')) {
-				i++;
-				continue;
-			}
-			var methodStart = i + 1;
-			while (methodStart < value.length && isSpace(value.charAt(methodStart))) methodStart++;
-			var methodEnd = methodStart;
-			while (methodEnd < value.length && isWord(value.charAt(methodEnd))) methodEnd++;
-			if (methodEnd == methodStart) { i++; continue; }
-			var open = methodEnd;
-			while (open < value.length && isSpace(value.charAt(open))) open++;
-			if (open >= value.length || value.charAt(open) != '(') { i++; continue; }
-			var close = matchingDelimiter(value, open, '(', ')');
-			if (close < 0) { i++; continue; }
-			var receiver = StringTools.trim(value.substr(receiverStart, i - receiverStart));
-			var args = StringTools.trim(value.substr(open + 1, close - open - 1));
-			out.add(value.substr(cursor, receiverStart - cursor));
-			out.add(receiver + '.' + value.substr(methodStart, methodEnd - methodStart) + '(' + receiver
-				+ (args == '' ? '' : ', ' + args) + ')');
-			cursor = close + 1;
-			i = cursor;
-		}
-		out.add(value.substr(cursor));
-		return out.toString();
-	}
-
-	static function colonReceiverStart(value:String, colon:Int):Int {
-		var cursor = colon;
-		while (cursor > 0 && isSpace(value.charAt(cursor - 1))) cursor--;
-		var end = cursor;
-		while (cursor > 0 && isWord(value.charAt(cursor - 1))) cursor--;
-		if (cursor == end || !isIdentifierStart(value.charAt(cursor))) return -1;
-		while (cursor > 0 && value.charAt(cursor - 1) == '.') {
-			cursor--;
-			var partEnd = cursor;
-			while (cursor > 0 && isWord(value.charAt(cursor - 1))) cursor--;
-			if (cursor == partEnd || !isIdentifierStart(value.charAt(cursor))) return -1;
-		}
-		return cursor;
-	}
 
 	static function isIdentifierStart(value:String):Bool {
 		if (value == null || value == '') return false;
 		var code = value.charCodeAt(0);
 		return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || value == '_';
+	}
+
+	static function isDigit(value:String):Bool {
+		if (value == null || value == '') return false;
+		var code = value.charCodeAt(0);
+		return code >= 48 && code <= 57;
+	}
+
+	// Words that end the operand of `..`; an operand never runs across them.
+	static var luaOperandBreakWords:Array<String> = ['and', 'or', 'return', 'var', 'local', 'then', 'do', 'in',
+		'if', 'else', 'elseif', 'while', 'for', 'until', 'function', 'end', 'repeat'];
+
+	static function luaOperandWord(word:String):Bool {
+		return word != 'not' && luaOperandBreakWords.indexOf(word) < 0;
+	}
+
+	/**
+		Rewrite the Lua operators HScript reads differently, at every nesting
+		level: `a .. b` (HScript `+` would add two numbers and binds tighter than
+		Lua's `..`), `a ^ b` (bitwise xor in HScript), `#operand` and
+		`receiver:method(args)`. Text without those operators comes back unchanged.
+	*/
+	static function rewriteLuaOperators(text:String):String {
+		if (text == null || (text.indexOf(':') < 0 && text.indexOf('#') < 0
+			&& text.indexOf('^') < 0 && text.indexOf('..') < 0 && text.indexOf('//') < 0))
+			return text;
+		var out = new StringBuf();
+		var start = 0;
+		var i = 0;
+		var length = text.length;
+		while (i < length) {
+			var c = text.charAt(i);
+			if (c == '"' || c == "'") {
+				i = skipLuaQuotedString(text, i);
+				continue;
+			}
+			if (c == '(' || c == '[' || c == '{') {
+				var close = matchingDelimiter(text, i, c, c == '(' ? ')' : c == '[' ? ']' : '}');
+				i = close < 0 ? i + 1 : close + 1;
+				continue;
+			}
+			var boundary = 0;
+			if (',;=<>~!?&|'.indexOf(c) >= 0)
+				boundary = 1;
+			else if (c == ':' && !(i + 1 < length && isIdentifierStart(text.charAt(i + 1))))
+				boundary = 1;
+			else if (isIdentifierStart(c)) {
+				var wordEnd = i + 1;
+				while (wordEnd < length && isWord(text.charAt(wordEnd)))
+					wordEnd++;
+				var previous = i == 0 ? '' : text.charAt(i - 1);
+				if (!isWord(previous) && previous != '.'
+					&& luaOperandBreakWords.indexOf(text.substr(i, wordEnd - i)) >= 0)
+					boundary = wordEnd - i;
+				else {
+					i = wordEnd;
+					continue;
+				}
+			}
+			if (boundary == 0) {
+				i++;
+				continue;
+			}
+			out.add(rewriteOperatorSegment(text.substr(start, i - start)));
+			out.add(text.substr(i, boundary));
+			i += boundary;
+			start = i;
+		}
+		out.add(rewriteOperatorSegment(text.substr(start)));
+		return out.toString();
+	}
+
+	/** One stretch between commas, comparisons and keywords: at most one `..` chain. */
+	static function rewriteOperatorSegment(segment:String):String {
+		if (segment.indexOf('..') < 0)
+			return rewriteOperatorChain(segment);
+		var parts = splitLuaConcatExpression(segment);
+		if (parts.length < 2 || parts.indexOf('') >= 0)
+			return rewriteOperatorChain(segment);
+		var lead = 0;
+		while (lead < segment.length && isSpace(segment.charAt(lead)))
+			lead++;
+		var tail = segment.length;
+		while (tail > lead && isSpace(segment.charAt(tail - 1)))
+			tail--;
+		return segment.substr(0, lead) + [for (part in parts) luaConcatOperand(rewriteOperatorChain(part))].join(' + ')
+			+ segment.substr(tail);
+	}
+
+	/**
+		One operand of `..`, spelled so that `+` can only ever join text. A quoted
+		string is text already; anything else is joined onto an empty string
+		first, which also gives it Lua's precedence (`'n' .. i + 1` is 'n2').
+		Two strings never add, so `'0' .. seconds` stays '05' even in a Lua scope,
+		where `+` between a number and a numeric string is a sum.
+	*/
+	static function luaConcatOperand(operand:String):String {
+		var quote = operand.charAt(0);
+		if ((quote == '"' || quote == "'") && skipLuaQuotedString(operand, 0) == operand.length)
+			return operand;
+		return luaPostfixEnd(operand, 0) == operand.length ? '("" + ' + operand + ')' : '("" + (' + operand + '))';
+	}
+
+	/** Arithmetic-level text: track the postfix expression being read so `^`, `#` and `:` find their operands. */
+	static function rewriteOperatorChain(text:String):String {
+		if (text.indexOf(':') < 0 && text.indexOf('#') < 0 && text.indexOf('^') < 0 && text.indexOf('..') < 0
+			&& text.indexOf('//') < 0)
+			return text;
+		var out = '';
+		var chainStart = -1;
+		var chainEnd = -1;
+		var i = 0;
+		var length = text.length;
+		while (i < length) {
+			var c = text.charAt(i);
+			var attached = chainStart >= 0 && chainEnd == out.length;
+			if (isSpace(c)) {
+				out += c;
+				i++;
+				continue;
+			}
+			if (c == '"' || c == "'") {
+				var stringEnd = skipLuaQuotedString(text, i);
+				chainStart = out.length;
+				out += text.substr(i, stringEnd - i);
+				chainEnd = out.length;
+				i = stringEnd;
+				continue;
+			}
+			if (c == '(' || c == '[' || c == '{') {
+				var closer = c == '(' ? ')' : c == '[' ? ']' : '}';
+				var close = matchingDelimiter(text, i, c, closer);
+				if (close < 0) {
+					out += c;
+					i++;
+					chainStart = -1;
+					continue;
+				}
+				if (!attached || c == '{')
+					chainStart = out.length;
+				out += c + rewriteLuaOperators(text.substr(i + 1, close - i - 1)) + closer;
+				chainEnd = out.length;
+				i = close + 1;
+				continue;
+			}
+			if (isDigit(c) || (c == '.' && !attached && i + 1 < length && isDigit(text.charAt(i + 1)))) {
+				var numberEnd = luaNumberEnd(text, i);
+				chainStart = out.length;
+				out += text.substr(i, numberEnd - i);
+				chainEnd = out.length;
+				i = numberEnd;
+				continue;
+			}
+			if (isIdentifierStart(c)) {
+				var wordEnd = i + 1;
+				while (wordEnd < length && isWord(text.charAt(wordEnd)))
+					wordEnd++;
+				var word = text.substr(i, wordEnd - i);
+				if (luaOperandWord(word)) {
+					chainStart = out.length;
+					out += word;
+					chainEnd = out.length;
+				} else {
+					out += word;
+					chainStart = -1;
+				}
+				i = wordEnd;
+				continue;
+			}
+			if (c == '.' && attached && i + 1 < length && isIdentifierStart(text.charAt(i + 1))) {
+				var fieldEnd = i + 2;
+				while (fieldEnd < length && isWord(text.charAt(fieldEnd)))
+					fieldEnd++;
+				out += text.substr(i, fieldEnd - i);
+				chainEnd = out.length;
+				i = fieldEnd;
+				continue;
+			}
+			if (c == ':' && attached && i + 1 < length && isIdentifierStart(text.charAt(i + 1))) {
+				var nameEnd = i + 2;
+				while (nameEnd < length && isWord(text.charAt(nameEnd)))
+					nameEnd++;
+				var open = nameEnd;
+				while (open < length && isSpace(text.charAt(open)))
+					open++;
+				var close = open < length && text.charAt(open) == '(' ? matchingDelimiter(text, open, '(', ')') : -1;
+				if (close >= 0) {
+					// The receiver is also the first argument. A plain name can simply
+					// be written twice; anything else goes through a helper so it is
+					// only worked out once. A string receiver is sent to the string
+					// library by the Lua scope either way.
+					var receiver = out.substr(chainStart);
+					var method = text.substr(i + 1, nameEnd - i - 1);
+					var args = StringTools.trim(rewriteLuaOperators(text.substr(open + 1, close - open - 1)));
+					out = out.substr(0, chainStart) + (~/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.match(receiver)
+						? receiver + '.' + method + '(' + receiver + (args == '' ? '' : ', ' + args) + ')'
+						: 'luaMethodCall(' + receiver + ", '" + method + "'" + (args == '' ? '' : ', ' + args) + ')');
+					chainEnd = out.length;
+					i = close + 1;
+					continue;
+				}
+			}
+			if (c == '#') {
+				var operandStart = i + 1;
+				while (operandStart < length && isSpace(text.charAt(operandStart)))
+					operandStart++;
+				var operandEnd = luaPostfixEnd(text, operandStart);
+				if (operandEnd > operandStart) {
+					chainStart = out.length;
+					out += 'luaSequenceLength(' + rewriteOperatorChain(text.substr(operandStart, operandEnd - operandStart)) + ')';
+					chainEnd = out.length;
+					i = operandEnd;
+					continue;
+				}
+			}
+			if (c == '/' && i + 1 < length && text.charAt(i + 1) == '/') {
+				var divisorStart = i + 2;
+				while (divisorStart < length && isSpace(text.charAt(divisorStart)))
+					divisorStart++;
+				var divisorEnd = luaPowerOperandEnd(text, divisorStart);
+				if (divisorEnd > divisorStart) {
+					// Lua 5.3 floor division. HScript has no such operator, so it is a
+					// `/` whose divisor carries a marker the Lua scope floors on; the
+					// precedence and left-to-right grouping of `/` carry over as they are.
+					out += '/ __luaFloorDivisor(' + rewriteOperatorChain(text.substr(divisorStart, divisorEnd - divisorStart)) + ')';
+					chainStart = -1;
+					i = divisorEnd;
+					continue;
+				}
+			}
+			if (c == '^' && chainStart >= 0 && StringTools.trim(out.substr(chainEnd)) == '') {
+				var rightStart = i + 1;
+				while (rightStart < length && isSpace(text.charAt(rightStart)))
+					rightStart++;
+				var rightEnd = luaPowerOperandEnd(text, rightStart);
+				if (rightEnd > rightStart) {
+					// `^` binds tighter than a leading minus and chains to the right.
+					var left = out.substr(chainStart, chainEnd - chainStart);
+					out = out.substr(0, chainStart) + 'Math.pow(' + left + ', '
+						+ rewriteOperatorChain(text.substr(rightStart, rightEnd - rightStart)) + ')';
+					chainEnd = out.length;
+					i = rightEnd;
+					continue;
+				}
+			}
+			out += c;
+			i++;
+			chainStart = -1;
+		}
+		return out;
+	}
+
+	static function luaNumberEnd(text:String, start:Int):Int {
+		var i = start;
+		var length = text.length;
+		if (text.substr(i, 2).toLowerCase() == '0x') {
+			i += 2;
+			while (i < length && ~/[0-9A-Fa-f]/.match(text.charAt(i)))
+				i++;
+			return i;
+		}
+		while (i < length && isDigit(text.charAt(i)))
+			i++;
+		if (i < length && text.charAt(i) == '.' && !(i + 1 < length && text.charAt(i + 1) == '.')) {
+			i++;
+			while (i < length && isDigit(text.charAt(i)))
+				i++;
+		}
+		if (i < length && (text.charAt(i) == 'e' || text.charAt(i) == 'E')) {
+			var exponent = i + 1;
+			if (exponent < length && (text.charAt(exponent) == '+' || text.charAt(exponent) == '-'))
+				exponent++;
+			if (exponent < length && isDigit(text.charAt(exponent))) {
+				i = exponent;
+				while (i < length && isDigit(text.charAt(i)))
+					i++;
+			}
+		}
+		return i;
+	}
+
+	/** End of the name, literal or bracketed group at `start` plus its `.field`, `[key]`, `(args)` and `:method(args)` suffixes. */
+	static function luaPostfixEnd(text:String, start:Int):Int {
+		var length = text.length;
+		if (start >= length)
+			return start;
+		var i = start;
+		var c = text.charAt(i);
+		if (c == '"' || c == "'")
+			i = skipLuaQuotedString(text, i);
+		else if (c == '(' || c == '[' || c == '{') {
+			var close = matchingDelimiter(text, i, c, c == '(' ? ')' : c == '[' ? ']' : '}');
+			if (close < 0)
+				return start;
+			i = close + 1;
+		} else if (isIdentifierStart(c)) {
+			while (i < length && isWord(text.charAt(i)))
+				i++;
+			if (!luaOperandWord(text.substr(start, i - start)))
+				return start;
+		} else if (isDigit(c) || (c == '.' && i + 1 < length && isDigit(text.charAt(i + 1))))
+			return luaNumberEnd(text, i);
+		else
+			return start;
+		while (i < length) {
+			c = text.charAt(i);
+			if ((c == '.' || c == ':') && i + 1 < length && isIdentifierStart(text.charAt(i + 1))) {
+				var nameEnd = i + 2;
+				while (nameEnd < length && isWord(text.charAt(nameEnd)))
+					nameEnd++;
+				if (c == ':' && (nameEnd >= length || text.charAt(nameEnd) != '('))
+					break;
+				i = nameEnd;
+				continue;
+			}
+			if (c == '(' || c == '[') {
+				var close = matchingDelimiter(text, i, c, c == '(' ? ')' : ']');
+				if (close < 0)
+					break;
+				i = close + 1;
+				continue;
+			}
+			break;
+		}
+		return i;
+	}
+
+	/** End of the right-hand operand of `^`: unary operators, one postfix expression, and any further `^`. */
+	static function luaPowerOperandEnd(text:String, start:Int):Int {
+		var length = text.length;
+		var i = start;
+		while (i < length) {
+			var c = text.charAt(i);
+			if (isSpace(c) || c == '-' || c == '#')
+				i++;
+			else if (text.substr(i, 3) == 'not' && (i + 3 >= length || !isWord(text.charAt(i + 3))))
+				i += 3;
+			else
+				break;
+		}
+		var end = luaPostfixEnd(text, i);
+		if (end == i)
+			return start;
+		var next = end;
+		while (next < length && isSpace(text.charAt(next)))
+			next++;
+		if (next < length && text.charAt(next) == '^') {
+			var chained = luaPowerOperandEnd(text, next + 1);
+			if (chained > next + 1)
+				return chained;
+		}
+		return end;
 	}
 
 	static function convertStatement(statement:String, origin:String, diagnostics:Array<String>):String {
@@ -1573,7 +2406,9 @@ class LuaCompat {
 		var text = rewriteDynamicGlobals(expression);
 		text = rewriteLegacyStrumAliases(text, origin, diagnostics);
 		text = rewriteInlineFunctionExpressions(text);
-		text = rewriteColonCalls(text, origin, diagnostics);
+		text = replaceOutsideStrings(text, '...', 'luaVarargsValues(__luaVarargs)');
+		text = rewriteLuaOperators(text);
+		// Only a `..` the pass above could not give two operands is left here.
 		text = replaceOutsideStrings(text, '..', '+');
 		text = replaceOutsideStrings(text, '~=', '!=');
 		text = replaceWordOutsideStrings(text, 'and', '&&');
@@ -1583,10 +2418,6 @@ class LuaCompat {
 		text = replaceMath(text, origin, diagnostics);
 		text = replaceLuaBuiltins(text, origin, diagnostics);
 		text = replaceTableHelpers(text, origin, diagnostics);
-		// Lua's length operator is 1 character and only has a useful direct
-		// equivalent for a named array/table in this bridge.
-		var length = ~/#\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)/g;
-		text = length.replace(text, 'luaSequenceLength($1)');
 		return text;
 	}
 
@@ -1614,6 +2445,12 @@ class LuaCompat {
 					if (StringTools.endsWith(rhs, ';'))
 						rhs = StringTools.trim(rhs.substr(0, rhs.length - 1));
 					return 'luaSetScriptGlobal(' + leading.keyExpression + ', ' + rhs + ')';
+				}
+				if (leading.mode == 'general') {
+					var value = StringTools.trim(source.substr(after + 1));
+					if (StringTools.endsWith(value, ';'))
+						value = StringTools.trim(value.substr(0, value.length - 1));
+					return 'luaGlobalSet(' + leading.keyExpression + ', ' + rewriteDynamicGlobals(value) + ')';
 				}
 				// The baseline defaultStrum family is read-only.  Preserve an
 				// attempted write so unsupportedLibrary() diagnoses it instead of
@@ -1807,12 +2644,21 @@ class LuaCompat {
 					keyExpression: '"' + strumPrefix + '" .. (' + StringTools.trim(parts[1]) + ')',
 					indexExpression: StringTools.trim(parts[1]), axis: strumPrefix.substr(strumPrefix.length - 1)};
 		}
-		return null;
+		if (StringTools.trim(rawKeyExpression) == '')
+			return null;
+		// The default strum slots belong to the engine: a script reads them and
+		// never writes them. Every other key is one of the script's own globals.
+		var firstPart = literalStringValue(parts[0]);
+		var engineOwned = firstPart != null && ~/^default(?:Player|Opponent)?Strum/.match(firstPart);
+		return {startIndex: start, endIndex: cursor, mode: engineOwned ? 'readonly' : 'general', key: key,
+			keyExpression: rawKeyExpression, indexExpression: null, axis: null};
 	}
 
 	static function dynamicGlobalRead(ref:LuaDynamicGlobalRef):String {
 		if (ref.mode == 'default')
 			return 'luaGetDefaultStrum(' + ref.indexExpression + ', "' + ref.axis.toLowerCase() + '")';
+		if (ref.mode == 'general')
+			return 'luaGlobalGet(' + ref.keyExpression + ')';
 		return 'luaGetScriptGlobal(' + ref.keyExpression + ')';
 	}
 
@@ -1916,8 +2762,6 @@ class LuaCompat {
 			{from: 'math.floor', to: 'Math.floor'},
 			{from: 'math.ceil', to: 'Math.ceil'},
 			{from: 'math.abs', to: 'Math.abs'},
-			{from: 'math.min', to: 'Math.min'},
-			{from: 'math.max', to: 'Math.max'},
 			{from: 'math.pow', to: 'Math.pow'},
 			// Psych mods commonly provide math.lerp from their Lua runtime. FlxMath
 			// is already exposed to every compatibility interpreter and has the
@@ -1932,12 +2776,109 @@ class LuaCompat {
 			{from: 'math.clamp', to: 'luaMathClamp'}
 		];
 		for (entry in mappings)
-			text = replaceOutsideStrings(text, entry.from, entry.to);
+			text = replaceLibraryName(text, entry.from, entry.to);
+		text = routeMathExtremes(text, 'max');
+		text = routeMathExtremes(text, 'min');
 		text = routeMathFmod(text, origin, diagnostics);
-		if (containsOutsideStrings(text, 'math.')) {
+		// The rest of math.* is the library table the Lua scope carries; only a
+		// name that is neither in it nor defined by the script is worth a warning.
+		if (unknownLibraryMember(text, 'math', LuaStdlib.MATH_NAMES.concat(['huge', 'pi']))) {
 			addDiagnostic(diagnostics, origin, 'lua-math', 'Unsupported Lua math helper remains in expression: ' + text);
 		}
 		return text;
+	}
+
+	/**
+		`math.max(a, b)` keeps the plain Math.max spelling, which every
+		interpreter understands. Any other call, `math.max(a, b, c)` or
+		`math.max(unpack(t))`, and the bare name stay on the Lua scope's math
+		table, whose max takes any number of values.
+	*/
+	static function routeMathExtremes(source:String, name:String):String {
+		var library = 'math.' + name;
+		if (source == null || scriptLibraryMembers.indexOf(library) >= 0 || !containsOutsideStrings(source, library))
+			return source;
+		var output = new StringBuf();
+		var cursor = 0;
+		while (true) {
+			var at = indexOutsideStrings(source, library, cursor);
+			if (at < 0)
+				break;
+			var afterName = at + library.length;
+			output.add(source.substr(cursor, at - cursor));
+			cursor = afterName;
+			var before = at == 0 ? '' : source.charAt(at - 1);
+			if (isWord(before) || before == '.' || (afterName < source.length && isWord(source.charAt(afterName)))) {
+				output.add(library);
+				continue;
+			}
+			var open = afterName;
+			while (open < source.length && isSpace(source.charAt(open)))
+				open++;
+			var close = open < source.length && source.charAt(open) == '(' ? matchingDelimiter(source, open, '(', ')') : -1;
+			var inside = close < 0 ? null : source.substr(open + 1, close - open - 1);
+			var values = inside == null ? null : splitTopLevel(inside, ',');
+			// `math.max(a, unpack(t))` hands over every value of t, so it is not two values.
+			var twoValues = values != null && values.length == 2
+				&& !containsOutsideStrings(inside, 'luaVarargsValues') && !spreadsValues(values[1]);
+			output.add(twoValues ? 'Math.' + name : library);
+		}
+		output.add(source.substr(cursor));
+		return output.toString();
+	}
+
+	/** A last argument that hands over a whole list of values, not one. */
+	static function spreadsValues(argument:String):Bool {
+		var text = StringTools.trim(argument);
+		for (spread in ['unpack', 'table.unpack', 'select'])
+			if (StringTools.startsWith(text, spread)) {
+				var rest = StringTools.trim(text.substr(spread.length));
+				if (StringTools.startsWith(rest, '('))
+					return true;
+			}
+		return false;
+	}
+
+	/**
+		Swap a library name such as `math.floor` for its routed spelling where it
+		is code: outside strings and not part of a longer name, so `math.pivot`
+		or `self.tostring` are left alone. A member the script defines itself
+		(`function math.round`) keeps reading the script's own table.
+	*/
+	static function replaceLibraryName(value:String, from:String, to:String):String {
+		if (value == null || value.indexOf(from) < 0 || scriptLibraryMembers.indexOf(from) >= 0)
+			return value;
+		var output = new StringBuf();
+		var cursor = 0;
+		while (true) {
+			var at = indexOutsideStrings(value, from, cursor);
+			if (at < 0)
+				break;
+			var before = at == 0 ? '' : value.charAt(at - 1);
+			var afterIndex = at + from.length;
+			var after = afterIndex >= value.length ? '' : value.charAt(afterIndex);
+			output.add(value.substr(cursor, at - cursor));
+			output.add(isWord(before) || before == '.' || isWord(after) || tableKeyAt(value, at, afterIndex) ? from : to);
+			cursor = afterIndex;
+		}
+		output.add(value.substr(cursor));
+		return output.toString();
+	}
+
+	/** `{tostring = f}` or `{tostring: f}`: a field name, read back later as `obj.tostring`. */
+	static function tableKeyAt(value:String, start:Int, end:Int):Bool {
+		var previous = start - 1;
+		while (previous >= 0 && isSpace(value.charAt(previous)))
+			previous--;
+		if (previous < 0 || (value.charAt(previous) != '{' && value.charAt(previous) != ','))
+			return false;
+		var next = end;
+		while (next < value.length && isSpace(value.charAt(next)))
+			next++;
+		if (next >= value.length)
+			return false;
+		var mark = value.charAt(next);
+		return mark == ':' || (mark == '=' && (next + 1 >= value.length || value.charAt(next + 1) != '='));
 	}
 
 	/** Lower Lua's two-argument fmod through the translated scope's `%` operator. */
@@ -1977,8 +2918,16 @@ class LuaCompat {
 				continue;
 			}
 			output.add(source.substr(cursor, call - cursor));
-			output.add('(' + convertExpression(StringTools.trim(args[0]), origin, diagnostics)
-				+ ' % ' + convertExpression(StringTools.trim(args[1]), origin, diagnostics) + ')');
+			// Not `%`: Lua's modulo follows the divisor's sign, fmod the dividend's.
+			// Spelled out so it reads the same in every interpreter.
+			var fmodId = collectionCounter++;
+			var dividend = '__luaFmodA' + fmodId;
+			var divisor = '__luaFmodB' + fmodId;
+			output.add('(function(' + dividend + ', ' + divisor + ') { return ' + dividend + ' - ' + divisor
+				+ ' * (' + dividend + ' / ' + divisor + ' < 0 ? Math.ceil(' + dividend + ' / ' + divisor
+				+ ') : Math.floor(' + dividend + ' / ' + divisor + ')); })('
+				+ convertExpression(StringTools.trim(args[0]), origin, diagnostics)
+				+ ', ' + convertExpression(StringTools.trim(args[1]), origin, diagnostics) + ')');
 			cursor = close + 1;
 		}
 		return output.toString();
@@ -2002,20 +2951,17 @@ class LuaCompat {
 			{from: 'table.find', to: 'luaTableFind'},
 			{from: 'table.clear', to: 'luaTableClear'},
 			{from: 'getfenv', to: 'luaGetEnvironment'},
-			{from: 'getmetatable', to: 'luaGetMetatable'}
+			{from: 'getmetatable', to: 'luaGetMetatable'},
+			// The Lua scope keeps real metatables (__index, __newindex, __call).
+			{from: 'setmetatable', to: 'luaSetMetatable'}
 		])
-			text = replaceOutsideStrings(text, entry.from, entry.to);
-		// Metatable writes are routed only when the metatable is a named local
-		// table.  An arbitrary table expression remains visible to the safety
-		// checker and therefore keeps the existing lua-metatable diagnostic.
-		var safeMetatable = ~/setmetatable\s*\(\s*([^,()]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
-		text = safeMetatable.replace(text, 'luaSetMetatable($1, $2)');
+			text = replaceLibraryName(text, entry.from, entry.to);
 		// HScript has no Lua `type` global.  Keep the call shape and provide a
 		// deterministic helper through the interpreter seed in PlayState.
 		text = replaceWordOutsideStrings(text, 'type', 'luaType');
-		if (containsLibraryPrefix(text, 'string.'))
+		if (unknownLibraryMember(text, 'string', LuaStdlib.STRING_NAMES))
 			addDiagnostic(diagnostics, origin, 'lua-string-library', 'This Lua string helper is not routed: ' + text);
-		if (containsLibraryPrefix(text, 'os.'))
+		if (unknownLibraryMember(text, 'os', LuaStdlib.OS_NAMES))
 			addDiagnostic(diagnostics, origin, 'lua-os', 'This Lua os helper is not routed: ' + text);
 		return text;
 	}
@@ -2100,6 +3046,44 @@ class LuaCompat {
 			|| (pattern == '^%s*(.-)%s*$' && replacement == '%1');
 	}
 
+	/**
+		Whether the text uses `library.name` with a name the Lua library table
+		does not have and the script never defines itself.
+	*/
+	static function unknownLibraryMember(text:String, library:String, known:Array<String>):Bool {
+		var prefix = library + '.';
+		var from = 0;
+		while (true) {
+			var at = indexOutsideStrings(text, prefix, from);
+			if (at < 0)
+				return false;
+			from = at + prefix.length;
+			var before = at == 0 ? '' : text.charAt(at - 1);
+			if (isWord(before) || before == '.')
+				continue;
+			var end = from;
+			while (end < text.length && isWord(text.charAt(end)))
+				end++;
+			var member = text.substr(from, end - from);
+			if (known.indexOf(member) < 0 && scriptLibraryMembers.indexOf(prefix + member) < 0)
+				return true;
+		}
+	}
+
+	/** `math.lerp = ...` and `function string.split(...)`: library fields the script adds itself. */
+	static function collectScriptLibraryMembers(source:String):Array<String> {
+		var members:Array<String> = [];
+		if (source == null)
+			return members;
+		for (pattern in [~/(?:^|[^A-Za-z0-9_.])(math|string|table|os)\.([A-Za-z_][A-Za-z0-9_]*)\s*=[^=]/g,
+			~/function\s+(math|string|table|os)\.([A-Za-z_][A-Za-z0-9_]*)/g])
+			pattern.map(source, function(match:EReg):String {
+				members.push(match.matched(1) + '.' + match.matched(2));
+				return match.matched(0);
+			});
+		return members;
+	}
+
 	/** Match a Lua library token outside strings. A substring such as the `os.`
 	 * in `camFollowPos.x` is an object property, not an os-library call. */
 	static function containsLibraryPrefix(value:String, prefix:String):Bool {
@@ -2123,10 +3107,10 @@ class LuaCompat {
 
 	static function replaceTableHelpers(text:String, origin:String, diagnostics:Array<String>):String {
 		text = routeTableConcat(text, origin, diagnostics);
-		text = replaceOutsideStrings(text, 'table.insert', 'luaTableInsert');
-		var remove = ~/table\.remove\s*\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*,\s*(.+)\)/g;
-		text = remove.replace(text, '$1.splice(($2) - 1, 1)');
-		if (containsOutsideStrings(text, 'table.'))
+		text = replaceLibraryName(text, 'table.insert', 'luaTableInsert');
+		// table.remove stays on the Lua scope's table library, which hands back
+		// the removed value for both forms and works on every kind of table.
+		if (unknownLibraryMember(text, 'table', LuaStdlib.TABLE_NAMES))
 			addDiagnostic(diagnostics, origin, 'lua-table-library', 'Unsupported Lua table helper remains in expression: ' + text);
 		return text;
 	}
@@ -2226,31 +3210,38 @@ class LuaCompat {
 	}
 
 	static function unsupportedLibrary(text:String):{code:String, message:String} {
-		// Reads of the scoped environment/metatable and writes whose metatable is
-		// a named table are lowered by replaceLuaBuiltins().  Check only the
-		// residual write forms here so intentionally unsafe arbitrary metatables
-		// retain their diagnostic.
-		if (text != null && text.indexOf('setmetatable') >= 0) {
-			var residual = ~/setmetatable\s*\(\s*([^,()]+)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g.replace(text, '');
-			if (residual.indexOf('setmetatable') >= 0)
-				return {code: 'lua-metatable', message: 'Lua metatables are not routed. [' + text + ']'};
-		}
+		// Metatables are lowered by replaceLuaBuiltins() and handled by the Lua scope.
 		for (entry in [
 			{prefix: 'runHaxeCode', code: 'lua-raw-haxe', message: 'runHaxeCode was removed from the generated script.'},
 			{prefix: '_G', code: 'lua-global-table', message: '_G dynamic global lookup is not routed.'},
 			{prefix: 'setfenv', code: 'lua-environment', message: 'setfenv is not routed.'},
 			{prefix: 'coroutine.', code: 'lua-coroutine', message: 'Lua coroutines are not routed.'},
-			{prefix: 'require(', code: 'lua-module', message: 'Lua require() modules are not routed.'},
+			{prefix: 'require', code: 'lua-module', message: 'Lua require() modules are not routed.'},
 			{prefix: 'loadstring', code: 'lua-dynamic-code', message: 'Lua dynamic code loading is not routed.'}
 			// math.rad/math.clamp/randomseed, os.clock/os.time, string.sub/len,
 			// tonumber/tostring and table.find/clear are rewritten by
 			// replaceLuaBuiltins before the generated statement is emitted.
 		]) {
-			if (text.indexOf(entry.prefix) >= 0
-				&& (entry.prefix != 'runHaxeCode' || containsOutsideStrings(text, entry.prefix)))
+			if (text != null && containsLibraryToken(text, entry.prefix))
 				return {code: entry.code, message: entry.message + ' [' + text + ']'};
 		}
 		return null;
+	}
+
+	/** A library name used as code: outside strings and not as part of a longer name. */
+	static function containsLibraryToken(text:String, token:String):Bool {
+		var from = 0;
+		var wholeWord = isWord(token.charAt(token.length - 1));
+		while (true) {
+			var at = indexOutsideStrings(text, token, from);
+			if (at < 0)
+				return false;
+			var before = at == 0 ? '' : text.charAt(at - 1);
+			var after = at + token.length >= text.length ? '' : text.charAt(at + token.length);
+			if (!isWord(before) && before != '.' && (!wholeWord || !isWord(after)))
+				return true;
+			from = at + token.length;
+		}
 	}
 
 	static function safeComment(value:String):String {
@@ -3285,10 +4276,15 @@ class LuaCompat {
 			}
 			if (c == '"' || c == "'") { quote = c; i++; continue; }
 			if (c == '-' && i + 1 < source.length && source.charAt(i + 1) == '-') {
-				var long = i + 3 < source.length && source.substr(i + 2, 2) == '[[';
-				var end = long ? source.indexOf(']]', i + 4) : source.indexOf('\n', i + 2);
+				// A block comment may carry a level, `--[==[ ... ]==]`, like a long string.
+				var level = i + 3;
+				while (level < source.length && source.charAt(level) == '=') level++;
+				var long = i + 3 < source.length && source.charAt(i + 2) == '['
+					&& level < source.length && source.charAt(level) == '[';
+				var closer = long ? ']' + source.substr(i + 3, level - i - 3) + ']' : '\n';
+				var end = source.indexOf(closer, long ? level + 1 : i + 2);
 				if (end < 0) end = source.length;
-				var maskEnd = long && end < source.length ? end + 2 : end;
+				var maskEnd = long && end < source.length ? end + closer.length : end;
 				for (p in i...maskEnd)
 					if (out[p] != '\n' && out[p] != '\r') out[p] = ' ';
 				i = maskEnd;
@@ -3299,23 +4295,169 @@ class LuaCompat {
 		return out.join('');
 	}
 
+	/** A long string `[[...]]` or `[==[...]==]` is plain text: hand it on as an ordinary quoted string. */
 	static function maskLongStrings(source:String, origin:String, diagnostics:Array<String>):String {
-		var out = source.split('');
+		if (source.indexOf('[') < 0)
+			return source;
+		var out = new StringBuf();
 		var i = 0;
-		while (i + 1 < source.length) {
-			if (source.substr(i, 2) == '[[') {
-				var end = source.indexOf(']]', i + 2);
-				if (end >= 0) {
-					addDiagnostic(diagnostics, origin, 'lua-long-string', 'Lua long strings are only supported inside runHaxeCode blocks.');
-					for (p in i...end + 2)
-						if (out[p] != '\n' && out[p] != '\r') out[p] = ' ';
-					i = end + 2;
-					continue;
+		var length = source.length;
+		while (i < length) {
+			var c = source.charAt(i);
+			if (c == '"' || c == "'") {
+				var stringEnd = skipLuaQuotedString(source, i);
+				out.add(source.substr(i, stringEnd - i));
+				i = stringEnd;
+				continue;
+			}
+			if (c == '[') {
+				var level = i + 1;
+				while (level < length && source.charAt(level) == '=')
+					level++;
+				if (level < length && source.charAt(level) == '[') {
+					var closer = ']' + source.substr(i + 1, level - i - 1) + ']';
+					var end = source.indexOf(closer, level + 1);
+					if (end >= 0) {
+						var content = source.substr(level + 1, end - level - 1);
+						// Lua drops a line break right after the opening bracket.
+						if (StringTools.startsWith(content, '\r\n'))
+							content = content.substr(2);
+						else if (StringTools.startsWith(content, '\n'))
+							content = content.substr(1);
+						out.add(quoteHaxeString(content));
+						i = end + closer.length;
+						continue;
+					}
 				}
 			}
+			out.add(c);
 			i++;
 		}
-		return out.join('');
+		return out.toString();
+	}
+
+	/**
+		Spellings Lua reads and HScript does not: decimal and hex character
+		escapes in strings, an exponent on a whole number (`1e2`), and a call
+		written as a name followed by a string (`f'text'`).
+	*/
+	static function normalizeLuaLiterals(source:String):String {
+		var out = new StringBuf();
+		var i = 0;
+		var length = source.length;
+		var callSugarBlockers = ['and', 'or', 'not', 'return', 'then', 'else', 'elseif', 'do', 'in', 'until',
+			'local', 'if', 'while', 'end', 'repeat', 'for', 'function', 'goto', 'nil', 'true', 'false'];
+		var lastWord = '';
+		var lastWordEnd = -1;
+		while (i < length) {
+			var c = source.charAt(i);
+			if (c == '"' || c == "'") {
+				var stringEnd = skipLuaQuotedString(source, i);
+				var literal = normalizeLuaStringEscapes(source.substr(i, stringEnd - i));
+				// `f'text'` and `f "text"` call f with the string.
+				var sugar = lastWordEnd >= 0 && callSugarBlockers.indexOf(lastWord) < 0
+					&& StringTools.trim(source.substr(lastWordEnd, i - lastWordEnd)) == '';
+				out.add(sugar ? '(' + literal + ')' : literal);
+				i = stringEnd;
+				lastWordEnd = -1;
+				continue;
+			}
+			if (isIdentifierStart(c)) {
+				var wordEnd = i + 1;
+				while (wordEnd < length && isWord(source.charAt(wordEnd)))
+					wordEnd++;
+				lastWord = source.substr(i, wordEnd - i);
+				lastWordEnd = wordEnd;
+				out.add(lastWord);
+				i = wordEnd;
+				continue;
+			}
+			if (isDigit(c) || (c == '.' && i + 1 < length && isDigit(source.charAt(i + 1))
+				&& (i == 0 || !isWord(source.charAt(i - 1))))) {
+				var numberEnd = luaNumberEnd(source, i);
+				var number = source.substr(i, numberEnd - i);
+				// HScript only reads an exponent after a decimal point.
+				var whole = ~/^([0-9]+)([eE][+-]?[0-9]+)$/;
+				out.add(whole.match(number) ? whole.matched(1) + '.0' + whole.matched(2) : number);
+				i = numberEnd > i ? numberEnd : i + 1;
+				lastWordEnd = -1;
+				continue;
+			}
+			if (!isSpace(c))
+				lastWordEnd = -1;
+			out.add(c);
+			i++;
+		}
+		return out.toString();
+	}
+
+	static function normalizeLuaStringEscapes(literal:String):String {
+		if (literal.indexOf('\\') < 0)
+			return literal;
+		var quote = literal.charAt(0);
+		var out = new StringBuf();
+		var i = 0;
+		while (i < literal.length) {
+			var c = literal.charAt(i);
+			if (c != '\\' || i + 1 >= literal.length) {
+				out.add(c);
+				i++;
+				continue;
+			}
+			var next = literal.charAt(i + 1);
+			var code = -1;
+			var consumed = 2;
+			if (isDigit(next)) {
+				var digits = 1;
+				while (digits < 3 && i + 1 + digits < literal.length && isDigit(literal.charAt(i + 1 + digits)))
+					digits++;
+				code = Std.parseInt(literal.substr(i + 1, digits));
+				consumed = 1 + digits;
+			} else if (next == 'x' && ~/^[0-9A-Fa-f]{2}$/.match(literal.substr(i + 2, 2))) {
+				code = Std.parseInt('0x' + literal.substr(i + 2, 2));
+				consumed = 4;
+			}
+			if (code == 10)
+				out.add('\\n');
+			else if (code == 13)
+				out.add('\\r');
+			else if (code == 9)
+				out.add('\\t');
+			else if (code >= 32 && code <= 126) {
+				var character = String.fromCharCode(code);
+				out.add(character == quote || character == '\\' ? '\\' + character : character);
+			} else {
+				// Anything else keeps its spelling, including the usual \n and \".
+				out.add(literal.substr(i, code < 0 ? 2 : consumed));
+				i += code < 0 ? 2 : consumed;
+				continue;
+			}
+			i += consumed;
+		}
+		return out.toString();
+	}
+
+	/** Lua lets `;` separate table fields just like `,`. */
+	static function luaTableFieldCommas(body:String):String {
+		if (body.indexOf(';') < 0)
+			return body;
+		var out = new StringBuf();
+		var depth = 0;
+		var i = 0;
+		while (i < body.length) {
+			var c = body.charAt(i);
+			if (c == '"' || c == "'") {
+				var stringEnd = skipLuaQuotedString(body, i);
+				out.add(body.substr(i, stringEnd - i));
+				i = stringEnd;
+				continue;
+			}
+			if (c == '(' || c == '[' || c == '{') depth++;
+			else if (c == ')' || c == ']' || c == '}') depth--;
+			out.add(c == ';' && depth == 0 ? ',' : c);
+			i++;
+		}
+		return out.toString();
 	}
 
 	/** Convert Lua table literals to HScript arrays or anonymous objects. */
@@ -3356,7 +4498,7 @@ class LuaCompat {
 
 	static function formatTable(body:String, origin:String, diagnostics:Array<String>):String {
 		var converted = convertTables(body, origin, diagnostics);
-		var entries = splitTopLevel(converted, ',');
+		var entries = splitTopLevel(luaTableFieldCommas(converted), ',');
 		var hasKey = false;
 		var hasValue = false;
 		var keyed:Array<String> = [];
@@ -3385,8 +4527,11 @@ class LuaCompat {
 						orderedAssignments.push({key:quoteHaxeString(stringKey), value:value});
 						hasKey = true;
 					} else {
-						addDiagnostic(diagnostics, origin, 'lua-table-key', 'Only identifier-shaped literal string keys are routed: ' + key);
-						return '{}';
+						// Any other key (`[1]`, `[name .. 'X']`) is worked out when the
+						// table is built.
+						needsLuaTable = true;
+						orderedAssignments.push({key:bracketKey, value:value});
+						hasKey = true;
 					}
 				} else {
 					addDiagnostic(diagnostics, origin, 'lua-table-key', 'Unsupported Lua table key: ' + key);
@@ -3398,10 +4543,10 @@ class LuaCompat {
 				orderedAssignments.push({key:Std.string(sequenceIndex++), value:entry});
 			}
 		}
-		if (hasKey && hasValue && !needsLuaTable) {
-			addDiagnostic(diagnostics, origin, 'lua-table-mixed', 'Mixed keyed/array Lua tables are not routed.');
-			return '{}';
-		}
+		// `{1, 2, name = 'n'}` holds a sequence and named fields at once, which
+		// only the Lua-owned table below can do.
+		if (hasKey && hasValue)
+			needsLuaTable = true;
 		if (needsLuaTable) {
 			// Use the Lua-owned array sidecar for keys which cannot be represented
 			// as HScript object fields. Assignments preserve arbitrary strings,

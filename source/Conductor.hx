@@ -41,6 +41,39 @@ class Conductor {
 	
 	public static var offset:Float = 0;
 	/**
+	 * Chart time minus audio time, in ms, from the song's instrumentalOffset.
+	 * Positive means the chart runs ahead of the audio (silence before the
+	 * music joins), negative means the audio has a lead-in the chart skips.
+	 * Same sign as V-Slice's instrumental offset and Psych's song offset.
+	 */
+	public static var instrumentalOffset:Float = 0;
+	/** Chart time for an audio position. */
+	public static inline function songTimeFromAudio(audioTime:Float):Float
+		return audioTime + instrumentalOffset;
+	/** Audio position for a chart time. */
+	public static inline function audioTimeFromSong(songTime:Float):Float
+		return songTime - instrumentalOffset;
+	/**
+	 * Chart time the countdown has to reach before the music starts. With a
+	 * positive offset the chart plays that long in silence first, unless the
+	 * song is started past that point anyway.
+	 */
+	public static inline function songStartThreshold(startTime:Float):Float
+		return instrumentalOffset > startTime ? instrumentalOffset : 0;
+	/** Chart time the music is at when playback begins from `startTime`. */
+	public static inline function audioStartSongTime(startTime:Float):Float
+		return instrumentalOffset > startTime ? instrumentalOffset : startTime;
+	/** A chart's authored instrumental offset; anything that is not a finite number is zero. */
+	public static function chartInstrumentalOffset(song:Dynamic):Float {
+		if (song == null)
+			return 0;
+		var value:Dynamic = Reflect.field(song, 'instrumentalOffset');
+		if (!Std.isOfType(value, Int) && !Std.isOfType(value, Float))
+			return 0;
+		var number:Float = value;
+		return Math.isFinite(number) ? number : 0;
+	}
+	/**
 	 * Time scale. Currently unused (?)
 	 */
 	public static var timeScale:Float = Conductor.safeZoneOffset /166;

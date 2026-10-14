@@ -192,7 +192,11 @@ class HxcCompatRuntime {public static function clearGameOverCharacter(a:Dynamic)
 class StoryMenuState {public function new() {}}
 class FreeplayState {public function new() {}}
 class LoadingState {public static function loadAndSwitchState(s:Dynamic):Void {}}
-class PlayState {public static var isStoryMode=false;}
+class PlayState {
+ public static var isStoryMode=false;
+ public static function exitToMenu(?skipTransition:Bool=false,?menuMusic:Bool=false):Void
+  LoadingState.loadAndSwitchState(isStoryMode ? new StoryMenuState() : cast new FreeplayState());
+}
 class Main extends Base {
  var sourceMode:Int=0;
  var sourceStartStopped:Bool=false;

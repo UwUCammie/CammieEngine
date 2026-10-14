@@ -2575,7 +2575,7 @@ class Main {{
         character = (ROOT / "source/Character.hx").read_text()
         importer = (ROOT / "source/VSliceImporter.hx").read_text()
         play_state = (ROOT / "source/PlayState.hx").read_text()
-        self.assertIn("public var danceEvery:Int = 1;", character)
+        self.assertIn("public var danceEvery:Float = 1;", character)
         self.assertIn("char.danceEvery =", importer)
         self.assertIn("character.danceEvery <= 0", play_state)
         self.assertIn("characterDanceDue(dad, curBeat)", play_state)
@@ -2585,7 +2585,9 @@ class Main {{
         self.assertIn("return beat % gfSpeed == 0 && characterDanceDue(gf, beat);", gf_gate)
         actor_gate = extract_method(play_state, "function characterDanceDue(")
         self.assertIn("character.codenameLiveDefinition != null || character.danceEvery <= 0", actor_gate)
-        self.assertIn("return interval > 0 && beat % interval == 0;", actor_gate)
+        self.assertIn("return Character.danceDueOnStep(character.danceEvery, beat * 4);", actor_gate)
+        character_gate = extract_method(character, "public static function danceDueOnStep(")
+        self.assertIn("return every > 0 && step % (every * 4) == 0;", character_gate)
 
     def test_stage_conversion_preserves_positions_layers_props_and_animation_metadata(self):
         stage = {

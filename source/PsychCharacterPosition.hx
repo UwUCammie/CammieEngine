@@ -72,30 +72,34 @@ class PsychCharacterPosition {
 		return [cameraX, position[1]];
 	}
 
-	static function psychRoleCameraBase(role:String):Array<Float> {
+	/** The camera focus side a Psych role name stands for. */
+	public static function cameraSide(role:String):Int {
 		var normalizedRole = role == null ? '' : role.trim().toLowerCase();
 		return switch (normalizedRole) {
-			case 'boyfriend' | 'bf' | 'player1': [-100, -100];
-			case 'gf' | 'girlfriend' | 'player3': [0, 0];
-			default: [150, -100];
+			case 'boyfriend' | 'bf' | 'player1': SourceCameraFollowPointMath.PLAYER;
+			case 'gf' | 'girlfriend' | 'player3': SourceCameraFollowPointMath.GIRLFRIEND;
+			default: SourceCameraFollowPointMath.OPPONENT;
 		};
 	}
 
 	/** Compose the Psych role baseline with live character/stage camera metadata
 	 * and only the changes made after native Character.init. Psych's focus is
 	 * BF [-100,-100], dad [150,-100], GF [0,0]; native legacy defaults are
-	 * intentionally excluded. */
+	 * intentionally excluded. Nightmare Vision is the same with a 100 opponent base. */
 	public static function effectiveCameraOffset(role:String, cameraPosition:Dynamic,
-		stageCameraPosition:Dynamic, followDeltaX:Float = 0, followDeltaY:Float = 0):Array<Float> {
-		var base = psychRoleCameraBase(role);
-		var character = roleCameraOffset(cameraPosition, role);
+		stageCameraPosition:Dynamic, followDeltaX:Float = 0, followDeltaY:Float = 0,
+		opponentBaseX:Float = SourceCameraFollowPointMath.PSYCH_OPPONENT_BASE_X):Array<Float> {
+		var side = cameraSide(role);
+		var character = point(cameraPosition);
+		if (character == null)
+			character = [0, 0];
 		var stage = point(stageCameraPosition);
 		if (stage == null)
 			stage = [0, 0];
 		var dx = Math.isNaN(followDeltaX) || !Math.isFinite(followDeltaX) ? 0 : followDeltaX;
 		var dy = Math.isNaN(followDeltaY) || !Math.isFinite(followDeltaY) ? 0 : followDeltaY;
-		return [base[0] + character[0] + stage[0] + dx,
-			base[1] + character[1] + stage[1] + dy];
+		return [SourceCameraFollowPointMath.focusOffsetX(side, character[0], stage[0], opponentBaseX) + dx,
+			SourceCameraFollowPointMath.focusOffsetY(side, character[1], stage[1]) + dy];
 	}
 
 	/** The donor's own character JSON wins, including an explicit [0, 0].

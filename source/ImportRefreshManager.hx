@@ -3123,7 +3123,7 @@ class ImportRefreshManager {
 
 	/** Detect, without the receipt's forced identity, what a failed record's
 	 * roots really are. Only an explicitly typed root with no recorded evidence
-	 * can be contradicted, and only by executable proof. */
+	 * can be contradicted, and only by executable or format-decisive proof. */
 	static function retainedEngineMismatch(install:String, record:Dynamic):Null<ImportRefreshFailure.ImportEngineMismatch> {
 		var found:Null<ImportRefreshFailure.ImportEngineMismatch> = null;
 		var previousEngines = ImportRootScanner.setRetainedSourceEngines(null);
@@ -3136,7 +3136,7 @@ class ImportRefreshManager {
 				var inspected = ImportRootScanner.inspectRoot(relative == "" ? source : Path.join([source, relative]), ImportEngine.AUTO);
 				if (inspected == null) continue;
 				found = ImportRefreshFailure.mismatch(relative, Std.string(record.type), Std.string(root.engine),
-					Reflect.field(root, "evidence"), inspected.engine, inspected.evidence);
+					Reflect.field(root, "evidence"), inspected.engine, inspected.evidence, inspected.decisive == true);
 				if (found != null) break;
 			}
 		} catch (_:Dynamic) found = null;

@@ -33,7 +33,10 @@ class PsychSourceBindings {
 	final host:PlayState;
 	final ownerRoot:String;
 	final files:SourceScriptFileAccess;
-	final runtimeShaders:Map<String, Array<String>> = new Map();
+	// Per owner on purpose: a shader name loaded by one import is not visible
+	// to another, even when both use the same name.
+	final shaders:RuntimeShaderRegistry = new RuntimeShaderRegistry(
+		function():Bool return OptionsHandler.options.gameplayShaders, buildLuaShader);
 
 	public function new(host:PlayState, ?ownerRoot:String) {
 		this.host = host;
@@ -42,35 +45,27 @@ class PsychSourceBindings {
 	}
 
 	function addScore(value:Int = 0):Void {
-		host.songScore += value;
-		host.psychScoreChanged();
+		host.adjustScore('score', value, true);
 	}
 
 	function setScore(value:Int = 0):Void {
-		host.songScore = value;
-		host.psychScoreChanged();
+		host.adjustScore('score', value, false);
 	}
 
 	function addMisses(value:Int = 0):Void {
-		PlayState.misses += value;
-		host.psychScoreChanged();
+		host.adjustScore('misses', value, true);
 	}
 
 	function setMisses(value:Int = 0):Void {
-		PlayState.misses = value;
-		host.psychScoreChanged();
+		host.adjustScore('misses', value, false);
 	}
 
 	function addHits(value:Int = 0):Void {
-		if (host.sourceScoreLedgerActive()) host.songHits += value;
-		else host.psychHitsAdjustment += value;
-		host.psychScoreChanged();
+		host.adjustScore('hits', value, true);
 	}
 
 	function setHits(value:Int = 0):Void {
-		if (host.sourceScoreLedgerActive()) host.songHits = value;
-		else host.psychHitsAdjustment = value - PlayState.sicks - PlayState.goods - PlayState.bads - PlayState.shits;
-		host.psychScoreChanged();
+		host.adjustScore('hits', value, false);
 	}
 
 	static function scorePropertyAlias(path:Dynamic):String {
@@ -85,26 +80,14 @@ class PsychSourceBindings {
 	}
 
 	function readScorePropertyAlias(alias:String):Dynamic {
-		return switch (alias) {
-			case 'score': host.songScore;
-			case 'misses': PlayState.misses;
-			case 'hits': host.sourceScoreLedgerActive() ? host.songHits
-				: PlayState.sicks + PlayState.goods + PlayState.bads + PlayState.shits + host.psychHitsAdjustment;
-			default: null;
-		};
+		return host.scoreValue(alias);
 	}
 
 	function writeScorePropertyAlias(alias:String, value:Dynamic):Bool {
 		if (alias == '') return false;
 		var parsed = Std.parseFloat(Std.string(value));
 		var number = Math.isFinite(parsed) ? Std.int(parsed) : 0;
-		switch (alias) {
-			case 'score': setScore(number);
-			case 'misses': setMisses(number);
-			case 'hits': setHits(number);
-			default: return false;
-		}
-		return true;
+		return host.adjustScore(alias, number, false);
 	}
 
 	public function install(interp:Dynamic):Void {
@@ -258,8 +241,8 @@ class PsychSourceBindings {
 		variables.set('getColorFromName', function(color:String):Int return colorFromString(color));
 		variables.set('getColorFromString', function(color:String):Int return colorFromString(color));
 
-		variables.set('keyPressed', function(name:String = ''):Bool return actionState(name, 'held'));
-		variables.set('keyReleased', function(name:String = ''):Bool return actionState(name, 'release'));
+		variables.set('keyPressed', function(name:String = ''):Bool return host.actionState(name, 'pressed'));
+		variables.set('keyReleased', function(name:String = ''):Bool return host.actionState(name, 'justReleased'));
 		variables.set('keyboardPressed', function(name:String):Bool return keyboardState(name, 'pressed'));
 		variables.set('keyboardReleased', function(name:String):Bool return keyboardState(name, 'justReleased'));
 		variables.set('anyGamepadJustPressed', function(name:String):Bool return anyGamepadState(name, 'justPressed'));
@@ -646,12 +629,12 @@ class PsychSourceBindings {
 		} else host.moveCamera(role == 'dad' || role == 'opponent');
 	}
 
-	function psychSound(tag:Dynamic):FlxSound {
-		return host.compatTaggedSound(tag);
+	function psychSound(tag:Dynamic, emptyMeansMusic:Bool = false):FlxSound {
+		return host.soundForTag(tag, emptyMeansMusic);
 	}
 
 	function soundAction(tag:Dynamic, action:String):Void {
-		var sound = tag == null || StringTools.trim(tag) == '' ? FlxG.sound.music : psychSound(tag);
+		var sound = psychSound(tag, true);
 		if (sound == null) return;
 		switch (action) {
 			case 'pause': sound.pause();
@@ -666,33 +649,16 @@ class PsychSourceBindings {
 	}
 
 	function soundNumber(tag:Dynamic, property:String, emptyUsesMusic:Bool = true):Float {
-		var empty = tag == null || StringTools.trim(Std.string(tag)) == '';
-		var sound = empty && emptyUsesMusic ? FlxG.sound.music : psychSound(tag);
+		var sound = psychSound(tag, emptyUsesMusic);
 		if (sound == null) return property == 'pitch' ? 1 : 0;
 		try return Reflect.getProperty(sound, property) catch (_:Dynamic) return 0;
 	}
 
 	function setSoundNumber(tag:Dynamic, property:String, value:Float):Void {
-		var sound = tag == null || StringTools.trim(Std.string(tag)) == '' ? FlxG.sound.music : psychSound(tag);
+		var sound = psychSound(tag, true);
 		if (sound != null) try Reflect.setProperty(sound, property, value) catch (_:Dynamic) {}
 	}
 
-	function actionState(name:String, state:String):Bool {
-		var token = name == null ? '' : StringTools.trim(name).toLowerCase();
-		var action = switch (token) {
-			case 'left': state == 'press' ? 'ctrl1-press' : state == 'release' ? 'ctrl1-release' : 'ctrl1';
-			case 'down': state == 'press' ? 'ctrl2-press' : state == 'release' ? 'ctrl2-release' : 'ctrl2';
-			case 'up': state == 'press' ? 'ctrl3-press' : state == 'release' ? 'ctrl3-release' : 'ctrl3';
-			case 'right': state == 'press' ? 'ctrl4-press' : state == 'release' ? 'ctrl4-release' : 'ctrl4';
-			default: token;
-		};
-		var controls:Dynamic = host.controls;
-		if (controls == null) return false;
-		var methodName = state == 'held' ? 'pressedByName' : 'checkByName';
-		var method = Reflect.field(controls, methodName);
-		if (!Reflect.isFunction(method)) return false;
-		try return Reflect.callMethod(controls, method, [action]) == true catch (_:Dynamic) return false;
-	}
 
 	static function keyboardState(name:String, state:String):Bool {
 		if (name == null) return false;
@@ -793,8 +759,7 @@ class PsychSourceBindings {
 	}
 
 	function colorFromString(value:String):Int {
-		var parsed = host.compatParseColor(value);
-		return parsed == null ? FlxColor.WHITE : cast parsed;
+		return CoolUtil.colorFromString(value);
 	}
 
 	function loadFrames(tag:String, image:String, spriteType:String):Void {
@@ -842,36 +807,40 @@ class PsychSourceBindings {
 
 	function initLuaShader(name:String):Bool {
 		#if (!flash && sys)
-		if (!OptionsHandler.options.gameplayShaders || name == null || StringTools.trim(name) == '') return false;
-		if (runtimeShaders.exists(name)) return true;
-		if (!PsychOwnerAssetPath.ownerReferenceAllowed(ownerRoot, name)) return false;
+		return shaders.init(name, ownerShaderSources);
+		#else
+		return false;
+		#end
+	}
+
+	/** Psych's Lua shaders keep going without a program when the GLSL is bad. */
+	static function buildLuaShader(fragment:String, vertex:String, name:String):Dynamic {
+		#if (!flash && sys)
+		return new RecoveringRuntimeShader(fragment, vertex, RuntimeShaderSource.NULL_PROGRAM, name);
+		#else
+		return null;
+		#end
+	}
+
+	/** Fragment and vertex text for a shader name, from this owner's files only. */
+	function ownerShaderSources(name:String):Array<String> {
+		if (!PsychOwnerAssetPath.ownerReferenceAllowed(ownerRoot, name)) return null;
 		var fragPath:Dynamic = host.compatPsychPathCall(ownerRoot, 'shaderFragment', [name]);
 		var vertPath:Dynamic = host.compatPsychPathCall(ownerRoot, 'shaderVertex', [name]);
 		var frag:Null<String> = null;
 		var vert:Null<String> = null;
 		try if (fragPath != null && FNFAssets.exists(Std.string(fragPath))) frag = FNFAssets.getText(Std.string(fragPath)) catch (_:Dynamic) {}
 		try if (vertPath != null && FNFAssets.exists(Std.string(vertPath))) vert = FNFAssets.getText(Std.string(vertPath)) catch (_:Dynamic) {}
-		if (frag == null && vert == null) return false;
-		runtimeShaders.set(name, [frag, vert]);
-		return true;
-		#else
-		return false;
-		#end
+		return [frag, vert];
 	}
 
 	function setSpriteShader(tag:String, shaderName:String):Bool {
 		#if (!flash && sys)
-		if (!OptionsHandler.options.gameplayShaders || tag == null || shaderName == null) return false;
-		if (!runtimeShaders.exists(shaderName) && !initLuaShader(shaderName)) return false;
+		if (tag == null || shaderName == null || !shaders.isEnabled()) return false;
+		if (!initLuaShader(shaderName)) return false;
 		var sprite = psychObject(tag);
 		if (!Std.isOfType(sprite, FlxSprite)) return false;
-		var sources = runtimeShaders.get(shaderName);
-		try {
-			(cast sprite:FlxSprite).shader = new ShaderHandler.CoolRuntimeShader(sources[0], sources[1]);
-			return true;
-		} catch (_:Dynamic) {
-			return false;
-		}
+		return shaders.setOn(sprite, shaderName);
 		#else
 		return false;
 		#end
@@ -880,8 +849,7 @@ class PsychSourceBindings {
 	function removeSpriteShader(tag:String):Bool {
 		var sprite = psychObject(tag);
 		if (!Std.isOfType(sprite, FlxSprite)) return false;
-		(cast sprite:FlxSprite).shader = null;
-		return true;
+		return RuntimeShaderRegistry.remove(sprite);
 	}
 
 	function shaderFor(tag:String):Dynamic {
@@ -896,24 +864,11 @@ class PsychSourceBindings {
 	}
 
 	function getShaderValue(tag:String, property:String, kind:String):Dynamic {
-		var shader = shaderFor(tag);
-		if (shader == null || property == null) return null;
-		var method = Reflect.field(shader, 'get' + kind);
-		if (!Reflect.isFunction(method)) return null;
-		try return Reflect.callMethod(shader, method, [property]) catch (_:Dynamic) return null;
+		return RuntimeShaderRegistry.getValue(shaderFor(tag), property, kind);
 	}
 
 	function setShaderValue(tag:String, property:String, value:Dynamic, kind:String):Bool {
-		var shader = shaderFor(tag);
-		if (shader == null || property == null) return false;
-		var method = Reflect.field(shader, 'set' + kind);
-		if (!Reflect.isFunction(method)) return false;
-		try {
-			Reflect.callMethod(shader, method, [property, value]);
-			return true;
-		} catch (_:Dynamic) {
-			return false;
-		}
+		return RuntimeShaderRegistry.setValue(shaderFor(tag), property, value, kind);
 	}
 
 	function setShaderSampler2D(tag:String, property:String, image:String):Bool {
@@ -923,15 +878,7 @@ class PsychSourceBindings {
 		if (shader == null) return false;
 		var graphic:Dynamic = host.compatPsychPathCall(ownerRoot, 'image', [host.compatPsychAssetKey(image, '.png')]);
 		var bitmap:Dynamic = graphic == null ? null : Reflect.getProperty(graphic, 'bitmap');
-		if (bitmap == null) return false;
-		var method = Reflect.field(shader, 'setSampler2D');
-		if (!Reflect.isFunction(method)) return false;
-		try {
-			Reflect.callMethod(shader, method, [property, bitmap]);
-			return true;
-		} catch (_:Dynamic) {
-			return false;
-		}
+		return RuntimeShaderRegistry.setSampler(shader, property, bitmap);
 		#else
 		return false;
 		#end
@@ -1015,45 +962,18 @@ class PsychSourceBindings {
 		return writeTaggedProperty(host.psychScriptVariables, tag, variable, value);
 	}
 
-	/** Psych's direction tween uses only strumLineNotes.members[note % length]. */
+	/**
+		Psych's direction tween picks its receptor as note % combined length.
+		It goes through the host's tagged tween like every other one, stored
+		under the tag the script gave so cancelTween(tag) finds it. The return
+		value keeps Psych's `tween_` spelling because scripts compare it.
+	*/
 	function noteTweenDirection(tag:String, note:Int, value:Dynamic, duration:Float,
 		?ease:String = 'linear'):Dynamic {
-		if (host.strumLineNotes == null || host.strumLineNotes.length == 0) return null;
-		var target:Dynamic = host.strumLineNotes.members[note % host.strumLineNotes.length];
+		var target:Dynamic = host.receptorAt(note, true);
 		if (target == null) return null;
-		var tweenEase = psychEaseName(ease);
-		var tweenTag:String = tag == null ? null : 'tween_' + formatTweenTag(tag);
-		if (tweenTag != null) host.compatCancelTween(tweenTag);
-		var props:Dynamic = {direction:value};
-		var created:FlxTween = null;
-		var complete = function(_) {
-			if (tweenTag != null && host.compatTweens.get(tweenTag) == created)
-				host.compatTweens.remove(tweenTag);
-			if (tag != null) host.callAllHScript('onTweenCompleted', [tag]);
-		};
-		var params:Dynamic = {ease:Reflect.field(FlxEase, tweenEase)};
-		if (tag != null) Reflect.setField(params, 'onComplete', complete);
-		created = FlxTween.tween(target, props, duration, params);
-		if (tweenTag != null) host.compatTweens.set(tweenTag, created);
-		return tweenTag;
-	}
-
-	static function psychEaseName(ease:String):String {
-		return switch (StringTools.trim(ease == null ? '' : ease).toLowerCase()) {
-			case 'backin': 'backIn'; case 'backinout': 'backInOut'; case 'backout': 'backOut';
-			case 'bouncein': 'bounceIn'; case 'bounceinout': 'bounceInOut'; case 'bounceout': 'bounceOut';
-			case 'circin': 'circIn'; case 'circinout': 'circInOut'; case 'circout': 'circOut';
-			case 'cubein': 'cubeIn'; case 'cubeinout': 'cubeInOut'; case 'cubeout': 'cubeOut';
-			case 'elasticin': 'elasticIn'; case 'elasticinout': 'elasticInOut'; case 'elasticout': 'elasticOut';
-			case 'expoin': 'expoIn'; case 'expoinout': 'expoInOut'; case 'expoout': 'expoOut';
-			case 'quadin': 'quadIn'; case 'quadinout': 'quadInOut'; case 'quadout': 'quadOut';
-			case 'quartin': 'quartIn'; case 'quartinout': 'quartInOut'; case 'quartout': 'quartOut';
-			case 'quintin': 'quintIn'; case 'quintinout': 'quintInOut'; case 'quintout': 'quintOut';
-			case 'sinein': 'sineIn'; case 'sineinout': 'sineInOut'; case 'sineout': 'sineOut';
-			case 'smoothstepin': 'smoothStepIn'; case 'smoothstepinout': 'smoothStepInOut'; case 'smoothstepout': 'smoothStepOut';
-			case 'smootherstepin': 'smootherStepIn'; case 'smootherstepinout': 'smootherStepInOut'; case 'smootherstepout': 'smootherStepOut';
-			default: 'linear';
-		};
+		host.startTaggedTween(tag, target, {direction: value}, duration, {ease: ease}, [tag]);
+		return tag == null ? null : 'tween_' + formatTweenTag(tag);
 	}
 
 	static function readTaggedProperty(variables:Map<String, Dynamic>, tag:String,

@@ -173,6 +173,7 @@ class Main {
 
         with tempfile.TemporaryDirectory(dir=ROOT / "tmp") as scratch:
             (Path(scratch) / "Main.hx").write_text(fixture, encoding="utf-8", newline="\n")
+            (Path(scratch) / 'SourceCameraFollowPointMath.hx').write_text((ROOT / 'source/SourceCameraFollowPointMath.hx').read_text(), newline='\n')
             result = subprocess.run(
                 [*HAXE_COMMAND, "-cp", scratch, "--run", "Main"],
                 cwd=ROOT, capture_output=True, text=True, timeout=60,

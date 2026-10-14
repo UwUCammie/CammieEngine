@@ -109,6 +109,29 @@ if (chart.song.notes[0].sectionNotes[0][1] != 8)
   throw "unsupported third-field note lane was reassigned";
 ''')
 
+    def test_chart_saved_without_its_wrapper_stays_unsupported(self):
+        self.run_haxe(r'''var flat:Dynamic = haxe.Json.parse('{"song":"Track","bpm":120,"format":"psych_v1","notes":[{"mustHitSection":true,"sectionNotes":[[0,1,0]]}]}');
+if (NightmareVisionChartCompat.convert(flat, "flat.json").supported) throw "a flat chart was accepted";
+// The importer's shared reader wraps flat charts for the rest of the family.
+var wrapped:Dynamic = PsychFamilyChartFields.envelope(flat);
+if (wrapped == null || wrapped.song != flat) throw "shared reader did not wrap the flat chart";
+var result = NightmareVisionChartCompat.convert(wrapped, "flat.json");
+if (result.supported) throw "a wrapped-on-import flat chart was accepted";
+if (result.diagnostics.join(";").indexOf("[nightmare-vision-chart-invalid]") < 0) throw "missing diagnostic";
+if (Reflect.hasField(flat, "keys") || flat.notes[0].sectionNotes[0][1] != 1) throw "an unsupported chart was rewritten";
+''')
+
+    def test_legacy_third_role_field_names_the_girlfriend(self):
+        self.run_haxe(r'''var chart:Dynamic = {song:{player3:"gf-old", notes:[]}};
+if (!NightmareVisionChartCompat.convert(chart).supported || chart.song.gf != "gf-old") throw "player3 was not mapped";
+chart = {song:{player3:"gf-old", gfVersion:"gf-new", notes:[]}};
+if (!NightmareVisionChartCompat.convert(chart).supported || chart.song.gf != "gf-new") throw "player3 displaced gfVersion";
+chart = {song:{notes:[]}};
+if (!NightmareVisionChartCompat.convert(chart).supported || Reflect.hasField(chart.song, "gf")
+  || chart.song.needsVoices != true || chart.song.speed != 1)
+  throw "defaults were not the source loader's";
+''')
+
     def test_authored_per_field_skins_are_retained(self):
         self.run_haxe(r'''var chart:Dynamic = {song:{format:"nmv2", keys:4, lanes:2,
   arrowSkins:["first", "second"], notes:[]}};

@@ -25,7 +25,7 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 
         source = (ROOT / "source/PlayState.hx").read_text()
         snapshot_start = source.index("\tfunction runtimeSmokeCameraSnapshot(")
-        snapshot_end = source.index("\n\tfunction psychStagePoint(", snapshot_start)
+        snapshot_end = source.index("\n\tfunction applySourceStageMetadata(", snapshot_start)
         snapshot = source[snapshot_start:snapshot_end]
         for field in (
             "chartEventTimestampMs", "eventTargetZoom", "eventDurationSeconds",
@@ -92,15 +92,20 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
 
         apply = source[source.index("\tfunction applyPsychStageJson("):source.index("\n\tfunction loadPsychStageCompat(")]
         self.assertLess(apply.index("boyfriend.setPosition"), apply.index("refreshPsychStageCameraTarget();"))
-        self.assertLess(apply.index("applyPsychStageCameraOffsets(data);"), apply.index("refreshPsychStageCameraTarget();"))
-        self.assertIn("psychStageCameraOpponent = psychStagePoint(data, 'camera_opponent');", source)
+        self.assertLess(apply.index("applySourceStageMetadata(meta, SourceStageMetadata.PSYCH);"), apply.index("refreshPsychStageCameraTarget();"))
+        self.assertIn("psychStageCameraOpponent = meta.cameraOpponent;", source)
         refresh = source[source.index("\tfunction refreshPsychStageCameraTarget("):source.index("\n\tfunction applyPsychStageJson(")]
         self.assertIn("camFollow.setPosition(target[0], target[1]);", refresh)
         self.assertIn("camGame.focusOn(camFollow.getPosition());", refresh)
         self.assertNotIn("defaultCamZoom", refresh)
         self.assertNotIn("setGameCameraZoom", refresh)
-        self.assertIn("defaultCamZoom = parsedZoom;", apply)
-        self.assertIn("setGameCameraZoom(parsedZoom);", apply)
+        # The Psych stage file snaps the camera to its zoom through the shared
+        # stage-metadata path rather than easing to it.
+        shared = source[source.index("\tfunction applySourceStageMetadata("):source.index("\n\tfunction nightmareVisionStageMetadata(")]
+        self.assertIn("defaultCamZoom = meta.defaultZoom;", shared)
+        self.assertIn("if (profile.snapZoom)\n\t\t\t\tsetGameCameraZoom(meta.defaultZoom);", shared)
+        metadata = (ROOT / "source/SourceStageMetadata.hx").read_text()
+        self.assertIn("PSYCH:SourceStageApplyProfile = {snapZoom:true", metadata)
 
         follow_start = source.index("\t\tif (generatedMusic && PlayState.SONG.notes[curSection] != null) {")
         follow_end = source.index("\n\t\t\t\t// playerOneTurn/playerTwoTurn mark", follow_start)
@@ -249,7 +254,8 @@ class CameraZoomCompatibilityTest(unittest.TestCase):
         self.assertIn("var scriptChangedZoom = cameraZoomChanged(", beat_hit)
         self.assertIn("!inCutscene && !endingSong && !scriptChangedZoom && camBoomSpeed > 0", beat_hit)
         self.assertIn("!scriptChangedZoom && !nativeCamBoomPulse", beat_hit)
-        self.assertIn("&& camZooming && camGame.zoom < 1.35", beat_hit)
+        self.assertIn("&& camZooming && camZoomRate > 0 && curBeat % camZoomRate == 0)", beat_hit)
+        self.assertIn("pulseCameraZoom(0.015 * camZoomIntensity, 0.03 * camZoomIntensity, 1.35, false, true);", beat_hit)
         self.assertEqual(beat_hit.count("setAllHaxeVar('curBeat', curBeat);"), 1)
 
     def test_event_and_custom_character_paths_keep_their_distinct_semantics(self):

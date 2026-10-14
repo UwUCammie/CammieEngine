@@ -44,10 +44,18 @@ class LuaResultsCompatTest {
   if (interp.variables.get('power') != 32) throw 'math.pow mapping';
   if (EngineCompat.luaStringGsub('a b', '%s+', '-', 1) != 'a-b')
    throw 'gsub maximum count on a supported pattern';
-  var unsupported = LuaCompat.translate(
-   "function onCreate()\n local x = string.gsub('a1', '%d', '')\nend", 'unsupported-pattern.lua');
-  if (unsupported.supported || unsupported.diagnostics.join(' | ').indexOf('lua-string-library') < 0)
-   throw 'unsupported Lua patterns must remain diagnosed';
+  // Patterns outside the fast literal subset run through the Lua scope's string library.
+  var general = LuaCompat.translate(
+   "function onCreate()\n digitless = string.gsub('a1', '%d', '')\nend", 'general-pattern.lua');
+  if (!general.supported) throw general.diagnostics.join(' | ');
+  var generalInterp = new LuaCompatInterp();
+  generalInterp.execute(new hscript.Parser().parseString(general.hscript));
+  Reflect.callMethod(null, generalInterp.variables.get('onCreate'), []);
+  if (generalInterp.variables.get('digitless') != 'a') throw 'general pattern gsub';
+  var unknown = LuaCompat.translate(
+   "function onCreate()\n local x = string.shuffle('a1')\nend", 'unknown-helper.lua');
+  if (unknown.supported || unknown.diagnostics.join(' | ').indexOf('lua-string-library') < 0)
+   throw 'unknown string helpers must remain diagnosed';
   Sys.println('ok');
  }
 }

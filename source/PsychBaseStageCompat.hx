@@ -124,6 +124,9 @@ class PsychBaseStageCompat extends FlxBasic {
 		var host = game;
 		var nativeGroup = readField(field);
 		if (nativeGroup != null || host == null) return nativeGroup;
+		// A play state keeps one view per role so scripts and this stage move the same group.
+		var shared = callTarget(host, 'characterGroupForRole', [role]);
+		if (shared != null) return shared;
 		var groups = actorGroups.get(host);
 		if (groups == null) {groups = new Map();actorGroups.set(host, groups);}
 		if (!groups.exists(role)) groups.set(role, new PsychBaseStageActorGroupCompat(host, role));

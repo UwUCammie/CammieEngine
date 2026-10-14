@@ -39,8 +39,26 @@ if(found==null || found.engine!=ImportEngine.PSYCH) throw "thin Psych package wa
 if(found.evidence.join(";").indexOf("section chart + callback Lua + week metadata")<0) throw "structural classification evidence absent";
 var formatted=ImportRootScanner.detectEngine(root+"/formatted-week-title");
 if(formatted!=ImportEngine.PSYCH) throw "Psych display title normalization was not applied";
-for(name in ["no-week","no-lua","no-chart","unrelated-week","legacy-lua","comment-lua","oversized-lua"])
- if(ImportRootScanner.detectEngine(root+"/"+name)==ImportEngine.PSYCH) throw "ambiguous thin package guessed Psych: "+name;
+// A chart with a callback script and nothing else still names no engine.
+if(ImportRootScanner.detectEngine(root+"/no-week")==ImportEngine.PSYCH) throw "ambiguous thin package guessed Psych: no-week";
+// A Psych week file is format evidence of its own, so these are found through
+// it. None of them may claim the chart + callback + week contract they lack.
+var thin="section chart + callback Lua + week metadata";
+for(name in ["no-lua","legacy-lua","comment-lua","oversized-lua"]) {
+ var match=ImportRootScanner.inspectRoot(root+"/"+name,ImportEngine.AUTO);
+ if(match==null || match.engine!=ImportEngine.PSYCH) throw "week file listing a charted song was not classified: "+name;
+ var evidence=match.evidence.join(";");
+ if(evidence.indexOf(thin)>=0) throw "thin contract claimed without a callback script: "+name;
+ if(evidence.indexOf("Psych Engine week file listing a charted song: weeks/*.json")<0) throw "week evidence absent: "+name;
+}
+for(name in ["no-chart","unrelated-week"]) {
+ var match=ImportRootScanner.inspectRoot(root+"/"+name,ImportEngine.AUTO);
+ if(match==null || match.engine!=ImportEngine.PSYCH) throw "Psych week file was not classified: "+name;
+ var evidence=match.evidence.join(";");
+ if(evidence.indexOf(thin)>=0) throw "thin contract claimed without a week-listed chart: "+name;
+ if(evidence.indexOf("listing a charted song")>=0) throw "week was credited with a chart it does not list: "+name;
+ if(evidence.indexOf("Psych Engine week file: weeks/*.json")<0) throw "week evidence absent: "+name;
+}
 }}
 ''')
             result=subprocess.run([*HAXE_COMMAND,'-cp',str(ROOT/'source'),'-cp',temp,'--run','Main',temp],
