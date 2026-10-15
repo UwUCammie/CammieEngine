@@ -4,6 +4,7 @@ from haxe_test_support import HAXE_COMMAND
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 from haxe_test_support import FixturePath as Path
 import subprocess
@@ -502,12 +503,22 @@ class Main {
             foreground.write_bytes(b"foreground")
             fixture = base / "Main.hx"
             fixture.write_text(IO_SCHEDULER_FIXTURE, encoding="utf-8", newline="\n")
-            result = subprocess.run(
-                [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(base), "--run", "Main",
-                 str(install), str(stage), str(source), str(foreground)],
-                cwd=ROOT, env={**os.environ, "CAMMIE_TEST_TMP": str(ROOT / "tmp")},
-                capture_output=True, text=True, timeout=300,
-            )
+            # The Haxe interpreter's threads can deadlock while a starved machine
+            # runs many suites at once (5 of 12 concurrent runs hung on unchanged
+            # code). A normal run takes about 4 s and its own waits stop by 150 s, so
+            # only a hang is retried, never a failed check.
+            for attempt in range(3):
+                shutil.rmtree(stage / "assets", ignore_errors=True)
+                try:
+                    result = subprocess.run(
+                        [*HAXE_COMMAND, "-cp", str(SOURCE), "-cp", str(base), "--run", "Main",
+                         str(install), str(stage), str(source), str(foreground)],
+                        cwd=ROOT, env={**os.environ, "CAMMIE_TEST_TMP": str(ROOT / "tmp")},
+                        capture_output=True, text=True, timeout=150,
+                    )
+                    break
+                except subprocess.TimeoutExpired:
+                    if attempt == 2: raise
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("OK", result.stdout)
             self.assertEqual((stage / "assets/data/copied.bin").stat().st_size, len(large))
