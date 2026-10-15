@@ -42,6 +42,15 @@ typedef ImportRefreshBrowseStatus = {
 	@:optional var queueRemaining:Int;
 }
 
+/** What a mod removal is waiting for while import work is still running. */
+typedef ImportRefreshWaitStatus = {
+	var busy:Bool;
+	var label:String;
+	var fraction:Float;
+	/** Packages still queued behind the one being refreshed. */
+	var queued:Int;
+}
+
 typedef ImportSourceBuildContext = {
 	/** Exact selected source root path from the caller, never inferred from host settings. */
 	var sourceRoot:String;
@@ -1521,8 +1530,10 @@ class ImportRefreshManager {
 		if (state == null) return true;
 		var className = Type.getClassName(Type.getClass(state));
 		if (className == null) return false;
+		// The neutral removal screen holds no imported scripts, and waits for this
+		// handoff to finish before it can review a removal.
 		for (safeName in ["MainMenuState", "FreeplayState", "SaveDataState", "ImportSettingsState",
-			"CodenameImportedModsState", "RuntimeImportSmokeState"])
+			"CodenameImportedModsState", "RuntimeImportSmokeState", "LibraryRemovalState"])
 			if (className == safeName || StringTools.endsWith(className, "." + safeName)) return true;
 		return false;
 	}
@@ -2709,6 +2720,22 @@ class ImportRefreshManager {
 		}
 		mutex.release();
 		return value;
+	}
+
+	/** Read-only view of the import work that a removal has to wait for: a saved
+	 * import check, a refresh, or the handoff that publishes it. Unlike
+	 * browseTick() it starts nothing, so any screen may poll it every frame. */
+	public static function removalWaitStatus():ImportRefreshWaitStatus {
+		mutex.acquire();
+		var handoff = !active && queue.length == 0 && hasRunnableHandoffLocked();
+		var result:ImportRefreshWaitStatus = {
+			busy:removalToken == "" && (active || inspectionPending || inspectionRunning || queue.length > 0 || handoff),
+			label:handoff ? "Loading imported songs" : status.label,
+			fraction:handoff ? (handoffTotal <= 0 ? 0 : Math.min(1, handoffCompleted / handoffTotal)) : status.fraction,
+			queued:queue.length
+		};
+		mutex.release();
+		return result;
 	}
 
 	static function markUnavailableOwnerRecord(records:Map<String,Dynamic>, token:String,

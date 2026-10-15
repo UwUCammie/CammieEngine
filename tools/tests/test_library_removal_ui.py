@@ -29,14 +29,16 @@ class LibraryRemovalUiTest(unittest.TestCase):
  class FlxText {public var text:String;public function new(x=0,y=0,w=0,text='',size=0){this.text=text;}public function setFormat(font:String,size:Int,color:Int,align:Align):Void{}}
 ''',
                 'ImportRemovalManager.hx': '''package; typedef StubStatus = {var phase:String;var busy:Bool;var label:String;var plan:Dynamic;var published:Bool;var cancellable:Bool;} class ImportRemovalManager {
- public static var state:StubStatus; public static var canPreview=true; public static var confirms=0;public static var cancels=0;public static var retries=0;
- public static function beginPreview(owner:String):Bool return canPreview;
- public static function poll():StubStatus return state;
+ public static var state:StubStatus; public static var canPreview=true; public static var confirms=0;public static var cancels=0;public static var retries=0;public static var previews=0;public static var throwing=false;
+ public static function beginPreview(owner:String):Bool {previews++;return canPreview;}
+ public static function poll():StubStatus {if(throwing)throw 'boom';return state;}
  public static function confirm():Bool{confirms++;state.busy=true;state.phase='applying';return true;}
  public static function cancel():Void{cancels++;}
  public static function retryCleanup():Bool{retries++;return true;}
  }
 ''',
+                'ImportRefreshManager.hx': '''typedef StubWait = {var busy:Bool;var label:String;var fraction:Float;var queued:Int;}
+class ImportRefreshManager {public static var wait:StubWait={busy:false,label:'',fraction:0,queued:0};public static var generation(default,null):Int=0;public static function publish():Void generation++;public static function removalWaitStatus():StubWait return wait;}''',
                 'UserLibrary.hx': '''class UserLibrary {public static function data():LibraryStubData return new LibraryStubData();public static function change(work:LibraryStubData->Void):Bool{work(data());return true;}}class LibraryStubData {public function new(){}public function isFavorite(key:String):Bool return false;public function setFavorite(key:String,value:Bool):Void{}}''',
                 'LibraryCategoriesSubState.hx': '''class LibraryCategoriesSubState extends LibraryMenuSubState {public function new(owner:String,categories:Array<String>,filter:Array<String>->Void){super();}}''',
                 'LibraryCollectionsSubState.hx': '''class LibraryCollectionsSubState extends LibraryMenuSubState {public function new(value:String,filter:String->Void){super();}}''',
@@ -105,6 +107,51 @@ class LibraryRemovalUiTest(unittest.TestCase):
  ImportRemovalManager.state.plan={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha'],blockers:['No committed ownership for assets/imported_mods/alpha.'],candidateFiles:[],sharedFiles:[],candidateSnapshots:[],sharedSnapshots:[],registryPaths:[]};
  var otherUi=new LibraryRemovalSubState('assets/imported_mods/alpha');otherUi.create();
  for(action in otherUi.actions)check(action.label.indexOf('Close running')<0,'unrelated blocker offered a session release');
+ // Import work blocks every removal: the popup says so plainly and carries on by itself afterwards.
+ var ready:Dynamic={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha'],blockers:[],candidateFiles:[1],sharedFiles:[],candidateSnapshots:[],sharedSnapshots:[],registryPaths:[]};
+ ImportRefreshManager.wait={busy:true,label:'Example mod',fraction:.5,queued:2};
+ ImportRemovalManager.state={phase:'idle',busy:false,label:'',plan:null,published:false,cancellable:false};
+ var previewsBefore=ImportRemovalManager.previews;var confirmsBefore=ImportRemovalManager.confirms;
+ var waitUi=new LibraryRemovalSubState('assets/imported_mods/alpha');waitUi.create();
+ check(ImportRemovalManager.previews==previewsBefore,'review started while import work was running');
+ check(waitUi.heading=='Mod refresh in progress'&&waitUi.actions.length==1&&waitUi.actions[0].label=='Return','refresh popup has no readable heading and a way back');
+ check(waitUi.detail.text.indexOf('being refreshed')>=0&&waitUi.detail.text.indexOf('starts by itself')>=0&&waitUi.detail.text.indexOf('Example mod (50%)')>=0&&waitUi.detail.text.indexOf('2 more mods')>=0,'refresh popup does not explain or show progress: '+waitUi.detail.text);
+ waitUi.update(.01);waitUi.update(.01);check(ImportRemovalManager.previews==previewsBefore&&waitUi.actions.length==1,'refresh popup restarted the review or lost its choice');
+ ImportRefreshManager.wait={busy:true,label:'Next mod',fraction:.25,queued:0};waitUi.update(.01);
+ check(waitUi.detail.text.indexOf('Next mod (25%)')>=0&&waitUi.actions.length==1&&waitUi.actions[0].label=='Return','refresh progress does not follow the refresh');
+ ImportRefreshManager.wait={busy:false,label:'',fraction:1,queued:0};
+ ImportRemovalManager.state={phase:'preview',busy:false,label:'Review',plan:ready,published:false,cancellable:false};
+ waitUi.update(.01);
+ check(ImportRemovalManager.previews==previewsBefore+1,'review did not start after the refresh finished');
+ check(waitUi.heading=='Remove installed mod?'&&waitUi.actions.length==2&&waitUi.actions[0].label.indexOf('NO')==0&&ImportRemovalManager.confirms==confirmsBefore,'refresh end did not reach the normal review with Keep first');
+ waitUi.update(.01);check(ImportRemovalManager.previews==previewsBefore+1,'review restarted every frame');
+ // Back out of the wait leaves everything installed.
+ ImportRefreshManager.wait={busy:true,label:'Again',fraction:0,queued:0};ImportRemovalManager.state={phase:'preview',busy:false,label:'',plan:ready,published:false,cancellable:false};
+ var backUi=new LibraryRemovalSubState('assets/imported_mods/alpha');backUi.create();backUi.backAction();check(backUi.closed&&ImportRemovalManager.confirms==confirmsBefore,'back from the refresh popup removed or kept the screen');
+ // A cancelled check is not restarted behind the player's back when import work begins.
+ ImportRefreshManager.wait={busy:false,label:'',fraction:0,queued:0};
+ ImportRemovalManager.state={phase:'cancelled',busy:false,label:'Cancelled',plan:null,published:false,cancellable:false};
+ var cancelUi=new LibraryRemovalSubState('assets/imported_mods/alpha');cancelUi.create();var cancelBefore=ImportRemovalManager.previews;
+ ImportRefreshManager.wait={busy:true,label:'Another',fraction:0,queued:0};cancelUi.update(.01);cancelUi.update(.01);
+ check(cancelUi.heading!='Mod refresh in progress'&&ImportRemovalManager.previews==cancelBefore,'a cancelled check was turned into a wait and restarted');
+ // A refresh that publishes while a review is on screen makes that review stale: it is checked again and never confirmed as it was.
+ ImportRefreshManager.wait={busy:false,label:'',fraction:0,queued:0};
+ ImportRemovalManager.state={phase:'preview',busy:false,label:'Review',plan:ready,published:false,cancellable:false};
+ var staleUi=new LibraryRemovalSubState('assets/imported_mods/alpha');staleUi.create();var staleBefore=ImportRemovalManager.previews;
+ staleUi.update(.01);check(ImportRemovalManager.previews==staleBefore,'review restarted without a publish');
+ ImportRefreshManager.publish();staleUi.update(.01);
+ check(ImportRemovalManager.previews==staleBefore+1,'a publish did not trigger a new review');
+ staleUi.update(.01);check(ImportRemovalManager.previews==staleBefore+1,'review restarted again after the new review began');
+ // Recovery that was still running when the screen opened is picked up by itself.
+ ImportRefreshManager.wait={busy:false,label:'',fraction:0,queued:0};
+ ImportRemovalManager.canPreview=false;ImportRemovalManager.state={phase:'idle',busy:true,label:'Checking interrupted mod removals...',plan:null,published:false,cancellable:false};
+ var lateUi=new LibraryRemovalSubState('assets/imported_mods/alpha');lateUi.create();var lateBefore=ImportRemovalManager.previews;
+ ImportRemovalManager.canPreview=true;ImportRemovalManager.state={phase:'idle',busy:false,label:'',plan:null,published:false,cancellable:false};lateUi.update(.01);
+ check(ImportRemovalManager.previews==lateBefore+1,'removal did not start once recovery had finished');
+ // A failure while drawing the choices still leaves readable text and Return.
+ ImportRemovalManager.canPreview=true;var crashUi=new LibraryRemovalSubState('assets/imported_mods/alpha');ImportRemovalManager.throwing=true;crashUi.create();
+ check(crashUi.heading=='Removal unavailable'&&crashUi.actions.length==1&&crashUi.actions[0].label=='Return'&&crashUi.detail.text.indexOf('boom')>=0&&crashUi.detail.text.indexOf('Nothing was removed')>=0,'failure left a blank popup');
+ crashUi.update(.01);crashUi.actions[0].run();check(crashUi.closed,'failure popup cannot return');ImportRemovalManager.throwing=false;
  Sys.println('confirmation contracts passed');
  }}
 ''',

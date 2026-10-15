@@ -2529,6 +2529,7 @@ class RuntimeSmokeHarness {
 		#if sys
 		if (RuntimeNvAssetsProbe.enabled()) { RuntimeNvAssetsProbe.tick(); return; }
 		if (RuntimeLibraryRemovalProbe.enabled()) { RuntimeLibraryRemovalProbe.tick(); return; }
+		if (RuntimeRemovalStateProbe.enabled()) { RuntimeRemovalStateProbe.tick(); return; }
 		if (RuntimeLibraryLifecycleProbe.enabled()) { RuntimeLibraryLifecycleProbe.tick(); return; }
 		if (RuntimeOwnerLibraryProbe.enabled()) { RuntimeOwnerLibraryProbe.tick(); return; }
 		if (RuntimeLegacyAnimateProbe.enabled()) { RuntimeLegacyAnimateProbe.tick(); return; }

@@ -54,6 +54,21 @@ class LibraryRemovalPresentation {
 		for (blocker in blockers) if (blocker != null && blocker.indexOf('active or reserved') >= 0) return true;
 		return false;
 	}
+	/** Phases where nothing of a removal is under way, so import work can simply be waited out.
+		A cancelled check stays cancelled: only the player starts another one. */
+	public static function waitsForImport(phase:String):Bool {
+		return phase == 'idle' || phase == 'preview' || phase == 'blocked';
+	}
+	/** Plain explanation shown while import work blocks a removal. */
+	public static function importWaitSummary(label:String, fraction:Float, queued:Int):String {
+		var lines = ['Installed mods are being refreshed after an update.',
+			'Removal is paused and starts by itself when the refresh finishes.',
+			'Nothing is removed unless you confirm it. Return leaves the mods as they are.'];
+		var step = label == null ? '' : StringTools.trim(label);
+		if (step != '') lines.push('Now: ' + step + ' (' + Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%)');
+		if (queued > 0) lines.push(queued + (queued == 1 ? ' more mod waits' : ' more mods wait') + ' in line.');
+		return lines.join('\n');
+	}
 	public static function confirmable(phase:String, busy:Bool, plan:Dynamic):Bool {
 		return phase == 'preview' && !busy && plan != null && plan.inventoryComplete == true
 			&& plan.blockers != null && plan.blockers.length == 0 && plan.affectedOwners.length > 0;
