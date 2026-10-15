@@ -54,7 +54,11 @@ class Main {
     check(tree(root)==before,"inspection wrote metadata");
     var again=inspect();check(Json.stringify(all)==Json.stringify(again),"unstable ordering");
    case "orphan-pointer": FS.deleteFile(a.manifest);rejects("missing manifest accepted");
-   case "hidden-owner": FS.deleteFile(b.pointer);rejects("owner absent from pointer index was skipped");
+   case "hidden-owner":
+    // A lost index pointer does not hide a committed import or block the rest.
+    FS.deleteFile(b.pointer);var before=tree(root);var all=inspect();
+    check(all.length==2,"committed import without its pointer was dropped");
+    check(tree(root)==before,"pointerless inspection mutated state");
    case "failed-import-pointer":
     // An import publishes its pointer first. If it then fails before its first
     // transaction, the pointer is all that is left and it owns nothing.

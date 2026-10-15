@@ -702,7 +702,9 @@ class ImportRefreshTransaction {
 			// (inspectOwnerState rejects anything unfinished or half committed), so it
 			// installed nothing, with or without the pointer its import left behind.
 			if (manifest == null) continue;
-			if (!pointers.exists(owner)) throw 'Committed owner has no matching retained pointer: $scope';
+			// The pointer is only an index entry. A committed manifest proves the import
+			// on its own (its record id is checked below), so a lost pointer must not hide
+			// the import from removal or block removing anything else.
 			var record:Dynamic = manifest.revision == null ? null : Reflect.field(manifest.revision, 'importRecord');
 			if (record == null || Reflect.field(record, 'schemaVersion') != 1
 				|| owner != 'retained-import:' + Std.string(Reflect.field(record, 'id')))

@@ -47,6 +47,13 @@ class LibraryRemovalPresentation {
 			'Original source folders are preserved.'];
 		return lines.join('\n');
 	}
+	/** The plan only failed because something still holds one of its packages. */
+	public static function blockedByActiveSession(plan:Dynamic):Bool {
+		var blockers:Array<String> = plan == null ? null : Reflect.field(plan, 'blockers');
+		if (blockers == null) return false;
+		for (blocker in blockers) if (blocker != null && blocker.indexOf('active or reserved') >= 0) return true;
+		return false;
+	}
 	public static function confirmable(phase:String, busy:Bool, plan:Dynamic):Bool {
 		return phase == 'preview' && !busy && plan != null && plan.inventoryComplete == true
 			&& plan.blockers != null && plan.blockers.length == 0 && plan.affectedOwners.length > 0;

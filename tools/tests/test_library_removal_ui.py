@@ -92,6 +92,19 @@ class LibraryRemovalUiTest(unittest.TestCase):
  linkedUi.actions[0].run();check(linkedUi.closed&&ImportRemovalManager.confirms==before,'declining linked mods still removed');
  linkedUi=new LibraryRemovalSubState('assets/imported_mods/alpha');linkedUi.create();linkedUi.actions[1].run();linkedUi.actions[1].run();
  check(ImportRemovalManager.confirms==before+1,'second confirmation did not remove');
+ // A removal blocked only because something still holds the packages offers to release them.
+ var held:Dynamic={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha','assets/imported_mods/beta'],linkedOwners:['assets/imported_mods/beta'],blockers:['Package is active or reserved: assets/imported_mods/beta'],candidateFiles:[1],sharedFiles:[],candidateSnapshots:[],sharedSnapshots:[],registryPaths:[]};
+ check(LibraryRemovalPresentation.blockedByActiveSession(held)&&!LibraryRemovalPresentation.blockedByActiveSession(wide)&&!LibraryRemovalPresentation.blockedByActiveSession(null),'active session blocker not recognised');
+ ImportRemovalManager.state={phase:'blocked',busy:false,label:'held',plan:held,published:false,cancellable:false};
+ LoadingState.destination=null;var heldUi=new LibraryRemovalSubState('assets/imported_mods/alpha',null,'Alpha');heldUi.create();
+ var release=-1;for(i in 0...heldUi.actions.length)if(heldUi.actions[i].label.indexOf('Close running mod menus')==0)release=i;
+ check(heldUi.actions[0].label=='Return'&&release>0,'held packages offer no way to release them');
+ check(heldUi.detail.text.indexOf('Close running mod menus')>=0,'blocked text does not say how to release the packages');
+ heldUi.actions[release].run();
+ check(Std.isOfType(LoadingState.destination,LibraryRemovalState)&&(cast LoadingState.destination:LibraryRemovalState).owner=='assets/imported_mods/alpha','release did not go through the neutral removal state');
+ ImportRemovalManager.state.plan={inventoryComplete:true,affectedOwners:['assets/imported_mods/alpha'],blockers:['No committed ownership for assets/imported_mods/alpha.'],candidateFiles:[],sharedFiles:[],candidateSnapshots:[],sharedSnapshots:[],registryPaths:[]};
+ var otherUi=new LibraryRemovalSubState('assets/imported_mods/alpha');otherUi.create();
+ for(action in otherUi.actions)check(action.label.indexOf('Close running')<0,'unrelated blocker offered a session release');
  Sys.println('confirmation contracts passed');
  }}
 ''',

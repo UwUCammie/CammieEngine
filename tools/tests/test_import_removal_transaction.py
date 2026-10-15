@@ -47,6 +47,18 @@ BODY=r'''  Sys.setCwd(root);
   var installed=ImportRefreshTransaction.inspectRetainedManifests(root,root+"/import-cache/state",root+"/import-cache/records");
   check(installed.length==((mode=="cancel" || mode=="cancel-prepare" || mode=="rollback" || mode=="edited" || mode=="partial" || mode=="family" || mode=="family3")?1:0),"receipt retirement wrong");
   if(mode!="cancel" && mode!="edited")check(LibraryIdentityArchive.load(root).records.length==1,"identity archive lost");
+  if(mode=="rollback") {
+   // Removing the same package again after a rolled-back attempt must work, and the
+   // next launch's recovery must not trip over the old attempt's journal.
+   var retry=ImportRemovalTransaction.preview(root,[ownerRoot],[]);
+   check(retry.blockers.length==0,"retry preview blocked: "+retry.blockers.join("; "));
+   var second=ImportRemovalTransaction.apply(root,retry,[],function()return false,function(p){});
+   check(second.status=="applied","retry removal failed: "+second.status+" "+second.blockers.join("; "));
+   var relaunch=ImportRemovalTransaction.recover(root);
+   check(relaunch.length==0,"recovery after a rolled-back attempt and a later removal failed: "+relaunch.join("; "));
+   check(ImportRemovalTransaction.recover(root).length==0,"second launch recovery failed");
+   check(ImportRefreshTransaction.inspectRetainedManifests(root,root+"/import-cache/state",root+"/import-cache/records").length==0,"retry left the package installed");
+  }
   if(mode=="valid") {
    var donor=root+"/renamed-donor";write(donor+"/pack.json",{id:"alpha-package"});
    ImportSongOwnership.invalidateOwnerIdentityIndex();

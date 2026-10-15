@@ -71,9 +71,10 @@ class LibraryManageSubState extends LibraryMenuSubState {
 			}});
 			if (removable) entries.push({label:rows[next++], run:function() {
 				// A mod with a live script session must be released by a neutral state first.
-				if (Std.isOfType(flixel.FlxG.state, FreeplayState)
-					&& ImportedFreeplayCaller.ownerForFreeplay(CodenameModRuntime.activeRoot()) == ''
-					&& HxcFreeplayRuntime.activeOwnerRoots().indexOf(owner) >= 0) {
+				// Removal can take linked packages too, and any of them may be held by a
+				// Freeplay module, a mod menu or a mod session started from Freeplay; the
+				// neutral state releases all of those before it looks at ownership.
+				if (Std.isOfType(flixel.FlxG.state, FreeplayState)) {
 					LoadingState.loadAndSwitchState(new LibraryRemovalState(owner, title)); return;
 				}
 				var child = new LibraryRemovalSubState(owner, function() close(), title); child.cameras = cameras;

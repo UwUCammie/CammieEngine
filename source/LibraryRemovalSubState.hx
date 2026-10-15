@@ -83,6 +83,17 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 					: state.phase == 'cleanup-pending' ? 'Removed, cleanup pending'
 					: state.phase == 'cancelled' ? 'Removal cancelled' : 'Removal blocked';
 				entries.push({label:'Return', run:leaveOrCancel});
+				if (LibraryRemovalPresentation.blockedByActiveSession(plan) && LibraryRemovalPresentation.eligible(owner)) {
+					// A menu, Freeplay module or mod session still holds the packages. The
+					// neutral removal state releases every one of them before it checks again.
+					if (!Std.isOfType(FlxG.state, LibraryRemovalState))
+						entries.push({label:'Close running mod menus and try again', run:function() {
+							LoadingState.loadAndSwitchState(new LibraryRemovalState(owner, displayTitle));
+						}});
+					else entries.push({label:'Try again', run:function() {
+						started = ImportRemovalManager.beginPreview(owner); signature = ''; refreshRemoval();
+					}});
+				}
 				if (state.phase == 'cleanup-pending' || state.phase == 'conflict') entries.push({label:state.phase == 'conflict' ? 'Retry recovery (verify installed content)' : 'Retry managed cleanup', run:function() {
 					ImportRemovalManager.retryCleanup(); signature = ''; refreshRemoval();
 				}});
@@ -92,7 +103,10 @@ class LibraryRemovalSubState extends LibraryMenuSubState {
 		detail.text = step == 1 ? LibraryRemovalPresentation.linkedSummary(plan) : LibraryRemovalPresentation.summary(plan, owner, displayTitle);
 		if (plan != null && plan.blockers.length > 0) {
 			detail.text = 'No content will be removed.\n' + plan.blockers.join('\n');
-			for (blocker in (cast plan.blockers:Array<String>)) if (blocker.indexOf('active or reserved') >= 0) { detail.text += '\nReturn to Imported Mods before removing an active package.'; break; }
+			if (LibraryRemovalPresentation.blockedByActiveSession(plan))
+				detail.text += Std.isOfType(FlxG.state, LibraryRemovalState)
+					? '\nAn import or refresh is still working on these packages. Try again once it finishes.'
+					: '\nChoose "Close running mod menus and try again" to release them.';
 			if (detail.text.length > 1800) detail.text = detail.text.substr(0, 1800) + '\nAdditional ownership blockers recorded.';
 		}
 		status.text = state.label;

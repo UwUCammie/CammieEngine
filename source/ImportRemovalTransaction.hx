@@ -87,7 +87,19 @@ class ImportRemovalTransaction {
 		if (cancel != null && cancel()) throw CANCEL;
 	}
 	static function digest(path:String):String return ImportSourceSnapshot.sha256File(path,65536);
-	static function key(text:String):String return Sha256.encode(text);
+	/** A staged text file still holds what its journal recorded. Journals from before
+	 * the byte-exact hash recorded Sha256.encode of the text, which is wrong for
+	 * non-ASCII text; accepting that value too lets those interrupted removals finish
+	 * cleaning up instead of staying locked forever. */
+	static function stagedTextMatches(path:String, expected:String):Bool {
+		if (digest(path) == expected) return true;
+		try return Sha256.encode(File.getContent(path)) == expected catch (_:Dynamic) return false;
+	}
+	// UTF-8 bytes, the same digest as the files these texts are written to and as
+	// ImportRefreshTransaction.digestText. Sha256.encode counts characters, not bytes,
+	// so any manifest, registry or path with non-ASCII text never matched its file
+	// and every such removal rolled back. ASCII text hashes exactly as before.
+	static function key(text:String):String return Sha256.make(haxe.io.Bytes.ofString(text)).toHex();
 	static function safe(root:String,path:String,exists:Bool = false):String
 		return ImportRefreshTransaction.safeChild(root,path,exists);
 
@@ -125,7 +137,10 @@ class ImportRemovalTransaction {
 			for (manifest in manifests) if (current.transactionOwners.indexOf(manifest.owner) >= 0) {
 				var record:Dynamic = Reflect.field(manifest.revision,'importRecord');
 				var pointer = 'import-cache/records/' + Std.string(Reflect.field(record,'id')) + '.json';
-				if (!partition.revisions.exists(manifest.owner)) addOperation(install,txn,operations,pointer,digest(safe(install,pointer,true)),null,cancel);
+				// An import whose index pointer was lost is still removable; there is just no
+				// pointer file to retire with it.
+				if (!partition.revisions.exists(manifest.owner) && FileSystem.exists(safe(install,pointer)))
+					addOperation(install,txn,operations,pointer,digest(safe(install,pointer,true)),null,cancel);
 				var path = 'import-cache/state/' + key(manifest.owner);
 				scopes.push({path:path,backupPath:'retired/owner-' + scopes.length,inventory:tree(install,path,cancel),owner:manifest.owner,originalManifestText:File.getContent(safe(install,path + '/manifest.json',true)),
 					replacement:partition.revisions.exists(manifest.owner) ? replacementFiles(install,manifest,partition.revisions.get(manifest.owner),partition.retainedFiles.get(manifest.owner),id) : null});
@@ -285,7 +300,7 @@ class ImportRemovalTransaction {
 		if (!ImportRefreshTransaction.isRegularFile(target) || digest(target) != hash) throw 'Local file edit preserved: ' + path;
 		var stage = key(path);
 		var output = after == null ? null : {path:path,stagedPath:stage,sha256:key(after)};
-		if (after != null) File.saveContent(safe(txn,'staging/' + stage),after);
+		if (after != null) File.saveBytes(safe(txn,'staging/' + stage),haxe.io.Bytes.ofString(after));
 		var operation = ImportRefreshTransaction.makeOperation(path,target,after != null,true,hash,output);
 		operation.backupPath = 'backups/files/' + key(path) + '.bak';
 		operations.push(operation);
@@ -359,7 +374,7 @@ class ImportRemovalTransaction {
 		for (operation in (cast journal.operations:Array<Dynamic>)) if (operation.afterExists) try {
 			var staged = safe(txn,'staging/' + operation.stagedPath);
 			if (FileSystem.exists(staged)) {
-				if (!ImportRefreshTransaction.isRegularFile(staged) || digest(staged) != operation.afterSha256)
+				if (!ImportRefreshTransaction.isRegularFile(staged) || !stagedTextMatches(staged, operation.afterSha256))
 					throw 'Removal staged cleanup bytes changed; preserving them.';
 				FileSystem.deleteFile(staged);
 			}
@@ -392,6 +407,10 @@ class ImportRemovalTransaction {
 		ImportRefreshTransaction.validateReceipt(txn + '/receipt.json',journal);
 		var receipt:Dynamic = Json.parse(File.getContent(safe(txn,'receipt.json',true)));
 		if (receipt.removalJournalSha256 != journalDigest(txn,journal)) throw 'Removal journal differs from its committed receipt.';
+	}
+	static function validateJournalIdentity(install:String,journal:Dynamic,id:String):Void {
+		if (journal.schemaVersion != 1 || journal.owner != OWNER || journal.transactionId != id
+			|| !ImportRefreshTransaction.samePath(journal.installRoot,install)) throw 'Removal recovery identity mismatch.';
 	}
 	static function validateJournal(install:String,txn:String,journal:Dynamic,id:String):Void {
 		if (journal.schemaVersion != 1 || journal.owner != OWNER || journal.transactionId != id
@@ -475,6 +494,20 @@ class ImportRemovalTransaction {
 			safe(install,path); safe(txn,operation.backupPath);
 		}
 	}
+	/** Remove a finished transaction folder. Only plain files and folders inside it
+	 * are deleted; anything that is not one stops the delete and is kept. */
+	static function deleteFinishedTransaction(directory:String,name:String):Void {
+		var root = safe(directory,name,true);
+		var stack = [root]; var order:Array<String> = [];
+		while (stack.length > 0) {
+			var path = stack.pop(); order.push(path);
+			if (FileSystem.isDirectory(path)) for (child in FileSystem.readDirectory(path)) stack.push(path + '/' + child);
+			else if (!ImportRefreshTransaction.isRegularFile(path)) throw 'Unsafe entry in finished removal transaction: ' + path;
+			if (order.length > 262144) throw 'Finished removal transaction is too large to clear.';
+		}
+		order.sort(function(a,b) return b.length - a.length);
+		for (path in order) if (FileSystem.isDirectory(path)) FileSystem.deleteDirectory(path); else FileSystem.deleteFile(path);
+	}
 	public static function recover(install:String):Array<String> {
 		install = ImportRefreshTransaction.canonicalDirectory(install,false);
 		var state = Path.join([install,STATE]); var directory = safe(install,STATE + '/transactions');
@@ -484,6 +517,16 @@ class ImportRemovalTransaction {
 			if (!StringTools.startsWith(name,'txn-') || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) throw 'Unexpected removal transaction directory.';
 			var txn = safe(directory,name,true); var journal = ImportRefreshTransaction.latestJournal(txn);
 			if (journal == null) continue;
+			if (journal.phase == 'rolled-back' && !FileSystem.exists(txn + '/receipt.json')) {
+				// A rolled-back removal already put every installed file back; what is
+				// left in its folder is only its own copies. Checking it against the
+				// original ownership metadata is wrong once a later removal of the same
+				// package succeeded (that metadata is gone by design), and it locked the
+				// whole library on every launch. Delete the finished folder instead.
+				validateJournalIdentity(install,journal,name);
+				deleteFinishedTransaction(directory,name);
+				continue;
+			}
 			validateJournal(install,txn,journal,name);
 			if (FileSystem.exists(txn + '/receipt.json')) {
 				validateRemovalReceipt(txn,journal);
