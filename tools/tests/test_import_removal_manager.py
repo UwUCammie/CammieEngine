@@ -1,5 +1,6 @@
 """Asynchronous removal manager keeps importer leases through publication/recovery."""
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -80,6 +81,8 @@ class ImportRemovalManagerTest(unittest.TestCase):
             # runs many suites at once; the v0.0.41 fixture hangs the same way.
             # A normal run takes about 2 s, so only a hang is retried, never a failure.
             for attempt in range(3):
+                # A hung attempt can leave its transaction folders behind; start clean.
+                shutil.rmtree(work/'import-cache', ignore_errors=True)
                 try:
                     result=subprocess.run([*HAXE_COMMAND,'-cp',str(work),'--main','Main','--interp'],cwd=work,capture_output=True,text=True,timeout=45)
                     break
