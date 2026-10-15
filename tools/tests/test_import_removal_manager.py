@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from haxe_test_support import HAXE_COMMAND, TEST_TMP
 ROOT = Path(__file__).resolve().parents[2]
+# Threaded interpreter fixture: run after the parallel suite (see run_tests.runs_alone).
+RUN_ALONE = True
 
 class ImportRemovalManagerTest(unittest.TestCase):
     def test_worker_and_main_thread_reservation_handoff(self):

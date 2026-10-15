@@ -13,6 +13,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# Threaded interpreter fixture: run after the parallel suite (see run_tests.runs_alone).
+RUN_ALONE = True
 HAXE = ROOT / ".tools/haxe/haxe"
 SOURCE = ROOT / "source"
 

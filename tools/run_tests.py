@@ -108,6 +108,20 @@ def load_timings():
         return {}
 
 
+def runs_alone(path):
+    """Modules that set RUN_ALONE = True run one at a time after the rest.
+
+    Some interpreter fixtures use real threads, and the Haxe interpreter can
+    deadlock them while the parallel suite starves the machine. Alone they
+    finish in seconds, so they wait for the pool instead of retrying blindly.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return re.search(r"^RUN_ALONE\s*=\s*True\b", text, re.MULTILINE) is not None
+
+
 def schedule_modules(modules, timings):
     # Start expensive probes first, preventing a single late native compile
     # from holding up the completed suite. Timings never skip tests.
@@ -201,34 +215,42 @@ def main():
             return 0
     timings = load_timings()
     modules = schedule_modules(modules, timings)
-    worker_count = min(args.jobs, len(modules))
+    alone = [path for path in modules if runs_alone(path)]
+    parallel = [path for path in modules if path not in alone]
+    worker_count = max(1, min(args.jobs, len(parallel)))
     start = time.monotonic()
     failures = []
     tests_run = 0
     tests_skipped = 0
-    with ThreadPoolExecutor(max_workers=worker_count) as pool:
-        pending = {pool.submit(run_module, path, worker_count): path for path in modules}
-        for future in as_completed(pending):
-            path, result, elapsed = future.result()
-            timings[path.name] = elapsed
-            match = re.search(r"Ran (\d+) tests? in", result.stderr)
-            module_tests = int(match.group(1)) if match else 0
-            tests_run += module_tests
-            skipped = re.search(r"skipped=(\d+)", result.stderr)
-            if skipped:
-                tests_skipped += int(skipped.group(1))
-            if result.returncode or module_tests == 0:
-                failures.append(path.name)
-                print(f"FAIL {path.name} ({elapsed:.1f}s)", flush=True)
-                if module_tests == 0:
-                    print("No tests were discovered in this module.", file=sys.stderr)
-                print(result.stdout, end="")
-                print(result.stderr, end="", file=sys.stderr)
-            else:
-                print(f"OK   {path.name} ({elapsed:.1f}s)", flush=True)
-                for line in result.stdout.splitlines():
-                    if line.startswith('SKIP '):
-                        print(line, flush=True)
+
+    def finished():
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            pending = {pool.submit(run_module, path, worker_count): path for path in parallel}
+            for future in as_completed(pending):
+                yield future.result()
+        for path in alone:
+            yield run_module(path, 1)
+
+    for path, result, elapsed in finished():
+        timings[path.name] = elapsed
+        match = re.search(r"Ran (\d+) tests? in", result.stderr)
+        module_tests = int(match.group(1)) if match else 0
+        tests_run += module_tests
+        skipped = re.search(r"skipped=(\d+)", result.stderr)
+        if skipped:
+            tests_skipped += int(skipped.group(1))
+        if result.returncode or module_tests == 0:
+            failures.append(path.name)
+            print(f"FAIL {path.name} ({elapsed:.1f}s)", flush=True)
+            if module_tests == 0:
+                print("No tests were discovered in this module.", file=sys.stderr)
+            print(result.stdout, end="")
+            print(result.stderr, end="", file=sys.stderr)
+        else:
+            print(f"OK   {path.name} ({elapsed:.1f}s)", flush=True)
+            for line in result.stdout.splitlines():
+                if line.startswith('SKIP '):
+                    print(line, flush=True)
     save_timings(timings)
     print(f"{tests_run} tests across {len(modules)} modules in "
           f"{time.monotonic() - start:.1f}s; {tests_skipped} skipped, "

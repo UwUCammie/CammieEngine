@@ -72,6 +72,36 @@ class TestRunnerPolicyTests(unittest.TestCase):
         self.assertEqual(received_jobs, [2, 2])
         self.assertIn("2 tests across 2 modules", output.getvalue())
 
+    def test_run_alone_modules_wait_for_the_pool_and_run_one_at_a_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tests = Path(directory)
+            (tests / "test_alone.py").write_text("RUN_ALONE = True\n", newline="\n")
+            (tests / "test_mentions.py").write_text("# RUN_ALONE = True is only a comment here\n", newline="\n")
+            (tests / "test_plain.py").write_text("# fixture\n", newline="\n")
+            calls = []
+            successful_result = SimpleNamespace(
+                returncode=0, stderr="Ran 1 test in 0.0s\n", stdout="")
+
+            def run_fake_module(path, jobs):
+                calls.append((path.name, jobs))
+                return path, successful_result, 0.0
+
+            output = io.StringIO()
+            errors = io.StringIO()
+            with patch.object(run_tests, "TESTS", tests), \
+                 patch.object(run_tests, "load_timings", return_value={"test_alone.py": 99.0}), \
+                 patch.object(run_tests, "save_timings"), \
+                 patch.object(run_tests, "run_module", side_effect=run_fake_module), \
+                 patch.object(run_tests.sys, "argv", ["run_tests.py", "--jobs", "16"]), \
+                 redirect_stdout(output), redirect_stderr(errors):
+                code = run_tests.main()
+
+        self.assertEqual(code, 0, errors.getvalue())
+        # Even as the slowest module it runs last, alone, after the pool.
+        self.assertEqual(calls[-1], ("test_alone.py", 1))
+        self.assertEqual(sorted(calls[:-1]), [("test_mentions.py", 2), ("test_plain.py", 2)])
+        self.assertIn("3 tests across 3 modules", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
