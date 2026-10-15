@@ -1,8 +1,7 @@
 CammieEngine update log
 Earlier Disappointing Plus development history is retained below.
 
-v0.0.42 development - CammieEngine
-- Development continues after the published v0.0.41 checkpoint; remaining roadmap requirements stay open.
+v0.0.42 alpha - CammieEngine
 - Removing a mod from Freeplay now always goes through the clean removal screen, which closes every mod menu, Freeplay module and mod session first. Before, linked mods held by those sessions showed "Package is active or reserved" and nothing could be removed.
 - If a removal is still blocked by something holding the mods, the popup now offers to close the running mod menus and try again, or to try again once an import finishes.
 - Fixed removals failing and rolling back whenever a shared song or week list contained non-English text: the removal compared a miscounted checksum against the file it had just written.
@@ -87,6 +86,7 @@ v0.0.42 development - CammieEngine
 - Older Nightmare Vision packs now show their rating and combo images instead of Flixel logos.
 - Nightmare Vision HUD scripts that read sicks, goods, bads or shits work again, so their score text updates.
 - Repeated Nightmare Vision script errors are shown a few times and then hidden, as Psych script errors already were.
+- Incremental alpha release after v0.0.41; remaining roadmap requirements stay open.
 
 v0.0.41 alpha - CammieEngine
 - Fixed freezes of several seconds in Psych songs whose Lua scripts join text and numbers often, for example in tween and timer callbacks. Every number in a .. join built throwaway native patterns, and clearing them later stopped the game.
